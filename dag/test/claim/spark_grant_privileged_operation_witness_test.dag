@@ -181,10 +181,9 @@ test fn a_credential_that_could_not_be_read_is_not_an_unenrolled_one() -> Bool {
        })
 }
 
-// A PASSWORD IS BYTES. This read used to `trim` the file and hand the result to sudo, which
-// corrupts any credential whose real bytes begin or end with a space -- and the resulting sudo
-// rejection would read as a stale Secret Manager version rather than as this lane damaging the
-// secret in transit. Only the terminator the materialization itself wrote may be removed.
+// A PASSWORD IS BYTES. This read once called trim and handed the result to sudo, corrupting any
+// credential whose real bytes begin or end with a space -- and the resulting sudo rejection reads as
+// a stale Secret Manager version rather than as this lane damaging the secret in transit.
 test fn a_credential_keeps_its_own_leading_and_trailing_spaces() -> Bool {
   match classify_credential_read(success: true, error: "", content: " password ") {
     BootstrapCredentialReady { secret: secret } => secret == " password "
@@ -192,29 +191,43 @@ test fn a_credential_keeps_its_own_leading_and_trailing_spaces() -> Bool {
   }
 }
 
-// Exactly one trailing terminator is removed, in either shape a file writer may have used. This
-// subsumes an earlier LF-only witness that described the removal as a `trim`: the file's own
-// trailing newline would otherwise become a second line sudo never reads, while the terminator
-// run_privileged_step appends is what ends sudo's read at all -- without it the step hangs rather
-// than failing. What changed is the RULE, not that a terminator is removed: only the materialization's
-// own line ending goes, and never a byte of the password.
-test fn one_trailing_terminator_is_removed_in_either_shape() -> Bool {
-  let lf = from_code_point(cp: 10)
-  let crlf = join([from_code_point(cp: 13), from_code_point(cp: 10)], "")
-  match classify_credential_read(success: true, error: "", content: join(["password", lf], "")) {
+// A WHITESPACE-ONLY PAYLOAD IS ADMITTED, and this witness is the wall against re-adding the arm that
+// refused it. Two spaces are bytewise distinguishable from no payload: the fetch succeeded and
+// produced exactly those bytes. Whether such a value may be an administrator password belongs to
+// whatever writes the secret version, not to the consumer delivering it -- and if it is wrong, sudo
+// rejecting it as the wrong credential is the correct layer and the correct remedy.
+test fn a_whitespace_only_payload_is_delivered_not_redefined_as_absent() -> Bool {
+  let tabs = join([from_code_point(cp: 9), from_code_point(cp: 9)], "")
+  match classify_credential_read(success: true, error: "", content: "  ") {
     BootstrapCredentialReady { secret: a } =>
-      a == "password"
-        && match classify_credential_read(success: true, error: "", content: join(["password", crlf], "")) {
-             BootstrapCredentialReady { secret: b } => b == "password"
+      a == "  "
+        && match classify_credential_read(success: true, error: "", content: tabs) {
+             BootstrapCredentialReady { secret: b } => b == tabs
              BootstrapCredentialNotMaterialized { cause: _ } => false
            }
     BootstrapCredentialNotMaterialized { cause: _ } => false
   }
 }
 
-// AN EMBEDDED BREAK REFUSES rather than being stripped or passed through. sudo -S takes the first
-// line of stdin as the password, so a secret containing a break would authenticate with only its
-// first line and feed the remainder to the command running under root.
+// NO LINE BREAK IS STRIPPED, IN ANY POSITION. The materialization base64-decodes the payload
+// straight to the file and appends nothing, so a break in that file is part of the ENROLLED secret.
+// An intermediate revision removed one trailing LF or CRLF on the false premise that the writer had
+// added it; that would authenticate with a different credential than the one enrolled while
+// reporting success. sudo -S reads only the first line, so such a secret cannot be delivered by this
+// protocol at all -- and saying so is the honest arm.
+test fn a_trailing_line_break_refuses_rather_than_being_stripped() -> Bool {
+  let lf = from_code_point(cp: 10)
+  let crlf = join([from_code_point(cp: 13), from_code_point(cp: 10)], "")
+  fold([join(["password", lf], ""), join(["password", crlf], ""), lf], init: true, f: fn(acc, c) {
+    acc && match classify_credential_read(success: true, error: "", content: c) {
+      BootstrapCredentialNotMaterialized { cause: why } => string_contains(why as String, "line break")
+      BootstrapCredentialReady { secret: _ } => false
+    }
+  })
+}
+
+// An embedded break refuses for the same reason and is called out separately because its harm
+// differs: sudo would authenticate on the first line and feed the remainder to the command as input.
 test fn an_embedded_line_break_refuses_instead_of_being_stripped() -> Bool {
   let content = join(["pass", from_code_point(cp: 10), "word"], "")
   match classify_credential_read(success: true, error: "", content: content) {
@@ -223,9 +236,9 @@ test fn an_embedded_line_break_refuses_instead_of_being_stripped() -> Bool {
   }
 }
 
-// A lone carriage return is not a terminator this lane admits, so it refuses rather than being
-// quietly deleted from the middle of a password.
-test fn a_bare_carriage_return_is_not_an_admitted_terminator() -> Bool {
+// A lone carriage return is a line break wherever it sits, and refuses rather than being deleted
+// from the middle or the end of a password.
+test fn a_bare_carriage_return_refuses() -> Bool {
   let content = join(["password", from_code_point(cp: 13)], "")
   match classify_credential_read(success: true, error: "", content: content) {
     BootstrapCredentialNotMaterialized { cause: _ } => true
@@ -233,11 +246,14 @@ test fn a_bare_carriage_return_is_not_an_admitted_terminator() -> Bool {
   }
 }
 
-// A file holding only its own terminator is a failed materialization, exactly as an empty one is --
-// admitting it would send an empty first line to sudo and be answered as a wrong password.
-test fn a_file_holding_only_a_terminator_is_a_failed_materialization() -> Bool {
-  match classify_credential_read(success: true, error: "", content: from_code_point(cp: 10)) {
-    BootstrapCredentialNotMaterialized { cause: c } => string_contains(c as String, "empty")
+// AN EMPTY FILE IS A FAILED MATERIALIZATION, never a blank password. Admitting it would send an
+// empty first line to sudo, which sudo treats as a wrong password -- reporting a broken fetch as a
+// bad credential and sending the reader to re-enrol a secret that was fine. This is the arm the
+// whitespace payload above is deliberately NOT routed to: no bytes and some bytes are different
+// facts, and only the first is a failed fetch.
+test fn an_empty_credential_file_is_not_a_blank_password() -> Bool {
+  match classify_credential_read(success: true, error: "", content: "") {
+    BootstrapCredentialNotMaterialized { cause: c } => string_contains(c as String, "never a blank password")
     BootstrapCredentialReady { secret: _ } => false
   }
 }
@@ -268,20 +284,6 @@ test fn the_environment_carries_a_path_and_not_a_credential() -> Bool {
   string_contains(spark_grant_credential_path_env as String, "FILE")
     && !string_contains(spark_grant_credential_path_env as String, "PASSWORD")
     && !string_contains(spark_grant_credential_path_env as String, "SECRET")
-}
-
-// AN ALL-WHITESPACE CREDENTIAL FILE IS A FAILED MATERIALIZATION, never a blank password. Admitting
-// it would send a blank-looking first line to sudo, which sudo treats as a wrong password --
-// reporting a broken fetch as a bad credential and sending the reader to re-enrol a secret that was
-// fine. This is the discriminating pair for byte preservation: the spaces AROUND content are kept
-// (see the leading/trailing-space witness), while a file that is ONLY spaces has no content to keep.
-test fn an_all_whitespace_credential_file_is_not_a_blank_password() -> Bool {
-  match classify_credential_read(success: true, error: "", content: join(["  ", from_code_point(cp: 10)], "")) {
-    BootstrapCredentialNotMaterialized { cause: c } =>
-      string_contains(c as String, "never a blank password")
-        && string_contains(c as String, "only whitespace")
-    BootstrapCredentialReady { secret: _ } => false
-  }
 }
 
 // A read that failed is its own cause, distinct from a file that was there and empty: one is a

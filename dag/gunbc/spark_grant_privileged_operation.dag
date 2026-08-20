@@ -116,6 +116,23 @@ fn admitted_root_argv_words(command: AdmittedRootArgv) -> List<String> {
   )
 }
 
+// TWO PHASES, TWO TYPES, so a plan cannot hold them the wrong way round. A record whose validate
+// and install fields were BOTH AdmittedRootArgv fixes the ORDER of the fields while leaving the
+// VALUES swappable -- SparkGrantInstallSteps { validate: InstallStagedSudoers, install:
+// ValidateStagedSudoers } typechecks and installs an unvalidated sudoers file. Naming the fields
+// was therefore not the wall it was claimed to be; giving each phase its own carrier is, because
+// the swapped construction is now a type error rather than a witness finding.
+type GrantSudoersValidation { staged_path: NonEmptyStr }
+type GrantSudoersInstallation { staged_path: NonEmptyStr, dropin_path: NonEmptyStr }
+
+fn grant_sudoers_validation_argv(command: GrantSudoersValidation) -> AdmittedRootArgv {
+  ValidateStagedSudoers { staged_path: command.staged_path }
+}
+
+fn grant_sudoers_installation_argv(command: GrantSudoersInstallation) -> AdmittedRootArgv {
+  InstallStagedSudoers { staged_path: command.staged_path, dropin_path: command.dropin_path }
+}
+
 fn admitted_root_argv_label(command: AdmittedRootArgv) -> String {
   match command {
     ValidateStagedSudoers { staged_path: _ } => "validate-staged-sudoers"
@@ -238,82 +255,30 @@ type BootstrapCredentialMaterialization
   = BootstrapCredentialReady { secret: String }
   | BootstrapCredentialNotMaterialized { cause: NonEmptyStr }
 
-// A PASSWORD IS BYTES, NOT A TRIMMED FIELD. This read `trim`ped the file content and handed the
-// result to sudo, which silently corrupts any credential whose real bytes begin or end with a space
-// -- and the failure would arrive as sudo rejecting the password, sending a reader to re-enrol a
-// Secret Manager version that was never wrong. The only whitespace this lane may remove is the
-// terminator the MATERIALIZATION ITSELF introduced when it wrote the secret to a file, so exactly
-// one trailing LF or CRLF is removed and every other byte is preserved.
+// A PASSWORD IS BYTES. This read once called `trim` and handed the result to sudo, which corrupts
+// any credential whose real bytes begin or end with a space; the damage then arrives disguised as
+// sudo rejecting the password, sending a reader to re-enrol a Secret Manager version that was never
+// wrong. Nothing is normalized here now: the payload is admitted exactly or it is refused.
 //
-// An embedded line break REFUSES rather than being stripped or passed through. sudo -S consumes the
-// first line of stdin as the password, so a secret containing a break would silently authenticate
-// with only its first line while the remainder became input to whatever sudo then ran.
+// AN INTERMEDIATE REVISION REMOVED ONE TRAILING LF OR CRLF, on the stated premise that the
+// materialization wrote it. That premise was false and the removal was a second silent corruption of
+// the same class. gunbc_ci_spark_admin_credential_script base64-decodes Secret Manager's payload
+// straight into the file and appends NOTHING, so a line break in that file is part of the enrolled
+// secret -- and stripping it would authenticate with a different credential than the one enrolled,
+// while reporting success. The producer is the authority on what the bytes are; this consumer does
+// not get to reinterpret them.
+//
+// So any CR or LF ANYWHERE refuses. sudo -S reads the first line of stdin as the password, so a
+// line-bearing secret cannot be delivered by this protocol at all: refusing names that fact, where
+// stripping would hide it and passing it through would leak the remainder as input to the command
+// running under root. run_privileged_step appends the single LF that terminates sudo's read, and
+// that terminator is the ONLY line ending this lane ever introduces.
 data credential_line_feed_code_point: Int = 10
 data credential_carriage_return_code_point: Int = 13
 
-type CredentialByteTail { previous: Int, last: Int, count: Int }
-
-fn credential_byte_tail(code_points: List<Int>) -> CredentialByteTail {
-  fold(
-    code_points,
-    init: CredentialByteTail { previous: 0 - 1, last: 0 - 1, count: 0 },
-    f: fn(acc, c) {
-      CredentialByteTail { previous: acc.last, last: c, count: acc.count + 1 }
-    },
-  )
-}
-
-fn credential_break_count(code_points: List<Int>, wanted: Int) -> Int {
-  fold(code_points, init: 0, f: fn(acc, c) { if c == wanted { acc + 1 } else { acc } })
-}
-
-// THE TERMINATOR IS THE ONLY ADMITTED BREAK, and which shape it takes is decided from the counts
-// together with the tail rather than by stripping whatever is at the end. A lone CR, a leading
-// break, or a break in the middle all reach the refusing arm; they are not silently removed.
-type CredentialLineEnding
-  = CredentialEndsWithoutBreak
-  | CredentialEndsWithLineFeed
-  | CredentialEndsWithCarriageReturnLineFeed
-  | CredentialHasEmbeddedBreak
-
-fn credential_line_ending(code_points: List<Int>) -> CredentialLineEnding {
-  let tail = credential_byte_tail(code_points: code_points)
-  let line_feeds = credential_break_count(
-    code_points: code_points, wanted: credential_line_feed_code_point,
-  )
-  let carriage_returns = credential_break_count(
-    code_points: code_points, wanted: credential_carriage_return_code_point,
-  )
-  if line_feeds == 0 && carriage_returns == 0 {
-    CredentialEndsWithoutBreak
-  } else if line_feeds == 1
-      && carriage_returns == 0
-      && tail.last == credential_line_feed_code_point {
-    CredentialEndsWithLineFeed
-  } else if line_feeds == 1
-      && carriage_returns == 1
-      && tail.count > 1
-      && tail.last == credential_line_feed_code_point
-      && tail.previous == credential_carriage_return_code_point {
-    CredentialEndsWithCarriageReturnLineFeed
-  } else {
-    CredentialHasEmbeddedBreak
-  }
-}
-
-// Reached only after the ending has been admitted, so the sole break characters present are the
-// terminator itself. Dropping them is therefore exact rather than a filter that could eat content:
-// a linear map and one join, never an accumulator copied per byte.
-fn credential_bytes_without_terminator(code_points: List<Int>) -> String {
-  join(
-    map(code_points, c =>
-      if c == credential_line_feed_code_point || c == credential_carriage_return_code_point {
-        ""
-      } else {
-        from_code_point(cp: c)
-      }
-    ),
-    "",
+fn credential_carries_line_break(code_points: List<Int>) -> Bool {
+  any(code_points, cp =>
+    cp == credential_line_feed_code_point || cp == credential_carriage_return_code_point
   )
 }
 
@@ -321,7 +286,15 @@ fn credential_bytes_without_terminator(code_points: List<Int>) -> String {
 // An empty file is a FAILED MATERIALIZATION, never a blank password: admitting it would send an
 // empty first line to sudo, which sudo answers as a wrong password -- so a broken fetch would be
 // reported as a bad credential, sending the reader to re-enrol a secret that was never the problem.
-// The same holds for a file containing only its own terminator.
+//
+// A payload that is nonempty but entirely whitespace is ADMITTED, and that is deliberate. An earlier
+// revision refused it as a failed materialization. That was this consumer overriding enrollment
+// policy: two spaces are bytewise distinguishable from no payload, the fetch succeeded, and whether
+// such a value may be an administrator password is a question for whatever writes the secret
+// version. If it is wrong, sudo rejecting it as the wrong credential is the correct layer and the
+// correct remedy; calling it a failed materialization would send the reader to the wrong subsystem.
+// (That arm also carried its own overclaim -- it tested only space and tab while its diagnostic said
+// "whitespace" -- which disappears with it.)
 fn classify_credential_read(
   success: Bool,
   error: String,
@@ -331,55 +304,34 @@ fn classify_credential_read(
     BootstrapCredentialNotMaterialized {
       cause: join(["the materialized credential file could not be read: ", error], "") as NonEmptyStr,
     }
-  } else {
-    {
-      let code_points = chars(s: content)
-      match credential_line_ending(code_points: code_points) {
-        CredentialHasEmbeddedBreak =>
-          BootstrapCredentialNotMaterialized {
-            cause: "the materialized credential contains a line break that is not a single trailing terminator; sudo would read only its first line as the password and feed the rest to the command" as NonEmptyStr,
-          }
-        CredentialEndsWithoutBreak =>
-          credential_ready_or_empty(secret: credential_bytes_without_terminator(code_points: code_points))
-        CredentialEndsWithLineFeed =>
-          credential_ready_or_empty(secret: credential_bytes_without_terminator(code_points: code_points))
-        CredentialEndsWithCarriageReturnLineFeed =>
-          credential_ready_or_empty(secret: credential_bytes_without_terminator(code_points: code_points))
-      }
-    }
-  }
-}
-
-// EMPTY AND ALL-WHITESPACE ARE DIFFERENT FACTS AND BOTH REFUSE. Preserving exact bytes means a
-// password may legitimately BEGIN or END with a space -- that is the whole point of not trimming --
-// but a secret consisting of NOTHING BUT whitespace has no content at all, and it is not
-// distinguishable from a fetch that wrote separator bytes and no payload. Both arms refuse, with
-// distinct causes, because their remedies differ: an empty file means the materialization produced
-// nothing, while a whitespace-only file means it produced something that cannot be a credential.
-//
-// Admitting either would send a blank or blank-looking first line to sudo, which answers it as a
-// wrong password -- reporting a broken fetch as a stale Secret Manager version and sending the
-// reader to re-enrol a secret that was never the problem.
-data credential_space_code_point: Int = 32
-data credential_tab_code_point: Int = 9
-
-fn credential_has_content(secret: String) -> Bool {
-  any(chars(s: secret), cp =>
-    cp != credential_space_code_point && cp != credential_tab_code_point
-  )
-}
-
-fn credential_ready_or_empty(secret: String) -> BootstrapCredentialMaterialization {
-  if secret == "" {
+  } else if content == "" {
     BootstrapCredentialNotMaterialized {
       cause: "the materialized credential file is empty, which is a failed materialization and never a blank password" as NonEmptyStr,
     }
-  } else if credential_has_content(secret: secret) == false {
+  } else if credential_carries_line_break(code_points: chars(s: content)) {
     BootstrapCredentialNotMaterialized {
-      cause: "the materialized credential file holds only whitespace, which is a failed materialization and never a blank password; a credential may begin or end with a space but cannot consist solely of them" as NonEmptyStr,
+      cause: "the materialized credential carries a line break, and sudo -S reads only the first line of stdin as the password; this lane will not strip it, because the enrolled bytes are the credential and delivering a truncated one would authenticate as something other than what is enrolled" as NonEmptyStr,
     }
   } else {
-    BootstrapCredentialReady { secret: secret }
+    BootstrapCredentialReady { secret: content }
+  }
+}
+
+// MATERIALIZATION IS OBSERVED, NEVER INFERRED FROM AN AUTHORED REFERENCE. A SecretRef existing in
+// the corpus says which secret this lane consumes; it says nothing about whether THIS run holds its
+// bytes, and a standing built from the bare row would assert materialization on any caller that had
+// never fetched anything. This carries the observation WITHOUT the secret: the bytes are read and
+// dropped inside the match, so no caller of this function ever holds a credential, and the entry
+// that derives a standing from it cannot leak one either.
+type BootstrapCredentialPresence
+  = BootstrapCredentialFilePresent
+  | BootstrapCredentialFileAbsent { cause: NonEmptyStr }
+
+func observe_bootstrap_credential_presence() -> BootstrapCredentialPresence {
+  match read_bootstrap_credential() {
+    BootstrapCredentialReady { secret: _ } => BootstrapCredentialFilePresent
+    BootstrapCredentialNotMaterialized { cause: why } =>
+      BootstrapCredentialFileAbsent { cause: why }
   }
 }
 

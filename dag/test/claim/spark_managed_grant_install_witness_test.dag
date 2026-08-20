@@ -8,10 +8,12 @@ import gunbc.spark_managed_access_bootstrap {
   spark_managed_grant_sudoers_command,
 }
 import gunbc.spark_managed_grant_reconcile { spark_managed_grant_dropin_path }
+import extdeps.cloud.gcp.secret_ref { secret_ref_version_resource }
 import gunbc.spark_managed_grant_install {
   spark_grant_install_plan,
   spark_grant_install_operation_labels,
   spark_grant_cleanup_standing,
+  spark_grant_install_standing_from_presence,
   spark_grant_install_plan_wire,
   spark_grant_staging_path,
   SparkGrantInstallSteps,
@@ -38,7 +40,7 @@ import gunbc.remote_operation {
   RemoteStepCompleted,
   RemoteStepFailed,
 }
-import gunbc.spark_bootstrap_credential { CredentialMaterializationPending }
+import gunbc.spark_bootstrap_credential { CredentialMaterializationPending, CredentialMaterialized }
 import gunbc.spark_grant_privileged_operation {
   OperatorBootstrapCredentialLease,
   spark_bootstrap_credential_lease,
@@ -48,7 +50,12 @@ import gunbc.spark_grant_privileged_operation {
   ValidateStagedSudoers,
   InstallStagedSudoers,
   admitted_root_argv_words,
+  grant_sudoers_validation_argv,
+  grant_sudoers_installation_argv,
   CredentialNotMaterialized,
+  privileged_step_outcome_wire,
+  BootstrapCredentialFilePresent,
+  BootstrapCredentialFileAbsent,
 }
 
 // The installing principal, which is deliberately NOT the grantee: an account cannot install its own
@@ -114,7 +121,7 @@ test fn validation_targets_the_staged_copy_not_the_live_dropin() -> Bool {
   match spark_grant_install_plan(grant: RebootThisHost, principal: installer()) {
     SparkGrantInstallRefused { grant: _, cause: _ } => false
     SparkGrantInstallSteps { grant: _, stage: _, validate: v, install: _, cleanup: _ } => {
-      let argv = admitted_root_argv_words(command: v)
+      let argv = admitted_root_argv_words(command: grant_sudoers_validation_argv(command: v))
       any(argv, w => w == "visudo")
         && any(argv, w => w == (spark_grant_staging_path(grant: RebootThisHost, principal: installer()) as String))
         && !any(argv, w => w == (spark_managed_grant_dropin_path(grant: RebootThisHost) as String))
@@ -129,7 +136,7 @@ test fn the_dropin_lands_root_owned_and_not_group_writable() -> Bool {
   match spark_grant_install_plan(grant: RebootThisHost, principal: installer()) {
     SparkGrantInstallRefused { grant: _, cause: _ } => false
     SparkGrantInstallSteps { grant: _, stage: _, validate: _, install: i, cleanup: _ } => {
-      let argv = admitted_root_argv_words(command: i)
+      let argv = admitted_root_argv_words(command: grant_sudoers_installation_argv(command: i))
       any(argv, w => w == "install")
         && any(argv, w => w == "0440")
         && any(argv, w => w == "root")
@@ -148,28 +155,35 @@ test fn no_privileged_step_carries_a_credential_or_can_prompt() -> Bool {
   match spark_grant_install_plan(grant: RebootThisHost, principal: installer()) {
     SparkGrantInstallRefused { grant: _, cause: _ } => false
     SparkGrantInstallSteps { grant: _, stage: _, validate: v, install: i, cleanup: _ } =>
-      fold([v, i], init: true, f: fn(acc, c) {
+      fold(
+        [grant_sudoers_validation_argv(command: v), grant_sudoers_installation_argv(command: i)],
+        init: true,
+        f: fn(acc, c) {
         let argv = admitted_root_argv_words(command: c)
         acc
           && any(argv, w => w == "-S")
           && any(argv, w => w == "-p")
           && any(argv, w => w == "--")
           && !any(argv, w => w == "-n")
-      })
+        },
+      )
   }
 }
 
-// The staged file is removed rather than left in the installer's home. A run that never unstaged
-// left a readable copy of the sudoers content behind on every host it touched.
+// BOTH staging names are removed, not just the destination. The typed write stages at
+// <path>.gunbc-staging, modes it, renames it, then compares, so a refusal at mode or rename strands
+// the sibling and a refusal at compare strands the final name. A cleanup naming only one of them
+// leaves a readable copy of the sudoers content behind on exactly the paths most likely to fail.
 test fn the_plan_removes_the_staged_file() -> Bool {
   match spark_grant_install_plan(grant: RebootThisHost, principal: installer()) {
     SparkGrantInstallRefused { grant: _, cause: _ } => false
     SparkGrantInstallSteps { grant: _, stage: _, validate: _, install: _, cleanup: c } =>
-      match remote_operation_argv(operation: c.operation) {
+      match remote_operation_argv(operation: c.step.operation) {
         Absent => false
         Present { value: argv } =>
           any(argv, w => w == "rm")
             && any(argv, w => w == (spark_grant_staging_path(grant: RebootThisHost, principal: installer()) as String))
+            && any(argv, w => w == concat(spark_grant_staging_path(grant: RebootThisHost, principal: installer()) as String, ".gunbc-staging"))
       }
   }
 }
@@ -286,6 +300,31 @@ test fn a_never_enrolled_credential_is_awaiting_and_not_a_failure() -> Bool {
   }
 }
 
+// AN UNMATERIALIZED CREDENTIAL IS AN EXECUTED INSTALL, not an awaiting-credential one, and its
+// located cause survives to the receipt. Routing it to the awaiting arm rebuilt the exact conflation
+// the four-arm outcome exists to end: that arm carries no cause, so a missing environment variable,
+// an unreadable file, an empty payload and a line-bearing payload would all read as "nobody supplied
+// a credential" -- four different remedies wearing one sentence, on the first run after IAM lands.
+test fn an_unmaterialized_credential_keeps_its_cause_at_the_production_outcome() -> Bool {
+  match spark_grant_install_from_privileged(
+    host: "srv6", grant: RebootThisHost, principal: installer(), staged: [],
+    outcomes: [CredentialNotMaterialized {
+      lease: pending_lease(),
+      cause: "fixture: the credential file named by the environment does not exist",
+    }],
+    readback: GrantReadbackNotAttempted,
+    cleanup: RemoteStepUnattempted { identity: "cleanup-fixture" as NonEmptyStr },
+  ) {
+    SparkGrantInstallExecuted { host: _, grant: _, standings: _, privileged: pr, readback: _, cleanup: _ } =>
+      string_contains(
+        join(map(pr, o => privileged_step_outcome_wire(outcome: o)), ""),
+        "the credential file named by the environment does not exist",
+      )
+    SparkGrantInstallAwaitingOperatorCredential { host: _, grant: _, principal: _ } => false
+    SparkGrantInstallNotAttempted { host: _, grant: _, cause: _ } => false
+  }
+}
+
 // A REJECTED credential IS an executed-and-failed install, because something was actually attempted
 // against an enrolled secret -- the remedy is a different version, not a first enrolment.
 test fn a_rejected_credential_is_an_executed_failure_not_an_awaiting_one() -> Bool {
@@ -365,6 +404,25 @@ test fn staging_follows_the_installing_principal_not_the_grantee() -> Bool {
 // authority resolves to the CARRIED reference, so this reds if that entry regresses to pending --
 // which is exactly the state that would make every privileged step refuse before reading a
 // credential at all, with the real cause hidden behind whatever else was failing.
+// THE PRODUCTION JOIN, controlled directly. A present credential file yields the CARRIED reference
+// and an absent one stays pending -- so the standing can never be an assertion made from the
+// authored row alone, which is what an earlier cut of this entry did.
+test fn the_production_standing_follows_the_observation_not_the_authored_row() -> Bool {
+  match spark_grant_install_standing_from_presence(presence: BootstrapCredentialFilePresent) {
+    CredentialMaterialized { ref: r } =>
+      secret_ref_version_resource(ref: r)
+        == "projects/gunbai-secrets/secrets/spark-administrator-password/versions/1"
+        && r.version as String != "latest"
+        && match spark_grant_install_standing_from_presence(
+             presence: BootstrapCredentialFileAbsent { cause: "fixture: no credential step ran" as NonEmptyStr },
+           ) {
+             CredentialMaterializationPending => true
+             CredentialMaterialized { ref: _ } => false
+           }
+    CredentialMaterializationPending => false
+  }
+}
+
 test fn the_awaiting_credential_arm_asks_for_a_credential_and_not_a_hand_mutation() -> Bool {
   let text = spark_grant_install_outcome_wire(outcome: SparkGrantInstallAwaitingOperatorCredential {
     host: "srv6",
