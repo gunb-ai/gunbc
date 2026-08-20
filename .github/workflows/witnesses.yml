@@ -35,10 +35,6 @@ jobs:
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           cd "$ROOT" && "$ROOT/target/release/v1_src_dag_parse"
-      - name: All witnesses (one prepared subject, one fold)
-        run: |
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/claim_executor" --required-floor --source-root "$ROOT/dag" --source-root "$ROOT/src/v2"
       - name: "Regen fixed point: first generation matches committed candidate"
         id: required_regen
         run: |
@@ -50,3 +46,8 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/claim_executor" --required-regen-fixed-point --source-root "$ROOT/dag" --source-root "$ROOT/src/v2"
         if: steps.required_regen.outcome == 'success'
+      - name: All witnesses (one prepared subject, one fold)
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/claim_executor" --required-floor --source-root "$ROOT/dag" --source-root "$ROOT/src/v2"
+        if: steps.build_witness_fold.outcome == 'success'

@@ -277,6 +277,33 @@ fn witness_floor_v1_parse_step() -> Step {
   }
 }
 
+// THE FLOOR RUNS LAST AND THEREFORE DECLARES ITS PRECONDITION TOO (operator directive,
+// 2026-08-20: "move regen before witnesses"). Regen costs ~4 minutes and the floor ~30, so
+// ordering the cheap total check first turns a drift report from a 35-minute wait into a
+// 5-minute one -- the ordinary cheap-refusal-first argument, and the reason the directive is
+// right.
+//
+// But the reorder is not a pure move, and shipping it as one would have re-created the exact
+// defect the two regen steps were added to fix, pointing the other way. A step with no `if`
+// inherits GitHub's default `success()` -- the conjunction of every EARLIER step -- so once
+// regen sits ahead of the floor, an unconditioned floor would silently acquire regen's verdict
+// as a precondition. A regen red would then DISARM the whole witness floor, and 9,008 witnesses
+// would report `skipped` because a stale stage0 mirror is a materially different fact that has
+// nothing to say about whether the corpus's claims hold. That is the empty-observation narrow
+// again -- `the floor did not fail` standing in for `the floor was never evaluated` -- and it
+// would be strictly worse than the original, because the population silenced is three orders of
+// magnitude larger than the one silenced before.
+//
+// So the floor's real precondition is stated for the same reason regen's is, and it is the same
+// one: the binary exists. The three claims -- floor, regen, regen determinism -- are mutually
+// independent except where regen's receipt genuinely feeds the fixed-point step, and after this
+// change every step in the job declares what it actually needs rather than inheriting its
+// position. Order is now free to change again without silently rewiring any step's condition,
+// which is the property that made the original ordering a hazard rather than a preference.
+fn witness_floor_precondition() -> String {
+  "steps.build_witness_fold.outcome == 'success'"
+}
+
 fn witness_floor_run_step() -> Step {
   RunStep {
     name: Present { value: "All witnesses (one prepared subject, one fold)" },
@@ -285,7 +312,7 @@ fn witness_floor_run_step() -> Step {
     shell: none,
     env: none,
     working_directory: none,
-    if_condition: none,
+    if_condition: Present { value: witness_floor_precondition() },
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -446,9 +473,9 @@ fn witness_floor_job() -> Job {
       witness_floor_toolchain_step(),
       witness_floor_build_step(),
       witness_floor_v1_parse_step(),
-      witness_floor_run_step(),
       witness_required_regen_step(),
-      witness_required_regen_fixed_point_step()
+      witness_required_regen_fixed_point_step(),
+      witness_floor_run_step()
     ],
     needs: [],
     env: none,
