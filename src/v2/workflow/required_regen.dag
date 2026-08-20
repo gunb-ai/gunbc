@@ -170,6 +170,9 @@ fn collect_hand_unverifiable(
   }
 }
 
+// ALL THREE POPULATION STATES ARE REPORTED, not the first one found. They are independent states
+// and an author hitting two at once needs to see both; returning early on the first was a second,
+// quieter way of collapsing them.
 // Hand-maintained DRIFT is expected on a clean tree (main.rs and known emitter gaps).
 // Only UNVERIFIABLE hand rows refuse sync admission.
 fn required_regen_sync_admission(
@@ -215,9 +218,6 @@ fn required_regen_sync_admission(
     empty: no_string_paths,
     cons: fn(acc, o) { collect_committed_not_emitted_paths(acc: acc, o: o) }
   )
-  // ALL THREE ARE REPORTED, not the first one found. They are independent states and an author
-  // hitting two of them at once needs to see both; returning early on the first was a second,
-  // quieter way of collapsing them.
   let population_refusals = list_append(
     left: list_append(
       left: if length(xs: byte_drift_paths) > 0 {
