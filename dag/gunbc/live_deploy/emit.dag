@@ -280,9 +280,9 @@ fn apply_belt_service_unit_write_step(spec: gunbc.live_deploy.spec.DeploymentSpe
 // verdict=absent (fleet_converge_cli converge_cli_revision_verdict RevisionUnobserved). Running
 // as the repo owner is exactly what the sibling serve/belt/tree-sync units already do
 // (emit_systemd_unit_doc / emit_belt_service_unit_doc: User=+Group=svc.service_user).
-// Receipt *publication* (superseding a stale root-owned file) is atomic rename in
+// gunbc.design.interaction.Receipt *publication* (superseding a stale root-owned file) is atomic rename in
 // gunbc.fleet_converge_cli (gunbc.host_layout fleet_converge_receipt_atomic_publish_note).
-// Receipt *directory bootstrap* (existence + service-principal ownership) is on deploy, but NOT
+// gunbc.design.interaction.Receipt *directory bootstrap* (existence + service-principal ownership) is on deploy, but NOT
 // here: this member's apply arm is a retirement poison (the cadence is on-demand via
 // fleet-converge.yml plan/apply, sleek-heron-218), so the bootstrap it used to carry has not run
 // on any fresh instance root since that retirement. It rides BeltTimerUnit apply against the

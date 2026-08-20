@@ -153,7 +153,7 @@ fn gcp_cells_bindings(cs: List<GcpIamBindingCell>) -> List<GcpBinding> {
 // reconcile_gcp_policy returns GcpPolicyAlreadyConverged as its OWN arm rather than a delta that
 // happens to be empty, so a caller cannot write an unnecessary setIamPolicy and read the resulting
 // etag bump as progress.
-// Ownership is asked per CELL. Owning (member M, role accessor) does not confer authority over
+// gunbc.bootstrap.Ownership is asked per CELL. Owning (member M, role accessor) does not confer authority over
 // (member M, role admin): that grant may exist for a reason this caller cannot see, so it is
 // preserved even though the member is one the caller recognises.
 fn reconcile_gcp_policy(

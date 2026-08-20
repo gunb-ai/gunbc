@@ -76,7 +76,7 @@ data w_host_address_decides_note: String = "For a host resource the deciding fac
 test fn w_host_resource_address_preserved_is_in_place() -> Bool {
   is_realized(
     c: classify_change(
-      subject: HostResourceSubject,
+      subject: gunbc.change_realization.HostResourceSubject,
       subject_label: "srv4/build-cache" as std.types.NonEmptyStr,
       continuity: address_continuity(from: "gunbc-cache.service", to: "gunbc-cache.service", address_eq: str_eq),
       declared_intermediates: none,
@@ -88,7 +88,7 @@ test fn w_host_resource_address_preserved_is_in_place() -> Bool {
 test fn w_host_resource_address_changed_is_staged_replacement() -> Bool {
   is_realized_staged(
     c: classify_change(
-      subject: HostResourceSubject,
+      subject: gunbc.change_realization.HostResourceSubject,
       subject_label: "srv4/build-cache" as std.types.NonEmptyStr,
       continuity: address_continuity(from: "gunbc-cache.service", to: "gunbc-buildcache.service", address_eq: str_eq),
       declared_intermediates: Present {
@@ -102,7 +102,7 @@ data w_srv4_undeclared_intermediates_refuses_note: String = "THE srv4 SPECIMEN, 
 
 test fn w_staged_replacement_without_declared_intermediates_refuses() -> Bool {
   match classify_change(
-    subject: HostResourceSubject,
+    subject: gunbc.change_realization.HostResourceSubject,
     subject_label: "srv4/build-cache" as std.types.NonEmptyStr,
     continuity: AddressChanged,
     declared_intermediates: none,

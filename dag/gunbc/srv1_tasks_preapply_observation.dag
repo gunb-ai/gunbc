@@ -105,7 +105,7 @@ fn observe_srv1_tasks_preapply() -> Srv1TasksPreApplyReceipt {
   }
 }
 
-// Receipt landing: gunbc run admits only ProcessExit from a --function wet entry (the
+// gunbc.design.interaction.Receipt landing: gunbc run admits only ProcessExit from a --function wet entry (the
 // first dispatch printed the receipt through the NotProcessExit refusal arm and exited
 // 2 — receipt captured, job red). The typed receipt therefore lands as a FILE the job
 // uploads/cats, and the exit derives from the receipt's own arm — never from transport

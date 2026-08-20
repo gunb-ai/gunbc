@@ -150,7 +150,7 @@ fn fleet_posix_operator_sudo_grant_is_hostnamectl_only() -> Bool {
 // path remains for converge on the operator account.
 // Precedent: fleet_posix_ci_runner_sudo_grants already carries both binaries for ghrunner —
 // that is a finding, not automatic justification for the operator account.
-// Receipt publication: gunbc.host_layout fleet_converge_receipt_atomic_publish_note.
+// gunbc.design.interaction.Receipt publication: gunbc.host_layout fleet_converge_receipt_atomic_publish_note.
 data fleet_converge_operator_privilege_hold_note: String = "b1 moved gunbc-roadmap-fleet-converge.service to User=briansrls. Whole-binary NOPASSWD install/systemctl on the operator roster is held — root-equivalent. MemoryMax is deploy-time only (gunbc.host_axis_caps); converge does not assert MemoryMax via set-property."
 
 data fleet_apt_get_binary_path: std.types.NonEmptyStr = "/usr/bin/apt-get"

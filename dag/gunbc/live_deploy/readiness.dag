@@ -189,7 +189,7 @@ fn ground_service_ready_from_healthz_with_bundle(
   bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle,
   expected_revision: std.types.CommitSha,
   expected_surface_identity: std.content_hash.Fnv1a64Structural,
-) -> Grounding<ServiceReadyEvidence> {
+) -> v2.lens.registry.Grounding<ServiceReadyEvidence> {
   if read.probe_error != "" {
     std.realization_reconcile.DoesNotGround { reason: healthz_refusal_reason(cause: HealthzProbeFailed { detail: read.probe_error }) }
   } else if !healthz_body_groundable(body: read.body) {
@@ -237,7 +237,7 @@ fn ground_service_ready_from_healthz(
   read: gunbc.roadmap_site_surface_types.HealthzEffectiveRead,
   expected_revision: std.types.CommitSha,
   expected_surface_identity: std.content_hash.Fnv1a64Structural,
-) -> Grounding<ServiceReadyEvidence> {
+) -> v2.lens.registry.Grounding<ServiceReadyEvidence> {
   ground_service_ready_from_healthz_with_bundle(
     read: read,
     bundle: materialize_live_roadmap_site_surface_bundle(),

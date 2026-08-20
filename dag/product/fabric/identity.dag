@@ -14,7 +14,7 @@ module product.fabric.identity
 // admit a supplier it did not anticipate. The role P plays differs per carrier
 // and is documented on each: requester on Demand, accounting and security
 // scope on Work, the account a try is authorized and charged under on Attempt,
-// supplier on Offer, grantee on ExecutionGrant, attesting producer on Receipt. An ExecutionGrant
+// supplier on Offer, grantee on ExecutionGrant, attesting producer on gunbc.design.interaction.Receipt. An ExecutionGrant
 // is bilateral, so naming its grantee here does not erase the supplier role
 // its Offer reference carries.
 type DemandKey = std.types.NonEmptyStr where brand("DemandKey")

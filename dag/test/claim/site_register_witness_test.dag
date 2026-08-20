@@ -83,7 +83,7 @@ fn witness_dead_hover_is_located_gap() -> Bool {
 }
 
 fn witness_unrealized_behavior_is_counted() -> Bool {
-  let ghost = gunbc.design.interaction.BehaviorRow { element: StarElement, verb: Enter, response: Receipt, timing: respond_fast }
+  let ghost = gunbc.design.interaction.BehaviorRow { element: StarElement, verb: Enter, response: gunbc.design.interaction.Receipt, timing: respond_fast }
   unrealized_behaviors(rows: [ghost]).length() == 1
     && unrealized_behaviors(rows: moodboard_behaviors).length() == 0
 }

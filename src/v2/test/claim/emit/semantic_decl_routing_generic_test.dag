@@ -32,7 +32,7 @@ fn semantic_witness_coproduct() -> Node {
     kind: v2.std.node.TypeNode { connective: Disj },
     children: [
       sdrg_variant_edge(name: ^Holds, payload: sdrg_record(edges: [ sdrg_field_edge(name: ^value, type_name: ^C) ])),
-      sdrg_variant_edge(name: ^Violates, payload: sdrg_record(edges: [ sdrg_field_edge(name: ^diagnostic, type_name: ^Diagnostic) ]))
+      sdrg_variant_edge(name: ^Violates, payload: sdrg_record(edges: [ sdrg_field_edge(name: ^diagnostic, type_name: ^gunbc.output_policy.Diagnostic) ]))
     ],
     occurrence_id: SyntheticOccurrence
   }

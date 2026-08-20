@@ -38,7 +38,7 @@ fn cost_account_measured_from_time_and_space<S>(time: Measure<Time, S, std.nat.N
     time: time
     space: space
     power: watt(count: 0)
-    basis: Measured
+    basis: std.realization_schedule.Measured
   }
 }
 

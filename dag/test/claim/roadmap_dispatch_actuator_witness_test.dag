@@ -719,7 +719,7 @@ test fn witness_legacy_brief_still_stubs_with_title() -> Bool {
 // THE DEFECT: Filesystem.Write does not create parent directories, so a publication receipt written
 // into a directory that was never prepared fails with ENOENT — while the interpreter's
 // `[file] write <path>` trace, emitted BEFORE the attempt, makes the journal look identical to a
-// success. Measured on srv1 2026-08-19: zero of twelve attempt directories had publication/, every
+// success. std.realization_schedule.Measured on srv1 2026-08-19: zero of twelve attempt directories had publication/, every
 // publish pass reported failed, and the journal showed a write line for each one.
 //
 // Both operands are asserted through the SAME projections the actuator uses, never as literals, so

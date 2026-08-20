@@ -97,7 +97,7 @@ data ice40_tq144_package: Ice40Package = Ice40Package {
   contact_count: 144,
 }
 
-// Read from the Pin Information Summary table for the HX1K in TQ144: banks 0 through 3 carry 23,
+// Read from the extdeps.firmware.uefi_shell.Pin Information Summary table for the HX1K in TQ144: banks 0 through 3 carry 23,
 // 25, 20 and 24 general-purpose pins and four configuration pins sit beside them. Ninety-two plus
 // four is ninety-six, and the vendor's own Total General Purpose Single Ended I/O row for this
 // column reads 96 — so the addition is the document's, not ours. That total is also exactly the
@@ -117,7 +117,7 @@ data ice40_hx1k_tq144_banks: Ice40BankPopulation = Ice40BankPopulation {
 // under the vendor's own row names. It is carried in full rather than summarised because the
 // summary is what went wrong before: this repository held three numbers for "the I/O count" and
 // none of them said which contacts they counted, and the sum that was supposed to reconcile them
-// was performed by a reader rather than by the document. Every field below is one row of the Pin
+// was performed by a reader rather than by the document. Every field below is one row of the extdeps.firmware.uefi_shell.Pin
 // Information Summary table for one (device, package) column.
 //
 // TWO OF THESE ARE NOT SUMMABLE WITH THE REST, and saying so is the point of separating them.

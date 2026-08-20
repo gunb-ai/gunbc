@@ -46,7 +46,7 @@ type LeaseIdentity {
 // resource_fingerprint names the EXACT reserved claim, not the host. Naming
 // the host is the defect that makes two admitted slices of one machine
 // indistinguishable at the fence, so a stale holder of one slice can
-// invalidate a live holder of another. Ownership and generation fencing come
+// invalidate a live holder of another. gunbc.bootstrap.Ownership and generation fencing come
 // from std.temporal_effect HeldLease; what that carrier does NOT supply is
 // time - it has no timestamp and no expiry, and its stale arm is a supplied
 // observation rather than a verdict derived from a deadline. Lease liveness is

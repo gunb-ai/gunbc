@@ -58,7 +58,7 @@ type GeneratedArtifactIdentity
 // THESE SIX AXES DO NOT DETERMINE THE ARTIFACT, and the gap is named here rather than
 // left to be rediscovered. A Rust debug binary embeds its build directory, so the same
 // source compiled in two different directories yields different bytes while every axis
-// below agrees; the same directory rebuilt yields byte-identical output. Measured by
+// below agrees; the same directory rebuilt yields byte-identical output. std.realization_schedule.Measured by
 // hand twice (gunbc#8181). So this identity identifies a generation UP TO BUILD
 // LOCATION, and build path is an input that no axis names.
 //

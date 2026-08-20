@@ -50,7 +50,7 @@ fn sccache_binary_artifact_subject_projected_pin_value_eq(
 
 fn sccache_binary_artifact_subject_projected_pin_as_pin(
   pin: extdeps.pin.SubjectProjectedPin<extdeps.cache.sccache.SccacheBinaryArtifact>,
-) -> Pin<extdeps.cache.sccache.SccacheBinaryArtifact>? {
+) -> extdeps.firmware.uefi_shell.Pin<extdeps.cache.sccache.SccacheBinaryArtifact>? {
   match sccache_binary_artifact_content_identity(artifact: pin.subject) {
     Present { value: expected } =>
       Present {

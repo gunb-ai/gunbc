@@ -9,7 +9,7 @@ type LensComplexityClaim {
 }
 
 data ts_task_complexity_input: Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Cardinality },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Cardinality },
   children: [
     v2.std.node.Edge { label: Positional, target: ts_task_type_alias_emitted() }
   ],

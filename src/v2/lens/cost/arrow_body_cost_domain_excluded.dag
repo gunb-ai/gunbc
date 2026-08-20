@@ -4,7 +4,7 @@ module v2.test.lens_cost.arrow_body_cost_domain_excluded
 data arrow_body_cost_domain_excluded_note: String = "Discriminating RED for Wave 1 Gate 1 C1: Arrow domain Cardinality children must NOT inflate the cost fold — only ^arrow_body_edge is priced. If edge_contributes_to_cost_fold regresses to include Arrow positional children, this witness goes red (domain linear cost would dominate)."
 
 data arrow_body_cost_domain_param: Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Cardinality },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Cardinality },
   children: [
     v2.std.node.Edge {
       label: Positional,

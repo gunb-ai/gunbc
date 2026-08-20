@@ -86,7 +86,7 @@ fn refuses_naming(assignments: List<product.compute_board.device_binding.DeviceP
   }
 }
 
-// Pin 5 is absent from the TQ144 roster — the package numbers 144 positions and only 96 of them
+// extdeps.firmware.uefi_shell.Pin 5 is absent from the TQ144 roster — the package numbers 144 positions and only 96 of them
 // are placeable I/O, so a plausible-looking number is exactly the kind that gets authored.
 test fn w_a_pin_the_package_does_not_have_refuses() -> Bool {
   roster_admits_pin(r: icestorm_hx1k_tq144_roster, pin: "1")
@@ -316,7 +316,7 @@ test fn w_the_projection_refuses_a_population_it_does_not_admit() -> Bool {
 }
 
 // THE GAP THAT REPLACED IT, executed against the document's own partition rather than asserted.
-// The classes the Pin Information Summary names sum to 143 for this column while the same table's
+// The classes the extdeps.firmware.uefi_shell.Pin Information Summary names sum to 143 for this column while the same table's
 // Total Count of Bonded Pins reads 144, so one contact is in no class the document names. The
 // VQ100 column is the control: read from the same rows by the same method, it cross-foots exactly,
 // which is what distinguishes a property of the document from a mistake in the reading.

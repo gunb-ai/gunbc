@@ -39,7 +39,7 @@ data gerber_semantic_carriage: List<extdeps.ipc.dpmx.FormatSemanticRow> = [
     authority: extdeps_external_authority_anchor,
   },
   extdeps.ipc.dpmx.FormatSemanticRow {
-    semantic: Stackup,
+    semantic: extdeps.ipc.dpmx.Stackup,
     carriage: extdeps.ipc.dpmx.CarriedInCompanionArtifact { artifact: "Gerber job file" },
     authority: extdeps_external_authority_anchor,
   },
@@ -54,7 +54,7 @@ data gerber_semantic_carriage: List<extdeps.ipc.dpmx.FormatSemanticRow> = [
     authority: extdeps_external_authority_anchor,
   },
   extdeps.ipc.dpmx.FormatSemanticRow {
-    semantic: ComponentPlacement,
+    semantic: extdeps.ipc.dpmx.ComponentPlacement,
     carriage: NotCarried,
     authority: extdeps_external_authority_anchor,
   },

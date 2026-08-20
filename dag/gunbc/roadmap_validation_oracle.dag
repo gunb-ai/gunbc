@@ -360,7 +360,7 @@ fn validation_oracle_incomplete_cause(
   }
 }
 
-// The pin adjudication is extdeps.pin's admit_pin_integrity and nothing else — this module builds the Pin and reads its answer, so expected-versus-observed has one home. Only expected_identity crosses the disk seam between dispatch and verification, because it is the only fact that cannot be re-derived at verification time: the subject comes from the node's own execution contract, the selection is ExactPin by construction (a dispatch pin records an identity OBSERVED from the freshly created worktree, never one resolved from a moving reference), and the version is the revision that worktree was created at, which is captured beside the identity for the same reason. Re-deriving the subject rather than persisting it is deliberate and it fails closed: if the contract changed between dispatch and verification, the re-derived oracle no longer matches the stored identity and the run refuses, which is the correct answer — the pin recorded at dispatch is no longer the pin the contract now names.
+// The pin adjudication is extdeps.pin's admit_pin_integrity and nothing else — this module builds the extdeps.firmware.uefi_shell.Pin and reads its answer, so expected-versus-observed has one home. Only expected_identity crosses the disk seam between dispatch and verification, because it is the only fact that cannot be re-derived at verification time: the subject comes from the node's own execution contract, the selection is ExactPin by construction (a dispatch pin records an identity OBSERVED from the freshly created worktree, never one resolved from a moving reference), and the version is the revision that worktree was created at, which is captured beside the identity for the same reason. Re-deriving the subject rather than persisting it is deliberate and it fails closed: if the contract changed between dispatch and verification, the re-derived oracle no longer matches the stored identity and the run refuses, which is the correct answer — the pin recorded at dispatch is no longer the pin the contract now names.
 fn validation_oracle_parse_pinned_identity_wire(text: String) -> std.content_hash.ContentHash? {
   if text == "" {
     none
@@ -399,7 +399,7 @@ fn validation_oracle_pin(
   oracles: List<ValidationOracleRef>,
   expected_identity: std.content_hash.ContentHash,
   revision: extdeps.version.VersionIdentity,
-) -> Pin<List<ValidationOracleRef>> {
+) -> extdeps.firmware.uefi_shell.Pin<List<ValidationOracleRef>> {
   extdeps.pin.Pin {
     subject: oracles,
     version: revision,

@@ -190,8 +190,8 @@ fn citation_is_current(c: CitationCurrency) -> Bool {
 // THE PROJECTION THAT CLOSED THE OLD GAP. The product table's 98 "total I/O" and its 2
 // "dedicated I/O" sat unreconciled here against the data sheet's 96 for one reason: the repository
 // was citing a 2017 revision that did not carry the row which relates them. The current revision
-// does. Its Pin Information Summary states Total General Purpose Single Ended I/O = 96 and Total
-// Dedicated Inputs = 2 for this column, and 96 + 2 is the product table's 98 exactly. So the
+// does. Its extdeps.firmware.uefi_shell.Pin Information Summary states Total General Purpose Single Ended I/O = 96 and Total
+// Dedicated extdeps.github.expressions.Inputs = 2 for this column, and 96 + 2 is the product table's 98 exactly. So the
 // third inclusion rule was never a contradiction; it was a sum across two rows this repository had
 // not read, and the remedy was to go and read the current document rather than to model harder.
 data vendor_total_io_from_datasheet_rows: PopulationProjection = PopulationProjection {
@@ -200,7 +200,7 @@ data vendor_total_io_from_datasheet_rows: PopulationProjection = PopulationProje
   rationale: "the product table's total I/O is the data sheet's Total General Purpose Single Ended I/O plus its Total Dedicated Inputs; the former already includes the four configuration contacts",
 }
 
-// AND THE GAP THAT REPLACED IT, which is smaller, sharper and not ours. Summing the Pin
+// AND THE GAP THAT REPLACED IT, which is smaller, sharper and not ours. Summing the extdeps.firmware.uefi_shell.Pin
 // Information Summary's own partition rows for this column — general-purpose single-ended,
 // dedicated inputs, VCCIO, VCC, VCC_SPI, VPP_2V5, VPP_FAST, VCCPLL, GND and NC — gives 143
 // against the same table's Total Count of Bonded Pins of 144. One contact of the package is not

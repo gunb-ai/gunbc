@@ -78,7 +78,7 @@ data claim_rust_leaf_r2b_debug_default_overflow: RustLeafModelClaim = v2.std.lea
       build_profile: ^rust_leaf_rustc_build_debug,
       overflow_disposition_field: ^rust_overflow_field_checked_arithmetic_debug_default
     ),
-      expected_outcome: Wrap
+      expected_outcome: v2.std.runtime.Wrap
     }
   }
 }
@@ -92,7 +92,7 @@ data claim_rust_leaf_r2b_release_default_overflow: RustLeafModelClaim = v2.std.l
       build_profile: ^rust_leaf_rustc_build_release,
       overflow_disposition_field: ^rust_overflow_field_checked_arithmetic_release_default
     ),
-    expected_outcome: Wrap
+    expected_outcome: v2.std.runtime.Wrap
   },
   falsification_case: v2.std.leaf_model_verification.FalsificationCase {
     subject_variant: rust_leaf_algebra_inhabitance_i32_subject(),
@@ -124,7 +124,7 @@ data claim_rust_leaf_r2b_overflow_checks_enabled_overflow: RustLeafModelClaim = 
         build_profile: ^rust_leaf_rustc_build_debug,
         overflow_disposition_field: ^rust_overflow_field_checked_arithmetic_checks_enabled
       ),
-      expected_outcome: Wrap
+      expected_outcome: v2.std.runtime.Wrap
     }
   }
 }
@@ -138,7 +138,7 @@ data claim_rust_leaf_r2b_overflow_checks_disabled_overflow: RustLeafModelClaim =
       build_profile: ^rust_leaf_rustc_build_release,
       overflow_disposition_field: ^rust_overflow_field_checked_arithmetic_checks_disabled
     ),
-    expected_outcome: Wrap
+    expected_outcome: v2.std.runtime.Wrap
   },
   falsification_case: v2.std.leaf_model_verification.FalsificationCase {
     subject_variant: rust_leaf_algebra_inhabitance_i32_subject(),

@@ -195,7 +195,7 @@ test fn absent_prerequisite_records_do_not_read_as_satisfied() -> Bool {
   reconcile_arm(observation: observed_matching(), prereqs: no_prereqs) == "refused"
 }
 
-// CONTROL 11: PREREQUISITES ARE BOUND TO THEIR SUBJECT TOO. Grounding srv6 does not ground srv5.
+// CONTROL 11: PREREQUISITES ARE BOUND TO THEIR SUBJECT TOO. v2.lens.registry.Grounding srv6 does not ground srv5.
 // Without this, the two-replica fleet grounds itself: whichever host was established first would
 // silently authorize convergence on the other.
 test fn the_other_replica_grounding_does_not_ground_this_one() -> Bool {

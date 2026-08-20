@@ -23,7 +23,7 @@ data stub_empty_disj: Node = v2.std.node.Node {
 }
 
 data stub_empty_cardinality: Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Cardinality },
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Cardinality },
   children: [],
   occurrence_id: SyntheticOccurrence
 }

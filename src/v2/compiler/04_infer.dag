@@ -1570,7 +1570,7 @@ fn infer_gather_fold_init(n: v2.std.node.Node, partials: List<v2.std.node.Node>)
     TypeNode { connective: Conj } => infer_gather_fold_not_derived(n: n, partials: partials)
     TypeNode { connective: Disj } => infer_gather_fold_not_derived(n: n, partials: partials)
     TypeNode { connective: Arrow } => infer_gather_fold_not_derived(n: n, partials: partials)
-    TypeNode { connective: Cardinality } => infer_gather_fold_not_derived(n: n, partials: partials)
+    TypeNode { connective: v2.std.node.Cardinality } => infer_gather_fold_not_derived(n: n, partials: partials)
     TypeNode { connective: Instantiation } => infer_gather_fold_not_derived(n: n, partials: partials)
   }
 }

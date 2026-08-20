@@ -73,16 +73,16 @@ fn derived_matches_legacy(standard_integer_type: v2.std.integer.StandardIntegerT
 }
 
 test fn interval_derivation_matches_all_legacy_spelled_bounds() -> Bool {
-  derived_matches_legacy(standard_integer_type: Int8, legacy: legacy_int8_spec)
-    && derived_matches_legacy(standard_integer_type: Int16, legacy: legacy_int16_spec)
-    && derived_matches_legacy(standard_integer_type: Int32, legacy: legacy_int32_spec)
-    && derived_matches_legacy(standard_integer_type: Int64, legacy: legacy_int64_spec)
-    && derived_matches_legacy(standard_integer_type: Int128, legacy: legacy_int128_spec)
+  derived_matches_legacy(standard_integer_type: v2.std.integer.Int8, legacy: legacy_int8_spec)
+    && derived_matches_legacy(standard_integer_type: v2.std.integer.Int16, legacy: legacy_int16_spec)
+    && derived_matches_legacy(standard_integer_type: v2.std.integer.Int32, legacy: legacy_int32_spec)
+    && derived_matches_legacy(standard_integer_type: v2.std.integer.Int64, legacy: legacy_int64_spec)
+    && derived_matches_legacy(standard_integer_type: v2.std.integer.Int128, legacy: legacy_int128_spec)
     && derived_matches_legacy(standard_integer_type: v2.std.integer.UInt8, legacy: legacy_uint8_spec)
-    && derived_matches_legacy(standard_integer_type: UInt16, legacy: legacy_uint16_spec)
-    && derived_matches_legacy(standard_integer_type: UInt32, legacy: legacy_uint32_spec)
-    && derived_matches_legacy(standard_integer_type: UInt64, legacy: legacy_uint64_spec)
-    && derived_matches_legacy(standard_integer_type: UInt128, legacy: legacy_uint128_spec)
+    && derived_matches_legacy(standard_integer_type: v2.std.integer.UInt16, legacy: legacy_uint16_spec)
+    && derived_matches_legacy(standard_integer_type: v2.std.integer.UInt32, legacy: legacy_uint32_spec)
+    && derived_matches_legacy(standard_integer_type: v2.std.integer.UInt64, legacy: legacy_uint64_spec)
+    && derived_matches_legacy(standard_integer_type: v2.std.integer.UInt128, legacy: legacy_uint128_spec)
 }
 
 data planted_wrong_int8_spec: v2.std.integer.IntegerIntervalSpec = integer_interval(
@@ -91,7 +91,7 @@ data planted_wrong_int8_spec: v2.std.integer.IntegerIntervalSpec = integer_inter
 )
 
 test fn derivation_discriminates_planted_off_by_one() -> Bool {
-  !derived_matches_legacy(standard_integer_type: Int8, legacy: planted_wrong_int8_spec)
+  !derived_matches_legacy(standard_integer_type: v2.std.integer.Int8, legacy: planted_wrong_int8_spec)
 }
 
 test fn pow2_digit_shapes_hold() -> Bool {

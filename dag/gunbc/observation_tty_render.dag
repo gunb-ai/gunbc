@@ -119,7 +119,7 @@ fn tty_emission_at_attention(
   }
 }
 
-fn tty_event_emission_under(event: std.observation.ObservationEvent, basis: Measured<std.observation.AttentionBasis>, cap: std.render.RenderCapability) -> TtyEmissionProjection {
+fn tty_event_emission_under(event: std.observation.ObservationEvent, basis: std.realization_schedule.Measured<std.observation.AttentionBasis>, cap: std.render.RenderCapability) -> TtyEmissionProjection {
   match observation_attention_under(event: event, basis: basis) {
     AttentionRefused { cause: c } => TtyEmissionRefused { cause: c }
     AttentionAssigned { level: attention } =>

@@ -103,7 +103,7 @@ fn full_turn_millidegrees() -> Int {
   hue_milli_per_sextant() * hexcone_sextant_count
 }
 
-// HslProjection: chromatic rows carry h in degrees [0, 360); Achromatic rows omit hue per CSS Color 4 hue-is-none (delta=0). s_pct and l_pct are bounded Int percent counts [0, 100] from the CSS Color 4 integer algorithm. Percent carrier at register binding is deferred — see std.measure.percent_from_computed_int_frontier. OKLCH reground: design-register-library.md sect 10 Class 2.
+// HslProjection: chromatic rows carry h in degrees [0, 360); Achromatic rows omit hue per CSS Color 4 hue-is-none (delta=0). s_pct and l_pct are bounded Int percent counts [0, 100] from the CSS Color 4 integer algorithm. extdeps.languages.css.values.Percent carrier at register binding is deferred — see std.measure.percent_from_computed_int_frontier. OKLCH reground: design-register-library.md sect 10 Class 2.
 type ColorConversionFrontier
   = HslLive
   | OklchStaged { trigger: String }

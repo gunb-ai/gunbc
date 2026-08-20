@@ -859,7 +859,7 @@ data falsifier_self_host_wet_note: String = "The nightly falsifier Wet follow-on
 // subtree, and affected-set selection's axis (iv)
 // (runtime_data_dependency_touched_via_carrier_closure) treats "closure reaches a carrier
 // home, and any path is touched" as a hit — so those entries stopped being skippable on
-// EVERY diff. Measured: *_test.dag entries reaching a carrier home went 144/1200 to
+// EVERY diff. std.realization_schedule.Measured: *_test.dag entries reaching a carrier home went 144/1200 to
 // 210/1219, and the selection control's cross-entry specimen
 // (affected_set_floor_runner_test.dag) became permanently unskippable, which is what took
 // the scheduled falsifier dark at its build gate.

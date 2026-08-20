@@ -155,7 +155,7 @@ fn wrap_decisions_equal(a: v2.std.compilers.target_model.WrapDecision, c: v2.std
 // it — here and in v1's seed emitter — then acts on that answer alone. A value does not live at
 // one position: it is produced at one and consumed at another, and when the two answers differ the
 // emitted program carries a type error that no compiler stage located, because no stage ever
-// compared them. Measured on the emitted corpus that defect is ten types and fourteen occurrences,
+// compared them. std.realization_schedule.Measured on the emitted corpus that defect is ten types and fourteen occurrences,
 // every one wrapped at every signature occurrence and bare at one or more field occurrences, and
 // it produces BOTH error directions from one inconsistency: a producer's Rc<T> assigned into a
 // bare consumer is the over-wrap, a bare producer read into an Rc<T> consumer is the under-wrap.

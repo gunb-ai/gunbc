@@ -23,7 +23,7 @@ type ProcurementReceiptIdentity = std.types.NonEmptyStr where brand("Procurement
 // carrier lands; observed RF survey receipts may add broader colocation arms when a cited
 // propagation model lands in extdeps/, never by loosening the rack ceiling.
 // A rack POSITION and a rack HEIGHT are different quantities, the affine split DESIGN cites
-// for Temperature vs TemperatureDifference: first_u is an ordinal 1-based slot index (which U
+// for std.measure.Temperature vs TemperatureDifference: first_u is an ordinal 1-based slot index (which U
 // the asset starts at), height is a cardinal magnitude (how many U it occupies). Only the
 // second is a length, so only the second takes the std.measure RackUnit carrier. Adding two
 // positions is meaningless; adding two heights is not, and measure_add admits only the latter.

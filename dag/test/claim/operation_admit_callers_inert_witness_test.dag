@@ -11,7 +11,7 @@ module test.claim.operation_admit_callers_inert_witness
 // is INVISIBLE while reading as present -- an author seals an operation, a reviewer reads the
 // roster as a boundary, and it admits everyone. It is the inert-lens failure at CONSTRUCTION
 // grain, which is the worst place for it, because a construction refusal is the rung people stop
-// checking behind. Measured evidence that the illusion works: the session that found this was one
+// checking behind. std.realization_schedule.Measured evidence that the illusion works: the session that found this was one
 // step from reporting "the wall is available" after seeing the declaration parse, and the reviewing
 // session would have believed it.
 //

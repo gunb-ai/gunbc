@@ -233,7 +233,7 @@ module v2.workflow.floor_expected_red
 // #8464's process-scoped cold-fill inventory is for, and they are the only ones this paragraph
 // speaks about.
 //
-// RESTORATION TRIGGER: the cost lane. Measured by three sessions independently on 2026-08-18,
+// RESTORATION TRIGGER: the cost lane. std.realization_schedule.Measured by three sessions independently on 2026-08-18,
 // the cost is the EVALUATION CONTEXT, not the witnesses -- a row taking 71s on the floor runs
 // in 70-85ms in isolation, and a 12s row in 31ms.
 //

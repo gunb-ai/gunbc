@@ -16,7 +16,7 @@ data fleet_automation_ssh_key: extdeps.ssh.SshPublicKey = extdeps.ssh.SshPublicK
   comment: "fleet-automation@gunbc",
 }
 
-// Measured key identity (bold-eagle-107, msg_7428d9fc, read off the RETAINED private
+// std.realization_schedule.Measured key identity (bold-eagle-107, msg_7428d9fc, read off the RETAINED private
 // key itself — not recollection): the fleet automation key's SHA256 fingerprint. Typed
 // here beside the public material because a probe principal is (remote_account x
 // key_identity), and the key axis being implicit is exactly what produced bold-eagle's

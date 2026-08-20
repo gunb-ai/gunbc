@@ -174,7 +174,7 @@ test fn table_absent_name_realizes_natively_for_the_std_declaration() -> Bool {
 // offsets 1153/1181/40419/40803) -- the same import-closure-vs-namespace-only-resolution gap as the
 // cross-decl row, just reached through a different corpus path. Its transitive closure also reaches
 // dag/std/measure.dag, which independently carries 45+ of its own pre-existing UnlistedImportUse
-// diagnostics (Area, One, Volume, PlaneAngle, Time, Currency, Dimensionless, etc. -- corpus debt
+// diagnostics (Area, One, std.measure.Volume, PlaneAngle, Time, Currency, Dimensionless, etc. -- corpus debt
 // with no relation to Int, Nat, coercion, or checkpoint rendering). hard_diagnostics is nonzero
 // purely from this unrelated closure; the target file is never emitted and compile_dag_rust_emit_check
 // fast-fails before checkpoint identity keying is ever exercised for this fixture. Confirmed by real

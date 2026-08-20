@@ -10466,7 +10466,7 @@ fn target_collection_set_carrier_head(node: v2.std.node.Node) -> v2.std.optional
 
 fn target_collection_type_node_is_set_carrier(node: v2.std.node.Node) -> Bool {
   match node.kind {
-    TypeNode { connective: Cardinality } =>
+    TypeNode { connective: v2.std.node.Cardinality } =>
       match target_collection_set_carrier_head(node: node) {
         Present { value: head } =>
           match head.kind {
@@ -11953,7 +11953,7 @@ fn type_expr_projection_step_algebra(projection: v2.std.compilers.target_model.T
         name: ^target_type_expr_field_cardinality,
         target: type_expr_projection_row_shape_envelope(
           envelope: target_type_expr_generic_apply_shape_node(form: projection.cardinality_form),
-          connective: Cardinality
+          connective: v2.std.node.Cardinality
         )
       ),
       target_model_named_edge(
@@ -12005,7 +12005,7 @@ fn type_expr_projection_shape_for_connective(
       outcome_accepted(
         type_expr_projection_row_shape_envelope(
           envelope: target_type_expr_generic_apply_shape_node(form: projection.cardinality_form),
-          connective: Cardinality
+          connective: v2.std.node.Cardinality
         )
       )
     Instantiation =>

@@ -87,7 +87,7 @@ fn dependency_edges_from_import_facts(edges: List<ImportResolutionFact>) -> List
 
 // NATIVE-REALIZED, and the measurement is the whole argument. This body used to compose the two
 // producers below in the interpreter, with a union+dedup and an edge mapping that are now deleted.
-// Measured on the live corpus in ONE process, per term:
+// std.realization_schedule.Measured on the live corpus in ONE process, per term:
 //
 //   import_resolution_facts_live                      146ms
 //   reference_derived_import_resolution_facts_live      5ms

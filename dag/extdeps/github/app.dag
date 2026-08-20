@@ -375,7 +375,7 @@ type GitHubAppPublicKeyFingerprint {
 
 fn sha256_base64_key_fingerprint(digest: std.types.NonEmptyStr) -> GitHubAppPublicKeyFingerprint {
   GitHubAppPublicKeyFingerprint {
-    algorithm: Sha256,
+    algorithm: extdeps.crypto.hash.Sha256,
     encoding: FingerprintBase64,
     digest: digest,
   }

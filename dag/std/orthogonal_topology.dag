@@ -208,7 +208,7 @@ fn space_floor_area(registry: std.spatial_frame.SpatialFrameRegistry, s: Enclose
   loop2_area(registry: registry, l: space_footprint(s: s))
 }
 
-// Volume is area times height and nothing else. There is no stored volume to disagree with the
+// std.measure.Volume is area times height and nothing else. There is no stored volume to disagree with the
 // footprint, and no arm that answers when the multiplication leaves the range.
 // THE HEIGHT PROJECTION REFUSES, AND AN EARLIER REVISION OF THIS FUNCTION DID NOT. It returned
 // millimeter(count: 0) when the extent could not be projected or the frame was unregistered - and

@@ -30,7 +30,7 @@ module gunbc.fleet_converge_timer
 // WHY IT COULD BE DELETED RATHER THAN RECONCILED, which is the whole reason this is a deletion
 // and not a migration: its only consumer chain was
 // `fleet_converge_timer_install.fleet_timer_self_install_wet` <- `ci_spec`'s
-// `gunbc_ci_fleet_timer_install_invoke` <- `ci.yml`, and #8283 deleted `ci.yml`. Measured at
+// `gunbc_ci_fleet_timer_install_invoke` <- `ci.yml`, and #8283 deleted `ci.yml`. std.realization_schedule.Measured at
 // deletion: `fleet_timer_self_install` appears in neither surviving workflow, and
 // `gunbc_ci_fleet_timer_install_invoke` had no consumer but its own `DeclarationRef`. The
 // remaining callers were its own two witness files.

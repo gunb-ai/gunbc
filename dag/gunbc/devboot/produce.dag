@@ -142,7 +142,7 @@ fn devboot_materialize_source(repo_root: String, work_root: String, token: Strin
   }
 }
 
-// THE TOOLCHAIN AND HOST ARE OBSERVED, NOT ASSERTED, and the previous revision asserting them was a live false share rather than a tidiness problem. It declared the toolchain as rustup 1.89.0 and the host as x86_64-unknown-linux-gnu. Measured on the machine that actually ran it: rustc 1.93.0, host aarch64-unknown-linux-gnu. Both hardcoded values were simply wrong.
+// THE TOOLCHAIN AND HOST ARE OBSERVED, NOT ASSERTED, and the previous revision asserting them was a live false share rather than a tidiness problem. It declared the toolchain as rustup 1.89.0 and the host as x86_64-unknown-linux-gnu. std.realization_schedule.Measured on the machine that actually ran it: rustc 1.93.0, host aarch64-unknown-linux-gnu. Both hardcoded values were simply wrong.
 //
 // EACH ERROR HAD ITS OWN FAILURE. A fixed toolchain version means upgrading the compiler does not change the subject digest, so the same tree after a rustc upgrade REUSES the binary the old compiler built -- forever, because nothing about the identity ever moves. A fixed host triple is worse: the digest claimed x86_64 while the stored artifact was an aarch64 binary, so a genuine x86_64 consumer fetching that digest would receive something its machine cannot execute, with every identity check agreeing.
 //
