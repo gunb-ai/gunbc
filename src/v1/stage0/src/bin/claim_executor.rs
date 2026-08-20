@@ -18346,61 +18346,113 @@ enum DagTypeDecl {
     Record { fields: Vec<(String, String)> },
 }
 
-fn parse_dag_type_decls(source: &str) -> std::collections::HashMap<String, DagTypeDecl> {
+/// Parse one `.dag` source through the GRAMMAR-OWNED parser and return its module node.
+///
+/// This replaces a hand-rolled line reader, and the replacement is the point rather than a
+/// tidying. The line reader recognised only declarations that fit on one line: measured across
+/// the corpus that was 989 of 8796, so it was blind to 88% of the type declarations in the
+/// repository, and every one of them was then refused as "not a closed type declared by this
+/// authority" -- false, since they are declared and many are closed. Nothing unsound was claimed,
+/// because the refusal did stop the line; but a refusal's job beyond stopping is to RANK, and
+/// that one sent the reader to close types that were already closed.
+///
+/// The deeper defect is that a hand-rolled reader is a SECOND PARSER for `.dag` standing beside
+/// the real one, which is the single-authority violation in its plainest form: it will be wrong
+/// again whenever the grammar moves, and wrong SILENTLY, because a line reader cannot distinguish
+/// "did not match" from "is not there". `parse_with_table` can: it returns an error arm, so a
+/// source it cannot read REFUSES instead of yielding zero declarations.
+fn parse_dag_module_node(
+    file: &str,
+    source: &str,
+) -> Result<Rc<v1_compiler::v1_std_core::Node>, String> {
+    use v1_compiler::v1_compiler_parse::parse_with_table;
+    use v1_compiler::v1_compiler_tokenize::tokenize;
+    use v1_compiler::v1_std_core::{build_newline_index, empty_intern_table, NewlineIndex};
+
+    let index = build_newline_index(file.to_string(), source.to_string());
+    let mut indices: std::collections::HashMap<String, Rc<NewlineIndex>> =
+        std::collections::HashMap::new();
+    indices.insert(file.to_string(), index);
+    let parsed = parse_with_table(
+        tokenize(source.to_string(), file.to_string()),
+        Rc::new(indices),
+        empty_intern_table(),
+    );
+    if let Some(err) = parsed.result.error.clone() {
+        return Err(format!(
+            "{file}: the grammar refused this source: {}",
+            err.message
+        ));
+    }
+    parsed
+        .result
+        .module
+        .clone()
+        .ok_or_else(|| format!("{file}: the parse produced neither a module nor an error"))
+}
+
+/// Render a type-annotation node back to the name the corpus writes, generics included.
+fn type_text(node: &v1_compiler::v1_std_core::Node) -> String {
+    if node.params.is_empty() {
+        return node.name.clone();
+    }
+    let args: Vec<String> = node.params.iter().map(|p| type_text(p)).collect();
+    format!("{}<{}>", node.name, args.join(", "))
+}
+
+/// Read every type declaration off a parsed module node.
+///
+/// A declaration's SHAPE is read from the substrate's own connective rather than from
+/// punctuation: `Disj` is a coproduct and `Conj` is a record. That is why this reader does not
+/// care whether the author wrote the body on one line or ten -- the distinction the line reader
+/// tripped on does not exist at this layer, which is the strongest evidence that the layer is the
+/// right one.
+fn type_decls_from_module(
+    module: &v1_compiler::v1_std_core::Node,
+) -> std::collections::HashMap<String, DagTypeDecl> {
+    use v1_compiler::v1_std_core::Connective;
     let mut out = std::collections::HashMap::new();
-    for line in source.lines() {
-        let t = line.trim();
-        let Some(rest) = t.strip_prefix("type ") else {
-            continue;
-        };
-        // `type Name = A | B | C`  — closed coproduct
-        if let Some((name, body)) = rest.split_once('=') {
-            let name = name.trim();
-            if name.is_empty() || name.contains(char::is_whitespace) {
-                continue;
-            }
-            let variants: Vec<String> = body
-                .split('|')
-                .map(|v| v.trim().to_string())
-                .filter(|v| !v.is_empty())
-                .collect();
-            // Every variant must be a bare identifier. `Foo { .. }` carries a payload and is not
-            // in the fragment; admitting it as nullary would enumerate one value for a variant
-            // with many, which under-covers silently rather than refusing.
-            if !variants.is_empty()
-                && variants
-                    .iter()
-                    .all(|v| v.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
-            {
-                out.insert(
-                    name.to_string(),
-                    DagTypeDecl::ClosedNullaryEnum { variants },
-                );
-            }
-            continue;
-        }
-        // `type Name { field: T, field: U }` — record
-        if let Some((name, body)) = rest.split_once('{') {
-            let name = name.trim();
-            let body = body.trim_end_matches('}');
-            let mut fields = Vec::new();
-            let mut ok = true;
-            for f in body.split(',') {
-                let f = f.trim();
-                if f.is_empty() {
+    for decl in module.children.iter() {
+        match decl.connective {
+            Connective::Disj => {
+                let variants: Vec<String> = decl.children.iter().map(|v| v.name.clone()).collect();
+                if variants.is_empty() {
                     continue;
                 }
-                match f.split_once(':') {
-                    Some((fname, fty)) => fields.push((
-                        fname.trim().to_string(),
-                        fty.trim().trim_end_matches('}').trim().to_string(),
-                    )),
-                    None => ok = false,
+                // A variant with no fields of its own is nullary. A variant carrying a payload
+                // needs that payload's domain enumerated too, so the whole coproduct is recorded
+                // as payload-carrying rather than being enumerated one-value-per-variant, which
+                // would under-cover silently.
+                let all_nullary = decl.children.iter().all(|v| v.children.is_empty());
+                if all_nullary {
+                    out.insert(
+                        decl.name.clone(),
+                        DagTypeDecl::ClosedNullaryEnum { variants },
+                    );
+                } else {
+                    out.insert(
+                        decl.name.clone(),
+                        DagTypeDecl::PayloadCoproduct {
+                            variant_count: variants.len(),
+                        },
+                    );
                 }
             }
-            if ok && !fields.is_empty() && !name.is_empty() {
-                out.insert(name.to_string(), DagTypeDecl::Record { fields });
+            Connective::Conj => {
+                let fields: Vec<(String, String)> = decl
+                    .children
+                    .iter()
+                    .filter_map(|f| {
+                        f.type_annotation
+                            .as_ref()
+                            .map(|t| (f.name.clone(), type_text(t)))
+                    })
+                    .collect();
+                if !fields.is_empty() {
+                    out.insert(decl.name.clone(), DagTypeDecl::Record { fields });
+                }
             }
+            _ => {}
         }
     }
     out
@@ -18474,210 +18526,107 @@ impl IntPartition {
     }
 }
 
-/// One lexical token of a `.dag` body, at the resolution the partition check needs.
-#[derive(Debug, Clone, PartialEq)]
-enum BodyTok {
-    Ident(String),
-    Int(i64),
-    Op(String),
-}
-
-/// Tokenize a function body. Comments are stripped first: an annotation mentioning the parameter
-/// is not a use of it, and treating it as one would refuse functions for prose.
-fn tokenize_body(body: &str) -> Vec<BodyTok> {
-    let mut out = Vec::new();
-    for line in body.lines() {
-        let line = match line.find("//") {
-            Some(k) => &line[..k],
-            None => line,
-        };
-        let b: Vec<char> = line.chars().collect();
-        let mut k = 0usize;
-        while k < b.len() {
-            let c = b[k];
-            if c.is_whitespace() {
-                k += 1;
-            } else if c.is_ascii_alphabetic() || c == '_' {
-                let st = k;
-                while k < b.len() && (b[k].is_ascii_alphanumeric() || b[k] == '_') {
-                    k += 1;
-                }
-                out.push(BodyTok::Ident(b[st..k].iter().collect()));
-            } else if c.is_ascii_digit() {
-                let st = k;
-                while k < b.len() && b[k].is_ascii_digit() {
-                    k += 1;
-                }
-                let text: String = b[st..k].iter().collect();
-                match text.parse::<i64>() {
-                    Ok(v) => out.push(BodyTok::Int(v)),
-                    // A digit run that does not fit an i64 is NOT dropped and NOT clamped: it
-                    // becomes an opaque operator token, which refuses any parameter beside it.
-                    Err(_) => out.push(BodyTok::Op(text)),
-                }
-            } else {
-                // Two-character comparison operators must be read whole; splitting `<=` into `<`
-                // and `=` would read `k <= 0` as a comparison against nothing.
-                let two: String = b[k..(k + 2).min(b.len())].iter().collect();
-                if matches!(two.as_str(), "<=" | ">=" | "==" | "!=") {
-                    out.push(BodyTok::Op(two));
-                    k += 2;
-                } else {
-                    out.push(BodyTok::Op(c.to_string()));
-                    k += 1;
-                }
-            }
-        }
-    }
-    out
-}
-
-fn is_comparison(t: &BodyTok) -> bool {
-    matches!(t, BodyTok::Op(o) if matches!(o.as_str(), "<" | "<=" | ">" | ">=" | "==" | "!="))
-}
-
-/// Whether a token may sit immediately BEFORE a standalone integer operand.
+/// Derive the partition for one `Int` parameter from the BODY NODE that uses it, or REFUSE
+/// naming the occurrence that defeated it.
 ///
-/// A WHITELIST, not a blacklist, and that is the whole point: `a + 1 < n` has an integer token in
-/// the operand position, but the operand is `a + 1`, and reading the `1` out of it would derive a
-/// partition around the wrong literal. A wrong partition is worse than no partition -- it claims
-/// coverage of classes it never enumerated -- so anything not recognised here refuses.
-fn may_precede_operand(t: &BodyTok) -> bool {
-    if is_comparison(t) {
-        return true;
-    }
-    match t {
-        BodyTok::Op(o) => matches!(o.as_str(), "(" | "{" | "," | "&&" | "||" | "!" | ";" | ":"),
-        BodyTok::Ident(n) => matches!(n.as_str(), "if" | "else" | "return"),
-        BodyTok::Int(_) => false,
-    }
+/// This is the whole soundness argument in code. Every occurrence of the parameter must be an
+/// operand of a comparison whose other operand is an integer literal. Everything else -- being
+/// returned, passed as an argument, added, having a field read off it -- lets the parameter's
+/// VALUE reach the output, at which point two members of one class stop agreeing and the
+/// partition claim is false. `fn shard_count_positive(n: Int) -> Int { if n <= 0 { 1 } else { n } }`
+/// compares `n` against a literal AND returns it, so it returns 5 for 5 and 7 for 7 while both
+/// sit in the class `n > 0`. That function refuses here.
+///
+/// IT WALKS THE PARSED TREE, NOT TEXT. An earlier revision lexed the body itself, and carried the
+/// apparatus that implies: a hand tokenizer, a whitelist of what may abut a literal operand so
+/// that `a + 1 < n` refused instead of reading `1`, comment stripping so an annotation naming the
+/// parameter was not read as a use of it, and a lambda-parameter scan because it could not model
+/// scope. Every one of those was a workaround for not having the parse, and every one is deleted:
+/// `ExprBinOp` already carries its operator, `ExprLiteral` already holds a typed `LitInt`, and a
+/// rebound name is simply a different node. The tell that the old version was in the wrong layer
+/// is that its bug -- misreading `a - 1 < n` -- cannot be expressed in this one.
+fn derive_int_partition(
+    param: &str,
+    body: &v1_compiler::v1_std_core::Node,
+) -> Result<IntPartition, String> {
+    let mut literals = Vec::new();
+    visit_int_param_occurrences(param, body, None, &mut literals)?;
+    Ok(IntPartition::from_literals(literals))
 }
 
-/// Whether a token may sit immediately AFTER a standalone integer operand. Same argument as
-/// `may_precede_operand`, in the other direction: `n < 1 - a` must refuse rather than read `1`.
-fn may_follow_operand(t: &BodyTok) -> bool {
-    if is_comparison(t) {
-        return true;
-    }
-    match t {
-        BodyTok::Op(o) => matches!(o.as_str(), ")" | "}" | "{" | "," | "&&" | "||" | ";"),
-        BodyTok::Ident(n) => matches!(n.as_str(), "else"),
-        BodyTok::Int(_) => false,
-    }
-}
+/// Recurse the body, carrying the enclosing comparison so an occurrence can be judged in context.
+///
+/// `enclosing` is `Some((op_is_comparison, sibling))` when this node is a direct operand of a
+/// binary operation. An occurrence of the parameter is admitted ONLY when that context is a
+/// comparison and the sibling is an integer literal.
+fn visit_int_param_occurrences(
+    param: &str,
+    node: &v1_compiler::v1_std_core::Node,
+    enclosing: Option<(bool, &v1_compiler::v1_std_core::Node)>,
+    literals: &mut Vec<i64>,
+) -> Result<(), String> {
+    use v1_compiler::std_syntax::{BinOp, LiteralValue};
+    use v1_compiler::v1_std_core::ExprData;
 
-/// The right-hand operand of a comparison, when it is exactly an integer literal.
-///
-/// `first` is the index just after the comparison operator. A leading `-` is a negation here
-/// because an operator cannot precede a binary minus.
-fn right_operand_literal(toks: &[BodyTok], first: usize) -> Option<i64> {
-    let (value, after) = match toks.get(first)? {
-        BodyTok::Int(v) => (*v, first + 1),
-        BodyTok::Op(o) if o == "-" => match toks.get(first + 1)? {
-            BodyTok::Int(v) => (-*v, first + 2),
-            _ => return None,
-        },
-        _ => return None,
-    };
-    match toks.get(after) {
-        None => Some(value),
-        Some(t) if may_follow_operand(t) => Some(value),
-        Some(_) => None,
-    }
-}
-
-/// The left-hand operand of a comparison, when it is exactly an integer literal.
-///
-/// `last` is the index just before the comparison operator. Whether a preceding `-` is negation
-/// or subtraction is decided by what precedes IT: `n > -1` negates, `a - 1 < n` is a compound
-/// operand and refuses.
-fn left_operand_literal(toks: &[BodyTok], last: usize) -> Option<i64> {
-    let raw = match toks.get(last)? {
-        BodyTok::Int(v) => *v,
-        _ => return None,
-    };
-    let (value, before) = match last.checked_sub(1) {
-        Some(k) if matches!(&toks[k], BodyTok::Op(o) if o == "-") => match k.checked_sub(1) {
-            None => (-raw, None),
-            Some(k2) if may_precede_operand(&toks[k2]) => (-raw, Some(k2)),
-            Some(_) => return None,
-        },
-        other => (raw, other),
-    };
-    match before {
-        None => Some(value),
-        Some(k) if may_precede_operand(&toks[k]) => Some(value),
-        Some(_) => None,
-    }
-}
-
-/// Derive the partition for one `Int` parameter from the body that uses it, or REFUSE naming the
-/// occurrence that defeated it.
-///
-/// This is the whole soundness argument in code. Every occurrence of `param` must sit directly
-/// beside a comparison operator whose other operand is an integer literal. Everything else --
-/// being returned, passed as an argument, added, having a field read off it, being rebound by a
-/// lambda -- lets the parameter's VALUE reach the result, at which point members of one class
-/// stop agreeing and the partition claim is false.
-///
-/// The check is conservative in the safe direction by construction: it admits a closed list of
-/// shapes and refuses every occurrence it does not recognise, so a body form the tokenizer reads
-/// poorly produces a counted refusal rather than an unsound coverage claim.
-fn derive_int_partition(param: &str, body: &str) -> Result<IntPartition, String> {
-    let toks = tokenize_body(body);
-    let mut literals: Vec<i64> = Vec::new();
-    let mut idx = 0usize;
-    while idx < toks.len() {
-        // A lambda that rebinds the name shadows the parameter, and every occurrence after it
-        // would be about a different value. Refuse the whole parameter rather than reason about
-        // scope -- the fragment does not model scope, and pretending otherwise here is exactly
-        // the silent under-coverage the refusal exists to prevent.
-        if matches!(&toks[idx], BodyTok::Ident(n) if n == "fn")
-            && matches!(toks.get(idx + 1), Some(BodyTok::Op(o)) if o == "(")
-        {
-            let mut k = idx + 2;
-            while k < toks.len() && !matches!(&toks[k], BodyTok::Op(o) if o == ")") {
-                if matches!(&toks[k], BodyTok::Ident(n) if n == param) {
-                    return Err(format!(
-                        "{param} (rebound by a lambda parameter; scope is not modelled)"
-                    ));
-                }
-                k += 1;
-            }
-        }
-        if !matches!(&toks[idx], BodyTok::Ident(n) if n == param) {
-            idx += 1;
-            continue;
-        }
-        // `param <op> <literal>`
-        if let Some(next) = toks.get(idx + 1) {
-            if is_comparison(next) {
-                if let Some(v) = right_operand_literal(&toks, idx + 2) {
+    if matches!(node.expr_data.as_ref(), ExprData::ExprVar { .. }) && node.name == param {
+        return match enclosing {
+            Some((true, sibling)) => match int_literal_of(sibling) {
+                Some(v) => {
                     literals.push(v);
-                    idx += 1;
-                    continue;
+                    Ok(())
                 }
-                return Err(format!(
+                None => Err(format!(
                     "{param} (compared against a non-literal; the partition is derived from \
                      literals, and a comparison against another parameter or a call would need a \
                      joint partition this fragment does not derive)"
-                ));
-            }
-        }
-        // `<literal> <op> param`
-        if idx >= 2 && is_comparison(&toks[idx - 1]) {
-            if let Some(v) = left_operand_literal(&toks, idx - 2) {
-                literals.push(v);
-                idx += 1;
-                continue;
-            }
-        }
-        return Err(format!(
-            "{param} (used outside a literal comparison, so its value reaches the result and \
-             members of one class need not agree)"
-        ));
+                )),
+            },
+            _ => Err(format!(
+                "{param} (used outside a literal comparison, so its value reaches the result and \
+                 members of one class need not agree)"
+            )),
+        };
     }
-    Ok(IntPartition::from_literals(literals))
+
+    let comparison = match node.expr_data.as_ref() {
+        ExprData::ExprBinOp { op, .. } => Some(matches!(
+            op,
+            BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge
+        )),
+        _ => None,
+    };
+    // A binary operation's two operands are each other's sibling; every other node's children
+    // are visited with NO enclosing comparison, which is what makes the default a refusal.
+    if let (Some(is_cmp), 2) = (comparison, node.children.len()) {
+        let lhs = &node.children[0];
+        let rhs = &node.children[1];
+        visit_int_param_occurrences(param, lhs, Some((is_cmp, rhs)), literals)?;
+        visit_int_param_occurrences(param, rhs, Some((is_cmp, lhs)), literals)?;
+        return Ok(());
+    }
+    for child in node.children.iter() {
+        visit_int_param_occurrences(param, child, None, literals)?;
+    }
+    for p in node.params.iter() {
+        visit_int_param_occurrences(param, p, None, literals)?;
+    }
+    if let Some(b) = node.body.as_ref() {
+        visit_int_param_occurrences(param, b, None, literals)?;
+    }
+    let _ = LiteralValue::LitNull;
+    Ok(())
+}
+
+fn int_literal_of(node: &v1_compiler::v1_std_core::Node) -> Option<i64> {
+    use v1_compiler::std_syntax::LiteralValue;
+    use v1_compiler::v1_std_core::ExprData;
+    match node.expr_data.as_ref() {
+        ExprData::ExprLiteral { value } => match value.as_ref() {
+            LiteralValue::LitInt { value } => Some(*value),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 /// Derive the domain for one parameter type, or refuse naming the type that defeated it.
@@ -18756,7 +18705,7 @@ fn derive_parameter_domain(
     }
 }
 
-/// One function's signature as the authority declares it, with the body that uses it.
+/// One function as the authority declares it: its parameters and the body node that uses them.
 ///
 /// The body is carried because an `Int` parameter's domain is a fact about HOW THIS FUNCTION USES
 /// IT, not about the type: `Int` has no finite domain, but the comparisons a body performs cut it
@@ -18765,75 +18714,43 @@ fn derive_parameter_domain(
 struct DagFnSignature {
     name: String,
     params: Vec<(String, String)>,
-    body: String,
+    body: Option<Rc<v1_compiler::v1_std_core::Node>>,
 }
 
-fn parse_dag_fn_signatures(source: &str) -> Vec<DagFnSignature> {
+/// Read every function off a parsed module node.
+///
+/// The third and last hand-rolled reader to go. Its predecessor matched `fn ` at the start of a
+/// line and then took the parameter list up to the first `)` on that same line, so a signature
+/// spanning lines produced no entry at all -- 14 of `v1.compiler.emit_rust`'s 631 went missing
+/// that way, and only a declared-versus-parsed counter made the gap visible rather than reading
+/// as a module with a smaller surface. A function is an `Arrow` node with its parameters already
+/// separated from its body, so none of that arises here.
+fn fn_signatures_from_module(module: &v1_compiler::v1_std_core::Node) -> Vec<DagFnSignature> {
+    use v1_compiler::v1_std_core::Connective;
     let mut out = Vec::new();
-    for line in source.lines() {
-        let t = line.trim();
-        let Some(rest) = t.strip_prefix("fn ") else {
-            continue;
-        };
-        let Some((name, after)) = rest.split_once('(') else {
-            continue;
-        };
-        let name = name.trim();
-        if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+    for decl in module.children.iter() {
+        if decl.connective != Connective::Arrow {
             continue;
         }
-        // Only single-line signatures are parsed here. A multi-line signature is NOT silently
-        // skipped -- it simply does not appear, and the caller counts declared-vs-parsed so a
-        // gap between them is visible rather than being read as "this module has few functions".
-        let Some((params_src, _)) = after.split_once(')') else {
-            continue;
-        };
-        let mut params = Vec::new();
-        for p in params_src.split(',') {
-            let p = p.trim();
-            if p.is_empty() {
-                continue;
-            }
-            if let Some((pname, pty)) = p.split_once(':') {
-                params.push((pname.trim().to_string(), pty.trim().to_string()));
-            }
-        }
-        // The body runs from the signature's opening brace to its match. A body whose braces do
-        // not balance yields NO signature rather than a truncated one: a truncated body would
-        // hide the very occurrences the partition check exists to find, turning a parse gap into
-        // an unsound coverage claim. The dropped signature is visible instead, because the caller
-        // reports declared `fn` lines against parsed signatures.
-        let Some(body) = extract_braced_body(source, t) else {
-            continue;
-        };
+        let params = decl
+            .params
+            .iter()
+            .map(|p| {
+                let ty = p
+                    .type_annotation
+                    .as_ref()
+                    .map(|t| type_text(t))
+                    .unwrap_or_default();
+                (p.name.clone(), ty)
+            })
+            .collect();
         out.push(DagFnSignature {
-            name: name.to_string(),
+            name: decl.name.clone(),
             params,
-            body,
+            body: decl.body.clone(),
         });
     }
     out
-}
-
-/// Return the text between the first `{` at or after the line `sig_line` and its matching `}`.
-fn extract_braced_body(source: &str, sig_line: &str) -> Option<String> {
-    let at = source.find(sig_line)?;
-    let bytes: Vec<char> = source[at..].chars().collect();
-    let open = bytes.iter().position(|c| *c == '{')?;
-    let mut depth = 0i32;
-    for (k, c) in bytes.iter().enumerate().skip(open) {
-        match c {
-            '{' => depth += 1,
-            '}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(bytes[open + 1..k].iter().collect());
-                }
-            }
-            _ => {}
-        }
-    }
-    None
 }
 
 /// What the fragment can say about one module's surface.
@@ -18889,47 +18806,53 @@ fn collect_dag_module_sources(
 /// shape was an artifact of the implementation, not a property of the fragment.
 ///
 /// The control for that claim is external and specific: `std.content_hash` refuses 26 of its 27
-/// functions before this change, and must still refuse 26 of 27 after it. If that number moves,
+/// functions before that change, and must still refuse 26 of 27 after it. If that number moves,
 /// this resolved nothing and widened something.
+///
+/// BOTH READS GO THROUGH THE GRAMMAR. An earlier revision found declarations with a line-based
+/// reader and found imports with `line.strip_prefix("import ")`. Each was a second implementation
+/// of something the parser already owns, and the first was measurably wrong -- blind to 88% of
+/// the corpus's type declarations. They are gone rather than kept working: a hand reader that
+/// currently agrees with the grammar has exactly the standing the line reader had until it was
+/// measured. Imports now come from the module node's `params` and declarations from its
+/// `children`, which is where the parser puts them.
+///
+/// A module that will not parse REFUSES the whole plan rather than contributing nothing. Silently
+/// skipping it would make an unreadable import indistinguishable from an import that declares no
+/// types, and the second is a fine reason to derive nothing while the first is not.
 fn visible_type_decls(
     module_path: &str,
     source: &str,
     modules: &std::collections::HashMap<String, String>,
-) -> std::collections::HashMap<String, DagTypeDecl> {
+) -> Result<std::collections::HashMap<String, DagTypeDecl>, String> {
     let mut merged = std::collections::HashMap::new();
     let mut seen = std::collections::HashSet::new();
     let mut queue = vec![(module_path.to_string(), source.to_string())];
     let mut depth_guard = 0usize;
     while let Some((mp, src)) = queue.pop() {
         depth_guard += 1;
-        if depth_guard > 512 || !seen.insert(mp.clone()) {
+        if depth_guard > 4096 {
+            return Err(format!(
+                "{module_path}: import closure exceeded 4096 modules; refusing rather than \
+                 reporting a partial type environment"
+            ));
+        }
+        if !seen.insert(mp.clone()) {
             continue;
         }
+        let node = parse_dag_module_node(&format!("{mp}.dag"), &src)?;
         // A module's OWN declarations win: a local name shadows an imported one, and taking the
         // import would answer with a different type than the module compiles against.
-        for (name, decl) in parse_dag_type_decls(&src) {
+        for (name, decl) in type_decls_from_module(&node) {
             merged.entry(name).or_insert(decl);
         }
-        for line in src.lines() {
-            let t = line.trim();
-            let Some(rest) = t.strip_prefix("import ") else {
-                continue;
-            };
-            let imported = rest
-                .split_whitespace()
-                .next()
-                .unwrap_or_default()
-                .trim_end_matches('{')
-                .trim();
-            if imported.is_empty() {
-                continue;
-            }
-            if let Some(next_src) = modules.get(imported) {
-                queue.push((imported.to_string(), next_src.clone()));
+        for imp in node.params.iter() {
+            if let Some(next_src) = modules.get(&imp.name) {
+                queue.push((imp.name.clone(), next_src.clone()));
             }
         }
     }
-    merged
+    Ok(merged)
 }
 
 /// The one entry point. An earlier revision also had a module-local planner that consulted only
@@ -18940,9 +18863,15 @@ fn visible_type_decls(
 fn plan_module_corpus(
     module_path: &str,
     source: &str,
+    module: &v1_compiler::v1_std_core::Node,
     types: &std::collections::HashMap<String, DagTypeDecl>,
 ) -> ModuleCorpusPlan {
-    let sigs = parse_dag_fn_signatures(source);
+    let sigs = fn_signatures_from_module(module);
+    // Kept as a CROSS-CHECK, not as the source of truth. The authored `fn ` line count and the
+    // parsed function count come from two different readers, so a disagreement means one of them
+    // is wrong -- which is exactly how the line reader's 14 missing signatures were found. Now
+    // that the parser owns the read they should agree, and the pair is reported so that a future
+    // divergence is visible rather than silently halving a module's surface.
     let declared_fn_lines = source
         .lines()
         .filter(|l| l.trim_start().starts_with("fn "))
@@ -18959,7 +18888,17 @@ fn plan_module_corpus(
             // domain, so a refusal here refuses the function -- there is no fallback window to
             // drop to, by design.
             let int_partition = if pty.trim() == "Int" {
-                match derive_int_partition(pname, &sig.body) {
+                // No body means no occurrences to justify a partition. That REFUSES rather than
+                // defaulting to "unused, so one value covers it": a declaration whose body the
+                // parser did not attach is an unknown, and treating an unknown as an empty set of
+                // uses is the narrow that turns "I could not see" into "there was nothing there".
+                let Some(body) = sig.body.as_ref() else {
+                    failure = Some(format!(
+                        "{pname} (Int parameter on a function with no attached body node)"
+                    ));
+                    break;
+                };
+                match derive_int_partition(pname, body) {
                     Ok(p) => Some(p),
                     Err(e) => {
                         failure = Some(e);
@@ -19104,8 +19043,9 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
         match emitted_mirror_for_module(&stage0_src, &module_path)? {
             None => exclusions.push(ReceiptExclusion::NoEmittedMirror { module_path }),
             Some(_mirror) => {
-                let types = visible_type_decls(&module_path, &source, &modules);
-                plans.push(plan_module_corpus(&module_path, &source, &types))
+                let node = parse_dag_module_node(&format!("{module_path}.dag"), &source)?;
+                let types = visible_type_decls(&module_path, &source, &modules)?;
+                plans.push(plan_module_corpus(&module_path, &source, &node, &types))
             }
         }
     }
