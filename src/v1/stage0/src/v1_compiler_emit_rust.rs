@@ -6935,21 +6935,11 @@ pub fn collect_value_emit_type_surface_names(
                 emit_info.clone(),
             ),
             _ => {
-                let from_inferred_list = match n.inferred.clone().as_deref().cloned() {
-                    Some(InferredNode::Resolved { node: rt, .. }) => {
-                        let is_optional =
-                            (rt.return_cardinality.clone() == Cardinality::CardOptional);
-                        let peeled_rt = if is_optional.clone() {
-                            with_required_cardinality(rt.clone())
-                        } else {
-                            rt.clone()
-                        };
-                        collect_type_node_import_surface_names(
-                            peeled_rt.clone(),
-                            source_indices.clone(),
-                        )
-                    }
-                    _ => Rc::new(vec![]),
+                let from_inferred = emit_inferred_type_leaf_name(n.clone(), source_indices.clone());
+                let from_inferred_list = if (from_inferred.clone() != "".to_string()) {
+                    Rc::new(vec![from_inferred.clone()])
+                } else {
+                    Rc::new(vec![])
                 };
                 let nm = authored_name_at(source_indices.clone(), n.clone());
                 let from_variant = match v1_rt::map_get(&variant_to_enum, nm.clone()) {
@@ -22756,67 +22746,63 @@ pub fn emit_rust_generic_method_call(
                 )
             }
         } else {
-            if (v1_rt::map_contains_key(&rt_functions(), function_name.clone()) == false) {
-                emit_error_expr(v1_rt::concat(v1_rt::concat("method \"".to_string(), function_name.clone()), "\" is neither a resolved callable receiver field nor a registered v1_rt bridge function — refusing rather than emitting an unresolved runtime call".to_string()), RenderTarget::Rust)
-            } else {
+            {
+                let recv_str = if rust_runtime_bridge_passes_receiver_by_ref(function_name.clone())
                 {
-                    let recv_str =
-                        if rust_runtime_bridge_passes_receiver_by_ref(function_name.clone()) {
-                            v1_rt::concat(
-                                "&".to_string(),
-                                emit_typed_expr_base(
-                                    receiver.clone(),
-                                    registry.clone(),
-                                    scope.clone(),
-                                    depth.clone(),
-                                    shared_types.clone(),
-                                    emit_info.clone(),
-                                ),
-                            )
-                        } else {
-                            emit_cloned_arg(
-                                receiver.clone(),
-                                registry.clone(),
-                                scope.clone(),
-                                depth.clone(),
-                                shared_types.clone(),
-                                emit_info.clone(),
-                            )
-                        };
-                    let arg_strs = Rc::new({
-                        let mut __result = Vec::new();
-                        for a in args.clone().iter().cloned() {
-                            __result.push(emit_cloned_arg(
-                                arg_value(a.clone()),
-                                registry.clone(),
-                                scope.clone(),
-                                depth.clone(),
-                                shared_types.clone(),
-                                emit_info.clone(),
-                            ));
-                        }
-                        __result
-                    });
-                    let all_strs = v1_rt::concat(Rc::new(vec![recv_str.clone()]), arg_strs.clone());
-                    let bridge_name = rust_runtime_bridge_name(function_name.clone());
-                    let lowered = v1_rt::concat(
+                    v1_rt::concat(
+                        "&".to_string(),
+                        emit_typed_expr_base(
+                            receiver.clone(),
+                            registry.clone(),
+                            scope.clone(),
+                            depth.clone(),
+                            shared_types.clone(),
+                            emit_info.clone(),
+                        ),
+                    )
+                } else {
+                    emit_cloned_arg(
+                        receiver.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                    )
+                };
+                let arg_strs = Rc::new({
+                    let mut __result = Vec::new();
+                    for a in args.clone().iter().cloned() {
+                        __result.push(emit_cloned_arg(
+                            arg_value(a.clone()),
+                            registry.clone(),
+                            scope.clone(),
+                            depth.clone(),
+                            shared_types.clone(),
+                            emit_info.clone(),
+                        ));
+                    }
+                    __result
+                });
+                let all_strs = v1_rt::concat(Rc::new(vec![recv_str.clone()]), arg_strs.clone());
+                let bridge_name = rust_runtime_bridge_name(function_name.clone());
+                let lowered = v1_rt::concat(
+                    v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(
-                                    "v1_rt::".to_string(),
-                                    emit_ident(bridge_name.clone(), RenderTarget::Rust),
-                                ),
-                                "(".to_string(),
+                                "v1_rt::".to_string(),
+                                emit_ident(bridge_name.clone(), RenderTarget::Rust),
                             ),
-                            all_strs.clone().join(&", ".to_string()),
+                            "(".to_string(),
                         ),
-                        ")".to_string(),
-                    );
-                    if rust_runtime_bridge_wraps_collection_result_in_rc(function_name.clone()) {
-                        rust_shared_wrap_ctor(lowered.clone())
-                    } else {
-                        lowered.clone()
-                    }
+                        all_strs.clone().join(&", ".to_string()),
+                    ),
+                    ")".to_string(),
+                );
+                if rust_runtime_bridge_wraps_collection_result_in_rc(function_name.clone()) {
+                    rust_shared_wrap_ctor(lowered.clone())
+                } else {
+                    lowered.clone()
                 }
             }
         }
