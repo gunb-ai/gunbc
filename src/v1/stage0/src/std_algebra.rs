@@ -228,11 +228,30 @@ pub struct PointwisePower<T> {
 
 pub type FreeMonoid<T> = Vec<T>;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct FreeSemigroup<T: Clone> {
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "T: Clone + serde::Serialize",
+    deserialize = "T: Clone + serde::Deserialize<'de>"
+))]
+pub struct FreeSemigroup<T> {
     pub head: T,
     pub tail: Rc<Vec<T>>,
     pub _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T: Clone + std::fmt::Debug> std::fmt::Debug for FreeSemigroup<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FreeSemigroup")
+            .field("head", &self.head)
+            .field("tail", &self.tail)
+            .finish()
+    }
+}
+
+impl<T: Clone + PartialEq> PartialEq for FreeSemigroup<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.head == other.head && self.tail == other.tail
+    }
 }
 
 #[derive(Clone)]

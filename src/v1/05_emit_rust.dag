@@ -5971,7 +5971,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   } else {
     emit_type_params(params: type_params, source_indices: si)
   }
-  let params_str = emit_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
+  let params_str = emit_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env, enclosing_returns_arrow: (inferred.params |> count) > 0)
   let ret_str = emit_inferred(inferred: inferred, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
   let body_scope = build_params_scope(scope: scope, params: value_params)
   let depth = 0
@@ -6232,7 +6232,7 @@ fn emit_tco_params(params: List<Node>, generic_param_names: List<String>, shared
 fn emit_tco_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let authored = param_node_type_expr(n: param)
   let ty = if authored.params |> count > 0 {
-    emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+    emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, enclosing_returns_arrow: false)
   } else {
     render_rust_param_sig_type(param: param, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
@@ -6240,7 +6240,7 @@ fn emit_tco_param(param: Node, generic_param_names: List<String>, shared_types: 
 }
 
 fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  let param_strs = params |> map(p => emit_param(param: p, generic_param_names: [], shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params, variant_to_enum: variant_to_enum, env: env))
+  let param_strs = params |> map(p => emit_param(param: p, generic_param_names: [], shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params, variant_to_enum: variant_to_enum, env: env, enclosing_returns_arrow: false))
   let resource_strs = uses |> map(u =>
     concat(emit_ident(name: resource_use_name_at(n: u, source_indices: source_indices), target: Rust), ": &", render_rust_type(n: resource_use_resource(n: u), shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info()))
   )
@@ -6255,8 +6255,8 @@ fn emit_func_inferred(inferred: Node, shared_types: Set<String>, source_indices:
   concat(" -> Result<", render_rust_type(n: inferred, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info()), ", Box<dyn std::error::Error>>")
 }
 
-fn emit_params(params: List<Node>, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  let strs = params |> map(p => emit_param(param: p, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params, variant_to_enum: variant_to_enum, env: env))
+fn emit_params(params: List<Node>, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv, enclosing_returns_arrow: Bool) -> String {
+  let strs = params |> map(p => emit_param(param: p, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params, variant_to_enum: variant_to_enum, env: env, enclosing_returns_arrow: enclosing_returns_arrow))
   strs |> join(separator: ", ")
 }
 
@@ -6265,8 +6265,27 @@ fn render_rust_param_sig_type(param: Node, generic_param_names: List<String>, sh
   render_rust_fn_sig_type(n: type_node, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
 }
 
-// The `+ 'static` is not a restriction the source language can feel, which is why it is
-// unconditional rather than gated on whether the closure reaches a stored position.
+// The `+ 'static` is GATED on the enclosing function returning an arrow. An earlier revision
+// emitted it unconditionally on the stated premise that it "cannot reject any expressible program".
+// THAT PREMISE WAS FALSIFIED BY EXECUTION: installing the generation-2 regen candidate produced
+// 161 rustc errors (E0373 closure may outlive / E0597 does not live long enough), concentrated in
+// v1_compiler_emit.rs and v1_compiler_emit_rust.rs. The premise conflated WHAT is captured with HOW:
+// the captured values are owned, but the emitter emits the closure WITHOUT `move`, so the capture is
+// a borrow — and a non-move closure borrowing an owned local is not `'static` however owned the
+// local is. The bound rejected 161 expressible programs.
+//
+// The gate is precise rather than a proxy: the `Rc::new(move |..| ..)` site that creates the
+// obligation exists exactly when the function returns an arrow, and those lowering-emitted closures
+// already carry `move`, so no call site needs to change and no additional clone is emitted. The
+// discarded alternative — emitting `move` at every closure site to satisfy a bound synthesized at
+// every parameter — is two unconditional widenings composing, and it is not free: a `move` closure
+// takes ownership of its captures, so any value still live afterward must then be CLONED, which
+// would have raised clone count on the exact axis this lane is driving down.
+//
+// Measured, which is what settles it against the earlier reasoning: the v1 seed closure contains 99
+// `impl Fn` parameters and ZERO functions returning `Rc<dyn Fn>`, so the unconditional form bought
+// nothing there and cost 161 rejections. The motivating specimen (v2/std/staging.dag `then_outcome`)
+// is reached through the gate, not excluded by it.
 //
 // An arrow type realizes in Rust as `Rc<dyn Fn(..) -> ..>` (v1.compiler.languages rust_spec
 // callable_type_template). A `dyn` trait object defaults to the `'static` lifetime, so a function
@@ -6274,21 +6293,20 @@ fn render_rust_param_sig_type(param: Node, generic_param_names: List<String>, sh
 // those parameters are `'static` — rustc E0310 at the `Rc::new(move |..| ..)` site, which is the
 // realization's own consequence rather than anything the authored source asked for.
 //
-// The bound could therefore be gated on "this closure is stored", but the gate would separate no
-// programs: the substrate has no reference or lifetime concept at all, so every closure it can
-// construct captures owned or Rc-shared values and is already `'static`. A bound that cannot reject
-// any expressible program is a statement of what the substrate already guarantees, not a constraint
-// on callers — and the gated form would have to thread the enclosing function's return type into a
-// renderer that today sees only the parameter, buying a distinction with no observable difference.
+// The gate threads the enclosing function's return type into a renderer that otherwise sees only
+// the parameter. That threading cost was the earlier revision's stated reason for declining the
+// gate; it is four hops through a single call chain (emit_fn_def -> emit_params -> emit_param ->
+// emit_rust_param_type), and it is what the 161 errors bought.
 //
-// This is the same shape as the `+ Clone` beside it, which is unconditional for the same reason.
+// The `+ Clone` beside it stays unconditional, and the asymmetry is the point rather than an
+// inconsistency: `Clone` is satisfiable by every emitted call site, `'static` is not.
 // It belongs here rather than in v2/std/staging.dag because the obligation is created by the
 // realization choice: the source declares an arrow, and only the Rust row decides that an arrow
 // becomes `Rc<dyn Fn>`. Declaring it at the source would require inventing Rust lifetime syntax in
 // a medium-agnostic language — `'static` appears in no .dag source module — and would leave the
 // next arrow-into-Rc site to be rediscovered the same way (DESIGN §3 layer inversion, §5
 // construction over validation).
-fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, enclosing_returns_arrow: Bool) -> String {
   if n.params |> count > 0 {
     let param_types = n.params |> map(p => render_rust_fn_sig_type(n: param_node_type_expr(n: p), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env))
     let param_str = param_types |> join(separator: ", ")
@@ -6296,17 +6314,18 @@ fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types
       Present { value: Resolved { node: rt } } => render_rust_fn_sig_type(n: rt, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
       _ => "()"
     }
-    concat("impl Fn(", param_str, ") -> ", ret_str, " + Clone + 'static")
+    let static_bound = if enclosing_returns_arrow { " + 'static" } else { "" }
+    concat("impl Fn(", param_str, ") -> ", ret_str, " + Clone", static_bound)
   } else {
     render_rust_fn_sig_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
 }
 
-fn emit_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+fn emit_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv, enclosing_returns_arrow: Bool) -> String {
   let pname = param_node_name_at(n: param, source_indices: source_indices)
   let authored = param_node_type_expr(n: param)
   let ty = if authored.params |> count > 0 {
-    emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+    emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, enclosing_returns_arrow: enclosing_returns_arrow)
   } else {
     render_rust_param_sig_type(param: param, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
@@ -9930,7 +9949,7 @@ fn emit_modifier_doc_from_props(properties: List<Node>, source_indices: Map<Stri
 fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int, shared_types: Set<String>, env: TypeEnv, service_item: Node) -> String {
   let op_text = authored_name(env: env, node: op_node)
   let input_params = op_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env))
+    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env, enclosing_returns_arrow: false))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -10752,7 +10771,7 @@ fn emit_resource_def(item: Node, shared_types: Set<String>, env: TypeEnv) -> Str
 
 fn emit_capability_method(cap_node: Node, shared_types: Set<String>, env: TypeEnv) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env))
+    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env, enclosing_returns_arrow: false))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -10981,7 +11000,7 @@ fn emit_test_file(module_name: String, projections: List<TestProjection>) -> Tex
 
 fn rust_test_signature_comment(projection: TestProjection) -> String {
   let params_str = projection.params
-    |> map(p => concat(param_node_name_at(n: p, source_indices: projection.source_indices), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: empty_set(), source_indices: projection.source_indices, variant_to_enum: empty_map(), env: projection.type_env)))
+    |> map(p => concat(param_node_name_at(n: p, source_indices: projection.source_indices), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: empty_set(), source_indices: projection.source_indices, variant_to_enum: empty_map(), env: projection.type_env, enclosing_returns_arrow: false)))
     |> join(separator: ", ")
   concat(
     "// Signature: ",
