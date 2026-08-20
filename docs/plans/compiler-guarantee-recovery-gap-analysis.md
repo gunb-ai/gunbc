@@ -1456,6 +1456,207 @@ than argued.
    discharged by enrolling in `floor_expected_red_roster` directly (operator ruling,
    deep-ant-102, 2026-08-20: no new mechanism), which is the one live authority for this case.
 
+20. **Reconstruction doors: `value_from_fixture_json` and `map_response_to_value_json` build
+   typed `Value::Record`/`Value::Variant` from untrusted bytes with no declaration lookup, no
+   `sole_constructor` check, and no refinement predicate — rung `mitigatable`, first non-zero
+   live exposure this lane has produced** (measured 2026-08-20, bold-bear-246; scope handed
+   down from fierce-ant-91, distinct from and complementary to item 1a's `sole_constructor`
+   audit — that audit covers ordinary *construction* call sites, this item covers the two
+   places a value is *reconstructed* from serialized bytes outside any construction call at
+   all). **This item is measurement only. It lands no change to either mechanism, to
+   `sole_constructor`, or to where-refinements — see "What repair is not in this item," below.**
+
+   **Background — why this needed its own audit.** An earlier pass over the emitted-Rust
+   `#[derive(Deserialize)]` door found it writable but structurally unreached in the current
+   corpus, and closed. That pass's own trace showed a recorded fixture decodes first into
+   untyped `serde_json::Value` — but stopped there; it did not follow what the v1 interpreter
+   does with that untyped value next. It converts it into a *typed* runtime `Value` itself,
+   in `src/v1/stage0/src/recorded_fixture.rs` `value_from_fixture_json`, which nobody had
+   audited. The lesson generalizes: "decodes to untyped JSON, therefore inert" is not a
+   sound inference once a second, typed reconstruction step exists downstream.
+
+   **Mechanism, confirmed by source read then by execution.** `value_from_fixture_json`'s
+   Record arm reads a `__type` string out of the fixture JSON verbatim, interns it, reads
+   whatever field names the same JSON object happens to carry, and returns
+   `Value::Record { type_name, fields }` — no lookup against any declared type, no
+   `sole_constructor` check, no refinement-predicate evaluation. Its Variant arm does the
+   same plus an equally unchecked `__variant` string. `src/v1/stage0/src/v1_interpreter.rs`
+   calls this on `fixture.response` during hermetic replay, so the door is reached on the
+   ordinary replay path, not a corner case. The second door, `map_response_to_value_json`
+   in the same module, is reached from a genuinely live REST round trip: `dispatch_rest` →
+   `decide_rest_exchange` → (for a `Json` response format) `map_response_to_value_json` on the
+   real HTTP response body. It walks the operation's declared output shape field-by-field,
+   converting each JSON value with the untyped `json_to_value` and assembling a
+   `Value::Record` — with zero validation of any field's value against its declared type's
+   refinement predicate, on every branch, including the branch that skips straight to
+   `json_to_value` when the operation's return type did not resolve and the branch that
+   fills a field with `Null` when the JSON body has no matching key. (Those two fallback
+   branches are a source-level read only — see "What was NOT executed," below.)
+
+   **ARM 1 — fixture-decoder door, executed.** Probe: `dag/test/claim/reconstruction_door_fixture_probe.dag`,
+   a scratch service `DoorProbe.Fetch` (shell transport, `printf "%s" "positive-control"`,
+   `output { id: NonEmptyStr from "stdout" }`). Built `claim_batch` at current head
+   (`cargo build --release -p v1-compiler --bin claim_batch`, remote), recorded once wet
+   (`--record --fixture-store <dir>`), then replayed hermetically (`--hermetic
+   --fixture-store <dir>`) four times against the SAME on-disk fixture file, tampered
+   between runs:
+     - *Case 1, positive control:* untampered fixture, `witness_id_equals_positive_control`.
+       **Result: PASS, exit 0.** Confirms the harness actually exercises the door (a
+       zero-finding instrument is worthless without this).
+     - *Case 2, predicate bypass, no `__type` tamper:* `response.fields.id.value` overwritten
+       to `""` on disk, `witness_id_equals_empty`. `NonEmptyStr = String where non_empty`
+       (`dag/std/types.dag`). **Predicted:** refusal, since the recorded value violates the
+       declared refinement. **Observed: PASS, exit 0.** The empty string reconstructs into
+       the `NonEmptyStr`-typed field with no refusal.
+     - *Case 3, undeclared-type fabrication:* `response.__type` overwritten to
+       `TotallyFabricatedRecordType_NeverDeclaredAnywhere` (no declaration by that name
+       exists in either source root), `id.value` set to `"whatever-value"`,
+       `witness_id_equals_whatever`. **Observed: PASS, exit 0.** The decoder manufactures a
+       `Value::Record` of a type the program never declared — there is no invariant to
+       violate here because there is no type to check against; this is a strictly worse
+       finding than Case 2's predicate bypass.
+     - *Case 4, Variant-arm fabrication:* `response` replaced wholesale with a
+       `{"__tag":"Variant","__type":"TotallyFabricatedVariantType_NeverDeclaredAnywhere",
+       "__variant":"BogusCaseNeverDeclared","fields":{"id":{"__tag":"Str","value":"variant-value"}}}`
+       shape, `witness_id_equals_variant_value`. **Observed: PASS, exit 0.** Confirms the
+       Variant arm is the same hole as the Record arm, not a narrower one.
+
+   **ARM 2 — REST-mapper door, executed, and the stronger of the two results.** Probe:
+   `dag/test/claim/reconstruction_door_rest_probe.dag`, a scratch service `DoorProbeRest.Fetch`
+   (`transport rest { method: GET, path: "/fetch" }`, `output { id: NonEmptyStr from "id" }`,
+   deliberately **no** `mock_response`). `claim_batch`'s default hermetic-mock mode refuses an
+   operation with no `mock_response` ("no mock_response for operation Fetch — refusing to
+   fabricate Unit"), which forced `--record --fixture-store <dir>` — i.e. forced a genuine
+   HTTP dispatch rather than a `mock_response` evaluation of authored `.dag` source
+   (`mock_response` would have measured source construction, not reconstruction, and was
+   excluded from this audit for exactly that reason). A local stand-in HTTP server
+   (`http.server`, `127.0.0.1:8991`) served two payloads across two separate fixture-store
+   directories (one per case — `RecordedFixtureStore::record()` refuses to record a second,
+   differently-shaped response for the same operation/input_hash in one store directory):
+     - *Case 1, positive control:* server body `{"id":"valid-value"}`,
+       `witness_rest_id_equals_valid`. **Result: PASS, exit 0**, with the transport log
+       confirming a genuine `GET http://127.0.0.1:8991/fetch` dispatch through the real
+       `ureq` client over a real socket.
+     - *Case 2, predicate bypass, NO tampering of any kind:* server body `{"id":""}`,
+       `witness_rest_id_equals_empty`. **Result: PASS, exit 0.** No fixture file was edited
+       for this case — the empty string arrived over the wire from an ordinary HTTP response
+       and was placed into the `NonEmptyStr`-declared field unchecked.
+
+   **What was NOT executed (source-level read, stated as such, not overclaimed):** the two
+   fallback branches inside `map_response_to_value_json` — return-type-did-not-resolve
+   (falls through to untyped `json_to_value`) and array-response-with-non-empty-declared-fields
+   (also falls through to `json_to_value`) — were read from source, not driven by a
+   constructed executing case. They are named here as source-level evidence only; no rung
+   claim rests on them.
+
+   **ARM 3 — exposure, both doors are reached by bytes this repo does not author, and the
+   two doors reach that exposure differently.** The fixture-decoder door is reached by
+   *repo-committed but externally-sourced* bytes: `dag/test/fixture/` carries JSON files
+   recorded from real external effects — a live GCP OAuth token refresh
+   (`dag/test/fixture/gcp_oauth_access_token_store/oauth2__Google__Refresh/991775fc306dcac0.json`,
+   shape `{"response":{"__tag":"Record","__type":"Refresh","fields":{...}}}`, exactly the
+   shape `value_from_fixture_json` parses), a `gcloud` ADC read, a Tailscale ACL fetch, a
+   GitHub push event — and those fixtures are not idle: numerous `.dag` witness tests under
+   `dag/test/claim/` name `dag/test/fixture` as their fixture store, so the door executes
+   during ordinary witness-test replay, not only under ad hoc probing. The REST-mapper door
+   is reached straightforwardly externally: any production `transport rest` service dispatch
+   during a wet run hits it directly, no repo-committed intermediary at all.
+
+   **The two doors' Case-2-class findings have different reachability stories, and
+   collapsing them would overstate the fixture door.** ARM 2's Case 2 needed *no* tampering
+   whatsoever: an ordinary, legitimate upstream HTTP response of `{"id":""}` is exactly what
+   a real service can return, gets faithfully recorded if a fixture is taken of it, and every
+   subsequent hermetic replay of that fixture reconstructs the violating value forever —
+   nobody edited anything, ever. ARM 1's Case 2 demonstrates the identical bypass on the
+   fixture door, but reaching it there required an on-disk tamper of the recorded JSON (a
+   deterministic way to reach the same state in one run, not the threat model — the threat
+   model is that an ordinary recorded response can already carry it, which ARM 2 proves
+   directly and which nothing distinguishes the fixture door from once a fixture is taken of
+   a real service that happens to return an edge-case value). ARM 1's Cases 3 and 4 are a
+   different claim and must not be folded into Case 2's "no tampering needed" framing: a
+   real service does not spontaneously emit a `__type` naming a type your program never
+   declared, or a `Variant`-tagged envelope your service never promised — reaching those
+   requires a malformed or hand-edited fixture, and what they demonstrate is the decoder's
+   **admission scope** (it accepts input shapes with no declaration and no invariant to check
+   at all), not its ordinary-case reachability. Both findings are real; stating them as one
+   claim would let a reader dismiss the whole result as "if you can edit files you can do bad
+   things," which is true only of Cases 3–4.
+
+   **Live production exposure — a number with caveats, not a census.** A scan of production
+   `.dag` (`dag/extdeps/`, excluding `test`/`fixture` trees) for `output { ... }` blocks whose
+   field types name a refined alias found 33 matching fields, not incidental subjects:
+   `sha: CommitSha` (multiple, e.g. `extdeps.git.inspect`, `extdeps.git.git`,
+   `extdeps.git.publication_transport`), `path: FilePath` (multiple, e.g. `extdeps.shell`)
+   and `access_token: Secret` in the same module, `run_url: NonEmptyStr` in
+   `extdeps.github.workflows`. Spot-checked three of the cited files directly: `git.inspect`'s
+   `sha: CommitSha` output is on a `transport shell` operation (ARM 1's door, not ARM 2's);
+   `shell`'s `path: FilePath` outputs are likewise `transport shell`; `github.workflows`'s
+   `run_url: NonEmptyStr` output is on a `transport rest` operation (ARM 2's door) — so the 33
+   fields split across both doors, and citing the number as one undifferentiated total would
+   overstate ARM 2 specifically. Caveats, stated rather than inherited silently: the scan
+   pattern matches single-line `output { ... }` blocks only, so multi-line or nested
+   declarations are missed — **33 is a lower bound, not a census**; operations were not
+   deduplicated, so repeated field names across rows were not verified to be distinct
+   operations; and **none of the 33 was executed** — they are declarations that sit on the
+   path this item's ARM 1/ARM 2 results demonstrate is unchecked, which is an inference from
+   the mechanism, not a per-field measurement. Write it as: 33 declared fields sit on a path
+   proven unchecked, not "33 fields are bypassed."
+
+   **What repair is NOT in this item, and why.** This item is measurement only — no change to
+   `value_from_fixture_json`, `map_response_to_value_json`, `dispatch_rest`,
+   `decide_rest_exchange`, `sole_constructor`, or where-refinement machinery. Two reasons:
+   first, the shape of a fix belongs to whoever owns the decoder, not to an audit session;
+   second, a repair landed inside a measurement item is exactly the kind of unreviewed
+   coupling DESIGN §5 warns against (construction and validation are different obligations,
+   and conflating "I found it" with "I fixed it" in one diff removes the operator's ability to
+   review either independently). What repair would have to establish, without this item
+   designing it further: reconstruction must either (a) resolve `__type`/`__variant` against a
+   real declaration and refuse — typed, located — when it cannot, so the decoder's admission
+   set is bounded by what the program actually declared, or (b) be an explicitly declared
+   boundary that observes an externally-sourced value and refuses it against its target's
+   refinement predicate before it enters the typed `Value` space at all (the §4b "outside the
+   modeled guarantee" column, held at a declared boundary rather than silently inherited as
+   trusted). Either shape must still pass a predicate-violating positive case exactly like
+   this item's Case 2 and a fabricated-type case exactly like Case 3 — this item's four probe
+   cases are what "the fix actually closes the door" should be checked against, not a new,
+   separately invented test.
+
+   **Open question, raised here for the operator/reviewer rather than decided in this item:**
+   should these four probe cases (three fixture-door, two REST-door) be enrolled as permanent
+   §4b regression controls once a wall lands, per the "dissolution on climb" meta-obligation
+   (the discriminating RED and its positive control stay enrolled as the executing evidence a
+   higher rung stays real)? The right end state is clearly enrollment — an unenrolled
+   demonstration decays back into an unmeasured claim the moment nobody remembers it exists,
+   exactly item 10's shape above. The open obstacle is mechanical: these cases need a fixture
+   store, a `--record` pass, and — for the fixture-door cases — an on-disk tamper step between
+   record and replay, none of which the CI required floor's fold (`claim_executor
+   --required-floor`, "Building & checks" in DESIGN.md) currently has a form for. This item
+   does not resolve whether that harness gets built, extended, or whether these cases are
+   instead re-expressed as a form the required floor already runs; it only names enrollment as
+   the target and the harness gap as what stands between here and there.
+
+   **Reproduction, recoverable without the session that ran it.** ARM 1: build
+   `v1-compiler`'s `claim_batch` binary at current head; run it against
+   `dag/test/claim/reconstruction_door_fixture_probe.dag` (with `--source-root` covering
+   `dag/` and the probe's own directory) once with `--function
+   witness_id_equals_positive_control --record --fixture-store <dir>`; locate the single
+   `*.json` file `--record` wrote under `<dir>`; for Case 2, edit `response.fields.id.value`
+   to `""` in that file and re-run with `--function witness_id_equals_empty --hermetic
+   --fixture-store <dir>`; for Case 3, restore then edit `response.__type` to any name absent
+   from the source roots and `response.fields.id.value` to `"whatever-value"`, re-run with
+   `--function witness_id_equals_whatever --hermetic --fixture-store <dir>`; for Case 4,
+   replace the whole `response` object with the `__tag: "Variant"` shape shown in the probe
+   file's comment, re-run with `--function witness_id_equals_variant_value --hermetic
+   --fixture-store <dir>`. ARM 2: run any HTTP server on `127.0.0.1:8991` that answers
+   `GET /fetch` with `{"id":"valid-value"}`; run `claim_batch` against
+   `dag/test/claim/reconstruction_door_rest_probe.dag` with `--function
+   witness_rest_id_equals_valid --record --fixture-store <dir1>`; point the same server at
+   `{"id":""}` instead (or restart it with that body); run again with `--function
+   witness_rest_id_equals_empty --record --fixture-store <dir2>` (a fresh directory — the
+   fixture store refuses a second response shape for the same operation/input_hash in one
+   store). In both arms, `exit_code=0` on the tampered/bypass cases is the finding; a nonzero
+   exit or a typed refusal diagnostic would refute it.
+
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
 **(2026-07-31 restructure.)** The canonical dependency order now lives in the roadmap
