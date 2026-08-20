@@ -77,10 +77,13 @@ Measured on `dag/**` and `src/v2/**`, excluding `/test/`, `*_test.dag` and fixtu
 | counted retained-script bridge call sites | 48 across 13 files, enumerated below |
 | distinct `fn *_argv` builders (whole tree) | 333, of which ~158 lead with `shape`/`witness`/`operation`/`typed` and model no tool at all |
 
-The 13 files, named rather than counted, because a count cannot expose a misfiled row:
+The files, named rather than counted, because a count cannot expose a misfiled row. **12 at `98d7147f9e`, not the 13
+first measured** — `gunbc.provider_wire_evidence` is struck below, having migrated fully to typed `extdeps.shell`
+operations; it is retained in the list struck-through rather than silently dropped, because a census row that vanishes
+without explanation cannot be told from one that was never measured:
 
 `gunbc.command_runner` · `gunbc.host_effect_realize` · `gunbc.retained_shell_script` · `gunbc.package_delivery` ·
-`gunbc.codex_app_server_press` · `gunbc.bmc_netboot_serve` · `gunbc.provider_wire_evidence` · `gunbc.design_document` ·
+`gunbc.codex_app_server_press` · `gunbc.bmc_netboot_serve` · ~~`gunbc.provider_wire_evidence`~~ · `gunbc.design_document` ·
 `tools.gunbc_ci` · `tools.emit_host_gate` · `tools.host_prelude` · `tools.interpreter_dispatch_bijection_real_roster_transport` ·
 `v2.lens.meta_exec_confinement`
 
@@ -89,13 +92,40 @@ The 13 files, named rather than counted, because a count cannot expose a misfile
 "complete, current" claim is true as of its stated commit and false as of this one; it is a snapshot, and this row is
 its correction rather than a second census.
 
-**And a classification question the count concealed, flagged not settled.** `package_delivery` (7 calls) and
-`codex_app_server_press` (3) route through `retained_foreign`, whose `dissolves_to` is `retained_foreign_emit_ref` —
-the Bash emitter, the destination for foreign executors and pre-runtime bootstrap. Both appear to run inside a present
-gunbc runtime, which would make their destination typed effects (`retained_runtime`) instead. If that is right, ten
-bridge calls declare the wrong dissolution target, and the bucket is precisely what a future session reads to decide
-where they go. Recorded as a question for their owners — the executor window is the deciding fact and this document
-does not own it — not as a verdict rendered from a grep.
+**The classification question is now SETTLED, by measurement rather than by grep, and the answer is the one the
+question feared.** These three modules were flagged as possibly-misfiled because they route through `retained_foreign`,
+whose `dissolves_to` is the Bash emitter — the destination for *foreign executors and pre-runtime bootstrap* — while
+appearing to run inside a present gunbc runtime. Measured on `98d7147f9e`:
+
+| module | `retained_foreign(` call sites | at the flag | now |
+|---|---|---|---|
+| `gunbc.package_delivery` | 5 | 7 | partially migrated |
+| `gunbc.codex_app_server_press` | 1 | 3 | partially migrated |
+| `gunbc.provider_wire_evidence` | **0** | (flagged) | **fully migrated; import is dead** |
+
+**The executor window is decided by construction, not by inspection of intent.** `package_delivery` calls
+`shell.Mkdir.Parents` and `shell.Find.FilesAndSymlinksWithMode` — typed operations that *cannot execute without a
+present gunbc runtime* — in the same function bodies that then fall back to `retained_foreign`. A function that
+interleaves a typed operation with a retained foreign script is runtime-present by the fact that its first half ran.
+So the destination for the remaining six calls is typed effects (`retained_runtime`), not the Bash emitter, and the
+`dissolves_to` on those sites is wrong. This is a *decidable* question and it did not need its owners: the presence of
+a typed operation in the same scope answers it.
+
+**`provider_wire_evidence` is no longer a bridge file at all** and should be struck from the 13 above, leaving 12. Its
+effects became typed `extdeps.shell` operations under review 50540; what survives is an unused
+`import gunbc.retained_shell_script { retained_foreign }`, which is dead and should be deleted. A module counted as a
+bridge on the strength of an import it does not use is the census direction over-reporting in the same way §0c records
+it over-reporting elsewhere.
+
+**A partial migration left a second instance of the exact defect its own note claims to have fixed.**
+`package_materialized_tree_observation_note` records that the `find`-piped-to-`sort` string was replaced by
+`shell.Find.FilesAndSymlinksWithMode` plus in-substrate `std` sort, because the string form escaped its quoting on a
+root containing an apostrophe and forked an authority `extdeps.shell` already owned. That migration landed at one site.
+Another `find '…' -type f -name '*.json' | sort` remains in the same module, built by the same concat-into-a-quoted-string
+shape, with the same escape exposure and the same locale-dependent collation the note calls out. The note is true about
+the site it describes and reads as true about the module. **A carrier that records a fix should name the population it
+fixed**, or the next reader takes the note as coverage — which is what happened here, to me, until the count disagreed
+with the prose.
 
 **The load-bearing reading:** `transport shell` is overwhelmingly an `extdeps` population — 230 of 236 production lines — i.e. it sits *beneath already-typed operations*, in the interface layer, not in the intent. This lane's original job, getting shell out of the intent, is therefore substantially done, and most of what remains is transport depth inside a CLI-backed cell. That is #8467's subject, not this document's.
 
