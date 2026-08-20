@@ -15,7 +15,7 @@ import extdeps.languages.json.parse {
 import v2.std.collection { Absent, Present }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_object, serialize_json }
 import extdeps.http.server { media_type_wire_label, application_json_utf8 }
-import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, RoadmapSiteSurfaceArtifact, HealthzEffectiveRead }
+import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, RoadmapSiteSurfaceArtifact, HealthzEffectiveRead, HealthzBodyRead, HealthzProbeRefused }
 
 data roadmap_site_surface_expect_note: String = "PURE bundle predicates for roadmap served-surface witnesses. Every function here takes an already-materialized RoadmapSiteSurfaceBundle (or a typed HTTP read) and performs no filesystem, Git, authority, or rendering observation."
 
@@ -107,9 +107,12 @@ fn healthz_round_trip_receipt_holds(bundle: RoadmapSiteSurfaceBundle) -> Bool {
 }
 
 fn healthz_read_grounds(bundle: RoadmapSiteSurfaceBundle, read: HealthzEffectiveRead) -> Bool {
-  read.probe_error == ""
-    && roadmap_site_healthz_json_string_parses(body: read.body)
-    && roadmap_site_healthz_surface_is_current(bundle: bundle, observed_body: read.body)
+  match read {
+    HealthzProbeRefused { probe_error: _ } => false
+    HealthzBodyRead { body: observed_body } =>
+      roadmap_site_healthz_json_string_parses(body: observed_body)
+        && roadmap_site_healthz_surface_is_current(bundle: bundle, observed_body: observed_body)
+  }
 }
 
 fn fresh_surface_read_grounds(bundle: RoadmapSiteSurfaceBundle, read: HealthzEffectiveRead) -> Bool {
@@ -121,7 +124,7 @@ fn stale_surface_read_does_not_ground(bundle: RoadmapSiteSurfaceBundle, stale_bo
     && !roadmap_site_healthz_surface_is_current(bundle: bundle, observed_body: stale_body)
     && !healthz_read_grounds(
       bundle: bundle,
-      read: HealthzEffectiveRead { body: stale_body, probe_error: "" },
+      read: HealthzBodyRead { body: stale_body },
     )
 }
 

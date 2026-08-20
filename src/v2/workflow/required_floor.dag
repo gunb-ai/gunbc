@@ -6,19 +6,65 @@ import v2.std.logic { Bool, True, False }
 import v2.std.text { String }
 import v2.std.integer { Int, int_gt }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
+import v2.workflow.floor_route_gap { floor_route_gap_roster }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { NonEmptyStr }
 
 // IDENTITY-GRAINED FLOOR DISPOSITION RECEIPT (operator ruling 2026-08-19).
 //
-// Every executable claim the fold plans gets exactly one `RequiredFloorDisposition`, keyed by
-// its qualified `module.function` identity. This is the single authority for that fact: the
-// host loop in `v1_compiler.cli_run` `run_required_floor` computes admission by testing a
-// claim's authored module name against `long_home_prefixes()` above and whether it reads the
-// live tree, then REALIZES the arm this type already names — it does not invent a second
-// admission concept. A `Declined*` arm here is a fact about why a claim's identity is excluded
-// from the executed roster; it is never itself the mechanism deciding execution order or
-// eligibility for a DIFFERENT gate.
+// Every discovered site gets exactly one `RequiredFloorDisposition`, keyed by its qualified
+// `module.function` identity. This is the single authority for that fact: the host loop in
+// `v1_compiler.cli_run` `run_required_floor` computes admission by testing a claim's authored
+// module name against `long_home_prefixes()` above, then REALIZES the arm this type already
+// names — it does not invent a second admission concept. A `Declined*` arm here is a fact about
+// why a site's identity is excluded from the executed roster; it is never itself the mechanism
+// deciding execution order or eligibility for a DIFFERENT gate.
+//
+// `DeclinedLiveTree` IS RETAINED HERE AND STAGED FOR DELETION AT THE ROOT. Its premise is
+// already known to be stale (below), but the deletion is a behaviour change — 782 sites move
+// from declined to executed — and it lands with the measurement that prices it, not with this
+// change. This paragraph is written in the tense of what IS, because an earlier revision of it
+// asserted the deletion as done while the Rust realization still returned the arm: the .dag
+// named two arms, `v1_compiler.cli_run` `run_required_floor` emitted three, and the header
+// claiming a completed deletion was rung inflation on the exact axis this module argues for
+// (caught by review 54035, on this PR).
+//
+// WHAT IT WAS: a site whose FILE declared `data live_tree_disposition: LiveTreeDisposition =
+// ReadsLiveTree` was declined, on the premise that reaching the live tree implies "cannot run
+// in the hermetic frame this floor runs". 778 identities across 112 files sat in that arm, and
+// since the floor cut left `claim_executor --required-floor` as the only witness-executing
+// consumer in the tree, they had no executing consumer at all — discovered every run, never
+// run, for as long as the arm existed.
+//
+// WHY THE PREMISE WAS STALE: hermetic mode carries the checkout-read carve-out
+// (`v1_interpreter` `hermetic_checkout_read_disposition_under`), under which a
+// `Filesystem.Read` of a path proven under the checkout root is INPUT access — the commit is
+// the run's deterministic input — and not a host effect. That carve-out landed AFTER
+// `live_tree_disposition` was authored. From that day "reads the live tree" no longer implied
+// "cannot run hermetically", and the decline was a prediction standing where the interpreter
+// already decides the same question exactly, per identity, at the effect boundary.
+//
+// WHAT WILL REPLACE IT: nothing here. Once the arm is deleted, every non-long identity is
+// routed and executed, its route carried by the claim that runs it
+// (`RequiredFloorClaim.execution_mode` — one route per identity, not a second vocabulary
+// restating it), and the interpreter's own typed `HermeticHostEffectRefused` classifies the
+// residue that genuinely has no hermetic arm. That residue reaches the receipt as
+// `RequiredFloorOutcome.route_gap`, which BLOCKS: a claim that never reached its subject is
+// not green, and it is not a failure either — the two have different remedies and are
+// reported apart. THAT MECHANISM IS ALREADY LIVE IN THIS CHANGE, which is what makes the
+// deletion safe to make next: the route-gap arm, its two-way roster join, and the
+// `SitePartitionInexact` wall all execute here, over the 101 identities that reached it
+// without this arm being touched at all.
+//
+// DELETION TRIGGER: the live-tree decline is removed when the cost measurement over its 782
+// sites lands (run 32345970386 measured 626/783 passing under execution), together with the
+// `witness_file_from_source` scan the split retained beside it.
+//
+// A NOTE ON WHAT DID *NOT* MOVE: `live_tree_disposition` itself is not deleted and is not
+// deprecated. It remains the declaration `reads_live_tree_effective` reads for AFFECTED-SET
+// SELECTION ELIGIBILITY, which is a different question from "can this execute" and keeps its
+// own single authority. What is staged for deletion is the floor's forked, syntactic second
+// copy of it.
 type RequiredFloorDisposition =
     Planned
   | DeclinedLongModule { matched_prefix: String }
@@ -67,6 +113,12 @@ fn long_home_storage_agreement(path_is_long: Bool, module_is_long: Bool) -> Long
 // `v2.workflow.floor_expected_red.floor_expected_red_roster` by its real qualified name. A
 // thin accessor here would be a second name for one authority, and this module would then own
 // a fact it does not produce.
+//
+// `v2.workflow.floor_route_gap.floor_route_gap_roster` is imported for exactly the same reason
+// and on exactly the same terms: the host evaluates it in this module's frame, so without the
+// edge the module is not in the world that frame was built from and the call fails with `no
+// such function` — the failure this comment was written to record the first time. The import is
+// reachability, not re-export.
 
 //
 // THREE PREFIXES, NOT ONE, and the count is what found that. A single `test.claim.long.` test

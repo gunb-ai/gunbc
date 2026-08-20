@@ -2114,7 +2114,13 @@ impl ExpectedRedDisposition {
                 completion: v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget,
                 ..
             } => Self::StaleQuarantineAssertionReturnedTrue,
-            ClaimOutcome::HostToolUnresolved { .. }
+            // A ROUTE GAP JOINS THE INFRASTRUCTURE ARM, not the assertion arm, and for the
+            // same reason `HostToolUnresolved` already sits there: enrollment asserts an
+            // expected VERDICT, and a claim whose route has no arm for a host effect never
+            // reached its subject to produce one. Mapping it to
+            // `AgreementAssertionReturnedFalse` would report an unrun witness as agreement.
+            ClaimOutcome::HostEffectRefused { .. }
+            | ClaimOutcome::HostToolUnresolved { .. }
             | ClaimOutcome::RuntimeError { .. }
             | ClaimOutcome::NotBool { .. } => Self::InfrastructureOrReferentFailure,
         }
@@ -2684,6 +2690,31 @@ fn claim_result_for_outcome(
                 resolve_realization,
             }
         }
+        // NOT ok, and NOT a host_dependency_refusal either. The row did not answer, so `ok`
+        // is false; but the remedy is a route for an effect this execution mode cannot
+        // realize, not a missing binary to provision, so it does not borrow
+        // `HostDependencyRefusal`'s channel and misreport itself as a tool-chain gap.
+        ClaimOutcome::HostEffectRefused { operation, ground } => ClaimResult {
+            function,
+            entry: entry.clone(),
+            ok: false,
+            detail: format!(
+                "hermetic route has no arm for {}: {} — the claim never reached its subject",
+                operation,
+                v1_compiler::cli_run::hermetic_effect_ground_label(&ground)
+            ),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
+            witness_row_costs: Vec::new(),
+            expectation_refusal: None,
+            budget_refusal: None,
+            host_dependency_refusal: None,
+            resolve_realization,
+        },
         ClaimOutcome::TimedOut {
             elapsed_ms,
             budget_ms,
@@ -4159,6 +4190,17 @@ fn scoped_witness_summary_outcome(
             | ClaimOutcome::NotBool { .. }
             | ClaimOutcome::RuntimeError { .. }
             | ClaimOutcome::HostToolUnresolved { .. } => ("executed", "false".to_string()),
+            // ITS OWN TAG, never "executed". The tag is what downstream reads, and this row
+            // did NOT execute its subject — reporting it as an execution that answered false
+            // is the conflation the typed outcome exists to remove.
+            ClaimOutcome::HostEffectRefused { operation, ground } => (
+                "route-gap",
+                format!(
+                    "operation={} ground={}",
+                    operation,
+                    v1_compiler::cli_run::hermetic_effect_ground_label(ground)
+                ),
+            ),
             ClaimOutcome::TimedOut {
                 elapsed_ms,
                 budget_ms,
@@ -10518,10 +10560,15 @@ fn run() -> Result<ExitCode, ExitCode> {
             &regen_receipt_path,
         ) {
             Ok(outcome) => {
-                eprintln!(
-                    "required-ci: regen first_generation_equal={} candidate={}",
-                    outcome.receipt.first_generation_equal, outcome.receipt.candidate_artifact
-                );
+                // Read through accessors, and print `unmeasured` rather than a plausible
+                // default when the pass built the wrong variant (#8650's shape).
+                let fge = outcome
+                    .receipt
+                    .first_generation_equal()
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "unmeasured".to_string());
+                let candidate = outcome.receipt.candidate_artifact().unwrap_or("unmeasured");
+                eprintln!("required-ci: regen first_generation_equal={fge} candidate={candidate}");
                 for failure in &outcome.failures {
                     eprintln!("required-ci: regen FAIL {failure}");
                 }
@@ -10533,7 +10580,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 // emitter reproduces itself is a SEPARATE question from whether it matches what
                 // is committed. Skipping the fixed point on a regen mismatch would conflate
                 // them and lose a determinism signal exactly when drift makes it interesting.
-                Some(outcome.receipt.candidate_generated_digest.clone())
+                Some(outcome.receipt.candidate_generated_digest().to_string())
             }
             Err(e) => {
                 // A REFUSAL IS NOT A MISMATCH. Nothing was emitted, so there is no pass-1
@@ -10554,10 +10601,12 @@ fn run() -> Result<ExitCode, ExitCode> {
                     Some(pass1),
                 ) {
                     Ok(outcome) => {
-                        eprintln!(
-                            "required-ci: regen-fixed-point fixed_point_equal={}",
-                            outcome.receipt.fixed_point_equal
-                        );
+                        let fpe = outcome
+                            .receipt
+                            .fixed_point_equal()
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "unmeasured".to_string());
+                        eprintln!("required-ci: regen-fixed-point fixed_point_equal={fpe}");
                         for failure in &outcome.failures {
                             eprintln!("required-ci: regen-fixed-point FAIL {failure}");
                         }
@@ -10628,9 +10677,28 @@ fn run() -> Result<ExitCode, ExitCode> {
         return match v1_compiler::cli_run::run_required_regen_fixed_point(&regen_receipt_path, None)
         {
             Ok(outcome) => {
+                // The provenance is printed, not just carried. This line previously read
+                // `first_generation_equal={}` off the receipt as though the fixed-point pass had
+                // measured it; it never does. Labelling it `referenced_` and naming the commit it
+                // came from means the log itself distinguishes measured from quoted -- and since
+                // the host refuses a cross-tree reference, `referenced_at` equals HEAD on every
+                // line that is allowed to print.
+                let (referenced_fge, referenced_at) = match outcome.receipt.prior() {
+                    Some(prior) => (
+                        prior.first_generation_equal.to_string(),
+                        prior.commit_sha.clone(),
+                    ),
+                    None => ("unavailable".to_string(), "unavailable".to_string()),
+                };
                 eprintln!(
-                    "required-regen-fixed-point: fixed_point_equal={} first_generation_equal={}",
-                    outcome.receipt.fixed_point_equal, outcome.receipt.first_generation_equal
+                    "required-regen-fixed-point: fixed_point_equal={} referenced_first_generation_equal={} referenced_at={}",
+                    outcome
+                        .receipt
+                        .fixed_point_equal()
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "unmeasured".to_string()),
+                    referenced_fge,
+                    referenced_at
                 );
                 for failure in &outcome.failures {
                     eprintln!("required-regen-fixed-point: FAIL {failure}");
@@ -10654,10 +10722,24 @@ fn run() -> Result<ExitCode, ExitCode> {
             &regen_receipt_path,
         ) {
             Ok(outcome) => {
-                eprintln!(
-                    "required-regen: first_generation_equal={} candidate={}",
-                    outcome.receipt.first_generation_equal, outcome.receipt.candidate_artifact
-                );
+                // Both values here ARE measured by this pass, so they print unqualified. Read
+                // through accessors rather than by matching the variant: the
+                // `required_regen_host` module is private to `cli_run`, so the type is usable here
+                // but not nameable. The accessors return Option because the sibling variant does
+                // not measure these fields; a `None` on this path would mean the first pass built
+                // the wrong variant, so it prints `unmeasured` rather than defaulting to a
+                // plausible-looking value.
+                let fge = outcome
+                    .receipt
+                    .first_generation_equal()
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "unmeasured".to_string());
+                let candidate = outcome
+                    .receipt
+                    .candidate_artifact()
+                    .unwrap_or("unmeasured")
+                    .to_string();
+                eprintln!("required-regen: first_generation_equal={fge} candidate={candidate}");
                 for failure in &outcome.failures {
                     eprintln!("required-regen: FAIL {failure}");
                 }
@@ -11898,11 +11980,26 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
         "required-floor: subject={} modules_resolved={} modules_excluded={}",
         outcome.subject_digest, outcome.modules_resolved, outcome.modules_excluded
     );
+    // THE SUBJECT THE ROSTER WAS PROJECTED FROM, STATED BEFORE THE ROSTER.
+    // `planned` is the population that SURVIVED site projection; printing it
+    // without `offered` and `declined_long` made the receipt unable to say what it
+    // dropped, which is how a roster that narrowed read exactly like one that did
+    // not. The three are printed together so the subtraction is visible rather
+    // than inferable.
+    eprintln!(
+        "required-floor: offered={} routed={} declined_long={} declined_live={} \
+         — every discovered site is exactly one of these",
+        outcome.sites_offered,
+        outcome.claims_planned,
+        outcome.declined_long_module,
+        outcome.declined_live_tree
+    );
     eprintln!(
         "required-floor: planned={} executed={} terminal={} passed={} \
-                 known_red_held={} failed={} stale_quarantine={} \
-                 interrupted_before_verdict={} completed_over_cost_requirement={} \
-                 host_tool_unresolved={} over_cost_line_diagnostic={}",
+         known_red_held={} failed={} stale_quarantine={} \
+         interrupted_before_verdict={} completed_over_cost_requirement={} \
+         host_tool_unresolved={} route_gap={} stale_route_gap={} \
+         over_cost_line_diagnostic={}",
         outcome.claims_planned,
         outcome.claims_executed,
         outcome.receipt_identities,
@@ -11913,14 +12010,12 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
         outcome.interrupted_before_verdict.len(),
         outcome.completed_over_cost_requirement.len(),
         outcome.host_tool_unresolved.len(),
+        outcome.route_gap.len(),
+        outcome.stale_route_gap.len(),
         outcome.over_cost_line_diagnostic
     );
-    // One receipt, both numbers (#8642). This replaced a per-miss trace line that had no hit
-    // counterpart, so the ratio it is really about was never readable.
-    //
-    // It reached main INSIDE the inline block this function replaced, so the merge had to graft
-    // it here deliberately: taking either side of that conflict wholesale would have dropped one
-    // of the two changes with no signal — #8642's receipt, or this extraction.
+    // One receipt, both numbers. This replaces a per-miss trace line that had no
+    // hit counterpart, so the ratio it is really about was never readable.
     let (memo_hits, memo_misses) = v1_compiler::cli_run::compile_dag_rust_emit_check_memo_counts();
     eprintln!(
         "required-floor: compile_dag_rust_emit_check_memo hits={memo_hits} \
@@ -11929,7 +12024,7 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     for failure in &outcome.failures {
         eprintln!("required-floor: FAIL {failure}");
     }
-    // FIVE CAUSES, FIVE COUNTS, ONE STOPPED LINE. All five refuse the run, and
+    // SEVEN CAUSES, SEVEN COUNTS, ONE STOPPED LINE. All seven refuse the run, and
     // they are reported apart because their remedies differ: a FAIL is a defect to
     // fix, a STALE-QUARANTINE is a fix that already landed and a roster row to
     // delete, an INTERRUPTED-BEFORE-VERDICT is an undecided claim whose real cost
@@ -11937,7 +12032,11 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // COMPLETED-OVER-COST-REQUIREMENT is a claim that reached a verdict and then
     // was found to cost too much (an exact measurement, not a bound), and a
     // HOST-TOOL-UNRESOLVED is an infra gap to provision (never a witness-cost
-    // chase). Summing them into `failed` would make an un-quarantine
+    // chase), and a ROUTE-GAP is a claim that never reached its subject because
+    // its execution route has no arm for a host effect it reached for — remedied by
+    // supplying a route, never by editing the witness, and a STALE-ROUTE-GAP is
+    // that same roster's other direction — a route that WAS supplied, whose
+    // enrollment must now be deleted. Summing them into `failed` would make an un-quarantine
     // indistinguishable from a regression in the alert signature, which is the
     // conflation `std.witness_admission` rules out. Splitting the former
     // `budget_refused` collection in two makes it visible whether a stopped run
@@ -11956,6 +12055,20 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     for unresolved in &outcome.host_tool_unresolved {
         eprintln!("required-floor: HOST-TOOL-UNRESOLVED {unresolved}");
     }
+    for gap in &outcome.route_gap {
+        eprintln!("required-floor: ROUTE-GAP {gap}");
+    }
+    for stale in &outcome.stale_route_gap {
+        eprintln!("required-floor: STALE-ROUTE-GAP {stale}");
+    }
+    // One receipt, both numbers (#8642). This replaced a per-miss trace line that had no hit
+    // counterpart, so the ratio it is really about was never readable. It reached main INSIDE
+    // the inline block this function replaced, so each merge has to graft it back deliberately.
+    let (memo_hits, memo_misses) = v1_compiler::cli_run::compile_dag_rust_emit_check_memo_counts();
+    eprintln!(
+        "required-floor: compile_dag_rust_emit_check_memo hits={memo_hits} \
+         misses={memo_misses}"
+    );
 }
 
 /// Whether the floor outcome permits a green run.
@@ -11968,6 +12081,8 @@ fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloor
         && outcome.interrupted_before_verdict.is_empty()
         && outcome.completed_over_cost_requirement.is_empty()
         && outcome.host_tool_unresolved.is_empty()
+        && outcome.route_gap.is_empty()
+        && outcome.stale_route_gap.is_empty()
 }
 
 fn main() -> ExitCode {
@@ -15177,11 +15292,11 @@ mod tests {
 
         // Every arm of the verdict coproduct is rendered by the mirror byte-equal to the
         // `.dag` oracle, and every arm produces a DISTINCT token. The bool this parameter
-        // used to be could only witness two of these seven; five typed outcomes were
+        // used to be could only witness two of these eight; five typed outcomes were
         // flattened into FAILED at the call site before the renderer was ever reached.
         // RED: collapsing any two arms to one token fails the distinctness assert;
         // drifting one arm's spelling in either representation fails byte-equality.
-        let arms: [(&str, v1_compiler::cli_run::CiWitnessVerdict); 7] = [
+        let arms: [(&str, v1_compiler::cli_run::CiWitnessVerdict); 8] = [
             (
                 "WitnessPassed",
                 v1_compiler::cli_run::CiWitnessVerdict::Passed,
@@ -15209,6 +15324,10 @@ mod tests {
             (
                 "WitnessKnownRed",
                 v1_compiler::cli_run::CiWitnessVerdict::KnownRed,
+            ),
+            (
+                "WitnessRouteGap",
+                v1_compiler::cli_run::CiWitnessVerdict::RouteGap,
             ),
         ];
         let mut rendered: Vec<String> = Vec::new();
