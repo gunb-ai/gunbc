@@ -271,3 +271,28 @@ fn f13_diag_total_row_count() -> Int {
     CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
+
+// ---------------------------------------------------------------------------
+// Form: deserialization / from_value / emit-side reconstruction. Static read
+// of v1_interpreter_dispatch_generated.rs's 124-entry builtin dispatch table
+// found no builtin returning a generic/parametric T from untyped data - so
+// there is no serde-style bypass distinct from record-literal/cast/variant
+// construction. This probe turns that read-based claim into an EXECUTED one:
+// it attempts the most plausible such call (a guessed from_json-shaped
+// builtin name) against the sealed fixture type, cross-module, and measures
+// what diagnostic class actually fires - confirming by execution that no
+// such construction path resolves at all, rather than resolving and silently
+// bypassing sole_constructor.
+// ---------------------------------------------------------------------------
+data f14_deserialize_attempt_source: String = "module probe_f14_deserialize_attempt\nimport test.fixture.sole_constructor_sealed.definer { LocalValidated }\nfn forged() -> LocalValidated {\n  from_json(source: \"{ \\\"n\\\": 999 }\")\n}\n"
+
+fn f14_diag_total_row_count() -> Int {
+  match census_of(source: f14_deserialize_attempt_source) {
+    CensusObserved { rows: rows } => census_total_count(rows: rows)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn f14_diag_sole_ctor_count() -> Int {
+  violation_count(source: f14_deserialize_attempt_source, wanted: "SoleConstructorViolation")
+}

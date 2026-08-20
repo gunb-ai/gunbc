@@ -807,15 +807,38 @@ than argued.
 execution — `gunbc run --claim-run` against a synthetic cross-module probe corpus compiled
 live via `compile_dag_diagnostic_census`, never by reading alone):**
 
-*Construction forms — CONFIRMED, wall fires uniformly.* Record-literal construction of a
-cross-module sole_constructor type at every AST position tested — return, let-binding,
-call-argument, list-element, nested-field-init, branch-result — and cast construction at
-call-argument and list-element position, all refuse with `SoleConstructorViolation`
-(discriminating RED) while an in-module (sanctioned) mint of the same type stays clean
-(accepted-positive control). This is two *forms* (record literal, cast), not six-plus
-independent forms — the AST position varies, the form reaching `04_infer`
-`sole_constructor_construction_diags` does not (only `infer_record_lit` and the
-`ExprCast` arm call it).
+*Construction forms — CONFIRMED, wall fires uniformly for the two forms that reach it; a
+THIRD form, variant construction of a coproduct, is a CONFIRMED HOLE.* Record-literal
+construction of a cross-module sole_constructor type at every AST position tested —
+return, let-binding, call-argument, list-element, nested-field-init, branch-result — and
+cast construction at call-argument and list-element position, all refuse with
+`SoleConstructorViolation` (discriminating RED) while an in-module (sanctioned) mint of the
+same type stays clean (accepted-positive control). This is two *forms* (record literal,
+cast), not six-plus independent forms — the AST position varies, the form reaching
+`04_infer` `sole_constructor_construction_diags` does not (only `infer_record_lit` and the
+`ExprCast` arm call it). **Confirmed by execution, not by trusting that source-comment
+claim: variant construction of a `sole_constructor` COPRODUCT is unwired entirely.** Fixture
+`test.fixture.sole_constructor_variant_probe.definer` declares
+`type SealedChoice sole_constructor = SealedA { n: Int } | SealedB { s: String }`; probe f13
+forges `SealedA { n: 999 }` cross-module. Measured: zero `SoleConstructorViolation` rows AND
+zero total diagnostic rows of any class (both genuine `CensusObserved` zeros, not the `-1`
+`CensusNotRunnable` sentinel `violation_count` already distinguishes) — the synthetic module
+compiles completely cleanly while forging a sealed variant from outside its declaring file.
+Root cause matches the two-call-site finding exactly: neither the `ExprCast` arm nor
+`infer_record_lit_structural` is reached by variant-literal construction (a distinct AST
+node), so `sole_constructor_construction_diags` is never invoked for this form at all. This
+is a real, third construction form the wall does not cover, not a variant of the
+already-known order-dependence hole.
+
+*Deserialization / from_value / emit-side reconstruction — CONFIRMED NOT APPLICABLE: no
+such generic construction path exists in the language.* Enumerated all 124 host builtins
+registered in `v1_interpreter_dispatch_generated.rs`'s dispatch table: none returns a
+generic/parametric `T` from untyped input (String/JSON/YAML) — every builtin's return type
+is a fixed concrete shape. There is no reflection-based or serde-style mechanism in v1 that
+constructs an arbitrary user-declared nominal type from external data outside of ordinary
+record-literal, cast, or (per above) variant-literal expression forms. This closes the
+deserialization sub-question as not a distinct bypass route, rather than leaving it
+untested — the only unwired literal-construction form found is variant construction, above.
 
 *Generic carriers — CONFIRMED for the two forms above, on a parameterized carrier.* A
 cross-module record literal and a cross-module cast of `OrderedClosedInterval<T>`
