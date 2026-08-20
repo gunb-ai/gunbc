@@ -7566,6 +7566,23 @@ pub enum ClaimTerminality {
 /// crossing either is `NotEvaluated` and blocks — see `RequiredFloorClaim`'s
 /// `cpu_safety_limit_ms` / `wall_safety_limit_ms` fields for the live-wired instantiation of
 /// this policy (`v2.workflow.required_floor`'s two `.dag` constants are its declared values).
+///
+/// PREEMPTION-1 (operator-directed, 2026-08-19): "crossing either blocks" holds only when
+/// `eval_expr`'s cooperative stride-poll actually observes the crossing (see that function's own
+/// comment on the residue this leaves, and `std.evaluation_budget`
+/// `evaluation_budget_opaque_host_call_note` for the modeled fact). A claim whose cost accrues
+/// entirely inside one opaque host call — a native `free_call.*` arm such as
+/// `compile_dag_rust_emit_check`, which runs synchronously and never calls back into `eval_expr`
+/// — crosses neither limit as far as the poll can tell, however long it runs, and completes as
+/// `ClaimTerminality::VerdictReached` rather than `SafetyInterrupted`. Measured, not suspected:
+/// floor run 32301212975 recorded `root_d_checkpoint_scalar_declared_arity_witness_holds`
+/// (dominated by a `compile_dag_rust_emit_check` call) reaching a verdict at 60317ms CPU against
+/// a 5000ms `cpu_ms` limit, twelve times over and uninterrupted, reported through
+/// `RequiredFloorOutcome`'s `completed_over_cost_requirement` population rather than through a
+/// safety interrupt. These two limits are real protection for cost that accrues across many
+/// `eval_expr` calls and no protection — not weaker, none — for cost that accrues inside a
+/// single opaque host call; nothing downstream may be built on the assumption that arming them
+/// makes a host call interruptible.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WitnessSafetyPolicy {
     pub cpu_ms: u64,
