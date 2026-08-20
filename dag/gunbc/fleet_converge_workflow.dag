@@ -18,6 +18,8 @@ import gunbc.fleet_workflow_steps {
   ci_release_bins_unpack_verify_step,
   ci_fleet_wif_auth_step,
   ci_fleet_key_agent_step,
+  ci_spark_admin_credential_step,
+  ci_spark_admin_credential_cleanup_step,
   ci_fleet_key_agent_cleanup_step,
   gunbc_ci_aux_step_timeout_minutes,
   gunbc_ci_spark_serving_step_timeout_minutes,
@@ -257,6 +259,7 @@ fn fleet_converge_job() -> Job {
           ci_release_bins_unpack_verify_step(),
           ci_fleet_wif_auth_step(),
           ci_fleet_key_agent_step(),
+          ci_spark_admin_credential_step(if_condition: fleet_converge_spark_grants_step_if),
         ]
       ),
       [
@@ -268,6 +271,7 @@ fn fleet_converge_job() -> Job {
         fleet_converge_spark_grants_step(),
         fleet_converge_spark_observe_step(),
         fleet_converge_spark_reboot_step(),
+        ci_spark_admin_credential_cleanup_step(),
         ci_fleet_key_agent_cleanup_step(),
       ]
     ),

@@ -1,4 +1,7 @@
 module gunbc.ci_spec
+import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_resource }
+import gunbc.spark_credential_workflow { spark_administrator_password_secret_ref }
+import gunbc.spark_grant_privileged_operation { spark_grant_credential_path_env }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
@@ -565,6 +568,58 @@ fn gunbc_ci_fleet_key_agent_script() -> String {
     "echo \"SSH_AUTH_SOCK=$SSH_AUTH_SOCK\" >> \"$GITHUB_ENV\"\n",
     "echo \"SSH_AGENT_PID=$SSH_AGENT_PID\" >> \"$GITHUB_ENV\"\n",
     "echo \"fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; fingerprint verified against modeled authority; key file wiped)\"\n",
+  ], "")
+}
+
+// A3 in-run administrator-credential materialization, the same lifecycle as the fleet key one step
+// above and deliberately not a variation on it: WIF token from the google_auth_action step by env,
+// one PINNED secret version, a 0600 file under RUNNER_TEMP, and a trap armed BEFORE the credential
+// touches disk so any failure removes it regardless of where set -e aborts.
+//
+// WHAT GOES TO GITHUB_ENV IS THE PATH, NEVER THE CREDENTIAL. An environment variable holding the
+// password would be readable by every child process the job spawns and printed by any diagnostic
+// that dumps the environment — and this repository's own receipts print argv. A path discloses
+// nothing to anyone who cannot already read the file.
+//
+// The URL is derived from the modeled SecretRef rather than spelled, so this step and the lease that
+// authorizes it cannot name different versions. There is no fingerprint check as there is for the
+// key: a password has no derivable public half to compare against, so the identity evidence is
+// sudo's own accept-or-reject, which the privileged step classifies as its own outcome.
+data gunbc_ci_spark_admin_credential_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_spark_admin_credential_script",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_spark_admin_credential_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_spark_admin_credential_script — concat-built foreign-executor (GitHub Actions run:) shell materializing the spark administrator password from its modeled Secret Manager version into a 0600 RUNNER_TEMP file whose PATH (never the credential) is exported; DISSOLVES WHEN the typed secret-materialization effect (SecretRef -> run-local file, SECRET-VERSION-LIFECYCLE-0 machinery) lands on host_effect_apply and the step becomes an emitted typed effect")
+
+fn gunbc_ci_spark_admin_credential_script() -> String {
+  join([
+    "# ", dissolution_description(condition: gunbc_ci_spark_admin_credential_shell_emit_dissolution_trigger), "\n",
+    "set -euo pipefail\n",
+    "umask 077\n",
+    "CRED_FILE=\"$RUNNER_TEMP/spark-administrator-credential\"\n",
+    "cleanup() { rm -f \"$CRED_FILE\"; }\n",
+    "trap cleanup EXIT\n",
+    "curl -sSf -H \"Authorization: Bearer $WIF_ACCESS_TOKEN\" \"", secret_ref_access_url(ref: spark_administrator_password_secret_ref), "\" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)[\"payload\"][\"data\"]))' > \"$CRED_FILE\"\n",
+    "chmod 600 \"$CRED_FILE\"\n",
+    "if [ ! -s \"$CRED_FILE\" ]; then echo \"SparkAdministratorCredentialEmpty: ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), " produced no payload; contacting NO host\" >&2; exit 1; fi\n",
+    "trap - EXIT\n",
+    "echo \"", spark_grant_credential_path_env as String, "=$CRED_FILE\" >> \"$GITHUB_ENV\"\n",
+    "echo \"spark-admin-credential: materialized from ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), " to a 0600 run-local file; the PATH is exported, the credential is not\"\n",
+  ], "")
+}
+
+// The credential teardown, a FRESH per-job effect for the same reason the agent teardown is: each
+// isolated job materializes and must remove its own file. Named so the workflow step and any
+// fresh-effect list reference ONE authority rather than an inline literal duplicated per job.
+fn gunbc_ci_spark_admin_credential_cleanup_script() -> String {
+  join([
+    "if [ -n \"$\{", spark_grant_credential_path_env as String, ":-}\" ]; then rm -f \"$\{",
+    spark_grant_credential_path_env as String, "}\" || true; fi\n",
   ], "")
 }
 

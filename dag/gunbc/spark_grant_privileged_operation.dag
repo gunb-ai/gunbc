@@ -2,7 +2,7 @@ module gunbc.spark_grant_privileged_operation
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import product.placement_supply { HostIdentity }
-import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_secret_resource }
+import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_secret_resource, secret_ref_version_resource, secret_ref_access_url }
 import gunbc.spark_bootstrap_credential {
   SparkCredentialStanding,
   CredentialMaterialized,
@@ -204,10 +204,16 @@ data spark_grant_credential_path_env: NonEmptyStr = "GUNBC_SPARK_BOOTSTRAP_CREDE
 fn lease_secret_version_resource(lease: OperatorBootstrapCredentialLease) -> String? {
   match lease.administrator {
     CredentialMaterializationPending => none
-    CredentialMaterialized { ref: r } =>
-      Present {
-        value: join([secret_ref_secret_resource(ref: r), "/versions/", r.version as String], ""),
-      }
+    CredentialMaterialized { ref: r } => Present { value: secret_ref_version_resource(ref: r) }
+  }
+}
+
+// The URL the materializing step must fetch, derived rather than spelled, so the step and the lease
+// cannot name different versions.
+fn lease_secret_access_url(lease: OperatorBootstrapCredentialLease) -> String? {
+  match lease.administrator {
+    CredentialMaterializationPending => none
+    CredentialMaterialized { ref: r } => Present { value: secret_ref_access_url(ref: r) }
   }
 }
 

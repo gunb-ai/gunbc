@@ -178,6 +178,24 @@ jobs:
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         timeout-minutes: 5
+      - name: Materialize the spark administrator credential in-run (SM versions/1 pinned -> RUNNER_TEMP 0600; PATH exported, credential not)
+        run: |
+          # 🟡 dissolve-on: gunbc_ci_spark_admin_credential_script — concat-built foreign-executor (GitHub Actions run:) shell materializing the spark administrator password from its modeled Secret Manager version into a 0600 RUNNER_TEMP file whose PATH (never the credential) is exported; DISSOLVES WHEN the typed secret-materialization effect (SecretRef -> run-local file, SECRET-VERSION-LIFECYCLE-0 machinery) lands on host_effect_apply and the step becomes an emitted typed effect
+          set -euo pipefail
+          umask 077
+          CRED_FILE="$RUNNER_TEMP/spark-administrator-credential"
+          cleanup() { rm -f "$CRED_FILE"; }
+          trap cleanup EXIT
+          curl -sSf -H "Authorization: Bearer $WIF_ACCESS_TOKEN" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/spark-administrator-password/versions/1:access" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)["payload"]["data"]))' > "$CRED_FILE"
+          chmod 600 "$CRED_FILE"
+          if [ ! -s "$CRED_FILE" ]; then echo "SparkAdministratorCredentialEmpty: projects/gunbai-secrets/secrets/spark-administrator-password/versions/1 produced no payload; contacting NO host" >&2; exit 1; fi
+          trap - EXIT
+          echo "GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE=$CRED_FILE" >> "$GITHUB_ENV"
+          echo "spark-admin-credential: materialized from projects/gunbai-secrets/secrets/spark-administrator-password/versions/1 to a 0600 run-local file; the PATH is exported, the credential is not"
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        if: github.event.inputs.mode == 'spark_grants'
+        timeout-minutes: 5
       - name: Fleet converge plan (membership_reconcile → artifact)
         id: plan
         run: |
@@ -266,6 +284,11 @@ jobs:
           SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
         if: github.event.inputs.mode == 'spark_reboot'
         timeout-minutes: 60
+      - name: Remove the in-run administrator credential (never outlives the job)
+        run: |
+          if [ -n "${GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE:-}" ]; then rm -f "${GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE}" || true; fi
+        if: always()
+        timeout-minutes: 5
       - name: Kill the in-run ssh-agent (key never outlives the job)
         run: |
           if [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k || true; fi
