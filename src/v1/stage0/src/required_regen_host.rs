@@ -269,6 +269,21 @@ fn measure_generated_surface(
 /// sides disagree about, is ignorance, and rendering ignorance as the clean verdict is the
 /// empty-observation narrow DESIGN names: strictly worse than widening, because a widen is
 /// merely expensive and a narrow is silently uncovered.
+/// The emitted generated surface, keyed by basename.
+///
+/// Routed through the SAME `measure_generated_surface` the drift gate and the regen path use, so
+/// the bytes a behavioural receipt compiles are the bytes the drift gate compared. A second emit
+/// here would be a second producer of the candidate itself -- the one fact a receipt absolutely
+/// cannot afford to have two of.
+pub fn emitted_generated_sources() -> Result<HashMap<String, String>, String> {
+    let workspace = workspace_root();
+    let stage0_src = workspace.join("src/v1/stage0/src");
+    match measure_generated_surface(&workspace, &stage0_src)? {
+        GeneratedSurfaceMeasured::Refused { reason } => Err(reason),
+        GeneratedSurfaceMeasured::Measured { emitted, .. } => Ok(emitted),
+    }
+}
+
 pub fn measure_generated_drift() -> Result<GeneratedDriftMeasurement, String> {
     let workspace = workspace_root();
     let stage0_src = workspace.join("src/v1/stage0/src");

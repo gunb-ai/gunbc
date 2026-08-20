@@ -18315,6 +18315,19 @@ enum EnumeratedDomain {
     },
 }
 
+/// One parameter's domain as the ACTUAL VALUES, rendered as Rust expressions against the emitted
+/// mirror, plus how that domain was established.
+///
+/// The count is `values.len()`. It is not carried separately, because a cardinality computed
+/// beside an enumeration is a second producer of one fact: the two can disagree, and the one that
+/// gets reported is the one that never ran. An earlier revision derived only the count, which is
+/// why the corpus could be described in the report but never executed.
+#[derive(Debug, Clone)]
+struct ParameterDomain {
+    values: Vec<String>,
+    partition: Option<String>,
+}
+
 impl EnumeratedDomain {
     fn report(&self) -> String {
         match self {
@@ -18325,12 +18338,6 @@ impl EnumeratedDomain {
                 cardinality,
                 partition,
             } => format!("exhaustive-over-partition(|reps|={cardinality}, {partition})"),
-        }
-    }
-    fn cardinality(&self) -> usize {
-        match self {
-            EnumeratedDomain::Exhaustive { cardinality } => *cardinality,
-            EnumeratedDomain::ExhaustiveOverDerivedPartition { cardinality, .. } => *cardinality,
         }
     }
 }
@@ -18649,25 +18656,22 @@ fn int_literal_of(node: &v1_compiler::v1_std_core::Node) -> Option<i64> {
     }
 }
 
-/// Derive the domain for one parameter type, or refuse naming the type that defeated it.
+/// The cap on one function's corpus. Exceeding it REFUSES rather than sampling: a receipt that
+/// ran a subset while reporting the whole is the fabricated-plausible-output failure, and the
+/// cheapest way to get one is a Cartesian product nobody bounded.
+const MAX_TUPLES_PER_FUNCTION: usize = 4096;
+
+/// Enumerate a parameter's domain as Rust expressions, or REFUSE naming the type that defeated it.
 ///
-/// The refusal is the point of the fragment. Anything not listed here — an unbounded `String`, a
-/// function-valued parameter, a recursive type, anything reaching a host effect — REFUSES rather
-/// than being sampled. A sampled corpus would let the mode report a receipt for every module
-/// while a behaviour change hides in an unsampled cell: a receipt that USUALLY cannot fail,
-/// which is worse than a refusal, because a refusal is counted and ranks for work while a
-/// usually-passing receipt reports as done.
-///
-/// `int_partition` carries the partition derived for a DIRECTLY NAMED parameter. It is `None`
-/// everywhere else, and an `Int` reached with `None` refuses: the partition is a fact about one
-/// parameter's own occurrences, and there is no such trace for an `Int` sitting inside a record
-/// field or a list element.
-fn derive_parameter_domain(
+/// `module_alias` is the emitted mirror's module, so every constructor is written against the
+/// artifact under test rather than against a guess about where a type lives.
+fn enumerate_parameter_values(
     ty: &str,
     types: &std::collections::HashMap<String, DagTypeDecl>,
     depth: usize,
     int_partition: Option<&IntPartition>,
-) -> Result<EnumeratedDomain, String> {
+    module_alias: &str,
+) -> Result<ParameterDomain, String> {
     if depth > 4 {
         return Err(format!(
             "{ty} (nesting deeper than the fragment enumerates)"
@@ -18675,13 +18679,20 @@ fn derive_parameter_domain(
     }
     let ty = ty.trim();
     if ty == "Bool" {
-        return Ok(EnumeratedDomain::Exhaustive { cardinality: 2 });
+        return Ok(ParameterDomain {
+            values: vec!["false".to_string(), "true".to_string()],
+            partition: None,
+        });
     }
     if ty == "Int" {
         return match int_partition {
-            Some(p) => Ok(EnumeratedDomain::ExhaustiveOverDerivedPartition {
-                cardinality: p.representatives.len(),
-                partition: p.describe(),
+            Some(p) => Ok(ParameterDomain {
+                values: p
+                    .representatives
+                    .iter()
+                    .map(|r| format!("{r}i64"))
+                    .collect(),
+                partition: Some(p.describe()),
             }),
             None => Err(
                 "Int (reached through a container; a partition is derived from a parameter's own \
@@ -18690,41 +18701,67 @@ fn derive_parameter_domain(
             ),
         };
     }
-    // `List<T>` REFUSES. It was previously enumerated to length 3, which is the deleted bounded
-    // arm: sequence length is unbounded, and nothing about a list parameter makes lengths 0..=3
-    // representative of the rest. The next rung is the same move made here for `Int` -- classes
-    // derived from the length comparisons the body actually performs -- and it is named rather
-    // than built, because deriving it needs the element domain and the fold's own behaviour, not
-    // just the length.
     if ty.starts_with("List<") {
         return Err(format!(
             "{ty} (unbounded sequence length; a length partition is not derived)"
         ));
     }
     match types.get(ty) {
-        Some(DagTypeDecl::ClosedNullaryEnum { variants }) => Ok(EnumeratedDomain::Exhaustive {
-            cardinality: variants.len(),
+        Some(DagTypeDecl::ClosedNullaryEnum { variants }) => Ok(ParameterDomain {
+            values: variants
+                .iter()
+                .map(|v| format!("{module_alias}::{ty}::{v}"))
+                .collect(),
+            partition: None,
         }),
-        // Declared, closed, and still NOT enumerable: each variant's payload needs its own
-        // domain. Named as its own refusal because the alternative wording — "not a closed type
-        // declared by this authority" — is FALSE for this population and sends the reader to
-        // close a type that is already closed.
         Some(DagTypeDecl::PayloadCoproduct { variant_count }) => Err(format!(
             "{ty} (closed coproduct, but {variant_count} variants carry payloads whose domains \
              are not enumerated)"
         )),
         Some(DagTypeDecl::Record { fields }) => {
-            let mut card = 1usize;
+            // The record's own domain is the Cartesian product of its fields'. Built as literal
+            // constructor expressions so the driver names every field, which is also what makes a
+            // field added upstream a COMPILE error in the driver rather than a silent default.
+            let mut acc: Vec<Vec<(String, String)>> = vec![Vec::new()];
+            let mut partitioned = Vec::new();
             for (fname, fty) in fields {
-                let d = derive_parameter_domain(fty, types, depth + 1, None)
+                let d = enumerate_parameter_values(fty, types, depth + 1, None, module_alias)
                     .map_err(|e| format!("{ty}.{fname}: {e}"))?;
-                card = card.saturating_mul(d.cardinality());
+                if let Some(pt) = d.partition.clone() {
+                    partitioned.push(format!("{fname}: {pt}"));
+                }
+                let mut next = Vec::new();
+                for prefix in &acc {
+                    for v in &d.values {
+                        if next.len() > MAX_TUPLES_PER_FUNCTION {
+                            return Err(format!(
+                                "{ty} (record product exceeds {MAX_TUPLES_PER_FUNCTION} values; \
+                                 refusing rather than sampling)"
+                            ));
+                        }
+                        let mut row = prefix.clone();
+                        row.push((fname.clone(), v.clone()));
+                        next.push(row);
+                    }
+                }
+                acc = next;
             }
-            Ok(EnumeratedDomain::Exhaustive { cardinality: card })
+            Ok(ParameterDomain {
+                values: acc
+                    .into_iter()
+                    .map(|row| {
+                        let inner: Vec<String> =
+                            row.into_iter().map(|(f, v)| format!("{f}: {v}")).collect();
+                        format!("{module_alias}::{ty} {{ {} }}", inner.join(", "))
+                    })
+                    .collect(),
+                partition: if partitioned.is_empty() {
+                    None
+                } else {
+                    Some(partitioned.join("; "))
+                },
+            })
         }
-        // NOT in the fragment. String is the common case and is named explicitly rather than
-        // falling into a generic arm, because "unbounded String" is the single most likely
-        // reason a real module refuses and the report should say so in those words.
         None => Err(if ty == "String" || ty == "NonEmptyStr" {
             format!("{ty} (unbounded String domain)")
         } else {
@@ -18758,7 +18795,6 @@ struct DagFnSignature {
 /// it is kept rather than retired once the parser owned the read: two independent readers of one
 /// fact disagreeing is the only cheap signal that one of them is wrong.
 fn fn_signatures_from_module(module: &v1_compiler::v1_std_core::Node) -> Vec<DagFnSignature> {
-    use v1_compiler::v1_std_core::Connective;
     let mut out = Vec::new();
     for decl in module.children.iter() {
         // A declaration is a FUNCTION exactly when it carries a body. Measured against the live
@@ -18808,8 +18844,11 @@ fn fn_signatures_from_module(module: &v1_compiler::v1_std_core::Node) -> Vec<Dag
 /// What the fragment can say about one module's surface.
 struct ModuleCorpusPlan {
     module_path: String,
-    /// Functions whose every parameter domain derived, with the combined domain per function.
-    derivable: Vec<(String, EnumeratedDomain)>,
+    /// Functions whose every parameter domain derived, with the combined domain per function AND
+    /// the argument tuples that domain actually consists of. The tuples are what the driver runs;
+    /// carrying only the domain description is how an earlier revision could report a corpus it
+    /// had never executed.
+    derivable: Vec<(String, EnumeratedDomain, Vec<Vec<String>>)>,
     /// Functions that defeated derivation, each naming the type responsible.
     refused: Vec<(String, String)>,
     /// `fn` lines the authority declares vs signatures actually parsed. These must agree; a gap
@@ -18917,6 +18956,7 @@ fn plan_module_corpus(
     source: &str,
     module: &v1_compiler::v1_std_core::Node,
     types: &std::collections::HashMap<String, DagTypeDecl>,
+    module_alias: &str,
 ) -> ModuleCorpusPlan {
     let sigs = fn_signatures_from_module(module);
     // Kept as a CROSS-CHECK, not as the source of truth. The authored `fn ` line count and the
@@ -18931,10 +18971,12 @@ fn plan_module_corpus(
     let mut derivable = Vec::new();
     let mut refused = Vec::new();
     for sig in &sigs {
-        let mut card = 1usize;
         let mut partitioned = false;
         let mut partitions = Vec::new();
         let mut failure: Option<String> = None;
+        // Tuples are accumulated as a Cartesian product across parameters. A zero-parameter
+        // function has exactly one tuple -- the empty one -- which is a real call, not an absence.
+        let mut tuples: Vec<Vec<String>> = vec![Vec::new()];
         for (pname, pty) in &sig.params {
             // An `Int` parameter is asked about its own occurrences first. The partition IS its
             // domain, so a refusal here refuses the function -- there is no fallback window to
@@ -18960,13 +19002,31 @@ fn plan_module_corpus(
             } else {
                 None
             };
-            match derive_parameter_domain(pty, types, 0, int_partition.as_ref()) {
+            match enumerate_parameter_values(pty, types, 0, int_partition.as_ref(), module_alias) {
                 Ok(d) => {
-                    card = card.saturating_mul(d.cardinality());
-                    if let EnumeratedDomain::ExhaustiveOverDerivedPartition { partition, .. } = &d {
+                    if let Some(pt) = d.partition.clone() {
                         partitioned = true;
-                        partitions.push(format!("{pname}: {partition}"));
+                        partitions.push(format!("{pname}: {pt}"));
                     }
+                    let mut next: Vec<Vec<String>> = Vec::new();
+                    for prefix in &tuples {
+                        for v in &d.values {
+                            if next.len() >= MAX_TUPLES_PER_FUNCTION {
+                                break;
+                            }
+                            let mut row = prefix.clone();
+                            row.push(v.clone());
+                            next.push(row);
+                        }
+                    }
+                    if next.len() >= MAX_TUPLES_PER_FUNCTION {
+                        failure = Some(format!(
+                            "{pname} (corpus exceeds {MAX_TUPLES_PER_FUNCTION} tuples; refusing \
+                             rather than running a subset and reporting the whole)"
+                        ));
+                        break;
+                    }
+                    tuples = next;
                 }
                 Err(offending) => {
                     failure = Some(offending);
@@ -18977,15 +19037,18 @@ fn plan_module_corpus(
         match failure {
             Some(offending) => refused.push((sig.name.clone(), offending)),
             None => {
+                // The reported cardinality IS the number of tuples that will run. Deriving it
+                // separately would let the report and the execution disagree.
+                let cardinality = tuples.len();
                 let domain = if partitioned {
                     EnumeratedDomain::ExhaustiveOverDerivedPartition {
-                        cardinality: card,
+                        cardinality,
                         partition: partitions.join("; "),
                     }
                 } else {
-                    EnumeratedDomain::Exhaustive { cardinality: card }
+                    EnumeratedDomain::Exhaustive { cardinality }
                 };
-                derivable.push((sig.name.clone(), domain));
+                derivable.push((sig.name.clone(), domain, tuples));
             }
         }
     }
@@ -18996,6 +19059,209 @@ fn plan_module_corpus(
         declared_fn_lines,
         parsed_signatures: sigs.len(),
     }
+}
+
+/// The verdict for one candidate module. Three arms, and the third is not a soft pass.
+#[derive(Debug, Clone, PartialEq)]
+enum ReceiptVerdict {
+    /// Both builds ran the derived corpus and every call agreed.
+    Equivalent { calls: usize },
+    /// Both builds ran and at least one call disagreed. The first difference is carried because
+    /// a count alone cannot be acted on.
+    Divergent {
+        calls: usize,
+        first_difference: String,
+    },
+    /// The comparison could NOT be taken. Never reported as equivalence: an emit that failed, a
+    /// driver that would not compile, or a corpus with nothing in it is ignorance, and rendering
+    /// ignorance as the clean verdict is the empty-observation narrow.
+    Refused { reason: String },
+}
+
+/// Generate the driver: one `println!` per call in the derived corpus.
+///
+/// The transcript line carries the function name and the argument expressions as authored, so a
+/// divergence names the exact call rather than an index into a product nobody can reconstruct.
+/// Output goes through `{:?}`, which is why the fragment admits only types the emitted mirror
+/// derives `Debug` on.
+fn generate_receipt_driver(module_alias: &str, plan: &ModuleCorpusPlan) -> String {
+    let mut out = String::new();
+    out.push_str("// GENERATED by claim_executor --behavioral-receipt. Do not edit.\n");
+    out.push_str("#[allow(unused_imports)]\nfn main() {\n");
+    out.push_str(&format!("    use v1_compiler::{module_alias} as m;\n"));
+    for (name, _domain, tuples) in &plan.derivable {
+        for args in tuples {
+            let call = format!("m::{name}({})", args.join(", "));
+            let shown = args.join(", ").replace('"', "\\\"");
+            out.push_str(&format!(
+                "    println!(\"{name}({shown}) = {{:?}}\", {call});\n"
+            ));
+        }
+    }
+    out.push_str("}\n");
+    out
+}
+
+/// Build the crate as it currently stands, compile the driver against it, and return the
+/// transcript. Both halves of the differential go through THIS function, so the two transcripts
+/// cannot differ because of how they were produced.
+fn run_receipt_driver(
+    workspace: &std::path::Path,
+    driver_src: &str,
+    label: &str,
+) -> Result<Vec<String>, String> {
+    let drv_dir = workspace.join("target/behavioral-receipt");
+    fs::create_dir_all(&drv_dir).map_err(|e| format!("create {}: {e}", drv_dir.display()))?;
+    let src_path = drv_dir.join(format!("driver_{label}.rs"));
+    fs::write(&src_path, driver_src).map_err(|e| format!("write driver: {e}"))?;
+
+    let lib = Command::new("cargo")
+        .args(["build", "--release", "-p", "v1-compiler", "--lib"])
+        .current_dir(workspace)
+        .output()
+        .map_err(|e| format!("spawn cargo ({label}): {e}"))?;
+    if !lib.status.success() {
+        return Err(format!(
+            "{label}: the crate did not build; the candidate is not admissible without a compile. \
+             {}",
+            String::from_utf8_lossy(&lib.stderr)
+                .lines()
+                .filter(|l| l.starts_with("error"))
+                .take(4)
+                .collect::<Vec<_>>()
+                .join(" | ")
+        ));
+    }
+    let bin_path = drv_dir.join(format!("driver_{label}"));
+    let rustc = Command::new("rustc")
+        .args(["--edition", "2021", "-O"])
+        .arg(&src_path)
+        .arg("--extern")
+        .arg(format!(
+            "v1_compiler={}",
+            workspace
+                .join("target/release/libv1_compiler.rlib")
+                .display()
+        ))
+        .arg("-L")
+        .arg(workspace.join("target/release/deps"))
+        .arg("-o")
+        .arg(&bin_path)
+        .current_dir(workspace)
+        .output()
+        .map_err(|e| format!("spawn rustc ({label}): {e}"))?;
+    if !rustc.status.success() {
+        return Err(format!(
+            "{label}: the driver did not compile against the mirror: {}",
+            String::from_utf8_lossy(&rustc.stderr)
+                .lines()
+                .filter(|l| l.starts_with("error"))
+                .take(4)
+                .collect::<Vec<_>>()
+                .join(" | ")
+        ));
+    }
+    let run = Command::new(&bin_path)
+        .current_dir(workspace)
+        .output()
+        .map_err(|e| format!("spawn driver ({label}): {e}"))?;
+    if !run.status.success() {
+        return Err(format!(
+            "{label}: the driver ran and exited {}; a corpus call panicking is a behavioural fact, \
+             but it is not one this comparison can attribute, so it refuses",
+            run.status
+        ));
+    }
+    Ok(String::from_utf8_lossy(&run.stdout)
+        .lines()
+        .map(str::to_string)
+        .collect())
+}
+
+/// The two-build differential for ONE candidate module.
+///
+/// Seed transcript first, from the tree as committed. Then the emitted candidate is written over
+/// its mirror, the crate is rebuilt, and the SAME driver runs again. The mirror is restored on
+/// every path, including failure -- leaving a candidate in the tree would make the next reader's
+/// measurement a lie.
+///
+/// This is what the whole fragment is for. CI proves the committed mirrors equal what the
+/// authority emits and that the emit repeats; it never compiles the candidate, let alone runs it.
+/// A byte comparison cannot distinguish a rename from a semantic change, and DESIGN §7 says a
+/// byte-identical fixed point is explicitly NOT the goal -- behavioural equivalence on a
+/// discriminating corpus is.
+fn behavioral_differential(
+    workspace: &std::path::Path,
+    mirror_basename: &str,
+    candidate_source: &str,
+    plan: &ModuleCorpusPlan,
+    module_alias: &str,
+) -> ReceiptVerdict {
+    let total: usize = plan.derivable.iter().map(|(_, _, t)| t.len()).sum();
+    if total == 0 {
+        return ReceiptVerdict::Refused {
+            reason: format!(
+                "{}: nothing derived, so there is no corpus to run. Reported as a refusal rather \
+                 than as equivalence, which is what an empty comparison would otherwise look like",
+                plan.module_path
+            ),
+        };
+    }
+    let driver = generate_receipt_driver(module_alias, plan);
+    let mirror_path = workspace.join("src/v1/stage0/src").join(mirror_basename);
+    let committed = match fs::read_to_string(&mirror_path) {
+        Ok(c) => c,
+        Err(e) => {
+            return ReceiptVerdict::Refused {
+                reason: format!("read {mirror_basename}: {e}"),
+            }
+        }
+    };
+
+    let seed = match run_receipt_driver(workspace, &driver, "seed") {
+        Ok(t) => t,
+        Err(e) => return ReceiptVerdict::Refused { reason: e },
+    };
+
+    if let Err(e) = fs::write(&mirror_path, candidate_source) {
+        return ReceiptVerdict::Refused {
+            reason: format!("install candidate {mirror_basename}: {e}"),
+        };
+    }
+    let candidate = run_receipt_driver(workspace, &driver, "candidate");
+    // Restore BEFORE interpreting the result, so no early return can leave the candidate in place.
+    if let Err(e) = fs::write(&mirror_path, &committed) {
+        return ReceiptVerdict::Refused {
+            reason: format!(
+                "restore {mirror_basename} after the candidate build: {e}. The tree may still hold \
+                 the candidate; do not trust a later measurement without checking"
+            ),
+        };
+    }
+    let candidate = match candidate {
+        Ok(t) => t,
+        Err(e) => return ReceiptVerdict::Refused { reason: e },
+    };
+
+    if seed.len() != candidate.len() {
+        return ReceiptVerdict::Divergent {
+            calls: seed.len(),
+            first_difference: format!(
+                "transcript lengths differ: seed {} lines, candidate {} lines",
+                seed.len(),
+                candidate.len()
+            ),
+        };
+    }
+    for (a, b) in seed.iter().zip(candidate.iter()) {
+        if a != b {
+            return ReceiptVerdict::Divergent {
+                calls: seed.len(),
+                first_difference: format!("seed: {a}  |  candidate: {b}"),
+            };
+        }
+    }
+    ReceiptVerdict::Equivalent { calls: seed.len() }
 }
 
 /// Map an authority module path to the emitted mirror that declares it as its source.
@@ -19082,7 +19348,7 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
     let modules = collect_dag_module_sources(source_roots)?;
 
     let mut exclusions: Vec<ReceiptExclusion> = Vec::new();
-    let mut plans: Vec<ModuleCorpusPlan> = Vec::new();
+    let mut plans: Vec<(String, ModuleCorpusPlan, String)> = Vec::new();
 
     for rel in &changed {
         let abs = workspace.join(rel);
@@ -19094,10 +19360,17 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
         };
         match emitted_mirror_for_module(&stage0_src, &module_path)? {
             None => exclusions.push(ReceiptExclusion::NoEmittedMirror { module_path }),
-            Some(_mirror) => {
+            Some(mirror) => {
+                // The Rust module path is the mirror's basename without its extension — derived
+                // from the artifact, like the mapping that found it, never spelled out here.
+                let alias = mirror.trim_end_matches(".rs").to_string();
                 let node = parse_dag_module_node(&format!("{module_path}.dag"), &source)?;
                 let types = visible_type_decls(&module_path, &source, &modules)?;
-                plans.push(plan_module_corpus(&module_path, &source, &node, &types))
+                plans.push((
+                    mirror,
+                    plan_module_corpus(&module_path, &source, &node, &types, &alias),
+                    alias,
+                ))
             }
         }
     }
@@ -19116,7 +19389,7 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
             ),
         }
     }
-    for p in &plans {
+    for (_mirror, p, _alias) in &plans {
         // Both counts are coverage claims, so they are reported as the two ways coverage was
         // ESTABLISHED -- closed type versus derived partition -- and not as strong-versus-weak.
         // There is no third number here any more; the bounded column it replaced counted
@@ -19124,7 +19397,7 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
         let closed = p
             .derivable
             .iter()
-            .filter(|(_, d)| matches!(d, EnumeratedDomain::Exhaustive { .. }))
+            .filter(|(_, d, _)| matches!(d, EnumeratedDomain::Exhaustive { .. }))
             .count();
         eprintln!(
             "behavioral-receipt: {} fn_lines={} parsed={} derivable={} (closed-type={} derived-partition={}) refused={}",
@@ -19136,7 +19409,7 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
             p.derivable.len() - closed,
             p.refused.len()
         );
-        for (f, d) in &p.derivable {
+        for (f, d, _tuples) in &p.derivable {
             eprintln!(
                 "behavioral-receipt:   derivable {}::{f} {}",
                 p.module_path,
@@ -19150,5 +19423,50 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
             );
         }
     }
-    Ok(true)
+
+    // THE DIFFERENTIAL. Everything above decides WHAT to run; this runs it.
+    //
+    // The emit happens once for the whole selection rather than once per module: it is the
+    // expensive step, and asking for it per candidate would make a two-module change cost twice
+    // what a one-module change costs for no additional information.
+    if plans.is_empty() {
+        return Ok(true);
+    }
+    let emitted = v1_compiler::cli_run::emitted_generated_sources()?;
+    let mut all_equivalent = true;
+    for (mirror, plan, alias) in &plans {
+        let Some(candidate_source) = emitted.get(mirror) else {
+            eprintln!(
+                "behavioral-receipt: {} REFUSED — the emit produced no {mirror}, so there is no \
+                 candidate to compare. Not equivalence: a missing candidate is ignorance",
+                plan.module_path
+            );
+            all_equivalent = false;
+            continue;
+        };
+        match behavioral_differential(&workspace, mirror, candidate_source, plan, alias) {
+            ReceiptVerdict::Equivalent { calls } => eprintln!(
+                "behavioral-receipt: {} EQUIVALENT over {calls} derived calls",
+                plan.module_path
+            ),
+            ReceiptVerdict::Divergent {
+                calls,
+                first_difference,
+            } => {
+                eprintln!(
+                    "behavioral-receipt: {} DIVERGENT over {calls} derived calls — {first_difference}",
+                    plan.module_path
+                );
+                all_equivalent = false;
+            }
+            ReceiptVerdict::Refused { reason } => {
+                eprintln!(
+                    "behavioral-receipt: {} REFUSED — {reason}",
+                    plan.module_path
+                );
+                all_equivalent = false;
+            }
+        }
+    }
+    Ok(all_equivalent)
 }
