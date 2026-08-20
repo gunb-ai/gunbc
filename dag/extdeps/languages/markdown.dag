@@ -389,10 +389,6 @@ fn md_strip_digits(s: String, n: Int) -> RepeatStrip {
   }
 }
 
-fn md_ingest_inlines(text: String) -> List<MarkdownInline> {
-  [ TextInline { text: text } ]
-}
-
 fn md_split_blocks(src: String, sp: MarkdownSpellings) -> List<String> {
   let trimmed = if ends_with(s: src, suffix: "\n") {
     substring(s: src, start: 0, end: src.length() - 1)
@@ -425,20 +421,20 @@ fn md_parse_heading(line: String, sp: MarkdownSpellings) -> MarkdownBlock {
   let h = md_strip_repeated(s: line, unit: sp.heading_marker, n: 0)
   HeadingBlock {
     level: int_to_heading_level(n: h.count),
-    inlines: md_ingest_inlines(text: md_drop_prefix(s: h.rest, prefix: sp.heading_sep)),
+    inlines: md_parse_inline_rest(text: md_drop_prefix(s: h.rest, prefix: sp.heading_sep), sp: sp),
   }
 }
 
 fn md_unordered_item(line: String, sp: MarkdownSpellings) -> MarkdownListItem {
   MarkdownListItem {
-    blocks: [ ParagraphBlock { inlines: md_ingest_inlines(text: md_drop_prefix(s: line, prefix: sp.unordered_bullet)) } ],
+    blocks: [ ParagraphBlock { inlines: md_parse_inline_rest(text: md_drop_prefix(s: line, prefix: sp.unordered_bullet), sp: sp) } ],
   }
 }
 
 fn md_ordered_item(line: String, sp: MarkdownSpellings) -> MarkdownListItem {
   let d = md_strip_digits(s: line, n: 0)
   MarkdownListItem {
-    blocks: [ ParagraphBlock { inlines: md_ingest_inlines(text: md_drop_prefix(s: d.rest, prefix: sp.ordered_suffix)) } ],
+    blocks: [ ParagraphBlock { inlines: md_parse_inline_rest(text: md_drop_prefix(s: d.rest, prefix: sp.ordered_suffix), sp: sp) } ],
   }
 }
 
@@ -447,12 +443,12 @@ fn md_task_item(line: String, sp: MarkdownSpellings) -> MarkdownTaskItem {
   if starts_with(s: after, prefix: sp.task_checked) {
     MarkdownTaskItem {
       state: Checked,
-      blocks: [ ParagraphBlock { inlines: md_ingest_inlines(text: md_drop_prefix(s: after, prefix: sp.task_checked)) } ],
+      blocks: [ ParagraphBlock { inlines: md_parse_inline_rest(text: md_drop_prefix(s: after, prefix: sp.task_checked), sp: sp) } ],
     }
   } else {
     MarkdownTaskItem {
       state: Unchecked,
-      blocks: [ ParagraphBlock { inlines: md_ingest_inlines(text: md_drop_prefix(s: after, prefix: sp.task_unchecked)) } ],
+      blocks: [ ParagraphBlock { inlines: md_parse_inline_rest(text: md_drop_prefix(s: after, prefix: sp.task_unchecked), sp: sp) } ],
     }
   }
 }
@@ -479,7 +475,7 @@ fn md_parse_block(block_src: String, sp: MarkdownSpellings) -> MarkdownBlock {
     UnorderedListBlock { items: map(lines, l => md_unordered_item(line: l, sp: sp)) }
   } else {
 
-    ParagraphBlock { inlines: md_ingest_inlines(text: block_src) }
+    ParagraphBlock { inlines: md_parse_inline_rest(text: block_src, sp: sp) }
   }
 }
 

@@ -3,7 +3,7 @@ module gunbc.host_effect_realize
 import std.algebra { trim }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_in_list }
 
 import gunbc.host_effect {
   HostEffect, ShellCommand, RedfishAction, ConvergePlan,
@@ -234,7 +234,7 @@ import extdeps.bmc.webui.nbd_proxy_serve {
   NbdProxyServeTransportIntent,
   bmcweb_session_login_curl_args,
 }
-import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
+import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, list_length }
 
 type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
 
@@ -1191,6 +1191,10 @@ fn realize_provision_codex_runtime(
 
 data srv3_actuator_toolchain_emit_artifact_transport_helper_note: String = "realize_os_install_actuator_toolchain_ensure refuses EmitArtifactThenThinRun at entry; srv3_actuator_toolchain_emit_artifact_transport_helper_refused false arms are fail-closed backstop only — not a silent widen (DESIGN §5). EmitArtifactThenThinRun defers execution to a materialized artifact run elsewhere, so an inline bin-witness probe has no host to observe; refusing here is a permanent boundary of that transport, not unmigrated debt.\\n\\nThe five probe leaves that used to build a concatenated shell command string (bin-witness success, test -x, which-based tool presence, which-based tool bin path, chown) now carry typed operation_argv rows and route SshShell and FleetSsh through typed_argv_exec_over_ssh / typed_argv_exec_over_fleet_ssh (gunbc.typed_argv_exec), the same wall the principal, sudo-probe and grant-list leaves already used. FleetSsh is admitted at realize_os_install_actuator_toolchain_ensure's entry gate.\\n\\nRUNG, STATED HONESTLY BECAUSE THE OBVIOUS READING OVERSTATES IT. The FleetSsh arms are compile-verified only: the match is exhaustive and each arm demonstrably reaches typed dispatch, but NO EXECUTING WITNESS DISCRIMINATES THEM, and the reason is structural rather than an omission. A FleetSshExecutionContext is reachable only through materialize_fleet_known_hosts_anchor, which is a `func` using Network, and the KnownHostsAnchor seal admits that one declaration alone -- so a pure `test fn` cannot construct the transport these arms match on. THE SEAL THAT MAKES A FLEET CONTEXT UNFORGEABLE ALSO MAKES IT UNFIXTURABLE. That is a real cost of the wall and it is recorded here rather than paid down by widening the wall, because admitting a test declaration to the seal to make one's own change testable is the trade a reviewer should refuse. NEXT-RUNG TRIGGER: a fixture route to a context that does not weaken the production seal -- an effect-level test harness for the materializer, not a second minter."
 
+// SITES 3 AND 4 OF typed_argv_refusal_collapse_sites. "Fail-closed backstop, not a silent
+// widen" in the note above is true about the WIDEN direction only: these return the same
+// `false`/`none` the outcome projections return, so at every consumer an unprobeable transport
+// and a measured negative are one value. See the rung block on srv3_typed_argv_outcome_success.
 fn srv3_actuator_toolchain_emit_artifact_transport_helper_refused() -> Bool {
   false
 }
@@ -1199,6 +1203,122 @@ fn srv3_actuator_toolchain_emit_artifact_transport_helper_refused_opt() -> Strin
   none
 }
 
+// THE FIVE DECLARATIONS BELOW COLLAPSE A THREE-VALUED OBSERVATION ONTO A TWO-VALUED CARRIER,
+// AND THIS ROSTER IS THE JOIN. TypedArgvExecOutcome distinguishes ran-and-succeeded,
+// ran-and-failed, and could-not-be-run (TypedArgvExecRefused carries why); Bool and String? do
+// not, so the third state reaches every consumer as the second -- DESIGN §5's
+// empty-observation narrow at the evidence grain. The two outcome projections discard a REAL
+// refusal reason that was in hand; the three helper stubs synthesize the same negative for a
+// transport or workdir they cannot probe at all. Their own notes say "fail-closed backstop,
+// not a silent widen", which is true about the WIDEN direction only: at the consumer all five
+// are one indistinguishable `false`/`none`, so they are one class with five sites, not five
+// classes. The roster exists so that join is machine-readable and countable rather than a
+// sentence a reader has to reassemble from five separate comments.
+data typed_argv_refusal_collapse_sites: List<DeclarationRef> = [
+  decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_typed_argv_outcome_success"),
+  decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_typed_argv_outcome_stdout"),
+  decl_ref(
+    module_path: "gunbc.host_effect_realize",
+    decl_name: "srv3_actuator_toolchain_emit_artifact_transport_helper_refused",
+  ),
+  decl_ref(
+    module_path: "gunbc.host_effect_realize",
+    decl_name: "srv3_actuator_toolchain_emit_artifact_transport_helper_refused_opt",
+  ),
+  decl_ref(
+    module_path: "gunbc.host_effect_realize",
+    decl_name: "srv3_transport_witness_bin_nonroot_workdir_refused",
+  ),
+]
+
+// WHERE THE COLLAPSED NEGATIVE IS READ AS A MEASUREMENT. Each of these consumes one of the
+// sites above and cannot recover the distinction it lost, so a repair that changes the sites
+// without changing these has only moved the collapse one call deeper.
+data typed_argv_refusal_collapse_consumers: List<DeclarationRef> = [
+  decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_transport_witness_bin_success"),
+  decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_transport_test_executable"),
+  decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_apt_tool_present"),
+  decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_apt_tool_version_ok"),
+  decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_tool_bin_path"),
+  decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_chown_directory_to_current_user"),
+]
+
+// UNBOUND, AND DELIBERATELY SO. bound_dissolution would fire on a named declaration appearing,
+// which is the stronger form and is what this row should eventually carry -- but the
+// replacement's name is not decided, and binding a trigger to a name invented here is a
+// dissolution that silently never fires when the repair lands under a different one. That is
+// the §3 stale-citation decay, bought for a machine status this row does not need yet. So the
+// trigger is carried as an unbound description and reports DissolutionUnbound honestly.
+data typed_argv_refusal_collapse_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "DISSOLVES WHEN the sites in typed_argv_refusal_collapse_sites return an observation that preserves TypedArgvExecRefused's reason instead of Bool / String?, and srv3_shell_reconcile derives its stderr from that reason rather than from a per-site literal. At that point the two-valued projection has no constructor and this roster, its consumer list and this condition are deleted together (DESIGN §4b dissolution-on-climb). The same repair one layer up is gunbc.roadmap_dashboard_instance_apply path_observation_preserves_refusal_note.",
+)
+
+// SHAPE ONLY, AND THE LABEL IS THE POINT. This checks that the roster is nonempty and names
+// each site once -- it does NOT check that the refs resolve to declarations that exist, which
+// nothing reachable from a `fn` can do. A green here means the join is well-formed, never that
+// it is complete or that its referents are real.
+fn typed_argv_refusal_collapse_roster_is_well_formed() -> Bool {
+  let deduped = fold_list(
+    xs: typed_argv_refusal_collapse_sites,
+    empty: typed_argv_refusal_collapse_roster_empty(),
+    cons: fn(acc, r) {
+      if declaration_ref_in_list(target: r, refs: acc) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: r)
+      }
+    },
+  )
+  list_length(items: typed_argv_refusal_collapse_sites) > 0
+    && list_length(items: deduped) == list_length(items: typed_argv_refusal_collapse_sites)
+}
+
+fn typed_argv_refusal_collapse_roster_empty() -> List<DeclarationRef> {
+  []
+}
+
+// THE RUNG FOR THE COLLAPSE ROSTER ABOVE, STATED AT THE GRAIN §4b DEMANDS RATHER THAN THE ONE
+// THAT FLATTERS IT.
+//
+// AT THE EXECUTED-EVIDENCE GRAIN THE RUNG IS UNMEASURED. No discriminating RED refuses on the
+// real acceptance path, and the reason is structural rather than an omission: a
+// FleetSshExecutionContext is reachable only through materialize_fleet_known_hosts_anchor,
+// which the KnownHostsAnchor seal admits alone, so a pure `test fn` cannot construct the
+// transport these arms match on (the cost srv3_actuator_toolchain_emit_artifact_transport_
+// helper_note already records), and SshShell needs a live host. §4b is explicit that a plan or
+// a comment establishes nothing, so this block does NOT report a measured rung and may not be
+// cited as one. Unmeasured is the honest state, in the sense the recovery analysis's own census
+// uses `Unknown` -- not a gap claim, and not a pass.
+//
+// WHAT IS ESTABLISHED IS THE CONTAINMENT, AND IT IS A DIFFERENT KIND OF CLAIM: a reading of
+// compile-visible dataflow, total over the consumer roster above, not a measurement. The false
+// direction is absorbing -- srv3_ensure_apt_tool, srv3_ensure_websocat and the realizer bodies
+// each map a false into exit_code 1 through srv3_shell_reconcile -- so no refusal reaches a
+// converged verdict and the line stops. If that reading is what a measurement would confirm,
+// the class sits at mitigatable; the reading is offered as the argument, and the measurement is
+// what is missing.
+//
+// THE CAUSE IS NOT CONTAINED EVEN UNDER THAT READING, and this is the part a stopped line does
+// not pay for. The stderr those bodies attach is a per-site literal naming the operation, so an
+// unreachable host is reported to an operator as a failed sleep; and
+// realize_seeded_install_media_toolchain_ensure_body's was_present goes false on a refusal,
+// stamping its receipt "Installed" for a host nothing was installed on. A misdirected cause is
+// a second wrong answer riding on the refusal, not a cost of refusing.
+//
+// CEILING: structurally impossible. The class is decidable and already grounded -- the reason
+// is on the value being matched -- so the collapse is representable only because a Bool carrier
+// is offered for a three-valued observation. The trigger is carried typed, on
+// typed_argv_refusal_collapse_dissolution, not in this block.
+//
+// WHY THIS IS PROSE AND THE ROSTER ABOVE IS NOT: §4c admits an annotation for irreducible
+// rationale about why a construction has the shape it has, and forbids it for machine-consumed
+// facts. The sites, the consumers and the dissolution condition are machine-consumed and are
+// declared. What is left here is the argument -- why the containment reading holds, why no
+// witness can run, why the ceiling is what it is -- which no row shape in this tree carries.
+// The ErrorClassGuarantee carrier §4b Stage 1 would file this against does not exist yet
+// (searched 2026-08-20: the name occurs once in the whole tree, in
+// docs/plans/compiler-guarantee-recovery-gap-analysis.md), and minting a repository-wide rung
+// carrier is a §3 single-authority decision, not a drive-by from a two-arm brief.
 fn srv3_typed_argv_outcome_success(outcome: TypedArgvExecOutcome) -> Bool {
   match outcome {
     TypedArgvExecConverged { result: r } => r.success
@@ -1206,6 +1326,13 @@ fn srv3_typed_argv_outcome_success(outcome: TypedArgvExecOutcome) -> Bool {
   }
 }
 
+// SAME DISCARD, OPTION-SHAPED: see srv3_typed_argv_outcome_success above for the rung, the
+// containment argument and the trigger. This arm additionally FUSES TWO ABSENCES that its
+// caller then cannot separate -- a command that ran and printed nothing, and a command that
+// never ran -- both leaving as Absent, which srv3_tool_bin_path hands on as "the tool has no
+// path here". Absent is load-bearing at three call sites (srv3_apt_tool_version_ok,
+// srv3_ensure_websocat, realize_boot_once_read_back_sleep_body), and each reads it as a
+// measured absence.
 fn srv3_typed_argv_outcome_stdout(outcome: TypedArgvExecOutcome) -> String? {
   match outcome {
     TypedArgvExecConverged { result: r } =>
@@ -1229,6 +1356,10 @@ fn srv3_actuator_toolchain_chown_args(owner: String, path: String) -> List<Strin
 
 data srv3_transport_witness_bin_nonroot_workdir_refused_note: String = "typed_argv_exec_over_\{ssh,fleet_ssh} carries a bare argv with no shell to `cd` first, so a non-root workdir has no typed form to hand it. Every in-tree caller passes workdir: \"/\" (checked at review time), so this arm is unreachable dead debt today -- named rather than folded into the workdir == \"/\" condition so a non-root workdir renders as a located refusal instead of an indistinguishable-from-measured `false` (DESIGN §5, fabricated negative). DISSOLVES WHEN a typed remote cd/chdir primitive lands and this reroutes to it, or when workdir is dropped from the signature because no caller ever varies it."
 
+// THIS ARM IS SITE 5 OF typed_argv_refusal_collapse_sites. The note above is about why this
+// arm exists; the roster is about what its `false` costs downstream, which is the same cost the
+// two outcome projections impose -- at srv3_transport_witness_bin_success this false is
+// indistinguishable from a probe that ran and answered no. Repair it with the roster, not alone.
 fn srv3_transport_witness_bin_nonroot_workdir_refused() -> Bool {
   false
 }
