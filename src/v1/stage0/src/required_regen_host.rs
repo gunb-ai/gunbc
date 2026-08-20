@@ -96,8 +96,15 @@ pub fn run_required_regen(
         fs::remove_dir_all(&candidate_dir)
             .map_err(|e| format!("remove {}: {e}", candidate_dir.display()))?;
     }
+    // THE CANDIDATE IS WRITTEN AT THE CRATE ROOT, because the emit keys already carry their own
+    // `src/` prefix. Writing them under `candidate/src` nested that prefix a second time, so every
+    // generated module landed at `candidate/src/src/<name>.rs` while `verify_candidate_tree`
+    // looked for `candidate/src/<name>.rs` and found none of them -- the run then refused with
+    // "candidate tree has zero generated files" over a directory holding 41 entries. That is the
+    // same emit-path-vs-basename key-space confusion `emitted_by_basename` exists to end, in its
+    // third and last instance: two spaces, no single place saying which one a path is in.
+    write_emitted_tree(&candidate_dir, &emitted)?;
     let fresh_src = candidate_dir.join("src");
-    write_emitted_tree(&fresh_src, &emitted)?;
     copy_hand_maintained_support(&stage0_src, &fresh_src)?;
     verify_candidate_tree(&fresh_src, &committed_basenames)?;
 
