@@ -9,7 +9,9 @@ import gunbc.spark_bootstrap_credential {
 }
 import gunbc.spark_managed_access_bootstrap { RebootThisHost, spark_managed_grant_population, spark_managed_grant_sudoers_command }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.fleet_known_hosts_anchor { portable_remote_words }
 import gunbc.spark_grant_privileged_operation {
+  spark_sudo_prompt_sentinel,
   OperatorBootstrapCredentialLease,
   spark_bootstrap_credential_lease,
   lease_secret_resource,
@@ -313,4 +315,44 @@ test fn a_pending_standing_authorizes_no_fetch() -> Bool {
     Absent => true
     Present { value: _ } => false
   }
+}
+
+// THE ARGV MUST SURVIVE THE WALL THAT ACTUALLY GUARDS THE FAR SIDE, and this witness exists because
+// its absence cost a live run. Every other witness here checks the argv WORDS -- that sudo is the
+// head, that -- terminates options, that the credential is never a word. None of them ran those
+// words through portable_remote_words, which is what the transport applies before contacting a host.
+// So `-p ""` satisfied every assertion in this file and was refused on srv6 (2026-08-20) at the
+// privileged step, after staging, because an empty word cannot survive a far-side shell re-parse.
+//
+// Asserted for BOTH constructors rather than one: the two commands are built by the same function,
+// but a future edit could widen only one of them, and a single-arm check would not see it.
+test fn every_admitted_root_argv_survives_the_far_side_portability_wall() -> Bool {
+  let validate = portable_remote_words(
+    raws: admitted_root_argv_words(command: ValidateStagedSudoers { staged_path: "/etc/sudoers.d/x.staged" as NonEmptyStr })
+  )
+  let install = portable_remote_words(
+    raws: admitted_root_argv_words(
+      command: InstallStagedSudoers {
+        staged_path: "/etc/sudoers.d/x.staged" as NonEmptyStr,
+        dropin_path: "/etc/sudoers.d/x" as NonEmptyStr,
+      }
+    )
+  )
+  match validate {
+    Absent => false
+    Present { value: _ } => match install {
+      Absent => false
+      Present { value: _ } => true
+    }
+  }
+}
+
+// The sentinel is the reason the wall passes, so it is pinned. An empty prompt is the exact value
+// that failed, and a witness that did not exclude it would re-admit the defect it was written for.
+test fn the_sudo_prompt_is_a_non_empty_portable_sentinel() -> Bool {
+  spark_sudo_prompt_sentinel != ""
+    && match portable_remote_words(raws: [spark_sudo_prompt_sentinel]) {
+         Absent => false
+         Present { value: _ } => true
+       }
 }

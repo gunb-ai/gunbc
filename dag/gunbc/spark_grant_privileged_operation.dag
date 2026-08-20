@@ -100,14 +100,27 @@ type AdmittedRootArgv
   = ValidateStagedSudoers { staged_path: NonEmptyStr }
   | InstallStagedSudoers { staged_path: NonEmptyStr, dropin_path: NonEmptyStr }
 
-// `sudo -S` reads the password from stdin; `-p ""` suppresses the prompt so nothing resembling a
-// credential prompt reaches a captured terminal; `--` terminates option parsing so a path can never
-// be read as a flag. The credential is never a word here -- an argv-borne password lands in the
-// process table, in any command log, and in this repository's own receipts, which print argv
-// verbatim.
+// THE PROMPT IS A SENTINEL, NOT EMPTY, and the empty one was a real defect rather than a style
+// choice. This carried `-p ""` to suppress the prompt entirely; measured on srv6 (2026-08-20), the
+// far-side portability wall REFUSED the whole argv, because portable_remote_word requires a
+// non-empty word -- an empty argv word cannot survive a shell re-parse the near side does not
+// control. The wall was right and this function was wrong, so the fix is here rather than a
+// widening there.
+//
+// Dropping `-p` altogether would restore sudo's default "[sudo] password for <user>:", which is
+// exactly the credential-prompt text the original suppression existed to keep out of a captured
+// terminal. A fixed sentinel keeps that property, is portable under the allowlist, and is strictly
+// better than empty on a second axis: sudo's default prompt is locale-dependent, so a deterministic
+// prompt is the one thing here that stderr inspection can rely on.
+//
+// `sudo -S` reads the password from stdin; `--` terminates option parsing so a path can never be
+// read as a flag. The credential is never a word here -- an argv-borne password lands in the process
+// table, in any command log, and in this repository's own receipts, which print argv verbatim.
+data spark_sudo_prompt_sentinel: String = "gunbc-sudo:"
+
 fn admitted_root_argv_words(command: AdmittedRootArgv) -> List<String> {
   concat(
-    ["sudo", "-S", "-p", "", "--"],
+    ["sudo", "-S", "-p", spark_sudo_prompt_sentinel, "--"],
     match command {
       ValidateStagedSudoers { staged_path: p } => ["visudo", "-c", "-f", p as String]
       InstallStagedSudoers { staged_path: p, dropin_path: d } =>
