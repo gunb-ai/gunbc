@@ -178,6 +178,19 @@ fn spark_bootstrap_plan_effects(plan: SparkBootstrapPlan) -> List<SparkBootstrap
 // a host up -- reboot is an ordinary procedure, and convergence holds it. The ruling names its own
 // horizon: when the model is more mature this gets harder to mess up. Recorded because the reason a
 // privilege was granted is exactly what a later reader needs in order to narrow it again.
+// THE READING OF WHAT AN ACCOUNT MAY DO, which lived in the probe module that produced it. That put
+// a grant-domain fact in the transport that happens to observe it, and the reconcile could then only
+// reach it by importing the prober -- which the prober also needs, so the graph closed a cycle. The
+// fact belongs beside the grants it is a reading of; who ran `sudo -n -l` is realization.
+//
+// An earlier revision of this carrier records its own defect worth preserving here: the receipt was
+// once decided by string_contains(body, "REFUSED"), and the refused arm spells "probe-refused" in
+// lower case, so a leg that never ran exited 0. The variants are the decision; text is a projection.
+type SparkGrantOutcome
+  = GrantEnumerated { listing: String }
+  | GrantAbsent { detail: String }
+  | GrantProbeRefused { cause: String }
+
 type SparkManagedGrant
   = EnableLingerForOwnAccount
   | RebootThisHost

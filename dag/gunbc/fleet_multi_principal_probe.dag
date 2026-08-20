@@ -55,8 +55,11 @@ import gunbc.spark_managed_access_bootstrap {
   BootstrapProceedsUnprivileged,
   OperatorBootstrapCredentialRequired,
   spark_bootstrap_effect_label,
+  spark_operator_bootstrap_login,
   spark_bootstrap_plan_effects,
 }
+import gunbc.spark_managed_grant_reconcile { spark_managed_grant_report }
+import gunbc.spark_managed_access_bootstrap { SparkGrantOutcome, GrantEnumerated, GrantAbsent, GrantProbeRefused }
 import product.placement_supply { HostIdentity }
 
 // READ-ONLY measurement (parent msg_e767a783): before anyone grants new access, measure
@@ -426,11 +429,6 @@ data spark_grant_probe_receipt_path: String = "target/spark-exact-grant-probe-re
 // path, reintroduced here (review 51704). It was worse than the one it copied: the refused-leg arm
 // spells "probe-refused" in lower case, which does not contain "REFUSED", so a leg that never ran
 // exited 0. The receipt is now a PROJECTION of these variants rather than the thing decided upon.
-type SparkGrantOutcome
-  = GrantEnumerated { listing: String }
-  | GrantAbsent { detail: String }
-  | GrantProbeRefused { cause: String }
-
 type SparkGrantRow {
   host: String
   principal: String
@@ -480,7 +478,18 @@ fn spark_grant_report_refusal(report: SparkGrantReport) -> String? {
   }
 }
 
+// THE RECONCILE RIDES THE RECEIPT, because the enumeration alone never answered the question anyone
+// was asking. A reader had to eyeball a sudoers listing against a population held in their head, and
+// when the reboot leg failed on srv6 nobody had done that join -- the gap was visible in this very
+// receipt and unnamed by it.
 fn spark_grant_row_text(row: SparkGrantRow) -> String {
+  join([
+    spark_grant_row_listing_text(row: row),
+    spark_managed_grant_report(host: row.host as HostIdentity, outcome: row.outcome),
+  ], "")
+}
+
+fn spark_grant_row_listing_text(row: SparkGrantRow) -> String {
   match row.outcome {
     GrantEnumerated { listing: l } => join(["grant host=", row.host, " principal=", row.principal, " enumerated:\n", l, "\n"], "")
     GrantAbsent { detail: d } => join(["grant host=", row.host, " principal=", row.principal, " NO-PASSWORDLESS-GRANT ", d, "\n"], "")
@@ -496,8 +505,10 @@ fn spark_grant_report_text(report: SparkGrantReport) -> String {
 }
 
 fn spark_exact_grant_report(context: FleetSshExecutionContext) -> SparkGrantReport {
-  let rows = map(spark_standing_hosts, h =>
-    spark_exact_grant_row(context: context, host: h, principal: "gunbc-automation"))
+  let rows = flat_map(spark_standing_hosts, h => [
+    spark_exact_grant_row(context: context, host: h, principal: "gunbc-automation"),
+    spark_exact_grant_row(context: context, host: h, principal: spark_operator_bootstrap_login),
+  ])
   match list_head(rows) {
     HeadAbsent => GrantProbeNotAttempted { cause: "no standing hosts are declared" }
     HeadFound { value: f } => match list_tail(rows) {
