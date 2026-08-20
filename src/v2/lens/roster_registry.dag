@@ -13,6 +13,7 @@ import v2.lens.common.construction_justification {
   ConstructionJustification,
   WallAfterGrounding
 }
+import std.decl_ref { DeclarationRef }
 import std.disposition { SingleAuthority }
 import v2.std.algebra { count_where, fold_list, list_snoc_item, Empty }
 import v2.std.collection { List }
@@ -63,6 +64,32 @@ fn roster_registry_nonstandard_count() -> Int {
 
 fn roster_registry_standard_holds() -> Bool {
   roster_registry_nonstandard_count() == 0
+}
+
+data roster_registry_declaration_refs_note: String = "WHY THIS PROJECTION EXISTS: a registration is built out of typed DeclarationRefs — the roster it names, and, for a ByDerivation row, the predicate it claims computes membership. Nothing resolved either of them, so a registration could name a declaration that had been deleted and stay green forever, and one did: gunbc.stage0_emit_plan_generated generated_stage0_files was registered ByDerivation from gunbc.stage0_emit_plan generated_stage0_files_from_emission_plan long after that module was deleted, so the registry reported the DERIVED rung over a roster that had become hand-maintained in fact. The registration passed registration_membership_is_standard because that check reads the membership SHAPE and never asks whether the shape's payload names anything real. This projection is the population that closes it: v2.lens.cited_symbol_resolution folds these refs into the enrolled cited-symbol resolution census, which is exactly the widening that lens's own law names as its next step (enrollment widens to every structural DeclarationRef carrier). A ByDerivation row contributes BOTH refs deliberately — the predicate is the half that rotted, and a projection carrying only the roster would have left the defect it was written for undetected."
+
+data empty_declaration_refs: List<DeclarationRef> = []
+
+fn declaration_refs_from_registration(r: RosterRegistration) -> List<DeclarationRef> {
+  match r.membership {
+    ByContainment => [r.roster]
+    ByDerivation { predicate: p } => [r.roster, p]
+    DeclaredFrontier { reason: _, dissolution: _ } => [r.roster]
+  }
+}
+
+fn roster_registry_declaration_refs_from(
+  registrations: List<RosterRegistration>
+) -> List<DeclarationRef> {
+  fold_list(
+    xs: registrations,
+    empty: empty_declaration_refs,
+    cons: fn(acc, r) { concat(acc, declaration_refs_from_registration(r: r)) }
+  )
+}
+
+fn roster_registry_declaration_refs() -> List<DeclarationRef> {
+  roster_registry_declaration_refs_from(registrations: roster_registry)
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {

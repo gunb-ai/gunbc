@@ -8346,30 +8346,59 @@ pub enum ArgvRefusalCause {
     BindingMalformed(String),
 }
 
-fn argv_expr_kind_label(node: &Rc<Node>) -> &'static str {
-    match node.expr_data.as_ref() {
-        ExprData::NoExprData => "no-expr",
-        ExprData::ExprLiteral { .. } => "literal",
-        ExprData::ExprError { .. } => "error",
-        ExprData::ExprVar { .. } => "var",
-        ExprData::ExprFieldAccess { .. } => "field-access",
-        ExprData::ExprCall { .. } => "call",
-        ExprData::ExprMethodCall { .. } => "method-call",
-        ExprData::ExprMatch => "match",
-        ExprData::ExprIf => "if",
-        ExprData::ExprLet => "let",
-        ExprData::ExprRecordLit { .. } => "record-literal",
-        ExprData::ExprListLit => "list-literal",
-        ExprData::ExprBinOp { .. } => "binop",
-        ExprData::ExprUnaryOp { .. } => "unary-op",
-        ExprData::ExprLambda => "lambda",
-        ExprData::ExprStringInterp => "string-interpolation",
-        ExprData::ExprBlock => "block",
-        ExprData::ExprCast => "cast",
-        ExprData::ExprForEach => "for-each",
-        ExprData::ExprIndex => "index",
-        ExprData::ExprSlice => "slice",
-        ExprData::ExprReturn => "return",
+/// The AUTHORED name of an `ExprData` form, TOTAL over the closed `.dag` vocabulary
+/// (`v1.core` `ExprData`), and the single such authority in the seed.
+///
+/// It exists so a projection that has no rule for a form can REFUSE BY NAME instead of
+/// substituting a plausible value, and the name it refuses with is the one the `.dag`
+/// declaration uses -- not a second spelling of the same vocabulary. This function replaced
+/// `argv_expr_kind_label`, which returned hyphenated nicknames (`call`, `record-literal`)
+/// for the same members: a refusal naming `call` cannot be grepped back to `ExprCall`, and
+/// two spellings of one closed vocabulary is the DESIGN section 3 nickname at the
+/// diagnostic layer.
+///
+/// The match carries NO catch-all on purpose: a form added to the `.dag` coproduct must
+/// break this compile, which is what keeps the seed's knowledge of the vocabulary equal to
+/// the substrate's rather than merely older than it.
+pub(crate) fn expr_data_form_name(expr_data: &ExprData) -> &'static str {
+    match expr_data {
+        ExprData::NoExprData => "NoExprData",
+        ExprData::ExprLiteral { .. } => "ExprLiteral",
+        ExprData::ExprError { .. } => "ExprError",
+        ExprData::ExprVar { .. } => "ExprVar",
+        ExprData::ExprFieldAccess { .. } => "ExprFieldAccess",
+        ExprData::ExprCall { .. } => "ExprCall",
+        ExprData::ExprMethodCall { .. } => "ExprMethodCall",
+        ExprData::ExprMatch => "ExprMatch",
+        ExprData::ExprIf => "ExprIf",
+        ExprData::ExprLet => "ExprLet",
+        ExprData::ExprRecordLit { .. } => "ExprRecordLit",
+        ExprData::ExprListLit => "ExprListLit",
+        ExprData::ExprBinOp { .. } => "ExprBinOp",
+        ExprData::ExprUnaryOp { .. } => "ExprUnaryOp",
+        ExprData::ExprLambda => "ExprLambda",
+        ExprData::ExprStringInterp => "ExprStringInterp",
+        ExprData::ExprBlock => "ExprBlock",
+        ExprData::ExprCast => "ExprCast",
+        ExprData::ExprForEach => "ExprForEach",
+        ExprData::ExprIndex => "ExprIndex",
+        ExprData::ExprSlice => "ExprSlice",
+        ExprData::ExprReturn => "ExprReturn",
+    }
+}
+
+/// The authored name of a `LiteralValue` form, TOTAL over the closed `.dag` vocabulary
+/// (`std.syntax` `LiteralValue`). Same construction and same reason as
+/// `expr_data_form_name`: no catch-all, so a new literal form stops the compile here.
+pub(crate) fn literal_value_form_name(value: &crate::std_syntax::LiteralValue) -> &'static str {
+    use crate::std_syntax::LiteralValue;
+    match value {
+        LiteralValue::LitStr { .. } => "LitStr",
+        LiteralValue::LitInt { .. } => "LitInt",
+        LiteralValue::LitFloat { .. } => "LitFloat",
+        LiteralValue::LitBool { .. } => "LitBool",
+        LiteralValue::LitNull => "LitNull",
+        LiteralValue::LitSymbol { .. } => "LitSymbol",
     }
 }
 
@@ -8519,7 +8548,8 @@ fn bind_argv_expr(
         ExprData::ExprLiteral { value } => match value.as_ref() {
             LiteralValue::LitStr { value } => Ok(str_value(value.clone())),
             other => Err(ArgvRefusalCause::ArgvExpressionUnsupported(format!(
-                "argv element literal is {other:?}, expected a string literal"
+                "argv element literal is `{}`, expected a string literal",
+                literal_value_form_name(other)
             ))),
         },
         ExprData::ExprVar { .. } => {
@@ -8551,7 +8581,7 @@ fn bind_argv_expr(
         }
         _ => Err(ArgvRefusalCause::ArgvExpressionUnsupported(format!(
             "argv element is a {} expression; materialization binds declared inputs, it does not evaluate expressions",
-            argv_expr_kind_label(node)
+            expr_data_form_name(node.expr_data.as_ref())
         ))),
     }
 }
@@ -8585,7 +8615,7 @@ pub fn materialize_operation_argv(
     if !executable_is_literal {
         return Err(ArgvRefusalCause::ExecutablePositionNotLiteral(format!(
             "argv[0] is a {} expression; the executable must be a literal in the declaration",
-            argv_expr_kind_label(executable)
+            expr_data_form_name(executable.expr_data.as_ref())
         )));
     }
 
