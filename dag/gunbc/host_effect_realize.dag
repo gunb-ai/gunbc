@@ -638,57 +638,73 @@ fn srv3_seeded_install_media_toolchain_privileged_apt_install_is_gated() -> Bool
   args == ["-n", apt_get_binary_path as String, "install", "-y", package_xorriso as String]
 }
 
-// The receipt this body writes claims a pre-state, so the re-probe that establishes it must
-// itself be observed. An unobservable re-probe refuses the receipt rather than writing
-// was_present: false, which would be indistinguishable from a measured absence.
+// THE RECEIPT NAMES WHICH ARM THE ACTUATOR TOOK, so the probe that decides it must run BEFORE
+// the ensure. Probing after would make a fresh install re-observe Holds and report "Present",
+// collapsing the Present/Installed distinction on exactly the path where it carries information
+// -- a receipt that is true about the end state and false about what was done to reach it.
+//
+// The pre-state probe gets the same three-valued treatment as every other probe here: a
+// pre-state that could not be observed refuses the whole effect rather than defaulting to
+// was_present: false, which would claim an install happened on a host that was never asked.
 fn realize_seeded_install_media_toolchain_ensure_body(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let ensure = srv3_ensure_apt_tool(
-    tool_name: xorriso_cli_tool.name,
-    package: package_xorriso,
-    require_version_probe: true,
-    transport: transport,
-  )
-  match ensure {
+  match srv3_predicate_all(steps: [
+    srv3_apt_tool_present(tool_name: xorriso_cli_tool.name, transport: transport),
+    srv3_apt_tool_version_ok(tool_name: xorriso_cli_tool.name, transport: transport),
+  ]) {
     Srv3PredicateUnobserved { reason: why } =>
       NotConverged {
         reason: concat(
-          "host_effect_apply: Srv3SeededInstallMediaToolchainEnsure could not observe xorriso on this transport, so no install was attempted and no receipt is claimed: ",
+          "host_effect_apply: Srv3SeededInstallMediaToolchainEnsure could not observe xorriso's pre-state on this transport, so no install was attempted and no receipt is claimed: ",
           why,
         ),
         applied: intent,
       }
     Srv3PredicateHolds =>
-      match srv3_predicate_all(steps: [
-        srv3_apt_tool_present(tool_name: xorriso_cli_tool.name, transport: transport),
-        srv3_apt_tool_version_ok(tool_name: xorriso_cli_tool.name, transport: transport),
-      ]) {
-        Srv3PredicateUnobserved { reason: why } =>
-          NotConverged {
-            reason: concat(
-              "host_effect_apply: Srv3SeededInstallMediaToolchainEnsure ensured xorriso but could not re-observe it, so no receipt is claimed: ",
-              why,
-            ),
-            applied: intent,
-          }
-        Srv3PredicateHolds =>
-          srv3_seeded_install_media_toolchain_ensure_receipt(
-            was_present: true,
-            ensure_ok: true,
-            intent: intent,
-          )
-        Srv3PredicateFails =>
-          srv3_seeded_install_media_toolchain_ensure_receipt(
-            was_present: false,
-            ensure_ok: true,
-            intent: intent,
-          )
+      srv3_seeded_install_media_toolchain_ensure_after_pre(
+        was_present: true,
+        transport: transport,
+        intent: intent,
+      )
+    Srv3PredicateFails =>
+      srv3_seeded_install_media_toolchain_ensure_after_pre(
+        was_present: false,
+        transport: transport,
+        intent: intent,
+      )
+  }
+}
+
+fn srv3_seeded_install_media_toolchain_ensure_after_pre(
+  was_present: Bool,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match srv3_ensure_apt_tool(
+    tool_name: xorriso_cli_tool.name,
+    package: package_xorriso,
+    require_version_probe: true,
+    transport: transport,
+  ) {
+    Srv3PredicateUnobserved { reason: why } =>
+      NotConverged {
+        reason: concat(
+          "host_effect_apply: Srv3SeededInstallMediaToolchainEnsure could not observe the ensure outcome for xorriso, so no receipt is claimed: ",
+          why,
+        ),
+        applied: intent,
       }
+    Srv3PredicateHolds =>
+      srv3_seeded_install_media_toolchain_ensure_receipt(
+        was_present: was_present,
+        ensure_ok: true,
+        intent: intent,
+      )
     Srv3PredicateFails =>
       srv3_seeded_install_media_toolchain_ensure_receipt(
-        was_present: false,
+        was_present: was_present,
         ensure_ok: false,
         intent: intent,
       )

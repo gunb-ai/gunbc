@@ -16,6 +16,7 @@ import gunbc.host_effect_realize {
   Srv3PredicateUnobserved,
   srv3_apt_tool_present,
   srv3_predicate_from_typed_argv,
+  srv3_seeded_install_media_toolchain_receipt_line,
 }
 import gunbc.typed_argv_exec {
   TypedArgvExecOutcome,
@@ -109,4 +110,30 @@ test fn observed_outcomes_are_not_reported_unobserved() -> Bool {
   predicate_is_holds(p: srv3_predicate_from_typed_argv(outcome: converged_success))
     && predicate_is_fails(p: srv3_predicate_from_typed_argv(outcome: converged_failure))
     && predicate_is_unobserved(p: srv3_predicate_from_typed_argv(outcome: refused_outcome))
+}
+
+
+// THE RECEIPT VOCABULARY MUST STAY TWO-VALUED, and its scope is stated so it is not mistaken
+// for more than it is.
+//
+// A review of this cut caught a real regression it does NOT cover: the first draft moved the
+// was_present probe to AFTER the ensure, so a fresh install re-observed Holds and reported
+// "Present". The receipt was true about the end state and false about which arm the actuator
+// took. That defect is an ORDERING fact between two host probes, and no pure test can observe
+// it -- both probes are host effects, and a witness that mocked them would be asserting against
+// a fabricated host.
+//
+// So this control guards only that the two outcome words remain distinct and reachable. It
+// would NOT have gone red on the ordering bug. Naming that is the difference between a control
+// and a check that looks like one. NEXT-RUNG TRIGGER: an effect-level harness that can sequence
+// observed probe results, at which point the ordering itself becomes assertable.
+test fn receipt_outcome_words_are_distinct() -> Bool {
+  string_contains(
+    s: srv3_seeded_install_media_toolchain_receipt_line(outcome: "Installed" as NonEmptyStr),
+    pattern: "outcome=Installed",
+  )
+    && string_contains(
+      s: srv3_seeded_install_media_toolchain_receipt_line(outcome: "Present" as NonEmptyStr),
+      pattern: "outcome=Present",
+    )
 }
