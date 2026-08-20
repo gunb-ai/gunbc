@@ -1128,6 +1128,26 @@ than argued.
    bounded by judgement. The test is **three-armed, not two**: pin · `76e96333af` (#8579 hardcode
    live) · main — because a two-point test cannot distinguish *pre-existing* from *suppressed by
    #8579 and now resurfacing*, and suppression is precisely what a fail-open hardcode produces.
+   **THE TYPE-PAIR BREAKDOWN ABOVE IS A CENSUS OF EVIDENCE SHAPES, NOT OF FAILURE CLASSES** (added
+   2026-08-20 on `stern-heron-695`'s reading; cross-tab by execution pending). The ten pairs are
+   grouped by *formal ← actual*, and the failure class is not a type pair — it is which branch of
+   `where_refinement_diags_for_predicate` the value lands in. **That axis was already in the data:**
+   `src/v1/00_core.dag` `WhereRefinementUnenforced` carries a `reason: String` that is a closed sum
+   of exactly five deferral strings, declared as such by
+   `where_refinement_deferral_reason_scaffold_note` — *"a closed-string sum enrolled in
+   `is_where_refinement_unenforced_advisory_reason`; any unlisted reason fails closed blocking."*
+   The diagnostic names its own class and the census grouped on the subject instead. **Why it
+   matters more than a relabelling:** #8608's fix edits the literal-extraction arm, and the 21
+   remaining rows are NON-literal expressions — parameters, field accesses, call results — so
+   `expr_is_any_literal` is false and they never reach the extractor at all. A per-arm fallback
+   chain would have been **inert for five of six arms**. Predicted decomposition, to be confirmed
+   or refuted: 2 a decidable wall (`lower_hex_40` implies `non_empty`, but the checker compares
+   predicate NAMES so the implication is invisible) · 5 corpus modeling debt with no compiler
+   change · 4 path-sensitive refinement · 2 needing `join`'s monoid modeled · 2 generic
+   instantiation, unread. **The error shape is the same one this row already records, in a second
+   place:** a property of the SUBJECT read as a property of the FAILURE — twice in one night, by
+   lanes with no contact.
+
    **ROOT CAUSE FOUND AND ALREADY REPAIRED — and it is not a filter** (2026-08-20, found while
    verifying an unrelated measurement base; the row above is preserved because the *reporter's*
    selection rule is described correctly, but its cause was not). `src/v1/00_core.dag` declares
