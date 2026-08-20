@@ -220,7 +220,6 @@ import v2.std.compilers.target_model {
   TargetDeriveSupplementalGenericBoundContractAuthority,
   TargetDeriveSupplementalGenericBoundRequirementAuthority,
   TargetDeriveSupplementalGenericBoundRequirementSet,
-  TargetCapabilityKey,
   TargetRepresentationParameterSlot,
   TargetCapabilityElementEligibility,
   TargetCapabilityEligibilityRow,

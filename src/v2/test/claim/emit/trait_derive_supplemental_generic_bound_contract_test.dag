@@ -45,7 +45,6 @@ import v2.std.compilers.target_model {
   TargetDeriveSupplementalGenericBoundContractAuthority,
   TargetDeriveSupplementalGenericBoundRequirementAuthority,
   TargetDeriveSupplementalGenericBoundRequirementSet,
-  TargetCapabilityKey,
   TargetGenericApply,
   TargetRepresentation,
   TargetRepresentationChoice,
@@ -790,7 +789,7 @@ fn sgb_malformed_contract_row_node() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: sgb_atom_node(identity: discriminant(v: ^target_capability_debug))
+        target: sgb_atom_node(identity: ^target_capability_debug)
       }
     ],
     occurrence_id: SyntheticOccurrence
