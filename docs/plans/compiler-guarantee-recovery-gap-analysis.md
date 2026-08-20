@@ -803,15 +803,134 @@ diagnostics, **verdict unchanged**. All four declare only local types over kerne
 wider pool adds no machinery they depend on; the receipts record that this was *measured* rather
 than argued.
 
+**`sole_constructor` completeness audit (2026-08-20 pass, §11 item 1a, all measured by
+execution — `gunbc run --claim-run` against a synthetic cross-module probe corpus compiled
+live via `compile_dag_diagnostic_census`, never by reading alone):**
+
+*Construction forms — CONFIRMED, wall fires uniformly.* Record-literal construction of a
+cross-module sole_constructor type at every AST position tested — return, let-binding,
+call-argument, list-element, nested-field-init, branch-result — and cast construction at
+call-argument and list-element position, all refuse with `SoleConstructorViolation`
+(discriminating RED) while an in-module (sanctioned) mint of the same type stays clean
+(accepted-positive control). This is two *forms* (record literal, cast), not six-plus
+independent forms — the AST position varies, the form reaching `04_infer`
+`sole_constructor_construction_diags` does not (only `infer_record_lit` and the
+`ExprCast` arm call it).
+
+*Generic carriers — CONFIRMED for the two forms above, on a parameterized carrier.* A
+cross-module record literal and a cross-module cast of `OrderedClosedInterval<T>`
+(`std.interval`) each refuse at a first type argument (`<Int>`) and at a second, distinct
+type argument (`<ProbeMarker>`) — both instantiations independently flagged when forged in
+the same probe module. Report this precisely as "fires for a parameterized carrier on
+cross-module record-literal and cross-module cast construction" — not as "generic carriers
+are covered" in general; no other construction route on a generic carrier was tested.
+
+*Order-dependence — CONFIRMED HOLE, root-caused and reproduced by exact integer count, not
+inferred from a Bool.* Two fixture modules each declare a bare `DupShape` — one
+`sole_constructor`, one not — making the name census-ambiguous. `04_infer`
+`type_has_sole_constructor` resolves via `04_infer` `lookup_type_by_name` with no ambiguity
+guard, unlike the sibling `presence_check_census_gate_note` gate (same file), which stands
+down on ambiguity via a local-declares-first carve-out specifically to avoid this outcome.
+Measured violation counts (expected in parens):
+- probe explicitly `import sealed_variant { DupShape }` first, `import open_variant`
+  (unqualified) second, forges `DupShape`: **0** violations (expected ≥1) — the sealed
+  type's own construction is silently missed.
+- probe explicitly `import open_variant { DupShape }` first, `import sealed_variant`
+  (unqualified) second, forges `DupShape`: **1** violation (expected 0) — the open type's
+  legitimate construction is silently flagged.
+- neither import named-selects `DupShape`; sealed-then-open plain-import order: **0**
+  violations. Open-then-sealed order: **1** violation.
+All four counts are exactly consistent with a single mechanism: resolution always returns
+whichever declaration was imported **last** (`direct_import_export_precedence_note`'s
+"later import wins" overlay), independent of which declaration the probe module's own
+`import … { Name }` clause named. This is not merely "order-dependent" in the abstract —
+it is a silent MIS-RESOLUTION, not a stand-down: unlike the sibling presence-check gate
+(which refuses to guess and skips enforcement on ambiguity), `sole_constructor`'s check does
+guess, guesses by textual import order rather than by the caller's actual reference, and
+reports zero diagnostics either way it guesses wrong. An author whose module explicitly
+imports the sealed type by name can still silently forge it if anything else in the
+transitive import closure also declares a same-named type and is imported later.
+
+*Absent resolution (`type_has_sole_constructor`'s `None => false` arm) — investigated
+separately per instruction, NOT an independent hole for the record-literal path.* Reading
+`04_infer` `infer_record_lit_structural`: when the type name does not resolve at all
+(`effective_lookup == None`), a **separate**, unconditional `bare_name_miss_diagnostic` fires
+regardless of `sole_ctor_diags` — so a record literal naming a wholly nonexistent type is
+already refused on a different, always-firing ground, and the `Absent => false` arm never
+gets a chance to silently admit anything on this path. The cast path's equivalent guarantee
+was NOT traced to the same certainty (`validate_cast` checks cast-domain compatibility, not
+general nominal-type existence, and whether some earlier type-expr-resolution pass
+independently refuses an unresolvable cast target was not confirmed this pass) — left as an
+explicit open sub-question, not asserted either way.
+
+*Compiler-module exemptions — CONFIRMED: none apply to `sole_constructor`.* The only
+compiler-module exemption found anywhere in the v1 pipeline, `04_infer`
+`module_skips_direct_call_arg_check` (the `v2.`-prefix carve-out), is confirmed by full
+read to be scoped to the direct-call-argument type-conformance wall only; neither
+`type_has_sole_constructor` nor `sole_constructor_construction_diags` references it or any
+other module-path exemption. `v2.compiler.normalized_tree` itself declares a
+`sole_constructor` type and is enforced identically to any other module.
+
+*Interpreter/runtime bypass — CONFIRMED: none found.* `v1_interpreter.rs`'s cast evaluation
+(`cast_identity_result`, `eval_cast`) is identity/passthrough with no re-check, but this is
+moot: `gunbc run` refuses evaluation entirely when the entry's transitive-import closure
+carries a blocking diagnostic, so a violating program never reaches execution. No
+reflection/deserialization builtin capable of synthesizing an arbitrary user-defined nominal
+record was found in `coproduct_reflection.rs`.
+
+*Validator-identity forgeability (addendum, confirmed by execution, orthogonal to
+`sole_constructor` itself) — a real completeness gap in the roadmap's planned mitigation,
+not in `sole_constructor` as scoped.* `std.interval`'s `closed_interval` and
+`src/v2/std/refinement.dag`'s `refine` both accept a caller-supplied predicate
+(`le: fn(T,T)->Bool` / `Validation<B>.admits`). Executed: `closed_interval(low: 10, high: 1,
+le: always_true_le)` — a deliberately-broken caller-supplied predicate — returns
+`IntervalReady` (accepted) despite `low > high`; the same call with an honest predicate
+correctly returns `IntervalRefused` (control, confirms the harness measures what it claims).
+Even a fully `sole_constructor`-sealed `Refined<B>` would not close this: `sole_constructor`
+confines WHO/WHERE constructs the carrier, never WHAT predicate a sanctioned caller supplies
+through the carrier's own accepted mint path. This is a distinct invariant from the one
+`sole_constructor` completeness is scoped to answer, and the roadmap's `Refined<B>` design
+should treat it as a separate open question rather than something the construction wall
+retires.
+
+*Overall verdict:* **available today, for its stated scope, with one confirmed structural
+hole and one confirmed scope boundary.** `sole_constructor` reliably walls off record-literal
+and cast construction (including generic instantiation) of a census-UNIQUE type name, at
+every AST position and via the interpreter, with no compiler-module exemption. It does NOT
+reliably wall off a census-AMBIGUOUS type name — resolution silently guesses by
+last-import-wins rather than refusing or consulting the caller's actual selection, the
+`presence_check_census_gate_note` precedent's exact failure mode, landed here without the
+stand-down that gate uses to avoid it. Recommended next-rung trigger: apply the same
+local-declares-first carve-out `presence_check_census_gate_note` documents (read
+`str_bindings` — local declarations only — before falling through to the
+import-order-overlaid `lookup_type_by_name`), which is a decidable, gettable fix once
+grounded, not a ratchet. Until landed, any `sole_constructor` carrier (existing or a planned
+`Refined<B>`) whose bare name could collide with another module-scope declaration anywhere
+in a consuming corpus's transitive closure carries this risk, and that population has not
+been census-surveyed for actual bare-name collisions today.
+
 ## 11. Audit queue
 
 1. ~~Recover `docs/error-examples.md`~~ **DONE — see §8b**; ~~`correctness-dimensions`~~
    **DONE — see §8c.** Still to pull: `what-falls-out`, `two-groundings`,
    `the-derived-homomorphism`.
-1a. **Audit `sole_constructor` completeness** (new, post-merge review): generic carriers
-   (`Refined<B>`), every construction form, interaction with `module_skips_direct_call_arg_check`.
-   The capability ceiling's status — and the cardinality wall's first candidate
-   (`type Refined<B> sole_constructor`) — both hang on this audit.
+1a. ~~Audit `sole_constructor` completeness~~ **DONE — see §10, 2026-08-20 pass.** CONFIRMED
+   BY EXECUTION: the wall holds uniformly across every literal/cast AST position tested,
+   concrete and generic. CONFIRMED HOLE BY EXECUTION: the check's own resolution
+   (`04_infer` `type_has_sole_constructor` → `04_infer` `lookup_type_by_name`) inherits full
+   import-order dependence on a census-ambiguous bare name — it does not stand down the way
+   the sibling `presence_check_census_gate_note` gate does, so it silently MIS-JUDGES rather
+   than merely stands down: a sole_constructor type's own construction can be silently missed,
+   and an open type's legitimate construction can be silently flagged, purely as a function of
+   which of two same-named declarations was imported last in the probe module — independent of
+   which one the author's own `import … { Name }` explicitly selected. `Refined<B>` is NOT
+   cleared for a blanket `sole_constructor` landing until this hole is closed (a local-declares-
+   first carve-out, mirroring the sibling gate, is the indicated fix) or the roadmap accepts the
+   residual risk explicitly. Separately CONFIRMED BY EXECUTION: `04_infer`'s `closed_interval`
+   and `src/v2/std/refinement.dag`'s `refine` both accept a caller-supplied validator predicate,
+   so `sole_constructor` alone — even fully applied — cannot make a refinement carrier's
+   accepted values honor their nominal invariant; the caller can supply a validator that always
+   admits. Full form-by-form table, generic-carrier verdict, and open sub-questions in §10.
 1b. **Author the missing Tier 1 RED controls** (new, and the cheapest item here). They never
    existed. Start with the cardinality archetype, method existence, and declared-return
    conformance — each a three-line `.dag` program with an expected-error acceptance criterion,

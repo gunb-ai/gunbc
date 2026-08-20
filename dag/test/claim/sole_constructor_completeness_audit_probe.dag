@@ -255,3 +255,19 @@ fn f13_diag_variant_count() -> Int {
 test fn f13_variant_construction_refuses() -> Bool {
   violation_count(source: f13_variant_construction_source, wanted: "SoleConstructorViolation") >= 1
 }
+
+// Calibration for f13: confirms the synthetic module actually compiled
+// (CensusObserved, not the -1 CensusNotRunnable sentinel already built into
+// violation_count above) and reports the RAW total diagnostic count so a
+// zero SoleConstructorViolation count is read beside total row volume,
+// never in isolation.
+fn f13_diag_notrunnable_sentinel() -> Int {
+  violation_count(source: f13_variant_construction_source, wanted: "SoleConstructorViolation")
+}
+
+fn f13_diag_total_row_count() -> Int {
+  match census_of(source: f13_variant_construction_source) {
+    CensusObserved { rows: rows } => census_total_count(rows: rows)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
