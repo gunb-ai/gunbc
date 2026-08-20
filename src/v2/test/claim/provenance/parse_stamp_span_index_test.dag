@@ -1,21 +1,21 @@
 module v2.test.provenance.parse_stamp_span_index
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn parse_stamp_list_absent_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn parse_stamp_list_absent_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^parse_stamp_list_absent,
-    at: node_locus(node: Node {
-      kind: TypeNode { connective: Conj },
+    at: node_locus(node: v2.std.node.Node {
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: v2.std.node.SyntheticOccurrence
     }),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
-fn parse_stamp_token(start: Int, end: Int) -> Token {
-  Token {
+fn parse_stamp_token(start: Int, end: Int) -> v2.std.compilers.lexing.Token {
+  v2.std.compilers.lexing.Token {
     class: ^parse_stamp_tok,
     lexeme: std.algebra.Empty,
     file: ^parse_stamp_file,
@@ -24,13 +24,13 @@ fn parse_stamp_token(start: Int, end: Int) -> Token {
   }
 }
 
-fn parse_stamp_terminal_root() -> GrammarRoot {
-  GrammarRoot {
+fn parse_stamp_terminal_root() -> v2.std.grammar.GrammarRoot {
+  v2.std.grammar.GrammarRoot {
     start: ^parse_stamp_start,
-    productions: Cons {
-      head: GrammarProduction {
+    productions: std.algebra.Cons {
+      head: v2.std.grammar.GrammarProduction {
         name: ^parse_stamp_start,
-        expression: Terminal { token_class: ^parse_stamp_tok, stamp: StampClass },
+        expression: v2.std.grammar.Terminal { token_class: ^parse_stamp_tok, stamp: v2.std.grammar.StampClass },
         emitted: grammar_atom(identity: ^parse_stamp_start)
       },
       tail: std.algebra.Empty
@@ -39,15 +39,15 @@ fn parse_stamp_terminal_root() -> GrammarRoot {
   }
 }
 
-fn parse_stamp_sequence_root() -> GrammarRoot {
-  GrammarRoot {
+fn parse_stamp_sequence_root() -> v2.std.grammar.GrammarRoot {
+  v2.std.grammar.GrammarRoot {
     start: ^parse_stamp_start,
-    productions: Cons {
-      head: GrammarProduction {
+    productions: std.algebra.Cons {
+      head: v2.std.grammar.GrammarProduction {
         name: ^parse_stamp_start,
-        expression: Sequence {
-          left: Terminal { token_class: ^parse_stamp_tok, stamp: StampClass },
-          right: Terminal { token_class: ^parse_stamp_tok, stamp: StampClass }
+        expression: v2.std.grammar.Sequence {
+          left: v2.std.grammar.Terminal { token_class: ^parse_stamp_tok, stamp: v2.std.grammar.StampClass },
+          right: v2.std.grammar.Terminal { token_class: ^parse_stamp_tok, stamp: v2.std.grammar.StampClass }
         },
         emitted: grammar_atom(identity: ^parse_stamp_start)
       },
@@ -58,7 +58,7 @@ fn parse_stamp_sequence_root() -> GrammarRoot {
 }
 
 fn parse_stamp_from_source_extent_holds(
-  index: SpanIndex,
+  index: v2.std.provenance.SpanIndex,
   id: std.occurrence_identity.OccurrenceId,
   start: Int,
   end: Int
@@ -84,7 +84,7 @@ fn parse_stamp_from_source_extent_holds(
 }
 
 fn parse_stamp_derived_by_pair_holds(
-  index: SpanIndex,
+  index: v2.std.provenance.SpanIndex,
   id: std.occurrence_identity.OccurrenceId,
   left: std.occurrence_identity.OccurrenceId,
   right: std.occurrence_identity.OccurrenceId
@@ -126,7 +126,7 @@ test fn parse_stamp_terminal_from_source_holds() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: validated, diagnostics: _ } =>
       match parse_production(
-        tokens: Cons {
+        tokens: std.algebra.Cons {
           head: parse_stamp_token(start: 3, end: 8),
           tail: std.algebra.Empty
         },
@@ -162,9 +162,9 @@ test fn parse_stamp_sequence_derived_by_holds() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: validated, diagnostics: _ } =>
       match parse_production(
-        tokens: Cons {
+        tokens: std.algebra.Cons {
           head: parse_stamp_token(start: 0, end: 5),
-          tail: Cons { head: parse_stamp_token(start: 5, end: 10), tail: std.algebra.Empty }
+          tail: std.algebra.Cons { head: parse_stamp_token(start: 5, end: 10), tail: std.algebra.Empty }
         },
         validated: validated,
         production_name: ^parse_stamp_start

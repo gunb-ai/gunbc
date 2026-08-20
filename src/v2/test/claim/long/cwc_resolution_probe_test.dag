@@ -1,7 +1,6 @@
 module v2.test.long.cwc_resolution_probe
 
-
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data cwc_src_type_two: String = "module probe\ntype T = A | B\n"
 data cwc_src_type_three: String = "module probe\ntype T = A | B | C\n"
@@ -13,7 +12,7 @@ data cwc_src_type_malformed_coproduct: String = "module probe\ntype T = { x: Int
 
 data cwc_src_cwc_module: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\ndata review_event_wire_contract: CoproductWireContract = { coproduct: \"ReviewEvent\", encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
 
-fn cwc_norm_of(src: String) -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
+fn cwc_norm_of(src: String) -> Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   let lm = dag_language_model()
   bind_outcome(
     o: tokenize(text: src, file: ^cwc_probe_file, rules: lm.lex),
@@ -40,10 +39,10 @@ test fn cwc_norm_three_variant_accepts() -> Bool {
   cwc_norm_accepts(src: cwc_src_type_three)
 }
 
-fn cwc_tree_has_disj(n: v2.std.node.Node) -> Bool {
+fn cwc_tree_has_disj(n: Node) -> Bool {
   fold_node(
     n: n,
-    algebra: v2.std.node.NodeFold {
+    algebra: NodeFold {
       init: fn(node) {
         match node.kind {
           TypeNode { connective: Disj } => true
@@ -61,10 +60,10 @@ fn cwc_tree_has_disj(n: v2.std.node.Node) -> Bool {
   )
 }
 
-fn cwc_disj_arm_count(n: v2.std.node.Node) -> Int {
+fn cwc_disj_arm_count(n: Node) -> Int {
   fold_node(
     n: n,
-    algebra: v2.std.node.NodeFold {
+    algebra: NodeFold {
       init: fn(node) {
         match node.kind {
           TypeNode { connective: Disj } => count(node.children)

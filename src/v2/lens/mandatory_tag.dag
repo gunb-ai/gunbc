@@ -1,26 +1,25 @@
 module v2.lens.mandatory_tag
 
+data mandatory_tag_law: v2.std.text.String = "The SubstrateMandatoryTag mechanism (std.disposition.ConstructionMechanism), reached region-by-region per dag/gunbc/plans/disposition_carrier.dag: a MandatoryTagRegion row declares that every module whose qualified name falls inside a namespace region MUST carry a top-level data declaration with a required name, a required declared type, and a value whose discriminating vocabulary atoms are drawn from an accepted subset. Enrolled in always_required_root_lenses, so a violating module FAILS COMPILATION with a typed, located diagnostic - the missing/misnamed/misvalued tag is unwritable at definition admission, not flagged post-hoc by a corpus scan (DESIGN 5: construction over validation). First region: extdeps external-authority anchors - this row is the dissolution of v2.lens.extdeps_external_authority and its cli_run.rs host text-scan scaffold (that lens's WallAfterGrounding { dissolves_to: SubstrateMandatoryTag } boundary, discharged). The shadow-mask sub-check dissolved with it onto its own SingleAuthority ground: module-path collisions refuse loudly at module-index build, so a tag masked by a same-path shadow module is unwritable upstream of this gate. Grain: root - one rooted whole-tree walk locating dag_surface_module wrappers; per-module work is a bounded read of one small declaration subtree, never a per-node subtree re-walk (the required_lens_grain_note O(n^2) bar). Corpus grain: the same fold is consumed at parse grain by the live witness in src/v2/test/claim/long/mandatory_tag_extdeps_corpus_test.dag over dag/extdeps/** via filesystem_list_dag_files + filesystem_read + the v2 grammar - the Node-tree projection that supersedes the host module parse (the dissolution trigger named by the deleted cli_run.rs scaffold block)."
 
-data mandatory_tag_law: String = "The SubstrateMandatoryTag mechanism (std.disposition.ConstructionMechanism), reached region-by-region per dag/gunbc/plans/disposition_carrier.dag: a MandatoryTagRegion row declares that every module whose qualified name falls inside a namespace region MUST carry a top-level data declaration with a required name, a required declared type, and a value whose discriminating vocabulary atoms are drawn from an accepted subset. Enrolled in always_required_root_lenses, so a violating module FAILS COMPILATION with a typed, located diagnostic - the missing/misnamed/misvalued tag is unwritable at definition admission, not flagged post-hoc by a corpus scan (DESIGN 5: construction over validation). First region: extdeps external-authority anchors - this row is the dissolution of v2.lens.extdeps_external_authority and its cli_run.rs host text-scan scaffold (that lens's WallAfterGrounding { dissolves_to: SubstrateMandatoryTag } boundary, discharged). The shadow-mask sub-check dissolved with it onto its own SingleAuthority ground: module-path collisions refuse loudly at module-index build, so a tag masked by a same-path shadow module is unwritable upstream of this gate. Grain: root - one rooted whole-tree walk locating dag_surface_module wrappers; per-module work is a bounded read of one small declaration subtree, never a per-node subtree re-walk (the required_lens_grain_note O(n^2) bar). Corpus grain: the same fold is consumed at parse grain by the live witness in src/v2/test/claim/long/mandatory_tag_extdeps_corpus_test.dag over dag/extdeps/** via filesystem_list_dag_files + filesystem_read + the v2 grammar - the v2.std.node.Node-tree projection that supersedes the host module parse (the dissolution trigger named by the deleted cli_run.rs scaffold block)."
+data mandatory_tag_shape_law: v2.std.text.String = "Two carrier shapes, one reader family, mirroring qualified_name_from_module_node's dual path: an emit-shaped declaration carries Named edges (dag_surface_data_decl_name / _type / _expr - emit_data_decl_emitted_node's projection), a parse-shaped declaration carries the grammar sequence projection (grammar_production_captured_node_projection with sequence left/right spine: kw_data, name, colon, type_expr, eq, value). The declaration NAME on the parse shape is the lexeme-stamped atom identity (dag_grammar_data_decl_expr name terminal is terminal_lexeme, stamped in this change - the same move already landed for fn_decl, alias_decl, and the let binder). A name atom still reading as the bare dag_token_ident marker is a pre-stamp tree: that module's tag presence is undecidable at this grain and refuses mandatory_tag_name_projection_gated - a typed sequencing refusal, never a silent skip and never a fabricated verdict."
 
-data mandatory_tag_shape_law: String = "Two carrier shapes, one reader family, mirroring v2.extdeps.languages.dag.qualified_name_from_module_node's dual path: an emit-shaped declaration carries Named edges (dag_surface_data_decl_name / _type / _expr - emit_data_decl_emitted_node's projection), a parse-shaped declaration carries the grammar sequence projection (grammar_production_captured_node_projection with sequence left/right spine: kw_data, name, colon, type_expr, eq, value). The declaration NAME on the parse shape is the lexeme-stamped atom identity (dag_grammar_data_decl_expr name terminal is terminal_lexeme, stamped in this change - the same move already landed for fn_decl, alias_decl, and the let binder). A name atom still reading as the bare dag_token_ident marker is a pre-stamp tree: that module's tag presence is undecidable at this grain and refuses mandatory_tag_name_projection_gated - a typed sequencing refusal, never a silent skip and never a fabricated verdict."
-
-data mandatory_tag_value_vocabulary_law: String = "The value check is vocabulary-keyed, not field-path-keyed: the region names the closed set of discriminating variant atoms (for the extdeps region, the extdeps.uri scheme constructors) and the accepted subset (Http, Https - the intersubjectively reachable schemes; File and Ftp are non-external, the old NonExternalAnchorScheme refusal). The tagged declaration's value subtree is scanned for vocabulary atoms: any non-accepted atom refuses; none found refuses IF the value region structurally carries its expression content (dag_surface_expr productions present - parse-shaped and emit-shaped trees), and is out of representation IF the region carries no expression productions (03_normalize currently collapses data-decl value internals to bare token markers - the general-body-producer frontier, docs/plans/general-body-producer-design.md). The out-of-representation arm contributes no finding at THIS grain because the fact is absent from the carrier, not because the check widened - the corpus witness enforces the same rule at parse grain, where the value content is always present, so scheme enforcement stays whole-corpus while the normalize-grain representation matures."
+data mandatory_tag_value_vocabulary_law: v2.std.text.String = "The value check is vocabulary-keyed, not field-path-keyed: the region names the closed set of discriminating variant atoms (for the extdeps region, the extdeps.uri scheme constructors) and the accepted subset (Http, Https - the intersubjectively reachable schemes; File and Ftp are non-external, the old NonExternalAnchorScheme refusal). The tagged declaration's value subtree is scanned for vocabulary atoms: any non-accepted atom refuses; none found refuses IF the value region structurally carries its expression content (dag_surface_expr productions present - parse-shaped and emit-shaped trees), and is out of representation IF the region carries no expression productions (03_normalize currently collapses data-decl value internals to bare token markers - the general-body-producer frontier, docs/plans/general-body-producer-design.md). The out-of-representation arm contributes no finding at THIS grain because the fact is absent from the carrier, not because the check widened - the corpus witness enforces the same rule at parse grain, where the value content is always present, so scheme enforcement stays whole-corpus while the normalize-grain representation matures."
 
 type MandatoryTagRegion {
-  region_dotted_prefix: String
+  region_dotted_prefix: v2.std.text.String
   required_decl_name: v2.std.node.Symbol
   required_type_name: v2.std.node.Symbol
-  value_vocabulary: List<v2.std.node.Symbol>
-  value_accepted: List<v2.std.node.Symbol>
-  exempt_modules: List<String>
-  exempt_module_prefixes: List<String>
-  exempt_module_suffixes: List<String>
+  value_vocabulary: v2.std.collection.List<v2.std.node.Symbol>
+  value_accepted: v2.std.collection.List<v2.std.node.Symbol>
+  exempt_modules: v2.std.collection.List<v2.std.text.String>
+  exempt_module_prefixes: v2.std.collection.List<v2.std.text.String>
+  exempt_module_suffixes: v2.std.collection.List<v2.std.text.String>
 }
 
-data extdeps_external_authority_region_note: String = "Region membership mirrors the dissolved host roster exactly: extdeps.uri and extdeps.external_authority are the anchor machinery itself (a module cannot cite the citation vocabulary it defines - the old machinery_exempt roster); extdeps.fixture.* are deliberate red-control plants; *.mock_corpus modules are synthetic corpora. The drained backfill queue (dag/extdeps/external_authority_backfill_pending.txt, deleted with this row) is not carried forward: coverage was whole-tree at dissolution time, so no backfill concept survives."
+data extdeps_external_authority_region_note: v2.std.text.String = "Region membership mirrors the dissolved host roster exactly: extdeps.uri and extdeps.external_authority are the anchor machinery itself (a module cannot cite the citation vocabulary it defines - the old machinery_exempt roster); extdeps.fixture.* are deliberate red-control plants; *.mock_corpus modules are synthetic corpora. The drained backfill queue (dag/extdeps/external_authority_backfill_pending.txt, deleted with this row) is not carried forward: coverage was whole-tree at dissolution time, so no backfill concept survives."
 
-data extdeps_external_authority_region: v2.lens.mandatory_tag.MandatoryTagRegion = MandatoryTagRegion {
+data extdeps_external_authority_region: MandatoryTagRegion = MandatoryTagRegion {
   region_dotted_prefix: "extdeps.",
   required_decl_name: ^extdeps_external_authority_anchor,
   required_type_name: ^ExternalAuthority,
@@ -31,40 +30,40 @@ data extdeps_external_authority_region: v2.lens.mandatory_tag.MandatoryTagRegion
   exempt_module_suffixes: [".mock_corpus"]
 }
 
-fn mandatory_tag_regions() -> List<v2.lens.mandatory_tag.MandatoryTagRegion> {
+fn mandatory_tag_regions() -> v2.std.collection.List<MandatoryTagRegion> {
   [extdeps_external_authority_region]
 }
 
-fn mandatory_tag_symbols_contain(xs: List<v2.std.node.Symbol>, s: v2.std.node.Symbol) -> Bool {
+fn mandatory_tag_symbols_contain(xs: v2.std.collection.List<v2.std.node.Symbol>, s: v2.std.node.Symbol) -> v2.std.logic.Bool {
   fold(xs, init: false, f: fn(acc, x) { acc || x == s })
 }
 
-fn mandatory_tag_strings_contain(xs: List<String>, s: String) -> Bool {
+fn mandatory_tag_strings_contain(xs: v2.std.collection.List<v2.std.text.String>, s: v2.std.text.String) -> v2.std.logic.Bool {
   fold(xs, init: false, f: fn(acc, x) { acc || x == s })
 }
 
-fn mandatory_tag_any_prefix(xs: List<String>, dotted: String) -> Bool {
+fn mandatory_tag_any_prefix(xs: v2.std.collection.List<v2.std.text.String>, dotted: v2.std.text.String) -> v2.std.logic.Bool {
   fold(xs, init: false, f: fn(acc, p) { acc || dotted.starts_with(prefix: p) })
 }
 
-fn mandatory_tag_any_suffix(xs: List<String>, dotted: String) -> Bool {
+fn mandatory_tag_any_suffix(xs: v2.std.collection.List<v2.std.text.String>, dotted: v2.std.text.String) -> v2.std.logic.Bool {
   fold(xs, init: false, f: fn(acc, s) { acc || dotted.ends_with(suffix: s) })
 }
 
-fn mandatory_tag_region_applies(region: v2.lens.mandatory_tag.MandatoryTagRegion, dotted: String) -> Bool {
+fn mandatory_tag_region_applies(region: MandatoryTagRegion, dotted: v2.std.text.String) -> v2.std.logic.Bool {
   dotted.starts_with(prefix: region.region_dotted_prefix)
     && !mandatory_tag_strings_contain(xs: region.exempt_modules, s: dotted)
     && !mandatory_tag_any_prefix(xs: region.exempt_module_prefixes, dotted: dotted)
     && !mandatory_tag_any_suffix(xs: region.exempt_module_suffixes, dotted: dotted)
 }
 
-fn mandatory_tag_subtree_atoms(n: v2.std.node.Node) -> std.algebra.FreeMonoid<v2.std.node.Symbol> {
+fn mandatory_tag_subtree_atoms(n: v2.std.node.Node) -> v2.std.collection.List<v2.std.node.Symbol> {
   v2.std.node.fold_node(
     n: n,
     algebra: v2.std.node.NodeFold {
       init: fn(n0) {
         match n0.kind {
-          TypeNode { connective: v2.std.node.Atom { identity: s } } => [s]
+          v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } } => [s]
           _ => []
         }
       },
@@ -73,7 +72,7 @@ fn mandatory_tag_subtree_atoms(n: v2.std.node.Node) -> std.algebra.FreeMonoid<v2
   )
 }
 
-fn mandatory_tag_subtree_has_production(n: v2.std.node.Node, want: v2.std.node.Symbol) -> Bool {
+fn mandatory_tag_subtree_has_production(n: v2.std.node.Node, want: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.node.fold_node(
     n: n,
     algebra: v2.std.node.NodeFold {
@@ -88,7 +87,7 @@ fn mandatory_tag_subtree_has_production(n: v2.std.node.Node, want: v2.std.node.S
   )
 }
 
-fn mandatory_tag_node_production_is(n: v2.std.node.Node, want: v2.std.node.Symbol) -> Bool {
+fn mandatory_tag_node_production_is(n: v2.std.node.Node, want: v2.std.node.Symbol) -> v2.std.logic.Bool {
   match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: n) {
     Present { value: id } => id == want
     Absent => false
@@ -174,7 +173,7 @@ fn mandatory_tag_parse_value_node(d: v2.std.node.Node) -> v2.std.optional.Option
   }
 }
 
-fn mandatory_tag_decl_name(d: v2.std.node.Node) -> v2.lens.mandatory_tag.MandatoryTagDeclName {
+fn mandatory_tag_decl_name(d: v2.std.node.Node) -> MandatoryTagDeclName {
   match v2.std.node_query.find_named_child(root: d, name: ^dag_surface_data_decl_name) {
     Accepted { value: nm, diagnostics: _ } =>
       match v2.std.grammar.node_atom_identity_optional(node: nm) {
@@ -218,10 +217,10 @@ fn mandatory_tag_decl_value_node(d: v2.std.node.Node) -> v2.std.optional.Optiona
 
 type MandatoryTagDeclScan {
   found: v2.std.optional.Optional<v2.std.node.Node>
-  projection_gated_count: Int
+  projection_gated_count: v2.std.integer.Int
 }
 
-fn mandatory_tag_scan_decls(subtree: v2.std.node.Node, required_name: v2.std.node.Symbol) -> v2.lens.mandatory_tag.MandatoryTagDeclScan {
+fn mandatory_tag_scan_decls(subtree: v2.std.node.Node, required_name: v2.std.node.Symbol) -> MandatoryTagDeclScan {
   if mandatory_tag_node_production_is(n: subtree, want: ^dag_surface_data_decl) {
     match mandatory_tag_decl_name(d: subtree) {
       DeclNameRead { name: nm } =>
@@ -236,7 +235,7 @@ fn mandatory_tag_scan_decls(subtree: v2.std.node.Node, required_name: v2.std.nod
         MandatoryTagDeclScan { found: v2.std.optional.optional_absent(), projection_gated_count: 1 }
     }
   } else {
-    fold(subtree.children, init: v2.lens.mandatory_tag.MandatoryTagDeclScan { found: v2.std.optional.optional_absent(), projection_gated_count: 0 }, f: fn(acc, e) {
+    fold(subtree.children, init: MandatoryTagDeclScan { found: v2.std.optional.optional_absent(), projection_gated_count: 0 }, f: fn(acc, e) {
       match acc.found {
         Present { value: _ } => acc
         Absent =>
@@ -290,7 +289,7 @@ fn mandatory_tag_value_not_accepted_diagnostic(d: v2.std.node.Node) -> v2.std.di
   }
 }
 
-fn mandatory_tag_type_findings(d: v2.std.node.Node, region: v2.lens.mandatory_tag.MandatoryTagRegion) -> List<v2.std.diagnostic.Diagnostic> {
+fn mandatory_tag_type_findings(d: v2.std.node.Node, region: MandatoryTagRegion) -> v2.std.collection.List<v2.std.diagnostic.Diagnostic> {
   match mandatory_tag_decl_type_node(d: d) {
     Absent => [mandatory_tag_type_mismatch_diagnostic(d: d)]
     Present { value: ty } =>
@@ -305,7 +304,7 @@ fn mandatory_tag_type_findings(d: v2.std.node.Node, region: v2.lens.mandatory_ta
   }
 }
 
-fn mandatory_tag_vocabulary_hits(atoms: std.algebra.FreeMonoid<v2.std.node.Symbol>, vocabulary: std.algebra.FreeMonoid<v2.std.node.Symbol>) -> std.algebra.FreeMonoid<v2.std.node.Symbol> {
+fn mandatory_tag_vocabulary_hits(atoms: v2.std.collection.List<v2.std.node.Symbol>, vocabulary: v2.std.collection.List<v2.std.node.Symbol>) -> v2.std.collection.List<v2.std.node.Symbol> {
   fold(atoms, init: [], f: fn(acc, a) {
     if mandatory_tag_symbols_contain(xs: vocabulary, s: a) {
       concat(acc, [a])
@@ -315,7 +314,7 @@ fn mandatory_tag_vocabulary_hits(atoms: std.algebra.FreeMonoid<v2.std.node.Symbo
   })
 }
 
-fn mandatory_tag_value_findings(d: v2.std.node.Node, region: v2.lens.mandatory_tag.MandatoryTagRegion) -> List<v2.std.diagnostic.Diagnostic> {
+fn mandatory_tag_value_findings(d: v2.std.node.Node, region: MandatoryTagRegion) -> v2.std.collection.List<v2.std.diagnostic.Diagnostic> {
   match mandatory_tag_decl_value_node(d: d) {
     Absent => []
     Present { value: v } =>
@@ -344,10 +343,10 @@ fn mandatory_tag_value_findings(d: v2.std.node.Node, region: v2.lens.mandatory_t
 }
 
 fn mandatory_tag_region_module_findings(
-  region: v2.lens.mandatory_tag.MandatoryTagRegion,
+  region: MandatoryTagRegion,
   module_node: v2.std.node.Node,
-  dotted: String
-) -> List<v2.std.diagnostic.Diagnostic> {
+  dotted: v2.std.text.String
+) -> v2.std.collection.List<v2.std.diagnostic.Diagnostic> {
   if mandatory_tag_region_applies(region: region, dotted: dotted) {
     let scan = mandatory_tag_scan_decls(
       subtree: module_node,
@@ -371,7 +370,7 @@ fn mandatory_tag_region_module_findings(
   }
 }
 
-fn mandatory_tag_module_findings(n: v2.std.node.Node) -> List<v2.std.diagnostic.Diagnostic> {
+fn mandatory_tag_module_findings(n: v2.std.node.Node) -> v2.std.collection.List<v2.std.diagnostic.Diagnostic> {
   if mandatory_tag_node_production_is(n: n, want: ^dag_surface_module) {
     match v2.extdeps.languages.dag.qualified_name_from_module_node(root: n) {
       Rejected { diagnostics: _ } => []
@@ -394,7 +393,7 @@ fn mandatory_tag_module_findings(n: v2.std.node.Node) -> List<v2.std.diagnostic.
 }
 
 // A dag_surface_module wrapper whose qualified name cannot be read contributes no region findings here - machine_shape parity, not an absorbing arm: name resolution over the same tree refuses malformed module headers upstream of every root lens, so the nameless-wrapper arm is unreachable on a tree that reached the lens roster; keying region membership on a fabricated name would be the fabricated-plausible-output trap the arm avoids.
-fn mandatory_tag_findings(root: v2.std.node.Node) -> std.algebra.FreeMonoid<v2.std.diagnostic.Diagnostic> {
+fn mandatory_tag_findings(root: v2.std.node.Node) -> v2.std.collection.List<v2.std.diagnostic.Diagnostic> {
   v2.std.node.fold_node(
     n: root,
     algebra: v2.std.node.NodeFold {
@@ -404,7 +403,7 @@ fn mandatory_tag_findings(root: v2.std.node.Node) -> std.algebra.FreeMonoid<v2.s
   )
 }
 
-fn mandatory_tag_findings_count(root: v2.std.node.Node) -> Int {
+fn mandatory_tag_findings_count(root: v2.std.node.Node) -> v2.std.integer.Int {
   v2.std.algebra.length(xs: mandatory_tag_findings(root: root))
 }
 
