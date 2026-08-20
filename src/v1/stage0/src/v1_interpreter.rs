@@ -6327,6 +6327,32 @@ fn alias_rhs_next_name(ctx: &InterpContext, rhs: Rc<Node>) -> Option<String> {
                 return Some(base);
             }
         }
+        // A REFINED ALIAS WHOSE BASE IS SPELLED WITH ITS FULL ADDRESS NESTS ONE CONJ DEEPER
+        // than one spelled bare, and stopping at the first level made every such alias
+        // unreachable. `type T = std.types.NonEmptyStr where non_empty` resolves to
+        // Conj[Conj["String"]] -- the `where` contributes one wrapper and the qualified path
+        // spine contributes another -- while `type T = NonEmptyStr where non_empty` resolves
+        // to Conj["NonEmptyStr"] and was found by the loop above. So the alias walk returned
+        // no next name, the kernel search ended at the alias's own name, and `x as T` refused
+        // with "cannot cast String to T": 340+ rows on this branch, in ~20 distinct branded
+        // types, none of them a real type disagreement.
+        //
+        // ONLY A SOLE CHILD IS FOLLOWED. A Conj with several named children is a record or a
+        // multi-argument application, where "the base" is not defined and picking one would be
+        // a guess; a sole child is an unambiguous wrapper. The depth bound is the same 32 the
+        // caller's alias walk uses, and running out returns None rather than a wrong answer.
+        let mut cursor = rhs.clone();
+        for _ in 0..32 {
+            if cursor.connective != Connective::Conj || cursor.children.len() != 1 {
+                break;
+            }
+            let child = cursor.children[0].clone();
+            let base = authored_name_at(ctx.si(), child.clone());
+            if !base.is_empty() {
+                return Some(base);
+            }
+            cursor = child;
+        }
     }
     match rhs.inferred.as_deref() {
         Some(InferredNode::Resolved { node }) => {

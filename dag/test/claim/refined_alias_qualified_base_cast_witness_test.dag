@@ -1,0 +1,26 @@
+module test.claim.refined_alias_qualified_base_cast_witness
+
+// The regression control for the alias walk's sole-child descent. Both rows
+// were measured RED before the fix and green after, on this corpus, with the
+// same binary -- they are the executing evidence that a refined alias whose
+// base carries its full address still reaches its kernel.
+//
+// WHY THIS NEEDS A WITNESS AT ALL: `type T = NonEmptyStr where non_empty` and
+// `type T = std.types.NonEmptyStr where non_empty` are the same declaration
+// spelled two ways, and only the second nests a second Conj wrapper. Nothing
+// in the source says so, so the distinction is invisible to review and can
+// only be held by execution.
+
+type RefinedAliasQualifiedBase = std.types.NonEmptyStr where non_empty
+
+type RefinedAliasQualifiedBrandedBase = std.types.NonEmptyStr where brand("RefinedAliasQualifiedBrandedBase")
+
+test fn cast_to_refined_alias_over_qualified_base_reaches_its_kernel() -> Bool {
+  let v = "abc" as RefinedAliasQualifiedBase
+  v == "abc"
+}
+
+test fn cast_to_branded_alias_over_qualified_base_reaches_its_kernel() -> Bool {
+  let v = "abc" as RefinedAliasQualifiedBrandedBase
+  v == "abc"
+}
