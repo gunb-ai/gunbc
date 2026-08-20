@@ -39,25 +39,46 @@ data fleet_converge_plan_spark_typed_actions_wire_path: String = "/tmp/fleet-con
 
 data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect LeaseEpoch generation in the artifact, and writes the human-readable plan plus apply.sh. plan_content.hex is the Fnv1a64Structural bundle digest of plan.txt + apply.sh + spark_serving_typed_actions.wire (empty wire on non-Spark hosts); on success plan_wet prints plan.txt then that digest for workflow_dispatch plan_artifact_hash. Apply re-observes subject identity and observed-baseline fingerprint in .dag, refuses unless on-disk plan.txt + apply.sh + spark wire match plan_content.hex, then runs fleet_converge_locked_apply_script under flock. Generation store reads refuse corrupt or negative values; a missing store file is generation 0."
 
+// STATED, NOT SILENTLY DEFAULTED. This value KEYS THE CONVERGE PLAN's subject identity, so a
+// hostname that could not be read must not become "" and flow into a plan named for the wrong
+// host. The old code took .stdout straight off the call expression -- no binding, so there was
+// not even a variable a later author could think to check.
+//
+// WHAT THIS DOES AND DOES NOT FIX, stated because the residue is real. A `-> String` function
+// has no way to refuse: the substrate offers no abort from this position, so the only honest
+// options are to change the return type or to return a value. This returns a value that CANNOT
+// BE MISTAKEN FOR A HOSTNAME -- deliberately implausible rather than plausibly empty -- so a
+// plan keyed on it is visibly wrong at a glance instead of silently wrong forever. That is
+// strictly better than "" and is still not a refusal.
+//
+// RUNG: mitigatable, not fixed. The conflation is surfaced, not closed. NEXT-RUNG TRIGGER: this
+// function returns an optional (or a typed outcome) and its two callers handle the absent case;
+// that cascades into plan subject identity, which is a different change from this migration and
+// deliberately not attempted inside it.
+//
+// SECOND ROW, SEPARATE FROM THE ONE ABOVE BECAUSE ITS REACHABILITY IS DIFFERENT AND WORSE. The
+// row above says the value is visibly wrong rather than plausibly empty. It does NOT say the
+// value dies before it is recorded, and it does not: fleet_converge_plan_wet WRITES host_short
+// verbatim to fleet_converge_plan_subject_host_path, coerces it to NonEmptyStr as the plan's
+// subject host, and folds it into the member-set fingerprint and the plan content hash. So an
+// unobserved hostname IS PERSISTED as a receipt that later reads as fact.
+//
+// AND IT DEFEATS THE GUARD THAT EXISTS TO CATCH EXACTLY THIS. fleet_converge_apply_wet re-observes
+// the host and refuses on SubjectHostMismatch when observed != planned. Two consecutive refusals
+// produce the SAME string, so the comparison SUCCEEDS and apply proceeds -- the check whose whole
+// purpose is to stop a plan being applied on the wrong host is satisfied by two non-observations
+// agreeing with each other. That is the empty-observation narrow at the guard: bottom == bottom
+// read as "same host". Making the marker unique per call would NOT fix it -- it would convert a
+// false match into a false mismatch, which is a different wrong answer, not an observation.
+//
+// NOT INTRODUCED HERE, AND SAYING SO PRECISELY: the prior code persisted "" and compared "" == "",
+// which passed identically. The defect predates this migration and this migration does not repair
+// it -- it makes the persisted evidence legible instead of blank. Rung: mitigatable. NEXT-RUNG
+// TRIGGER: the subject-host comparison consumes an outcome rather than a String, so that
+// unobserved-vs-unobserved is a REFUSAL to compare and not an equality.
 func observe_host_short_wet() -> String
   uses net: Network
 {
-  // STATED, NOT SILENTLY DEFAULTED. This value KEYS THE CONVERGE PLAN's subject identity, so a
-  // hostname that could not be read must not become "" and flow into a plan named for the wrong
-  // host. The old code took .stdout straight off the call expression -- no binding, so there was
-  // not even a variable a later author could think to check.
-  //
-  // WHAT THIS DOES AND DOES NOT FIX, stated because the residue is real. A `-> String` function
-  // has no way to refuse: the substrate offers no abort from this position, so the only honest
-  // options are to change the return type or to return a value. This returns a value that CANNOT
-  // BE MISTAKEN FOR A HOSTNAME -- deliberately implausible rather than plausibly empty -- so a
-  // plan keyed on it is visibly wrong at a glance instead of silently wrong forever. That is
-  // strictly better than "" and is still not a refusal.
-  //
-  // RUNG: mitigatable, not fixed. The conflation is surfaced, not closed. NEXT-RUNG TRIGGER: this
-  // function returns an optional (or a typed outcome) and its two callers handle the absent case;
-  // that cascades into plan subject identity, which is a different change from this migration and
-  // deliberately not attempted inside it.
   match run_shell_command_capture(
     command: ArgvCommand { argv: ["hostname", "-s"] },
     transport: LocalExec,
