@@ -1,10 +1,9 @@
 module test.claim.live_deploy.running_release_identity_witness_test
 
-
 data witness_subject_note: String = "THE PROPERTY UNDER TEST IS THAT A DEPLOY CANNOT GREEN AGAINST A PROCESS IT DID NOT INSTALL, and every witness here is written to fail if that stops holding. The mechanism is small — the running process states which release it was launched as, and readiness compares that statement against the release this invocation admitted — so the witnesses are correspondingly small and each isolates one way the comparison could go wrong.\\n\\nWhat makes them discriminating rather than decorative: the healthy case and every refusal case are built from the SAME producer (healthz_body_with_release_identity) differing in exactly one input. A refusal that fired because the fixture was malformed in some incidental way would also fire on the healthy fixture, and the healthy fixture is asserted to ground. So each red is attributable to the one axis it varies."
 
 fn witness_bundle() -> gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle {
-  materialize_live_roadmap_site_surface_bundle()
+  gunbc.roadmap_site_surface_observe.materialize_live_roadmap_site_surface_bundle()
 }
 
 fn healthz_body_at_revision(revision: std.types.CommitSha) -> String {
@@ -19,7 +18,7 @@ fn healthz_body_at_revision_and_surface(
   surface_bundle_identity: std.content_hash.Fnv1a64Structural,
 ) -> String {
   let bundle = witness_bundle()
-  healthz_body_with_release_identity(
+  gunbc.roadmap_site_surface_render.healthz_body_with_release_identity(
     roadmap: bundle.roadmap_md,
     dispatch: bundle.dispatch_json,
     daily: bundle.daily_html,
@@ -43,8 +42,8 @@ fn ground_body_against_surface(
   expected_revision: std.types.CommitSha,
   expected_surface_identity: std.content_hash.Fnv1a64Structural,
 ) -> std.realization_reconcile.Grounding<gunbc.live_deploy.readiness.ServiceReadyEvidence> {
-  ground_service_ready_from_healthz_with_bundle(
-    read: gunbc.roadmap_site_surface_types.HealthzEffectiveRead { body: body, probe_error: "" },
+  gunbc.live_deploy.readiness.ground_service_ready_from_healthz_with_bundle(
+    read: gunbc.roadmap_site_surface_types.HealthzBodyRead { body: body },
     bundle: witness_bundle(),
     expected_revision: expected_revision,
     expected_surface_identity: expected_surface_identity,
@@ -53,15 +52,15 @@ fn ground_body_against_surface(
 
 fn grounding_refuses(g: std.realization_reconcile.Grounding<gunbc.live_deploy.readiness.ServiceReadyEvidence>) -> Bool {
   match g {
-    DoesNotGround { reason: _ } => true
-    Grounds { evidence: _ } => false
+    std.realization_reconcile.DoesNotGround { reason: _ } => true
+    std.realization_reconcile.Grounds { evidence: _ } => false
   }
 }
 
 fn grounding_refusal_mentions(g: std.realization_reconcile.Grounding<gunbc.live_deploy.readiness.ServiceReadyEvidence>, fragment: String) -> Bool {
   match g {
-    DoesNotGround { reason: why } => string_contains(s: why, pattern: fragment)
-    Grounds { evidence: _ } => false
+    std.realization_reconcile.DoesNotGround { reason: why } => string_contains(s: why, pattern: fragment)
+    std.realization_reconcile.Grounds { evidence: _ } => false
   }
 }
 
@@ -72,8 +71,8 @@ test fn witness_matching_release_and_surface_grounds() -> Bool {
     body: healthz_body_at_revision(revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision),
     expected_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
   ) {
-    Grounds { evidence: _ } => true
-    DoesNotGround { reason: _ } => false
+    std.realization_reconcile.Grounds { evidence: _ } => true
+    std.realization_reconcile.DoesNotGround { reason: _ } => false
   }
 }
 
@@ -81,21 +80,21 @@ data readiness_revision_refusal_note: String = "THIS IS THE DECISION CONTROL FOR
 
 test fn witness_readiness_refuses_when_reported_revision_is_not_the_admitted_one() -> Bool {
   let a_body = healthz_body_at_revision(revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
-  let g = ground_body_against(body: a_body, expected_revision: deploy_witness_other_release_revision)
+  let g = ground_body_against(body: a_body, expected_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_other_release_revision)
   grounding_refuses(g: g)
     && grounding_refusal_mentions(g: g, fragment: "ProcessRevisionMismatch")
     && grounding_refusal_mentions(g: g, fragment: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision as String)
-    && grounding_refusal_mentions(g: g, fragment: deploy_witness_other_release_revision as String)
+    && grounding_refusal_mentions(g: g, fragment: test.claim.live_deploy.deploy_release_fixture.deploy_witness_other_release_revision as String)
 }
 
 data third_revision_note: String = "THE ORDERED CASE: a third candidate C arrives while the process is still A and the disk is B. The process is unmoved by either — it reports A — so a deploy of C refuses for the same reason a deploy of B did, and the refusal names A as what is running rather than B. A mechanism that had quietly adopted the disk's answer would name B here, which is what makes this witness distinguishable from the previous one rather than a restatement of it."
 
 test fn witness_third_candidate_still_sees_launched_revision() -> Bool {
   let a_body = healthz_body_at_revision(revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
-  let g = ground_body_against(body: a_body, expected_revision: deploy_witness_third_release_revision)
+  let g = ground_body_against(body: a_body, expected_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_third_release_revision)
   grounding_refuses(g: g)
     && grounding_refusal_mentions(g: g, fragment: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision as String)
-    && !grounding_refusal_mentions(g: g, fragment: deploy_witness_other_release_revision as String)
+    && !grounding_refusal_mentions(g: g, fragment: test.claim.live_deploy.deploy_release_fixture.deploy_witness_other_release_revision as String)
 }
 
 data no_launch_identity_note: String = "NO LAUNCH IDENTITY IS A REFUSAL, NOT AN ADVANCE AND NOT AN ABSENCE. The body here is the bundle's own surface projection — exactly what a process launched before the identity channel existed answers with — and it is well-formed, parseable, and carries this tree's surface digests. Everything a surface-only readiness asks for is satisfied. The witness states that it still does not ground, and that the cause is the unreadable identity rather than a stale surface, because the surface is not stale: the fact that is missing is which release is serving it.\\n\\nThis arm is the migration state and it dissolves by deploying once. It stays enrolled afterward as the control that the refusal is real — a mechanism that greened on a body with no identity would have re-admitted the entire class silently."
@@ -147,84 +146,84 @@ data surface_projection_note: String = "THE PROJECTION CHANGE, STATED AS A CLAIM
 test fn witness_surface_projection_ignores_identity_members() -> Bool {
   let surface_only = witness_bundle().healthz_body
   let with_identity = healthz_body_at_revision(revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
-  let same_surface = match healthz_surface_projection(body: surface_only) {
+  let same_surface = match gunbc.roadmap_site_surface_expect.healthz_surface_projection(body: surface_only) {
     Absent => false
     Present { value: a } =>
-      match healthz_surface_projection(body: with_identity) {
+      match gunbc.roadmap_site_surface_expect.healthz_surface_projection(body: with_identity) {
         Absent => false
         Present { value: b } => a == b
       }
   }
   same_surface
     && surface_only != with_identity
-    && roadmap_site_healthz_surface_is_current(bundle: witness_bundle(), observed_body: with_identity)
+    && gunbc.roadmap_site_surface_expect.roadmap_site_healthz_surface_is_current(bundle: witness_bundle(), observed_body: with_identity)
 }
 
 data identity_observation_note: String = "THE OBSERVATION ITSELF, BELOW THE READINESS GATE. These state that the wire form round-trips and that its refusal arms are reachable from real bodies rather than only from hand-constructed values. The malformed cases matter more than they look: an uppercase 40-digit hex string and a 39-digit one both LOOK like object names, and a validator checking only 'is it hex' or only 'is it 40 characters' accepts one of them. Both are refused, and the valid one is accepted, so the predicate is shown to discriminate rather than merely to reject."
 
 test fn witness_identity_round_trips_from_served_body() -> Bool {
   let body = healthz_body_at_revision(revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
-  let identity = observe_running_release_identity(healthz_body: body)
-  running_release_revision_equals(identity: identity, expected: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
-    && running_release_surface_equals(identity: identity, expected: witness_bundle().bundle_identity)
-    && !running_release_revision_equals(identity: identity, expected: deploy_witness_other_release_revision)
+  let identity = gunbc.running_release_identity.observe_running_release_identity(healthz_body: body)
+  gunbc.running_release_identity.running_release_revision_equals(identity: identity, expected: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision)
+    && gunbc.running_release_identity.running_release_surface_equals(identity: identity, expected: witness_bundle().bundle_identity)
+    && !gunbc.running_release_identity.running_release_revision_equals(identity: identity, expected: test.claim.live_deploy.deploy_release_fixture.deploy_witness_other_release_revision)
 }
 
 test fn witness_absent_identity_is_typed_absent_not_unparseable() -> Bool {
-  match observe_running_release_identity(healthz_body: witness_bundle().healthz_body) {
-    RunningReleaseUnidentified { cause: why } =>
+  match gunbc.running_release_identity.observe_running_release_identity(healthz_body: witness_bundle().healthz_body) {
+    gunbc.running_release_identity.RunningReleaseUnidentified { cause: why } =>
       match why {
-        ReleaseRevisionAbsent => true
-        ReleaseIdentityBodyUnparseable => false
-        ReleaseRevisionDuplicated { count: _ } => false
-        ReleaseRevisionMalformed { text: _ } => false
-        SurfaceBundleIdentityAbsent => false
+        gunbc.running_release_identity.ReleaseRevisionAbsent => true
+        gunbc.running_release_identity.ReleaseIdentityBodyUnparseable => false
+        gunbc.running_release_identity.ReleaseRevisionDuplicated { count: _ } => false
+        gunbc.running_release_identity.ReleaseRevisionMalformed { text: _ } => false
+        gunbc.running_release_identity.SurfaceBundleIdentityAbsent => false
         _ => false
       }
-    RunningReleaseIdentified { observation: _ } => false
+    gunbc.running_release_identity.RunningReleaseIdentified { observation: _ } => false
   }
 }
 
 test fn witness_unparseable_body_is_typed_unparseable() -> Bool {
-  match observe_running_release_identity(healthz_body: "not json at all") {
-    RunningReleaseUnidentified { cause: why } =>
+  match gunbc.running_release_identity.observe_running_release_identity(healthz_body: "not json at all") {
+    gunbc.running_release_identity.RunningReleaseUnidentified { cause: why } =>
       match why {
-        ReleaseIdentityBodyUnparseable => true
+        gunbc.running_release_identity.ReleaseIdentityBodyUnparseable => true
         _ => false
       }
-    RunningReleaseIdentified { observation: _ } => false
+    gunbc.running_release_identity.RunningReleaseIdentified { observation: _ } => false
   }
 }
 
 test fn witness_revision_shape_validation_discriminates() -> Bool {
-  release_revision_text_valid(text: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision as String)
-    && !release_revision_text_valid(text: "0123456789ABCDEF0123456789ABCDEF01234567")
-    && !release_revision_text_valid(text: "0123456789abcdef0123456789abcdef0123456")
-    && !release_revision_text_valid(text: "main")
-    && !release_revision_text_valid(text: "")
+  gunbc.running_release_identity.release_revision_text_valid(text: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision as String)
+    && !gunbc.running_release_identity.release_revision_text_valid(text: "0123456789ABCDEF0123456789ABCDEF01234567")
+    && !gunbc.running_release_identity.release_revision_text_valid(text: "0123456789abcdef0123456789abcdef0123456")
+    && !gunbc.running_release_identity.release_revision_text_valid(text: "main")
+    && !gunbc.running_release_identity.release_revision_text_valid(text: "")
 }
 
 test fn witness_malformed_revision_on_the_wire_refuses() -> Bool {
   let body = "{\"status\": \"ok\", \"service\": \"gunbc-roadmap\", \"artifacts\": {}, \"revision\": \"main\", \"surface_bundle_identity\": \"0000000000000000\"}"
-  match observe_running_release_identity(healthz_body: body) {
-    RunningReleaseUnidentified { cause: why } =>
+  match gunbc.running_release_identity.observe_running_release_identity(healthz_body: body) {
+    gunbc.running_release_identity.RunningReleaseUnidentified { cause: why } =>
       match why {
-        ReleaseRevisionMalformed { text: t } => t == "main"
+        gunbc.running_release_identity.ReleaseRevisionMalformed { text: t } => t == "main"
         _ => false
       }
-    RunningReleaseIdentified { observation: _ } => false
+    gunbc.running_release_identity.RunningReleaseIdentified { observation: _ } => false
   }
 }
 
 test fn witness_duplicate_revision_member_refuses() -> Bool {
   let body = "{\"revision\": \"0123456789abcdef0123456789abcdef01234567\", \"revision\": \"89abcdef0123456789abcdef0123456789abcdef\", \"surface_bundle_identity\": \"0000000000000000\"}"
-  match observe_running_release_identity(healthz_body: body) {
-    RunningReleaseUnidentified { cause: why } =>
+  match gunbc.running_release_identity.observe_running_release_identity(healthz_body: body) {
+    gunbc.running_release_identity.RunningReleaseUnidentified { cause: why } =>
       match why {
-        ReleaseRevisionDuplicated { count: n } => n == 2
+        gunbc.running_release_identity.ReleaseRevisionDuplicated { count: n } => n == 2
         _ => false
       }
-    RunningReleaseIdentified { observation: _ } => false
+    gunbc.running_release_identity.RunningReleaseIdentified { observation: _ } => false
   }
 }
 

@@ -1,6 +1,5 @@
 module gunbc.roadmap_site_surface_witness
 
-
 // The digest the stale fixture substitutes for the roadmap artifact's real one. It is sixteen zeros
 // rather than a word like `stale-digest` because Fnv1a64Structural.digest is `String where lower_hex_16`:
 // a non-hex marker is not a digest the carrier can hold, so the fixture would have had to be spelled
@@ -8,9 +7,9 @@ module gunbc.roadmap_site_surface_witness
 data witness_stale_artifact_digest_hex: String = "0000000000000000"
 
 fn fresh_surface_read_grounds_for_bundle(bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle) -> Bool {
-  fresh_surface_read_grounds(
+  gunbc.roadmap_site_surface_expect.fresh_surface_read_grounds(
     bundle: bundle,
-    read: gunbc.roadmap_site_surface_types.HealthzEffectiveRead { body: bundle.healthz_body, probe_error: "" },
+    read: gunbc.roadmap_site_surface_types.HealthzBodyRead { body: bundle.healthz_body },
   )
 }
 
@@ -40,7 +39,7 @@ fn witness_stale_healthz_body_for_bundle(
   bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle,
   release_revision: std.types.CommitSha,
 ) -> String {
-  healthz_body_with_release_identity(
+  gunbc.roadmap_site_surface_render.healthz_body_with_release_identity(
     roadmap: witness_stale_roadmap_artifact(bundle: bundle),
     dispatch: bundle.dispatch_json,
     daily: bundle.daily_html,
@@ -59,21 +58,21 @@ fn stale_surface_read_does_not_ground_for_bundle(
     bundle: bundle,
     release_revision: release_revision,
   )
-  stale_surface_read_does_not_ground(bundle: bundle, stale_body: stale_body)
-    && match ground_service_ready_from_healthz_with_bundle(
-      read: gunbc.roadmap_site_surface_types.HealthzEffectiveRead { body: stale_body, probe_error: "" },
+  gunbc.roadmap_site_surface_expect.stale_surface_read_does_not_ground(bundle: bundle, stale_body: stale_body)
+    && match gunbc.live_deploy.readiness.ground_service_ready_from_healthz_with_bundle(
+      read: gunbc.roadmap_site_surface_types.HealthzBodyRead { body: stale_body },
       bundle: bundle,
       expected_revision: release_revision,
       expected_surface_identity: bundle.bundle_identity,
     ) {
-      DoesNotGround { reason: why } =>
+      std.realization_reconcile.DoesNotGround { reason: why } =>
         string_contains(s: why, pattern: "ServedSurfaceStale")
           && string_contains(s: why, pattern: witness_stale_artifact_digest_hex)
           && !string_contains(s: why, pattern: "JSON.parse")
           && !string_contains(s: why, pattern: "ProcessIdentityAbsent")
           && !string_contains(s: why, pattern: "ProcessRevisionMismatch")
           && !string_contains(s: why, pattern: "ProcessSurfaceMismatch")
-      Grounds { evidence: _ } => false
+      std.realization_reconcile.Grounds { evidence: _ } => false
     }
 }
 
@@ -81,11 +80,11 @@ fn reconcile_grounds_healthy_fixture_read_for_bundle(
   bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle,
   release_revision: std.types.CommitSha,
 ) -> Bool {
-  reconciliation_converged(
-    r: reconcile_service_ready_read_for_bundle(
-      read: show_healthz_read_fixture_healthy(bundle: bundle, release_revision: release_revision),
+  std.realization_reconcile.reconciliation_converged(
+    r: gunbc.live_deploy.readiness.reconcile_service_ready_read_for_bundle(
+      read: gunbc.live_deploy.readiness.show_healthz_read_fixture_healthy(bundle: bundle, release_revision: release_revision),
       bundle: bundle,
-      effect: service_ready_apply_effect(),
+      effect: gunbc.live_deploy.readiness.service_ready_apply_effect(),
       expected_revision: release_revision,
       expected_surface_identity: bundle.bundle_identity,
     )
@@ -96,8 +95,8 @@ fn service_ready_once_converges_on_healthy_fixture_for_bundle(
   bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle,
   release_revision: std.types.CommitSha,
 ) -> Bool {
-  reconciliation_converged(
-    r: live_deploy_service_ready_once_for_bundle(
+  std.realization_reconcile.reconciliation_converged(
+    r: gunbc.live_deploy.readiness.live_deploy_service_ready_once_for_bundle(
       bundle: bundle,
       release_revision: release_revision,
     )
@@ -110,13 +109,13 @@ fn service_ready_once_converges_on_healthy_fixture_for_bundle(
 // under dag/test/ so no production module can name it. Threading it in as a parameter keeps that
 // containment intact and keeps this module free of a second synthetic sha that could drift from it.
 fn roadmap_site_surface_readiness_group_holds(release_revision: std.types.CommitSha) -> Bool {
-  let live = live_roadmap_site_surface_bundle()
+  let live = gunbc.roadmap_site_surface_observe.live_roadmap_site_surface_bundle()
   let bundle = live.bundle
-  healthz_round_trip_receipt_holds(bundle: bundle)
+  gunbc.roadmap_site_surface_expect.healthz_round_trip_receipt_holds(bundle: bundle)
     && fresh_surface_read_grounds_for_bundle(bundle: bundle)
     && stale_surface_read_does_not_ground_for_bundle(bundle: bundle, release_revision: release_revision)
     && reconcile_grounds_healthy_fixture_read_for_bundle(bundle: bundle, release_revision: release_revision)
     && service_ready_once_converges_on_healthy_fixture_for_bundle(bundle: bundle, release_revision: release_revision)
-    && healthz_surface_tolerates_transport_trailing_lf(bundle: bundle)
-    && healthz_route_json_ok(bundle: bundle)
+    && gunbc.roadmap_site_surface_expect.healthz_surface_tolerates_transport_trailing_lf(bundle: bundle)
+    && gunbc.roadmap_site_surface_expect.healthz_route_json_ok(bundle: bundle)
 }

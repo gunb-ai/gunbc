@@ -1,160 +1,162 @@
 module v1.compiler.infer_method
 
-
 data filesystem_read_result_type_note: String = "filesystem_read was registered as a bare type_variable_node, so `filesystem_read(path: p).content` established no type at all: the field lookup found nothing to look in, and the result was a fabricated Primitive() carrying no name. Downstream `.split` on that value was then accepted with no judgment behind it, which is #7479's shape one layer down — and it survived because the runtime dispatches split on the native String regardless, so nothing ever failed loudly enough to be found. The return type was never unknown; runtime_rust.dag rt_filesystem already emits `pub struct FilesystemReadResult { pub content: String }`. Declaring it here makes the seed's Rust struct and the compiler's type ONE fact rather than two (DESIGN §3), so the field's type is read from the declaration instead of invented. Any future builtin returning a product declares it the same way; a bare type variable is correct only where the result genuinely IS parametric."
 
-fn filesystem_read_result_type() -> Node {
-  make_kernel_record_type(
+fn filesystem_read_result_type() -> v1.std.core.Node {
+  v1.compiler.infer_types.make_kernel_record_type(
     type_name: "FilesystemReadResult",
-    fields: [make_kernel_record_field(field_name: "content", field_type: string_type)]
+    fields: [v1.compiler.infer_types.make_kernel_record_field(field_name: "content", field_type: v1.std.core.string_type)]
   )
 }
 
-fn type_variable_node(id: String) -> Node {
-  v1.std.core.Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+fn type_variable_node(id: String) -> v1.std.core.Node {
+  v1.std.core.Node { name: "", span: v1.std.core.no_span(), ident_span: none, children: [], connective: v1.std.core.NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: id } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
 }
 
-fn map_of_type_variables() -> Node {
-  make_map_type(key: v1.compiler.infer_method.type_variable_node(id: "map_key"), value: v1.compiler.infer_method.type_variable_node(id: "map_value")).ty
+fn map_of_type_variables() -> v1.std.core.Node {
+  v1.compiler.infer_types.make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value")).ty
 }
 
-fn list_of_type_variable(id: String) -> Node {
-  make_container_type(kind_name: "List", element: v1.compiler.infer_method.type_variable_node(id: id)).ty
+fn list_of_type_variable(id: String) -> v1.std.core.Node {
+  v1.compiler.infer_types.make_container_type(kind_name: "List", element: type_variable_node(id: id)).ty
 }
 
-fn list_of_element(element: Node) -> Node {
-  make_container_type(kind_name: "List", element: element).ty
+fn list_of_element(element: v1.std.core.Node) -> v1.std.core.Node {
+  v1.compiler.infer_types.make_container_type(kind_name: "List", element: element).ty
 }
 
-fn seed_node_map(key: String, value: Node) -> Map<String, Node> {
+fn seed_node_map(key: String, value: v1.std.core.Node) -> Map<String, v1.std.core.Node> {
   map_insert(empty_map(), key, value)
 }
 
 fn builtin_kernel_seed_diagnostics() -> List<v1.std.core.ErrorNode> {
   concat(
     concat(
-      make_map_type(key: v1.compiler.infer_method.type_variable_node(id: "map_key"), value: v1.compiler.infer_method.type_variable_node(id: "map_value")).diagnostics,
-      make_container_type(kind_name: "List", element: v1.compiler.infer_method.type_variable_node(id: "collection_element")).diagnostics
+      v1.compiler.infer_types.make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value")).diagnostics,
+      v1.compiler.infer_types.make_container_type(kind_name: "List", element: type_variable_node(id: "collection_element")).diagnostics
     ),
-    make_container_type(kind_name: "Set", element: v1.compiler.infer_method.type_variable_node(id: "set_elem")).diagnostics
+    v1.compiler.infer_types.make_container_type(kind_name: "Set", element: type_variable_node(id: "set_elem")).diagnostics
   )
 }
 
 data compile_dag_diagnostic_census_row_note: String = "WHY THIS ROW EXISTS, and why it is additive rather than contested (ladder-probe-corpus, operator-amended scope 2026-08-01). Its sibling compile_dag_rust_emit_check compiles a synthetic source and collapses the whole result to a Bool - it counts diagnostics passing compile_clean_diagnostic_is_hard and answers false when that count is nonzero. That discards three facts the guarantee probe corpus must observe: WHICH judgment fired (a probe refusing for any hard reason, a typo included, otherwise reads as the wall firing), whether it BLOCKS (the filter IS the severity predicate, so demoting a landed wall from blocking to advisory turns its RED silently green), and every advisory (so a positive control cannot state zero-diagnostics-of-ANY-severity, the assertion codex review 45357 added after an advisory MethodExistenceUndecided passed unnoticed as a green control). The Stage-0 receipt vocabulary gunbc.guarantee_measurement makes the gap structural rather than stylistic: RefusedTyped and AcceptedCounted both carry a diagnostic class and a count, and neither is inhabitable from a Bool, so without this row that schema is uninhabitable on every v1 path. MEASUREMENT ONLY - the host arm reports what the compile decided and filters nothing; callers filter. Registered as a type variable rather than a kernel record because the result is a COPRODUCT (observed census vs typed not-runnable, the top-as-answer/top-as-ignorance split), following shell_materialize_operation_argv's argv_materialization_result precedent; filesystem_read_result_type's make_kernel_record_type idiom is the right one only for a product. DISSOLUTION, answering the compile_clean_forcecheck objection in place: this registry is itself a flat global map that plan argues is a section-3 fork awaiting the PrimitiveDefinition identity join, and this row inherits that trigger EXACTLY as its sibling does - when the join dissolves the registry, the two migrate together. One additive row is linear cost against that dissolution; the alternative was a schema no v1 probe could inhabit."
 
+data observe_declared_import_closure_symbol_binding_row_note: String = "CLASS B binding-source observation for declared-import-closure-only compiles (#6985). Production classify_unlisted_import_binding_source already exists in cli_run.rs; this row exposes it through the same builtin-registry pattern as compile_dag_diagnostic_census: coproduct result (observed binding vs not-runnable), registered as type_variable_node(id: declared_import_closure_binding_result) rather than a kernel record. MEASUREMENT ONLY — callers judge ListedImport vs PoolCoincidence vs refusal. DISSOLUTION: inherits compile_dag_diagnostic_census_row_note's PrimitiveDefinition identity-join trigger exactly — one additive row is linear cost against that dissolution; do not mint a fresh trigger."
 
-fn builtin_function_registry() -> Map<String, Node> {
-  let m = seed_node_map(key: "count", value: int_type)
-  let m = map_insert(m, "string_length", int_type)
-  let m = map_insert(m, "code_point", int_type)
-  let m = map_insert(m, "to_int", int_type)
-  let m = map_insert(m, "scan_while", int_type)
-  let m = map_insert(m, "scan_string_end", int_type)
-  let m = map_insert(m, "scan_to_eol", int_type)
-  let m = map_insert(m, "skip_horizontal_ws", int_type)
-  let m = map_insert(m, "parse_int", with_optional_cardinality(n: int_type))
-  let m = map_insert(m, "char_at", string_type)
-  let m = map_insert(m, "substring", string_type)
-  let m = map_insert(m, "from_code_point", string_type)
-  let m = map_insert(m, "chars_to_string", string_type)
-  let m = map_insert(m, "record_source_chars_index_lookup", unit_type)
-  let m = map_insert(m, "resolution_silent_pick_is_enabled", bool_type)
-  let m = map_insert(m, "name_resolution_policy_is_namespace_only", bool_type)
-  let m = map_insert(m, "type_ref_hit_ne_bind_measure_active", bool_type)
-  let m = map_insert(m, "resolution_silent_pick_record_global_bare_lcp_pick", unit_type)
-  let m = map_insert(m, "resolution_silent_pick_record_global_bare_lcp_tie", unit_type)
-  let m = map_insert(m, "resolution_silent_pick_record_fn_parent_first_hit", unit_type)
-  let m = map_insert(m, "to_string", string_type)
+fn builtin_function_registry() -> Map<String, v1.std.core.Node> {
+  let m = seed_node_map(key: "count", value: v1.std.core.int_type)
+  let m = map_insert(m, "string_length", v1.std.core.int_type)
+  let m = map_insert(m, "code_point", v1.std.core.int_type)
+  let m = map_insert(m, "to_int", v1.std.core.int_type)
+  let m = map_insert(m, "scan_while", v1.std.core.int_type)
+  let m = map_insert(m, "scan_string_end", v1.std.core.int_type)
+  let m = map_insert(m, "scan_to_eol", v1.std.core.int_type)
+  let m = map_insert(m, "skip_horizontal_ws", v1.std.core.int_type)
+  let m = map_insert(m, "parse_int", v1.std.core.with_optional_cardinality(n: v1.std.core.int_type))
+  let m = map_insert(m, "char_at", v1.std.core.string_type)
+  let m = map_insert(m, "substring", v1.std.core.string_type)
+  let m = map_insert(m, "from_code_point", v1.std.core.string_type)
+  let m = map_insert(m, "chars_to_string", v1.std.core.string_type)
+  let m = map_insert(m, "record_source_chars_index_lookup", v1.std.core.unit_type)
+  let m = map_insert(m, "resolution_silent_pick_is_enabled", v1.std.core.bool_type)
+  let m = map_insert(m, "name_resolution_policy_is_namespace_only", v1.std.core.bool_type)
+  let m = map_insert(m, "type_ref_hit_ne_bind_measure_active", v1.std.core.bool_type)
+  let m = map_insert(m, "resolution_silent_pick_record_global_bare_lcp_pick", v1.std.core.unit_type)
+  let m = map_insert(m, "resolution_silent_pick_record_global_bare_lcp_tie", v1.std.core.unit_type)
+  let m = map_insert(m, "resolution_silent_pick_record_fn_parent_first_hit", v1.std.core.unit_type)
+  let m = map_insert(m, "to_string", v1.std.core.string_type)
 
-  let m = map_insert(m, "discriminant", string_type)
-  let m = map_insert(m, "concat", string_type)
+  let m = map_insert(m, "discriminant", v1.std.core.string_type)
+  let m = map_insert(m, "concat", v1.std.core.string_type)
   let m = map_insert(m, "map_insert", map_of_type_variables())
   let m = map_insert(m, "map_merge", map_of_type_variables())
   let m = map_insert(m, "with", map_of_type_variables())
-  let set_ty = make_container_type(kind_name: "Set", element: v1.compiler.infer_method.type_variable_node(id: "set_elem")).ty
+  let set_ty = v1.compiler.infer_types.make_container_type(kind_name: "Set", element: type_variable_node(id: "set_elem")).ty
   let m = map_insert(m, "empty_set", set_ty)
   let m = map_insert(m, "set_insert", set_ty)
   let m = map_insert(m, "set_union", set_ty)
-  let m = map_insert(m, "map_contains_key", bool_type)
-  let m = map_insert(m, "map_has", bool_type)
-  let m = map_insert(m, "map_is_empty", bool_type)
+  let m = map_insert(m, "map_contains_key", v1.std.core.bool_type)
+  let m = map_insert(m, "map_has", v1.std.core.bool_type)
+  let m = map_insert(m, "map_is_empty", v1.std.core.bool_type)
 
-  let m = map_insert(m, "rc_ptr_eq", bool_type)
-  let m = map_insert(m, "rc_vec_ptr_eq", bool_type)
-  let m = map_insert(m, "emit_map_has", bool_type)
-  let m = map_insert(m, "set_contains", bool_type)
-  let m = map_insert(m, "lookup", with_optional_cardinality(n: v1.compiler.infer_method.type_variable_node(id: "map_value")))
-  let m = map_insert(m, "map_get", with_optional_cardinality(n: v1.compiler.infer_method.type_variable_node(id: "map_value")))
-  let m = map_insert(m, "Some", with_optional_cardinality(n: v1.compiler.infer_method.type_variable_node(id: "some_inner")))
+  let m = map_insert(m, "rc_ptr_eq", v1.std.core.bool_type)
+  let m = map_insert(m, "rc_vec_ptr_eq", v1.std.core.bool_type)
+  let m = map_insert(m, "emit_map_has", v1.std.core.bool_type)
+  let m = map_insert(m, "set_contains", v1.std.core.bool_type)
+  let m = map_insert(m, "lookup", v1.std.core.with_optional_cardinality(n: type_variable_node(id: "map_value")))
+  let m = map_insert(m, "map_get", v1.std.core.with_optional_cardinality(n: type_variable_node(id: "map_value")))
+  let m = map_insert(m, "Some", v1.std.core.with_optional_cardinality(n: type_variable_node(id: "some_inner")))
   let m = map_insert(m, "map_keys", list_of_type_variable(id: "collection_element"))
   let m = map_insert(m, "sorted_map_keys", list_of_type_variable(id: "collection_element"))
   let m = map_insert(m, "map_values", list_of_type_variable(id: "collection_element"))
-  let m = map_insert(m, "get", with_optional_cardinality(n: v1.compiler.infer_method.type_variable_node(id: "collection_element")))
+  let m = map_insert(m, "get", v1.std.core.with_optional_cardinality(n: type_variable_node(id: "collection_element")))
   let m = map_insert(m, "reverse", list_of_type_variable(id: "collection_element"))
   let m = map_insert(m, "list_push", list_of_type_variable(id: "collection_element"))
-  let m = map_insert(m, "hash_combine", hash_type)
-  let m = map_insert(m, "atom_identity_hash", hash_type)
-  let m = map_insert(m, "trace_mark", unit_type)
-  let m = map_insert(m, "observed_peak_resident_bytes", int_type)
-  let m = map_insert(m, "observed_monotonic_nanos", int_type)
-  let m = map_insert(m, "string_contains", bool_type)
-  let m = map_insert(m, "length", int_type)
-  let m = map_insert(m, "starts_with", bool_type)
-  let m = map_insert(m, "replace", string_type)
+  let m = map_insert(m, "hash_combine", v1.std.core.hash_type)
+  let m = map_insert(m, "atom_identity_hash", v1.std.core.hash_type)
+  let m = map_insert(m, "trace_mark", v1.std.core.unit_type)
+  let m = map_insert(m, "observed_peak_resident_bytes", v1.std.core.int_type)
+  let m = map_insert(m, "observed_monotonic_nanos", v1.std.core.int_type)
+  let m = map_insert(m, "string_contains", v1.std.core.bool_type)
+  let m = map_insert(m, "length", v1.std.core.int_type)
+  let m = map_insert(m, "starts_with", v1.std.core.bool_type)
+  let m = map_insert(m, "replace", v1.std.core.string_type)
   let m = map_insert(m, "filesystem_read", filesystem_read_result_type())
-  let m = map_insert(m, "emit_host_run_transport", v1.compiler.infer_method.type_variable_node(id: "emit_host_run_transport_result"))
-  let m = map_insert(m, "emit_host_run_transport_cached", v1.compiler.infer_method.type_variable_node(id: "emit_host_run_transport_result"))
-  let m = map_insert(m, "emit_host_native_cache_evict", bool_type)
+  let m = map_insert(m, "emit_host_run_transport", type_variable_node(id: "emit_host_run_transport_result"))
+  let m = map_insert(m, "emit_host_run_transport_cached", type_variable_node(id: "emit_host_run_transport_result"))
+  let m = map_insert(m, "emit_host_native_cache_evict", v1.std.core.bool_type)
   let m = map_insert(m, "contiguous_loop_elementwise_kernel", list_of_type_variable(id: "collection_element"))
   let m = map_insert(m, "contiguous_loop_elementwise_float_kernel", list_of_type_variable(id: "collection_element"))
-  let m = map_insert(m, "shell_materialize_operation_argv", v1.compiler.infer_method.type_variable_node(id: "argv_materialization_result"))
+  let m = map_insert(m, "shell_materialize_operation_argv", type_variable_node(id: "argv_materialization_result"))
   let m = map_insert(m, "shell_transport_operation_rows", list_of_type_variable(id: "shell_transport_operation_row_elem"))
-  let m = map_insert(m, "extdeps_shape_transport_policy_facts_for_qualified_name", v1.compiler.infer_method.type_variable_node(id: "extdeps_module_facts_record"))
-  let m = map_insert(m, "extdeps_qualified_name_resolves_in_derived_module_set", bool_type)
-  let m = map_insert(m, "extdeps_external_authority_facts_for_qualified_name", v1.compiler.infer_method.type_variable_node(id: "extdeps_external_authority_module_facts_record"))
-  let m = map_insert(m, "extdeps_external_authority_live_clean_tree_holds", bool_type)
-  let m = map_insert(m, "extdeps_external_authority_live_roster_module_count", int_type)
-  let m = map_insert(m, "seed_runner_bool_false_failure_detail", string_type)
-  let m = map_insert(m, "doc_graph_orphan_count", int_type)
-  let m = map_insert(m, "doc_graph_admitted_root_count", int_type)
-  let m = map_insert(m, "doc_graph_dangling_link_count", int_type)
-  let m = map_insert(m, "doc_graph_doc_count", int_type)
-  let m = map_insert(m, "compile_dag_rust_emit_check", bool_type)
-  let m = map_insert(m, "compile_dag_diagnostic_census", v1.compiler.infer_method.type_variable_node(id: "compile_diagnostic_census_result"))
-  let m = map_insert(m, "witness_layer_roots_compile_clean_check", bool_type)
-  let m = map_insert(m, "witness_layer_roots_compile_clean_emit_check", bool_type)
-  let m = map_insert(m, "consume_floor_compile_clean_gate_verdict", bool_type)
-  let m = map_insert(m, "consume_floor_compile_clean_gate_failure_detail", string_type)
-  let m = map_insert(m, "record_generated_artifact_drift_gate_failure_detail", unit_type)
-  let m = map_insert(m, "consume_generated_artifact_drift_gate_failure_detail", string_type)
-  let m = map_insert(m, "witness_compile_clean_cli_floor_verdicts_agree", bool_type)
+  let m = map_insert(m, "extdeps_shape_transport_policy_facts_for_qualified_name", type_variable_node(id: "extdeps_module_facts_record"))
+  let m = map_insert(m, "extdeps_qualified_name_resolves_in_derived_module_set", v1.std.core.bool_type)
+  let m = map_insert(m, "extdeps_external_authority_facts_for_qualified_name", type_variable_node(id: "extdeps_external_authority_module_facts_record"))
+  let m = map_insert(m, "extdeps_external_authority_live_clean_tree_holds", v1.std.core.bool_type)
+  let m = map_insert(m, "extdeps_external_authority_live_roster_module_count", v1.std.core.int_type)
+  let m = map_insert(m, "seed_runner_bool_false_failure_detail", v1.std.core.string_type)
+  let m = map_insert(m, "doc_graph_orphan_count", v1.std.core.int_type)
+  let m = map_insert(m, "doc_graph_admitted_root_count", v1.std.core.int_type)
+  let m = map_insert(m, "doc_graph_dangling_link_count", v1.std.core.int_type)
+  let m = map_insert(m, "doc_graph_doc_count", v1.std.core.int_type)
+  let m = map_insert(m, "compile_dag_rust_emit_check", v1.std.core.bool_type)
+  let m = map_insert(m, "compile_dag_diagnostic_census", type_variable_node(id: "compile_diagnostic_census_result"))
+  let m = map_insert(m, "observe_declared_import_closure_symbol_binding", type_variable_node(id: "declared_import_closure_binding_result"))
+  let m = map_insert(m, "class_b_import_closure_gate_not_affected_skip", v1.std.core.bool_type)
+  let m = map_insert(m, "witness_layer_roots_compile_clean_check", v1.std.core.bool_type)
+  let m = map_insert(m, "witness_layer_roots_compile_clean_emit_check", v1.std.core.bool_type)
+  let m = map_insert(m, "consume_floor_compile_clean_gate_verdict", v1.std.core.bool_type)
+  let m = map_insert(m, "consume_floor_compile_clean_gate_failure_detail", v1.std.core.string_type)
+  let m = map_insert(m, "record_generated_artifact_drift_gate_failure_detail", v1.std.core.unit_type)
+  let m = map_insert(m, "consume_generated_artifact_drift_gate_failure_detail", v1.std.core.string_type)
+  let m = map_insert(m, "witness_compile_clean_cli_floor_verdicts_agree", v1.std.core.bool_type)
   let m = map_insert(m, "test_migration_debt_module_names", list_of_type_variable(id: "test_migration_debt_module_name_elem"))
   let m = map_insert(m, "test_migration_legacy_behavior_ids", list_of_type_variable(id: "test_migration_legacy_behavior_id_elem"))
   let m = map_insert(m, "test_migration_witness_behavior_ids", list_of_type_variable(id: "test_migration_witness_behavior_id_elem"))
-  let m = map_insert(m, "test_migration_behavior_discovery_holds", bool_type)
+  let m = map_insert(m, "test_migration_behavior_discovery_holds", v1.std.core.bool_type)
   let m = map_insert(m, "inert_carrier_names_live", list_of_type_variable(id: "inert_carrier_name_elem"))
-  let m = map_insert(m, "inert_carrier_declared_count", int_type)
-  let m = map_insert(m, "non_fold_residue_count", int_type)
-  let m = map_insert(m, "non_fold_residue_unrostered_count", int_type)
-  let m = map_insert(m, "non_fold_residue_stale_roster_count", int_type)
-  let m = map_insert(m, "non_fold_residue_coproduct_universe_count", int_type)
-  let m = map_insert(m, "parse_stage0_cargo_manifest_bins", v1.compiler.infer_method.type_variable_node(id: "cargo_manifest_bin_parse"))
-  let m = map_insert(m, "parse_roadmap_acceptance_event_history_jsonl", v1.compiler.infer_method.type_variable_node(id: "roadmap_acceptance_event_history_parse"))
-  let m = map_insert(m, "project_roadmap_acceptance_event_history_from_authority_text_host", v1.compiler.infer_method.type_variable_node(id: "roadmap_acceptance_history_projection"))
-  let m = map_insert(m, "commit_witness_claim_roster_unresolvable_count", int_type)
-  let m = map_insert(m, "commit_witness_claim_pair_resolvable", bool_type)
-  let m = map_insert(m, "non_fold_residue_wildcard_red_fixture_holds", bool_type)
-  let m = map_insert(m, "non_fold_residue_total_fold_green_fixture_holds", bool_type)
-  let m = map_insert(m, "non_fold_residue_roster_red_fixture_holds", bool_type)
-  let m = map_insert(m, "non_fold_residue_synthetic_unrostered_red_holds", bool_type)
-  let m = map_insert(m, "complexity_linearity_syntactic_finding_count", int_type)
+  let m = map_insert(m, "inert_carrier_declared_count", v1.std.core.int_type)
+  let m = map_insert(m, "non_fold_residue_count", v1.std.core.int_type)
+  let m = map_insert(m, "non_fold_residue_unrostered_count", v1.std.core.int_type)
+  let m = map_insert(m, "non_fold_residue_stale_roster_count", v1.std.core.int_type)
+  let m = map_insert(m, "non_fold_residue_coproduct_universe_count", v1.std.core.int_type)
+  let m = map_insert(m, "parse_stage0_cargo_manifest_bins", type_variable_node(id: "cargo_manifest_bin_parse"))
+  let m = map_insert(m, "parse_roadmap_acceptance_event_history_jsonl", type_variable_node(id: "roadmap_acceptance_event_history_parse"))
+  let m = map_insert(m, "project_roadmap_acceptance_event_history_from_authority_text_host", type_variable_node(id: "roadmap_acceptance_history_projection"))
+  let m = map_insert(m, "commit_witness_claim_roster_unresolvable_count", v1.std.core.int_type)
+  let m = map_insert(m, "commit_witness_claim_pair_resolvable", v1.std.core.bool_type)
+  let m = map_insert(m, "non_fold_residue_wildcard_red_fixture_holds", v1.std.core.bool_type)
+  let m = map_insert(m, "non_fold_residue_total_fold_green_fixture_holds", v1.std.core.bool_type)
+  let m = map_insert(m, "non_fold_residue_roster_red_fixture_holds", v1.std.core.bool_type)
+  let m = map_insert(m, "non_fold_residue_synthetic_unrostered_red_holds", v1.std.core.bool_type)
+  let m = map_insert(m, "complexity_linearity_syntactic_finding_count", v1.std.core.int_type)
   let m = map_insert(m, "complexity_linearity_wildcard_facts", list_of_type_variable(id: "complexity_linearity_wildcard_fact_elem"))
-  let m = map_insert(m, "complexity_linearity_syntactic_site_fired", bool_type)
+  let m = map_insert(m, "complexity_linearity_syntactic_site_fired", v1.std.core.bool_type)
   let m = map_insert(m, "fallback_arm_census_facts", list_of_type_variable(id: "fallback_arm_census_fact_elem"))
-  let m = map_insert(m, "fallback_arm_census_class_count", int_type)
-  let m = map_insert(m, "fallback_arm_census_total", int_type)
-  let m = map_insert(m, "fallback_arm_census_reconciliation_holds", bool_type)
-  let m = map_insert(m, "census_corpus_roots_follow_layer_authority", bool_type)
+  let m = map_insert(m, "fallback_arm_census_class_count", v1.std.core.int_type)
+  let m = map_insert(m, "fallback_arm_census_total", v1.std.core.int_type)
+  let m = map_insert(m, "fallback_arm_census_reconciliation_holds", v1.std.core.bool_type)
+  let m = map_insert(m, "census_corpus_roots_follow_layer_authority", v1.std.core.bool_type)
   let m = map_insert(m, "transport_script_position_facts_for_path", list_of_type_variable(id: "transport_script_position_fact_elem"))
   let m = map_insert(m, "layer_import_facts", list_of_type_variable(id: "layer_import_fact_elem"))
   let m = map_insert(m, "import_resolution_facts", list_of_type_variable(id: "import_resolution_fact_elem"))
@@ -166,25 +168,25 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "export_signature_facts", list_of_type_variable(id: "decl_fact_elem"))
   let m = map_insert(m, "data_decl_type_facts", list_of_type_variable(id: "data_decl_type_fact_elem"))
   let m = map_insert(m, "fact_cardinality_decl_facts", list_of_type_variable(id: "fact_cardinality_decl_fact_elem"))
-  let m = map_insert(m, "languages_consumer_census_data_decl_count", int_type)
-  let m = map_insert(m, "languages_consumer_census_per_language_row_count", int_type)
-  let m = map_insert(m, "languages_consumer_census_format_row_count", int_type)
-  let m = map_insert(m, "languages_consumer_census_external_consumer_count", int_type)
-  let m = map_insert(m, "languages_consumer_census_is_composition_only", bool_type)
-  let m = map_insert(m, "languages_consumer_census_has_external_consumer", bool_type)
-  let m = map_insert(m, "is_xid_start", bool_type)
-  let m = map_insert(m, "is_xid_continue", bool_type)
-  let m = map_insert(m, "is_emoji_ident", bool_type)
+  let m = map_insert(m, "languages_consumer_census_data_decl_count", v1.std.core.int_type)
+  let m = map_insert(m, "languages_consumer_census_per_language_row_count", v1.std.core.int_type)
+  let m = map_insert(m, "languages_consumer_census_format_row_count", v1.std.core.int_type)
+  let m = map_insert(m, "languages_consumer_census_external_consumer_count", v1.std.core.int_type)
+  let m = map_insert(m, "languages_consumer_census_is_composition_only", v1.std.core.bool_type)
+  let m = map_insert(m, "languages_consumer_census_has_external_consumer", v1.std.core.bool_type)
+  let m = map_insert(m, "is_xid_start", v1.std.core.bool_type)
+  let m = map_insert(m, "is_xid_continue", v1.std.core.bool_type)
+  let m = map_insert(m, "is_emoji_ident", v1.std.core.bool_type)
   m
 }
 
-fn infer_builtin_call_type(name: String) -> Node? {
+fn infer_builtin_call_type(name: String) -> v1.std.core.Node? {
   map_get(builtin_function_registry(), name)
 }
 
-fn resolve_builtin_call_type(name: String) -> Node {
+fn resolve_builtin_call_type(name: String) -> v1.std.core.Node {
   match infer_builtin_call_type(name: name) {
     Present { value: v } => v
-    Absent => unit_type
+    Absent => v1.std.core.unit_type
   }
 }

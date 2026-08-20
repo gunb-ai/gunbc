@@ -76,7 +76,7 @@ data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.p
 // nineteen binaries, most of which this cut deleted; naming a binary that no step runs buys
 // nothing and costs a compile.
 // `v1_src_dag_parse` ADDED 2026-08-19 for the step below, which is the only thing that runs it.
-data witness_floor_required_bins: std.types.List<String> = ["claim_executor", "gunbc", "v1_src_dag_parse"]
+data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc", "v1_src_dag_parse"]
 
 fn witness_floor_checkout_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.UsesStep {
@@ -174,7 +174,7 @@ fn witness_floor_build_step() -> extdeps.github.actions.Step {
   }
 }
 
-// The source-root flags are FOLDED from gunbc.ci_layer_roots gunbc.ci_layer_roots.witness_layer_roots, never spelled
+// The source-root flags are FOLDED from gunbc.ci_layer_roots witness_layer_roots, never spelled
 // here. That authority is what the compile-clean closure and the divergence census already read,
 // so a literal list in this emitter would be a second representation of it (DESIGN §3) -- and the
 // rung drop is invisible exactly while the bytes still agree, because the copy typechecks and
@@ -461,7 +461,7 @@ fn witness_regen_fixed_point_precondition() -> String {
 
 fn witness_required_regen_script() -> String {
   concat(
-    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    concat("ROOT=", concat(gunbc.merge_admission_produce.ci_repo_root_shell(), "\n")),
     concat(
       "\"$ROOT/target/release/claim_executor\" --required-regen",
       concat(witness_floor_source_root_flags(), "\n")
@@ -485,7 +485,7 @@ fn witness_required_regen_step() -> extdeps.github.actions.Step {
 
 fn witness_required_regen_fixed_point_script() -> String {
   concat(
-    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    concat("ROOT=", concat(gunbc.merge_admission_produce.ci_repo_root_shell(), "\n")),
     concat(
       "\"$ROOT/target/release/claim_executor\" --required-regen-fixed-point",
       concat(witness_floor_source_root_flags(), "\n")
@@ -582,7 +582,9 @@ data witness_floor_workflow: extdeps.github.actions.Workflow = {
   env: Present {
     value: [
       extdeps.languages.yaml.types.kv(key: "CARGO_TERM_COLOR", value: extdeps.languages.yaml.types.yaml_string(s: "always")),
-      extdeps.languages.yaml.types.kv(key: "GUNBC_EXPECTED_RED_ROSTER_JOIN", value: extdeps.languages.yaml.types.yaml_string(s: "expected_red_roster_join.tsv"))
+      extdeps.languages.yaml.types.kv(key: "GUNBC_EXPECTED_RED_ROSTER_JOIN", value: extdeps.languages.yaml.types.yaml_string(s: "expected_red_roster_join.tsv")),
+      extdeps.languages.yaml.types.kv(key: "GUNBC_REQUIRED_FLOOR_DISPOSITION", value: extdeps.languages.yaml.types.yaml_string(s: "required_floor_disposition.tsv")),
+      extdeps.languages.yaml.types.kv(key: "GUNBC_LONG_HOME_STORAGE_AGREEMENT", value: extdeps.languages.yaml.types.yaml_string(s: "long_home_storage_agreement.tsv"))
     ]
   },
   permissions: Present {

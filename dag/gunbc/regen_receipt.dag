@@ -1,18 +1,71 @@
 module gunbc.regen_receipt
 
 
-data regen_receipt_note: String = "Typed receipt for a non-mutating stage0 regen verify run via claim_executor --required-regen. first_generation_equal and fixed_point_equal are DISTINCT questions and must never collapse. The host binary materializes this carrier at runtime; fixed_point_equal is answered by a second invocation (--required-regen-fixed-point), not a second code path inside one run."
+// A RECEIPT MAY REFERENCE PRIOR EVIDENCE BUT MAY NOT IMPERSONATE PRIOR EVIDENCE AS SOMETHING IT
+// MEASURED ITSELF (operator ruling, 2026-08-20). The two regen passes answer DISTINCT questions —
+// first_generation_equal (does a fresh emit match the committed seed) and fixed_point_equal (does
+// the emit reproduce itself on a second pass) — and they run as two separate process invocations
+// against one receipt file at target/stage0-regen-receipt.json.
+//
+// WHAT WENT WRONG WITH ONE FLAT RECORD. A single eight-field record forced the second pass to
+// populate fields it had not measured, and the only available source was the receipt the first
+// pass left on disk. Four of six were therefore copied through verbatim:
+// committed_generated_digest, first_generation_equal, changed_paths, candidate_artifact. The
+// result is stamped with the SECOND pass commit_sha while carrying the FIRST pass answers, and it
+// is internally consistent and schema-valid — which is exactly what makes it invisible. Nothing in
+// the artifact says which tree four of its fields describe.
+//
+// The reachable arm is the ordinary local one rather than CI: the two modes are separate
+// invocations, and nothing requires the first to have run in this process, at this commit, or at
+// all. A developer iterating on the determinism half alone, over a warm target/ from an earlier
+// commit, gets today commit_sha carrying yesterday changed_paths. In CI the arm is currently
+// unreachable because actions/checkout default clean removes the ignored target/ each run —
+// measured, two consecutive main runs each compiling 105 crates starting at proc-macro2, where a
+// warm tree compiles zero — but that is a property of a checkout default nobody declared, and it
+// is one cache-reuse change away from live on a required path.
+//
+// THE SHAPE BELOW MAKES THE FABRICATION UNWRITABLE RATHER THAN DETECTABLE. The two passes are two
+// variants, and the second variant HAS NO first_generation_equal FIELD to fill in. There is no
+// value to copy and no check to pass, because the invalid state has no constructor — DESIGN 4b
+// structural impossibility, not the validation rung one below it. Choosing this over "compute all
+// six in pass two" is deliberate: computing all six would make the second pass re-derive
+// first_generation_equal against the committed tree, which is the FIRST pass question, fusing two
+// authorities into one row (DESIGN 3).
+//
+// A REFERENCE IS ONLY HONEST IF IT NAMES ITS SUBJECT. PriorReceiptRef therefore carries the
+// commit_sha the referenced evidence was measured at, so a consumer READS which tree those facts
+// describe instead of inferring it from context. A ref that silently pointed at another tree would
+// be the same defect with better vocabulary.
 
-type RegenReceipt {
+type PriorReceiptRef {
   commit_sha: String
-  authority_digest: String
   committed_generated_digest: String
-  candidate_generated_digest: String
   first_generation_equal: Bool
-  fixed_point_equal: Bool
   changed_paths: List<String>
   candidate_artifact: String
 }
+
+// FIRST GENERATION measures everything it reports. FIXED POINT measures the pass-2 digest and its
+// equality, and references the rest. The commit_sha on each variant is the tree THAT PASS ran
+// against; prior.commit_sha is the tree the referenced evidence came from, and the host refuses
+// when they differ.
+type RegenReceipt
+  = FirstGeneration {
+      commit_sha: String
+      authority_digest: String
+      committed_generated_digest: String
+      candidate_generated_digest: String
+      first_generation_equal: Bool
+      changed_paths: List<String>
+      candidate_artifact: String
+    }
+  | FixedPoint {
+      commit_sha: String
+      authority_digest: String
+      candidate_generated_digest: String
+      fixed_point_equal: Bool
+      prior: PriorReceiptRef
+    }
 
 data stage0_regen_candidate_dir_rel: String = "target/stage0-regen-candidate"
 
@@ -22,6 +75,12 @@ data stage0_regen_candidate_artifact_name: String = "stage0-regen-candidate"
 
 data stage0_regen_receipt_artifact_name: String = "stage0-regen-receipt"
 
-fn stage0_regen_receipt_is_green(receipt: RegenReceipt) -> Bool {
-  receipt.first_generation_equal && receipt.fixed_point_equal
+// STALENESS IS DECIDABLE FROM THE CARRIER ALONE, which is the point of putting commit_sha on the
+// ref. The host refuses a cross-tree reference on the required path; this predicate is the same
+// question asked of an already-materialized receipt.
+fn prior_reference_is_same_tree(receipt: RegenReceipt) -> Bool {
+  match receipt {
+    FirstGeneration { commit_sha: _, authority_digest: _, committed_generated_digest: _, candidate_generated_digest: _, first_generation_equal: _, changed_paths: _, candidate_artifact: _ } => true,
+    FixedPoint { commit_sha, authority_digest: _, candidate_generated_digest: _, fixed_point_equal: _, prior } => commit_sha == prior.commit_sha
+  }
 }

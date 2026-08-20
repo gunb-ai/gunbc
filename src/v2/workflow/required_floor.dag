@@ -2,17 +2,62 @@ module v2.workflow.required_floor
 
 // IDENTITY-GRAINED FLOOR DISPOSITION RECEIPT (operator ruling 2026-08-19).
 //
-// Every executable claim the fold plans gets exactly one `RequiredFloorDisposition`, keyed by
-// its qualified `module.function` identity. This is the single authority for that fact: the
-// host loop in `v1_compiler.cli_run` `run_required_floor` computes admission by testing a
-// claim's authored module name against `long_home_prefixes()` above and whether it reads the
-// live tree, then REALIZES the arm this type already names — it does not invent a second
-// admission concept. A `Declined*` arm here is a fact about why a claim's identity is excluded
-// from the executed roster; it is never itself the mechanism deciding execution order or
-// eligibility for a DIFFERENT gate.
+// Every discovered site gets exactly one `RequiredFloorDisposition`, keyed by its qualified
+// `module.function` identity. This is the single authority for that fact: the host loop in
+// `v1_compiler.cli_run` `run_required_floor` computes admission by testing a claim's authored
+// module name against `long_home_prefixes()` above, then REALIZES the arm this type already
+// names — it does not invent a second admission concept. A `Declined*` arm here is a fact about
+// why a site's identity is excluded from the executed roster; it is never itself the mechanism
+// deciding execution order or eligibility for a DIFFERENT gate.
+//
+// `DeclinedLiveTree` IS RETAINED HERE AND STAGED FOR DELETION AT THE ROOT. Its premise is
+// already known to be stale (below), but the deletion is a behaviour change — 782 sites move
+// from declined to executed — and it lands with the measurement that prices it, not with this
+// change. This paragraph is written in the tense of what IS, because an earlier revision of it
+// asserted the deletion as done while the Rust realization still returned the arm: the .dag
+// named two arms, `v1_compiler.cli_run` `run_required_floor` emitted three, and the header
+// claiming a completed deletion was rung inflation on the exact axis this module argues for
+// (caught by review 54035, on this PR).
+//
+// WHAT IT WAS: a site whose FILE declared `data live_tree_disposition: LiveTreeDisposition =
+// ReadsLiveTree` was declined, on the premise that reaching the live tree implies "cannot run
+// in the hermetic frame this floor runs". 778 identities across 112 files sat in that arm, and
+// since the floor cut left `claim_executor --required-floor` as the only witness-executing
+// consumer in the tree, they had no executing consumer at all — discovered every run, never
+// run, for as long as the arm existed.
+//
+// WHY THE PREMISE WAS STALE: hermetic mode carries the checkout-read carve-out
+// (`v1_interpreter` `hermetic_checkout_read_disposition_under`), under which a
+// `Filesystem.Read` of a path proven under the checkout root is INPUT access — the commit is
+// the run's deterministic input — and not a host effect. That carve-out landed AFTER
+// `live_tree_disposition` was authored. From that day "reads the live tree" no longer implied
+// "cannot run hermetically", and the decline was a prediction standing where the interpreter
+// already decides the same question exactly, per identity, at the effect boundary.
+//
+// WHAT WILL REPLACE IT: nothing here. Once the arm is deleted, every non-long identity is
+// routed and executed, its route carried by the claim that runs it
+// (`RequiredFloorClaim.execution_mode` — one route per identity, not a second vocabulary
+// restating it), and the interpreter's own typed `HermeticHostEffectRefused` classifies the
+// residue that genuinely has no hermetic arm. That residue reaches the receipt as
+// `RequiredFloorOutcome.route_gap`, which BLOCKS: a claim that never reached its subject is
+// not green, and it is not a failure either — the two have different remedies and are
+// reported apart. THAT MECHANISM IS ALREADY LIVE IN THIS CHANGE, which is what makes the
+// deletion safe to make next: the route-gap arm, its two-way roster join, and the
+// `SitePartitionInexact` wall all execute here, over the 101 identities that reached it
+// without this arm being touched at all.
+//
+// DELETION TRIGGER: the live-tree decline is removed when the cost measurement over its 782
+// sites lands (run 32345970386 measured 626/783 passing under execution), together with the
+// `witness_file_from_source` scan the split retained beside it.
+//
+// A NOTE ON WHAT DID *NOT* MOVE: `live_tree_disposition` itself is not deleted and is not
+// deprecated. It remains the declaration `reads_live_tree_effective` reads for AFFECTED-SET
+// SELECTION ELIGIBILITY, which is a different question from "can this execute" and keeps its
+// own single authority. What is staged for deletion is the floor's forked, syntactic second
+// copy of it.
 type RequiredFloorDisposition =
     Planned
-  | DeclinedLongModule { matched_prefix: v2.std.text.String }
+  | DeclinedLongModule { matched_prefix: String }
   | DeclinedLiveTree
 
 // LONG-HOME STORAGE HYGIENE — A DIAGNOSTIC, NEVER AN ADMISSION INPUT.
@@ -34,31 +79,36 @@ type LongHomeStorageAgreement =
   | LongPathButExecutingModule
   | ShortPathButDeclinedModule
 
-fn long_home_storage_agreement(path_is_long: v2.std.logic.Bool, module_is_long: v2.std.logic.Bool) -> LongHomeStorageAgreement {
+fn long_home_storage_agreement(path_is_long: Bool, module_is_long: Bool) -> LongHomeStorageAgreement {
   match path_is_long {
-    True => match module_is_long {
-      True => LongPathAndLongModule {}
-      False => LongPathButExecutingModule {}
+    v2.std.logic.True => match module_is_long {
+      v2.std.logic.True => LongPathAndLongModule {}
+      v2.std.logic.False => LongPathButExecutingModule {}
     }
-    False => match module_is_long {
-      True => ShortPathButDeclinedModule {}
-      False => ShortPathAndShortModule {}
+    v2.std.logic.False => match module_is_long {
+      v2.std.logic.True => ShortPathButDeclinedModule {}
+      v2.std.logic.False => ShortPathAndShortModule {}
     }
   }
 }
 
-// THE ROSTER EDGE IS A QUALIFIED REFERENCE, BECAUSE THAT IS WHAT AN EDGE IS NOW.
+// THE ROSTER IS IMPORTED HERE SO IT IS REACHABLE, NOT SO IT IS RE-EXPORTED.
 //
 // The host evaluates the expected-red roster in the SAME frame it evaluates this manifest in,
-// and that frame's scope is this module's closure. Without an edge the roster module is simply
-// not in the world the frame was built from, and the call fails with `no such function` — which
-// is exactly what this comment's previous revision predicted, and exactly what happened once
-// the namespace cut deleted the import that had been carrying it.
+// and that frame's scope is this module's closure. Without this edge the roster module is
+// simply not in the world the frame was built from, and the call fails with `no such function`
+// — which is what happened on the first run that reached admission-decode.
 //
 // The import names the roster's own function and nothing wraps it: the host still calls
 // `v2.workflow.floor_expected_red.floor_expected_red_roster` by its real qualified name. A
 // thin accessor here would be a second name for one authority, and this module would then own
 // a fact it does not produce.
+//
+// `v2.workflow.floor_route_gap.floor_route_gap_roster` is imported for exactly the same reason
+// and on exactly the same terms: the host evaluates it in this module's frame, so without the
+// edge the module is not in the world that frame was built from and the call fails with `no
+// such function` — the failure this comment was written to record the first time. The import is
+// reachability, not re-export.
 
 //
 // THREE PREFIXES, NOT ONE, and the count is what found that. A single `test.claim.long.` test
@@ -91,18 +141,19 @@ fn long_home_storage_agreement(path_is_long: v2.std.logic.Bool, module_is_long: 
 // real modelling question, and when it is asked it will be asked against a live consumer.
 //
 // These rows are NOT COVERED by anything. The host reports the count every run.
-fn long_home_prefixes() -> std.types.List<v2.std.text.String> {
+fn long_home_prefixes() -> List<String> {
   std.algebra.Cons {
     head: "test.claim.long.",
     tail: std.algebra.Cons {
       head: "v2.test.long.",
       tail: std.algebra.Cons {
         head: "v2.test.claim.long.",
-        tail: std.algebra.Empty {}
+        tail: Empty {}
       }
     }
   }
 }
+
 
 // THE EVALUATION DEADLINE FOR ONE CLAIM IS WALL TIME, AND IT HAS TWO TIERS.
 //
@@ -260,12 +311,6 @@ fn required_floor_claim_wall_safety_limit_ms() -> Int {
 // the tighter deadline, and CPU and wall are independent axes rather than ordered tiers, so with
 // the warn gone there is no ordering left to violate.
 
-// The frame's edge to the expected-red roster (see the header). It delegates and holds nothing:
-// deleting the roster's own rows changes this function's answer with no edit here.
-fn required_floor_expected_red_roster() -> std.types.List<v2.std.text.String> {
-  v2.workflow.floor_expected_red.floor_expected_red_roster()
-}
-
 // PREEMPTION-1 TYPED MODEL (operator-directed, 2026-08-19; reworked on gunbc#8584 per
 // royal-hawk-392's REWORK, which correctly held that a prose note is not the model S1 asked
 // for -- everything above this point that reads as a description of the residue is now backed
@@ -297,17 +342,17 @@ type ClaimPreemptionReachability =
 // call, not by which CLAIMS happen to call them today, so the population does not grow by a claim
 // being added or removed; it grows only when a DIFFERENT operation is found to share this shape,
 // which is a new finding, not a declaration.
-fn opaque_host_call_grandfather_population() -> std.types.List<String> {
+fn opaque_host_call_grandfather_population() -> List<String> {
   std.algebra.Cons {
     head: "compile_dag_rust_emit_check",
-    tail: std.algebra.Empty {}
+    tail: Empty {}
   }
 }
 
-fn string_in_grandfather_population(needle: String, population: std.types.List<String>) -> Bool {
+fn string_in_grandfather_population(needle: String, population: List<String>) -> Bool {
   match population {
     Empty {} => false
-    Cons { head: h, tail: t } =>
+    std.algebra.Cons { head: h, tail: t } =>
       if needle == h {
         true
       } else {

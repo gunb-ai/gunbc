@@ -63,19 +63,16 @@ test fn witness_healthz_bad_body_not_groundable() -> Bool {
 test fn witness_ssh_mock_stdout_is_discriminating_red() -> Bool {
   !gunbc.live_deploy.readiness.healthz_body_groundable(body: witness_ssh_mock_stdout)
     && match gunbc.live_deploy.readiness.ground_service_ready_from_healthz(
-      read: gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
-        body: witness_ssh_mock_stdout,
-        probe_error: "",
-      },
+      read: gunbc.roadmap_site_surface_types.HealthzBodyRead { body: witness_ssh_mock_stdout },
       expected_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
       expected_surface_identity: witness_expected_surface_identity(),
     ) {
-      DoesNotGround { reason: _ } => true
-      Grounds { evidence: _ } => false
+      std.realization_reconcile.DoesNotGround { reason: _ } => true
+      std.realization_reconcile.Grounds { evidence: _ } => false
     }
 }
 
-fn witness_argv_join(argv: std.types.List<String>) -> String {
+fn witness_argv_join(argv: List<String>) -> String {
   fold_list(
     xs: argv,
     empty: "",
@@ -99,15 +96,14 @@ test fn witness_transport_probe_targets_localhost_healthz() -> Bool {
 
 test fn witness_accept_no_response_probe_fails_fast_not_hangs() -> Bool {
   match gunbc.live_deploy.readiness.ground_service_ready_from_healthz(
-    read: gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
-      body: "",
+    read: gunbc.roadmap_site_surface_types.HealthzProbeRefused {
       probe_error: "curl: (28) Operation timed out after 5000 milliseconds with 0 bytes received",
     },
     expected_revision: test.claim.live_deploy.deploy_release_fixture.deploy_witness_release_revision,
     expected_surface_identity: witness_expected_surface_identity(),
   ) {
-    DoesNotGround { reason: _ } => true
-    Grounds { evidence: _ } => false
+    std.realization_reconcile.DoesNotGround { reason: _ } => true
+    std.realization_reconcile.Grounds { evidence: _ } => false
   }
 }
 
@@ -143,12 +139,12 @@ test fn witness_sleep_second_carrier_projection_paces_poll() -> Bool {
 
 test fn witness_sleep_flat_scalar_dissolution_trigger_tracked() -> Bool {
   match extdeps.tools.sleep.sleep_delay_seconds_flat_scalar_dissolution_trigger {
-    Scaffold {
+    std.disposition.Scaffold {
       dissolves_to: std.disposition.RealizationDispatch,
       bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: n, field: std.decl_ref.WholeDeclaration },
     } =>
       m == "extdeps.tools.sleep" && n == "sleep_delay_seconds_second_carrier_projection"
-    Terminal { reason: _ } => false
+    std.disposition.Terminal { reason: _ } => false
   }
 }
 
@@ -185,7 +181,7 @@ test fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
     last_probe: "health probe never succeeded"
   )
   match r {
-    NotConverged { reason: why, applied: _ } =>
+    std.realization_reconcile.NotConverged { reason: why, applied: _ } =>
       string_contains(s: why, pattern: "ServiceNotReady")
         && string_contains(s: why, pattern: "waited_s=120")
         && string_contains(s: why, pattern: "health probe never succeeded")
@@ -210,3 +206,4 @@ test fn witness_service_not_ready_refusal_shape_matches_contract() -> Bool {
     && string_contains(s: reason, pattern: "gunbc-roadmap.service")
     && string_contains(s: reason, pattern: "Active: failed (Result: exit-code)")
 }
+

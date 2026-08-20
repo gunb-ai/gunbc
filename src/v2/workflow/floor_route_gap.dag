@@ -1,0 +1,415 @@
+module v2.workflow.floor_route_gap
+
+// THE ROUTE-GAP ROSTER: identities the required floor EXECUTES, that reach a host effect the
+// hermetic route has no arm for, enrolled by exact qualified name.
+//
+// WHY IT EXISTS, and why it is not the decline it replaces. Until 2026-08-20 the floor answered
+// this class by never planning the population at all: a file declaring
+// `data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree` had every one of its
+// identities declined (`RequiredFloorDisposition.DeclinedLiveTree`), 778 of them across 112
+// files, and since `claim_executor --required-floor` is the only witness-executing consumer in
+// the tree, none of them ran anywhere. That arm is deleted. Every discovered identity is now
+// routed and executed, which turns a population that was invisible by construction into one
+// that is observed per identity, every run, by the interpreter's own typed refusal.
+//
+// SO THIS ROSTER IS NOT A SKIP LIST, for exactly the reason `floor_expected_red` is not one:
+// every identity here EXECUTES and its outcome is still asserted. What enrollment changes is
+// which outcome counts as agreement.
+//
+// - Enrolled, and the route gapped: agreement. Counted and held, never green.
+// - NOT enrolled, and the route gapped: reds the build. A new route gap is a new fact.
+// - Enrolled, and the route did NOT gap: reds the build as a stale row. A route that was
+//   supplied (or a witness that stopped reaching for the effect) is counted the moment it
+//   lands, so the roster shrinks monotonically instead of becoming a place rows go to be
+//   forgotten.
+// - Enrolled, and the identity did not execute at all: reds the build. The reverse join is
+//   what keeps a renamed or deleted identity from sitting here forever, unobserved.
+//
+// THE ORACLE THIS ROSTER IS ALLOWED TO BE (DESIGN §5, the 2026-08-01 ruling on numeric
+// literals). It is a monotone debt contract, and it is legitimate only because all four of that
+// ruling's conditions hold: the subject universe is INDEPENDENTLY DISCOVERED (the floor's own
+// discovered roster, not a hand-authored list of what someone remembered), it is CLOSED (every
+// discovered identity takes exactly one disposition), membership is checked AT IDENTITY GRAIN
+// rather than by count, and the direction is justified — every row names an operation that
+// needs a route, so supplying routes empties it. There is no count assertion anywhere in this
+// mechanism, and there must never be one: `planned == executed` is an identity join, and a
+// population equality is not a substitute for it.
+//
+// A ROW IS NOT A LICENCE TO STOP. Enrolling an identity here records that the floor has no
+// route for it TODAY; it does not make the gap acceptable. The remedy is always a route —
+// publish the mock case, author the operation's `mock_response`, or supply a lane that can run
+// the effect — never an edit to what the witness asserts.
+//
+// EMPTY IS THE INTENDED TERMINAL STATE, and there is deliberately no refusal on an empty
+// roster. When every discovered identity has a route that runs it, this module deletes.
+//
+// THE POPULATION, MEASURED RATHER THAN ESTIMATED (floor run 32345970386, sha c812b9fb6d0, the
+// first run in which every discovered identity was routed and executed). 157 identities reach a
+// host effect the hermetic route has no arm for, and the operations they name are exactly the
+// ones this corpus's own exclusion notes have been naming in prose for months:
+//    54  Dir
+//    26  IsExecutable
+//    17  Run
+//    10  Check
+//    10  emit_host_native_cache_evict
+//     8  Write
+//     5  git.Inspect.HeadCommit
+//     4  Get
+//     4  Read
+//     4  ReadBytes
+//     3  Filesystem.List
+//     3  Parents
+//     2  DiffNameStatus
+//     2  IsNonEmpty
+//     1  KernelName
+//     1  shell.Find.Files
+//     1  VerifyBuildArtifacts
+//     1  DiffUnified
+//     1  RecursiveForce
+//
+// NOT ONE OF THEM IS A COMMITTED-SOURCE READ. That is the measurement that settles what the
+// checkout-read carve-out actually covers: of ~783 identities admitted by deleting the
+// file-grain live-tree decline, 626 EXECUTE and only these 157 genuinely need a route. The
+// premise that "reads the live tree" implies "cannot run hermetically" was wrong for the large
+// majority of the population it excluded, not for an interesting minority of it.
+//
+// 101 OF THESE 157 ARE A RECLASSIFICATION, NOT NEW DEBT, and they are the reason this module
+// earns its keep rather than adding a vocabulary. They were already executing on main every
+// run, already reaching a hermetic refusal — and because that refusal arrived as a
+// `TypeError` carrying prose, `ExpectedRedArm` read it as an ordinary failure and HELD it as
+// agreement. `v2.workflow.floor_expected_red` therefore recorded "this witness runs and fails
+// and someone is fixing it" about 101 rows that never reached their subject at all. Nothing
+// was fixing them because there was nothing to fix: they needed a ROUTE, not a REPAIR. The
+// arithmetic is exact and is what turns this from a suspicion into a finding — that run's
+// roster carried 308 enrolled identities and held 207, and the 101 difference is precisely
+// this set. They are DELETED from that roster in the same change that adds them here; an
+// identity enrolled in both would be two mechanisms claiming one fact.
+//
+// The remaining 56 are genuinely new, surfaced by admitting the previously-declined population.
+
+fn floor_route_gap_chunk_00() -> List<String> {
+       std.algebra.Cons {
+      head: "test.claim.build_artifact_corruption_probe_witness.build_artifact_corruption_probe_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.build_artifact_corruption_probe_witness.witness_bin_readiness_arms_are_discriminating",
+      tail:      std.algebra.Cons {
+      head: "test.claim.commit_writer_heal_admission_real_execution.clean_staged_index_admits_by_real_execution",
+      tail: std.algebra.Cons {
+      head: "test.claim.commit_writer_heal_admission_real_execution.space_and_tab_named_paths_admit_by_real_execution",
+      tail: std.algebra.Cons {
+      head: "test.claim.commit_writer_heal_admission_real_execution.unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution",
+      tail: std.algebra.Cons {
+      head: "test.claim.commit_writer_heal_admission_real_execution.unmerged_index_with_no_markers_refuses_by_real_execution",
+      tail: std.algebra.Cons {
+      head: "test.claim.dag_collect_fingerprint_witness_test.dag_collect_fingerprint_witness_keystone_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.dag_compile_clean_perturb_receipts.perturb_fixture_green_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.dag_compile_clean_perturb_receipts.perturb_optional_skew_fixture_red_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.dag_compile_clean_perturb_receipts.perturb_unresolved_import_fixture_red_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.dag_compile_clean_seam_witness.cross_shard_seam_preservation_holds_on_live_tree",
+      tail: std.algebra.Cons {
+      head: "test.claim.dag_compile_clean_shard_a_witness.compile_clean_shard_a_exemplar_compile_green",
+      tail:  std.algebra.Cons {
+      head: "test.claim.diagnostics_test.diagnostics_constructor_owner_walls_hold",
+      tail: std.algebra.Cons {
+      head: "test.claim.diagnostics_test.diagnostics_empty_list_context_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.diagnostics_test.diagnostics_import_resolution_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.diagnostics_test.diagnostics_record_field_walls_hold",
+      tail: std.algebra.Cons {
+      head: "test.claim.diagnostics_test.diagnostics_reexport_surface_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.diagnostics_test.diagnostics_type_and_arity_holds",
+      tail:  std.algebra.Cons {
+      head: "test.claim.effects_rest_transport_parse_witness_test.effects_rest_transport_parse_keystone_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.emit_host_typed_smoke_test.emit_host_content_equality_discriminates_count_identical_bytes_holds",
+      tail:      std.algebra.Cons {
+      head: "test.claim.generated_artifact_merge_driver_real_execution.divergent_generated_artifact_merge_refuses_by_real_execution",
+      tail: std.algebra.Cons {
+      head: "test.claim.generated_artifact_merge_driver_real_execution.divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution",
+      tail: std.algebra.Cons {
+      head: "test.claim.generated_artifact_merge_driver_real_execution.one_sided_generated_artifact_change_merges_clean_by_real_execution",
+      tail: std.algebra.Empty {}
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+fn floor_route_gap_chunk_01() -> List<String> {
+  std.algebra.Cons {
+      head: "test.claim.host_build_cache_provision_real_execution.provision_read_back_failure_not_converged_by_real_execution",
+      tail:   std.algebra.Cons {
+      head: "test.claim.http_client_get_real_execution.http_client_get_missing_target_red_control_by_real_execution",
+      tail: std.algebra.Cons {
+      head: "test.claim.http_client_get_real_execution.http_client_get_roundtrip_by_real_execution",
+      tail: std.algebra.Cons {
+      head: "test.claim.interp_recorded_fixture_witness_test.interp_recorded_fixture_keystone_holds",
+      tail:  std.algebra.Cons {
+      head: "test.claim.materialized_ssh_key_file_real_execution_witness.witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target",
+      tail: std.algebra.Cons {
+      head: "test.claim.materialized_ssh_key_file_real_execution_witness.witness_write_owner_only_refuses_when_path_already_exists",
+      tail: std.algebra.Cons {
+      head: "test.claim.namespace_import_closure_witness.namespace_import_closure_receipt_holds",
+      tail:    std.algebra.Cons {
+      head: "test.claim.parse_test.parse_witness_floor_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.parse_test.parse_witness_perf_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.proc_self_cgroup_real_execution_witness.bash_assign_from_source_observed_shell_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.proc_self_cgroup_real_execution_witness.bash_assign_from_source_refuses_ambiguous_shell_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.proc_self_cgroup_real_execution_witness.bash_assign_from_source_refuses_malformed_shell_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.proc_self_cgroup_real_execution_witness.bash_assign_from_source_refuses_missing_shell_holds",
+      tail:  std.algebra.Cons {
+      head: "test.claim.random_bytes_csprng_witness.random_bytes_base64url_mint_16_length_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.random_bytes_csprng_witness.random_bytes_base64url_mint_20_length_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.random_bytes_csprng_witness.random_bytes_count_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.random_bytes_csprng_witness.random_bytes_zero_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.repo_local_git_config_real_execution.repo_local_git_config_actuator_sets_local_bindings_by_real_execution",
+      tail: std.algebra.Cons {
+      head: "test.claim.roadmap_belt_actuate_witness.witness_exec_all_fails_on_later_step",
+      tail: std.algebra.Cons {
+      head: "test.claim.roadmap_belt_actuate_witness.witness_exec_all_runs_every_step_when_ok",
+      tail: std.algebra.Cons {
+      head: "test.claim.roadmap_belt_actuate_witness.witness_exec_all_short_circuits_after_failure",
+      tail: std.algebra.Cons {
+      head: "test.claim.roadmap_belt_actuate_witness.witness_exec_fails_on_nonzero_exit",
+      tail: std.algebra.Cons {
+      head: "test.claim.roadmap_belt_actuate_witness.witness_exec_ok_runs_echo",
+      tail: std.algebra.Cons {
+      head: "test.claim.roadmap_belt_actuate_witness.witness_exec_refuses_missing_program",
+      tail: std.algebra.Cons {
+      head: "test.claim.roadmap_belt_actuate_witness.witness_named_exec_steps_locate_the_first_failure",
+      tail:  std.algebra.Cons {
+      head: "test.claim.run_verdict_exit_status_witness_test.run_failure_verdict_reaches_nonzero_exit",
+      tail: std.algebra.Cons {
+      head: "test.claim.run_verdict_exit_status_witness_test.run_non_process_exit_return_refuses",
+      tail: std.algebra.Cons {
+      head: "test.claim.run_verdict_exit_status_witness_test.run_success_verdict_reaches_zero_exit",
+      tail: std.algebra.Cons {
+      head: "test.claim.self_host_00_compile_behavioral_witness.self_host_00_compile_behavioral_receipt_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.self_host_01_tokenize_behavioral_witness.self_host_01_tokenize_behavioral_receipt_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.self_host_02_parse_behavioral_witness.self_host_02_parse_behavioral_receipt_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.self_host_03_ingest_behavioral_witness.self_host_03_ingest_behavioral_receipt_holds",
+      tail: std.algebra.Empty {}
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+fn floor_route_gap_chunk_02() -> List<String> {
+  std.algebra.Cons {
+      head: "test.claim.self_host_03_normalize_behavioral_witness.self_host_03_normalize_behavioral_receipt_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.self_host_03_resolve_behavioral_witness.self_host_03_resolve_behavioral_receipt_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.self_host_04_infer_behavioral_witness.self_host_04_infer_behavioral_receipt_holds",
+      tail:       std.algebra.Cons {
+      head: "test.claim.self_host_body_producer_behavioral_witness.self_host_body_producer_behavioral_receipt_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.self_host_discovery_enumeration_behavioral_witness.self_host_discovery_enumeration_behavioral_receipt_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.self_host_logic_behavioral_witness.self_host_logic_behavioral_receipt_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.self_host_materialization_carriers_behavioral_witness.self_host_materialization_carriers_behavioral_receipt_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.self_host_parse_engine_hooks_behavioral_witness.self_host_parse_engine_hooks_behavioral_receipt_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.self_host_program_assembly_behavioral_witness.self_host_program_assembly_behavioral_receipt_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.self_host_program_partition_behavioral_witness.self_host_program_partition_behavioral_receipt_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.self_host_source_authority_behavioral_witness.self_host_source_authority_behavioral_receipt_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.self_host_target_carriers_behavioral_witness.self_host_target_carriers_behavioral_receipt_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.self_host_use_site_verdict_behavioral_witness.self_host_use_site_verdict_behavioral_receipt_holds",
+      tail:  std.algebra.Cons {
+      head: "test.claim.srv3_install_media_fetch_real_execution.install_media_hash_matches_false_on_wrong_hash_by_real_execution",
+      tail: std.algebra.Cons {
+      head: "test.claim.srv3_install_media_fetch_real_execution.install_media_hash_matches_true_by_real_execution",
+      tail: std.algebra.Cons {
+      head: "test.claim.srv3_install_media_fetch_real_execution.observe_install_media_fetch_covers_absent_verified_and_mismatch_by_real_execution",
+      tail: std.algebra.Cons {
+      head: "test.claim.srv3_seeded_install_media_real_execution.install_media_remaster_ensure_grub_cmdline_inserts_by_real_execution",
+      tail:        std.algebra.Cons {
+      head: "test.claim.typed_witness_invocation.typed_claim_batch_pooled_run_red_control_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.typed_witness_invocation.typed_claim_executor_verify_build_artifacts_red_control_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.typed_witness_invocation.typed_gunbc_cli_run_claim_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.typed_witness_invocation.typed_is_executable_negative_red_control_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.typed_witness_invocation.typed_is_executable_positive_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.typed_witness_invocation.typed_is_nonempty_positive_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.typed_witness_invocation.typed_is_nonempty_zero_byte_red_control_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.typed_witness_invocation.typed_witness_bin_run_args_splice_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.typed_witness_invocation.typed_witness_bin_run_argv_holds",
+      tail: std.algebra.Empty {}
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+fn floor_route_gap_chunk_03() -> List<String> {
+  std.algebra.Cons {
+      head: "test.claim.typed_witness_invocation.typed_witness_bin_run_loud_failure_red_control_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.typed_witness_invocation.typed_witness_bin_run_nonzero_red_control_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.typed_witness_invocation.typed_witness_bin_run_workdir_anchors_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.typed_witness_invocation.typed_witness_bin_run_workdir_anchors_root_control_holds",
+      tail: std.algebra.Cons {
+      head: "test.claim.v1_dag_parse_witness.v1_dag_parse_witnesses",
+      tail:     std.algebra.Cons {
+      head: "v2.test.claim.auth_declared_but_unwired_witness.auth_declared_but_unwired_witness_keystone_holds",
+      tail: std.algebra.Cons {
+      head: "v2.test.claim.bootstrap.bootstrap_witness_keystone_holds",
+      tail: std.algebra.Cons {
+      head: "v2.test.claim.infer_semantics_witness.infer_semantics_witness_keystone_holds",
+      tail:         std.algebra.Cons {
+      head: "v2.test.execution.floor_diff_observe_witness.witness_ci_policy_name_status_observation_succeeds",
+      tail: std.algebra.Cons {
+      head: "v2.test.execution.floor_diff_observe_witness.witness_ci_policy_observation_succeeds",
+      tail: std.algebra.Cons {
+      head: "v2.test.execution.floor_diff_observe_witness.witness_invalid_base_fails_closed",
+      tail: std.algebra.Cons {
+      head: "v2.test.execution.floor_diff_observe_witness.witness_invalid_base_name_status_fails_closed",
+      tail:   std.algebra.Cons {
+      head: "v2.test.execution.proactive_verification_ledger_overlap_execution.proactive_verification_ledger_overlap_execution_holds",
+      tail: std.algebra.Cons {
+      head: "v2.test.fixture.walk_plan_stage.barrier_witness.walk_plan_stage_barrier_witness_holds",
+      tail: std.algebra.Cons {
+      head: "v2.test.fixture.walk_plan_stage.cleanup.walk_plan_stage_cleanup_holds",
+      tail: std.algebra.Cons {
+      head: "v2.test.fixture.walk_plan_stage.common.walk_plan_stage_materialize_harness_authority_holds",
+      tail: std.algebra.Cons {
+      head: "v2.test.fixture.walk_plan_stage.overlap_peer_a.walk_plan_stage_overlap_peer_a_holds",
+      tail: std.algebra.Cons {
+      head: "v2.test.fixture.walk_plan_stage.overlap_peer_b.walk_plan_stage_overlap_peer_b_holds",
+      tail: std.algebra.Cons {
+      head: "v2.test.fixture.walk_plan_stage.receipt_refusal_poison.walk_plan_stage_receipt_refusal_poison_holds",
+      tail: std.algebra.Cons {
+      head: "v2.test.fixture.walk_plan_stage.stage2_marker.walk_plan_stage_stage2_marker_holds",
+      tail:    std.algebra.Empty {}
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+    }
+}
+
+fn floor_route_gap_chunks() -> List<List<String>> {
+  std.algebra.Cons { head: floor_route_gap_chunk_00(), tail: std.algebra.Cons { head: floor_route_gap_chunk_01(), tail: std.algebra.Cons { head: floor_route_gap_chunk_02(), tail: std.algebra.Cons { head: floor_route_gap_chunk_03(), tail: std.algebra.Empty {} } } } }
+}
+
+fn floor_route_gap_roster() -> List<String> {
+  v2.std.algebra.list_flat_map(xs: floor_route_gap_chunks(), f: fn(chunk) { chunk })
+}

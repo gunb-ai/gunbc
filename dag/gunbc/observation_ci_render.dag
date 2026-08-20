@@ -647,6 +647,7 @@ type CiWitnessVerdict
   | WitnessBudgetRefused
   | WitnessHostToolUnresolved
   | WitnessKnownRed
+  | WitnessRouteGap
 
 fn ci_witness_outcome_token(verdict: CiWitnessVerdict) -> String {
   match verdict {
@@ -657,6 +658,7 @@ fn ci_witness_outcome_token(verdict: CiWitnessVerdict) -> String {
     WitnessBudgetRefused => "BUDGET-REFUSED"
     WitnessHostToolUnresolved => "TOOL-UNRESOLVED"
     WitnessKnownRed => "KNOWN-RED"
+    WitnessRouteGap => "NO-ROUTE"
   }
 }
 

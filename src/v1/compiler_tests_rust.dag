@@ -715,7 +715,7 @@ fn ct_diagnostics_carrier_grounding_test() -> String {
 fn ct_rust_btree_set_ord_eligibility_test() -> String {
   concat(
     "    fn shaped_type_node(name: &str, children: Vec<std::rc::Rc<crate::v1_std_core::Node>>) -> std::rc::Rc<crate::v1_std_core::Node> {\n",
-    "        let span = crate::v1_std_core::make_span(0, name.len() as i64);\n",
+    "        let span = crate::v1_std_core::no_span();\n",
     "        std::rc::Rc::new(crate::v1_std_core::Node {\n",
     "            name: name.to_string(),\n",
     "            ident: None,\n",

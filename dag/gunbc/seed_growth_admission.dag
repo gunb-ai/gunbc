@@ -1,6 +1,5 @@
 module gunbc.seed_growth_admission
 
-
 data seed_growth_admission_note: String = "ITEM-GRAIN admission authority for hand-authored Rust growth (Lane swift-lynx-164). TARGET: compare every newly authored or modified hand Rust item in a change against SeedGrowthJustification.hand_authored_declarations and refuse on the difference (gunbc.seed_growth.seed_growth_note completeness join). PATH-GRAIN census (sibling proud-owl-773 PR #7894) answers which files lack disposition; THIS MODULE answers which ITEMS within files lack justification. NOT IN SCOPE: deleting existing Rust. NOT IN SCOPE: netting deletions against additions. G0 HOST: scripts/rust_item_census.py is SCAFFOLD-MARKED (seed_growth_g0_census_host_scaffold); classification derived from .dag authorities today, item extraction is regex until rust_item_host_observation lands. ENROLLED TODAY: seed_growth_roster_well_formed_gate_holds — roster well-formedness only (non-empty closed roster, well-formed rows, no duplicate DeclarationRef keys). NOT ENROLLED: seed_growth_join_declarations as admission — diff candidates absent until rust_item_host_observation; seed_growth_admission_join_scaffold marks that boundary."
 
 type SeedGrowthAdmissionVerdict
@@ -25,26 +24,26 @@ type SeedGrowthChangeDisposition
 
 data seed_growth_forward_freeze_policy_note: String = "FORWARD-FREEZE POLICY (enforceable now). Every PR that adds hand-written src/v1 Rust MUST enumerate: exact item identity, .dag authority, why Rust is still needed, owning lane, deletion trigger, current boundary, hand-item delta, and hand-LOC delta. Unenumerated hand growth is a stop-line — no netting deletions against additions. Generated Rust is exempt only with generation-authority proof (gunbc.stage0_emit_model generated_stage0_files or gunbc.generated_artifact). This module's G1 join is the mechanical backstop once rust_item_host_observation supplies diff populations; until then the closed roster + witness tests enforce roster honesty."
 
-data seed_growth_justification_roster_note: String = "CLOSED ROSTER of every SeedGrowthJustification row in the corpus. G1 joins new/modified hand items against this list. Rows are authored beside the obligation they declare; the roster is derived by enumeration, never by grep. Today: stage0_rust_observation_seed_growth_justification (gunbc.stage0_rust_host_observation) and observation_scoped_run_seed_growth_justification (gunbc.roadmap_authority). Each new justification adds one row here AND one data row in its owning module."
+data seed_growth_justification_roster_note: String = "CLOSED ROSTER of every SeedGrowthJustification row in the corpus. G1 joins new/modified hand items against this list. Rows are authored beside the obligation they declare; the roster is derived by enumeration, never by grep. Today: stage0_rust_observation_seed_growth_justification (gunbc.stage0_rust_host_observation), observation_scoped_run_seed_growth_justification (gunbc.roadmap_authority) and whole_corpus_compile_seed_growth_justification (gunbc.whole_corpus_compile_admission). Each new justification adds one row here AND one data row in its owning module."
 
 // UNCITABLE ITEMS (prose-only until std.decl_ref gains ImplMethod). stage0_rust_observation_seed_growth_justification documents one: impl std::fmt::Display for Stage0CargoBinManifestParseRefusal in v1_compiler.cli_run — seven hand items, six citable DeclarationRef rows. G1 reports uncitable_items separately; they do NOT satisfy the forward-freeze enumeration via DeclarationRef alone.
 data seed_growth_admission_join_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.seed_growth_admission",
     decl_name: "seed_growth_join_declarations",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data seed_growth_admission_join_scaffold_note: String = "SCAFFOLD — seed_growth_join_declarations is NOT an enrolled admission gate until rust_item_host_observation supplies diff DeclarationRef candidates. Joining the roster against itself is a tautology and must not green as completeness admission (review 49332). Dissolve-on: diff population carrier lands and enrolls join against merge-base candidates."
 
 data seed_growth_g0_census_host_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.rust_item_identity",
     decl_name: "rust_item_host_observation_scaffold_note",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -55,7 +54,8 @@ data seed_growth_admission_g0_population_note: String = "G0 CENSUS HOST (scripts
 fn seed_growth_justification_roster() -> List<gunbc.seed_growth.SeedGrowthJustification> {
   [
     gunbc.stage0_rust_host_observation.stage0_rust_observation_seed_growth_justification,
-    observation_scoped_run_seed_growth_justification()
+    gunbc.roadmap_authority.observation_scoped_run_seed_growth_justification(),
+    gunbc.whole_corpus_compile_admission.whole_corpus_compile_seed_growth_justification
   ]
 }
 
@@ -63,26 +63,35 @@ fn seed_growth_justification_well_formed(j: gunbc.seed_growth.SeedGrowthJustific
   j.reason != ""
     && j.trigger != ""
     && j.current_boundary != ""
-    && length(xs: j.hand_authored_declarations) > 0
+    && v2.std.algebra.length(xs: j.hand_authored_declarations) > 0
 }
 
+// DERIVED FROM THE ROSTER, NOT RE-LISTED BESIDE IT. This appended the two known
+// justifications' declarations by name, which made it a SECOND enumeration of the roster one
+// function above — and the two could disagree silently: adding a third row to
+// seed_growth_justification_roster left its declarations invisible here, so the duplicate
+// check and the G1 join would both have passed over items that were, by every other reading,
+// enrolled. Folding the roster makes that state unwritable rather than caught, which is the
+// construction-over-validation direction (DESIGN section 5) and is what the roster note
+// already asks for when it says the roster is derived by enumeration and never by grep.
 fn seed_growth_roster_all_declarations() -> List<std.decl_ref.DeclarationRef> {
-  v2.std.algebra.list_append(
-    left: gunbc.stage0_rust_host_observation.stage0_rust_observation_seed_growth_justification.hand_authored_declarations,
-    right: observation_scoped_run_seed_growth_justification().hand_authored_declarations
+  v2.std.algebra.fold_list(
+    xs: seed_growth_justification_roster(),
+    empty: [] as List<std.decl_ref.DeclarationRef>,
+    cons: fn(acc, j) { v2.std.algebra.list_append(left: acc, right: j.hand_authored_declarations) }
   )
 }
 
 fn seed_growth_roster_declaration_keys() -> List<String> {
   seed_growth_roster_all_declarations()
-    |> map(r => declaration_ref_display_key(ref: r))
+    |> map(r => std.decl_ref.declaration_ref_display_key(ref: r))
 }
 
 fn seed_growth_roster_has_duplicate_keys() -> Bool {
   let keys = seed_growth_roster_declaration_keys()
-  any(
+  v2.std.algebra.any(
     xs: keys,
-    predicate: fn(key) { path_occurrence_count(paths: keys, target: key) > 1 }
+    predicate: fn(key) { std.keyed_roster.path_occurrence_count(paths: keys, target: key) > 1 }
   )
 }
 
@@ -96,29 +105,29 @@ fn seed_growth_find_stale(
   roster: List<std.decl_ref.DeclarationRef>,
   candidates: List<std.decl_ref.DeclarationRef>
 ) -> List<String> {
-  filter(
+  v2.std.algebra.filter(
     xs: roster,
     predicate: fn(r) { !declaration_ref_in_list(target: r, refs: candidates) }
   )
-    |> map(r => declaration_ref_display_key(ref: r))
+    |> map(r => std.decl_ref.declaration_ref_display_key(ref: r))
 }
 
 fn seed_growth_join_declarations(
   candidates: List<std.decl_ref.DeclarationRef>
 ) -> SeedGrowthAdmissionVerdict {
   let roster = seed_growth_roster_all_declarations()
-  let unjustified = filter(
+  let unjustified = v2.std.algebra.filter(
     xs: candidates,
     predicate: fn(r) { !declaration_ref_in_list(target: r, refs: roster) }
   )
-  if length(xs: unjustified) > 0 {
+  if v2.std.algebra.length(xs: unjustified) > 0 {
     SeedGrowthAdmissionRefused {
-      unjustified_additions: unjustified |> map(r => declaration_ref_display_key(ref: r)),
+      unjustified_additions: unjustified |> map(r => std.decl_ref.declaration_ref_display_key(ref: r)),
       detail: "hand Rust item(s) lack SeedGrowthJustification row"
     }
   } else {
     SeedGrowthAdmissionComplete {
-      justified_items: candidates |> map(r => declaration_ref_display_key(ref: r)),
+      justified_items: candidates |> map(r => std.decl_ref.declaration_ref_display_key(ref: r)),
       stale_justifications: seed_growth_find_stale(roster: roster, candidates: candidates),
       duplicate_justifications: [],
       uncitable_items: seed_growth_uncitable_item_keys()
@@ -128,13 +137,13 @@ fn seed_growth_join_declarations(
 
 fn seed_growth_roster_mechanical_checks_holds() -> Bool {
   let roster = seed_growth_justification_roster()
-  length(xs: roster) >= 1
+  v2.std.algebra.length(xs: roster) >= 1
     && v2.std.algebra.fold_list(
       xs: roster,
       empty: true,
       cons: fn(ok, j) { ok && seed_growth_justification_well_formed(j: j) }
     )
-    && length(xs: seed_growth_roster_all_declarations()) > 0
+    && v2.std.algebra.length(xs: seed_growth_roster_all_declarations()) > 0
     && !seed_growth_roster_has_duplicate_keys()
 }
 
