@@ -1,6 +1,7 @@
 module extdeps.git.publication_transport
 
 import std.types { Bool, CommitSha, GitRef, Int, List, NonEmptyStr, String }
+import extdeps.git.object_store { GitObjectId, GitRefName, git_object_id_wire_hex }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -47,6 +48,49 @@ type GitCommitRequest {
   allow_empty: Bool
 }
 
+// A REMOTE REF ADVANCE IS A COMPARE-AND-SWAP, AND PushRefUpdate ABOVE CANNOT EXPRESS ONE.
+// Its argv is `git push {remote} {refspec}`, which refuses only non-fast-forwards -- a weaker
+// and DIFFERENT guarantee than naming the prior. Two advances racing on one ref are both
+// fast-forwards, so both succeed and the later silently discards the earlier's decision.
+// `--force-with-lease=<ref>:<expect>` refuses unless the remote ref still holds <expect>, which
+// is what makes the loser of a race refuse instead of overwrite.
+//
+// CREATION IS THE SAME OPERATION WITH AN EMPTY <expect> -- git's documented spelling for "the
+// ref must not already exist" -- so ref creation stays a compare-and-swap rather than falling
+// back to an unconditional push. That is why the expectation is a closed sum here and not a
+// GitObjectId? : `none` on an option is one value doing two jobs, and the job it silently
+// acquires is "I could not observe the ref", which must never render as "therefore create it".
+// RemoteRefMustBeAbsent is a claim about the remote; an unobserved remote is not that claim.
+type GitRemoteRefExpectation
+  = RemoteRefMustBeAbsent
+  | RemoteRefMustEqual { oid: GitObjectId }
+
+type GitRemoteRefCasRequest {
+  remote: NonEmptyStr
+  ref_name: GitRefName
+  new_oid: GitObjectId
+  expected: GitRemoteRefExpectation
+}
+
+// The lease and refspec are rendered HERE, in the model, and reach the transport as opaque
+// words. This is the same constraint RecordCommit/RecordEmptyCommit resolves by splitting into
+// two operations -- a shell argv template cannot branch -- but the branch is over a closed sum
+// whose arms differ only in one rendered value, so collapsing it in a pure function keeps ONE
+// operation and one argv template. Splitting into CreateRemoteRefIfAbsent /
+// UpdateRemoteRefIfCurrent would fork one upstream operation into two rows that git does not
+// distinguish.
+fn git_remote_ref_lease_word(request: GitRemoteRefCasRequest) -> NonEmptyStr {
+  let expected_text = match request.expected {
+    RemoteRefMustBeAbsent => ""
+    RemoteRefMustEqual { oid: prior } => git_object_id_wire_hex(oid: prior) as String
+  }
+  concat("--force-with-lease=", concat(request.ref_name as String, concat(":", expected_text)))
+}
+
+fn git_remote_ref_cas_refspec(request: GitRemoteRefCasRequest) -> NonEmptyStr {
+  concat(git_object_id_wire_hex(oid: request.new_oid) as String, concat(":", request.ref_name as String))
+}
+
 // GitCommitRequest.allow_empty selects RecordEmptyCommit vs RecordCommit at transport bind — two operations, because shell argv templates cannot branch on Bool.
 service git.PublicationTransport {
   operation PushRefUpdate {
@@ -63,6 +107,29 @@ service git.PublicationTransport {
     exit {
       0 => Unit
       nonzero => String "Push failed"
+    }
+  }
+
+  // The compare-and-swap publication. `lease` and `refspec` arrive pre-rendered from
+  // git_remote_ref_lease_word / git_remote_ref_cas_refspec so this template stays literal.
+  // A refused lease is a REAL ANSWER -- the remote moved under us -- not a transport failure,
+  // so it must not be collapsed into the generic nonzero arm by a caller that reads only
+  // success: false.
+  operation PushRefUpdateWithLease {
+    input {
+      remote: NonEmptyStr
+      refspec: NonEmptyStr
+      lease: NonEmptyStr
+    }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+      success: Bool from "exit_success"
+    }
+    transport shell { argv: ["git", "push", "{lease}", "{remote}", "{refspec}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Leased push refused or failed"
     }
   }
 
