@@ -112,6 +112,24 @@ type MirrorDebtRow {
 // this repository at all, it is a fact about the generator binary that produced it, and it
 // would go silently wrong the next time the emitter changes.
 //
+// A ROW CAN GO STALE WITHOUT ANYONE TOUCHING THE FILE OR THIS CARRIER. Ordinary authority
+// work on main closes a path's drift, and the judgement recorded here quietly stops applying —
+// no author, no edit, no diff. That is the mirror of the loud-failure property above: an
+// undispositioned drift breaks noisily, a disposition that has ceased to be true does not.
+// A consumer must therefore refuse in BOTH directions, and a stale row is as much a defect as
+// a missing one — otherwise this becomes a one-way ledger where rows only ever enter and every
+// reader sees more debt than exists.
+//
+// WITH ONE PRECONDITION, learned by nearly deleting a correct row. A stale verdict is only
+// readable when THE TREE UNDER TEST IS THE TREE THESE ROWS ARE ABOUT. A run whose base predates
+// the commit that CREATED a drift will observe that path in agreement and report the debt
+// closed. That happened: a gate run from a branch fifteen commits behind main reported
+// v1_compiler_parse.rs as a stale row, because its base predated #8607 — at that base the
+// authority and the mirror both carry zero make_file_span call sites and genuinely agree,
+// while at main the authority carries two and the mirror one. "Does not drift" and "drifts,
+// but not yet on this tree" are the same observation unless the subject is pinned. The arm
+// fails toward DELETING REAL ROWS, so the precondition is part of the arm, not advice beside it.
+
 // MEMBERSHIP JOINS ON BASENAME, NOT ON THE PATH COLUMN. The comparator that supplies the
 // population reports basenames ("std_algebra.rs"); the path field below is the DISPLAY form
 // and is not the key. The join is sound because the generated surface is one flat directory,
