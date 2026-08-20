@@ -3091,8 +3091,13 @@ fn collect_value_emit_type_surface_names(n: Node, source_indices: Map<String, Ne
       record_lit_ref_names(n: n, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)
     ExprMatch => collect_match_pattern_parent_enums(expr: n, source_indices: source_indices, emit_info: emit_info)
     _ =>
-      let from_inferred = emit_inferred_type_leaf_name(n: n, source_indices: source_indices)
-      let from_inferred_list = if from_inferred != "" { [from_inferred] } else { [] }
+      let from_inferred_list = match n.inferred {
+        Present { value: Resolved { node: rt } } =>
+          let is_optional = rt.return_cardinality == CardOptional
+          let peeled_rt = if is_optional { with_required_cardinality(n: rt) } else { rt }
+          collect_type_node_import_surface_names(n: peeled_rt, source_indices: source_indices)
+        _ => []
+      }
       let nm = authored_name_at(source_indices: source_indices, node: n)
       let from_variant = match map_get(variant_to_enum, nm) {
         Present { value: parent } => if parent != "" { [parent] } else { [] }
@@ -8509,6 +8514,8 @@ fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List
     let recv_str = emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     let arg_strs = args |> map(a => emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
     concat("(", recv_str, ".", emit_ident(name: function_name, target: Rust), ")(", arg_strs |> join(separator: ", "), ")")
+  } else if map_contains_key(rt_functions(), function_name) == false {
+    emit_error_expr(message: concat("method \"", function_name, "\" is neither a resolved callable receiver field nor a registered v1_rt bridge function — refusing rather than emitting an unresolved runtime call"), target: Rust)
   } else {
   let recv_str = if rust_runtime_bridge_passes_receiver_by_ref(function_name: function_name) {
     concat("&", emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
