@@ -267,12 +267,53 @@ independent review:
 
 Calibration examples, each verified on `main`: `NonEmptyList<T>` is
 RepresentableButForgeable; string `non_empty` where-refinement is LiteralOnlyWall; a
-nonliteral refined argument is RuntimeBoundaryOnly (five `WhereRefinementUnenforced` deferral
+nonliteral refined argument is **`Absent`** (five `WhereRefinementUnenforced` deferral
 reasons are enrolled as *advisory* — `v1.compiler.core`
-`where_refinement_deferral_reason_scaffold_note`); v2 loop termination is a ConstructionWall
+`where_refinement_deferral_reason_scaffold_note`) — **corrected 2026-08-20 from
+`RuntimeBoundaryOnly`, which was measured to be true of no kernel; see the executed row below**; v2 loop termination is a ConstructionWall
 (`v2.std.cardinality` requires a declared loop measure, fail-closed to `DescentUnknown`);
 unknown method is a fail-open Absent; host state is ExternalNotGuaranteed by the guarantee
 statement itself.
+
+**Executed correction to the nonliteral-refined-argument calibration (2026-08-20).** That
+example read `RuntimeBoundaryOnly` — *a check that fires at the runtime boundary rather than at
+compile time*. Measured across all three kernels the refinement family uses, **no refinement
+predicate is ever evaluated, on any kernel**. Three mechanisms, one outcome:
+
+| kernel | mechanism | executed evidence |
+| --- | --- | --- |
+| String | the conversion runs and is the **identity** | `"" as NonEmptyStr` evaluates successfully and returns `""` |
+| Int | the only conversion **refuses every value**, so it is never used; values arrive by *declaration* and no conversion runs | `x as EpochMs` refuses a valid `5` identically to `-1`; and `-1` reaching an `EpochMs`-declared parameter comes back `-1` unchanged |
+| collection | a sound, unforgeable wall with **zero traffic and zero declarations behind it** | `NonEmptyVec`/`NonEmptyBTreeSet` have private tuple fields so `new` is the only door, and `new` has **zero call sites** corpus-wide; **zero** refinement declarations exist over any collection base |
+
+A gate that passes everything, a gate nobody walks through, and a wall with no door behind it.
+The Int row is the one that most needs stating: *fail-closed by absence of capability* reads as
+safe, and it is not — 74 declared `: EpochMs` / `: Duration` positions against effectively zero
+casts means the refusing conversion is almost never on the path, so the predicate goes
+unevaluated by a third route rather than by a permissive one.
+
+Why this is the document's own §4b failure rather than a wording slip: one state was recorded for
+a class whose paths differ, and it was the strongest of them. In emitted Rust `NonEmptyStr` is a
+**bare alias** (`pub type NonEmptyStr = String;`), so a violation is not merely unchecked — it is
+unrepresentable as a distinction, which does not reach even the *brand* that §4b calls cosmetic.
+Each kernel needs a different remedy: String needs a carrier to exist at all; Int needs a
+conversion that can succeed; collection needs the emitter to route values through the wall that
+already exists (a plausible, **unproven** cause for the orphaned carriers is a name mismatch —
+the type mapping emits `non_empty_list` → `NonEmptyList<T>` while the emitted carriers are
+`NonEmptyVec<T>`/`NonEmptyBTreeSet<T>`, with `NonEmptyList` modeled through `Refined<List<T>>`
+rather than `where`).
+
+**Population, as a dated measurement rather than a property of the tree:** a whole-tree resolve at
+`a750b6761da` counted **3939 `WhereRefinementUnenforced` across 612 files** (of `TOTAL_ALL` 8183;
+`HARD` 0, so every hard-diagnostic census structurally reads zero for this class). Four
+pre-committed predicates passed, including a by-name planted-row control, and the count reproduced
+exactly across two dispatches on separate runners. An independent static scan — sharing no
+machinery with the resolve-time census — counts 3757 `as NonEmptyStr`, smaller in the predicted
+direction because a text scan for one spelling of one type must count strictly less than a census
+over every refinement construct. **The instrument was deleted and nothing landed, so the number is
+not reproducible without rebuilding it.** And it is an *unverified-obligation* population, not a
+defect population: the census cannot distinguish violated from unverified — the planted
+known-violated row was indistinguishable from the other 3939 in every output.
 
 This vocabulary is prose-interim: it becomes a typed enum on the claim carrier when the
 guarantee authority lands (§11), the same way `DescentEvidence` and `DecodeFidelity` model
