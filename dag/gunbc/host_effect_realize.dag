@@ -1199,6 +1199,48 @@ fn srv3_actuator_toolchain_emit_artifact_transport_helper_refused_opt() -> Strin
   none
 }
 
+// THE REFUSAL'S REASON IS DISCARDED HERE, AND THE RUNG IS STATED RATHER THAN CLAIMED CLEAN.
+// TypedArgvExecOutcome is three-valued -- ran and succeeded, ran and failed, could not be run
+// (TypedArgvExecRefused carries why) -- and this projection is two-valued, so the third state
+// arrives at every consumer as the second. That is DESIGN §5's empty-observation narrow at the
+// evidence grain: a transport that could not deliver the probe renders as a probe that answered
+// no. The sibling class was repaired one layer up (gunbc.roadmap_dashboard_instance_apply
+// path_observation_preserves_refusal_note); it is NOT repaired here, and this block exists so
+// the gap is countable rather than rediscovered.
+//
+// RUNG FOUND AT: mitigatable, and the containment is real rather than asserted. No refusal can
+// reach a converged verdict, because the false direction is absorbing through every consumer:
+// srv3_transport_witness_bin_success, srv3_transport_test_executable, srv3_apt_tool_present,
+// srv3_apt_tool_version_ok, srv3_tool_bin_path and srv3_chown_directory_to_current_user all feed
+// srv3_ensure_apt_tool, srv3_ensure_websocat and the realizer bodies, and each of those maps a
+// false into exit_code 1 through srv3_shell_reconcile -- so the line stops. WHAT IS NOT
+// CONTAINED is the cause. The stderr those bodies attach is a per-site literal naming the
+// operation ("sleep failed; fail-closed"), so an unreachable host is reported to an operator as
+// a failed sleep, and realize_seeded_install_media_toolchain_ensure_body's was_present goes
+// false, stamping the receipt "Installed" for a host nothing was installed on. A misdirected
+// cause is not a stopped line's cost, it is a second wrong answer riding on it.
+//
+// EVIDENCE, AND ITS LIMIT: the containment above is read off the dataflow, which is
+// compile-visible and total. NO EXECUTING WITNESS DISCRIMINATES THESE ARMS, for the reason
+// srv3_actuator_toolchain_emit_artifact_transport_helper_note already records -- a FleetSsh
+// context is unforgeable by the KnownHostsAnchor seal, and SshShell needs a live host. So this
+// is a rung declared from structure, not from a discriminating RED, and it may not be cited as
+// executed evidence.
+//
+// THE THREE SIBLING ARMS IN THIS FILE PROPAGATE INTO THE SAME CHANNEL, so their own notes are
+// narrower than they read: srv3_actuator_toolchain_emit_artifact_transport_helper_refused,
+// srv3_actuator_toolchain_emit_artifact_transport_helper_refused_opt and
+// srv3_transport_witness_bin_nonroot_workdir_refused each return this same false/none, and
+// "fail-closed backstop, not a silent widen" is true only about the WIDEN direction. At the
+// consumer all five sources are one indistinguishable negative. They climb by the same repair
+// and are not separate classes.
+//
+// CEILING: structurally impossible. The class is decidable and already grounded -- the reason
+// exists on the value being matched -- so the collapse is representable only because a Bool
+// carrier is offered for a three-valued observation. NEXT-RUNG TRIGGER: these probe helpers
+// return an observation that preserves the refusal instead of Bool / String?, and
+// srv3_shell_reconcile derives its stderr from that reason rather than from a per-site literal;
+// at that point the Bool projection has no constructor and this block dissolves with it.
 fn srv3_typed_argv_outcome_success(outcome: TypedArgvExecOutcome) -> Bool {
   match outcome {
     TypedArgvExecConverged { result: r } => r.success
@@ -1206,6 +1248,13 @@ fn srv3_typed_argv_outcome_success(outcome: TypedArgvExecOutcome) -> Bool {
   }
 }
 
+// SAME DISCARD, OPTION-SHAPED: see srv3_typed_argv_outcome_success above for the rung, the
+// containment argument and the trigger. This arm additionally FUSES TWO ABSENCES that its
+// caller then cannot separate -- a command that ran and printed nothing, and a command that
+// never ran -- both leaving as Absent, which srv3_tool_bin_path hands on as "the tool has no
+// path here". Absent is load-bearing at three call sites (srv3_apt_tool_version_ok,
+// srv3_ensure_websocat, realize_boot_once_read_back_sleep_body), and each reads it as a
+// measured absence.
 fn srv3_typed_argv_outcome_stdout(outcome: TypedArgvExecOutcome) -> String? {
   match outcome {
     TypedArgvExecConverged { result: r } =>
