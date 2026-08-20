@@ -6,6 +6,7 @@ import v2.std.logic { Bool, True, False }
 import v2.std.text { String }
 import v2.std.integer { Int, int_gt }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
+import v2.workflow.floor_route_gap { floor_route_gap_roster }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { NonEmptyStr }
 
@@ -97,6 +98,12 @@ fn long_home_storage_agreement(path_is_long: Bool, module_is_long: Bool) -> Long
 // `v2.workflow.floor_expected_red.floor_expected_red_roster` by its real qualified name. A
 // thin accessor here would be a second name for one authority, and this module would then own
 // a fact it does not produce.
+//
+// `v2.workflow.floor_route_gap.floor_route_gap_roster` is imported for exactly the same reason
+// and on exactly the same terms: the host evaluates it in this module's frame, so without the
+// edge the module is not in the world that frame was built from and the call fails with `no
+// such function` — the failure this comment was written to record the first time. The import is
+// reachability, not re-export.
 
 //
 // THREE PREFIXES, NOT ONE, and the count is what found that. A single `test.claim.long.` test
