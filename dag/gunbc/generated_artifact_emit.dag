@@ -1,7 +1,6 @@
 
 module gunbc.generated_artifact_emit
 
-
 type ArtifactGenerationOutcome
   = ArtifactGenerated { content: String }
   | ArtifactGenerationRefused { reason: String }
@@ -14,11 +13,11 @@ fn artifact_generate(a: gunbc.generated_artifact.GeneratedArtifact) -> ArtifactG
   match a {
     WitnessFloorYamlArtifact => artifact_generated(content: gunbc.witness_floor_workflow.expected_witness_floor_yml())
     FleetConvergeYamlArtifact => artifact_generated(content: gunbc.fleet_converge_workflow.expected_fleet_converge_yml())
-    LiveDeployYamlArtifact => artifact_generated(content: gunbc.live_deploy_workflow.expected_deploy_yml())
     GitignoreArtifact => artifact_generated(content: gunbc.gitignore_emit.expected_gitignore())
     GitattributesArtifact => match gunbc.gitattributes_emit.expected_gitattributes() {
       GitattributesGenerated { content } => artifact_generated(content: content)
-      GitattributesGenerationRefused => ArtifactGenerationRefused { reason: "generated projection path population refused" }    }
+      GitattributesGenerationRefused => ArtifactGenerationRefused { reason: "generated projection path population refused" }
+    }
     RoadmapArtifact => artifact_generated(content: gunbc.roadmap_authority.expected_roadmap_md())
     DesignArtifact => artifact_generated(content: gunbc.design_document.expected_design_md())
     GithooksPrePushArtifact => artifact_generated(content: gunbc.githooks_pre_push_emit.expected_githooks_pre_push_sh())
@@ -39,13 +38,12 @@ fn artifact_generate(a: gunbc.generated_artifact.GeneratedArtifact) -> ArtifactG
   }
 }
 
-data artifact_extra_valid_note: String = "P0 (operator-directed, 2026-08-05; loyal-ram-550 review of #7823): takes the ALREADY-COMPUTED generation outcome rather than calling artifact_generate itself. The two variants whose extra check depends on generation success (Stage0EmitPlanGeneratedDagArtifact, gunbc.generated_artifact.V1InterpreterDispatchGeneratedRsArtifact) used to call artifact_generate(a: a) a second time here, discarding the content and keeping only success/failure — one Filesystem.Read, but TWO artifact_generate calls per artifact for those two variants, contradicting gunbc.generated_artifact_observation's 'one artifact_generate per artifact' claim. Every caller now supplies the outcome it already produced (observe_generated_artifact reuses its own match result); no second entry point to generation remains."
+data artifact_extra_valid_note: String = "P0 (operator-directed, 2026-08-05; loyal-ram-550 review of #7823): takes the ALREADY-COMPUTED generation outcome rather than calling artifact_generate itself. The two variants whose extra check depends on generation success (Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact) used to call artifact_generate(a: a) a second time here, discarding the content and keeping only success/failure — one Filesystem.Read, but TWO artifact_generate calls per artifact for those two variants, contradicting gunbc.generated_artifact_observation's 'one artifact_generate per artifact' claim. Every caller now supplies the outcome it already produced (observe_generated_artifact reuses its own match result); no second entry point to generation remains."
 
 fn artifact_extra_valid(a: gunbc.generated_artifact.GeneratedArtifact, generated: ArtifactGenerationOutcome) -> Bool {
   match a {
     WitnessFloorYamlArtifact => gunbc.ci_yaml_validate.ci_yml_parses(path: gunbc.generated_artifact.artifact_path(a: a))
     FleetConvergeYamlArtifact => gunbc.ci_yaml_validate.ci_yml_parses(path: gunbc.generated_artifact.artifact_path(a: a))
-    LiveDeployYamlArtifact => gunbc.ci_yaml_validate.ci_yml_parses(path: gunbc.generated_artifact.artifact_path(a: a))
     GitignoreArtifact => true
     GitattributesArtifact => true
     RoadmapArtifact => true
@@ -57,7 +55,8 @@ fn artifact_extra_valid(a: gunbc.generated_artifact.GeneratedArtifact, generated
     Stage0CrateLayoutGeneratedDagArtifact => true
     Stage0CrateLayoutGeneratedRsArtifact => true
     Stage0CratePartitionGeneratedDagArtifact => true
-    V1InterpreterDispatchGeneratedRsArtifact => match generated {      ArtifactGenerated { content: _ } => true
+    V1InterpreterDispatchGeneratedRsArtifact => match generated {
+      ArtifactGenerated { content: _ } => true
       ArtifactGenerationRefused { reason: _ } => false
     }
     AutoinstallUserDataArtifact { spec: _ } => true

@@ -1,0 +1,86 @@
+module gunbc.scm.checkout
+
+// A COMMIT IS A ROOT IDENTITY AND NOTHING ELSE. No parent, no author, no timestamp, no message, no
+// branch. Those are facts about proposals and acceptances -- about who asked for something and who
+// agreed to it -- and fusing them into the program's identity is what forces a whole-tree snapshot
+// and a single timeline. Keeping the commit to its root is what lets two commits be compared,
+// deduplicated and reconstructed without consulting any history at all.
+type Commit {
+  root: gunbc.scm.object_store.ObjectId
+}
+
+type CheckoutRefusal
+  = MissingObject { identity: gunbc.scm.object_store.ObjectId }
+
+type CheckoutOutcome
+  = CheckedOut { program: v2.std.node.Node }
+  | CheckoutRefused { cause: CheckoutRefusal }
+
+// THE REFUSAL IS THE POINT OF THE OPERATION, not an error path bolted onto it. A checkout that could
+// not tell a complete closure from an incomplete one would satisfy its round-trip test while proving
+// nothing, so the missing-object arm is the discriminating half of the reconstruction claim. It
+// carries the exact identity that was absent: a checkout must never search for another object with
+// the same name, substitute a plausible one, or fall back to whatever the store currently holds --
+// each of those is the fabricated-plausible-output arm DESIGN section 5 forbids, and each would make
+// the program's meaning depend on the store's current population rather than on the commit.
+type CheckoutEdgeAcc {
+  edges: std.types.List<v2.std.node.Edge>
+  refusal: CheckoutRefusal?
+}
+
+fn checkout_edge_step(store: gunbc.scm.object_store.ObjectStore, acc: CheckoutEdgeAcc, stored: gunbc.scm.object_store.StoredEdge) -> CheckoutEdgeAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match checkout_object(store: store, identity: stored.target) {
+        CheckoutRefused { cause: cause } =>
+          CheckoutEdgeAcc { edges: acc.edges, refusal: Present { value: cause } }
+        CheckedOut { program: child } =>
+          CheckoutEdgeAcc {
+            edges: concat(acc.edges, [v2.std.node.Edge { label: stored.label, target: child }]),
+            refusal: acc.refusal,
+          }
+      }
+  }
+}
+
+fn checkout_record(store: gunbc.scm.object_store.ObjectStore, record: gunbc.scm.object_store.ObjectRecord) -> CheckoutOutcome {
+  match fold(
+    record.children,
+    init: CheckoutEdgeAcc { edges: [], refusal: none },
+    f: fn(acc, stored) { checkout_edge_step(store: store, acc: acc, stored: stored) },
+  ) {
+    CheckoutEdgeAcc { edges: edges, refusal: refusal } =>
+      match refusal {
+        Present { value: cause } => CheckoutRefused { cause: cause }
+        Absent => CheckedOut { program: v2.std.node.node_synthetic(kind: record.kind, children: edges) }
+      }
+  }
+}
+
+fn checkout_object(store: gunbc.scm.object_store.ObjectStore, identity: gunbc.scm.object_store.ObjectId) -> CheckoutOutcome {
+  match gunbc.scm.object_store.find_object(store: store, identity: identity) {
+    Absent => CheckoutRefused { cause: MissingObject { identity: identity } }
+    Present { value: record } => checkout_record(store: store, record: record)
+  }
+}
+
+// CHECKOUT CONSULTS THE COMMIT AND THE STORE, AND NOTHING ELSE -- not names, branches, proposals,
+// acceptances, an index, or "latest". That exclusion is the claim: a program's meaning is fixed when
+// the commit is made, so growing the store afterwards cannot change what an existing commit means.
+// A selection that stayed live would make every later contribution retroactively edit every earlier
+// agreement, which is precisely the property that makes a monotonic store unable to name a program
+// on its own.
+fn checkout(store: gunbc.scm.object_store.ObjectStore, commit: Commit) -> CheckoutOutcome {
+  checkout_object(store: store, identity: commit.root)
+}
+
+// The rebuilt program carries SyntheticOccurrence throughout, because occurrence identity is
+// deliberately outside the stored object: v2.std.node content_hash already folds only kind, edge
+// labels and child digests, so two parses of one program that minted different occurrence ids store
+// and reconstruct identically. Round-trip equality is therefore asserted on content identity, never
+// on occurrence provenance -- and asserting it on provenance would be asserting the one property the
+// model says must not matter.
+fn commit_of_root(root: gunbc.scm.object_store.ObjectId) -> Commit {
+  Commit { root: root }
+}
