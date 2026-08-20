@@ -59,7 +59,7 @@ fn witness_measured_rollup_red_on_predicted_zero() -> Bool {
 }
 
 fn witness_v1_handler_id_declared() -> Bool {
-  let id = v1_eval_expr_measure_handler_id
+  let id = extdeps.realization.v1_handler.v1_eval_expr_measure_handler_id
   id == "host:v1-interpreter.eval_expr_self_time"
 }
 

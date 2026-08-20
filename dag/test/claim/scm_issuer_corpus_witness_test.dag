@@ -254,10 +254,10 @@ test fn w_atlassian_turns_from_profit_to_losses() -> Bool {
 }
 
 test fn w_atlassian_cost_element_switches_mid_series() -> Bool {
-  (extdeps.sec.issuer.atlassian_facts.atlassian_fy2023_cost_of_revenue.element == us_gaap_cost_of_revenue)
-    && (atlassian_fy2024_cost_of_revenue.element == us_gaap_cost_of_revenue)
-    && (extdeps.sec.issuer.atlassian_facts.atlassian_fy2025_cost_of_goods_and_services.element == us_gaap_cost_of_goods_and_services_sold)
-    && (microsoft_fy2025_cost_of_goods_and_services.element == us_gaap_cost_of_goods_and_services_sold)
+  (extdeps.sec.issuer.atlassian_facts.atlassian_fy2023_cost_of_revenue.element == extdeps.sec.us_gaap.us_gaap_cost_of_revenue)
+    && (atlassian_fy2024_cost_of_revenue.element == extdeps.sec.us_gaap.us_gaap_cost_of_revenue)
+    && (extdeps.sec.issuer.atlassian_facts.atlassian_fy2025_cost_of_goods_and_services.element == extdeps.sec.us_gaap.us_gaap_cost_of_goods_and_services_sold)
+    && (microsoft_fy2025_cost_of_goods_and_services.element == extdeps.sec.us_gaap.us_gaap_cost_of_goods_and_services_sold)
 }
 
 test fn w_serving_cost_ordering_pure_play_above_platform() -> Bool {
@@ -300,8 +300,8 @@ test fn w_red_wrong_issuer_subject_fails_the_entity_edge() -> Bool {
 }
 
 test fn w_red_atlassian_cost_element_is_not_normalized() -> Bool {
-  !(extdeps.sec.issuer.atlassian_facts.atlassian_fy2025_cost_of_goods_and_services.element == us_gaap_cost_of_revenue)
-    && !(extdeps.sec.issuer.atlassian_facts.atlassian_fy2023_cost_of_revenue.element == us_gaap_cost_of_goods_and_services_sold)
+  !(extdeps.sec.issuer.atlassian_facts.atlassian_fy2025_cost_of_goods_and_services.element == extdeps.sec.us_gaap.us_gaap_cost_of_revenue)
+    && !(extdeps.sec.issuer.atlassian_facts.atlassian_fy2023_cost_of_revenue.element == extdeps.sec.us_gaap.us_gaap_cost_of_goods_and_services_sold)
 }
 
 test fn w_red_microsoft_margin_not_in_pure_play_band() -> Bool {

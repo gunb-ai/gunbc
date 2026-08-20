@@ -103,7 +103,7 @@ fn direct_rust_door_production_group() -> DirectRustDoorProductionGroup {
       ingest: direct_rust_door_ingest(),
       admission: direct_rust_door_admission(),
       target: direct_rust_door_target_model(),
-      module_path: direct_rust_door_module_path
+      module_path: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_module_path
     ),
     missing_rule: assess_missing_translation_rule_refuses()
   )

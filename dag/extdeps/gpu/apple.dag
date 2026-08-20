@@ -10,7 +10,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 }
 
 data apple_m5_gpu_catalog: extdeps.gpu.types.GpuModelCatalogRow = extdeps.gpu.types.GpuModelCatalogRow {
-  vendor: apple,
+  vendor: extdeps.vendor.apple.apple,
   model: "Apple M5 GPU",
   microarchitecture: "Apple GPU",
   execution_lane_count: hardware_thread_count(10),

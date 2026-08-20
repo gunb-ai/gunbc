@@ -159,7 +159,7 @@ fn pipeline_branch_arm_int_literal_has_magnitude_child_holds(body: v2.std.node.N
 
 fn pipeline_normalize_pick_then_arm_magnitude_relationship_holds() -> Bool {
   match pipeline_normalize_source(
-    source: pipeline_corpus_pick_source,
+    source: v2.test.compiler.pipeline.corpus.pipeline_corpus_pick_source,
     file: ^pipeline_corpus_pick_file
   ) {
     Accepted { value: tree, diagnostics: _ } =>
@@ -181,7 +181,7 @@ fn pipeline_normalize_pick_then_arm_magnitude_relationship_holds() -> Bool {
 
 fn pipeline_tokenize_add_relationship_holds() -> Bool {
   match pipeline_tokenize_source(
-    source: pipeline_corpus_add_source,
+    source: v2.test.compiler.pipeline.corpus.pipeline_corpus_add_source,
     file: ^pipeline_corpus_add_file
   ) {
     Accepted { value: stream, diagnostics: _ } =>
@@ -193,7 +193,7 @@ fn pipeline_tokenize_add_relationship_holds() -> Bool {
 
 fn pipeline_tokenize_pick_relationship_holds() -> Bool {
   match pipeline_tokenize_source(
-    source: pipeline_corpus_pick_source,
+    source: v2.test.compiler.pipeline.corpus.pipeline_corpus_pick_source,
     file: ^pipeline_corpus_pick_file
   ) {
     Accepted { value: stream, diagnostics: _ } =>
@@ -205,7 +205,7 @@ fn pipeline_tokenize_pick_relationship_holds() -> Bool {
 
 fn pipeline_parse_add_relationship_holds() -> Bool {
   match pipeline_parse_source(
-    source: pipeline_corpus_add_source,
+    source: v2.test.compiler.pipeline.corpus.pipeline_corpus_add_source,
     file: ^pipeline_corpus_add_file
   ) {
     Accepted { value: tree, diagnostics: _ } => well_formed(n: tree)
@@ -215,7 +215,7 @@ fn pipeline_parse_add_relationship_holds() -> Bool {
 
 fn pipeline_normalize_add_relationship_holds() -> Bool {
   match pipeline_normalize_source(
-    source: pipeline_corpus_add_source,
+    source: v2.test.compiler.pipeline.corpus.pipeline_corpus_add_source,
     file: ^pipeline_corpus_add_file
   ) {
     Accepted { value: tree, diagnostics: _ } =>

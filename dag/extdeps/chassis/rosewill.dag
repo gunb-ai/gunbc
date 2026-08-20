@@ -24,7 +24,7 @@ data rsv_z2600u_authority: extdeps.external_authority.ExternalAuthority = extdep
 
 data rosewill_rsv_r4000u_catalog: extdeps.chassis.types.ChassisCatalogRow = extdeps.chassis.types.ChassisCatalogRow {
   model: "RSV-R4000U",
-  manufacturer: rosewill,
+  manufacturer: extdeps.vendor.rosewill.rosewill,
   rack_units: rack_unit(4),
   motherboard_support: [Atx, MicroAtx, MiniItx],
   internal_35_bay_count: 8,
@@ -37,7 +37,7 @@ data rosewill_rsv_r4000u_catalog: extdeps.chassis.types.ChassisCatalogRow = extd
 
 data rosewill_rsv_z2600u_catalog: extdeps.chassis.types.ChassisCatalogRow = extdeps.chassis.types.ChassisCatalogRow {
   model: "RSV-Z2600U",
-  manufacturer: rosewill,
+  manufacturer: extdeps.vendor.rosewill.rosewill,
   rack_units: rack_unit(2),
   motherboard_support: [MicroAtx, MiniItx],
   internal_35_bay_count: 4,

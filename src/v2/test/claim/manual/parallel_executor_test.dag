@@ -23,7 +23,7 @@ data parallel_executor_expected_batches: List<v2.workflow.executor.ExecutorBatch
 
 fn parallel_executor_groups_independent_jobs() -> Bool {
   match parallel_executor_plan_from_dependencies(
-    nodes: scheduler_fixture_nodes,
+    nodes: v2.test.manual.scheduler_runnable_frontier.scheduler_fixture_nodes,
     dependencies: scheduler_fixture_dependencies,
     scheduled: []
   ) {
@@ -35,7 +35,7 @@ fn parallel_executor_groups_independent_jobs() -> Bool {
 
 fn parallel_executor_projects_scheduler_scheduled_nodes() -> Bool {
   match parallel_executor_plan_from_dependencies(
-    nodes: scheduler_fixture_nodes,
+    nodes: v2.test.manual.scheduler_runnable_frontier.scheduler_fixture_nodes,
     dependencies: scheduler_fixture_dependencies,
     scheduled: []
   ) {
@@ -52,7 +52,7 @@ fn parallel_executor_projects_scheduler_scheduled_nodes() -> Bool {
 
 fn parallel_executor_keeps_dependent_job_out_of_first_batch() -> Bool {
   match parallel_executor_plan_from_dependencies(
-    nodes: scheduler_fixture_nodes,
+    nodes: v2.test.manual.scheduler_runnable_frontier.scheduler_fixture_nodes,
     dependencies: scheduler_fixture_dependencies,
     scheduled: []
   ) {
@@ -66,7 +66,7 @@ fn parallel_executor_keeps_dependent_job_out_of_first_batch() -> Bool {
 
 fn parallel_executor_contains_edges_do_not_serialize() -> Bool {
   match parallel_executor_plan_from_dependencies(
-    nodes: scheduler_fixture_nodes,
+    nodes: v2.test.manual.scheduler_runnable_frontier.scheduler_fixture_nodes,
     dependencies: scheduler_fixture_dependencies_with_contains_noise,
     scheduled: []
   ) {
@@ -78,7 +78,7 @@ fn parallel_executor_contains_edges_do_not_serialize() -> Bool {
 
 fn parallel_executor_step_plan_exposes_runnable_batch_once() -> Bool {
   match parallel_executor_step_plan_from_dependencies(
-    nodes: scheduler_fixture_nodes,
+    nodes: v2.test.manual.scheduler_runnable_frontier.scheduler_fixture_nodes,
     dependencies: scheduler_fixture_dependencies,
     scheduled: []
   ) {

@@ -44,7 +44,7 @@ data tps3808_dbv0006a_land_pattern: extdeps.land_pattern.types.VendorRecommended
 
 data tps3808g01dbvr: extdeps.land_pattern.types.PartMechanicalCandidate = extdeps.land_pattern.types.PartMechanicalCandidate {
   ordering_part_number: "TPS3808G01DBVR",
-  vendor: texas_instruments,
+  vendor: extdeps.vendor.texas_instruments.texas_instruments,
   body: tps3808_dbv0006a_body,
   land_pattern: tps3808_dbv0006a_land_pattern,
   terminal_indexing: extdeps.land_pattern.types.TerminalIndexingObligation {

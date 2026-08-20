@@ -58,7 +58,7 @@ data materialization_provider_targets: List<ProviderContractTarget> = [
     dissolution: unbound_dissolution(description: "ParseTable grounds on the Realization carrier and its lookups adopt the contract's typed outcomes")
   },
   ProviderContractTarget {
-    cache: eval_memo_id,
+    cache: extdeps.realization.eval_memo.eval_memo_id,
     cache_row: target_decl(module_path: "extdeps.realization.eval_memo", decl_name: "eval_memo_facts"),
     consumer_seam: target_decl(module_path: "gunbc.plans.cli_run_hollowing_plan", decl_name: "cli_run_hollowing_plan"),
     reason: "the interpreter eval-frame memo serves verified hits with its own ad-hoc verify-on-serve arm — the contract's wrong-content refusal, hand-rolled; the host seam is the interpreter builtin bridge (hollowing-plan area 2.13)",

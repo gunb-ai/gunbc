@@ -41,7 +41,7 @@ test fn witness_makefile_field_uses_equals_no_quotes() -> Bool {
 }
 
 test fn witness_gitignore_has_no_record_knobs() -> Bool {
-  match gitignore_format.record {
+  match std.languages.gitignore_format.record {
     null => true
     _ => false
   }

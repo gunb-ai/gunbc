@@ -94,7 +94,7 @@ test fn w_the_land_population_is_derived_and_matches_the_terminal_count() -> Boo
 // what a SOT-23 usually is.
 test fn w_the_sot23_pitch_reconciles_the_two_printed_readings() -> Bool {
   micrometer_count(m: land_pattern_pitch(g: extdeps.power.ti_tps3808.tps3808g01dbvr.land_pattern.geometry)) == 950
-    && 2 * micrometer_count(m: tps3808_dbv0006a_body.terminal_pitch) == 1900
+    && 2 * micrometer_count(m: extdeps.power.ti_tps3808.tps3808_dbv0006a_body.terminal_pitch) == 1900
 }
 
 // THE DISCRIMINATING RED, AND IT IS THE REAL FAILURE MODE. The DP83867IR datasheet reprints two

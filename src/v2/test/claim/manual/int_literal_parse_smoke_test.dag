@@ -23,7 +23,7 @@ fn int_literal_smoke_first_int_token_lexeme(source_text: String) -> Optional<Str
 }
 
 test fn int_literal_loop_token_lexeme_builds_holds() -> Bool {
-  match int_literal_smoke_first_int_token_lexeme(source_text: ingested_loop_module_source) {
+  match int_literal_smoke_first_int_token_lexeme(source_text: v2.compiler.ingested_fixture_arrows.ingested_loop_module_source) {
     Present { value: lexeme } =>
       match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence) {
         Accepted { value: _, diagnostics: _ } => true

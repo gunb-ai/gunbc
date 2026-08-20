@@ -4,7 +4,7 @@ module v2.test.claim.self_host.frontier_probe_cause_location_roundtrip
 data frontier_probe_cause_location_roundtrip_note: String = "RELOAD half of the emit-reload round trip. The fixture beside this file is verbatim survey-bin output; these claims prove that output parses, typechecks against the live carrier, and still carries the location after a front-end round trip. Emitting a location the manifest cannot reload is worse than dropping it, because it fails at reload rather than at the edit — that is the exact defect this pair exists to catch."
 
 fn roundtrip_extent_start() -> Int {
-  match frontier_probe_cause_location_emitted_receipt.assemble_detail {
+  match v2.test.fixture.frontier_probe_cause_location_manifest_fixture.frontier_probe_cause_location_emitted_receipt.assemble_detail {
     NoFrontierProbeDetail => 0 - 1
     AssembleRejectionDetail { rejection_chain: _, cause: _, at: a } =>
       match a {

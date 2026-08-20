@@ -24,7 +24,7 @@ fn terminal_gate_receipt(status: v2.std.grounding.HostVerdictSurfaceExecutionSta
       compile_skipped: false
     },
     execution_status: status,
-    verdict_tally: verdict_tally_empty
+    verdict_tally: v2.std.verdict.verdict_tally_empty
   }
 }
 

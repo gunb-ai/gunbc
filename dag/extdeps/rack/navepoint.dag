@@ -12,7 +12,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 // owned instance rather than facts this catalog may author, so they are absent by intent.
 data navepoint_18u_open_frame_catalog: extdeps.rack.types.RackCatalogRow = extdeps.rack.types.RackCatalogRow {
   model: "18U 4-post open-frame rack",
-  manufacturer: navepoint,
+  manufacturer: extdeps.vendor.navepoint.navepoint,
   rack_units: rack_unit(18),
   post_count: 4,
   open_frame: true,

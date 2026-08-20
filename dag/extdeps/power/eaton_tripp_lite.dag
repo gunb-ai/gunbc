@@ -18,7 +18,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 // this catalog may author.
 data eaton_tripp_lite_rs_1215_family_catalog: extdeps.power.types.PduCatalogRow = extdeps.power.types.PduCatalogRow {
   model_family: "RS-1215",
-  manufacturer: eaton,
+  manufacturer: extdeps.vendor.eaton.eaton,
   rack_units: rack_unit(1),
   nominal_supply_voltage: volt(120),
   rated_current: ampere(15),

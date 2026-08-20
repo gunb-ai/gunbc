@@ -6,7 +6,7 @@ test fn witness_run_owns_one_execution_identity() -> Bool {
   let environment = run.environment
   environment.chromium_build == extdeps.browser.chromium.chromium_151_0_7922_34
     && environment.chromium_build.source_identity == ChromiumSourceRevisionUnobserved
-    && environment.playwright_build == playwright_1_62_1
+    && environment.playwright_build == extdeps.automation.playwright.playwright_1_62_1
     && environment.browser_binary_provenance == PlaywrightManagedChromiumDownload
     && environment.container_userland == Debian12Bookworm
     && environment.container_visible_host_kernel == gunbc.served_surface_browser_observation.ContainerVisibleHostKernel {

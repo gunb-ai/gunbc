@@ -9,7 +9,7 @@ test fn fixture_synthetic_mint_is_fixture_source_produced_only() -> Bool {
   match mint_synthetic_emitted_artifact_from_fixture_inferred(
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
-    module_path: direct_rust_door_module_path,
+    module_path: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_module_path,
     fixture_lane_tag: direct_rust_door_fixture_containment_lane_tag
   ) {
     Accepted { value: artifact, diagnostics: _ } =>
@@ -22,7 +22,7 @@ test fn fixture_cargo_green_advance_is_not_behaviorally_equivalent() -> Bool {
   match mint_synthetic_emitted_artifact_from_fixture_inferred(
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
-    module_path: direct_rust_door_module_path,
+    module_path: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_module_path,
     fixture_lane_tag: direct_rust_door_fixture_containment_lane_tag
   ) {
     Accepted { value: artifact, diagnostics: _ } =>

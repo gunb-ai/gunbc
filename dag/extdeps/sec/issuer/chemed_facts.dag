@@ -25,13 +25,13 @@ data chemed_fy2025_citation: extdeps.sec.facts.FiledFactCitation = extdeps.sec.f
 }
 
 data chemed_fy2025_revenue: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_revenues,
+  element: extdeps.sec.us_gaap.us_gaap_revenues,
   amount: Filed { amount: usd_whole_dollars(count: 2529978000) },
   citation: chemed_fy2025_citation,
 }
 
 data chemed_fy2025_cost_of_goods_and_services: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_cost_of_goods_and_services_sold,
+  element: extdeps.sec.us_gaap.us_gaap_cost_of_goods_and_services_sold,
   amount: Filed { amount: usd_whole_dollars(count: 1706794000) },
   citation: chemed_fy2025_citation,
 }
@@ -43,7 +43,7 @@ data chemed_fy2025_sga: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.
 }
 
 data chemed_fy2025_operating_income: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_operating_income_loss,
+  element: extdeps.sec.us_gaap.us_gaap_operating_income_loss,
   amount: Filed { amount: usd_whole_dollars(count: 338246000) },
   citation: chemed_fy2025_citation,
 }

@@ -9,7 +9,7 @@ fn structural_red_control_mint_site_probe() -> Bool {
   let mint_ok = match mint_written_provenanced_rust_artifact(
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
-    module_path: direct_rust_door_module_path,
+    module_path: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_module_path,
     workspace_dir: "/tmp/structural_red_control_mint_site_probe"
   ) {
     Accepted { value: _, diagnostics: _ } => true

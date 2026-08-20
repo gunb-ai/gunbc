@@ -103,11 +103,11 @@ data registered_language_targets: List<std.language_target_identity.LanguageTarg
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: typescript_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.typescript.subject.typescript_language_model_scope },
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: html_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.html.subject.html_language_model_scope },
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
@@ -115,7 +115,7 @@ data registered_language_targets: List<std.language_target_identity.LanguageTarg
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: c_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.c.subject.c_language_model_scope },
     disposition: TargetActive
   },
   std.language_target_identity.LanguageTargetRegistration {
@@ -143,7 +143,7 @@ data registered_language_targets: List<std.language_target_identity.LanguageTarg
     disposition: std.language_target_identity.TargetDecisionPending { decision_id: "docs/plans/language-support-completion-design.md#7 decision 2 — C++ profile" }
   },
   std.language_target_identity.LanguageTargetRegistration {
-    grounding: std.language_target_identity.ExternalGrounding { scope: go_language_model_scope },
+    grounding: std.language_target_identity.ExternalGrounding { scope: extdeps.languages.go.subject.go_language_model_scope },
     disposition: std.language_target_identity.TargetParked { reason: "P2 second compiled general target; frontier row records the TargetModel as a skeleton needing buildout, so no work is in progress" }
   },
   std.language_target_identity.LanguageTargetRegistration {
@@ -220,12 +220,12 @@ data english_formal_sentence_authority: std.decl_ref.DeclarationRef = std.decl_r
 
 data dag_subject_ref: std.decl_ref.DeclarationRef = dag_syntax_authority
 
-data c_language_subject_ref: std.decl_ref.DeclarationRef = c_language_model_scope.subject.declaration
+data c_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.c.subject.c_language_model_scope.subject.declaration
 data cpp_language_subject_ref: std.decl_ref.DeclarationRef = cpp_language_model_scope.subject.declaration
 data css_language_subject_ref: std.decl_ref.DeclarationRef = css_language_model_scope.subject.declaration
 data ecmascript_language_subject_ref: std.decl_ref.DeclarationRef = ecmascript_language_model_scope.subject.declaration
-data go_language_subject_ref: std.decl_ref.DeclarationRef = go_language_model_scope.subject.declaration
-data html_language_subject_ref: std.decl_ref.DeclarationRef = html_language_model_scope.subject.declaration
+data go_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.go.subject.go_language_model_scope.subject.declaration
+data html_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.html.subject.html_language_model_scope.subject.declaration
 data java_language_subject_ref: std.decl_ref.DeclarationRef = java_language_model_scope.subject.declaration
 data json_format_subject_ref: std.decl_ref.DeclarationRef = json_format_model_scope.subject.declaration
 data jsx_language_subject_ref: std.decl_ref.DeclarationRef = jsx_language_model_scope.subject.declaration
@@ -239,7 +239,7 @@ data riscv_isa_subject_ref: std.decl_ref.DeclarationRef = riscv_isa_model_scope.
 data rust_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.rust.subject.rust_language_model_scope.subject.declaration
 data spice_netlist_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.spice.subject.spice_netlist_language_model_scope.subject.declaration
 
-data ngspice_simulator_subject_ref: std.decl_ref.DeclarationRef = ngspice_simulator_model_scope.subject.declaration
+data ngspice_simulator_subject_ref: std.decl_ref.DeclarationRef = extdeps.simulators.ngspice.subject.ngspice_simulator_model_scope.subject.declaration
 
 data icarus_verilog_simulator_subject_ref: std.decl_ref.DeclarationRef = icarus_verilog_simulator_model_scope.subject.declaration
 
@@ -265,7 +265,7 @@ fn target_runtime_binding_count() -> Int {
   fold(target_runtime_bindings, init: 0, f: fn(acc, b) { acc + 1 })
 }
 data swift_language_subject_ref: std.decl_ref.DeclarationRef = swift_language_model_scope.subject.declaration
-data typescript_language_subject_ref: std.decl_ref.DeclarationRef = typescript_language_model_scope.subject.declaration
+data typescript_language_subject_ref: std.decl_ref.DeclarationRef = extdeps.languages.typescript.subject.typescript_language_model_scope.subject.declaration
 data verilog_language_subject_ref: std.decl_ref.DeclarationRef = verilog_language_model_scope.subject.declaration
 data webassembly_language_subject_ref: std.decl_ref.DeclarationRef = webassembly_language_model_scope.subject.declaration
 data yaml_format_subject_ref: std.decl_ref.DeclarationRef = yaml_format_model_scope.subject.declaration

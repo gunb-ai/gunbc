@@ -11,7 +11,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 
 data facts_subject_edge_note: String = "Subject and source are ORTHOGONAL axes and a filename encodes neither (operator ruling 2026-07-25): the folder says which upstream AUTHORITY produced the facts (extdeps/sec = EDGAR, per this module's ExternalAuthority anchor), while a typed edge says which ENTITY the facts are about. Before this row the only thing correlating this module's facts with extdeps.pricing.gitlab_subscription was the shared filename prefix -- a prose coincidence invisible to the graph. The subject row below is that edge, and it re-grounds the CIK too: the identity now arrives as the typed IssuerCatalogRow, so the CIK inside this module's anchor URL is a locator string, never the identity carrier."
 
-data gitlab_facts_subject: extdeps.sec.types.IssuerCatalogRow = gitlab_issuer_catalog
+data gitlab_facts_subject: extdeps.sec.types.IssuerCatalogRow = extdeps.sec.issuer.gitlab.gitlab_issuer_catalog
 
 data gitlab_facts_provenance_note: String = "Every amount is a live pull from data.sec.gov companyconcept (2026-07-25, session gitlab-10k-scm-costs-baz90x). CIK 0001653482 verified on the EDGAR submissions API (ticker GTLB, Nasdaq, SIC 7372 Services-Prepackaged Software). All five GitLab 10-Ks are modeled -- FY2022 (first post-IPO annual report, accession 0001628280-22-008836, filed 2022-04-08) through FY2026 (accession 0001628280-26-018731, filed 2026-03-17); GitLab fiscal years end January 31. Each fact row cites the fiscal year's OWN 10-K (the earliest filing reporting that period). The face income statement cross-foots exactly in every modeled period: GrossProfit = Revenue - CostOfRevenue; SellingAndMarketing + ResearchAndDevelopment + GeneralAndAdministrative = OperatingExpenses (exactly three operating-expense lines in all seven periods); GrossProfit - OperatingExpenses = OperatingIncomeLoss."
 
@@ -157,25 +157,25 @@ data gitlab_sept_2020_commitment_citation: extdeps.sec.facts.FiledFactCitation =
 }
 
 data gitlab_fy2020_revenue: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
+  element: extdeps.sec.us_gaap.us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
   amount: Filed { amount: usd_whole_dollars(count: 81227000) },
   citation: gitlab_fy2020_comparative_citation,
 }
 
 data gitlab_fy2020_cost_of_revenue: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_cost_of_revenue,
+  element: extdeps.sec.us_gaap.us_gaap_cost_of_revenue,
   amount: Filed { amount: usd_whole_dollars(count: 9376000) },
   citation: gitlab_fy2020_comparative_citation,
 }
 
 data gitlab_fy2020_gross_profit: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_gross_profit,
+  element: extdeps.sec.us_gaap.us_gaap_gross_profit,
   amount: Filed { amount: usd_whole_dollars(count: 71851000) },
   citation: gitlab_fy2020_comparative_citation,
 }
 
 data gitlab_fy2020_selling_and_marketing: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_selling_and_marketing_expense,
+  element: extdeps.sec.us_gaap.us_gaap_selling_and_marketing_expense,
   amount: Filed { amount: usd_whole_dollars(count: 99225000) },
   citation: gitlab_fy2020_comparative_citation,
 }
@@ -193,43 +193,43 @@ data gitlab_fy2020_general_and_administrative: extdeps.sec.facts.FiledMonetaryFa
 }
 
 data gitlab_fy2020_operating_expenses: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_operating_expenses,
+  element: extdeps.sec.us_gaap.us_gaap_operating_expenses,
   amount: Filed { amount: usd_whole_dollars(count: 200218000) },
   citation: gitlab_fy2020_comparative_citation,
 }
 
 data gitlab_fy2020_operating_income_loss: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
-  element: us_gaap_operating_income_loss,
+  element: extdeps.sec.us_gaap.us_gaap_operating_income_loss,
   amount: extdeps.sec.facts.FiledSigned { value: signed_usd_negative(magnitude_count: 128367000) },
   citation: gitlab_fy2020_comparative_citation,
 }
 
 data gitlab_fy2020_net_income_loss: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
-  element: us_gaap_net_income_loss,
+  element: extdeps.sec.us_gaap.us_gaap_net_income_loss,
   amount: extdeps.sec.facts.FiledSigned { value: signed_usd_negative(magnitude_count: 130741000) },
   citation: gitlab_fy2020_comparative_citation,
 }
 
 data gitlab_fy2021_revenue: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
+  element: extdeps.sec.us_gaap.us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
   amount: Filed { amount: usd_whole_dollars(count: 152176000) },
   citation: gitlab_fy2021_comparative_citation,
 }
 
 data gitlab_fy2021_cost_of_revenue: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_cost_of_revenue,
+  element: extdeps.sec.us_gaap.us_gaap_cost_of_revenue,
   amount: Filed { amount: usd_whole_dollars(count: 18463000) },
   citation: gitlab_fy2021_comparative_citation,
 }
 
 data gitlab_fy2021_gross_profit: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_gross_profit,
+  element: extdeps.sec.us_gaap.us_gaap_gross_profit,
   amount: Filed { amount: usd_whole_dollars(count: 133713000) },
   citation: gitlab_fy2021_comparative_citation,
 }
 
 data gitlab_fy2021_selling_and_marketing: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_selling_and_marketing_expense,
+  element: extdeps.sec.us_gaap.us_gaap_selling_and_marketing_expense,
   amount: Filed { amount: usd_whole_dollars(count: 154086000) },
   citation: gitlab_fy2021_comparative_citation,
 }
@@ -247,43 +247,43 @@ data gitlab_fy2021_general_and_administrative: extdeps.sec.facts.FiledMonetaryFa
 }
 
 data gitlab_fy2021_operating_expenses: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_operating_expenses,
+  element: extdeps.sec.us_gaap.us_gaap_operating_expenses,
   amount: Filed { amount: usd_whole_dollars(count: 347597000) },
   citation: gitlab_fy2021_comparative_citation,
 }
 
 data gitlab_fy2021_operating_income_loss: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
-  element: us_gaap_operating_income_loss,
+  element: extdeps.sec.us_gaap.us_gaap_operating_income_loss,
   amount: extdeps.sec.facts.FiledSigned { value: signed_usd_negative(magnitude_count: 213884000) },
   citation: gitlab_fy2021_comparative_citation,
 }
 
 data gitlab_fy2021_net_income_loss: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
-  element: us_gaap_net_income_loss,
+  element: extdeps.sec.us_gaap.us_gaap_net_income_loss,
   amount: extdeps.sec.facts.FiledSigned { value: signed_usd_negative(magnitude_count: 192194000) },
   citation: gitlab_fy2021_comparative_citation,
 }
 
 data gitlab_fy2022_revenue: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
+  element: extdeps.sec.us_gaap.us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
   amount: Filed { amount: usd_whole_dollars(count: 252653000) },
   citation: gitlab_fy2022_citation,
 }
 
 data gitlab_fy2022_cost_of_revenue: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_cost_of_revenue,
+  element: extdeps.sec.us_gaap.us_gaap_cost_of_revenue,
   amount: Filed { amount: usd_whole_dollars(count: 29985000) },
   citation: gitlab_fy2022_citation,
 }
 
 data gitlab_fy2022_gross_profit: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_gross_profit,
+  element: extdeps.sec.us_gaap.us_gaap_gross_profit,
   amount: Filed { amount: usd_whole_dollars(count: 222668000) },
   citation: gitlab_fy2022_citation,
 }
 
 data gitlab_fy2022_selling_and_marketing: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_selling_and_marketing_expense,
+  element: extdeps.sec.us_gaap.us_gaap_selling_and_marketing_expense,
   amount: Filed { amount: usd_whole_dollars(count: 190754000) },
   citation: gitlab_fy2022_citation,
 }
@@ -301,43 +301,43 @@ data gitlab_fy2022_general_and_administrative: extdeps.sec.facts.FiledMonetaryFa
 }
 
 data gitlab_fy2022_operating_expenses: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_operating_expenses,
+  element: extdeps.sec.us_gaap.us_gaap_operating_expenses,
   amount: Filed { amount: usd_whole_dollars(count: 351625000) },
   citation: gitlab_fy2022_citation,
 }
 
 data gitlab_fy2022_operating_income_loss: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
-  element: us_gaap_operating_income_loss,
+  element: extdeps.sec.us_gaap.us_gaap_operating_income_loss,
   amount: extdeps.sec.facts.FiledSigned { value: signed_usd_negative(magnitude_count: 128957000) },
   citation: gitlab_fy2022_citation,
 }
 
 data gitlab_fy2022_net_income_loss: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
-  element: us_gaap_net_income_loss,
+  element: extdeps.sec.us_gaap.us_gaap_net_income_loss,
   amount: extdeps.sec.facts.FiledSigned { value: signed_usd_negative(magnitude_count: 155138000) },
   citation: gitlab_fy2022_citation,
 }
 
 data gitlab_fy2023_revenue: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
+  element: extdeps.sec.us_gaap.us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
   amount: Filed { amount: usd_whole_dollars(count: 424336000) },
   citation: gitlab_fy2023_citation,
 }
 
 data gitlab_fy2023_cost_of_revenue: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_cost_of_revenue,
+  element: extdeps.sec.us_gaap.us_gaap_cost_of_revenue,
   amount: Filed { amount: usd_whole_dollars(count: 51680000) },
   citation: gitlab_fy2023_citation,
 }
 
 data gitlab_fy2023_gross_profit: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_gross_profit,
+  element: extdeps.sec.us_gaap.us_gaap_gross_profit,
   amount: Filed { amount: usd_whole_dollars(count: 372656000) },
   citation: gitlab_fy2023_citation,
 }
 
 data gitlab_fy2023_selling_and_marketing: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_selling_and_marketing_expense,
+  element: extdeps.sec.us_gaap.us_gaap_selling_and_marketing_expense,
   amount: Filed { amount: usd_whole_dollars(count: 309992000) },
   citation: gitlab_fy2023_citation,
 }
@@ -355,43 +355,43 @@ data gitlab_fy2023_general_and_administrative: extdeps.sec.facts.FiledMonetaryFa
 }
 
 data gitlab_fy2023_operating_expenses: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_operating_expenses,
+  element: extdeps.sec.us_gaap.us_gaap_operating_expenses,
   amount: Filed { amount: usd_whole_dollars(count: 584067000) },
   citation: gitlab_fy2023_citation,
 }
 
 data gitlab_fy2023_operating_income_loss: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
-  element: us_gaap_operating_income_loss,
+  element: extdeps.sec.us_gaap.us_gaap_operating_income_loss,
   amount: extdeps.sec.facts.FiledSigned { value: signed_usd_negative(magnitude_count: 211411000) },
   citation: gitlab_fy2023_citation,
 }
 
 data gitlab_fy2023_net_income_loss: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
-  element: us_gaap_net_income_loss,
+  element: extdeps.sec.us_gaap.us_gaap_net_income_loss,
   amount: extdeps.sec.facts.FiledSigned { value: signed_usd_negative(magnitude_count: 172311000) },
   citation: gitlab_fy2023_citation,
 }
 
 data gitlab_fy2024_revenue: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
+  element: extdeps.sec.us_gaap.us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
   amount: Filed { amount: usd_whole_dollars(count: 579906000) },
   citation: gitlab_fy2024_citation,
 }
 
 data gitlab_fy2024_cost_of_revenue: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_cost_of_revenue,
+  element: extdeps.sec.us_gaap.us_gaap_cost_of_revenue,
   amount: Filed { amount: usd_whole_dollars(count: 59708000) },
   citation: gitlab_fy2024_citation,
 }
 
 data gitlab_fy2024_gross_profit: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_gross_profit,
+  element: extdeps.sec.us_gaap.us_gaap_gross_profit,
   amount: Filed { amount: usd_whole_dollars(count: 520198000) },
   citation: gitlab_fy2024_citation,
 }
 
 data gitlab_fy2024_selling_and_marketing: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_selling_and_marketing_expense,
+  element: extdeps.sec.us_gaap.us_gaap_selling_and_marketing_expense,
   amount: Filed { amount: usd_whole_dollars(count: 356393000) },
   citation: gitlab_fy2024_citation,
 }
@@ -409,19 +409,19 @@ data gitlab_fy2024_general_and_administrative: extdeps.sec.facts.FiledMonetaryFa
 }
 
 data gitlab_fy2024_operating_expenses: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_operating_expenses,
+  element: extdeps.sec.us_gaap.us_gaap_operating_expenses,
   amount: Filed { amount: usd_whole_dollars(count: 707638000) },
   citation: gitlab_fy2024_citation,
 }
 
 data gitlab_fy2024_operating_income_loss: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
-  element: us_gaap_operating_income_loss,
+  element: extdeps.sec.us_gaap.us_gaap_operating_income_loss,
   amount: extdeps.sec.facts.FiledSigned { value: signed_usd_negative(magnitude_count: 187440000) },
   citation: gitlab_fy2024_citation,
 }
 
 data gitlab_fy2024_net_income_loss: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
-  element: us_gaap_net_income_loss,
+  element: extdeps.sec.us_gaap.us_gaap_net_income_loss,
   amount: extdeps.sec.facts.FiledSigned { value: signed_usd_negative(magnitude_count: 424174000) },
   citation: gitlab_fy2024_citation,
 }
@@ -429,25 +429,25 @@ data gitlab_fy2024_net_income_loss: extdeps.sec.facts.FiledSignedMonetaryFact = 
 data gitlab_fy2024_net_vs_operating_divergence_note: String = "FY2024 is the outlier year: net loss 424.174 million USD against an operating loss of 187.440 million USD. The gap is non-operating (income-tax and JiHu joint-venture related charges below the operating line), not a change in the cost of running the platform -- the trend witness therefore tracks OPERATING loss, and the net-income rows stay faithful to the filed totals."
 
 data gitlab_fy2025_revenue: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
+  element: extdeps.sec.us_gaap.us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
   amount: Filed { amount: usd_whole_dollars(count: 759249000) },
   citation: gitlab_fy2025_citation,
 }
 
 data gitlab_fy2025_cost_of_revenue: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_cost_of_revenue,
+  element: extdeps.sec.us_gaap.us_gaap_cost_of_revenue,
   amount: Filed { amount: usd_whole_dollars(count: 85140000) },
   citation: gitlab_fy2025_citation,
 }
 
 data gitlab_fy2025_gross_profit: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_gross_profit,
+  element: extdeps.sec.us_gaap.us_gaap_gross_profit,
   amount: Filed { amount: usd_whole_dollars(count: 674109000) },
   citation: gitlab_fy2025_citation,
 }
 
 data gitlab_fy2025_selling_and_marketing: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_selling_and_marketing_expense,
+  element: extdeps.sec.us_gaap.us_gaap_selling_and_marketing_expense,
   amount: Filed { amount: usd_whole_dollars(count: 384295000) },
   citation: gitlab_fy2025_citation,
 }
@@ -465,43 +465,43 @@ data gitlab_fy2025_general_and_administrative: extdeps.sec.facts.FiledMonetaryFa
 }
 
 data gitlab_fy2025_operating_expenses: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_operating_expenses,
+  element: extdeps.sec.us_gaap.us_gaap_operating_expenses,
   amount: Filed { amount: usd_whole_dollars(count: 816824000) },
   citation: gitlab_fy2025_citation,
 }
 
 data gitlab_fy2025_operating_income_loss: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
-  element: us_gaap_operating_income_loss,
+  element: extdeps.sec.us_gaap.us_gaap_operating_income_loss,
   amount: extdeps.sec.facts.FiledSigned { value: signed_usd_negative(magnitude_count: 142715000) },
   citation: gitlab_fy2025_citation,
 }
 
 data gitlab_fy2025_net_income_loss: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
-  element: us_gaap_net_income_loss,
+  element: extdeps.sec.us_gaap.us_gaap_net_income_loss,
   amount: extdeps.sec.facts.FiledSigned { value: signed_usd_negative(magnitude_count: 6326000) },
   citation: gitlab_fy2025_citation,
 }
 
 data gitlab_fy2026_revenue: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
+  element: extdeps.sec.us_gaap.us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
   amount: Filed { amount: usd_whole_dollars(count: 955224000) },
   citation: gitlab_fy2026_citation,
 }
 
 data gitlab_fy2026_cost_of_revenue: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_cost_of_revenue,
+  element: extdeps.sec.us_gaap.us_gaap_cost_of_revenue,
   amount: Filed { amount: usd_whole_dollars(count: 120743000) },
   citation: gitlab_fy2026_citation,
 }
 
 data gitlab_fy2026_gross_profit: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_gross_profit,
+  element: extdeps.sec.us_gaap.us_gaap_gross_profit,
   amount: Filed { amount: usd_whole_dollars(count: 834481000) },
   citation: gitlab_fy2026_citation,
 }
 
 data gitlab_fy2026_selling_and_marketing: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_selling_and_marketing_expense,
+  element: extdeps.sec.us_gaap.us_gaap_selling_and_marketing_expense,
   amount: Filed { amount: usd_whole_dollars(count: 434725000) },
   citation: gitlab_fy2026_citation,
 }
@@ -519,19 +519,19 @@ data gitlab_fy2026_general_and_administrative: extdeps.sec.facts.FiledMonetaryFa
 }
 
 data gitlab_fy2026_operating_expenses: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_operating_expenses,
+  element: extdeps.sec.us_gaap.us_gaap_operating_expenses,
   amount: Filed { amount: usd_whole_dollars(count: 904962000) },
   citation: gitlab_fy2026_citation,
 }
 
 data gitlab_fy2026_operating_income_loss: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
-  element: us_gaap_operating_income_loss,
+  element: extdeps.sec.us_gaap.us_gaap_operating_income_loss,
   amount: extdeps.sec.facts.FiledSigned { value: signed_usd_negative(magnitude_count: 70481000) },
   citation: gitlab_fy2026_citation,
 }
 
 data gitlab_fy2026_net_income_loss: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
-  element: us_gaap_net_income_loss,
+  element: extdeps.sec.us_gaap.us_gaap_net_income_loss,
   amount: extdeps.sec.facts.FiledSigned { value: signed_usd_negative(magnitude_count: 55956000) },
   citation: gitlab_fy2026_citation,
 }
@@ -559,7 +559,7 @@ data gitlab_fy2023_purchase_obligation: extdeps.sec.facts.FiledMonetaryFact = ex
 }
 
 data gitlab_fy2023_purchase_obligation_due_next_year: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_purchase_obligation_due_in_next_twelve_months,
+  element: extdeps.sec.us_gaap.us_gaap_purchase_obligation_due_in_next_twelve_months,
   amount: Filed { amount: usd_whole_dollars(count: 112911000) },
   citation: gitlab_fy2023_year_end_citation,
 }
@@ -571,7 +571,7 @@ data gitlab_fy2024_purchase_obligation: extdeps.sec.facts.FiledMonetaryFact = ex
 }
 
 data gitlab_fy2024_purchase_obligation_due_next_year: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_purchase_obligation_due_in_next_twelve_months,
+  element: extdeps.sec.us_gaap.us_gaap_purchase_obligation_due_in_next_twelve_months,
   amount: Filed { amount: usd_whole_dollars(count: 76032000) },
   citation: gitlab_fy2024_year_end_citation,
 }
@@ -583,7 +583,7 @@ data gitlab_fy2025_purchase_obligation: extdeps.sec.facts.FiledMonetaryFact = ex
 }
 
 data gitlab_fy2025_purchase_obligation_due_next_year: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_purchase_obligation_due_in_next_twelve_months,
+  element: extdeps.sec.us_gaap.us_gaap_purchase_obligation_due_in_next_twelve_months,
   amount: Filed { amount: usd_whole_dollars(count: 93490000) },
   citation: gitlab_fy2025_year_end_citation,
 }
@@ -595,7 +595,7 @@ data gitlab_fy2026_purchase_obligation: extdeps.sec.facts.FiledMonetaryFact = ex
 }
 
 data gitlab_fy2026_purchase_obligation_due_next_year: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
-  element: us_gaap_purchase_obligation_due_in_next_twelve_months,
+  element: extdeps.sec.us_gaap.us_gaap_purchase_obligation_due_in_next_twelve_months,
   amount: Filed { amount: usd_whole_dollars(count: 98885000) },
   citation: gitlab_fy2026_year_end_citation,
 }

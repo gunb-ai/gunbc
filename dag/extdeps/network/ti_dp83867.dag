@@ -46,7 +46,7 @@ data dp83867_rgz0048b_land_pattern: extdeps.land_pattern.types.VendorRecommended
 
 data dp83867irrgz: extdeps.land_pattern.types.PartMechanicalCandidate = extdeps.land_pattern.types.PartMechanicalCandidate {
   ordering_part_number: "DP83867IRRGZ",
-  vendor: texas_instruments,
+  vendor: extdeps.vendor.texas_instruments.texas_instruments,
   body: dp83867_rgz0048b_body,
   land_pattern: dp83867_rgz0048b_land_pattern,
   terminal_indexing: extdeps.land_pattern.types.TerminalIndexingObligation {

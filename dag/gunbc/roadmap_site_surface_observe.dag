@@ -119,7 +119,7 @@ fn materialize_live_roadmap_site_surface_bundle() -> gunbc.roadmap_site_surface_
 
 fn live_roadmap_site_surface_bundle() -> gunbc.roadmap_site_surface_types.LiveRoadmapSiteSurfaceBundle {
   gunbc.roadmap_site_surface_types.LiveRoadmapSiteSurfaceBundle {
-    subject: roadmap_site_surface_subject,
+    subject: gunbc.roadmap_site_surface_types.roadmap_site_surface_subject,
     bundle: materialize_live_roadmap_site_surface_bundle(),
   }
 }

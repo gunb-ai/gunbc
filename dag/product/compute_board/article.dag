@@ -94,7 +94,7 @@ fn platform_firmware_role_upstream(role: PlatformFirmwareRole) -> PlatformRoleUp
     TrustedFirmwareSecureBootChain =>
       UpstreamCited { subject: extdeps.firmware.trusted_firmware_a.subject.trusted_firmware_a_model_scope.subject.declaration }
     HostUefiFirmware =>
-      UpstreamCited { subject: tianocore_edk2_model_scope.subject.declaration }
+      UpstreamCited { subject: extdeps.firmware.tianocore_edk2.subject.tianocore_edk2_model_scope.subject.declaration }
     BaseboardManagementFirmware =>
       UpstreamCited { subject: openbmc_model_scope.subject.declaration }
     SystemControlProcessorFirmware =>

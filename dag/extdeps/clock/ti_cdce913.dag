@@ -44,7 +44,7 @@ data cdce913_pw0014a_land_pattern: extdeps.land_pattern.types.VendorRecommendedL
 
 data cdce913pwr: extdeps.land_pattern.types.PartMechanicalCandidate = extdeps.land_pattern.types.PartMechanicalCandidate {
   ordering_part_number: "CDCE913PWR",
-  vendor: texas_instruments,
+  vendor: extdeps.vendor.texas_instruments.texas_instruments,
   body: cdce913_pw0014a_body,
   land_pattern: cdce913_pw0014a_land_pattern,
   terminal_indexing: extdeps.land_pattern.types.TerminalIndexingObligation {

@@ -24,7 +24,7 @@ type DimmSocketCatalogRow {
 
 data ddr4_dimm_socket_solder_tail_288_family: DimmSocketCatalogRow = DimmSocketCatalogRow {
   base_part_number: "2308107",
-  vendor: tyco_electronics,
+  vendor: extdeps.vendor.tyco_electronics.tyco_electronics,
   position_count: 288,
   contact_pitch: micrometer(count: 800),
   attachment: ThroughHoleSolderTail,

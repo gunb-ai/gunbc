@@ -124,7 +124,7 @@ fn producer_rationale_line(p: gunbc.gitignore_model.Producer) -> String {
 data gitignore_protocol: std.layout.LayoutProtocol = std.layout.LayoutProtocol { indent_unit: "" }
 
 fn gitignore_comment_line(text: String) -> std.layout.Doc {
-  let prefix = config_comment_prefix(format: gitignore_format)
+  let prefix = config_comment_prefix(format: std.languages.gitignore_format)
   let line = if text == "" { prefix } else { concat(concat(prefix, " "), text) }
   doc_line_of(text: line)
 }

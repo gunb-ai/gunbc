@@ -5,7 +5,7 @@ data direct_rust_door_emission_witness_note: String = "Fast per-PR witnesses ove
 
 test fn witness_seed_closure_poison_refuses_v2_producer_reds() -> Bool {
   mint_v2_interpreted_receipt_with_seed_closure_refuses(
-    module_path: direct_rust_door_module_path
+    module_path: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_module_path
   )
 }
 

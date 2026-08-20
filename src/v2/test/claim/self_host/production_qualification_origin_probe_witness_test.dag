@@ -7,7 +7,7 @@ data production_qualification_origin_probe_fixture_module_reach_note: String = "
 
 test fn witness_structural_fixture_module_reached_by_symbol_reference() -> Bool {
   string_contains(
-    s: structural_red_control_mint_site_qualified_name,
+    s: v2.test.claim.self_host.production_qualification_origin_probe_structural_fixture.structural_red_control_mint_site_qualified_name,
     pattern: "structural_red_control_mint_site_probe"
   )
 }

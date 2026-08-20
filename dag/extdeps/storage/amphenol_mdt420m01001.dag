@@ -14,7 +14,7 @@ data mdt420m01001_note: String = "THE CONTACT COUNT IS DELIBERATELY ABSENT AND I
 
 data mdt420m01001: extdeps.land_pattern.types.CatalogPartIdentity = extdeps.land_pattern.types.CatalogPartIdentity {
   ordering_part_number: "MDT420M01001",
-  vendor: amphenol,
+  vendor: extdeps.vendor.amphenol.amphenol,
   board_pattern: extdeps.land_pattern.types.MountingPatternObligation {
     what_is_missing: "the vendor's mechanical drawing and recommended PCB layout for MDT420M01001, which the publisher holds and this row does not transcribe. The contact population is owed with the geometry, since the reference board's description and the distributor listings disagree at 75 against 67",
   },

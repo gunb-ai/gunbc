@@ -17,7 +17,7 @@ data witness_live_structural_fixture_mint_site_discovered_red_note: String = "Ad
 
 test fn witness_live_structural_fixture_mint_site_discovered_reds() -> Bool {
   structural_red_control_live_fixture_mint_site_discovered(
-    live_qualified_name: structural_red_control_mint_site_qualified_name
+    live_qualified_name: v2.test.claim.self_host.production_qualification_origin_probe_structural_fixture.structural_red_control_mint_site_qualified_name
   )
 }
 

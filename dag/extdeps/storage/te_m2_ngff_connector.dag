@@ -26,7 +26,7 @@ type M2ConnectorCatalogRow {
 data m2_ngff_minicard_67_position: M2ConnectorCatalogRow = M2ConnectorCatalogRow {
   specification_number: "114-115006",
   specification_revision: "C",
-  vendor: tyco_electronics_amp_kk,
+  vendor: extdeps.vendor.tyco_electronics_amp_kk.tyco_electronics_amp_kk,
   position_count: 67,
   contact_pitch: micrometer(count: 500),
   attachment: SurfaceMountTerminals,

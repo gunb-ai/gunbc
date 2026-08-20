@@ -22,7 +22,7 @@ fn planted_artifact(
   qualifications: List<v2.compiler.self_host.emitter_producer_provenance.EmissionQualification>
 ) -> v2.compiler.self_host.candidate_generation.ProvenancedRustEmissionObservation {
   match mint_producer_emission_receipt(
-    module_path: direct_rust_door_module_path,
+    module_path: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_module_path,
     producer: producer,
     qualifications: qualifications,
     build_result: v2.compiler.self_host.emitter_producer_provenance.BuildRefused { cause: ^direct_rust_door_group_algebra_planted_build },
@@ -224,7 +224,7 @@ data seed_reachable_unmintable_note: String = "The seed-reachable-with-correct-p
 
 test fn v2_producer_with_seed_reachable_closure_is_unmintable() -> Bool {
   match mint_producer_emission_receipt(
-    module_path: direct_rust_door_module_path,
+    module_path: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_module_path,
     producer: V2EmitterInterpreted,
     qualifications: source_produced_qualifications,
     build_result: v2.compiler.self_host.emitter_producer_provenance.BuildRefused { cause: ^direct_rust_door_group_algebra_planted_build },
@@ -349,7 +349,7 @@ fn probe_mint(
   probe: v2.compiler.self_host.emitter_producer_provenance.BehavioralProbeBinding
 ) -> Optional<v2.compiler.self_host.emitter_producer_provenance.ProducerEmissionReceipt> {
   mint_producer_emission_receipt(
-    module_path: direct_rust_door_module_path,
+    module_path: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_module_path,
     producer: V2EmitterInterpreted,
     qualifications: qualifications,
     build_result: v2.compiler.self_host.emitter_producer_provenance.BuildGreen,

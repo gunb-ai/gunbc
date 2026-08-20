@@ -466,7 +466,7 @@ data power_stage_envelope: ComponentEnvelopeStanding = envelope_from_package_bod
 )
 
 data power_good_envelope: ComponentEnvelopeStanding = envelope_from_package_body(
-  b: tps3808_dbv0006a_body,
+  b: extdeps.power.ti_tps3808.tps3808_dbv0006a_body,
   source: decl_ref(module_path: "extdeps.power.ti_tps3808", decl_name: "tps3808_dbv0006a_body"),
 )
 
