@@ -27,84 +27,84 @@ data roadmap_acceptance_boundary_note: String = "NodeSizing.acceptance names the
 
 type NodeSizing
   = Unsized
-  | Sized { intricacy: gunbc.roadmap_model.Intricacy, volume: gunbc.roadmap_model.Volume, repo: String, acceptance: gunbc.roadmap_model.Acceptance }
+  | Sized { intricacy: Intricacy, volume: Volume, repo: String, acceptance: Acceptance }
 
 type RoadmapNode {
-  identity: gunbc.roadmap_model.RoadmapNodeIdentity
-  node: gunbc.roadmap_model.RoadmapNodeId
+  identity: RoadmapNodeIdentity
+  node: RoadmapNodeId
   line: gunbc.roadmap_status.RoadmapItem
-  carriers: List<gunbc.roadmap_model.Pointer>
-  sizing: gunbc.roadmap_model.NodeSizing
+  carriers: List<Pointer>
+  sizing: NodeSizing
   execution: gunbc.roadmap_execution_contract.WorkItemExecutionContract
   owner: String
   signoff: gunbc.roadmap_status.Signoff
 }
 
 type RoadmapEdge {
-  child: gunbc.roadmap_model.RoadmapNodeId
-  parent: gunbc.roadmap_model.RoadmapNodeId
+  child: RoadmapNodeId
+  parent: RoadmapNodeId
 }
 
 type SectionProse { content: String }
-type SectionGroup { label: String, nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge> }
+type SectionGroup { label: String, nodes: List<RoadmapNode>, edges: List<RoadmapEdge> }
 
 type SectionElement
-  = Prose { prose: gunbc.roadmap_model.SectionProse }
-  | Group { group: gunbc.roadmap_model.SectionGroup }
+  = Prose { prose: SectionProse }
+  | Group { group: SectionGroup }
 
-fn section_prose(content: String) -> gunbc.roadmap_model.SectionElement { Prose { prose: gunbc.roadmap_model.SectionProse { content: content } } }
-fn section_group(label: String, nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> gunbc.roadmap_model.SectionElement {
-  Group { group: gunbc.roadmap_model.SectionGroup { label: label, nodes: nodes, edges: edges } }
+fn section_prose(content: String) -> SectionElement { Prose { prose: SectionProse { content: content } } }
+fn section_group(label: String, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> SectionElement {
+  Group { group: SectionGroup { label: label, nodes: nodes, edges: edges } }
 }
 
 type RoadmapParent
   = TopLevel
-  | UnderParent { parent: gunbc.roadmap_model.RoadmapNodeId }
+  | UnderParent { parent: RoadmapNodeId }
 
-fn under_parent(p: gunbc.roadmap_model.RoadmapNodeId) -> gunbc.roadmap_model.RoadmapParent { UnderParent { parent: p } }
-fn top_level() -> gunbc.roadmap_model.RoadmapParent { TopLevel }
+fn under_parent(p: RoadmapNodeId) -> RoadmapParent { UnderParent { parent: p } }
+fn top_level() -> RoadmapParent { TopLevel }
 
 // RoadmapEdge is the complete dependency DAG. Markdown and HTML are trees, so roadmap_primary_parent selects the first declared dependency for presentation placement only; roadmap_parent_ids preserves every prerequisite for admission and the projections render the complete set whenever there is more than one. Edge order never weakens, prioritizes, or discharges a dependency.
-fn roadmap_parent_ids(edges: List<gunbc.roadmap_model.RoadmapEdge>, node: gunbc.roadmap_model.RoadmapNodeId) -> List<gunbc.roadmap_model.RoadmapNodeId> {
+fn roadmap_parent_ids(edges: List<RoadmapEdge>, node: RoadmapNodeId) -> List<RoadmapNodeId> {
   edges |> filter(e => e.child == node) |> map(e => e.parent)
 }
 
-fn roadmap_primary_parent(edges: List<gunbc.roadmap_model.RoadmapEdge>, node: gunbc.roadmap_model.RoadmapNodeId) -> gunbc.roadmap_model.RoadmapParent {
-  let parents = gunbc.roadmap_model.roadmap_parent_ids(edges: edges, node: node)
+fn roadmap_primary_parent(edges: List<RoadmapEdge>, node: RoadmapNodeId) -> RoadmapParent {
+  let parents = roadmap_parent_ids(edges: edges, node: node)
   if count(parents) == 0 {
-    gunbc.roadmap_model.top_level()
+    top_level()
   } else {
-    gunbc.roadmap_model.under_parent(p: first(parents))
+    under_parent(p: first(parents))
   }
 }
 
-fn is_top_level(edges: List<gunbc.roadmap_model.RoadmapEdge>, node: gunbc.roadmap_model.RoadmapNodeId) -> Bool {
-  match gunbc.roadmap_model.roadmap_primary_parent(edges: edges, node: node) {
+fn is_top_level(edges: List<RoadmapEdge>, node: RoadmapNodeId) -> Bool {
+  match roadmap_primary_parent(edges: edges, node: node) {
     TopLevel => true
     UnderParent { parent: _ } => false
   }
 }
 
-fn pointer_resolves(p: gunbc.roadmap_model.Pointer, existing_docs: List<String>) -> Bool {
+fn pointer_resolves(p: Pointer, existing_docs: List<String>) -> Bool {
   existing_docs |> any(d => d == p.path)
 }
 
-fn node_carrier_clean(rn: gunbc.roadmap_model.RoadmapNode, existing_docs: List<String>) -> Bool {
-  all(rn.carriers, p => gunbc.roadmap_model.pointer_resolves(p: p, existing_docs: existing_docs))
+fn node_carrier_clean(rn: RoadmapNode, existing_docs: List<String>) -> Bool {
+  all(rn.carriers, p => pointer_resolves(p: p, existing_docs: existing_docs))
 }
 
-fn node_status_drift(rn: gunbc.roadmap_model.RoadmapNode, committed_box: Bool, merged: List<Int>) -> gunbc.roadmap_status.DriftVerdict {
+fn node_status_drift(rn: RoadmapNode, committed_box: Bool, merged: List<Int>) -> gunbc.roadmap_status.DriftVerdict {
   signoff_drift(s: rn.signoff, committed_box: committed_box)
 }
 
-fn node_closed(rn: gunbc.roadmap_model.RoadmapNode) -> Bool {
+fn node_closed(rn: RoadmapNode) -> Bool {
   signoff_accepts(s: rn.signoff)
 }
 
 data roadmap_acceptance_receipt_note: String = "Acceptance is a durable typed fact, never row deletion (operator verdict 2026-07-28): before this carrier, accepting a node meant removing its only representation from the active graph, after which a dependent's prerequisite had no acceptance fact to join against and every count was a hand-reconstructed snapshot. A RoadmapAcceptanceReceipt names the node, carries the executed red-control and delivered handback evidence (reusing the #7380 evidence carriers — a receipt without an executed witness or a delivered artifact is unwritable), and pins criteria_digest = roadmap_criteria_digest over the row's own declared brief/red_control/handback. The digest closes the criteria-drift half fail-closed: editing a node's acceptance criteria changes the derived digest, the stored receipt stops matching, and the node returns to the active set while the validity witness reds — an acceptance can never silently survive a criteria rewrite. Merged pull requests never accept: node_accepted consults only receipt rows, and implementation evidence stays review input. REMAINING GAP, counted not implied (same shape as signoff_evidence_note): the witness named inside RedControlExecuted is not mechanically joined to the prose red_control it discharges — any executed witness name satisfies the evidence arm. OWNER: roadmap-runtime; DISSOLVE-ON: TicketFields.red_control becoming a typed reference to its discharging witness, at which point receipt_matches_node derives the join instead of trusting the named pair."
 
 type RoadmapAcceptanceReceipt {
-  node: gunbc.roadmap_model.RoadmapNodeId
+  node: RoadmapNodeId
   criteria_digest: std.content_hash.Fnv1a64Structural
   red_control: gunbc.roadmap_status.RedControlEvidence
   handback: gunbc.roadmap_status.HandbackEvidence
@@ -125,63 +125,63 @@ fn roadmap_criteria_digest(t: gunbc.roadmap_status.TicketFields) -> std.content_
   )
 }
 
-fn node_criteria_digest(rn: gunbc.roadmap_model.RoadmapNode) -> std.content_hash.Fnv1a64Structural? {
+fn node_criteria_digest(rn: RoadmapNode) -> std.content_hash.Fnv1a64Structural? {
   match line_ticket(item: rn.line) {
-    Present { value } => Present { value: gunbc.roadmap_model.roadmap_criteria_digest(t: value) }
+    Present { value } => Present { value: roadmap_criteria_digest(t: value) }
     Absent => Absent
   }
 }
 
-fn receipt_evidence_complete(r: gunbc.roadmap_model.RoadmapAcceptanceReceipt) -> Bool {
+fn receipt_evidence_complete(r: RoadmapAcceptanceReceipt) -> Bool {
   red_control_evidence_satisfied(e: r.red_control)
     && handback_evidence_satisfied(e: r.handback)
 }
 
-fn receipt_matches_node(r: gunbc.roadmap_model.RoadmapAcceptanceReceipt, rn: gunbc.roadmap_model.RoadmapNode) -> Bool {
+fn receipt_matches_node(r: RoadmapAcceptanceReceipt, rn: RoadmapNode) -> Bool {
   r.node == rn.node
-    && gunbc.roadmap_model.receipt_evidence_complete(r: r)
-    && match gunbc.roadmap_model.node_criteria_digest(rn: rn) {
+    && receipt_evidence_complete(r: r)
+    && match node_criteria_digest(rn: rn) {
       Present { value } => content_hash_eq_structural(left: value, right: r.criteria_digest)
       Absent => false
     }
 }
 
-fn receipts_for_node(receipts: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>, id: gunbc.roadmap_model.RoadmapNodeId) -> List<gunbc.roadmap_model.RoadmapAcceptanceReceipt> {
+fn receipts_for_node(receipts: List<RoadmapAcceptanceReceipt>, id: RoadmapNodeId) -> List<RoadmapAcceptanceReceipt> {
   receipts |> filter(r => r.node == id)
 }
 
-fn node_accepted(receipts: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>, rn: gunbc.roadmap_model.RoadmapNode) -> Bool {
-  let rs = gunbc.roadmap_model.receipts_for_node(receipts: receipts, id: rn.node)
-  count(rs) == 1 && all(rs, r => gunbc.roadmap_model.receipt_matches_node(r: r, rn: rn))
+fn node_accepted(receipts: List<RoadmapAcceptanceReceipt>, rn: RoadmapNode) -> Bool {
+  let rs = receipts_for_node(receipts: receipts, id: rn.node)
+  count(rs) == 1 && all(rs, r => receipt_matches_node(r: r, rn: rn))
 }
 
 data acceptance_receipt_continuity_wall_note: String = "THE FAIL-OPEN roadmap_acceptance_receipt_note DECLARES BUT DID NOT CLOSE. Acceptance is a durable typed fact, never row deletion — yet removing a RoadmapAcceptanceReceipt row from the authority silently returned the node to the active set with no refusal. A prior validation slice kept a second hand-maintained baseline_nodes ledger beside roadmap_acceptance_receipts, so deleting both rows stayed green — the dual representation this repository keeps paying for. THIS SLICE LANDS THE CONSTRUCTION ANSWER: roadmap_acceptance_event_history is the single authority; roadmap_acceptance_receipts is a projection only. AcceptanceRecorded appends a receipt; AcceptanceRevoked names the exact prior receipt, a disposition, and audit fields. Replay refuses a vanished recorded receipt without an exact matching revocation, a wrong prior digest, a revocation while the exact receipt is still live, a revocation with nothing live to remove, and duplicate revocations for one removal. A sealed prefix chain digest refuses edits to prior events without updating the pin; witness tests compare prior history to mutated history for the deletion arms."
 
 type AcceptanceNodeReopensActiveFrontier {}
 
-type AcceptanceRevocationDisposition = gunbc.roadmap_model.AcceptanceNodeReopensActiveFrontier
+type AcceptanceRevocationDisposition = AcceptanceNodeReopensActiveFrontier
 
 type RoadmapAcceptanceEvent
-  = AcceptanceRecorded { receipt: gunbc.roadmap_model.RoadmapAcceptanceReceipt }
+  = AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt }
   | AcceptanceRevoked {
-      exact_prior_receipt: gunbc.roadmap_model.RoadmapAcceptanceReceipt,
-      disposition: gunbc.roadmap_model.AcceptanceRevocationDisposition,
+      exact_prior_receipt: RoadmapAcceptanceReceipt,
+      disposition: AcceptanceRevocationDisposition,
       reason: std.types.NonEmptyStr,
       revoked_by: std.types.NonEmptyStr,
       revoked_on: std.types.NonEmptyStr,
     }
 
 type AcceptanceHistoryReplayState {
-  live: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>
-  revoked: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>
-  ever_recorded: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>
+  live: List<RoadmapAcceptanceReceipt>
+  revoked: List<RoadmapAcceptanceReceipt>
+  ever_recorded: List<RoadmapAcceptanceReceipt>
 }
 
 type AcceptanceHistoryIntegrityVerdict
   = AcceptanceHistoryIntegrityHolds
   | AcceptanceHistoryIntegrityRefusedReplay
   | AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation {
-      receipt: gunbc.roadmap_model.RoadmapAcceptanceReceipt,
+      receipt: RoadmapAcceptanceReceipt,
     }
   | AcceptanceHistoryIntegrityRefusedPriorPrefix { index: Int }
   | AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: String }
@@ -213,7 +213,7 @@ fn handback_evidence_eq(a: gunbc.roadmap_status.HandbackEvidence, b: gunbc.roadm
       match b {
         HandbackNotDelivered => false
         HandbackDelivered { first_artifact: bf, further_artifacts: bfs } =>
-          af == bf && gunbc.roadmap_model.non_empty_str_list_eq_ordered(a: afs, b: bfs)
+          af == bf && non_empty_str_list_eq_ordered(a: afs, b: bfs)
       }
   }
 }
@@ -225,9 +225,9 @@ fn non_empty_str_list_eq_ordered(a: List<std.types.NonEmptyStr>, b: List<std.typ
     true
   } else {
     first(a) == first(b)
-      && gunbc.roadmap_model.non_empty_str_list_eq_ordered(
-        a: gunbc.roadmap_model.drop_first_non_empty_str(items: a),
-        b: gunbc.roadmap_model.drop_first_non_empty_str(items: b),
+      && non_empty_str_list_eq_ordered(
+        a: drop_first_non_empty_str(items: a),
+        b: drop_first_non_empty_str(items: b),
       )
   }
 }
@@ -239,44 +239,44 @@ type DropFirstStrState {
 
 type DropFirstEventState {
   skipped: Bool
-  rest: List<gunbc.roadmap_model.RoadmapAcceptanceEvent>
+  rest: List<RoadmapAcceptanceEvent>
 }
 
 fn drop_first_non_empty_str(items: List<std.types.NonEmptyStr>) -> List<std.types.NonEmptyStr> {
   fold(
     items,
-    init: gunbc.roadmap_model.DropFirstStrState { skipped: false, rest: [] },
+    init: DropFirstStrState { skipped: false, rest: [] },
     f: fn(state, item) {
       if state.skipped {
-        gunbc.roadmap_model.DropFirstStrState { skipped: true, rest: concat(state.rest, [item]) }
+        DropFirstStrState { skipped: true, rest: concat(state.rest, [item]) }
       } else {
-        gunbc.roadmap_model.DropFirstStrState { skipped: true, rest: state.rest }
+        DropFirstStrState { skipped: true, rest: state.rest }
       }
     },
   ).rest
 }
 
-fn acceptance_receipt_eq(a: gunbc.roadmap_model.RoadmapAcceptanceReceipt, b: gunbc.roadmap_model.RoadmapAcceptanceReceipt) -> Bool {
+fn acceptance_receipt_eq(a: RoadmapAcceptanceReceipt, b: RoadmapAcceptanceReceipt) -> Bool {
   a.node == b.node
     && content_hash_eq_structural(left: a.criteria_digest, right: b.criteria_digest)
-    && gunbc.roadmap_model.red_control_evidence_eq(a: a.red_control, b: b.red_control)
-    && gunbc.roadmap_model.handback_evidence_eq(a: a.handback, b: b.handback)
+    && red_control_evidence_eq(a: a.red_control, b: b.red_control)
+    && handback_evidence_eq(a: a.handback, b: b.handback)
     && a.accepted_by == b.accepted_by
     && a.accepted_on == b.accepted_on
 }
 
-fn acceptance_event_eq(a: gunbc.roadmap_model.RoadmapAcceptanceEvent, b: gunbc.roadmap_model.RoadmapAcceptanceEvent) -> Bool {
+fn acceptance_event_eq(a: RoadmapAcceptanceEvent, b: RoadmapAcceptanceEvent) -> Bool {
   match a {
     AcceptanceRecorded { receipt: ar } =>
       match b {
-        AcceptanceRecorded { receipt: br } => gunbc.roadmap_model.acceptance_receipt_eq(a: ar, b: br)
+        AcceptanceRecorded { receipt: br } => acceptance_receipt_eq(a: ar, b: br)
         AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => false
       }
     AcceptanceRevoked { exact_prior_receipt: apr, disposition: ad, reason: ar, revoked_by: ab, revoked_on: ao } =>
       match b {
         AcceptanceRecorded { receipt: _ } => false
         AcceptanceRevoked { exact_prior_receipt: bpr, disposition: bd, reason: br, revoked_by: bb, revoked_on: bo } =>
-          gunbc.roadmap_model.acceptance_receipt_eq(a: apr, b: bpr)
+          acceptance_receipt_eq(a: apr, b: bpr)
             && match ad {
               AcceptanceNodeReopensActiveFrontier {} =>
                 match bd {
@@ -291,24 +291,24 @@ fn acceptance_event_eq(a: gunbc.roadmap_model.RoadmapAcceptanceEvent, b: gunbc.r
 }
 
 fn receipt_present_exact(
-  receipts: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>,
-  receipt: gunbc.roadmap_model.RoadmapAcceptanceReceipt,
+  receipts: List<RoadmapAcceptanceReceipt>,
+  receipt: RoadmapAcceptanceReceipt,
 ) -> Bool {
-  receipts |> any(r => gunbc.roadmap_model.acceptance_receipt_eq(a: r, b: receipt))
+  receipts |> any(r => acceptance_receipt_eq(a: r, b: receipt))
 }
 
 fn receipt_live_for_node(
-  live: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>,
-  id: gunbc.roadmap_model.RoadmapNodeId,
+  live: List<RoadmapAcceptanceReceipt>,
+  id: RoadmapNodeId,
 ) -> Bool {
   live |> any(r => r.node == id)
 }
 
 fn remove_exact_receipt(
-  receipts: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>,
-  receipt: gunbc.roadmap_model.RoadmapAcceptanceReceipt,
-) -> List<gunbc.roadmap_model.RoadmapAcceptanceReceipt> {
-  receipts |> filter(r => !gunbc.roadmap_model.acceptance_receipt_eq(a: r, b: receipt))
+  receipts: List<RoadmapAcceptanceReceipt>,
+  receipt: RoadmapAcceptanceReceipt,
+) -> List<RoadmapAcceptanceReceipt> {
+  receipts |> filter(r => !acceptance_receipt_eq(a: r, b: receipt))
 }
 
 fn non_empty_str_list_digest(items: List<std.types.NonEmptyStr>) -> std.content_hash.Fnv1a64Structural {
@@ -357,13 +357,13 @@ fn handback_evidence_digest(e: gunbc.roadmap_status.HandbackEvidence) -> std.con
         tag: "roadmap-handback-delivered-v1",
         payload: content_hash_combine_structural(
           left: content_hash_atom(value: first_artifact),
-          right: gunbc.roadmap_model.non_empty_str_list_digest(items: further_artifacts),
+          right: non_empty_str_list_digest(items: further_artifacts),
         ),
       )
   }
 }
 
-fn acceptance_receipt_digest(receipt: gunbc.roadmap_model.RoadmapAcceptanceReceipt) -> std.content_hash.Fnv1a64Structural {
+fn acceptance_receipt_digest(receipt: RoadmapAcceptanceReceipt) -> std.content_hash.Fnv1a64Structural {
   content_hash_tagged_structural(
     tag: "roadmap-acceptance-receipt-v1",
     payload: content_hash_combine_structural(
@@ -371,11 +371,11 @@ fn acceptance_receipt_digest(receipt: gunbc.roadmap_model.RoadmapAcceptanceRecei
         left: content_hash_atom(value: receipt.node as std.types.NonEmptyStr),
         right: content_hash_combine_structural(
           left: receipt.criteria_digest,
-          right: gunbc.roadmap_model.red_control_evidence_digest(e: receipt.red_control),
+          right: red_control_evidence_digest(e: receipt.red_control),
         ),
       ),
       right: content_hash_combine_structural(
-        left: gunbc.roadmap_model.handback_evidence_digest(e: receipt.handback),
+        left: handback_evidence_digest(e: receipt.handback),
         right: content_hash_combine_structural(
           left: content_hash_atom(value: receipt.accepted_by),
           right: content_hash_atom(value: receipt.accepted_on),
@@ -386,7 +386,7 @@ fn acceptance_receipt_digest(receipt: gunbc.roadmap_model.RoadmapAcceptanceRecei
 }
 
 fn acceptance_revocation_disposition_digest(
-  disposition: gunbc.roadmap_model.AcceptanceRevocationDisposition,
+  disposition: AcceptanceRevocationDisposition,
 ) -> std.content_hash.Fnv1a64Structural {
   match disposition {
     AcceptanceNodeReopensActiveFrontier {} =>
@@ -397,20 +397,20 @@ fn acceptance_revocation_disposition_digest(
   }
 }
 
-fn acceptance_event_digest(event: gunbc.roadmap_model.RoadmapAcceptanceEvent) -> std.content_hash.Fnv1a64Structural {
+fn acceptance_event_digest(event: RoadmapAcceptanceEvent) -> std.content_hash.Fnv1a64Structural {
   match event {
     AcceptanceRecorded { receipt } =>
       content_hash_tagged_structural(
         tag: "roadmap-acceptance-recorded-v2",
-        payload: gunbc.roadmap_model.acceptance_receipt_digest(receipt: receipt),
+        payload: acceptance_receipt_digest(receipt: receipt),
       )
     AcceptanceRevoked { exact_prior_receipt, disposition, reason, revoked_by, revoked_on } =>
       content_hash_tagged_structural(
         tag: "roadmap-acceptance-revoked-v2",
         payload: content_hash_combine_structural(
-          left: gunbc.roadmap_model.acceptance_receipt_digest(receipt: exact_prior_receipt),
+          left: acceptance_receipt_digest(receipt: exact_prior_receipt),
           right: content_hash_combine_structural(
-            left: gunbc.roadmap_model.acceptance_revocation_disposition_digest(disposition: disposition),
+            left: acceptance_revocation_disposition_digest(disposition: disposition),
             right: content_hash_combine_structural(
               left: content_hash_atom(value: reason),
               right: content_hash_combine_structural(
@@ -424,100 +424,100 @@ fn acceptance_event_digest(event: gunbc.roadmap_model.RoadmapAcceptanceEvent) ->
   }
 }
 
-fn acceptance_history_chain_digest(events: List<gunbc.roadmap_model.RoadmapAcceptanceEvent>) -> std.content_hash.Fnv1a64Structural {
+fn acceptance_history_chain_digest(events: List<RoadmapAcceptanceEvent>) -> std.content_hash.Fnv1a64Structural {
   fold(
     events,
     init: content_hash_atom(value: "roadmap-acceptance-history-v1" as std.types.NonEmptyStr),
     f: fn(acc, event) {
       content_hash_combine_structural(
         left: acc,
-        right: gunbc.roadmap_model.acceptance_event_digest(event: event),
+        right: acceptance_event_digest(event: event),
       )
     },
   )
 }
 
-fn drop_first_acceptance_event(events: List<gunbc.roadmap_model.RoadmapAcceptanceEvent>) -> List<gunbc.roadmap_model.RoadmapAcceptanceEvent> {
+fn drop_first_acceptance_event(events: List<RoadmapAcceptanceEvent>) -> List<RoadmapAcceptanceEvent> {
   fold(
     events,
-    init: gunbc.roadmap_model.DropFirstEventState { skipped: false, rest: [] },
+    init: DropFirstEventState { skipped: false, rest: [] },
     f: fn(state, event) {
       if state.skipped {
-        gunbc.roadmap_model.DropFirstEventState { skipped: true, rest: concat(state.rest, [event]) }
+        DropFirstEventState { skipped: true, rest: concat(state.rest, [event]) }
       } else {
-        gunbc.roadmap_model.DropFirstEventState { skipped: true, rest: state.rest }
+        DropFirstEventState { skipped: true, rest: state.rest }
       }
     },
   ).rest
 }
 
 fn acceptance_history_prior_prefix_mismatch_index_at(
-  prior: List<gunbc.roadmap_model.RoadmapAcceptanceEvent>,
-  current: List<gunbc.roadmap_model.RoadmapAcceptanceEvent>,
+  prior: List<RoadmapAcceptanceEvent>,
+  current: List<RoadmapAcceptanceEvent>,
   index: Int,
 ) -> Int {
   if count(prior) == 0 {
     index
   } else if count(current) == 0 {
     index
-  } else if !gunbc.roadmap_model.acceptance_event_eq(a: first(prior), b: first(current)) {
+  } else if !acceptance_event_eq(a: first(prior), b: first(current)) {
     index
   } else {
-    gunbc.roadmap_model.acceptance_history_prior_prefix_mismatch_index_at(
-      prior: gunbc.roadmap_model.drop_first_acceptance_event(events: prior),
-      current: gunbc.roadmap_model.drop_first_acceptance_event(events: current),
+    acceptance_history_prior_prefix_mismatch_index_at(
+      prior: drop_first_acceptance_event(events: prior),
+      current: drop_first_acceptance_event(events: current),
       index: index + 1,
     )
   }
 }
 
 fn acceptance_history_prior_prefix_mismatch_index(
-  prior: List<gunbc.roadmap_model.RoadmapAcceptanceEvent>,
-  current: List<gunbc.roadmap_model.RoadmapAcceptanceEvent>,
+  prior: List<RoadmapAcceptanceEvent>,
+  current: List<RoadmapAcceptanceEvent>,
 ) -> Int {
-  gunbc.roadmap_model.acceptance_history_prior_prefix_mismatch_index_at(prior: prior, current: current, index: 0)
+  acceptance_history_prior_prefix_mismatch_index_at(prior: prior, current: current, index: 0)
 }
 
 fn acceptance_history_extends_prior(
-  prior: List<gunbc.roadmap_model.RoadmapAcceptanceEvent>,
-  current: List<gunbc.roadmap_model.RoadmapAcceptanceEvent>,
+  prior: List<RoadmapAcceptanceEvent>,
+  current: List<RoadmapAcceptanceEvent>,
 ) -> Bool {
   if count(prior) == 0 {
     true
   } else if count(current) < count(prior) {
     false
   } else {
-    gunbc.roadmap_model.acceptance_event_eq(a: first(prior), b: first(current))
-      && gunbc.roadmap_model.acceptance_history_extends_prior(
-        prior: gunbc.roadmap_model.drop_first_acceptance_event(events: prior),
-        current: gunbc.roadmap_model.drop_first_acceptance_event(events: current),
+    acceptance_event_eq(a: first(prior), b: first(current))
+      && acceptance_history_extends_prior(
+        prior: drop_first_acceptance_event(events: prior),
+        current: drop_first_acceptance_event(events: current),
       )
   }
 }
 
 fn replay_acceptance_event(
-  state: gunbc.roadmap_model.AcceptanceHistoryReplayState,
-  event: gunbc.roadmap_model.RoadmapAcceptanceEvent,
-) -> gunbc.roadmap_model.AcceptanceHistoryReplayState? {
+  state: AcceptanceHistoryReplayState,
+  event: RoadmapAcceptanceEvent,
+) -> AcceptanceHistoryReplayState? {
   match event {
     AcceptanceRecorded { receipt } =>
-      if gunbc.roadmap_model.receipt_live_for_node(live: state.live, id: receipt.node)
+      if receipt_live_for_node(live: state.live, id: receipt.node)
         || receipt_present_exact(receipts: state.live, receipt: receipt) {
         none
       } else {
-        Present { value: gunbc.roadmap_model.AcceptanceHistoryReplayState {
+        Present { value: AcceptanceHistoryReplayState {
           live: concat(state.live, [receipt]),
           revoked: state.revoked,
           ever_recorded: concat(state.ever_recorded, [receipt]),
         } }
       }
     AcceptanceRevoked { exact_prior_receipt, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
-      if !gunbc.roadmap_model.receipt_present_exact(receipts: state.live, receipt: exact_prior_receipt)
+      if !receipt_present_exact(receipts: state.live, receipt: exact_prior_receipt)
         || receipt_present_exact(receipts: state.revoked, receipt: exact_prior_receipt) {
         none
       } else {
-        Present { value: gunbc.roadmap_model.AcceptanceHistoryReplayState {
-          live: gunbc.roadmap_model.remove_exact_receipt(receipts: state.live, receipt: exact_prior_receipt),
+        Present { value: AcceptanceHistoryReplayState {
+          live: remove_exact_receipt(receipts: state.live, receipt: exact_prior_receipt),
           revoked: concat(state.revoked, [exact_prior_receipt]),
           ever_recorded: state.ever_recorded,
         } }
@@ -525,10 +525,10 @@ fn replay_acceptance_event(
   }
 }
 
-fn replay_acceptance_history(events: List<gunbc.roadmap_model.RoadmapAcceptanceEvent>) -> gunbc.roadmap_model.AcceptanceHistoryReplayState? {
+fn replay_acceptance_history(events: List<RoadmapAcceptanceEvent>) -> AcceptanceHistoryReplayState? {
   fold(
     events,
-    init: Present { value: gunbc.roadmap_model.AcceptanceHistoryReplayState {
+    init: Present { value: AcceptanceHistoryReplayState {
       live: [],
       revoked: [],
       ever_recorded: [],
@@ -537,7 +537,7 @@ fn replay_acceptance_history(events: List<gunbc.roadmap_model.RoadmapAcceptanceE
       match acc {
         Absent => Absent
         Present { value: state } =>
-          match gunbc.roadmap_model.replay_acceptance_event(state: state, event: event) {
+          match replay_acceptance_event(state: state, event: event) {
             Absent => Absent
             Present { value: next } => Present { value: next }
           }
@@ -547,39 +547,39 @@ fn replay_acceptance_history(events: List<gunbc.roadmap_model.RoadmapAcceptanceE
 }
 
 fn ever_recorded_receipt_accounted_for(
-  receipt: gunbc.roadmap_model.RoadmapAcceptanceReceipt,
-  live: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>,
-  revoked: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>,
+  receipt: RoadmapAcceptanceReceipt,
+  live: List<RoadmapAcceptanceReceipt>,
+  revoked: List<RoadmapAcceptanceReceipt>,
 ) -> Bool {
-  gunbc.roadmap_model.receipt_present_exact(receipts: live, receipt: receipt)
+  receipt_present_exact(receipts: live, receipt: receipt)
     || receipt_present_exact(receipts: revoked, receipt: receipt)
 }
 
-fn project_live_acceptance_receipts(history: List<gunbc.roadmap_model.RoadmapAcceptanceEvent>) -> List<gunbc.roadmap_model.RoadmapAcceptanceReceipt> {
-  match gunbc.roadmap_model.replay_acceptance_history(events: history) {
+fn project_live_acceptance_receipts(history: List<RoadmapAcceptanceEvent>) -> List<RoadmapAcceptanceReceipt> {
+  match replay_acceptance_history(events: history) {
     Present { value: state } => state.live
     Absent => []
   }
 }
 
 fn acceptance_history_integrity_verdict(
-  history: List<gunbc.roadmap_model.RoadmapAcceptanceEvent>,
-  prior_history: List<gunbc.roadmap_model.RoadmapAcceptanceEvent>,
-) -> gunbc.roadmap_model.AcceptanceHistoryIntegrityVerdict {
-  if count(prior_history) > 0 && !gunbc.roadmap_model.acceptance_history_extends_prior(prior: prior_history, current: history) {
+  history: List<RoadmapAcceptanceEvent>,
+  prior_history: List<RoadmapAcceptanceEvent>,
+) -> AcceptanceHistoryIntegrityVerdict {
+  if count(prior_history) > 0 && !acceptance_history_extends_prior(prior: prior_history, current: history) {
     AcceptanceHistoryIntegrityRefusedPriorPrefix {
-      index: gunbc.roadmap_model.acceptance_history_prior_prefix_mismatch_index(
+      index: acceptance_history_prior_prefix_mismatch_index(
         prior: prior_history,
         current: history,
       ),
     }
   } else {
-    match gunbc.roadmap_model.replay_acceptance_history(events: history) {
+    match replay_acceptance_history(events: history) {
       Absent => AcceptanceHistoryIntegrityRefusedReplay
       Present { value: state } =>
         if !all(
           state.ever_recorded,
-          r => gunbc.roadmap_model.ever_recorded_receipt_accounted_for(
+          r => ever_recorded_receipt_accounted_for(
             receipt: r,
             live: state.live,
             revoked: state.revoked,
@@ -588,7 +588,7 @@ fn acceptance_history_integrity_verdict(
           AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation {
             receipt: first(
               state.ever_recorded |> filter(r =>
-                !gunbc.roadmap_model.ever_recorded_receipt_accounted_for(
+                !ever_recorded_receipt_accounted_for(
                   receipt: r,
                   live: state.live,
                   revoked: state.revoked,
@@ -604,10 +604,10 @@ fn acceptance_history_integrity_verdict(
 }
 
 fn acceptance_history_integrity_holds(
-  history: List<gunbc.roadmap_model.RoadmapAcceptanceEvent>,
-  prior_history: List<gunbc.roadmap_model.RoadmapAcceptanceEvent>,
+  history: List<RoadmapAcceptanceEvent>,
+  prior_history: List<RoadmapAcceptanceEvent>,
 ) -> Bool {
-  match gunbc.roadmap_model.acceptance_history_integrity_verdict(
+  match acceptance_history_integrity_verdict(
     history: history,
     prior_history: prior_history,
   ) {
@@ -619,7 +619,7 @@ fn acceptance_history_integrity_holds(
   }
 }
 
-fn acceptance_history_integrity_verdict_detail(verdict: gunbc.roadmap_model.AcceptanceHistoryIntegrityVerdict) -> String {
+fn acceptance_history_integrity_verdict_detail(verdict: AcceptanceHistoryIntegrityVerdict) -> String {
   match verdict {
     AcceptanceHistoryIntegrityHolds => ""
     AcceptanceHistoryIntegrityRefusedReplay =>

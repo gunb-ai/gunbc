@@ -29,7 +29,7 @@ fn census_closure_frontier_row_groups() -> List<List<std.roster_frontier.Frontie
     extdeps.github.merge_state.merge_state_graphql_transport_frontier_rows,
     extdeps.github.workflow_runs.conclusion_authority_consolidation_frontier_rows,
     ipv6_text_codec_staged_frontier_rows,
-    cpu_description_string_leaf_frontier_rows,
+    extdeps.pricing.hetzner_dedicated.cpu_description_string_leaf_frontier_rows,
     cr1000a_dhcp_lease_transport_frontier_rows,
     cr1000a_host_name_raw_parse_frontier_rows,
     cr1000a_delegated_prefix_length_scalar_frontier_rows,
