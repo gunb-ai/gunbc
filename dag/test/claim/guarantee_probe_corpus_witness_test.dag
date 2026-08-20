@@ -139,6 +139,10 @@ data bare_none_collection_red_source: String = "module probe_bare_none_collectio
 
 data bare_none_green_source: String = "module probe_bare_none_green\ntype Diags = None | Some { n: Int }\ntype OptHolder { n: Int? }\ntype DiagHolder { d: Diags }\nfn optional_field() -> OptHolder { OptHolder { n: None } }\nfn none_variant_field() -> DiagHolder { DiagHolder { d: None } }\nfn some_variant_field() -> DiagHolder { DiagHolder { d: Some { n: 1 } } }\n"
 
+data bare_none_generic_parameter_boundary_source: String = "module probe_bare_none_generic\ntype Maybe = None | Some { n: Int }\ntype Box<T> { v: T }\nfn red_generic() -> Box<Int> { Box { v: None } }\nfn green_generic() -> Box<Maybe> { Box { v: None } }\n"
+
+data bare_none_generic_parameter_boundary_note: String = "THIS TEST ASSERTS A MISS, DELIBERATELY, AND IT IS SUPPOSED TO FLIP. The wall decides admissibility from the DECLARED side, so it can only fire where the declared field type resolves at the construction site. Where the field is declared as a type PARAMETER, generic substitution has not happened at the node the check reads, so `Box<Int> \{ v: None }` — a bare `None` in a field that cannot carry absence — is ACCEPTED. That is a genuine miss, and this is its specimen. WHY IT IS ENROLLED RATHER THAN DESCRIBED: a boundary written only in prose is invisible to every gate — nothing reds if the miss widens, and nothing announces the day it closes. This witness does both. It goes RED if a future change makes the wall refuse the generic position, which is the moment the boundary DISSOLVES and this test must be inverted to an ordinary refusal assertion beside the other REDs. It is therefore a dissolution trigger with a mechanism, not a contract blessing the gap. WHY THE OBVIOUS FIX DOES NOT REACH IT, tested rather than reasoned: infer_record_lit_structural already prefers record_lit_instantiated_fields, but that helper requires `expected` Present with children, and a `data d: Box<Int> = ...` annotation does not flow through as `expected`, so the fallback yields the uninstantiated template fields. Swapping the wall's identity guard from authored-name-nonempty to type-shape-not-Primitive() was built and run: the generic site was STILL missed, which is the discriminating evidence that no substituted node arrives here at all. NEXT-RUNG TRIGGER, named as the mechanism rather than the symptom: the declaration annotation reaching the record-literal position as `expected`, which is what would let the existing instantiation helper answer."
+
 data bare_none_field_admission_scope_note: String = "THE CLASS: a bare `None` reference carries absence and nothing else, so a construction position whose declared field type cannot carry absence must refuse it. MEASURED ON THE PRE-WALL BINARY (the discriminating fact, not a prediction): bare_none_scalar_red_source and bare_none_collection_red_source both compiled with ZERO blocking diagnostics and emitted `n: Rc::new(Diags::None)` for `n: Int` — a Rust program the declared type refutes, produced silently, which is the below-floor class DESIGN 4b names (values inhabit declared types). THE GREEN CONTROL IS TWO-ARMED ON PURPOSE, because a wall that refuses every bare `None` would be indistinguishable from this one on the REDs alone: optional_field is the `T?` carrier and none_variant_field is a coproduct declaring its own `None` variant at its own level (the shape std.cache_interface AuthScope and v2.std.diagnostic Diagnostics both have, and the reason ~561 corpus sites are legitimate). some_variant_field holds the sibling arm green so the control cannot pass by the field type being unresolved. WHY A SYNTACTIC SLICE RATHER THAN THE GENERAL CONFORMANCE RULE: v1.compiler.infer conformance_unjudged_live_hole_note records five attempts at a general named-vs-named refusal, each of which red correct code because the produced side carries no separable type identity; a bare `None` needs none, since admissibility is decided entirely from the declared side."
 
 data call_mislabel_source: String = "module probe_call_mislabel\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn f() -> Int { sub(a: 10, bb: 3) }\n"
@@ -226,6 +230,14 @@ test fn bare_none_green_control_has_zero_diagnostics() -> Bool {
   match active_probe_row(probe: bare_none_green_probe) {
     Present { value: row } =>
       probe_row_expectation_holds(census: census_of(source: bare_none_green_source), row: row)
+    Absent => false
+  }
+}
+
+test fn bare_none_generic_parameter_field_is_outside_the_wall_boundary() -> Bool {
+  let census = census_of(source: bare_none_generic_parameter_boundary_source)
+  match census_blocking_count_for_class(census: census, wanted: "BareNoneNotAdmittedByFieldType") {
+    Present { value: n } => n == 0
     Absent => false
   }
 }
