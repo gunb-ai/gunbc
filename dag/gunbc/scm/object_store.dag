@@ -48,7 +48,7 @@ type StoredEdge {
   target: ObjectId
 }
 
-type ObjectRecord {
+type ObjectRecord sole_constructor {
   identity: ObjectId
   kind: NodeKind
   children: List<StoredEdge>
@@ -59,7 +59,7 @@ type ObjectRecord {
 // iteration order leaked into a digest would make one program hash two ways. A list keeps ordering
 // authored and observable. dissolve-on: a determinism-admitted keyed collection; the lookup below is
 // the only site that would change.
-type ObjectStore {
+type ObjectStore sole_constructor {
   objects: List<ObjectRecord>
 }
 
@@ -92,73 +92,136 @@ fn store_contains(store: ObjectStore, identity: ObjectId) -> Bool {
 // present is the same content by definition of a content address, so re-storing returns the store
 // unchanged. This is what lets the same object appear at many positions in one program while being
 // stored once -- content is fungible, positions are not.
-// NO CALLER CAN INTRODUCE A RECORD. This used to be a public `put_object(store, record)` taking a
-// record whose `identity` field was supplied by the caller and unrelated to its `kind`/`children` --
-// so a record could be stored under a lying key and every later checkout would faithfully return the
-// lie. That is not a validation gap to be patched with a check: a check would concede the forged
-// pairing is writable and then re-state, at admission, the derivation the store already performs.
-// So the insert is private to the one function that DERIVES the key, and the only other way an entry
-// enters a store is to be copied from a store that already holds it.
-fn insert_derived(store: ObjectStore, record: ObjectRecord) -> ObjectStore {
-  if store_contains(store: store, identity: record.identity) {
-    store
-  } else {
-    ObjectStore { objects: concat(store.objects, [record]) }
+// NO CALLER CAN INTRODUCE A RECORD, AND THE WALL IS THE `sole_constructor` ON ObjectRecord AND
+// ObjectStore ABOVE -- not any function's name.
+//
+// Two corrections are recorded here because both were mine and both were the same mistake. First,
+// `put_object(store, record)` once took a record whose `identity` was caller-supplied and unrelated
+// to its `kind`/`children`, so a record could be stored under a lying key and every checkout would
+// faithfully return the lie. Second -- caught by external review AFTER I had already declared that
+// hole closed -- I claimed the repaired insert was "private to the one function that derives the
+// key". THE LANGUAGE HAS NO MODULE PRIVACY. `insert_derived` is importable, and `ObjectRecord { .. }`
+// and `ObjectStore { .. }` were constructible from any module, so the wall I described did not exist
+// and a forged pairing was still writable by a caller who simply built one.
+//
+// `sole_constructor` is the wall that does exist: it refuses cross-module construction and cast.
+// Verified by execution, not by reading -- a probe module building both carriers is refused with
+// "sole_constructor type 'ObjectRecord' cannot be constructed outside its defining module".
+//
+// THE WALL DOES NOT COVER COLLISIONS, AND CONFLATING THE TWO WAS THE DEEPER ERROR. A forged pairing
+// is a caller ASSERTING an identity it did not derive; construction removes it. A locator collision
+// is two records that both DERIVED their identity honestly and landed on the same 64-bit value.
+// Nothing about construction prevents that, because nothing about it is illegitimate. At the
+// declared fnv1a64 rung the domain is larger than the codomain, so `store_contains(identity)` does
+// NOT mean "same content" -- and an insert that treated presence as identity of content would
+// silently drop the second record and hand back a commit that reconstructs the first. That is the
+// fabricated plausible output, reached without any adversary.
+//
+// So the two are handled by two different mechanisms, which is the point: construction for the
+// forged pairing, a TYPED REFUSAL for the collision. Comparing the two records here is not the
+// validation-standing-where-construction-was-available tell, because there is no single authority
+// from which the answer could have been derived instead -- both records are legitimate and the
+// question is whether they are the same one.
+type StoreOutcome
+  = Stored { store: ObjectStore, identity: ObjectId }
+  | LocatorCollision { identity: ObjectId, existing: ObjectRecord, incoming: ObjectRecord }
+
+// Record equality is the substrate's own structural equality over both fields. StoredEdge is a
+// label and a derived child identity, so comparing the child LISTS compares the whole subtree by
+// its already-derived identities -- no re-walk, no digest projection, no hand-written pairwise fold.
+fn records_equal(left: ObjectRecord, right: ObjectRecord) -> Bool {
+  (left.kind == right.kind) && (left.children == right.children)
+}
+
+fn insert_derived(store: ObjectStore, record: ObjectRecord) -> StoreOutcome {
+  match find_object(store: store, identity: record.identity) {
+    Absent =>
+      Stored {
+        store: ObjectStore { objects: concat(store.objects, [record]) },
+        identity: record.identity,
+      }
+    Present { value: existing } =>
+      if records_equal(left: existing, right: record) {
+        Stored { store: store, identity: record.identity }
+      } else {
+        LocatorCollision { identity: record.identity, existing: existing, incoming: record }
+      }
   }
 }
 
-// Grafting an entry between stores cannot forge, because it can only move a pairing that some
-// earlier store_node already derived. This is what lets a caller build a deliberately INCOMPLETE
-// closure -- a root without its children -- without ever being able to build a DISHONEST one.
-fn copy_object(from: ObjectStore, to: ObjectStore, identity: ObjectId) -> ObjectStore {
+// Grafting an entry between stores cannot forge, because it can only move a pairing some earlier
+// store_node already derived. This is what lets a caller build a deliberately INCOMPLETE closure --
+// a root without its children -- without ever being able to build a DISHONEST one. It can still
+// collide, so it answers the same outcome.
+fn copy_object(from: ObjectStore, to: ObjectStore, identity: ObjectId) -> StoreOutcome {
   match find_object(store: from, identity: identity) {
-    Absent => to
+    Absent => Stored { store: to, identity: identity }
     Present { value: record } => insert_derived(store: to, record: record)
   }
-}
-
-type StoreResult {
-  store: ObjectStore
-  identity: ObjectId
 }
 
 type StoreEdgeAcc {
   store: ObjectStore
   edges: List<StoredEdge>
+  collision: StoreOutcome?
 }
 
 // THE STORED RECORD IS THE CANONICAL ONE, and this is not defensive tidying -- it closes a real
-// ambiguity found by review on gunbc#8578 and initially, wrongly, dismissed by the author.
+// ambiguity found by review and initially, wrongly, dismissed by the author.
 //
 // `content_hash` does NOT hash a node as authored: fold_node_content_hash canonicalizes first, and
 // canonicalize_node_for_content_hash SORTS named edges under LabeledEdges. So two authored orders of
-// the same named bindings are ONE identity. An earlier revision of this function keyed on that
-// canonical identity while persisting `n.children` in AUTHORED order -- so whichever order was
-// stored first won, the second silently deduplicated against it, and a caller could store one
-// program and check out a different child order under the same commit. One identity denoted two
-// records depending on write order.
+// the same named bindings are ONE identity. An earlier revision keyed on that canonical identity
+// while persisting `n.children` in AUTHORED order, so the key identified the canonical equivalence
+// CLASS while the payload stored an arbitrary FIRST-OBSERVED REPRESENTATIVE of it: whichever order
+// arrived first won, and reconstruction became insertion-history dependent.
 //
-// Storing the canonical form makes that unrepresentable rather than checked: the record whose
-// identity is derived and the record that is persisted are now the same value, so there is no pair
-// to disagree. The consequence is worth stating plainly because it is a real semantic commitment
-// and not an implementation detail -- CHECKOUT RETURNS THE CANONICAL PROGRAM, not the authored one.
-// Named-edge order is not a fact this store preserves, because it is not a fact the substrate's own
-// identity preserves.
-fn store_node(store: ObjectStore, n: Node) -> StoreResult {
+// Storing the canonical form makes that unrepresentable rather than checked. The consequence is a
+// real semantic commitment and not an implementation detail: CHECKOUT RETURNS THE CANONICAL PROGRAM,
+// not the authored one. Named-edge order is not a fact this store preserves, because it is not a
+// fact the substrate's own identity preserves.
+//
+// The canonicalization is applied at EVERY node, not once at the root -- the recursion below
+// re-enters store_node for each child, and each call canonicalizes its own subject. Canonicalizing
+// only at the root would leave the identical defect one level down.
+fn store_node(store: ObjectStore, n: Node) -> StoreOutcome {
   let canonical = canonicalize_node_for_content_hash(n: n)
-  let acc = fold(canonical.children, init: StoreEdgeAcc { store: store, edges: [] }, f: fn(acc, edge) {
-    let child = store_node(store: acc.store, n: edge.target)
-    StoreEdgeAcc {
-      store: child.store,
-      edges: concat(acc.edges, [StoredEdge { label: edge.label, target: child.identity }]),
-    }
-  })
-  let identity = content_hash(n: canonical)
-  StoreResult {
-    store: insert_derived(
-      store: acc.store,
-      record: ObjectRecord { identity: identity, kind: canonical.kind, children: acc.edges },
-    ),
-    identity: identity,
+  let acc = fold(
+    canonical.children,
+    init: StoreEdgeAcc { store: store, edges: [], collision: none },
+    f: fn(acc, edge) {
+      match acc.collision {
+        Present { value: _ } => acc
+        Absent =>
+          match store_node(store: acc.store, n: edge.target) {
+            LocatorCollision { identity: i, existing: e, incoming: c } =>
+              StoreEdgeAcc {
+                store: acc.store,
+                edges: acc.edges,
+                collision: Present {
+                  value: LocatorCollision { identity: i, existing: e, incoming: c },
+                },
+              }
+            Stored { store: child_store, identity: child_identity } =>
+              StoreEdgeAcc {
+                store: child_store,
+                edges: concat(acc.edges, [StoredEdge { label: edge.label, target: child_identity }]),
+                collision: none,
+              }
+          }
+      }
+    },
+  )
+  match acc.collision {
+    Present { value: collision } => collision
+    Absent =>
+      insert_derived(
+        store: acc.store,
+        record: ObjectRecord {
+          identity: content_hash(n: canonical),
+          kind: canonical.kind,
+          children: acc.edges,
+        },
+      )
   }
 }
