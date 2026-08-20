@@ -1458,7 +1458,7 @@ than argued.
 
 20. **Reconstruction doors: `value_from_fixture_json` and `map_response_to_value_json` build
    typed `Value::Record`/`Value::Variant` from untrusted bytes with no declaration lookup, no
-   `sole_constructor` check, and no refinement predicate — rung `mitigatable`, first non-zero
+   `sole_constructor` check, and no refinement predicate — **below the floor: silent wrongness, which §4b places OUTSIDE the ladder rather than on it, and §5 forbids outright** (an earlier revision of this row said rung `mitigatable`; that is inflation — `mitigatable` means the failure occurs and harm is CONTAINED by typed outcomes, bounds, or rollback, and here nothing is contained: the violating value is admitted silently, no diagnostic is emitted, nothing is counted, and the consumer proceeds. It is also inconsistent with the emission-path row, which correctly records the same shape of defect as below floor), first non-zero
    live exposure this lane has produced** (measured 2026-08-20, bold-bear-246; scope handed
    down from fierce-ant-91, distinct from and complementary to item 1a's `sole_constructor`
    audit — that audit covers ordinary *construction* call sites, this item covers the two
@@ -1584,23 +1584,29 @@ than argued.
 
    **Live production exposure — a number with caveats, not a census.** A scan of production
    `.dag` (`dag/extdeps/`, excluding `test`/`fixture` trees) for `output { ... }` blocks whose
-   field types name a refined alias found 33 matching fields, not incidental subjects:
-   `sha: CommitSha` (multiple, e.g. `extdeps.git.inspect`, `extdeps.git.git`,
-   `extdeps.git.publication_transport`), `path: FilePath` (multiple, e.g. `extdeps.shell`)
-   and `access_token: Secret` in the same module, `run_url: NonEmptyStr` in
-   `extdeps.github.workflows`. Spot-checked three of the cited files directly: `git.inspect`'s
-   `sha: CommitSha` output is on a `transport shell` operation (ARM 1's door, not ARM 2's);
-   `shell`'s `path: FilePath` outputs are likewise `transport shell`; `github.workflows`'s
-   `run_url: NonEmptyStr` output is on a `transport rest` operation (ARM 2's door) — so the 33
-   fields split across both doors, and citing the number as one undifferentiated total would
-   overstate ARM 2 specifically. Caveats, stated rather than inherited silently: the scan
-   pattern matches single-line `output { ... }` blocks only, so multi-line or nested
-   declarations are missed — **33 is a lower bound, not a census**; operations were not
-   deduplicated, so repeated field names across rows were not verified to be distinct
-   operations; and **none of the 33 was executed** — they are declarations that sit on the
-   path this item's ARM 1/ARM 2 results demonstrate is unchecked, which is an inference from
-   the mechanism, not a per-field measurement. Write it as: 33 declared fields sit on a path
-   proven unchecked, not "33 fields are bypassed."
+   field types name a **genuinely `where`-refined** alias found **22** matching fields:
+   `NonEmptyStr` (10), `SmResolvedVersionIdentity` (6), `FilePath` (5), `BrowserContext` (1).
+   **CORRECTION, AND THE ERROR WAS IN THE ORIGINAL SCAN'S TYPE SET, NOT ITS ARITHMETIC.** An earlier
+   revision of this row reported **33** and led with `sha: CommitSha` across three git modules and
+   `access_token: Secret`. Neither type carries a refinement predicate at all: `CommitSha` is declared
+   `type CommitSha = String`, a bare alias with no `where` clause, and `Secret` is declared
+   `type Secret nominal_opaque = String` — opacity is a different mechanism from a predicate, and an
+   opaque carrier has no proposition that reconstruction could violate. Those fields were counted as
+   refined because the scan enumerated alias-shaped types rather than types with a `where` clause, so
+   the figure was inflated by roughly a third AND its two most-cited examples were exactly the two
+   that did not belong. The re-measurement restricts the type set to the 219 declarations matching
+   `^type ... = ... where `.
+   The door split survives the correction where it still has subjects: `extdeps.shell`'s
+   `path: FilePath` outputs are `transport shell` (ARM 1's door) and `extdeps.github.workflows`'s
+   `run_url: NonEmptyStr` is `transport rest` (ARM 2's door), so the 22 still spans both doors and
+   citing it as one undifferentiated REST total would overstate ARM 2. The `CommitSha` shell examples
+   that previously carried that argument are withdrawn with the type.
+   Caveats, unchanged and still binding: the scan matches single-line `output { ... }` blocks only, so
+   multi-line and nested declarations are missed — **22 is a lower bound, not a census**; operations
+   were not deduplicated; and **none of the 22 was executed** — they are declarations sitting on the
+   path ARM 1/ARM 2 demonstrate is unchecked, which is an inference from the mechanism, not a
+   per-field measurement. Write it as: 22 declared fields sit on a path proven unchecked, not
+   "22 fields are bypassed."
 
    **What repair is NOT in this item, and why.** This item is measurement only — no change to
    `value_from_fixture_json`, `map_response_to_value_json`, `dispatch_rest`,
