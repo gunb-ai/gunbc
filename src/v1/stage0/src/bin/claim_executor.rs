@@ -18681,7 +18681,13 @@ enum RefusalCause {
         ty: String,
         variants: usize,
     },
-    TypeNotClosed {
+    /// The type is declared SOMEWHERE in the corpus but is not visible from the module under
+    /// plan -- an import-closure gap in the reader, not a property of the type.
+    TypeNotVisibleHere {
+        ty: String,
+    },
+    /// No module in the corpus declares this type. Genuinely outside what the authority carries.
+    TypeNotDeclaredAnywhere {
         ty: String,
     },
     ProductTooLarge {
@@ -18723,7 +18729,8 @@ impl RefusalCause {
             RefusalCause::UnboundedString { ty }
             | RefusalCause::UnboundedSequence { ty }
             | RefusalCause::PayloadCoproduct { ty, .. }
-            | RefusalCause::TypeNotClosed { ty }
+            | RefusalCause::TypeNotVisibleHere { ty }
+            | RefusalCause::TypeNotDeclaredAnywhere { ty }
             | RefusalCause::ProductTooLarge { ty }
             | RefusalCause::NestedTooDeep { ty } => ty.clone(),
             RefusalCause::IntValueEscapesComparison { .. } => {
@@ -18751,8 +18758,20 @@ impl RefusalCause {
                 "{ty} (closed coproduct, but {variants} variants carry payloads whose domains are \
                  not enumerated)"
             ),
-            RefusalCause::TypeNotClosed { ty } => {
-                format!("{ty} (not a closed type declared by this authority)")
+            // THESE TWO WERE ONE ARM, AND THE ONE ARM MISDIRECTED. It read "not a closed type
+            // declared by this authority", which parses as "declared, but not closed" -- while
+            // the branch is reached ONLY when the type is not in the type environment at all.
+            // Node topped the corpus ranking at 798 under that label and was read, by me, as the
+            // one big groundable item. It is nothing of the sort: it is a 20-field record with an
+            // unbounded String, a recursive List<Node>, and self-reference. Splitting the arm is
+            // what makes the difference between "my reader cannot see it" and "the corpus does
+            // not have it" reportable, and only the first is work anyone can do.
+            RefusalCause::TypeNotVisibleHere { ty } => format!(
+                "{ty} (declared elsewhere in the corpus but not visible from this module -- an \
+                 import-closure gap in the reader, not a property of the type)"
+            ),
+            RefusalCause::TypeNotDeclaredAnywhere { ty } => {
+                format!("{ty} (no module in the corpus declares this type)")
             }
             RefusalCause::ProductTooLarge { ty } => format!(
                 "{ty} (record product exceeds {MAX_TUPLES_PER_FUNCTION} values; refusing rather \
@@ -18882,6 +18901,7 @@ const MAX_TUPLES_PER_FUNCTION: usize = 4096;
 fn enumerate_parameter_values(
     ty: &str,
     types: &std::collections::HashMap<String, DagTypeDecl>,
+    declared_anywhere: &std::collections::HashSet<String>,
     depth: usize,
     int_partition: Option<&IntPartition>,
     module_alias: &str,
@@ -18933,12 +18953,19 @@ fn enumerate_parameter_values(
             let mut acc: Vec<Vec<(String, String)>> = vec![Vec::new()];
             let mut partitioned = Vec::new();
             for (fname, fty) in fields {
-                let d = enumerate_parameter_values(fty, types, depth + 1, None, module_alias)
-                    .map_err(|e| RefusalCause::ViaField {
-                        ty: ty.to_string(),
-                        field: fname.clone(),
-                        inner: Box::new(e),
-                    })?;
+                let d = enumerate_parameter_values(
+                    fty,
+                    types,
+                    declared_anywhere,
+                    depth + 1,
+                    None,
+                    module_alias,
+                )
+                .map_err(|e| RefusalCause::ViaField {
+                    ty: ty.to_string(),
+                    field: fname.clone(),
+                    inner: Box::new(e),
+                })?;
                 if let Some(pt) = d.partition.clone() {
                     partitioned.push(format!("{fname}: {pt}"));
                 }
@@ -18973,8 +19000,10 @@ fn enumerate_parameter_values(
         }
         None => Err(if ty == "String" || ty == "NonEmptyStr" {
             RefusalCause::UnboundedString { ty: ty.to_string() }
+        } else if declared_anywhere.contains(ty) {
+            RefusalCause::TypeNotVisibleHere { ty: ty.to_string() }
         } else {
-            RefusalCause::TypeNotClosed { ty: ty.to_string() }
+            RefusalCause::TypeNotDeclaredAnywhere { ty: ty.to_string() }
         }),
     }
 }
@@ -19160,11 +19189,29 @@ fn visible_type_decls(
 /// Two resolvers over one question would answer differently for any imported type — which is the
 /// exact defect this change fixes — and keeping the narrower one available is how a caller
 /// silently gets the old answer back.
+/// Every type name any module in the corpus declares.
+///
+/// Exists to separate two states a single refusal arm used to conflate: a type the reader could
+/// not SEE from this module, and a type the corpus does not HAVE. Only the first is work.
+fn declared_type_names(
+    modules: &std::collections::HashMap<String, String>,
+) -> Result<std::collections::HashSet<String>, String> {
+    let mut out = std::collections::HashSet::new();
+    for (mp, src) in modules {
+        let node = parse_dag_module_node(&format!("{mp}.dag"), src)?;
+        for (name, _decl) in type_decls_from_module(&node) {
+            out.insert(name);
+        }
+    }
+    Ok(out)
+}
+
 fn plan_module_corpus(
     module_path: &str,
     source: &str,
     module: &v1_compiler::v1_std_core::Node,
     types: &std::collections::HashMap<String, DagTypeDecl>,
+    declared_anywhere: &std::collections::HashSet<String>,
     module_alias: &str,
 ) -> ModuleCorpusPlan {
     let sigs = fn_signatures_from_module(module);
@@ -19211,7 +19258,14 @@ fn plan_module_corpus(
             } else {
                 None
             };
-            match enumerate_parameter_values(pty, types, 0, int_partition.as_ref(), module_alias) {
+            match enumerate_parameter_values(
+                pty,
+                types,
+                declared_anywhere,
+                0,
+                int_partition.as_ref(),
+                module_alias,
+            ) {
                 Ok(d) => {
                     if let Some(pt) = d.partition.clone() {
                         partitioned = true;
@@ -19562,6 +19616,7 @@ fn behavioral_receipt_census(source_roots: &[String]) -> Result<bool, String> {
     let workspace = v1_compiler::cli_run::workspace_root();
     let stage0_src = workspace.join("src/v1/stage0/src");
     let modules = collect_dag_module_sources(source_roots)?;
+    let declared_anywhere = declared_type_names(&modules)?;
 
     let mut roster: Vec<(String, String)> = Vec::new();
     let entries =
@@ -19613,7 +19668,14 @@ fn behavioral_receipt_census(source_roots: &[String]) -> Result<bool, String> {
         let alias = format!("v1_compiler::{}", mirror.trim_end_matches(".rs"));
         let node = parse_dag_module_node(&format!("{module_path}.dag"), source)?;
         let types = visible_type_decls(module_path, source, &modules)?;
-        let plan = plan_module_corpus(module_path, source, &node, &types, &alias);
+        let plan = plan_module_corpus(
+            module_path,
+            source,
+            &node,
+            &types,
+            &declared_anywhere,
+            &alias,
+        );
         modules_planned += 1;
         fns_total += plan.parsed_signatures;
         fns_derivable += plan.derivable.len();
@@ -19724,7 +19786,15 @@ fn behavioral_receipt_selftest(source_roots: &[String]) -> Result<bool, String> 
     let modules = collect_dag_module_sources(source_roots)?;
     let node = parse_dag_module_node(&format!("{module_path}.dag"), &source)?;
     let types = visible_type_decls(module_path, &source, &modules)?;
-    let plan = plan_module_corpus(module_path, &source, &node, &types, alias);
+    let declared_anywhere = declared_type_names(&modules)?;
+    let plan = plan_module_corpus(
+        module_path,
+        &source,
+        &node,
+        &types,
+        &declared_anywhere,
+        alias,
+    );
 
     eprintln!(
         "receipt-selftest: fixture parsed={} derivable={} refused={}",
@@ -19914,6 +19984,7 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
     // Loaded once for the whole run: the type a module compiles against may be declared in any
     // module it transitively imports.
     let modules = collect_dag_module_sources(source_roots)?;
+    let declared_anywhere = declared_type_names(&modules)?;
 
     let mut exclusions: Vec<ReceiptExclusion> = Vec::new();
     let mut plans: Vec<(String, ModuleCorpusPlan, String)> = Vec::new();
@@ -19939,7 +20010,14 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<bool, String> {
                 let types = visible_type_decls(&module_path, &source, &modules)?;
                 plans.push((
                     mirror,
-                    plan_module_corpus(&module_path, &source, &node, &types, &alias),
+                    plan_module_corpus(
+                        &module_path,
+                        &source,
+                        &node,
+                        &types,
+                        &declared_anywhere,
+                        &alias,
+                    ),
                     alias,
                 ))
             }
