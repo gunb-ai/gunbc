@@ -77,7 +77,18 @@ test fn w_the_required_workflow_does_not_build_the_parse_binary() -> Bool {
 // a vacuous assertion reads as coverage on the roster.
 test fn w_RED_the_retired_step_names_do_not_return() -> Bool {
   let yml = expected_witness_floor_yml()
-  let positive_control = string_contains(s: yml, pattern: "Required CI: parse, regen, regen determinism, witness floor")
+  // THE POSITIVE CONTROL PINS THE COMPOSED STEP'S IDENTITY, NOT ITS PHASE LIST.
+  //
+  // It read the full name -- "...regen determinism, witness floor" -- until the behavioral
+  // receipt became a phase inside the same invocation and the step name grew to say so. That
+  // reddened this witness, which is about RETIRED STEP NAMES and has nothing to say about how
+  // many phases the composed run has. A control that breaks whenever an unrelated phase is
+  // added is measuring the wrong thing: it makes every phase addition edit a witness that does
+  // not own the fact. Keying on the step-name PREFIX keeps exactly the property this control
+  // needs -- the composed step exists and was read -- and still fails loudly if the composed
+  // step is removed or renamed out of its family, which is the state the negative arms below
+  // exist to detect.
+  let positive_control = string_contains(s: yml, pattern: "Required CI:")
   positive_control
     && !string_contains(s: yml, pattern: "name: src/v1 .dag sources parse")
     && !string_contains(s: yml, pattern: "Regen fixed point:")
