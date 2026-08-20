@@ -29,18 +29,6 @@ type ReprGroundingDeriveElemShape
   | ReprDeriveElemPayloadCoproduct
   | ReprDeriveElemUnknown
 
-fn repr_grounding_elem_shape_rank(shape: ReprGroundingDeriveElemShape) -> Int {
-  match shape {
-    ReprDeriveElemKernelString => 0
-    ReprDeriveElemKernelInt => 1
-    ReprDeriveElemKernelBool => 2
-    ReprDeriveElemKernelUnit => 3
-    ReprDeriveElemNullaryEnumCopy => 4
-    ReprDeriveElemSymbolWrappedOrdCarrier => 5
-    ReprDeriveElemPayloadCoproduct => 6
-    ReprDeriveElemUnknown => 7
-  }
-}
 
 fn repr_grounding_derive_shape_has_trait<K>(
   table: TargetCapabilityShapeTable<K>,
@@ -48,8 +36,7 @@ fn repr_grounding_derive_shape_has_trait<K>(
   capability_key: K
 ) -> Bool {
   table.rows
-    |> any(row => repr_grounding_elem_shape_rank(shape: row.shape)
-                    == repr_grounding_elem_shape_rank(shape: shape)
+    |> any(row => row.shape == shape
                   && (row.capabilities |> any(k => k == capability_key)))
 }
 
