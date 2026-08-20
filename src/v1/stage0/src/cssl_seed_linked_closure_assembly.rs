@@ -6,6 +6,10 @@ use sha2::Digest;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[path = "bootstrap_stage0_crate_layout_generated.rs"]
+mod bootstrap_stage0_crate_layout_generated;
+use bootstrap_stage0_crate_layout_generated::HAND_MAINTAINED_STAGE0_PUB_MOD_BASENAMES;
+
 const BOOTSTRAP_INLINE_MODS: &[&str] = &["NonEmptyVec", "NonEmptyBTreeSet"];
 
 #[derive(Debug)]
@@ -13,7 +17,6 @@ pub enum AssemblyError {
     MissingEntryFile { path: PathBuf },
     EntryMutated { before: String, after: String },
     MissingEmittedLibRs { path: PathBuf },
-    MissingSeedLibRs { path: PathBuf },
     RefusedDep { module: String, reason: String },
     Io(std::io::Error),
 }
@@ -29,7 +32,6 @@ impl std::fmt::Display for AssemblyError {
                 )
             }
             Self::MissingEmittedLibRs { path } => write!(f, "missing emitted lib.rs {path:?}"),
-            Self::MissingSeedLibRs { path } => write!(f, "missing seed lib.rs {path:?}"),
             Self::RefusedDep { module, reason } => {
                 write!(f, "refused dep assembly for {module}: {reason}")
             }
@@ -74,10 +76,17 @@ fn sha256_hex(path: &Path) -> Result<String, AssemblyError> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-fn seed_has_pub_mod(seed_lib_rs: &Path, module: &str) -> Result<bool, AssemblyError> {
-    let content = fs::read_to_string(seed_lib_rs)?;
-    let needle = format!("pub mod {module};");
-    Ok(content.lines().any(|l| l.trim() == needle))
+/// Whether `module` is a hand-maintained (seed-retained) `pub mod` in the stage0
+/// crate's own `lib.rs`, per the single at-rest authority
+/// `v2.compiler.self_host.stage0_crate_layout` `hand_maintained_pub_mod_basenames()`,
+/// mirrored into this crate as `HAND_MAINTAINED_STAGE0_PUB_MOD_BASENAMES`
+/// (`bootstrap_stage0_crate_layout_generated.rs`). This used to read the committed
+/// `lib.rs` text directly, which agreed with the authority only while the artifact
+/// was current -- the two readers disagreed exactly during drift, which is the
+/// moment the answer matters (gunbc#8587: nine `has_pub_mod` rows hand-flipped by
+/// joining shim directories against disk and lib.rs by hand).
+fn seed_has_pub_mod(module: &str) -> bool {
+    HAND_MAINTAINED_STAGE0_PUB_MOD_BASENAMES.contains(&module)
 }
 
 fn parse_closure_mods(lib_rs: &Path) -> Result<Vec<String>, AssemblyError> {
@@ -134,10 +143,9 @@ fn is_compiler_family_module(module: &str) -> bool {
 pub fn assemble_seed_linked_closure(
     out_dir: &Path,
     entry_dag: &Path,
-    repo_root: &Path,
+    _repo_root: &Path,
     _std_bridge_dir: &Path,
 ) -> Result<(), AssemblyError> {
-    let seed_lib_rs = repo_root.join("src/v1/stage0/src/lib.rs");
     let src_dir = out_dir.join("src");
     let emitted_lib_rs = src_dir.join("lib.rs");
     let entry_mod = dag_entry_rust_module(entry_dag)?;
@@ -150,9 +158,6 @@ pub fn assemble_seed_linked_closure(
         return Err(AssemblyError::MissingEmittedLibRs {
             path: emitted_lib_rs,
         });
-    }
-    if !seed_lib_rs.is_file() {
-        return Err(AssemblyError::MissingSeedLibRs { path: seed_lib_rs });
     }
 
     let entry_hash_before = sha256_hex(&entry_file)?;
@@ -176,7 +181,7 @@ pub fn assemble_seed_linked_closure(
 
         if is_compiler_family_module(&module)
             && !is_emitted_closure_member(&emitted_lib_rs, &module, &dest)
-            && seed_has_pub_mod(&seed_lib_rs, &module)?
+            && seed_has_pub_mod(&module)
         {
             write_compiler_seed_reexport(&dest, &module)?;
             continue;
@@ -658,5 +663,15 @@ mod tests {
             "stale narrow lib without namespace_graft must refuse cargo"
         );
         let _ = fs::remove_dir_all(&out);
+    }
+
+    #[test]
+    fn seed_has_pub_mod_reads_the_layout_authority_not_a_file() {
+        // v2_compiler_resolve is a real seed-retained pub-mod basename in
+        // v2.compiler.self_host.stage0_crate_layout (mirrored here as
+        // HAND_MAINTAINED_STAGE0_PUB_MOD_BASENAMES); no fixture file is
+        // written or read to answer this -- the const IS the answer.
+        assert!(seed_has_pub_mod("v2_compiler_resolve"));
+        assert!(!seed_has_pub_mod("not_a_hand_maintained_module"));
     }
 }

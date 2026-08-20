@@ -2,6 +2,38 @@
 // Authority: v2.compiler.self_host.stage0_crate_layout; regen via dag/tools/generated_artifact_gate.dag main_wet.
 
 #[rustfmt::skip]
+pub const HAND_MAINTAINED_STAGE0_PUB_MOD_BASENAMES: &[&str] = &[
+    "v1_interpreter",
+    "cli_run",
+    "codex_app_server_stdio_session",
+    "coproduct_reflection",
+    "data_initializer_identity",
+    "resolved_graph_cache",
+    "shared_typecheck_store",
+    "recorded_fixture",
+    "derived_realization_schedule",
+    "memory_governor",
+    "module_path_index",
+    "v2_compiler_body_producer",
+    "v2_compiler_normalize",
+    "v2_compiler_target_carriers",
+    "v2_compiler_discovery_enumeration",
+    "v2_compiler_parse_engine_hooks",
+    "v2_compiler_use_site_verdict",
+    "v2_compiler_compile",
+    "v2_compiler_program_assembly",
+    "v2_compiler_source_authority",
+    "usv_pilot_v2_std_algebra",
+    "usv_pilot_v2_std_collection",
+    "usv_pilot_v2_std_node",
+    "v2_compiler_resolve",
+    "v2_compiler_program_partition",
+    "v2_compiler_tokenize",
+    "v2_compiler_infer",
+    "v1_interpreter_dispatch_generated"
+];
+
+#[rustfmt::skip]
 pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "v1_interpreter.rs",
     "bounded_shell_host_drain.rs",

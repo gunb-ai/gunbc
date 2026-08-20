@@ -46,6 +46,16 @@ type RustSourceManifestStateRefusal
   | ObservedCargoPathUntracked { path: String }
   | CargoTargetMissingLifecycleDisposition { path: String }
 
+// THE AT-REST FACT `derived_generated_stage0_repo_paths` COULD NOT CARRY: whether the emitter
+// actually produced a given direct-child path, versus nobody having claimed it yet. Every
+// existing consumer stays on the cheap complement (EmitPopulationUnavailable, unchanged
+// behavior); a caller that HAS observed the real emit population (required_regen_host's
+// generated_basenames_from_emit, or a test fixture standing in for it) supplies
+// EmitPopulationConfirmed and the derivation narrows to paths the emitter actually named.
+type EmitPopulationEvidence
+  = EmitPopulationUnavailable
+  | EmitPopulationConfirmed { emitted_stage0_src_repo_paths: List<String> }
+
 data rust_source_manifest_state_verdict_query_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -211,6 +221,13 @@ fn count_observed_manifest_duplicate_excess(
 // scaffold_observed_cargo_role_does_not_supply_lifecycle_disposition went red on the floor while
 // two reviews passed over the change. The comparison is against the AUTHORED classification.
 fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) -> RustSourceManifestStateVerdict {
+  rust_source_manifest_state_verdict_with_emit_evidence(observation: observation, emit_evidence: EmitPopulationUnavailable)
+}
+
+fn rust_source_manifest_state_verdict_with_emit_evidence(
+  observation: RustSourceHostObservation,
+  emit_evidence: EmitPopulationEvidence
+) -> RustSourceManifestStateVerdict {
   match observation {
     RustManifestReadRefused { detail: detail } =>
       ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: detail } }
@@ -228,7 +245,7 @@ fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) ->
       if repository_revision == "" {
         ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: "observed manifest missing repository_revision" } }
       } else {
-        let file_grain_paths = file_grain_lifecycle_repo_paths(tracked_paths: tracked_paths)
+        let file_grain_paths = file_grain_lifecycle_repo_paths(tracked_paths: tracked_paths, emit_evidence: emit_evidence)
         let classified_paths = observed_classified_repo_paths(file_grain_paths: file_grain_paths)
         let lifecycle_paths = classified_paths
         let newly_unclassified = count_newly_unclassified_tracked(
@@ -376,14 +393,26 @@ fn stage0_src_direct_child_rust_path(path: String) -> Bool {
 // folds three rosters through list_concat_unique, which is quadratic in its own length, and
 // calling it per tracked path would multiply that by the whole observed tree.
 fn derived_generated_stage0_repo_paths(tracked_paths: List<String>) -> List<String> {
+  derived_generated_stage0_repo_paths_with_emit_evidence(tracked_paths: tracked_paths, emit_evidence: EmitPopulationUnavailable)
+}
+
+fn derived_generated_stage0_repo_paths_with_emit_evidence(
+  tracked_paths: List<String>,
+  emit_evidence: EmitPopulationEvidence
+) -> List<String> {
   let claimed = non_generated_classified_repo_paths()
-  filter(
+  let candidates = filter(
     xs: tracked_paths,
     predicate: fn(path) {
       stage0_src_direct_child_rust_path(path: path)
         && !path_in_list(path: path, paths: claimed)
     }
   )
+  match emit_evidence {
+    EmitPopulationUnavailable => candidates
+    EmitPopulationConfirmed { emitted_stage0_src_repo_paths: emitted } =>
+      filter(xs: candidates, predicate: fn(path) { path_in_list(path: path, paths: emitted) })
+  }
 }
 
 fn derived_hand_maintained_stage0_repo_paths() -> List<String> {
@@ -592,10 +621,10 @@ fn non_generated_classified_repo_paths() -> List<String> {
   list_concat_unique(acc: with_residue, items: generated_artifact_stage0_src_repo_paths())
 }
 
-fn file_grain_lifecycle_repo_paths(tracked_paths: List<String>) -> List<String> {
+fn file_grain_lifecycle_repo_paths(tracked_paths: List<String>, emit_evidence: EmitPopulationEvidence) -> List<String> {
   list_concat_unique(
     acc: non_generated_classified_repo_paths(),
-    items: derived_generated_stage0_repo_paths(tracked_paths: tracked_paths)
+    items: derived_generated_stage0_repo_paths_with_emit_evidence(tracked_paths: tracked_paths, emit_evidence: emit_evidence)
   )
 }
 
