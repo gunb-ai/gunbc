@@ -847,23 +847,49 @@ enumeration; f14 is only a corroborating data point (confirms the guessed name s
 isn't the gap) on top of that closed enumeration, stated in the correct evidentiary
 direction rather than the reverse.
 
-*Emit-side reconstruction — a DIFFERENT question from deserialization, and its own finding:
-a construction path with NO WALL AT ALL, not a form with a hole in an existing wall.*
-Checked directly in emitted Rust: the only occurrences of `SoleConstructor` anywhere in
-generated output are the compiler's own `CompilerDiagnostic` variant (`v1_std_core.rs`) —
-its match arm, span accessor, and message renderer. No emitted user-defined data type
-carries any confinement in the emitted target; emitted structs are plain `pub`-field
-records. Two things both hold and neither should be read as implying the other: (i) this is
-**not automatically a defect** — emitted Rust is generated *from* `.dag` source that already
-passed the wall at `.dag`-authoring time, so nothing hand-writes a violating construction
-through the emitted-struct door under ordinary self-hosting use; (ii) but the v1 seed also
-carries **hand-written Rust beside the generated mirrors** (`v1_interpreter.rs`, `cli_run.rs`,
-and others) that sits entirely outside `.dag`'s type system and therefore outside
-`sole_constructor` with no mechanism even in principle — not an unwired form of an existing
-check, but a construction surface the check was never positioned to reach at all. This is
-recorded as its own ledger row rather than folded into either the record-literal/cast
-finding or the deserialization finding, because "a form the wall doesn't cover" and "a
-representation the wall has no jurisdiction over" are different claims.
+*Emit-side reconstruction — CORRECTED 2026-08-20: this was assessed as theoretical, and a
+sibling audit (ARM 3, `docs/plans/compiler-guarantee-recovery-gap-analysis.md` §11 item 1a,
+executed by session lively-bee-274, gunbc PR #8661) proved it by execution on a production
+type instead. Checked directly in emitted Rust: the only occurrences of `SoleConstructor`
+anywhere in generated output are the compiler's own `CompilerDiagnostic` variant
+(`v1_std_core.rs`) — its match arm, span accessor, and message renderer. No emitted
+user-defined data type carries any confinement in the emitted target; emitted structs are
+plain `pub`-field records. This clause previously read the absence as "not automatically a
+defect" because nothing in ordinary self-hosting use hand-writes a violating construction
+through the emitted-struct door — that reasoning stopped at the v1 seed's own hand-written
+Rust (`v1_interpreter.rs`, `cli_run.rs`) and did not consider the GENERATED mirror itself as
+a forgery surface. ARM 3 executed against `extdeps.uri` `UriValidatedScalar` — `sole_constructor`,
+single fixed-law mint `uri_validated_scalar_construction`, refusing surrogate and
+out-of-range code points — and found its emitted mirror (`extdeps_uri.rs`) is
+`pub struct UriValidatedScalar { pub admitted_cp: i64 }` deriving `serde::Serialize,
+Deserialize`: both a direct Rust struct literal and `serde_json::from_value` admit every
+value the `.dag` mint refuses (the surrogate `55296`, `-1`, `1114112`), with a shape-control
+discriminator (`serde_shape_control_rejects_malformed_input`) proving the harness can and
+does observe a real `Err`, so those "admits" verdicts are load-bearing, not a silent-harness
+artifact. That is a confirmed forgery mechanism on a production sealed carrier's own
+generated mirror — not merely the hand-written-Rust-beside-the-mirrors surface this entry
+originally scoped to. **No production caller is established to have exercised this path** —
+the finding is that the mechanism exists and admits every refused value, not that any caller
+has forged one; `uri_percent_encode_admitted_scalar_wire` is the type's sole declared
+consumer and would receive a forged value if one reached it, but no such call site is shown
+to construct one today. Per §4b's per-path rung rule (source→interpretation,
+source→each-emission-target are independently ruled paths): the source→`.dag`-acceptance
+path is unaffected by this finding (that wall holds); the source→Rust-emission path is
+**below floor, not merely below ceiling** — a value the modeled system refuses is silently
+constructible with no typed, located refusal at all, the class §5 forbids outright. The
+hand-written-Rust-beside-the-generated-mirrors surface (ii) below remains a second, narrower
+finding about code outside `.dag`'s type system entirely; it is not superseded, only no
+longer the only finding at this row: (ii) the v1 seed carries hand-written Rust beside the
+generated mirrors (`v1_interpreter.rs`, `cli_run.rs`, and others) that sits entirely outside
+`.dag`'s type system and therefore outside `sole_constructor` with no mechanism even in
+principle — not an unwired form of an existing check, but a construction surface the check
+was never positioned to reach at all; a related door in this surface (the interpreter's
+fixture-decoder reconstruction path, `recorded_fixture` `value_from_fixture_json`) is a
+separate, ongoing audit (fierce-ant-91, not this one). This is recorded as its own ledger
+row rather than folded into the record-literal/cast finding or the deserialization finding,
+because "a form the wall doesn't cover," "a representation the wall has no jurisdiction
+over," and "the wall's own generated mirror admits what it refuses" are three different
+claims.
 
 *Remaining record-literal AST positions (module-scope data initializer, map-literal value) —
 CONFIRMED, wall holds, no new hole.* Two further positions beyond forms 1-8: f15 forges
@@ -958,10 +984,20 @@ ask, 2026-08-20):**
 - *Deserialization:* not applicable — no such construction path exists in the language at
   all (registry read is the evidence; f14 a corroborating check, not the proof), so this has
   no exposure dimension; it is closed, not open-with-zero-exposure.
-- *Emit-side reconstruction:* not a hole in the wall — a construction surface (hand-written
-  Rust beside the generated mirrors) the wall was never positioned to reach. No exposure
-  ledger entry in the same sense as the two holes above; recorded as its own row (§10) rather
-  than merged with either.
+- *Emit-side reconstruction — TWO findings at this row, not one, per the §10 correction above.*
+  (a) The generated mirror itself: CONFIRMED BY EXECUTION (ARM 3, PR #8661) that a production
+  sole_constructor type's own emitted struct (`extdeps.uri` `UriValidatedScalar`) admits, via
+  `serde_json::from_value` and via a direct struct literal, every value its fixed-law `.dag`
+  mint refuses. This is not measured the same way as the three within-`.dag` holes above (no
+  grep-for-a-shape count applies — the construction path is the ordinary emitted API surface
+  itself, not a rare AST position) and **no production caller is established to have exercised
+  it** — say plainly: mechanism confirmed, no confirmed victim. Below floor (silent), not
+  merely below ceiling, on the source→Rust-emission path specifically — the source→`.dag`
+  path is unaffected. (b) Hand-written Rust beside the generated mirrors: not a hole in an
+  existing wall, a construction surface the wall was never positioned to reach at all
+  (`v1_interpreter.rs`, `cli_run.rs`); the interpreter's fixture-decoder reconstruction door in
+  this surface is a separate, ongoing audit, not this one's. Recorded as its own §10 row,
+  not merged with the three within-`.dag` holes above.
 - *Validator-identity forgeability (f12/f12b, executed — `always_true_le` accepts `low: 10,
   high: 1` via `closed_interval`, `IntervalReady`; honest `le` control correctly refuses via
   `IntervalRefused`) — CATEGORICALLY DIFFERENT EXPOSURE SHAPE, do not flatten alongside the
@@ -1102,49 +1138,78 @@ distinct (`<ProbeMarker>`) type argument, both instantiations flagged when forge
 probe module. Confirms generic-carrier coverage is real (for these two forms) and is not an
 artifact of only ever having exercised `<Int>`.
 
-*Overall verdict:* **available today, for its stated scope, with three confirmed structural
-holes and TWO confirmed scope boundaries — and, per the exposure ledger above, corpus-contingent
-rather than structural. The second scope boundary (validator-identity, f12/f12b) is the more
-consequential of the three findings taken together: even where the wall fires with full
-generic-carrier coverage, it confines only WHO/WHERE constructs a carrier and establishes
-NOTHING about WHAT invariant a sanctioned caller's own predicate enforces — a mint with no
-fixed, module-owned validator (or that is not total, per `degenerate_interval`'s counter-example
-above) gives no guarantee at all beyond confinement.** `sole_constructor` reliably walls off
-record-literal and cast construction (including generic instantiation) of a census-UNIQUE,
-plain-record type, at every tested AST position (fn body, module-scope `data` initializer,
-list-element, map-value) and via the interpreter, with no compiler-module exemption reaching
-it (`module_skips_direct_call_arg_check` exists and is scoped to the argument-type judgment
-only — confirmed by code read, not execution). It does NOT reliably wall off a
-census-AMBIGUOUS type name — resolution silently guesses by last-import-wins rather than
-refusing or consulting the caller's actual selection, the `presence_check_census_gate_note`
-precedent's exact failure mode, landed here without the stand-down that gate uses to avoid it
-(0 live exposure today, corpus-wide census 69/86/0). It also does NOT reach variant
-construction of a sole_constructor coproduct at all — a distinct, entirely unwired AST form (0
-live exposure today — zero sole_constructor coproducts exist in the corpus). And it does NOT
-reach a record literal in a parameter's declared default-value expression — a distinct
-position gap, executed via f19 (0 live exposure today — targeted grep, no fn-parameter
-default-value use of any declared sole_constructor type found). Recommended next-rung
-triggers: (1) apply the same local-declares-first carve-out `presence_check_census_gate_note`
-documents (read `str_bindings` — local declarations only — before falling through to the
-import-order-overlaid `lookup_type_by_name`) for the ambiguity hole; (2) add a
-variant-construction call site alongside the existing `ExprCast`/`infer_record_lit_structural`
-sites for the coproduct hole; (3) add a default-value-expression call site alongside the same
-two for the position hole. All three are decidable, gettable fixes once scoped, not ratchets.
-Until landed, any `sole_constructor` carrier (existing or a planned `Refined<B>`) that is
-later declared as a coproduct, whose bare name later collides with another module-scope
-declaration anywhere in a consuming corpus's transitive closure, or that is later used as a
-parameter's declared default, silently loses its guarantee with no diagnostic marking the PR
-that introduces the gap — the wall's soundness today is a fact about what the corpus
-currently contains, not a fact the wall itself enforces.
+*Overall verdict — REVISED 2026-08-20 to fold in ARM 3 (PR #8661): this changes the
+conclusion, not merely extends it. The audit's prior verdict was, without saying so, scoped
+to the source→`.dag`-acceptance path only; per §4b's own per-path rung rule the
+source→Rust-emission path is a distinct, independently-ruled path, and it is now confirmed
+BELOW FLOOR — silently forgeable on the emitted mirror of a production sealed type — which is
+categorically worse than any of the three within-`.dag` holes below (all three are decidable,
+zero-exposure, corpus-contingent gaps in an otherwise-real wall; the emission finding is the
+wall's complete, silent absence on an entire realization target).** `sole_constructor`
+reliably walls off record-literal and cast construction (including generic instantiation) of a
+census-UNIQUE, plain-record type, at every tested AST position (fn body, module-scope `data`
+initializer, list-element, map-value) and via the interpreter, with no compiler-module
+exemption reaching it (`module_skips_direct_call_arg_check` exists and is scoped to the
+argument-type judgment only — confirmed by code read, not execution). **On the
+source→`.dag`-acceptance path specifically**, it does NOT reliably wall off a census-AMBIGUOUS
+type name — resolution silently guesses by last-import-wins rather than refusing or consulting
+the caller's actual selection, the `presence_check_census_gate_note` precedent's exact failure
+mode, landed here without the stand-down that gate uses to avoid it (0 live exposure today,
+corpus-wide census 69/86/0); it does NOT reach variant construction of a sole_constructor
+coproduct at all — a distinct, entirely unwired AST form (0 live exposure today — zero
+sole_constructor coproducts exist in the corpus); and it does NOT reach a record literal in a
+parameter's declared default-value expression — a distinct position gap, executed via f19 (0
+live exposure today — targeted grep, no fn-parameter default-value use of any declared
+sole_constructor type found). **On the source→Rust-emission path**, it does not exist at all
+for a production sole_constructor type's own emitted mirror: ARM 3 (§10) confirmed by
+execution that `extdeps.uri` `UriValidatedScalar`'s emitted struct admits, via
+`serde_json::from_value` and a direct struct literal, every value its fixed-law mint refuses —
+no production caller is established to have exercised this, but the mechanism is real and the
+gap is silent (below floor), not a decidable zero-exposure hole among otherwise-sound coverage.
+**Two confirmed scope boundaries, complementary rather than duplicative — the SAME underlying
+claim (confinement is not an invariant guarantee) proven from opposite directions**:
+validator-identity (f12/f12b) shows a PERMISSIVE, caller-supplied validator can lie even when
+sole_constructor's own confinement holds perfectly (`closed_interval` accepts a reversed-bounds
+value under a lying comparator); the emission gap shows a FIXED, module-owned validator
+(`uri_validated_scalar_construction`'s law is not caller-supplied) is still worthless once the
+carrier crosses into a realization where confinement itself does not survive. Neither is a
+defect in `sole_constructor` as specified — the mechanism does exactly what a construction-site
+gate can do (source→`.dag` confinement) and no more; both show sealing requires confinement AND
+a fixed validator AND confinement surviving every realization target, and any one absent
+voids the guarantee regardless of the other two holding. Recommended next-rung triggers,
+kept as three SEPARATE follow-ups needing their own design decisions, not one bundled repair:
+(1) apply the same local-declares-first carve-out `presence_check_census_gate_note` documents
+(read `str_bindings` — local declarations only — before falling through to the
+import-order-overlaid `lookup_type_by_name`) for the ambiguity hole — an exact
+declaration-identity fix replacing the bare-string lookup; (2) add a variant-construction call
+site alongside the existing `ExprCast`/`infer_record_lit_structural` sites for the coproduct
+hole — joining variant construction to the same authority as the other two forms; (3) the
+emission/reconstruction door (omit `Deserialize`, emit a validating one, or seal the field
+behind `TryFrom`) for the Rust-emission gap. These three are independent because they sit on
+different paths (two within `.dag`-acceptance, one at emission) and touch different
+mechanisms (a lookup carve-out, a new AST-form call site, an emitter/derive-roster change);
+bundling them would conflate a decidable zero-exposure completeness fix with a below-floor
+production-realization repair that needs its own design review. All three are decidable fixes
+once scoped, not ratchets — the default-value position hole (executed via f19) is folded into
+trigger (1)'s sibling scope, not a fourth separate trigger, since it shares the same
+`infer_record_lit_structural`/`ExprCast` call-site mechanism as (2). Until landed, any
+`sole_constructor` carrier (existing or a planned `Refined<B>`) that is later declared as a
+coproduct, whose bare name later collides with another module-scope declaration anywhere in a
+consuming corpus's transitive closure, is later used as a parameter's declared default, or is
+emitted to Rust at all, silently loses some or all of its guarantee with no diagnostic marking
+the PR that introduces or exposes the gap — the wall's soundness today is a fact about what the
+corpus currently contains and which realization target is in play, not a fact the wall itself
+enforces end to end.
 
 ## 11. Audit queue
 
 1. ~~Recover `docs/error-examples.md`~~ **DONE — see §8b**; ~~`correctness-dimensions`~~
    **DONE — see §8c.** Still to pull: `what-falls-out`, `two-groundings`,
    `the-derived-homomorphism`.
-1a. ~~Audit `sole_constructor` completeness~~ **DONE — see §10, 2026-08-20 pass.** CONFIRMED
-   BY EXECUTION: the wall holds uniformly across every literal/cast AST position tested,
-   concrete and generic. CONFIRMED HOLE BY EXECUTION: the check's own resolution
+1a. ~~Audit `sole_constructor` completeness~~ **MAPPED, not closed — see §10, 2026-08-20 pass
+   plus the 2026-08-20 ARM 3 fold-in (PR #8661).** The source→`.dag`-acceptance path is
+   CONFIRMED BY EXECUTION: the wall holds uniformly across every literal/cast AST position
+   tested, concrete and generic, on that path specifically. CONFIRMED HOLE BY EXECUTION: the check's own resolution
    (`04_infer` `type_has_sole_constructor` → `04_infer` `lookup_type_by_name`) inherits full
    import-order dependence on a census-ambiguous bare name — it does not stand down the way
    the sibling `presence_check_census_gate_note` gate does, so it silently MIS-JUDGES rather
@@ -1164,8 +1229,23 @@ currently contains, not a fact the wall itself enforces.
    Both holes carry zero live exposure today (corpus-wide census, §10) — no existing
    sole_constructor type is a coproduct, and no sole_constructor bare name collides with
    another declaration today — but neither is a structural property of the wall: either
-   condition is one ordinary PR away, with no diagnostic marking that PR. Full form-by-form
-   table, generic-carrier verdict, exposure ledger, and open sub-questions in §10.
+   condition is one ordinary PR away, with no diagnostic marking that PR. SEPARATELY CONFIRMED
+   BY EXECUTION, on the source→Rust-emission path (ARM 3, session lively-bee-274, PR #8661): a
+   production `sole_constructor` type's own emitted mirror is silently forgeable. `extdeps.uri`
+   `UriValidatedScalar` (fixed-law mint, no caller-supplied validator) is emitted as a `pub`
+   struct with a `pub` field deriving `serde::Deserialize`; both a direct struct literal and
+   `serde_json::from_value` admit every value the `.dag` mint refuses, with a shape-control
+   discriminator proving the harness's `Err` path is real (so the "admits" verdicts are
+   load-bearing, not a silent-harness artifact). No production caller is established to have
+   exercised this path — mechanism confirmed, no confirmed victim — but it is below floor
+   (silent), not a decidable zero-exposure hole in an otherwise-sound wall the way the two
+   above are: the source→`.dag` path and the source→Rust-emission path are independently ruled
+   per §4b, and the wall is simply absent on the latter for this carrier. This is the complement
+   of the validator-identity finding below (a permissive caller-supplied validator defeats a
+   perfectly-confined carrier; a fixed module-owned validator is defeated by confinement not
+   surviving emission) — neither a defect in `sole_constructor` as specified, both proof that
+   confinement alone is not a sealing guarantee. Full form-by-form table, generic-carrier
+   verdict, exposure ledger, and open sub-questions in §10.
 1b. **Author the missing Tier 1 RED controls** (new, and the cheapest item here). They never
    existed. Start with the cardinality archetype, method existence, and declared-return
    conformance — each a three-line `.dag` program with an expected-error acceptance criterion,
