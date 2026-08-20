@@ -18729,10 +18729,20 @@ impl RefusalCause {
             RefusalCause::UnboundedString { ty }
             | RefusalCause::UnboundedSequence { ty }
             | RefusalCause::PayloadCoproduct { ty, .. }
-            | RefusalCause::TypeNotVisibleHere { ty }
-            | RefusalCause::TypeNotDeclaredAnywhere { ty }
             | RefusalCause::ProductTooLarge { ty }
             | RefusalCause::NestedTooDeep { ty } => ty.clone(),
+            // THE KIND IS PART OF THE KEY for these two, because the two name different work and
+            // the first revision of the split keyed on the bare type name -- so the ranked list
+            // printed exactly what it printed before the split, and the whole correction was
+            // invisible in its own output. `declared_anywhere` is corpus-global, so a given type
+            // falls entirely into one bucket; the tag is therefore stable per type, not a source
+            // of fragmentation.
+            RefusalCause::TypeNotVisibleHere { ty } => {
+                format!("{ty} [declared in corpus, NOT VISIBLE to the reader]")
+            }
+            RefusalCause::TypeNotDeclaredAnywhere { ty } => {
+                format!("{ty} [undeclared anywhere in corpus]")
+            }
             RefusalCause::IntValueEscapesComparison { .. } => {
                 "Int (value escapes literal comparison)".to_string()
             }
