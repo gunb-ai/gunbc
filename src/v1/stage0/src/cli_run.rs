@@ -14691,6 +14691,133 @@ fn render_witness_budget_warn_text(
     ))
 }
 
+/// The `src/v1` `.dag` parse sweep, as a callable phase rather than a separate binary.
+///
+/// WHY IT MOVED HERE. It was a `main()` in `bin/v1_src_dag_parse.rs`, reached only by its own
+/// GitHub Actions step. That made the ORDER of the CI checks a fact about a YAML file: a step
+/// list, `if:` guards referring to other steps' outcomes, and one process per check. This
+/// function is the same walk with its result returned instead of exited, so the composed
+/// `--required-ci` run can hold it beside the regen and floor phases in one process. The bin
+/// remains as a thin caller, because running the parse sweep alone is a real local action.
+///
+/// RECURSIVE, and the non-recursive predecessor is why the walk looks like this: `read_dir`
+/// on `src/v1` sees the top-level modules and nothing below them, so a walk that finds no
+/// files in a directory it never opened is indistinguishable from a clean one.
+///
+/// Returns the count of parse-clean files, or every error found — never a partial success.
+pub fn run_v1_src_dag_parse(workspace: &Path) -> Result<usize, Vec<String>> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    let v1_dir = workspace.join("src/v1");
+    let mut dag_paths: Vec<std::path::PathBuf> = Vec::new();
+    let mut stack: Vec<std::path::PathBuf> = vec![v1_dir.clone()];
+    while let Some(dir) = stack.pop() {
+        let read_dir = match std::fs::read_dir(&dir) {
+            Ok(d) => d,
+            Err(e) => return Err(vec![format!("read_dir {}: {e}", dir.display())]),
+        };
+        // ONE DELIBERATE DIFFERENCE FROM THE BIN THIS CAME FROM: it used `read_dir.flatten()`,
+        // which silently DISCARDS an entry that cannot be read, so an unreadable directory
+        // entry made the walk quietly smaller and a walk that never saw a file is
+        // indistinguishable from a file that parsed. The error is propagated instead.
+        for entry in read_dir {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(e) => return Err(vec![format!("read_dir entry in {}: {e}", dir.display())]),
+            };
+            let path = entry.path();
+            if path.is_dir() {
+                // `target/` under a nested Cargo.toml is build output, never authored source.
+                if path.file_name().map(|n| n == "target").unwrap_or(false) {
+                    continue;
+                }
+                // `tests/fixtures/` holds deliberately partial or malformed inputs authored FOR
+                // the parser's own tests -- a fixture that fails to parse is the fixture doing
+                // its job, not a defect. The existing corpus discovery in `compiler_tests`
+                // excludes them on the same grounds.
+                //
+                // THIS EXCLUSION WAS DROPPED WHEN THE WALK MOVED HERE FROM THE BIN, and the
+                // consolidation's first local run reported `fact_cardinality_split_brace.dag:
+                // expected keyword 'module', found keyword 'data'` as a parse FAILURE. That
+                // file is a headerless fragment under `tests/fixtures/` and it is on main,
+                // where the parse step is green -- so the "finding" was the extraction having
+                // silently widened its own subject, not a defect in the tree.
+                if path.file_name().map(|n| n == "fixtures").unwrap_or(false)
+                    && dir.file_name().map(|n| n == "tests").unwrap_or(false)
+                {
+                    continue;
+                }
+                stack.push(path);
+            } else if path.extension().map(|ext| ext == "dag").unwrap_or(false) {
+                dag_paths.push(path);
+            }
+        }
+    }
+    dag_paths.sort();
+
+    // AN EMPTY WALK REFUSES. Zero files found is not zero errors — it is the walk failing to
+    // reach its subject, and reporting it as clean is the empty-observation narrow.
+    if dag_paths.is_empty() {
+        return Err(vec![format!(
+            "no .dag files found under {} — check the workspace root",
+            v1_dir.display()
+        )]);
+    }
+
+    let errors: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let count = Arc::new(AtomicUsize::new(0));
+
+    // Each file gets its own `Rc<HashMap>` — no shared parse state — so parsing is
+    // embarrassingly parallel. Thread panics propagate via scope (fail-closed).
+    std::thread::scope(|scope| {
+        for path in &dag_paths {
+            let errors = Arc::clone(&errors);
+            let count = Arc::clone(&count);
+            let path = path.clone();
+            scope.spawn(move || {
+                let content = match std::fs::read_to_string(&path) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        errors
+                            .lock()
+                            .expect("parse error lock")
+                            .push(format!("read {}: {e}", path.display()));
+                        return;
+                    }
+                };
+                let result = crate::v1_compiler_parse::parse(
+                    crate::v1_compiler_tokenize::tokenize(
+                        content,
+                        path.to_string_lossy().to_string(),
+                    ),
+                    std::rc::Rc::new(im::HashMap::new()),
+                );
+                if let Some(ref err) = result.error {
+                    errors.lock().expect("parse error lock").push(format!(
+                        "parse error in {}: {}",
+                        path.file_name().unwrap_or_default().to_string_lossy(),
+                        crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone()),
+                    ));
+                } else {
+                    count.fetch_add(1, Ordering::Relaxed);
+                }
+            });
+        }
+    });
+
+    let errors = Arc::try_unwrap(errors)
+        .expect("parse error arc is uniquely held after scope")
+        .into_inner()
+        .expect("parse error lock");
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+    Ok(Arc::try_unwrap(count)
+        .expect("parse count arc is uniquely held after scope")
+        .into_inner())
+}
+
 pub fn install_output_policy(source_roots: &[String]) {
     let entry = "dag/gunbc/output_policy.dag";
     let (graph, indices) = match resolve_entry_graph_shared(source_roots, entry) {

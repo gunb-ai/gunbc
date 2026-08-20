@@ -10337,6 +10337,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut floor_worker_role: Option<FloorWorkerRole> = None;
     let mut scoped_batch_id: Option<String> = None;
     let mut required_floor_mode = false;
+    let mut required_ci_mode = false;
     let mut required_regen_mode = false;
     let mut required_regen_fixed_point_mode = false;
     let mut regen_candidate_dir = "target/stage0-regen-candidate".to_string();
@@ -10361,6 +10362,9 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-floor" => {
                 required_floor_mode = true;
+            }
+            "--required-ci" => {
+                required_ci_mode = true;
             }
             "--required-regen" => {
                 required_regen_mode = true;
@@ -10460,6 +10464,165 @@ fn run() -> Result<ExitCode, ExitCode> {
     // and the absence of those flags is the point rather than an omission. `run_required_floor`
     // refuses when planned, executed and terminal identity counts disagree, so a silently short
     // roster cannot report as a pass.
+    // THE COMPOSED CI RUN — one process, one ordered fold over the phases the job used to
+    // express as four GitHub Actions steps.
+    //
+    // WHAT WAS WRONG WITH THE STEP LADDER, and it is not verbosity. Four steps meant four
+    // processes; the ORDER lived in a YAML list; each step's precondition was an `if:` naming
+    // another step's `outcome`; and the fixed-point phase received pass 1's digest by READING
+    // THE RECEIPT FILE the previous process had written. That last one is the tell — the
+    // function has taken `pass1_digest: Option<String>` all along, and the file round-trip
+    // existed only because a process boundary sat where a function call belonged. Sequencing a
+    // program's phases is the program's job (DESIGN §3: the workflow is a realization of the
+    // intent, not the place the intent lives).
+    //
+    // WHAT THE ORDER IS, AND WHY EACH PHASE RUNS ANYWAY. Only ONE real dependency exists:
+    // fixed-point needs regen's pass-1 digest, so it is skipped — visibly, as its own reported
+    // state — when regen did not produce one. Everything else is independent, so every other
+    // phase RUNS EVEN AFTER AN EARLIER FAILURE and the run reports the complete ledger. That is
+    // deliberate and it is the one behavioural change here: under the step ladder a regen
+    // failure skipped the fixed point AND, before stern-tern-636's correction, could leave the
+    // floor's own precondition reading someone else's verdict — so one defect hid the others,
+    // and a fix landed blind to whatever else was red. The line still stops (a nonzero exit on
+    // any failed phase); it stops with every deficit named. This is the stopped-line AUDIT
+    // DESIGN §5 sanctions: it reports, it never greens.
+    //
+    // WHAT IS *NOT* SHARED, stated so the saving is not overclaimed. `run_required_regen` and
+    // `run_required_regen_fixed_point` each call `compile_stage0`, and the second call STAYS:
+    // re-emitting the same input and comparing digests IS what the fixed point measures, so
+    // collapsing the two compiles would delete the measurement. The floor's own preparation is
+    // a different computation again (resolving witnesses, not emitting Rust) and shares with
+    // neither. What this removes is process startup, the receipt file round-trip, and the
+    // YAML-level orchestration — NOT a redundant compile.
+    if required_ci_mode {
+        let mut phase_failures: Vec<String> = Vec::new();
+        let mut ran: Vec<&'static str> = Vec::new();
+
+        // PHASE 1 — src/v1 .dag parse sweep. Independent of everything below it.
+        eprintln!("required-ci: phase parse (src/v1 .dag)");
+        match v1_compiler::cli_run::run_v1_src_dag_parse(&v1_compiler::cli_run::workspace_root()) {
+            Ok(count) => eprintln!("required-ci: parse OK {count} file(s) parse-clean"),
+            Err(errors) => {
+                for e in &errors {
+                    eprintln!("required-ci: parse FAIL {e}");
+                }
+                phase_failures.push(format!("parse ({} error(s))", errors.len()));
+            }
+        }
+        ran.push("parse");
+
+        // PHASE 2 — regen first generation. Produces the pass-1 digest phase 3 needs.
+        eprintln!("required-ci: phase regen (first generation vs committed)");
+        let pass1_digest: Option<String> = match v1_compiler::cli_run::run_required_regen(
+            &regen_candidate_dir,
+            &regen_receipt_path,
+        ) {
+            Ok(outcome) => {
+                eprintln!(
+                    "required-ci: regen first_generation_equal={} candidate={}",
+                    outcome.receipt.first_generation_equal, outcome.receipt.candidate_artifact
+                );
+                for failure in &outcome.failures {
+                    eprintln!("required-ci: regen FAIL {failure}");
+                }
+                if !outcome.failures.is_empty() {
+                    phase_failures.push(format!("regen ({} failure(s))", outcome.failures.len()));
+                }
+                // THE DIGEST IS HANDED OVER IN MEMORY, and it is produced whether or not the
+                // comparison agreed: pass 1 emitted a tree either way, and asking whether the
+                // emitter reproduces itself is a SEPARATE question from whether it matches what
+                // is committed. Skipping the fixed point on a regen mismatch would conflate
+                // them and lose a determinism signal exactly when drift makes it interesting.
+                Some(outcome.receipt.candidate_generated_digest.clone())
+            }
+            Err(e) => {
+                // A REFUSAL IS NOT A MISMATCH. Nothing was emitted, so there is no pass-1
+                // digest, and phase 3 has no subject rather than a failing one.
+                eprintln!("required-ci: regen refused: {e}");
+                phase_failures.push(format!("regen refused: {e}"));
+                None
+            }
+        };
+        ran.push("regen");
+
+        // PHASE 3 — regen determinism. The ONLY phase with a real precondition.
+        match pass1_digest {
+            Some(pass1) => {
+                eprintln!("required-ci: phase regen-fixed-point (G0 reproduces itself)");
+                match v1_compiler::cli_run::run_required_regen_fixed_point(
+                    &regen_receipt_path,
+                    Some(pass1),
+                ) {
+                    Ok(outcome) => {
+                        eprintln!(
+                            "required-ci: regen-fixed-point fixed_point_equal={}",
+                            outcome.receipt.fixed_point_equal
+                        );
+                        for failure in &outcome.failures {
+                            eprintln!("required-ci: regen-fixed-point FAIL {failure}");
+                        }
+                        if !outcome.failures.is_empty() {
+                            phase_failures.push(format!(
+                                "regen-fixed-point ({} failure(s))",
+                                outcome.failures.len()
+                            ));
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("required-ci: regen-fixed-point refused: {e}");
+                        phase_failures.push(format!("regen-fixed-point refused: {e}"));
+                    }
+                }
+                ran.push("regen-fixed-point");
+            }
+            None => {
+                // SKIPPED IS ITS OWN REPORTED STATE, never silence and never a pass. The phase
+                // did not run because its input does not exist; saying nothing here would make
+                // an unrun determinism check indistinguishable from a passing one.
+                eprintln!(
+                    "required-ci: phase regen-fixed-point SKIPPED — regen produced no pass-1                      digest, so there is nothing to compare a second pass against"
+                );
+                phase_failures
+                    .push("regen-fixed-point skipped (no pass-1 digest from regen)".to_string());
+            }
+        }
+
+        // PHASE 4 — the witness floor. Independent; runs whatever happened above.
+        eprintln!("required-ci: phase floor (one prepared subject, one fold)");
+        let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
+        match v1_compiler::cli_run::run_required_floor(
+            &source_roots,
+            &commit,
+            v1_compiler::cli_run::ShardStyle::single_shard(),
+        ) {
+            Ok(outcome) => {
+                report_required_floor_outcome(&outcome);
+                if !required_floor_outcome_is_clean(&outcome) {
+                    phase_failures.push("floor".to_string());
+                }
+            }
+            Err(e) => {
+                eprintln!("required-ci: floor refused: {e}");
+                phase_failures.push(format!("floor refused: {e}"));
+            }
+        }
+        ran.push("floor");
+
+        eprintln!(
+            "required-ci: phases_run={} failed={}",
+            ran.len(),
+            phase_failures.len()
+        );
+        for failure in &phase_failures {
+            eprintln!("required-ci: FAILED PHASE {failure}");
+        }
+        return if phase_failures.is_empty() {
+            Ok(ExitCode::SUCCESS)
+        } else {
+            Err(ExitCode::from(1))
+        };
+    }
+
     if required_regen_fixed_point_mode {
         return match v1_compiler::cli_run::run_required_regen_fixed_point(&regen_receipt_path, None)
         {
@@ -10518,63 +10681,8 @@ fn run() -> Result<ExitCode, ExitCode> {
             v1_compiler::cli_run::ShardStyle::single_shard(),
         ) {
             Ok(outcome) => {
-                eprintln!(
-                    "required-floor: subject={} modules_resolved={} modules_excluded={}",
-                    outcome.subject_digest, outcome.modules_resolved, outcome.modules_excluded
-                );
-                eprintln!(
-                    "required-floor: planned={} executed={} terminal={} passed={} \
-                     known_red_held={} failed={} stale_quarantine={} \
-                     interrupted_before_verdict={} completed_over_cost_requirement={} \
-                     host_tool_unresolved={} over_cost_line_diagnostic={}",
-                    outcome.claims_planned,
-                    outcome.claims_executed,
-                    outcome.receipt_identities,
-                    outcome.passed,
-                    outcome.known_red_held,
-                    outcome.failures.len(),
-                    outcome.stale_quarantine.len(),
-                    outcome.interrupted_before_verdict.len(),
-                    outcome.completed_over_cost_requirement.len(),
-                    outcome.host_tool_unresolved.len(),
-                    outcome.over_cost_line_diagnostic
-                );
-                for failure in &outcome.failures {
-                    eprintln!("required-floor: FAIL {failure}");
-                }
-                // FIVE CAUSES, FIVE COUNTS, ONE STOPPED LINE. All five refuse the run, and
-                // they are reported apart because their remedies differ: a FAIL is a defect to
-                // fix, a STALE-QUARANTINE is a fix that already landed and a roster row to
-                // delete, an INTERRUPTED-BEFORE-VERDICT is an undecided claim whose real cost
-                // is unmeasured (operator ruling 2026-08-19, BUDGET POLICY CUT), a
-                // COMPLETED-OVER-COST-REQUIREMENT is a claim that reached a verdict and then
-                // was found to cost too much (an exact measurement, not a bound), and a
-                // HOST-TOOL-UNRESOLVED is an infra gap to provision (never a witness-cost
-                // chase). Summing them into `failed` would make an un-quarantine
-                // indistinguishable from a regression in the alert signature, which is the
-                // conflation `std.witness_admission` rules out. Splitting the former
-                // `budget_refused` collection in two makes it visible whether a stopped run
-                // is a cost debt on a claim that actually finished, or a claim the safety
-                // deadline preempted before it could answer at all — but both still stop the
-                // line: an interruption is NotEvaluated, and NotEvaluated is never green.
-                for stale in &outcome.stale_quarantine {
-                    eprintln!("required-floor: STALE-QUARANTINE {stale}");
-                }
-                for refused in &outcome.interrupted_before_verdict {
-                    eprintln!("required-floor: INTERRUPTED-BEFORE-VERDICT {refused}");
-                }
-                for over_cost in &outcome.completed_over_cost_requirement {
-                    eprintln!("required-floor: COMPLETED-OVER-COST-REQUIREMENT {over_cost}");
-                }
-                for unresolved in &outcome.host_tool_unresolved {
-                    eprintln!("required-floor: HOST-TOOL-UNRESOLVED {unresolved}");
-                }
-                if outcome.failures.is_empty()
-                    && outcome.stale_quarantine.is_empty()
-                    && outcome.interrupted_before_verdict.is_empty()
-                    && outcome.completed_over_cost_requirement.is_empty()
-                    && outcome.host_tool_unresolved.is_empty()
-                {
+                report_required_floor_outcome(&outcome);
+                if required_floor_outcome_is_clean(&outcome) {
                     Ok(ExitCode::SUCCESS)
                 } else {
                     Err(ExitCode::from(1))
@@ -11779,6 +11887,75 @@ fn emit_worker_terminal_before_return(code: ExitCode) -> ExitCode {
     };
     emit_floor_terminal_outcome(outcome, &detail);
     code
+}
+
+/// Print the floor's complete ledger. ONE implementation, called by `--required-floor` and by
+/// the composed `--required-ci` run, so the two modes cannot drift into reporting the same
+/// outcome differently (DESIGN §3).
+fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOutcome) {
+    eprintln!(
+        "required-floor: subject={} modules_resolved={} modules_excluded={}",
+        outcome.subject_digest, outcome.modules_resolved, outcome.modules_excluded
+    );
+    eprintln!(
+        "required-floor: planned={} executed={} terminal={} passed={} \
+                 known_red_held={} failed={} stale_quarantine={} \
+                 interrupted_before_verdict={} completed_over_cost_requirement={} \
+                 host_tool_unresolved={} over_cost_line_diagnostic={}",
+        outcome.claims_planned,
+        outcome.claims_executed,
+        outcome.receipt_identities,
+        outcome.passed,
+        outcome.known_red_held,
+        outcome.failures.len(),
+        outcome.stale_quarantine.len(),
+        outcome.interrupted_before_verdict.len(),
+        outcome.completed_over_cost_requirement.len(),
+        outcome.host_tool_unresolved.len(),
+        outcome.over_cost_line_diagnostic
+    );
+    for failure in &outcome.failures {
+        eprintln!("required-floor: FAIL {failure}");
+    }
+    // FIVE CAUSES, FIVE COUNTS, ONE STOPPED LINE. All five refuse the run, and
+    // they are reported apart because their remedies differ: a FAIL is a defect to
+    // fix, a STALE-QUARANTINE is a fix that already landed and a roster row to
+    // delete, an INTERRUPTED-BEFORE-VERDICT is an undecided claim whose real cost
+    // is unmeasured (operator ruling 2026-08-19, BUDGET POLICY CUT), a
+    // COMPLETED-OVER-COST-REQUIREMENT is a claim that reached a verdict and then
+    // was found to cost too much (an exact measurement, not a bound), and a
+    // HOST-TOOL-UNRESOLVED is an infra gap to provision (never a witness-cost
+    // chase). Summing them into `failed` would make an un-quarantine
+    // indistinguishable from a regression in the alert signature, which is the
+    // conflation `std.witness_admission` rules out. Splitting the former
+    // `budget_refused` collection in two makes it visible whether a stopped run
+    // is a cost debt on a claim that actually finished, or a claim the safety
+    // deadline preempted before it could answer at all — but both still stop the
+    // line: an interruption is NotEvaluated, and NotEvaluated is never green.
+    for stale in &outcome.stale_quarantine {
+        eprintln!("required-floor: STALE-QUARANTINE {stale}");
+    }
+    for refused in &outcome.interrupted_before_verdict {
+        eprintln!("required-floor: INTERRUPTED-BEFORE-VERDICT {refused}");
+    }
+    for over_cost in &outcome.completed_over_cost_requirement {
+        eprintln!("required-floor: COMPLETED-OVER-COST-REQUIREMENT {over_cost}");
+    }
+    for unresolved in &outcome.host_tool_unresolved {
+        eprintln!("required-floor: HOST-TOOL-UNRESOLVED {unresolved}");
+    }
+}
+
+/// Whether the floor outcome permits a green run.
+///
+/// FIVE CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
+/// caller, because a mode that forgot one of the five would green a run the other refused.
+fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloorOutcome) -> bool {
+    outcome.failures.is_empty()
+        && outcome.stale_quarantine.is_empty()
+        && outcome.interrupted_before_verdict.is_empty()
+        && outcome.completed_over_cost_requirement.is_empty()
+        && outcome.host_tool_unresolved.is_empty()
 }
 
 fn main() -> ExitCode {
