@@ -40039,7 +40039,35 @@ static FLOOR_SEAM: std::sync::Mutex<String> = std::sync::Mutex::new(String::new(
 // and major faults rising while progress is flat is reclaim churn. One /proc read per tick buys
 // that discrimination, and without it a heartbeat only proves the process is alive -- which the
 // runner's "Terminate orphan process" line already proved, after four hours.
-fn floor_resource_sample() -> String {
+/// Process CPU milliseconds, cumulative since process start. Read directly only to establish
+/// a baseline; the heartbeat reports a DELTA against one.
+fn process_cpu_ms() -> u64 {
+    let stat = std::fs::read_to_string("/proc/self/stat").unwrap_or_default();
+    let f: Vec<&str> = stat
+        .rsplit(')')
+        .next()
+        .unwrap_or("")
+        .split_whitespace()
+        .collect();
+    let tick = |i: usize| f.get(i).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+    (tick(11) + tick(12)) * 1000 / 100
+}
+
+/// `cpu_baseline_ms` is subtracted from the process-cumulative CPU so the reported figure is
+/// THIS phase's, matching `wall_s`, which has always been relative to heartbeat spawn.
+///
+/// WHY IT NEEDED A BASELINE AT ALL. Until the CI phases shared a process, the floor ran in a
+/// process of its own and cumulative-since-process-start and since-the-floor-started were the
+/// same number. The composed `--required-ci` run puts regen's multi-threaded `compile_stage0`
+/// in front of it, and the difference is not marginal: measured across two CI runs of the same
+/// corpus, the floor's FIRST heartbeat reported cpu_ms=59830 when it had its own process
+/// (32341236470) and cpu_ms=786650 when it did not (32371293567) — 787 CPU-seconds of someone
+/// else's work, on the floor's line, at the floor's first beat.
+///
+/// That is the attribution failure this PR's own thesis is about, introduced by this PR, caught
+/// by comparing the two runs rather than by reasoning about the code. `wall_s` was already
+/// right; only the CPU counter was absolute.
+fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
     let stat = std::fs::read_to_string("/proc/self/stat").unwrap_or_default();
     let f: Vec<&str> = stat
         .rsplit(')')
@@ -40050,7 +40078,7 @@ fn floor_resource_sample() -> String {
     // Fields are indexed from the field AFTER comm: utime/stime are 12/13 here, majflt is 10.
     let tick = |i: usize| f.get(i).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
     let hz = 100u64;
-    let cpu_ms = (tick(11) + tick(12)) * 1000 / hz;
+    let cpu_ms = ((tick(11) + tick(12)) * 1000 / hz).saturating_sub(cpu_baseline_ms);
     let majflt = tick(9);
     let rss_kb = std::fs::read_to_string("/proc/self/statm")
         .ok()
@@ -40319,6 +40347,10 @@ fn floor_value_constructor(v: &v1_interpreter::Value) -> &'static str {
 // slow, which is the property that makes it useful.
 fn spawn_floor_heartbeat() {
     let started = std::time::Instant::now();
+    // Taken HERE, beside the wall baseline, so both counters answer "since the floor started"
+    // rather than one of them answering "since the process started". See the note on
+    // `floor_resource_sample` for the measurement that made this necessary.
+    let cpu_baseline_ms = process_cpu_ms();
     // 60s is the CI cadence: dense enough to bound a phase, sparse enough not to bloat a
     // job log. It is too coarse to LOCALISE anything — a 2.7 GB step between two samples
     // names a minute, not a cause — so a local investigation can tighten it. Bounded below
@@ -40351,7 +40383,7 @@ fn spawn_floor_heartbeat() {
             "[floor-heartbeat] wall_s={} phase={} {}",
             started.elapsed().as_secs(),
             if seam.is_empty() { "<unset>" } else { &seam },
-            floor_resource_sample()
+            floor_resource_sample(cpu_baseline_ms)
         );
         beat += 1;
         if beat % 10 == 0 {
