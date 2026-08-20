@@ -241,11 +241,6 @@ fn spark_serving_materialize_model_artifact_steps() -> SparkServingInstallRemote
           identity: "ensure-readiness-scratch" as NonEmptyStr,
           raws: ["mkdir", "-p", spark_serving_readiness_scratch_root() as String],
         ),
-        spark_serving_admit_typed_file_step(
-          identity: "write-health-request-body" as NonEmptyStr,
-          path: spark_serving_health_request_body_path(),
-          content: spark_serving_health_request_body(),
-        ),
         spark_serving_admit_portable_remote_argv(
           identity: "ensure-model-blobs-dir" as NonEmptyStr,
           raws: ["mkdir", "-p", spark_serving_desired_model_blobs_dir() as String],

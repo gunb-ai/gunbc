@@ -141,17 +141,17 @@ test fn the_materializer_never_shells_out_to_ollama_pull() -> Bool {
   !any(step_argvs(), a => any(a, w => w == "pull"))
 }
 
-// THE HEALTH REQUEST BODY MUST BE WRITTEN BY THE SAME SEQUENCE THAT WILL READ IT. The probe passes
-// `--data @<path>` to curl, and nothing wrote that path: the scratch directory was created and the
-// file never was, so the generation probe could only ever fail with curl exit 26 on a freshly
-// provisioned host. It did, on srv5's first real convergence, and the run reported
-// "the endpoint answered its version but served nothing" -- a true sentence about a probe that had
-// no request to send. A consumer with no producer is not a check; it is a guaranteed refusal.
-test fn the_materialization_writes_the_health_request_body_it_will_later_read() -> Bool {
+// THE MATERIALIZATION MUST NOT OWN THE PROBE'"'"'S REQUEST BODY, which is the correction to a fix that
+// was itself wrong. Writing the body here made it exist only on a host where the model had just been
+// materialized -- so the moment srv5'"'"'s membership converged and this sequence stopped running, the
+// probe went back to failing on a host that was serving perfectly. A precondition produced by an
+// unrelated write disappears exactly when everything else starts working. The probe places its own
+// body; this sequence must not, or there are two authorities for one file.
+test fn the_materialization_does_not_own_the_probes_request_body() -> Bool {
   match spark_serving_materialize_model_artifact_steps() {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
     SparkServingInstallRemoteCommandsPresent { steps: steps } =>
-      any(steps, s => (s.identity as String) == "write-health-request-body")
+      !any(steps, s => (s.identity as String) == "write-health-request-body")
   }
 }
 

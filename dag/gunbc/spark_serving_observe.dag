@@ -19,6 +19,7 @@ import gunbc.spark_serving_terminal_health {
   spark_serving_health_from_captures,
   spark_serving_health_version_probe_argv,
   spark_serving_health_generate_probe_argv,
+  spark_serving_health_request_body,
 }
 import gunbc.ollama_runtime_bundle {
   ModelStoreObservation,
@@ -95,6 +96,18 @@ import gunbc.spark_serving_release {
   SparkServingObservationRefused,
 }
 import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
+import gunbc.spark_serving_install_paths { spark_serving_readiness_scratch_root, spark_serving_health_request_body_path }
+import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
+import gunbc.file_access { FileTreeScope }
+import gunbc.typed_remote_file_write {
+  typed_remote_file_write_seal,
+  TypedRemoteFileWriteAdmitted,
+  TypedRemoteFileWriteAdmissionRefused,
+  RemoteFileModeOwnerReadWrite,
+}
+import gunbc.remote_operation { RemoteFileBytes, remote_execution_permits_continuation }
+import gunbc.spark_serving_converge_apply { spark_serving_run_operation }
+import gunbc.spark_serving_credential_locus { spark_serving_slice_transport }
 import gunbc.spark_managed_access_bootstrap { SparkGrantOutcome, GrantEnumerated, GrantAbsent, GrantProbeRefused }
 import gunbc.spark_managed_grant_reconcile { spark_managed_grant_report }
 import gunbc.spark_serving_boot_provenance {
@@ -1477,10 +1490,25 @@ fn spark_serving_runtime_materialization_receipt_probe_argv() -> List<String> {
 // renders that as `ServingHealthUnobserved` -- so an unreachable endpoint reports as unobserved, not
 // as unhealthy. The distinction matters because the two have different next steps: unhealthy means
 // investigate the host, unobserved means the probe never got an answer to judge.
+// THE PROBE CARRIES ITS OWN REQUEST BODY, and this is a repair with a receipt. The body was written
+// by the model-materialization sequence, so it existed only on a host where the model had just been
+// materialized -- and the moment srv5's membership converged, that sequence stopped running and the
+// probe went back to failing with curl exit 26 on a host that was serving perfectly. A precondition
+// of a read that is produced by an unrelated write is a precondition that disappears exactly when
+// everything else starts working.
+//
+// It is not a seventh membership member either: the body is scratch a read needs, not declared host
+// state anyone reconciles toward. It is deterministic -- the same bytes from the same authority on
+// every run -- so writing it before each probe is idempotent setup, not a failure arm that widens.
+//
+// The write refusing does NOT fabricate a health verdict: the probe then reads nothing, the capture
+// is empty, and the fold says unobserved. A body we could not place and a server that did not answer
+// are both "we did not learn", which is the honest arm for either.
 fn spark_serving_observe_terminal_health(
   context: FleetSshExecutionContext,
   host: HostIdentity,
 ) -> SparkServingTerminalHealth {
+  let _prepared = spark_serving_place_health_request_body(context: context, host: host)
   spark_serving_health_from_captures(
     version_stdout: spark_serving_probe_stdout_or_empty(
       context: context, host: host, raw_words: spark_serving_health_version_probe_argv(),
@@ -1489,6 +1517,44 @@ fn spark_serving_observe_terminal_health(
       context: context, host: host, raw_words: spark_serving_health_generate_probe_argv(),
     ),
   )
+}
+
+// Placing the body is two ordinary legs -- make the directory, write the bytes -- through the same
+// typed file write every other remote write uses, so the path is admitted for containment and
+// far-side portability rather than trusted.
+func spark_serving_place_health_request_body(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+) -> Bool
+  uses net: Network
+{
+  let made = spark_serving_probe_leg_via_locus(
+    context: context,
+    host: host,
+    raw_words: ["mkdir", "-p", spark_serving_readiness_scratch_root() as String],
+  )
+  match made {
+    Absent => false
+    Present { value: m } =>
+      if m.success == false {
+        false
+      } else {
+        match typed_remote_file_write_seal(
+          path: spark_serving_health_request_body_path(),
+          content: spark_serving_health_request_body(),
+          allowed_scope: FileTreeScope { root_path: spark_serving_executor_home as NonEmptyStr },
+        ) {
+          TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+          TypedRemoteFileWriteAdmitted { write: w } =>
+            remote_execution_permits_continuation(
+              execution: spark_serving_run_operation(
+                operation: RemoteFileBytes { write: w, mode: RemoteFileModeOwnerReadWrite },
+                transport: spark_serving_slice_transport(context: context, host: host),
+              ),
+            )
+        }
+      }
+  }
 }
 
 // A FAILED LEG IS AN EMPTY CAPTURE, NOT A MISSING ONE. `curl -fsS` exits nonzero on an HTTP error and
