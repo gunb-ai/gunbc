@@ -1,0 +1,163 @@
+module gunbc.live_deploy.deployed_tree_observation
+
+import std.types { String, NonEmptyStr, List, Bool }
+import std.algebra { trim }
+import extdeps.git
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
+import extdeps.ssh.session { SshSessionExecResult }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.host_effect_realize {
+  run_typed_argv_transport,
+  TypedArgvExecOutcome,
+  TypedArgvExecConverged,
+  TypedArgvExecRefused,
+  HostEffectTransport,
+  FleetSsh,
+}
+
+// ONE HOST, SEALED WITH ITS CREDENTIAL AND ITS REPO PATH, SO A CROSS-HOST JOIN HAS NO CONSTRUCTOR.
+//
+// The revision and the tree state are two facts that only mean something together: the deployed tree
+// IS the admitted revision exactly when the revision matches AND nothing has been modified since.
+// If each were observed through its own host parameter, a join could read the revision from one
+// machine and the modification state from another and report a convergence about neither -- and it
+// would typecheck, because two host-parameterized observations and one join is a well-formed program
+// with no arm in which to refuse.
+//
+// So neither observation takes a host. Both are taken THROUGH this locus, and the observation carries
+// the locus it was taken through, which is why `observe_deployed_tree` returns BOTH facts from ONE
+// call rather than exposing two readers and a join. There is no constructor for the pair other than
+// the one that takes both readings in a single traversal of a single locus, so the mixed-host verdict
+// is unrepresentable rather than refused.
+//
+// `FleetSshExecutionContext` deliberately does not carry a host -- it carries the attempt identity,
+// the trust policy and the credential, all of which are per-ATTEMPT and shared across the hosts an
+// attempt touches. Binding the host here rather than widening that context keeps one attempt able to
+// observe many hosts while keeping any single observation about exactly one.
+type DeployedTreeLocus sole_constructor {
+  context: FleetSshExecutionContext
+  target: SshTarget
+  repo: NonEmptyStr
+}
+
+fn deployed_tree_locus(
+  context: FleetSshExecutionContext,
+  target: SshTarget,
+  repo: NonEmptyStr,
+) -> DeployedTreeLocus {
+  DeployedTreeLocus { context: context, target: target, repo: repo }
+}
+
+fn deployed_tree_locus_transport(locus: DeployedTreeLocus) -> HostEffectTransport {
+  FleetSsh { target: locus.target, context: locus.context }
+}
+
+// THE INSTRUMENT IS GIT, AND IT IS TWO SINGLE COMMANDS BECAUSE IT HAS TO BE.
+//
+// The portable-word alphabet admits no pipe, so a content digest of the deployed directory cannot be
+// a shell pipeline -- and that constraint turned out to point at a better instrument than the one it
+// forbade. git is ALREADY the content-identity authority for the tracked set, and the tracked set is
+// exactly what the working-tree rsync leg ships. So there is no digest to compute, no second content
+// domain to normalize, and no dependency on the exclusion authority: comparing a source tree against
+// a deployed directory would compare two different projections and disagree forever, which fails safe
+// and is indistinguishable from real drift, which is how a signal gets silenced.
+// THE ARGV TAKES THE REPO, NOT THE LOCUS, and that is a modelling fact rather than a testing
+// convenience: these words are a function of WHICH TREE is being asked about and of nothing else --
+// the credential and the endpoint decide where the question is delivered, never what it says. Taking
+// the whole locus would also make the builders unreachable to any witness, because the execution
+// context is sealed with an admitted caller list and no test can mint one. A wall that makes the
+// wrong factoring untestable is the wall doing its job.
+fn deployed_tree_revision_argv(repo: NonEmptyStr) -> List<String> {
+  ["git", "-C", repo as String, "rev-parse", "HEAD"]
+}
+
+// `--untracked-files=no` NARROWS THE SUBJECT TO TRACKED MODIFICATIONS, and that is the whole claim:
+// are the shipped bytes this commit's bytes. Untracked-but-shipped is a real and different class,
+// and it is already owned and already refused by candidate admission -- so this instrument leaves it
+// alone rather than widening to cover it. Two instruments, disjoint subjects, neither compensating
+// for the other.
+fn deployed_tree_status_argv(repo: NonEmptyStr) -> List<String> {
+  ["git", "-C", repo as String, "status", "--porcelain", "--untracked-files=no"]
+}
+
+// A TRANSPORT REFUSAL IS ITS OWN ARM, NEVER A SYNTHETIC EXIT CODE. Rendering a leg that was never
+// attempted as `exit_code: 127` manufactures a plausible observation of a host nobody contacted, and
+// every downstream reader then cannot distinguish "the command ran and failed" from "no command ran".
+type DeployedTreeLegOutcome
+  = DeployedTreeLegRan { result: SshSessionExecResult }
+  | DeployedTreeLegNotAttempted { reason: String }
+
+fn deployed_tree_leg(locus: DeployedTreeLocus, argv: List<String>) -> DeployedTreeLegOutcome {
+  match run_typed_argv_transport(argv: argv, transport: deployed_tree_locus_transport(locus: locus)) {
+    TypedArgvExecConverged { result: r } => DeployedTreeLegRan { result: r }
+    TypedArgvExecRefused { reason: why } => DeployedTreeLegNotAttempted { reason: why }
+  }
+}
+
+// FOUR STATES, NONE COLLAPSIBLE, AND THE THIRD IS THE ONE THE EXISTING STANDING CANNOT EXPRESS.
+//
+// A deployed tree at the right commit with modified tracked files is NOT converged and NOT drifted:
+// its revision agrees while its bytes do not, so reporting it as either is wrong in a way that
+// matters. `fleet_desired_observe` `fleet_revision_standing` compares revisions alone and has no arm
+// for it, which means a hand-edited deployed file reads as converged there and reads as modified here.
+type DeployedTreeObservation
+  = DeployedTreeObserved { revision: GitObjectId, tracked: DeployedTrackedState }
+  | DeployedTreeUnobservable { cause: String }
+
+// MODIFIED CARRIES WHAT WAS SEEN, and it carries it as a NonEmptyStr so that "modified, with nothing
+// to show for it" has no constructor. An empty porcelain body and a clean tree are the same bytes,
+// so a single field with emptiness meaning clean would be the state-space conflation this coproduct
+// exists to prevent -- and the receipt ruling applies here as everywhere: a verdict must name what it
+// observed, not merely that it disagreed.
+type DeployedTrackedState
+  = TrackedMatchesCommit
+  | TrackedModified { porcelain: NonEmptyStr }
+
+fn deployed_tracked_state_of(porcelain: String) -> DeployedTrackedState {
+  let body = trim(s: porcelain)
+  if body == "" { TrackedMatchesCommit } else { TrackedModified { porcelain: body as NonEmptyStr } }
+}
+
+// BOTH READINGS OR NEITHER. The revision read is attempted first and a failure there ends the
+// observation, because a modification count without a revision to attach it to is a fact about no
+// particular commit -- and reporting it beside a fabricated or absent revision is the state-space
+// conflation this type exists to prevent.
+fn observe_deployed_tree(locus: DeployedTreeLocus) -> DeployedTreeObservation {
+  match deployed_tree_leg(locus: locus, argv: deployed_tree_revision_argv(repo: locus.repo)) {
+    DeployedTreeLegNotAttempted { reason: why } =>
+      DeployedTreeUnobservable {
+        cause: join(["deployed tree revision leg was never attempted: ", why], ""),
+      }
+    DeployedTreeLegRan { result: rev } =>
+      if rev.exit_code != 0 {
+        DeployedTreeUnobservable {
+          cause: join(["deployed tree revision unreadable (git rev-parse exit ", rev.exit_code as String, "): ", rev.stderr], ""),
+        }
+      } else {
+        match git_object_id_from_untagged_hex(hex: trim(s: rev.stdout)) {
+          Absent =>
+            DeployedTreeUnobservable {
+              cause: "deployed tree revision read but undecodable as a git object id",
+            }
+          Present { value: oid } =>
+            match deployed_tree_leg(locus: locus, argv: deployed_tree_status_argv(repo: locus.repo)) {
+              DeployedTreeLegNotAttempted { reason: why2 } =>
+                DeployedTreeUnobservable {
+                  cause: join(["deployed tree status leg was never attempted: ", why2], ""),
+                }
+              DeployedTreeLegRan { result: st } =>
+                if st.exit_code != 0 {
+                  DeployedTreeUnobservable {
+                    cause: join(["deployed tree status unreadable (git status exit ", st.exit_code as String, "): ", st.stderr], ""),
+                  }
+                } else {
+                  DeployedTreeObserved {
+                    revision: oid,
+                    tracked: deployed_tracked_state_of(porcelain: st.stdout),
+                  }
+                }
+            }
+        }
+      }
+  }
+}

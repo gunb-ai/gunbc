@@ -1,0 +1,104 @@
+module test.claim.live_deploy.deployed_tree_observation_witness
+
+import std.types { String, NonEmptyStr, List, Bool }
+import gunbc.fleet_known_hosts_anchor { portable_remote_words }
+import gunbc.live_deploy.deployed_tree_observation {
+  deployed_tree_revision_argv,
+  deployed_tree_status_argv,
+  DeployedTrackedState,
+  TrackedMatchesCommit,
+  TrackedModified,
+  deployed_tracked_state_of,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn probe_repo() -> NonEmptyStr {
+  "/opt/gunbc" as NonEmptyStr
+}
+
+// The argv builders read only `locus.repo`, so a witness can exercise them through a locus whose
+// transport is never used. Nothing here reaches a host.
+fn probe_revision_words() -> List<String> {
+  ["git", "-C", probe_repo() as String, "rev-parse", "HEAD"]
+}
+
+fn probe_status_words() -> List<String> {
+  ["git", "-C", probe_repo() as String, "status", "--porcelain", "--untracked-files=no"]
+}
+
+// DRIVEN THROUGH THE REAL WALL, not asserted about the strings. `portable_remote_words` is the
+// admission every one of these words must survive to cross an ssh boundary, so a witness that
+// checked the characters itself would pass on an argv the transport goes on to refuse.
+test fn witness_revision_argv_is_admitted_by_the_portability_wall() -> Bool {
+  match portable_remote_words(raws: probe_revision_words()) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn witness_status_argv_is_admitted_by_the_portability_wall() -> Bool {
+  match portable_remote_words(raws: probe_status_words()) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// THE DISCRIMINATING CONTROL FOR THE WALL ITSELF. If `portable_remote_words` admitted everything,
+// both witnesses above would be vacuous -- so one word that MUST be refused is asserted refused. A
+// pipe is the exact character that rules out the digest pipeline this instrument replaced.
+test fn witness_the_portability_wall_refuses_a_pipeline() -> Bool {
+  match portable_remote_words(raws: ["git", "status", "|", "sha256sum"]) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// The flag is the whole reason the instrument reads tracked modifications rather than host noise,
+// and asserting the built argv contains it is what goes red if someone "simplifies" it away.
+test fn witness_status_argv_narrows_to_tracked_modifications() -> Bool {
+  any(deployed_tree_status_argv(repo: probe_repo()), w => w == "--untracked-files=no")
+    && any(deployed_tree_status_argv(repo: probe_repo()), w => w == "--porcelain")
+}
+
+test fn witness_revision_argv_asks_for_head_in_the_deployed_repo() -> Bool {
+  deployed_tree_revision_argv(repo: probe_repo()) == probe_revision_words()
+}
+
+test fn witness_status_argv_targets_the_deployed_repo() -> Bool {
+  deployed_tree_status_argv(repo: probe_repo()) == probe_status_words()
+}
+
+// CLEAN AND MODIFIED ARE DISTINCT ARMS, and whitespace-only output is CLEAN rather than a
+// modification with an empty body -- which is the state a single emptiness-means-clean field would
+// have conflated.
+test fn witness_empty_porcelain_reads_as_matching_the_commit() -> Bool {
+  match deployed_tracked_state_of(porcelain: "") {
+    TrackedMatchesCommit => true
+    TrackedModified { porcelain: _ } => false
+  }
+}
+
+test fn witness_whitespace_only_porcelain_reads_as_matching_the_commit() -> Bool {
+  match deployed_tracked_state_of(porcelain: "  \n  ") {
+    TrackedMatchesCommit => true
+    TrackedModified { porcelain: _ } => false
+  }
+}
+
+test fn witness_a_modified_path_reads_as_modified_and_carries_what_was_seen() -> Bool {
+  match deployed_tracked_state_of(porcelain: " M dag/gunbc/ci_spec.dag\n") {
+    TrackedMatchesCommit => false
+    TrackedModified { porcelain: body } => body as String == "M dag/gunbc/ci_spec.dag"
+  }
+}
+
+// A DELETED TRACKED PATH IS A MODIFICATION, not a clean tree. This is the arm the untracked flag
+// cannot suppress, and it is exactly how a tracked file under an excluded prefix would present on a
+// host: rsync never ships it, so git reports it missing.
+test fn witness_a_deleted_tracked_path_reads_as_modified() -> Bool {
+  match deployed_tracked_state_of(porcelain: " D .claude/settings.json") {
+    TrackedMatchesCommit => false
+    TrackedModified { porcelain: _ } => true
+  }
+}
