@@ -39,7 +39,11 @@ test fn w_no_phase_precondition_reads_another_phases_outcome() -> Bool {
     && string_contains(s: yml, pattern: "steps.build_witness_fold.outcome == 'success'")
 }
 
-// THE RETIRED BINARY IS NO LONGER BUILT, and this replaces a claim that was quietly wrong.
+// THE REQUIRED WORKFLOW NO LONGER BUILDS THE PARSE BINARY -- scoped to this workflow, because
+// fleet-converge.yml still builds it from witness_declared_release_bins and a heading reading
+// "no longer built" would be false of the repository while true of its subject.
+//
+// This replaces a claim that was quietly wrong.
 //
 // It read "the parse sweep still has an executing consumer" and asserted the yml contained
 // `--bin v1_src_dag_parse`. That used "CI compiles the standalone parse binary" as a proxy for
@@ -54,7 +58,7 @@ test fn w_no_phase_precondition_reads_another_phases_outcome() -> Bool {
 // (`required-ci: parse OK 50 file(s) parse-clean`, run 32371293567). Naming the boundary is
 // the point: a static witness that claimed the phase runs would be asserting something its
 // subject does not contain.
-test fn w_the_retired_parse_binary_is_no_longer_built() -> Bool {
+test fn w_the_required_workflow_does_not_build_the_parse_binary() -> Bool {
   let yml = expected_witness_floor_yml()
   string_contains(s: yml, pattern: "--required-ci")
     && string_contains(s: yml, pattern: "--bin claim_executor")

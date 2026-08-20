@@ -42374,6 +42374,8 @@ fn witness_eval_verdict_from_claim_outcome(
     }
 }
 
+pub use required_regen_host::{pass1_digest_for_fixed_point, FirstGeneration};
+
 pub fn run_required_regen(
     candidate_dir_rel: &str,
     receipt_rel: &str,

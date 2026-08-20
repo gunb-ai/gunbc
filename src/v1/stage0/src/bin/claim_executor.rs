@@ -10580,7 +10580,15 @@ fn run() -> Result<ExitCode, ExitCode> {
                 // emitter reproduces itself is a SEPARATE question from whether it matches what
                 // is committed. Skipping the fixed point on a regen mismatch would conflate
                 // them and lose a determinism signal exactly when drift makes it interesting.
-                Some(outcome.receipt.candidate_generated_digest().to_string())
+                //
+                // DRIFT AND REFUSAL ARE DIFFERENT, though, and the receipt cannot tell them
+                // apart -- a population refusal writes the sentinel `refused:population` into
+                // the same `String` field a real digest occupies. Reading the receipt here would
+                // hand that sentinel to phase three, which would dutifully compare it against a
+                // real pass-two digest and report a determinism failure nobody measured. So the
+                // digest comes from the outcome's typed `FirstGeneration`, where a refusal has
+                // no digest field to read.
+                v1_compiler::cli_run::pass1_digest_for_fixed_point(&outcome).map(str::to_string)
             }
             Err(e) => {
                 // A REFUSAL IS NOT A MISMATCH. Nothing was emitted, so there is no pass-1
@@ -12074,8 +12082,10 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
 
 /// Whether the floor outcome permits a green run.
 ///
-/// FIVE CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
-/// caller, because a mode that forgot one of the five would green a run the other refused.
+/// SEVEN CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
+/// caller, because a mode that forgot one of them would green a run the other refused. (The
+/// count is stated because a reader checks it; it was five before main added `route_gap` and
+/// `stale_route_gap`, and the sentence went on saying five through the merge that added them.)
 fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloorOutcome) -> bool {
     outcome.failures.is_empty()
         && outcome.stale_quarantine.is_empty()
