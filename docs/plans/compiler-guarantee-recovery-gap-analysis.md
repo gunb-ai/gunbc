@@ -267,12 +267,53 @@ independent review:
 
 Calibration examples, each verified on `main`: `NonEmptyList<T>` is
 RepresentableButForgeable; string `non_empty` where-refinement is LiteralOnlyWall; a
-nonliteral refined argument is RuntimeBoundaryOnly (five `WhereRefinementUnenforced` deferral
+nonliteral refined argument is **`Absent`** (five `WhereRefinementUnenforced` deferral
 reasons are enrolled as *advisory* — `v1.compiler.core`
-`where_refinement_deferral_reason_scaffold_note`); v2 loop termination is a ConstructionWall
+`where_refinement_deferral_reason_scaffold_note`) — **corrected 2026-08-20 from
+`RuntimeBoundaryOnly`, which was measured to be true of no kernel; see the executed row below**; v2 loop termination is a ConstructionWall
 (`v2.std.cardinality` requires a declared loop measure, fail-closed to `DescentUnknown`);
 unknown method is a fail-open Absent; host state is ExternalNotGuaranteed by the guarantee
 statement itself.
+
+**Executed correction to the nonliteral-refined-argument calibration (2026-08-20).** That
+example read `RuntimeBoundaryOnly` — *a check that fires at the runtime boundary rather than at
+compile time*. Measured across all three kernels the refinement family uses, **no refinement
+predicate is ever evaluated, on any kernel**. Three mechanisms, one outcome:
+
+| kernel | mechanism | executed evidence |
+| --- | --- | --- |
+| String | the conversion runs and is the **identity** | `"" as NonEmptyStr` evaluates successfully and returns `""` |
+| Int | the only conversion **refuses every value**, so it is never used; values arrive by *declaration* and no conversion runs | `x as EpochMs` refuses a valid `5` identically to `-1`; and `-1` reaching an `EpochMs`-declared parameter comes back `-1` unchanged |
+| collection | a sound, unforgeable wall with **zero traffic and zero declarations behind it** | `NonEmptyVec`/`NonEmptyBTreeSet` have private tuple fields so `new` is the only door, and `new` has **zero call sites** corpus-wide; **zero** refinement declarations exist over any collection base |
+
+A gate that passes everything, a gate nobody walks through, and a wall with no door behind it.
+The Int row is the one that most needs stating: *fail-closed by absence of capability* reads as
+safe, and it is not — 74 declared `: EpochMs` / `: Duration` positions against effectively zero
+casts means the refusing conversion is almost never on the path, so the predicate goes
+unevaluated by a third route rather than by a permissive one.
+
+Why this is the document's own §4b failure rather than a wording slip: one state was recorded for
+a class whose paths differ, and it was the strongest of them. In emitted Rust `NonEmptyStr` is a
+**bare alias** (`pub type NonEmptyStr = String;`), so a violation is not merely unchecked — it is
+unrepresentable as a distinction, which does not reach even the *brand* that §4b calls cosmetic.
+Each kernel needs a different remedy: String needs a carrier to exist at all; Int needs a
+conversion that can succeed; collection needs the emitter to route values through the wall that
+already exists (a plausible, **unproven** cause for the orphaned carriers is a name mismatch —
+the type mapping emits `non_empty_list` → `NonEmptyList<T>` while the emitted carriers are
+`NonEmptyVec<T>`/`NonEmptyBTreeSet<T>`, with `NonEmptyList` modeled through `Refined<List<T>>`
+rather than `where`).
+
+**Population, as a dated measurement rather than a property of the tree:** a whole-tree resolve at
+`a750b6761da` counted **3939 `WhereRefinementUnenforced` across 612 files** (of `TOTAL_ALL` 8183;
+`HARD` 0, so every hard-diagnostic census structurally reads zero for this class). Four
+pre-committed predicates passed, including a by-name planted-row control, and the count reproduced
+exactly across two dispatches on separate runners. An independent static scan — sharing no
+machinery with the resolve-time census — counts 3757 `as NonEmptyStr`, smaller in the predicted
+direction because a text scan for one spelling of one type must count strictly less than a census
+over every refinement construct. **The instrument was deleted and nothing landed, so the number is
+not reproducible without rebuilding it.** And it is an *unverified-obligation* population, not a
+defect population: the census cannot distinguish violated from unverified — the planted
+known-violated row was indistinguishable from the other 3939 in every output.
 
 This vocabulary is prose-interim: it becomes a typed enum on the claim carrier when the
 guarantee authority lands (§11), the same way `DescentEvidence` and `DecodeFidelity` model
@@ -1396,6 +1437,65 @@ than argued.
    only trace that a generated file was ever hand-authored, so it closes the instance and leaves
    the class exactly where it is.
 
+18. **A where-refinement advisory computes its expected-type-at-position independently of
+   the method-arg contract #8592 corrected** (measured 2026-08-20, still-pike-216, while
+   landing #8592's permanent RED — see #8625). `WhereRefinementUnenforced` (the coproduct
+   variant in `src/v1/00_core.dag`) is produced by a second diagnostic-generation pass,
+   `where_refinement_unenforced_error` in `src/v1/04_infer.dag`, running independently of
+   `declared_arg_types_for_method` (`src/v1/04_lookup.dag`) and `infer_method_args_with_fold`
+   (`src/v1/04_infer.dag`) — the pair #8592 corrected so each method argument infers against
+   its declared parameter contract rather than the receiver's element type. The two live in
+   different modules and answer the same question — "what type/refinement is expected at this
+   argument position" — with no shared authority, which is exactly why nothing forces them
+   to agree: a DESIGN §3 duplicate-authority violation, not a standalone false-positive
+   nuisance. Evidence, by direct execution on a single binary (not a FIXED/BASELINE
+   differential): the fixture `probe(items: List<NonEmptyStr>, ...) { items.get(n: 0) }`
+   compiles clean of blocking errors but emits an advisory —
+   `where-refinement unenforced: predicate ... on 'Product(NonEmptyStr)' ... non-literal
+   value at refined position` — pointing at the `0` literal, even though the emitted Rust
+   (`items.clone().get((0) as usize).cloned()`) is correct: `0` is properly cast to `usize`
+   per `get`'s declared Int contract. Nothing wrong propagates; the advisory is spurious on
+   this fixture. **Scope, stated precisely:** this establishes the advisory is spurious on
+   the fixture actually run; it does not establish a corpus-wide population. A search of
+   `dag/` and `src/v2/` for literal-index `List<T>.get` call sites outside test fixtures
+   returned zero matches (2026-08-20), so no live-cost population is claimed here — the
+   defect class is real and reachable (any literal-index `get` call reaches it), but its
+   current corpus incidence is zero, not "every caller." Ceiling: decidable and groundable
+   once `where_refinement_unenforced_error` and `declared_arg_types_for_method` share an
+   authority for "expected type/refinement at an argument position" — a *wall after
+   grounding* (§5), not yet a wall now. No rung is claimed; per the "file the rows, omit the
+   rung" ruling (#8604), no `rung found at:` field is authored here. Filed separately from
+   #8604 (operator/session ruling, smart-ram-730, 2026-08-20: #8604 was at a settled,
+   5-approval head and this row's evidence was executed by a different session, so it
+   travels with the person who ran it) and cross-referenced from #8604's closing paragraph
+   as a fourth member of that diagnostic-channel family.
+
+19. **`explicit_witness_admission`'s `known_red_probe` is an inert lens against the required
+   floor — rung `mitigatable`** (measured 2026-08-20, gunbc#8625/#8627). Traced
+   `explicit_witness_admission_pairs()`'s one consumption site in `cli_run.rs`
+   (`deferred_discovery_rows`, ~line 18861): it feeds only a diagnostic `DeferredDiscoveryRow`
+   receipt. `v2.workflow.required_floor`'s discovery-exclusion inputs are `long_home_prefixes()`
+   and `ReadsLiveTree` alone; `known_red_held` — the required floor's actual known-red
+   pass/fail counter — is driven solely by `v2.workflow.floor_expected_red.floor_expected_red_roster`
+   (`cli_run.rs` ~line 40514–40575, single write site ~line 41086). Neither reads
+   `explicit_witness_admission` at all. `known_red_probe`'s `expected: ExpectAssertionFalse`
+   field is asserted in `.dag` data with zero read sites in `cli_run.rs` outside test code, and
+   its `QuarantineProbeExpectRed` cadence tag names the falsifier as intended consumer — deleted
+   in the 2026-08-15 floor cut (see "Building & checks" in DESIGN.md), so the row's own
+   documented consumer no longer exists. **The honest present-tense description of a
+   `known_red_probe` row today is documentation, not a hold**: it records that a witness is
+   expected red and why, readable by a human or a future consumer, but nothing in the required
+   floor's pass/fail path reads it. It is coverage by illusion in the exact §6 shape — the
+   machinery exists, nothing gates on it, and its presence reads as real coverage to anyone who
+   greps for the row, worse here because the consumer it names was actively deleted rather than
+   merely never built. **Ceiling and trigger:** decidable and grounded once a consumer is
+   authored to join `known_red_probe` rows against required-floor discovery/hold decisions (or
+   the row is re-scoped to state plainly that it is documentation); until then this sits at
+   `mitigatable`, i.e. review diligence must independently notice a `known_red_probe` row is not
+   protection, exactly as `v2.workflow.floor_expected_red.floor_expected_red_roster` is. **Not
+   a call to build that consumer now** — gunbc#8625/#8627's actual known-red hold was
+   discharged by enrolling in `floor_expected_red_roster` directly (operator ruling,
+   deep-ant-102, 2026-08-20: no new mechanism), which is the one live authority for this case.
 
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 

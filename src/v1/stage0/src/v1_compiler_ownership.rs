@@ -3,6 +3,8 @@
 
 use self::EdgeKind::*;
 use self::OwnershipDecision::*;
+pub use crate::std_syntax::BinOp;
+use crate::std_syntax::BinOp::*;
 pub use crate::v1_compiler_emit_core_support::to_string;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -12,6 +14,8 @@ use crate::v1_std_core::ExprData::{
     ExprLiteral, ExprMatch, ExprMethodCall, ExprRecordLit, ExprReturn, ExprVar, NoExprData,
 };
 use crate::v1_std_core::InferredNode::Resolved;
+pub use crate::v1_std_core::MatchPattern;
+use crate::v1_std_core::MatchPattern::*;
 use crate::v1_std_core::VarBindingKind::{FunctionValueBinding, LocalValueBinding};
 pub use crate::v1_std_core::{
     arg_value, arm_body, authored_name_at, expr_call_func_at, expr_method_name_at,
