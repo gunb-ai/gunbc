@@ -171,6 +171,17 @@ fn live_deploy_advance_fleet_desired_step() -> Step {
   }
 }
 
+// contents: WRITE, and the write is the point rather than an over-grant. The last step pushes
+// refs/fleet/desired, so a read-only token would 403 on exactly the step whose absence caused the
+// belt to refuse every tick for weeks -- and it would 403 AFTER the deploy had already converged,
+// leaving the host serving a revision the fleet does not admit. The narrower grants stay off: no
+// pull-requests, no issues, no actions, no id_token.
+//
+// This annotation sits here rather than beside the permissions field because DESIGN section 4c
+// models annotations at MODULE-ITEM grain only; the first cut put it inside the Job body and the
+// floor refused the module outright (run 32324870744). A comment is not free-floating prose that
+// can live wherever it reads best -- it attaches to a declaration, and inside a body there is no
+// declaration for it to attach to.
 fn live_deploy_job() -> Job {
   Job {
     id: live_deploy_workflow_job_id,
@@ -190,11 +201,6 @@ fn live_deploy_job() -> Job {
     timeout_minutes: Present { value: 90 },
     continue_on_error: none,
     concurrency: none,
-    // contents: WRITE, and the write is the point rather than an over-grant. The last step pushes
-    // refs/fleet/desired, so a read-only token would 403 on exactly the step whose absence caused
-    // the belt to refuse every tick for weeks -- and it would 403 AFTER the deploy had already
-    // converged, leaving the host serving a revision the fleet does not admit. The narrower grants
-    // stay off: no pull-requests, no issues, no actions, no id_token.
     permissions: Present {
       value: WorkflowPermissions {
         contents: Present { value: PermWrite },
