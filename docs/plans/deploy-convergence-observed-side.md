@@ -1,0 +1,43 @@
+# Deploy convergence: the observed side, and why the obvious repair is a regression
+
+**Status:** design record, 2026-08-20. Reached by two independent derivations plus an adversarial exchange across two sessions. Most of its value is in the DEAD ENDS: the observed-provider design below was fully specified, then refuted, and the next person to look at live_deploy's empty observed side will re-derive it unless this record stops them.
+
+## The defect that starts it
+
+gunbc.live_deploy.emit calls the grain-agnostic membership_reconcile in both directions, but only at its DEGENERATE POLES -- apply passes an empty observed list, retract passes an empty desired list. So live_deploy has no observed provider and cannot converge; it can only install-everything or remove-everything. That is why a redeploy has always been the only remedy for any drift, and why a missing toolchain precondition went unnoticed for the workflow's entire life: an apply-all pole never asks what is already true, so it has nowhere to notice a precondition either.
+
+## REFUTED: supplying an observed provider does not close the drift loop
+
+The obvious repair -- observe the host, feed the apply pole, stop being degenerate -- was designed in full and is WRONG. The member value is a function of its own key, so the diff cannot see staleness.
+
+- **The vacuity:** DeploymentArtifactStep carries only kind and path. key_of returns the path. value_eq is whole-value structural equality. So for any matching KEY the only remaining field is kind, which the spec fixes per path -- value_eq cannot distinguish anything and MemberChanged is UNREACHABLE. The diff is a set-membership check, not a state comparison.
+- **The consequence, and it is a regression:** every artifact path on srv1 already exists; only their CONTENT is stale. A non-degenerate apply therefore produces an EMPTY PLAN and deploys nothing, reporting converged over a stale host -- where today's add-all unconditionally rsyncs and actually deploys. The repair would have been the silently-converged failure, reached through the fix rather than through the thing being fixed.
+- **Why the member cannot be taught:** DeploymentSpec carries WHERE (topology, stable addresses); CandidateRelease carries WHAT (revision, expected surface identity). That separation is correct. Making members candidate-sensitive is exactly what would make MemberChanged reachable -- which activates EffectReplace, which the emitter deliberately models as impossible and answers with a loud poison rather than guessing. Replacement behaviour would have to be defined for every member kind first. That is a substantial modelling project, not a step.
+- **Receipt for the blindness:** tree_sync_was_a_host_singleton_note already records that the sync transport files are not paths in DeploymentArtifactStep, so a claim over declared members could not see them.
+
+## THE CLOSER: bind tree-sync to revision standing
+
+The drift question is answered by REVISIONS, not by member presence, and the authority already exists and already refuses correctly. fleet_desired_observe fleet_revision_standing decides the cell three ways; fleet_converge_cli converge_cli_receipt_join_revision MEETS it into the receipt verdict so a knob run that never observed the revision cannot render converged. What is missing is only that nothing ACTS on the drifted arm.
+
+- The catch-up realization exists: tree-sync in gunbc.live_deploy.emit and gunbc.live_deploy.spec, preserved through the deploy-workflow root cut.
+- Its safe form is a compare-and-swap, and the inputs are already in the verdict: RevisionDrifted carries BOTH desired and local, and the converge_cli carrier note states that is precisely why -- a catch-up needs the prior.
+- It needs no member work, no observed provider, and no new decision model. srv1 is already an enrolled fleet-converge host at mode=apply, so it rides an existing step.
+
+## STANDING: retract must never take a host observation
+
+Ownership is a claim about HISTORY -- who wrote this. An observation returns PRESENT STATE. Two files of identical shape and different origin are indistinguishable to any present-state read, so a host-observed retract asks the observation for a fact it structurally does not contain, and every answer is a plausible fabrication with delete on the other end. The poles need ownership asymmetrically: apply never needs provenance because desired bounds what it writes; retract needs it for every member because Removed is irreversible. So the degenerate retract pole is not a limitation awaiting a fix -- it is correct, and spec-driven is its right permanent source. Release identity does not rescue it: that is provenance for the running PROCESS, not for bytes on disk, and an install manifest is ownership STORED, which the ownership authority deliberately refused.
+
+## SHELVED, and NOT blocked by the refutation above
+
+The census answers a question nothing in the tree answers today -- what unowned state is on srv1 -- and it never touches value_eq, MemberChanged, EffectReplace, or the member model. It was split from the diff observation precisely so neither could contaminate the other, and only the diff half died.
+
+- **Two observations, never one.** A diff observation shaped as a per-desired-member query cannot construct an observed-only key, so Removed stays unreachable on apply STRUCTURALLY rather than by a filter the provider remembers to apply. A census observation enumerates host state, feeds nothing into the diff, and is the only thing that can see beyond the roster. The property that makes each safe is the other's disqualification.
+- **Class grain, not instance grain.** Worktree registrations are created per dispatch, so an instance-keyed contract refuses every time an agent session starts -- a gate that fires on normal operation gets silenced within a day, manufacturing the escape hatch out of a contract.
+- **n equals one is PROVISIONAL.** One observation cannot distinguish an instance from a singleton class. A single observed path licenses no refusal and is not baselined; it becomes a class when a second instance appears or when a typed disposition names it. Three transitions are recorded: provisional to class, class to wider class, class to absent.
+- **The control gates the baseline, not merely accompanies it.** The baseline is a measurement of the current host, which DESIGN 5 names as not-an-oracle; the monotone-debt carve-out admits it only if the universe is independently discovered. So the census must first be shown to have seen the worktree-registration grain, and if it has not, NOTHING may be baselined.
+
+## The class this record is really about
+
+A value that was true BY CONSTRUCTION under a degenerate input stops being true when the input becomes real, while the type still asserts it. Seven instances surfaced in one afternoon on this one subject: ownership always Present; Owned meaning ours; the belt revision gate agreeing with itself because both sides pointed at the same hand-set ref; Removed unreachable because the provider filters; residue empty because a per-member query has no walk; a class boundary derived from a common prefix collapsing to instance grain at n equals one; and value_eq meaningful. Every one is a predicate trivially satisfied because one side of a comparison was empty, identical, or determined by the other.
+
+**The check, which is cheap and which caught the last three:** state in ONE SENTENCE what must remain true about your CALLERS for your fix to hold. If that sentence is non-empty and unwritten, it is the next instance. This is not review-your-own-work: each instance was invisible to its author and obvious to the reader, in both directions, because the thing that makes a fix feel finished is precisely the assumption just made about how it will be called. Faces four, five and six each arrived INSIDE the fix for the previous one.
