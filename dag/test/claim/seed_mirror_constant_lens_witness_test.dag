@@ -1,0 +1,91 @@
+module test.claim.seed_mirror_constant_lens_witness_test
+
+import extdeps.filesystem.filesystem_io
+import std.measure { byte_size_count }
+import gunbc.typed_module_cache_capacity {
+  typed_module_bytes_per_entry_estimate,
+  typed_module_cache_entries_floor,
+  typed_module_cache_entries_ceiling,
+}
+import gunbc.runner_slot_allocation {
+  gunbc_floor_minimum_viable_armed_budget,
+  gunbc_runner_slot_desired,
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data seed_mirror_constant_lens_note: String = "THE MECHANISM TWO SEED-MIRROR NOTES NAMED AND NOBODY BUILT. gunbc.typed_module_cache_capacity typed_module_cache_capacity_seed_mirror_note and gunbc.host_budget_source host_budget_source_seed_mirror_note each asked for 'one lens reading the seed's constants against their cited rows', and each scoped it slightly differently -- neither subset was the union, which is two partial specifications of one mechanism and the section 3 shape in its own right. This module is the union.\n\nWHY IT IS NOT A CHANGE DETECTOR. The expected value is never written here. Every assertion derives its literal from the imported authority row and renders it, so editing this file cannot satisfy it and editing the authority row moves the expectation automatically. That is the distinction the 2026-08-01 test-oracle ruling draws: the oracle is an independently governed authority, not a measurement copied from the tree under test. The failure mode it replaces is live in this very corpus -- host_budget_source_witness_test constructed its expectation with the mirror value retyped, so it greened whichever way the mirror went.\n\nWHY THE SEED LITERALS ARE CANONICAL DECIMAL. A mirror constant's whole job is to equal its authority, and an equality that a reader cannot decide by looking is not one. 3 * 1024 * 1024 and 13_958_643_712 are the same values written so that no join can reach them, so the in-scope constants are written as plain decimal and the lens refuses any it cannot parse rather than skipping it.\n\nWHY AN UNCITED CONSTANT REFUSES RATHER THAN SKIPS. 'No citation, so nothing to check, so green' is the empty-observation narrow: bottom-as-answer conflated with bottom-as-ignorance. It is not hypothetical here -- of the five constants in scope exactly one carried no citation, and that one is the one that drifted eleven days (DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES, seed 13958643712 against an authority of 16106127360 since 936f451446 / #8388, 2026-08-17). A lens that skipped the uncited would have been inert for precisely the constant that broke.\n\nWHY THERE IS NO PLANTED CONTROL. Four of the five rows matched at authorship and one did not, so the discriminating RED and its positive control are the same table read at the same commit, from live data. A synthetic mismatch would prove only that the lens can fire; this proves the class is not hypothetical as well. If a future reading shows all five green, the four matching rows remain the control -- perturb any authority row and its assertion must go red."
+
+data seed_read_has_no_success_arm_note: String = "WHY THERE IS NO READ-FAILURE ARM, and why its absence is not a narrow. The seed's filesystem_read primitive returns FilesystemReadResult, declared in v1_method filesystem_read_result_type and emitted by v1.runtime_rust rt_filesystem, and that record carries EXACTLY ONE field: content. There is no success or error field to branch on -- the service-level Filesystem.Read operation is a different carrier with a different shape, and reading its three-field contract onto this primitive would cite the wrong authority. This module learned that by refusing: an earlier revision branched on r.success and the compiler answered 'no field success on type FilesystemReadResult', which is the fail-closed refusal working.\n\nWHAT HAPPENS ON FAILURE: rt_filesystem calls read_to_string with unwrap_or_else(|e| panic!), so an absent or unreadable seed file aborts the run loudly rather than presenting as a passing check. Empty content fails every assertion here, since no expected literal is the empty string. So both failure modes are non-green without a guard, and adding one would be machinery with no producer -- a scaffold defending a state the type cannot express. The reasoning and the owed modeling gap (a caller cannot distinguish absent from unreadable from empty, and that dissolves when the primitive returns an outcome instead of panicking) are dag/tools/frontier_ingestion_probe frontier_read_refusal_disposition_note's, cited rather than re-derived."
+
+data cli_run_seed_path: String = "src/v1/stage0/src/cli_run.rs"
+data memory_governor_seed_path: String = "src/v1/stage0/src/memory_governor.rs"
+
+fn seed_text(path: String) -> String {
+  filesystem_read(path: path).content
+}
+
+fn seed_declares(path: String, decl_prefix: String, expected: Int) -> Bool {
+  string_contains(
+    s: seed_text(path: path),
+    pattern: concat(decl_prefix, concat(to_string(expected), ";")),
+  )
+}
+
+fn seed_cites_authority(path: String, authority_symbol: String) -> Bool {
+  string_contains(s: seed_text(path: path), pattern: authority_symbol)
+}
+
+test fn seed_mirror_lens_can_read_both_seed_files() -> Bool {
+  string_length(s: seed_text(path: cli_run_seed_path)) > 0
+    && string_length(s: seed_text(path: memory_governor_seed_path)) > 0
+}
+
+test fn typed_module_bytes_per_entry_estimate_seed_matches_authority() -> Bool {
+  seed_declares(
+    path: cli_run_seed_path,
+    decl_prefix: "const TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE: u64 = ",
+    expected: byte_size_count(b: typed_module_bytes_per_entry_estimate),
+  )
+}
+
+test fn typed_module_cache_entries_floor_seed_matches_authority() -> Bool {
+  seed_declares(
+    path: cli_run_seed_path,
+    decl_prefix: "const TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR: usize = ",
+    expected: typed_module_cache_entries_floor,
+  )
+}
+
+test fn typed_module_cache_entries_ceiling_seed_matches_authority() -> Bool {
+  seed_declares(
+    path: cli_run_seed_path,
+    decl_prefix: "const TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL: usize = ",
+    expected: typed_module_cache_entries_ceiling,
+  )
+}
+
+test fn floor_minimum_viable_armed_budget_seed_matches_authority() -> Bool {
+  seed_declares(
+    path: memory_governor_seed_path,
+    decl_prefix: "pub const DECLARED_FLOOR_MINIMUM_VIABLE_ARMED_BUDGET_BYTES: u64 = ",
+    expected: byte_size_count(b: gunbc_floor_minimum_viable_armed_budget),
+  )
+}
+
+test fn runner_slot_memory_high_seed_matches_authority() -> Bool {
+  seed_declares(
+    path: memory_governor_seed_path,
+    decl_prefix: "pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = ",
+    expected: byte_size_count(b: gunbc_runner_slot_desired().memory_high),
+  )
+}
+
+test fn every_in_scope_seed_constant_cites_its_authority_symbol() -> Bool {
+  seed_cites_authority(path: cli_run_seed_path, authority_symbol: "typed_module_bytes_per_entry_estimate")
+    && seed_cites_authority(path: cli_run_seed_path, authority_symbol: "typed_module_cache_entries_floor")
+    && seed_cites_authority(path: cli_run_seed_path, authority_symbol: "typed_module_cache_entries_ceiling")
+    && seed_cites_authority(path: memory_governor_seed_path, authority_symbol: "gunbc_floor_minimum_viable_armed_budget")
+    && seed_cites_authority(path: memory_governor_seed_path, authority_symbol: "gunbc_runner_slot_desired")
+}

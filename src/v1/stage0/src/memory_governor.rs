@@ -190,6 +190,10 @@ pub fn render_governor_hold_line_mirror(hold: &HoldReason, emoji: bool) -> Strin
     let glyph = if emoji { "⏳" } else { "◷" };
     format!("{glyph} {}", mirror_ci_hold_cause_text(hold))
 }
+/// SEED MIRROR of `gunbc.runner_slot_allocation` `gunbc_runner_slot_desired` field `memory_high`
+/// — the declared per-slot throttle line. This constant is a mirror, not an independent value:
+/// it may only move toward its authority row. Joined by
+/// `test.claim.seed_mirror_constant_lens_witness_test`.
 pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = 13_958_643_712;
 
 /// SCAFFOLD (§7 seed-retained HAND-RUST — authority: `dag/gunbc/runner_slot_allocation.dag`
@@ -201,7 +205,7 @@ pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = 13_958_643_712;
 /// dissolve-on: v2 emit of stage0 host-budget constants from `gunbc.runner_slot_allocation`
 /// (self-host frontier row for `memory_governor` cgroup-budget readers); re-measure when
 /// bright-seal #6999 fill-deferral cuts mature index residency.
-pub const DECLARED_FLOOR_MINIMUM_VIABLE_ARMED_BUDGET_BYTES: u64 = 12_884_901_888;
+pub const DECLARED_FLOOR_MINIMUM_VIABLE_ARMED_BUDGET_BYTES: u64 = 12884901888;
 
 /// Fail-fast refusal when a floor walk's armed budget is provably below the measured
 /// minimum viable footprint.

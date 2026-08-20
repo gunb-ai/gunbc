@@ -11007,9 +11007,14 @@ pub struct IndexRetentionSnapshot {
 /// Conservative per-entry estimate for deriving a typed-cache cap from the host
 /// memory envelope (v1-run-stability M0/M1 receipts: ~2–11 MiB/module; 3 MiB is
 /// the interim declared fraction denominator until measured space lands).
-const TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE: u64 = 3 * 1024 * 1024;
+/// SEED MIRROR of `gunbc.typed_module_cache_capacity` `typed_module_bytes_per_entry_estimate`.
+/// Written as a canonical decimal literal (3 * 1024 * 1024) so the mirror lens can join it to
+/// its authority row; see `test.claim.seed_mirror_constant_lens_witness_test`.
+const TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE: u64 = 3145728;
+/// SEED MIRROR of `gunbc.typed_module_cache_capacity` `typed_module_cache_entries_floor`.
 const TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR: usize = 100;
-const TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL: usize = 4_000;
+/// SEED MIRROR of `gunbc.typed_module_cache_capacity` `typed_module_cache_entries_ceiling`.
+const TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL: usize = 4000;
 
 /// One derivation of the typed-cache entry cap: env override, else the host
 /// budget divided by the per-entry estimate. Returns `(cap, source_label,
