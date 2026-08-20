@@ -995,9 +995,49 @@ through the carrier's own accepted mint path. This is a distinct invariant from 
 should treat it as a separate open question rather than something the construction wall
 retires.
 
+**Falsified precedent, called out as its own headline point (2026-08-20).** `OrderedClosedInterval`
+has been cited repeatedly — by this audit's own coordinator, by the `Refined<B>` design lane,
+and by an outside advisor — as "the working structural precedent: a generic sole_constructor
+carrier whose sole mint refuses the invalid reversed case." **That claim is false as stated.**
+f12 (executed, above) shows the mint only refuses when the caller supplies an honest
+comparator; a lying one is accepted with zero diagnostic. A falsified reassurance that was
+propagating unchecked across three parties is worth surfacing as its own finding, distinct
+from "a new hole was found" — it means a design decision was resting on a citation nobody had
+executed.
+
+**Centerpiece: `dag/std/interval.dag` contains its own right-shape/wrong-shape A/B for the
+SAME sealed carrier, ~16 lines apart, same author, same module — production code, no
+synthetic fixture needed.**
+- `closed_interval<T>(low, high, le: fn(T,T)->Bool)` (line 32) — the invariant is delegated
+  to a caller-supplied predicate. Confined (sole_constructor correctly walls off who/where)
+  but **unguaranteed** — f12 breaks it by supplying a dishonest `le`.
+- `degenerate_interval<T>(point: T)` (line 48) — **total**, no predicate, no failure arm,
+  returns the carrier unconditionally. `[x, x]` is ordered by reflexivity, so there is
+  nothing to check and nothing for a caller to lie about — the invariant is established by
+  construction, not by a delegated check that can be defeated.
+
+This is §4b's *structurally guaranteed* rung sitting directly beside its *mechanically
+preventable-at-best* rung, in one file, for one carrier — and nothing in either function's
+**type** distinguishes them for a reader deciding which to call or which pattern to copy for
+a new carrier. Both return `OrderedClosedInterval<T>`; only reading the body reveals which
+rung each constructor actually occupies.
+
+*Generic-carrier re-confirmation (f11/f11b, re-executed via `--claim-run` this pass):*
+PASS `f11_generic_carrier_second_type_arg_refuses`, PASS
+`f11b_generic_carrier_both_type_args_each_refuse` — record-literal and cast construction of
+`OrderedClosedInterval<T>` each refuse independently at a first (`<Int>`) and a second,
+distinct (`<ProbeMarker>`) type argument, both instantiations flagged when forged in the same
+probe module. Confirms generic-carrier coverage is real (for these two forms) and is not an
+artifact of only ever having exercised `<Int>`.
+
 *Overall verdict:* **available today, for its stated scope, with two confirmed structural
-holes and one confirmed scope boundary — and, per the exposure ledger above, corpus-contingent
-rather than structural.** `sole_constructor` reliably walls off record-literal and cast
+holes and TWO confirmed scope boundaries — and, per the exposure ledger above, corpus-contingent
+rather than structural. The second scope boundary (validator-identity, f12/f12b) is the more
+consequential of the two: even where the wall fires with full generic-carrier coverage, it
+confines only WHO/WHERE constructs a carrier and establishes NOTHING about WHAT invariant a
+sanctioned caller's own predicate enforces — a mint with no fixed, module-owned validator (or
+that is not total, per `degenerate_interval`'s counter-example above) gives no guarantee at
+all beyond confinement.** `sole_constructor` reliably walls off record-literal and cast
 construction (including generic instantiation) of a census-UNIQUE, plain-record type, at
 every AST position and via the interpreter, with no compiler-module exemption. It does NOT
 reliably wall off a census-AMBIGUOUS type name — resolution silently guesses by
