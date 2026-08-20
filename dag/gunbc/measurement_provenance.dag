@@ -1,55 +1,86 @@
 module gunbc.measurement_provenance
 
-import std.types { NonEmptyStr, String, Bool }
-import std.content_hash { ContentHash }
+import std.types { Bool, String }
+
+import gunbc.devboot.outcome {
+  BuildExecutionOutcome,
+  ArtifactAvailability,
+  ArtifactAvailable,
+  ArtifactMissing,
+  ArtifactCorrupt,
+  ArtifactUnreadable,
+  StoredArtifact,
+}
 
 data measurement_provenance_root_note: String = "FOUR SPECIMENS, ONE ABSENT RELATION, ONE DAY (2026-08-20, this fleet). (1) A stale binary produced first_generation_equal=true — tree and compiler were different vintages and nothing in the receipt said so. (2) A DIFFERENT stale binary produced a 9-declaration drop that did not exist, escalated through three sessions before execution refuted it byte-identical across 131 files — the binary had been replaced mid-sequence as collateral from an unrelated all-bins build, and the author never typed a command that built it. (3) `cargo build 2>&1 | tail -4 && next` takes tail's exit status, so a FAILED build proceeded as success and the downstream step measured a stale artifact. (4) A treatment merge hit 'refusing to merge unrelated histories' on a shallow clone; unguarded, the baseline numbers would have re-reported as the treatment arm. Every one returned a plausible, well-formed number. Every one was caught by a person noticing an inconsistency, never by a mechanism. The root is not 'stale binaries' — it is one relation, absent in all four: a reported observation is not structurally bound to the SUCCESSFUL CONSTRUCTION of its exact instrument and its exact subject. This module makes the unbound observation unrepresentable rather than checkable."
 
-data measurement_provenance_construction_not_validation_note: String = "THE SHAPE THIS MODULE REFUSES TO BE: a function whose job is to verify that a measurement carries its provenance. If such a function can exist, the bad state was already writable and this would be a validator standing where construction belongs (DESIGN section 5). Instead, following the precedent already landed once for a neighbouring problem — gunbc.regen_receipt splitting RegenReceipt into FirstGeneration | FixedPoint so a second pass has no field to fabricate first_generation_equal into — an Observation<Value> is a coproduct whose bound arm (Observed) is reachable ONLY by folding an InstrumentConstruction and a SubjectConstruction that both succeeded. The failed arms carry no identity field: there is nothing to copy forward, so a caller cannot manufacture instrument or subject identity for a build or a merge that did not happen. observe is the ONLY constructor of Observation's bound arm; no other function in this module builds an Observed value."
+data measurement_provenance_construction_not_validation_note: String = "THE SHAPE THIS MODULE REFUSES TO BE: a function whose job is to verify that a measurement carries its provenance. If such a function can exist, the bad state was already writable and this would be a validator standing where construction belongs (DESIGN section 5). Instead Observation<Value> is a coproduct whose bound arm (Observed) is reachable ONLY by folding two retrievability observations that both landed on ArtifactAvailable. The unbound arms carry no StoredArtifact: there is nothing to copy forward, so a caller cannot manufacture instrument or subject identity for a build that did not produce retrievable bytes. observe is the ONLY constructor of Observed; no other function in this module builds one."
 
-data measurement_provenance_boundary_note: String = "THE HONEST BOUNDARY, DECLARED RATHER THAN CLAIMED AWAY. What is structural: given an InstrumentConstruction and a SubjectConstruction, whether the resulting Observation can be Observed is decided by the coproduct shape alone, at R0, with no code path that fills instrument or subject identity from a failed arm — this climbs to DESIGN section 4b structural impossibility for the 'fabricate an identity beside a failure' class, and it is exactly the class specimens (2), (3) and (4) are instances of: something failed (a build, a merge) and a plausible number was reported anyway. What remains outside the modeled guarantee, for both instrument and subject alike: whether the ContentHash actually placed into InstrumentBuilt.identity or SubjectRealized.identity was computed from bytes freshly produced by THIS invocation's successful construction, rather than a stale artifact left on disk from an earlier one (specimen 1's shape, and the reason the operator's practical rule this week is to freeze the instrument outside the build tree — copy to /tmp, invoke by absolute path — rather than to keep re-verifying a path that outlives its own check). Nothing in a pure carrier can observe when a file on disk was last written; that is irreducibly a wet, host-side fact, the same class std.content_hash's own cross-family Phase B gap and gunbc.regen_receipt's prior_reference_is_same_tree both already live with. The remedy this module states for it is a discipline (compute identity from bytes obtained in-process, immediately after observing a zero exit code, never by re-reading a remembered path later) rather than a mechanism, and DESIGN section 4b's rule is to say so rather than claim a uniform climb. A hand-authored InstrumentBuilt or SubjectRealized value can still be constructed with a fabricated ContentHash by a caller who bypasses the wet observation entirely — the same residual gap sole_constructor already names as unverified for generic carriers at gunbc.design.reference_instrument provenance_by_construction_note. observe is the one honest path; nothing here yet forbids a second one being hand-written beside it."
+data measurement_provenance_authority_note: String = "WHY THIS MODULE MINTS NO OUTCOME VOCABULARY OF ITS OWN. An earlier revision of this carrier declared its own InstrumentConstruction and SubjectConstruction coproducts, each collapsing every way a construction can fail into one NonEmptyStr detail. That was a second and strictly poorer authority for a concept gunbc.devboot.outcome already owns (DESIGN section 3), and the poverty was not cosmetic: devboot keeps BuildFailureCause and InfrastructureRefusalCause deliberately APART because a compilation failure is a fact about the subject and retrying changes nothing, while an infrastructure refusal is a fact about this host at this moment and the same subject may succeed later — fusing them makes 'is retry pointless' unanswerable, which is precisely what a single detail string does. Specimen (4), a subject that could not be fetched, exists there as the TYPE InfrastructureRefusalCause SubjectNotFetchable rather than as a sentence. So this module imports that authority and contributes only what devboot does not model: the binding of a reported Value to the identities of the instrument that produced it and the subject it was taken of. devboot answers 'may a caller believe it holds these bytes'; this module answers 'may a caller believe this number was produced by that instrument from that subject', and it answers it by having no arm in which the number travels without both."
 
-// THE OUTCOME OF ATTEMPTING TO BUILD THE INSTRUMENT. The failed arm has no identity field —
-// there is no ContentHash to fabricate an instrument's identity from a build that did not
-// succeed. detail carries what a caller needs to report (specimen 3: a build that failed
-// behind an unguarded pipe, where the downstream step must not receive an identity at all).
-type InstrumentConstruction
-  = InstrumentBuilt { identity: ContentHash }
-  | InstrumentConstructionFailed { detail: NonEmptyStr }
+data measurement_provenance_stale_instrument_note: String = "WHAT THE FOLD ONTO devboot CLOSED, WHICH THIS CARRIER PREVIOUSLY DECLARED OUT OF REACH. Specimen (1) is a PAST successful build being read as evidence about a PRESENT binary. The earlier revision named that axis outside the modeled guarantee and stopped there. devboot had already split it on purpose: execution is history and availability is an observation of the store, ArtifactAvailable carries the read-back that established it, and availability_permits_retrieval reads the availability axis ALONE so that a past success contributes nothing to whether bytes can be had now. observe therefore selects its arm on availability alone and never on execution — an ExecutionProduced whose artifact is Missing, Corrupt or Unreadable yields a refusal, not an Observed — which is specimen (1)'s shape refused by construction rather than declared unmodeled. Execution is still CARRIED into the refusal arms, because that is where the retry question is answered; it simply has no vote on whether the observation binds."
 
-// THE OUTCOME OF REALIZING THE EXACT SUBJECT BEING MEASURED. Same shape, same law: the failed
-// arm carries no identity field. specimen 4 (a treatment merge refused on a shallow clone) is
-// a SubjectConstructionFailed — there is no treatment subject to report a number about, and
-// this coproduct gives the caller nothing that could be mistaken for the baseline's identity.
-type SubjectConstruction
-  = SubjectRealized { identity: ContentHash }
-  | SubjectConstructionFailed { detail: NonEmptyStr }
+data measurement_provenance_boundary_note: String = "THE HONEST BOUNDARY THAT REMAINS, NARROWED BUT NOT CLOSED. What is structural: no Observation can carry a Value alongside an instrument or subject identity unless both retrievability observations landed on ArtifactAvailable, and the identities it carries are StoredArtifact values taken out of those arms rather than assembled here. What is NOT structural: whether the ArtifactAvailable handed to observe was itself established by a read-back performed by THIS invocation against the path actually used, rather than hand-authored with a fabricated Sha256Digest by a caller who bypassed the store entirely. devboot states that contract for its own producers; nothing in the type system enforces it against an arbitrary caller, and that is the same residual gap sole_constructor already names as unverified for generic carriers. So the wet boundary has moved — from 'no read-back is modeled at all' to 'the read-back is modeled and required, and its authenticity rests on an unverified construction ceiling' — and DESIGN section 4b's rule is to say which rung that is rather than claim a uniform climb. The practical discipline this does not replace: freeze the instrument outside the build tree before first measurement and invoke it by absolute path, because a binary can be silently replaced by an unrelated command between the observation and the measurement."
 
-data observation_shape_note: String = "Observation<Value> is generic over the reported number/fact so this carrier is not re-minted per measurement site (DESIGN section 2 — one concept, every breadth). Observed is the only arm carrying a Value, and it is the only arm carrying instrument and subject identity; the two unbound arms carry neither, by construction, so 'a plausible Value with no bound instrument or subject' has no constructor anywhere in this coproduct."
+data measurement_provenance_adoption_note: String = "ADOPTION STATUS, STATED RATHER THAN IMPLIED. Nothing in the accepted program folds through observe today, and the fold onto devboot did not change that: measured on this branch, gunbc.devboot is itself imported by four of its own siblings and three witness tests, and by no production consumer anywhere. So this carrier and the authority it now shares are one unconsumed cluster rather than two, which is progress in modeling and none in consumption. That is worth stating plainly because the precedent this design was originally argued from does NOT have that property — gunbc.regen_receipt earns its keep because required_regen_host folds the actual regen path through it — and a citation whose force depends on a consumption fact the citation does not carry is itself a specimen of this module's subject. The trigger for adoption is the first measurement site that needs a number bound to its instrument and subject; binding one is a separate packet scoped against a real wet path, not an addition to this carrier, and a caller invented here to occupy the consumer slot would be a fabricated consumer — the exact class this module exists to refuse."
 
+// THE REPORTED FACT, BOUND OR REFUSED. Observation<Value> is generic over the reported
+// number/fact so this carrier is not re-minted per measurement site (DESIGN section 2 — one
+// concept, every breadth). Observed is the only arm carrying a Value, and it is the only arm
+// carrying identities; the two unbound arms carry the two devboot axes instead, so a refusal
+// says both what could not be had NOW (availability) and whether retrying is pointless
+// (execution). A plausible Value with no bound instrument or subject has no constructor here.
 type Observation<Value>
-  = Observed { instrument: ContentHash, subject: ContentHash, value: Value }
-  | InstrumentNotConstructed { detail: NonEmptyStr }
-  | SubjectNotConstructed { detail: NonEmptyStr }
+  = Observed { instrument: StoredArtifact, subject: StoredArtifact, value: Value }
+  | InstrumentNotHeld { execution: BuildExecutionOutcome, availability: ArtifactAvailability }
+  | SubjectNotHeld { execution: BuildExecutionOutcome, availability: ArtifactAvailability }
 
-data observe_note: String = "THE SOLE CONSTRUCTOR OF Observed. observe never receives value unless both constructions are folded first, and it evaluates instrument before subject so an instrument failure is reported over a subject one when both failed — an arbitrary but declared tie-break, not a silent drop of the second failure (the caller who wants both sees InstrumentConstruction and SubjectConstruction directly; this fold reports one typed refusal, not a merged one, per DESIGN section 5's rule that a failure arm must refuse, never widen)."
-
-fn observe<Value>(instrument: InstrumentConstruction, subject: SubjectConstruction, value: Value) -> Observation<Value> {
-  match instrument {
-    InstrumentConstructionFailed { detail } => InstrumentNotConstructed { detail: detail }
-    InstrumentBuilt { identity: instrument_identity } =>
-      match subject {
-        SubjectConstructionFailed { detail } => SubjectNotConstructed { detail: detail }
-        SubjectRealized { identity: subject_identity } =>
-          Observed { instrument: instrument_identity, subject: subject_identity, value: value }
+// THE SOLE CONSTRUCTOR OF Observed. It selects on availability ALONE, agreeing with devboot's
+// availability_permits_retrieval by construction rather than by restating its rule — the arms
+// here exist to extract the StoredArtifact that the Bool-returning authority cannot hand back,
+// and the witness asserts the two agree on every arm so the agreement is executed, not assumed.
+//
+// The instrument is decided before the subject, so an instrument refusal is reported over a
+// subject one when both are unavailable — an arbitrary but declared tie-break, not a silent
+// drop of the second failure. A caller wanting both still holds both availabilities; this fold
+// reports one typed refusal rather than a merged one (DESIGN section 5: a failure arm must
+// refuse, never widen).
+fn observe<Value>(
+  instrument_execution: BuildExecutionOutcome,
+  instrument_availability: ArtifactAvailability,
+  subject_execution: BuildExecutionOutcome,
+  subject_availability: ArtifactAvailability,
+  value: Value,
+) -> Observation<Value> {
+  match instrument_availability {
+    ArtifactMissing =>
+      InstrumentNotHeld { execution: instrument_execution, availability: instrument_availability }
+    ArtifactCorrupt { expected, observed } =>
+      InstrumentNotHeld { execution: instrument_execution, availability: instrument_availability }
+    ArtifactUnreadable { detail } =>
+      InstrumentNotHeld { execution: instrument_execution, availability: instrument_availability }
+    ArtifactAvailable { artifact: instrument_artifact } =>
+      match subject_availability {
+        ArtifactMissing =>
+          SubjectNotHeld { execution: subject_execution, availability: subject_availability }
+        ArtifactCorrupt { expected, observed } =>
+          SubjectNotHeld { execution: subject_execution, availability: subject_availability }
+        ArtifactUnreadable { detail } =>
+          SubjectNotHeld { execution: subject_execution, availability: subject_availability }
+        ArtifactAvailable { artifact: subject_artifact } =>
+          Observed {
+            instrument: instrument_artifact,
+            subject: subject_artifact,
+            value: value,
+          }
       }
   }
 }
 
 fn observation_is_bound<Value>(o: Observation<Value>) -> Bool {
   match o {
-    Observed { instrument: _, subject: _, value: _ } => true
-    InstrumentNotConstructed { detail: _ } => false
-    SubjectNotConstructed { detail: _ } => false
+    Observed { instrument, subject, value } => true
+    InstrumentNotHeld { execution, availability } => false
+    SubjectNotHeld { execution, availability } => false
   }
 }
