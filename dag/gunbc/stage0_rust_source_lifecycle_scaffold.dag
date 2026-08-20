@@ -223,7 +223,7 @@ fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) ->
         ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: "observed manifest missing repository_revision" } }
       } else {
         let file_grain_paths = file_grain_lifecycle_repo_paths(tracked_paths: tracked_paths)
-        let classified_paths = observed_classified_repo_paths(file_grain_paths: file_grain_paths)
+        let classified_paths = file_grain_paths
         let lifecycle_paths = classified_paths
         let newly_unclassified = count_newly_unclassified_tracked(
           tracked_paths: tracked_paths,
@@ -612,9 +612,7 @@ fn witness_fixture_tracked_paths() -> List<String> {
 }
 
 fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> RustManifestObserved {
-  let classified = observed_classified_repo_paths(
-    file_grain_paths: witness_fixture_tracked_paths()
-  )
+  let classified = witness_fixture_tracked_paths()
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
     manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
@@ -629,12 +627,8 @@ fn witness_hand_maintained_growth_observation() -> RustManifestObserved {
     acc: witness_generated_stage0_fixture_paths,
     items: residue_lifecycle_repo_paths()
   )
-  let classified = observed_classified_repo_paths(
-    file_grain_paths: witness_fixture_tracked_paths()
-  )
-  let prior_classified = observed_classified_repo_paths(
-    file_grain_paths: prior_file_grain
-  )
+  let classified = witness_fixture_tracked_paths()
+  let prior_classified = prior_file_grain
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
     manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
@@ -645,9 +639,7 @@ fn witness_hand_maintained_growth_observation() -> RustManifestObserved {
 }
 
 fn witness_honest_minimal_observation_ok() -> RustManifestObserved {
-  let classified = observed_classified_repo_paths(
-    file_grain_paths: witness_fixture_tracked_paths()
-  )
+  let classified = witness_fixture_tracked_paths()
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
     manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
@@ -674,9 +666,7 @@ fn witness_honest_minimal_observation_ok() -> RustManifestObserved {
 // authored independently here (one planted path in, exactly one counted out), so automating the
 // expected value would not collapse the assertion to measure() == measure().
 fn witness_standing_unclassified_observation(planted_path: String) -> RustManifestObserved {
-  let classified = observed_classified_repo_paths(
-    file_grain_paths: witness_fixture_tracked_paths()
-  )
+  let classified = witness_fixture_tracked_paths()
   let tracked = list_concat_unique(acc: classified, items: [planted_path])
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
@@ -702,9 +692,7 @@ fn first_classified_repo_path(classified: List<String>) -> String {
 }
 
 fn witness_duplicate_tracked_observation() -> RustManifestObserved {
-  let classified = observed_classified_repo_paths(
-    file_grain_paths: witness_fixture_tracked_paths()
-  )
+  let classified = witness_fixture_tracked_paths()
   let dup_path = first_classified_repo_path(classified: classified)
   let tracked_with_dup = list_snoc_item(xs: classified, item: dup_path)
   RustManifestObserved {
