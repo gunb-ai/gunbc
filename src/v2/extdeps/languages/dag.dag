@@ -3878,7 +3878,7 @@ fn dag_binding_spellings() -> std.types.Map<v2.std.node.Symbol, v2.std.text.Stri
   let m0 = v2.std.collection.map_insert(v2.std.collection.empty_map(), ^dag_binding_fn_add, "add")
   let m1 = v2.std.collection.map_insert(m0, ^dag_binding_param_x, "x")
   let m2 = v2.std.collection.map_insert(m1, ^dag_binding_param_y, "y")
-  let m3 = v2.std.collection.map_insert(m2, ^dag_binding_type_int, "v2.std.integer.Int")
+  let m3 = v2.std.collection.map_insert(m2, ^dag_binding_type_int, "Int")
   let m4 = v2.std.collection.map_insert(m3, ^dag_binding_fn_one_or_two, "one_or_two")
   let m5 = v2.std.collection.map_insert(m4, ^dag_binding_fn_one, "one")
   let m6 = v2.std.collection.map_insert(m5, ^dag_binding_bind_x, "x")
@@ -3890,7 +3890,7 @@ fn dag_binding_spellings() -> std.types.Map<v2.std.node.Symbol, v2.std.text.Stri
   let m12 = v2.std.collection.map_insert(m11, ^dag_binding_param_r, "r")
   let m13 = v2.std.collection.map_insert(m12, ^dag_binding_rec_v, "v")
   let m14 = v2.std.collection.map_insert(m13, ^dag_binding_rec_lit_nine, "9")
-  let m15 = v2.std.collection.map_insert(m14, ^dag_binding_type_variant_holds, "v2.std.witness.Holds")
+  let m15 = v2.std.collection.map_insert(m14, ^dag_binding_type_variant_holds, "Holds")
   v2.std.collection.map_insert(m15, ^dag_binding_field_variant_value, "value")
 }
 

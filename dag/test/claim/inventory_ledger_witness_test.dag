@@ -62,7 +62,7 @@ test fn w_over_draw_refuses_with_located_shortfall() -> Bool {
             && r == 40
             && h == 10
             && o == 3
-            && (l as String) == "product.inventory.QuantityReserved"
+            && (l as String) == "QuantityReserved"
         product.inventory.EventLotMismatch => false
         product.inventory.EventBeforeAcquisition => false
         product.inventory.LotAlreadyAcquired => false
@@ -244,7 +244,7 @@ test fn w_release_by_a_holder_that_never_reserved_refuses() -> Bool {
     product.inventory.BalanceDerived { balance: _ } => false
     product.inventory.BalanceRefused { cause: c, event_ordinal: o, event_label: l } =>
       o == 4
-        && (l as String) == "product.inventory.ReservationReleased"
+        && (l as String) == "ReservationReleased"
         && match c {
           product.inventory.ReservationHolderUnknown { holder: h } => (h as String) == "rack-9"
           product.inventory.EventLotMismatch => false

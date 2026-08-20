@@ -58,7 +58,7 @@ test fn cited_symbol_post7688_production_census_is_zero_violations() -> Bool {
 test fn cited_symbol_refusal_count_red_on_dangling_fixture() -> Bool {
   let dangling = [
     std.decl_ref.DeclarationRef {
-      module_path: "v2.std.node",
+      module_path: "std.node",
       decl_name: "NoSuchDecl_G1_RED",
       field: WholeDeclaration,
     },
@@ -99,14 +99,14 @@ test fn cited_symbol_production_census_ambiguous_count_is_zero() -> Bool {
 test fn cited_symbol_resolves_node_kind_authority() -> Bool {
   match v2.std.decl_ref_resolution.resolve_declaration_ref(
     ref: std.decl_ref.DeclarationRef {
-      module_path: "v2.std.node",
+      module_path: "std.node",
       decl_name: "NodeKind",
       field: WholeDeclaration,
     },
     facts: cited_symbol_long_witness_layer_facts,
     modules: cited_symbol_long_witness_layer_modules
   ) {
-    DeclarationRefResolved { declaration_identity: id } => id.qualified_name == "v2.std.node.NodeKind"
+    DeclarationRefResolved { declaration_identity: id } => id.qualified_name == "std.node.NodeKind"
     DeclarationRefModuleAbsent { reference: _ } => false
     DeclarationRefDeclarationAbsent { reference: _ } => false
     DeclarationRefFieldAbsent { reference: _ } => false
@@ -149,7 +149,7 @@ test fn cited_symbol_refuses_module_absent() -> Bool {
 test fn cited_symbol_refuses_declaration_absent() -> Bool {
   match v2.std.decl_ref_resolution.resolve_declaration_ref(
     ref: std.decl_ref.DeclarationRef {
-      module_path: "v2.std.node",
+      module_path: "std.node",
       decl_name: "NoSuchDecl_G1_RED",
       field: WholeDeclaration,
     },
@@ -183,7 +183,7 @@ test fn cited_symbol_refuses_ambiguous_binding() -> Bool {
   ]
   match v2.std.decl_ref_resolution.resolve_declaration_ref(
     ref: std.decl_ref.DeclarationRef {
-      module_path: "v2.std.node",
+      module_path: "std.node",
       decl_name: "g1_ambiguous",
       field: WholeDeclaration,
     },
@@ -201,7 +201,7 @@ test fn cited_symbol_refuses_ambiguous_binding() -> Bool {
 test fn cited_symbol_refuses_named_field_absent() -> Bool {
   match v2.std.decl_ref_resolution.resolve_declaration_ref(
     ref: std.decl_ref.DeclarationRef {
-      module_path: "v2.std.node",
+      module_path: "std.node",
       decl_name: "NodeKind",
       field: std.decl_ref.NamedField { field_name: "NoSuchField_G1_RED" },
     },

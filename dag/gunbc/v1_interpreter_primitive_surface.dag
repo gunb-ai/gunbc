@@ -1759,7 +1759,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
     InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "v4_bridge.qualified_name_from_dotted_string" },
       form: FreeCall,
-      authored_spelling: "v2.std.qualified_name.qualified_name_from_dotted_string",
+      authored_spelling: "qualified_name_from_dotted_string",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
       dispatch_emit_site: EvalCallBridgeFamilySite { module: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "v2.std.qualified_name") },

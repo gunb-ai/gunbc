@@ -184,7 +184,7 @@ fn effect_grant_decide(
       refusal: std.access.AccessRefusal {
         cause: std.access.AccessActionNotGranted { action: effect_verb_label(verb: verb) },
         location: std.access.AccessRefusalLocation {
-          profile: "std.authorization_profile.EffectRequest",
+          profile: "EffectRequest",
           subject: frame.name,
           action: effect_verb_label(verb: verb),
           object: effect_target_label(target: target),

@@ -174,7 +174,7 @@ test fn the_timer_unit_directive_renders_as_the_bare_unit_key() -> Bool {
     == "Unit=a.service"
     && !string_contains(
       extdeps.systemd.unit_file.systemd_timer_directive_line(directive: extdeps.systemd.unit_file.TimerUnit { target: "a.service" as std.types.NonEmptyStr }),
-      "extdeps.systemd.unit_file.TimerUnit",
+      "TimerUnit",
     )
 }
 

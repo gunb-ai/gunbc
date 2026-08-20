@@ -1197,8 +1197,8 @@ fn where_refinement_is_string_literal_predicate(pred_name: String) -> Bool {
     || pred_name == "lower_hex_40"
     || pred_name == "lower_hex_128"
     || pred_name == "lower_hex_16"
-    || pred_name == "extdeps.container.oci.digest.oci_other_digest_algorithm"
-    || pred_name == "extdeps.container.oci.digest.oci_other_digest_encoded"
+    || pred_name == "oci_other_digest_algorithm"
+    || pred_name == "oci_other_digest_encoded"
 }
 
 fn where_refinement_is_deferred_predicate(pred_name: String) -> Bool {
@@ -1230,9 +1230,9 @@ fn decidable_where_string_predicate_holds(pred_name: String, value: String) -> B
     Present {
       value: content_hash_validate_lower_hex_length(text: value, expected_hex_digits: 16),
     }
-  } else if pred_name == "extdeps.container.oci.digest.oci_other_digest_algorithm" {
+  } else if pred_name == "oci_other_digest_algorithm" {
     Present { value: extdeps.container.oci.digest.oci_other_digest_algorithm(value: value) }
-  } else if pred_name == "extdeps.container.oci.digest.oci_other_digest_encoded" {
+  } else if pred_name == "oci_other_digest_encoded" {
     Present { value: extdeps.container.oci.digest.oci_other_digest_encoded(value: value) }
   } else {
     none

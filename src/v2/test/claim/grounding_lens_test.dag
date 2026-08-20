@@ -174,7 +174,7 @@ fn production_layer_inversion_fixture_decls() -> List<v2.std.concept_index.Conce
       node: record_type(fields: [field_edge(field: ^url, type_sym: ^String)])
     ),
     concept_decl(
-      qn: "v2.std.network.Url",
+      qn: "v2.lens.grounding.Url",
       nm: "Url",
       node: record_type(fields: [field_edge(field: ^scheme, type_sym: ^UriScheme)])
     )
@@ -192,12 +192,12 @@ test fn witness_production_layer_inversion_now_included() -> Bool {
 fn product_namespace_fixture_decls() -> List<v2.std.concept_index.ConceptDecl> {
   [
     concept_decl(
-      qn: "v2.extdeps.coordination.Endpoint",
+      qn: "product.compute_fabric.Endpoint",
       nm: "Endpoint",
       node: record_type(fields: [field_edge(field: ^base_url, type_sym: ^String)])
     ),
     concept_decl(
-      qn: "v2.std.network.Url",
+      qn: "product.network_topology.Url",
       nm: "Url",
       node: record_type(fields: [field_edge(field: ^scheme, type_sym: ^UriScheme)])
     )

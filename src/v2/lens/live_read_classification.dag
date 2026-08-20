@@ -255,7 +255,7 @@ fn carrier_for_callee_text(
       HeadAbsent => v2.std.live_read.FilesystemReadPath { path_pattern: UnknownPath }
     }
   } else if string_eq(a: callee_text, b: "module_declaration_facts")
-    || string_eq(a: callee_text, b: "v2.lens.module_graph.module_declaration_facts_live") {
+    || string_eq(a: callee_text, b: "module_declaration_facts_live") {
     ModuleDeclarationFactsScan
   } else if string_eq(a: callee_text, b: "decl_facts") {
     v2.std.live_read.DeclFactsReflection { home: "v2.std.decl_index" }

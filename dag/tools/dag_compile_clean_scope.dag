@@ -14,7 +14,7 @@ data compile_clean_docs_universe_path_grain_scaffold: std.disposition.Dispositio
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.floor_compile_clean_predicates",
-    decl_name: "v2.workflow.floor_compile_clean_predicates.compile_clean_all_touched_paths_docs_universe",
+    decl_name: "compile_clean_all_touched_paths_docs_universe",
     field: WholeDeclaration
   }
 }

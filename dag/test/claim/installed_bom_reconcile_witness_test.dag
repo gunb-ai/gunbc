@@ -351,7 +351,7 @@ test fn reserving_the_lot_before_receipt_is_refused_for_insufficient_available_s
   ) {
     product.inventory.BalanceDerived { balance: _ } => false
     product.inventory.BalanceRefused { cause, event_ordinal: _, event_label: l } =>
-      l == ("product.inventory.QuantityReserved" as std.types.NonEmptyStr)
+      l == ("QuantityReserved" as std.types.NonEmptyStr)
         && match cause {
           product.inventory.InsufficientStock { position: p, requested: q, held: h } =>
             product.inventory.stock_position_label(position: p) == product.inventory.stock_position_label(position: product.inventory.Available)

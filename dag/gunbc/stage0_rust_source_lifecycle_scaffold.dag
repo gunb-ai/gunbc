@@ -263,19 +263,19 @@ data stage0_src_repo_prefix: v2.std.text.String = "src/v1/stage0/src/"
 
 data generated_stage0_files_authority_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "gunbc.stage0_emit_plan_generated",
-  decl_name: "gunbc.stage0_emit_plan_generated.generated_stage0_files",
+  decl_name: "generated_stage0_files",
   field: std.decl_ref.WholeDeclaration
 }
 
 data hand_maintained_stage0_filenames_authority_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "v2.compiler.self_host.stage0_crate_layout",
-  decl_name: "v2.compiler.self_host.stage0_crate_layout.hand_maintained_stage0_filenames",
+  decl_name: "hand_maintained_stage0_filenames",
   field: std.decl_ref.WholeDeclaration
 }
 
 data stage0_partition_crate_rows_authority_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "v2.workflow.rust_crate_partition",
-  decl_name: "v2.workflow.rust_crate_partition.stage0_partition_crate_rows",
+  decl_name: "stage0_partition_crate_rows",
   field: std.decl_ref.WholeDeclaration
 }
 
