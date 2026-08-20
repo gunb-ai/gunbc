@@ -103,20 +103,61 @@ test fn witness_core_advertised_lossless() -> Bool {
   }
 }
 
-fn frontier_emphasis_doc() -> MarkdownDocument {
-  MarkdownDocument {
-    blocks: [
-      ParagraphBlock {
-        inlines: [
-          TextInline { text: "see " },
-          EmphasisInline { inlines: [ TextInline { text: "this" } ] },
-        ],
-      },
-    ],
-  }
+fn inline_doc(inlines: List<MarkdownInline>) -> MarkdownDocument {
+  MarkdownDocument { blocks: [ ParagraphBlock { inlines: inlines } ] }
 }
 
-test fn witness_frontier_not_roundtripped() -> Bool {
-  !(ingest_markdown_source(src: serialize_markdown_source(doc: frontier_emphasis_doc())) == frontier_emphasis_doc())
+fn inline_round_trips(inlines: List<MarkdownInline>) -> Bool {
+  let doc = inline_doc(inlines: inlines)
+  ingest_markdown_source(src: serialize_markdown_source(doc: doc)) == doc
 }
 
+// Was witness_frontier_not_roundtripped, which ASSERTED that emphasis does not
+// survive ingest. That was true, and the reason it was true is that every ingest
+// call site read md_ingest_inlines -- a stub returning one TextInline over the
+// whole string -- while the module's real recursive inline parser sat beside it
+// wired to nothing. The claim named the situation a frontier, so the unplugged
+// parser read as an unbuilt feature for as long as the claim stayed green.
+// Per DESIGN 4b an expecting-red probe that greens when the wall lands becomes a
+// permanent regression control rather than retiring: it now asserts the positive.
+test fn witness_emphasis_survives_the_round_trip() -> Bool {
+  inline_round_trips(inlines: [
+    TextInline { text: "see " },
+    EmphasisInline { inlines: [ TextInline { text: "this" } ] },
+  ])
+}
+
+test fn witness_strong_survives_the_round_trip() -> Bool {
+  inline_round_trips(inlines: [
+    TextInline { text: "a " },
+    StrongInline { inlines: [ TextInline { text: "bold" } ] },
+  ])
+}
+
+test fn witness_code_survives_the_round_trip() -> Bool {
+  inline_round_trips(inlines: [
+    TextInline { text: "call " },
+    CodeInline { text: "md_parse_inline_rest" },
+  ])
+}
+
+test fn witness_link_survives_the_round_trip() -> Bool {
+  inline_round_trips(inlines: [
+    TextInline { text: "read " },
+    LinkInline { inlines: [ TextInline { text: "DESIGN" } ], url: "DESIGN.md" },
+  ])
+}
+
+// The discriminator. A round-trip suite made only of positives cannot tell a
+// working parser from one that returns its input unchanged, because a stub that
+// carries the raw markup in a single TextInline reproduces the source bytes too.
+// This asserts the STRUCTURE, not the bytes: the stub yields one TextInline for
+// the whole string, so it fails here while still passing every claim above.
+test fn witness_ingest_yields_structure_not_one_text_run() -> Bool {
+  let recovered = ingest_markdown_source(src: "a **bold** word")
+  recovered == inline_doc(inlines: [
+    TextInline { text: "a " },
+    StrongInline { inlines: [ TextInline { text: "bold" } ] },
+    TextInline { text: " word" },
+  ])
+}
