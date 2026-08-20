@@ -18530,6 +18530,20 @@ fn type_decls_from_module(
     use v1_compiler::v1_std_core::Connective;
     let mut out = std::collections::HashMap::new();
     for decl in module.children.iter() {
+        // WHICH CHILDREN ARE TYPE DECLARATIONS AT ALL -- measured, not named from memory. The
+        // grouped shape census over one module's children is unambiguous:
+        //
+        //   is_type=true   conn=Conj/Disj    body=false  params=0  inferred=false
+        //   is_type=false  conn=NoConnective body=true   (compare_int, tally_verdict, no_names)
+        //
+        // A function or a data row carries a BODY; a type declaration does not. Without this the
+        // arm has no notion of its own subject, which is the single cause of BOTH failures here:
+        // filtering implicitly on two connectives was too narrow (70% of declarations dropped),
+        // and filtering on nothing was too wide (every function registered as a type, 6509 read
+        // against 957 authored). Neither was a bug in the filter; both were its absence.
+        if decl.body.is_some() {
+            continue;
+        }
         match decl.connective {
             Connective::Disj => {
                 let variants: Vec<String> = decl.children.iter().map(|v| v.name.clone()).collect();
