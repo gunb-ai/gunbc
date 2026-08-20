@@ -190,8 +190,37 @@ fn fleet_desired_admission_job() -> Job {
   }
 }
 
-// Queued, never cancelled: two floor runs completing close together must admit in order, and
-// cancelling one mid-push would leave the compare-and-swap half-observed.
+// CONCURRENCY, STATED AS WHAT THE PLATFORM ACTUALLY PROVIDES. An earlier revision of this
+// annotation claimed "queued, never cancelled ... must admit in order", and review 53998 caught
+// that the chosen variant does not provide it. Per the authority
+// (extdeps.languages.yaml.gha_workflow concurrency_queue_max_emission_note), the default group
+// modeled by ConcurrencyMappingQueueNotMax holds at most one running and one PENDING entry, and a
+// newly-arriving entry CANCELS the pending one; multi-entry in-order queueing is what
+// ConcurrencyMappingQueueMax was minted for. Asserting the queue property here was a state-space
+// conflation of "in-order queue" with the platform's pending-replacement default -- a prose claim
+// the emitted bytes do not support.
+//
+// The variant is nonetheless the RIGHT one, and the corrected reason is narrower than the claim it
+// replaces. What this workflow needs is that a RUNNING admission is never interrupted, because a
+// cancellation between the compare-and-swap decision and the push would leave the advance
+// half-observed; the default group gives exactly that, since cancel-in-progress defaults false and
+// only the pending entry is replaceable. Losing a superseded PENDING admission is not a defect but
+// the preferable outcome: the desired ref should track the newest floor-green revision, and
+// admitting each intermediate one in turn would be slower convergence for no gain. Reaching for
+// QueueMax would buy the in-order queue this comment used to claim and then have to justify why the
+// fleet wants to walk through revisions it has already passed.
+//
+// WHAT ORDERING DOES NOT COVER, named here rather than left to be discovered. Neither variant
+// prevents an OLDER floor run from admitting after a newer one -- a manually re-run floor for an
+// earlier commit completes later, observes the current prior, and its compare-and-swap succeeds,
+// moving the desired ref BACKWARD onto a revision the fleet has already advanced past. The gate
+// models floor-greenness, not ancestry, so nothing in the decision refuses it. This is a real class
+// at mitigatable: reaching it requires deliberately re-running an old floor run, and the resulting
+// state is a valid earlier revision rather than an unproven one, so hosts converge to something
+// floor-green either way. NEXT-RUNG TRIGGER: an ancestry operand on the admission -- candidate must
+// be a descendant of the observed prior -- which needs a git ancestry read the Core surface does
+// not yet model (RevList is the nearest existing operation). Until that lands the class is declared
+// here, not silently absent.
 data fleet_desired_admission_workflow: Workflow = Workflow {
   name: "fleet-desired",
   on: [
