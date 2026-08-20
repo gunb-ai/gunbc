@@ -902,26 +902,55 @@ than argued.
    rung is the thing that must be DERIVED from executed measurement (§1c, and the Stage 0
    carrier `gunbc.guarantee_measurement` deliberately stores none).
 
-12. **A diagnostic prints a byte offset in line-number shape** (opened 2026-08-19; verified
-   independently by two sessions). `dag/std/source_annotation.dag`'s in-body refusal — *"source
-   annotation sits inside a declaration body"* — renders its span as
-   `(src/v1/trait_derive_emit.dag:29073-29163)`. That file is **1407 lines** and 62288 bytes, so
-   29073 exceeds the line count more than twentyfold and cannot be a line number; byte 29073
-   lands on **line 478**. **Lead the row with the defect, not the arithmetic:** the compiler
-   emitted a POSITIONAL citation about its own input at a moment when the declaration NAME was
-   in hand — the diagnostic knows it sits inside a declaration body, that is its entire
-   complaint. §3's cite-the-symbol rule was written against human prose citations; this is a
-   machine-side instance of the same defect in the compiler's own diagnostic channel, and the
-   rule's argument applies unchanged — a symbol is decidable and stable, a position rots
-   without anyone touching it. **Why the wrong number is the worse failure mode:** an absent
-   location announces its absence and sends the reader looking; a plausible wrong one does not.
-   The reader jumps to line 29073, finds the file ended long ago, and concludes the diagnostic
-   or the path is broken — never that the answer is line 478, three lines from what they
-   wanted. That is fabricated plausible output (§5) sitting in the one channel whose entire
-   function is to be believed. **Mechanism: NOT YET READ.** The formatter has not been
-   inspected, and the session that found this declined to describe a mechanism it had not read
-   — an honestly incomplete row beats a plausible mechanism nobody verified, which is precisely
-   the failure this row is about. Ceiling and next trigger land when the formatter is read.
+12. **`SourceSpan` carries untyped magnitudes, so a byte offset renders as a line number**
+   (opened 2026-08-19; **relocated one layer down before filing** — see the correction note).
+   `dag/std/types.dag` `SourceSpan` declares `start: Int` and `end: Int`. Nothing in the type
+   says what unit they are: byte offset, character offset and line number are all inhabitants
+   of `Int` and the type admits all three identically. The producer fills bytes, the general
+   diagnostic renderer prints `file:START-END` — a form universally read as a line range — and
+   no mechanism can catch the disagreement, because there is no unit present to disagree with.
+   **Observed:** the in-body annotation refusal rendered
+   `(src/v1/trait_derive_emit.dag:29073-29163)` against a file of 1407 lines / 62288 bytes;
+   byte 29073 lands on line 478. **Harm:** confidently located and WRONG, in a format
+   indistinguishable from a correct citation. An absent location announces its absence and
+   sends the reader looking; a plausible wrong one does not — the reader finds the file ended
+   long ago and concludes the diagnostic or the path is broken, never that the answer is a few
+   lines from what they wanted. That is fabricated plausible output (§5) in the one channel
+   whose entire function is to be believed. **Distinguishing:** the cited value exceeds the
+   file's line count (here twentyfold); `head -c N file | wc -l` lands within a line or two of
+   the true site. **Population:** 17 files construct `SourceSpan` — bounded and countable.
+   **Ceiling — structurally impossible, and PROVEN ATTAINABLE IN THIS REPO:**
+   `src/v2/test/claim/long/a4_opacity_test.dag` compiles three sources through
+   `compile_ingest_staging` and asserts refusal of `ByteOffset`-for-`CharOffset` AND
+   `CharOffset`-for-`ByteOffset`, with an accepting same-type control. The capability is
+   demonstrated, not speculative — this is not a wall-after-grounding. **Two precisions that
+   change the fix, both easy to get wrong:** (i) the witness executes the **record-wrapper**
+   form (`type ByteOffset { value: Int }`), NOT the `where brand(..)` refinement form, despite
+   one of its test identities being *named* `a4_opacity_same_brand_accepts` — brands are
+   separately known to be unenforced at acceptance positions, so adopting the brand spelling
+   because it reads more elegantly would land a change that looks like the climb and enforces
+   nothing, which is the rung inflation §4b calls worse than sitting low; (ii) **that witness
+   does not currently execute** — it is a `witness_deferral_freeze` member under
+   `LegacyFrozenPathDeferral`, which the coverage gate deliberately never admits as covered, so
+   the capability is proven *in source* and unexercised *in the present tree*. **Next trigger:**
+   declare the unit types in the record-wrapper form and give `SourceSpan.start`/`.end` those
+   types instead of `Int`; the renderer then either consults `build_newline_index`
+   (`src/v1/00_core.dag`, which already carries `offsets` and `char_codes`, so byte-to-line is
+   already modeled and simply not consulted) or names its unit. **Blast radius:** every
+   diagnostic carrying a `SourceSpan`, i.e. the general renderer.
+   **The §3 reading, which is the durable half:** the compiler emitted a POSITIONAL citation
+   about its own input at a moment when the declaration NAME was in hand — the diagnostic knows
+   it sits inside a declaration body, that is its entire complaint. §3's cite-the-symbol rule
+   was written against human prose; this is a machine-side instance in the compiler's own
+   diagnostic channel, and its argument applies unchanged.
+   **Correction note, kept rather than silently fixed:** this row was first reported — and
+   relayed onward by a second session — as a defect in `dag/std/source_annotation.dag`. That
+   module is clean: `annotation_attachment_refusal_message` returns only the sentence, the
+   refusal variants carry `origin: SourceSpan`, and the header at
+   `annotation_attachment_refusal_origin` explicitly reasons that a consumer should ASK for the
+   origin rather than store a second copy. The symptom was right and the attribution was one
+   layer too shallow; it is recorded here because two readers repeated it before the formatter
+   was read.
 
 **These three classes are one class, and it is worth naming as such** (items 11 and 12, plus
 the ~48 unlocated synthetic `expected Product(NonEmptyStr), got Primitive(String)` mismatches
