@@ -26,7 +26,6 @@ import gunbc.fleet_main_revision {
   fleet_desired_ref_name,
   fleet_desired_advance_expectation,
   fleet_desired_advance_refusal_message,
-  fleet_desired_ref_name,
   FleetDesiredRevision,
   FleetDesiredAdmitted,
   FleetDesiredUnobserved,
