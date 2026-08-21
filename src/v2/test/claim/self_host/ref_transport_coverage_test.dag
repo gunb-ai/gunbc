@@ -1,4 +1,4 @@
-module v2.test.self_host.ref_carrier_coverage
+module v2.test.self_host.ref_transport_coverage
 
 import std.content_hash { Fnv1a64, Fnv1a64Structural }
 import v2.compiler.self_host.compiler_closure_emit_driver {
@@ -16,7 +16,7 @@ import v2.compiler.source_authority {
   SourceRootProvenanceCoverageReceipt,
   SourceRootRowsMissing,
   source_root_coverage_is_complete,
-  source_root_ref_carrier_coverage_is_complete
+  source_root_ref_transport_coverage_admits
 }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.logic { Bool }
@@ -114,12 +114,12 @@ test fn absent_manifest_still_refuses_at_coverage() -> Bool {
 test fn the_two_coverage_questions_differ_on_exactly_the_elided_variant() -> Bool {
   let elided = SourceRootManifestElided { read_count: 107, cap: 64 }
   let rows_missing = SourceRootRowsMissing { read_count: 2, produced_row_count: 1 }
-  source_root_ref_carrier_coverage_is_complete(coverage: elided)
+  source_root_ref_transport_coverage_admits(coverage: elided)
     && !source_root_coverage_is_complete(coverage: elided)
-    && (source_root_ref_carrier_coverage_is_complete(coverage: SourceRootCoverageComplete)
+    && (source_root_ref_transport_coverage_admits(coverage: SourceRootCoverageComplete)
         == source_root_coverage_is_complete(coverage: SourceRootCoverageComplete))
-    && (source_root_ref_carrier_coverage_is_complete(coverage: rows_missing)
+    && (source_root_ref_transport_coverage_admits(coverage: rows_missing)
         == source_root_coverage_is_complete(coverage: rows_missing))
-    && (source_root_ref_carrier_coverage_is_complete(coverage: SourceRootManifestAbsent)
+    && (source_root_ref_transport_coverage_admits(coverage: SourceRootManifestAbsent)
         == source_root_coverage_is_complete(coverage: SourceRootManifestAbsent))
 }
