@@ -203,7 +203,7 @@ data checkout_action: ActionRef = ActionRef {
 }
 
 data setup_rust_action: ActionRef = ActionRef {
-  owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "v1.16.0"
+  owner: "actions-rust-lang", repo: "setup-rust-toolchain", ref: "0"
 }
 
 data cache_action: ActionRef = ActionRef {

@@ -135,4 +135,4 @@ data go_mvs_properties: List<GoMvsProperty> = [
 ]
 
 data emit_host_min_go_language_version: GoLanguageVersion = "1.22"
-data emit_host_bootstrap_toolchain: GoToolchainName = "go1.22.5"
+data emit_host_bootstrap_toolchain: GoToolchainName = "5"

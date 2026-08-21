@@ -22,9 +22,9 @@ test fn two_productions_at_one_node_shape_stay_two_families() -> Bool {
   let families = retention_family_bump(
     families: retention_family_bump(
       families: Empty,
-      v2.test.claim.workflow.body_lowering_retention_census_test.observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_type_variant", node_shape: "Type/Conj")
+      observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_type_variant", node_shape: "Type/Conj")
     ),
-    v2.test.claim.workflow.body_lowering_retention_census_test.observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_field_init", node_shape: "Type/Conj")
+    observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_field_init", node_shape: "Type/Conj")
   )
   (length(xs: families) == 2) && (retention_families_total(families: families) == 2)
 }
@@ -37,11 +37,11 @@ test fn one_production_observed_repeatedly_is_one_family_with_a_count() -> Bool 
     families: retention_family_bump(
       families: retention_family_bump(
         families: Empty,
-        v2.test.claim.workflow.body_lowering_retention_census_test.observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_type_alias_rhs", node_shape: "Type/Conj")
+        observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_type_alias_rhs", node_shape: "Type/Conj")
       ),
-      v2.test.claim.workflow.body_lowering_retention_census_test.observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_type_alias_rhs", node_shape: "Type/Conj")
+      observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_type_alias_rhs", node_shape: "Type/Conj")
     ),
-    v2.test.claim.workflow.body_lowering_retention_census_test.observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_type_alias_rhs", node_shape: "Type/Conj")
+    observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_type_alias_rhs", node_shape: "Type/Conj")
   )
   (length(xs: families) == 1) && (retention_families_total(families: families) == 3)
 }
@@ -53,9 +53,9 @@ test fn one_production_at_two_node_shapes_stays_two_families() -> Bool {
   let families = retention_family_bump(
     families: retention_family_bump(
       families: Empty,
-      v2.test.claim.workflow.body_lowering_retention_census_test.observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_fn_type", node_shape: "Type/Conj")
+      observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_fn_type", node_shape: "Type/Conj")
     ),
-    v2.test.claim.workflow.body_lowering_retention_census_test.observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_fn_type", node_shape: "Computation/Transform")
+    observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_fn_type", node_shape: "Computation/Transform")
   )
   (length(xs: families) == 2) && (retention_families_total(families: families) == 2)
 }
@@ -70,13 +70,13 @@ test fn the_observation_total_is_preserved_across_every_partition() -> Bool {
       families: retention_family_bump(
         families: retention_family_bump(
           families: Empty,
-          v2.test.claim.workflow.body_lowering_retention_census_test.observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "a", node_shape: "Type/Conj")
+          observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "a", node_shape: "Type/Conj")
         ),
-        v2.test.claim.workflow.body_lowering_retention_census_test.observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "b", node_shape: "Type/Conj")
+        observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "b", node_shape: "Type/Conj")
       ),
-      v2.test.claim.workflow.body_lowering_retention_census_test.observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "a", node_shape: "Type/Conj")
+      observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "a", node_shape: "Type/Conj")
     ),
-    v2.test.claim.workflow.body_lowering_retention_census_test.observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "c", node_shape: "Type/Conj")
+    observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "c", node_shape: "Type/Conj")
   )
   (length(xs: families) == 3) && (retention_families_total(families: families) == 4)
 }
@@ -85,7 +85,7 @@ test fn the_observation_total_is_preserved_across_every_partition() -> Bool {
 // shape and not silently drop either half.
 test fn the_family_key_names_both_the_production_and_the_shape() -> Bool {
   let key = retained_production_key(
-    v2.test.claim.workflow.body_lowering_retention_census_test.observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_field_decl_block", node_shape: "Type/Conj")
+    observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_field_decl_block", node_shape: "Type/Conj")
   )
   string_contains(s: key, pattern: "dag_surface_field_decl_block")
     && string_contains(s: key, pattern: "Type/Conj")

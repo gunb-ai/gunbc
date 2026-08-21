@@ -102,7 +102,7 @@ fn format_section_header(syntax: std.languages.CommentSyntax, title: String) -> 
 }
 
 fn indent_text(level: Int, unit: String, text: String) -> String {
-  let pad = repeat_string(s: unit, n: level)
+  let pad = std.render_repeat_string_bootstrap.repeat_string(s: unit, n: level)
   "\{pad\}\{text\}"
 }
 

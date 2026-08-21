@@ -1040,7 +1040,7 @@ fn target_serialize_source_from_model_bounded(
             target_serialize_relation_row_from_model_bounded(remaining - 1, target, emitted)
           }
         )
-      v2.compiler.06_translate.TypeExprKindAuthorityInvalid =>
+      TypeExprKindAuthorityInvalid =>
         v2.std.diagnostic.outcome_rejected(
           translate_type_expr_kind_authority_invalid_diagnostic(node: emitted)
         )
@@ -3854,7 +3854,7 @@ fn translate_node(
   match target_bundle_child_optional_type_expr_projection(target: target) {
     Accepted { value: ProjectionPresent, diagnostics: _ } =>
       translate_node_with_projection(node: node, tree: tree, target: target)
-    Accepted { value: v2.compiler.06_translate.ProjectionAbsent, diagnostics: _ } =>
+    Accepted { value: ProjectionAbsent, diagnostics: _ } =>
       translate_node_projection_absent(node: node, tree: tree, target: target)
     Rejected { diagnostics: r } =>
       v2.std.diagnostic.Rejected { diagnostics: r }
@@ -3874,7 +3874,7 @@ fn target_bundle_child_optional_type_expr_projection(
     v2.std.diagnostic.Accepted { value: v2.std.optional.Present { value: _ }, diagnostics: d } =>
       v2.std.diagnostic.Accepted { value: ProjectionPresent, diagnostics: d }
     Accepted { value: v2.std.optional.Absent, diagnostics: d } =>
-      v2.std.diagnostic.Accepted { value: v2.compiler.06_translate.ProjectionAbsent, diagnostics: d }
+      v2.std.diagnostic.Accepted { value: ProjectionAbsent, diagnostics: d }
     Rejected { diagnostics: r } =>
       v2.std.diagnostic.Rejected { diagnostics: r }
   }
@@ -3974,7 +3974,7 @@ fn translate_diagnostic_reason_variants() -> std.types.List<TranslateDiagnosticR
     LexRuleLiteralNotFound,
     BindingSpellingNotFound,
     TypeExpressionShapeMissing,
-    v2.compiler.06_translate.TypeExprKindAuthorityInvalid,
+    TypeExprKindAuthorityInvalid,
     TargetAtomRealizationLookupMiss,
     TargetFunctionSignatureRealizationLookupMiss,
     TargetTypeExprEmittedShapeMalformed
@@ -3996,7 +3996,7 @@ fn translate_diagnostic_reason_symbol(reason: TranslateDiagnosticReason) -> v2.s
     LexRuleLiteralNotFound => ^translate_lex_rule_literal_not_found
     BindingSpellingNotFound => ^translate_binding_spelling_not_found
     TypeExpressionShapeMissing => ^translate_type_expression_shape_missing
-    v2.compiler.06_translate.TypeExprKindAuthorityInvalid => ^translate_type_expr_kind_authority_invalid
+    TypeExprKindAuthorityInvalid => ^translate_type_expr_kind_authority_invalid
     TargetAtomRealizationLookupMiss => ^target_atom_realization_lookup_miss
     TargetFunctionSignatureRealizationLookupMiss => ^target_function_signature_realization_lookup_miss
     TargetTypeExprEmittedShapeMalformed => ^target_type_expr_emitted_shape_malformed

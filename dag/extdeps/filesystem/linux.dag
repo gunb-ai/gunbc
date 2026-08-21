@@ -13,14 +13,14 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 data linux_rename_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https,
-    locator: "man7.org/linux/man-pages/man2/rename.2.html",
+    locator: "man7.org/linux/man-pages/man2/html",
   },
 }
 
 data linux_sync_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https,
-    locator: "man7.org/linux/man-pages/man2/sync.2.html",
+    locator: "man7.org/linux/man-pages/man2/html",
   },
 }
 

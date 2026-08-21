@@ -5,42 +5,42 @@ module extdeps.pijul
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https
-    locator: "static.crates.io/crates/pijul/pijul-1.0.0-beta.20.crate#pijul-1.0.0-beta.20/README.md"
+    locator: "static.crates.io/crates/pijul/pijul-1.0.0-crate#pijul-1.0.0-beta.20/README.md"
   }
 }
 
 data pijul_channels_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https
-    locator: "static.crates.io/crates/pijul/pijul-1.0.0-beta.20.crate#pijul-1.0.0-beta.20/src/commands/channel.rs"
+    locator: "static.crates.io/crates/pijul/pijul-1.0.0-crate#pijul-1.0.0-beta.20/src/commands/channel.rs"
   }
 }
 
 data pijul_theory_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https
-    locator: "static.crates.io/crates/pijul-core/pijul-core-1.0.0-beta.20.crate#pijul-core-1.0.0-beta.20/src/change.rs"
+    locator: "static.crates.io/crates/pijul-core/pijul-core-1.0.0-crate#pijul-core-1.0.0-beta.20/src/change.rs"
   }
 }
 
 data pijul_conflicts_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https
-    locator: "static.crates.io/crates/pijul-core/pijul-core-1.0.0-beta.20.crate#pijul-core-1.0.0-beta.20/src/alive/output.rs"
+    locator: "static.crates.io/crates/pijul-core/pijul-core-1.0.0-crate#pijul-core-1.0.0-beta.20/src/alive/output.rs"
   }
 }
 
 data pijul_apply_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https
-    locator: "static.crates.io/crates/pijul-core/pijul-core-1.0.0-beta.20.crate#pijul-core-1.0.0-beta.20/src/apply.rs"
+    locator: "static.crates.io/crates/pijul-core/pijul-core-1.0.0-crate#pijul-core-1.0.0-beta.20/src/apply.rs"
   }
 }
 
 data pijul_partial_clone_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https
-    locator: "static.crates.io/crates/pijul/pijul-1.0.0-beta.20.crate#pijul-1.0.0-beta.20/src/commands/clone.rs"
+    locator: "static.crates.io/crates/pijul/pijul-1.0.0-crate#pijul-1.0.0-beta.20/src/commands/clone.rs"
   }
 }
 
@@ -60,7 +60,7 @@ data pijul_upstream_version: extdeps.pijul.PijulUpstreamVersion = PijulUpstreamV
 
 data pijul_upstream_cli_version: std.types.NonEmptyStr = "pijul 1.0.0-beta.20"
 
-data pijul_upstream_version_note: std.types.NonEmptyStr = "This R0 authority models Pijul CLI and pijul-core 1.0.0-beta.20. Every external anchor resolves into an immutable exact-version crates.io archive, and the wet receipt refuses any CLI version other than pijul 1.0.0-beta.20."
+data pijul_upstream_version_note: std.types.NonEmptyStr = "This R0 authority models Pijul CLI and pijul-core 1.0.0- Every external anchor resolves into an immutable exact-version crates.io archive, and the wet receipt refuses any CLI version other than pijul 1.0.0-"
 
 data pijul_timestamp_non_authority_note: std.types.NonEmptyStr = "Pijul change timestamps are retained as authored metadata and provenance only. They never order delivery, choose a channel state, satisfy a dependency, or break a tie."
 

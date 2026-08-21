@@ -195,7 +195,7 @@ type SparkManagedGrant
 
 fn spark_managed_grant_sudoers_command(grant: SparkManagedGrant) -> std.types.NonEmptyStr {
   match grant {
-    gunbc.spark.managed_access_bootstrap.EnableLingerForOwnAccount => "/usr/bin/loginctl enable-linger" as std.types.NonEmptyStr
+    EnableLingerForOwnAccount => "/usr/bin/loginctl enable-linger" as std.types.NonEmptyStr
     RebootThisHost => "/usr/bin/systemctl reboot" as std.types.NonEmptyStr
   }
 }
@@ -206,7 +206,7 @@ fn spark_managed_grant_argv(grant: SparkManagedGrant) -> std.types.List<String> 
   concat(
     ["sudo", "-n"],
     match grant {
-      gunbc.spark.managed_access_bootstrap.EnableLingerForOwnAccount => ["loginctl", "enable-linger"]
+      EnableLingerForOwnAccount => ["loginctl", "enable-linger"]
       RebootThisHost => ["systemctl", "reboot"]
     },
   )
@@ -214,13 +214,13 @@ fn spark_managed_grant_argv(grant: SparkManagedGrant) -> std.types.List<String> 
 
 fn spark_managed_grant_wire(grant: SparkManagedGrant) -> std.types.NonEmptyStr {
   match grant {
-    gunbc.spark.managed_access_bootstrap.EnableLingerForOwnAccount => "enable-linger for this account only" as std.types.NonEmptyStr
+    EnableLingerForOwnAccount => "enable-linger for this account only" as std.types.NonEmptyStr
     RebootThisHost => "reboot this host" as std.types.NonEmptyStr
   }
 }
 
 data spark_managed_grant_population: std.types.List<SparkManagedGrant> = [
-  gunbc.spark.managed_access_bootstrap.EnableLingerForOwnAccount,
+  EnableLingerForOwnAccount,
   RebootThisHost,
 ]
 
@@ -239,7 +239,7 @@ fn derive_spark_bootstrap_plan(
         more: [
           InstallFleetAuthorizedKey { occurrence: m, public_material_identity: fleet_public_material_identity },
           ProveKeyOnlyAuthentication { occurrence: m },
-          InstallNarrowPrivilegeGrant { occurrence: m, grant: gunbc.spark.managed_access_bootstrap.EnableLingerForOwnAccount },
+          InstallNarrowPrivilegeGrant { occurrence: m, grant: EnableLingerForOwnAccount },
           InstallNarrowPrivilegeGrant { occurrence: m, grant: RebootThisHost },
           CreateNoLoginServiceIdentity {
             occurrence: gunbc.fleet_posix_accounts.PosixAccountOccurrence { host: h, principal: gunbc.fleet_posix_accounts.FleetAccountInferenceService },

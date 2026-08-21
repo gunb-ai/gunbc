@@ -111,11 +111,11 @@ fn routine_rollup_folds(verbose: Bool, quiet: Bool) -> Bool {
 
 fn channel_policy(verbosity: Verbosity) -> ChannelPolicy {
   ChannelPolicy {
-    diagnostic: channel_decision(channel: gunbc.output_policy.Diagnostic, verbosity: verbosity)
-    claim_result: channel_decision(channel: gunbc.output_policy.ClaimResult, verbosity: verbosity)
-    progress: channel_decision(channel: gunbc.output_policy.Progress, verbosity: verbosity)
-    shell_trace: channel_decision(channel: gunbc.output_policy.ShellTrace, verbosity: verbosity)
-    instrumentation: channel_decision(channel: gunbc.output_policy.Instrumentation, verbosity: verbosity)
+    diagnostic: channel_decision(channel: Diagnostic, verbosity: verbosity)
+    claim_result: channel_decision(channel: ClaimResult, verbosity: verbosity)
+    progress: channel_decision(channel: Progress, verbosity: verbosity)
+    shell_trace: channel_decision(channel: ShellTrace, verbosity: verbosity)
+    instrumentation: channel_decision(channel: Instrumentation, verbosity: verbosity)
     routine_rollup_grain: routine_rollup_grain_for(verbosity: verbosity)
   }
 }
@@ -186,7 +186,7 @@ fn divergence_disposition(diverges: Bool) -> StreamDisposition {
   }
 }
 
-data effect_stream_dispatch_note: String = "Observation dissolve (operator live-log 2026-07-25): Ambient gunbc.output_policy.ShellTrace silence at Normal must not force StreamSuppressed — Anomaly Failed still surfaces via divergence alone. Quiet no longer swallows divergence either (DESIGN §5: a failing effect is never silent). Verbose still surfaces every stream (Full). The channel grades Ambient scaffolding; the stream policy grades subject content; they compose rather than conflate."
+data effect_stream_dispatch_note: String = "Observation dissolve (operator live-log 2026-07-25): Ambient ShellTrace silence at Normal must not force StreamSuppressed — Anomaly Failed still surfaces via divergence alone. Quiet no longer swallows divergence either (DESIGN §5: a failing effect is never silent). Verbose still surfaces every stream (Full). The channel grades Ambient scaffolding; the stream policy grades subject content; they compose rather than conflate."
 
 fn effect_stream_disposition(
   channel: gunbc.output_policy.OutputChannel,
@@ -225,27 +225,27 @@ type EffectStreamPolicy {
 fn shell_trace_stream_policy(verbosity: Verbosity) -> EffectStreamPolicy {
   EffectStreamPolicy {
     expect_success_observed_success: effect_stream_disposition(
-      channel: gunbc.output_policy.ShellTrace, verbosity: verbosity,
+      channel: ShellTrace, verbosity: verbosity,
       expected: ExpectSuccess, observed: ObservedSuccess
     )
     expect_success_observed_failure: effect_stream_disposition(
-      channel: gunbc.output_policy.ShellTrace, verbosity: verbosity,
+      channel: ShellTrace, verbosity: verbosity,
       expected: ExpectSuccess, observed: observed_outcome_from_exit(exit: 1)
     )
     expect_failure_observed_success: effect_stream_disposition(
-      channel: gunbc.output_policy.ShellTrace, verbosity: verbosity,
+      channel: ShellTrace, verbosity: verbosity,
       expected: ExpectFailure, observed: ObservedSuccess
     )
     expect_failure_observed_failure: effect_stream_disposition(
-      channel: gunbc.output_policy.ShellTrace, verbosity: verbosity,
+      channel: ShellTrace, verbosity: verbosity,
       expected: ExpectFailure, observed: observed_outcome_from_exit(exit: 1)
     )
     outcome_is_data_observed_success: effect_stream_disposition(
-      channel: gunbc.output_policy.ShellTrace, verbosity: verbosity,
+      channel: ShellTrace, verbosity: verbosity,
       expected: OutcomeIsData, observed: ObservedSuccess
     )
     outcome_is_data_observed_failure: effect_stream_disposition(
-      channel: gunbc.output_policy.ShellTrace, verbosity: verbosity,
+      channel: ShellTrace, verbosity: verbosity,
       expected: OutcomeIsData, observed: observed_outcome_from_exit(exit: 1)
     )
     subject_line_guard: subject_text_line_guard
@@ -256,7 +256,7 @@ fn resolve_shell_trace_stream_policy(verbose: Bool, quiet: Bool) -> EffectStream
   shell_trace_stream_policy(verbosity: resolve_verbosity(env: VerbosityEnv { verbose: verbose, quiet: quiet }))
 }
 
-data shell_trace_observation_convergence_note: String = "DISSOLVED (operator live-log 2026-07-25, run 30142403230): shell host-effects now emit as ObservationEvents with named-intent subjects (service.op); Ambient Begin/Done are gunbc.output_policy.ShellTrace-gated (Suppressed at Normal — silent scaffolding); Anomaly Failed surfaces from divergence disposition alone (channel Suppressed no longer forces StreamSuppressed). Derived attention + ci_line_placement supersede the dual-class conflation. Keep this note as the dissolve receipt; delete when a later census no longer needs the history."
+data shell_trace_observation_convergence_note: String = "DISSOLVED (operator live-log 2026-07-25, run 30142403230): shell host-effects now emit as ObservationEvents with named-intent subjects (service.op); Ambient Begin/Done are ShellTrace-gated (Suppressed at Normal — silent scaffolding); Anomaly Failed surfaces from divergence disposition alone (channel Suppressed no longer forces StreamSuppressed). Derived attention + ci_line_placement supersede the dual-class conflation. Keep this note as the dissolve receipt; delete when a later census no longer needs the history."
 
 // HOMED BESIDE routine_rollup_folds, NOT BESIDE THE RENDERER, and the reason is a measured one: the
 // seed resolves both verdicts by name in one entry context, and gunbc.observation_ci_render is not

@@ -37,7 +37,7 @@ test fn reconcile_bridge_projects_identity_and_version() -> Bool {
 test fn sccache_pin_key_stable_across_release_version_bump() -> Bool {
   let bumped_art = extdeps.cache.sccache.SccacheBinaryArtifact {
     binary_release: extdeps.cache.sccache.SccacheBinaryRelease {
-      version: "v0.16.0",
+      version: "0",
       digest_aarch64: sha256_digest(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
       digest_x86_64: sha256_digest(hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
     },
@@ -108,7 +108,7 @@ test fn sccache_aarch64_pin_refuses_x86_64_observation() -> Bool {
 
 data sccache_invalid_digest_artifact: extdeps.cache.sccache.SccacheBinaryArtifact = extdeps.cache.sccache.SccacheBinaryArtifact {
   binary_release: extdeps.cache.sccache.SccacheBinaryRelease {
-    version: "v0.15.0",
+    version: "0",
     digest_aarch64: sha256_digest(hex: "not-valid-hex"),
     digest_x86_64: sha256_digest(hex: "782d2b5dd7ae0a55ebe368ab258114d0928d019ac2d949ab85d5d02f3926709e"),
   },

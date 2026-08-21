@@ -46,7 +46,7 @@ type DependencyView {
 //
 // The subject carries no equality constraint. Callers supply one, exactly as the membership spine
 // takes key_eq rather than assuming its members are comparable.
-type DependencyRelation<extdeps.coverage.Subject> {
+type DependencyRelation<Subject> {
   prerequisite: extdeps.coverage.Subject
   dependent: extdeps.coverage.Subject
   kind: DependencyKind
@@ -69,12 +69,12 @@ fn dependency_view_relations(views: std.types.List<DependencyView>) -> std.types
   })
 }
 
-type ClassifiedDependencyView<extdeps.languages.c.subject.C> {
+type ClassifiedDependencyView<C> {
   dependency: DependencyView
   classification: extdeps.languages.c.subject.C
 }
 
-type DependencyKindClassifier<extdeps.languages.c.subject.C> {
+type DependencyKindClassifier<C> {
   contains: extdeps.languages.c.subject.C
   binds_to: extdeps.languages.c.subject.C
   type_depends_on: extdeps.languages.c.subject.C
@@ -92,9 +92,9 @@ type DependencyKindClassifier<extdeps.languages.c.subject.C> {
   bootstrap_depends_on: extdeps.languages.c.subject.C
 }
 
-fn classify_dependency_kind<extdeps.languages.c.subject.C>(classifier: DependencyKindClassifier<extdeps.languages.c.subject.C>, kind: DependencyKind) -> extdeps.languages.c.subject.C {
+fn classify_dependency_kind<C>(classifier: DependencyKindClassifier<extdeps.languages.c.subject.C>, kind: DependencyKind) -> extdeps.languages.c.subject.C {
   match kind {
-    v2.std.dependency.Contains => classifier.contains
+    Contains => classifier.contains
     BindsTo => classifier.binds_to
     TypeDependsOn => classifier.type_depends_on
     DataDependsOn => classifier.data_depends_on
@@ -112,7 +112,7 @@ fn classify_dependency_kind<extdeps.languages.c.subject.C>(classifier: Dependenc
   }
 }
 
-fn classify_dependency_view<extdeps.languages.c.subject.C>(
+fn classify_dependency_view<C>(
   classifier: DependencyKindClassifier<extdeps.languages.c.subject.C>,
   view: DependencyView
 ) -> ClassifiedDependencyView<extdeps.languages.c.subject.C> {
@@ -122,19 +122,19 @@ fn classify_dependency_view<extdeps.languages.c.subject.C>(
   }
 }
 
-fn classified_source<extdeps.languages.c.subject.C>(view: ClassifiedDependencyView<extdeps.languages.c.subject.C>) -> v2.std.node.Node {
+fn classified_source<C>(view: ClassifiedDependencyView<extdeps.languages.c.subject.C>) -> v2.std.node.Node {
   view.dependency.source
 }
 
-fn classified_dependent<extdeps.languages.c.subject.C>(view: ClassifiedDependencyView<extdeps.languages.c.subject.C>) -> v2.std.node.Node {
+fn classified_dependent<C>(view: ClassifiedDependencyView<extdeps.languages.c.subject.C>) -> v2.std.node.Node {
   view.dependency.dependent
 }
 
-fn classified_usage_site<extdeps.languages.c.subject.C>(view: ClassifiedDependencyView<extdeps.languages.c.subject.C>) -> v2.std.node.Node {
+fn classified_usage_site<C>(view: ClassifiedDependencyView<extdeps.languages.c.subject.C>) -> v2.std.node.Node {
   view.dependency.usage_site
 }
 
-fn classified_dependency_view_eq<extdeps.languages.c.subject.C>(
+fn classified_dependency_view_eq<C>(
   a: ClassifiedDependencyView<extdeps.languages.c.subject.C>,
   b: ClassifiedDependencyView<extdeps.languages.c.subject.C>,
   classification_eq: fn(extdeps.languages.c.subject.C, extdeps.languages.c.subject.C) -> Bool
@@ -150,7 +150,7 @@ type DependencyFoldState {
 fn classify_named_edge_usage(parent: v2.std.node.Node, sym: v2.std.node.Symbol) -> DependencyKind {
   if sym == ^dependency_binds_to_edge {
     match parent.kind {
-      v2.std.node.ComputationNode { behavior: v2.std.node.Bind } => v2.std.dependency.Contains
+      v2.std.node.ComputationNode { behavior: v2.std.node.Bind } => Contains
       _ => BindsTo
     }
   } else if sym == ^dependency_module_import_edge {
@@ -158,14 +158,14 @@ fn classify_named_edge_usage(parent: v2.std.node.Node, sym: v2.std.node.Symbol) 
   } else if sym == ^dependency_bootstrap_depends_edge {
     BootstrapDependsOn
   } else {
-    v2.std.dependency.Contains
+    Contains
   }
 }
 
 fn classify_node_edge_usage(parent: v2.std.node.Node, edge: v2.std.node.Edge) -> DependencyKind {
   match edge.label {
     Named { name: sym } => classify_named_edge_usage(parent: parent, sym: sym)
-    v2.std.node.Positional => v2.std.dependency.Contains
+    v2.std.node.Positional => Contains
   }
 }
 
@@ -224,7 +224,7 @@ fn dependency_lens(root: v2.std.node.Node) -> std.types.List<DependencyView> {
 // shape whatever the subjects are. Parameterized for the same reason the relation above is: the
 // compiler schedules Nodes and host convergence schedules planned operations, and layering is one
 // concept rather than one per subject.
-type ReadinessLayer<extdeps.coverage.Subject> {
+type ReadinessLayer<Subject> {
   ready: std.types.List<extdeps.coverage.Subject>
 }
 

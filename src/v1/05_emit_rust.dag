@@ -1,168 +1,10 @@
 module v1.compiler.emit_rust
 
-import std.algebra { trim }
-import std.syntax { std.syntax.LiteralValue, BinOp, std.syntax.AlgebraFieldKind }
-import v1.std.core {
-  v2.std.node.Node, InferredNode, extdeps.tools.Resolved, CompilerError, TypeVariable, is_compiler_error,
-  import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr,
-  param_node_default_value, authored_name_at, NewlineIndex, find_child_named, tuple_type_name,
-  qualified_last_segment, expr_var_name_at, expr_call_func_at, field_access_field_at,
-  param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at,
-  field_node_type_expr, generic_param_name_at, ExprData, NoExprData, ExprLiteral, ExprError,
-  ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet,
-  ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
-  ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn, make_expr_node, FieldSummary,
-  StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond, OptionalValue,
-  VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding,
-  MatchBoundBinding, v2.std.runtime.CallSemantics, PlainCallSemantics, LookupCallSemantics, FunctionValueCallSemantics, MethodSemantics,
-  PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, MatchPattern,
-  field_binding_pattern, TextFile, ErrorNode, make_error_node, InternalError,
-  UnlistedImportUse, SourceSpan, resource_use_resource, UnaryOpKind, StringPart, Text,
-  extdeps.github.expressions.Interpolation, transport_base_url, transport_has_auth, transport_auth_token,
-  transport_auth_header_name, transport_headers, transport_env, transport_method,
-  transport_path_template, transport_query, transport_request_body, transport_stdin,
-  transport_response_format, transport_auth_basic, transport_tls_posture, service_config_auth,
-  service_config_auth_input, service_config_auth_source, service_config_endpoint,
-  expr_has_self_call, expr_has_non_tail_self_call, field_access_base, foreach_variable_at,
-  expr_method_name_at, let_binding_name_at, record_lit_type_name_at, arg_name_at, arg_value,
-  arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value,
-  record_lit_named_field_value_optional,
-  find_property, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body,
-  lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes,
-  match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base,
-  index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
-  binop_left, binop_right, no_span, with_required_cardinality, v2.std.node.Connective, v2.std.node.Conj, v2.std.node.Disj,
-  NoConnective, Cardinality, Required, CardOptional, is_rest_transport, is_shell_transport,
-  is_file_transport, empty_intern_table
-}
 
-import v1.compiler.artifact { extdeps.render.surface.RenderTarget, extdeps.languages.rust.subject.Rust }
-import extdeps.languages.rust.emit {
-  rust_trait_derive_attr_from_traits,
-  rt_functions, rt_ref_map_functions, rt_wraps_result, rt_bridge_function_names, rust_container_templates, rust_method_wraps_result, rust_method_templates,
-  rust_serde_rename_all_snake_case, rust_serde_rename_all_screaming_snake_case,
-  extdeps.languages.rust.emit.HigherOrderMethodSpec, rust_higher_order_methods
-}
-import std.trait_derive_shape { phantom_opaque_carrier_derive_traits }
-import extdeps.cargo_version { render_cargo_package_header_prefix }
-import gunbc.stage0_crate_layout_generated { generated_pub_mod_block }
-import gunbc.rust_decl_type_overlay { rust_decl_type_container_overlay_is_admitted }
-import v1.compiler.languages {
-  scaffold_for_target, serialization_for_target,
-  TestConventions, ItemKeywords,
-  test_conventions_for_target, visibility_for_target, KeywordVisibility,
-  sharing_for_target,
-  is_string_like
-}
-import v1.compiler.runtime_rust { rust_runtime_source }
-import v1.compiler.compiler_tests_rust { compiler_tests_source }
-import v1.compiler.closure_stub_v2_std_integer_rust { closure_stub_v2_std_integer_source }
-import v1.compiler.closure_stub_v2_std_text_rust { closure_stub_v2_std_text_source }
-import v1.compiler.coercion {
-  coerce_primitive_type, is_copy, lookup_checkpoint, type_reference_decl_file,
-  rust_seed_host_numeric_alias
-}
-import v1.compiler.trait_derive_emit {
-  v1_emit_enum_derives,
-  v1_emit_struct_from_capability_table, v1_emit_enum_supplemental_impls,
-  v1_generic_params_needing_clone_bound,
-  v1_emit_type_params_with_clone_bounds, v1_emit_type_params_with_bounds,
-  v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head,
-  v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement,
-  v1_clone_impl_required_type_params,
-  v1_trait_derive_refuse,
-  trait_derive_emit_fn_clone_bound_keyed_carrier_module,
-  rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible
-}
-import v1.compiler.trait_bound_witness {
-  v1_rc_match_scrutinee_clone_bound_param_names, v1_union_clone_param_names,
-  v1_call_forwarding_clone_bound_wrapper_param_names,
-  v1_equality_bound_param_name
-}
 
-import std.types { is_container_type, is_kernel_type, container_template_algebra }
-import std.serialization { std.serialization.CoproductWireContract, std.serialization.VariantEncoding, std.serialization.VariantNaming }
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index }
-import v1.compiler.infer_types {
-  resolved_type, normalize_access_type_node, for_each_element_type_node,
-  child_type_node, emit_map_has,
-  node_is_keyed_collection, node_is_element_collection, node_is_set_collection, node_is_collection,
-  is_product_type, is_coproduct_type, is_unit_like
-}
-import v1.compiler.infer_method {
-  infer_builtin_call_type
-}
-import v1.compiler.infer_sigs { ResolvedFuncEnv }
-import v1.compiler.infer_items {
-  ResolvedGraph, TypedModule,
-  ItemInfo, v2.std.decl_index.DataItem, v2.std.decl_index.TypeItem, v2.std.decl_index.OtherItem
-}
-import v1.compiler.infer_service {
-  is_typed_service_call_receiver, extract_typed_service_name
-}
-import v1.compiler.infer {
-  InferScope,
-  build_params_scope, extend_scope,
-  build_emit_graph_info,
-  declared_return_type_node,
-  expr_span,
-  resolved_type_name,
-  expand_type_for_field_access,
-  is_where_refinement_type,
-  call_args_by_name
-}
-import v1.compiler.infer_emit_info {
-  EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
-  lookup_emit_type_summary, lookup_emit_type_decl, empty_emit_graph_info,
-  emit_info_with_fn_type_context, emit_info_with_fn_return,
-  is_enum_in_summaries, find_variant_parent, is_known_variant,
-  variant_belongs_to_enum, variant_summary_key,
-  collect_type_node_import_surface_names
-}
-import v1.compiler.resolve { get_exported_names }
-import v1.compiler.infer_resolve { resolve_node, lookup_unit_variant_phantom_type, is_width_nat_type_literal }
-import v1.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs }
-import std.induction { std.induction.SubValueUnknown, std.induction.InductiveField }
 
-import v1.compiler.emit {
-  BlockEmitState, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern,
-  emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type,
-  emit_container, emit_map_type, render_tuple_parts, emit_ident, emit_let_binding,
-  emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr,
-  emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
-  emit_typed_cast_shared, emit_string_literal, emit_simple_expr, escape_rust_interp_text,
-  module_emit_scope, scope_after_expr, lookup_item, has_nested_records_node,
-  emit_data_value_json, EmitterOutcome, Emitted, Refused, is_null_coalesce, has_service_items, typed_named_arg_matches,
-  order_typed_call_args, is_tco_eligible, is_self_recursive, emit_shared_tco_expr,
-  tco_reassign_core, is_tco_identity_passthrough, service_fallback_transport,
-  effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls,
-  service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared,
-  emit_typed_let_shared
-}
-import v1.compiler.languages {
-  wrap_shared_type,
-  sharing_wrap_ctor_for_target,
-  sharing_wrap_ctor_open_for_target,
-  sharing_wrap_ctor_close_for_target,
-  sharing_type_is_wrapped_for_target
-}
-import v1.compiler.emit_core_support {
-  EmitResult, TestProjection,
-  escape_json_string, module_to_filename, make_indent,
-  to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
-  sanitize_service_name, capitalize_first, service_var_name, to_pascal,
-  escape_string_literal_body, unique_strings, to_string, to_string_helper,
-  test_function_name,
-  apply_type_template1, apply_type_template2, apply_type_template3,
-  apply_named_template, language_spec,
-  is_type_alias_return_node, is_service_item,
-  is_type_def_item, is_type_alias_item, is_type_decl_item,
-  is_function_item, is_data_def_item, is_service_def_item,
-  is_resource_def_item, has_mock_prefix, extract_test_projections,
-  is_bare_leaf_item
-}
 
-fn render_rust_applied_via_emit_info(n: v2.std.node.Node, shared_types: std.types.Set<String>, source_indices: std.types.Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+fn render_rust_applied_via_emit_info(n: v1.std.core.Node, shared_types: std.types.Set<String>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   render_rust_applied_type_shared(n: n, generic_param_names: emit_info.fn_generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: emit_info.fn_type_env)
 }
 
@@ -1252,7 +1094,7 @@ fn rust_fn_sig_leaf_name(source_indices: std.types.Map<String, v1.std.core.Newli
   v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: n))
 }
 
-data alias_rhs_qualified_name_routing_note: String = "Construction wall for the dotted-render class. A namespace-QUALIFIED name in a type position (post-PR 6848 resolution) arrives from authored_name_at as the full dotted spelling, e.g. std.algebra.FreeMonoid. Every routing lookup on this path — alias_rhs_rust_qualify_module_filename via lookup_item, rust_seed_host_container_base, alias_base_is_zero_param_decl, is_parametric_opaque_type_base, shared_types — is keyed on the BARE declared name, so a dotted spelling matched nothing, def_mod fell back to the local module, and the else arm rendered the dotted string VERBATIM into Rust. That is not valid extdeps.languages.rust.subject.Rust: rustc reports 'expected one of !, (, +, ::, ;, <, or where, found .', a PARSE error, which then masks every later error in the module.
+data alias_rhs_qualified_name_routing_note: String = "Construction wall for the dotted-render class. A namespace-QUALIFIED name in a type position (post-PR 6848 resolution) arrives from authored_name_at as the full dotted spelling, e.g. std.algebra.FreeMonoid. Every routing lookup on this path — alias_rhs_rust_qualify_module_filename via lookup_item, rust_seed_host_container_base, alias_base_is_zero_param_decl, is_parametric_opaque_type_base, shared_types — is keyed on the BARE declared name, so a dotted spelling matched nothing, def_mod fell back to the local module, and the else arm rendered the dotted string VERBATIM into Rust. That is not valid Rust: rustc reports 'expected one of !, (, +, ::, ;, <, or where, found .', a PARSE error, which then masks every later error in the module.
 
 Measured blast radius before the fix: the emitted 04_infer closure (50 files) contained exactly ONE such line — 'pub type std.types.List<T> = std.algebra.FreeMonoid<T>' in v2_std_collection.rs — and that single line blocked 4 of 5 self-host flip candidates, because std.collection sits in essentially every deep-module closure. The control that proves the fault is qualified-specific is the very next declaration: 'type std.types.Set<T> = std.algebra.PointwisePower<T>' (BARE) already routed correctly to Rc<crate::v2_std_algebra::std.algebra.PointwisePower<T>>.
 
@@ -4793,7 +4635,7 @@ fn node_tree_references_type_name(n: v1.std.core.Node, type_name: String, source
   }
 }
 
-data data_field_struct_import_provider_note: String = "§3 single authority for 'which module PROVIDES this field-struct name'. extdeps.access.zanzibar.This synth exists because an ANONYMOUS record literal takes its type from the FIELD it initializes (an unnamed record literal on the `io` field), so the constructed type name appears NOWHERE in the source text and can therefore never sit in an authored import list — emit_imports, which derives use-lines only from import lists, has no candidate to work from and the emitted extdeps.languages.rust.subject.Rust refuses (E0422 `cannot find struct ... in this scope`).
+data data_field_struct_import_provider_note: String = "§3 single authority for 'which module PROVIDES this field-struct name'. extdeps.access.zanzibar.This synth exists because an ANONYMOUS record literal takes its type from the FIELD it initializes (an unnamed record literal on the `io` field), so the constructed type name appears NOWHERE in the source text and can therefore never sit in an authored import list — emit_imports, which derives use-lines only from import lists, has no candidate to work from and the emitted Rust refuses (E0422 `cannot find struct ... in this scope`).
 
 The predicate was `has_physical_type_def_in_module_filename` — field type PHYSICALLY DEFINED in the module being imported from. That is strictly narrower than the question actually being asked, which is whether the imported module PROVIDES the name. `extdeps.realization.compile_stage_memo` imports extdeps.cache.types.CacheInterfaceCatalogFacts from `extdeps.cache.types` and constructs its `io` / `placement` fields, but those types are defined in the SIBLING modules `extdeps.cache.catalog_io` / `extdeps.cache.catalog_placement` and merely re-exported by `extdeps.cache.types` — so the physical-definition test rejected them and the use-line was never synthesized. Measured, not assumed: materialization_carriers first_error = error E0422 cannot find struct, variant or union type extdeps.cache.catalog_io.CacheInterfaceCatalogIoSemantics in this scope.
 
@@ -6009,9 +5851,9 @@ fn v1_fn_bounds_by_param(
 // precision must come from v1_equality_bound_param_name's type resolution, never from the shape of
 // the walk.
 fn v1_fn_body_equality_bound_param_names(
-  body: v2.std.node.Node,
+  body: v1.std.core.Node,
   generic_param_names: std.types.List<String>,
-  source_indices: std.types.Map<String, NewlineIndex>
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> std.types.List<String> {
   let here = match body.expr_data {
     ExprBinOp { op: op, algebra_field: _ } =>
@@ -6040,7 +5882,7 @@ fn v1_fn_body_equality_bound_param_names(
 
 // Matches Eq/Ne bare exactly as is_string_comparison does in this module. The operator is genuinely
 // a spelling, so reading it as one is correct; it is the OPERANDS that must be resolved by type.
-fn is_equality_comparison(op: BinOp) -> Bool {
+fn is_equality_comparison(op: std.syntax.BinOp) -> Bool {
   match op {
     std.syntax.Eq => true
     Ne => true
@@ -6050,7 +5892,7 @@ fn is_equality_comparison(op: BinOp) -> Bool {
 
 // Empty string means "no resolved type", which is why v1_equality_bound_param_name refuses on it
 // rather than letting two unresolved operands compare equal and fabricate a bound.
-fn v1_resolved_type_name_or_empty(e: v2.std.node.Node, source_indices: std.types.Map<String, NewlineIndex>) -> String {
+fn v1_resolved_type_name_or_empty(e: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
   match e.inferred {
     Present { value: extdeps.tools.Resolved { node: rt } } => authored_name_at(source_indices: source_indices, node: rt)
     _ => ""

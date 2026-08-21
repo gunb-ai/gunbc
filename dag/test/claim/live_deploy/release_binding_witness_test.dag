@@ -42,7 +42,7 @@ test fn witness_the_probe_revisions_decode_and_differ() -> Bool {
       match test.claim.live_deploy.release_binding_witness_test.oid(hex: hex_b) {
         Absent => false
         Present { value: b } =>
-          (git_object_id_wire_hex(test.claim.live_deploy.release_binding_witness_test.oid: a) as String) != (git_object_id_wire_hex(test.claim.live_deploy.release_binding_witness_test.oid: b) as String)
+          (git_object_id_wire_hex(oid: a) as String) != (git_object_id_wire_hex(oid: b) as String)
       }
   }
 }
@@ -52,7 +52,7 @@ test fn witness_a_process_stating_the_trees_revision_is_bound() -> Bool {
     Absent => false
     Present { value: t } =>
       match deployed_release_binding(observation: t, identity: process_saying(hex: hex_a, surface: probe_surface())) {
-        gunbc.live_deploy.release_binding.ReleaseBoundToTree { revision: r } => (git_object_id_wire_hex(test.claim.live_deploy.release_binding_witness_test.oid: r) as String) == hex_a
+        gunbc.live_deploy.release_binding.ReleaseBoundToTree { revision: r } => (git_object_id_wire_hex(oid: r) as String) == hex_a
         gunbc.live_deploy.release_binding.ReleaseMixed { tree_revision: _, process_revision: _ } => false
         gunbc.live_deploy.release_binding.ReleaseBindingUnobserved { cause: _ } => false
       }
@@ -66,7 +66,7 @@ test fn witness_a_process_stating_another_revision_is_mixed_and_names_both() -> 
     Present { value: t } =>
       match deployed_release_binding(observation: t, identity: process_saying(hex: hex_b, surface: probe_surface())) {
         gunbc.live_deploy.release_binding.ReleaseMixed { tree_revision: tr, process_revision: pr } =>
-          (git_object_id_wire_hex(test.claim.live_deploy.release_binding_witness_test.oid: tr) as String) == hex_a && (pr as String) == hex_b
+          (git_object_id_wire_hex(oid: tr) as String) == hex_a && (pr as String) == hex_b
         gunbc.live_deploy.release_binding.ReleaseBoundToTree { revision: _ } => false
         gunbc.live_deploy.release_binding.ReleaseBindingUnobserved { cause: _ } => false
       }

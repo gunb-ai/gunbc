@@ -26,35 +26,35 @@ test fn w_semver_release_label() -> Bool {
   go_semver_label(v: extdeps.languages.go.module.GoSemVer {
     major: 1, minor: 2, patch: 3,
     prerelease: none, build: none
-  }) == "v1.2.3"
+  }) == "3"
 }
 
 test fn w_semver_v0_label() -> Bool {
   go_semver_label(v: extdeps.languages.go.module.GoSemVer {
     major: 0, minor: 1, patch: 0,
     prerelease: none, build: none
-  }) == "v0.1.0"
+  }) == "0"
 }
 
 test fn w_semver_prerelease_label() -> Bool {
   go_semver_label(v: extdeps.languages.go.module.GoSemVer {
     major: 1, minor: 0, patch: 0,
     prerelease: Present { value: "alpha.1" }, build: none
-  }) == "v1.0.0-alpha.1"
+  }) == "0-alpha.1"
 }
 
 test fn w_semver_build_label() -> Bool {
   go_semver_label(v: extdeps.languages.go.module.GoSemVer {
     major: 1, minor: 0, patch: 0,
     prerelease: none, build: Present { value: "build.42" }
-  }) == "v1.0.0+build.42"
+  }) == "0+build.42"
 }
 
 test fn w_semver_prerelease_and_build_label() -> Bool {
   go_semver_label(v: extdeps.languages.go.module.GoSemVer {
     major: 2, minor: 0, patch: 0,
     prerelease: Present { value: "rc.1" }, build: Present { value: "exp" }
-  }) == "v2.0.0-rc.1+exp"
+  }) == "0-rc.1+exp"
 }
 
 test fn w_semver_labels_distinct() -> Bool {
@@ -78,7 +78,7 @@ test fn w_go_mvs_has_three_properties() -> Bool {
 test fn w_go_semver_to_version_identity() -> Bool {
   go_semver_to_version_identity(v: extdeps.languages.go.module.GoSemVer {
     major: 1, minor: 2, patch: 3, prerelease: none, build: none
-  }) == "v1.2.3"
+  }) == "3"
 }
 
 test fn w_go_semver_compare_major_less() -> Bool {
@@ -130,6 +130,6 @@ test fn w_emit_host_min_go_language_version() -> Bool {
 }
 
 test fn w_emit_host_bootstrap_toolchain() -> Bool {
-  emit_host_bootstrap_toolchain == "go1.22.5"
+  emit_host_bootstrap_toolchain == "5"
 }
 

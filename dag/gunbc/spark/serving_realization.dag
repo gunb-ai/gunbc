@@ -398,7 +398,7 @@ fn serving_install_effect_requires_privilege(effect: ServingInstallEffect) -> Bo
 fn realization_install_effects(realization: SparkServingRealization) -> std.types.List<ServingInstallEffect> {
   match realization {
     UserUnitRealization =>
-      [InstallOwnedRuntimeClosure, WriteUserUnitFile, ReloadUserManager, EnableUserUnit, StartUserUnit, gunbc.spark.serving_realization.EnableLingerForOwnAccount, MaterializeModelArtifact]
+      [InstallOwnedRuntimeClosure, WriteUserUnitFile, ReloadUserManager, EnableUserUnit, StartUserUnit, EnableLingerForOwnAccount, MaterializeModelArtifact]
     SystemUnitRealization =>
       [InstallRuntimePackage, WriteSystemUnitFile, ReloadSystemManager, EnableSystemUnit, MaterializeModelArtifact]
     RootlessContainerRealization =>
@@ -717,7 +717,7 @@ fn effect_mutation_subject(
     InstallRuntimePackage => PackageDatabase
     InstallOwnedRuntimeClosure => RuntimeArtifactStore { owner: actor }
     GrantContainerRuntimeAccess => gunbc.spark.serving_realization.GroupMembership
-    gunbc.spark.serving_realization.EnableLingerForOwnAccount => LingerState
+    EnableLingerForOwnAccount => LingerState
     WriteUserUnitFile => UserUnitRegistry { owner: actor }
     ReloadUserManager => UserUnitRegistry { owner: actor }
     EnableUserUnit => UserUnitRegistry { owner: actor }
@@ -792,7 +792,7 @@ fn effect_actuation(
     GrantContainerRuntimeAccess => ActuatedByEscalation { commands: [
       join(["/usr/sbin/usermod -aG docker ", principal_label(p: target.actor)], "") as std.types.NonEmptyStr,
     ] }
-    gunbc.spark.serving_realization.EnableLingerForOwnAccount => ActuatedByEscalation { commands: [
+    EnableLingerForOwnAccount => ActuatedByEscalation { commands: [
       join(["/usr/bin/loginctl enable-linger ", principal_label(p: target.actor)], "") as std.types.NonEmptyStr,
     ] }
     InstallOwnedRuntimeClosure => ActuatedByOwnerDirectly

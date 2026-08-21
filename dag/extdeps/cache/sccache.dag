@@ -84,7 +84,7 @@ fn sccache_binary_artifact_content_identity(artifact: SccacheBinaryArtifact) -> 
 }
 
 data sccache_release_0_15_0: SccacheBinaryRelease = SccacheBinaryRelease {
-  version: "v0.15.0",
+  version: "0",
   digest_aarch64: sha256_digest(hex: "3a6a3712b49da3d263bf2d30d702de4302793016019e800bfb81c0c69401d8f8"),
   digest_x86_64: sha256_digest(hex: "782d2b5dd7ae0a55ebe368ab258114d0928d019ac2d949ab85d5d02f3926709e"),
 }
@@ -97,9 +97,9 @@ data sccache_toolchain_capability: extdeps.toolchain.types.ToolchainCapability =
   linked_cache_interface: Present { value: sccache_local_id },
 }
 
-data sccache_install_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: sccache_install_script — the sccache binary install (curl release tarball + sha256sum -c verify + tar + mv to /usr/local/bin, cited to github.com/mozilla/sccache/releases with pinned v0.15.0 and per-arch sha256) is rendered as a POSIX shell provisioning sequence (medium-as-string); the SccacheBinaryRelease row is the typed authority for version and digests. DISSOLVES WHEN host_effect_apply binds a verified-download-plus-install effect (FetchAndVerify then InstallBinary) without the shell leaf.")
+data sccache_install_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: sccache_install_script — the sccache binary install (curl release tarball + sha256sum -c verify + tar + mv to /usr/local/bin, cited to github.com/mozilla/sccache/releases with pinned 0 and per-arch sha256) is rendered as a POSIX shell provisioning sequence (medium-as-string); the SccacheBinaryRelease row is the typed authority for version and digests. DISSOLVES WHEN host_effect_apply binds a verified-download-plus-install effect (FetchAndVerify then InstallBinary) without the shell leaf.")
 
-data sccache_installed_binary_path_note: String = "Single authority for WHERE the cited release lands on a host. sccache_install_script writes it and every downstream consumer (the host-standup P1b systemd unit ExecStart, the PATH-shadow read-back check) reads it — so 'which sccache is the modeled one' has exactly one answer. Before this row the P1b provisioning path hand-rolled `apt-get install -y sccache` and a unit with ExecStart=/usr/bin/sccache while this module installed the pinned v0.15.0 tarball to /usr/local/bin: a §3 fork of one concept across two authorities, disagreeing on source, version, digest verification AND path, both firing on the same host (P1:runner-deploy-slot then P1b:build-cache-provision)."
+data sccache_installed_binary_path_note: String = "Single authority for WHERE the cited release lands on a host. sccache_install_script writes it and every downstream consumer (the host-standup P1b systemd unit ExecStart, the PATH-shadow read-back check) reads it — so 'which sccache is the modeled one' has exactly one answer. Before this row the P1b provisioning path hand-rolled `apt-get install -y sccache` and a unit with ExecStart=/usr/bin/sccache while this module installed the pinned 0 tarball to /usr/local/bin: a §3 fork of one concept across two authorities, disagreeing on source, version, digest verification AND path, both firing on the same host (P1:runner-deploy-slot then P1b:build-cache-provision)."
 
 data sccache_installed_binary_path: String = "/usr/local/bin/sccache"
 
@@ -202,21 +202,21 @@ data sccache_server_process_facts: SccacheServerProcessFacts = {
       field: "idle_timeout_zero_disables_shutdown"
       evidence: std.cache_interface.VendorCitation {
         source: "SCCACHE_IDLE_TIMEOUT: seconds the server waits before shutting down; 0 disables shutdown entirely"
-        url: "https://github.com/mozilla/sccache/blob/v0.15.0/docs/Configuration.md"
+        url: "https://github.com/mozilla/sccache/blob/0/docs/Configuration.md"
       }
     },
     {
       field: "compiles_execute_as_server_children"
       evidence: std.cache_interface.VendorCitation {
         source: "sccache server performs the compilation on a cache miss; the compiler subprocess is a child of the server"
-        url: "https://github.com/mozilla/sccache/blob/v0.15.0/docs/Architecture.md"
+        url: "https://github.com/mozilla/sccache/blob/0/docs/Architecture.md"
       }
     },
     {
       field: "default_endpoint"
       evidence: std.cache_interface.VendorCitation {
         source: "SCCACHE_SERVER_PORT sets the loopback TCP port the server listens on (default 4226); SCCACHE_SERVER_UDS selects a Unix-domain socket endpoint instead"
-        url: "https://github.com/mozilla/sccache/blob/v0.15.0/docs/Configuration.md"
+        url: "https://github.com/mozilla/sccache/blob/0/docs/Configuration.md"
       }
     },
   ]
@@ -299,8 +299,8 @@ data sccache_local_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
     {
       field: "retention.capacity"
       evidence: std.cache_interface.VendorCitation {
-        source: "sccache v0.15.0 Configuration.md: SCCACHE_CACHE_SIZE is the maximum size of the local on-disk cache, default 10G. The pinned tag is the modeled binary's version, not main, because a doc read at a moving ref cannot say what THIS binary does. The limit stays ByteCapacity(EffectiveLimitUnobserved) rather than ByteCapacity(ExactLimit(10G)): 10G is the vendor DEFAULT and the effective value may be overridden per runner by env or config, and no runner was read for this row. What the citation establishes is that a finite ceiling EXISTS, which is the fact CapacityBounded asserts"
-        url: "https://github.com/mozilla/sccache/blob/v0.15.0/docs/Configuration.md#cache-size"
+        source: "sccache 0 Configuration.md: SCCACHE_CACHE_SIZE is the maximum size of the local on-disk cache, default 10G. The pinned tag is the modeled binary's version, not main, because a doc read at a moving ref cannot say what THIS binary does. The limit stays ByteCapacity(EffectiveLimitUnobserved) rather than ByteCapacity(ExactLimit(10G)): 10G is the vendor DEFAULT and the effective value may be overridden per runner by env or config, and no runner was read for this row. What the citation establishes is that a finite ceiling EXISTS, which is the fact CapacityBounded asserts"
+        url: "https://github.com/mozilla/sccache/blob/0/docs/Configuration.md#cache-size"
       }
     },
     {

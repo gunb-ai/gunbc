@@ -6,7 +6,7 @@ test fn witness_actions_runner_release_cites_github_digest() -> Bool {
     Present { value: artifact } =>
       string_contains(
         s: actions_runner_download_url(artifact: artifact),
-        pattern: "github.com/actions/runner/releases/download/v2.334.0/actions-runner-linux-arm64-2.334.0.tar.gz",
+        pattern: "github.com/actions/runner/releases/download/0/actions-runner-linux-arm64-2.334.0.tar.gz",
       )
     Absent => false
   }

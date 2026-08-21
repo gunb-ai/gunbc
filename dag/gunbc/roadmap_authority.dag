@@ -2820,7 +2820,7 @@ fn roadmap_authority_projection_from_carrier_text(text: String) -> RoadmapAuthor
     RoadmapAcceptanceReceiptsProjected { receipts: receipts } =>
       RoadmapAuthorityProjected {
         doc: gunbc.roadmap_document.RoadmapDocument {
-          gunbc.roadmap_authority.preamble: gunbc.roadmap_authority.preamble(),
+          preamble: gunbc.roadmap_authority.preamble(),
           lead_lanes: [],
           sections: [
             active_section_for_acceptance(
@@ -2843,7 +2843,7 @@ fn roadmap_authority_projection() -> RoadmapAuthorityProjection {
     AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
       RoadmapAuthorityProjected {
         doc: gunbc.roadmap_document.RoadmapDocument {
-          gunbc.roadmap_authority.preamble: gunbc.roadmap_authority.preamble(),
+          preamble: gunbc.roadmap_authority.preamble(),
           lead_lanes: [],
           sections: [active_section_for_acceptance(focus: roadmap_focus_selection, accepted: accepted)],
         },
@@ -2860,7 +2860,7 @@ data roadmap_authority_focus_parameter_note: String = "roadmap_authority_for exi
 
 fn roadmap_authority_for(focus: gunbc.roadmap_focus.RoadmapFocus) -> gunbc.roadmap_document.RoadmapDocument {
   gunbc.roadmap_document.RoadmapDocument {
-    gunbc.roadmap_authority.preamble: gunbc.roadmap_authority.preamble(),
+    preamble: gunbc.roadmap_authority.preamble(),
     lead_lanes: [],
     sections: [active_section_for(focus: focus)],
   }
@@ -3570,7 +3570,7 @@ data roadmap_authority_accessor_note: String = "Operational consumers (belt, dis
 
 fn roadmap_authority_refusal_document(detail: String) -> gunbc.roadmap_document.RoadmapDocument {
   gunbc.roadmap_document.RoadmapDocument {
-    gunbc.roadmap_authority.preamble: [
+    preamble: [
       std.markdown.HeadingBlock { level: H1, inlines: [std.markdown.TextInline { text: "gunbc — Roadmap (unavailable)" }] },
       std.markdown.ParagraphBlock {
         inlines: [std.markdown.TextInline {

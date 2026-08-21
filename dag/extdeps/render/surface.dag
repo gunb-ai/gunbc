@@ -32,9 +32,9 @@ type GroupSyntax {
 fn group_syntax(target: RenderTarget) -> GroupSyntax {
   match target {
     GithubActions => GroupSyntax {
-      open_prefix: annotation_group_prefix
+      open_prefix: extdeps.github.log_annotations.annotation_group_prefix
       open_suffix: ""
-      close_line: Present { value: annotation_endgroup }
+      close_line: Present { value: extdeps.github.log_annotations.annotation_endgroup }
     }
     PlainTerminal => GroupSyntax {
       open_prefix: "── "
@@ -54,11 +54,11 @@ fn group_open_line(syntax: GroupSyntax, title: String) -> String {
 
 fn serialize_block(block: std.render.Block, target: RenderTarget, cap: std.render.RenderCapability) -> String {
   match block {
-    Leaf { frame: f } => serialize_frame(frame: f, cap: cap)
+    Leaf { frame: f } => extdeps.render.terminal.serialize_frame(frame: f, cap: cap)
     Group { title: t, frame: f } => {
       let syntax = group_syntax(target: target)
       let open = group_open_line(syntax: syntax, title: t)
-      let body = serialize_frame(frame: f, cap: cap)
+      let body = extdeps.render.terminal.serialize_frame(frame: f, cap: cap)
       match syntax.close_line {
         Present { value: close } => concat(open, concat("\n", concat(body, concat("\n", close))))
         Absent => concat(open, concat("\n", body))

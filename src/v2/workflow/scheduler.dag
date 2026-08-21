@@ -8,14 +8,14 @@ module v2.workflow.scheduler
 // subject to Node; host convergence binds it to a planned operation identity. Neither is privileged
 // and there is exactly one implementation, so cycle refusal and readiness cannot drift apart between
 // them -- which is the whole reason this is a parameterization rather than a second scheduler.
-type RunnableFrontier<extdeps.coverage.Subject> {
+type RunnableFrontier<Subject> {
   ready: std.types.List<extdeps.coverage.Subject>
 }
 
 type SchedulerBlockedEvidence
   = SchedulerNoRunnableFrontier {}
 
-type SchedulerPlan<extdeps.coverage.Subject>
+type SchedulerPlan<Subject>
   = SchedulerPlanComplete {
       layers: std.types.List<v2.std.dependency.ReadinessLayer<extdeps.coverage.Subject>>,
       scheduled: std.types.List<extdeps.coverage.Subject>
@@ -33,7 +33,7 @@ type SchedulerPlan<extdeps.coverage.Subject>
       layers: std.types.List<v2.std.dependency.ReadinessLayer<extdeps.coverage.Subject>>
     }
 
-type SchedulerRunState<extdeps.coverage.Subject> {
+type SchedulerRunState<Subject> {
   scheduled: std.types.List<extdeps.coverage.Subject>
   remaining: std.types.List<extdeps.coverage.Subject>
   layers: std.types.List<v2.std.dependency.ReadinessLayer<extdeps.coverage.Subject>>

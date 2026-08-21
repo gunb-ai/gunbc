@@ -127,7 +127,7 @@ service systemd.Systemctl {
     }
   }
 
-  operation extdeps.systemd.unit_file.Restart {
+  operation Restart {
     input { unit: std.types.NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -155,7 +155,7 @@ service systemd.Systemctl {
     }
   }
 
-  operation gunbc.session_lease.Start {
+  operation Start {
     input { unit: std.types.NonEmptyStr }
     output {
       success: Bool from "exit_success"

@@ -5,7 +5,7 @@ module extdeps.colo.halsey_165
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: extdeps.uri.Https
-    locator: "www.165halsey.com/colocation/"
+    locator: "com/colocation/"
   }
 }
 

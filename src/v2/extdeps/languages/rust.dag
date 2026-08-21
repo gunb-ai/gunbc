@@ -117,10 +117,10 @@ type RustModelCoreLawKey
 fn rust_integer_overflow_disposition(kind: RustIntKind, width: RustIntWidth) -> RustIntegerOverflowDisposition<RustIntegerCarrier> {
   RustIntegerOverflowDisposition {
     ir_carrier: RustIntegerCarrier { kind: kind, width: width },
-    checked_arithmetic_debug_default: v2.extdeps.languages.rust.PanicOnOverflow,
-    checked_arithmetic_release_default: v2.extdeps.languages.rust.TwoComplementWrap,
-    checked_arithmetic_overflow_checks_enabled: v2.extdeps.languages.rust.PanicOnOverflow,
-    checked_arithmetic_overflow_checks_disabled: v2.extdeps.languages.rust.TwoComplementWrap
+    checked_arithmetic_debug_default: PanicOnOverflow,
+    checked_arithmetic_release_default: TwoComplementWrap,
+    checked_arithmetic_overflow_checks_enabled: PanicOnOverflow,
+    checked_arithmetic_overflow_checks_disabled: TwoComplementWrap
   }
 }
 
@@ -150,93 +150,93 @@ data rust_source_text: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
 
 data rust_facts_i8: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: ^rust_surface_spelling_i8,
-  overflow_disposition: rust_integer_overflow_disposition(kind: v2.extdeps.languages.rust.Signed, width: v2.extdeps.languages.rust.Bits8),
+  overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits8),
   std_projection: ^rust_std_projection_int8,
 }
 
 data rust_facts_i16: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: ^rust_surface_spelling_i16,
-  overflow_disposition: rust_integer_overflow_disposition(kind: v2.extdeps.languages.rust.Signed, width: v2.extdeps.languages.rust.Bits16),
+  overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits16),
   std_projection: ^rust_std_projection_int16,
 }
 
 data rust_facts_i32: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: ^rust_surface_spelling_i32,
-  overflow_disposition: rust_integer_overflow_disposition(kind: v2.extdeps.languages.rust.Signed, width: v2.extdeps.languages.rust.Bits32),
+  overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits32),
   std_projection: ^rust_std_projection_int32,
 }
 
 data rust_facts_i64: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: ^rust_surface_spelling_i64,
-  overflow_disposition: rust_integer_overflow_disposition(kind: v2.extdeps.languages.rust.Signed, width: v2.extdeps.languages.rust.Bits64),
+  overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits64),
   std_projection: ^rust_std_projection_int64,
 }
 
 data rust_facts_i128: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: ^rust_surface_spelling_i128,
-  overflow_disposition: rust_integer_overflow_disposition(kind: v2.extdeps.languages.rust.Signed, width: v2.extdeps.languages.rust.Bits128),
+  overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits128),
   std_projection: ^rust_std_projection_int128,
 }
 
 data rust_facts_u8: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: ^rust_surface_spelling_u8,
-  overflow_disposition: rust_integer_overflow_disposition(kind: v2.extdeps.languages.rust.Unsigned, width: v2.extdeps.languages.rust.Bits8),
+  overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits8),
   std_projection: ^rust_std_projection_uint8,
 }
 
 data rust_facts_u16: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: ^rust_surface_spelling_u16,
-  overflow_disposition: rust_integer_overflow_disposition(kind: v2.extdeps.languages.rust.Unsigned, width: v2.extdeps.languages.rust.Bits16),
+  overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits16),
   std_projection: ^rust_std_projection_uint16,
 }
 
 data rust_facts_u32: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: ^rust_surface_spelling_u32,
-  overflow_disposition: rust_integer_overflow_disposition(kind: v2.extdeps.languages.rust.Unsigned, width: v2.extdeps.languages.rust.Bits32),
+  overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits32),
   std_projection: ^rust_std_projection_uint32,
 }
 
 data rust_facts_u64: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: ^rust_surface_spelling_u64,
-  overflow_disposition: rust_integer_overflow_disposition(kind: v2.extdeps.languages.rust.Unsigned, width: v2.extdeps.languages.rust.Bits64),
+  overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits64),
   std_projection: ^rust_std_projection_uint64,
 }
 
 data rust_facts_u128: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: ^rust_surface_spelling_u128,
-  overflow_disposition: rust_integer_overflow_disposition(kind: v2.extdeps.languages.rust.Unsigned, width: v2.extdeps.languages.rust.Bits128),
+  overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits128),
   std_projection: ^rust_std_projection_uint128,
 }
 
 data rust_facts_isize: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: ^rust_surface_spelling_isize,
-  overflow_disposition: rust_integer_overflow_disposition(kind: v2.extdeps.languages.rust.Signed, width: v2.extdeps.languages.rust.Pointer),
+  overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Pointer),
   std_projection: ^rust_std_projection_int_platform,
 }
 
 data rust_facts_usize: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: ^rust_surface_spelling_usize,
-  overflow_disposition: rust_integer_overflow_disposition(kind: v2.extdeps.languages.rust.Unsigned, width: v2.extdeps.languages.rust.Pointer),
+  overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Pointer),
   std_projection: ^rust_std_projection_uint_platform,
 }
 
 data rust_facts_f32: RustFloatPrimitiveFacts = RustFloatPrimitiveFacts {
   surface_spelling: ^rust_surface_spelling_f32,
-  width: v2.extdeps.languages.rust.FloatBits32,
+  width: FloatBits32,
   ieee754_binary: ^rust_ieee754_binary32,
   std_projection: ^rust_std_projection_float32,
 }
 
 data rust_facts_f64: RustFloatPrimitiveFacts = RustFloatPrimitiveFacts {
   surface_spelling: ^rust_surface_spelling_f64,
-  width: v2.extdeps.languages.rust.FloatBits64,
+  width: FloatBits64,
   ieee754_binary: ^rust_ieee754_binary64,
   std_projection: ^rust_std_projection_float64,
 }
 
 data rust_facts_bool: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFacts {
   surface_spelling: ^rust_surface_spelling_bool,
-  scalar: v2.extdeps.languages.rust.NonIntegerBoolScalar,
+  scalar: NonIntegerBoolScalar,
   std_projection: ^rust_std_projection_bool,
   representation: ^rust_repr_bool
 }
@@ -325,33 +325,33 @@ fn rust_inhabitant_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
 
 fn rust_int_kind_node(kind: RustIntKind) -> v2.std.node.Node {
   match kind {
-    v2.extdeps.languages.rust.Signed => rust_inhabitant_atom(id: ^rust_tag_signed)
-    v2.extdeps.languages.rust.Unsigned => rust_inhabitant_atom(id: ^rust_tag_unsigned)
+    Signed => rust_inhabitant_atom(id: ^rust_tag_signed)
+    Unsigned => rust_inhabitant_atom(id: ^rust_tag_unsigned)
   }
 }
 
 fn rust_int_width_node(width: RustIntWidth) -> v2.std.node.Node {
   match width {
-    v2.extdeps.languages.rust.Bits8 => rust_inhabitant_atom(id: ^rust_tag_bits8)
-    v2.extdeps.languages.rust.Bits16 => rust_inhabitant_atom(id: ^rust_tag_bits16)
-    v2.extdeps.languages.rust.Bits32 => rust_inhabitant_atom(id: ^rust_tag_bits32)
-    v2.extdeps.languages.rust.Bits64 => rust_inhabitant_atom(id: ^rust_tag_bits64)
-    v2.extdeps.languages.rust.Bits128 => rust_inhabitant_atom(id: ^rust_tag_bits128)
-    v2.extdeps.languages.rust.Pointer => rust_inhabitant_atom(id: ^rust_tag_pointer)
+    Bits8 => rust_inhabitant_atom(id: ^rust_tag_bits8)
+    Bits16 => rust_inhabitant_atom(id: ^rust_tag_bits16)
+    Bits32 => rust_inhabitant_atom(id: ^rust_tag_bits32)
+    Bits64 => rust_inhabitant_atom(id: ^rust_tag_bits64)
+    Bits128 => rust_inhabitant_atom(id: ^rust_tag_bits128)
+    Pointer => rust_inhabitant_atom(id: ^rust_tag_pointer)
   }
 }
 
 fn rust_float_width_node(width: RustFloatWidth) -> v2.std.node.Node {
   match width {
-    v2.extdeps.languages.rust.FloatBits32 => rust_inhabitant_atom(id: ^rust_tag_bits32)
-    v2.extdeps.languages.rust.FloatBits64 => rust_inhabitant_atom(id: ^rust_tag_bits64)
+    FloatBits32 => rust_inhabitant_atom(id: ^rust_tag_bits32)
+    FloatBits64 => rust_inhabitant_atom(id: ^rust_tag_bits64)
   }
 }
 
 fn rust_overflow_node(overflow: OverflowAction) -> v2.std.node.Node {
   match overflow {
-    v2.extdeps.languages.rust.PanicOnOverflow => rust_inhabitant_atom(id: ^rust_tag_panic_on_overflow)
-    v2.extdeps.languages.rust.TwoComplementWrap => rust_inhabitant_atom(id: ^rust_tag_two_complement_wrap)
+    PanicOnOverflow => rust_inhabitant_atom(id: ^rust_tag_panic_on_overflow)
+    TwoComplementWrap => rust_inhabitant_atom(id: ^rust_tag_two_complement_wrap)
   }
 }
 
@@ -361,21 +361,21 @@ fn rust_integer_carrier_as_scalar(carrier: RustIntegerCarrier) -> RustScalar {
 
 fn rust_integer_carrier_interval_spec(carrier: RustIntegerCarrier) -> v2.std.integer.IntegerIntervalSpec {
   match carrier.kind {
-    v2.extdeps.languages.rust.Signed => match carrier.width {
-      v2.extdeps.languages.rust.Bits8 => v2.std.integer.int8_interval_spec()
-      v2.extdeps.languages.rust.Bits16 => v2.std.integer.int16_interval_spec()
-      v2.extdeps.languages.rust.Bits32 => v2.std.integer.int32_interval_spec()
-      v2.extdeps.languages.rust.Bits64 => v2.std.integer.int64_interval_spec()
-      v2.extdeps.languages.rust.Bits128 => v2.std.integer.int128_interval_spec()
-      v2.extdeps.languages.rust.Pointer => v2.std.integer.int_platform_interval_spec()
+    Signed => match carrier.width {
+      Bits8 => v2.std.integer.int8_interval_spec()
+      Bits16 => v2.std.integer.int16_interval_spec()
+      Bits32 => v2.std.integer.int32_interval_spec()
+      Bits64 => v2.std.integer.int64_interval_spec()
+      Bits128 => v2.std.integer.int128_interval_spec()
+      Pointer => v2.std.integer.int_platform_interval_spec()
     }
-    v2.extdeps.languages.rust.Unsigned => match carrier.width {
-      v2.extdeps.languages.rust.Bits8 => v2.std.integer.uint8_interval_spec()
-      v2.extdeps.languages.rust.Bits16 => v2.std.integer.uint16_interval_spec()
-      v2.extdeps.languages.rust.Bits32 => v2.std.integer.uint32_interval_spec()
-      v2.extdeps.languages.rust.Bits64 => v2.std.integer.uint64_interval_spec()
-      v2.extdeps.languages.rust.Bits128 => v2.std.integer.uint128_interval_spec()
-      v2.extdeps.languages.rust.Pointer => v2.std.integer.uint_platform_interval_spec()
+    Unsigned => match carrier.width {
+      Bits8 => v2.std.integer.uint8_interval_spec()
+      Bits16 => v2.std.integer.uint16_interval_spec()
+      Bits32 => v2.std.integer.uint32_interval_spec()
+      Bits64 => v2.std.integer.uint64_interval_spec()
+      Bits128 => v2.std.integer.uint128_interval_spec()
+      Pointer => v2.std.integer.uint_platform_interval_spec()
     }
   }
 }
@@ -446,7 +446,7 @@ fn rust_scalar_node(scalar: RustScalar) -> v2.std.node.Node {
 
 fn rust_noninteger_scalar_as_rust_scalar(scalar: RustNonIntegerScalar) -> RustScalar {
   match scalar {
-    v2.extdeps.languages.rust.NonIntegerBoolScalar => v2.extdeps.languages.rust.BoolScalar
+    NonIntegerBoolScalar => v2.extdeps.languages.rust.BoolScalar
     NonIntegerCharScalar => v2.extdeps.languages.rust.CharScalar
     NonIntegerStrScalar => StrScalar
     NonIntegerUnitScalar => v2.extdeps.languages.rust.UnitScalar
@@ -643,12 +643,12 @@ data rust_fixture_emitted_add_fn: v2.std.node.Node = v2.std.node.Node {
 
 fn rust_i32_overflow_disposition_node() -> v2.std.node.Node {
   rust_overflow_disposition_node(
-    disposition: rust_integer_overflow_disposition(kind: v2.extdeps.languages.rust.Signed, width: v2.extdeps.languages.rust.Bits32)
+    disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits32)
   )
 }
 
 fn rust_i32_scalar_node() -> v2.std.node.Node {
-  rust_scalar_node(scalar: v2.extdeps.languages.rust.IntScalar { kind: v2.extdeps.languages.rust.Signed, width: v2.extdeps.languages.rust.Bits32 })
+  rust_scalar_node(scalar: v2.extdeps.languages.rust.IntScalar { kind: Signed, width: Bits32 })
 }
 
 fn rust_i32_zip_fold_closure_edges() -> std.types.List<v2.std.node.Edge> {
@@ -675,11 +675,11 @@ fn rust_i32_zip_fold_closure_edges() -> std.types.List<v2.std.node.Edge> {
     ),
     rust_named_edge(
       name: ^rust_coercion_field_i32_signed,
-      target: rust_int_kind_node(kind: v2.extdeps.languages.rust.Signed)
+      target: rust_int_kind_node(kind: Signed)
     ),
     rust_named_edge(
       name: ^rust_coercion_field_i32_width,
-      target: rust_int_width_node(width: v2.extdeps.languages.rust.Bits32)
+      target: rust_int_width_node(width: Bits32)
     ),
     rust_named_edge(
       name: ^rust_coercion_field_i32_overflow,
@@ -695,11 +695,11 @@ fn rust_i32_zip_fold_closure_edges() -> std.types.List<v2.std.node.Edge> {
     ),
     rust_named_edge(
       name: ^rust_coercion_field_i32_panic_overflow,
-      target: rust_overflow_node(overflow: v2.extdeps.languages.rust.PanicOnOverflow)
+      target: rust_overflow_node(overflow: PanicOnOverflow)
     ),
     rust_named_edge(
       name: ^rust_coercion_field_i32_wrap_overflow,
-      target: rust_overflow_node(overflow: v2.extdeps.languages.rust.TwoComplementWrap)
+      target: rust_overflow_node(overflow: TwoComplementWrap)
     )
   ]
 }

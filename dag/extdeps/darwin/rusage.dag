@@ -4,7 +4,7 @@ module extdeps.darwin.rusage
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https
-    locator: "developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/getrusage.2.html"
+    locator: "developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/html"
   }
 }
 

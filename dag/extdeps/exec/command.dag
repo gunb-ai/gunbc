@@ -3,7 +3,7 @@ module extdeps.exec.command
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: extdeps.uri.Https
-    locator: "man7.org/linux/man-pages/man1/ssh.1.html"
+    locator: "man7.org/linux/man-pages/man1/html"
   }
 }
 

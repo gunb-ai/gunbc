@@ -39,7 +39,7 @@ fn spark_serving_resource_fact_wire(fact: SparkServingResourceFact) -> String {
     RuntimeClosurePresent => "runtime-closure-present"
     UnitFilePresent => "unit-file-present"
     UnitKnownToManager => "unit-known-to-manager"
-    gunbc.spark.serving_execution_schedule.UnitEnabled => "unit-enabled"
+    UnitEnabled => "unit-enabled"
     UnitActive => "unit-active"
     ModelPresentInSlot { slot: slot } => join(["model-present:", slot], "")
     LingerEnabledForAccount => "linger-enabled"
@@ -58,7 +58,7 @@ fn spark_serving_address_establishes(address: gunbc.spark.serving_membership.Spa
     gunbc.spark.serving_membership.SparkServingRuntimeRootAddress => RuntimeClosurePresent
     gunbc.spark.serving_membership.SparkServingUserUnitAddress => UnitFilePresent
     gunbc.spark.serving_membership.SparkServingUserUnitRegistrationAddress => UnitKnownToManager
-    gunbc.spark.serving_membership.SparkServingUserUnitEnablementAddress => gunbc.spark.serving_execution_schedule.UnitEnabled
+    gunbc.spark.serving_membership.SparkServingUserUnitEnablementAddress => UnitEnabled
     gunbc.spark.serving_membership.SparkServingUserUnitActivityAddress => UnitActive
     gunbc.spark.serving_membership.SparkServingModelSlotAddress { slot: slot } => ModelPresentInSlot { slot: slot as String }
     gunbc.spark.serving_membership.SparkServingLingerAddress => LingerEnabledForAccount

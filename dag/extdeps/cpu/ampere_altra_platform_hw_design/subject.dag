@@ -4,14 +4,14 @@ module extdeps.cpu.ampere_altra_platform_hw_design.subject
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https,
-    locator: "d1o0i0v5q5lp8h.cloudfront.net/ampere/live/assets/processor_families/design_specifications/Altra_Platform_HW_Design_Specification_v1.00_20210120.pdf",
+    locator: "d1o0i0v5q5lp8h.cloudfront.net/ampere/live/assets/processor_families/design_specifications/Apdf",
   }
 }
 
 data altra_platform_hw_design_subject_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https,
-    locator: "d1o0i0v5q5lp8h.cloudfront.net/ampere/live/assets/processor_families/design_specifications/Altra_Platform_HW_Design_Specification_v1.00_20210120.pdf",
+    locator: "d1o0i0v5q5lp8h.cloudfront.net/ampere/live/assets/processor_families/design_specifications/Apdf",
   }
 }
 

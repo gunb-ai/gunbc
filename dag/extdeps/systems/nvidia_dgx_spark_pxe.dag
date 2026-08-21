@@ -61,7 +61,7 @@ fn spark_pxe_tftp_relative_path(p: SparkPxeTftpRelativePath, image: SparkPxeBoot
 fn spark_pxe_http_install_image_path(image: SparkPxeBootImageKind) -> std.types.NonEmptyStr {
   match image {
     FastOsRecoveryTarball => "fastos/usb.customer.tar.gz"
-    DgxOsIsoImage => "base_os_7.0.0/base_os_7.0.0.iso"
+    DgxOsIsoImage => "0/0.iso"
   }
 }
 

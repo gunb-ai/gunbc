@@ -1,57 +1,38 @@
 module v1.compiler.coercion
 
-import v1.compiler.artifact { extdeps.render.surface.RenderTarget, extdeps.languages.rust.subject.Rust, extdeps.languages.python.subject.Python, extdeps.languages.go.subject.Go, v2.lens.affected_set.Dag }
-
-import v1.std.core { qualified_last_segment, v2.std.node.Node, extdeps.tools.Resolved }
-
-import std.coercion {
-  std.coercion.TypeCheckpoint, std.coercion.InhabitantDecl, std.coercion.CallableRepr, std.coercion.CastSyntax, std.coercion.TypeRealizationDecision
-}
-
-import std.types { container_template_algebra, canonical_container_names }
-
-import extdeps.languages.rust.types {
-  rust_type_checkpoints, rust_algebra_inhabitants, rust_callable,
-  rust_optional_template, rust_cast_syntax
-}
-
-import extdeps.languages.python.types {
-  python_type_checkpoints, python_algebra_inhabitants, python_callable,
-  python_optional_template, python_cast_syntax
-}
-
-import extdeps.languages.go.types {
-  go_type_checkpoints, go_algebra_inhabitants, go_callable,
-  go_optional_template, go_cast_syntax
-}
-
-import extdeps.languages.dag.types { dag_type_checkpoints }
 
 
-fn target_checkpoints(target: extdeps.render.surface.RenderTarget) -> std.types.List<std.coercion.TypeCheckpoint> {
+
+
+
+
+
+
+
+fn target_checkpoints(target: v1.compiler.artifact.RenderTarget) -> std.types.List<std.coercion.TypeCheckpoint> {
   match target {
-    extdeps.languages.rust.subject.Rust => extdeps.languages.rust.types.rust_type_checkpoints
+    Rust => extdeps.languages.rust.types.rust_type_checkpoints
     v1.compiler.artifact.Python => extdeps.languages.python.types.python_type_checkpoints
-    extdeps.languages.go.subject.Go => extdeps.languages.go.types.go_type_checkpoints
-    v2.lens.affected_set.Dag => extdeps.languages.dag.types.dag_type_checkpoints
+    Go => extdeps.languages.go.types.go_type_checkpoints
+    Dag => extdeps.languages.dag.types.dag_type_checkpoints
   }
 }
 
 fn target_inhabitants(target: v1.compiler.artifact.RenderTarget) -> std.types.List<std.coercion.InhabitantDecl> {
   match target {
-    extdeps.languages.rust.subject.Rust => extdeps.languages.rust.types.rust_algebra_inhabitants
+    Rust => extdeps.languages.rust.types.rust_algebra_inhabitants
     v1.compiler.artifact.Python => extdeps.languages.python.types.python_algebra_inhabitants
-    extdeps.languages.go.subject.Go => extdeps.languages.go.types.go_algebra_inhabitants
-    v2.lens.affected_set.Dag => []
+    Go => extdeps.languages.go.types.go_algebra_inhabitants
+    Dag => []
   }
 }
 
 fn target_callable(target: v1.compiler.artifact.RenderTarget) -> std.coercion.CallableRepr {
   match target {
-    extdeps.languages.rust.subject.Rust => extdeps.languages.rust.types.rust_callable
+    Rust => extdeps.languages.rust.types.rust_callable
     v1.compiler.artifact.Python => extdeps.languages.python.types.python_callable
-    extdeps.languages.go.subject.Go => extdeps.languages.go.types.go_callable
-    v2.lens.affected_set.Dag => std.coercion.CallableRepr {
+    Go => extdeps.languages.go.types.go_callable
+    Dag => std.coercion.CallableRepr {
       template: "fn(\{params\}) -> \{return\}",
       param_separator: ", ",
       return_separator: " -> ",
@@ -62,19 +43,19 @@ fn target_callable(target: v1.compiler.artifact.RenderTarget) -> std.coercion.Ca
 
 fn target_optional_template(target: v1.compiler.artifact.RenderTarget) -> String {
   match target {
-    extdeps.languages.rust.subject.Rust => extdeps.languages.rust.types.rust_optional_template
+    Rust => extdeps.languages.rust.types.rust_optional_template
     v1.compiler.artifact.Python => extdeps.languages.python.types.python_optional_template
-    extdeps.languages.go.subject.Go => extdeps.languages.go.types.go_optional_template
-    v2.lens.affected_set.Dag => "\{0\}?"
+    Go => extdeps.languages.go.types.go_optional_template
+    Dag => "\{0\}?"
   }
 }
 
 fn target_cast_syntax(target: v1.compiler.artifact.RenderTarget) -> std.coercion.CastSyntax? {
   match target {
-    extdeps.languages.rust.subject.Rust => Present { value: extdeps.languages.rust.types.rust_cast_syntax }
+    Rust => Present { value: extdeps.languages.rust.types.rust_cast_syntax }
     v1.compiler.artifact.Python => Present { value: extdeps.languages.python.types.python_cast_syntax }
-    extdeps.languages.go.subject.Go => Present { value: extdeps.languages.go.types.go_cast_syntax }
-    v2.lens.affected_set.Dag => none
+    Go => Present { value: extdeps.languages.go.types.go_cast_syntax }
+    Dag => none
   }
 }
 
@@ -197,7 +178,7 @@ fn rust_seed_host_numeric_alias(name: String, decl_file: String) -> String? {
 // already documents for five of its own seven rows (checkpoint_identity_keying_migration_note) --
 // not a new gap this relocation introduces.
 fn type_realization_decision(
-  target: extdeps.render.surface.RenderTarget, dag_name: String, decl_file: String
+  target: v1.compiler.artifact.RenderTarget, dag_name: String, decl_file: String
 ) -> std.coercion.TypeRealizationDecision {
   if decl_file == "" {
     Refused { cause: "declaration identity unknown: empty decl_file" }
@@ -207,7 +188,7 @@ fn type_realization_decision(
     match target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first {
       Present { value: cp } => std.coercion.Realized { checkpoint: cp }
       Absent =>
-        let native = if (target == extdeps.languages.rust.subject.Rust) { rust_seed_host_numeric_alias(name: dag_name, decl_file: decl_file) } else { none }
+        let native = if (target == Rust) { rust_seed_host_numeric_alias(name: dag_name, decl_file: decl_file) } else { none }
         match native {
           Present { value: host } => std.coercion.Realized { checkpoint: std.coercion.TypeCheckpoint { dag_name: dag_name, target_type: host, default_expr: none, is_copy: none, literal_suffix: none } }
           Absent => Unrealized
@@ -266,7 +247,7 @@ fn type_realization_decision(
 // legitimate steady state for a production call site and lookup_checkpoint's bypass arm deletes,
 // leaving type_realization_decision as the sole authority. Until then this is a declared, bounded
 // narrowing, not a completed supersession.
-fn lookup_checkpoint(target: extdeps.render.surface.RenderTarget, dag_name: String, decl_file: String) -> std.coercion.TypeCheckpoint? {
+fn lookup_checkpoint(target: v1.compiler.artifact.RenderTarget, dag_name: String, decl_file: String) -> std.coercion.TypeCheckpoint? {
   if decl_file == "" {
     target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first
   } else {
@@ -339,10 +320,10 @@ type CoercionTestEntry {
 
 fn target_label(target: v1.compiler.artifact.RenderTarget) -> String {
   match target {
-    extdeps.languages.rust.subject.Rust => "rust"
+    Rust => "rust"
     v1.compiler.artifact.Python => "python"
-    extdeps.languages.go.subject.Go => "go"
-    v2.lens.affected_set.Dag => "dag"
+    Go => "go"
+    Dag => "dag"
   }
 }
 

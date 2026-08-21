@@ -53,7 +53,7 @@ fn ollama_runtime_materialization_identity_for_required_release() -> std.content
   ollama_runtime_materialization_identity(rel: ollama_required_release)
 }
 
-data ollama_runtime_observation_identity_note: String = "Maps observed /api/version plus the cited release-asset digest (from install-provenance receipt readback, never desired-state re-derivation) to exactly one catalog row. Version wire alone is ambiguous across generic-cuda and jetpack builds at v0.32.9 — never collapse to ollama_required_release without the asset digest."
+data ollama_runtime_observation_identity_note: String = "Maps observed /api/version plus the cited release-asset digest (from install-provenance receipt readback, never desired-state re-derivation) to exactly one catalog row. Version wire alone is ambiguous across generic-cuda and jetpack builds at 9 — never collapse to ollama_required_release without the asset digest."
 
 fn ollama_runtime_materialization_identity_for_observed_release(
   version: String,

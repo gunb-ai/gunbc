@@ -110,11 +110,11 @@ fn ollama_binary_release_eq(a: OllamaBinaryRelease, b: OllamaBinaryRelease) -> B
     && (a.digest.hex as String) == (b.digest.hex as String)
 }
 
-data ollama_v0_11_0_feature_floor_note: String = "Feature-introduction floor for OpenAI gpt-oss model support is ollama_gpt_oss_feature_introduction_floor in extdeps.ollama.capability — a semantic-version relation, not a materialisable binary-release row in this module. Cited release: https://github.com/ollama/ollama/releases/tag/v0.11.0 published 2025-08-05."
+data ollama_v0_11_0_feature_floor_note: String = "Feature-introduction floor for OpenAI gpt-oss model support is ollama_gpt_oss_feature_introduction_floor in extdeps.ollama.capability — a semantic-version relation, not a materialisable binary-release row in this module. Cited release: https://github.com/ollama/ollama/releases/tag/0 published 2025-08-05."
 
 data ollama_v0_32_9_release: OllamaBinaryRelease = OllamaBinaryRelease {
-  version: "v0.32.9" as std.types.NonEmptyStr,
-  release_page: "https://github.com/ollama/ollama/releases/tag/v0.32.9" as std.types.NonEmptyStr,
+  version: "9" as std.types.NonEmptyStr,
+  release_page: "https://github.com/ollama/ollama/releases/tag/9" as std.types.NonEmptyStr,
   architecture: OllamaLinuxArm64,
   variant: OllamaLinuxGenericCuda,
   archive_format: archive_format_tar_zstd,
@@ -127,8 +127,8 @@ data ollama_v0_32_9_release: OllamaBinaryRelease = OllamaBinaryRelease {
 }
 
 data ollama_v0_32_9_jetpack5_release: OllamaBinaryRelease = OllamaBinaryRelease {
-  version: "v0.32.9" as std.types.NonEmptyStr,
-  release_page: "https://github.com/ollama/ollama/releases/tag/v0.32.9" as std.types.NonEmptyStr,
+  version: "9" as std.types.NonEmptyStr,
+  release_page: "https://github.com/ollama/ollama/releases/tag/9" as std.types.NonEmptyStr,
   architecture: OllamaLinuxArm64,
   variant: OllamaLinuxJetPack5,
   archive_format: archive_format_tar_zstd,
@@ -141,8 +141,8 @@ data ollama_v0_32_9_jetpack5_release: OllamaBinaryRelease = OllamaBinaryRelease 
 }
 
 data ollama_v0_32_9_jetpack6_release: OllamaBinaryRelease = OllamaBinaryRelease {
-  version: "v0.32.9" as std.types.NonEmptyStr,
-  release_page: "https://github.com/ollama/ollama/releases/tag/v0.32.9" as std.types.NonEmptyStr,
+  version: "9" as std.types.NonEmptyStr,
+  release_page: "https://github.com/ollama/ollama/releases/tag/9" as std.types.NonEmptyStr,
   architecture: OllamaLinuxArm64,
   variant: OllamaLinuxJetPack6,
   archive_format: archive_format_tar_zstd,

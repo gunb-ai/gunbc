@@ -3,7 +3,7 @@ module extdeps.systemd
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: extdeps.uri.Https
-    locator: "man7.org/linux/man-pages/man1/systemctl.1.html#is-active"
+    locator: "man7.org/linux/man-pages/man1/html#is-active"
   }
 }
 
@@ -114,23 +114,23 @@ fn systemd_task_limit_wire_label(lim: SystemdCgroupTaskLimit) -> String {
 }
 
 fn parse_systemd_unit_active_state(raw: String) -> SystemdUnitActiveState? {
-  if raw == "active" { Present { value: extdeps.systemd.systemd.Active } }
-  else { if raw == "inactive" { Present { value: extdeps.systemd.systemd.Inactive } }
+  if raw == "active" { Present { value: Active } }
+  else { if raw == "inactive" { Present { value: Inactive } }
   else { if raw == "activating" { Present { value: Activating } }
   else { if raw == "deactivating" { Present { value: Deactivating } }
   else { if raw == "reloading" { Present { value: Reloading } }
-  else { if raw == "failed" { Present { value: extdeps.systemd.systemd.Failed } }
+  else { if raw == "failed" { Present { value: Failed } }
   else { none } } } } } }
 }
 
 fn systemd_unit_active_state_wire_label(s: SystemdUnitActiveState) -> String {
   match s {
-    extdeps.systemd.systemd.Active => "active"
-    extdeps.systemd.systemd.Inactive => "inactive"
+    Active => "active"
+    Inactive => "inactive"
     Activating => "activating"
     Deactivating => "deactivating"
     Reloading => "reloading"
-    extdeps.systemd.systemd.Failed => "failed"
+    Failed => "failed"
   }
 }
 

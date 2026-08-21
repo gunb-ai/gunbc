@@ -4,7 +4,7 @@ module extdeps.tools.websocat
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
     scheme: Https
-    locator: "github.com/vi/websocat/releases/tag/v1.14.0"
+    locator: "github.com/vi/websocat/releases/tag/0"
   }
 }
 
@@ -12,7 +12,7 @@ data websocat_pinned_version: extdeps.version.VersionConstraint = ">= 1.12"
 
 data websocat_github_repo: std.types.NonEmptyStr = "vi/websocat"
 
-data websocat_github_tag: std.types.NonEmptyStr = "v1.14.0"
+data websocat_github_tag: std.types.NonEmptyStr = "0"
 
 data websocat_asset_aarch64: std.types.NonEmptyStr = "websocat_max.aarch64-unknown-linux-musl"
 

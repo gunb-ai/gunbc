@@ -1,54 +1,6 @@
 module v1.compiler.trait_derive_emit
 
-import std.dissolution { std.dissolution.DissolutionCondition, unbound_dissolution }
 
-import v1.compiler.emit { to_pascal, emit_ident }
-import v1.compiler.artifact { extdeps.languages.rust.subject.Rust }
-import v1.compiler.infer_types { child_type_node, is_coproduct_type, resolved_type }
-import v1.compiler.emit_core_support { unique_strings, is_type_alias_item }
-import v1.compiler.coercion { lookup_checkpoint, decl_identity_file }
-import extdeps.languages.rust.derive_contracts {
-  extdeps.languages.rust.derive_contracts.RustVecSupplementalGenericBoundRow,
-  rust_vec_freemonoid_supplemental_generic_bound_rows,
-  rust_btree_set_supplemental_generic_bound_rows,
-}
-import v1.std.core {
-  v2.std.node.Node, NewlineIndex, authored_name_at, generic_param_name_at, param_node_type_expr,
-  NoConnective
-}
-import std.trait_derive_shape {
-  std.trait_derive_shape.ReprGroundingDeriveTrait,
-  std.trait_derive_shape.ReprDeriveDebug,
-  std.trait_derive_shape.ReprDeriveClone,
-  std.trait_derive_shape.ReprDerivePartialEq,
-  std.trait_derive_shape.ReprDeriveSerialize,
-  std.trait_derive_shape.ReprDeriveDeserialize,
-  map_key_required_derive_traits,
-  derive_traits_union,
-  std.trait_derive_shape.ReprGroundingDeriveElemShape,
-  std.trait_derive_shape.ReprDeriveElemNullaryEnumCopy,
-  std.trait_derive_shape.ReprDeriveElemPayloadCoproduct,
-  std.trait_derive_shape.ReprDeriveElemSymbolWrappedOrdCarrier,
-  std.trait_derive_shape.ReprDeriveElemUnknown,
-  repr_grounding_derive_completeness_predicate,
-  record_derive_traits_heap,
-  record_derive_traits_copy,
-  nullary_coproduct_derive_traits,
-  symbol_wrapped_ord_carrier_derive_traits,
-  payload_coproduct_derive_traits,
-  fn_field_derive_traits,
-  kernel_int_arithmetic_traits,
-  std.trait_derive_shape.ReprDeriveElemKernelInt,
-  repr_grounding_group_completion_carrier,
-  repr_grounding_supplemental_bool_host_bridge_target
-}
-import extdeps.languages.rust.emit {
-  rust_trait_derive_attr_from_traits,
-  rust_trait_derive_spelling,
-  rust_supplemental_impls_group_completion,
-  rust_supplemental_impls_bool_coproduct
-}
-import std.types { is_container_type, container_template_algebra }
 
 data trait_derive_emit_scope_note: String = "Root-4 arm (b): v1 seed emit selects trait surface from the capability table — #[derive] attrs for shape-eligible traits, and (for GroupCompletion) pair-completion impl bodies as the realization of KernelInt arithmetic traits that cannot be #[derive]. Bool↔bool host bridge remains a separate enum-arm door (see bool dissolve-on). Also: (a) clone bounds on generic params; (c) serde/Debug/Ord #[derive] on named structs/enums."
 
@@ -433,8 +385,8 @@ data trait_derive_emit_set_ord_supplemental_note: String = "ROOT A, Ord half (E0
 
 fn v1_set_element_params(
   generic_param_names: std.types.List<String>,
-  field_type_exprs: std.types.List<v2.std.node.Node>,
-  source_indices: std.types.Map<String, NewlineIndex>
+  field_type_exprs: std.types.List<v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> std.types.List<String> {
   generic_param_names |> filter(p =>
     field_type_exprs |> any(te =>
@@ -633,10 +585,10 @@ fn v1_freemonoid_enum_partial_eq_impl(
 fn v1_set_impl_type_params(
   generic_param_names: std.types.List<String>,
   set_params: std.types.List<String>,
-  field_type_exprs: std.types.List<v2.std.node.Node>,
+  field_type_exprs: std.types.List<v1.std.core.Node>,
   structural_spelling: String,
   derive_trait: std.trait_derive_shape.ReprGroundingDeriveTrait,
-  source_indices: std.types.Map<String, NewlineIndex>
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> String {
   if (generic_param_names |> count) == 0 { "" } else {
     let entries = generic_param_names |> map(p =>
@@ -654,9 +606,9 @@ fn v1_set_enum_debug_impl(
   name: String,
   generic_param_names: std.types.List<String>,
   set_params: std.types.List<String>,
-  children: std.types.List<v2.std.node.Node>,
-  field_type_exprs: std.types.List<v2.std.node.Node>,
-  source_indices: std.types.Map<String, NewlineIndex>
+  children: std.types.List<v1.std.core.Node>,
+  field_type_exprs: std.types.List<v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> String {
   let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug", derive_trait: std.trait_derive_shape.ReprDeriveDebug, source_indices: source_indices)
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
@@ -665,7 +617,7 @@ fn v1_set_enum_debug_impl(
     if (variant.children |> count) == 0 {
       concat("            Self::", vname, " => f.write_str(\"", vname, "\"),")
     } else {
-      let fields = variant.children |> map(f => emit_ident(name: authored_name_at(source_indices: source_indices, node: f), target: extdeps.languages.rust.subject.Rust))
+      let fields = variant.children |> map(f => emit_ident(name: authored_name_at(source_indices: source_indices, node: f), target: Rust))
       let bindings = fields |> join(separator: ", ")
       let field_calls = fields |> map(fi => concat(".field(\"", fi, "\", ", fi, ")")) |> join(separator: "")
       concat("            Self::", vname, " { ", bindings, " } => f.debug_struct(\"", vname, "\")", field_calls, ".finish(),")
@@ -686,9 +638,9 @@ fn v1_set_enum_partial_eq_impl(
   name: String,
   generic_param_names: std.types.List<String>,
   set_params: std.types.List<String>,
-  children: std.types.List<v2.std.node.Node>,
-  field_type_exprs: std.types.List<v2.std.node.Node>,
-  source_indices: std.types.Map<String, NewlineIndex>
+  children: std.types.List<v1.std.core.Node>,
+  field_type_exprs: std.types.List<v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> String {
   let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq", derive_trait: std.trait_derive_shape.ReprDerivePartialEq, source_indices: source_indices)
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
@@ -697,7 +649,7 @@ fn v1_set_enum_partial_eq_impl(
     if (variant.children |> count) == 0 {
       concat("            (Self::", vname, ", Self::", vname, ") => true,")
     } else {
-      let fields = variant.children |> map(f => emit_ident(name: authored_name_at(source_indices: source_indices, node: f), target: extdeps.languages.rust.subject.Rust))
+      let fields = variant.children |> map(f => emit_ident(name: authored_name_at(source_indices: source_indices, node: f), target: Rust))
       let a_bindings = fields |> map(fi => concat(fi, ": a_", fi)) |> join(separator: ", ")
       let b_bindings = fields |> map(fi => concat(fi, ": b_", fi)) |> join(separator: ", ")
       let comparisons = fields |> map(fi => concat("a_", fi, " == b_", fi)) |> join(separator: " && ")
@@ -1832,9 +1784,9 @@ fn v1_item_clone_bounded_param_names(
 // once, derive every use). The trait was previously a hardcoded literal here, which is why adding
 // equality needed this generalization rather than a second renderer beside it.
 fn v1_emit_type_params_with_bounds(
-  params: std.types.List<v2.std.node.Node>,
+  params: std.types.List<v1.std.core.Node>,
   bounds_by_param: std.types.Map<String, std.types.List<String>>,
-  source_indices: std.types.Map<String, NewlineIndex>
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> String {
   if params |> count == 0 { "" }
   else {
@@ -1860,9 +1812,9 @@ fn v1_emit_type_params_with_bounds(
 // forced an edit there. Output is byte-identical to the literal it replaces --
 // concat(pascal, ": ", ["Clone"] |> join(" + ")) is concat(pascal, ": Clone").
 fn v1_emit_type_params_with_clone_bounds(
-  params: std.types.List<v2.std.node.Node>,
+  params: std.types.List<v1.std.core.Node>,
   clone_param_names: std.types.List<String>,
-  source_indices: std.types.Map<String, NewlineIndex>
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> String {
   v1_emit_type_params_with_bounds(
     params: params,

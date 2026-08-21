@@ -8,7 +8,7 @@ data fixture_approved_openbmc_3_22_artifact: gunbc.bmc_converge.ApprovedBmcFirmw
   board: srv3_baseboard.catalog.model,
   image_uri: extdeps.uri.Uri {
     scheme: Https,
-    locator: "example.invalid/fixture/altrad8ud-1l2t_3.22.00.static.mtd.tar",
+    locator: "example.invalid/fixture/altrad8ud-100.static.mtd.tar",
   },
   digest: sha256_digest(
     hex: "0000000000000000000000000000000000000000000000000000000000000000",
