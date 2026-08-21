@@ -2578,8 +2578,32 @@ pub fn render_rust_alias_rhs_type(
                     None => match rust_opaque_kernel_alias_carrier(name.clone()) {
                         Some(carrier) => carrier.clone(),
                         None => {
-                            let rendered =
-                                rust_render_type_leaf_name(name.clone(), variant_to_enum.clone());
+                            let zero_leaf = qualified_last_segment(name.clone());
+                            let zero_local_mod = module_to_filename(module_name.clone());
+                            let zero_def_mod = alias_rhs_rust_qualify_module_filename(
+                                zero_leaf.clone(),
+                                module_name.clone(),
+                                imports.clone(),
+                                scope.clone(),
+                                registry.clone(),
+                                export_sets.clone(),
+                                typed_modules.clone(),
+                                source_indices.clone(),
+                                module_index.clone(),
+                            );
+                            let rendered = if (zero_def_mod.clone() != zero_local_mod.clone())
+                                && (zero_def_mod.clone() != "".to_string())
+                            {
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat("crate::".to_string(), zero_def_mod.clone()),
+                                        "::".to_string(),
+                                    ),
+                                    zero_leaf.clone(),
+                                )
+                            } else {
+                                rust_render_type_leaf_name(name.clone(), variant_to_enum.clone())
+                            };
                             render_rust_shared_type_if_needed(
                                 name.clone(),
                                 rendered.clone(),
@@ -7250,6 +7274,13 @@ pub fn reference_derived_use_lines(
             }
             __result
         });
+        let candidates = Rc::new(
+            candidates
+                .iter()
+                .cloned()
+                .map(|n: String| qualified_last_segment(n))
+                .collect::<Vec<String>>(),
+        );
         let local_decl_names = Rc::new({
             let mut __result = Vec::new();
             for item in items.clone().iter().cloned() {

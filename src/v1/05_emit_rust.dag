@@ -1120,7 +1120,14 @@ fn render_rust_alias_rhs_type(n: v1.std.core.Node, generic_param_names: std.type
       match rust_opaque_kernel_alias_carrier(name: name) {
         Present { value: carrier } => carrier
         Absent => {
-          let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
+          let zero_leaf = v1.std.core.qualified_last_segment(name: name)
+          let zero_local_mod = v1.compiler.emit_core_support.module_to_filename(name: module_name)
+          let zero_def_mod = alias_rhs_rust_qualify_module_filename(name: zero_leaf, alias_module: module_name, imports: imports, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+          let rendered = if zero_def_mod != zero_local_mod && zero_def_mod != "" {
+            concat("crate::", zero_def_mod, "::", zero_leaf)
+          } else {
+            rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
+          }
           render_rust_shared_type_if_needed(type_name: name, rendered: rendered, shared_types: shared_types)
         }
       }
@@ -3150,6 +3157,7 @@ fn reference_derived_use_lines(items: std.types.List<v1.std.core.Node>, unlisted
         reference_derived_candidate_authored(module_source: module_source, name: name, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
           || emitter_attested_anon_heads |> any(h => h == name))
       |> filter(name => !reference_is_host_realized_builtin(name: name))
+      |> map(name => v1.std.core.qualified_last_segment(name: name))
     let local_decl_names = items |> flat_map(item =>
       let nm = v1.std.core.authored_name_at(source_indices: source_indices, node: item)
       if nm == "" { [] } else { [nm] }
