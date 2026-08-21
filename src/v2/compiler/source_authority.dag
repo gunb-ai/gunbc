@@ -196,6 +196,17 @@ fn source_root_coverage_is_complete(coverage: SourceRootCoverage) -> Bool {
   }
 }
 
+data source_root_ref_carrier_coverage_note: String = "TWO CARRIERS, TWO COMPLETENESS QUESTIONS, NEITHER ANSWERING FOR THE OTHER. source_root_coverage_is_complete asks whether the INLINE carrier is complete. This asks whether the CLOSURE-REF carrier is, and the two differ on exactly one variant.\n\nSourceRootManifestElided is the host emitter reporting that a declared cap rejected the inline row list (source_root_coverage_arms_note states it in those words). Past that cap the ref population stays complete -- produced_row_count still equals ingest_read_count -- which the manifest carrier note also states. So for a consumer that reads through refs and never touches the inline text, Elided is a fact about a carrier it does not consume, and refusing on it is a wrong-subject check rather than a strict one. It refused every closure over the cap regardless of contents: the compiler's own closure is 107 modules against a cap of 64, so the first executed seven-boundary product receipt refused at boundary 2 for a reason that had nothing to do with its subject.\n\nWHAT THIS PREDICATE STILL REFUSES, and why the arm is narrowed rather than deleted. SourceRootRowsMissing is the in-graph derivation losing rows with no cap involved -- a real deficit for either carrier. SourceRootManifestAbsent is the committed stub, where nothing has been supplied at all; admitting it would be a vacuous truth over zero rows. Deleting the coverage arm outright would LOOK safe, because source_root_closure_ref_transport_complete independently catches RowsMissing (its produced_row_count == ingest_read_count clause is exactly that variant's negation) -- but that makes the guarantee incidental to arm ORDER, and a later reorder would walk a real deficit through. A replacement preserves every required refusal or it has erased a correctness distinction (operator ruling, smart-ram-730, 2026-08-21).\n\nWHY IT LIVES HERE and not as an inline match in the driver: the coverage coproduct is this module's, so a second unnamed answer to its completeness question authored at a call site would be exactly the nicknaming this repository consolidates later at cost."
+
+fn source_root_ref_carrier_coverage_is_complete(coverage: SourceRootCoverage) -> Bool {
+  match coverage {
+    SourceRootCoverageComplete => true
+    SourceRootManifestElided { read_count: _, cap: _ } => true
+    SourceRootRowsMissing { read_count: _, produced_row_count: _ } => false
+    SourceRootManifestAbsent => false
+  }
+}
+
 fn source_root_closure_ref_transport_complete(
   receipt: SourceRootProvenanceCoverageReceipt,
   refs: List<SourceRef>

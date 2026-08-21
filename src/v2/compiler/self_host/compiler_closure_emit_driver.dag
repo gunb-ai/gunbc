@@ -15,7 +15,7 @@ import v2.compiler.source_authority {
   discovered_source_refs_digest_eq,
   discovered_source_refs_digest_for_refs,
   source_root_closure_ref_transport_complete,
-  source_root_coverage_is_complete,
+  source_root_ref_carrier_coverage_is_complete,
   source_root_ingest_build_from_source_refs
 }
 import v2.std.algebra { length }
@@ -96,7 +96,7 @@ fn closure_emit_population_admission(
   if receipt.ingest_read_count == 0 {
     ClosureEmitPopulationRefused { reason: ^closure_emit_driver_empty_population }
   } else {
-    if !source_root_coverage_is_complete(coverage: receipt.coverage) {
+    if !source_root_ref_carrier_coverage_is_complete(coverage: receipt.coverage) {
       ClosureEmitPopulationRefused { reason: ^closure_emit_driver_coverage_incomplete }
     } else {
       if !source_root_closure_ref_transport_complete(receipt: receipt, refs: refs) {
