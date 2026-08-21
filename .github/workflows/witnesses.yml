@@ -36,5 +36,6 @@ jobs:
       - name: "Required CI: parse, regen, regen determinism, behavioral receipt, witness floor"
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/claim_executor" --required-ci --source-root "$ROOT/dag" --source-root "$ROOT/src/v2"
+          cd "$ROOT"
+          'target/release/claim_executor' '--required-ci' '--source-root' 'dag' '--source-root' 'src/v2'
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
