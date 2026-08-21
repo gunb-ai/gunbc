@@ -25,7 +25,8 @@ import extdeps.github.actions {
   Step, RunStep, UsesStep,
   checkout_action, setup_rust_action, cache_action,
   google_auth_action,
-  upload_artifact_action, download_artifact_action
+  upload_artifact_action, download_artifact_action,
+  max_job_timeout_minutes,
 }
 import gunbc.ci_workflow_expressions {
   ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys,
@@ -398,18 +399,34 @@ fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
   gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes + gunbc_ci_stage0_partition_compile_gate_timeout_minutes + gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
-data gunbc_ci_fleet_job_aux_tier_step_count: Int = 7
+data gunbc_ci_fleet_job_always_run_aux_step_count: Int = 5
 
-data gunbc_ci_fleet_job_artifact_transfer_tier_step_count: Int = 3
+data gunbc_ci_fleet_job_always_run_artifact_transfer_step_count: Int = 1
 
-data gunbc_ci_fleet_job_spark_tier_step_count: Int = 5
+data gunbc_ci_fleet_job_worst_case_mode_aux_step_count: Int = 1
 
-data gunbc_ci_fleet_job_backstop_timeout_note: String = "Corrected 2026-08-21: the prior formula (prelude + 11*aux + 2*spark) hand-counted the aux and spark tiers against a step list that had since drifted, and omitted the artifact_transfer tier entirely (yielding 180m). Recounted directly against fleet_converge_job()'s actual step composition in fleet_converge_workflow.dag (excluding ci_checkout_step, which carries no per-step timeout): aux tier = ci_release_bins_unpack_verify_step, ci_fleet_wif_auth_step, ci_fleet_key_agent_step, fleet_converge_plan_step, fleet_converge_apply_step, ci_spark_admin_credential_cleanup_step, ci_fleet_key_agent_cleanup_step (7); artifact_transfer tier = ci_release_bins_download_step, fleet_converge_plan_upload_step, fleet_converge_plan_download_step (3); spark_serving tier = fleet_converge_spark_linger_step, fleet_converge_spark_grants_step, fleet_converge_spark_observe_step, fleet_converge_spark_reboot_step, fleet_converge_spark_durability_step (5). Corrected total: 5 + 7*5 + 3*10 + 5*60 = 370m, versus the prior 180m — the job could previously be killed by its own backstop before its correctly-budgeted spark steps finished. These counts are hand-authored cardinals, not derived from fleet_converge_job()'s step list by construction (fleet_workflow_steps cannot import fleet_converge_workflow without a cycle), so this note is the single authority to update alongside any change to that job's step composition or tier assignment."
+data gunbc_ci_fleet_job_worst_case_mode_spark_step_count: Int = 1
+
+data gunbc_ci_fleet_job_backstop_timeout_note: String = "SUPERSEDES the 2026-08-21 first correction (prelude + 7*aux + 3*transfer + 5*spark = 370m), which fixed the tier miscount in the prior 11*aux+2*spark formula but kept its structural error: summing every tier-step COUNT as though every step in fleet_converge_job() executes in one run. It does not. The job's steps are gated by the single-select `mode` DispatchInput (InputChoice, exactly one value per dispatch — fleet_converge_workflow.dag DispatchInput \"mode\"), so plan/apply/spark_linger/spark_grants/spark_observe/spark_reboot/spark_durability are MUTUALLY EXCLUSIVE per run, not concurrent tiers to sum. Recounted from fleet_converge_job()'s actual step list (fleet_converge_workflow.dag:280-303) by what a single dispatch can actually execute: ALWAYS-RUN, no if_condition or if_condition: always() — ci_release_bins_download_step (transfer), ci_release_bins_unpack_verify_step, ci_fleet_wif_auth_step, ci_fleet_key_agent_step, ci_spark_admin_credential_cleanup_step, ci_fleet_key_agent_cleanup_step (5 aux + 1 transfer, always). MODE-GATED, at most one bundle applies per dispatch: mode=plan adds fleet_converge_plan_step(aux)+fleet_converge_plan_upload_step(transfer)=15m; mode=apply adds fleet_converge_plan_download_step(transfer)+fleet_converge_apply_step(aux)=15m; mode=spark_linger/spark_observe/spark_reboot/spark_durability each add exactly one spark step=60m; mode=spark_grants adds ci_spark_admin_credential_step(aux)+fleet_converge_spark_grants_step(spark)=65m, the WORST CASE because it is the only mode combining an aux-tier step with a spark-tier step. Worst-case single-run total: 5 + (5+1)*5 + 1*10 + 1*60 = 105m, comfortably inside extdeps.github.actions max_job_timeout_minutes (360m) — the >360 conflict raised on review of the first correction (bright-ferret-335, gunbc#8782) dissolves under the corrected model rather than needing a rounded-down number or a job split; checked_job_timeout_minutes below still guards the class for any future per-tier raise. These counts remain hand-authored cardinals against fleet_converge_job()'s step list (fleet_workflow_steps cannot import fleet_converge_workflow without a cycle), so this note is the single authority to update alongside any change to that job's step composition, if_condition gating, or mode set."
+
+type JobTimeoutBudget
+  = JobTimeoutWithinCeiling { minutes: Int }
+  | JobTimeoutExceedsCeiling { minutes: Int, ceiling: Int }
+
+data checked_job_timeout_minutes_note: String = "Consumes extdeps.github.actions max_job_timeout_minutes by construction (operator review, bright-ferret-335, gunbc#8782): a computed backstop that would exceed GitHub Actions' platform ceiling must refuse rather than emit a timeout-minutes value the platform will reject or silently clamp — clamping is the fabricated-plausible-output failure one layer up, since the job would then die at the clamped cap while the model believed it had the computed value. This is a wall on any future per-tier raise, not evidence the current backstop is at risk: see gunbc_ci_fleet_job_backstop_timeout_note for why the honest worst-case-single-run total sits well under the ceiling today."
+
+fn checked_job_timeout_minutes(computed: Int) -> JobTimeoutBudget {
+  if computed <= max_job_timeout_minutes {
+    JobTimeoutWithinCeiling { minutes: computed }
+  } else {
+    JobTimeoutExceedsCeiling { minutes: computed, ceiling: max_job_timeout_minutes }
+  }
+}
 
 fn gunbc_ci_fleet_job_backstop_timeout_minutes() -> Int {
   gunbc_ci_prelude_allowance_minutes
-    + (gunbc_ci_fleet_job_aux_tier_step_count * gunbc_ci_aux_step_timeout_minutes)
-    + (gunbc_ci_fleet_job_artifact_transfer_tier_step_count * gunbc_ci_artifact_transfer_step_timeout_minutes)
-    + (gunbc_ci_fleet_job_spark_tier_step_count * gunbc_ci_spark_serving_step_timeout_minutes)
+    + ((gunbc_ci_fleet_job_always_run_aux_step_count + gunbc_ci_fleet_job_worst_case_mode_aux_step_count) * gunbc_ci_aux_step_timeout_minutes)
+    + (gunbc_ci_fleet_job_always_run_artifact_transfer_step_count * gunbc_ci_artifact_transfer_step_timeout_minutes)
+    + (gunbc_ci_fleet_job_worst_case_mode_spark_step_count * gunbc_ci_spark_serving_step_timeout_minutes)
 }
 
