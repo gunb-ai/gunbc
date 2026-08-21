@@ -22,3 +22,23 @@ fn concrete_only_comparison_leaves_generic_param_bare() -> Bool {
     ["K: PartialEq", "K: Clone + PartialEq"]
   )
 }
+
+data fn_equality_forwarding_note: String = "Executing floor witness for the CALL-FORWARDING half of the same trigger (v1.compiler.emit_rust v1_call_forwarding_equality_bound_param_names). The seed synthesized the bound only on the fn whose OWN body compares, which is a program that does not typecheck one hop up: a caller instantiating that fn's K with its own generic param is obliged by rustc to prove a bound it never states, and rustc refuses with E0277. MEASURED, not assumed: the real specimen is gunbc#8605's std.trait_derive_shape, where repr_grounding_derive_shape_has_trait<K> compares k == capability_key and earns the bound while repr_grounding_derive_completeness_predicate<K> forwards its own K into that parameter; the reduction below was emitted through the seed before the fix and produced `pub fn cap_table_complete<K: Clone>` -- the Clone bound present, the PartialEq bound absent -- which is why the refusal asserts that exact spelling is gone rather than merely asserting the fixed one is present. THE FORWARDED CALL IS NOT AT THE BODY'S ROOT: it sits inside a lambda inside a pipelined all(), the shape the pre-existing Clone forwarding structurally cannot reach, so a row whose caller body IS the call would pass without exercising the recursive walk this row exists to hold. forwarding_into_unbounded_callee_leaves_generic_param_bare is the discriminator: same wrapper shape, same generic param, same pipeline, but the callee compares only concrete types and so earns nothing -- a derivation keyed on 'my callee is generic' rather than on the callee's own resolved-type verdict bounds K there and breaks every caller instantiating K with a non-PartialEq type."
+
+fn forwarding_caller_inherits_callee_equality_bound() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fn_equality_witness.forwarding\n\ntype ShapeTag = ShapeAlpha | ShapeBeta\n\ntype CapRow<K> {\n  shape: ShapeTag\n  keys: List<K>\n}\n\nfn cap_row_has<K>(row: CapRow<K>, shape: ShapeTag, key: K) -> Bool {\n  row.shape == shape && (row.keys |> any(k => k == key))\n}\n\nfn cap_table_complete<K>(row: CapRow<K>, shape: ShapeTag, required: List<K>) -> Bool {\n  required |> all(k => cap_row_has(row: row, shape: shape, key: k))\n}\n",
+    "src/fn_equality_witness_forwarding.rs",
+    ["fn cap_table_complete<K: Clone + PartialEq>"],
+    ["fn cap_table_complete<K>", "fn cap_table_complete<K: Clone>"]
+  )
+}
+
+fn forwarding_into_unbounded_callee_leaves_generic_param_bare() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fn_equality_witness.forwarding_bare\n\ntype ShapeTag = ShapeAlpha | ShapeBeta\n\ntype CapRow<K> {\n  shape: ShapeTag\n  keys: List<K>\n}\n\nfn cap_row_shape_is<K>(row: CapRow<K>, shape: ShapeTag) -> Bool {\n  row.shape == shape\n}\n\nfn cap_table_shape_is<K>(row: CapRow<K>, shapes: List<ShapeTag>) -> Bool {\n  shapes |> all(s => cap_row_shape_is(row: row, shape: s))\n}\n",
+    "src/fn_equality_witness_forwarding_bare.rs",
+    ["fn cap_table_shape_is"],
+    ["K: PartialEq", "K: Clone + PartialEq"]
+  )
+}
