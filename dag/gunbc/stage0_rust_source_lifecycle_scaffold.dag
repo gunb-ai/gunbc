@@ -207,6 +207,12 @@ fn count_observed_manifest_duplicate_excess(
 // zero by construction rather than because the defect stopped occurring. Caught by execution:
 // scaffold_observed_cargo_role_does_not_supply_lifecycle_disposition went red on the floor while
 // two reviews passed over the change. The comparison is against the AUTHORED classification.
+// ON THE EmitPopulationUnobserved ARM BELOW: THE LINE STOPS; IT DOES NOT WIDEN. Without the
+// emitter's declaration this module cannot separate "the emitter produces this" from "nobody
+// registered this", which is precisely the deficit #8674's rung drop was declared over. Falling
+// back to the crate-layout complement in that arm would restore the deficit while still reporting
+// a verdict, with its own firing rate zeroed by construction -- the absorbing fallback DESIGN 5
+// forbids. So the arm refuses, typed and located, and the degradation is countable.
 fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) -> RustSourceManifestStateVerdict {
   match observation {
     RustManifestReadRefused { detail: detail } =>
@@ -227,12 +233,6 @@ fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) ->
         ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: "observed manifest missing repository_revision" } }
       } else {
         match emit_population_evidence {
-          // THE LINE STOPS; IT DOES NOT WIDEN. Without the emitter's declaration this module
-          // cannot separate "the emitter produces this" from "nobody registered this", which is
-          // precisely the deficit #8674's rung drop declared. Falling back to the crate-layout
-          // complement here would restore that deficit while reporting a verdict, with its
-          // frequency zeroed by construction -- the absorbing fallback DESIGN 5 forbids. So the
-          // arm refuses, typed and located, and the degradation is countable.
           EmitPopulationUnobserved { detail: detail } =>
             ManifestStateScaffoldRefused { cause: EmitPopulationUnobservedEvidence { detail: detail } }
           EmitPopulationConfirmed { emitted_stage0_repo_paths: emitted_stage0_repo_paths } =>
