@@ -2,7 +2,7 @@ module gunbc.fleet_reach_endpoint
 
 import std.types { String, NonEmptyStr, Bool, List }
 import product.placement_supply { HostIdentity }
-import gunbc.dgx_spark_procurement {
+import gunbc.spark.dgx_procurement {
   DgxSparkRouterBinding,
   SlotAssigned,
   SlotUnassigned,
@@ -11,7 +11,7 @@ import gunbc.dgx_spark_procurement {
 import extdeps.network.ipv4 { render_ipv4_address }
 
 // Probe-endpoint resolution (bold-eagle-107's projection, offered via witty-raven
-// msg_1c4e0bce; homed HERE — downstream of both gunbc.dgx_spark_procurement and the
+// msg_1c4e0bce; homed HERE — downstream of both gunbc.spark.dgx_procurement and the
 // reach probe — so procurement never imports reach machinery). The srv5/srv6 resolution
 // gap is NOT missing DNS: the addresses are already modeled as cited CR1000A DHCP-lease
 // rows joined to fleet identity by an OperatorAllocation receipt, and nothing publishes

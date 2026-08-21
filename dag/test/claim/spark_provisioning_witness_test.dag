@@ -8,7 +8,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data fixture_project: GcpProjectId = "gunbai-secrets"
 
 // A fixture host identity authored HERE rather than imported. This lane needs no fleet
-// identity authority: nothing in gunbc.spark_provisioning binds one, and importing another
+// identity authority: nothing in gunbc.spark.provisioning binds one, and importing another
 // module's private rows to fill a witness would have coupled this branch to whichever lane
 // happens to own those rows this week.
 data fixture_host: HostIdentity = "fixture-spark-unit"

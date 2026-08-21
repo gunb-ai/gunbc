@@ -1,12 +1,12 @@
 module test.claim.spark_serving_runtime_receipt_witness_test
 
 import std.types { String, NonEmptyStr, Bool }
-import gunbc.spark_serving_readback_parse {
+import gunbc.spark.serving_readback_parse {
   SparkServingReadbackPresent,
   SparkServingReadbackAbsent,
   SparkServingReadbackRefused,
 }
-import gunbc.spark_serving_runtime_receipt {
+import gunbc.spark.serving_runtime_receipt {
   SparkServingRuntimeArchiveAdmissionReceipt,
   spark_serving_runtime_archive_admission_receipt_json,
   spark_serving_parse_runtime_receipt_json,

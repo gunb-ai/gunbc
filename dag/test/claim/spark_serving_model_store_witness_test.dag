@@ -1,0 +1,477 @@
+module test.claim.spark_serving_model_store_witness_test
+
+// THE MODEL SLOT, OBSERVED FROM THE STORE ON DISK.
+//
+// What these claims exist to hold down is a defect that typechecked, witnessed green in every
+// neighbouring roster, and made the plan unable to empty: the observed model identity was minted
+// with content_hash_atom (fnv1a64 structural) while desired carries a Sha256 identity off an ollama
+// model digest. Those do not compare unequal -- they compare INCOMPARABLE, so the member reconciled
+// as drift forever and a pull was planned on every run. No claim in the roster caught it because
+// every claim asserted drift, and a projection that always reports drift satisfies all of them.
+//
+// So the first claim below is the zero case, and it is the only one whose failure is silent.
+
+import std.types { Bool, NonEmptyStr, String, Int }
+import std.content_hash { serialize_content_hash }
+import extdeps.ollama.api { strip_sha256_prefix }
+import gunbc.ollama_runtime_bundle {
+  ModelStoreObservation,
+  ModelStoreAbsent,
+  ModelStoreIncomplete,
+  ModelStoreComplete,
+  ModelStoreCorrupt,
+  ModelStoreObservationRefused,
+  model_store_state_digest,
+  model_store_was_observed,
+  RuntimeMaterializationObservation,
+  RuntimeMaterializationComplete,
+  ollama_runtime_materialization_identity_for_required_release,
+}
+import gunbc.spark.serving_release {
+  SparkServingRelease,
+}
+import gunbc.spark.serving_desired {
+  spark_serving_desired_admission,
+  SparkServingDesiredAdmitted,
+  SparkServingDesiredRefused,
+}
+import gunbc.spark.serving_observed_members {
+  spark_serving_observed_members,
+  spark_serving_projection_supports_empty_replan,
+  SparkServingObservedMembers,
+  UserUnitStateObserved,
+  UserUnitManagerEnabled,
+  UnitActivityRunning,
+  LingerObservedEnabled,
+}
+import gunbc.spark.serving_observe { spark_serving_classify_model_store, spark_serving_model_blob_digest_argv }
+
+import product.placement_supply { HostIdentity }
+
+data subject_host: HostIdentity = "srv6" as HostIdentity
+
+// sha256sum output for a store whose blobs hash to the names they carry.
+fn intact_blob_digests() -> String {
+  join([
+    "1111111111111111111111111111111111111111111111111111111111111111  /b/sha256-1111111111111111111111111111111111111111111111111111111111111111\n",
+    "2222222222222222222222222222222222222222222222222222222222222222  /b/sha256-2222222222222222222222222222222222222222222222222222222222222222",
+  ], "")
+}
+
+// The same store with one layer truncated: the FILE IS STILL NAMED for the digest it should have,
+// which is exactly why a listing cannot tell the difference.
+fn corrupt_blob_digests() -> String {
+  join([
+    "1111111111111111111111111111111111111111111111111111111111111111  /b/sha256-1111111111111111111111111111111111111111111111111111111111111111\n",
+    "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef  /b/sha256-2222222222222222222222222222222222222222222222222222222222222222",
+  ], "")
+}
+
+fn two_layer_manifest() -> String {
+  join([
+    "{\"config\":{\"digest\":\"sha256:",
+    "1111111111111111111111111111111111111111111111111111111111111111",
+    "\"},\"layers\":[{\"digest\":\"sha256:",
+    "2222222222222222222222222222222222222222222222222222222222222222",
+    "\"}]}",
+  ], "")
+}
+
+fn present_listing() -> String {
+  join([
+    "sha256-1111111111111111111111111111111111111111111111111111111111111111\n",
+    "sha256-2222222222222222222222222222222222222222222222222222222222222222",
+  ], "")
+}
+
+fn subject_release() -> SparkServingRelease? {
+  match spark_serving_desired_admission {
+    SparkServingDesiredAdmitted { serving_release: r } => Present { value: r }
+    SparkServingDesiredRefused { cause: _ } => none
+  }
+}
+
+// ── The zero case: an exact store is the no-repull law, derived rather than guarded ─────────────
+
+// THE LAW IS THAT NOTHING IS PLANNED, and the mechanism is that the two digests are EQUAL rather
+// than that some check declined to pull. There is no guard to assert here -- if this claim holds,
+// reconcile emits no MemberAction for the slot, so no pull operation exists to suppress.
+//
+// This is the claim that was false while everything else was green.
+test fn an_exact_store_carries_the_desired_identity() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } => {
+      let desired = serialize_content_hash(hash: r.model.identity) as String
+      match model_store_state_digest(
+        observation: ModelStoreComplete {
+          manifest_identity: desired as NonEmptyStr,
+          blob_closure_count: 3,
+        },
+      ) {
+        Absent => false
+        Present { value: observed } => (observed as String) == desired
+      }
+    }
+  }
+}
+
+// THE WHOLE VERTICAL, END TO END, because the claim above only proves the passthrough.
+//
+// This runs the real classifier over the bytes a host would produce -- a manifest naming its blobs,
+// the sha256sum line for that manifest file, a blob listing holding exactly those blobs -- and
+// asserts the digest that comes out the far side is the SAME STRING the desired model member
+// carries. Nothing is stubbed between the probe output and the comparison reconcile makes, so a
+// re-hash reintroduced anywhere along that path fails here.
+//
+// The sha256 hex is the declared desired manifest digest, so this doubles as the statement that a
+// host holding exactly the declared model converges. If ollama ever stores a manifest whose file
+// digest differs from the digest it publishes, THIS is the claim that stays green while srv6 replans
+// forever -- which is why the module comment names that as the one unverified upstream property and
+// the canary as what decides it.
+// THE HEX IS DERIVED, NOT TYPED IN. The first version of this witness carried the desired hex as a
+// literal, and when the operator re-pinned desired state on 2026-08-19 the literal stayed behind --
+// so the claim reddened on a repin that was correct. A witness asserting that a host holding THE
+// DECLARED MODEL converges has to read the declaration, or it is asserting that a host holding one
+// particular historical model converges.
+test fn a_host_holding_the_declared_model_reconciles_as_converged() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } => {
+      let desired = serialize_content_hash(hash: r.model.identity) as String
+      let hex = strip_sha256_prefix(text: desired)
+      match spark_serving_classify_model_store(
+        manifest_body: join([
+          "{\"config\":{\"digest\":\"sha256:",
+          "1111111111111111111111111111111111111111111111111111111111111111",
+          "\"},\"layers\":[{\"digest\":\"sha256:",
+          "2222222222222222222222222222222222222222222222222222222222222222",
+          "\"}]}",
+        ], ""),
+        manifest_digest_stdout: join([hex, "  /home/x/manifest"], ""),
+        blobs_listing: join([
+          "sha256-1111111111111111111111111111111111111111111111111111111111111111\n",
+          "sha256-2222222222222222222222222222222222222222222222222222222222222222",
+        ], ""),
+        blob_digest_stdout: intact_blob_digests(),
+      ) {
+        ModelStoreAbsent => false
+        ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
+        ModelStoreObservationRefused { cause: _ } => false
+        ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
+        ModelStoreComplete { manifest_identity: _, blob_closure_count: n } =>
+          match model_store_state_digest(
+            observation: spark_serving_classify_model_store(
+              manifest_body: join([
+                "{\"config\":{\"digest\":\"sha256:",
+                "1111111111111111111111111111111111111111111111111111111111111111",
+                "\"},\"layers\":[{\"digest\":\"sha256:",
+                "2222222222222222222222222222222222222222222222222222222222222222",
+                "\"}]}",
+              ], ""),
+              manifest_digest_stdout: join([hex, "  /home/x/manifest"], ""),
+              blobs_listing: join([
+                "sha256-1111111111111111111111111111111111111111111111111111111111111111\n",
+                "sha256-2222222222222222222222222222222222222222222222222222222222222222",
+              ], ""),
+              blob_digest_stdout: intact_blob_digests(),
+            ),
+          ) {
+            Absent => false
+            Present { value: observed } => (observed as String) == desired && n == 2
+          }
+      }
+    }
+  }
+}
+
+// A HOST MISSING ONE BLOB IS NOT CONVERGED, over the same classifier and the same manifest. Without
+// this, the claim above is satisfied by a classifier that reports complete unconditionally.
+test fn a_host_missing_a_blob_does_not_reconcile_as_converged() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } => {
+      let desired = serialize_content_hash(hash: r.model.identity) as String
+      match spark_serving_classify_model_store(
+        manifest_body: join([
+          "{\"config\":{\"digest\":\"sha256:",
+          "1111111111111111111111111111111111111111111111111111111111111111",
+          "\"},\"layers\":[{\"digest\":\"sha256:",
+          "2222222222222222222222222222222222222222222222222222222222222222",
+          "\"}]}",
+        ], ""),
+        manifest_digest_stdout: "49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05  /home/x/manifest",
+        blobs_listing: "sha256-1111111111111111111111111111111111111111111111111111111111111111",
+        blob_digest_stdout: intact_blob_digests(),
+      ) {
+        ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
+        ModelStoreAbsent => false
+        ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
+        ModelStoreObservationRefused { cause: _ } => false
+        ModelStoreIncomplete { manifest_identity: _, first_missing_blob: b, further_missing_blobs: rest } =>
+          match model_store_state_digest(
+            observation: ModelStoreIncomplete {
+              manifest_identity: "sha256:49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05" as NonEmptyStr,
+              first_missing_blob: b,
+              further_missing_blobs: rest,
+            },
+          ) {
+            Absent => false
+            Present { value: observed } =>
+              (observed as String) != desired
+              && (b as String) == "2222222222222222222222222222222222222222222222222222222222222222"
+              && length(rest) == 0
+          }
+      }
+    }
+  }
+}
+
+// The negative that gives the claim above its content: a store carrying a DIFFERENT manifest does
+// not accidentally agree. Asserting equality alone would pass against a digest function that
+// returned a constant.
+test fn a_different_store_does_not_carry_the_desired_identity() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } => {
+      let desired = serialize_content_hash(hash: r.model.identity) as String
+      match model_store_state_digest(
+        observation: ModelStoreComplete {
+          manifest_identity: "sha256:0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr,
+          blob_closure_count: 3,
+        },
+      ) {
+        Absent => true
+        Present { value: observed } => (observed as String) != desired
+      }
+    }
+  }
+}
+
+// ── Incomplete is its own value, not a synonym for absent ───────────────────────────────────────
+
+// A STORE MISSING ONE BLOB IS NOT AN EMPTY STORE. Absent projects to no member, which makes
+// reconcile plan an addition; incomplete projects to a member whose digest differs, which makes it
+// plan a CHANGE. Collapsing them would erase the distinction before reconciliation ever sees it --
+// which is exactly what the directive forbade for the runtime, and the model store inherits the
+// same rule because it has the same partial states.
+test fn an_incomplete_store_is_observed_and_absent_is_not() -> Bool {
+  let incomplete = ModelStoreIncomplete {
+    manifest_identity: "sha256:11111111111111111111111111111111111111111111111111111111111111" as NonEmptyStr,
+    first_missing_blob: "aaaa" as NonEmptyStr,
+    further_missing_blobs: [],
+  }
+  match model_store_state_digest(observation: incomplete) {
+    Absent => false
+    Present { value: _ } =>
+      match model_store_state_digest(observation: ModelStoreAbsent) {
+        Present { value: _ } => false
+        Absent => model_store_was_observed(observation: incomplete)
+          && model_store_was_observed(observation: ModelStoreAbsent)
+      }
+  }
+}
+
+// AN INCOMPLETE STORE DOES NOT WEAR ITS MANIFEST'S IDENTITY. If it did, a host holding the right
+// manifest and none of the blobs would compare EQUAL to desired and report converged -- the exact
+// fail-open shape, since the manifest is the cheap half and the blobs are the whole payload.
+test fn an_incomplete_store_differs_from_a_complete_one_with_the_same_manifest() -> Bool {
+  let ident = "sha256:2222222222222222222222222222222222222222222222222222222222222222" as NonEmptyStr
+  match model_store_state_digest(
+    observation: ModelStoreIncomplete {
+      manifest_identity: ident,
+      first_missing_blob: "bbbb" as NonEmptyStr,
+      further_missing_blobs: [],
+    },
+  ) {
+    Absent => false
+    Present { value: partial } =>
+      match model_store_state_digest(
+        observation: ModelStoreComplete { manifest_identity: ident, blob_closure_count: 2 },
+      ) {
+        Absent => false
+        Present { value: whole } => (partial as String) != (whole as String)
+      }
+  }
+}
+
+// ── Refusal does not narrow ─────────────────────────────────────────────────────────────────────
+
+// A store nobody could observe must not read as a store that is empty. Absent plans a pull, which
+// is a real actuation, so answering "could not look" with "not there" would install a model on the
+// strength of a failed probe.
+test fn a_refused_store_is_not_observed() -> Bool {
+  let refused = ModelStoreObservationRefused { cause: "ssh leg did not run" as NonEmptyStr }
+  model_store_was_observed(observation: refused) == false
+    && model_store_was_observed(observation: ModelStoreAbsent) == true
+}
+
+// The completeness bit reaches the empty-replan bar, so a plan built without ever looking at the
+// model cannot report convergence.
+test fn an_unobserved_store_blocks_the_empty_replan_bar() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } => {
+      let with_store = spark_serving_observed_members(
+        host: subject_host,
+        runtime: complete_runtime_stub(),
+        store: ModelStoreComplete {
+          manifest_identity: serialize_content_hash(hash: r.model.identity) as NonEmptyStr,
+          blob_closure_count: 1,
+        },
+        unit: UserUnitStateObserved { unit_state_digest: "u" as NonEmptyStr },
+        enablement: UserUnitManagerEnabled,
+        activity: UnitActivityRunning,
+        linger: LingerObservedEnabled,
+      )
+      let without = spark_serving_observed_members(
+        host: subject_host,
+        runtime: complete_runtime_stub(),
+        store: ModelStoreObservationRefused { cause: "leg did not run" as NonEmptyStr },
+        unit: UserUnitStateObserved { unit_state_digest: "u" as NonEmptyStr },
+        enablement: UserUnitManagerEnabled,
+        activity: UnitActivityRunning,
+        linger: LingerObservedEnabled,
+      )
+      spark_serving_projection_supports_empty_replan(projection: with_store)
+        && spark_serving_projection_supports_empty_replan(projection: without) == false
+    }
+  }
+}
+
+// ── The classifier tells its faults apart ───────────────────────────────────────────────────────
+
+// EACH FAULT GETS ITS OWN SENTENCE. All three refuse, so a Boolean-shaped claim would pass on a
+// classifier that answered "names no blob digests" to an unparseable file -- and an operator reading
+// that would go looking for a manifest that named nothing, when the file is not JSON at all.
+test fn an_unparseable_manifest_says_so() -> Bool {
+  match spark_serving_classify_model_store(
+    manifest_body: "not json at all",
+    manifest_digest_stdout: "aa  /p",
+    blobs_listing: "",
+    blob_digest_stdout: "",
+  ) {
+    ModelStoreObservationRefused { cause: c } => string_contains(c as String, "not parseable")
+    ModelStoreAbsent => false
+    ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
+    ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
+    ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
+  }
+}
+
+test fn a_manifest_whose_layer_has_no_digest_says_malformed() -> Bool {
+  match spark_serving_classify_model_store(
+    manifest_body: "{\"layers\":[{\"size\":1}]}",
+    manifest_digest_stdout: "aa  /p",
+    blobs_listing: "",
+    blob_digest_stdout: "",
+  ) {
+    ModelStoreObservationRefused { cause: c } => string_contains(c as String, "malformed")
+    ModelStoreAbsent => false
+    ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
+    ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
+    ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
+  }
+}
+
+// AN EMPTY REQUIREMENT IS REFUSED, NOT CALLED COMPLETE. A manifest naming nothing would otherwise
+// make every host complete by construction -- zero required blobs, zero missing, converged -- which
+// is the emptiest possible fail-open and would report a bare srv6 as holding the model.
+test fn a_manifest_naming_no_blobs_refuses_rather_than_reporting_complete() -> Bool {
+  match spark_serving_classify_model_store(
+    manifest_body: "{\"layers\":[]}",
+    manifest_digest_stdout: "aa  /p",
+    blobs_listing: "",
+    blob_digest_stdout: "",
+  ) {
+    ModelStoreObservationRefused { cause: c } => string_contains(c as String, "names no blob digests")
+    ModelStoreAbsent => false
+    ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
+    ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
+    ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
+  }
+}
+
+fn complete_runtime_stub() -> RuntimeMaterializationObservation {
+  RuntimeMaterializationComplete {
+    identity: ollama_runtime_materialization_identity_for_required_release(),
+  }
+}
+
+// ── Contents, not names ─────────────────────────────────────────────────────────────────────────
+
+// A TRUNCATED BLOB KEEPS ITS NAME, and that is the whole defect. An interrupted pull, a full disk or
+// a partially written layer all leave a correctly-named file, so a listing reports the store
+// complete -- which suppresses MaterializeModelArtifact, making the repair for a corrupt model exactly the
+// operation the observation prevents. A host in that state can never self-heal.
+//
+// Same manifest, same listing, same everything except the bytes. Only the digest leg can tell them
+// apart, which is why it is worth hashing gigabytes to ask.
+test fn a_corrupt_blob_is_not_a_complete_store() -> Bool {
+  match spark_serving_classify_model_store(
+    manifest_body: two_layer_manifest(),
+    manifest_digest_stdout: "49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05  /m",
+    blobs_listing: present_listing(),
+    blob_digest_stdout: corrupt_blob_digests(),
+  ) {
+    ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: b } =>
+      (b as String) == "2222222222222222222222222222222222222222222222222222222222222222"
+    ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
+    ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
+    ModelStoreAbsent => false
+    ModelStoreObservationRefused { cause: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL ON THE SAME FIXTURE. Without it, the claim above passes on a classifier that
+// calls every store corrupt -- which would suppress nothing and repull forever.
+test fn the_same_store_with_intact_blobs_is_complete() -> Bool {
+  match spark_serving_classify_model_store(
+    manifest_body: two_layer_manifest(),
+    manifest_digest_stdout: "49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05  /m",
+    blobs_listing: present_listing(),
+    blob_digest_stdout: intact_blob_digests(),
+  ) {
+    ModelStoreComplete { manifest_identity: _, blob_closure_count: n } => n == 2
+    ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
+    ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
+    ModelStoreAbsent => false
+    ModelStoreObservationRefused { cause: _ } => false
+  }
+}
+
+// A CORRUPT STORE MUST NOT WEAR THE DESIRED IDENTITY, or it converges and the pull is suppressed --
+// the arm name alone changes nothing if reconcile still sees a matching digest.
+test fn a_corrupt_store_does_not_carry_the_desired_identity() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } => {
+      let desired = serialize_content_hash(hash: r.model.identity) as String
+      match model_store_state_digest(
+        observation: ModelStoreCorrupt {
+          manifest_identity: desired as NonEmptyStr,
+          first_corrupt_blob: "2222" as NonEmptyStr,
+        },
+      ) {
+        Absent => false
+        Present { value: observed } => (observed as String) != desired
+      }
+    }
+  }
+}
+
+// The digest argv names every required blob under the blobs directory, so the leg actually reads the
+// files the manifest requires rather than whatever happens to be lying there.
+test fn the_blob_digest_leg_names_every_required_blob() -> Bool {
+  let argv = spark_serving_model_blob_digest_argv(
+    digest_hexes: [
+      "1111111111111111111111111111111111111111111111111111111111111111" as NonEmptyStr,
+      "2222222222222222222222222222222222222222222222222222222222222222" as NonEmptyStr,
+    ],
+  )
+  length(argv) == 3
+    && argv[0] == "sha256sum"
+    && string_contains(argv[1], "sha256-1111")
+    && string_contains(argv[2], "sha256-2222")
+    && string_contains(argv[1], "/blobs/")
+}

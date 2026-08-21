@@ -1,25 +1,52 @@
 module test.claim.spark_serving_full_plan_witness_test
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String, Int }
 import product.placement_supply { HostIdentity }
-import gunbc.membership_reconcile { MembershipPlan, membership_write_count }
-import gunbc.spark_serving_membership { spark_serving_membership_reconcile, spark_serving_user_unit_state_digest }
-import gunbc.spark_serving_release {
-  SparkServingObservation,
+import gunbc.membership_reconcile {
+  MembershipPlan,
+  membership_write_count,
+  MemberAdded,
+  MemberChanged,
+  MemberRemoved,
+  MemberRemovalRefused,
+  MemberRosterDuplicateKeyRefused,
+}
+import std.content_hash { serialize_content_hash }
+import gunbc.ollama_runtime_bundle {
+  ModelStoreObservation,
+  ModelStoreAbsent,
+  ModelStoreComplete,
+  ModelStoreObservationRefused,
+  RuntimeMaterializationComplete,
+  RuntimeMaterializationObservation,
+  RuntimeMaterializationObservationRefused,
+  RuntimeMaterializationIncomplete,
+  RuntimeMaterializationAbsent,
+  RuntimeExecutableMissing,
+  ollama_runtime_materialization_identity_for_required_release,
+}
+import gunbc.spark.serving_membership { spark_serving_membership_reconcile, spark_serving_user_unit_state_digest }
+import gunbc.spark.serving_execution_schedule {
+  SparkServingScheduleFrozen,
+  SparkServingScheduleRefused,
+  spark_serving_freeze_execution_schedule,
+  spark_serving_frozen_schedule_order,
+  scheduled_rows_list,
+}
+import gunbc.spark.serving_release {
   RuntimeArtifactIdentity,
-  SparkServingObserved,
-  SparkServingAbsent,
-  SparkServingObservationRefused,
   SparkServingReleaseIdentity,
   SparkServingOccurrence,
   SparkServingRelease,
 }
-import gunbc.spark_serving_membership {
+import gunbc.spark.serving_membership {
   SparkServingMember,
   SparkServingMemberAt,
+  SparkServingResourceAddress,
+  SparkServingRuntimeRootAddress,
   spark_serving_desired_members,
 }
-import gunbc.spark_serving_observed_members {
+import gunbc.spark.serving_observed_members {
   SparkServingObservedUnitState,
   UserUnitStateObserved,
   UserUnitStateAbsent,
@@ -30,11 +57,13 @@ import gunbc.spark_serving_observed_members {
   LingerUnobservedState,
   SparkServingObservedMemberProjection,
   SparkServingObservedMembers,
-  SparkServingObservedMembersRefused,
   spark_serving_observed_members,
   spark_serving_projection_supports_empty_replan,
+  UnitActivityNoSuchUnit,
+  spark_serving_activity_was_observed,
+  spark_serving_observed_unit_activity_members,
 }
-import gunbc.spark_serving_converge_plan {
+import gunbc.spark.serving_converge_plan {
   SparkServingTypedActionProjection,
   SparkServingTypedActionsProjected,
   SparkServingTypedActionsRefused,
@@ -45,8 +74,22 @@ import gunbc.spark_serving_converge_plan {
   SparkServingFullMembershipPlanRefused,
   spark_serving_full_membership_plan,
   spark_serving_linger_membership_plan,
+  SparkServingPlanArtifactVerdict,
+  SparkServingPlanArtifactReady,
+  SparkServingPlanArtifactRefused,
+  spark_serving_fleet_converge_plan_artifact,
 }
-import gunbc.spark_serving_desired {
+import gunbc.spark.serving_member_realization {
+  spark_serving_install_effects_for_add,
+  spark_serving_user_unit_install_effects,
+}
+import gunbc.spark.serving_realization {
+  ServingInstallEffect,
+  EnableUserUnit,
+  WriteUserUnitFile,
+  ReloadUserManager,
+}
+import gunbc.spark.serving_desired {
   SparkServingDesiredAdmission,
   SparkServingDesiredAdmitted,
   SparkServingDesiredRefused,
@@ -66,32 +109,75 @@ fn subject_release() -> SparkServingRelease? {
   }
 }
 
+fn complete_required_runtime() -> RuntimeMaterializationObservation {
+  RuntimeMaterializationComplete {
+    identity: ollama_runtime_materialization_identity_for_required_release(),
+  }
+}
+
+// THE RUNTIME IS STATED, NEVER DEFAULTED. An earlier revision of this helper supplied
+// `complete_required_runtime()` for every fixture, which silently asserted that a BARE host already
+// had its runtime materialized -- so `a_bare_host_plans_all_seven_members_not_only_linger` planned
+// four and the fixture, not the production code, was wrong. A default here re-fuses the very
+// subjects the projection separates, so every caller says which runtime it means.
 fn project(
-  obs: SparkServingObservation,
+  host: HostIdentity,
+  runtime: RuntimeMaterializationObservation,
+  store: ModelStoreObservation,
   unit: SparkServingObservedUnitState,
+  enablement: SparkServingUnitManagerState,
+  activity: SparkServingObservedActivityState,
   linger: SparkServingObservedLingerState,
 ) -> SparkServingObservedMemberProjection {
-  spark_serving_observed_members(observation: obs, unit: unit, linger: linger)
+  spark_serving_observed_members(host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, activity: activity, linger: linger)
+}
+
+fn bare_runtime() -> RuntimeMaterializationObservation {
+  RuntimeMaterializationAbsent
+}
+
+// THE STORE IS STATED TOO, for the reason the runtime is. Defaulting it to complete would assert
+// that a bare host already holds the model, which is the same fixture lie that made
+// `a_bare_host_plans_all_seven_members_not_only_linger` pass while planning four.
+fn bare_store() -> ModelStoreObservation {
+  ModelStoreAbsent
+}
+
+// The digest is taken from the SAME desired release the plan is built against, so "complete" means
+// "holds exactly what is desired" rather than "holds something". A literal here would drift from the
+// authority and the zero-writes claim would stop meaning anything.
+fn complete_required_store() -> ModelStoreObservation {
+  match subject_release() {
+    Absent => ModelStoreObservationRefused { cause: "no admitted release" as NonEmptyStr }
+    Present { value: r } =>
+      ModelStoreComplete {
+        manifest_identity: serialize_content_hash(hash: r.model.identity) as NonEmptyStr,
+        blob_closure_count: 1,
+      }
+  }
 }
 
 fn observed_count(p: SparkServingObservedMemberProjection) -> Int {
   match p {
-    SparkServingObservedMembersRefused { cause: _ } => 0 - 1
-    SparkServingObservedMembers { members: ms, unit_observed: _ } => length(ms)
+    SparkServingObservedMembers { members: ms, runtime_observed: _, unit_observed: _, registration_observed: _, enablement_observed: _, linger_observed: _ } => length(ms)
   }
 }
 
 fn plan_writes(p: SparkServingFullMembershipPlan) -> Int {
   match p {
     SparkServingFullMembershipPlanRefused { cause: _ } => 0 - 1
-    SparkServingFullMembershipPlanReady { plan: plan, unit_observed: _ } =>
+    SparkServingFullMembershipPlanReady { plan: plan, unit_observed: _, enablement_observed: _, linger_observed: _, observed_members: _ } =>
       membership_write_count(plan: plan)
   }
 }
 
 fn full_plan_writes(
-  obs: SparkServingObservation,
+  host: HostIdentity,
+  runtime: RuntimeMaterializationObservation,
+  store: ModelStoreObservation,
   unit: SparkServingObservedUnitState,
+  enablement: SparkServingUnitManagerState,
+  activity: SparkServingObservedActivityState,
   linger: SparkServingObservedLingerState,
 ) -> Int {
   match subject_release() {
@@ -101,15 +187,19 @@ fn full_plan_writes(
         p: spark_serving_full_membership_plan(
           occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
           serving_release: r,
-          projection: project(obs: obs, unit: unit, linger: linger),
+          projection: project(host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, activity: activity, linger: linger),
         ),
       )
   }
 }
 
 fn full_plan_refuses(
-  obs: SparkServingObservation,
+  host: HostIdentity,
+  runtime: RuntimeMaterializationObservation,
+  store: ModelStoreObservation,
   unit: SparkServingObservedUnitState,
+  enablement: SparkServingUnitManagerState,
+  activity: SparkServingObservedActivityState,
   linger: SparkServingObservedLingerState,
 ) -> Bool {
   match subject_release() {
@@ -118,7 +208,7 @@ fn full_plan_refuses(
       match spark_serving_full_membership_plan(
         occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
         serving_release: r,
-        projection: project(obs: obs, unit: unit, linger: linger),
+        projection: project(host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, activity: activity, linger: linger),
       ) {
         SparkServingFullMembershipPlanRefused { cause: c } => string_contains(c, "refused")
         SparkServingFullMembershipPlanReady { plan: _, unit_observed: _ } => false
@@ -130,25 +220,31 @@ fn full_plan_refuses(
 
 // The declared desired population is four members. This is the denominator every claim below divides
 // by, asserted rather than assumed.
-test fn the_declared_desired_population_is_four_members() -> Bool {
+test fn the_declared_desired_population_is_seven_members() -> Bool {
   match subject_release() {
     Absent => false
     Present { value: r } =>
       length(spark_serving_desired_members(
         occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
         serving_release: r,
-      )) == 4
+      )) == 7
   }
 }
 
-// THE KEYSTONE. On a bare host the production plan planned ONE member; the full plan plans four.
-// Without this the three unrealized install effects could never be selected however well implemented.
-test fn a_bare_host_plans_all_four_members_not_only_linger() -> Bool {
+// THE KEYSTONE. On a bare host the production plan planned ONE member; the full plan plans all six.
+// Without this the unrealized install effects could never be selected however well implemented.
+//
+// Seven rather than six since activity became its own resource: a bare host drifts at runtime, unit
+// content, registration, enablement, ACTIVITY, the model slot and linger.
+test fn a_bare_host_plans_all_seven_members_not_only_linger() -> Bool {
   full_plan_writes(
-    obs: SparkServingAbsent { host: subject_host },
+    host: subject_host,
+    runtime: bare_runtime(), store: bare_store(),
     unit: UserUnitStateAbsent,
+    enablement: UserUnitManagerNotRegistered,
+    activity: UnitActivityStopped,
     linger: LingerObservedDisabled,
-  ) == 4
+  ) == 7
 }
 
 // The contrast, executed rather than asserted in prose: the superseded plan writes exactly one.
@@ -162,59 +258,59 @@ test fn the_superseded_linger_plan_writes_exactly_one() -> Bool {
 
 // A bare host observes no runtime, unit or model member. If the projection derived observed state
 // from the desired release, this would be four and the plan would be empty on a bare machine.
-test fn a_bare_host_observes_no_serving_members() -> Bool {
-  observed_count(p: project(obs: SparkServingAbsent { host: subject_host }, unit: UserUnitStateAbsent, linger: LingerObservedDisabled)) == 0
+// A bare host observes NO SERVING members, but it does observe the unit's REGISTRATION -- systemd
+// answers not-found for a unit that was never written, and that is a fact rather than an absence of
+// one. So the observed population is exactly that single REGISTRATION member: runtime, model and
+// unit content are genuinely absent, linger is observed disabled and therefore carries nothing, and
+// enablement contributes NOTHING because no enablement fact exists over an unregistered unit.
+//
+// The count is unchanged at one, and the member behind it is a different subject than it used to be:
+// before the split this one member was an enablement member carrying not-registered, which is the
+// conflation that let an absent subject reconcile as a change to it.
+test fn a_bare_host_observes_its_unit_registration_and_its_stopped_activity() -> Bool {
+  observed_count(p: project(host: subject_host, runtime: bare_runtime(), store: bare_store(), unit: UserUnitStateAbsent, enablement: UserUnitManagerNotRegistered, activity: UnitActivityStopped, linger: LingerObservedDisabled)) == 2
 }
 
 // Linger is observed independently, so it is carried even when serving is absent.
 test fn linger_is_carried_on_a_bare_host_when_it_is_enabled() -> Bool {
-  observed_count(p: project(obs: SparkServingAbsent { host: subject_host }, unit: UserUnitStateAbsent, linger: LingerObservedEnabled)) == 1
+  observed_count(p: project(host: subject_host, runtime: bare_runtime(), store: bare_store(), unit: UserUnitStateAbsent, enablement: UserUnitManagerNotRegistered, activity: UnitActivityStopped, linger: LingerObservedEnabled)) == 3
 }
 
-// With linger already enabled a bare host needs three writes, not four.
-test fn a_bare_host_with_linger_already_enabled_plans_three() -> Bool {
+// With linger already enabled a bare host needs one fewer write than the fully bare case.
+test fn a_bare_host_with_linger_already_enabled_plans_six() -> Bool {
   full_plan_writes(
-    obs: SparkServingAbsent { host: subject_host },
+    host: subject_host,
+    runtime: bare_runtime(), store: bare_store(),
     unit: UserUnitStateAbsent,
+    enablement: UserUnitManagerNotRegistered,
+    activity: UnitActivityStopped,
     linger: LingerObservedEnabled,
-  ) == 3
+  ) == 6
 }
 
 // ── The refusal that must not narrow ────────────────────────────────────────────────────────────
 
 // A refused observation may NOT be rendered as an empty observed population: that would plan every
 // member as an addition against a host nobody saw. It refuses, and the plan refuses with it.
-test fn a_refused_observation_refuses_the_projection() -> Bool {
-  match project(
-    obs: SparkServingObservationRefused { host: subject_host, cause: "ssh unreachable" as NonEmptyStr },
-    unit: UserUnitStateUnobserved,
-    linger: LingerUnobservedState,
-  ) {
-    SparkServingObservedMembersRefused { cause: _ } => true
-    SparkServingObservedMembers { members: _, unit_observed: _ } => false
-  }
-}
-
-test fn a_refused_observation_refuses_the_plan_rather_than_planning_four_writes() -> Bool {
-  full_plan_refuses(
-    obs: SparkServingObservationRefused { host: subject_host, cause: "ssh unreachable" as NonEmptyStr },
-    unit: UserUnitStateUnobserved,
-    linger: LingerUnobservedState,
-  )
-}
-
-// The refusal names the host, so a fleet-wide run says WHICH host was not seen.
-test fn the_projection_refusal_names_the_host() -> Bool {
-  match project(
-    obs: SparkServingObservationRefused { host: subject_host, cause: "ssh unreachable" as NonEmptyStr },
-    unit: UserUnitStateUnobserved,
-    linger: LingerUnobservedState,
-  ) {
-    SparkServingObservedMembersRefused { cause: c } =>
-      string_contains(c, "srv6") && string_contains(c, "ssh unreachable")
-    SparkServingObservedMembers { members: _, unit_observed: _ } => false
-  }
-}
+// RETIRED WITH A RECEIPT: three claims stood here asserting that a refused SERVING observation
+// refuses the whole projection, and that its cause names the host.
+//
+// That behaviour is deliberately gone. The serving observation asked whether the API answers, and an
+// unavailable API says nothing about bytes on disk -- so refusing the projection on it erased
+// runtime, model, unit, enablement and linger facts that had each been independently established,
+// and left ordinary reconciliation unable to select the start or enable that would have fixed it.
+// The projection no longer takes that observation at all, so SparkServingObservedMembersRefused has
+// no producer and the arm is deleted rather than left unreachable.
+//
+// The obligation those claims protected -- actuation must not proceed from ignorance -- SURVIVES,
+// and is asserted at the subject grain where the evidence actually lives:
+// an_unobserved_runtime_refuses_the_plan_and_emits_no_operations,
+// an_unobserved_model_store_refuses_the_plan_and_emits_no_pull, and
+// the_two_unobserved_walls_name_their_own_subjects. Each names its own probe and its own remedy,
+// which the fused projection-level refusal could not.
+//
+// They are retired rather than deleted quietly, because a witness whose only subject is behaviour
+// the design now rejects is how obsolete behaviour grants itself immortality.
 
 // ── Unobserved is not absent ────────────────────────────────────────────────────────────────────
 
@@ -222,22 +318,24 @@ test fn the_projection_refusal_names_the_host() -> Bool {
 // two must remain distinguishable because only one of them supports an empty replan.
 test fn an_unobserved_unit_does_not_support_an_empty_replan() -> Bool {
   !spark_serving_projection_supports_empty_replan(
-    projection: project(obs: SparkServingAbsent { host: subject_host }, unit: UserUnitStateUnobserved, linger: LingerObservedEnabled),
+    projection: project(host: subject_host, runtime: bare_runtime(), store: bare_store(), unit: UserUnitStateUnobserved, enablement: UserUnitManagerUnobserved, activity: UnitActivityUnobserved, linger: LingerObservedEnabled),
   )
 }
 
 test fn an_observed_absent_unit_does_support_an_empty_replan() -> Bool {
   spark_serving_projection_supports_empty_replan(
-    projection: project(obs: SparkServingAbsent { host: subject_host }, unit: UserUnitStateAbsent, linger: LingerObservedEnabled),
+    projection: project(host: subject_host, runtime: bare_runtime(), store: bare_store(), unit: UserUnitStateAbsent, enablement: UserUnitManagerNotRegistered, activity: UnitActivityStopped, linger: LingerObservedEnabled),
   )
 }
 
 test fn a_refused_projection_never_supports_an_empty_replan() -> Bool {
   !spark_serving_projection_supports_empty_replan(
     projection: project(
-      obs: SparkServingObservationRefused { host: subject_host, cause: "x" as NonEmptyStr },
+      host: subject_host,
+      runtime: RuntimeMaterializationObservationRefused { cause: "probe leg unreachable" as NonEmptyStr }, store: ModelStoreObservationRefused { cause: "probe leg unreachable" as NonEmptyStr },
       unit: UserUnitStateUnobserved,
-      linger: LingerUnobservedState,
+      enablement: UserUnitManagerUnobserved,
+      activity: UnitActivityUnobserved, linger: LingerUnobservedState,
     ),
   )
 }
@@ -257,7 +355,7 @@ fn removal_refusing_plan() -> MembershipPlan<SparkServingMember, SparkServingMem
 }
 
 test fn a_plan_whose_member_cannot_translate_refuses_the_typed_projection() -> Bool {
-  match fleet_converge_spark_serving_typed_actions(plan: removal_refusing_plan()) {
+  match fleet_converge_spark_serving_typed_actions(plan: removal_refusing_plan(), desired: []) {
     SparkServingTypedActionsRefused { cause: c } =>
       string_contains(c, "dropped") && string_contains(c, "1 planned member actions")
     SparkServingTypedActionsProjected { rows: _ } => false
@@ -269,8 +367,9 @@ test fn a_plan_whose_member_cannot_translate_refuses_the_typed_projection() -> B
 test fn an_ordinary_linger_plan_still_projects_its_rows() -> Bool {
   match fleet_converge_spark_serving_typed_actions(
     plan: spark_serving_linger_membership_plan(host: subject_host, linger_enabled: false),
+    desired: [spark_serving_desired_linger_member(host: subject_host)],
   ) {
-    SparkServingTypedActionsProjected { rows: rows } => length(rows) == 1
+    SparkServingTypedActionsProjected { rows: rows } => length(scheduled_rows_list(scheduled: rows)) == 1
     SparkServingTypedActionsRefused { cause: _ } => false
   }
 }
@@ -288,9 +387,13 @@ test fn an_ordinary_linger_plan_still_projects_its_rows() -> Bool {
 // roster full of drift-detection claims is satisfied by a projection that reports drift always.
 fn observed_exactly_desired(r: SparkServingRelease) -> SparkServingObservedMemberProjection {
   spark_serving_observed_members(
-    observation: SparkServingObserved { host: subject_host, loaded_release: r },
+    host: subject_host,
+    runtime: complete_required_runtime(),
+    store: complete_required_store(),
     unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
-    linger: LingerObservedEnabled,
+    enablement: UserUnitManagerEnabled,
+    activity: UnitActivityRunning,
+          linger: LingerObservedEnabled,
   )
 }
 
@@ -304,7 +407,7 @@ test fn a_host_in_exactly_the_desired_state_plans_no_writes() -> Bool {
         projection: observed_exactly_desired(r: r),
       ) {
         SparkServingFullMembershipPlanRefused { cause: _ } => false
-        SparkServingFullMembershipPlanReady { plan: plan, unit_observed: observed } =>
+        SparkServingFullMembershipPlanReady { plan: plan, unit_observed: observed, enablement_observed: _, linger_observed: _, observed_members: _ } =>
           membership_write_count(plan: plan) == 0 && observed
       }
   }
@@ -322,6 +425,10 @@ test fn an_exactly_desired_host_supports_an_empty_replan() -> Bool {
 
 // The two components must be independently discriminating: if the projection fused them again, a
 // runtime-only drift would move the model member too. Four members, exactly one changed.
+// THE MODEL IS HELD AT DESIRED HERE, because this claim isolates the RUNTIME. An earlier revision
+// passed bare_store() -- inserted mechanically alongside the runtime rather than chosen -- which
+// drifted the model too and made a claim named "exactly one member" measure two. The fixture, not
+// the plan, was wrong.
 test fn a_runtime_only_drift_changes_exactly_one_member() -> Bool {
   match subject_release() {
     Absent => false
@@ -330,20 +437,792 @@ test fn a_runtime_only_drift_changes_exactly_one_member() -> Bool {
         occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
         serving_release: r,
         projection: spark_serving_observed_members(
-          observation: SparkServingObserved {
-            host: subject_host,
-            loaded_release: SparkServingRelease {
-              runtime: RuntimeArtifactIdentity { closure_digest: "drifted-runtime" as NonEmptyStr },
-              model: r.model,
+          host: subject_host,
+          store: complete_required_store(),
+          runtime: RuntimeMaterializationIncomplete {
+            identity: ollama_runtime_materialization_identity_for_required_release(),
+            first_defect: RuntimeExecutableMissing {
+              expected_relative_path: "bin/ollama" as NonEmptyStr,
             },
+            further_defects: [],
           },
           unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+          enablement: UserUnitManagerEnabled,
+          activity: UnitActivityRunning,
           linger: LingerObservedEnabled,
         ),
       ) {
         SparkServingFullMembershipPlanRefused { cause: _ } => false
-        SparkServingFullMembershipPlanReady { plan: plan, unit_observed: _ } =>
+        SparkServingFullMembershipPlanReady { plan: plan, unit_observed: _, enablement_observed: _, linger_observed: _, observed_members: _ } =>
           membership_write_count(plan: plan) == 1
       }
   }
+}
+
+// ── The cutover: the production plan artifact now plans the whole population ─────────────────────
+
+fn artifact_verdict(
+  host: HostIdentity,
+  projection: SparkServingObservedMemberProjection,
+) -> SparkServingPlanArtifactVerdict {
+  spark_serving_fleet_converge_plan_artifact(
+    host: host as NonEmptyStr,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    projection: projection,
+  )
+}
+
+fn artifact_refusal_cause(v: SparkServingPlanArtifactVerdict) -> String {
+  match v {
+    SparkServingPlanArtifactReady { artifact: _ } => "<ready>"
+    SparkServingPlanArtifactRefused { cause: c } => c
+  }
+}
+
+fn artifact_row_count(v: SparkServingPlanArtifactVerdict) -> Int {
+  match v {
+    SparkServingPlanArtifactReady { artifact: a } => length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions))
+    SparkServingPlanArtifactRefused { cause: _ } => 0 - 1
+  }
+}
+
+// THE CUTOVER KEYSTONE. This function planned a one-member linger list; it now plans the declared
+// population. A bare host with linger already on owes the other three members, and the artifact must
+// freeze a typed row for each -- not the single linger row the superseded planner produced.
+// THE FRONTIER MOVED, AND THIS IS THE BAR IT MOVED TO.
+//
+// This claim used to assert that a bare host REFUSED, because InstallOwnedRuntimeClosure and
+// MaterializeModelArtifact were both unrealized and a plan containing an unrealized effect refuses whole.
+// Both are realized now, so the refusal is gone -- and its absence is the operator's stated push
+// criterion: a bare host must produce a complete executable plan rather than a typed-action refusal.
+//
+// So it asserts the new state rather than being deleted. A frontier control that stops holding is
+// evidence the frontier moved, and the honest response is to state where it moved to.
+//
+// It pins the ROW COUNT as a distinct constant rather than merely "not refused", because "no
+// refusal" would also be satisfied by a plan that produced nothing at all -- which is the empty
+// observation narrow, and on a bare host it is the exact wrong answer.
+//
+// FOUR, NOT FIVE, and the second half of the claim is what makes that number mean something rather
+// than be curve-fitted. The declared population is five members, but this fixture observes linger
+// ALREADY ENABLED, so linger converges and owes no action. Flipping only linger to disabled yields
+// five. A first attempt asserted five against the linger-enabled fixture and was simply wrong about
+// its own subject; carrying both counts states the relationship instead of a remembered constant.
+test fn a_bare_host_produces_a_complete_plan_with_no_typed_action_refusal() -> Bool {
+  let v = artifact_verdict(
+    host: subject_host,
+    projection: project(
+      host: subject_host,
+      runtime: bare_runtime(), store: bare_store(),
+      unit: UserUnitStateAbsent,
+      enablement: UserUnitManagerNotRegistered,
+      activity: UnitActivityStopped, linger: LingerObservedEnabled,
+    ),
+  )
+  let with_linger_off = artifact_verdict(
+    host: subject_host,
+    projection: project(
+      host: subject_host,
+      runtime: bare_runtime(), store: bare_store(),
+      unit: UserUnitStateAbsent,
+      enablement: UserUnitManagerNotRegistered,
+      activity: UnitActivityStopped, linger: LingerObservedDisabled,
+    ),
+  )
+  artifact_refusal_cause(v: v) == "<ready>"
+    && artifact_row_count(v: v) == 6
+    && artifact_row_count(v: with_linger_off) == 7
+}
+
+// AND A SINGLE DRIFTED MEMBER PLANS EXACTLY ONE ROW, which is what stops the claim above from being
+// satisfied by a plan that simply emits everything. A host whose runtime and model are already
+// correct but whose unit drifted owes one row, not five.
+// DRIFTED BYTES ARE TWO FACTS, NOT ONE. The file differs from desired AND the manager is therefore
+// holding a definition that is not the desired one, so the plan freezes a write and a reload -- the
+// same two operations the bundled content remedy used to emit, now attributed to the two subjects
+// that actually own them.
+test fn a_unit_only_drift_freezes_exactly_two_rows() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      artifact_row_count(
+        v: artifact_verdict(
+          host: subject_host,
+          projection: project(
+        host: subject_host,
+            runtime: complete_required_runtime(),
+            store: complete_required_store(),
+            unit: UserUnitStateObserved { unit_state_digest: "drifted-unit-bytes" as NonEmptyStr },
+            enablement: UserUnitManagerEnabled,
+            activity: UnitActivityRunning, linger: LingerObservedEnabled,
+          ),
+        ),
+      ) == 2
+  }
+}
+
+// ── The precondition the publish sequence rests on ──────────────────────────────────────────────
+
+// Counts frozen rows addressed at the RUNTIME ROOT specifically, rather than rows in total. The
+// distinction is the whole point: "no writes at all" and "no runtime write" are different facts, and
+// only the second is what the publish sequence needs.
+fn runtime_rows(v: SparkServingPlanArtifactVerdict) -> Int {
+  match v {
+    SparkServingPlanArtifactRefused { cause: _ } => 0 - 1
+    SparkServingPlanArtifactReady { artifact: a } =>
+      length(filter(scheduled_rows_list(scheduled: a.spark_serving_typed_actions), row =>
+        match row.action {
+          MemberAdded { at: _, to: m } => is_runtime_root(address: m.address)
+          MemberChanged { at: _, from: _, to: m } => is_runtime_root(address: m.address)
+          MemberRemoved { at: _, from: m } => is_runtime_root(address: m.address)
+          MemberRemovalRefused { from: _, cause: _ } => false
+          MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
+        }))
+  }
+}
+
+fn is_runtime_root(address: SparkServingResourceAddress) -> Bool {
+  match address {
+    SparkServingRuntimeRootAddress => true
+    SparkServingUserUnitAddress => false
+    SparkServingUserUnitRegistrationAddress => false
+    SparkServingUserUnitEnablementAddress => false
+    SparkServingUserUnitActivityAddress => false
+    SparkServingModelSlotAddress { slot: _ } => false
+    SparkServingLingerAddress => false
+  }
+}
+
+// THE PUBLISH SEQUENCE REMOVES ANY TREE AT THE FINAL PATH, and this is what makes that admissible.
+//
+// `mv -T` refuses a populated destination, so without a removal step a second attempt after any
+// interruption could never republish -- "incomplete is repairable" would be prose. The removal is
+// safe only if the sequence is unreachable for a host whose runtime is already Complete, and that is
+// a property of reconcile rather than of the realizer: an unchanged member yields no action.
+//
+// Read in BOTH directions deliberately. Asserting only "a complete runtime freezes no runtime row"
+// would also pass if the fixture froze nothing at all, or if the projection had quietly stopped
+// producing runtime members -- so the same fixture with the runtime bare must freeze exactly one, and
+// the unit drift must be visible in both arms. A claim that cannot distinguish "correctly silent"
+// from "structurally mute" is measuring nothing.
+test fn a_complete_runtime_plans_no_install_steps() -> Bool {
+  let converged_runtime = artifact_verdict(
+    host: subject_host,
+    projection: project(
+      host: subject_host,
+      runtime: complete_required_runtime(),
+      store: complete_required_store(),
+      unit: UserUnitStateObserved { unit_state_digest: "drifted-unit-bytes" as NonEmptyStr },
+      enablement: UserUnitManagerEnabled,
+      activity: UnitActivityRunning, linger: LingerObservedEnabled,
+    ),
+  )
+  let bare_runtime_same_drift = artifact_verdict(
+    host: subject_host,
+    projection: project(
+      host: subject_host,
+      runtime: bare_runtime(),
+      store: complete_required_store(),
+      unit: UserUnitStateObserved { unit_state_digest: "drifted-unit-bytes" as NonEmptyStr },
+      enablement: UserUnitManagerEnabled,
+      activity: UnitActivityRunning, linger: LingerObservedEnabled,
+    ),
+  )
+  runtime_rows(v: converged_runtime) == 0
+    && runtime_rows(v: bare_runtime_same_drift) == 1
+    && artifact_row_count(v: converged_runtime) == 2
+    && artifact_row_count(v: bare_runtime_same_drift) == 3
+}
+
+// A host in exactly the desired state freezes NO rows. This is the control that proves convergence
+// is reachable through the production entry point and not merely through the plan beneath it: if it
+// ever fails, the wet slice writes on every run forever.
+test fn the_production_artifact_freezes_no_rows_when_converged() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      artifact_row_count(v: artifact_verdict(host: subject_host, projection: observed_exactly_desired(r: r))) == 0
+  }
+}
+
+// THE PARTIAL-OBSERVATION WALL. An unobserved unit is ABSENT from the observed list, and absence is
+// what makes reconcile plan an addition -- so planning against it would write the unit on every run
+// while no replan could ever be empty. It must refuse, and the refusal must say which one it was.
+test fn an_unobserved_unit_refuses_the_artifact_rather_than_planning_a_write() -> Bool {
+  let cause = artifact_refusal_cause(
+    v: artifact_verdict(
+      host: subject_host,
+      projection: project(
+        host: subject_host,
+        runtime: bare_runtime(), store: bare_store(),
+        unit: UserUnitStateUnobserved,
+        enablement: UserUnitManagerUnobserved,
+        activity: UnitActivityUnobserved, linger: LingerObservedEnabled,
+      ),
+    ),
+  )
+  string_contains(cause, "unit-unobserved")
+}
+
+// A refused OBSERVATION refuses the artifact too, and is a DIFFERENT cause than the partial one --
+// "we could not reach the host" and "we reached it but did not read the unit" have different
+// remedies, so one word for both would be the state-space conflation.
+test fn a_refused_observation_refuses_the_artifact_with_its_own_cause() -> Bool {
+  let cause = artifact_refusal_cause(
+    v: artifact_verdict(
+      host: subject_host,
+      projection: project(
+        host: subject_host,
+        runtime: RuntimeMaterializationObservationRefused { cause: "probe leg unreachable" as NonEmptyStr }, store: ModelStoreObservationRefused { cause: "probe leg unreachable" as NonEmptyStr },
+        unit: UserUnitStateUnobserved,
+        enablement: UserUnitManagerUnobserved,
+        activity: UnitActivityUnobserved, linger: LingerUnobservedState,
+      ),
+    ),
+  )
+  string_contains(cause, "observation") && !string_contains(cause, "unit-unobserved")
+}
+
+// A non-Spark host refuses, and says SO. Every refusal above used to render as the single word
+// "plan-refused", so a reader could not tell an unreachable host from a wrong one; the residue this
+// module declared for that is dissolved by the widened return type, and this pins it.
+test fn a_non_spark_host_refuses_with_a_distinguishable_cause() -> Bool {
+  let cause = artifact_refusal_cause(
+    v: artifact_verdict(
+      host: "srv1" as HostIdentity,
+      projection: project(
+        host: "srv1" as HostIdentity,
+        runtime: bare_runtime(), store: bare_store(),
+        unit: UserUnitStateAbsent,
+        enablement: UserUnitManagerNotRegistered,
+        activity: UnitActivityStopped, linger: LingerObservedEnabled,
+      ),
+    ),
+  )
+  string_contains(cause, "host-not-spark")
+}
+
+// The four refusal causes are mutually distinguishable. Asserting each contains its own word is
+// satisfied by a cause that contains ALL of them, so the population is compared pairwise.
+test fn the_refusal_causes_are_pairwise_distinct() -> Bool {
+  let unobserved = artifact_refusal_cause(
+    v: artifact_verdict(
+      host: subject_host,
+      projection: project(host: subject_host, runtime: bare_runtime(), store: bare_store(), unit: UserUnitStateUnobserved, enablement: UserUnitManagerUnobserved, activity: UnitActivityUnobserved, linger: LingerObservedEnabled),
+    ),
+  )
+  let unreached = artifact_refusal_cause(
+    v: artifact_verdict(
+      host: subject_host,
+      projection: project(host: subject_host, runtime: RuntimeMaterializationObservationRefused { cause: "probe leg unreachable" as NonEmptyStr }, store: ModelStoreObservationRefused { cause: "probe leg unreachable" as NonEmptyStr }, unit: UserUnitStateUnobserved, enablement: UserUnitManagerUnobserved, activity: UnitActivityUnobserved, linger: LingerUnobservedState),
+    ),
+  )
+  let wrong_host = artifact_refusal_cause(
+    v: artifact_verdict(
+      host: "srv1" as HostIdentity,
+      projection: project(host: "srv1" as HostIdentity, runtime: bare_runtime(), store: bare_store(), unit: UserUnitStateAbsent, enablement: UserUnitManagerNotRegistered, activity: UnitActivityStopped, linger: LingerObservedEnabled),
+    ),
+  )
+  unobserved != unreached && unreached != wrong_host && unobserved != wrong_host
+}
+
+// AN UNOBSERVED LINGER REFUSES, and is a DIFFERENT cause than an unobserved unit. Both project to
+// nothing on the member list, so the plan cannot tell them apart from the members alone -- and the
+// linger case is the dangerous one, because the effect it would select is privileged. A failed probe
+// must stop the plan, not authorize an enable-linger.
+test fn an_unobserved_linger_refuses_rather_than_selecting_a_privileged_effect() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      string_contains(
+        artifact_refusal_cause(
+          v: artifact_verdict(
+            host: subject_host,
+            projection: project(
+        host: subject_host,
+              runtime: complete_required_runtime(),
+              store: complete_required_store(),
+              unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+              enablement: UserUnitManagerEnabled,
+              activity: UnitActivityRunning, linger: LingerUnobservedState,
+            ),
+          ),
+        ),
+        "linger-unobserved",
+      )
+  }
+}
+
+// And a DISABLED linger does not refuse -- it plans. Without this the claim above would also pass if
+// linger observation were broken outright, which is the failure it is meant to exclude.
+test fn a_disabled_linger_plans_rather_than_refusing() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      artifact_row_count(
+        v: artifact_verdict(
+          host: subject_host,
+          projection: project(
+        host: subject_host,
+            runtime: complete_required_runtime(),
+            store: complete_required_store(),
+            unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+            enablement: UserUnitManagerEnabled,
+            activity: UnitActivityRunning, linger: LingerObservedDisabled,
+          ),
+        ),
+      ) == 1
+  }
+}
+
+// ── Subject independence: one subject's failure stays in its own lane ────────────────────────────
+
+fn observed_addresses(p: SparkServingObservedMemberProjection) -> Int {
+  match p {
+    SparkServingObservedMembers { members: ms, runtime_observed: _, unit_observed: _, registration_observed: _, enablement_observed: _, linger_observed: _ } => length(ms)
+  }
+}
+
+// THE CLASS THIS PINS, and it is the one my own split missed. Splitting the member ADDRESSES did not
+// separate the subjects: `classify_observed_user_unit` still took the enablement, and an unobserved
+// enablement turned a SUCCESSFULLY READ FILE into unobserved content. Failure to establish one fact
+// erased an established fact about a different one.
+//
+// A read that succeeded establishes the content whatever happened to the enablement probe. The unit
+// member is present; only the enablement member is missing.
+test fn an_unobserved_enablement_leaves_the_observed_content_intact() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      match project(
+        host: subject_host,
+        runtime: complete_required_runtime(),
+        store: complete_required_store(),
+        unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+        enablement: UserUnitManagerUnobserved,
+        activity: UnitActivityUnobserved, linger: LingerObservedEnabled,
+      ) {
+        SparkServingObservedMembers { members: _, unit_observed: unit_seen, enablement_observed: enab_seen, linger_observed: _ } =>
+          unit_seen && !enab_seen
+      }
+  }
+}
+
+// And the mirror: an unreadable unit file does not erase an observed enablement. Without both
+// directions this passes on a projection that simply reports everything as observed.
+test fn an_unobserved_unit_leaves_the_observed_enablement_intact() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      match project(
+        host: subject_host,
+        runtime: complete_required_runtime(),
+        store: complete_required_store(),
+        unit: UserUnitStateUnobserved,
+        enablement: UserUnitManagerEnabled,
+        activity: UnitActivityRunning, linger: LingerObservedEnabled,
+      ) {
+        SparkServingObservedMembers { members: _, unit_observed: unit_seen, enablement_observed: enab_seen, linger_observed: _ } =>
+          !unit_seen && enab_seen
+      }
+  }
+}
+
+// A DISABLED-BUT-RUNNING UNIT PLANS EXACTLY ONE WRITE. This is the payoff of the whole split and the
+// direct refutation of the `disabled:` encoding: byte-perfect content that is merely disabled owes
+// EnableUserUnit alone, not a file rewrite plus a manager reload.
+//
+// THE FIXTURE IS RUNNING, and that is the activity split showing its work rather than an adjustment
+// to keep a count. Disabled-and-running is a real and specific host state -- somebody started the
+// unit by hand, it serves today, and it disappears at the next reboot -- and it is exactly the state
+// where enablement is the ONLY thing that drifts. Before activity was its own member this fixture
+// could not be written at all: running and stopped were the same observation, so "only enablement
+// drifts" had to be asserted against a host that was also dead, and the claim quietly depended on
+// activity being unmodeled.
+test fn a_correct_but_disabled_and_running_unit_plans_exactly_one_member() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      plan_writes(
+        p: spark_serving_full_membership_plan(
+          occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
+          serving_release: r,
+          projection: project(
+            host: subject_host,
+            runtime: complete_required_runtime(),
+            store: complete_required_store(),
+            unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+            enablement: UserUnitManagerDisabled,
+            activity: UnitActivityRunning, linger: LingerObservedEnabled,
+          ),
+        ),
+      ) == 1
+  }
+}
+
+// THE MIRROR, AND THE CLAIM THIS WHOLE CHANGE EXISTS FOR. An enabled unit that is DEAD owes exactly
+// one write -- the start -- and before the activity member existed it owed ZERO. Every resource
+// reconciled as converged, the plan was empty, and the only thing that noticed nothing was serving
+// was the generation probe at the end of the run. This claim goes red the moment activity stops
+// being a member, which is the property that keeps the split from being quietly undone.
+test fn an_enabled_but_dead_unit_plans_exactly_one_member() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      plan_writes(
+        p: spark_serving_full_membership_plan(
+          occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
+          serving_release: r,
+          projection: project(
+            host: subject_host,
+            runtime: complete_required_runtime(),
+            store: complete_required_store(),
+            unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+            enablement: UserUnitManagerEnabled,
+            activity: UnitActivityStopped, linger: LingerObservedEnabled,
+          ),
+        ),
+      ) == 1
+  }
+}
+
+// THE PRODUCTION-ENTRY CONTROL, and it has to be at the ENTRY. The projection already carried
+// enablement_observed correctly; the plan simply never read it -- a match destructuring two of three
+// fields typechecks, so adding the field forced no consumer to handle it. A projection-level claim
+// would have passed throughout.
+//
+// Unobserved enablement projects no member, so the desired one reads as absent, so reconcile plans
+// MemberAdded, so EnableUserUnit is selected off a probe that never answered. Same class as the
+// linger fail-open, reintroduced by adding an address without threading its completeness.
+test fn an_unobserved_enablement_refuses_the_artifact_rather_than_enabling() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      string_contains(
+        artifact_refusal_cause(
+          v: artifact_verdict(
+            host: subject_host,
+            projection: project(
+              host: subject_host,
+              runtime: complete_required_runtime(),
+              store: complete_required_store(),
+              unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+              enablement: UserUnitManagerUnobserved,
+              activity: UnitActivityUnobserved, linger: LingerObservedEnabled,
+            ),
+          ),
+        ),
+        "unit-enablement-unobserved",
+      )
+  }
+}
+
+// And an OBSERVED enablement still plans, so the refusal is not simply the artifact refusing
+// everything once a third completeness fact exists.
+test fn an_observed_disabled_enablement_still_plans_through_the_artifact() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      artifact_row_count(
+        v: artifact_verdict(
+          host: subject_host,
+          projection: project(
+            host: subject_host,
+            runtime: complete_required_runtime(),
+            store: complete_required_store(),
+            unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+            enablement: UserUnitManagerDisabled,
+            activity: UnitActivityRunning, linger: LingerObservedEnabled,
+          ),
+        ),
+      ) == 1
+  }
+}
+
+
+// A BARE HOST ENABLES ONCE, NOT TWICE. The content address used to carry EnableUserUnit alongside
+// write and reload, and the enablement address carries it too -- so a host where both members drift
+// froze two enables for one unit. Adding an address does not divide a responsibility; removing it
+// from the old owner does.
+test fn a_bare_host_freezes_exactly_one_enable_operation() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      length(flat_map(
+        spark_serving_desired_members(
+          occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
+          serving_release: r,
+        ),
+        m => spark_serving_install_effects_for_add(member: m),
+      ).filter(e => e == EnableUserUnit)) == 1
+  }
+}
+
+// And the content member no longer claims the enable at all, which is what makes the count above a
+// consequence of the decomposition rather than an accident of ordering.
+// Content owns bytes and nothing else. It must not enable (that was the two-enables defect) and it
+// must no longer reload either: reload is the remedy that establishes REGISTRATION, and leaving it
+// here would freeze two daemon-reloads on any host that drifts at both subjects.
+test fn the_unit_content_member_writes_only() -> Bool {
+  !any(spark_serving_user_unit_install_effects(), e => e == EnableUserUnit)
+    && !any(spark_serving_user_unit_install_effects(), e => e == ReloadUserManager)
+    && any(spark_serving_user_unit_install_effects(), e => e == WriteUserUnitFile)
+    && length(spark_serving_user_unit_install_effects()) == 1
+}
+
+// The reload did not vanish, it moved. Asserted so the claim above cannot be satisfied by the
+// operation being dropped from the model altogether.
+test fn the_registration_member_owns_the_reload() -> Bool {
+  let effects = spark_serving_install_effects_for_address(
+    address: SparkServingUserUnitRegistrationAddress,
+  )
+  any(effects, e => e == ReloadUserManager) && length(effects) == 1
+}
+
+// ── The walls that refuse actuation from ignorance ──────────────────────────────────────────────
+
+// AN UNOBSERVED RUNTIME REFUSES THE PLAN, AND THIS IS THE HALF THAT WAS MISSING.
+//
+// The projection carried runtime_observed and the full-plan carrier destructured only unit,
+// enablement and linger, so it was silently discarded: a refused runtime probe omitted the member,
+// the member read as ABSENT, and InstallOwnedRuntimeClosure became selectable. The remedy for "the
+// runtime is not there" is to install it; the remedy for "we could not look" is to fix the probe.
+// Omission collapsed the two and picked the destructive one.
+//
+// This asserts the REFUSAL, not merely that no install was planned -- a plan that produced nothing
+// at all would also emit no install, and on a bare host that is the empty-observation narrow. It
+// also asserts zero rows, because a refusal carrying rows would let a consumer act on them.
+test fn an_unobserved_runtime_refuses_the_plan_and_emits_no_operations() -> Bool {
+  let v = artifact_verdict(
+    host: subject_host,
+    projection: project(
+      host: subject_host,
+      runtime: RuntimeMaterializationObservationRefused { cause: "probe leg did not run" as NonEmptyStr },
+      store: bare_store(),
+      unit: UserUnitStateAbsent,
+      enablement: UserUnitManagerNotRegistered,
+      activity: UnitActivityStopped, linger: LingerObservedEnabled,
+    ),
+  )
+  string_contains(artifact_refusal_cause(v: v), "runtime materialization was not observed")
+    && artifact_row_count(v: v) == 0 - 1
+}
+
+// THE SAME WALL FOR THE MODEL STORE, and it is the more expensive one to get wrong: an unobserved
+// store planned as absent pulls a multi-gigabyte artifact onto a host that may already hold it, on
+// the strength of a probe that failed.
+test fn an_unobserved_model_store_refuses_the_plan_and_emits_no_pull() -> Bool {
+  let v = artifact_verdict(
+    host: subject_host,
+    projection: project(
+      host: subject_host,
+      runtime: bare_runtime(),
+      store: ModelStoreObservationRefused { cause: "blob listing leg did not run" as NonEmptyStr },
+      unit: UserUnitStateAbsent,
+      enablement: UserUnitManagerNotRegistered,
+      activity: UnitActivityStopped, linger: LingerObservedEnabled,
+    ),
+  )
+  string_contains(artifact_refusal_cause(v: v), "model store was not observed")
+    && artifact_row_count(v: v) == 0 - 1
+}
+
+// THE TWO REFUSALS ARE DISTINCT SENTENCES, because one "incomplete observation" cause would send an
+// operator to the wrong probe. Distinct constants, not a Boolean: asserting only that both refuse
+// would pass on a single fused message.
+test fn the_two_unobserved_walls_name_their_own_subjects() -> Bool {
+  let rt = artifact_refusal_cause(
+    v: artifact_verdict(
+      host: subject_host,
+      projection: project(
+        host: subject_host,
+        runtime: RuntimeMaterializationObservationRefused { cause: "x" as NonEmptyStr },
+        store: bare_store(),
+        unit: UserUnitStateAbsent,
+        enablement: UserUnitManagerNotRegistered,
+        activity: UnitActivityStopped, linger: LingerObservedEnabled,
+      ),
+    ),
+  )
+  let ms = artifact_refusal_cause(
+    v: artifact_verdict(
+      host: subject_host,
+      projection: project(
+        host: subject_host,
+        runtime: bare_runtime(),
+        store: ModelStoreObservationRefused { cause: "x" as NonEmptyStr },
+        unit: UserUnitStateAbsent,
+        enablement: UserUnitManagerNotRegistered,
+        activity: UnitActivityStopped, linger: LingerObservedEnabled,
+      ),
+    ),
+  )
+  rt != ms
+    && string_contains(rt, "runtime")
+    && string_contains(ms, "model store")
+    && !string_contains(rt, "model store")
+}
+
+
+// ── ORDERING: THE AXIS EVERY CLAIM ABOVE IS BLIND TO ────────────────────────────────────────────
+//
+// Thirty-five claims stood above this line and every one of them asked WHAT is planned -- which
+// members, how many writes, which effects, which refusal. Not one asked IN WHAT ORDER, and the srv6
+// convergence failed on exactly that axis: the remedies were all correct and the first one to run
+// was a manager reload for a unit file that no earlier step had written. A test suite that is
+// complete on one axis and silent on another does not report the silence, so the gap read as
+// coverage. These claims are that axis.
+
+type ScheduleIndexScan { found: Bool, idx: Int, seen: Int }
+
+// THE POSITION OF THE ROW FOR ONE RESOURCE, or -1 when the order does not contain it. The reconcile
+// key is host x principal x address wire, so the address wire is a substring of exactly the key for
+// that resource -- which is why the scan matches on containment rather than reconstructing the key
+// and asserting an equality that would really be testing the key builder.
+fn schedule_index_of(order: List<String>, address_wire: String) -> Int {
+  let scan = fold(order, init: ScheduleIndexScan { found: false, idx: 0 - 1, seen: 0 }, f: fn(acc, at) {
+    if acc.found {
+      ScheduleIndexScan { found: true, idx: acc.idx, seen: acc.seen + 1 }
+    } else if string_contains(at as String, address_wire) {
+      ScheduleIndexScan { found: true, idx: acc.seen, seen: acc.seen + 1 }
+    } else {
+      ScheduleIndexScan { found: false, idx: 0 - 1, seen: acc.seen + 1 }
+    }
+  })
+  scan.idx
+}
+
+fn frozen_order(
+  host: HostIdentity,
+  runtime: RuntimeMaterializationObservation,
+  store: ModelStoreObservation,
+  unit: SparkServingObservedUnitState,
+  enablement: SparkServingUnitManagerState,
+  activity: SparkServingObservedActivityState,
+  linger: SparkServingObservedLingerState,
+) -> List<String> {
+  match subject_release() {
+    Absent => []
+    Present { value: r } =>
+      match spark_serving_full_membership_plan(
+        occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
+        serving_release: r,
+        projection: project(host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, activity: activity, linger: linger),
+      ) {
+        SparkServingFullMembershipPlanRefused { cause: _ } => []
+        SparkServingFullMembershipPlanReady { plan: p, desired_members: d } =>
+          match spark_serving_freeze_execution_schedule(
+            plan: p,
+            desired_addresses: flat_map(d, m => [m.address]),
+          ) {
+            SparkServingScheduleRefused { cause: _ } => []
+            SparkServingScheduleFrozen { schedule: sched } =>
+              spark_serving_frozen_schedule_order(schedule: sched)
+          }
+      }
+  }
+}
+
+fn bare_host_frozen_order() -> List<String> {
+  frozen_order(
+    host: subject_host,
+    runtime: bare_runtime(), store: bare_store(),
+    unit: UserUnitStateAbsent,
+    enablement: UserUnitManagerNotRegistered,
+    activity: UnitActivityStopped,
+    linger: LingerObservedDisabled,
+  )
+}
+
+// THE REGRESSION FOR THE srv6 FAILURE, stated as the edge it violated.
+//
+// A reload before a write is the defect verbatim. It is asserted as a position comparison rather
+// than as "the first step is the runtime install", because the first-step form would also go green
+// on an order that happened to start correctly and then inverted a later pair.
+test fn the_frozen_order_writes_the_unit_before_registering_it() -> Bool {
+  let order = bare_host_frozen_order()
+  let write = schedule_index_of(order: order, address_wire: "user-unit:")
+  let reload = schedule_index_of(order: order, address_wire: "user-unit-registration:")
+  length(order) == 7 && write >= 0 && reload >= 0 && write < reload
+}
+
+test fn the_frozen_order_installs_the_runtime_before_the_unit_names_it() -> Bool {
+  let order = bare_host_frozen_order()
+  let runtime = schedule_index_of(order: order, address_wire: "runtime-root")
+  let write = schedule_index_of(order: order, address_wire: "user-unit:")
+  length(order) == 7 && runtime >= 0 && write >= 0 && runtime < write
+}
+
+test fn the_frozen_order_registers_the_unit_before_enabling_it() -> Bool {
+  let order = bare_host_frozen_order()
+  let reload = schedule_index_of(order: order, address_wire: "user-unit-registration:")
+  let enable = schedule_index_of(order: order, address_wire: "user-unit-enablement:")
+  length(order) == 7 && reload >= 0 && enable >= 0 && reload < enable
+}
+
+// THE MODEL PULL TALKS TO THE SERVING API, so it cannot precede the unit being enabled. This edge
+// was previously asserted as a property of a hand-authored step list; it is now a consequence of the
+// model address requiring UnitEnabled, and this claim is what holds that requirement honest.
+test fn the_frozen_order_enables_the_unit_before_pulling_the_model() -> Bool {
+  let order = bare_host_frozen_order()
+  let enable = schedule_index_of(order: order, address_wire: "user-unit-enablement:")
+  let model = schedule_index_of(order: order, address_wire: "model-slot:")
+  length(order) == 7 && enable >= 0 && model >= 0 && enable < model
+}
+
+// POPULATION CONSERVATION. A schedule that respects every edge while dropping a row would satisfy
+// every claim above it, so the count is asserted separately from the order -- the two failures are
+// different and one must not be able to hide inside the other.
+test fn the_frozen_order_is_a_permutation_of_the_planned_rows() -> Bool {
+  let order = bare_host_frozen_order()
+  length(order) == 7
+    && schedule_index_of(order: order, address_wire: "runtime-root") >= 0
+    && schedule_index_of(order: order, address_wire: "user-unit:") >= 0
+    && schedule_index_of(order: order, address_wire: "user-unit-registration:") >= 0
+    && schedule_index_of(order: order, address_wire: "user-unit-enablement:") >= 0
+    && schedule_index_of(order: order, address_wire: "model-slot:") >= 0
+    && schedule_index_of(order: order, address_wire: "linger") >= 0
+}
+
+// A PARTIAL PLAN STILL SCHEDULES. When only the model is missing, the rows that would have
+// established its prerequisites are absent from the plan because the observation already established
+// them -- so the schedule must be the single model row, NOT a missing-provider refusal. This is the
+// claim that keeps the refusal from being satisfied by refusing everything.
+test fn a_host_needing_only_the_model_schedules_that_one_row() -> Bool {
+  let order = frozen_order(
+    host: subject_host,
+    runtime: complete_required_runtime(), store: bare_store(),
+    unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+    enablement: UserUnitManagerEnabled,
+    activity: UnitActivityRunning,
+    linger: LingerObservedEnabled,
+  )
+  length(order) == 1 && schedule_index_of(order: order, address_wire: "model-slot:") == 0
+}
+
+// A BARE HOST IS OBSERVABLE, and this is the arm whose absence blocked srv5's first provisioning.
+// `is-active` exits 4 for a unit that does not exist -- a definite reading -- and folding it into
+// Unobserved made a host with nothing installed indistinguishable from a host we failed to measure,
+// so the plan refused instead of installing. The projection must treat it as observed.
+test fn a_host_with_no_unit_at_all_is_observed_not_unobserved() -> Bool {
+  spark_serving_activity_was_observed(activity: UnitActivityNoSuchUnit)
+    && !spark_serving_activity_was_observed(activity: UnitActivityUnobserved)
+}
+
+// It is NOT Stopped either, and the difference is not cosmetic: a stopped unit exists and could be
+// started; a unit that does not exist must be installed and registered first, and collapsing the two
+// would let a plan select StartUserUnit against a unit file that is not there. A stopped unit
+// projects a member; a missing one projects none.
+test fn a_missing_unit_projects_no_activity_member_but_a_stopped_one_does() -> Bool {
+  spark_serving_observed_unit_activity_members(host: subject_host, activity: UnitActivityNoSuchUnit).length() == 0
+    && spark_serving_observed_unit_activity_members(host: subject_host, activity: UnitActivityStopped).length() == 1
+    && spark_serving_observed_unit_activity_members(host: subject_host, activity: UnitActivityUnobserved).length() == 0
+}
+
+// The silence arm stays load-bearing: a manager we could not reach has not told us the unit is dead,
+// and the plan must still refuse rather than start off a probe that never answered.
+test fn a_genuinely_unobserved_activity_still_refuses() -> Bool {
+  !spark_serving_activity_was_observed(activity: UnitActivityUnobserved)
 }
