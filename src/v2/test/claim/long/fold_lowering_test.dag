@@ -24,11 +24,7 @@ fn ingest(source_text: String, file: Symbol) -> Optional<Node> {
     Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {
         Rejected { diagnostics: _ } => Absent
-        Accepted { value: artifact, diagnostics: _ } =>
-          match normalize(parse_tree: artifact.tree) {
-            Rejected { diagnostics: _ } => Absent
-            Accepted { value: tree, diagnostics: _ } => Present { value: tree }
-          }
+        Accepted { value: artifact, diagnostics: _ } => Present { value: artifact.tree }
       }
   }
 }
