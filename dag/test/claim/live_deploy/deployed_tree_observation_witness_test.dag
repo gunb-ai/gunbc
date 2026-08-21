@@ -9,16 +9,21 @@ import gunbc.live_deploy.deployed_tree_observation {
   deployed_tree_revision_argv,
   deployed_tree_status_argv,
   deployed_tree_read_tree_argv,
-  DeployedTrackedState,
-  TrackedMatchesCommit,
-  TrackedModified,
-  deployed_tracked_state_of,
+  deployed_tree_ignored_argv,
+  DeployedTreeContentState,
+  DeployedScopeMatchesCommit,
+  DeployedScopeDiverged,
+  DeployedTreeContentReading,
+  ContentRead,
+  ContentUnreadable,
+  deployed_tree_content_reading,
   DeployedTreeObservation,
   DeployedTreeObserved,
   DeployedTreeUnobservable,
   TreeLegNotAttempted,
   TreeCommandFailed,
   TreeRevisionUndecodable,
+  TreeStatusUnreadable,
   deployed_tree_unobservable_text,
   DeployedTreeStanding,
   DeployedTreeConverged,
@@ -47,7 +52,15 @@ fn probe_status_words() -> List<String> {
   [
     "env", "GIT_INDEX_FILE=/tmp/gunbc-deployed-tree-index-probe-attempt",
     "git", "-C", probe_repo() as String, "--no-optional-locks",
-    "status", "--porcelain=v1", "--untracked-files=no",
+    "status", "--porcelain=v1", "-z", "--untracked-files=all",
+  ]
+}
+
+fn probe_ignored_words() -> List<String> {
+  [
+    "env", "GIT_INDEX_FILE=/tmp/gunbc-deployed-tree-index-probe-attempt",
+    "git", "-C", probe_repo() as String,
+    "ls-files", "--others", "--ignored", "--exclude-standard", "-z",
   ]
 }
 
@@ -152,38 +165,124 @@ test fn witness_read_tree_argv_is_admitted_by_the_portability_wall() -> Bool {
   }
 }
 
-// CLEAN AND MODIFIED ARE DISTINCT ARMS, and whitespace-only output is CLEAN rather than a
-// modification with an empty body -- which is the state a single emptiness-means-clean field would
-// have conflated.
-test fn witness_empty_diff_body_reads_as_matching_the_commit() -> Bool {
-  match deployed_tracked_state_of(changed_paths: "") {
-    TrackedMatchesCommit => true
-    TrackedModified { changed_paths: _ } => false
+// THE READING IS DRIVEN WITH THE BYTES GIT ACTUALLY EMITS -- NUL-separated porcelain v1 fields and a
+// NUL-separated ignored path list -- rather than with a pre-digested sentence, so a change to the
+// scanner reds these rather than passing on a shape nothing produces.
+fn nul() -> String {
+  from_code_point(0)
+}
+
+fn nul_join(fields: List<String>) -> String {
+  fold(fields, init: "", f: (acc, f) => join([acc, f, nul()], ""))
+}
+
+test fn witness_an_empty_status_and_no_ignored_paths_read_as_matching_the_commit() -> Bool {
+  match deployed_tree_content_reading(entries_nul: "", ignored_nul: "") {
+    ContentUnreadable { detail: _ } => false
+    ContentRead { state: s } =>
+      match s {
+        DeployedScopeMatchesCommit => true
+        DeployedScopeDiverged { changed_paths: _ } => false
+      }
   }
 }
 
-test fn witness_whitespace_only_diff_body_reads_as_matching_the_commit() -> Bool {
-  match deployed_tracked_state_of(changed_paths: "  \n  ") {
-    TrackedMatchesCommit => true
-    TrackedModified { changed_paths: _ } => false
+test fn witness_a_modified_tracked_path_reads_as_diverged_and_carries_what_was_seen() -> Bool {
+  match deployed_tree_content_reading(
+    entries_nul: nul_join([" M dag/gunbc/ci_spec.dag"]),
+    ignored_nul: "",
+  ) {
+    ContentUnreadable { detail: _ } => false
+    ContentRead { state: s } =>
+      match s {
+        DeployedScopeMatchesCommit => false
+        DeployedScopeDiverged { changed_paths: body } => body as String == "dag/gunbc/ci_spec.dag"
+      }
   }
 }
 
-test fn witness_a_modified_path_reads_as_modified_and_carries_what_was_seen() -> Bool {
-  match deployed_tracked_state_of(changed_paths: "dag/gunbc/ci_spec.dag\n") {
-    TrackedMatchesCommit => false
-    TrackedModified { changed_paths: body } => body as String == "dag/gunbc/ci_spec.dag"
+// A DELETED TRACKED PATH IS A DIVERGENCE, not a clean tree. It is exactly how a tracked file under an
+// excluded prefix would present on a host: rsync never ships it, so the worktree lacks a path HEAD
+// names, and status lists it like any other difference.
+test fn witness_a_deleted_tracked_path_reads_as_diverged() -> Bool {
+  match deployed_tree_content_reading(entries_nul: nul_join([" D dag/gunbc/ci_spec.dag"]), ignored_nul: "") {
+    ContentUnreadable { detail: _ } => false
+    ContentRead { state: s } =>
+      match s {
+        DeployedScopeMatchesCommit => false
+        DeployedScopeDiverged { changed_paths: _ } => true
+      }
   }
 }
 
-// A DELETED TRACKED PATH IS A MODIFICATION, not a clean tree. It is exactly how a tracked file under
-// an excluded prefix would present on a host: rsync never ships it, so the worktree lacks a path HEAD
-// names, and `git diff HEAD` lists it like any other difference.
-test fn witness_a_deleted_tracked_path_reads_as_modified() -> Bool {
-  match deployed_tracked_state_of(changed_paths: ".claude/settings.json") {
-    TrackedMatchesCommit => false
-    TrackedModified { changed_paths: _ } => true
+// THE THREE WITNESSES THIS MODULE PREVIOUSLY COULD NOT HAVE PASSED. An earlier revision read
+// `--untracked-files=no` and never read ignored paths at all, so an untracked or ignored `.dag` source
+// inside the deployed scope reported CONVERGED -- and the sync ships exactly those bytes.
+test fn witness_an_untracked_deployed_path_is_not_converged() -> Bool {
+  match deployed_tree_content_reading(entries_nul: nul_join(["?? dag/gunbc/stowaway.dag"]), ignored_nul: "") {
+    ContentUnreadable { detail: _ } => false
+    ContentRead { state: s } =>
+      match s {
+        DeployedScopeMatchesCommit => false
+        DeployedScopeDiverged { changed_paths: body } => body as String == "dag/gunbc/stowaway.dag"
+      }
   }
+}
+
+test fn witness_an_ignored_deployed_path_is_not_converged() -> Bool {
+  match deployed_tree_content_reading(entries_nul: "", ignored_nul: nul_join([".env"])) {
+    ContentUnreadable { detail: _ } => false
+    ContentRead { state: s } =>
+      match s {
+        DeployedScopeMatchesCommit => false
+        DeployedScopeDiverged { changed_paths: body } => body as String == ".env"
+      }
+  }
+}
+
+// THE DISCRIMINATING CONTROL, without which the two witnesses above are satisfied by a scanner that
+// simply calls every non-empty reading diverged. `target/` is outside the deployed scope by the same
+// `path_is_deployed` authority the source side projects through, so an untracked build artifact there
+// must NOT hold the deployment back -- and it is present on every real host.
+test fn witness_an_untracked_path_outside_the_deployed_scope_stays_converged() -> Bool {
+  match deployed_tree_content_reading(
+    entries_nul: nul_join(["?? target/release/gunbc"]),
+    ignored_nul: nul_join(["target/debug/x"]),
+  ) {
+    ContentUnreadable { detail: _ } => false
+    ContentRead { state: s } =>
+      match s {
+        DeployedScopeMatchesCommit => true
+        DeployedScopeDiverged { changed_paths: _ } => false
+      }
+  }
+}
+
+// AN UNPARSEABLE READING REFUSES RATHER THAN ANSWERING CLEAN -- the empty-observation narrow, which is
+// worse than the widen because a narrow is silently uncovered.
+test fn witness_a_malformed_status_field_refuses_rather_than_reading_clean() -> Bool {
+  match deployed_tree_content_reading(entries_nul: nul_join(["xy"]), ignored_nul: "") {
+    ContentRead { state: _ } => false
+    ContentUnreadable { detail: _ } => true
+  }
+}
+
+test fn witness_a_truncated_rename_record_refuses_rather_than_reading_clean() -> Bool {
+  match deployed_tree_content_reading(entries_nul: nul_join(["R  dag/b.dag"]), ignored_nul: "") {
+    ContentRead { state: _ } => false
+    ContentUnreadable { detail: _ } => true
+  }
+}
+
+// THE IGNORED LEG IS A SEPARATE ARGV AND IT IS PORTABLE. If it were not, the whole reading would
+// refuse at the wall rather than at the host, and the two ignored-path witnesses above would be
+// asserting about a command that can never be sent.
+test fn witness_the_ignored_leg_argv_is_portable_and_names_the_temp_index() -> Bool {
+  deployed_tree_ignored_argv(repo: probe_repo(), index_path: probe_index_path) == probe_ignored_words()
+    && match portable_remote_words(raws: probe_ignored_words()) {
+      Present { value: _ } => true
+      Absent => false
+    }
 }
 
 fn oid_a() -> GitObjectId? {
@@ -218,7 +317,7 @@ test fn witness_matching_revision_and_clean_tree_is_the_only_converged_arm() -> 
       deployed_tree_standing_is_converged(
         standing: standing_for(
           desired: a,
-          obs: DeployedTreeObserved { revision: a, tracked: TrackedMatchesCommit },
+          obs: DeployedTreeObserved { revision: a, content: DeployedScopeMatchesCommit },
         ),
       )
   }
@@ -234,7 +333,7 @@ test fn witness_right_revision_with_modifications_is_not_converged_and_not_drift
         desired: a,
         obs: DeployedTreeObserved {
           revision: a,
-          tracked: TrackedModified { changed_paths: "dag/gunbc/ci_spec.dag" as NonEmptyStr },
+          content: DeployedScopeDiverged { changed_paths: "dag/gunbc/ci_spec.dag" as NonEmptyStr },
         },
       ) {
         DeployedTreeModifiedAtRevision { revision: _, changed_paths: body } =>
@@ -255,7 +354,7 @@ test fn witness_a_different_revision_reports_drift_carrying_both_sides() -> Bool
         Present { value: b } =>
           match standing_for(
             desired: a,
-            obs: DeployedTreeObserved { revision: b, tracked: TrackedMatchesCommit },
+            obs: DeployedTreeObserved { revision: b, content: DeployedScopeMatchesCommit },
           ) {
             DeployedTreeRevisionDrifted { desired: d, local: l } =>
               git_object_id_eq(left: d, right: a) && git_object_id_eq(left: l, right: b)
@@ -280,7 +379,7 @@ test fn witness_drift_dominates_modification() -> Bool {
             desired: a,
             obs: DeployedTreeObserved {
               revision: b,
-              tracked: TrackedModified { changed_paths: "x" as NonEmptyStr },
+              content: DeployedScopeDiverged { changed_paths: "x" as NonEmptyStr },
             },
           ) {
             DeployedTreeRevisionDrifted { desired: _, local: _ } => true
@@ -304,6 +403,7 @@ test fn witness_unobservable_is_not_converged_and_keeps_its_cause() -> Bool {
             TreeLegNotAttempted { leg: _, reason: why } => why == "ssh refused"
             TreeCommandFailed { leg: _, exit_code: _, stderr: _ } => false
             TreeRevisionUndecodable { text: _ } => false
+            TreeStatusUnreadable { detail: _ } => false
           }
             && !deployed_tree_standing_is_converged(
               standing: standing_for(desired: a, obs: DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "revision", reason: "ssh refused" } }),
@@ -326,9 +426,11 @@ test fn witness_never_attempted_and_ran_and_failed_are_different_arms() -> Bool 
         TreeCommandFailed { leg: _, exit_code: code, stderr: _ } => code == 128
         TreeLegNotAttempted { leg: _, reason: _ } => false
         TreeRevisionUndecodable { text: _ } => false
+        TreeStatusUnreadable { detail: _ } => false
       }
     TreeCommandFailed { leg: _, exit_code: _, stderr: _ } => false
     TreeRevisionUndecodable { text: _ } => false
+    TreeStatusUnreadable { detail: _ } => false
   }
 }
 

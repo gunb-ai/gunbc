@@ -6,6 +6,7 @@ import extdeps.git
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq }
 import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.live_deploy.candidate { scan_checkout_status, scan_ignored_deployed_paths }
 import gunbc.host_effect_realize {
   run_typed_argv_transport,
   TypedArgvExecOutcome,
@@ -119,8 +120,15 @@ fn deployed_tree_revision_argv(repo: NonEmptyStr) -> List<String> {
 // to be reading. The same defect is live in extdeps.git.inspect WorkingTreeStatus, which declares
 // `readonly` while omitting the flag; that is a separate repair.
 //
-// The subject is exactly "do the tracked bytes equal the commit HEAD names". Untracked-but-shipped is
-// a different class and stays with candidate admission, which already owns and refuses it.
+// THE SUBJECT IS THE DEPLOYED SCOPE, NOT THE TRACKED SET, and an earlier revision of this module said
+// otherwise: it read `--untracked-files=no` and its note dispositioned untracked-but-shipped to
+// candidate admission as "a different class". That disposition was false and it was false in the
+// unsafe direction. Candidate admission owns the SOURCE checkout; nothing owned the target. The sync
+// leg publishes the working directory wholesale modulo the deployment exclusion authority, so a
+// target could carry HEAD=desired, tracked files clean, and an untracked or ignored `.dag` source
+// inside the deployed scope -- and the observation would report converged while the deployed bytes
+// were not the ones the commit names. Membership is projected through `path_is_deployed`, the same
+// single authority the source side projects through, so the two sides cannot disagree about scope.
 //
 // ONE PRECONDITION, CLEAN TODAY AND WITH AN ENFORCEABLE HOME. The comparison runs through
 // gitattributes, so a clean/smudge filter, text=auto, eol= or working-tree-encoding would report
@@ -177,7 +185,26 @@ fn deployed_tree_status_argv(repo: NonEmptyStr, index_path: String) -> List<Stri
   [
     "env", join(["GIT_INDEX_FILE=", index_path], ""),
     "git", "-C", repo as String, "--no-optional-locks",
-    "status", "--porcelain=v1", "--untracked-files=no",
+    "status", "--porcelain=v1", "-z", "--untracked-files=all",
+  ]
+}
+
+// THE IGNORED LEG EXISTS BECAUSE THE SYNC SHIPS IGNORED PATHS AND git status NEVER REPORTS THEM.
+// `--untracked-files=all` answers for untracked files and is silent about ignored ones, so without
+// this second reading a deployed `.env` or an ignored `.dag` source under the deployed scope is
+// invisible to an observation that then reports converged. Candidate admission already owns exactly
+// this subject on the SOURCE side and refuses on it; this is the same subject on the TARGET side, and
+// it is read with the same two argv surfaces and scanned by the same two functions rather than a
+// second scanner for one grammar.
+//
+// It runs under the same temporary index for the same reason the status leg does: `ls-files --others`
+// consults the index to decide what "other" means, and the deployed repo's index is the artifact this
+// module refuses to trust.
+fn deployed_tree_ignored_argv(repo: NonEmptyStr, index_path: String) -> List<String> {
+  [
+    "env", join(["GIT_INDEX_FILE=", index_path], ""),
+    "git", "-C", repo as String,
+    "ls-files", "--others", "--ignored", "--exclude-standard", "-z",
   ]
 }
 
@@ -218,9 +245,10 @@ type DeployedTreeUnobservableCause
   = TreeLegNotAttempted { leg: String, reason: String }
   | TreeCommandFailed { leg: String, exit_code: Int, stderr: String }
   | TreeRevisionUndecodable { text: String }
+  | TreeStatusUnreadable { detail: String }
 
 type DeployedTreeObservation
-  = DeployedTreeObserved { revision: GitObjectId, tracked: DeployedTrackedState }
+  = DeployedTreeObserved { revision: GitObjectId, content: DeployedTreeContentState }
   | DeployedTreeUnobservable { cause: DeployedTreeUnobservableCause }
 
 // ONE RENDERING, so every consumer that needs prose derives it from the arms rather than each
@@ -233,6 +261,8 @@ fn deployed_tree_unobservable_text(cause: DeployedTreeUnobservableCause) -> Stri
       join(["the ", leg, " leg ran and failed (exit ", code as String, "): ", err], "")
     TreeRevisionUndecodable { text: t } =>
       join(["the revision was read but is not a decodable git object id: ", t], "")
+    TreeStatusUnreadable { detail: d } =>
+      join(["the deployed tree answered, but its state is not readable and is not assumed clean: ", d], "")
   }
 }
 
@@ -241,14 +271,59 @@ fn deployed_tree_unobservable_text(cause: DeployedTreeUnobservableCause) -> Stri
 // emptiness meaning clean would be the state-space conflation this coproduct exists to prevent -- and
 // the receipt ruling applies here as everywhere: a verdict must name what it observed, not merely that
 // it disagreed.
-type DeployedTrackedState
-  = TrackedMatchesCommit
-  | TrackedModified { changed_paths: NonEmptyStr }
+type DeployedTreeContentState
+  = DeployedScopeMatchesCommit
+  | DeployedScopeDiverged { changed_paths: NonEmptyStr }
 
-fn deployed_tracked_state_of(changed_paths: String) -> DeployedTrackedState {
-  let body = trim(s: changed_paths)
-  if body == "" { TrackedMatchesCommit } else { TrackedModified { changed_paths: body as NonEmptyStr } }
+// A SCAN THAT CANNOT PARSE ITS INPUT REFUSES; IT DOES NOT ANSWER CLEAN. Both refusals are the ones
+// candidate admission already names, because the grammar is the same grammar: a field that is neither
+// a well-formed record nor a rename source, and a list that ends owing a rename source. Rendering
+// either as an empty change set would be the empty-observation narrow -- the deploy proceeds because
+// nothing was found, when in fact nothing was readable.
+type DeployedTreeContentReading
+  = ContentRead { state: DeployedTreeContentState }
+  | ContentUnreadable { detail: String }
+
+fn deployed_tree_content_reading(entries_nul: String, ignored_nul: String) -> DeployedTreeContentReading {
+  let scan = scan_checkout_status(entries_nul: entries_nul)
+  let ignored_deployed = scan_ignored_deployed_paths(paths_nul: ignored_nul)
+  if scan.malformed {
+    ContentUnreadable {
+      detail: "git status --porcelain=v1 -z produced a field that is neither a well-formed record nor a rename source",
+    }
+  } else if scan.expect_rename_source {
+    ContentUnreadable {
+      detail: "git status --porcelain=v1 -z ended on a rename or copy record with no source field; the entry list is truncated",
+    }
+  } else {
+    let changed = list_append(
+      scan.staged,
+      list_append(scan.tracked, list_append(scan.untracked, ignored_deployed)),
+    )
+    if length(changed) == 0 {
+      ContentRead { state: DeployedScopeMatchesCommit }
+    } else {
+      ContentRead { state: DeployedScopeDiverged { changed_paths: join(changed, " ") as NonEmptyStr } }
+    }
+  }
 }
+
+// THE FOUR LEGS ARE ONE PER-HOST OBSERVATION AND NOT ONE PER-TIME OBSERVATION, AND THAT REMAINS OPEN.
+// The sealed locus makes a cross-HOST join unrepresentable; it does not make the readings atomic. A
+// tree sync landing between the revision leg and the status leg yields revision D joined to a clean
+// reading taken at revision L, and the pair never described one target state. The temp index narrows
+// this -- the status and ignored legs are both bound to the revision the FIRST leg observed, so a
+// mid-flight sync presents as divergence rather than as a false clean -- but it does not close it: the
+// worktree could move to L in full while the index still names D, and every path would then read as
+// changed, which is a false MODIFIED rather than a false CONVERGED. Fail-safe in direction, still
+// wrong in fact.
+//
+// RUNG: mitigatable. NEXT-RUNG TRIGGER: the deployment execution lease. The two candidate closers are
+// one git operation carrying revision and state together (porcelain v2 `--branch` emits `# branch.oid`
+// beside the entries) and an exclusive lease held across observation, publication and read-back. The
+// second is required anyway -- publication has to hold it -- so the atomic read arrives as a property
+// of the lease rather than as a separate mechanism, and building the v2 scanner first would be a
+// second grammar for one concept that the lease then obsoletes.
 
 // BOTH READINGS OR NEITHER. The revision read is attempted first and a failure there ends the
 // observation, because a modification count without a revision to attach it to is a fact about no
@@ -311,9 +386,31 @@ fn observe_deployed_tree_against_revision(
                 cause: TreeCommandFailed { leg: "worktree comparison", exit_code: st.exit_code, stderr: st.stderr },
               }
             } else {
-              DeployedTreeObserved {
-                revision: revision,
-                tracked: deployed_tracked_state_of(changed_paths: st.stdout),
+              match deployed_tree_leg(
+                locus: locus,
+                argv: deployed_tree_ignored_argv(repo: locus.repo, index_path: index_path),
+              ) {
+                DeployedTreeLegNotAttempted { reason: why3 } =>
+                  DeployedTreeUnobservable {
+                    cause: TreeLegNotAttempted { leg: "ignored deployed paths", reason: why3 },
+                  }
+                DeployedTreeLegRan { result: ig } =>
+                  if ig.exit_code != 0 {
+                    DeployedTreeUnobservable {
+                      cause: TreeCommandFailed {
+                        leg: "ignored deployed paths",
+                        exit_code: ig.exit_code,
+                        stderr: ig.stderr,
+                      },
+                    }
+                  } else {
+                    match deployed_tree_content_reading(entries_nul: st.stdout, ignored_nul: ig.stdout) {
+                      ContentUnreadable { detail: d } =>
+                        DeployedTreeUnobservable { cause: TreeStatusUnreadable { detail: d } }
+                      ContentRead { state: s } =>
+                        DeployedTreeObserved { revision: revision, content: s }
+                    }
+                  }
               }
             }
         }
@@ -350,13 +447,13 @@ fn deployed_tree_standing(
 ) -> DeployedTreeStanding {
   match observation {
     DeployedTreeUnobservable { cause: c } => DeployedTreeStandingUnobserved { cause: c }
-    DeployedTreeObserved { revision: local, tracked: tracked } =>
+    DeployedTreeObserved { revision: local, content: content } =>
       if !git_object_id_eq(left: desired, right: local) {
         DeployedTreeRevisionDrifted { desired: desired, local: local }
       } else {
-        match tracked {
-          TrackedMatchesCommit => DeployedTreeConverged { revision: local }
-          TrackedModified { changed_paths: body } =>
+        match content {
+          DeployedScopeMatchesCommit => DeployedTreeConverged { revision: local }
+          DeployedScopeDiverged { changed_paths: body } =>
             DeployedTreeModifiedAtRevision { revision: local, changed_paths: body }
         }
       }

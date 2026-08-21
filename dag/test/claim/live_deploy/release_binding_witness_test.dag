@@ -16,8 +16,8 @@ import gunbc.live_deploy.deployed_tree_observation {
   DeployedTreeObservation,
   DeployedTreeObserved,
   DeployedTreeUnobservable,
-  TrackedMatchesCommit,
-  TrackedModified,
+  DeployedScopeMatchesCommit,
+  DeployedScopeDiverged,
 }
 import gunbc.live_deploy.release_binding {
   DeployedReleaseBinding,
@@ -49,7 +49,7 @@ fn tree_at(hex: String) -> DeployedTreeObservation? {
   match oid(hex: hex) {
     Absent => none
     Present { value: o } =>
-      Present { value: DeployedTreeObserved { revision: o, tracked: TrackedMatchesCommit } }
+      Present { value: DeployedTreeObserved { revision: o, content: DeployedScopeMatchesCommit } }
   }
 }
 
@@ -111,7 +111,7 @@ test fn witness_modifications_do_not_change_the_binding() -> Bool {
       match deployed_release_binding(
         observation: DeployedTreeObserved {
           revision: a,
-          tracked: TrackedModified { changed_paths: "dag/x.dag" as NonEmptyStr },
+          content: DeployedScopeDiverged { changed_paths: "dag/x.dag" as NonEmptyStr },
         },
         identity: process_saying(hex: hex_a, surface: probe_surface()),
       ) {
