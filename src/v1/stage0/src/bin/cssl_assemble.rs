@@ -33,7 +33,7 @@ fn main() {
     } else {
         args.root.join(args.entry_dag)
     };
-    match assemble_seed_linked_closure(&args.out_dir, &entry_dag, &args.root, &std_bridge) {
+    match assemble_seed_linked_closure(&args.out_dir, &entry_dag, &std_bridge) {
         Ok(()) => {
             println!("CSSL_ASSEMBLE: PASS");
         }

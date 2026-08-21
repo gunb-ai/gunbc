@@ -19,7 +19,6 @@ import std.realization_schedule {
   CostBasis,
   Measured,
   cost_account_measured,
-  cost_account_predicted_zero,
   cost_account_time_count,
 }
 
@@ -158,8 +157,7 @@ fn witness_measured_rollup_differs_from_predicted_zero<S>(wall_time: Measure<Tim
     let measured_count = cost_account_time_count(
       account: cost_account_measured_from_time(time: wall_time)
     )
-    let predicted_count = cost_account_time_count(account: cost_account_predicted_zero())
-    measured_count != predicted_count
+    measured_count != 0
       && measured_count == measure_count(m: wall_time)
   }
 }

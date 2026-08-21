@@ -49,8 +49,7 @@ import v2.std.refinement {
   vacuous_admits_marker,
   Validation,
   refine,
-  refined_base,
-  refined_vacuous_stub_pack
+  refined_base
 }
 import v2.std.witness { Holds, Violates, Witness }
 

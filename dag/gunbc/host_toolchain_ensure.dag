@@ -17,7 +17,7 @@ import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_operator_access }
 import gunbc.fleet_intent { ComputeHost }
 import gunbc.host_effect {
   HostEffect,
-  ProvisionBuildCache,
+  EnsureBuildCacheInstance,
   ProvisionCodexRuntime,
   OsInstallActuatorToolchainEnsure,
   HostOs,
@@ -26,7 +26,7 @@ import gunbc.host_effect {
 import gunbc.host_effect_realize { host_effect_apply_gated }
 import gunbc.fleet_converge_apply { fleet_compute_host_for_identity }
 import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
-import extdeps.cache.sccache { sccache_local_id }
+import gunbc.build_cache_instance { ci_cache_instance }
 import std.realization_reconcile { Converged, NotConverged }
 
 type HostToolchainKind = BuildCache | CodexRuntime | OsInstallActuator
@@ -84,9 +84,9 @@ fn host_toolchain_ensure_reach(
   }
 }
 
-fn host_toolchain_ensure_effect(kind: HostToolchainKind) -> HostEffect {
+fn host_toolchain_ensure_effect(kind: HostToolchainKind, host: HostIdentity) -> HostEffect {
   match kind {
-    BuildCache => ProvisionBuildCache { catalog_id: sccache_local_id }
+    BuildCache => EnsureBuildCacheInstance { desired: ci_cache_instance(host: host) }
     CodexRuntime => ProvisionCodexRuntime {}
     OsInstallActuator => OsInstallActuatorToolchainEnsure {}
   }
@@ -113,7 +113,7 @@ func host_toolchain_ensure(host: HostIdentity, kind: HostToolchainKind) -> Proce
       match host_effect_apply_gated(
         access: reach.access,
         target: HostOs { node: reach.target },
-        effect: host_toolchain_ensure_effect(kind: kind),
+        effect: host_toolchain_ensure_effect(kind: kind, host: reach.target.identity),
         evidence: host_effect_identity_evidence,
         transport: reach.access.transport,
         fixture_actor: none,

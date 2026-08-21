@@ -40,7 +40,7 @@ import v1.std.core {
   ShLitStr, ShLitInt, ShLitFloat, ShIdent, ShCaret,
   ShStrBegin, ShStrMid, ShStrEnd,
   ShNewline, ShEof, ShUnknown,
-  SourceSpan, make_span,
+  SourceSpan,
   ErrorNode, make_error_node, ParseError, InternalError,
   with_required_cardinality,
   error_type, is_compiler_error,
@@ -334,7 +334,7 @@ fn parse_recovery_expr(span: SourceSpan, message: String) -> Node {
 
 fn parse_recovery_placeholder() -> Node {
   parse_recovery_expr(
-    span: make_span(start: 0, end: 0),
+    span: no_span(),
     message: "parser recovery placeholder"
   )
 }
@@ -387,7 +387,7 @@ type ParserResultWitness
 type DescResult { desc: String?, tokens: TokenStream }
 
 fn token_span(tok: Token?) -> SourceSpan {
-  match tok { Present { value: t } => t.span  Absent => make_span(start: 0, end: 0) }
+  match tok { Present { value: t } => t.span  Absent => no_span() }
 }
 
 fn advance(tokens: TokenStream) -> AdvanceResult {
@@ -419,7 +419,7 @@ fn parse_string_literal_value(tokens: TokenStream) -> StringLitResult {
           StringLitResult { value: "", tokens: tokens, err: Present { value: parse_error(msg: "expected string literal", span: token_span(tok: tok)) } }
       }
     Absent =>
-      StringLitResult { value: "", tokens: tokens, err: Present { value: parse_error(msg: "expected string literal", span: make_span(start: 0, end: 0)) } }
+      StringLitResult { value: "", tokens: tokens, err: Present { value: parse_error(msg: "expected string literal", span: no_span()) } }
   }
 }
 
@@ -440,7 +440,7 @@ fn parse_int_literal_value(tokens: TokenStream) -> IntLitResult {
           IntLitResult { value: 0, tokens: tokens, err: Present { value: parse_error(msg: "expected integer literal", span: token_span(tok: tok)) } }
       }
     Absent =>
-      IntLitResult { value: 0, tokens: tokens, err: Present { value: parse_error(msg: "expected integer literal", span: make_span(start: 0, end: 0)) } }
+      IntLitResult { value: 0, tokens: tokens, err: Present { value: parse_error(msg: "expected integer literal", span: no_span()) } }
   }
 }
 
@@ -583,7 +583,7 @@ fn tok_is_question(tok: Token?) -> Bool {
   match tok { Present { value: t } => is_question_shape(shape: t.shape)  Absent => false }
 }
 fn tok_span(tok: Token?) -> SourceSpan {
-  match tok { Present { value: t } => t.span  Absent => make_span(start: 0, end: 0) }
+  match tok { Present { value: t } => t.span  Absent => no_span() }
 }
 fn tok_keyword_to_name(tok: Token?) -> String? {
   match tok {
@@ -709,7 +709,7 @@ fn expect(tokens: TokenStream, expected: ExpectedToken) -> TokenResult {
       Absent => "EOF"
     }
     let wanted = expected_token_name(expected: expected)
-    TokenResult { token: Token { text: "", span: make_span(start: 0, end: 0), shape: ShEof }, tokens: tokens, err: Present { value: parse_error(msg: "expected {wanted}, found {found}", span: token_span(tok: tok)) } }
+    TokenResult { token: Token { text: "", span: no_span(), shape: ShEof }, tokens: tokens, err: Present { value: parse_error(msg: "expected {wanted}, found {found}", span: token_span(tok: tok)) } }
   }
 }
 
@@ -2007,7 +2007,7 @@ fn parse_predicates_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>)
 }
 
 fn parse_single_predicate(tokens: TokenStream, ctx: ParseContext) -> PredResult {
-  let zero_span = make_span(start: 0, end: 0)
+  let zero_span = no_span()
   let dummy_pred = make_field_init_node(name: "", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: false } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span)
   let r = expect_name(tokens: tokens)
   if has_err(err: r.err) { return PredResult { predicate: dummy_pred, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -2713,7 +2713,7 @@ fn parse_resource_config_acc(tokens: TokenStream, ctx: ParseContext, acc: List<N
   if tok_is_rparen(tok: token_stream_first(stream: tokens)) {
     return ResConfigResult { fields: acc, tokens: tokens, ctx: ctx, err: none }
   }
-  let zero_span = make_span(start: 0, end: 0)
+  let zero_span = no_span()
   let r = expect_name(tokens: tokens)
   if has_err(err: r.err) { return ResConfigResult { fields: [], tokens: r.tokens, ctx: ctx, err: r.err } }
   let field_name = r.name
@@ -2848,7 +2848,7 @@ fn parse_config_fields(tokens: TokenStream, ctx: ParseContext, endpoint: Node?, 
     let cfg = ServiceConfig {
       endpoint: match endpoint {
         Present { value: e } => e
-        Absent => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: make_span(start: 0, end: 0))
+        Absent => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: no_span())
       },
       auth: auth,
       auth_input: auth_input,
@@ -2858,7 +2858,7 @@ fn parse_config_fields(tokens: TokenStream, ctx: ParseContext, endpoint: Node?, 
     }
     ConfigResult { config: cfg, tokens: tokens, ctx: ctx, err: none }
   } else {
-    let dummy_cfg = ServiceConfig { endpoint: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)), auth: none, auth_input: none, auth_source: none, rate_limit: none, retry: none }
+    let dummy_cfg = ServiceConfig { endpoint: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: no_span()), auth: none, auth_input: none, auth_source: none, rate_limit: none, retry: none }
     let r = expect_ident(tokens: tokens)
     if has_err(err: r.err) { return ConfigResult { config: dummy_cfg, tokens: r.tokens, ctx: ctx, err: r.err } }
     let fname = r.name
@@ -2935,7 +2935,7 @@ fn parse_rest_fields(tokens: TokenStream, ctx: ParseContext, base_url: Node?, me
   if tok_is_rbrace(tok: token_stream_first(stream: tokens)) || tok_is_eof(tok: token_stream_first(stream: tokens)) {
     let bu = match base_url {
       Present { value: e } => e
-      Absent => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: make_span(start: 0, end: 0))
+      Absent => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: no_span())
     }
     TransportResult { transport: rest_transport_node(base_url: bu, auth_props: [], headers: headers, method: method, path: path_template, query: query, request_body: request_body, response_format: response_format, span: span), tokens: tokens, ctx: ctx, err: none }
   } else {
@@ -2968,7 +2968,7 @@ fn parse_rest_fields(tokens: TokenStream, ctx: ParseContext, base_url: Node?, me
       }
       parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: h)
     } else if fname == transport_auth_basic_key || fname == transport_tls_key {
-      let field = make_field_init_node(name: fname, value: r3.expr, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
+      let field = make_field_init_node(name: fname, value: r3.expr, span: no_span(), name_span: no_span())
       parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: concat(headers, [field]))
     } else {
       parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: headers)
@@ -3029,7 +3029,7 @@ fn parse_file_fields(tokens: TokenStream, ctx: ParseContext, base_path: Node?, v
   if tok_is_rbrace(tok: token_stream_first(stream: tokens)) || tok_is_eof(tok: token_stream_first(stream: tokens)) {
     let bp = match base_path {
       Present { value: e } => e
-      Absent => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: make_span(start: 0, end: 0))
+      Absent => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: no_span())
     }
     TransportResult { transport: file_transport_node(base_path: bp, verb: verb, span: span), tokens: tokens, ctx: ctx, err: none }
   } else {
@@ -3490,7 +3490,7 @@ fn parse_mock_response_entries_acc(tokens: TokenStream, ctx: ParseContext, acc: 
     }
     let status_str = status_expr_to_str(expr: status, source_indices: ctx.source_indices)
     let prop_name = concat("mock_", status_str)
-    let entry = make_field_init_node(name: prop_name, value: body, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
+    let entry = make_field_init_node(name: prop_name, value: body, span: no_span(), name_span: no_span())
     let e = eat(tokens: desc_tokens, expected: ExpectComma)
     let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => desc_tokens })
     parse_mock_response_entries_acc(tokens: tokens, ctx: r3.ctx, acc: list_push(acc, entry))
@@ -3574,7 +3574,7 @@ fn parse_resource_entries(tokens: TokenStream, ctx: ParseContext, properties: Li
           if has_err(err: r2.err) { return ResPropResult { properties: properties, capabilities: capabilities, tokens: r2.tokens, ctx: ctx, err: r2.err } }
           let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
           if has_err(err: r3.err) { return ResPropResult { properties: properties, capabilities: capabilities, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
-          let fi = make_field_init_node(name: fname, value: r3.expr, span: make_span(start: 0, end: 0), name_span: r.span)
+          let fi = make_field_init_node(name: fname, value: r3.expr, span: no_span(), name_span: r.span)
           parse_resource_entries(tokens: skip_newlines(tokens: r3.tokens), ctx: r3.ctx, properties: list_push(properties, fi), capabilities: capabilities)
         } else {
           ResPropResult { properties: properties, capabilities: capabilities, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "unexpected token in resource block", span: span) } }
@@ -4134,7 +4134,7 @@ fn parse_caret_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
     Present { value: ShIdent } => {
       let spelling = next.value.text
       let end_span = token_span(tok: next)
-      let lit_span = make_span(start: span.start, end: end_span.end)
+      let lit_span = make_file_span(file: span.file, start: span.start, end: end_span.end)
       ExprResult {
         expr: make_expr_node(expr_data: ExprLiteral { value: LitSymbol { value: spelling } }, children: [], inferred: none, span: lit_span),
         tokens: token_stream_advance(stream: after_caret, n: 1),
@@ -4148,7 +4148,7 @@ fn parse_caret_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
       let tokens = skip_newlines(tokens: r.tokens)
       let r2 = expect(tokens: tokens, expected: ExpectRParen)
       if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-      let call_span = make_span(start: span.start, end: r2.token.span.end)
+      let call_span = make_file_span(file: span.file, start: span.start, end: r2.token.span.end)
       let callee = make_named_expr_node(name: "discriminant", expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: call_span, name_span: kernel_span(name: "discriminant"))
       let call = make_call_expr(lhs: callee, args: [r.expr], span: call_span, source_indices: ctx.source_indices)
       ExprResult { expr: call, tokens: r2.tokens, ctx: ctx, err: none }
@@ -4425,7 +4425,7 @@ fn parse_constraint_list(tokens: TokenStream, ctx: ParseContext, acc: List<Node>
   let kw_name = tok.value.text
   let r = parse_expr(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx)
   if has_err(err: r.err) { return ConstraintsResult { constraints: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
-  let fi = make_field_init_node(name: kw_name, value: r.expr, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
+  let fi = make_field_init_node(name: kw_name, value: r.expr, span: no_span(), name_span: no_span())
   let acc = list_push(acc, fi)
   match eat(tokens: r.tokens, expected: ExpectComma) {
   EatConsumed { token: _, tokens: __ec } =>
@@ -4661,7 +4661,7 @@ fn parse_match_arms_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>)
 
 fn parse_match_arm(tokens: TokenStream, ctx: ParseContext) -> ArmResult {
   let arm_span = token_span(tok: token_stream_first(stream: tokens))
-  let dummy_arm = make_arm_node(pattern: Wildcard, guard: none, body: parse_recovery_placeholder(), span: make_span(start: 0, end: 0))
+  let dummy_arm = make_arm_node(pattern: Wildcard, guard: none, body: parse_recovery_placeholder(), span: no_span())
   let r = parse_pattern(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return ArmResult { arm: dummy_arm, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let pat = r.pattern
@@ -5065,7 +5065,7 @@ fn parse_field_init_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<N
 }
 
 fn parse_field_init(tokens: TokenStream, ctx: ParseContext) -> FieldInitResult {
-  let zero_span = make_span(start: 0, end: 0)
+  let zero_span = no_span()
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy_fi = make_field_init_node(name: "", value: parse_recovery_placeholder(), span: zero_span, name_span: zero_span)
   let tok = token_stream_first(stream: tokens)

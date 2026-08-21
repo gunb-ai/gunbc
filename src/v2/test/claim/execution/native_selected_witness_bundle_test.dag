@@ -9,10 +9,10 @@ import std.content_hash {
 import std.emit_on_demand { emit_on_demand_family_cache_root }
 import std.algebra { Cons, Empty }
 import std.types { Bool, Int, NonEmptyStr, String }
-import std.verification {
-  NanosecondDuration,
-  nanosecond_duration,
-  nanosecond_duration_count,
+import std.measure {
+  Nanosecond,
+  nanosecond,
+  nanosecond_count,
 }
 import std.selected_witness_bundle {
   InterpreterFrontier,
@@ -410,7 +410,7 @@ fn selected_logic_equivalence_rows(
 type SelectedBundleNativeObservation {
   cold: EmitHostRunReceipt
   warm: EmitHostRunReceipt
-  warm_wall: NanosecondDuration
+  warm_wall: Nanosecond
 }
 
 fn observe_selected_bundle_native(
@@ -437,7 +437,7 @@ fn observe_selected_bundle_native(
             value: SelectedBundleNativeObservation {
               cold: cold
               warm: warm
-              warm_wall: nanosecond_duration(count: finish - start)
+              warm_wall: nanosecond(count: finish - start)
             },
             diagnostics: None
           }
@@ -483,7 +483,7 @@ fn selected_logic_receipt(
   plan: SelectedWitnessPlan,
   observation: SelectedBundleNativeObservation,
   interpreted: SelectedLogicVerdicts,
-  interpreted_wall: NanosecondDuration,
+  interpreted_wall: Nanosecond,
   native_stdout: ByteString
 ) -> NativeWitnessBundleExecutionReceipt {
   let bundle = native_witness_bundle_from_plan(plan: plan)
@@ -524,8 +524,8 @@ fn selected_logic_sample_cutover_evidence_for_plan(
       compiler_identity: plan.compiler_identity
       process_count: 1
       compile_skipped: true
-      native_wall_nanos: nanosecond_duration(count: 1)
-      interpreted_wall_nanos: nanosecond_duration(count: 1)
+      native_wall_nanos: nanosecond(count: 1)
+      interpreted_wall_nanos: nanosecond(count: 1)
       member_equivalence: selected_logic_equivalence_rows(
         plan: plan,
         interpreted: interpreted,
@@ -590,8 +590,8 @@ test fn native_selected_witness_bundle_primary_typed_admission_holds() -> Bool {
     compiler_identity: plan.compiler_identity
     process_count: 1
     compile_skipped: true
-    native_wall_nanos: nanosecond_duration(count: 1)
-    interpreted_wall_nanos: nanosecond_duration(count: 1)
+    native_wall_nanos: nanosecond(count: 1)
+    interpreted_wall_nanos: nanosecond(count: 1)
     member_equivalence: selected_logic_equivalence_rows(
       plan: plan,
       interpreted: interpreted,
@@ -708,7 +708,7 @@ fn selected_logic_execution_holds(
                     plan: plan,
                     observation: observation,
                     interpreted: interpreted,
-                    interpreted_wall: nanosecond_duration(
+                    interpreted_wall: nanosecond(
                       count: interpreter_finish - interpreter_start
                     ),
                     native_stdout: warm_stdout
@@ -727,8 +727,8 @@ fn selected_logic_execution_holds(
                     && observation.warm.compile_skipped
                     && cold_stdout == expected_stdout
                     && warm_stdout == expected_stdout
-                    && nanosecond_duration_count(d: observation.warm_wall) > 0
-                    && nanosecond_duration_count(d: receipt.interpreted_wall_nanos) > 0
+                    && nanosecond_count(n: observation.warm_wall) > 0
+                    && nanosecond_count(n: receipt.interpreted_wall_nanos) > 0
                     && expected_interpreted
                     && (match selected_logic_execution_admit(
                       plan: plan,
@@ -791,7 +791,7 @@ fn selected_logic_discriminating_red_evidence() -> List<NativeBundleFamilyCutove
                     plan: plan,
                     observation: observation,
                     interpreted: interpreted,
-                    interpreted_wall: nanosecond_duration(
+                    interpreted_wall: nanosecond(
                       count: interpreter_finish - interpreter_start
                     ),
                     native_stdout: warm_stdout
@@ -852,8 +852,8 @@ fn selected_logic_sample_receipt() -> NativeWitnessBundleExecutionReceipt {
     compiler_identity: plan.compiler_identity
     process_count: 1
     compile_skipped: true
-    native_wall_nanos: nanosecond_duration(count: 1)
-    interpreted_wall_nanos: nanosecond_duration(count: 1)
+    native_wall_nanos: nanosecond(count: 1)
+    interpreted_wall_nanos: nanosecond(count: 1)
     member_equivalence: selected_logic_equivalence_rows(
       plan: plan,
       interpreted: interpreted,
@@ -1009,8 +1009,8 @@ test fn native_selected_witness_bundle_no_native_members_refuses_holds() -> Bool
     compiler_identity: plan.compiler_identity
     process_count: 1
     compile_skipped: true
-    native_wall_nanos: nanosecond_duration(count: 1)
-    interpreted_wall_nanos: nanosecond_duration(count: 1)
+    native_wall_nanos: nanosecond(count: 1)
+    interpreted_wall_nanos: nanosecond(count: 1)
     member_equivalence: []
     interpreter_frontier_count: 0
   }

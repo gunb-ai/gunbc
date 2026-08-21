@@ -444,11 +444,12 @@ fn rust_pair_completion_body_render(body: PairCompletionBody) -> String {
   }
 }
 
-fn rust_pair_completion_impl_render(row: PairCompletionOpRow) -> String {
+fn rust_pair_completion_impl_render(row: PairCompletionOpRow, carrier_param_needs_clone: Bool) -> String {
   match rust_pair_completion_spelling_for(row.op) {
     Present { value: spelling } =>
       concat(
-        "impl<M> ", spelling.trait_path, " for ", rust_pair_completion_carrier, "<M>",
+        if carrier_param_needs_clone { "impl<M: Clone> " } else { "impl<M> " },
+        spelling.trait_path, " for ", rust_pair_completion_carrier, "<M>",
         if spelling.where_bounds == "" {
           " {\n"
         } else {
@@ -474,13 +475,13 @@ fn rust_pair_completion_impl_render(row: PairCompletionOpRow) -> String {
   }
 }
 
-fn rust_supplemental_impls_group_completion() -> String {
+fn rust_supplemental_impls_group_completion(carrier_param_needs_clone: Bool) -> String {
   concat(
     "\n// repr-grounding arm (b): GroupCompletion<M> carrier arithmetic, rendered from the\n",
     "// pair-completion rows in std.trait_derive_shape (Add/Mul/Neg are row data; Sub/Div bodies\n",
     "// remain keyed literals: only Add, Mul and Neg render from the PairCompletionSumOfProducts polynomial arms).\n",
     pair_completion_op_rows()
-      |> map(row => rust_pair_completion_impl_render(row))
+      |> map(row => rust_pair_completion_impl_render(row: row, carrier_param_needs_clone: carrier_param_needs_clone))
       |> join(separator: "")
   )
 }

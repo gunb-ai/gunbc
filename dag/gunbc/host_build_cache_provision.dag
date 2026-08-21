@@ -12,8 +12,9 @@ import gunbc.host_build_cache_catalog_gate {
   ProvisionBuildCacheCatalogRealizable,
   ProvisionBuildCacheCatalogRefused,
 }
-import gunbc.host_effect { HostEffect, ProvisionBuildCache }
+import gunbc.host_effect { HostEffect, EnsureBuildCacheInstance }
 import gunbc.host_toolchain_ensure { host_toolchain_ensure, BuildCache }
+import gunbc.build_cache_instance { ci_cache_instance }
 import product.placement_supply { HostIdentity }
 import gunbc.host_layout { gunbc_managed_compile_pool_slice }
 import gunbc.build_cache_instance {
@@ -28,6 +29,8 @@ import gunbc.build_cache_instance {
   RunnerSlotIdentity,
   RetiredRunnerSlot,
 }
+
+data host_build_cache_provision_naming_hazard_note: String = "NAMING HAZARD, RECORD BEFORE TOUCHING EITHER FILE. This module (host_build_cache_provision.dag) and the now-deleted host_build_cache_provision_script.dag differed by one suffix, held unrelated concepts (this one a catalog-gate/verdict fold; that one a concat-shell body builder), and one was edited while the other was deleted in the SAME PR (#8598, the A5 EnsureBuildCacheInstance arm swap) -- a trap the tree itself set, not a naming choice either file made carelessly. It produced a real false-negative: a dependents-census grep answering 'does a disconnected verdict fold exist' checked the deleted file's own leftover state and reported that as though it answered the question about THIS file's fold, which was not re-grepped. The next person doing anything near either name: grep the exact module path, not the shared prefix. This module's own fold (BuildCacheDaemonObservation / provision_build_cache_verdict / placement_verdict / build_cache_provision_gate_accepts) is a separate, PRE-EXISTING dead-code finding -- zero non-test, non-self-file callers tree-wide, confirmed 2026-08-20 -- filed as its own deletion candidate in docs/plans/shell-to-dag-residual-census-and-arc-completion.md (C-note, 2026-08-20), not created or fixed by #8598 and not deleted here."
 
 data provision_build_cache_widen_sketch_note: String = "RED-control fixture modeling TWO forbidden widens; it must never ship as the authority verdict fold. (1) The absorbing fallback (the -u RUSTC_WRAPPER cache-drop): the live instance ci_retry_escalation_level2 was REMOVED 2026-07-23 (STEP 2) — the eagain retry now escalates to CARGO_BUILD_JOBS=1 (keep sccache) only, then fails loud via verify-build-artifacts, so no cache-drop widen remains and this fixture guards the fold against its re-introduction. (2) The PLACEMENT widen: its DaemonStatsOk arm discards the placement field, i.e. 'responsive implies converged'. That is precisely the behavior that shipped on srv1 — a lazily auto-spawned server in dead slot srv1-10's cgroup accumulated 229780 memory.max breach events and 12 oom_kills while every provision read reported converged. Re-confirmed live 2026-08-01: pid 3975946, age 31.2d, cgroup actions-runner@srv1-10.service (unit inactive+disabled, slots 01-05 are the live ones), holding LISTEN on /var/lib/ctrl/sccache-ci/server.sock, resident beside an active runner's rustc. INCIDENT CLEARED 2026-08-07 (lane_e_srv1_ci_noncompletion_root_cause_receipt): pid 3975946 no longer exists and srv1-10 is inactive+disabled; the stranded-server symptom is gone but the defect CLASS is live — srv1 now carries a young runner-owned server on an ACTIVE slot (srv1-02, ~2026-08-07), which is exactly the ServerRunnerOwned arm this fold must refuse ProvisionConverged on until ServerManagedUnitOwned lands."
 
@@ -242,12 +245,12 @@ fn provision_build_cache_verdict(
   }
 }
 
-fn provision_build_cache_effect_for_catalog(catalog_id: CacheInterfaceId) -> HostEffect {
-  ProvisionBuildCache { catalog_id: catalog_id }
+fn provision_build_cache_effect_for_host(host: HostIdentity) -> HostEffect {
+  EnsureBuildCacheInstance { desired: ci_cache_instance(host: host) }
 }
 
-fn provision_build_cache_default_effect() -> HostEffect {
-  provision_build_cache_effect_for_catalog(catalog_id: sccache_local_id)
+fn provision_build_cache_default_effect(host: HostIdentity) -> HostEffect {
+  provision_build_cache_effect_for_host(host: host)
 }
 
 fn provision_build_cache_routes_through_host_effect_apply() -> Bool {

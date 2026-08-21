@@ -2,6 +2,7 @@ module extdeps.realization.native_artifact_cache
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import v2.std.optional { Absent }
 
 import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
 import std.cache_identity { CacheInterfaceId }
@@ -66,21 +67,21 @@ data native_artifact_cache_facts: CacheInterfaceCatalogFacts = {
       field: "atomicity"
       evidence: OperatorObserved {
         note: ".native_ready marker written ONLY after a successful cold build+run (v1_interpreter emit_host_run_transport_cached_in_workspace) — the marker IS the commit record; a half-written workspace is never warm-served"
-        observed_at: 0
+        observed_at: Absent
       }
     },
     {
       field: "key_inputs"
       evidence: OperatorObserved {
         note: "effective workspace identity is emit_on_demand_key / artifact_realization_digest / resolved_build_context_identity. The input digest covers exact workspace paths+texts and structured build argv; the host boundary materializes those files at the input-realization root, then observes resolved build executable bytes/version, Cargo's selected rustc, the exact constructed subprocess environment, and discoverable Cargo configuration before consulting .native_ready. family_crate_dispatch_change_cold_rebuild_holds proves a target runtime-row change with an unchanged inferred tree selects a cold child; native_realization_toolchain_change_cold_rebuild_holds holds files+argv constant and changes only the resolved toolchain; native_realization_environment_change_cold_rebuild_holds holds toolchain and configuration constant and changes only the admitted environment"
-        observed_at: 0
+        observed_at: Absent
       }
     },
     {
       field: "content_verified_on_read"
       evidence: OperatorObserved {
         note: "warm path trusts the marker without re-hashing the workspace (no digest re-verification on read) — declared false; the falsifier cold control is the standing falsifier for a poisoned warm entry"
-        observed_at: 0
+        observed_at: Absent
       }
     },
   ]

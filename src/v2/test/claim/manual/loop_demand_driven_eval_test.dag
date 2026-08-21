@@ -201,22 +201,22 @@ fn loop_eval_bind_value(
 
 fn loop_eval_interpretation() -> InterpretationAlgebra {
   InterpretationAlgebra {
-    value: ValueInterpreter { allocate_literal: loop_eval_allocate_literal },
-    transform: TransformInterpreter { call_primitive: loop_eval_call_primitive },
-    branch: BranchInterpreter { choose_branch: loop_eval_choose_branch },
-    loop: LoopInterpreter { step_loop: loop_eval_step_loop_continue },
-    bind: BindInterpreter { bind_value: loop_eval_bind_value },
-    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
+    value: ValueInterpreter { allocate_literal: loop_eval_allocate_literal, identity: ^loop_eval_allocate_literal },
+    transform: TransformInterpreter { call_primitive: loop_eval_call_primitive, identity: ^loop_eval_call_primitive },
+    branch: BranchInterpreter { choose_branch: loop_eval_choose_branch, identity: ^loop_eval_choose_branch },
+    loop: LoopInterpreter { step_loop: loop_eval_step_loop_continue, identity: ^loop_eval_step_loop_continue },
+    bind: BindInterpreter { bind_value: loop_eval_bind_value, identity: ^loop_eval_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
   }
 }
 
 fn loop_eval_interpretation_structure_witness() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^loop_eval_allocate_literal_sym,
-    call_primitive: ^loop_eval_call_primitive_sym,
-    choose_branch: ^loop_eval_choose_branch_sym,
-    step_loop: ^loop_eval_step_loop_continue_sym,
-    bind_value: ^loop_eval_bind_value_sym,
+    allocate_literal: ^loop_eval_allocate_literal,
+    call_primitive: ^loop_eval_call_primitive,
+    choose_branch: ^loop_eval_choose_branch,
+    step_loop: ^loop_eval_step_loop_continue,
+    bind_value: ^loop_eval_bind_value,
     choose_arm: ^runtime_reject_match_arm
   }
 }

@@ -1072,6 +1072,43 @@ pub enum InterpError {
         callee: String,
         detail: String,
     },
+    /// A HOST EFFECT THAT THE HERMETIC ROUTE HAS NO ARM FOR — a fact about which EXECUTION
+    /// ROUTE the caller must supply, never a fact about the caller's verdict.
+    ///
+    /// It is its own variant for the reason `TimedOut`/`HostToolUnresolved` are their own
+    /// variants at the witness boundary: this is a route fact, and a route fact recovered by
+    /// substring-matching prose is one fact in two representations whose second copy is
+    /// re-derived from the first (DESIGN §2/§3). Before this variant the three refusal sites
+    /// below all produced `TypeError { msg: "hermetic mode: …" }`, so every consumer that
+    /// wanted to tell "this witness ASSERTED false" from "this witness was never given a route
+    /// that could run it" had to either match on the sentence or conflate them. The required
+    /// floor conflated them by not executing the population at all.
+    ///
+    /// `ground` carries WHY the hermetic route has no arm, because the remedies differ: an
+    /// unpublished mock case is closed by publishing the case, a missing `mock_response` by
+    /// authoring one, and a filesystem REMOVAL by a wet route, since removal has no mock arm
+    /// at all. Collapsing them into one sentence is the state-space conflation DESIGN's
+    /// recurring-failure list names.
+    HermeticHostEffectRefused {
+        operation: String,
+        ground: HermeticEffectGround,
+    },
+}
+
+/// WHY THE HERMETIC ROUTE HAS NO ARM FOR ONE OPERATION. Closed, and each arm names a
+/// different remedy — see `InterpError::HermeticHostEffectRefused`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HermeticEffectGround {
+    /// The service is corpus-governed and no published mock case names this operation.
+    /// `published_cases` carries the cases that DO exist for the service, so the refusal
+    /// states its own remedy rather than sending the reader to look for it.
+    UnpublishedMockCase { published_cases: Vec<String> },
+    /// The operation node carries no `mock_response` property, so the hermetic arm would
+    /// have to fabricate a Unit — the fabricated-plausible-output failure DESIGN §5 forbids.
+    NoMockResponse,
+    /// A filesystem REMOVAL. Distinct from the two above because there is no mock arm to
+    /// author: the operation's whole content is the effect, so only a wet route can run it.
+    FilesystemRemoval,
 }
 
 impl fmt::Display for InterpError {
@@ -1181,6 +1218,24 @@ impl fmt::Display for InterpError {
                 name,
                 probed.join(", ")
             ),
+            InterpError::HermeticHostEffectRefused { operation, ground } => match ground {
+                HermeticEffectGround::UnpublishedMockCase { published_cases } => write!(
+                    f,
+                    "hermetic mode: operation {operation} is not a published mock case for its \
+                     corpus-governed service \u{2014} refusing to realize (published cases: \
+                     {published_cases:?})"
+                ),
+                HermeticEffectGround::NoMockResponse => write!(
+                    f,
+                    "hermetic mode: no mock_response for operation {operation} \u{2014} refusing \
+                     to fabricate Unit"
+                ),
+                HermeticEffectGround::FilesystemRemoval => write!(
+                    f,
+                    "hermetic mode: {operation} refuses filesystem removal (no mock arm; the \
+                     operation's whole content is the effect, so only a wet route can run it)"
+                ),
+            },
             InterpError::HostToolRelativePathAmbiguous { name } => write!(
                 f,
                 "host tool relative path ambiguous at cwd-dependent boundary: {:?}",
@@ -1473,7 +1528,7 @@ mod cross_claim_memo_tests {
 
     use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
-    use crate::v1_std_core::{make_expr_node, make_span, ExprData};
+    use crate::v1_std_core::{make_expr_node, no_span, ExprData};
 
     use super::{
         list_value, store_cross_claim_pure_memo, try_cross_claim_pure_memo, ExecutionMode,
@@ -1519,7 +1574,7 @@ mod cross_claim_memo_tests {
             Rc::new(ExprData::NoExprData),
             Rc::new(im_vec![]),
             None,
-            make_span(0, 0),
+            no_span(),
         );
 
         // A non-empty List argument routes through `EvalRecomputeArgKey::ContentHash`
@@ -1588,7 +1643,7 @@ mod cross_claim_memo_tests {
             Rc::new(ExprData::NoExprData),
             Rc::new(im_vec![]),
             None,
-            make_span(0, 0),
+            no_span(),
         );
 
         let args_a = [(
@@ -1638,7 +1693,7 @@ mod cross_claim_memo_tests {
             Rc::new(ExprData::NoExprData),
             Rc::new(im_vec![]),
             None,
-            make_span(0, 0),
+            no_span(),
         );
 
         let args_a = [(
@@ -1683,7 +1738,7 @@ mod cross_claim_memo_tests {
             Rc::new(ExprData::NoExprData),
             Rc::new(im_vec![]),
             None,
-            make_span(0, 0),
+            no_span(),
         );
         let result = Value::Str(Rc::from("ok"));
 
@@ -1723,7 +1778,7 @@ mod cross_claim_memo_tests {
             Rc::new(ExprData::NoExprData),
             Rc::new(im_vec![]),
             None,
-            make_span(0, 0),
+            no_span(),
         );
         let result = Value::Str(Rc::from("ok"));
 
@@ -6838,6 +6893,20 @@ fn cast_expr_inferred_type_name_uncached(ctx: &InterpContext, expr: Rc<Node>) ->
 
 /// Runtime identity casts mirror `validate_cast`'s `source_name == target_name` arm,
 /// plus String-valued casts to types whose alias chain grounds on `String`.
+///
+/// node://adhoc-897a90b6-a9c item 1: this used to also treat an EMPTY resolved kernel as
+/// grounds for identity -- i.e. answered "the cast target's alias chain could not be resolved
+/// at all" with a value, rather than falling through to `eval_cast`'s existing typed
+/// `TypeError` arm for an unrecognized target name (DESIGN §5, ⊥-as-ignorance rendered as an
+/// answer). Measured by execution (an unconditional counter plus a discriminating
+/// positive/negative-control unit test proving the counter itself was correctly wired, then a
+/// real run of 1507 requested witnesses across every `*cast*`/`*refinement*`-named file in
+/// `dag/test/claim` plus a sixth-sample of the rest): zero hits, `kernel_calls=19` real
+/// resolutions observed. The arm is reachable in principle only when the target AST node is
+/// itself a `CompilerError` node (malformed, missing-child cast target) -- a shape that can
+/// only arise from a resolve-time defect elsewhere, and resolve already refuses before such a
+/// node can reach eval on any real program. Clean deletion per that measurement; the
+/// fallthrough below now answers instead.
 fn cast_identity_result(
     val: &Value,
     ctx: &InterpContext,
@@ -6850,11 +6919,81 @@ fn cast_identity_result(
     }
     if let Value::Str(s) = val {
         let kernel = cast_target_underlying_kernel(ctx, target_node);
-        if kernel.is_empty() || kernel == "String" {
+        if kernel == "String" {
             return Some(Value::Str(s.clone()));
         }
     }
     None
+}
+
+#[cfg(test)]
+mod cast_identity_empty_kernel_tests {
+    //! Regression control for node://adhoc-897a90b6-a9c item 1: a cast target whose alias
+    //! chain cannot be resolved at all (an empty kernel) must NOT be answered with silent Str
+    //! identity. Proves the deletion above by construction: a malformed target node -- exactly
+    //! the shape `expr_child_at`'s fallback produces for a cast missing its target child --
+    //! makes `cast_identity_result` return `None`, so `eval_cast` falls through to its typed
+    //! `TypeError` arm instead of fabricating an answer.
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_std_core::{make_expr_error_node, no_span, ExprErrorKind};
+
+    use super::{cast_identity_result, ExecutionMode, InterpContext, Value};
+
+    fn fresh_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    #[test]
+    fn malformed_cast_target_no_longer_returns_silent_identity() {
+        let ctx = fresh_ctx();
+        // Exactly the node `expr_child_at`/`make_expr_error_node` produce for a cast whose
+        // target child is missing: name "", inferred CompilerError (not Resolved) — the only
+        // shape `cast_target_seed_name_uncached` returns "" for, i.e. an empty kernel.
+        let malformed_target = make_expr_error_node(
+            ExprErrorKind::InternalExprError,
+            "malformed node: missing cast target".to_string(),
+            no_span(),
+        );
+        let val = Value::Str(Rc::from("payload"));
+        let result = cast_identity_result(&val, &ctx, "", malformed_target, "");
+        assert_eq!(
+            result, None,
+            "an unresolvable cast target must fall through to eval_cast's typed TypeError arm, \
+             not return silent Str identity"
+        );
+    }
+
+    #[test]
+    fn well_formed_string_kernel_cast_still_returns_identity() {
+        let ctx = fresh_ctx();
+        // A target node whose own name IS "String" resolves the seed directly (no alias walk
+        // needed), so the kernel is non-empty and lands on the `kernel == "String"` arm. This
+        // is the negative control: it proves the deletion above did not also remove the
+        // legitimate String-kernel identity case.
+        let string_target = make_expr_error_node(
+            ExprErrorKind::InternalExprError,
+            "unused".to_string(),
+            no_span(),
+        );
+        let string_target = Rc::new(crate::v1_std_core::Node {
+            name: "String".to_string(),
+            ..(*string_target).clone()
+        });
+        let val = Value::Str(Rc::from("payload"));
+        let result = cast_identity_result(&val, &ctx, "", string_target, "");
+        assert_eq!(result, Some(Value::Str(Rc::from("payload"))));
+    }
 }
 
 fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
@@ -7810,12 +7949,11 @@ fn eval_service_call(
                 })
                 .collect();
             cases.sort();
-            return Err(InterpError::TypeError {
-                msg: format!(
-                    "hermetic mode: operation {key} is not a published mock case for \
-                     corpus-governed service {service_name} — refusing to realize \
-                     (published cases: {cases:?})"
-                ),
+            return Err(InterpError::HermeticHostEffectRefused {
+                operation: key.clone(),
+                ground: HermeticEffectGround::UnpublishedMockCase {
+                    published_cases: cases.into_iter().cloned().collect(),
+                },
             });
         }
 
@@ -8292,30 +8430,59 @@ pub enum ArgvRefusalCause {
     BindingMalformed(String),
 }
 
-fn argv_expr_kind_label(node: &Rc<Node>) -> &'static str {
-    match node.expr_data.as_ref() {
-        ExprData::NoExprData => "no-expr",
-        ExprData::ExprLiteral { .. } => "literal",
-        ExprData::ExprError { .. } => "error",
-        ExprData::ExprVar { .. } => "var",
-        ExprData::ExprFieldAccess { .. } => "field-access",
-        ExprData::ExprCall { .. } => "call",
-        ExprData::ExprMethodCall { .. } => "method-call",
-        ExprData::ExprMatch => "match",
-        ExprData::ExprIf => "if",
-        ExprData::ExprLet => "let",
-        ExprData::ExprRecordLit { .. } => "record-literal",
-        ExprData::ExprListLit => "list-literal",
-        ExprData::ExprBinOp { .. } => "binop",
-        ExprData::ExprUnaryOp { .. } => "unary-op",
-        ExprData::ExprLambda => "lambda",
-        ExprData::ExprStringInterp => "string-interpolation",
-        ExprData::ExprBlock => "block",
-        ExprData::ExprCast => "cast",
-        ExprData::ExprForEach => "for-each",
-        ExprData::ExprIndex => "index",
-        ExprData::ExprSlice => "slice",
-        ExprData::ExprReturn => "return",
+/// The AUTHORED name of an `ExprData` form, TOTAL over the closed `.dag` vocabulary
+/// (`v1.core` `ExprData`), and the single such authority in the seed.
+///
+/// It exists so a projection that has no rule for a form can REFUSE BY NAME instead of
+/// substituting a plausible value, and the name it refuses with is the one the `.dag`
+/// declaration uses -- not a second spelling of the same vocabulary. This function replaced
+/// `argv_expr_kind_label`, which returned hyphenated nicknames (`call`, `record-literal`)
+/// for the same members: a refusal naming `call` cannot be grepped back to `ExprCall`, and
+/// two spellings of one closed vocabulary is the DESIGN section 3 nickname at the
+/// diagnostic layer.
+///
+/// The match carries NO catch-all on purpose: a form added to the `.dag` coproduct must
+/// break this compile, which is what keeps the seed's knowledge of the vocabulary equal to
+/// the substrate's rather than merely older than it.
+pub(crate) fn expr_data_form_name(expr_data: &ExprData) -> &'static str {
+    match expr_data {
+        ExprData::NoExprData => "NoExprData",
+        ExprData::ExprLiteral { .. } => "ExprLiteral",
+        ExprData::ExprError { .. } => "ExprError",
+        ExprData::ExprVar { .. } => "ExprVar",
+        ExprData::ExprFieldAccess { .. } => "ExprFieldAccess",
+        ExprData::ExprCall { .. } => "ExprCall",
+        ExprData::ExprMethodCall { .. } => "ExprMethodCall",
+        ExprData::ExprMatch => "ExprMatch",
+        ExprData::ExprIf => "ExprIf",
+        ExprData::ExprLet => "ExprLet",
+        ExprData::ExprRecordLit { .. } => "ExprRecordLit",
+        ExprData::ExprListLit => "ExprListLit",
+        ExprData::ExprBinOp { .. } => "ExprBinOp",
+        ExprData::ExprUnaryOp { .. } => "ExprUnaryOp",
+        ExprData::ExprLambda => "ExprLambda",
+        ExprData::ExprStringInterp => "ExprStringInterp",
+        ExprData::ExprBlock => "ExprBlock",
+        ExprData::ExprCast => "ExprCast",
+        ExprData::ExprForEach => "ExprForEach",
+        ExprData::ExprIndex => "ExprIndex",
+        ExprData::ExprSlice => "ExprSlice",
+        ExprData::ExprReturn => "ExprReturn",
+    }
+}
+
+/// The authored name of a `LiteralValue` form, TOTAL over the closed `.dag` vocabulary
+/// (`std.syntax` `LiteralValue`). Same construction and same reason as
+/// `expr_data_form_name`: no catch-all, so a new literal form stops the compile here.
+pub(crate) fn literal_value_form_name(value: &crate::std_syntax::LiteralValue) -> &'static str {
+    use crate::std_syntax::LiteralValue;
+    match value {
+        LiteralValue::LitStr { .. } => "LitStr",
+        LiteralValue::LitInt { .. } => "LitInt",
+        LiteralValue::LitFloat { .. } => "LitFloat",
+        LiteralValue::LitBool { .. } => "LitBool",
+        LiteralValue::LitNull => "LitNull",
+        LiteralValue::LitSymbol { .. } => "LitSymbol",
     }
 }
 
@@ -8465,7 +8632,8 @@ fn bind_argv_expr(
         ExprData::ExprLiteral { value } => match value.as_ref() {
             LiteralValue::LitStr { value } => Ok(str_value(value.clone())),
             other => Err(ArgvRefusalCause::ArgvExpressionUnsupported(format!(
-                "argv element literal is {other:?}, expected a string literal"
+                "argv element literal is `{}`, expected a string literal",
+                literal_value_form_name(other)
             ))),
         },
         ExprData::ExprVar { .. } => {
@@ -8497,7 +8665,7 @@ fn bind_argv_expr(
         }
         _ => Err(ArgvRefusalCause::ArgvExpressionUnsupported(format!(
             "argv element is a {} expression; materialization binds declared inputs, it does not evaluate expressions",
-            argv_expr_kind_label(node)
+            expr_data_form_name(node.expr_data.as_ref())
         ))),
     }
 }
@@ -8531,7 +8699,7 @@ pub fn materialize_operation_argv(
     if !executable_is_literal {
         return Err(ArgvRefusalCause::ExecutablePositionNotLiteral(format!(
             "argv[0] is a {} expression; the executable must be a literal in the declaration",
-            argv_expr_kind_label(executable)
+            expr_data_form_name(executable.expr_data.as_ref())
         )));
     }
 
@@ -11287,10 +11455,9 @@ fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<V
         }
     }
     let op_name = authored_name_at(ctx.si(), op_node.clone());
-    Err(InterpError::TypeError {
-        msg: format!(
-            "hermetic mode: no mock_response for operation {op_name} — refusing to fabricate Unit"
-        ),
+    Err(InterpError::HermeticHostEffectRefused {
+        operation: op_name.to_string(),
+        ground: HermeticEffectGround::NoMockResponse,
     })
 }
 
@@ -11589,10 +11756,9 @@ fn eval_emit_host_native_cache_evict_builtin(
     ctx.effect_dispatch_count
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
     if ctx.execution_mode.is_hermetic() {
-        return Err(InterpError::TypeError {
-            msg: "hermetic mode: emit_host_native_cache_evict refuses filesystem removal \
-                  (no mock arm; run wet)"
-                .to_string(),
+        return Err(InterpError::HermeticHostEffectRefused {
+            operation: "emit_host_native_cache_evict".to_string(),
+            ground: HermeticEffectGround::FilesystemRemoval,
         });
     }
     let workspace_dir =
@@ -14441,7 +14607,7 @@ fn memo_verify_enabled() -> bool {
     })
 }
 
-fn eval_profile_enabled() -> bool {
+pub fn eval_profile_enabled() -> bool {
     PROFILE_FLAG.with(|c| match c.get() {
         Some(b) => b,
         None => {
@@ -15550,7 +15716,7 @@ mod map_shell_outputs_optional_stream_tests {
     use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_std_core::{
-        make_field_init_node, make_field_node, make_span, make_text_part_node, Cardinality,
+        make_field_init_node, make_field_node, make_text_part_node, no_span, Cardinality,
         Connective, ExprData, InferredNode, Node,
     };
 
@@ -15612,7 +15778,7 @@ mod map_shell_outputs_optional_stream_tests {
 
     fn map_optional_stream_field(exit_code: i32, from_key: &str) -> Value {
         let ctx = map_shell_outputs_test_context();
-        let span = make_span(0, 0);
+        let span = no_span();
         let str_type = bare_type_node("String", span.clone());
         let mut field = make_field_node(
             from_key.to_string(),
@@ -16044,7 +16210,7 @@ mod argv_arg_limit_test {
 
     use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
-    use crate::v1_std_core::{make_span, make_text_part_node, shell_transport_node, Node};
+    use crate::v1_std_core::{make_text_part_node, no_span, shell_transport_node, Node};
 
     use super::{
         argv_arg_limit_refusal, dispatch_shell, Env, ExecutionMode, ExpectedOutcome, InterpContext,
@@ -16063,7 +16229,7 @@ mod argv_arg_limit_test {
 
     /// `shell.Exec.Check`-shaped argv: `sh -c "<command>"` as three literal tokens.
     fn shell_check_style_transport(command: &str) -> Rc<Node> {
-        let span = make_span(0, 0);
+        let span = no_span();
         shell_transport_node(
             Rc::new(im_vec![
                 make_text_part_node("sh".to_string(), span.clone()),

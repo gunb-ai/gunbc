@@ -15,13 +15,15 @@ import extdeps.exec.command {
   LocalExec,
   SshExec,
   command_over_transport,
+  CommandOverTransportOutcome,
+  CommandOverTransportBuilt,
+  CommandOverTransportRefused,
   shell_command_render,
   scp_command,
 }
-import extdeps.shell
+import gunbc.remote_shell_command { openbmc_dropbear_interpretation, RemoteExecCommandRefusalCause }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.shell_bash_runner { shell_exec_via_bash }
-import gunbc.retained_shell_script { retained_runtime }
+import gunbc.command_runner { run_shell_command }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
@@ -106,8 +108,13 @@ fn bmc_netboot_nocloud_user_data(plan: BmcNetbootServePlan) -> String {
   autoinstall_user_data(payload: plan.autoinstall)
 }
 
+data bmc_transport_interpretation_note: String = "The BMC fleet this module targets ships OpenBMC/Dropbear (gunbc.remote_shell_command openbmc_dropbear_interpretation_note), so the interpretation is a determined fact of THIS deployment, not Unknown -- named explicitly on SshExec rather than left for command_over_transport to guess (DESIGN 5)."
+
 fn bmc_transport(plan: BmcNetbootServePlan) -> CommandTransport {
-  SshExec { ssh_target: join(["root@", plan.bmc_host as String], "") as NonEmptyStr }
+  SshExec {
+    ssh_target: join(["root@", plan.bmc_host as String], "") as NonEmptyStr,
+    interpretation: openbmc_dropbear_interpretation,
+  }
 }
 
 fn bmc_netboot_serve_command_local(plan: BmcNetbootServePlan) -> ArgvCommand {
@@ -118,15 +125,23 @@ fn bmc_netboot_serve_command_local(plan: BmcNetbootServePlan) -> ArgvCommand {
   )
 }
 
-fn bmc_netboot_serve_command(plan: BmcNetbootServePlan) -> ArgvCommand {
+fn bmc_netboot_serve_command(plan: BmcNetbootServePlan) -> CommandOverTransportOutcome {
   command_over_transport(
     command: bmc_netboot_serve_command_local(plan: plan),
     transport: bmc_transport(plan: plan),
   )
 }
 
-fn bmc_netboot_serve_command_text(plan: BmcNetbootServePlan) -> String {
-  shell_command_render(command: bmc_netboot_serve_command(plan: plan))
+type BmcNetbootServeCommandTextOutcome
+  = BmcNetbootServeCommandTextBuilt { text: String }
+  | BmcNetbootServeCommandTextRefused { cause: RemoteExecCommandRefusalCause }
+
+fn bmc_netboot_serve_command_text(plan: BmcNetbootServePlan) -> BmcNetbootServeCommandTextOutcome {
+  match bmc_netboot_serve_command(plan: plan) {
+    CommandOverTransportRefused { cause: c } => BmcNetbootServeCommandTextRefused { cause: c }
+    CommandOverTransportBuilt { command: cmd } =>
+      BmcNetbootServeCommandTextBuilt { text: shell_command_render(command: cmd) }
+  }
 }
 
 fn bmc_ssh_target(plan: BmcNetbootServePlan) -> NonEmptyStr {
@@ -143,19 +158,12 @@ data bmc_netboot_provision_scaffold: Disposition = Scaffold {
   }
 }
 
-data bmc_netboot_provision_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: bmc_netboot_provision — the staging manifest (bmc_netboot_staging_manifest) IS the driver: provision folds its BmcStagedFile rows through bmc_netboot_stage_file (LocalArtifact scp / InlineText write+scp / FetchFromUri typed refusal), so the file list has one authority and the former hand-unrolled sequence is deleted. Remaining debt is the transport: shell.Exec.Run rendering of scp_command (extdeps.exec.command, the single ssh/scp posture authority — no forked argv) on the pre-runtime BMC bootstrap window. DISSOLVES WHEN host_effect_apply binds the manifest fold as a typed staging effect and dag/gunbc/bmc_netboot_serve.dag retires its shell/scp glue")
+data bmc_netboot_provision_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: bmc_netboot_provision — the staging manifest (bmc_netboot_staging_manifest) IS the driver: provision folds its BmcStagedFile rows through bmc_netboot_stage_file (LocalArtifact scp / InlineText write+scp / FetchFromUri typed refusal), so the file list has one authority and the former hand-unrolled sequence is deleted. bmc_netboot_run_bmc and bmc_netboot_put_path no longer hand-roll their own retained_runtime/shell.Exec.Run heredoc glue (that was two bridge sites duplicating one pattern, §2/§3); both now call gunbc.command_runner.run_shell_command, the single authority for rendering an ArgvCommand+CommandTransport over the heredoc bridge — command_runner already carries its own dissolution obligation (command_runner_dissolution_trigger) for that bridge, so this module inherits rather than duplicates it. CORRECTED 2026-08-19 (this clause previously said the SshExec debt below was unchanged and out of scope; that is now false and is rewritten rather than left standing per DESIGN §3's stale-citation discipline): extdeps.exec.command command_over_transport's SshExec branch no longer composes ssh_exec_prefix ++ argv as a flat suffix. It folds the inner ArgvCommand through gunbc.remote_shell_command remote_exec_command_string into ONE RFC-4254-conformant, POSIX-single-quote-encoded command string (cited to IEEE 1003.1-2017 section 2.2.2), carried as ssh's single final argument — bmc_transport now names openbmc_dropbear_interpretation explicitly on SshExec so this fold runs, rather than refusing on Unknown. CORRECTED AGAIN (2026-08-20, this clause previously said the heredoc bridge -- command_runner's shell_exec_via_bash/retained_runtime hop -- was unchanged; that is now false too and is rewritten rather than left standing, same §3 discipline): command_runner's run site no longer matches on transport or hops through a bash heredoc for either arm -- it asks command_over_transport once for the outer ArgvCommand and hands it straight to shell.Exec.RunArgv. So this module's remaining debt is scoped to command_runner_dissolution_trigger's own first clause (host_effect_apply has not yet bound ArgvCommand execution), which command_runner still carries and this module inherits rather than duplicates. DISSOLVES WHEN host_effect_apply binds ArgvCommand execution (mkdir / scp / busybox-httpd-launch) as typed staging effects, and dag/gunbc/bmc_netboot_serve.dag retires command_runner.run_shell_command in favor of host_effect_apply")
 
 func bmc_netboot_run_bmc(plan: BmcNetbootServePlan, argv: List<String>) -> ProcessExit
   uses net: Network
 {
-  let cmd = command_over_transport(command: ArgvCommand { argv: argv }, transport: bmc_transport(plan: plan))
-  let run = shell.Exec.Run(
-    script: retained_runtime(
-      body: shell_exec_via_bash(body: shell_command_render(command: cmd)),
-      reason: "bmc-netboot pre-runtime bootstrap window: ssh/scp posture rendered through the heredoc transport" as NonEmptyStr,
-    )
-  )
-  if run.success { ExitSuccess } else { exit_failure(reason: concat("bmc-netboot: ", run.stderr)) }
+  run_shell_command(command: ArgvCommand { argv: argv }, transport: bmc_transport(plan: plan))
 }
 
 fn bmc_staged_file_basename(remote_path: NonEmptyStr) -> String {
@@ -171,13 +179,7 @@ func bmc_netboot_put_path(plan: BmcNetbootServePlan, local: NonEmptyStr, remote_
 {
   let remote_target = join([bmc_ssh_target(plan: plan) as String, ":", remote_path as String], "") as NonEmptyStr
   let cmd = scp_command(local_path: local, remote_target: remote_target)
-  let run = shell.Exec.Run(
-    script: retained_runtime(
-      body: shell_exec_via_bash(body: shell_command_render(command: cmd)),
-      reason: "bmc-netboot pre-runtime bootstrap window: scp staging rendered through the heredoc transport" as NonEmptyStr,
-    )
-  )
-  if run.success { ExitSuccess } else { exit_failure(reason: concat("bmc-netboot: scp failed for ", remote_path as String)) }
+  run_shell_command(command: cmd, transport: LocalExec)
 }
 
 func bmc_netboot_stage_file(plan: BmcNetbootServePlan, file: BmcStagedFile) -> ProcessExit
