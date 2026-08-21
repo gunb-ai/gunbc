@@ -20960,8 +20960,61 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
             }
             GeneratedArtifactPathBody::NotGenerated => None,
         };
+        // A GENERATED ARTIFACT IS CHECKED BY IDENTITY, NOT BY CALLING IT -- and this is the
+        // correct check for it, not a weaker stand-in for the differential.
+        //
+        // MEASURED, after the first draft of this change got it wrong. Producing the candidate
+        // was necessary and not sufficient: with the candidate in hand the differential went one
+        // step further and refused again, because it compiles a driver that CALLS the authority's
+        // declared functions against the mirror --
+        //
+        //   the driver did not compile against the mirror: error[E0425]: cannot find function
+        //   `v1_interpreter_arm_shape_derivability` in module v1_compiler::v1_interpreter_dispatch_generated
+        //
+        // -- and `v1_interpreter_dispatch_generated.rs` exposes enums and `lookup_*` fns. It is a
+        // file DERIVED FROM the authority's data, not a Rust projection of the authority's
+        // functions, so those functions are not there and never will be. The differential's
+        // precondition (the mirror answers the same calls the authority declares) simply does not
+        // hold for this population.
+        //
+        // For a generated artifact the whole content IS the product, so byte identity between a
+        // freshly generated candidate and the committed file is the complete statement of
+        // correctness -- which is exactly the drift check that has had no owner since the
+        // generated-artifact drift gates were dropped in the floor cut.
         let candidate_source: &String = match owned_candidate.as_ref() {
-            Some(c) => c,
+            Some(candidate) => {
+                let committed_path = workspace.join(&repo_rel);
+                match fs::read_to_string(&committed_path) {
+                    Err(e) => {
+                        eprintln!(
+                            "behavioral-receipt: {} REFUSED — {repo_rel} is a generated artifact \
+                             but its committed bytes could not be read ({e}), so identity cannot \
+                             be established",
+                            plan.module_path
+                        );
+                        all_equivalent = false;
+                    }
+                    Ok(committed_bytes) if committed_bytes == *candidate => {
+                        eprintln!(
+                            "behavioral-receipt: {} ARTIFACT-IDENTICAL — {repo_rel} regenerates \
+                             byte-for-byte from its authority. This is identity, not behavioural \
+                             equivalence: the artifact exposes no function this fragment could \
+                             call, so its bytes are the whole claim",
+                            plan.module_path
+                        );
+                    }
+                    Ok(_) => {
+                        eprintln!(
+                            "behavioral-receipt: {} ARTIFACT-DRIFT — {repo_rel} does not match \
+                             what its authority generates. Regenerate it (main_wet on \
+                             dag/tools/generated_artifact_gate.dag) and commit the result",
+                            plan.module_path
+                        );
+                        all_equivalent = false;
+                    }
+                }
+                continue;
+            }
             None => match emitted.get(mirror) {
                 Some(c) => c,
                 None => {
