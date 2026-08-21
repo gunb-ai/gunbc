@@ -3,6 +3,7 @@ module gunbc.model_artifact
 import std.types { String, Bool, List, NonEmptyStr, Int }
 import std.content_hash { ContentHash, Sha256Digest, as_content_hash_cryptographic, serialize_content_hash, compare_content_hash, ContentHashComparison, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 import std.decl_ref { decl_ref }
+import extdeps.pin { TrackedReferenceResolution }
 import extdeps.ollama.api { OllamaModelRef, OllamaModelDigest, ollama_model_ref_wire, ollama_model_content_hash }
 
 // WHAT A SERVED MODEL IS, modeled before anything serves one, because the alternative is retrofitting
@@ -59,6 +60,7 @@ fn model_artifact_seal(
   admit_callers: [
     decl_ref(module_path: "gunbc.model_artifact", decl_name: "model_artifact_from_observed_digest"),
     decl_ref(module_path: "gunbc.model_artifact", decl_name: "model_artifact_from_tuning_run"),
+    decl_ref(module_path: "gunbc.model_artifact", decl_name: "model_artifact_from_resolution"),
   ]
   = ModelArtifact { identity: identity, provenance: provenance, serving_label: serving_label }
 
@@ -68,6 +70,29 @@ fn model_artifact_from_observed_digest(publisher: NonEmptyStr, observed: OllamaM
     identity: ollama_model_content_hash(digest: observed),
     provenance: PulledFromUpstream { publisher: publisher, reference: observed.ref },
     serving_label: ollama_model_ref_wire(ref: observed.ref) as NonEmptyStr,
+  )
+}
+
+// THE DESIRED-STATE PATH, and the reason it is not model_artifact_from_observed_digest.
+//
+// That function's authority says its digest came off /api/tags or /api/show, and for a LOADED
+// artifact -- one read back from a host at run time -- that is exactly true. Desired state is the
+// other direction: nothing has been observed yet, so a caller authoring a digest literal and passing
+// it through the observed-digest door asserts a provenance it does not have. That is what
+// spark_serving_desired did, and it is why a republished tag read as host drift for a week.
+//
+// A resolution carries its own evidence and cannot be constructed without it (extdeps.pin,
+// TrackedReferenceResolution), so this door is the one desired state can walk through honestly: the
+// identity is the one the resolution recorded, and the reference travels as provenance rather than as
+// identity.
+fn model_artifact_from_resolution<Evidence>(
+  publisher: NonEmptyStr,
+  resolution: TrackedReferenceResolution<OllamaModelRef, Evidence>,
+) -> ModelArtifact {
+  model_artifact_seal(
+    identity: resolution.resolved_identity,
+    provenance: PulledFromUpstream { publisher: publisher, reference: resolution.reference },
+    serving_label: ollama_model_ref_wire(ref: resolution.reference) as NonEmptyStr,
   )
 }
 

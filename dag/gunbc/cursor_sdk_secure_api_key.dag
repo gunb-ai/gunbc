@@ -10,7 +10,7 @@ import gunbc.auth.secret_ref_credential {
   SecretCredentialWireDecodeRefused,
   fetch_secret_ref_credential,
 }
-import gunbc.spark_credential_workflow { secret_credential_wire_decode_refusal_reason }
+import gunbc.spark.credential_workflow { secret_credential_wire_decode_refusal_reason }
 import gunbc.auth.access_token_source {
   AccessTokenSource,
   access_token_upsert_required_reason,
