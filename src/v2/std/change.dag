@@ -85,6 +85,6 @@ type AffectedSet
 
 type RecomputePlan {
   affected: AffectedSet
-  layers: List<ReadinessLayer>
+  layers: List<ReadinessLayer<Node>>
   diagnostic: Outcome<Symbol>
 }

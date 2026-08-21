@@ -1,0 +1,322 @@
+module gunbc.spark.managed_access_bootstrap
+
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import std.content_hash { ContentHash, serialize_content_hash }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_posix_accounts {
+  FleetPosixAccountKey,
+  FleetAccountOperator,
+  FleetAccountAutomation,
+  FleetAccountInferenceService,
+  PosixAccountOccurrence,
+}
+
+// WHAT THE PROBE ESTABLISHED, AND WHAT FOLLOWS FROM IT.
+//
+// The credential-bound probe measured, on both Sparks: the fleet key authenticates as briansrls;
+// ubuntu, ghrunner and root refuse; `sudo -n -l` as briansrls requires a password. Those are facts
+// about a HUMAN BOOTSTRAP ACCOUNT that the operator created by hand, and the standing they produce
+// is deliberately not "access grounded":
+//
+//   human bootstrap access      OBSERVED
+//   managed executor account    ABSENT
+//   -> managed access bootstrap REQUIRED
+//
+// Evidence gathered as briansrls may never satisfy a requirement about FleetAccountAutomation. That
+// is not caution -- it is what the account model already says: an occurrence is (host x principal),
+// so an observation of one principal is silent about another by construction. The reason it needs
+// saying at all is that both are reached with the SAME KEY, so a receipt that recorded only "the
+// fleet key works on srv5" would read as though automation access existed.
+
+// The standing a host holds with respect to MANAGED access, distinct from whether anything reached
+// it. BootstrapRequired carries the account it is missing rather than a flag, because the next step
+// needs to name an occurrence and a flag would make the reader re-derive it.
+type SparkManagedAccessStanding
+  = ManagedAccessGrounded { occurrence: PosixAccountOccurrence }
+  | ManagedAccessBootstrapRequired {
+      host: HostIdentity
+      missing: PosixAccountOccurrence
+      bootstrap_transport: PosixAccountOccurrence
+    }
+  | ManagedAccessUnobserved { host: HostIdentity }
+
+// THE OBSERVED INPUT, at the grain the probe actually measures: one host, one principal, one
+// authentication outcome, one privilege outcome. Deliberately NOT a host-grained record with a field
+// per capability -- that shape lets an observation of one principal satisfy a question about
+// another, which is the single defect that would make every conclusion below unsound.
+type PrincipalReachObservation {
+  host: HostIdentity
+  principal_login_name: NonEmptyStr
+  credential_identity: ContentHash
+  authenticated: Bool
+  holds_any_passwordless_grant: Bool
+}
+
+// THE FIELD IS NAMED FOR WHAT IT MEASURES, and the rename is a repair rather than a preference.
+// It was `passwordless_privilege`, measured by `sudo -n -l` -- which exits 0 whenever the account
+// holds ANY nopasswd entry, including a single-command grant. The name promised a general capability
+// the measurement never established, and I acted on the name: I read it as "can perform privileged
+// installs", reported the serving install unblocked, and was refuted by enumerating the actual
+// grant (one command, `loginctl enable-linger`, on both Sparks).
+//
+// This is the record's OWN stated defect arriving one level down. The comment above explains that a
+// host-grained shape would let one principal's evidence answer another's question; a field named
+// more broadly than its measurement does the same thing along a different axis -- it lets one
+// question's evidence answer a bigger question -- and a Bool cannot be narrowed by its reader.
+//
+// So the name now states exactly what a successful `sudo -n -l` proves and nothing beyond it. What
+// commands the account may actually run is a POPULATION, not a Bool, and reducing it is what caused
+// the error; that enumeration is reported verbatim by fleet_multi_principal_probe
+// spark_exact_grant_probe_wet. Any consumer asking "may this account perform effect X" must join
+// against that population -- this field cannot answer it and no longer appears to.
+
+fn observation_for(
+  observations: List<PrincipalReachObservation>,
+  host: HostIdentity,
+  login: NonEmptyStr,
+) -> PrincipalReachObservation? {
+  fold(observations, init: none, f: fn(acc, o) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if (o.host as String) == (host as String) && (o.principal_login_name as String) == (login as String) {
+        Present { value: o }
+      } else { none }
+    }
+  })
+}
+
+// The managed executor's login name on a Spark. Named here rather than discovered, because which
+// account is THE managed executor is a modeling decision, and a bootstrap that adopted whatever
+// automation-looking account it found would be inferring intent from the host.
+data spark_managed_executor_login: String = "gunbc-automation"
+
+// THE HOME OF A NAMED PRINCIPAL, derived because on these hosts every one of these accounts is a
+// /home account and the alternative is a second per-account table saying so. It is a function of the
+// login rather than a constant, which is the distinction that failed once: staging a file for the
+// INSTALLING principal into the GRANTEE's home is a permission error at the far side, and reads as a
+// broken installer rather than as the wrong account being named.
+fn spark_managed_principal_home(login: NonEmptyStr) -> NonEmptyStr {
+  join(["/home/", login as String], "") as NonEmptyStr
+}
+data spark_operator_bootstrap_login: String = "briansrls"
+
+// DERIVING THE STANDING. Absence of an observation is ManagedAccessUnobserved, never
+// BootstrapRequired: "nobody looked" and "we looked and it is not there" have different remedies,
+// and collapsing them would let a probe that never ran authorize account creation.
+// Absence of a MANAGED observation falls through to asking whether anything reaches the host at all,
+// because a bootstrap needs a transport: with no reachable principal there is nothing to bootstrap
+// THROUGH, so the honest standing is unobserved rather than a plan that could not be executed.
+fn derive_spark_managed_access_standing(
+  host: HostIdentity,
+  observations: List<PrincipalReachObservation>,
+) -> SparkManagedAccessStanding {
+  let managed = PosixAccountOccurrence { host: host, principal: FleetAccountAutomation }
+  let bootstrap = PosixAccountOccurrence { host: host, principal: FleetAccountOperator }
+  match observation_for(observations: observations, host: host, login: spark_managed_executor_login as NonEmptyStr) {
+    Present { value: m } =>
+      if m.authenticated {
+        ManagedAccessGrounded { occurrence: managed }
+      } else {
+        ManagedAccessBootstrapRequired { host: host, missing: managed, bootstrap_transport: bootstrap }
+      }
+    Absent =>
+      match observation_for(observations: observations, host: host, login: spark_operator_bootstrap_login as NonEmptyStr) {
+        Present { value: b } =>
+          if b.authenticated {
+            ManagedAccessBootstrapRequired { host: host, missing: managed, bootstrap_transport: bootstrap }
+          } else {
+            ManagedAccessUnobserved { host: host }
+          }
+        Absent => ManagedAccessUnobserved { host: host }
+      }
+  }
+}
+
+// THE EFFECT POPULATION, exact and ordered. Each effect names the privilege it requires, which is
+// what makes privilege an OUTPUT of the plan rather than an input to it: nobody asks "does this need
+// root" -- the plan is derived, and whether it contains a privileged effect is then a fact about it.
+type SparkBootstrapEffect
+  = CreateManagedAccount { occurrence: PosixAccountOccurrence, login: NonEmptyStr }
+  | InstallFleetAuthorizedKey { occurrence: PosixAccountOccurrence, public_material_identity: ContentHash }
+  | ProveKeyOnlyAuthentication { occurrence: PosixAccountOccurrence }
+  | InstallNarrowPrivilegeGrant { occurrence: PosixAccountOccurrence, grant: SparkManagedGrant }
+  | CreateNoLoginServiceIdentity { occurrence: PosixAccountOccurrence, login: NonEmptyStr }
+
+// Whether an effect can be performed by the bootstrap transport itself or needs privilege it does
+// not hold. Derived per effect from what the effect DOES, not assigned per plan: creating an account
+// writes /etc/passwd and /etc/shadow; writing another account's authorized_keys is that account's
+// file rather than the transport's; installing a grant edits sudoers; creating the no-login identity
+// is another account creation. Only the authentication proof is an ordinary unprivileged connection,
+// which is exactly why it is in the plan -- it is the step that CHECKS the privileged ones landed.
+fn bootstrap_effect_requires_privilege(effect: SparkBootstrapEffect) -> Bool {
+  match effect {
+    CreateManagedAccount { occurrence: _, login: _ } => true
+    InstallFleetAuthorizedKey { occurrence: _, public_material_identity: _ } => true
+    ProveKeyOnlyAuthentication { occurrence: _ } => false
+    InstallNarrowPrivilegeGrant { occurrence: _, grant: _ } => true
+    CreateNoLoginServiceIdentity { occurrence: _, login: _ } => true
+  }
+}
+
+// THE PLAN. Head-plus-tail so an empty bootstrap has no constructor: "bootstrap required" that
+// derives no effects is a contradiction, and representing it would let a caller report a plan while
+// holding nothing to apply.
+type SparkBootstrapPlan {
+  host: HostIdentity
+  transport: PosixAccountOccurrence
+  first: SparkBootstrapEffect
+  more: List<SparkBootstrapEffect>
+}
+
+fn spark_bootstrap_plan_effects(plan: SparkBootstrapPlan) -> List<SparkBootstrapEffect> {
+  concat([plan.first], plan.more)
+}
+
+// A GRANT IS A CAPABILITY, NOT A SENTENCE ABOUT ONE. This was a bare String, and the cost was that
+// the sudoers entry and the argv that exercises it were two representations of one fact with nothing
+// joining them: a grant could be installed that no effect could use, or an effect attempted against
+// a grant nobody installed, and neither would refuse. So each grant now carries both projections,
+// and the actuator derives its argv from the same row the installer reads.
+//
+// Which grants are required is a function of the SELECTED REALIZATION and stays narrow: enumerated
+// capabilities, never blanket sudo. A user unit under lingering needs enable-linger for its own
+// account; standing a host up and proving the unit survives a power cycle needs reboot.
+//
+// REBOOT IS ADMITTED BY OPERATOR RULING (2026-08-20): at this level -- software development, standing
+// a host up -- reboot is an ordinary procedure, and convergence holds it. The ruling names its own
+// horizon: when the model is more mature this gets harder to mess up. Recorded because the reason a
+// privilege was granted is exactly what a later reader needs in order to narrow it again.
+// THE READING OF WHAT AN ACCOUNT MAY DO, which lived in the probe module that produced it. That put
+// a grant-domain fact in the transport that happens to observe it, and the reconcile could then only
+// reach it by importing the prober -- which the prober also needs, so the graph closed a cycle. The
+// fact belongs beside the grants it is a reading of; who ran `sudo -n -l` is realization.
+//
+// An earlier revision of this carrier records its own defect worth preserving here: the receipt was
+// once decided by string_contains(body, "REFUSED"), and the refused arm spells "probe-refused" in
+// lower case, so a leg that never ran exited 0. The variants are the decision; text is a projection.
+type SparkGrantOutcome
+  = GrantEnumerated { listing: String }
+  | GrantAbsent { detail: String }
+  | GrantProbeRefused { cause: String }
+
+type SparkManagedGrant
+  = EnableLingerForOwnAccount
+  | RebootThisHost
+
+fn spark_managed_grant_sudoers_command(grant: SparkManagedGrant) -> NonEmptyStr {
+  match grant {
+    EnableLingerForOwnAccount => "/usr/bin/loginctl enable-linger" as NonEmptyStr
+    RebootThisHost => "/usr/bin/systemctl reboot" as NonEmptyStr
+  }
+}
+
+// THE ARGV THE GRANT AUTHORIZES, and the reason the carrier exists: the actuator calls this rather
+// than spelling `sudo -n ...` again, so an argv that no installed grant covers cannot be written.
+fn spark_managed_grant_argv(grant: SparkManagedGrant) -> List<String> {
+  concat(
+    ["sudo", "-n"],
+    match grant {
+      EnableLingerForOwnAccount => ["loginctl", "enable-linger"]
+      RebootThisHost => ["systemctl", "reboot"]
+    },
+  )
+}
+
+fn spark_managed_grant_wire(grant: SparkManagedGrant) -> NonEmptyStr {
+  match grant {
+    EnableLingerForOwnAccount => "enable-linger for this account only" as NonEmptyStr
+    RebootThisHost => "reboot this host" as NonEmptyStr
+  }
+}
+
+data spark_managed_grant_population: List<SparkManagedGrant> = [
+  EnableLingerForOwnAccount,
+  RebootThisHost,
+]
+
+fn derive_spark_bootstrap_plan(
+  standing: SparkManagedAccessStanding,
+  fleet_public_material_identity: ContentHash,
+) -> SparkBootstrapPlan? {
+  match standing {
+    ManagedAccessGrounded { occurrence: _ } => none
+    ManagedAccessUnobserved { host: _ } => none
+    ManagedAccessBootstrapRequired { host: h, missing: m, bootstrap_transport: t } => Present {
+      value: SparkBootstrapPlan {
+        host: h,
+        transport: t,
+        first: CreateManagedAccount { occurrence: m, login: spark_managed_executor_login as NonEmptyStr },
+        more: [
+          InstallFleetAuthorizedKey { occurrence: m, public_material_identity: fleet_public_material_identity },
+          ProveKeyOnlyAuthentication { occurrence: m },
+          InstallNarrowPrivilegeGrant { occurrence: m, grant: EnableLingerForOwnAccount },
+          InstallNarrowPrivilegeGrant { occurrence: m, grant: RebootThisHost },
+          CreateNoLoginServiceIdentity {
+            occurrence: PosixAccountOccurrence { host: h, principal: FleetAccountInferenceService },
+            login: "gunbc-inference" as NonEmptyStr,
+          },
+        ],
+      }
+    }
+  }
+}
+
+// WHAT THE PLAN DEMANDS OF THE OPERATOR, derived rather than asked. The credential is requested only
+// when the derived effect population actually contains privileged effects, and the request NAMES
+// them -- so the operator is answering "may these five things happen on srv5", not "does this need
+// root", which is a question nobody can evaluate.
+//
+// This is the shape that keeps privilege an output. A one-time credential is not a property of
+// serving, and nothing here concludes that the serving runtime needs privilege: what needs it is
+// account creation, which happens once and is then irreversible in the direction that matters.
+type SparkBootstrapAuthorization
+  = BootstrapProceedsUnprivileged { plan: SparkBootstrapPlan }
+  | OperatorBootstrapCredentialRequired {
+      host: HostIdentity
+      first_privileged: SparkBootstrapEffect
+      more_privileged: List<SparkBootstrapEffect>
+      secret_purpose: NonEmptyStr
+    }
+
+fn authorize_spark_bootstrap(plan: SparkBootstrapPlan) -> SparkBootstrapAuthorization {
+  let privileged = filter(spark_bootstrap_plan_effects(plan: plan), e => bootstrap_effect_requires_privilege(effect: e))
+  match list_head_of_effects(effects: privileged) {
+    Absent => BootstrapProceedsUnprivileged { plan: plan }
+    Present { value: first } => OperatorBootstrapCredentialRequired {
+      host: plan.host,
+      first_privileged: first,
+      more_privileged: list_tail_of_effects(effects: privileged),
+      secret_purpose: "one-time administrator credential on this host, used solely to apply the named privileged effects through the modeled secret boundary; not retained, not a serving requirement" as NonEmptyStr,
+    }
+  }
+}
+
+fn list_head_of_effects(effects: List<SparkBootstrapEffect>) -> SparkBootstrapEffect? {
+  match list_head(effects) {
+    HeadFound { value: e } => Present { value: e }
+    HeadAbsent => none
+  }
+}
+
+fn list_tail_of_effects(effects: List<SparkBootstrapEffect>) -> List<SparkBootstrapEffect> {
+  match list_tail(effects) {
+    TailFound { tail: t } => t
+    TailAbsent => []
+  }
+}
+
+fn spark_bootstrap_effect_label(effect: SparkBootstrapEffect) -> String {
+  match effect {
+    CreateManagedAccount { occurrence: _, login: l } => join(["create-managed-account login=", l as String], "")
+    InstallFleetAuthorizedKey { occurrence: _, public_material_identity: i } =>
+      join(["install-fleet-authorized-key public_material_identity=", serialize_content_hash(hash: i) as String], "")
+    ProveKeyOnlyAuthentication { occurrence: _ } => "prove-key-only-authentication"
+    InstallNarrowPrivilegeGrant { occurrence: _, grant: g } =>
+      join([
+        "install-narrow-privilege-grant grant=", spark_managed_grant_wire(grant: g) as String,
+        " command=", spark_managed_grant_sudoers_command(grant: g) as String,
+      ], "")
+    CreateNoLoginServiceIdentity { occurrence: _, login: l } => join(["create-no-login-service-identity login=", l as String], "")
+  }
+}

@@ -18,7 +18,8 @@ use crate::v1_compiler_compile::{
 };
 use crate::v1_rt;
 use bootstrap_stage0_crate_layout_generated::{
-    HAND_MAINTAINED_STAGE0_DIRS, HAND_MAINTAINED_STAGE0_FILES,
+    EMITTER_PRODUCED_DIVERGENT_STAGE0_FILES, HAND_MAINTAINED_STAGE0_DIRS,
+    HAND_MAINTAINED_STAGE0_FILES,
 };
 
 /// Bumped from `.v1` when the flat eight-field record split into the two-variant carrier below.
@@ -383,13 +384,42 @@ pub fn run_required_regen(
     for (name, reason) in &hand.unverifiable {
         failures.push(format!("hand unverifiable {name}: {reason}"));
     }
+    for name in &hand.undeclared_divergent {
+        failures.push(format!(
+            "refusal: {name} is excluded from the generated-surface comparison but the emitter \
+             produces it and its output DIVERGES from the committed file, and it is not declared \
+             in EMITTER_PRODUCED_DIVERGENT_STAGE0_FILES. Declare it as an \
+             EmitterProducedDivergentRegistration row in \
+             v2.compiler.self_host.stage0_crate_layout, with a reason and a restoration trigger, \
+             or close the divergence"
+        ));
+    }
+    for name in &hand.dissolved_declarations {
+        failures.push(format!(
+            "refusal: {name} is declared in EMITTER_PRODUCED_DIVERGENT_STAGE0_FILES but the \
+             emitter's output now MATCHES the committed file. The rung drop has dissolved: delete \
+             its EmitterProducedDivergentRegistration row in \
+             v2.compiler.self_host.stage0_crate_layout and regenerate"
+        ));
+    }
+    for name in &hand.unproduced_declarations {
+        failures.push(format!(
+            "refusal: {name} is declared in EMITTER_PRODUCED_DIVERGENT_STAGE0_FILES but is absent \
+             from the emitted population, so there is nothing for the declaration to excuse. \
+             Delete its EmitterProducedDivergentRegistration row in \
+             v2.compiler.self_host.stage0_crate_layout and regenerate"
+        ));
+    }
 
     eprintln!(
-        "required-regen: elapsed_ms={} first_generation_equal={} planned={} executed={}",
+        "required-regen: elapsed_ms={} first_generation_equal={} planned={} executed={} \
+         declared_divergent={} [{}]",
         run_started.elapsed().as_millis(),
         first_generation_equal,
         committed_basenames.len(),
-        emitted_basenames.len()
+        emitted_basenames.len(),
+        hand.declared_divergent.len(),
+        hand.declared_divergent.join(", ")
     );
 
     Ok(RequiredRegenOutcome {
@@ -691,6 +721,27 @@ struct SyncReport {
 
 struct HandVerifyReport {
     unverifiable: Vec<(String, String)>,
+    /// Declared in `EMITTER_PRODUCED_DIVERGENT_STAGE0_FILES` and measured divergent: the rung
+    /// drop holding as declared. Reported and counted, never a failure -- that is what "declared"
+    /// buys, and the count is the whole point: a suppression nobody counts has a frequency of zero
+    /// by construction and can never rank for repair.
+    declared_divergent: Vec<String>,
+    /// Emitted, divergent, and NOT declared. A failure: a new divergence cannot be hidden by
+    /// adding a basename to the exclusion list, because the exclusion list is not the authority
+    /// on what may diverge.
+    undeclared_divergent: Vec<String>,
+    /// Declared divergent but measured IDENTICAL. A failure, and the arm that makes each row's
+    /// restoration trigger executable rather than prose: the moment the emitter can produce the
+    /// committed bytes, the line stops until the row is deleted.
+    dissolved_declarations: Vec<String>,
+    /// Declared divergent but absent from the emitted population entirely. A failure: a row
+    /// cannot outlive the producer whose output it excuses, or it silently becomes an ordinary
+    /// unexplained exclusion wearing a rung-drop's name.
+    unproduced_declarations: Vec<String>,
+}
+
+fn is_declared_divergent(file_name: &str) -> bool {
+    EMITTER_PRODUCED_DIVERGENT_STAGE0_FILES.contains(&file_name)
 }
 
 fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
@@ -930,11 +981,22 @@ fn verify_hand_maintained(
     work_dir: &Path,
 ) -> Result<HandVerifyReport, String> {
     let mut unverifiable = Vec::new();
+    let mut declared_divergent = Vec::new();
+    let mut undeclared_divergent = Vec::new();
+    let mut dissolved_declarations = Vec::new();
+    let mut unproduced_declarations = Vec::new();
     for file_name in HAND_MAINTAINED_STAGE0_FILES {
         let candidate = emitted
             .get(&format!("src/{file_name}"))
             .or_else(|| emitted.get(*file_name));
         let Some(candidate) = candidate else {
+            // Not in the emitted population at all. For 35 of the 36 entries (measured by
+            // execution 2026-08-21) this is the ordinary case and there is nothing to compare:
+            // the emitter does not produce the file, so excluding it from the comparison costs
+            // nothing. For a DECLARED row it is a defect in the declaration, not in the tree.
+            if is_declared_divergent(file_name) {
+                unproduced_declarations.push((*file_name).to_string());
+            }
             continue;
         };
         let committed_path = stage0_src.join(file_name);
@@ -943,8 +1005,22 @@ fn verify_hand_maintained(
         match normalize_with_workdir(&committed, work_dir, "committed") {
             Ok(committed_norm) => match normalize_with_workdir(candidate, work_dir, "candidate") {
                 Ok(candidate_norm) => {
+                    // THE MEASUREMENT ABOVE USED TO BE DISCARDED HERE. The divergent branch was
+                    // an empty block under a comment saying drift is expected on a clean tree,
+                    // which is the absorbing fallback (DESIGN section 5) in its authoring form:
+                    // the comparison ran, found a real divergence between the authority and the
+                    // committed artifact, and produced no typed, located, countable output -- so
+                    // the deficit's frequency was zero by construction and it could never rank for
+                    // repair. Membership in HAND_MAINTAINED_STAGE0_FILES was doing the silencing
+                    // while claiming only to describe what the emitter does not produce.
                     if committed_norm != candidate_norm {
-                        // drift expected on clean tree for some hand files; not a sync refusal.
+                        if is_declared_divergent(file_name) {
+                            declared_divergent.push((*file_name).to_string());
+                        } else {
+                            undeclared_divergent.push((*file_name).to_string());
+                        }
+                    } else if is_declared_divergent(file_name) {
+                        dissolved_declarations.push((*file_name).to_string());
                     }
                 }
                 Err(reason) => unverifiable.push(((*file_name).to_string(), reason)),
@@ -952,7 +1028,13 @@ fn verify_hand_maintained(
             Err(reason) => unverifiable.push(((*file_name).to_string(), reason)),
         }
     }
-    Ok(HandVerifyReport { unverifiable })
+    Ok(HandVerifyReport {
+        unverifiable,
+        declared_divergent,
+        undeclared_divergent,
+        dissolved_declarations,
+        unproduced_declarations,
+    })
 }
 
 fn write_emitted_tree(dest_src: &Path, emitted: &HashMap<String, String>) -> Result<(), String> {

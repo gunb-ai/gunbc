@@ -18,7 +18,7 @@ import extdeps.systems.nvidia_fleet_lifecycle { FleetLifecycleEnvelope }
 // subject, and no check downstream could tell.
 //
 // This module is fleet-lifecycle grain, not DGX-Spark grain: any collector dispatched against any
-// fleet subject produces this shape, and gunbc.dgx_spark_procurement is its first consumer rather
+// fleet subject produces this shape, and gunbc.spark.dgx_procurement is its first consumer rather
 // than its owner.
 
 // Which endpoint the collector actually reached. Grounded on the address rather than a name: the address is the fact a router reservation also carries, so a consumer can require that evidence arrived from the endpoint reserved for the subject instead of from whatever answered to a hostname.

@@ -15,6 +15,7 @@ import gunbc.fleet_main_revision {
   FleetDesiredAdvanceInput,
   FleetDesiredExpectationRefusedInput, FleetDesiredRefAbsentInput, FleetDesiredObservedCurrentInput,
   FleetDesiredRefUnobserved,
+  FleetDesiredRefUndecodable,
   decide_fleet_desired_advance,
 }
 import gunbc.fleet_desired_admission {
@@ -86,6 +87,34 @@ test fn a_floor_green_default_branch_run_accepts_the_candidate_revision() -> Boo
     FleetDesiredRevisionRefused { cause: _ } => false
     FleetDesiredRevisionAccepted { accepted: a } =>
       git_object_id_wire_hex(oid: a.revision) as String == fixture_candidate_hex
+  }
+}
+
+// AN UNDECODABLE ADVERTISEMENT REFUSES WITHOUT WRITING OVER THE REF, and this row is PORTED from
+// main rather than dropped with the vocabulary it was written against. It arrived here through a
+// clean auto-merge -- no conflict marker -- still spelled in main's deleted `decided` /
+// AdmissionAdvanceAuthorized terms, so it would not have compiled; the tempting resolution was to
+// delete it with its siblings. But the CLAIM is real and this branch had no equivalent, and a
+// replacement that quietly drops a refusal has erased a correctness distinction rather than
+// completed a migration.
+//
+// The claim: the ref EXISTS holding something unreadable, so a write would destroy it and a retry
+// will not fix it. The assertion pins the remedy-bearing wording AND denies the unobserved arm's,
+// because the two refusals must stay distinguishable -- an operator repairs a corrupt ref and
+// retries an unreachable one. Wording follows THIS branch's authority
+// (gunbc.fleet_main_revision fleet_desired_advance_refusal_message), not main's, since porting a
+// claim means re-asserting it against the live message rather than copying a string that no
+// longer exists.
+test fn an_undecodable_desired_ref_refuses_without_writing_over_it() -> Bool {
+  match action_for(input: FleetDesiredExpectationRefusedInput {
+    accepted: accepted_fixture(),
+    cause: FleetDesiredRefUndecodable { advertised: "not-a-sha refs/fleet/desired" },
+  }) {
+    AdmissionActionAuthorized { action: _ } => false
+    AdmissionRefused { cause: c } =>
+      string_contains(s: c, pattern: "must not be written over")
+        && string_contains(s: c, pattern: "not-a-sha refs/fleet/desired")
+        && !string_contains(s: c, pattern: "could not be observed")
   }
 }
 

@@ -21,7 +21,7 @@ import gunbc.typed_remote_file_write {
   typed_remote_file_write_outcome_after_ssh_exec,
   typed_remote_file_write_over_fleet_ssh,
 }
-import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
+import gunbc.spark.serving_runtime_receipt { spark_serving_executor_home }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
