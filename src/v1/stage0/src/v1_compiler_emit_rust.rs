@@ -20446,11 +20446,11 @@ pub fn rust_call_arg_function_value_adapt(
     idx: i64,
 ) -> String {
     {
-        let is_lambda_literal = match (*arg.expr_data.clone()).clone() {
-            ExprData::ExprLambda => true,
+        let is_call_result = match (*arg.expr_data.clone()).clone() {
+            ExprData::ExprCall { .. } => true,
             _ => false,
         };
-        if is_lambda_literal.clone() {
+        if !is_call_result.clone() {
             return arg_str.clone();
         }
         match callee.clone() {

@@ -7988,9 +7988,18 @@ fn rust_call_arg_fail_closed_unwrap(arg_str: String, arg: Node, callee: ItemInfo
 // the value and calls through it. `__adapt_f(x)` inside that closure is a direct call expression, and
 // Rust's call operator (unlike generic trait-bound resolution) does deref-coerce through Rc, so the
 // wrapper compiles regardless of whether the captured value is an Rc<dyn Fn> or an already-bare
-// closure -- the transform is a safe superset, never narrower than what compiled before it. Only a
-// literal closure argument (ExprLambda) is left unwrapped, since it already satisfies the Fn bound
-// directly with no seam to cross.
+// closure -- the transform is a safe superset, never narrower than what compiled before it.
+// The seam only exists on the value-producing side: arg must itself be a CALL expression (ExprCall)
+// -- the result of invoking something whose return type is an arrow type, e.g. then_outcome(f, g)
+// nested inside another then_outcome(..) call. A bare identifier or field/method-call reference
+// (a named fn item, a captured closure parameter, `x.clone()`) is never adapted: it already carries
+// whichever rendering its OWN declaration site chose (a parameter is already `impl Fn`-typed; a
+// top-level fn item already coerces to `impl Fn` with no seam to cross), so wrapping it would be
+// pure textual churn with no seam to close -- confirmed by regen: an earlier revision keyed only on
+// the callee's parameter arity and fired on every non-lambda argument corpus-wide (key_eq.clone(),
+// frontier_subject_eq, is_ident_char, ...), rewriting call sites that already compiled and had no
+// E0277 seam to close. A literal closure argument (ExprLambda) is also left unwrapped, since it
+// already satisfies the Fn bound directly.
 // idx counts CALL arguments (value params only); info.params mixes generic type
 // params in with value params (is_function_type_param), so a raw info.params
 // |> skip(idx) misaligns for any generic callee whose type params precede its
@@ -7998,11 +8007,11 @@ fn rust_call_arg_fail_closed_unwrap(arg_str: String, arg: Node, callee: ItemInfo
 // function_value_params is the existing filter (used by emit_fn_def) that
 // recovers the value-param-only list idx is indexed against.
 fn rust_call_arg_function_value_adapt(arg_str: String, arg: Node, callee: ItemInfo?, idx: Int) -> String {
-  let is_lambda_literal = match arg.expr_data {
-    ExprLambda => true
+  let is_call_result = match arg.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: _ } => true
     _ => false
   }
-  if is_lambda_literal {
+  if !is_call_result {
     return arg_str
   }
   match callee {
