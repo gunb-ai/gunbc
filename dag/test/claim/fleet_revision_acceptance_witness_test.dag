@@ -1,0 +1,357 @@
+module test.claim.fleet_revision_acceptance_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data sha_a: String = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+
+data sha_b: String = "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+
+data github_evidence: String = "workflow_run event, run 17000000001"
+
+// ONE BUILDER, AND EVERY WITNESS BREAKS EXACTLY ONE FACT, so a red row names the fact it broke
+// rather than the shape of a hand-copied record. The workflow path defaults through the real
+// artifact authority rather than a literal: a fixture hardcoding it would keep passing after a
+// rename while production refused every genuine run -- and that failure is SILENT, because a
+// too-strict wall simply stops the fleet advancing with nothing red anywhere.
+fn ev(
+  activity: String,
+  workflow_path: String,
+  conclusion: WorkflowRunConclusion,
+  head_sha: String,
+  head_branch: String,
+  head_repository_full_name: String,
+  originating_event: String,
+  repository_full_name: String,
+) -> WorkflowRunEvent {
+  WorkflowRunEvent {
+    activity: activity,
+    run_id: "17000000001",
+    workflow_name: "witnesses",
+    workflow_id: "900001",
+    workflow_path: workflow_path,
+    conclusion: conclusion,
+    html_url: "https://github.com/gunb-ai/gunbc/actions/runs/17000000001",
+    run_started_at: "2026-08-21T00:00:00Z",
+    head_sha: head_sha,
+    head_branch: head_branch,
+    head_repository_full_name: head_repository_full_name,
+    originating_event: originating_event,
+    repository_full_name: repository_full_name,
+  }
+}
+
+fn trunk_push(head_sha: String) -> WorkflowRunEvent {
+  ev(
+    activity: "completed",
+    workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
+    conclusion: Success,
+    head_sha: head_sha,
+    head_branch: "main",
+    head_repository_full_name: "gunb-ai/gunbc",
+    originating_event: "push",
+    repository_full_name: "gunb-ai/gunbc",
+  )
+}
+
+fn pull_request_run(head_sha: String) -> WorkflowRunEvent {
+  ev(
+    activity: "completed",
+    workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
+    conclusion: Success,
+    head_sha: head_sha,
+    head_branch: "topic/experiment",
+    head_repository_full_name: "gunb-ai/gunbc",
+    originating_event: "pull_request",
+    repository_full_name: "gunb-ai/gunbc",
+  )
+}
+
+fn ci_admits(e: WorkflowRunEvent) -> Bool {
+  match accept_required_ci_workflow_run(event: e, evidence: github_evidence) {
+    RequiredCiAdmitted { succeeded: _ } => true
+    RequiredCiRefused { cause: _ } => false
+  }
+}
+
+fn branch_admits(e: WorkflowRunEvent) -> Bool {
+  match observe_default_branch_revision(event: e, evidence: github_evidence) {
+    DefaultBranchAdmitted { observed: _ } => true
+    DefaultBranchRefused { cause: _ } => false
+  }
+}
+
+fn oid(hex: String) -> GitObjectId? { git_object_id_from_untagged_hex(hex: hex) }
+
+// POSITIVE CONTROL, load-bearing rather than ceremonial. Almost every other row asserts a REFUSAL,
+// and a pair of producers that refused unconditionally would satisfy all of them. This is the row
+// that fails when a wall is TOO STRICT -- the failure mode a wall-shaped change actually has, and
+// the one that is invisible in production.
+test fn an_eligible_trunk_push_satisfies_both_propositions_and_the_join_accepts() -> Bool {
+  match accept_required_ci_workflow_run(event: trunk_push(head_sha: sha_a), evidence: github_evidence) {
+    RequiredCiAdmitted { succeeded: ci } =>
+      match observe_default_branch_revision(event: trunk_push(head_sha: sha_a), evidence: github_evidence) {
+        DefaultBranchAdmitted { observed: br } =>
+          match admit_fleet_revision(required_ci: ci, default_branch: br) {
+            FleetRevisionAccepted { accepted: a } =>
+              match oid(hex: sha_a) {
+                Present { value: expected } => git_object_id_eq(left: a.revision, right: expected)
+                none => false
+              }
+            _ => false
+          }
+        DefaultBranchRefused { cause: _ } => false
+      }
+    RequiredCiRefused { cause: _ } => false
+  }
+}
+
+// THE ASYMMETRY, AND IT IS THE WHOLE REASON THE TWO PROPOSITIONS ARE SEPARATE CARRIERS.
+//
+// A PR's merge-subject run genuinely ran the Required CI contract and genuinely passed on that
+// tree. Refusing it as a CI failure would be a lie about a real result -- so this producer ADMITS
+// it, and that admission is correct. What the run cannot prove is that the revision entered the
+// default branch, and that is exactly where it is refused.
+//
+// Had the two been folded into one predicate, either fact could stand in for the pair, and the
+// fleet would follow a revision main never had. This row is the executable form of that argument:
+// the SAME event, admitted by one producer and refused by the other.
+test fn a_pull_request_run_proves_required_ci_but_not_the_default_branch() -> Bool {
+  ci_admits(e: pull_request_run(head_sha: sha_a))
+    && match observe_default_branch_revision(
+      event: pull_request_run(head_sha: sha_a),
+      evidence: github_evidence,
+    ) {
+      DefaultBranchRefused { cause: BranchEventIsNotAPush { observed: o } } => o == "pull_request"
+      _ => false
+    }
+}
+
+// A push to a topic branch is the other half of the same asymmetry: the event IS a push, so the
+// event-kind arm passes and the BRANCH arm must be the one that refuses. Without this row a
+// producer checking only the originating event would pass every branch row above.
+test fn a_push_to_a_topic_branch_is_refused_by_the_branch_fact() -> Bool {
+  match observe_default_branch_revision(
+    event: ev(
+      activity: "completed",
+      workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
+      conclusion: Success,
+      head_sha: sha_a,
+      head_branch: "topic/experiment",
+      head_repository_full_name: "gunb-ai/gunbc",
+      originating_event: "push",
+      repository_full_name: "gunb-ai/gunbc",
+    ),
+    evidence: github_evidence,
+  ) {
+    DefaultBranchRefused { cause: BranchIsNotTheDefaultBranch { observed: o, required: r } } =>
+      o == "topic/experiment" && r == "main"
+    _ => false
+  }
+}
+
+// THE MISMATCH ARM. Required CI proving revision A and the default branch carrying revision B is
+// not a contradiction in the data -- both facts can be perfectly true, about different revisions,
+// and they arrive together whenever a push lands while a run is in flight. What is false is the
+// CONJUNCTION anyone would infer from holding both, and the refusal carries BOTH revisions because
+// "which two" is the entire content of the finding.
+test fn required_ci_for_one_revision_and_a_branch_at_another_refuses_naming_both() -> Bool {
+  match accept_required_ci_workflow_run(event: trunk_push(head_sha: sha_a), evidence: github_evidence) {
+    RequiredCiAdmitted { succeeded: ci } =>
+      match observe_default_branch_revision(event: trunk_push(head_sha: sha_b), evidence: github_evidence) {
+        DefaultBranchAdmitted { observed: br } =>
+          match admit_fleet_revision(required_ci: ci, default_branch: br) {
+            RequiredCiAndDefaultBranchRevisionMismatch {
+              required_ci_revision: got_ci,
+              default_branch_revision: got_br,
+            } =>
+              match oid(hex: sha_a) {
+                Present { value: a } =>
+                  match oid(hex: sha_b) {
+                    Present { value: b } =>
+                      git_object_id_eq(left: got_ci, right: a)
+                        && git_object_id_eq(left: got_br, right: b)
+                    none => false
+                  }
+                none => false
+              }
+            _ => false
+          }
+        DefaultBranchRefused { cause: _ } => false
+      }
+    RequiredCiRefused { cause: _ } => false
+  }
+}
+
+// THE REVISION IS DECODED BEFORE ANY POSITIVE CARRIER EXISTS. GitHub says head_sha is a SHA;
+// nothing on the wire establishes it. Both producers refuse an undecodable value rather than
+// constructing a carrier around it, so no consumer can be handed a revision that is not one.
+test fn an_undecodable_head_sha_refuses_on_both_producers() -> Bool {
+  match accept_required_ci_workflow_run(
+    event: trunk_push(head_sha: "not-a-sha"),
+    evidence: github_evidence,
+  ) {
+    RequiredCiRefused { cause: CiHeadShaUndecodable { observed: o } } => o == "not-a-sha"
+    _ => false
+  }
+    && match observe_default_branch_revision(
+      event: trunk_push(head_sha: "not-a-sha"),
+      evidence: github_evidence,
+    ) {
+      DefaultBranchRefused { cause: BranchHeadShaUndecodable { observed: o } } => o == "not-a-sha"
+      _ => false
+    }
+}
+
+// Each CI identity fact refuses with ITS OWN cause. Asserting only "refused" would let every arm
+// collapse into one and still pass -- and the collapse is what makes a refusal undebuggable, since
+// the remedies differ: wrong producer, wrong repo, an untrusted fork's head, not finished.
+test fn each_required_ci_identity_fact_refuses_with_its_own_cause() -> Bool {
+  match accept_required_ci_workflow_run(
+    event: ev(
+      activity: "completed",
+      workflow_path: ".github/workflows/fleet-converge.yml",
+      conclusion: Success,
+      head_sha: sha_a,
+      head_branch: "main",
+      head_repository_full_name: "gunb-ai/gunbc",
+      originating_event: "push",
+      repository_full_name: "gunb-ai/gunbc",
+    ),
+    evidence: github_evidence,
+  ) {
+    RequiredCiRefused { cause: CiWorkflowNotTheRequiredFloor { observed_path: p, required_path: q } } =>
+      p == ".github/workflows/fleet-converge.yml" && q == artifact_path(a: WitnessFloorYamlArtifact)
+    _ => false
+  }
+    && match accept_required_ci_workflow_run(
+      event: ev(
+        activity: "completed",
+        workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
+        conclusion: Success,
+        head_sha: sha_a,
+        head_branch: "main",
+        head_repository_full_name: "gunb-ai/gunbc",
+        originating_event: "push",
+        repository_full_name: "other/fork",
+      ),
+      evidence: github_evidence,
+    ) {
+      RequiredCiRefused { cause: CiRepositoryNotThisRepository { observed: o, required: _ } } =>
+        o == "other/fork"
+      _ => false
+    }
+    && match accept_required_ci_workflow_run(
+      event: ev(
+        activity: "completed",
+        workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
+        conclusion: Success,
+        head_sha: sha_a,
+        head_branch: "main",
+        head_repository_full_name: "someone/fork",
+        originating_event: "push",
+        repository_full_name: "gunb-ai/gunbc",
+      ),
+      evidence: github_evidence,
+    ) {
+      RequiredCiRefused { cause: CiHeadRepositoryNotThisRepository { observed: o, required: _ } } =>
+        o == "someone/fork"
+      _ => false
+    }
+    && match accept_required_ci_workflow_run(
+      event: ev(
+        activity: "requested",
+        workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
+        conclusion: Success,
+        head_sha: sha_a,
+        head_branch: "main",
+        head_repository_full_name: "gunb-ai/gunbc",
+        originating_event: "push",
+        repository_full_name: "gunb-ai/gunbc",
+      ),
+      evidence: github_evidence,
+    ) {
+      RequiredCiRefused { cause: CiActivityNotCompleted { observed: o } } => o == "requested"
+      _ => false
+    }
+}
+
+// A run that did not conclude Success is refused and the OBSERVED conclusion is carried. Cancelled
+// is exercised beside Failure deliberately: a cancelled run produces no failure to investigate, so
+// it is the state most likely to be read as "nothing happened" -- and it is exactly the state that
+// must not be mistaken for a floor that ran.
+test fn only_a_successful_conclusion_admits_and_the_others_are_named() -> Bool {
+  match accept_required_ci_workflow_run(
+    event: ev(
+      activity: "completed",
+      workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
+      conclusion: Failure,
+      head_sha: sha_a,
+      head_branch: "main",
+      head_repository_full_name: "gunb-ai/gunbc",
+      originating_event: "push",
+      repository_full_name: "gunb-ai/gunbc",
+    ),
+    evidence: github_evidence,
+  ) {
+    RequiredCiRefused { cause: CiConclusionNotSuccess { observed: c } } =>
+      match c {
+        Failure => true
+        _ => false
+      }
+    _ => false
+  }
+    && match accept_required_ci_workflow_run(
+      event: ev(
+        activity: "completed",
+        workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
+        conclusion: Cancelled,
+        head_sha: sha_a,
+        head_branch: "main",
+        head_repository_full_name: "gunb-ai/gunbc",
+        originating_event: "push",
+        repository_full_name: "gunb-ai/gunbc",
+      ),
+      evidence: github_evidence,
+    ) {
+      RequiredCiRefused { cause: CiConclusionNotSuccess { observed: c2 } } =>
+        match c2 {
+          Cancelled => true
+          _ => false
+        }
+      _ => false
+    }
+}
+
+// IDENTITY BEFORE OUTCOME, as a claim under test rather than an accident of how the ifs nest. A
+// FAILED run of the WRONG workflow must refuse as the wrong workflow: reporting "the floor was not
+// green" about a run that was never the floor sends a reader to investigate a failure that does
+// not exist, and that investigation terminates in confusion rather than in a fix.
+test fn a_failed_run_of_the_wrong_workflow_refuses_as_the_wrong_workflow() -> Bool {
+  match accept_required_ci_workflow_run(
+    event: ev(
+      activity: "completed",
+      workflow_path: ".github/workflows/fleet-converge.yml",
+      conclusion: Failure,
+      head_sha: sha_a,
+      head_branch: "main",
+      head_repository_full_name: "gunb-ai/gunbc",
+      originating_event: "push",
+      repository_full_name: "gunb-ai/gunbc",
+    ),
+    evidence: github_evidence,
+  ) {
+    RequiredCiRefused { cause: CiWorkflowNotTheRequiredFloor { observed_path: _, required_path: _ } } => true
+    _ => false
+  }
+}
+
+// The contract identity is DERIVED from the artifact authority that emits the workflow, never
+// re-typed. If this row and the emitter disagree, the fixture is lying rather than the wall. It
+// carries no phase roster: the fleet asks whether the exact contract succeeded for the exact
+// revision, and adding a phase to the floor must not be a breaking change to fleet admission.
+test fn the_contract_identity_is_the_emitted_workflow_not_a_phase_roster() -> Bool {
+  required_ci_contract().workflow_path == artifact_path(a: WitnessFloorYamlArtifact)
+    && required_ci_contract().workflow_path == ".github/workflows/witnesses.yml"
+    && required_ci_contract().repository_full_name == "gunb-ai/gunbc"
+}

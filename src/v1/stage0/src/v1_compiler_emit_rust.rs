@@ -23419,6 +23419,405 @@ pub fn emit_native_freemonoid_match(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RcGroupedArmPlan {
+    pub groupable: bool,
+    pub variant: String,
+    pub pat_str: String,
+    pub ref_field: String,
+    pub inner_pat_str: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RcGroupedArmEntry {
+    pub arm: Rc<Node>,
+    pub plan: Rc<RcGroupedArmPlan>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RcGroupedArmAcc {
+    pub seen: Rc<Vec<String>>,
+    pub out: Rc<Vec<String>>,
+}
+
+pub fn ungroupable_arm_plan(variant: String, pat_str: String) -> Rc<RcGroupedArmPlan> {
+    Rc::new(RcGroupedArmPlan {
+        groupable: false,
+        variant: variant.clone(),
+        pat_str: pat_str.clone(),
+        ref_field: "".to_string(),
+        inner_pat_str: "".to_string(),
+    })
+}
+
+pub fn variant_pattern_field_binding_named(
+    pattern: Rc<MatchPattern>,
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match (*pattern.clone()).clone() {
+        MatchPattern::VariantPattern {
+            field_bindings: fbs,
+            ..
+        } => Rc::new({
+            let mut __result = Vec::new();
+            for fb in fbs.clone().iter().cloned() {
+                if (field_binding_name_at(fb.clone(), source_indices.clone()) == field_name.clone())
+                {
+                    __result.push(fb);
+                }
+            }
+            __result
+        })
+        .first()
+        .cloned(),
+        _ => None,
+    }
+}
+
+pub fn variant_pattern_bare_name(pattern: Rc<MatchPattern>) -> String {
+    match (*pattern.clone()).clone() {
+        MatchPattern::VariantPattern { name: n, .. } => qualified_last_segment(n.clone()),
+        _ => "".to_string(),
+    }
+}
+
+pub fn rc_grouped_arm_plan(
+    arm: Rc<Node>,
+    scope: Rc<InferScope>,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    scrut_type: String,
+) -> Rc<RcGroupedArmPlan> {
+    {
+        let si = scope.type_env.clone().source_indices.clone();
+        let arm_pat = arm_pattern(arm.clone());
+        let rc_raw = analyze_rc_pattern(
+            arm_pat.clone(),
+            scrut_type.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+            si.clone(),
+        );
+        let rc = rc_pattern_analysis_with_box_fields(
+            rc_raw.clone(),
+            arm_pat.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+            scope.clone(),
+        );
+        let pat_str = if rc.needs_rc_pattern.clone() {
+            emit_pattern_rc_aware(
+                arm_pat.clone(),
+                Rc::new(vec![]),
+                rc.clone(),
+                shared_types.clone(),
+                scrut_type.clone(),
+                si.clone(),
+                emit_info.clone(),
+            )
+        } else {
+            emit_pattern(
+                arm_pat.clone(),
+                Rc::new(vec![]),
+                shared_types.clone(),
+                scrut_type.clone(),
+                si.clone(),
+                emit_info.clone(),
+            )
+        };
+        let variant = variant_pattern_bare_name(arm_pat.clone());
+        let single_field = if ((rc.ref_bound_fields.clone().len() as i64) == 1) {
+            rc.ref_bound_fields.clone().first().cloned()
+        } else {
+            None
+        };
+        let has_authored_guard = (arm_guard(arm.clone()) != None);
+        let string_guards =
+            collect_pattern_string_guards(arm_pat.clone(), Rc::new(vec![]), si.clone());
+        match single_field.clone() {
+            Some(field_name) => {
+                let rc_guard = collect_pattern_rc_variant_guards(
+                    arm_pat.clone(),
+                    rc.clone(),
+                    shared_types.clone(),
+                    si.clone(),
+                    emit_info.clone(),
+                );
+                if (((has_authored_guard.clone() || (string_guards.clone() != "".to_string()))
+                    || (rc_guard.clone() == "".to_string()))
+                    || (field_name.clone() == "0".to_string()))
+                {
+                    ungroupable_arm_plan(variant.clone(), pat_str.clone())
+                } else {
+                    match variant_pattern_field_binding_named(
+                        arm_pat.clone(),
+                        field_name.clone(),
+                        si.clone(),
+                    ) {
+                        Some(fb) => {
+                            let fb_pat = field_binding_pattern(fb.clone());
+                            let inner_rc = analyze_rc_pattern(
+                                fb_pat.clone(),
+                                "".to_string(),
+                                shared_types.clone(),
+                                emit_info.clone(),
+                                si.clone(),
+                            );
+                            if inner_rc.needs_rc_pattern.clone() {
+                                ungroupable_arm_plan(variant.clone(), pat_str.clone())
+                            } else {
+                                {
+                                    let inner_pat_str = emit_pattern(
+                                        fb_pat.clone(),
+                                        v1_rt::rc_list_push(
+                                            v1_rt::rc_list_push(Rc::new(vec![]), variant.clone()),
+                                            field_name.clone(),
+                                        ),
+                                        shared_types.clone(),
+                                        "".to_string(),
+                                        si.clone(),
+                                        emit_info.clone(),
+                                    );
+                                    Rc::new(RcGroupedArmPlan {
+                                        groupable: true,
+                                        variant: variant.clone(),
+                                        pat_str: pat_str.clone(),
+                                        ref_field: field_name.clone(),
+                                        inner_pat_str: inner_pat_str.clone(),
+                                    })
+                                }
+                            }
+                        }
+                        None => ungroupable_arm_plan(variant.clone(), pat_str.clone()),
+                    }
+                }
+            }
+            None => ungroupable_arm_plan(variant.clone(), pat_str.clone()),
+        }
+    }
+}
+
+pub fn rc_group_members(
+    entries: Rc<Vec<Rc<RcGroupedArmEntry>>>,
+    variant: String,
+) -> Rc<Vec<Rc<RcGroupedArmEntry>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for e in entries.clone().iter().cloned() {
+            if (e.plan.clone().variant.clone() == variant.clone()) {
+                __result.push(e);
+            }
+        }
+        __result
+    })
+}
+
+pub fn rc_group_is_whole_coverage(
+    entries: Rc<Vec<Rc<RcGroupedArmEntry>>>,
+    plan: Rc<RcGroupedArmPlan>,
+) -> bool {
+    {
+        let members = rc_group_members(entries.clone(), plan.variant.clone());
+        {
+            let mut __all = true;
+            for e in members.clone().iter().cloned() {
+                if !((e.plan.clone().groupable.clone()
+                    && (e.plan.clone().ref_field.clone() == plan.ref_field.clone()))
+                    && (e.plan.clone().pat_str.clone() == plan.pat_str.clone()))
+                {
+                    __all = false;
+                    break;
+                }
+            }
+            __all
+        }
+    }
+}
+
+pub fn emit_rc_grouped_match_arm(
+    members: Rc<Vec<Rc<RcGroupedArmEntry>>>,
+    plan: Rc<RcGroupedArmPlan>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    match_result_type: Rc<Node>,
+) -> String {
+    {
+        let inner_arms = Rc::new({
+            let mut __result = Vec::new();
+            for e in members.clone().iter().cloned() {
+                __result.push(v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat("    ".to_string(), e.plan.clone().inner_pat_str.clone()),
+                            " => ".to_string(),
+                        ),
+                        emit_typed_match_arm_body_str(
+                            e.arm.clone(),
+                            registry.clone(),
+                            scope.clone(),
+                            depth.clone(),
+                            shared_types.clone(),
+                            emit_info.clone(),
+                            match_result_type.clone(),
+                        ),
+                    ),
+                    ",".to_string(),
+                ));
+            }
+            __result
+        })
+        .join(&"\n".to_string());
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat("    ".to_string(), plan.pat_str.clone()),
+                            " => { match ".to_string(),
+                        ),
+                        emit_ident(plan.ref_field.clone(), RenderTarget::Rust),
+                    ),
+                    ".as_ref() {\n".to_string(),
+                ),
+                inner_arms.clone(),
+            ),
+            "\n} },".to_string(),
+        )
+    }
+}
+
+pub fn emit_typed_match_arm_strs(
+    arms: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    scrut_type: String,
+    match_result_type: Rc<Node>,
+) -> Rc<Vec<String>> {
+    {
+        let has_irrefutable = {
+            let mut __found = false;
+            for a in arms.clone().iter().cloned() {
+                if match_pattern_is_irrefutable(arm_pattern(a.clone())) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        };
+        if has_irrefutable.clone() {
+            Rc::new({
+                let mut __result = Vec::new();
+                for arm in arms.clone().iter().cloned() {
+                    __result.push(emit_typed_match_arm(
+                        arm.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        scrut_type.clone(),
+                        match_result_type.clone(),
+                        false,
+                    ));
+                }
+                __result
+            })
+        } else {
+            {
+                let entries = Rc::new({
+                    let mut __result = Vec::new();
+                    for arm in arms.clone().iter().cloned() {
+                        __result.push(Rc::new(RcGroupedArmEntry {
+                            arm: arm.clone(),
+                            plan: rc_grouped_arm_plan(
+                                arm.clone(),
+                                scope.clone(),
+                                shared_types.clone(),
+                                emit_info.clone(),
+                                scrut_type.clone(),
+                            ),
+                        }));
+                    }
+                    __result
+                });
+                let folded = entries.clone().iter().cloned().fold(
+                    Rc::new(RcGroupedArmAcc {
+                        seen: Rc::new(vec![]),
+                        out: Rc::new(vec![]),
+                    }),
+                    |acc: Rc<RcGroupedArmAcc>, e: Rc<RcGroupedArmEntry>| {
+                        if (e.plan.clone().groupable.clone()
+                            && rc_group_is_whole_coverage(entries.clone(), e.plan.clone()))
+                        {
+                            if {
+                                let mut __found = false;
+                                for s in acc.seen.clone().iter().cloned() {
+                                    if (s.clone() == e.plan.clone().variant.clone()) {
+                                        __found = true;
+                                        break;
+                                    }
+                                }
+                                __found
+                            } {
+                                acc.clone()
+                            } else {
+                                Rc::new(RcGroupedArmAcc {
+                                    seen: v1_rt::rc_list_push(
+                                        acc.seen.clone(),
+                                        e.plan.clone().variant.clone(),
+                                    ),
+                                    out: v1_rt::rc_list_push(
+                                        acc.out.clone(),
+                                        emit_rc_grouped_match_arm(
+                                            rc_group_members(
+                                                entries.clone(),
+                                                e.plan.clone().variant.clone(),
+                                            ),
+                                            e.plan.clone(),
+                                            registry.clone(),
+                                            scope.clone(),
+                                            depth.clone(),
+                                            shared_types.clone(),
+                                            emit_info.clone(),
+                                            match_result_type.clone(),
+                                        ),
+                                    ),
+                                })
+                            }
+                        } else {
+                            Rc::new(RcGroupedArmAcc {
+                                seen: acc.seen.clone(),
+                                out: v1_rt::rc_list_push(
+                                    acc.out.clone(),
+                                    emit_typed_match_arm(
+                                        e.arm.clone(),
+                                        registry.clone(),
+                                        scope.clone(),
+                                        depth.clone(),
+                                        shared_types.clone(),
+                                        emit_info.clone(),
+                                        scrut_type.clone(),
+                                        match_result_type.clone(),
+                                        false,
+                                    ),
+                                ),
+                            })
+                        }
+                    },
+                );
+                folded.out.clone()
+            }
+        }
+    }
+}
+
 pub fn emit_typed_match(
     scrutinee: Rc<Node>,
     arms: Rc<Vec<Rc<Node>>>,
@@ -23484,23 +23883,16 @@ pub fn emit_typed_match(
             Some(first_arm) => resolved_type(arm_body(first_arm.clone())),
             None => type_variable_node("match_result".to_string()),
         };
-        let arm_strs = Rc::new({
-            let mut __result = Vec::new();
-            for arm in arms.clone().iter().cloned() {
-                __result.push(emit_typed_match_arm(
-                    arm.clone(),
-                    registry.clone(),
-                    scope.clone(),
-                    depth.clone(),
-                    shared_types.clone(),
-                    emit_info.clone(),
-                    scrut_type.clone(),
-                    match_result_type.clone(),
-                    false,
-                ));
-            }
-            __result
-        });
+        let arm_strs = emit_typed_match_arm_strs(
+            arms.clone(),
+            registry.clone(),
+            scope.clone(),
+            depth.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+            scrut_type.clone(),
+            match_result_type.clone(),
+        );
         let arms_str = arm_strs.clone().join(&"\n".to_string());
         let needs_as_str =
             (all_arms_are_string_lit(arms.clone()) && ((arms.clone().len() as i64) > 0));
@@ -23614,6 +24006,62 @@ pub fn emit_typed_match(
                     }
                 }
             }
+        }
+    }
+}
+
+pub fn emit_typed_match_arm_body_str(
+    arm: Rc<Node>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    match_result_type: Rc<Node>,
+) -> String {
+    {
+        let arm_b = arm_body(arm.clone());
+        let si = scope.type_env.clone().source_indices.clone();
+        match (*arm_b.expr_data.clone()).clone() {
+            ExprData::ExprVar {
+                binding_kind: body_binding_kind,
+                ..
+            } => {
+                let body_name = expr_var_name_at(arm_b.clone(), si.clone());
+                if (variant_parent_from_binding_kind(body_binding_kind.clone()) != None) {
+                    emit_var_ref(
+                        body_name.clone(),
+                        body_binding_kind.clone(),
+                        Some(Rc::new(InferredNode::Resolved {
+                            node: match_result_type.clone(),
+                        })),
+                        shared_types.clone(),
+                        registry.clone(),
+                        emit_info.clone(),
+                        si.clone(),
+                        scope.module_name.clone(),
+                    )
+                } else {
+                    emit_typed_expr(
+                        arm_b.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        1024,
+                    )
+                }
+            }
+            _ => emit_typed_expr(
+                arm_b.clone(),
+                registry.clone(),
+                scope.clone(),
+                depth.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+                1024,
+            ),
         }
     }
 }
@@ -23740,47 +24188,15 @@ pub fn emit_typed_match_arm(
                 guard_parts.clone().join(&" && ".to_string()),
             )
         };
-        let body_str = match (*arm_b.expr_data.clone()).clone() {
-            ExprData::ExprVar {
-                binding_kind: body_binding_kind,
-                ..
-            } => {
-                let body_name = expr_var_name_at(arm_b.clone(), si.clone());
-                if (variant_parent_from_binding_kind(body_binding_kind.clone()) != None) {
-                    emit_var_ref(
-                        body_name.clone(),
-                        body_binding_kind.clone(),
-                        Some(Rc::new(InferredNode::Resolved {
-                            node: match_result_type.clone(),
-                        })),
-                        shared_types.clone(),
-                        registry.clone(),
-                        emit_info.clone(),
-                        si.clone(),
-                        scope.module_name.clone(),
-                    )
-                } else {
-                    emit_typed_expr(
-                        arm_b.clone(),
-                        registry.clone(),
-                        scope.clone(),
-                        depth.clone(),
-                        shared_types.clone(),
-                        emit_info.clone(),
-                        1024,
-                    )
-                }
-            }
-            _ => emit_typed_expr(
-                arm_b.clone(),
-                registry.clone(),
-                scope.clone(),
-                depth.clone(),
-                shared_types.clone(),
-                emit_info.clone(),
-                1024,
-            ),
-        };
+        let body_str = emit_typed_match_arm_body_str(
+            arm.clone(),
+            registry.clone(),
+            scope.clone(),
+            depth.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+            match_result_type.clone(),
+        );
         if rc_analysis.needs_rc_pattern.clone() {
             {
                 let prelude = rc_pattern_preludes(

@@ -2,6 +2,10 @@ module gunbc.roadmap_acceptance_history_observation
 
 
 
+data roadmap_acceptance_history_repository_path: String = "."
+
+data roadmap_acceptance_history_repository_path_note: String = "The repository this observation inspects. Declared rather than ambient, for the reason git.Inspect.MergeBase now requires it: an ambient repository makes a right answer and a wrong one indistinguishable, because two checkouts can hold refs that look identical."
+
 data roadmap_acceptance_history_authority_repo_path: String = "dag/gunbc/roadmap_authority.dag"
 
 data roadmap_acceptance_history_prior_history_next_rung_trigger: String = "DISSOLVED: merge-base prior_history parses dag/gunbc/roadmap_acceptance_event_history.jsonl via gunbc.roadmap_acceptance_history_carrier when the carrier exists at merge-base; when absent (carrier introduction on main) the typed bootstrap projects inline authority history via gunbc.roadmap_acceptance_history_projection. A changed carrier without a valid merge-base observation refuses AcceptanceHistoryIntegrityRefusedPriorHistoryObservation — never prior_history = []. git_show_path_absent_at_ref substring-matches both git stderr shapes for path absent at ref (tree miss: does not exist in; worktree-present-but-not-in-commit: exists on disk, but not in) until extdeps.git carries a typed path-absent-at-ref disposition. Remaining dissolve-on: delete both seed bridges when a modeled revision-addressed carrier ingest lands."
@@ -83,8 +87,9 @@ fn observe_roadmap_acceptance_history_prior(
   } else {
     let revision = head.sha as String
     let baseline = git.Inspect.MergeBase(
-      left: revision as std.types.GitRef,
-      right: base_ref as std.types.GitRef,
+      repository_path: roadmap_acceptance_history_repository_path,
+      left: revision as GitRef,
+      right: base_ref as GitRef,
       expect: ExpectSuccess,
     )
     if !baseline.success || (baseline.sha as String) == "" {

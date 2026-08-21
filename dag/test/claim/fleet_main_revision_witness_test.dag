@@ -7,52 +7,385 @@ fn fixture_rev(hex_char: String) -> extdeps.git.object_store.GitObjectId? {
   git_sha1_object_id(hex: join([hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char], ""))
 }
 
-// RED — the load-bearing admission law: a revision whose floor is not green NEVER
-// advances the desired ref, whatever the current ref state.
-test fn advance_refused_without_floor_green() -> Bool {
+fn accepted_at(revision: GitObjectId) -> AcceptedFleetRevision<String, String> {
+  AcceptedFleetRevision {
+    revision: revision,
+    required_ci_contract: required_ci_contract(),
+    required_ci_evidence: "required-ci evidence",
+    default_branch_evidence: "default-branch evidence",
+  }
+}
+
+fn observed_at(current: GitObjectId) -> FleetDesiredRevision {
+  FleetDesiredAdmitted { revision: current }
+}
+
+fn relation_between(
+  current: GitObjectId,
+  accepted: GitObjectId,
+  relation: DeployRevisionRelation,
+) -> FleetRevisionRelationObservation {
+  FleetRevisionRelationObservation { current: current, accepted: accepted, relation: relation }
+}
+
+// Every row below decides ONE pair through the real seam. Note what the helper no longer needs: a
+// relation for cases that have no current revision. The input sum means the create and refusal
+// rows cannot supply one, so no fixture here invents a fact to satisfy a parameter.
+fn decide_observed(
+  current: GitObjectId,
+  accepted: GitObjectId,
+  relation: DeployRevisionRelation,
+) -> FleetDesiredAdvanceDecision<String, String> {
+  decide_fleet_desired_advance(
+    input: FleetDesiredObservedCurrentInput {
+      accepted: accepted_at(revision: accepted),
+      current: current,
+      relation: relation_between(current: current, accepted: accepted, relation: relation),
+    },
+  )
+}
+
+// ABSENCE IS A STATE; CREATION IS A CAPABILITY. RemoteRefMustBeAbsent is a compare-and-swap
+// PRECONDITION -- it proves the ref is not there -- and it establishes nothing about whether this
+// path may bring the fleet's root authority into existence. An earlier revision of this decision
+// admitted a create on exactly that inference, which would also have silently widened live policy:
+// gunbc.fleet_desired_admission refuses first creation today, deliberately, so a "consumer port"
+// would have handed a workflow authorized only to ADVANCE the power to MINT.
+//
+// The refusal names the accepted revision, so the receipt says which creation was declined rather
+// than merely that one was.
+test fn an_absent_ref_is_a_precondition_not_an_authorization_to_create() -> Bool {
   match fixture_rev(hex_char: "a") {
-    Present { value: cand } =>
-      match admit_fleet_desired_advance(candidate: cand, floor_green: false, current: none) {
-        AdvanceRefused { cause: _ } => true
+    Present { value: acc } =>
+      match decide_fleet_desired_advance(
+        input: FleetDesiredRefAbsentInput { accepted: accepted_at(revision: acc) },
+      ) {
+        FleetDesiredAdvanceRefused {
+          cause: InitialFleetDesiredCreationNotAuthorized { accepted: named },
+        } => git_object_id_eq(left: named, right: acc)
         _ => false
       }
-        && match fixture_rev(hex_char: "b") {
-          Present { value: cur } =>
-            match admit_fleet_desired_advance(candidate: cand, floor_green: false, current: Present { value: cur }) {
-              AdvanceRefused { cause: _ } => true
+    _ => false
+  }
+}
+
+// FORWARD MOTION, AND THE LEASE NAMES THE EXACT PRIOR VERIFIED. A lease naming the wrong prior
+// refuses forever; a lease claiming absent-when-present CLOBBERS. Asserting only the variant
+// leaves both silent, so the prior's identity is asserted here.
+test fn a_current_ancestor_admits_a_forward_advance_leasing_that_exact_prior() -> Bool {
+  match fixture_rev(hex_char: "b") {
+    Present { value: cur } =>
+      match fixture_rev(hex_char: "c") {
+        Present { value: acc } =>
+          match decide_observed(current: cur, accepted: acc, relation: DeployedIsAncestor) {
+            FleetDesiredAdvanceAdmitted { accepted: a, expected_prior: prior } =>
+              git_object_id_eq(left: a.revision, right: acc)
+                && git_object_id_eq(left: prior, right: cur)
+                && match fleet_desired_admitted_expectation(
+                  decision: decide_observed(current: cur, accepted: acc, relation: DeployedIsAncestor),
+                ) {
+                  Present { value: RemoteRefMustEqual { oid: leased } } =>
+                    git_object_id_eq(left: leased, right: cur)
+                  _ => false
+                }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// TWO TERMINAL SUCCESSES THAT WRITE NOTHING, and neither may be rendered as operational red.
+// Superseded is a late result for an OLDER revision arriving after a newer one was admitted -- the
+// normal consequence of runs finishing out of order. Both are asserted to be non-refusals AND to
+// yield no lease, which is the property that would break if either were folded into the refusal
+// arm for tidiness or given an expectation it must not have.
+test fn already_converged_and_superseded_are_successes_that_write_nothing() -> Bool {
+  match fixture_rev(hex_char: "d") {
+    Present { value: rev } =>
+      match decide_observed(current: rev, accepted: rev, relation: SameRevision) {
+        FleetDesiredAlreadyConverged { accepted: a } => git_object_id_eq(left: a.revision, right: rev)
+        _ => false
+      }
+        && match fleet_desired_admitted_expectation(
+          decision: decide_observed(current: rev, accepted: rev, relation: SameRevision),
+        ) {
+          Present { value: _ } => false
+          _ => true
+        }
+    _ => false
+  }
+    && match fixture_rev(hex_char: "e") {
+      Present { value: cur } =>
+        match fixture_rev(hex_char: "f") {
+          Present { value: acc } =>
+            match decide_observed(current: cur, accepted: acc, relation: CandidateIsAncestor) {
+              FleetDesiredSupersededNoOp { accepted: a, current: c } =>
+                git_object_id_eq(left: a.revision, right: acc)
+                  && git_object_id_eq(left: c, right: cur)
               _ => false
             }
+              && match fleet_desired_admitted_expectation(
+                decision: decide_observed(current: cur, accepted: acc, relation: CandidateIsAncestor),
+              ) {
+                Present { value: _ } => false
+                _ => true
+              }
+          _ => false
+        }
+      _ => false
+    }
+}
+
+// THE ROW A CAS CANNOT SUPPLY. Unrelated histories means neither revision is an ancestor of the
+// other, so the ref would move sideways. Every upstream check passes: the revision was proven, the
+// observation was real, the lease would match. Only the relation refuses it, which is the whole
+// argument for the relation existing. Unverifiable is asserted beside it because unknown-as-forward
+// is the empty-observation narrow pointed at the one property the CAS cannot check.
+test fn unrelated_and_unverifiable_both_refuse_though_the_lease_would_have_matched() -> Bool {
+  match fixture_rev(hex_char: "1") {
+    Present { value: cur } =>
+      match fixture_rev(hex_char: "2") {
+        Present { value: acc } =>
+          match decide_observed(current: cur, accepted: acc, relation: UnrelatedHistories) {
+            FleetDesiredAdvanceRefused {
+              cause: AdvanceHistoriesUnrelated { current: c, accepted: a },
+            } => git_object_id_eq(left: c, right: cur) && git_object_id_eq(left: a, right: acc)
+            _ => false
+          }
+            && match decide_observed(
+              current: cur,
+              accepted: acc,
+              relation: RelationUnverifiable { cause: "shallow clone: merge base unreachable" },
+            ) {
+              FleetDesiredAdvanceRefused {
+                cause: AdvanceRelationUnobservable { current: _, accepted: _, cause: _ },
+              } => true
+              _ => false
+            }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE SUBJECT-BINDING WALL. A bare relation is not evidence: it does not say WHICH TWO revisions
+// were compared, so a genuine DeployedIsAncestor computed for some OTHER pair would license an
+// advance here. Note the supplied relation is entirely TRUTHFUL about its own pair; what makes it
+// inadmissible is that its pair is not the one under decision.
+test fn a_relation_about_another_pair_is_refused_however_true_it_is() -> Bool {
+  match fixture_rev(hex_char: "5") {
+    Present { value: cur } =>
+      match fixture_rev(hex_char: "6") {
+        Present { value: acc } =>
+          match fixture_rev(hex_char: "7") {
+            Present { value: stranger } =>
+              match decide_fleet_desired_advance(
+                input: FleetDesiredObservedCurrentInput {
+                  accepted: accepted_at(revision: acc),
+                  current: cur,
+                  relation: relation_between(
+                    current: stranger,
+                    accepted: acc,
+                    relation: DeployedIsAncestor,
+                  ),
+                },
+              ) {
+                FleetDesiredAdvanceRefused {
+                  cause: AdvanceRelationIsAboutAnotherPair {
+                    relation_current: rc,
+                    relation_accepted: _,
+                    actual_current: ac,
+                    actual_accepted: _,
+                  },
+                } =>
+                  git_object_id_eq(left: rc, right: stranger)
+                    && git_object_id_eq(left: ac, right: cur)
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// The remedy-preserving refusals survive to the final decision. An unobservable ref and a corrupt
+// one both refuse, and they refuse DISTINGUISHABLY -- the property the whole seam was rebuilt to
+// hold, asserted at its last consumer rather than only at its source. Neither supplies a relation,
+// because neither has a current revision to relate to.
+test fn the_refusal_remedy_survives_to_the_final_decision() -> Bool {
+  match fixture_rev(hex_char: "8") {
+    Present { value: acc } =>
+      match decide_fleet_desired_advance(
+        input: FleetDesiredExpectationRefusedInput {
+          accepted: accepted_at(revision: acc),
+          cause: FleetDesiredRefUnobserved { cause: "ls-remote refused" },
+        },
+      ) {
+        FleetDesiredAdvanceRefused {
+          cause: AdvanceExpectationUnavailable { cause: FleetDesiredRefUnobserved { cause: _ } },
+        } => true
+        _ => false
+      }
+        && match decide_fleet_desired_advance(
+          input: FleetDesiredExpectationRefusedInput {
+            accepted: accepted_at(revision: acc),
+            cause: FleetDesiredRefUndecodable { advertised: "not-a-sha" },
+          },
+        ) {
+          FleetDesiredAdvanceRefused {
+            cause: AdvanceExpectationUnavailable {
+              cause: FleetDesiredRefUndecodable { advertised: line },
+            },
+          } => line == "not-a-sha"
           _ => false
         }
     _ => false
   }
 }
 
-// The admitted advance is a CAS carrying the expected prior — first admission carries
-// from=none (ref creation), a subsequent one carries the exact prior revision.
-test fn admitted_advance_is_cas_carrying_expected_prior() -> Bool {
-  match fixture_rev(hex_char: "a") {
-    Present { value: cand } =>
-      match admit_fleet_desired_advance(candidate: cand, floor_green: true, current: none) {
-        AdvanceAdmitted { from: f, to: _ } =>
-          match f {
-            Present { value: _ } => false
-            _ => true
+// THE PAIR THE EXIT CODE EXISTS FOR, AND IT IS THE ONLY ROW THAT JUSTIFIES CARRYING ONE.
+//
+// `git merge-base` exits 1 for "these two share no merge base" -- an ANSWER about the pair -- and
+// 128 for "invalid ref, or this is not a repository" -- a failure to look. Both are
+// exit_success = false. Reading the Bool alone forces one of two wrong moves: refuse both, which
+// discards a real answer and blocks an advance that unrelated-histories should have decided; or
+// admit both, which reads an unreadable repository as PROOF that two revisions are unrelated.
+//
+// These two rows are asserted together deliberately. Either alone is satisfiable by a fold that
+// ignores the exit code entirely -- one by always observing, the other by always refusing -- so it
+// is the DIVERGENCE between them that carries the claim, not either verdict on its own.
+test fn exit_one_is_an_answer_and_exit_one_two_eight_is_an_absence_of_one() -> Bool {
+  match fixture_rev(hex_char: "1") {
+    Present { value: cur } =>
+      match fixture_rev(hex_char: "2") {
+        Present { value: acc } =>
+          match fleet_revision_relation_from_merge_base(
+            current: cur,
+            accepted: acc,
+            exit_code: 1,
+            base_hex: "",
+            stderr: "",
+          ) {
+            FleetRevisionRelationObservation { current: c, accepted: a, relation: rel } =>
+              git_object_id_eq(left: c, right: cur)
+                && git_object_id_eq(left: a, right: acc)
+                && match rel {
+                  UnrelatedHistories => true
+                  _ => false
+                }
+          }
+            && match merge_base_relation(
+              current: cur,
+              accepted: acc,
+              exit_code: 128,
+              base_hex: "",
+              stderr: "fatal: not a git repository",
+            ) {
+              RelationUnverifiable { cause: _ } => true
+              _ => false
+            }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// One merge base decides BOTH directions -- a commit is an ancestor of another exactly when it IS
+// their merge base -- so no second probe is needed. All three exit-0 shapes are exercised: the base
+// is the current revision (forward), the accepted one (superseded), or neither (diverged).
+test fn one_merge_base_decides_both_directions() -> Bool {
+  match fixture_rev(hex_char: "3") {
+    Present { value: cur } =>
+      match fixture_rev(hex_char: "4") {
+        Present { value: acc } =>
+          match fixture_rev(hex_char: "5") {
+            Present { value: third } =>
+              relation_from_merge_base_oid(current: cur, accepted: acc, base: cur) == DeployedIsAncestor
+                && relation_from_merge_base_oid(current: cur, accepted: acc, base: acc) == CandidateIsAncestor
+                && relation_from_merge_base_oid(current: cur, accepted: acc, base: third) == UnrelatedHistories
+            _ => false
           }
         _ => false
       }
-        && match fixture_rev(hex_char: "b") {
-          Present { value: cur } =>
-            match admit_fleet_desired_advance(candidate: cand, floor_green: true, current: Present { value: cur }) {
-              AdvanceAdmitted { from: f2, to: _ } =>
-                match f2 {
-                  Present { value: _ } => true
-                  _ => false
-                }
-              _ => false
-            }
-          _ => false
-        }
+    _ => false
+  }
+}
+
+// Equality short-circuits before any probe result is consulted, so a converged pair is decided
+// without trusting the transport at all. Asserted against a REFUSING exit code: if the fold read
+// the exit first, this would refuse instead of reporting convergence.
+test fn an_equal_pair_is_converged_without_consulting_the_probe() -> Bool {
+  match fixture_rev(hex_char: "6") {
+    Present { value: rev } =>
+      match merge_base_relation(
+        current: rev,
+        accepted: rev,
+        exit_code: 128,
+        base_hex: "",
+        stderr: "fatal: not a git repository",
+      ) {
+        SameRevision => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// A successful probe whose stdout is not an object id REFUSES rather than folding a garbage value
+// into a relation. The success exit says the command ran; it does not say the output is a commit.
+test fn a_successful_probe_with_undecodable_output_refuses() -> Bool {
+  match fixture_rev(hex_char: "7") {
+    Present { value: cur } =>
+      match fixture_rev(hex_char: "8") {
+        Present { value: acc } =>
+          match merge_base_relation(
+            current: cur,
+            accepted: acc,
+            exit_code: 0,
+            base_hex: "not-a-sha",
+            stderr: "",
+          ) {
+            RelationUnverifiable { cause: _ } => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// The fold feeds the decision end to end: a merge base equal to the current revision is forward
+// motion, and the advance leases exactly that prior. This is the row that proves the observer and
+// the decision agree on which endpoint is which -- swapping them would still typecheck.
+test fn the_folded_relation_drives_the_decision_and_leases_the_right_prior() -> Bool {
+  match fixture_rev(hex_char: "9") {
+    Present { value: cur } =>
+      match fixture_rev(hex_char: "a") {
+        Present { value: acc } =>
+          match decide_fleet_desired_advance(
+            input: FleetDesiredObservedCurrentInput {
+              accepted: accepted_at(revision: acc),
+              current: cur,
+              relation: fleet_revision_relation_from_merge_base(
+                current: cur,
+                accepted: acc,
+                exit_code: 0,
+                base_hex: git_object_id_wire_hex(oid: cur) as String,
+                stderr: "",
+              ),
+            },
+          ) {
+            FleetDesiredAdvanceAdmitted { accepted: a, expected_prior: prior } =>
+              git_object_id_eq(left: a.revision, right: acc)
+                && git_object_id_eq(left: prior, right: cur)
+            _ => false
+          }
+        _ => false
+      }
     _ => false
   }
 }
