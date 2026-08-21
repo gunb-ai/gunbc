@@ -5018,7 +5018,7 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<v1.std.core
   }
   let si_presence = scope.type_env.source_indices
   let presence_variant_owner = variant_owner_node(scope: scope, name: tn_str)
-  let presence_fields = if tn_str == "" {
+  let presence_fields: List<v1.std.core.Node> = if tn_str == "" {
     []
   } else {
     match presence_variant_owner {
