@@ -14,7 +14,6 @@ import gunbc.stage0_rust_host_observation {
   current_stage0_rust_source_observation
 }
 import gunbc.generated_artifact { GeneratedArtifact, artifact_path, generated_artifact_registry }
-import gunbc.stage0_emit_plan_generated { generated_stage0_files }
 import gunbc.seed_growth_admission { seed_growth_roster_well_formed_gate_holds }
 import std.content_hash { Fnv1a64Structural }
 import std.keyed_roster { path_occurrence_count }
@@ -60,12 +59,6 @@ data rust_source_manifest_state_verdict_dissolve_trigger: DissolutionCondition =
 
 fn path_in_list(path: String, paths: List<String>) -> Bool {
   any(xs: paths, predicate: fn(p) { p == path })
-}
-
-fn observed_classified_repo_paths(
-  file_grain_paths: List<String>
-) -> List<String> {
-  file_grain_paths
 }
 
 fn observed_cargo_paths_subset_of_tracked(
@@ -201,6 +194,16 @@ fn count_observed_manifest_duplicate_excess(
   )
 }
 
+// A CARGO TARGET MUST BE NAMED BY AN AUTHORITY, NOT MERELY FALL UNDER THE EMITTER'S COMPLEMENT.
+// CargoTargetMissingLifecycleDisposition asks whether some authority accounts for a [[bin]]
+// path. It formerly compared against the whole lifecycle population, which was safe while the
+// generated half was an enumerated roster. It is not safe now: the derived half claims EVERY
+// unclaimed direct child of the stage0 root, so any new [[bin]] under that root would answer
+// "dispositioned" by construction and the refusal could never fire again. That is the DESIGN 5
+// absorbing fallback exactly -- the arm widens instead of refusing, and its firing rate goes to
+// zero by construction rather than because the defect stopped occurring. Caught by execution:
+// scaffold_observed_cargo_role_does_not_supply_lifecycle_disposition went red on the floor while
+// two reviews passed over the change. The comparison is against the AUTHORED classification.
 fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) -> RustSourceManifestStateVerdict {
   match observation {
     RustManifestReadRefused { detail: detail } =>
@@ -219,8 +222,8 @@ fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) ->
       if repository_revision == "" {
         ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: "observed manifest missing repository_revision" } }
       } else {
-        let file_grain_paths = file_grain_lifecycle_repo_paths()
-        let classified_paths = observed_classified_repo_paths(file_grain_paths: file_grain_paths)
+        let file_grain_paths = file_grain_lifecycle_repo_paths(tracked_paths: tracked_paths)
+        let classified_paths = file_grain_paths
         let lifecycle_paths = classified_paths
         let newly_unclassified = count_newly_unclassified_tracked(
           tracked_paths: tracked_paths,
@@ -242,7 +245,7 @@ fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) ->
         )
         let cargo_without_disposition = first_untracked_cargo_path(
           cargo_bin_repo_paths: cargo_bin_repo_paths,
-          tracked_paths: file_grain_paths
+          tracked_paths: non_generated_classified_repo_paths()
         )
         if length(xs: cargo_bin_repo_paths) == 0 {
           ManifestStateScaffoldRefused { cause: HostManifestParseRefused { detail: "observed manifest missing cargo_bin_repo_paths evidence" } }
@@ -285,12 +288,6 @@ data rust_source_discovery_prefix_hints: List<String> = [
 ]
 
 data stage0_src_repo_prefix: String = "src/v1/stage0/src/"
-
-data generated_stage0_files_authority_ref: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.stage0_emit_plan_generated",
-  decl_name: "generated_stage0_files",
-  field: WholeDeclaration
-}
 
 data hand_maintained_stage0_filenames_authority_ref: DeclarationRef = DeclarationRef {
   module_path: "v2.compiler.self_host.stage0_crate_layout",
@@ -336,10 +333,50 @@ fn stage0_src_repo_path(filename: String) -> String {
   concat(stage0_src_repo_prefix, filename)
 }
 
-fn derived_generated_stage0_repo_paths() -> List<String> {
-  list_map(
-    xs: generated_stage0_files,
-    f: fn(basename) { stage0_src_repo_path(filename: basename) }
+// THE GENERATED POPULATION IS DERIVED FROM THE OBSERVED TREE, NOT STORED.
+// It was a 100+ row hand list, `gunbc.stage0_emit_plan_generated generated_stage0_files`,
+// whose producer `gunbc.stage0_emit_plan` died in the #8406 regen root cut. A roster with no
+// producer does not stop being an authority -- it becomes a SECOND one that drifts silently,
+// and it did: #8587 had to hand-edit it to remove two files the emit had stopped producing.
+//
+// The derivation below is the one `required_regen_host` `committed_generated_basenames`
+// already executes in production: a direct-child `.rs` under the stage0 source root that the
+// crate-layout authority does not claim IS the generated population. Both sides now read one
+// authority -- `v2.compiler.self_host.stage0_crate_layout` -- so .dag cannot disagree with the
+// host about which files the emitter owns.
+//
+// WHAT THIS ARM CANNOT DECIDE, stated rather than absorbed: a NEWLY hand-added stage0 file
+// that nobody registered lands here as `generated` instead of surfacing as `unclassified`.
+// That class is not lost -- it is decided one rung up, by `claim_executor --required-regen`,
+// whose `committed_not_emitted` refusal names exactly such a file because it compares against
+// the real emit population, which no at-rest .dag fact carries. The stale roster could only
+// catch it by BEING stale, and could not catch the converse (a file the emit stopped
+// producing) at all. The lower-rung machinery dissolves; its evidence stays enrolled.
+fn stage0_src_direct_child_rust_path(path: String) -> Bool {
+  if !rust_source_path_has_prefix(path: path, prefix: stage0_src_repo_prefix) {
+    false
+  } else if !ends_with(s: path, suffix: ".rs") {
+    false
+  } else {
+    let n = string_length(s: path)
+    let prefix_length = string_length(s: stage0_src_repo_prefix)
+    let relative = substring(s: path, start: prefix_length, end: n)
+    !string_contains(s: relative, pattern: "/")
+  }
+}
+
+//
+// `claimed` is hoisted rather than inlined into the predicate: non_generated_classified_repo_paths()
+// folds three rosters through list_concat_unique, which is quadratic in its own length, and
+// calling it per tracked path would multiply that by the whole observed tree.
+fn derived_generated_stage0_repo_paths(tracked_paths: List<String>) -> List<String> {
+  let claimed = non_generated_classified_repo_paths()
+  filter(
+    xs: tracked_paths,
+    predicate: fn(path) {
+      stage0_src_direct_child_rust_path(path: path)
+        && !path_in_list(path: path, paths: claimed)
+    }
   )
 }
 
@@ -352,7 +389,7 @@ fn derived_hand_maintained_stage0_repo_paths() -> List<String> {
 
 data residue_frontier_module_gap_dissolved_note: String = "v2_compiler_compile.rs, v2_compiler_program_assembly.rs and v2_compiler_source_authority.rs carried a residue_frontier_module_gap row each, whose own dissolution condition read: 'dissolve-on: the module basename appears on hand_maintained_stage0_filenames() ... and this residue row deletes.' The #8428 regen-survivability backfill (pre_existing_hand_retained_registration_backfill_note, v2.compiler.self_host.stage0_crate_layout) registered all three as SeedRetainedIntrinsicRegistration rows, so the trigger fired and the three residue rows are deleted here rather than left stale — the dissolution condition is evidence consumed, not a permission grant kept beside a state it no longer describes."
 
-data residue_cssl_hand_maintained_overlap_note: String = "cssl_seed_linked_closure_assembly.rs is BOTH a residue row here (not yet regen-emitted, dissolve-on generated_stage0_files membership) AND, since the same #8428 backfill, a hand_maintained_stage0_filenames() member (excluded from required_regen_host's compile_stage0() population comparison, since it is a CSSL-harness-compiled oracle never part of the stage0 crate's own mod tree). Its dissolution condition names generated_stage0_files membership, not hand_maintained_stage0_filenames() membership, so unlike the three dissolved rows above this one's trigger has not fired — it is a genuine, currently-necessary dual classification (residue-pending-emission AND emit-comparison-excluded), not a duplicate authority for the same fact. classified_residue_disjoint_holds is scoped to exclude this single known, named path rather than silently widening to tolerate any future collision."
+data residue_cssl_hand_maintained_overlap_note: String = "cssl_seed_linked_closure_assembly.rs is BOTH a residue row here (not yet regen-emitted) AND, since the #8428 backfill, a hand_maintained_stage0_filenames() member (excluded from required_regen_host's compile_stage0() population comparison, since it is a CSSL-harness-compiled oracle never part of the stage0 crate's own mod tree). THIS NOTE FORMERLY TURNED ON A DISTINCTION THAT NO LONGER EXISTS: it argued the dual classification was genuine because the dissolution trigger named generated_stage0_files membership rather than hand_maintained_stage0_filenames() membership -- two rosters, two memberships. With the generated population derived as the complement of the crate-layout claim, those are one membership read two ways, and the trigger is restated accordingly. The dual classification itself survives and is still genuine (residue-pending-emission AND emit-comparison-excluded); what dies is the two-roster argument for it. classified_residue_disjoint_holds is scoped to exclude this single known, named path rather than silently widening to tolerate any future collision."
 
 data generated_artifact_disposition_derivation_note: String = "derived_hand_maintained_stage0_repo_paths() answers ONE question: which paths must be pub-mod-declared for the crate to link (layout membership, per hand_maintained_stage0_filenames_authority_ref). It does not answer who maintains a path's contents. A layout member's maintenance disposition is DERIVED, never hand-enumerated: gunbc.generated_artifact's generated_artifact_registry is the closed, single authority over every drift-gated artifact this repo produces, and artifact_path is its per-variant path projection — the same projection generated_artifact_emit.dag's artifact_generate dispatch already reads. Any stage0-src path that is a member of that registry (generated_artifact_stage0_src_repo_paths, an identity join by artifact_path, not a filename literal) is EmitFrom the registry's real generation authority, never HandScaffold and never silently excluded by a hand-picked path. v1_interpreter_dispatch_generated.rs (V1InterpreterDispatchGeneratedRsArtifact) is the discriminating case that exposed the conflation; bootstrap_stage0_crate_layout_generated.rs (Stage0CrateLayoutGeneratedRsArtifact) is the second instance the same join surfaces — both derive from the identical registry membership check, no per-file code. derived_hand_maintained_disposition_repo_paths() is the corrected maintenance-disposition population: layout membership minus the generated-artifact-registry overlap. This is the single authority consumed by count_hand_maintained_in_tracked/count_hand_maintained_in_prior_tracked and by gunbc.stage0_rust_honest_frontier_integration's exact_hand_maintained_* joins."
 
@@ -470,11 +507,6 @@ fn list_concat_unique(acc: List<String>, items: List<String>) -> List<String> {
   )
 }
 
-fn derived_authority_join_repo_paths() -> List<String> {
-  let from_generated = derived_generated_stage0_repo_paths()
-  list_concat_unique(acc: from_generated, items: derived_hand_maintained_stage0_repo_paths())
-}
-
 fn rust_source_path_has_prefix(path: String, prefix: String) -> Bool {
   starts_with(s: path, prefix: prefix)
 }
@@ -488,7 +520,7 @@ fn path_matches_discovery_prefix_hint(path: String) -> Bool {
 
 data residue_cssl_assembly_reason: String = "hand-retained cssl seed-linked closure assembly kernel — not regen-emitted; counted scaffold until harness consolidation emits it"
 
-data residue_cssl_assembly_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: cssl_seed_linked_closure_assembly.rs migrates to generated_stage0_files membership or a typed emit producer row deletes the hand file")
+data residue_cssl_assembly_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: cssl_seed_linked_closure_assembly.rs leaves hand_maintained_stage0_filenames() -- i.e. compile_stage0() emits it, so the derived generated population claims it -- or a typed emit producer row deletes the hand file")
 
 data residue_module_path_index_reason: String = "hand_maintained_stage0_dirs lists module_path_index/ but file membership is not enumerated by any join authority yet"
 
@@ -540,16 +572,47 @@ fn residue_lifecycle_repo_paths() -> List<String> {
   list_map(xs: rust_source_lifecycle_residue_rows, f: fn(row) { row.path })
 }
 
-fn file_grain_lifecycle_repo_paths() -> List<String> {
-  let with_residue = list_concat_unique(acc: derived_authority_join_repo_paths(), items: residue_lifecycle_repo_paths())
+// The classified population that does NOT come from the observed tree: every path some
+// authority names outright. `derived_generated_stage0_repo_paths` is defined as the observed
+// stage0 direct children this list does not claim, so the two are disjoint by construction --
+// which is why `derived_generated_hand_disjoint_holds`, the check that used to assert exactly
+// that over two hand rosters, is deleted rather than kept green (DESIGN 4b: a climb dissolves
+// the production machinery it obsoletes).
+fn non_generated_classified_repo_paths() -> List<String> {
+  let with_residue = list_concat_unique(
+    acc: derived_hand_maintained_stage0_repo_paths(),
+    items: residue_lifecycle_repo_paths()
+  )
   list_concat_unique(acc: with_residue, items: generated_artifact_stage0_src_repo_paths())
 }
 
-fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> RustManifestObserved {
-  let lifecycle_paths = file_grain_lifecycle_repo_paths()
-  let classified = observed_classified_repo_paths(
-    file_grain_paths: lifecycle_paths
+fn file_grain_lifecycle_repo_paths(tracked_paths: List<String>) -> List<String> {
+  list_concat_unique(
+    acc: non_generated_classified_repo_paths(),
+    items: derived_generated_stage0_repo_paths(tracked_paths: tracked_paths)
   )
+}
+
+// FIXTURE GENERATED PATHS ARE SYNTHETIC AND DELIBERATELY SO. The generated population is now
+// a function of the tracked list, so a fixture that derived its tracked list from the
+// classified population would be circular -- it would observe only what it already named and
+// could never exercise the filter. These two names are not real files; they exercise the
+// derivation (direct-child .rs under the stage0 root, claimed by no authority) without
+// coupling the witnesses to whichever real modules happen to be emitted today.
+data witness_generated_stage0_fixture_paths: List<String> = [
+  stage0_src_repo_path(filename: "witness_generated_fixture_a.rs"),
+  stage0_src_repo_path(filename: "witness_generated_fixture_b.rs")
+]
+
+fn witness_fixture_tracked_paths() -> List<String> {
+  list_concat_unique(
+    acc: non_generated_classified_repo_paths(),
+    items: witness_generated_stage0_fixture_paths
+  )
+}
+
+fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> RustManifestObserved {
+  let classified = witness_fixture_tracked_paths()
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
     manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
@@ -560,15 +623,12 @@ fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> Rust
 }
 
 fn witness_hand_maintained_growth_observation() -> RustManifestObserved {
-  let from_generated = derived_generated_stage0_repo_paths()
-  let prior_file_grain = list_concat_unique(acc: from_generated, items: residue_lifecycle_repo_paths())
-  let current_file_grain = file_grain_lifecycle_repo_paths()
-  let classified = observed_classified_repo_paths(
-    file_grain_paths: current_file_grain
+  let prior_file_grain = list_concat_unique(
+    acc: witness_generated_stage0_fixture_paths,
+    items: residue_lifecycle_repo_paths()
   )
-  let prior_classified = observed_classified_repo_paths(
-    file_grain_paths: prior_file_grain
-  )
+  let classified = witness_fixture_tracked_paths()
+  let prior_classified = prior_file_grain
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
     manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
@@ -579,15 +639,40 @@ fn witness_hand_maintained_growth_observation() -> RustManifestObserved {
 }
 
 fn witness_honest_minimal_observation_ok() -> RustManifestObserved {
-  let lifecycle_paths = file_grain_lifecycle_repo_paths()
-  let classified = observed_classified_repo_paths(
-    file_grain_paths: lifecycle_paths
-  )
+  let classified = witness_fixture_tracked_paths()
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
     manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
     tracked_rust_repo_paths: classified,
     prior_tracked_rust_repo_paths: classified,
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+  }
+}
+
+// The standing-unclassified fixture, and the reason it is authored separately from the
+// sibling constructors above rather than being one more `extra_path` argument to them.
+//
+// count_newly_unclassified_tracked is checked BEFORE count_tracked_unclassified in the verdict
+// fold, and it is the narrower predicate: a tracked path that is unclassified AND absent from
+// prior_tracked. So every constructor that adds its extra path to tracked alone lands on
+// DerivedNewlyUnclassified and can never reach the arm below it. That is not a second way of
+// exercising the same axis -- it is the reason DerivedUnclassifiedTracked had no discriminating
+// input at all, while a witness NAMED for the unclassified axis asserted the newly arm and
+// passed. This constructor puts the planted path in BOTH tracked and prior_tracked, which is the
+// only shape that reaches the standing arm, and it is what makes the two arms distinguishable by
+// execution rather than by reading the fold.
+//
+// Controlled fixture, not a tree-copied pin: the input population and the expected population are
+// authored independently here (one planted path in, exactly one counted out), so automating the
+// expected value would not collapse the assertion to measure() == measure().
+fn witness_standing_unclassified_observation(planted_path: String) -> RustManifestObserved {
+  let classified = witness_fixture_tracked_paths()
+  let tracked = list_concat_unique(acc: classified, items: [planted_path])
+  RustManifestObserved {
+    repository_revision: "witness-deadbeef",
+    manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+    tracked_rust_repo_paths: tracked,
+    prior_tracked_rust_repo_paths: tracked,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
   }
 }
@@ -607,10 +692,7 @@ fn first_classified_repo_path(classified: List<String>) -> String {
 }
 
 fn witness_duplicate_tracked_observation() -> RustManifestObserved {
-  let lifecycle_paths = file_grain_lifecycle_repo_paths()
-  let classified = observed_classified_repo_paths(
-    file_grain_paths: lifecycle_paths
-  )
+  let classified = witness_fixture_tracked_paths()
   let dup_path = first_classified_repo_path(classified: classified)
   let tracked_with_dup = list_snoc_item(xs: classified, item: dup_path)
   RustManifestObserved {
@@ -680,21 +762,18 @@ fn rust_source_lifecycle_residue_paths_unique() -> Bool {
   list_paths_all_unique(paths: residue_lifecycle_repo_paths())
 }
 
+// Both checks range over `non_generated_classified_repo_paths()` rather than the whole
+// lifecycle population, because the derived half can no longer violate either: every member
+// comes from one filter over the observed tracked list, so it is unique if the observation is
+// (the observation's own duplicates are reported by `count_observed_manifest_duplicate_excess`,
+// which is where that defect belongs) and it is under `stage0_src_repo_prefix` by the filter
+// itself, which no discovery-prefix hint matches.
 fn duplicate_exact_paths_zero_holds() -> Bool {
-  list_paths_all_unique(paths: file_grain_lifecycle_repo_paths())
+  list_paths_all_unique(paths: non_generated_classified_repo_paths())
 }
 
 fn partition_crate_paths_complete_holds() -> Bool {
   length(xs: derived_partition_crate_lib_repo_paths()) == length(xs: stage0_partition_crate_rows())
-}
-
-fn derived_generated_hand_disjoint_holds() -> Bool {
-  !any(
-    xs: derived_hand_maintained_stage0_repo_paths(),
-    predicate: fn(path) {
-      any(xs: derived_generated_stage0_repo_paths(), predicate: fn(gen_path) { gen_path == path })
-    }
-  )
 }
 
 data cssl_seed_linked_closure_assembly_repo_path: String = stage0_src_repo_path(
@@ -705,7 +784,10 @@ fn residue_hand_maintained_overlap_repo_paths() -> List<String> {
   filter(
     xs: residue_lifecycle_repo_paths(),
     predicate: fn(residue_path) {
-      any(xs: derived_authority_join_repo_paths(), predicate: fn(derived_path) { derived_path == residue_path })
+      any(
+        xs: derived_hand_maintained_stage0_repo_paths(),
+        predicate: fn(derived_path) { derived_path == residue_path }
+      )
     }
   )
 }
@@ -716,7 +798,7 @@ fn classified_residue_disjoint_holds() -> Bool {
 
 fn file_grain_paths_avoid_discovery_prefix_holds() -> Bool {
   !any(
-    xs: file_grain_lifecycle_repo_paths(),
+    xs: non_generated_classified_repo_paths(),
     predicate: fn(file_path) { path_matches_discovery_prefix_hint(path: file_path) }
   )
 }
@@ -730,7 +812,6 @@ fn manifest_state_verdict_scaffold_holds() -> Bool {
 
 fn stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds() -> Bool {
   partition_crate_paths_complete_holds()
-    && derived_generated_hand_disjoint_holds()
     && classified_residue_disjoint_holds()
     && file_grain_paths_avoid_discovery_prefix_holds()
     && duplicate_exact_paths_zero_holds()
@@ -746,5 +827,9 @@ fn stage0_rust_lifecycle_scaffold_mechanical_checks_holds() -> Bool {
   stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds()
     && manifest_state_verdict_scaffold_holds()
 }
+
+data unclassified_axis_rung_note: String = "RUNG DROP, DECLARED (2026-08-20). SUBJECT: the unclassified axis -- count_tracked_unclassified here, and unclassified_paths in gunbc.stage0_rust_lifecycle_totality, which answer the same question over the same two authorities. DECLARED RUNG: mitigatable. It is NOT mechanically preventable, and it was reported as though it were by carriers that derive the axis correctly while nothing executing can make it fire.\n\nMEASURED AT 026a709a71636d60df325f9183b78febff22901d, by execution, both directions. LIVE: current_stage0_rust_source_observation() through lifecycle_totality_receipt gives tracked=270, generated=126, disposition=7, stale=0, UNCLASSIFIED=137, paths enumerated. HERMETIC: the same predicate over lifecycle_totality_witness_observation(extra_paths: []) gives ZERO. The predicate is not wrong; the subject is. That constructor sets tracked := classified ++ extra_paths, so unclassified_paths is IDENTICALLY extra_paths -- confirmed by planting a path that does not exist on disk and getting back exactly it. A hermetic witness of this carrier can only discover what its author already typed into the call.\n\nTHE LIVE ARM DOES NOT RESCUE IT, FOR TWO REASONS THAT ARE INDEPENDENT OF EACH OTHER. First, it executes nowhere: both files reaching it declare ReadsLiveTree, which the required floor declines, and their exclusion rows name bin_witness_wet_entries as their real executing consumer -- a roster of 94 rows across 38 entry files whose consumer, the ci.yml wet job, was deleted at 611fd02770. Second, and worse, the live witnesses would not detect the frontier even when run: measured under claim_batch --wet at this ref, all three PASS at 137 unclassified. One accepted DerivedUnclassifiedTracked with a positive count OR CargoTargetMissingLifecycleDisposition OR ManifestStateScaffoldOk -- three mutually contradictory states, so it was green at 137 and would have been green at 0. The other asserted only that two Bools are false, which any refusal satisfies, including a git outage. Both disjunctions are repaired in this change; that repair removes a fabricated green and does NOT change the rung, because the witnesses still execute nowhere.\n\nWHAT THIS CHANGE ACTUALLY BUYS, stated narrowly so it is not mistaken for the climb: DerivedUnclassifiedTracked now has a discriminating RED that runs on the required floor. It had none. count_newly_unclassified_tracked is checked first and is the narrower predicate, so every pre-existing constructor reached the newly arm and the standing arm was unreachable by any executing input -- including from a witness named for the unclassified axis that asserted the newly arm and passed. That is one arm of one carrier made falsifiable. The AXIS is still measured over a manufactured subject.\n\nCEILING AND WHY: mechanically preventable is not the ceiling and structural impossibility is. Classification is decidable and fully modeled -- a tracked path either is or is not a member of two closed authorities -- so the reachable end state is that an unclassified file cannot be WRITTEN, not that a check finds it. That is section 4b's construction rung and it is a property of the file, not of two lists that can both omit it.\n\nNEXT-RUNG TRIGGER, and it is deliberately not a wall: an executing consumer for the live observation. Not a restored wet lane by itself -- ReadsLiveTree declines these files from the floor independently, so a wet lane alone leaves them off. Until some executing path reaches the real tracked population, a construction wall over the live arm would be a SECOND unexecuted artifact sitting at exactly this rung while looking like a climb, which is the rung inflation 4b names as worse than sitting low. The 137 is a decision about what this repository intends to classify and is routed to the operator as a discovery rather than landed as a refusal.\n\nRESTORATION: this row is rewritten as an ordinary description -- not amended -- when the axis has an executing consumer over the live population, at which point the honest rung can be re-measured instead of re-argued."
+
+data unclassified_axis_rung_restoration: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the unclassified axis acquires an executing consumer over the LIVE tracked population (not a manufactured observation), at which point unclassified_axis_rung_note is rewritten in one pass and this row deletes with it")
 
 data rust_source_lifecycle_partition_contradiction_note: String = "OPEN: src/v1/stage0_core/src/lib.rs is tracked on disk but stage0_partition_crate_rows has no src/v1/stage0_core row. Residue row surfaces the contradiction; operator resolves via partition row or crate deletion."

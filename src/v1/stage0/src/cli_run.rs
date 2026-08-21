@@ -4604,6 +4604,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OwnershipViolation { .. } => "OwnershipViolation",
         CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
         CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
+        CompilerDiagnostic::BareNoneNotAdmittedByFieldType { .. } => {
+            "BareNoneNotAdmittedByFieldType"
+        }
         CompilerDiagnostic::ConstructorCallAdmissionRefused { .. } => {
             "ConstructorCallAdmissionRefused"
         }
@@ -4644,6 +4647,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OwnershipViolation { binding, .. } => binding.clone(),
         CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
+        CompilerDiagnostic::BareNoneNotAdmittedByFieldType { field, .. } => field.clone(),
         CompilerDiagnostic::ConstructorCallAdmissionRefused {
             constructor_decl_name,
             ..
@@ -14781,6 +14785,133 @@ fn render_witness_claim_result_text(
     Some(render_witness_claim_result_text_mirror(
         subject, function, wall_nanos, verdict,
     ))
+}
+
+/// The `src/v1` `.dag` parse sweep, as a callable phase rather than a separate binary.
+///
+/// WHY IT MOVED HERE. It was a `main()` in `bin/v1_src_dag_parse.rs`, reached only by its own
+/// GitHub Actions step. That made the ORDER of the CI checks a fact about a YAML file: a step
+/// list, `if:` guards referring to other steps' outcomes, and one process per check. This
+/// function is the same walk with its result returned instead of exited, so the composed
+/// `--required-ci` run can hold it beside the regen and floor phases in one process. The bin
+/// remains as a thin caller, because running the parse sweep alone is a real local action.
+///
+/// RECURSIVE, and the non-recursive predecessor is why the walk looks like this: `read_dir`
+/// on `src/v1` sees the top-level modules and nothing below them, so a walk that finds no
+/// files in a directory it never opened is indistinguishable from a clean one.
+///
+/// Returns the count of parse-clean files, or every error found — never a partial success.
+pub fn run_v1_src_dag_parse(workspace: &Path) -> Result<usize, Vec<String>> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    let v1_dir = workspace.join("src/v1");
+    let mut dag_paths: Vec<std::path::PathBuf> = Vec::new();
+    let mut stack: Vec<std::path::PathBuf> = vec![v1_dir.clone()];
+    while let Some(dir) = stack.pop() {
+        let read_dir = match std::fs::read_dir(&dir) {
+            Ok(d) => d,
+            Err(e) => return Err(vec![format!("read_dir {}: {e}", dir.display())]),
+        };
+        // ONE DELIBERATE DIFFERENCE FROM THE BIN THIS CAME FROM: it used `read_dir.flatten()`,
+        // which silently DISCARDS an entry that cannot be read, so an unreadable directory
+        // entry made the walk quietly smaller and a walk that never saw a file is
+        // indistinguishable from a file that parsed. The error is propagated instead.
+        for entry in read_dir {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(e) => return Err(vec![format!("read_dir entry in {}: {e}", dir.display())]),
+            };
+            let path = entry.path();
+            if path.is_dir() {
+                // `target/` under a nested Cargo.toml is build output, never authored source.
+                if path.file_name().map(|n| n == "target").unwrap_or(false) {
+                    continue;
+                }
+                // `tests/fixtures/` holds deliberately partial or malformed inputs authored FOR
+                // the parser's own tests -- a fixture that fails to parse is the fixture doing
+                // its job, not a defect. The existing corpus discovery in `compiler_tests`
+                // excludes them on the same grounds.
+                //
+                // THIS EXCLUSION WAS DROPPED WHEN THE WALK MOVED HERE FROM THE BIN, and the
+                // consolidation's first local run reported `fact_cardinality_split_brace.dag:
+                // expected keyword 'module', found keyword 'data'` as a parse FAILURE. That
+                // file is a headerless fragment under `tests/fixtures/` and it is on main,
+                // where the parse step is green -- so the "finding" was the extraction having
+                // silently widened its own subject, not a defect in the tree.
+                if path.file_name().map(|n| n == "fixtures").unwrap_or(false)
+                    && dir.file_name().map(|n| n == "tests").unwrap_or(false)
+                {
+                    continue;
+                }
+                stack.push(path);
+            } else if path.extension().map(|ext| ext == "dag").unwrap_or(false) {
+                dag_paths.push(path);
+            }
+        }
+    }
+    dag_paths.sort();
+
+    // AN EMPTY WALK REFUSES. Zero files found is not zero errors — it is the walk failing to
+    // reach its subject, and reporting it as clean is the empty-observation narrow.
+    if dag_paths.is_empty() {
+        return Err(vec![format!(
+            "no .dag files found under {} — check the workspace root",
+            v1_dir.display()
+        )]);
+    }
+
+    let errors: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let count = Arc::new(AtomicUsize::new(0));
+
+    // Each file gets its own `Rc<HashMap>` — no shared parse state — so parsing is
+    // embarrassingly parallel. Thread panics propagate via scope (fail-closed).
+    std::thread::scope(|scope| {
+        for path in &dag_paths {
+            let errors = Arc::clone(&errors);
+            let count = Arc::clone(&count);
+            let path = path.clone();
+            scope.spawn(move || {
+                let content = match std::fs::read_to_string(&path) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        errors
+                            .lock()
+                            .expect("parse error lock")
+                            .push(format!("read {}: {e}", path.display()));
+                        return;
+                    }
+                };
+                let result = crate::v1_compiler_parse::parse(
+                    crate::v1_compiler_tokenize::tokenize(
+                        content,
+                        path.to_string_lossy().to_string(),
+                    ),
+                    std::rc::Rc::new(im::HashMap::new()),
+                );
+                if let Some(ref err) = result.error {
+                    errors.lock().expect("parse error lock").push(format!(
+                        "parse error in {}: {}",
+                        path.file_name().unwrap_or_default().to_string_lossy(),
+                        crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone()),
+                    ));
+                } else {
+                    count.fetch_add(1, Ordering::Relaxed);
+                }
+            });
+        }
+    });
+
+    let errors = Arc::try_unwrap(errors)
+        .expect("parse error arc is uniquely held after scope")
+        .into_inner()
+        .expect("parse error lock");
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+    Ok(Arc::try_unwrap(count)
+        .expect("parse count arc is uniquely held after scope")
+        .into_inner())
 }
 
 pub fn install_output_policy(source_roots: &[String]) {
@@ -36256,15 +36387,58 @@ pub fn qualified_name_resolves_in_derived_module_set(qn: &crate::v1_interpreter:
         && build_module_path_index_from_witness_roots().contains_key(&module_path)
 }
 
+/// Project one argv element of an `extdeps` transport declaration into the census token the
+/// `v2.lens.extdeps_shape_transport_policy` reading folds over.
+///
+/// TWO CHANGES HERE, AND THE SECOND IS DELIBERATELY WEAKER THAN THE FIRST.
+///
+/// (1) THE INTERPOLATION ARM READS PARTS, NOT RAW CHILDREN -- a repair, not a restatement.
+/// The old arm walked `node.children` and answered the empty string for any child that was
+/// neither a literal nor a var. A `StringPart` node is not an expression node -- an
+/// interpolated string's TEXT parts carry `NoExprData` -- so the old arm silently dropped
+/// the literal text of every interpolated argv element, surviving only because the var part
+/// happened to carry the whole token in this corpus's specimens. This arm goes through
+/// `extract_string_interp_parts`, the same authority `bind_argv_expr` uses for the same job.
+///
+/// (2) AN UNPROJECTABLE FORM IS ANNOUNCED BY NAME RATHER THAN REFUSED, and that is a
+/// DECLARED DEGRADATION rather than the wall this census set out to build. The wall was
+/// built, and running it against the live corpus is what produced the reason it cannot land
+/// yet: `extdeps.git` `git.Core.DiffUnified0` argv[3] is an `ExprCall`, so a hard refusal
+/// here stops `corpus_git_policy_leak_defused_holds`, and that red is NOT closable by the
+/// author who causes it -- the same seven operations are already typed and counted debt on
+/// the MATERIALIZATION side (`v2.std.operation_argv` `ArgvRowExpressionResidue`, pinned in
+/// `test.claim.operation_argv_corpus_witness`), owned by the argv-evaluation lane.
+///
+/// So the two readings of one corpus disagree and this comment is where that is recorded:
+/// materialization counts the unreadable element as residue, the policy census renders it as
+/// the empty string, and an empty token matches no policy predicate -- so a leak carried by a
+/// form the reader cannot read is reported as clean. The line below makes that occurrence
+/// LOCATED AND COUNTABLE instead of silent; it does not make it correct.
+///
+/// NEXT RUNG, and it is a modelling decision rather than a seed edit: `ExtdepsTransportArgvFact`
+/// carries a typed projection (`ProjectedToken` / `UnprojectableForm { form }`) the way the
+/// materialization row already does, and the policy fold reads it. At that point the empty
+/// string has no way to be written and this arm becomes a refusal at the boundary rather
+/// than a degradation inside it. Carried as a row in
+/// `gunbc.seed_closed_vocabulary_wildcard_census`.
 fn extdeps_argv_expr_token(
     node: &Rc<crate::v1_std_core::Node>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    located: &str,
 ) -> String {
-    use crate::v1_std_core::{expr_var_name_at, ExprData, LiteralValue};
+    use crate::v1_interpreter::{expr_data_form_name, literal_value_form_name};
+    use crate::v1_std_core::{expr_var_name_at, ExprData, StringPart};
     match node.expr_data.as_ref() {
         ExprData::ExprLiteral { value } => match value.as_ref() {
-            LiteralValue::LitStr { value } => value.clone(),
-            other => format!("{other:?}"),
+            crate::std_syntax::LiteralValue::LitStr { value } => value.clone(),
+            other => {
+                eprintln!(
+                    "[extdeps-argv-unprojectable] {located}: `{}` literal has no argv token \
+                     projection; the census token is empty and matches no policy predicate",
+                    literal_value_form_name(other)
+                );
+                String::new()
+            }
         },
         ExprData::ExprVar { .. } => {
             let name = expr_var_name_at(node.clone(), source_indices.clone());
@@ -36274,26 +36448,26 @@ fn extdeps_argv_expr_token(
                 format!("{{{name}}}")
             }
         }
-        ExprData::ExprStringInterp => node
-            .children
-            .iter()
-            .map(|child| match child.expr_data.as_ref() {
-                ExprData::ExprLiteral { value } => match value.as_ref() {
-                    LiteralValue::LitStr { value } => value.clone(),
-                    _ => String::new(),
-                },
-                ExprData::ExprVar { .. } => {
-                    let name = expr_var_name_at(child.clone(), source_indices.clone());
-                    if name.is_empty() {
-                        child.name.clone()
-                    } else {
-                        format!("{{{name}}}")
+        ExprData::ExprStringInterp => {
+            let mut out = String::new();
+            for part in crate::v1_compiler_emit::extract_string_interp_parts(node.clone()).iter() {
+                match part.as_ref() {
+                    StringPart::Text { value } => out.push_str(value),
+                    StringPart::Interpolation { expr } => {
+                        out.push_str(&extdeps_argv_expr_token(expr, source_indices, located))
                     }
                 }
-                _ => String::new(),
-            })
-            .collect(),
-        _ => String::new(),
+            }
+            out
+        }
+        other => {
+            eprintln!(
+                "[extdeps-argv-unprojectable] {located}: `{}` expression has no argv token \
+                 projection; the census token is empty and matches no policy predicate",
+                expr_data_form_name(other)
+            );
+            String::new()
+        }
     }
 }
 
@@ -36463,7 +36637,11 @@ pub fn extdeps_shape_transport_policy_module_facts(
                     "Shell"
                 };
             for (idx, arg) in eff.children.iter().enumerate() {
-                let token = extdeps_argv_expr_token(arg, &source_indices);
+                let token = extdeps_argv_expr_token(
+                    arg,
+                    &source_indices,
+                    &format!("{module_path} `{}.{}` argv[{idx}]", item.name, op.name),
+                );
                 argv_facts.push(ExtdepsArgvFactRaw {
                     module_path: module_path.to_string(),
                     service: item.name.clone(),
@@ -39727,6 +39905,36 @@ pub struct RequiredFloorOutcome {
     /// witness, and a headline number that rises as debt is added has no direction left to
     /// report repayment in.
     pub known_red_held: usize,
+    /// THE 101 THAT DID NOT SUM. These six are already computed by the fold, at the right grain,
+    /// and were reported only on `[floor-known-red]` / `[floor-route-gap]` lines that no consumer
+    /// of the headline ledger reads. Lifting them here adds no fact and makes no new distinction;
+    /// it projects values the run already holds onto the line the run is read from.
+    ///
+    /// `route_gap_held` is the load-bearing one. Measured on main run 32407436149:
+    /// `executed=9810 passed=9502 known_red_held=207 failed=0` leaves 101 unaccounted, and the
+    /// headline printed `route_gap=0` because that field is `route_gap.len()` — the UNENROLLED
+    /// gaps alone. So the reader did not see an understated count they might interrogate; they
+    /// saw a zero, which closes the question instead of opening it. The correcting number lived
+    /// on another line ~300 lines away. Evidence present but disjoint from the surface anyone
+    /// reads is the defect, so these belong on the SAME line rather than in a second report —
+    /// a fix shipped as another separate line would reproduce exactly what it repairs.
+    ///
+    /// A route-gapped identity is refused at the hermetic boundary, never reaches its subject,
+    /// and produces no verdict. That refusal is CORRECT and must not be repaired: mocking it
+    /// would pass the witness against a fabricated exit status, which is the fabricated-plausible
+    /// -output failure the witness exists to catch (DESIGN §5).
+    ///
+    /// NOT RENAMED HERE, DELIBERATELY: `claims_executed` still counts entering the fold rather
+    /// than reaching a verdict. Whether that is the right name is a question about
+    /// `RequiredFloorDisposition`, whose authority is `src/v2/workflow/required_floor.dag`, and
+    /// changing .dag vocabulary from inside a Rust projection fix would put the authority in the
+    /// wrong place. Raised separately or not at all; this change only makes the line sum.
+    pub route_gap_held: usize,
+    pub known_red_now_passing: usize,
+    pub known_red_budget_refused: usize,
+    pub known_red_passed_over_budget: usize,
+    pub known_red_host_tool_unresolved_held: usize,
+    pub known_red_host_effect_refused: usize,
     /// UNEXPECTED GREEN IS NOT A WITNESS RED. An enrolled row that passed means someone fixed
     /// the bug and the roster is stale; folding it into `failures` makes an un-quarantine
     /// indistinguishable from a regression in the alert signature, which is the conflation
@@ -39912,7 +40120,35 @@ static FLOOR_SEAM: std::sync::Mutex<String> = std::sync::Mutex::new(String::new(
 // and major faults rising while progress is flat is reclaim churn. One /proc read per tick buys
 // that discrimination, and without it a heartbeat only proves the process is alive -- which the
 // runner's "Terminate orphan process" line already proved, after four hours.
-fn floor_resource_sample() -> String {
+/// Process CPU milliseconds, cumulative since process start. Read directly only to establish
+/// a baseline; the heartbeat reports a DELTA against one.
+fn process_cpu_ms() -> u64 {
+    let stat = std::fs::read_to_string("/proc/self/stat").unwrap_or_default();
+    let f: Vec<&str> = stat
+        .rsplit(')')
+        .next()
+        .unwrap_or("")
+        .split_whitespace()
+        .collect();
+    let tick = |i: usize| f.get(i).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+    (tick(11) + tick(12)) * 1000 / 100
+}
+
+/// `cpu_baseline_ms` is subtracted from the process-cumulative CPU so the reported figure is
+/// THIS phase's, matching `wall_s`, which has always been relative to heartbeat spawn.
+///
+/// WHY IT NEEDED A BASELINE AT ALL. Until the CI phases shared a process, the floor ran in a
+/// process of its own and cumulative-since-process-start and since-the-floor-started were the
+/// same number. The composed `--required-ci` run puts regen's multi-threaded `compile_stage0`
+/// in front of it, and the difference is not marginal: measured across two CI runs of the same
+/// corpus, the floor's FIRST heartbeat reported cpu_ms=59830 when it had its own process
+/// (32341236470) and cpu_ms=786650 when it did not (32371293567) — 787 CPU-seconds of someone
+/// else's work, on the floor's line, at the floor's first beat.
+///
+/// That is the attribution failure this PR's own thesis is about, introduced by this PR, caught
+/// by comparing the two runs rather than by reasoning about the code. `wall_s` was already
+/// right; only the CPU counter was absolute.
+fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
     let stat = std::fs::read_to_string("/proc/self/stat").unwrap_or_default();
     let f: Vec<&str> = stat
         .rsplit(')')
@@ -39923,7 +40159,7 @@ fn floor_resource_sample() -> String {
     // Fields are indexed from the field AFTER comm: utime/stime are 12/13 here, majflt is 10.
     let tick = |i: usize| f.get(i).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
     let hz = 100u64;
-    let cpu_ms = (tick(11) + tick(12)) * 1000 / hz;
+    let cpu_ms = ((tick(11) + tick(12)) * 1000 / hz).saturating_sub(cpu_baseline_ms);
     let majflt = tick(9);
     let rss_kb = std::fs::read_to_string("/proc/self/statm")
         .ok()
@@ -40192,6 +40428,10 @@ fn floor_value_constructor(v: &v1_interpreter::Value) -> &'static str {
 // slow, which is the property that makes it useful.
 fn spawn_floor_heartbeat() {
     let started = std::time::Instant::now();
+    // Taken HERE, beside the wall baseline, so both counters answer "since the floor started"
+    // rather than one of them answering "since the process started". See the note on
+    // `floor_resource_sample` for the measurement that made this necessary.
+    let cpu_baseline_ms = process_cpu_ms();
     // 60s is the CI cadence: dense enough to bound a phase, sparse enough not to bloat a
     // job log. It is too coarse to LOCALISE anything — a 2.7 GB step between two samples
     // names a minute, not a cause — so a local investigation can tighten it. Bounded below
@@ -40224,7 +40464,7 @@ fn spawn_floor_heartbeat() {
             "[floor-heartbeat] wall_s={} phase={} {}",
             started.elapsed().as_secs(),
             if seam.is_empty() { "<unset>" } else { &seam },
-            floor_resource_sample()
+            floor_resource_sample(cpu_baseline_ms)
         );
         beat += 1;
         if beat % 10 == 0 {
@@ -41033,6 +41273,12 @@ pub fn run_required_floor(
         receipt_identities: 0,
         passed: 0,
         known_red_held: 0,
+        route_gap_held: 0,
+        known_red_now_passing: 0,
+        known_red_budget_refused: 0,
+        known_red_passed_over_budget: 0,
+        known_red_host_tool_unresolved_held: 0,
+        known_red_host_effect_refused: 0,
         stale_quarantine: Vec::new(),
         interrupted_before_verdict: Vec::new(),
         completed_over_cost_requirement: Vec::new(),
@@ -41646,6 +41892,12 @@ pub fn run_required_floor(
         );
     }
     outcome.known_red_held = known_red_held;
+    outcome.route_gap_held = route_gap_held;
+    outcome.known_red_now_passing = known_red_now_passing;
+    outcome.known_red_budget_refused = known_red_budget_refused;
+    outcome.known_red_passed_over_budget = known_red_passed_over_budget;
+    outcome.known_red_host_tool_unresolved_held = known_red_host_tool_unresolved;
+    outcome.known_red_host_effect_refused = known_red_host_effect_refused;
     eprintln!(
         "[floor-route-gap] {} enrolled identity(ies) held as route-gapped; {} unenrolled route \
          gap(s) reported",
@@ -42215,6 +42467,8 @@ fn witness_eval_verdict_from_claim_outcome(
     }
 }
 
+pub use required_regen_host::{pass1_digest_for_fixed_point, FirstGeneration};
+
 pub fn run_required_regen(
     candidate_dir_rel: &str,
     receipt_rel: &str,
@@ -42227,4 +42481,17 @@ pub fn run_required_regen_fixed_point(
     pass1_digest: Option<String>,
 ) -> Result<required_regen_host::RequiredRegenOutcome, String> {
     required_regen_host::run_required_regen_fixed_point(receipt_rel, pass1_digest)
+}
+
+/// The emitted generated surface, keyed by basename, off the SAME `measure_generated_surface`
+/// producer the regen path uses -- so the bytes a behavioural receipt compiles are the bytes
+/// regen compared. A second emit here would be a second producer of the candidate itself.
+pub use required_regen_host::emitted_generated_sources;
+
+/// The authority's own declared module path, for consumers outside this module.
+///
+/// Exposed rather than re-implemented: a second parser for `module <path>` would be a second
+/// answer to a question this one already answers, and the two would drift.
+pub fn extract_module_path_public(content: &str) -> Option<String> {
+    extract_module_path(content)
 }
