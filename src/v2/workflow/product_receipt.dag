@@ -120,6 +120,7 @@ type BoundaryRefusalCause
   | PopulationDigestMismatch
   | ManifestSourceReadFailed
   | IngestRowShortfall
+  | AdmissionReasonUnrecognized { reason: String }
   | EmitterRejected { causes: List<DiagnosticCauseTally> }
   | EmittedHardRefusalsPresent { count: Int }
   | AssemblyRefused
@@ -196,6 +197,8 @@ fn boundary_refusal_cause_label(cause: BoundaryRefusalCause) -> String {
     PopulationDigestMismatch => "population digest mismatch"
     ManifestSourceReadFailed => "source read failed"
     IngestRowShortfall => "ingest row shortfall"
+    AdmissionReasonUnrecognized { reason: reason } =>
+      concat("the admission authority refused for a reason this receipt does not model: ", reason)
     EmitterRejected { causes: causes } =>
       concat(
         "emitter rejected the admitted population, diagnostics: ",

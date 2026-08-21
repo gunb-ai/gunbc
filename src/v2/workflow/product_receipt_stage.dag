@@ -68,6 +68,7 @@ import v2.workflow.product_receipt {
   ManifestPopulationAdmitted,
   ManifestPopulationEmpty,
   ManifestPopulationPartial,
+  AdmissionReasonUnrecognized,
   ManifestSourceReadFailed,
   PopulationDigestMismatch,
   ProducerReportedNoArtifact,
@@ -115,6 +116,14 @@ fn stage_identity_from_hex(hex: String, file_count: Int) -> ArtifactIdentity {
 // This maps that single authority onto the receipt's closed cause vocabulary
 // rather than re-deriving the admission ladder, so there is still exactly one
 // place that decides whether a population is admissible.
+//
+// THE LAST ARM CARRIES THE UNRECOGNISED LEXEME AND DOES NOT GUESS. The ladder
+// enumerates the five reasons the driver has today; if a sixth is added, a
+// terminal arm naming one of the five would attribute the refusal to a cause
+// that did not fire -- a fabricated plausible output at exactly the point a
+// reader trusts the receipt to say what stopped it. Carrying the reason
+// through instead makes the gap visible in the receipt that hits it, and no
+// consumer downstream has to have anticipated it.
 fn stage_admission_cause(reason: Symbol) -> BoundaryRefusalCause {
   if reason == ^closure_emit_driver_empty_population {
     ManifestPopulationEmpty
@@ -131,7 +140,11 @@ fn stage_admission_cause(reason: Symbol) -> BoundaryRefusalCause {
           if reason == ^closure_emit_driver_source_read_failed {
             ManifestSourceReadFailed
           } else {
-            IngestRowShortfall
+            if reason == ^closure_emit_driver_ingest_row_shortfall {
+              IngestRowShortfall
+            } else {
+              AdmissionReasonUnrecognized { reason: symbol_lexeme(sym: reason) }
+            }
           }
         }
       }
@@ -146,6 +159,7 @@ fn stage_cause_belongs_to_read(cause: BoundaryRefusalCause) -> Bool {
   match cause {
     ManifestSourceReadFailed => true
     IngestRowShortfall => true
+    AdmissionReasonUnrecognized { reason: _ } => false
     ManifestNotProduced => false
     ManifestOverlayNotResolved => false
     ManifestPopulationEmpty => false
