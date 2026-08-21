@@ -175,6 +175,14 @@ type CauseGrouping
 
 data lambda_typing_gate_cause_grouping: CauseGrouping = CausePerSite
 
+// THE SECOND CAUSE HAS ITS OWN ROW, AND THE SITE STAYS LISTED HERE. gunbc.untyped_fold_init_accumulator
+// carries the target_model site's mechanism and its repair, because a cause with its own repair earns
+// its own row. It is NOT removed from lambda_typing_gate_sites: this row records that the three were
+// derived TOGETHER by one intersection over one subject, and deleting a member because its cause
+// turned out to differ would destroy the only artifact of that derivation. A site does not stop being
+// a member of the set it was found in.
+data lambda_typing_gate_second_cause_row: DeclarationRef = decl_ref(module_path: "gunbc.untyped_fold_init_accumulator", decl_name: "untyped_fold_init_sites")
+
 // TWO SPECIMENS OF ONE FAILURE MODE, KEPT BECAUSE THIS ROW IS WHERE BOTH HAPPENED.
 //
 // FIRST: rustc's own suggestion. At every one of these sites it says "consider giving this closure
