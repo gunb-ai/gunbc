@@ -209,7 +209,11 @@ fn observed_input(current_hex: String, relation: DeployRevisionRelation) -> Flee
   FleetDesiredObservedCurrentInput {
     accepted: accepted_fixture(),
     current: fixture_oid(hex: current_hex),
-    relation: relation,
+    relation: FleetRevisionRelationObservation {
+      current: fixture_oid(hex: current_hex),
+      accepted: fixture_oid(hex: fixture_candidate_hex),
+      relation: relation,
+    },
   }
 }
 
