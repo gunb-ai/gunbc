@@ -1,7 +1,6 @@
 module v2.workflow.orchestration_retry_emit_test
 
-
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data orch_retry_golden_note: String = "ci_cargo_eagain_retry_core_golden below is the HAND-AUTHORED spelling of the CI EAGAIN-retry construct, moved here verbatim when production gunbc.ci_spec cut over to emit(Retry, Bash). It is deliberately independent of the grammar rows and segment spellings: the byte tests compare the emitter (and the production seam) against this golden, so a row/segment/emitter regression cannot go green by perturbing both sides at once. The committed .github/workflows/ci.yml drift gate is the corpus-level twin of this oracle."
 
@@ -27,17 +26,17 @@ fn ci_cargo_eagain_retry_core_golden(command: String) -> String {
   )
 }
 
-fn orch_retry_probe_facts(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
-  optional_absent()
+fn orch_retry_probe_facts(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.infer.InferredFacts> {
+  v2.std.optional.optional_absent()
 }
 
 test fn orch_retry_row_direct_emit_accepted_holds() -> Bool {
-  match emit(
-    tree: v2.compiler.inferred_tree.InferredTree {
-      root: orch_retry_emitted_command,
+  match v2.compiler.emit.emit(
+    tree: v2.compiler.infer.InferredTree {
+      root: v2.extdeps.languages.bash.orch_retry_emitted_command,
       facts: std.types.Map { lookup: orch_retry_probe_facts }
     },
-    target: orch_retry_target_model(
+    target: v2.extdeps.languages.bash.orch_retry_target_model(
       occ1: "cmd",
       occ2: "E=1 cmd",
       occ3: "env -u W E=1 cmd",
@@ -57,7 +56,7 @@ fn orch_retry_perturbed_level2() -> v2.std.orchestration.EscalationLevel {
   v2.std.orchestration.EscalationLevel {
     detect: v2.std.orchestration.LogMatches { source: "RETRY_LOG", pattern: gunbc.ci_failure_class.infra_retry_grep_alternation() },
     warning: v2.std.diagnostic.EmitDirective {
-      severity: SeverityWarning,
+      severity: v2.std.diagnostic.SeverityWarning,
       message: "cargo/sccache still failing; retry without RUSTC_WRAPPER"
     },
     env: [
@@ -67,80 +66,80 @@ fn orch_retry_perturbed_level2() -> v2.std.orchestration.EscalationLevel {
   }
 }
 
-fn orch_retry_level1_from(e: FreeMonoid<v2.std.orchestration.EscalationLevel>) -> v2.std.orchestration.EscalationLevel {
-  match list_head(xs: e) {
+fn orch_retry_level1_from(e: std.algebra.FreeMonoid<v2.std.orchestration.EscalationLevel>) -> v2.std.orchestration.EscalationLevel {
+  match v2.std.algebra.list_head(xs: e) {
     HeadFound { value: l } => l
     HeadAbsent => orch_retry_perturbed_level2()
   }
 }
 
 fn orch_retry_perturbed_intent() -> v2.std.orchestration.PipelineStep {
-  match retry_eagain_intent() {
+  match v2.test.manual.retry_eagain_bash.retry_eagain_intent() {
     Retry { body: b, escalations: e, on_exhausted: x } =>
-      Retry {
+      v2.std.orchestration.Retry {
         body: b,
         escalations: [orch_retry_level1_from(e: e), orch_retry_perturbed_level2()],
         on_exhausted: x
       }
-    Do { run: _ } => retry_eagain_intent()
-    Comment { text: _ } => retry_eagain_intent()
-    Exit { status: _ } => retry_eagain_intent()
-    If { cond: _, then_: _, else_: _ } => retry_eagain_intent()
-    For { binder: _, over: _, body: _ } => retry_eagain_intent()
-    While { cond: _, body: _ } => retry_eagain_intent()
-    Let { name: _, value: _ } => retry_eagain_intent()
-    Call { callee: _, args: _ } => retry_eagain_intent()
+    Do { run: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
+    Comment { text: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
+    Exit { status: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
+    If { cond: _, then_: _, else_: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
+    For { binder: _, over: _, body: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
+    While { cond: _, body: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
+    Let { name: _, value: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
+    Call { callee: _, args: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
   }
 }
 
 test fn orch_retry_byte_identical_to_hand_authored_holds() -> Bool {
-  match orch_emit_step(s: retry_eagain_intent(), medium: bash_orchestration_emit_medium()) {
+  match v2.compiler.emit_orchestration.orch_emit_step(s: v2.test.manual.retry_eagain_bash.retry_eagain_intent(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: dg } =>
-      (source.carried == ci_cargo_eagain_retry_core_golden(command: retry_eagain_example_command))
+      (source.carried == ci_cargo_eagain_retry_core_golden(command: v2.test.manual.retry_eagain_bash.retry_eagain_example_command))
         && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
 
 test fn orch_retry_production_seam_matches_golden_holds() -> Bool {
-  let produced = ci_cargo_eagain_retry_core(command: retry_eagain_example_command)
-  produced == ci_cargo_eagain_retry_core_golden(command: retry_eagain_example_command)
+  let produced = v2.workflow.ci_retry_emit.ci_cargo_eagain_retry_core(command: v2.test.manual.retry_eagain_bash.retry_eagain_example_command)
+  produced == ci_cargo_eagain_retry_core_golden(command: v2.test.manual.retry_eagain_bash.retry_eagain_example_command)
 }
 
 test fn orch_retry_env_value_has_teeth_holds() -> Bool {
-  match orch_emit_step(s: orch_retry_perturbed_intent(), medium: bash_orchestration_emit_medium()) {
+  match v2.compiler.emit_orchestration.orch_emit_step(s: orch_retry_perturbed_intent(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: _ } =>
-      source.carried != ci_cargo_eagain_retry_core_golden(command: retry_eagain_example_command)
+      source.carried != ci_cargo_eagain_retry_core_golden(command: v2.test.manual.retry_eagain_bash.retry_eagain_example_command)
     Rejected { diagnostics: _ } => false
   }
 }
 
 fn orch_retry_perturbed_exhausted_intent() -> v2.std.orchestration.PipelineStep {
-  match retry_eagain_intent() {
+  match v2.test.manual.retry_eagain_bash.retry_eagain_intent() {
     Retry { body: b, escalations: e, on_exhausted: _ } =>
-      Retry {
+      v2.std.orchestration.Retry {
         body: b,
         escalations: e,
         on_exhausted: v2.std.orchestration.Pipeline {
-          steps: [Do { run: v2.std.orchestration.Run { command: "exit 2", env: [], redirect: Absent, capture: Absent } }],
-          on_failure: FailFast
+          steps: [v2.std.orchestration.Do { run: v2.std.orchestration.Run { command: "exit 2", env: Empty, redirect: v2.std.optional.Absent, capture: v2.std.optional.Absent } }],
+          on_failure: v2.std.orchestration.FailFast
         }
       }
-    Do { run: _ } => retry_eagain_intent()
-    Comment { text: _ } => retry_eagain_intent()
-    Exit { status: _ } => retry_eagain_intent()
-    If { cond: _, then_: _, else_: _ } => retry_eagain_intent()
-    For { binder: _, over: _, body: _ } => retry_eagain_intent()
-    While { cond: _, body: _ } => retry_eagain_intent()
-    Let { name: _, value: _ } => retry_eagain_intent()
-    Call { callee: _, args: _ } => retry_eagain_intent()
+    Do { run: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
+    Comment { text: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
+    Exit { status: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
+    If { cond: _, then_: _, else_: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
+    For { binder: _, over: _, body: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
+    While { cond: _, body: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
+    Let { name: _, value: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
+    Call { callee: _, args: _ } => v2.test.manual.retry_eagain_bash.retry_eagain_intent()
   }
 }
 
 test fn orch_retry_exhausted_has_teeth_holds() -> Bool {
-  match orch_emit_step(s: orch_retry_perturbed_exhausted_intent(), medium: bash_orchestration_emit_medium()) {
+  match v2.compiler.emit_orchestration.orch_emit_step(s: orch_retry_perturbed_exhausted_intent(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: _ } =>
-      source.carried != ci_cargo_eagain_retry_core_golden(command: retry_eagain_example_command)
+      source.carried != ci_cargo_eagain_retry_core_golden(command: v2.test.manual.retry_eagain_bash.retry_eagain_example_command)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -153,7 +152,7 @@ fn orch_retry_1level_escalation() -> v2.std.orchestration.EscalationLevel {
   v2.std.orchestration.EscalationLevel {
     detect: v2.std.orchestration.LogMatches { source: "BUILD_LOG", pattern: "PAT1" },
     warning: v2.std.diagnostic.EmitDirective {
-      severity: SeverityWarning,
+      severity: v2.std.diagnostic.SeverityWarning,
       message: "w1"
     },
     env: [v2.std.orchestration.EnvSet { name: "E1", value: "1" }]
@@ -161,33 +160,33 @@ fn orch_retry_1level_escalation() -> v2.std.orchestration.EscalationLevel {
 }
 
 fn orch_retry_1level_intent() -> v2.std.orchestration.PipelineStep {
-  Retry {
+  v2.std.orchestration.Retry {
     body: v2.std.orchestration.Pipeline {
       steps: [
-        Do {
+        v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: orch_retry_1level_probe_command,
-            env: [],
-            redirect: Absent,
-            capture: Absent
+            env: Empty,
+            redirect: v2.std.optional.Absent,
+            capture: v2.std.optional.Absent
           }
         }
       ],
-      on_failure: FailFast
+      on_failure: v2.std.orchestration.FailFast
     },
     escalations: [orch_retry_1level_escalation()],
     on_exhausted: v2.std.orchestration.Pipeline {
       steps: [
-        Do {
+        v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: orch_retry_1level_exhausted_command,
-            env: [],
-            redirect: Absent,
-            capture: Absent
+            env: Empty,
+            redirect: v2.std.optional.Absent,
+            capture: v2.std.optional.Absent
           }
         }
       ],
-      on_failure: FailFast
+      on_failure: v2.std.orchestration.FailFast
     }
   }
 }
@@ -214,13 +213,13 @@ fn orch_retry_1level_golden() -> String {
 fn orch_retry_1level_perturbed_intent() -> v2.std.orchestration.PipelineStep {
   match orch_retry_1level_intent() {
     Retry { body: b, escalations: e, on_exhausted: x } =>
-      Retry {
+      v2.std.orchestration.Retry {
         body: b,
         escalations: [
           v2.std.orchestration.EscalationLevel {
             detect: v2.std.orchestration.LogMatches { source: "BUILD_LOG", pattern: "PAT1" },
             warning: v2.std.diagnostic.EmitDirective {
-              severity: SeverityWarning,
+              severity: v2.std.diagnostic.SeverityWarning,
               message: "w1"
             },
             env: [v2.std.orchestration.EnvSet { name: "E1", value: "2" }]
@@ -240,7 +239,7 @@ fn orch_retry_1level_perturbed_intent() -> v2.std.orchestration.PipelineStep {
 }
 
 test fn orch_retry_1level_emit_matches_golden_holds() -> Bool {
-  match orch_emit_step(s: orch_retry_1level_intent(), medium: bash_orchestration_emit_medium()) {
+  match v2.compiler.emit_orchestration.orch_emit_step(s: orch_retry_1level_intent(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == orch_retry_1level_golden()) && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
@@ -248,7 +247,7 @@ test fn orch_retry_1level_emit_matches_golden_holds() -> Bool {
 }
 
 test fn orch_retry_1level_emit_has_teeth_holds() -> Bool {
-  match orch_emit_step(s: orch_retry_1level_perturbed_intent(), medium: bash_orchestration_emit_medium()) {
+  match v2.compiler.emit_orchestration.orch_emit_step(s: orch_retry_1level_perturbed_intent(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: _ } =>
       source.carried != orch_retry_1level_golden()
     Rejected { diagnostics: _ } => false
@@ -256,12 +255,12 @@ test fn orch_retry_1level_emit_has_teeth_holds() -> Bool {
 }
 
 test fn orch_retry_escalation_final_row_emit_holds() -> Bool {
-  match emit(
-    tree: v2.compiler.inferred_tree.InferredTree {
-      root: orch_retry_escalation_final_emitted_command,
+  match v2.compiler.emit.emit(
+    tree: v2.compiler.infer.InferredTree {
+      root: v2.extdeps.languages.bash.orch_retry_escalation_final_emitted_command,
       facts: std.types.Map { lookup: orch_retry_probe_facts }
     },
-    target: orch_retry_escalation_final_target_model(
+    target: v2.extdeps.languages.bash.orch_retry_escalation_final_target_model(
       occ: "E3=1 cmd",
       exhausted: "exit 9"
     )
@@ -272,12 +271,12 @@ test fn orch_retry_escalation_final_row_emit_holds() -> Bool {
 }
 
 test fn orch_retry_escalation_step_row_emit_holds() -> Bool {
-  match emit(
-    tree: v2.compiler.inferred_tree.InferredTree {
-      root: orch_retry_escalation_step_emitted_command,
+  match v2.compiler.emit.emit(
+    tree: v2.compiler.infer.InferredTree {
+      root: v2.extdeps.languages.bash.orch_retry_escalation_step_emitted_command,
       facts: std.types.Map { lookup: orch_retry_probe_facts }
     },
-    target: orch_retry_escalation_step_target_model(
+    target: v2.extdeps.languages.bash.orch_retry_escalation_step_target_model(
       occ: "E2=1 cmd",
       pattern: "PAT2",
       warn: "w2",
@@ -291,12 +290,12 @@ test fn orch_retry_escalation_step_row_emit_holds() -> Bool {
 }
 
 test fn orch_retry_1level_row_direct_emit_accepted_holds() -> Bool {
-  match emit(
-    tree: v2.compiler.inferred_tree.InferredTree {
-      root: orch_retry_1level_emitted_command,
+  match v2.compiler.emit.emit(
+    tree: v2.compiler.infer.InferredTree {
+      root: v2.extdeps.languages.bash.orch_retry_1level_emitted_command,
       facts: std.types.Map { lookup: orch_retry_probe_facts }
     },
-    target: orch_retry_1level_target_model(
+    target: v2.extdeps.languages.bash.orch_retry_1level_target_model(
       occ1: "cmd",
       occ2: "E=1 cmd",
       pattern1: "pat",
@@ -313,7 +312,7 @@ fn orch_retry_level2_escalation() -> v2.std.orchestration.EscalationLevel {
   v2.std.orchestration.EscalationLevel {
     detect: v2.std.orchestration.LogMatches { source: "RETRY_LOG", pattern: "PAT2" },
     warning: v2.std.diagnostic.EmitDirective {
-      severity: SeverityWarning,
+      severity: v2.std.diagnostic.SeverityWarning,
       message: "w2"
     },
     env: [v2.std.orchestration.EnvSet { name: "E2", value: "1" }]
@@ -324,7 +323,7 @@ fn orch_retry_level3_escalation() -> v2.std.orchestration.EscalationLevel {
   v2.std.orchestration.EscalationLevel {
     detect: v2.std.orchestration.LogMatches { source: "RETRY_LOG", pattern: "PAT3" },
     warning: v2.std.diagnostic.EmitDirective {
-      severity: SeverityWarning,
+      severity: v2.std.diagnostic.SeverityWarning,
       message: "w3"
     },
     env: [v2.std.orchestration.EnvSet { name: "E3", value: "1" }]
@@ -332,19 +331,19 @@ fn orch_retry_level3_escalation() -> v2.std.orchestration.EscalationLevel {
 }
 
 fn orch_retry_3level_intent() -> v2.std.orchestration.PipelineStep {
-  Retry {
+  v2.std.orchestration.Retry {
     body: v2.std.orchestration.Pipeline {
       steps: [
-        Do {
+        v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: orch_retry_1level_probe_command,
-            env: [],
-            redirect: Absent,
-            capture: Absent
+            env: Empty,
+            redirect: v2.std.optional.Absent,
+            capture: v2.std.optional.Absent
           }
         }
       ],
-      on_failure: FailFast
+      on_failure: v2.std.orchestration.FailFast
     },
     escalations: [
       orch_retry_1level_escalation(),
@@ -353,16 +352,16 @@ fn orch_retry_3level_intent() -> v2.std.orchestration.PipelineStep {
     ],
     on_exhausted: v2.std.orchestration.Pipeline {
       steps: [
-        Do {
+        v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: orch_retry_1level_exhausted_command,
-            env: [],
-            redirect: Absent,
-            capture: Absent
+            env: Empty,
+            redirect: v2.std.optional.Absent,
+            capture: v2.std.optional.Absent
           }
         }
       ],
-      on_failure: FailFast
+      on_failure: v2.std.orchestration.FailFast
     }
   }
 }
@@ -370,7 +369,7 @@ fn orch_retry_3level_intent() -> v2.std.orchestration.PipelineStep {
 data orch_retry_3level_refuse_note: String = "Three-level Retry previously emitted via orch_emit_retry_multilevel, which silently dropped level1.env (E1) and the final level's LogMatches.pattern. review 43629 — refuse (^orch_emit_retry_multilevel_unsupported) until a faithful N-level template lands."
 
 test fn orch_retry_3level_refused_holds() -> Bool {
-  match orch_emit_step(s: orch_retry_3level_intent(), medium: bash_orchestration_emit_medium()) {
+  match v2.compiler.emit_orchestration.orch_emit_step(s: orch_retry_3level_intent(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
       d.head.reason == ^orch_emit_retry_multilevel_unsupported
@@ -381,34 +380,34 @@ fn orch_retry_probe_escalation(source: String) -> v2.std.orchestration.Escalatio
   v2.std.orchestration.EscalationLevel {
     detect: v2.std.orchestration.LogMatches { source: source, pattern: "PAT" },
     warning: v2.std.diagnostic.EmitDirective {
-      severity: SeverityWarning,
+      severity: v2.std.diagnostic.SeverityWarning,
       message: "probe"
     },
-    env: []
+    env: Empty
   }
 }
 
 fn orch_retry_probe_exhausted() -> v2.std.orchestration.Pipeline {
   v2.std.orchestration.Pipeline {
     steps: [
-      Do {
+      v2.std.orchestration.Do {
         run: v2.std.orchestration.Run {
           command: "exit 1",
-          env: [],
-          redirect: Absent,
-          capture: Absent
+          env: Empty,
+          redirect: v2.std.optional.Absent,
+          capture: v2.std.optional.Absent
         }
       }
     ],
-    on_failure: FailFast
+    on_failure: v2.std.orchestration.FailFast
   }
 }
 
-fn orch_retry_probe_with_body(steps: FreeMonoid<v2.std.orchestration.PipelineStep>, source: String) -> v2.std.orchestration.PipelineStep {
-  Retry {
+fn orch_retry_probe_with_body(steps: std.algebra.FreeMonoid<v2.std.orchestration.PipelineStep>, source: String) -> v2.std.orchestration.PipelineStep {
+  v2.std.orchestration.Retry {
     body: v2.std.orchestration.Pipeline {
       steps: steps,
-      on_failure: FailFast
+      on_failure: v2.std.orchestration.FailFast
     },
     escalations: [orch_retry_probe_escalation(source: source)],
     on_exhausted: orch_retry_probe_exhausted()
@@ -417,35 +416,35 @@ fn orch_retry_probe_with_body(steps: FreeMonoid<v2.std.orchestration.PipelineSte
 
 fn orch_retry_probe_single_do(r: v2.std.orchestration.Run, source: String) -> v2.std.orchestration.PipelineStep {
   orch_retry_probe_with_body(
-    steps: [Do { run: r }],
+    steps: [v2.std.orchestration.Do { run: r }],
     source: source
   )
 }
 
 test fn orch_retry_body_multi_step_refused_holds() -> Bool {
-  match orch_emit_step(
+  match v2.compiler.emit_orchestration.orch_emit_step(
     s: orch_retry_probe_with_body(
       steps: [
-        Do {
+        v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: "true",
-            env: [],
-            redirect: Absent,
-            capture: Absent
+            env: Empty,
+            redirect: v2.std.optional.Absent,
+            capture: v2.std.optional.Absent
           }
         },
-        Do {
+        v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: "false",
-            env: [],
-            redirect: Absent,
-            capture: Absent
+            env: Empty,
+            redirect: v2.std.optional.Absent,
+            capture: v2.std.optional.Absent
           }
         }
       ],
       source: "BUILD_LOG"
     ),
-    medium: bash_orchestration_emit_medium()
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
@@ -454,17 +453,17 @@ test fn orch_retry_body_multi_step_refused_holds() -> Bool {
 }
 
 test fn orch_retry_body_redirect_present_refused_holds() -> Bool {
-  match orch_emit_step(
+  match v2.compiler.emit_orchestration.orch_emit_step(
     s: orch_retry_probe_single_do(
       r: v2.std.orchestration.Run {
         command: "true",
-        env: [],
-        redirect: Present { value: DiscardAll },
-        capture: Absent
+        env: Empty,
+        redirect: v2.std.optional.Present { value: v2.std.orchestration.DiscardAll },
+        capture: v2.std.optional.Absent
       },
       source: "BUILD_LOG"
     ),
-    medium: bash_orchestration_emit_medium()
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
@@ -473,17 +472,17 @@ test fn orch_retry_body_redirect_present_refused_holds() -> Bool {
 }
 
 test fn orch_retry_body_capture_present_refused_holds() -> Bool {
-  match orch_emit_step(
+  match v2.compiler.emit_orchestration.orch_emit_step(
     s: orch_retry_probe_single_do(
       r: v2.std.orchestration.Run {
         command: "true",
-        env: [],
-        redirect: Absent,
-        capture: Present { value: v2.std.orchestration.TeeTo { log: "BUILD_LOG" } }
+        env: Empty,
+        redirect: v2.std.optional.Absent,
+        capture: v2.std.optional.Present { value: v2.std.orchestration.TeeTo { log: "BUILD_LOG" } }
       },
       source: "BUILD_LOG"
     ),
-    medium: bash_orchestration_emit_medium()
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
@@ -492,17 +491,17 @@ test fn orch_retry_body_capture_present_refused_holds() -> Bool {
 }
 
 test fn orch_retry_changed_log_source_refused_holds() -> Bool {
-  match orch_emit_step(
+  match v2.compiler.emit_orchestration.orch_emit_step(
     s: orch_retry_probe_single_do(
       r: v2.std.orchestration.Run {
         command: "true",
-        env: [],
-        redirect: Absent,
-        capture: Absent
+        env: Empty,
+        redirect: v2.std.optional.Absent,
+        capture: v2.std.optional.Absent
       },
       source: "OTHER_LOG"
     ),
-    medium: bash_orchestration_emit_medium()
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
@@ -511,17 +510,17 @@ test fn orch_retry_changed_log_source_refused_holds() -> Bool {
 }
 
 test fn orch_retry_body_env_present_refused_holds() -> Bool {
-  match orch_emit_step(
+  match v2.compiler.emit_orchestration.orch_emit_step(
     s: orch_retry_probe_single_do(
       r: v2.std.orchestration.Run {
         command: "true",
         env: [v2.std.orchestration.EnvSet { name: "BODY_ENV", value: "1" }],
-        redirect: Absent,
-        capture: Absent
+        redirect: v2.std.optional.Absent,
+        capture: v2.std.optional.Absent
       },
       source: "BUILD_LOG"
     ),
-    medium: bash_orchestration_emit_medium()
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
@@ -530,17 +529,17 @@ test fn orch_retry_body_env_present_refused_holds() -> Bool {
 }
 
 test fn orch_retry_body_env_empty_accepted_holds() -> Bool {
-  match orch_emit_step(
+  match v2.compiler.emit_orchestration.orch_emit_step(
     s: orch_retry_probe_single_do(
       r: v2.std.orchestration.Run {
         command: "true",
-        env: [],
-        redirect: Absent,
-        capture: Absent
+        env: Empty,
+        redirect: v2.std.optional.Absent,
+        capture: v2.std.optional.Absent
       },
       source: "BUILD_LOG"
     ),
-    medium: bash_orchestration_emit_medium()
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

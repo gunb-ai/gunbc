@@ -735,7 +735,7 @@ fn orch_emit_retry_2level(
   bind_outcome(
     o: orch_emit_retry_run(
       command: command,
-      env: [],
+      env: Empty,
       redirect: redirect,
       capture: capture,
       medium: medium
@@ -797,7 +797,7 @@ fn orch_emit_retry_1level(
           bind_outcome(
             o: orch_emit_retry_run(
               command: command,
-              env: [],
+              env: Empty,
               redirect: redirect,
               capture: capture,
               medium: medium

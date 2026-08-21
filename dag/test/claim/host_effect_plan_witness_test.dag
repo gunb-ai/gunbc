@@ -1,24 +1,23 @@
 module test.claim.host_effect_plan_witness
 
-
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data hermetic_witness_home_doc: String = "Hermetic-safe Wave A2 host_effect_plan_apply witnesses: control-flow and empty-plan refusal arms only (no shell.Exec.Run). Shell converge/failure/sequential poles live in host_effect_plan_real_execution_witness_test.dag (Wet bin batch)."
 
 fn witness_host_os_target() -> gunbc.host_effect.NodeControlPlane {
-  gunbc.host_effect.HostOs { node: srv1_host }
+  gunbc.host_effect.HostOs { node: gunbc.fleet_intent.srv1_host }
 }
 
 fn witness_plan_ctx() -> gunbc.host_effect_plan.HostEffectPlanContext {
   gunbc.host_effect_plan.HostEffectPlanContext {
-    target: test.claim.host_effect_plan_witness.witness_host_os_target(),
-    evidence: host_effect_identity_evidence,
-    transport: LocalShell,
+    target: witness_host_os_target(),
+    evidence: gunbc.host_effect.host_effect_identity_evidence,
+    transport: gunbc.host_effect.LocalShell,
   }
 }
 
 fn witness_empty_plan() -> gunbc.host_effect_plan.HostEffectPlan {
-  v2.std.effect_plan.EffectPlan { steps: [], on_failure: v2.std.orchestration.FailFast }
+  v2.std.effect_plan.EffectPlan { steps: Empty, on_failure: v2.std.orchestration.FailFast }
 }
 
 fn witness_if_control_flow_plan() -> gunbc.host_effect_plan.HostEffectPlan {
@@ -26,10 +25,10 @@ fn witness_if_control_flow_plan() -> gunbc.host_effect_plan.HostEffectPlan {
     steps: [
       v2.std.effect_plan.If {
         cond: v2.std.orchestration.ExitZero {
-          run: v2.std.orchestration.Run { command: "true", env: [], redirect: Absent, capture: Absent }
+          run: v2.std.orchestration.Run { command: "true", env: Empty, redirect: v2.std.collection.Absent, capture: v2.std.collection.Absent }
         },
         then_: v2.std.effect_plan.EffectPlan { steps: [], on_failure: v2.std.orchestration.FailFast },
-        else_: Absent,
+        else_: v2.std.collection.Absent,
       },
     ],
     on_failure: v2.std.orchestration.FailFast,
@@ -37,16 +36,16 @@ fn witness_if_control_flow_plan() -> gunbc.host_effect_plan.HostEffectPlan {
 }
 
 test fn witness_empty_plan_refuses_fail_closed() -> Bool {
-  !reconciliation_converged(r: host_effect_plan_apply(
+  !std.realization_reconcile.reconciliation_converged(r: gunbc.host_effect_plan.host_effect_plan_apply(
     plan: witness_empty_plan(),
-    ctx: test.claim.host_effect_plan_witness.witness_plan_ctx(),
+    ctx: witness_plan_ctx(),
   ))
 }
 
 test fn witness_control_flow_step_refuses_fail_closed() -> Bool {
-  !reconciliation_converged(r: host_effect_plan_apply(
+  !std.realization_reconcile.reconciliation_converged(r: gunbc.host_effect_plan.host_effect_plan_apply(
     plan: witness_if_control_flow_plan(),
-    ctx: test.claim.host_effect_plan_witness.witness_plan_ctx(),
+    ctx: witness_plan_ctx(),
   ))
 }
 

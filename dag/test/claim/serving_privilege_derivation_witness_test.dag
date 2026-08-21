@@ -94,7 +94,7 @@ test fn red_control_no_grant_line_carries_shell_or_wildcard() -> Bool {
 // actuation. This is the arm that keeps the grant from quietly including everything a realization
 // does -- the fold must consult escalation, not merely concatenate actuations.
 test fn red_control_non_escalating_effects_contribute_no_grant_line() -> Bool {
-  let actuation = length(match effect_actuation(effect: EnableLingerForOwnAccount, target: target_as(RootPrincipal)) { ActuatedByEscalation { commands: c } => c ActuatedByOwnerDirectly => [] })
+  let actuation = length(match effect_actuation(effect: EnableLingerForOwnAccount, target: target_as(RootPrincipal)) { ActuatedByEscalation { commands: c } => c ActuatedByOwnerDirectly => Empty })
   let granted = length(realization_escalated_commands(realization: UserUnitRealization, target: target_as(RootPrincipal)))
   actuation > 0 && granted == 0
 }

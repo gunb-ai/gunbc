@@ -20,7 +20,7 @@ fn ci_floor_peak_pre_perturbed_pipeline() -> v2.std.orchestration.Pipeline {
           [v2.std.orchestration.Do {
             run: v2.std.orchestration.Run {
               command: "true",
-              env: [],
+              env: Empty,
               redirect: Absent,
               capture: Absent
             }
@@ -36,7 +36,7 @@ fn ci_floor_peak_pre_reset_perturbed_if() -> v2.std.orchestration.PipelineStep {
     cond: v2.std.orchestration.ExitZero {
       run: v2.std.orchestration.Run {
         command: concat(ci_floor_peak_echo_reset_redirect_command, " # perturbed"),
-        env: [],
+        env: Empty,
         redirect: Absent,
         capture: Absent
       }
@@ -45,7 +45,7 @@ fn ci_floor_peak_pre_reset_perturbed_if() -> v2.std.orchestration.PipelineStep {
       steps: [Do {
         run: v2.std.orchestration.Run {
           command: ci_floor_peak_pre_reset_ok_command,
-          env: [],
+          env: Empty,
           redirect: Absent,
           capture: Absent
         }

@@ -1,26 +1,25 @@
 module v2.workflow.orchestration_emit_test
 
-
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn orch_pipeline_step1() -> v2.std.orchestration.PipelineStep {
-  Do {
+  v2.std.orchestration.Do {
     run: v2.std.orchestration.Run {
       command: "cargo build -p v1-compiler --release --bins",
-      env: [],
-      redirect: Absent,
-      capture: Absent
+      env: Empty,
+      redirect: v2.std.collection.Absent,
+      capture: v2.std.collection.Absent
     }
   }
 }
 
 fn orch_pipeline_step2() -> v2.std.orchestration.PipelineStep {
-  Do {
+  v2.std.orchestration.Do {
     run: v2.std.orchestration.Run {
       command: "cargo test --workspace",
       env: [v2.std.orchestration.EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }],
-      redirect: Absent,
-      capture: Absent
+      redirect: v2.std.collection.Absent,
+      capture: v2.std.collection.Absent
     }
   }
 }
@@ -28,19 +27,19 @@ fn orch_pipeline_step2() -> v2.std.orchestration.PipelineStep {
 fn orch_pipeline_two_steps() -> v2.std.orchestration.Pipeline {
   v2.std.orchestration.Pipeline {
     steps: [orch_pipeline_step1(), orch_pipeline_step2()],
-    on_failure: FailFast
+    on_failure: v2.std.orchestration.FailFast
   }
 }
 
 fn orch_pipeline_one_step() -> v2.std.orchestration.Pipeline {
   v2.std.orchestration.Pipeline {
     steps: [orch_pipeline_step1()],
-    on_failure: FailFast
+    on_failure: v2.std.orchestration.FailFast
   }
 }
 
 test fn orch_pipeline_single_step_is_run_holds() -> Bool {
-  match orch_emit_pipeline(p: orch_pipeline_one_step(), medium: bash_orchestration_emit_medium()) {
+  match v2.compiler.emit_orchestration.orch_emit_pipeline(p: orch_pipeline_one_step(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "cargo build -p v1-compiler --release --bins") && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
@@ -56,7 +55,7 @@ fn orch_pipeline_two_steps_space_joined_wrong() -> String {
 }
 
 test fn orch_pipeline_two_steps_newline_joined_holds() -> Bool {
-  match orch_emit_pipeline(p: orch_pipeline_two_steps(), medium: bash_orchestration_emit_medium()) {
+  match v2.compiler.emit_orchestration.orch_emit_pipeline(p: orch_pipeline_two_steps(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == orch_pipeline_two_steps_expected()) && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
@@ -64,7 +63,7 @@ test fn orch_pipeline_two_steps_newline_joined_holds() -> Bool {
 }
 
 test fn orch_pipeline_join_has_teeth_holds() -> Bool {
-  match orch_emit_pipeline(p: orch_pipeline_two_steps(), medium: bash_orchestration_emit_medium()) {
+  match v2.compiler.emit_orchestration.orch_emit_pipeline(p: orch_pipeline_two_steps(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: src, diagnostics: _ } =>
       src.carried != orch_pipeline_two_steps_space_joined_wrong()
     Rejected { diagnostics: _ } => false
@@ -72,9 +71,9 @@ test fn orch_pipeline_join_has_teeth_holds() -> Bool {
 }
 
 test fn orch_run_empty_env_delegates_to_shell_emit_holds() -> Bool {
-  match orch_emit_run(
-    r: v2.std.orchestration.Run { command: "cargo build", env: [], redirect: Absent, capture: Absent },
-    medium: bash_orchestration_emit_medium()
+  match v2.compiler.emit_orchestration.orch_emit_run(
+    r: v2.std.orchestration.Run { command: "cargo build", env: Empty, redirect: v2.std.collection.Absent, capture: v2.std.collection.Absent },
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "cargo build") && (dg == v2.std.diagnostic.None)
@@ -83,14 +82,14 @@ test fn orch_run_empty_env_delegates_to_shell_emit_holds() -> Bool {
 }
 
 test fn orch_run_env_prefixed_structured_holds() -> Bool {
-  match orch_emit_run(
+  match v2.compiler.emit_orchestration.orch_emit_run(
     r: v2.std.orchestration.Run {
       command: "cargo test --workspace",
       env: [v2.std.orchestration.EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }],
-      redirect: Absent,
-      capture: Absent
+      redirect: v2.std.collection.Absent,
+      capture: v2.std.collection.Absent
     },
-    medium: bash_orchestration_emit_medium()
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "CARGO_BUILD_JOBS=1 cargo test --workspace") && (dg == v2.std.diagnostic.None)
@@ -100,47 +99,47 @@ test fn orch_run_env_prefixed_structured_holds() -> Bool {
 
 fn orch_if_cond() -> v2.std.orchestration.Predicate {
   v2.std.orchestration.ExitZero {
-    run: v2.std.orchestration.Run { command: "[ -z \"$1\" ]", env: [], redirect: Absent, capture: Absent }
+    run: v2.std.orchestration.Run { command: "[ -z \"$1\" ]", env: Empty, redirect: v2.std.collection.Absent, capture: v2.std.collection.Absent }
   }
 }
 
 fn orch_do_step(command: String) -> v2.std.orchestration.PipelineStep {
-  Do { run: v2.std.orchestration.Run { command: command, env: [], redirect: Absent, capture: Absent } }
+  v2.std.orchestration.Do { run: v2.std.orchestration.Run { command: command, env: Empty, redirect: v2.std.collection.Absent, capture: v2.std.collection.Absent } }
 }
 
 fn orch_if_then_one_step() -> v2.std.orchestration.Pipeline {
-  v2.std.orchestration.Pipeline { steps: [orch_do_step(command: "verdict=absent")], on_failure: FailFast }
+  v2.std.orchestration.Pipeline { steps: [orch_do_step(command: "verdict=absent")], on_failure: v2.std.orchestration.FailFast }
 }
 
 fn orch_if_then_two_steps() -> v2.std.orchestration.Pipeline {
   v2.std.orchestration.Pipeline {
     steps: [orch_do_step(command: "verdict=absent"), orch_do_step(command: "echo \"$verdict\"")],
-    on_failure: FailFast
+    on_failure: v2.std.orchestration.FailFast
   }
 }
 
 fn orch_if_else_one_step() -> v2.std.orchestration.Pipeline {
-  v2.std.orchestration.Pipeline { steps: [orch_do_step(command: "verdict=present")], on_failure: FailFast }
+  v2.std.orchestration.Pipeline { steps: [orch_do_step(command: "verdict=present")], on_failure: v2.std.orchestration.FailFast }
 }
 
 fn orch_if_else_two_steps() -> v2.std.orchestration.Pipeline {
   v2.std.orchestration.Pipeline {
     steps: [orch_do_step(command: "verdict=present"), orch_do_step(command: "echo \"$verdict\"")],
-    on_failure: FailFast
+    on_failure: v2.std.orchestration.FailFast
   }
 }
 
-fn orch_if_pipeline(then_: v2.std.orchestration.Pipeline, else_: Optional<v2.std.orchestration.Pipeline>) -> v2.std.orchestration.Pipeline {
+fn orch_if_pipeline(then_: v2.std.orchestration.Pipeline, else_: v2.std.optional.Optional<v2.std.orchestration.Pipeline>) -> v2.std.orchestration.Pipeline {
   v2.std.orchestration.Pipeline {
-    steps: [If { cond: orch_if_cond(), then_: then_, else_: else_ }],
-    on_failure: FailFast
+    steps: [v2.std.orchestration.If { cond: orch_if_cond(), then_: then_, else_: else_ }],
+    on_failure: v2.std.orchestration.FailFast
   }
 }
 
 test fn orch_if_single_step_no_else_byte_identical_holds() -> Bool {
-  match orch_emit_pipeline(
-    p: orch_if_pipeline(then_: orch_if_then_one_step(), else_: Absent),
-    medium: bash_orchestration_emit_medium()
+  match v2.compiler.emit_orchestration.orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_then_one_step(), else_: v2.std.collection.Absent),
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "if [ -z \"$1\" ]; then verdict=absent; fi") && (dg == v2.std.diagnostic.None)
@@ -149,9 +148,9 @@ test fn orch_if_single_step_no_else_byte_identical_holds() -> Bool {
 }
 
 test fn orch_if_single_step_with_else_byte_identical_holds() -> Bool {
-  match orch_emit_pipeline(
-    p: orch_if_pipeline(then_: orch_if_then_one_step(), else_: Present { value: orch_if_else_one_step() }),
-    medium: bash_orchestration_emit_medium()
+  match v2.compiler.emit_orchestration.orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_then_one_step(), else_: v2.std.optional.Present { value: orch_if_else_one_step() }),
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "if [ -z \"$1\" ]; then verdict=absent; else verdict=present; fi") && (dg == v2.std.diagnostic.None)
@@ -160,9 +159,9 @@ test fn orch_if_single_step_with_else_byte_identical_holds() -> Bool {
 }
 
 test fn orch_if_multi_step_then_no_else_block_form_holds() -> Bool {
-  match orch_emit_pipeline(
-    p: orch_if_pipeline(then_: orch_if_then_two_steps(), else_: Absent),
-    medium: bash_orchestration_emit_medium()
+  match v2.compiler.emit_orchestration.orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_then_two_steps(), else_: v2.std.collection.Absent),
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "if [ -z \"$1\" ]; then\nverdict=absent\necho \"$verdict\"\nfi") && (dg == v2.std.diagnostic.None)
@@ -171,9 +170,9 @@ test fn orch_if_multi_step_then_no_else_block_form_holds() -> Bool {
 }
 
 test fn orch_if_multi_step_then_and_else_block_form_holds() -> Bool {
-  match orch_emit_pipeline(
-    p: orch_if_pipeline(then_: orch_if_then_two_steps(), else_: Present { value: orch_if_else_two_steps() }),
-    medium: bash_orchestration_emit_medium()
+  match v2.compiler.emit_orchestration.orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_then_two_steps(), else_: v2.std.optional.Present { value: orch_if_else_two_steps() }),
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "if [ -z \"$1\" ]; then\nverdict=absent\necho \"$verdict\"\nelse\nverdict=present\necho \"$verdict\"\nfi") && (dg == v2.std.diagnostic.None)
@@ -182,9 +181,9 @@ test fn orch_if_multi_step_then_and_else_block_form_holds() -> Bool {
 }
 
 test fn orch_if_multi_step_else_only_block_form_holds() -> Bool {
-  match orch_emit_pipeline(
-    p: orch_if_pipeline(then_: orch_if_then_one_step(), else_: Present { value: orch_if_else_two_steps() }),
-    medium: bash_orchestration_emit_medium()
+  match v2.compiler.emit_orchestration.orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_then_one_step(), else_: v2.std.optional.Present { value: orch_if_else_two_steps() }),
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "if [ -z \"$1\" ]; then\nverdict=absent\nelse\nverdict=present\necho \"$verdict\"\nfi") && (dg == v2.std.diagnostic.None)
@@ -193,13 +192,13 @@ test fn orch_if_multi_step_else_only_block_form_holds() -> Bool {
 }
 
 fn orch_if_empty_pipeline() -> v2.std.orchestration.Pipeline {
-  v2.std.orchestration.Pipeline { steps: [], on_failure: FailFast }
+  v2.std.orchestration.Pipeline { steps: Empty, on_failure: v2.std.orchestration.FailFast }
 }
 
 test fn orch_if_empty_then_no_else_noop_holds() -> Bool {
-  match orch_emit_pipeline(
-    p: orch_if_pipeline(then_: orch_if_empty_pipeline(), else_: Absent),
-    medium: bash_orchestration_emit_medium()
+  match v2.compiler.emit_orchestration.orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_empty_pipeline(), else_: v2.std.collection.Absent),
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "if [ -z \"$1\" ]; then :; fi") && (dg == v2.std.diagnostic.None)
@@ -208,9 +207,9 @@ test fn orch_if_empty_then_no_else_noop_holds() -> Bool {
 }
 
 test fn orch_if_empty_then_with_nonempty_else_noop_holds() -> Bool {
-  match orch_emit_pipeline(
-    p: orch_if_pipeline(then_: orch_if_empty_pipeline(), else_: Present { value: orch_if_else_one_step() }),
-    medium: bash_orchestration_emit_medium()
+  match v2.compiler.emit_orchestration.orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_empty_pipeline(), else_: v2.std.optional.Present { value: orch_if_else_one_step() }),
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "if [ -z \"$1\" ]; then :; else verdict=present; fi") && (dg == v2.std.diagnostic.None)
@@ -219,9 +218,9 @@ test fn orch_if_empty_then_with_nonempty_else_noop_holds() -> Bool {
 }
 
 test fn orch_if_nonempty_then_with_empty_else_noop_holds() -> Bool {
-  match orch_emit_pipeline(
-    p: orch_if_pipeline(then_: orch_if_then_one_step(), else_: Present { value: orch_if_empty_pipeline() }),
-    medium: bash_orchestration_emit_medium()
+  match v2.compiler.emit_orchestration.orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_then_one_step(), else_: v2.std.optional.Present { value: orch_if_empty_pipeline() }),
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "if [ -z \"$1\" ]; then verdict=absent; else :; fi") && (dg == v2.std.diagnostic.None)
@@ -230,9 +229,9 @@ test fn orch_if_nonempty_then_with_empty_else_noop_holds() -> Bool {
 }
 
 test fn orch_if_both_arms_empty_noop_holds() -> Bool {
-  match orch_emit_pipeline(
-    p: orch_if_pipeline(then_: orch_if_empty_pipeline(), else_: Present { value: orch_if_empty_pipeline() }),
-    medium: bash_orchestration_emit_medium()
+  match v2.compiler.emit_orchestration.orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_empty_pipeline(), else_: v2.std.optional.Present { value: orch_if_empty_pipeline() }),
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "if [ -z \"$1\" ]; then :; else :; fi") && (dg == v2.std.diagnostic.None)
@@ -241,17 +240,17 @@ test fn orch_if_both_arms_empty_noop_holds() -> Bool {
 }
 
 test fn orch_run_env_unset_multi_binding_structured_holds() -> Bool {
-  match orch_emit_run(
+  match v2.compiler.emit_orchestration.orch_emit_run(
     r: v2.std.orchestration.Run {
       command: "cargo test --workspace",
       env: [
         v2.std.orchestration.EnvUnset { name: "RUSTC_WRAPPER" },
         v2.std.orchestration.EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }
       ],
-      redirect: Absent,
-      capture: Absent
+      redirect: v2.std.collection.Absent,
+      capture: v2.std.collection.Absent
     },
-    medium: bash_orchestration_emit_medium()
+    medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 cargo test --workspace")

@@ -11,7 +11,10 @@ fn artifact_generated(content: String) -> ArtifactGenerationOutcome {
 
 fn artifact_generate(a: gunbc.generated_artifact.GeneratedArtifact) -> ArtifactGenerationOutcome {
   match a {
-    WitnessFloorYamlArtifact => artifact_generated(content: gunbc.witness_floor_workflow.expected_witness_floor_yml())
+    WitnessFloorYamlArtifact => match gunbc.witness_floor_workflow.expected_witness_floor_yml() {
+      WitnessFloorGenerated { content } => artifact_generated(content: content)
+      WitnessFloorGenerationRefused => ArtifactGenerationRefused { reason: "witness floor workflow capability closure refused" }
+    }
     FleetConvergeYamlArtifact => artifact_generated(content: gunbc.fleet_converge_workflow.expected_fleet_converge_yml())
     FleetDesiredAdmissionYamlArtifact => artifact_generated(content: gunbc.fleet_desired_admission_workflow.expected_fleet_desired_yml())
     GitignoreArtifact => artifact_generated(content: gunbc.gitignore_emit.expected_gitignore())

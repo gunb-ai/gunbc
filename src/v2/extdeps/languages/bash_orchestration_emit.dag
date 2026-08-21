@@ -101,7 +101,7 @@ fn bash_orchestration_medium_authority() -> v2.std.compilers.target_model.Target
 fn bash_orch_run_env_tail(env: FreeMonoid<v2.std.orchestration.EnvBinding>) -> FreeMonoid<v2.std.orchestration.EnvBinding> {
   match list_tail(xs: env) {
     TailFound { tail: t } => t
-    TailAbsent => []
+    TailAbsent => Empty
   }
 }
 

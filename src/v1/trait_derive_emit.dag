@@ -334,7 +334,7 @@ fn v1_freemonoid_impl_type_params(
 ) -> String {
   if (generic_param_names |> count) == 0 { "" } else {
     let entries = generic_param_names |> map(p =>
-      let pascal = v1.compiler.emit_core_support.to_pascal(name: p)
+      let pascal = v1.compiler.emit.to_pascal(name: p)
       let supplemental = if fm_params |> any(f => f == p) { [v1_freemonoid_supplemental_bound_spelling()] } else { [] }
       let structural = if v1_freemonoid_param_in_fields(param_name: p, field_type_exprs: field_type_exprs, source_indices: source_indices) { [structural_spelling] } else { [] }
       let parts = concat(supplemental, structural)
@@ -346,7 +346,7 @@ fn v1_freemonoid_impl_type_params(
 
 fn v1_freemonoid_bare_type_args(generic_param_names: List<String>) -> String {
   if (generic_param_names |> count) == 0 { "" } else {
-    concat("<", generic_param_names |> map(p => v1.compiler.emit_core_support.to_pascal(name: p)) |> join(separator: ", "), ">")
+    concat("<", generic_param_names |> map(p => v1.compiler.emit.to_pascal(name: p)) |> join(separator: ", "), ">")
   }
 }
 
@@ -356,7 +356,7 @@ fn v1_freemonoid_serde_bound_attr(
 ) -> String {
   let supplement = v1_freemonoid_supplemental_bound_spelling()
   let ser_entries = generic_param_names |> map(p =>
-    let pascal = v1.compiler.emit_core_support.to_pascal(name: p)
+    let pascal = v1.compiler.emit.to_pascal(name: p)
     if fm_params |> any(f => f == p) {
       concat(pascal, ": ", supplement, " + serde::Serialize")
     } else {
@@ -364,7 +364,7 @@ fn v1_freemonoid_serde_bound_attr(
     }
   )
   let de_entries = generic_param_names |> map(p =>
-    let pascal = v1.compiler.emit_core_support.to_pascal(name: p)
+    let pascal = v1.compiler.emit.to_pascal(name: p)
     if fm_params |> any(f => f == p) {
       concat(pascal, ": ", supplement, " + serde::Deserialize<'de>")
     } else {
@@ -435,7 +435,7 @@ fn v1_freemonoid_enum_debug_impl(
   let tp = v1_freemonoid_impl_type_params(generic_param_names: generic_param_names, fm_params: fm_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug", source_indices: source_indices)
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
   let arms = children |> map(variant =>
-    let vname = v1.compiler.emit_core_support.to_pascal(name: v1.std.core.authored_name_at(source_indices: source_indices, node: variant))
+    let vname = v1.compiler.emit.to_pascal(name: v1.std.core.authored_name_at(source_indices: source_indices, node: variant))
     if (variant.children |> count) == 0 {
       concat("            Self::", vname, " => f.write_str(\"", vname, "\"),")
     } else {
@@ -467,7 +467,7 @@ fn v1_freemonoid_enum_partial_eq_impl(
   let tp = v1_freemonoid_impl_type_params(generic_param_names: generic_param_names, fm_params: fm_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq", source_indices: source_indices)
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
   let arms = children |> map(variant =>
-    let vname = v1.compiler.emit_core_support.to_pascal(name: v1.std.core.authored_name_at(source_indices: source_indices, node: variant))
+    let vname = v1.compiler.emit.to_pascal(name: v1.std.core.authored_name_at(source_indices: source_indices, node: variant))
     if (variant.children |> count) == 0 {
       concat("            (Self::", vname, ", Self::", vname, ") => true,")
     } else {
@@ -521,12 +521,36 @@ fn v1_emit_struct_derives(
   }
 }
 
+// A coproduct reaching a function value is exactly as underivable as a product reaching one, and
+// for the same reason: a fn field implements neither Serialize nor Deserialize nor Debug. This
+// arm mirrors v1_emit_struct_derives rather than restating a second rule -- same predicate, same
+// narrow trait set, same map-key refusal -- because the question ("does this type reach a
+// function value") is one question about a declaration, not two questions about two connectives.
+// Before this parameter existed the enum path could not ask it at all, so an enum whose variant
+// payload reached a fn derived the full serde set: 34 of the 100 E0277 measured on 03_ingest sat
+// at such sites, against 25 at struct sites, so the coproduct half was the LARGER half of that
+// root. Specimen: `ViaEnum = HasInner { held: Inner } | Empty` with `Inner { apply: fn(..) }`.
+//
+// ARM ORDER IS LOAD-BEARING, not stylistic, and the constraint lives in the interaction between
+// two arms rather than in either one -- so nothing structural signals it at the second arm's site.
+// A coproduct reaching a function value derives Clone and nothing else, so it has no serde macro
+// left to consume a serde ATTRIBUTE. The freemonoid arm emits `#[serde(bound = ..)]`; reached
+// first on a fn-bearing coproduct it would orphan that attribute into "cannot find attribute
+// serde in this scope" -- trading one error class for another rather than removing it, which is
+// the class this predicate exists to close. has_fn_fields therefore dominates and returns early.
 fn v1_emit_enum_derives(
   children: List<v1.std.core.Node>,
+  has_fn_fields: Bool,
   map_key_required: Bool,
   generic_param_names: List<String>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> String {
+  if has_fn_fields {
+    if map_key_required {
+      return v1_trait_derive_refuse("trait_derive_emit: coproduct reaches a map-key position and so requires Eq + Hash, but a variant payload carries a function value whose only derivable trait is Clone — the key position is the defect, not the roster")
+    }
+    return extdeps.languages.rust.emit.rust_trait_derive_attr_from_traits(std.trait_derive_shape.fn_field_derive_traits())
+  }
   let fm_params = if map_key_required { [] } else {
     v1_freemonoid_element_params(
       generic_param_names: generic_param_names,
@@ -1550,7 +1574,7 @@ fn v1_emit_type_params_with_clone_bounds(
   else {
     let names = params |> map(p =>
       let pname = v1.std.core.generic_param_name_at(n: p, source_indices: source_indices)
-      let pascal = v1.compiler.emit_core_support.to_pascal(name: pname)
+      let pascal = v1.compiler.emit.to_pascal(name: pname)
       if clone_param_names |> any(c => c == pname) {
         concat(pascal, ": Clone")
       } else {

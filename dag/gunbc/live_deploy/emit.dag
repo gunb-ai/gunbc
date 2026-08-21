@@ -14,14 +14,14 @@ fn deploy_raw(command: String) -> v2.std.orchestration.PipelineStep {
   v2.std.orchestration.Do {
     run: v2.std.orchestration.Run {
       command: command,
-      env: [],
-      redirect: v2.std.optional.Absent,
-      capture: v2.std.optional.Absent
+      env: Empty,
+      redirect: v2.std.collection.Absent,
+      capture: v2.std.collection.Absent
     }
   }
 }
 
-fn systemctl_disable_now_argv_for_deploy(unit: std.types.NonEmptyStr, privileged: Bool) -> std.types.List<String> {
+fn systemctl_disable_now_argv_for_deploy(unit: std.types.NonEmptyStr, privileged: std.types.Bool) -> std.types.List<String> {
   if privileged {
     concat(["sudo", "-n"], extdeps.systemd.systemctl.systemctl_disable_now_argv(unit: unit))
   } else {
@@ -42,7 +42,7 @@ fn systemctl_load_state_assignment_intent(unit: std.types.NonEmptyStr) -> v2.std
   )
 }
 
-fn systemctl_disable_now_when_loaded_intent(unit: std.types.NonEmptyStr, privileged: Bool) -> v2.std.node.Node {
+fn systemctl_disable_now_when_loaded_intent(unit: std.types.NonEmptyStr, privileged: std.types.Bool) -> v2.std.node.Node {
   v2.extdeps.languages.bash_build.bash_build_if_from_stmts(
     cond: v2.extdeps.languages.bash_build.bash_build_test_bracket(words: [
       v2.extdeps.languages.bash_build.bash_build_word_var(name: "_gunbc_load_state"),
@@ -68,7 +68,7 @@ fn bash_intent_command_or_poison(intent: v2.std.node.Node) -> String {
   }
 }
 
-fn systemctl_disable_now_if_present_steps(unit: std.types.NonEmptyStr, privileged: Bool) -> std.types.List<v2.std.orchestration.PipelineStep> {
+fn systemctl_disable_now_if_present_steps(unit: std.types.NonEmptyStr, privileged: std.types.Bool) -> std.types.List<v2.std.orchestration.PipelineStep> {
   [
     deploy_raw(command: bash_intent_command_or_poison(
       intent: systemctl_load_state_assignment_intent(unit: unit)
@@ -79,21 +79,21 @@ fn systemctl_disable_now_if_present_steps(unit: std.types.NonEmptyStr, privilege
   ]
 }
 
-fn ensure_apt_package_step(pkg: std.types.NonEmptyStr, privileged: Bool) -> v2.std.orchestration.PipelineStep {
+fn ensure_apt_package_step(pkg: std.types.NonEmptyStr, privileged: std.types.Bool) -> v2.std.orchestration.PipelineStep {
   v2.std.orchestration.If {
     cond: v2.std.orchestration.Not { inner: v2.std.orchestration.ExitZero {
       run: v2.std.orchestration.Run {
         command: gunbc.live_deploy.operations.dpkg_status_command(package: pkg),
-        env: [],
-        redirect: v2.std.optional.Present { value: v2.std.orchestration.DiscardAll },
-        capture: v2.std.optional.Absent
+        env: Empty,
+        redirect: v2.std.collection.Present { value: v2.std.orchestration.DiscardAll },
+        capture: v2.std.collection.Absent
       }
     } },
     then_: v2.std.orchestration.Pipeline {
       steps: [deploy_raw(command: gunbc.live_deploy.operations.apt_install_command(package: pkg, privileged: privileged))],
       on_failure: v2.std.orchestration.FailFast
     },
-    else_: v2.std.optional.Absent
+    else_: v2.std.collection.Absent
   }
 }
 
@@ -108,15 +108,15 @@ fn emit_pipeline_or_poison(p: v2.std.orchestration.Pipeline, refused: String) ->
   }
 }
 
-data emit_systemd_unit_serve_note: String = "The belt-B unit: extdeps.systemd.unit_file.ExecStart is `gunbc serve` (the seed binary answering every request through the ONE .dag entry gunbc.roadmap_serve.roadmap_serve_handle — no emitted JS, no subprocess dispatch). User=briansrls, NOT root: claude auth exists only under briansrls on srv1 (parent lane verification 2026-07-20), so a root-run belt would spawn unauthed dead sessions; port 8080 is non-privileged so briansrls binds it. extdeps.systemd.unit_file.WorkingDirectory = the repo root — the source roots and entry are relative to it, and the belt's spawn workdir projects the same gunbc.host_layout fact."
+data emit_systemd_unit_serve_note: String = "The belt-B unit: ExecStart is `gunbc serve` (the seed binary answering every request through the ONE .dag entry gunbc.roadmap_serve.roadmap_serve_handle — no emitted JS, no subprocess dispatch). User=briansrls, NOT root: claude auth exists only under briansrls on srv1 (parent lane verification 2026-07-20), so a root-run belt would spawn unauthed dead sessions; port 8080 is non-privileged so briansrls binds it. WorkingDirectory = the repo root — the source roots and entry are relative to it, and the belt's spawn workdir projects the same gunbc.host_layout fact."
 
-data release_revision_binding_note: String = "WHERE THE LAUNCH REVISION COMES FROM IS ITSELF A MODELED FACT, AND THERE ARE EXACTLY TWO ARMS BECAUSE ONLY TWO ARE HONEST. RevisionBoundAtEmission is the production apply: the launcher observed one candidate, the unit installed at the host bakes exactly that value, and readiness compares against the same single subject. RevisionNotInstalled is the retract fold, and it exists so a retract cannot name a revision even accidentally — the arm that would render extdeps.systemd.unit_file.ExecStart under it REFUSES with a poison marker, the same unreachable-arm discipline emit_deploy_teardown_dependency_refusal uses.\\n\\nA THIRD ARM WAS TRIED AND DELETED, AND THE REASON IS WORTH KEEPING. RevisionBoundAtInvocation rendered a bash parameter expansion into the unit so a committed script could defer its revision to invocation. It could never have worked: the unit is written through a heredoc whose delimiter is QUOTED (<<'GUNBC_UNIT_EOF'), so bash performs no expansion inside it and the literal dollar-brace text lands in the unit file; systemd does not run extdeps.systemd.unit_file.ExecStart through bash, implements no :? operator, and this unit sets no such Environment. The chain script-invocation to unit to launch argument did not exist at any link. Proven by execution, not by reading — which is the point: it typechecked, it read plausibly, and it was inert.\\n\\nWhat it was protecting turned out not to need protecting. It existed to keep a committed script as the byte oracle over this extdeps.systemd.unit_file.ExecStart line, on the belief that deleting the artifact would lose that coverage. A fixture sha is forbidden in a committed PRODUCTION artifact, not in a witness — so the oracle lives in the test corpus against RevisionBoundAtEmission with a fixture, and the artifact was simply dead (no execution consumer, and a HostReconciler consumer row that named a reader which does not exist)."
+data release_revision_binding_note: String = "WHERE THE LAUNCH REVISION COMES FROM IS ITSELF A MODELED FACT, AND THERE ARE EXACTLY TWO ARMS BECAUSE ONLY TWO ARE HONEST. RevisionBoundAtEmission is the production apply: the launcher observed one candidate, the unit installed at the host bakes exactly that value, and readiness compares against the same single subject. RevisionNotInstalled is the retract fold, and it exists so a retract cannot name a revision even accidentally — the arm that would render ExecStart under it REFUSES with a poison marker, the same unreachable-arm discipline emit_deploy_teardown_dependency_refusal uses.\\n\\nA THIRD ARM WAS TRIED AND DELETED, AND THE REASON IS WORTH KEEPING. RevisionBoundAtInvocation rendered a bash parameter expansion into the unit so a committed script could defer its revision to invocation. It could never have worked: the unit is written through a heredoc whose delimiter is QUOTED (<<'GUNBC_UNIT_EOF'), so bash performs no expansion inside it and the literal dollar-brace text lands in the unit file; systemd does not run ExecStart through bash, implements no :? operator, and this unit sets no such Environment. The chain script-invocation to unit to launch argument did not exist at any link. Proven by execution, not by reading — which is the point: it typechecked, it read plausibly, and it was inert.\\n\\nWhat it was protecting turned out not to need protecting. It existed to keep a committed script as the byte oracle over this ExecStart line, on the belief that deleting the artifact would lose that coverage. A fixture sha is forbidden in a committed PRODUCTION artifact, not in a witness — so the oracle lives in the test corpus against RevisionBoundAtEmission with a fixture, and the artifact was simply dead (no execution consumer, and a HostReconciler consumer row that named a reader which does not exist)."
 
 type ReleaseRevisionBinding
   = RevisionBoundAtEmission { revision: std.types.CommitSha }
   | RevisionNotInstalled
 
-data release_revision_not_installed_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the systemd unit writer was reached with RevisionNotInstalled — a retract fold dispatched a unit install. This marker is not a valid release revision, so the golden drift gate reds rather than emitting a unit whose extdeps.systemd.unit_file.ExecStart names no release (DESIGN section 5: an unreachable arm refuses loudly, never fabricates)."
+data release_revision_not_installed_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the systemd unit writer was reached with RevisionNotInstalled — a retract fold dispatched a unit install. This marker is not a valid release revision, so the golden drift gate reds rather than emitting a unit whose ExecStart names no release (DESIGN section 5: an unreachable arm refuses loudly, never fabricates)."
 
 // A LIMIT RENDERS ITS FLAG OR RENDERS NOTHING, AND THE EMPTY ARM IS NOT A DEFAULT.
 // LimitUnset is a declared policy state (std.evaluation_budget
@@ -272,7 +272,7 @@ fn apply_belt_service_unit_write_step(spec: gunbc.live_deploy.spec.DeploymentSpe
 }
 
 // b1 fix (CONVERGE close): the fleet-converge unit runs `gunbc converge --host self`, whose
-// first act is `git ls-remote origin refs/fleet/desired` inside extdeps.systemd.unit_file.WorkingDirectory=svc.repo_root
+// first act is `git ls-remote origin refs/fleet/desired` inside WorkingDirectory=svc.repo_root
 // (/opt/gunbc/gunbc on srv1). That tree is owned by svc.service_user (briansrls), and the
 // private-remote credential exists ONLY under that principal on srv1 (emit_systemd_unit_serve_note:
 // "claude auth exists only under briansrls"). A root run therefore hits git dubious-ownership
@@ -312,10 +312,10 @@ fn emit_fleet_converge_timer_unit_doc(spec: gunbc.live_deploy.spec.DeploymentSpe
     unit: [extdeps.systemd.unit_file.Description { text: "gunbc fleet converge cadence" as std.types.NonEmptyStr }],
     timer: [
       extdeps.systemd.unit_file.TimerUnit { target: gunbc.live_deploy.spec.deployment_fleet_converge_service_unit_name(names: spec.names) },
-      extdeps.systemd.unit_file.OnCalendar { expression: fleet_converge_timer_on_calendar as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.OnCalendar { expression: gunbc.fleet_converge_timer.fleet_converge_timer_on_calendar as std.types.NonEmptyStr },
       extdeps.systemd.unit_file.Persistent { enabled: true },
       extdeps.systemd.unit_file.RandomizedDelaySec {
-        duration: to_string(second_count(s: fleet_converge_timer_randomized_delay)) as std.types.NonEmptyStr,
+        duration: to_string(std.measure.second_count(s: gunbc.fleet_converge_timer.fleet_converge_timer_randomized_delay)) as std.types.NonEmptyStr,
       },
     ],
     install: extdeps.systemd.unit_file.Installable { directives: [extdeps.systemd.unit_file.WantedBy { target: "timers.target" as std.types.NonEmptyStr }] },
@@ -357,12 +357,12 @@ fn deployment_step_key(step: gunbc.live_deploy.spec.DeploymentStep) -> std.types
   }
 }
 
-fn deployment_step_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> Bool { a == b }
+fn deployment_step_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> std.types.Bool { a == b }
 
-fn deployment_step_value_eq(a: gunbc.live_deploy.spec.DeploymentStep, b: gunbc.live_deploy.spec.DeploymentStep) -> Bool { a == b }
+fn deployment_step_value_eq(a: gunbc.live_deploy.spec.DeploymentStep, b: gunbc.live_deploy.spec.DeploymentStep) -> std.types.Bool { a == b }
 
 fn deployment_step_ownership_opt(step: gunbc.live_deploy.spec.DeploymentStep) -> gunbc.ownership.Ownership? {
-  v2.std.optional.Present { value: gunbc.live_deploy.spec.deployment_step_ownership(step: step) }
+  v2.std.collection.Present { value: gunbc.live_deploy.spec.deployment_step_ownership(step: step) }
 }
 
 fn deployment_apply_plan(spec: gunbc.live_deploy.spec.DeploymentSpec) -> gunbc.membership_reconcile.MembershipPlan<gunbc.live_deploy.spec.DeploymentStep, DeploymentStepMemberAt> {
@@ -436,7 +436,7 @@ fn apply_tree_sync_unit_write_step(spec: gunbc.live_deploy.spec.DeploymentSpec, 
   ))
 }
 
-data tree_sync_restart_diagnosis_note: String = "gunbc-tree-sync.service (#7011 realization) failed its control process on every srv1 deploy since landing (receipt 29928424523 and its predecessor 29926422286), and the bare 'sudo -n systemctl restart' stderr — 'Job for gunbc-tree-sync.service failed because the control process exited with error code' — never carries WHY: the actual extdeps.systemd.unit_file.ExecStart failure (the rsync exit) lives only in the unit's own journal, unreachable from this refusal (DESIGN 5 — a stopped, typed, but unlocated line, the same gap #7038 closed for gunbc-roadmap.service's async ServiceNotReady). This restart is SYNCHRONOUS, ahead of that poll-based unit_diagnosis capture entirely (GunbcSourceTree upsert runs before the SystemdUnit member), so it needs its own capture rather than waiting on one that never runs. Reuses the single unit-status-tail authority (live_deploy_unit_status_tail_command, gunbc.live_deploy.intent) the roadmap-unit capture already owns — no second diagnosis format. On failure the tail is appended to stderr and the step still fails (exit 1): a diagnosis, never an escape hatch (DESIGN 5 forbids proceeding as if the refusal had not fired)."
+data tree_sync_restart_diagnosis_note: String = "gunbc-tree-sync.service (#7011 realization) failed its control process on every srv1 deploy since landing (receipt 29928424523 and its predecessor 29926422286), and the bare 'sudo -n systemctl restart' stderr — 'Job for gunbc-tree-sync.service failed because the control process exited with error code' — never carries WHY: the actual ExecStart failure (the rsync exit) lives only in the unit's own journal, unreachable from this refusal (DESIGN 5 — a stopped, typed, but unlocated line, the same gap #7038 closed for gunbc-roadmap.service's async ServiceNotReady). This restart is SYNCHRONOUS, ahead of that poll-based unit_diagnosis capture entirely (GunbcSourceTree upsert runs before the SystemdUnit member), so it needs its own capture rather than waiting on one that never runs. Reuses the single unit-status-tail authority (live_deploy_unit_status_tail_command, gunbc.live_deploy.intent) the roadmap-unit capture already owns — no second diagnosis format. On failure the tail is appended to stderr and the step still fails (exit 1): a diagnosis, never an escape hatch (DESIGN 5 forbids proceeding as if the refusal had not fired)."
 
 fn tree_sync_restart_step_with_diagnosis(spec: gunbc.live_deploy.spec.DeploymentSpec) -> v2.std.orchestration.PipelineStep {
   deploy_raw(command: join([
@@ -488,7 +488,7 @@ fn install_d_owned_command(spec: gunbc.live_deploy.spec.DeploymentSpec, path: St
 
 data ensure_dependency_steps_note: String = "THE DISPATCH THAT ADMITS A SECOND KIND OF ENSURED RESOURCE, written so the package arm is untouched. A package still lowers to exactly the ensure step it always did, at both privilege settings, so no existing emitted byte moves -- the widening adds a kind, it does not redefine what ensuring a package means.\\n\\nA directory lowers to the same owned install -d the artifact steps use, through the same single authority, with the owner taken from the ensured subject rather than from a deployment spec. That is what lets a host-level resource be stated without an instance: an ensured host directory is a fact about the host, and threading a spec through it would have made it look like a per-instance fact again -- the exact confusion that put this root in the owned roster to begin with.\\n\\nprivileged is consumed only by the package arm because it describes how apt is invoked; install -d is privileged in both contexts and takes the same form either way."
 
-fn ensure_dependency_steps(dep: gunbc.live_deploy.spec.DeploymentDependencyStep, privileged: Bool) -> std.types.List<v2.std.orchestration.PipelineStep> {
+fn ensure_dependency_steps(dep: gunbc.live_deploy.spec.DeploymentDependencyStep, privileged: std.types.Bool) -> std.types.List<v2.std.orchestration.PipelineStep> {
   match dep.subject {
     EnsuredPackage { package } => [ensure_apt_package_step(pkg: package, privileged: privileged)]
     EnsuredHostDirectory { path, owner } => [

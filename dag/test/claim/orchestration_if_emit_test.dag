@@ -1,6 +1,5 @@
 module test.claim.orchestration_if_emit
 
-
 data orch_if_golden_note: String = "Hand-authored goldens below are independent of the orch_* grammar row spellings in src/v2/extdeps/languages/bash.dag: byte tests compare the emitter against these literals so a row/segment/emitter regression cannot go green by perturbing both sides at once (#6467 pattern)."
 
 fn orch_if_streq_empty_then_golden() -> String {
@@ -15,15 +14,15 @@ fn orch_if_streq_empty_then_intent() -> v2.std.orchestration.PipelineStep {
         v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: "verdict=absent",
-            env: [],
-            redirect: Absent,
-            capture: Absent
+            env: Empty,
+            redirect: v2.std.collection.Absent,
+            capture: v2.std.collection.Absent
           }
         }
       ],
       on_failure: v2.std.orchestration.FailFast
     },
-    else_: Absent
+    else_: v2.std.collection.Absent
   }
 }
 
@@ -35,15 +34,15 @@ fn orch_if_streq_empty_then_perturbed_intent() -> v2.std.orchestration.PipelineS
         v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: "verdict=absent",
-            env: [],
-            redirect: Absent,
-            capture: Absent
+            env: Empty,
+            redirect: v2.std.collection.Absent,
+            capture: v2.std.collection.Absent
           }
         }
       ],
       on_failure: v2.std.orchestration.FailFast
     },
-    else_: Absent
+    else_: v2.std.collection.Absent
   }
 }
 
@@ -59,23 +58,23 @@ fn orch_if_streq_else_intent() -> v2.std.orchestration.PipelineStep {
         v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: "verdict=converged",
-            env: [],
-            redirect: Absent,
-            capture: Absent
+            env: Empty,
+            redirect: v2.std.collection.Absent,
+            capture: v2.std.collection.Absent
           }
         }
       ],
       on_failure: v2.std.orchestration.FailFast
     },
-    else_: Present {
+    else_: v2.std.collection.Present {
       value: v2.std.orchestration.Pipeline {
         steps: [
           v2.std.orchestration.Do {
             run: v2.std.orchestration.Run {
               command: "verdict=drifted",
-              env: [],
-              redirect: Absent,
-              capture: Absent
+              env: Empty,
+              redirect: v2.std.collection.Absent,
+              capture: v2.std.collection.Absent
             }
           }
         ],
@@ -95,9 +94,9 @@ fn orch_if_exit_zero_negated_intent() -> v2.std.orchestration.PipelineStep {
       inner: v2.std.orchestration.ExitZero {
         run: v2.std.orchestration.Run {
           command: "mkdir -p \"$7\"",
-          env: [],
-          redirect: Absent,
-          capture: Absent
+          env: Empty,
+          redirect: v2.std.collection.Absent,
+          capture: v2.std.collection.Absent
         }
       }
     },
@@ -106,15 +105,15 @@ fn orch_if_exit_zero_negated_intent() -> v2.std.orchestration.PipelineStep {
         v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: "echo missing",
-            env: [],
-            redirect: Absent,
-            capture: Absent
+            env: Empty,
+            redirect: v2.std.collection.Absent,
+            capture: v2.std.collection.Absent
           }
         }
       ],
       on_failure: v2.std.orchestration.FailFast
     },
-    else_: Absent
+    else_: v2.std.collection.Absent
   }
 }
 
@@ -127,9 +126,9 @@ fn orch_if_run_redirect_ignore_fail_intent() -> v2.std.orchestration.PipelineSte
     cond: v2.std.orchestration.ExitZero {
       run: v2.std.orchestration.Run {
         command: "(cd \"$checkout\" && git fetch --prune origin)",
-        env: [],
-        redirect: Present { value: v2.std.orchestration.DiscardAll },
-        capture: Present { value: v2.std.orchestration.IgnoreFail }
+        env: Empty,
+        redirect: v2.std.collection.Present { value: v2.std.orchestration.DiscardAll },
+        capture: v2.std.collection.Present { value: v2.std.orchestration.IgnoreFail }
       }
     },
     then_: v2.std.orchestration.Pipeline {
@@ -137,15 +136,15 @@ fn orch_if_run_redirect_ignore_fail_intent() -> v2.std.orchestration.PipelineSte
         v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: "echo ok",
-            env: [],
-            redirect: Absent,
-            capture: Absent
+            env: Empty,
+            redirect: v2.std.collection.Absent,
+            capture: v2.std.collection.Absent
           }
         }
       ],
       on_failure: v2.std.orchestration.FailFast
     },
-    else_: Absent
+    else_: v2.std.collection.Absent
   }
 }
 
@@ -164,15 +163,15 @@ fn orch_if_log_matches_intent() -> v2.std.orchestration.PipelineStep {
         v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: "echo retry",
-            env: [],
-            redirect: Absent,
-            capture: Absent
+            env: Empty,
+            redirect: v2.std.collection.Absent,
+            capture: v2.std.collection.Absent
           }
         }
       ],
       on_failure: v2.std.orchestration.FailFast
     },
-    else_: Absent
+    else_: v2.std.collection.Absent
   }
 }
 
@@ -191,15 +190,15 @@ fn orch_if_and_tests_intent() -> v2.std.orchestration.PipelineStep {
         v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: "pin_ok=1",
-            env: [],
-            redirect: Absent,
-            capture: Absent
+            env: Empty,
+            redirect: v2.std.collection.Absent,
+            capture: v2.std.collection.Absent
           }
         }
       ],
       on_failure: v2.std.orchestration.FailFast
     },
-    else_: Absent
+    else_: v2.std.collection.Absent
   }
 }
 

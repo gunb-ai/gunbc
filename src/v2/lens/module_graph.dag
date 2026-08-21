@@ -138,7 +138,7 @@ fn string_eq(a: String, b: String) -> Bool {
   a == b
 }
 
-data no_paths: FreeMonoid<String> = []
+data no_paths: FreeMonoid<String> = Empty
 
 data no_import_facts: List<ImportResolutionFact> = []
 

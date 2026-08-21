@@ -10,7 +10,7 @@ data gcp_token_smoke_echo_acquired_command: String = "echo \"keyless access toke
 fn gcp_token_smoke_run(command: String) -> v2.std.orchestration.Run {
   v2.std.orchestration.Run {
     command: command,
-    env: [],
+    env: Empty,
     redirect: Absent,
     capture: Absent
   }
