@@ -13,6 +13,10 @@ pub use crate::extdeps_languages_rust_emit::{
 };
 pub use crate::gunbc_rust_decl_type_overlay::rust_decl_type_container_overlay_is_admitted;
 pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
+pub use crate::gunbc_stage0_emitted_population_manifest::{
+    emitted_population_manifest_basename, emitted_population_manifest_line_prefix,
+    emitted_population_manifest_line_separator,
+};
 pub use crate::std_algebra::trim;
 pub use crate::std_coercion::TypeCheckpoint;
 pub use crate::std_content_hash::Fnv1a64Structural;
@@ -5483,7 +5487,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             dry_run_file.clone(),
         );
         let lib_file = emit_lib_rs_from_files(all_mod_files.clone(), has_pipeline.clone());
-        let files = v1_rt::concat(
+        let emitted_files = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
                     Rc::new(vec![cargo.clone(), lib_file.clone(), main_file.clone()]),
@@ -5493,9 +5497,63 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             ),
             test_files.clone(),
         );
+        let population_manifest = emit_emitted_population_manifest(emitted_files.clone());
+        let files = v1_rt::concat(
+            emitted_files.clone(),
+            Rc::new(vec![population_manifest.clone()]),
+        );
         Rc::new(EmitResult {
             files: files.clone(),
             diagnostics: Rc::new(vec![]),
+        })
+    }
+}
+
+pub fn emitted_population_manifest_path() -> String {
+    v1_rt::concat(rust_source_root(), emitted_population_manifest_basename())
+}
+
+pub fn emit_emitted_population_manifest(files: Rc<Vec<Rc<TextFile>>>) -> Rc<TextFile> {
+    {
+        let declared = v1_rt::concat(
+            Rc::new({
+                let mut __result = Vec::new();
+                for f in files.clone().iter().cloned() {
+                    __result.push(f.path.clone());
+                }
+                __result
+            }),
+            Rc::new(vec![emitted_population_manifest_path()]),
+        );
+        let lines = Rc::new({
+            let mut __result = Vec::new();
+            for path in Rc::new({
+                let mut __sorted: Vec<_> = declared.clone().iter().cloned().collect();
+                __sorted.sort_by(|a: &String, b: &String| {
+                    let __ka = (|path: String| path.clone())(a.clone());
+                    let __kb = (|path: String| path.clone())(b.clone());
+                    __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                });
+                __sorted
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(v1_rt::concat(
+                    emitted_population_manifest_line_prefix(),
+                    path.clone(),
+                ));
+            }
+            __result
+        });
+        Rc::new(TextFile {
+            path: emitted_population_manifest_path(),
+            content: v1_rt::concat(
+                lines
+                    .clone()
+                    .join(&emitted_population_manifest_line_separator()),
+                emitted_population_manifest_line_separator(),
+            ),
         })
     }
 }
