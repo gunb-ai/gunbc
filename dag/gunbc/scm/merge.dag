@@ -13,6 +13,25 @@ import v2.std.node {
   node_synthetic,
 }
 
+import v2.std.dependency {
+  DependencyKind,
+  Contains,
+  BindsTo,
+  TypeDependsOn,
+  DataDependsOn,
+  EffectDependsOn,
+  ResourceDependsOn,
+  ModuleDependsOn,
+  BarrierBefore,
+  PlacementDependsOn,
+  ModelDependsOn,
+  ProjectionDependsOn,
+  GeneratedFrom,
+  VerifiedBy,
+  PromotedBy,
+  BootstrapDependsOn,
+}
+
 import gunbc.scm.object_store {
   ObjectId,
   ObjectStore,
@@ -66,50 +85,86 @@ type Proposal {
 type MergeDependency {
   dependent: Symbol
   required: Symbol
-  kind: MergeDependencyKind
+  kind: DependencyKind
   usage_site: Symbol
 }
 
-// FIFTEEN DEPENDENCY KINDS ARE NOT ONE CLOSURE ALGEBRA, so this module declares its own total
-// classifier instead of inheriting the affected-set lens's. Only two kinds are supported in this
-// cut; `Contains` is retained for RECONSTRUCTION ONLY and never propagates; every other kind refuses
-// by name rather than falling into a generic reachability rule it was never validated against.
-type MergeDependencyKind
-  = DataDependsOn
-  | BindsTo
-  | Contains
-  | UnsupportedKind { name: Symbol }
-
+// FIFTEEN DEPENDENCY KINDS ARE NOT ONE CLOSURE ALGEBRA, so this module declares its OWN total
+// classifier over the shared vocabulary -- it does not mint a second one. An earlier revision
+// defined a local MergeDependencyKind whose arms were byte-identical to DataDependsOn, BindsTo and
+// Contains, which is the section 3 nicknaming violation in its purest form: a second name for one
+// concept, duplicated again in everything derived from it. Consuming v2.std.dependency's
+// DependencyKind means merge's policy is a CLASSIFIER over the real kinds, which is the only part
+// that is genuinely merge-specific.
+//
+// THE EXHAUSTIVE MATCH IS THE ENFORCEMENT. A sixteenth kind added upstream fails to compile here
+// until merge states its policy for it, so "every other kind refuses by name" is a structural
+// property rather than a catch-all arm someone must remember to route through. The earlier local
+// enum had an UnsupportedKind { name: Symbol } escape hatch that would have silently absorbed any
+// new kind under a stringly name -- validation standing where construction was available.
 // CONTAINMENT IS NOT PROPAGATION. This is the single rule the rewrite exists to enforce. The live
 // affected-set closure traverses `Contains` in BOTH directions, so an edit to `f` reaches its
 // container `M` and then every other child of `M` -- pulling in an independent sibling precisely
 // because it shares a container. That is the file model returning through the dependency lens. Here
 // a child-body change never implicates its siblings, and the sibling-preservation claim is the
 // witness that would go red if it ever did.
-fn kind_propagates_removal(kind: MergeDependencyKind) -> Bool {
+fn kind_propagates_removal(kind: DependencyKind) -> Bool {
   match kind {
     DataDependsOn => true
     BindsTo => true
     Contains => false
-    UnsupportedKind { name: _ } => false
+    TypeDependsOn => false
+    EffectDependsOn => false
+    ResourceDependsOn => false
+    ModuleDependsOn => false
+    BarrierBefore => false
+    PlacementDependsOn => false
+    ModelDependsOn => false
+    ProjectionDependsOn => false
+    GeneratedFrom => false
+    VerifiedBy => false
+    PromotedBy => false
+    BootstrapDependsOn => false
   }
 }
 
-fn kind_is_supported(kind: MergeDependencyKind) -> Bool {
+fn kind_is_supported(kind: DependencyKind) -> Bool {
   match kind {
     DataDependsOn => true
     BindsTo => true
     Contains => true
-    UnsupportedKind { name: _ } => false
+    TypeDependsOn => false
+    EffectDependsOn => false
+    ResourceDependsOn => false
+    ModuleDependsOn => false
+    BarrierBefore => false
+    PlacementDependsOn => false
+    ModelDependsOn => false
+    ProjectionDependsOn => false
+    GeneratedFrom => false
+    VerifiedBy => false
+    PromotedBy => false
+    BootstrapDependsOn => false
   }
 }
 
-fn kind_name(kind: MergeDependencyKind) -> Symbol {
+fn kind_name(kind: DependencyKind) -> Symbol {
   match kind {
     DataDependsOn => ^data_depends_on
     BindsTo => ^binds_to
     Contains => ^contains
-    UnsupportedKind { name: name } => name
+    TypeDependsOn => ^type_depends_on
+    EffectDependsOn => ^effect_depends_on
+    ResourceDependsOn => ^resource_depends_on
+    ModuleDependsOn => ^module_depends_on
+    BarrierBefore => ^barrier_before
+    PlacementDependsOn => ^placement_depends_on
+    ModelDependsOn => ^model_depends_on
+    ProjectionDependsOn => ^projection_depends_on
+    GeneratedFrom => ^generated_from
+    VerifiedBy => ^verified_by
+    PromotedBy => ^promoted_by
+    BootstrapDependsOn => ^bootstrap_depends_on
   }
 }
 

@@ -26,17 +26,14 @@ import gunbc.scm.object_store {
 
 import gunbc.scm.checkout { Commit }
 
+import v2.std.dependency { DataDependsOn, Contains, PlacementDependsOn, BarrierBefore }
+
 import gunbc.scm.merge {
   Requirement,
   RequireBinding,
   RequireBindingAbsent,
   Proposal,
   MergeDependency,
-  MergeDependencyKind,
-  DataDependsOn,
-  BindsTo,
-  Contains,
-  UnsupportedKind,
   MergeOutcome,
   Merged,
   ChoiceRequired,
@@ -263,7 +260,7 @@ test fn the_arm_a_dependency_row_is_actually_read() -> Bool {
       add_k_proposal(deps: [MergeDependency {
         dependent: ^k,
         required: ^h,
-        kind: UnsupportedKind { name: ^probe_kind },
+        kind: BarrierBefore,
         usage_site: ^u,
       }]),
       remove_f_proposal(),
@@ -273,7 +270,7 @@ test fn the_arm_a_dependency_row_is_actually_read() -> Bool {
     CouldNotLand { cause: cause } =>
       match cause {
         DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: kind } =>
-          (kind as String) == (^probe_kind as String)
+          (kind as String) == (^barrier_before as String)
         RequiredDependencyRemoved { dependency: _, removed_role: _ } => false
         TargetRootMissing { identity: _ } => false
         TargetChildMissing { role: _, identity: _ } => false
@@ -461,7 +458,7 @@ test fn an_unsupported_dependency_kind_refuses() -> Bool {
     target_dependencies: [MergeDependency {
       dependent: ^f,
       required: ^somewhere,
-      kind: UnsupportedKind { name: ^placement_depends_on },
+      kind: PlacementDependsOn,
       usage_site: ^board,
     }],
     proposals: [],
