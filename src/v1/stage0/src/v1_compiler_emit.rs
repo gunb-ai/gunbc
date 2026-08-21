@@ -897,7 +897,7 @@ pub fn emit_data_value_json(
                 "-".to_string(),
                 emit_data_value_json(unaryop_operand(value.clone()), source_indices.clone()),
             ),
-            _ => "\"compile_error!(unsupported mock expression)\"".to_string(),
+            _ => "compile_error!(\"unsupported mock expression\")".to_string(),
         }
     })
 }
