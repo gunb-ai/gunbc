@@ -8211,8 +8211,8 @@ fn census_module_nodes(modules: List<v1.compiler.resolve.ResolvedModule>) -> Lis
 }
 
 fn corpus_disj_variant_name_counts_nodes(module_nodes: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Map<String, Int> {
-  fold(module_nodes, init: empty_map(), f: (counts, v1.std.core.module_node) =>
-    fold(v1.std.core.module_items(n: v1.std.core.module_node), init: counts, f: (c, item) =>
+  fold(module_nodes, init: empty_map(), f: (counts, module_node) =>
+    fold(v1.std.core.module_items(n: module_node), init: counts, f: (c, item) =>
       match item.connective {
         Disj =>
           fold(item.children, init: c, f: (c2, child) =>
@@ -8229,8 +8229,8 @@ fn corpus_disj_variant_name_counts(modules: List<v1.compiler.resolve.ResolvedMod
 }
 
 fn corpus_item_name_counts_nodes(module_nodes: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Map<String, Int> {
-  fold(module_nodes, init: empty_map(), f: (counts, v1.std.core.module_node) =>
-    fold(v1.std.core.module_items(n: v1.std.core.module_node), init: counts, f: (c, item) =>
+  fold(module_nodes, init: empty_map(), f: (counts, module_node) =>
+    fold(v1.std.core.module_items(n: module_node), init: counts, f: (c, item) =>
       disj_variant_name_count_inc(counts: c, name: v1.std.core.authored_name_at(source_indices: source_indices, node: item))
     )
   )
@@ -8310,9 +8310,9 @@ fn symbol_index_insert_unique_disj_variant_aliases(
 fn build_symbol_index_census_raw_nodes(module_nodes: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.compiler.infer_env.SymbolIndex {
   let corpus_variant_counts = corpus_disj_variant_name_counts_nodes(module_nodes: module_nodes, source_indices: source_indices)
   let corpus_item_counts = corpus_item_name_counts_nodes(module_nodes: module_nodes, source_indices: source_indices)
-  fold(module_nodes, init: v1.compiler.infer_env.empty_symbol_index(), f: (index, v1.std.core.module_node) =>
-    let module_path = v1.std.core.authored_name_at(source_indices: source_indices, node: v1.std.core.module_node)
-    let items = v1.std.core.module_items(n: v1.std.core.module_node)
+  fold(module_nodes, init: v1.compiler.infer_env.empty_symbol_index(), f: (index, module_node) =>
+    let module_path = v1.std.core.authored_name_at(source_indices: source_indices, node: module_node)
+    let items = v1.std.core.module_items(n: module_node)
     let with_items = fold(items, init: index, f: (acc, item) =>
       symbol_index_insert_item(
         index: acc,
@@ -8567,9 +8567,9 @@ fn symbol_index_with_bare_fill(closure: v1.compiler.infer_env.SymbolIndex, tree:
 }
 
 fn build_symbol_index_qualified_fill(modules: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.compiler.infer_env.SymbolIndex {
-  let raw = fold(modules, init: v1.compiler.infer_env.empty_symbol_index(), f: (index, v1.std.core.module_node) =>
-    let module_path = v1.std.core.authored_name_at(source_indices: source_indices, node: v1.std.core.module_node)
-    let items = v1.std.core.module_items(n: v1.std.core.module_node)
+  let raw = fold(modules, init: v1.compiler.infer_env.empty_symbol_index(), f: (index, module_node) =>
+    let module_path = v1.std.core.authored_name_at(source_indices: source_indices, node: module_node)
+    let items = v1.std.core.module_items(n: module_node)
     let with_items = fold(items, init: index, f: (acc, item) =>
       match local_binding_for_item(item: item, source_indices: source_indices) {
         Absent => acc
