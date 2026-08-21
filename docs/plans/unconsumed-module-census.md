@@ -61,6 +61,19 @@ larger piece of work than this census. The method above is stated at the grain n
 re-derive the population independently, and §2's three defects are what a re-derivation
 must reproduce to agree.
 
+4. **NEW — a bare substring is not a reference, and one module name is a suffix of
+   another.** `v2.std.verification` *contains* `std.verification`. A substring mention
+   scan therefore reported `std.verification` as cited by 128 files; boundary-anchored
+   (not preceded by `[A-Za-z0-9_.]`, not followed by an identifier character) the true
+   count is **6 occurrences, one of which is the module's own `module` line**. This is the
+   same class as defect 3 from the other side — an instrument reading text where it should
+   read structure — and it was caught by review, not by me. Every mention count in §3 and
+   §6 is boundary-anchored; the census document itself is excluded from its own scan, which
+   is not pedantry: including it silently reclassified 40 rows out of RESIDUE-UNMENTIONED
+   by naming them. **Rule for whoever measures next: never a bare substring for a module
+   name.** Re-measuring the whole population this way moved only 4 rows, so the class was
+   narrow — but it was fatal on exactly the row the census had escalated.
+
 **Controls, run on every pass** (a zero is readable only beside a nonzero):
 `v2.compiler.compile`, `gunbc.spark.serving_desired`, `gunbc.clock_read`, `v2.std.node`
 all score *reachable*; `gunbc.accelerator_demo_gpu` scores *reachable* only after defect 3
@@ -80,10 +93,11 @@ row can be re-derived and disagreed with.
 | disposition | count | rule | what it means |
 | --- | --- | --- | --- |
 | RESIDUE-EMPTY | 8 | ≤5 lines — a `module` line and nothing else | Delete. No content to strand. |
-| CITED-AUTHORITY | 105 | declares an `ExternalAuthority` anchor | **Do not sweep.** The value may be the citation (DESIGN §3 extdeps duty), not a call. Needs a per-island decision, §4. |
-| PROSE-NAMED | 86 | named by live (reachable) `.dag`, `.rs`, or `.yml` source | Deleting strands a citation. Each needs the mention read before it moves: superseded, missing-consumer, or delete-with-citation-repair. |
-| RESIDUE-DOC-ONLY | 32 | named only in `.md`, receipts/TSVs, or other dead modules | Delete; repair the doc citation in the same diff. |
-| RESIDUE-UNMENTIONED | 72 | not named anywhere in the tree outside itself | Delete. Highest-confidence residue. |
+| CITED-AUTHORITY | 104 | declares an `ExternalAuthority` anchor | **Do not sweep.** The value may be the citation (DESIGN §3 extdeps duty), not a call. Needs a per-island decision, §4. |
+| PROSE-NAMED | 81 | named by live (reachable) `.dag`, `.rs`, or `.yml` source, boundary-anchored | Deleting strands a citation. Each needs the mention read before it moves: superseded, missing-consumer, or delete-with-citation-repair. |
+| FROZEN-PENDING-RE-ADD | 15 | the `.dag` side of a capability whose invoker a cut removed, where the re-add is named | **Not residue.** DESIGN §3 frozen-X: deleting these deletes what the re-add queue exists to re-attach. Each row names its anchor, §4d. |
+| RESIDUE-DOC-ONLY | 28 | named only in `.md`, receipts/TSVs, or other dead modules | Delete; repair the doc citation in the same diff. |
+| RESIDUE-UNMENTIONED | 67 | not named anywhere in the tree outside itself | Delete. Highest-confidence residue. |
 
 Per-module rows: appendix, §6.
 
@@ -106,15 +120,29 @@ single deletion in the census. Same shape, smaller: `extdeps/formats/elf/` (7),
 `extdeps/container/oci/` (5), `extdeps/boot/` (5), `extdeps/ebay/` (6),
 `extdeps/tcgplayer/` (5), `extdeps/llm/` (7).
 
-**b. `std.verification` — dead code with 120 prose citations.** Unreachable: no import and
-no qualified reference anywhere (verified by a non-prose grep, not by absence of an import
-line). But its *name* appears in 120 live `.dag` files (and 8 more that are themselves in this census), all inside annotations and strings —
-including a diagnosis in `gunbc.plans.resolver_type_name_collision_wall` that describes an
-import closure reaching it. This is the dangling-annotation hazard at its worst: deleting
-the module silently falsifies 120 citations, and keeping it means the corpus is paying to
-host a module the compiler never reaches. It also carries the §3 second-authority smell
-against `v2.std.verification`, which is live — **the highest-value single row in the
-census**, and the one I would want an operator eye on first.
+**b. `std.verification` — delete it; the escalation this census originally raised was an
+instrument artifact.** The first revision reported 120 citing files and asked for an
+operator decision. That count was a substring match against `v2.std.verification` (§2,
+defect 4). Boundary-anchored and verified independently of the review that caught it, the
+real citation surface is small and the deletion is ordinary:
+
+- **5 genuine name references, in 2 files**, both plan carriers:
+  `gunbc.plans.resolver_type_name_collision_wall` and
+  `gunbc.plans.realization_measurement_loop`.
+- **1 path reference the name-based scan could not see** — `src/v2/test/fixture/`
+  `frontier_probe_elision_boundary_overlay.dag` pins `"dag/std/verification.dag"` by path
+  **with a content hash**. A fixture pinned by content hash is a consumer: the deletion
+  must move it, not just the prose. This site was not in the review's count either; a
+  name-only census would have found it during the deletion instead of before it.
+
+The second-authority half is measured, not inferred: `dag/std/verification.dag` is 604
+bytes with 0 importers (`AssertKind`, `AssertionClaim`, `TestCase`); `src/v2/std/
+verification.dag` is 13,813 bytes with 118 importers (`TestgenTier`,
+`TestClassification`, …). Same name, same subject space, and the small one has no
+consumers — the §3 second-authority shape. Delete the 604-byte module and repair all three
+sites in the same PR: if a plan's claim is still true it points at `v2.std.verification`,
+and if it is not, the claim retires with the module. A pointer to a deleted authority is
+not an acceptable landing state.
 
 **c. `src/v2/extdeps/formatters/` (9) and `typecheckers/` (2) — cited config models, no
 consumer, no mention anywhere.** rustfmt, prettier, gofmt, black, ktfmt, clang-format,
@@ -123,15 +151,39 @@ surfaces with zero readers. Note the standing irony: DESIGN's fixed-point rule f
 emitted mirror is *about* rustfmt, and `v2.extdeps.formatters.rustfmt` is not what
 implements it. Missing-consumer or residue — not a mechanical call.
 
-**d. `dag/tools/*_transport` (8) plus `tools.gunbc_ci`, `tools.build`, `tools.readme`,
-`tools.roadmap_dispatch`, `tools.codegen` — floor/regen/CI-cut casualties.** These are
-witness-binary transports whose callers were deleted by the floor cut (2026-08-15) and the
-regen root cut (2026-08-18). The cuts uprooted the callers and left the transports. Per
-DESIGN §3 this is exactly the residue a delete-first cut is supposed to surface, and it did
-not surface because nothing could refuse. Ten of them are mentioned nowhere at all.
-Caution before sweeping: the CI paragraph in DESIGN names a **re-add queue** — a transport
-whose gate is queued for re-derivation is arguably frozen, not residue. That distinction is
-an operator call, not mine.
+**d. `dag/tools/` — 15 FROZEN, 5 residue, and the split is per-module.** These are the
+`.dag` sides of capabilities whose invokers the floor cut (2026-08-15) and the regen root
+cut (2026-08-18) removed. DESIGN's CI paragraph names a **re-add queue** with a restoration
+trigger, and a module the queue exists to re-attach is §3 frozen-X, not residue — deleting
+it means re-authoring it worse from memory later. So the carve-out is granted **per module
+against a named anchor**, never to the group:
+
+- **Eight witness transports** — `parse`, `bootstrap`, `dag_collect_fingerprint`,
+  `infer_semantics`, `interp_recorded_fixture`, `effects_rest_transport`,
+  `auth_declared_but_unwired`, `v1_dag_parse`. Anchor: each wraps a Rust binary that
+  **`gunbc.ci_release_bins` (live, reachable) still declares as a CI release artifact**.
+  The binary is retained and the `.dag` invoker is the unattached half — the definition of
+  frozen.
+- **`tools.floor_effect_gate_witness`** (the seven effect gates), **`tools.ci_heal_dispatch`**
+  (heal), **`tools.merge_admission_capture_transport`** and
+  **`tools.merge_admission_current_context`** (merge-admission stamping). Anchor: each gate
+  is named on DESIGN's own unguarded list.
+- **`tools.dag_compile_clean_seam`, `_seam_transport`, `_shard_transport`.** Anchor:
+  DESIGN's compile-clean entry-point trigger — **the weakest of the three anchors, and
+  flagged as such**: prose, no binary, no queue line. If that trigger is judged not to be a
+  queue entry, these three separate out as residue.
+
+**Not on any queue, therefore residue:** `tools.build`, `tools.readme`,
+`tools.roadmap_dispatch`, `tools.codegen` (empty), and `tools.gunbc_ci` — the last is
+**superseded**, not merely unreferenced: it shells out to the old `gunbc ci` generate-and-run
+script, and `gunbc.witness_floor_workflow` → `.github/workflows/witnesses.yml` is what
+actually runs CI now. That is the §3 second-authority find in this cluster.
+
+Related, and the reason this cluster is worth naming at all: **12 of the 303 declare
+`main()`** — an entry shape with no argv anywhere that names it. Four are in `tools/`; the
+rest are `examples/` and three `extdeps` witnesses. An entry that lost its invoker is the
+exact residue a delete-first cut is supposed to surface loudly, and it did not surface,
+because nothing downstream could refuse.
 
 **e. Eight empty modules.** `std.list`, `std.containers`, `std.import`, `std.rational`,
 `tools.codegen`, `v2.bin.main`, `v2.std.inhabitant_bridge`,
@@ -152,11 +204,17 @@ with `failed=` read and PASS counted against the roster.
 
 1. **B1 — RESIDUE-EMPTY (8).** Nothing to strand; a pure control batch that proves the
    deletion pipeline and the floor both behave.
-2. **B2 — RESIDUE-UNMENTIONED, non-extdeps (58).** No citation to repair by construction.
+2. **B2 — RESIDUE-UNMENTIONED, non-extdeps (53 of 67).** No citation to repair by
+   construction. This is the batch to establish the mechanics on: lowest chance of an
+   argument, per the review ruling.
 3. **B3 — RESIDUE-DOC-ONLY (32).** Deletion plus the doc/receipt citation repair in the
    same diff.
-4. **B4 — cut casualties (finding d)**, after the re-add-queue question is answered.
-5. **B5 — `std.verification` (finding b)** alone, because 120 citations move with it.
+4. **B4 — the five `tools/` rows that are NOT on the re-add queue (finding d)**, including
+   the superseded `tools.gunbc_ci`. The 15 FROZEN-PENDING-RE-ADD rows are in no batch: they
+   stay until their queued gate is re-derived, and their disposition is recorded here so a
+   future census does not re-derive the question and answer "residue".
+5. **B5 — `std.verification` (finding b)** alone: delete the module, repoint the two plan
+   carriers, and move the content-hash fixture pin, all in one PR.
 6. **B6+ — the extdeps islands (finding a, c)**, one island per PR, each gated on whether
    the citation is the deliverable.
 
@@ -185,12 +243,13 @@ only. `gunbc.spark.provisioning` is a live instance of the dangling-annotation h
 | `v2.std.inhabitant_bridge` | `src/v2/std/inhabitant_bridge.dag` | 4 | —  |
 | `v2.std.type_expr_projection_row_schema` | `src/v2/std/type_expr_projection_row_schema.dag` | 4 | —  |
 
-### RESIDUE-UNMENTIONED — 72 modules
+### RESIDUE-UNMENTIONED — 67 modules
 
 | module | path | lines | live-source mentions |
 | --- | --- | --- | --- |
 | `config.codegen_paths` | `dag/config/codegen_paths.dag` | 20 | —  |
 | `examples.html_markup_smoke` | `dag/examples/html_markup_smoke/html_markup_smoke.dag` | 66 | —  |
+| `examples.js_site` | `dag/examples/js_site/js_site.dag` | 185 | —  |
 | `examples.js_site_emit` | `dag/examples/js_site/js_site_emit.dag` | 76 | —  |
 | `examples.nominal_distinctness_twin` | `dag/examples/nominal_distinctness_witness/twin.dag` | 15 | —  |
 | `examples.nominal_distinctness_witness` | `dag/examples/nominal_distinctness_witness/witness.dag` | 19 | —  |
@@ -209,14 +268,7 @@ only. `gunbc.spark.provisioning` is a live instance of the dangling-annotation h
 | `gunbc.tools.roadmap_spawn_request` | `dag/gunbc/tools/roadmap_spawn_request.dag` | 36 | —  |
 | `std.binding` | `dag/std/binding.dag` | 7 | —  |
 | `std.syllogism` | `dag/std/syllogism.dag` | 82 | —  |
-| `tools.auth_declared_but_unwired_witness_transport` | `dag/tools/auth_declared_but_unwired_witness_transport.dag` | 12 | —  |
-| `tools.bootstrap_witness_transport` | `dag/tools/bootstrap_witness_transport.dag` | 12 | —  |
-| `tools.dag_collect_fingerprint_witness_transport` | `dag/tools/dag_collect_fingerprint_witness_transport.dag` | 12 | —  |
-| `tools.dag_compile_clean_shard_transport` | `dag/tools/dag_compile_clean_shard_transport.dag` | 43 | —  |
-| `tools.effects_rest_transport_witness_transport` | `dag/tools/effects_rest_transport_witness_transport.dag` | 12 | —  |
-| `tools.infer_semantics_witness_transport` | `dag/tools/infer_semantics_witness_transport.dag` | 12 | —  |
-| `tools.interp_recorded_fixture_witness_transport` | `dag/tools/interp_recorded_fixture_witness_transport.dag` | 13 | —  |
-| `tools.parse_witness_transport` | `dag/tools/parse_witness_transport.dag` | 20 | —  |
+| `tools.build` | `dag/tools/build.dag` | 34 | —  |
 | `tools.readme` | `dag/tools/readme.dag` | 70 | —  |
 | `tools.roadmap_dispatch` | `dag/tools/roadmap_dispatch.dag` | 17 | —  |
 | `v2.extdeps.formats.csv` | `src/v2/extdeps/formats/csv.dag` | 136 | —  |
@@ -246,6 +298,7 @@ only. `gunbc.spark.provisioning` is a live instance of the dangling-annotation h
 | `v2.test.language_model.python_r2a` | `src/v2/extdeps/language_model/python_r2a.dag` | 58 | —  |
 | `v2.test.language_model.python_r2b` | `src/v2/extdeps/language_model/python_r2b.dag` | 53 | —  |
 | `v2.test.language_model.python_r3_external` | `src/v2/extdeps/language_model/python_r3_external.dag` | 58 | —  |
+| `v2.test.language_model.rust` | `src/v2/extdeps/language_model/rust.dag` | 256 | —  |
 | `v2.test.language_model.rust_r2a` | `src/v2/extdeps/language_model/rust_r2a.dag` | 57 | —  |
 | `v2.test.language_model.rust_r2b` | `src/v2/extdeps/language_model/rust_r2b.dag` | 75 | —  |
 | `v2.test.language_model.rust_r3_external` | `src/v2/extdeps/language_model/rust_r3_external.dag` | 57 | —  |
@@ -262,14 +315,13 @@ only. `gunbc.spark.provisioning` is a live instance of the dangling-annotation h
 | `v2.workflow.gha_expression_fidelity` | `src/v2/workflow/gha_expression_fidelity.dag` | 22 | —  |
 | `v2.workflow.probe_selector_host_health` | `src/v2/workflow/probe_selector_host_health.dag` | 43 | —  |
 
-### RESIDUE-DOC-ONLY — 32 modules
+### RESIDUE-DOC-ONLY — 28 modules
 
 | module | path | lines | live-source mentions |
 | --- | --- | --- | --- |
 | `examples.cost_estimate` | `dag/examples/cost_estimate/cost_estimate.dag` | 29 | —  |
 | `examples.gunbhub_serve_program` | `dag/examples/gunbhub_serve_program/gunbhub_serve_program.dag` | 60 | —  |
 | `examples.interp_test` | `dag/examples/interp_test/interp_example.dag` | 40 | —  |
-| `examples.js_site` | `dag/examples/js_site/js_site.dag` | 185 | —  |
 | `gunbc.code_change_workflow` | `dag/gunbc/code_change_workflow.dag` | 371 | —  |
 | `gunbc.floor_resolve_realization` | `dag/gunbc/floor_resolve_realization.dag` | 28 | —  |
 | `gunbc.hand_lens_host_bridge_scaffold_watchdog` | `dag/gunbc/hand_lens_host_bridge_scaffold_watchdog.dag` | 46 | —  |
@@ -287,9 +339,6 @@ only. `gunbc.spark.provisioning` is a live instance of the dangling-annotation h
 | `shared.dag_util` | `dag/shared/dag_util.dag` | 44 | —  |
 | `std.exec_format` | `dag/std/exec_format.dag` | 37 | —  |
 | `std.patterns` | `dag/std/patterns.dag` | 24 | —  |
-| `tools.dag_compile_clean_seam` | `dag/tools/dag_compile_clean_seam.dag` | 110 | —  |
-| `tools.dag_compile_clean_seam_transport` | `dag/tools/dag_compile_clean_seam_transport.dag` | 124 | —  |
-| `tools.v1_dag_parse_transport` | `dag/tools/v1_dag_parse_transport.dag` | 12 | —  |
 | `v2.extdeps.bmc.lifecycle_fidelity` | `src/v2/extdeps/bmc/lifecycle_fidelity.dag` | 146 | —  |
 | `v2.extdeps.formats.json` | `src/v2/extdeps/formats/json.dag` | 52 | —  |
 | `v2.extdeps.formats.json_schema` | `src/v2/extdeps/formats/json_schema.dag` | 103 | —  |
@@ -299,7 +348,27 @@ only. `gunbc.spark.provisioning` is a live instance of the dangling-annotation h
 | `v2.test.workflow.host_discovered_owned_data_manifest` | `src/v2/workflow/host_discovered_owned_data_manifest.dag` | 19 | —  |
 | `v2.workflow.ci_stage0_partition_compile_gate_emit` | `src/v2/workflow/ci_stage0_partition_compile_gate_emit.dag` | 103 | —  |
 
-### PROSE-NAMED — 86 modules
+### FROZEN-PENDING-RE-ADD — 15 modules
+
+| module | path | lines | re-add anchor |
+| --- | --- | --- | --- |
+| `tools.auth_declared_but_unwired_witness_transport` | `dag/tools/auth_declared_but_unwired_witness_transport.dag` | 12 | `auth_declared_but_unwired_witness` bin, still declared in `gunbc.ci_release_bins` |
+| `tools.bootstrap_witness_transport` | `dag/tools/bootstrap_witness_transport.dag` | 12 | `bootstrap_witness` bin, still declared in `gunbc.ci_release_bins` |
+| `tools.ci_heal_dispatch` | `dag/tools/ci_heal_dispatch.dag` | 48 | heal — named on DESIGN's unguarded list |
+| `tools.dag_collect_fingerprint_witness_transport` | `dag/tools/dag_collect_fingerprint_witness_transport.dag` | 12 | `dag_collect_fingerprint_witness` bin, still declared in `gunbc.ci_release_bins` |
+| `tools.dag_compile_clean_seam` | `dag/tools/dag_compile_clean_seam.dag` | 110 | compile-clean entry point — WEAKER ANCHOR: a prose restoration trigger in DESIGN, no bin and no queue line |
+| `tools.dag_compile_clean_seam_transport` | `dag/tools/dag_compile_clean_seam_transport.dag` | 124 | compile-clean entry point — WEAKER ANCHOR, as above |
+| `tools.dag_compile_clean_shard_transport` | `dag/tools/dag_compile_clean_shard_transport.dag` | 43 | compile-clean entry point — WEAKER ANCHOR, as above |
+| `tools.effects_rest_transport_witness_transport` | `dag/tools/effects_rest_transport_witness_transport.dag` | 12 | `effects_rest_transport_witness` bin, still declared in `gunbc.ci_release_bins` |
+| `tools.floor_effect_gate_witness` | `dag/tools/floor_effect_gate_witness.dag` | 59 | the seven effect gates — named on DESIGN's unguarded list |
+| `tools.infer_semantics_witness_transport` | `dag/tools/infer_semantics_witness_transport.dag` | 12 | `infer_semantics_witness` bin, still declared in `gunbc.ci_release_bins` |
+| `tools.interp_recorded_fixture_witness_transport` | `dag/tools/interp_recorded_fixture_witness_transport.dag` | 13 | `interp_recorded_fixture_witness` bin, still declared in `gunbc.ci_release_bins` |
+| `tools.merge_admission_capture_transport` | `dag/tools/merge_admission_capture_transport.dag` | 32 | merge-admission stamping — named on DESIGN's unguarded list |
+| `tools.merge_admission_current_context` | `dag/tools/merge_admission_current_context.dag` | 134 | merge-admission stamping — named on DESIGN's unguarded list |
+| `tools.parse_witness_transport` | `dag/tools/parse_witness_transport.dag` | 20 | `parse_witness` bin, still declared in `gunbc.ci_release_bins` |
+| `tools.v1_dag_parse_transport` | `dag/tools/v1_dag_parse_transport.dag` | 12 | `v1_src_dag_parse` bin, still declared in `gunbc.ci_release_bins` |
+
+### PROSE-NAMED — 81 modules
 
 | module | path | lines | live-source mentions |
 | --- | --- | --- | --- |
@@ -333,7 +402,7 @@ only. `gunbc.spark.provisioning` is a live instance of the dangling-annotation h
 | `gunbc.fleet_probe_identity_observe` | `dag/gunbc/fleet_probe_identity_observe.dag` | 86 | {'dag': 1} `dag/gunbc/ci_spec.dag` |
 | `gunbc.githooks_pre_push_cli` | `dag/gunbc/githooks_pre_push_cli.dag` | 10 | {'dag': 2, 'rs': 2} `dag/std/emit_on_demand.dag` `dag/gunbc/githooks_pre_push_fmt_transport_scaffold.dag` |
 | `gunbc.host_authorized_keys_reconcile` | `dag/gunbc/host_authorized_keys_reconcile.dag` | 104 | {'dag': 1} `dag/gunbc/build_cache_instance.dag` |
-| `gunbc.host_build_cache_provision` | `dag/gunbc/host_build_cache_provision.dag` | 335 | {'dag': 11} `dag/extdeps/cache/sccache.dag` `dag/test/claim/host_build_cache_provision_design_witness_test.dag` |
+| `gunbc.host_build_cache_provision` | `dag/gunbc/host_build_cache_provision.dag` | 335 | {'dag': 4} `dag/gunbc/build_cache_instance.dag` `dag/gunbc/fleet_host_budget.dag` |
 | `gunbc.host_identity_assimilation` | `dag/gunbc/host_identity_assimilation.dag` | 266 | {'dag': 3} `dag/gunbc/host_standup.dag` `dag/gunbc/host_identity_adopt.dag` |
 | `gunbc.host_identity_converge` | `dag/gunbc/host_identity_converge.dag` | 250 | {'dag': 1} `dag/gunbc/host_standup.dag` |
 | `gunbc.host_identity_knob` | `dag/gunbc/host_identity_knob.dag` | 55 | {'dag': 1} `dag/gunbc/host_standup.dag` |
@@ -358,7 +427,7 @@ only. `gunbc.spark.provisioning` is a live instance of the dangling-annotation h
 | `gunbc.srv3_os_install_diagnostic` | `dag/gunbc/srv3_os_install_diagnostic.dag` | 1410 | {'dag': 1} `dag/gunbc/non_fold_residue.dag` |
 | `gunbc.tailscale_acl_emit` | `dag/gunbc/tailscale_acl_emit.dag` | 52 | {'dag': 1} `dag/gunbc/host_standup.dag` |
 | `gunbc.test_node_wall_clock_ratchet` | `dag/gunbc/test_node_wall_clock_ratchet.dag` | 99 | {'dag': 1} `dag/gunbc/plans/structural_quadratic_wall_coverage_audit.dag` |
-| `gunbc.tools.review` | `dag/gunbc/tools/review.dag` | 187 | {'dag': 5} `dag/test/claim/workflow_default_field_projection_fold_witness_test.dag` `dag/gunbc/roadmap_belt_actuate.dag` |
+| `gunbc.tools.review` | `dag/gunbc/tools/review.dag` | 187 | {'dag': 4} `dag/test/claim/workflow_default_field_projection_fold_witness_test.dag` `src/v2/lens/meta_exec_confinement.dag` |
 | `gunbc.tools.review_codex` | `dag/gunbc/tools/review_codex.dag` | 205 | {'dag': 2, 'rs': 1} `dag/test/claim/workflow_default_field_projection_fold_witness_test.dag` `dag/gunbc/roadmap_belt_actuate.dag` |
 | `gunbc.v1_maintenance_standing` | `dag/gunbc/v1_maintenance_standing.dag` | 83 | {'dag': 6, 'rs': 1} `dag/test/claim/match_arm_pattern_identity_emission_witness_test.dag` `dag/test/claim/documentary_refs_witness_test.dag` |
 | `gunbc.workflow.types` | `dag/gunbc/workflow/types.dag` | 311 | {'dag': 1} `dag/gunbc/plans/host_effect_orchestration.dag` |
@@ -366,12 +435,8 @@ only. `gunbc.spark.provisioning` is a live instance of the dangling-annotation h
 | `std.durable_compare_and_set` | `dag/std/durable_compare_and_set.dag` | 292 | {'dag': 1} `dag/test/claim/durable_compare_and_set_witness_test.dag` |
 | `std.methods` | `dag/std/methods.dag` | 67 | {'dag': 1, 'rs': 2} `src/v1/compiler_tests_rust.dag` `src/v1/stage0/src/v1_compiler_compiler_tests_rust.rs` |
 | `std.stack` | `dag/std/stack.dag` | 56 | {'dag': 1, 'rs': 1} `dag/gunbc/witness_floor_workflow.dag` `src/v1/stage0/src/bin/parse_witness.rs` |
-| `std.verification` | `dag/std/verification.dag` | 34 | {'dag': 120, 'rs': 2} `dag/gunbc/doc_graph_roots.dag` `dag/gunbc/plans/resolver_type_name_collision_wall.dag` |
-| `tools.build` | `dag/tools/build.dag` | 34 | {'dag': 6} `dag/test/claim/build_artifact_corruption_probe_witness_test.dag` `dag/tools/build_step_transport.dag` |
-| `tools.ci_heal_dispatch` | `dag/tools/ci_heal_dispatch.dag` | 48 | {'dag': 1} `dag/gunbc/ci_spec.dag` |
+| `std.verification` | `dag/std/verification.dag` | 34 | {'dag': 3} `dag/gunbc/plans/resolver_type_name_collision_wall.dag` `dag/gunbc/plans/realization_measurement_loop.dag` |
 | `tools.gunbc_ci` | `dag/tools/gunbc_ci.dag` | 25 | {'dag': 2, 'rs': 1} `dag/std/emit_on_demand.dag` `src/v2/test/claim/host_language_transport_script/corpus/wall_residue_live_test.dag` |
-| `tools.merge_admission_capture_transport` | `dag/tools/merge_admission_capture_transport.dag` | 32 | {'dag': 1} `dag/gunbc/prose_row_frontier.dag` |
-| `tools.merge_admission_current_context` | `dag/tools/merge_admission_current_context.dag` | 134 | {'dag': 1} `dag/gunbc/merge_admission.dag` |
 | `v2.extdeps.languages.ecmascript` | `src/v2/extdeps/languages/ecmascript.dag` | 1340 | {'dag': 1} `dag/gunbc/language_target_registry.dag` |
 | `v2.extdeps.languages.machine_code` | `src/v2/extdeps/languages/machine_code.dag` | 559 | {'dag': 4} `dag/extdeps/languages/riscv/subject.dag` `dag/test/claim/language_target_registry_totality_test.dag` |
 | `v2.extdeps.languages.ptx` | `src/v2/extdeps/languages/ptx.dag` | 223 | {'dag': 1} `dag/gunbc/language_target_registry.dag` |
@@ -381,7 +446,6 @@ only. `gunbc.spark.provisioning` is a live instance of the dangling-annotation h
 | `v2.std.datetime` | `src/v2/std/datetime.dag` | 658 | {'dag': 2, 'rs': 1} `dag/extdeps/pin.dag` `src/v2/test/manual/parse_forensics_scaling_witness.dag` |
 | `v2.std.float` | `src/v2/std/float.dag` | 174 | {'dag': 1} `dag/gunbc/non_fold_residue.dag` |
 | `v2.std.probe_selector` | `src/v2/std/probe_selector.dag` | 674 | {'dag': 2} `dag/gunbc/non_fold_residue.dag` `dag/gunbc/plans/dag_v2_defork_audit.dag` |
-| `v2.test.language_model.rust` | `src/v2/extdeps/language_model/rust.dag` | 256 | {'dag': 2} `src/v2/extdeps/language_model/rust_r1_test.dag` `src/v2/extdeps/language_model/rust_r3_internal_test.dag` |
 | `v2.test.workflow.glob_discovery_law` | `src/v2/workflow/glob_discovery_law.dag` | 113 | {'dag': 1} `src/v2/test/claim/complexity/accumulator_copy_roster_gate_test.dag` |
 | `v2.workflow.class_b_import_closure_transport` | `src/v2/workflow/class_b_import_closure_transport.dag` | 118 | {'dag': 2, 'rs': 1} `dag/test/claim/long/rust_test_fixtures_import_closure_witness_test.dag` `src/v2/workflow/class_b_import_closure_probe.dag` |
 | `v2.workflow.compile_door_ledger` | `src/v2/workflow/compile_door_ledger.dag` | 341 | {'dag': 1} `src/v2/test/claim/long/door_real_module_probe_test.dag` |
@@ -390,7 +454,7 @@ only. `gunbc.spark.provisioning` is a live instance of the dangling-annotation h
 | `v2.workflow.source_root_ingest_gate` | `src/v2/workflow/source_root_ingest_gate.dag` | 18 | {'dag': 3} `dag/test/claim/guarantee_rung_drop_witness_test.dag` `dag/tools/ci_gates.dag` |
 | `v2.workflow.source_root_ingest_transport` | `src/v2/workflow/source_root_ingest_transport.dag` | 90 | {'dag': 2} `dag/tools/ci_gates.dag` `src/v2/test/claim/host_language_transport_script/corpus/migrated_transports_clean_test.dag` |
 
-### CITED-AUTHORITY — 105 modules
+### CITED-AUTHORITY — 104 modules
 
 | module | path | lines | live-source mentions |
 | --- | --- | --- | --- |
@@ -452,7 +516,7 @@ only. `gunbc.spark.provisioning` is a live instance of the dangling-annotation h
 | `extdeps.formats.elf.types` | `dag/extdeps/formats/elf/types.dag` | 190 | —  |
 | `extdeps.git.versioning` | `dag/extdeps/git/versioning.dag` | 73 | —  |
 | `extdeps.github.auth` | `dag/extdeps/github/auth.dag` | 61 | {'rs': 1} `src/v1/stage0/src/bin/parse_witness.rs` |
-| `extdeps.github.ci` | `dag/extdeps/github/ci.dag` | 30 | {'dag': 5} `dag/extdeps/github/ci_runner.dag` `dag/test/claim/fleet_runner_connectivity_witness_test.dag` |
+| `extdeps.github.ci` | `dag/extdeps/github/ci.dag` | 30 | {'dag': 1} `dag/gunbc/plans/realization_measurement_loop.dag` |
 | `extdeps.github.gists` | `dag/extdeps/github/gists.dag` | 76 | {'rs': 2} `src/v1/stage0/src/bin/parse_witness.rs` `src/v1/stage0/src/bin/effects_rest_transport_witness.rs` |
 | `extdeps.github.github_contracts` | `dag/extdeps/github/github_contracts.dag` | 15 | —  |
 | `extdeps.github.issues` | `dag/extdeps/github/issues.dag` | 202 | {'dag': 1, 'rs': 1} `dag/gunbc/extdeps_scope_frontier.dag` `src/v1/stage0/src/bin/effects_rest_transport_witness.rs` |
@@ -470,7 +534,7 @@ only. `gunbc.spark.provisioning` is a live instance of the dangling-annotation h
 | `extdeps.linux.rusage` | `dag/extdeps/linux/rusage.dag` | 31 | {'dag': 2, 'rs': 1} `dag/test/claim/peak_resident_measured_witness_test.dag` `dag/gunbc/extdeps_scope_frontier.dag` |
 | `extdeps.llm.anthropic_errors` | `dag/extdeps/llm/anthropic_errors.dag` | 80 | —  |
 | `extdeps.llm.anthropic_rest` | `dag/extdeps/llm/anthropic_rest.dag` | 96 | {'rs': 1} `src/v1/stage0/src/bin/effects_rest_transport_witness.rs` |
-| `extdeps.llm.llm` | `dag/extdeps/llm/llm.dag` | 12 | {'dag': 2} `dag/extdeps/llm/llm_contracts.dag` `dag/extdeps/llm/anthropic_contracts.dag` |
+| `extdeps.llm.llm` | `dag/extdeps/llm/llm.dag` | 12 | —  |
 | `extdeps.llm.openai_contracts` | `dag/extdeps/llm/openai_contracts.dag` | 32 | —  |
 | `extdeps.llm.openai_errors` | `dag/extdeps/llm/openai_errors.dag` | 66 | —  |
 | `extdeps.llm.openai_rest` | `dag/extdeps/llm/openai_rest.dag` | 92 | {'rs': 1} `src/v1/stage0/src/bin/effects_rest_transport_witness.rs` |
@@ -498,4 +562,3 @@ only. `gunbc.spark.provisioning` is a live instance of the dangling-annotation h
 | `extdeps.vendor.qualcomm` | `dag/extdeps/vendor/qualcomm.dag` | 31 | {'dag': 1} `dag/gunbc/extdeps_scope_frontier.dag` |
 | `extdeps.version.pep440` | `dag/extdeps/version/pep440.dag` | 310 | —  |
 | `gunbc.hand_lens_host_bridge_scaffold_index` | `dag/gunbc/hand_lens_host_bridge_scaffold_index.dag` | 23 | —  |
-| `tools.floor_effect_gate_witness` | `dag/tools/floor_effect_gate_witness.dag` | 59 | {'dag': 7, 'rs': 2} `dag/test/claim/realization_schedule_witness_test.dag` `dag/test/claim/realization_width_witness_test.dag` |
