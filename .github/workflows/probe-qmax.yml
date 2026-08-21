@@ -1,0 +1,11 @@
+name: probe-qmax
+on: push
+concurrency:
+  queue: max
+  group: probe-qmax-group
+  cancel-in-progress: false
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: sleep 70

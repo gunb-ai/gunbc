@@ -1,0 +1,10 @@
+name: probe-qctl
+on: push
+concurrency:
+  group: probe-qctl-group
+  cancel-in-progress: false
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: sleep 70
