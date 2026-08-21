@@ -9,6 +9,7 @@ import extdeps.git.publication_transport {
 }
 import gunbc.live_deploy.revision {
   DeployRevisionRelation,
+  revision_relation_from_ancestry_facts,
   SameRevision,
   DeployedIsAncestor,
   CandidateIsAncestor,
@@ -239,22 +240,21 @@ fn merge_base_relation(
   }
 }
 
-// One merge base decides both directions, so no second probe is needed: a commit is an ancestor of
-// another exactly when it IS their merge base.
+// One merge base decides both directions -- a commit is an ancestor of another exactly when it IS
+// their merge base -- so no second probe is needed. The three-way ANSWER is not decided here: the
+// merge-base facts are projected into the shared classification in gunbc.live_deploy.revision, so
+// this module owns an evidence shape and not a policy. Reusing only the five variant names would
+// have left two places computing one decision, agreeing today and free to drift apart tomorrow.
 fn relation_from_merge_base_oid(
   current: GitObjectId,
   accepted: GitObjectId,
   base: GitObjectId,
 ) -> DeployRevisionRelation {
-  if git_object_id_eq(left: base, right: current) {
-    DeployedIsAncestor
-  } else {
-    if git_object_id_eq(left: base, right: accepted) {
-      CandidateIsAncestor
-    } else {
-      UnrelatedHistories
-    }
-  }
+  revision_relation_from_ancestry_facts(
+    same: git_object_id_eq(left: current, right: accepted),
+    deployed_is_ancestor_of_candidate: git_object_id_eq(left: base, right: current),
+    candidate_is_ancestor_of_deployed: git_object_id_eq(left: base, right: accepted),
+  )
 }
 
 type FleetDesiredAdvanceRefusal
