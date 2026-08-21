@@ -559,39 +559,64 @@ test fn scaffold_unclassified_axis_rung_is_declared_with_measurement_and_trigger
     && !(dissolution_description(condition: unclassified_axis_rung_restoration) == "")
 }
 
+// THESE THREE PROBES ASSERTED THE COMPLEMENT DERIVATION AND ARE REWRITTEN, NOT DELETED. They
+// tested #8674's rule -- "a direct child of the stage0 root that no authority claims IS
+// generated" -- which was a property of PATH SHAPE. The generated population is now what the
+// emitter DECLARED it produced, so the same three questions get asked of the declaration: does it
+// intersect the observed tree, does it respond to the declaration rather than to path shape, and
+// does a direct child the emitter did not declare stay unclassified. The last is the one the rung
+// drop had to give up and is the reason this PR exists.
 data w_generated_derivation_probe_tracked: List<String> = [
   "src/v1/stage0/src/cli_run.rs",
   "src/v1/stage0/src/v1_interpreter_dispatch_generated.rs",
   "src/v1/stage0/src/cssl_seed_linked_closure_assembly.rs",
   "src/v1/stage0/src/w_probe_emitted_module.rs",
+  "src/v1/stage0/src/w_probe_unregistered_hand_file.rs",
   "src/v1/stage0/src/module_path_index/index.rs",
-  "src/v1/stage0/tests/w_probe_harness.rs",
-  "src/v1/stage0/src/w_probe_not_rust.toml"
+  "src/v1/stage0/tests/w_probe_harness.rs"
 ]
 
-test fn scaffold_generated_population_is_the_unclaimed_direct_children_of_the_stage0_root() -> Bool {
-  derived_generated_stage0_repo_paths(tracked_paths: w_generated_derivation_probe_tracked)
-    == ["src/v1/stage0/src/w_probe_emitted_module.rs"]
+// The declaration names one path IN the tree and one path that is NOT, so the intersection is
+// observable rather than incidental.
+data w_generated_derivation_probe_declared: List<String> = [
+  "src/v1/stage0/src/w_probe_emitted_module.rs",
+  "src/v1/stage0/src/w_probe_declared_but_absent_from_tree.rs"
+]
+
+test fn scaffold_generated_population_is_the_declaration_intersected_with_the_observed_tree() -> Bool {
+  derived_generated_stage0_repo_paths(
+    emitted_stage0_repo_paths: w_generated_derivation_probe_declared,
+    tracked_paths: w_generated_derivation_probe_tracked
+  ) == ["src/v1/stage0/src/w_probe_emitted_module.rs"]
 }
 
-test fn scaffold_generated_population_responds_to_the_observed_tree() -> Bool {
-  length(xs: derived_generated_stage0_repo_paths(tracked_paths: [])) == 0
+test fn scaffold_generated_population_responds_to_the_declaration_not_to_path_shape() -> Bool {
+  length(
+    xs: derived_generated_stage0_repo_paths(
+      emitted_stage0_repo_paths: [],
+      tracked_paths: w_generated_derivation_probe_tracked
+    )
+  ) == 0
     && length(
       xs: derived_generated_stage0_repo_paths(
+        emitted_stage0_repo_paths: w_generated_derivation_probe_declared,
         tracked_paths: w_generated_derivation_probe_tracked
       )
     ) == 1
 }
 
-test fn scaffold_generated_population_is_disjoint_from_every_claiming_authority() -> Bool {
-  !any(
-    xs: derived_generated_stage0_repo_paths(
+// THE DISCRIMINATING CASE THE RUNG DROP GAVE UP. `w_probe_unregistered_hand_file.rs` is a direct
+// child of the stage0 source root that no authority claims. Under the complement it was
+// "generated" by definition and could never surface; under the declaration the emitter does not
+// name it, so it is not generated -- which is what lets DerivedNewlyUnclassified fire on a direct
+// child again. The probe is the same tracked list as above, so a regression that reinstated the
+// complement would turn this red while leaving the two tests above green.
+test fn scaffold_unregistered_direct_child_is_not_generated_under_the_declaration() -> Bool {
+  !path_in_list(
+    path: "src/v1/stage0/src/w_probe_unregistered_hand_file.rs",
+    paths: derived_generated_stage0_repo_paths(
+      emitted_stage0_repo_paths: w_generated_derivation_probe_declared,
       tracked_paths: w_generated_derivation_probe_tracked
-    ),
-    predicate: fn(path) {
-      path_in_list(path: path, paths: derived_hand_maintained_stage0_repo_paths())
-        || path_in_list(path: path, paths: generated_artifact_stage0_src_repo_paths())
-        || path_in_list(path: path, paths: residue_lifecycle_repo_paths())
-    }
+    )
   )
 }
