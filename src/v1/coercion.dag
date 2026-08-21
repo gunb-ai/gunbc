@@ -112,6 +112,8 @@ data type_reference_identity_note: String = "A realization decision is made at R
 fn structural_declaration_modules_for(dag_name: String) -> List<String> {
   match dag_name {
     "Hash" => ["src/v2/std/node.dag"]
+    "String" => ["src/v2/std/text.dag", "dag/std/string_type.dag"]
+    "Bool" => ["src/v2/std/logic.dag"]
     _ => []
   }
 }
@@ -250,8 +252,10 @@ fn type_realization_decision(
 // DECLARED RESIDUE (DESIGN section 3, dual authority with a stated end, not a silent fork): this
 // cut does NOT supersede lookup_checkpoint's existing decl_file=="" bypass -- it narrows it. The
 // tree now answers 'what does this name realize as' two ways: type_realization_decision, which
-// refuses on unknown identity and is the authority every NEW caller (the alias-hop arm in
-// v1.compiler.trait_derive_emit, derive-set narrowing) must use; and lookup_checkpoint's
+// refuses on unknown identity and is the authority every NEW caller must answer from, directly or
+// through lookup_checkpoint's decl_file != "" arm (a thin derivation of this same decision, not a
+// second one -- v1.compiler.trait_derive_emit's alias-hop arm, gunbc#8736, reaches it this way,
+// per map_key_alias_hop_reconciliation_note there); and lookup_checkpoint's
 // decl_file=="" arm, which still answers from the bare-name table alone for every EXISTING caller
 // across v1.compiler.emit_rust and v1.compiler.emit that has never supplied identity. The residue
 // population is exactly those existing call sites, not counted here (a corpus-wide count is a
