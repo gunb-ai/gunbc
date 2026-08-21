@@ -37,6 +37,34 @@ data git_inspect_service_note: String = "Read-only repository-root, revision, an
 // `--exclude-standard` is pinned because without it the command applies no ignore rules at all and would
 // return every untracked path — the opposite of the question. The output is a bare NUL-separated path list,
 // so unlike porcelain v1 it carries no status codes and no rename-source continuation to track.
+// MergeBase NAMES THE REPOSITORY IT INSPECTS, AND THE OPERAND IS REQUIRED.
+// An ambient operation answers about whichever checkout the process happens to occupy, so the
+// same call means different things depending on where it was invoked from -- and a wrong answer
+// is INDISTINGUISHABLE from a right one, because two repositories can hold refs that look
+// identical. An OPTIONAL operand would keep the ambient form writable, so it is required: the
+// state this replaces has no spelling.
+//
+// THIS IS THE REPOSITORY'S OWN ESTABLISHED ANSWER, NOT A NEW CONVENTION. extdeps.git RemoteUrlIn
+// already takes `repository_path` and renders `git -C {repository_path}`, for exactly this reason
+// -- it could otherwise confirm the remote of the wrong checkout. This operation is brought into
+// line with that authority rather than inventing a second way to say the same thing.
+//
+// WHY THE OPERAND SITS ON THE OPERATION AND NOT ON THE INVOCATION. "Which repository does this
+// inspect" is a fact about the git operation's SUBJECT; "what directory did the OS start this
+// process in" is a transport fact. Modeling the first as the second would push repository
+// selection into every handler that runs a command -- the N x M adapter shape. One
+// repository-addressed operation with one shell realization is not that.
+//
+// THE SIBLING POPULATION IS DECLARED RATHER THAN SILENTLY LEFT. Five operations in this service
+// are still repository-ambient by the same mechanism: HeadCommit, WorkingTreeStatus,
+// IgnoredFiles, ListTreePathsAtRevision and ShowTree. They are NOT ported here because each
+// carries its own consumer census and this cut is scoped to the operation whose ambient
+// repository blocked a wet observation. Toplevel is deliberately NOT in that list: its purpose IS
+// to discover the ambient repository, so naming one would be circular. RUNG for the five:
+// mitigatable, and the mitigation is only that production happens to run from the repository
+// root. NEXT TRIGGER: the first consumer that must inspect a repository other than its own
+// process position -- which is what forced this one.
+
 // MergeBase CARRIES ITS EXIT CODE BECAUSE THE Bool COLLAPSES AN ANSWER WITH AN ABSENCE OF ONE.
 // `git merge-base` exits 1 when the two commits genuinely share NO merge base -- unrelated
 // histories, which is a FACT about the pair -- and 128 when the ref is invalid or this is not a
@@ -111,7 +139,7 @@ service git.Inspect {
   }
 
   operation MergeBase {
-    input { left: GitRef, right: GitRef }
+    input { repository_path: String, left: GitRef, right: GitRef }
     output {
       sha: CommitSha from "stdout"
       success: Bool from "exit_success"
@@ -119,7 +147,7 @@ service git.Inspect {
       stderr: String from "stderr"
     }
     readonly
-    transport shell { argv: ["git", "merge-base", "{left}", "{right}"] }
+    transport shell { argv: ["git", "-C", "{repository_path}", "merge-base", "{left}", "{right}"] }
     exit {
       0 => Unit
       1 => String "No merge base"

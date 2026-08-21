@@ -21,6 +21,10 @@ import std.types { CommitSha, GitRef, String }
 import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.collection { List }
 
+data stage0_rust_observation_repository_path: String = "."
+
+data stage0_rust_observation_repository_path_note: String = "The repository this observation inspects. Declared rather than ambient: git.Inspect.MergeBase names its repository (see that operation), so this fact is authored and visible even though production runs from the root. A `.` that is written down can be reviewed and changed; a `.` that is merely where the process happened to start cannot."
+
 data stage0_rust_host_observation_note: String = "Rust-source OBSERVATION prerequisite only; lifecycle totality remains downstream in gunbc.stage0_rust_source_lifecycle_scaffold / v1-honest-frontier. extdeps.git owns the Git operation shapes. This module supplies repository policy (HEAD versus gunbc_merge_target_ref), filters the exact revision-addressed path population, normalizes authored Cargo target paths, hashes the exact manifest text through std.content_hash, and joins those facts. The temporary Rust seed owns only TOML decoding into CargoManifestBinParse plus its interpreter projection. CargoBin is a source role and cannot satisfy a maintenance disposition."
 
 type RustSourceHostObservation
@@ -133,6 +137,7 @@ fn observe_stage0_rust_sources(
   } else {
     let revision = head.sha as String
     let baseline = git.Inspect.MergeBase(
+      repository_path: stage0_rust_observation_repository_path,
       left: revision as GitRef,
       right: base_ref as GitRef,
       expect: ExpectSuccess
