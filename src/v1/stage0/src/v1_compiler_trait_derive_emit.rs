@@ -481,10 +481,19 @@ pub fn v1_emit_struct_derives(
 
 pub fn v1_emit_enum_derives(
     children: Rc<Vec<Rc<Node>>>,
+    has_fn_fields: bool,
     map_key_required: bool,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
+        if has_fn_fields.clone() {
+            {
+                if map_key_required.clone() {
+                    return v1_trait_derive_refuse("trait_derive_emit: coproduct reaches a map-key position and so requires Eq + Hash, but a variant payload carries a function value whose only derivable trait is Clone — the key position is the defect, not the roster".to_string());
+                }
+                return rust_trait_derive_attr_from_traits(fn_field_derive_traits());
+            }
+        }
         let shape = v1_repr_grounding_derive_elem_shape_from_coproduct_children(
             children.clone(),
             source_indices.clone(),
