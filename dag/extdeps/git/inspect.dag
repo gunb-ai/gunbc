@@ -203,6 +203,19 @@ service git.Inspect {
 //
 // THE REPORTED BASE STAYS RAW. Decoding stdout into an object id belongs to the consumer that owns
 // the id type; this module owns what git's exit code MEANS, not how the caller names commits.
+//
+// THIS IS NOT YET THE SOLE OUTCOME AUTHORITY, AND SAYING SO IS THE POINT. The operation still
+// publishes BOTH `success: Bool` and `exit_code: Int`, and two consumers still take the Bool fork
+// rather than this coproduct: gunbc.stage0_rust_host_observation and
+// gunbc.roadmap_acceptance_history_observation both branch on `!baseline.success`. So the exit-code
+// interpretation is centralized for the fleet path and duplicated elsewhere -- a real narrowing,
+// not a dissolution. The honest rung for this class is the MINIMUM across its consumers, and a Bool
+// consumer cannot distinguish exit 1 from exit 128 at all: it reads "no merge base" and "not a
+// repository" as one failure, which is exactly the conflation the coproduct exists to remove.
+// Next-rung trigger: migrating those two consumers, after which `success` is DELETED from this
+// operation's output rather than left available -- while it is published, a consumer can always
+// re-fork by reading it, so removing the field is the construction move and migrating is only the
+// precondition. Raised in side-chat review, which caught this clause about to over-claim.
 type MergeBaseOutcome
   = MergeBaseReported { stdout: String }
   | NoCommonAncestor
