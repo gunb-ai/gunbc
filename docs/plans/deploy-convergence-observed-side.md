@@ -109,6 +109,16 @@ It also dissolves the untracked question instead of managing it with a flag: `gi
 
 **Three instrument candidates were killed by the alphabet, and that is the constraint doing useful work rather than forcing a compromise:** each one it rejected was ALSO semantically wrong. The digest needed a pipeline and compared two projections; status needed a flag and consults an artifact the sync deliberately omits; `git diff HEAD` needs neither and asks the actual question. What the alphabet does NOT address, and what is worth doing separately, is the refusal: a nonzero exit is currently a String cause, and not-a-git-repository and permission-denied-on-.git deserve different arms.
 
+## RUNG HONESTY: what the witness count proves, and what it does not
+
+Thirty-three witnesses are green across the three modules, and every one of them exercises a PURE FOLD -- argv construction, the tracked-state decision, the four-arm standing, the release binding, the typed refusal rendering. Several are discriminating: a mutation consulting tracked state before the revision reds the drift-dominance witness and nothing else; the portability wall is driven with a pipe that must be refused; each arm is asserted distinct rather than each checked alone.
+
+**The effectful path is NOT proven, and the witness count must not be read as proving it.** No execution of `deployed_tree_report_ci_wet` has occurred against a host. The observation legs, the ssh transport binding, the exit-code handling on a real refusal, and the receipt write are all unexercised. The session that authored this has no fleet credential -- the entry needs the injected agent the spark entries get -- so the gap is not an oversight but the boundary of what could be run from here.
+
+The commands themselves WERE driven, against real repositories in the states that matter: a scratch repo with a stale index, the same repo with a correct index, a corrupted worktree, and a same-size mtime-restored edit. That establishes the instrument is right. It does not establish that this module invokes it correctly, and those are different claims -- the exact distinction between a verdict proven on paper and one proven by a consumer, which is the failure this whole record is about.
+
+So the honest rung for the OBSERVATION path is mitigatable: typed outcomes and total functions throughout, with the effectful seam unexercised. Its next-rung trigger is one execution against srv1 producing a receipt, which requires a workflow step -- and that step is the same thing blocked on the scaffold verdict. Recorded here rather than left for a reader to infer from a green witness count.
+
 ## The executable form of the whole class
 
 Every reconcile binding must have a control that holds the key fixed, varies meaningful state, and expects MemberChanged. If that control cannot be written, the comparison is vacuous and the binding is a set-membership check wearing a reconcile's clothes. The projection trap is the same test approached from the other end: if identity is computed over the raw tree, the CHANGED arm is the only reachable arm, and a comparison that can never return equal is exactly as uninformative as one that can never return different. Both fail the one test.
