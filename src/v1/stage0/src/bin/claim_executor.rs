@@ -19385,10 +19385,33 @@ enum ReceiptVerdict {
         calls: usize,
         first_difference: String,
     },
-    /// The comparison could NOT be taken. Never reported as equivalence: an emit that failed, a
-    /// driver that would not compile, or a corpus with nothing in it is ignorance, and rendering
-    /// ignorance as the clean verdict is the empty-observation narrow.
+    /// The comparison could NOT be taken because something BROKE: an emit that failed, a driver
+    /// that would not compile, a corpus call that panicked, a dirty mirror. Never reported as
+    /// equivalence -- rendering ignorance as the clean verdict is the empty-observation narrow.
     Refused { reason: String },
+    /// No question could be ASKED of this module: every declared function takes a parameter whose
+    /// domain the fragment cannot enumerate (`String`, `List<Node>`, `Map<String, Node>`), so the
+    /// derived corpus is empty before any build is attempted.
+    ///
+    /// SPLIT OUT OF `Refused` (operator ruling, 2026-08-21: "red is supposed to be concerning --
+    /// if it's failing but not concerning, then we're fine"). The old variant conflated THREE
+    /// states, two of which are alarming and one of which is not: a broken comparison is a defect,
+    /// while a module with no enumerable surface is a COVERAGE FACT about the fragment's reach.
+    /// Failing on it made every PR touching such a module permanently red, so the gate's only
+    /// reachable green there was not touching the file -- and a red that cannot be cleared by
+    /// fixing anything trains readers to ignore the colour, which costs the reds that DO mean
+    /// something.
+    ///
+    /// This is NOT a fail-open and it is not the absorbing fallback. Nothing is silenced: the
+    /// state is typed, printed per module with its declared-function count, and totalled on its
+    /// own line, so its frequency stays observable and can be ranked for work. What changed is
+    /// only whether "I could not form an opinion" is scored as "I found a divergence" -- two
+    /// different states whose remedies differ, which is exactly the conflation DESIGN forbids.
+    ///
+    /// Dissolution: this variant's population goes to zero as the fragment learns to derive
+    /// partitions over the domains it currently refuses. It is a measure of reach, so it should
+    /// SHRINK; a growing count is the signal to widen derivation, not to widen this arm.
+    NoDerivableSurface { declared: usize },
 }
 
 /// Generate the driver: one `println!` per call in the derived corpus.
@@ -19548,12 +19571,12 @@ fn behavioral_differential(
 ) -> ReceiptVerdict {
     let total: usize = plan.derivable.iter().map(|(_, _, t)| t.len()).sum();
     if total == 0 {
-        return ReceiptVerdict::Refused {
-            reason: format!(
-                "{}: nothing derived, so there is no corpus to run. Reported as a refusal rather \
-                 than as equivalence, which is what an empty comparison would otherwise look like",
-                plan.module_path
-            ),
+        // NOT a refusal: nothing BROKE here. Every declared function takes a parameter the
+        // fragment cannot enumerate, so no corpus exists to run and no opinion can be formed.
+        // Still never reported as equivalence -- an empty comparison would look identical to a
+        // clean one, which is the narrow this whole verdict type exists to prevent.
+        return ReceiptVerdict::NoDerivableSurface {
+            declared: plan.parsed_signatures,
         };
     }
     let driver = generate_receipt_driver(module_alias, plan);
@@ -20481,6 +20504,7 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
 
     let emitted = v1_compiler::cli_run::emitted_generated_sources()?;
     let mut all_equivalent = true;
+    let mut no_derivable_surface = 0usize;
     for (mirror, plan, alias) in &plans {
         let Some(candidate_source) = emitted.get(mirror) else {
             eprintln!(
@@ -20520,8 +20544,29 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
                 );
                 all_equivalent = false;
             }
+            ReceiptVerdict::NoDerivableSurface { declared } => {
+                // Counted, named, and NOT scored as a divergence. See the variant's doc comment
+                // for why these are different states; the count below keeps the frequency
+                // observable so the fragment's reach can be ranked for work.
+                eprintln!(
+                    "behavioral-receipt: {} NO-DERIVABLE-SURFACE — 0 of {declared} declared \
+                     functions take a parameter this fragment can enumerate, so no corpus exists \
+                     to run. This is the fragment's REACH, not a defect in the module, and it is \
+                     not scored as a divergence",
+                    plan.module_path
+                );
+                no_derivable_surface += 1;
+            }
         }
     }
+    // The count on its own line, every run, including zero. A state that is only ever visible as
+    // a per-module line cannot be trended; this is the number that says whether the fragment's
+    // reach is improving. It must SHRINK -- growth means widen derivation, not widen the arm.
+    eprintln!(
+        "behavioral-receipt: no_derivable_surface={no_derivable_surface} of {} selected module(s) \
+         — not failures; each is a module the fragment cannot yet ask a question of",
+        plans.len()
+    );
     // THE DENOMINATOR, EVERY RUN (operator ruling, 2026-08-20). A green here means the DERIVED
     // CALLS in the selected modules agreed -- never that a module is behaviourally equivalent.
     // Printing a bare PASS is how, inside a week, someone reads this as promotion evidence.
