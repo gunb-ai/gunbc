@@ -24,6 +24,8 @@ import extdeps.external_authority {
 }
 import extdeps.languages.rust.derive_contracts {
   RustSupplementalGenericBoundContractCoverageDisposition,
+  RustVecSupplementalGenericBoundRow,
+  rust_vec_freemonoid_supplemental_generic_bound_rows,
   im_15_1_0_vector_clone_impl_authority,
   im_15_1_0_vector_debug_impl_authority,
   im_15_1_0_vector_deserialize_impl_authority,
@@ -1647,47 +1649,31 @@ fn rust_single_parameter_supplemental_generic_bound_requirements(
   )
 }
 
+// The trait -> supplemental-bound FACTS live once, dag-rooted, in
+// extdeps.languages.rust.derive_contracts rust_vec_freemonoid_supplemental_generic_bound_rows
+// (readable from both the regen pool and this tree); this fn only lifts them into the
+// target_model-typed contract map. Clone's requirement-free entry stays here because the shared
+// rows deliberately carry no Clone row (derive(Clone)'s conditional impl needs no supplement).
 fn rust_vec_supplemental_generic_bound_contracts() -> Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
-  let debug_contract = target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
-      contracts: target_derive_supplemental_generic_bound_contract_authorities_empty(),
-      derive_trait: rust_capability_key(RustDebug),
-      authority: im_15_1_0_vector_debug_impl_authority,
-      requirements: rust_single_parameter_supplemental_generic_bound_requirements(
-        required_trait: rust_capability_key(RustClone),
-        authority: im_15_1_0_vector_debug_impl_authority
+  let from_rows = fold_list(
+    xs: rust_vec_freemonoid_supplemental_generic_bound_rows,
+    empty: target_derive_supplemental_generic_bound_contract_authorities_empty(),
+    cons: fn(acc, row) {
+      target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
+        contracts: acc,
+        derive_trait: rust_capability_key(row.derive_trait),
+        authority: row.authority,
+        requirements: rust_single_parameter_supplemental_generic_bound_requirements(
+          required_trait: rust_capability_key(row.required),
+          authority: row.authority
+        )
       )
-    )
-  let clone_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
-      contracts: debug_contract,
-      derive_trait: rust_capability_key(RustClone),
-      authority: im_15_1_0_vector_clone_impl_authority
-    )
-  let partial_eq_contract = target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
-      contracts: clone_contract,
-      derive_trait: rust_capability_key(RustPartialEq),
-      authority: im_15_1_0_vector_partial_eq_impl_authority,
-      requirements: rust_single_parameter_supplemental_generic_bound_requirements(
-        required_trait: rust_capability_key(RustClone),
-        authority: im_15_1_0_vector_partial_eq_impl_authority
-      )
-    )
-  let serialize_contract = target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
-      contracts: partial_eq_contract,
-      derive_trait: rust_capability_key(RustSerialize),
-      authority: im_15_1_0_vector_serialize_impl_authority,
-      requirements: rust_single_parameter_supplemental_generic_bound_requirements(
-        required_trait: rust_capability_key(RustClone),
-        authority: im_15_1_0_vector_serialize_impl_authority
-      )
-    )
-  target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
-    contracts: serialize_contract,
-    derive_trait: rust_capability_key(RustDeserialize),
-    authority: im_15_1_0_vector_deserialize_impl_authority,
-    requirements: rust_single_parameter_supplemental_generic_bound_requirements(
-      required_trait: rust_capability_key(RustClone),
-      authority: im_15_1_0_vector_deserialize_impl_authority
-    )
+    }
+  )
+  target_derive_supplemental_generic_bound_contract_authority_insert(
+    contracts: from_rows,
+    derive_trait: rust_capability_key(RustClone),
+    authority: im_15_1_0_vector_clone_impl_authority
   )
 }
 

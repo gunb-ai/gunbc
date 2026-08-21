@@ -1,6 +1,17 @@
 module gunbc.witness_floor_workflow
 
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
+import gunbc.roadmap_execution_contract { CargoCapability }
+import gunbc.workflow_capability_closure {
+  CapabilityAnnotatedStep,
+  StepCapabilityRole,
+  ProvidesCapability,
+  ConsumesCapability,
+  CapabilityNeutral,
+  workflow_job_capability_closure,
+  capability_closure_is_closed,
+}
+import v2.std.algebra { list_map }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
@@ -17,6 +28,8 @@ import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.fabric_witness_run { floor_run_command }
+import extdeps.exec.command { shell_command_render }
 import std.types { List, String, Int }
 
 // THE ONLY CI EMISSION THIS REPOSITORY HAS.
@@ -208,18 +221,6 @@ fn witness_floor_build_step() -> Step {
   }
 }
 
-// The source-root flags are FOLDED from gunbc.ci_layer_roots witness_layer_roots, never spelled
-// here. That authority is what the compile-clean closure and the divergence census already read,
-// so a literal list in this emitter would be a second representation of it (DESIGN §3) -- and the
-// rung drop is invisible exactly while the bytes still agree, because the copy typechecks and
-// looks finished. It went in as a literal on the first authoring of this file and is corrected
-// here; the class was named by tidy-gull-813 on a sibling lane, same day, from its own migration.
-fn witness_floor_source_root_flags() -> String {
-  fold(witness_layer_roots, init: "", f: fn(acc, root) {
-    concat(acc, concat(" --source-root \"$ROOT/", concat(root, "\"")))
-  })
-}
-
 // ONE INVOCATION OF OUR OWN BINARY. Everything the run decides -- which witnesses exist, what
 // identity each has, which frame it needs, and whether the roster is admissible at all -- is
 // decided in .dag by v2.workflow.required_floor. This step passes the source roots and
@@ -246,12 +247,41 @@ fn witness_floor_source_root_flags() -> String {
 // and the second call stays, because re-emitting and comparing digests is exactly what the
 // fixed point measures. What is removed is process startup, the receipt round-trip, and the
 // job-level orchestration.
+//
+// THE FLOOR STEP'S COMMAND IS NOT BUILT HERE. It is `gunbc.fabric_witness_run`
+// `floor_run_command`, the same ArgvCommand the fabric authorizes, rendered for this transport
+// by `extdeps.exec.command` `shell_command_render`. An earlier revision built the invocation a
+// SECOND time -- its own binary path, its own --required-floor, its own --source-root spelling,
+// folded over the same witness_layer_roots -- and #8576 then pinned the two together with a
+// witness asserting they agreed on source roots. That was validation standing where
+// construction was available (DESIGN §5): it stayed green while the binary path, the flag
+// spelling or the argument ORDER drifted, because agreeing on the roots is not agreeing on the
+// command.
+//
+// WHY THE PATHS ARE RELATIVE AND cd DOES THE WORK. shell_command_render single-quotes every
+// word, citing IEEE 1003.1-2017 §2.2.2 -- correct for an argv and fatal for a word carrying a
+// shell variable, since '$ROOT/dag' does not expand. So $ROOT is not IN the argv: the script cds
+// to the root first and the argv stays genuinely an argv, which is what lets a modeled renderer
+// quote it at all. The v1-parse step already establishes `cd "$ROOT"` here. Same binary, same
+// flags, same roots, resolved against the same directory.
+//
+// witness_floor_source_root_flags IS DELETED HERE, and this clause previously said the
+// opposite. It read that the helper survives because the two regen scripts below build
+// --required-regen and --required-regen-fixed-point as separate commands, so it still had
+// real consumers and its dissolution was someone else's. That was true when written and
+// #8647 falsified it: the consolidation folded all four phases into one --required-ci
+// process, deleting both regen scripts, so at the moment this branch merged main the helper
+// had exactly one consumer left -- the floor script -- and rendering that from
+// floor_run_command removes it. The deferred dissolution did not need a separate carrier
+// after all; it completed as a side effect of two changes meeting. Recorded rather than
+// silently dropped, because a paragraph that once justified keeping something is evidence a
+// reader will reuse, and the justification expired before the thing did.
 fn witness_floor_run_script() -> String {
   concat(
     concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
     concat(
-      "\"$ROOT/target/release/claim_executor\" --required-ci",
-      concat(witness_floor_source_root_flags(), "\n")
+      "cd \"$ROOT\"\n",
+      concat(shell_command_render(command: floor_run_command()), "\n")
     )
   )
 }
@@ -308,7 +338,7 @@ fn witness_floor_precondition() -> String {
 
 fn witness_floor_run_step() -> Step {
   RunStep {
-    name: Present { value: "Required CI: parse, regen, regen determinism, behavioral receipt, witness floor" },
+    name: Present { value: "Required CI: parse, regen, regen determinism, witness floor" },
     id: none,
     run: witness_floor_run_script(),
     shell: none,
@@ -346,33 +376,64 @@ fn witness_floor_run_step() -> Step {
 // RESTORATION TRIGGER: the first run that completes this fold, floor and regen alike. Real wall
 // times replace this constant -- at which point this note dissolves with the provisional bound
 // it explains.
-// THE BEHAVIORAL RECEIPT IS NOT A STEP HERE, AND THAT IS THE POINT.
-//
-// It was two steps until #8647 collapsed this job's step ladder into one invocation. Re-adding
-// two more would have rebuilt the ladder that PR removed: order in a YAML list, preconditions
-// naming another step's outcome, one process per phase. The receipt's two phases -- the
-// controlled-fixture control and the per-PR comparison against the modules a diff changed --
-// therefore live INSIDE `--required-ci`, sequenced by the program whose phases they are.
-//
-// The consequence worth recording, because it is a behavioural difference and not a relocation:
-// the per-PR phase used to be gated by `github.event_name == 'pull_request'` in this file. A
-// single invocation cannot carry a per-phase trigger condition, so the phase now decides for
-// itself from what it can OBSERVE -- when the merge base resolves to the head there is no diff
-// to read, and it reports SKIPPED with that reason rather than passing over an empty selection.
-// That is strictly better than the trigger name: it is derived from the state that actually
-// makes the observation impossible, so it holds on any trigger anyone adds later.
+// ONE LIST, TWO PROJECTIONS. The steps GitHub sees and the capability roles the closure reads
+// are derived from the same rows, so they cannot drift apart. A second hand-maintained list of
+// roles beside the step list would be the §3 fork this closure exists to close, reintroduced as
+// its own fix.
+type WitnessFloorBoundStep {
+  step: Step
+  role: StepCapabilityRole
+  step_name: String
+}
+
+fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
+  [
+    WitnessFloorBoundStep {
+      step: witness_floor_checkout_step(),
+      role: CapabilityNeutral,
+      step_name: "Checkout",
+    },
+    WitnessFloorBoundStep {
+      step: witness_floor_toolchain_step(),
+      role: ProvidesCapability { capability: CargoCapability },
+      step_name: "Install Rust toolchain",
+    },
+    WitnessFloorBoundStep {
+      step: witness_floor_build_step(),
+      role: ConsumesCapability { capability: CargoCapability },
+      step_name: "Build the witness fold",
+    },
+    WitnessFloorBoundStep {
+      step: witness_floor_run_step(),
+      role: CapabilityNeutral,
+      step_name: "All witnesses (one prepared subject, one fold)",
+    },
+  ]
+}
+
+fn witness_floor_steps() -> List<Step> {
+  list_map(xs: witness_floor_bound_steps(), f: fn(b) { b.step })
+}
+
+fn witness_floor_step_annotations() -> List<CapabilityAnnotatedStep> {
+  list_map(
+    xs: witness_floor_bound_steps(),
+    f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+  )
+}
+
+fn witness_floor_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(steps: witness_floor_step_annotations()),
+  )
+}
 
 fn witness_floor_job() -> Job {
   Job {
     id: witness_floor_workflow_job_id,
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: [
-      witness_floor_checkout_step(),
-      witness_floor_toolchain_step(),
-      witness_floor_build_step(),
-      witness_floor_run_step()
-    ],
+    steps: witness_floor_steps(),
     needs: [],
     env: none,
     outputs: none,
@@ -425,8 +486,24 @@ data witness_floor_workflow: Workflow = {
   jobs: [witness_floor_job()]
 }
 
+// THE CLOSURE HAS A PRODUCTION CONSUMER, which is the difference between a check and a claim.
+// A capability check that only tests call is specification-without-execution: it can be green
+// forever while the emitter happily produces the broken workflow beside it (DESIGN §5).
+//
+// So emission refuses. A job whose cargo consumer has no provider ordered before it yields the
+// refusal marker instead of yaml -- not a warning, and not yaml-with-a-comment, because the
+// generated-artifact drift gate compares bytes and a refusal marker cannot be mistaken for a
+// workflow. This is the deploy.yml failure made unemittable rather than merely detectable: that
+// workflow ran `cargo build` as step two with no toolchain provider anywhere in the file, and
+// nothing in this repository could refuse it.
+data witness_floor_capability_closure_refusal: String = "REFUSED gunbc.witness_floor_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in witness_floor_bound_steps or the order of the steps themselves."
+
 fn expected_witness_floor_yml() -> String {
-  serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow))
+  if witness_floor_capability_closure_holds() {
+    serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow))
+  } else {
+    witness_floor_capability_closure_refusal
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
