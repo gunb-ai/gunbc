@@ -88,8 +88,6 @@ type EmitInfoBuildState {
   fn_decl_items: Map<String, v1.std.core.Node>
 }
 
-data empty_emit_graph_info_ord_fallback_note: String = "Conservatism: render paths without EmitGraphInfo pass empty_emit_graph_info(); bare-ref BTreeSet Ord eligibility fails closed (lookup_emit_type_decl -> Absent) and surfaces compile_error! at probe time — nine call sites inherit this, loud not silent widen."
-
 fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: empty_map(),

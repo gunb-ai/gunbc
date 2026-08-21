@@ -1,0 +1,120 @@
+module test.claim.generic_item_ord_bound_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data generic_item_ord_bound_witness_note: String = "Executing floor witness for v1.compiler.trait_derive_emit's per-derive-impl Ord routing (trait_derive_emit_set_ord_supplemental_note's direct-field enum case, plus trait_derive_emit_ord_propagation_note's one-hop transitive struct case). This file replaces an earlier revision (PR #8770's orphaned predecessor commit) that asserted a header-level P: Ord bound (v1_ord_bounded_type_params / v1_emit_type_params_with_clone_and_ord_bounds) — that machinery was discarded per parent-session review (adhoc-a407cd3d-840): it would have re-opened the over-bounding trait_derive_emit_set_ord_supplemental_note already rejected Debug/PartialEq unioning Ord onto every reachable item's own HEADER, never the derive-impl. compile_dag_rust_emit_check is the per-PR enrolled consumer, compiling inline fixtures through the real emitter and asserting emitted Rust spellings. Every positive witness here asserts BOTH that the item's own header/declaration stays bare (never P: Ord) AND that a hand-written impl carries the Ord bound instead. The corpus shape (std.authorization_profile PublicationContext<C, P> { audience: AudienceSet<P>, context: C }) is a struct whose field names a DECLARED coproduct (AudienceSet<P>) that itself carries the direct Set<P> field — one hop, not a bare Set<P> field on the struct itself. A struct with a DIRECT Set<P> field (no coproduct hop) is UNHANDLED by this lane, same scope boundary trait_derive_emit_set_ord_supplemental_note already drew for the enum case (\"no struct in the corpus carries a generic Set<P> field today, so struct-side wiring would be speculative\") — no corpus specimen needs it and no witness here asserts a behavior for it."
+
+fn w_enum_direct_set_field_stays_header_bare_gets_hand_written_impl() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_ord_witness.enum_direct\n\ntype Audience<P>\n  = Universal\n  | Enumerated { members: Set<P> }\n",
+    "src/generic_item_ord_witness_enum_direct.rs",
+    ["enum Audience<P>", "impl<P: Ord + std::fmt::Debug> std::fmt::Debug for Audience<P>", "impl<P: Ord + PartialEq> PartialEq for Audience<P>"],
+    ["enum Audience<P: Ord>", "derive(Ord)"]
+  )
+}
+
+fn w_non_set_container_stays_bare() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_ord_witness.non_set\nimport std.algebra { FreeMonoid }\n\ntype Ledger<P> {\n  rows: FreeMonoid<P>\n}\n",
+    "src/generic_item_ord_witness_non_set.rs",
+    ["struct Ledger<P>"],
+    ["P: Ord"]
+  )
+}
+
+// Two exclude spellings, not a simplifiable one: v1_emit_type_params_with_bounds joins a
+// param's bound list with " + " in insertion order, and this fixture's header already
+// carries a Clone bound on P (confirmed emission: "struct Roster<P: Clone>"). A reintroduced
+// Ord leak could render as "P: Ord + Clone" (caught by the first spelling) or as
+// "P: Clone + Ord" if Ord were appended after the existing Clone bound (caught only by the
+// second). Collapsing to one spelling silently narrows this control back to the ordering
+// that happens to be convenient today.
+fn w_list_container_stays_bare() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_ord_witness.list_only\n\ntype Roster<P> {\n  entries: List<P>\n}\n",
+    "src/generic_item_ord_witness_list_only.rs",
+    ["struct Roster<P: Clone>"],
+    ["P: Ord", "Clone + Ord"]
+  )
+}
+
+// Same two-spelling reasoning as w_list_container_stays_bare above: this fixture's header
+// also already carries a Clone bound on P ("struct Holder<P: Clone>"), so a reintroduced
+// Ord leak could land on either side of the existing Clone bound in the joined bound list.
+fn w_bare_field_stays_bare() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_ord_witness.bare\n\ntype Holder<P> {\n  tag: P\n}\n",
+    "src/generic_item_ord_witness_bare.rs",
+    ["struct Holder<P: Clone>"],
+    ["P: Ord", "Clone + Ord"]
+  )
+}
+
+fn w_struct_propagates_ord_through_declared_coproduct_field() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_ord_witness.propagate\n\ntype AudienceSet<P>\n  = UniversalAudience\n  | EnumeratedAudience { members: Set<P> }\n\ntype PublicationContext<C, P> {\n  audience: AudienceSet<P>\n  context: C\n}\n",
+    "src/generic_item_ord_witness_propagate.rs",
+    [
+      "enum AudienceSet<P>",
+      "struct PublicationContext<C: Clone, P>",
+      "impl<C: std::fmt::Debug, P: Ord + std::fmt::Debug> std::fmt::Debug for PublicationContext<C, P>",
+      "impl<C: PartialEq, P: Ord + PartialEq> PartialEq for PublicationContext<C, P>"
+    ],
+    [
+      "enum AudienceSet<P: Ord>",
+      "struct PublicationContext<C: Ord, P: Ord>",
+      "struct PublicationContext<C, P: Ord>"
+    ]
+  )
+}
+
+fn w_propagation_is_one_hop_only() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_ord_witness.two_hop\n\ntype AudienceSet<P>\n  = UniversalAudience\n  | EnumeratedAudience { members: Set<P> }\n\ntype PublicationContext<C, P> {\n  audience: AudienceSet<P>\n  context: C\n}\n\ntype Wrapper<C, P> {\n  inner: PublicationContext<C, P>\n}\n",
+    "src/generic_item_ord_witness_two_hop.rs",
+    ["struct Wrapper<C: Clone, P>"],
+    ["Wrapper<C: Clone, P: Ord"]
+  )
+}
+
+fn w_both_clone_and_supplemental_traits_route_independently() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_ord_witness.both_traits\nimport std.algebra { FreeMonoid }\n\ntype Both<P> {\n  members: FreeMonoid<P>\n}\n",
+    "src/generic_item_ord_witness_both_traits.rs",
+    [
+      "struct Both<P>",
+      "impl<P: Clone + std::fmt::Debug> std::fmt::Debug for Both<P>",
+      "impl<P: Clone + PartialEq> PartialEq for Both<P>"
+    ],
+    ["P: Ord"]
+  )
+}
+
+test fn enum_direct_set_field_positive() -> Bool {
+  w_enum_direct_set_field_stays_header_bare_gets_hand_written_impl()
+}
+
+test fn non_set_container_negative_control() -> Bool {
+  w_non_set_container_stays_bare()
+}
+
+test fn list_container_negative_control() -> Bool {
+  w_list_container_stays_bare()
+}
+
+test fn bare_field_negative_control() -> Bool {
+  w_bare_field_stays_bare()
+}
+
+test fn struct_propagation_positive() -> Bool {
+  w_struct_propagates_ord_through_declared_coproduct_field()
+}
+
+test fn propagation_one_hop_only_negative_control() -> Bool {
+  w_propagation_is_one_hop_only()
+}
+
+test fn clone_supplemental_trait_routes_independently() -> Bool {
+  w_both_clone_and_supplemental_traits_route_independently()
+}

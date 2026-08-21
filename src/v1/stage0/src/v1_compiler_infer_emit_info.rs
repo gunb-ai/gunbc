@@ -189,15 +189,6 @@ pub struct EmitInfoBuildState {
     pub type_decl_items: Rc<HashMap<String, Rc<Node>>>,
 }
 
-pub fn empty_emit_graph_info_ord_fallback_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Conservatism: render paths without EmitGraphInfo pass empty_emit_graph_info(); bare-ref BTreeSet Ord eligibility fails closed (lookup_emit_type_decl -> Absent) and surfaces compile_error! at probe time — nine call sites inherit this, loud not silent widen.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     Rc::new(EmitGraphInfo {
         type_summaries: v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
