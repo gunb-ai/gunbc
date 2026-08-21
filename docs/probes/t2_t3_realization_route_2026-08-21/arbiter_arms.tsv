@@ -1,0 +1,53 @@
+file	line	coded_root	carrier	arbiter_arm	emitted_text
+src/v2_compiler_eval.rs	642	T3	Map<K,V> = PartialFunction<K,V>	B:declared-structure-constructor	Rc::new(Map {
+src/v2_compiler_infer.rs	164	T3	Map<K,V> = PartialFunction<K,V>	B:declared-structure-constructor	facts: Rc::new(Map {
+src/v2_compiler_infer.rs	511	T3	Map<K,V> = PartialFunction<K,V>	B:declared-structure-constructor	value: Rc::new(Map {
+src/v2_compiler_parse.rs	571	T3	Set<T> = PointwisePower<T>	B:declared-structure-constructor	nullable_set: Rc::new(Set {
+src/v2_compiler_parse.rs	1033	T3	Set<T> = PointwisePower<T>	B:declared-structure-constructor	Rc::new(Set {
+src/v2_compiler_parse.rs	1095	T3	Set<T> = PointwisePower<T>	B:declared-structure-constructor	compute_nullable_fixpoint(root.clone(), Rc::new(Set {
+src/v2_compiler_resolve.rs	145	T3	Set<T> = PointwisePower<T>	B:declared-structure-constructor	Rc::new(Set {
+src/v2_compiler_tokenize.rs	145	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	fold_list(prefix.clone(), Rc::new(ListTailResult::TailFound {
+src/v2_compiler_tokenize.rs	146	T2	String = FreeMonoid<Char>	C:direct-carrier-to-carrier-assignment	tail: source.clone(),
+src/v2_compiler_tokenize.rs	157	T2	String = FreeMonoid<Char>	C:direct-carrier-to-carrier-assignment	remaining: rem.clone(),
+src/v2_compiler_tokenize.rs	198	T2	String = FreeMonoid<Char>	C:direct-carrier-to-carrier-assignment	remaining: rest.clone(),
+src/v2_compiler_tokenize.rs	199	T2	String = FreeMonoid<Char>	B:declared-structure-constructor	lexeme: Rc::new({ let mut __cons_v = (*Rc::new(vec![])).clone(); __cons_v.insert(0, c.clone()); __cons_v }),
+src/v2_compiler_tokenize.rs	228	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	lexeme: list_append(state.lexeme.clone(), consumed.clone()),
+src/v2_compiler_tokenize.rs	228	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	lexeme: list_append(state.lexeme.clone(), consumed.clone()),
+src/v2_compiler_tokenize.rs	228	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	lexeme: list_append(state.lexeme.clone(), consumed.clone()),
+src/v2_compiler_tokenize.rs	251	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	lexeme: list_append(state.lexeme.clone(), close_lex.clone()),
+src/v2_compiler_tokenize.rs	251	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	lexeme: list_append(state.lexeme.clone(), close_lex.clone()),
+src/v2_compiler_tokenize.rs	251	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	lexeme: list_append(state.lexeme.clone(), close_lex.clone()),
+src/v2_compiler_tokenize.rs	272	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	lexeme: list_append(state.lexeme.clone(), body_lex.clone()),
+src/v2_compiler_tokenize.rs	272	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	lexeme: list_append(state.lexeme.clone(), body_lex.clone()),
+src/v2_compiler_tokenize.rs	272	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	lexeme: list_append(state.lexeme.clone(), body_lex.clone()),
+src/v2_compiler_tokenize.rs	297	T2	String = FreeMonoid<Char>	B:declared-structure-constructor	lexeme: Rc::new(vec![]),
+src/v2_compiler_tokenize.rs	340	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	lexeme: list_append(lex1.clone(), lex2.clone()),
+src/v2_compiler_tokenize.rs	340	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	lexeme: list_append(lex1.clone(), lex2.clone()),
+src/v2_compiler_tokenize.rs	340	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	lexeme: list_append(lex1.clone(), lex2.clone()),
+src/v2_compiler_tokenize.rs	362	T2	String = FreeMonoid<Char>	B:declared-structure-constructor	lexeme: Rc::new(vec![]),
+src/v2_compiler_tokenize.rs	370	T2	String = FreeMonoid<Char>	B:declared-structure-constructor	lexeme: Rc::new(vec![]),
+src/v2_compiler_tokenize.rs	465	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	LexRuleApply::LexRuleToken { lexeme, .. } => length(lexeme.clone()),
+src/v2_compiler_tokenize.rs	466	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	LexRuleApply::LexRuleTrivia { lexeme, .. } => length(lexeme.clone()),
+src/v2_compiler_tokenize.rs	467	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	LexRuleApply::LexRuleAnnotation { lexeme, .. } => length(lexeme.clone()),
+src/v2_compiler_tokenize.rs	561	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	line_prefix_indent_only: advance_line_prefix_indent_only(acc.line_prefix_indent_only.clone(), lexeme.clone()),
+src/v2_compiler_tokenize.rs	562	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	pos: (acc.pos.clone() + length(lexeme.clone())),
+src/v2_compiler_tokenize.rs	588	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	end: (acc.pos.clone() + length(lexeme.clone())),
+src/v2_compiler_tokenize.rs	591	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	line_prefix_indent_only: advance_line_prefix_indent_only(acc.line_prefix_indent_only.clone(), lexeme.clone()),
+src/v2_compiler_tokenize.rs	592	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	pos: (acc.pos.clone() + length(lexeme.clone())),
+src/v2_compiler_tokenize.rs	620	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	end: (acc.pos.clone() + length(lexeme.clone())),
+src/v2_compiler_tokenize.rs	622	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	line_prefix_indent_only: advance_line_prefix_indent_only(acc.line_prefix_indent_only.clone(), lexeme.clone()),
+src/v2_compiler_tokenize.rs	623	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	pos: (acc.pos.clone() + length(lexeme.clone())),
+src/v2_compiler_tokenize.rs	685	T2	String = FreeMonoid<Char>	A:generic-carrier-signature	LexRules::VoidLexRules => if is_empty(text.clone()) {
+src/v2_extdeps_languages_dag.rs	1218	T3	Set<T> = PointwisePower<T>	B:declared-structure-constructor	Rc::new(Set {
+src/v2_extdeps_languages_dag.rs	1224	T3	Set<T> = PointwisePower<T>	B:declared-structure-constructor	Rc::new(Set {
+src/v2_extdeps_languages_dag.rs	1234	T3	Set<T> = PointwisePower<T>	B:declared-structure-constructor	Rc::new(Set {
+src/v2_extdeps_languages_llvm_ir.rs	1134	T3	Map<K,V> = PartialFunction<K,V>	B:declared-structure-constructor	Rc::new(Map {
+src/v2_extdeps_languages_llvm_ir.rs	1179	T3	Map<K,V> = PartialFunction<K,V>	B:declared-structure-constructor	Rc::new(Map {
+src/v2_extdeps_runtimes_v2_effect_io_pure.rs	118	T3	Map<K,V> = PartialFunction<K,V>	B:declared-structure-constructor	bindings: Rc::new(Map {
+src/v2_extdeps_runtimes_v2_evaluator.rs	160	T3	Map<K,V> = PartialFunction<K,V>	B:declared-structure-constructor	Rc::new(Map {
+src/v2_std_collection.rs	93	T3	Map<K,V> = PartialFunction<K,V>	B:declared-structure-constructor	Rc::new(Map {
+src/v2_std_compilers_target_model.rs	500	T2	String = FreeMonoid<Char>	UNALIGNED:line-did-not-exhibit-recorded-pair	
+src/v2_std_compilers_target_model.rs	6056	T3	Map<K,V> = PartialFunction<K,V>	UNALIGNED:line-did-not-exhibit-recorded-pair	
+src/v2_std_integer.rs	1151	T2	String = FreeMonoid<Char>	UNALIGNED:line-did-not-exhibit-recorded-pair	
+src/v2_std_language_model.rs	44	T3	Set<T> = PointwisePower<T>	B:declared-structure-constructor	Rc::new(Set {
+src/v2_std_model_core.rs	245	T3	Map<K,V> = PartialFunction<K,V>	B:declared-structure-constructor	Rc::new(Map {

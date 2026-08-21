@@ -5,10 +5,11 @@
 (25 sites, "collection carrier fork") are the one plausibly-shared realization cluster on the
 E0308 board — **and the first deliverable is a measurement, not a repair.**
 
-This document answers the question that was asked and stops there. It attributes every one of the
-59 sites to the realization authority that produced *each side* of its `expected`/`found` pair,
-reports how many reduce to one mechanism, and reports the ones that do not. No emitter, no
-authority table, and no `.dag` declaration is changed by this PR.
+This document attributes every one of the 59 sites to the realization authority that produced
+*each side* of its `expected`/`found` pair, reports how many reduce to one mechanism, and reports
+the ones that do not. It then traces the arbiter that selects between those authorities — an
+authorized follow-up from `smart-ram-730`, still measurement-only. **No emitter, no authority
+table, and no `.dag` declaration is changed by this PR**, and no repair is proposed as decided.
 
 ## Verdict, up front
 
@@ -29,6 +30,10 @@ The root, stated once:
 > `rust_algebra_inhabitants`), the expression renderer emits the carrier's **own declared
 > structure**. Nothing reconciles the two. Every site where one carrier is reached from both
 > positions is an E0308.
+
+The arbiter is traced below, and the trace sharpens this: the two renderers do not merely sit in
+different positions, they **key on different facts** — the type renderer on the authored *element*
+spelling, the value renderer on the constructor's resolved *carrier name*, element-blind.
 
 This is not a spelling problem. At the T3 head the two sides are the **same spelling, in the same
 module, on the same field** — `Set<Symbol>` in `v2.compiler.02_parse` `ParseTableRealization`
@@ -136,13 +141,25 @@ The alias emitted for `Set` resolves to the **declared record**, while the field
 same alias resolves to the **inhabitant row**. One `.dag` declaration, two host types, in one
 emitted file.
 
-**The prior assumption this refutes, named.** `dag/test/claim/map_key_alias_hop_witness_test.dag`
-states, as the premise of its negative arm, that a realized alias renders as its host type and that
-therefore *"the emitter never renders that structure"* — a realized alias's declared-structure
-fields never reach the fixpoint. That holds for `Bytes`, the checkpoint carrier it tests. It does
-**not** hold for `Set`/`Map`: the emitter renders the declared structure at every value position,
-and the 18 T3 shared-root sites are what that costs. The witness is not wrong about its own
-subject; the generalization it reads as is.
+**The prior assumption this narrows, named — and it is the RATIONALE, not the test.**
+`dag/test/claim/map_key_alias_hop_witness_test.dag` states, as the stated rationale of its negative
+arm, that a realized alias renders as its host type and that therefore *"the emitter never renders
+that structure"* — a realized alias's declared-structure fields never reach the fixpoint. **That
+witness is not failing and must not be made to fail.** Its fixture is `Bytes`, `Bytes` renders as
+`Vec<u8>`, and for `Bytes` the claim holds exactly as written; the assertion is correct.
+
+What the evidence above falsifies is the **universal form of the rationale**, which is stated
+without qualification while the fixture exercises exactly one checkpoint row. For `Set`/`Map` the
+emitter *does* render the declared structure — at every value position — and the 18 T3 shared-root
+sites are what that costs. The remedy is therefore to narrow the stated premise to what the fixture
+actually exercises and to name `Set`/`Map` as the known counter-case, **not** to change the
+assertion.
+
+**Where else that premise is load-bearing, so the two artifacts find each other.**
+`v1.trait_derive_emit` `map_key_alias_hop_reconciliation_note` (authored 2026-08-21) leans on the
+same "the emitter never renders that structure" reasoning. It is **owned by `smart-ram-730`, who
+authored it and is correcting it**; it is deliberately **not edited by this PR**, which changes no
+declaration anywhere. This paragraph exists so a reader arriving at either artifact finds the other.
 
 ## The 7 sites that are not this root
 
@@ -163,6 +180,94 @@ Reported rather than absorbed, because a cluster that swallows its residue is no
 
 None of the three is a carrier fork, and none would be closed by anything that closes the 52.
 
+## The arbiter, traced (authorized follow-up, still measurement-only)
+
+`smart-ram-730` authorized tracing the position-dependent choice. It is traced here, in the same
+PR, because the trace **refines the root statement above** and leaving the two apart would leave a
+reader holding the coarser account. Nothing is repaired.
+
+### Both halves are named, and they key on different facts
+
+**Type position** — `v1.compiler.05_emit_rust` `render_rust_decl_type` (and its `render_rust_fn_sig_type`
+sibling). Its **first line**, ahead of every other arm, is the text-carrier bypass:
+`is_host_text_carrier_type` → render `"String"`. That predicate accepts the authored spelling
+`String`, **or** `FreeMonoid` / `List` when `rust_host_text_carrier_elem_name` returns exactly
+`"Char"`. Anything else falls through to `rust_applied_type_base` → `v1.compiler.coercion`
+`coerce_primitive_type` (the checkpoint table) and the container templates
+(`coerce_container_template` → `lookup_inhabitant` → `rust_algebra_inhabitants`).
+
+**Value position** — `v1.compiler.05_emit_rust` `emit_typed_record_lit`. Its `Cons`-under-`FreeMonoid`
+arm emits a vec splice (`{ let mut __cons_v = (*tail).clone(); __cons_v.insert(0, head); __cons_v }`)
+on the condition `tn == "Cons" && effective_parent == "FreeMonoid"`, and its zero-field arm routes
+through `rust_seed_host_freemonoid_empty` → `rust_seed_host_container_base`, which is, in full:
+`List | FreeMonoid → "Vec"`, otherwise none. Every other record literal — `PointwisePower`,
+`PartialFunction` — falls to the ordinary record path and emits the **declared struct**.
+
+So the asymmetry is not merely that two authorities exist. It is that **the two renderers key on
+different facts**:
+
+| | keys on | consequence |
+|---|---|---|
+| type renderer | the authored **element** spelling (`== "Char"`) | `FreeMonoid<Char>` → `String`; `FreeMonoid<T>` → the inhabitant |
+| value renderer | the constructor's resolved **carrier name**, element-blind | every `Cons` / `Empty` → `Vec`, whatever the field is declared as |
+
+**This refines "position, not spelling" rather than reversing it.** Position is *where* the two
+authorities are selected; the facts they key on are what makes them disagree. The T3 head remains
+the clean proof that spelling alone cannot explain it — one spelling, `Set`, two host types in one
+emitted file — and the T2 head now has a sharper statement than "two spellings": a generic
+`FreeMonoid<T>` **cannot** satisfy the type renderer's test, because `T` is not spelled `Char`. The
+decision is syntactic and pre-instantiation, so no monomorphization repairs it.
+
+### The emitted aliases carry the fork, and they are the control
+
+```rust
+pub type FreeMonoid<T> = Vec<T>;                                    // inhabitant
+pub type List<Element> = Vec<Element>;                              // inhabitant  — agrees with FreeMonoid
+pub type Set<Element>  = Rc<crate::std_algebra::PointwisePower<Element>>;   // declared record
+pub type Map<Key, Value> = Rc<crate::std_algebra::PartialFunction<Key, Value>>;
+pub type String = std::string::String;                              // host string
+```
+
+`List` and `FreeMonoid` resolve to the **same** host type and contribute **zero** sites between
+themselves — the negative control sits in the same emitted crate as the positives. `Set` and `Map`
+resolve to the declared record while the type renderer reaches them through the inhabitant rows;
+`String` resolves to the host string while both of its other spellings reach `Vec`.
+
+### Which arm each of the 52 sites reaches
+
+| arm | T2 | T3 | what the emitted text shows |
+|---|---:|---:|---|
+| **A** — generic carrier signature: the callee is a `FreeMonoid<T>`-typed fn, so the type renderer's `"Char"` test cannot fire | 25 | 0 | `list_append(state.lexeme.clone(), …)`, `length(lexeme.clone())`, `is_empty(text.clone())` |
+| **B** — declared-structure constructor: the value renderer emits the carrier's own structure | 4 | 17 | `Rc::new({ … __cons_v.insert(0, c.clone()) … })`, `Rc::new(vec![])`, `Rc::new(Set { … })`, `Rc::new(Map { … })` |
+| **C** — direct carrier-to-carrier assignment, no call or constructor on the line | 3 | 0 | `tail: source.clone()`, `remaining: rem.clone()` |
+| **UNALIGNED** — line did not exhibit the recorded pair; not attributed | 2 | 1 | — |
+
+Arm A is **T2-only and is the single largest arm on the board**, and it is the one a repair aimed
+at constructors would leave entirely standing. Arm B is **T3's whole shared-root population** and
+four of T2's. Per-site: [`t2_t3_realization_route_2026-08-21/arbiter_arms.tsv`](t2_t3_realization_route_2026-08-21/arbiter_arms.tsv).
+
+### One half of this was already predicted in the corpus
+
+`v1.compiler.05_emit_rust` `checkpoint_table_bypasses_identity_note` records, as a stated
+next-rung trigger, that `emit_typed_item`'s type-alias arm special-cases `item_text == "String"`
+unconditionally, so *"the declaration and its own references can now disagree in the SAME emitted
+file."* The emitted `v2_std_text.rs` `pub type String = std::string::String;` above is that
+prediction standing in the artifact. What that note did not have — and states it did not have — is
+a live site count. **This is it: 34, all of T2.** The note's own framing is unchanged by that; only
+its "NO live site is claimed" clause is now answerable.
+
+### Two cautions carried forward to whoever repairs this
+
+Both were raised by `smart-ram-730` and are recorded here rather than in a message, because they
+constrain the *next* measurement and a message is not where the next author will look.
+
+1. **Report site conversion, not category totals.** With two authorities live, a change can move a
+   site from one family to another rather than close it. A falling E0308 count is consistent with
+   both, so the instrument must be a per-site join against this TSV, not a histogram difference.
+2. **The discriminating control must show one authority consulted in BOTH positions.** A control
+   that only shows the count fall is equally consistent with one authority simply not firing —
+   which is the absorbing-fallback shape (DESIGN §5) wearing a green build.
+
 ## Controls, and what this does not establish
 
 - **The classifier is fail-closed.** `UNROUTED` is a live arm: 7 of the 118 sides carry it, and the
@@ -175,10 +280,11 @@ None of the three is a carrier fork, and none would be closed by anything that c
   these 59 may not be summed with another module's.
 - **No before/after is claimed.** Nothing here is differenced against the 204/275 boards or against
   the 502-diagnostic run; see the two-refs note above.
-- **This is a route attribution, not a root-cause trace into the emitter.** The two authorities are
-  named from the corpus declarations that carry them and from the emitted text they produce. The
-  emitter code path that chooses between them by position was **not** traced in this run, and no
-  authored-decision count is offered.
+- **The trace names branches; it does not price a repair.** The arbiter section names both renderer
+  arms, the predicates they key on, and which arm each of the 52 sites reaches. It does **not**
+  establish what any of those arms should do instead, what a unified consultation costs elsewhere in
+  the emitter, or that the three arms have one fix — nothing was changed and nothing was re-emitted
+  under a change, so no such claim could be evidenced here.
 - **No repair is proposed as decided.** The shape of one is visible — `std.coercion`
   `TypeRealizationDecision` (landed #8739) is exactly the *"which of a named declaration's possible
   renderings actually applies"* query this root needs, and it currently has **zero consumers** in
