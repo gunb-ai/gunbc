@@ -86,7 +86,11 @@ This is why the partition is the measurement and the total is a summary of it. T
 | `body_lowering_reason_unsupported_form` | 0 | 1 |
 | `fold_lowering_shape_invalid` | 1 | 0 |
 
-- **`parse_grammar_choice_overlap_residue` is 7 on both.** Identical on closures of 29 and 107 modules, which is what a fixed shared prefix looks like and is not what a per-module defect looks like. Stated as what it is — a strong reading of two points, not a proof; a third subject would settle it, and the receipt can produce one for any entry in one command.
+- **`parse_grammar_choice_overlap_residue` is 7 on both, and the mechanism is already named in the corpus.** `v2.test.claim.long.compile_door_ledger_test` `compile_door_ledger_witness_note` records it as **a fork between two parse entry points** — the packaged `parse()` the admission pre-parse uses rejects a grammar-choice overlap that `parse_production` tolerates — classified `MigrationOwned`, dissolving with the packaged/`parse_production` reconciliation.
+
+  That upgrades the two-point observation from a pattern to an explanation, and the explanation predicts the invariance rather than merely matching it: the population is the set of constructs on which the two parse paths disagree, which is a property of the GRAMMAR and was never indexed by the subject, so it cannot grow with the frontier. A third subject is therefore not needed to settle it — a `7` there would corroborate without explaining, and a coincidence at two sizes would look the same. If a later run reports a non-7, that is a genuine surprise worth stopping on rather than a data point.
+
+  **The number is the new fact, not the mechanism.** The reconciliation was already a known-good migration with no cost attached to it. It is now worth exactly **7 diagnostics at boundary 4 on every subject, independent of closure size** — which is what lets it be ranked against work whose cost does grow.
 - **`body_lowering_reason_wrapper_retained_emitted` is 10 → 32** and dominates both totals (56% and 80%). It is the population any B4 work should be denominated against.
 - **The two singletons are different causes on the two subjects**, which is exactly the case a bare total cannot express: 40 and 18 would have looked like one population at two scales.
 
