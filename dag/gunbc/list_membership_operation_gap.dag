@@ -84,10 +84,6 @@ data list_membership_gap_sites: List<ListMembershipGapSite> = [
   },
 ]
 
-data list_membership_gap_occurrence_count: Int = 10
-
-data list_membership_gap_producer_count: Int = 5
-
 // HOW THE POPULATION WAS FOUND, AND THE FLAW IN THE FIRST ATTEMPT AT FINDING IT.
 //
 // The first classification split two-argument call sites by whether the SECOND argument was a
@@ -97,3 +93,6 @@ data list_membership_gap_producer_count: Int = 5
 // operation; only the FIRST argument's type can, because that is what distinguishes a collection
 // from a string. The corrected method resolves each first argument to its binding and reads the
 // declared element type, which is what the rows above record.
+data list_membership_gap_occurrence_count: Int = 10
+
+data list_membership_gap_producer_count: Int = 5
