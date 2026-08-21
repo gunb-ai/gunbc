@@ -1,16 +1,5 @@
 module v2.workflow.product_receipt
 
-import std.content_hash {
-  Fnv1a64Structural,
-  content_hash_atom,
-  content_hash_eq_structural
-}
-import std.types { NonEmptyStr }
-import v2.std.algebra { Empty, fold_list, length, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-
 // WHY THIS EXISTS.
 //
 // Every claim this repository makes about the v2 self-host wall is a claim
@@ -59,8 +48,8 @@ type DiagnosticCauseTally {
   count: Int
 }
 
-fn diagnostic_tally_holds_reason(tally: List<DiagnosticCauseTally>, reason: String) -> Bool {
-  fold_list(
+fn diagnostic_tally_holds_reason(tally: std.types.List<DiagnosticCauseTally>, reason: String) -> Bool {
+  v2.std.algebra.fold_list(
     xs: tally,
     empty: false,
     cons: fn(found, row) { found || (row.reason == reason) }
@@ -68,15 +57,15 @@ fn diagnostic_tally_holds_reason(tally: List<DiagnosticCauseTally>, reason: Stri
 }
 
 fn diagnostic_tally_bump(
-  tally: List<DiagnosticCauseTally>,
+  tally: std.types.List<DiagnosticCauseTally>,
   reason: String
-) -> List<DiagnosticCauseTally> {
+) -> std.types.List<DiagnosticCauseTally> {
   if diagnostic_tally_holds_reason(tally: tally, reason: reason) {
-    fold_list(
+    v2.std.algebra.fold_list(
       xs: tally,
-      empty: Empty,
+      empty: std.algebra.Empty,
       cons: fn(acc, row) {
-        list_snoc_item(
+        v2.std.algebra.list_snoc_item(
           xs: acc,
           item: if row.reason == reason {
             DiagnosticCauseTally { reason: row.reason, count: row.count + 1 }
@@ -87,16 +76,16 @@ fn diagnostic_tally_bump(
       }
     )
   } else {
-    list_snoc_item(xs: tally, item: DiagnosticCauseTally { reason: reason, count: 1 })
+    v2.std.algebra.list_snoc_item(xs: tally, item: DiagnosticCauseTally { reason: reason, count: 1 })
   }
 }
 
-fn diagnostic_tally_total(tally: List<DiagnosticCauseTally>) -> Int {
-  fold_list(xs: tally, empty: 0, cons: fn(total, row) { total + row.count })
+fn diagnostic_tally_total(tally: std.types.List<DiagnosticCauseTally>) -> Int {
+  v2.std.algebra.fold_list(xs: tally, empty: 0, cons: fn(total, row) { total + row.count })
 }
 
-fn diagnostic_tally_render(tally: List<DiagnosticCauseTally>) -> String {
-  fold_list(
+fn diagnostic_tally_render(tally: std.types.List<DiagnosticCauseTally>) -> String {
+  v2.std.algebra.fold_list(
     xs: tally,
     empty: "",
     cons: fn(text, row) {
@@ -121,7 +110,7 @@ type BoundaryRefusalCause
   | ManifestSourceReadFailed
   | IngestRowShortfall
   | AdmissionReasonUnrecognized { reason: String }
-  | EmitterRejected { causes: List<DiagnosticCauseTally> }
+  | EmitterRejected { causes: std.types.List<DiagnosticCauseTally> }
   | EmittedHardRefusalsPresent { count: Int }
   | AssemblyRefused
   | CargoManifestWriteFailed
@@ -145,7 +134,7 @@ type ArtifactIdentityAbsentCause
 // board. A number without its producer's shape cannot be safely differenced,
 // and the document holding the caveat does not travel with the number.
 type ArtifactIdentity
-  = ArtifactIdentityKnown { digest: Fnv1a64Structural, file_count: Int }
+  = ArtifactIdentityKnown { digest: std.content_hash.Fnv1a64Structural, file_count: Int }
   | ArtifactIdentityAbsent { cause: ArtifactIdentityAbsentCause }
 
 type BoundaryObservation {
@@ -160,7 +149,7 @@ type BoundaryObservation {
 // subject from an absence will infer the wrong one.
 type ProductReceipt {
   subject: String
-  observations: List<BoundaryObservation>
+  observations: std.types.List<BoundaryObservation>
 }
 
 fn product_boundary_ordinal(boundary: ProductBoundary) -> Int {
@@ -247,7 +236,7 @@ fn product_artifact_identity(value: String, file_count: Int) -> ArtifactIdentity
     ArtifactIdentityAbsent { cause: ProducerReportedNoArtifact }
   } else {
     ArtifactIdentityKnown {
-      digest: content_hash_atom(value: value as NonEmptyStr),
+      digest: std.content_hash.content_hash_atom(value: value as std.types.NonEmptyStr),
       file_count: file_count
     }
   }
@@ -268,7 +257,7 @@ fn artifact_identity_carried(produced: ArtifactIdentity, consumed: ArtifactIdent
       match consumed {
         ArtifactIdentityAbsent { cause: _ } => false
         ArtifactIdentityKnown { digest: right, file_count: right_files } =>
-          content_hash_eq_structural(left: left, right: right)
+          std.content_hash.content_hash_eq_structural(left: left, right: right)
             && (left_files == right_files)
       }
   }
@@ -300,7 +289,7 @@ fn identity_chain_step(
 }
 
 fn product_receipt_identity_chain(receipt: ProductReceipt) -> IdentityChainAcc {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: receipt.observations,
     empty: ChainStart,
     cons: fn(acc, observation) {
@@ -340,7 +329,7 @@ fn boundary_coverage_step(
 }
 
 fn product_receipt_covers_every_boundary_once(receipt: ProductReceipt) -> Bool {
-  match fold_list(
+  match v2.std.algebra.fold_list(
     xs: receipt.observations,
     empty: CoverageHolding { next_ordinal: 1 },
     cons: fn(acc, observation) {
@@ -353,7 +342,7 @@ fn product_receipt_covers_every_boundary_once(receipt: ProductReceipt) -> Bool {
 }
 
 fn product_receipt_every_boundary_completed(receipt: ProductReceipt) -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: receipt.observations,
     empty: true,
     cons: fn(ok, observation) { ok && boundary_is_completed(observation: observation) }
@@ -398,7 +387,7 @@ fn product_receipt_render(receipt: ProductReceipt) -> String {
       concat(receipt.subject, "\n\n")
     ),
     concat(
-      fold_list(
+      v2.std.algebra.fold_list(
         xs: receipt.observations,
         empty: "",
         cons: fn(text, observation) {

@@ -1,35 +1,5 @@
 module v2.test.workflow.product_receipt
 
-import v2.workflow.product_receipt {
-  ArtifactIdentityAbsent,
-  BoundaryCompleted,
-  BoundaryNotExercised,
-  BoundaryNotReached,
-  BoundaryObservation,
-  BoundaryRefused,
-  CargoBuild,
-  CargoBuildFailed,
-  AuthorityCargoManifest,
-  ClosureCandidateEmitted,
-  HostDerivesManifest,
-  ManifestPopulationAdmitted,
-  ProductBoundary,
-  ProductReceipt,
-  RefsHashVerified,
-  SeedLinkedAssembly,
-  DiagnosticCauseTally,
-  diagnostic_tally_bump,
-  diagnostic_tally_total,
-  product_artifact_identity,
-  product_receipt_covers_every_boundary_once,
-  product_receipt_every_boundary_completed,
-  product_receipt_green,
-  product_receipt_identity_chain_intact
-}
-import v2.std.algebra { Empty, length }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-
 // Every fixture below is CONSTRUCTED, never a live run, because this file
 // tests the receipt ALGEBRA -- the question "does this shape of evidence
 // mean the product built?" -- and a live population would make the answer a
@@ -45,98 +15,98 @@ data a6: String = "cargo-manifest"
 data a7: String = "cargo-verdict"
 
 fn chained_observation(
-  boundary: ProductBoundary,
+  boundary: v2.workflow.product_receipt.ProductBoundary,
   consumed_value: String,
   produced_value: String
-) -> BoundaryObservation {
-  BoundaryObservation {
+) -> v2.workflow.product_receipt.BoundaryObservation {
+  v2.workflow.product_receipt.BoundaryObservation {
     boundary: boundary,
-    standing: BoundaryCompleted,
-    consumed: product_artifact_identity(value: consumed_value, file_count: 1),
-    produced: product_artifact_identity(value: produced_value, file_count: 1)
+    standing: v2.workflow.product_receipt.BoundaryCompleted,
+    consumed: v2.workflow.product_receipt.product_artifact_identity(value: consumed_value, file_count: 1),
+    produced: v2.workflow.product_receipt.product_artifact_identity(value: produced_value, file_count: 1)
   }
 }
 
-fn green_receipt() -> ProductReceipt {
-  ProductReceipt {
+fn green_receipt() -> v2.workflow.product_receipt.ProductReceipt {
+  v2.workflow.product_receipt.ProductReceipt {
     subject: fixture_subject,
     observations: [
-      BoundaryObservation {
-        boundary: HostDerivesManifest,
-        standing: BoundaryCompleted,
-        consumed: ArtifactIdentityAbsent { cause: BoundaryNotReached },
-        produced: product_artifact_identity(value: a1, file_count: 1)
+      v2.workflow.product_receipt.BoundaryObservation {
+        boundary: v2.workflow.product_receipt.HostDerivesManifest,
+        standing: v2.workflow.product_receipt.BoundaryCompleted,
+        consumed: v2.workflow.product_receipt.ArtifactIdentityAbsent { cause: v2.workflow.product_receipt.BoundaryNotReached },
+        produced: v2.workflow.product_receipt.product_artifact_identity(value: a1, file_count: 1)
       },
-      chained_observation(boundary: ManifestPopulationAdmitted, consumed_value: a1, produced_value: a2),
-      chained_observation(boundary: RefsHashVerified, consumed_value: a2, produced_value: a3),
-      chained_observation(boundary: ClosureCandidateEmitted, consumed_value: a3, produced_value: a4),
-      chained_observation(boundary: SeedLinkedAssembly, consumed_value: a4, produced_value: a5),
-      chained_observation(boundary: AuthorityCargoManifest, consumed_value: a5, produced_value: a6),
-      chained_observation(boundary: CargoBuild, consumed_value: a6, produced_value: a7)
+      chained_observation(boundary: v2.workflow.product_receipt.ManifestPopulationAdmitted, consumed_value: a1, produced_value: a2),
+      chained_observation(boundary: v2.workflow.product_receipt.RefsHashVerified, consumed_value: a2, produced_value: a3),
+      chained_observation(boundary: v2.workflow.product_receipt.ClosureCandidateEmitted, consumed_value: a3, produced_value: a4),
+      chained_observation(boundary: v2.workflow.product_receipt.SeedLinkedAssembly, consumed_value: a4, produced_value: a5),
+      chained_observation(boundary: v2.workflow.product_receipt.AuthorityCargoManifest, consumed_value: a5, produced_value: a6),
+      chained_observation(boundary: v2.workflow.product_receipt.CargoBuild, consumed_value: a6, produced_value: a7)
     ]
   }
 }
 
 test fn product_receipt_green_on_seven_chained_completed_boundaries() -> Bool {
-  product_receipt_green(receipt: green_receipt())
+  v2.workflow.product_receipt.product_receipt_green(receipt: green_receipt())
 }
 
 // THE DISCRIMINATING RED, and it is the whole point of this lane. Every
 // boundary is Completed and all seven are present in order -- exactly the
 // evidence a per-component board reports -- but boundary 4 consumed an
 // artifact nobody produced. That receipt must be RED.
-fn independently_green_components_receipt() -> ProductReceipt {
-  ProductReceipt {
+fn independently_green_components_receipt() -> v2.workflow.product_receipt.ProductReceipt {
+  v2.workflow.product_receipt.ProductReceipt {
     subject: fixture_subject,
     observations: [
-      BoundaryObservation {
-        boundary: HostDerivesManifest,
-        standing: BoundaryCompleted,
-        consumed: ArtifactIdentityAbsent { cause: BoundaryNotReached },
-        produced: product_artifact_identity(value: a1, file_count: 1)
+      v2.workflow.product_receipt.BoundaryObservation {
+        boundary: v2.workflow.product_receipt.HostDerivesManifest,
+        standing: v2.workflow.product_receipt.BoundaryCompleted,
+        consumed: v2.workflow.product_receipt.ArtifactIdentityAbsent { cause: v2.workflow.product_receipt.BoundaryNotReached },
+        produced: v2.workflow.product_receipt.product_artifact_identity(value: a1, file_count: 1)
       },
-      chained_observation(boundary: ManifestPopulationAdmitted, consumed_value: a1, produced_value: a2),
-      chained_observation(boundary: RefsHashVerified, consumed_value: a2, produced_value: a3),
+      chained_observation(boundary: v2.workflow.product_receipt.ManifestPopulationAdmitted, consumed_value: a1, produced_value: a2),
+      chained_observation(boundary: v2.workflow.product_receipt.RefsHashVerified, consumed_value: a2, produced_value: a3),
       chained_observation(
-        boundary: ClosureCandidateEmitted,
+        boundary: v2.workflow.product_receipt.ClosureCandidateEmitted,
         consumed_value: "a-manifest-from-some-other-invocation",
         produced_value: a4
       ),
-      chained_observation(boundary: SeedLinkedAssembly, consumed_value: a4, produced_value: a5),
-      chained_observation(boundary: AuthorityCargoManifest, consumed_value: a5, produced_value: a6),
-      chained_observation(boundary: CargoBuild, consumed_value: a6, produced_value: a7)
+      chained_observation(boundary: v2.workflow.product_receipt.SeedLinkedAssembly, consumed_value: a4, produced_value: a5),
+      chained_observation(boundary: v2.workflow.product_receipt.AuthorityCargoManifest, consumed_value: a5, produced_value: a6),
+      chained_observation(boundary: v2.workflow.product_receipt.CargoBuild, consumed_value: a6, produced_value: a7)
     ]
   }
 }
 
 test fn every_boundary_completed_yet_receipt_refuses_when_identity_is_not_carried() -> Bool {
   let receipt = independently_green_components_receipt()
-  product_receipt_covers_every_boundary_once(receipt: receipt)
-    && product_receipt_every_boundary_completed(receipt: receipt)
-    && !product_receipt_identity_chain_intact(receipt: receipt)
-    && !product_receipt_green(receipt: receipt)
+  v2.workflow.product_receipt.product_receipt_covers_every_boundary_once(receipt: receipt)
+    && v2.workflow.product_receipt.product_receipt_every_boundary_completed(receipt: receipt)
+    && !v2.workflow.product_receipt.product_receipt_identity_chain_intact(receipt: receipt)
+    && !v2.workflow.product_receipt.product_receipt_green(receipt: receipt)
 }
 
-fn refused_tail_receipt() -> ProductReceipt {
-  ProductReceipt {
+fn refused_tail_receipt() -> v2.workflow.product_receipt.ProductReceipt {
+  v2.workflow.product_receipt.ProductReceipt {
     subject: fixture_subject,
     observations: [
-      BoundaryObservation {
-        boundary: HostDerivesManifest,
-        standing: BoundaryCompleted,
-        consumed: ArtifactIdentityAbsent { cause: BoundaryNotReached },
-        produced: product_artifact_identity(value: a1, file_count: 1)
+      v2.workflow.product_receipt.BoundaryObservation {
+        boundary: v2.workflow.product_receipt.HostDerivesManifest,
+        standing: v2.workflow.product_receipt.BoundaryCompleted,
+        consumed: v2.workflow.product_receipt.ArtifactIdentityAbsent { cause: v2.workflow.product_receipt.BoundaryNotReached },
+        produced: v2.workflow.product_receipt.product_artifact_identity(value: a1, file_count: 1)
       },
-      chained_observation(boundary: ManifestPopulationAdmitted, consumed_value: a1, produced_value: a2),
-      chained_observation(boundary: RefsHashVerified, consumed_value: a2, produced_value: a3),
-      chained_observation(boundary: ClosureCandidateEmitted, consumed_value: a3, produced_value: a4),
-      chained_observation(boundary: SeedLinkedAssembly, consumed_value: a4, produced_value: a5),
-      chained_observation(boundary: AuthorityCargoManifest, consumed_value: a5, produced_value: a6),
-      BoundaryObservation {
-        boundary: CargoBuild,
-        standing: BoundaryRefused { cause: CargoBuildFailed },
-        consumed: product_artifact_identity(value: a6, file_count: 1),
-        produced: ArtifactIdentityAbsent { cause: BoundaryNotReached }
+      chained_observation(boundary: v2.workflow.product_receipt.ManifestPopulationAdmitted, consumed_value: a1, produced_value: a2),
+      chained_observation(boundary: v2.workflow.product_receipt.RefsHashVerified, consumed_value: a2, produced_value: a3),
+      chained_observation(boundary: v2.workflow.product_receipt.ClosureCandidateEmitted, consumed_value: a3, produced_value: a4),
+      chained_observation(boundary: v2.workflow.product_receipt.SeedLinkedAssembly, consumed_value: a4, produced_value: a5),
+      chained_observation(boundary: v2.workflow.product_receipt.AuthorityCargoManifest, consumed_value: a5, produced_value: a6),
+      v2.workflow.product_receipt.BoundaryObservation {
+        boundary: v2.workflow.product_receipt.CargoBuild,
+        standing: v2.workflow.product_receipt.BoundaryRefused { cause: v2.workflow.product_receipt.CargoBuildFailed },
+        consumed: v2.workflow.product_receipt.product_artifact_identity(value: a6, file_count: 1),
+        produced: v2.workflow.product_receipt.ArtifactIdentityAbsent { cause: v2.workflow.product_receipt.BoundaryNotReached }
       }
     ]
   }
@@ -144,38 +114,38 @@ fn refused_tail_receipt() -> ProductReceipt {
 
 test fn a_refused_boundary_refuses_the_receipt_even_with_an_intact_prefix() -> Bool {
   let receipt = refused_tail_receipt()
-  product_receipt_covers_every_boundary_once(receipt: receipt)
-    && !product_receipt_every_boundary_completed(receipt: receipt)
-    && !product_receipt_green(receipt: receipt)
+  v2.workflow.product_receipt.product_receipt_covers_every_boundary_once(receipt: receipt)
+    && !v2.workflow.product_receipt.product_receipt_every_boundary_completed(receipt: receipt)
+    && !v2.workflow.product_receipt.product_receipt_green(receipt: receipt)
 }
 
 // A receipt that stops early is not a shorter green receipt. Coverage is
 // checked by ordinal position, so six-of-seven refuses on coverage rather
 // than passing an all-completed fold over the boundaries it did reach.
-fn six_boundary_receipt() -> ProductReceipt {
-  ProductReceipt {
+fn six_boundary_receipt() -> v2.workflow.product_receipt.ProductReceipt {
+  v2.workflow.product_receipt.ProductReceipt {
     subject: fixture_subject,
     observations: [
-      BoundaryObservation {
-        boundary: HostDerivesManifest,
-        standing: BoundaryCompleted,
-        consumed: ArtifactIdentityAbsent { cause: BoundaryNotReached },
-        produced: product_artifact_identity(value: a1, file_count: 1)
+      v2.workflow.product_receipt.BoundaryObservation {
+        boundary: v2.workflow.product_receipt.HostDerivesManifest,
+        standing: v2.workflow.product_receipt.BoundaryCompleted,
+        consumed: v2.workflow.product_receipt.ArtifactIdentityAbsent { cause: v2.workflow.product_receipt.BoundaryNotReached },
+        produced: v2.workflow.product_receipt.product_artifact_identity(value: a1, file_count: 1)
       },
-      chained_observation(boundary: ManifestPopulationAdmitted, consumed_value: a1, produced_value: a2),
-      chained_observation(boundary: RefsHashVerified, consumed_value: a2, produced_value: a3),
-      chained_observation(boundary: ClosureCandidateEmitted, consumed_value: a3, produced_value: a4),
-      chained_observation(boundary: SeedLinkedAssembly, consumed_value: a4, produced_value: a5),
-      chained_observation(boundary: AuthorityCargoManifest, consumed_value: a5, produced_value: a6)
+      chained_observation(boundary: v2.workflow.product_receipt.ManifestPopulationAdmitted, consumed_value: a1, produced_value: a2),
+      chained_observation(boundary: v2.workflow.product_receipt.RefsHashVerified, consumed_value: a2, produced_value: a3),
+      chained_observation(boundary: v2.workflow.product_receipt.ClosureCandidateEmitted, consumed_value: a3, produced_value: a4),
+      chained_observation(boundary: v2.workflow.product_receipt.SeedLinkedAssembly, consumed_value: a4, produced_value: a5),
+      chained_observation(boundary: v2.workflow.product_receipt.AuthorityCargoManifest, consumed_value: a5, produced_value: a6)
     ]
   }
 }
 
 test fn a_receipt_missing_its_last_boundary_refuses_on_coverage() -> Bool {
   let receipt = six_boundary_receipt()
-  !product_receipt_covers_every_boundary_once(receipt: receipt)
-    && product_receipt_every_boundary_completed(receipt: receipt)
-    && !product_receipt_green(receipt: receipt)
+  !v2.workflow.product_receipt.product_receipt_covers_every_boundary_once(receipt: receipt)
+    && v2.workflow.product_receipt.product_receipt_every_boundary_completed(receipt: receipt)
+    && !v2.workflow.product_receipt.product_receipt_green(receipt: receipt)
 }
 
 // A NotExercised boundary is not a refusal and not a completion. It has to
@@ -183,19 +153,19 @@ test fn a_receipt_missing_its_last_boundary_refuses_on_coverage() -> Bool {
 // analysed, an unexercised boundary is SCHEDULED. Five of seven were
 // unexercised when this lane opened.
 test fn an_unexercised_boundary_is_neither_completed_nor_green() -> Bool {
-  let receipt = ProductReceipt {
+  let receipt = v2.workflow.product_receipt.ProductReceipt {
     subject: fixture_subject,
     observations: [
-      BoundaryObservation {
-        boundary: HostDerivesManifest,
-        standing: BoundaryNotExercised,
-        consumed: ArtifactIdentityAbsent { cause: BoundaryNotReached },
-        produced: ArtifactIdentityAbsent { cause: BoundaryNotReached }
+      v2.workflow.product_receipt.BoundaryObservation {
+        boundary: v2.workflow.product_receipt.HostDerivesManifest,
+        standing: v2.workflow.product_receipt.BoundaryNotExercised,
+        consumed: v2.workflow.product_receipt.ArtifactIdentityAbsent { cause: v2.workflow.product_receipt.BoundaryNotReached },
+        produced: v2.workflow.product_receipt.ArtifactIdentityAbsent { cause: v2.workflow.product_receipt.BoundaryNotReached }
       }
     ]
   }
-  !product_receipt_every_boundary_completed(receipt: receipt)
-    && !product_receipt_green(receipt: receipt)
+  !v2.workflow.product_receipt.product_receipt_every_boundary_completed(receipt: receipt)
+    && !v2.workflow.product_receipt.product_receipt_green(receipt: receipt)
 }
 
 // SAME BYTES, DIFFERENT SHAPE, IS NOT THE SAME ARTIFACT. This is the guard
@@ -205,31 +175,31 @@ test fn an_unexercised_boundary_is_neither_completed_nor_green() -> Bool {
 // If carriage compared digests alone, a receipt could report a hand-off
 // between two producers' artifacts as intact.
 test fn identity_carriage_refuses_a_matching_digest_carried_at_a_different_shape() -> Bool {
-  let receipt = ProductReceipt {
+  let receipt = v2.workflow.product_receipt.ProductReceipt {
     subject: fixture_subject,
     observations: [
-      BoundaryObservation {
-        boundary: HostDerivesManifest,
-        standing: BoundaryCompleted,
-        consumed: ArtifactIdentityAbsent { cause: BoundaryNotReached },
-        produced: product_artifact_identity(value: a1, file_count: 1)
+      v2.workflow.product_receipt.BoundaryObservation {
+        boundary: v2.workflow.product_receipt.HostDerivesManifest,
+        standing: v2.workflow.product_receipt.BoundaryCompleted,
+        consumed: v2.workflow.product_receipt.ArtifactIdentityAbsent { cause: v2.workflow.product_receipt.BoundaryNotReached },
+        produced: v2.workflow.product_receipt.product_artifact_identity(value: a1, file_count: 1)
       },
-      BoundaryObservation {
-        boundary: ManifestPopulationAdmitted,
-        standing: BoundaryCompleted,
-        consumed: product_artifact_identity(value: a1, file_count: 177),
-        produced: product_artifact_identity(value: a2, file_count: 1)
+      v2.workflow.product_receipt.BoundaryObservation {
+        boundary: v2.workflow.product_receipt.ManifestPopulationAdmitted,
+        standing: v2.workflow.product_receipt.BoundaryCompleted,
+        consumed: v2.workflow.product_receipt.product_artifact_identity(value: a1, file_count: 177),
+        produced: v2.workflow.product_receipt.product_artifact_identity(value: a2, file_count: 1)
       },
-      chained_observation(boundary: RefsHashVerified, consumed_value: a2, produced_value: a3),
-      chained_observation(boundary: ClosureCandidateEmitted, consumed_value: a3, produced_value: a4),
-      chained_observation(boundary: SeedLinkedAssembly, consumed_value: a4, produced_value: a5),
-      chained_observation(boundary: AuthorityCargoManifest, consumed_value: a5, produced_value: a6),
-      chained_observation(boundary: CargoBuild, consumed_value: a6, produced_value: a7)
+      chained_observation(boundary: v2.workflow.product_receipt.RefsHashVerified, consumed_value: a2, produced_value: a3),
+      chained_observation(boundary: v2.workflow.product_receipt.ClosureCandidateEmitted, consumed_value: a3, produced_value: a4),
+      chained_observation(boundary: v2.workflow.product_receipt.SeedLinkedAssembly, consumed_value: a4, produced_value: a5),
+      chained_observation(boundary: v2.workflow.product_receipt.AuthorityCargoManifest, consumed_value: a5, produced_value: a6),
+      chained_observation(boundary: v2.workflow.product_receipt.CargoBuild, consumed_value: a6, produced_value: a7)
     ]
   }
-  product_receipt_every_boundary_completed(receipt: receipt)
-    && !product_receipt_identity_chain_intact(receipt: receipt)
-    && !product_receipt_green(receipt: receipt)
+  v2.workflow.product_receipt.product_receipt_every_boundary_completed(receipt: receipt)
+    && !v2.workflow.product_receipt.product_receipt_identity_chain_intact(receipt: receipt)
+    && !v2.workflow.product_receipt.product_receipt_green(receipt: receipt)
 }
 
 // A TALLY IS NOT A COUNTER. Bumping the same reason twice must produce ONE
@@ -238,12 +208,12 @@ test fn identity_carriage_refuses_a_matching_digest_carried_at_a_different_shape
 // The total is asserted alongside so a broken bump cannot green by losing
 // rows in the other direction.
 test fn repeated_reasons_collapse_into_one_row_and_the_total_is_preserved() -> Bool {
-  let tally = diagnostic_tally_bump(
-    tally: diagnostic_tally_bump(
-      tally: diagnostic_tally_bump(tally: Empty, reason: "unsupported_mock_expression"),
+  let tally = v2.workflow.product_receipt.diagnostic_tally_bump(
+    tally: v2.workflow.product_receipt.diagnostic_tally_bump(
+      tally: v2.workflow.product_receipt.diagnostic_tally_bump(tally: std.algebra.Empty, reason: "unsupported_mock_expression"),
       reason: "grounding_not_derived"
     ),
     reason: "unsupported_mock_expression"
   )
-  (length(xs: tally) == 2) && (diagnostic_tally_total(tally: tally) == 3)
+  (v2.std.algebra.length(xs: tally) == 2) && (v2.workflow.product_receipt.diagnostic_tally_total(tally: tally) == 3)
 }
