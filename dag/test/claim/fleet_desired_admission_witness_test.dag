@@ -385,6 +385,23 @@ test fn the_admission_workflow_filters_the_trigger_to_the_default_branch() -> Bo
     && string_contains(s: trigger, pattern: gunbc_default_branch_name)
 }
 
+// EVERY ADMISSIBLE MAIN COMPLETION MUST BE QUEUED, NOT REPLACED. The default concurrency group
+// holds one running and one PENDING entry and an arriving entry CANCELS the pending one, so under
+// it a green admission could be dropped by a later run that cannot advance -- a red floor, a
+// manual dispatch, an older rerun. The trigger filter cannot close that half: those all carry
+// head_branch main, and whether they can advance is decided in-model, after the run exists.
+// So the emitted mapping must carry `queue: max`.
+//
+// cancel-in-progress must ALSO be false, and it is a separate assertion rather than an implied
+// one: it is what keeps a RUNNING admission from being interrupted between the compare-and-swap
+// decision and the push, which is the one property the default group was genuinely providing.
+test fn the_admission_workflow_queues_every_admissible_completion_instead_of_replacing_it() -> Bool {
+  let yml = expected_fleet_desired_yml()
+  let concurrency = split(s: split(s: yml, delimiter: "concurrency:").last(), delimiter: "jobs:").first()
+  string_contains(s: concurrency, pattern: "queue: max")
+    && string_contains(s: concurrency, pattern: "cancel-in-progress: false")
+}
+
 // THE ACTUATION CARRIES NO DECISION. If the action step ever names the ref or a revision
 // expression of its own, it has re-acquired the ability to push something the gate did not admit.
 test fn the_admission_workflow_action_step_names_no_revision_of_its_own() -> Bool {

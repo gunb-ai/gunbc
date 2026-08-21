@@ -7,7 +7,7 @@ import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, WorkflowRunCompleted,
   WorkflowPermissions, PermWrite,
-  ConcurrencySpec, ConcurrencyMappingQueueNotMax,
+  ConcurrencySpec, ConcurrencyMappingQueueMax, QueueMaxCancelInProgressFalse,
   checkout_action,
   github_event_path_env
 }
@@ -204,54 +204,62 @@ fn fleet_desired_admission_job() -> Job {
   }
 }
 
-// CONCURRENCY, STATED AS WHAT THE PLATFORM ACTUALLY PROVIDES. An earlier revision of this
-// annotation claimed "queued, never cancelled ... must admit in order", and review 53998 caught
-// that the chosen variant does not provide it. Per the authority
-// (extdeps.languages.yaml.gha_workflow concurrency_queue_max_emission_note), the default group
-// modeled by ConcurrencyMappingQueueNotMax holds at most one running and one PENDING entry, and a
-// newly-arriving entry CANCELS the pending one; multi-entry in-order queueing is what
-// ConcurrencyMappingQueueMax was minted for. Asserting the queue property here was a state-space
-// conflation of "in-order queue" with the platform's pending-replacement default -- a prose claim
-// the emitted bytes do not support.
+// CONCURRENCY, AND THE VARIANT CHANGED BECAUSE THIS CHANGE CHANGED WHAT IS SAFE.
 //
-// The variant is nonetheless the RIGHT one, and the corrected reason is narrower than the claim it
-// replaces. What this workflow needs is that a RUNNING admission is never interrupted, because a
-// cancellation between the compare-and-swap decision and the push would leave the advance
-// half-observed; the default group gives exactly that, since cancel-in-progress defaults false and
-// only the pending entry is replaceable. Losing a superseded PENDING admission is not a defect but
-// the preferable outcome: the desired ref should track the newest floor-green revision, and
-// admitting each intermediate one in turn would be slower convergence for no gain. Reaching for
-// QueueMax would buy the in-order queue this comment used to claim and then have to justify why the
-// fleet wants to walk through revisions it has already passed.
+// Per the authority (extdeps.languages.yaml.gha_workflow concurrency_queue_max_emission_note) the
+// DEFAULT group -- ConcurrencyMappingQueueNotMax -- holds at most one running and one PENDING
+// entry, and a newly-arriving entry CANCELS the pending one. ConcurrencyMappingQueueMax is the
+// multi-entry queue, up to a documented cap of 100 pending, with cancel-in-progress forced false.
 //
-// THAT ARGUMENT WAS SOUND AND ITS PREMISE WAS FALSE, WHICH IS WHY THE TRIGGER NOW CARRIES A BRANCH
-// FILTER. It assumed every entry in the group is an admission, so that an evicted pending entry is
-// always a superseded one. It was not: the trigger named no branches, so EVERY branch's floor
-// completion created a run that entered this one constant group and only then skipped on the
-// job-level condition. A pull request's floor completing could therefore evict a pending admission
-// for a green main revision and do nothing in its place -- no advance, no refusal, no diagnostic,
-// and a `cancelled` run indistinguishable from ordinary noise. Found by nimble-fox-671 against
-// origin/main; the observed tally over 131 runs was 77 skipped, 45 cancelled, 6 failure, 3 success,
-// which is consistent with the drop being routine rather than rare.
+// THIS WORKFLOW USED THE DEFAULT, AND THE ARGUMENT FOR IT WAS THAT LOSING A SUPERSEDED PENDING
+// ADMISSION IS PREFERABLE TO WALKING THE FLEET THROUGH REVISIONS IT HAS ALREADY PASSED. That
+// argument was sound, and its premise -- that every entry in the group is an admission which
+// subsumes the pending one -- was false in three separate ways:
 //
-// This is the absorbing fallback's mirror -- the empty-observation narrow -- reached through the
-// platform rather than through a failure arm: a lost pending admission renders as "nothing to do"
-// when the truth is "something was dropped before it could decide".
+//   A PULL REQUEST'S FLOOR (nimble-fox-671, against origin/main). The trigger named no branches,
+//     so every branch's floor completion created a run that entered this one constant group and
+//     only then skipped on the job-level condition. Observed tally over 131 runs: 77 skipped,
+//     45 cancelled, 6 failure, 3 success -- consistent with routine silent drops.
+//   A RED MAIN FLOOR (nimble-fox-671, against the branch-filter fix). A red floor does not
+//     supersede a green admission; it cancels one and refuses in its place.
+//   A MANUAL DISPATCH OR AN OLDER SUCCESSFUL RERUN ON MAIN (side-chat review). Both carry
+//     head_branch main, both pass the branch filter, neither can advance -- and arrival order is
+//     not revision order.
 //
-// THE ROOT FIX IS AT THE TRIGGER GRAIN, NOT THE CONCURRENCY GRAIN. Filtering here stops the
-// irrelevant event creating a run at all, so nothing irrelevant ever enters the group and the
-// paragraph above becomes true as written -- an evicted pending entry really is a superseded
-// admission. Widening the queue instead (ConcurrencyMappingQueueMax) would have stopped the
-// eviction while leaving up to a hundred no-op entries queued ahead of a real admission on a
-// single-concurrency runner: the drop traded for a stall, with the irrelevant events still
-// arriving. The filter also removes the dispatch cost swift-badger-524 raised (32 no-op runs in
-// thirty minutes) as a consequence rather than as separate work.
+// TWO FIXES, AND THEY ARE NOT ALTERNATIVES: THE BRANCH FILTER AND THE QUEUE ANSWER DIFFERENT
+// HALVES. The population splits by whether admissibility is DECIDABLE AT THE TRIGGER GRAIN.
+// A pull request's floor is decidable there -- the platform knows the branch -- so the right move
+// is to REFUSE THE ENTRY, and the trigger now carries `branches`. Widening the queue to hold
+// those instead would have been the absorbing fallback: it cannot compute which entries matter,
+// so it holds them all, the deficit's frequency goes to zero by construction, and the cost is
+// denominated in the corpus of branches rather than in the change.
 //
-// THE JOB-LEVEL CONDITION AND THE IN-MODEL TRUST CHECKS STAY. The filter is defence in depth, not
-// a replacement: it is a platform-side fact this repository cannot verify from inside a run, and
-// extdeps.github.workflow_run_event workflow_run_event_conclusion_required_note argues exactly
-// this -- the reader re-checks what a widened trigger would otherwise smuggle past it.
+// The remaining population -- every main-floor completion -- is NOT decidable at the trigger
+// grain. Whether a run can advance depends on its conclusion, its originating event and its
+// ancestry, and all three are facts this repository reads IN-MODEL, after the run exists. So
+// GitHub's workflow-level concurrency is structurally too early to know whether an arriving entry
+// subsumes a pending one. Queueing there is not a widened container standing in for a decision;
+// it is the honest handling of a question that layer cannot answer, deferred to the layer that
+// can. That is why QueueMax is right for this half and was wrong for the other.
 //
+// WHAT MAKES THE QUEUE SAFE IS THIS CHANGE, WHICH IS WHY THE VARIANT MOVES NOW AND NOT EARLIER.
+// Before forward-only landed, queueing every main completion would have walked the desired ref
+// BACKWARD -- an older admission arriving later observes the newer prior correctly, and
+// --force-with-lease does not refuse a correctly-observed overwrite. Under that model the default
+// group's drop was accidentally protective, and the sound-sounding argument above was collecting
+// the benefit of a defect. decide_fleet_desired_advance now classifies a superseded candidate as
+// a no-op, so every queued entry is harmless by construction: it advances, converges, no-ops, or
+// refuses. The drop was buying safety that is now carried properly, and keeping it is pure loss.
+//
+// CANCEL-IN-PROGRESS IS FORCED FALSE ON THIS VARIANT, which preserves the one property the
+// default group was genuinely providing: a RUNNING admission is never interrupted, so no
+// cancellation can land between the compare-and-swap decision and the push.
+//
+// A NARROWER TERMINAL DESIGN EXISTS AND IS NOT THIS: put concurrency AFTER classification, so
+// only a positive AcceptedFleetRevision enters serialized actuation. That needs a classification
+// job feeding a job-level serialized actuation, or the fabric queue, and it is a separate change.
+// The queue here is the correct interim, not a stand-in for it.
+
 // DECLARED GAP -- SEARCH KEY: FleetDesiredAdvanceForwardOnly
 // WHAT ORDERING DOES NOT COVER: THE DESIRED REF CAN MOVE BACKWARD, AND THIS IS ORDINARY RATHER
 // THAN AN EDGE CASE. An earlier revision of this annotation said reaching it "requires deliberately
@@ -308,10 +316,9 @@ data fleet_desired_admission_workflow: Workflow = Workflow {
     }
   ],
   concurrency: Present {
-    value: ConcurrencyMappingQueueNotMax {
+    value: ConcurrencyMappingQueueMax {
       group: fleet_desired_admission_workflow_concurrency_group,
-      cancel_in_progress: none,
-      explicit_single: none
+      cancel_in_progress: Present { value: QueueMaxCancelInProgressFalse }
     }
   },
   env: none,
