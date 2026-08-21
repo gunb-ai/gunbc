@@ -194,11 +194,17 @@ data lambda_typing_gate_cause_grouping: CauseGrouping = CausePerSite
 data lambda_typing_gate_detection_is_not_causation_note: String = "Both specimens above share one shape: a signal that is TRUE and LOCAL and points at the wrong place. rustc's caret is at the closure because that is where inference ran out, not where the information was lost. A pre-registered hunch is the cheap defence, and it works by being falsifiable before the data arrives rather than by being correct."
 
 // A WARNING ABOUT COUNTING E0282 ON THESE CRATES, because the next reader will try. The emitted
-// closure for v2.compiler.parse carries E0282 diagnostics from the HELD contains class as well --
-// four of them, at v2_compiler_parse.rs 1117, 1406, 1471 and v2_std_find_witness.rs 77, each asking
-// for the same |a: /* Type */, b| annotation on a v1_rt::contains call. Those belong to the
-// call-target half of the bare-name class, not to this row. Any future E0282 count over that crate
-// includes them, so a count is not a population for this row and never was.
+// closure for v2.compiler.parse carries SEVEN E0282 diagnostics and only ONE of them is this row's.
+// FIVE belong to the HELD contains class -- v2_compiler_parse.rs 1117, 1406, 1471, 1626 and
+// v2_std_find_witness.rs 77, each a v1_rt::contains call asking for the same annotation on its first
+// closure parameter. The seventh is the target_model site. So a count over that crate is not a
+// population for this row and never was.
+//
+// THE SEVENTH WAS EXAMINED RATHER THAN ASSUMED, and the reason is worth the line: the first
+// extraction of these blocks was TRUNCATED at six by the reader, and reporting six as the population
+// would have been a count of what the display happened to fit. An unexamined member of a seven-item
+// set is exactly where a third cause would hide. It did not hide there -- 1626 is a fifth contains
+// site, not a new mechanism -- but that is a measured result and not the reason it was safe to skip.
 
 // THE POPULATION IS AN UPPER BOUND, NOT A MEASUREMENT, AND THE REFUTED CAUSE DOES NOT DISTURB THAT.
 //

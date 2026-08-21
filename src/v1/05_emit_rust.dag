@@ -8136,7 +8136,14 @@ fn emit_typed_function_value_call(func: String, args: List<Node>, registry: Map<
 // SCOPE, deliberately per-argument rather than per-call: the previous form extended ONE scope for the
 // whole call, so the last lambda's parameter names were also visible while emitting its sibling
 // arguments and the callee's filled default expressions -- positions where those names are not bound.
-// Binding at the argument makes that leak unrepresentable instead of merely unused.
+// Binding at the argument makes that shape unrepresentable.
+//
+// THAT IS CONSTRUCTION CLEANUP WITH NO MEASURED CURRENT CONSEQUENCE, and saying otherwise here would
+// be this file's own defect one level down. The same null that refutes the roster refutes any claim
+// about this leak: scope.locals is read once in the whole Rust emitter, on an arm taken only when a
+// node carries no resolved type, so nothing measured shows the leak producing a wrong byte either.
+// It is narrowed because the narrow form is the correct construction, not because a defect was
+// observed -- and it stays unearned as a repair until some fixture makes it observable.
 fn lambda_argument_scope(arg: Node, scope: InferScope) -> InferScope {
   match arg.expr_data {
     ExprLambda =>
