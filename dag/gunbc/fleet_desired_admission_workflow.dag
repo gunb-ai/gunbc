@@ -255,10 +255,24 @@ fn fleet_desired_admission_job() -> Job {
 // default group was genuinely providing: a RUNNING admission is never interrupted, so no
 // cancellation can land between the compare-and-swap decision and the push.
 //
-// A NARROWER TERMINAL DESIGN EXISTS AND IS NOT THIS: put concurrency AFTER classification, so
-// only a positive AcceptedFleetRevision enters serialized actuation. That needs a classification
-// job feeding a job-level serialized actuation, or the fabric queue, and it is a separate change.
-// The queue here is the correct interim, not a stand-in for it.
+// WHAT THE QUEUE BUYS, STATED AT ITS CEILING RATHER THAN AT ITS INTENT. GitHub: "Up to 100 jobs
+// or workflow runs can be `pending` in the concurrency group. When the queue is full, any
+// additional jobs or workflow runs are canceled." So this buys RETENTION INSTEAD OF
+// PENDING-REPLACEMENT WHILE THE GROUP SITS BELOW 100 PENDING -- not losslessness. And it buys no
+// ordering: pending entries are processed by when they began waiting, which is neither dispatch
+// order nor commit order, and GitHub does not guarantee order at all.
+//
+// Both limits are stated because the alternative was already tried in prose one revision ago:
+// the witness for this mapping was named `..._queues_every_admissible_completion_...`, and
+// "every" is not a property the emitted bytes can witness -- at 100 pending the mechanism cancels
+// and a witness reading the mapping still greens. A name outlives the reasoning that produced it.
+//
+// IF LOSSLESSNESS BECOMES REQUIRED, THE NEXT RUNG IS NOT A BIGGER QUEUE. It is durable
+// reconciliation over (eligible floor-green revisions MINUS recorded admission decisions), which
+// is an event ledger rather than a transport cap. Related but distinct: a NARROWER TERMINAL
+// DESIGN puts concurrency AFTER classification, so only a positive AcceptedFleetRevision enters
+// serialized actuation -- a classification job feeding a serialized actuation job, or the fabric
+// queue. The queue here is the correct interim for both, and a stand-in for neither.
 
 // DECLARED GAP -- SEARCH KEY: FleetDesiredAdvanceForwardOnly
 // WHAT ORDERING DOES NOT COVER: THE DESIRED REF CAN MOVE BACKWARD, AND THIS IS ORDINARY RATHER

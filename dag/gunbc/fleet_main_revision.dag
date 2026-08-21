@@ -267,7 +267,6 @@ type FleetDesiredAdvanceRefusal
       actual_current: GitObjectId,
       actual_accepted: GitObjectId,
     }
-  | InitialFleetDesiredCreationNotAuthorized { accepted: GitObjectId }
 
 // THE INPUT IS A SUM SO THAT IRRELEVANT EVIDENCE CANNOT BE SUPPLIED, LET ALONE FABRICATED.
 //
@@ -320,7 +319,7 @@ type FleetDesiredAdvanceInput<E, M>
 type FleetDesiredAdvanceDecision<E, M>
   = FleetDesiredAdvanceAdmitted {
       accepted: AcceptedFleetRevision<E, M>,
-      expected_prior: GitObjectId,
+      expected: GitRemoteRefExpectation,
     }
   | FleetDesiredAlreadyConverged { accepted: AcceptedFleetRevision<E, M> }
   | FleetDesiredSupersededNoOp {
@@ -336,8 +335,7 @@ fn fleet_desired_admitted_expectation<E, M>(
   decision: FleetDesiredAdvanceDecision<E, M>,
 ) -> GitRemoteRefExpectation? {
   match decision {
-    FleetDesiredAdvanceAdmitted { accepted: _, expected_prior: prior } =>
-      Present { value: RemoteRefMustEqual { oid: prior } }
+    FleetDesiredAdvanceAdmitted { accepted: _, expected: e } => Present { value: e }
     FleetDesiredAlreadyConverged { accepted: _ } => none
     FleetDesiredSupersededNoOp { accepted: _, current: _ } => none
     FleetDesiredAdvanceRefused { cause: _ } => none
@@ -381,15 +379,28 @@ fn fleet_desired_advance_refusal_message(cause: FleetDesiredAdvanceRefusal) -> S
         " but the decision is about ", git_object_id_wire_hex(oid: ac) as String,
         " and ", git_object_id_wire_hex(oid: aa) as String,
       ], "")
-    InitialFleetDesiredCreationNotAuthorized { accepted: acc } =>
-      join([
-        "origin advertises no such ref. An absent ref DOES license a first creation, but this path is authorized to ADVANCE an existing ref and not to bring the authority into existence; creating it at ",
-        git_object_id_wire_hex(oid: acc) as String,
-        " is a separate admission with its own authorization",
-      ], "")
   }
 }
 
+// AN ABSENT REF IS ADMITTED AS A CREATION, AND THIS ARM WAS BRIEFLY REFUSED BY MISTAKE.
+//
+// An earlier revision of this cut refused it, with a cause named
+// InitialFleetDesiredCreationNotAuthorized. That was correct against the main this branch forked
+// from -- creation genuinely had no expressible form then, because the admitted decision carried a
+// bare prior oid and an absent ref has no prior to carry. gunbc#8746 then landed creation on main
+// by widening the carrier to GitRemoteRefExpectation, and merging main into this branch brought
+// that code in while the wholesale rewrite here silently replaced it. Nothing conflicted, because
+// the two changes touched different declarations of the same function.
+//
+// So the refusal was not a decision about creation policy; it was a capability regression wearing
+// a typed refusal's clothes -- which is the worst shape for one, because a refusal LOOKS like a
+// considered position. Restored here, and the carrier is the reason it can be: the decision
+// carries the EXPECTATION rather than a prior oid, so "the ref must be absent" and "the ref must
+// equal X" are two inhabitants of one type instead of one representable state and one missing one.
+//
+// A creation is still a compare-and-swap, never an unconditional push: RemoteRefMustBeAbsent is a
+// PRECONDITION the remote enforces, so a ref that appears between the observation and the push
+// refuses at the remote rather than being overwritten.
 fn decide_fleet_desired_advance<E, M>(
   input: FleetDesiredAdvanceInput<E, M>,
 ) -> FleetDesiredAdvanceDecision<E, M> {
@@ -397,9 +408,7 @@ fn decide_fleet_desired_advance<E, M>(
     FleetDesiredExpectationRefusedInput { accepted: _, cause: c } =>
       FleetDesiredAdvanceRefused { cause: AdvanceExpectationUnavailable { cause: c } }
     FleetDesiredRefAbsentInput { accepted: a } =>
-      FleetDesiredAdvanceRefused {
-        cause: InitialFleetDesiredCreationNotAuthorized { accepted: a.revision },
-      }
+      FleetDesiredAdvanceAdmitted { accepted: a, expected: RemoteRefMustBeAbsent }
     FleetDesiredObservedCurrentInput { accepted: a, current: cur, relation: rel } =>
       decide_against_observed_current(accepted: a, current: cur, relation: rel)
   }
@@ -457,7 +466,10 @@ fn classify_admitted_relation<E, M>(
   match rel {
     SameRevision => FleetDesiredAlreadyConverged { accepted: accepted }
     DeployedIsAncestor =>
-      FleetDesiredAdvanceAdmitted { accepted: accepted, expected_prior: current }
+      FleetDesiredAdvanceAdmitted {
+        accepted: accepted,
+        expected: RemoteRefMustEqual { oid: current },
+      }
     CandidateIsAncestor =>
       FleetDesiredSupersededNoOp { accepted: accepted, current: current }
     UnrelatedHistories =>

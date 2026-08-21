@@ -225,9 +225,13 @@ test fn a_descendant_candidate_authorizes_an_advance_carrying_the_observed_prior
     AdmissionRefused { cause: _ } => false
     AdmissionActionAuthorized { action: a } =>
       match a {
-        FleetDesiredRemoteAdvance { accepted: to, expected_prior: from } =>
+        FleetDesiredRemoteAdvance { accepted: to, expected: e } =>
           (git_object_id_wire_hex(oid: to) as String == fixture_candidate_hex)
-            && (git_object_id_wire_hex(oid: from) as String == fixture_prior_hex)
+            && match e {
+                 RemoteRefMustEqual { oid: prior } =>
+                   git_object_id_wire_hex(oid: prior) as String == fixture_prior_hex
+                 RemoteRefMustBeAbsent => false
+               }
         FleetDesiredAlreadyConvergedAction { revision: _ } => false
         FleetDesiredSupersededAction { accepted: _, current: _ } => false
       }
@@ -245,7 +249,7 @@ test fn an_already_converged_fleet_authorizes_a_no_op_rather_than_refusing() -> 
       match a {
         FleetDesiredAlreadyConvergedAction { revision: r } =>
           git_object_id_wire_hex(oid: r) as String == fixture_candidate_hex
-        FleetDesiredRemoteAdvance { accepted: _, expected_prior: _ } => false
+        FleetDesiredRemoteAdvance { accepted: _, expected: _ } => false
         FleetDesiredSupersededAction { accepted: _, current: _ } => false
       }
   }
@@ -260,7 +264,7 @@ test fn a_superseded_candidate_authorizes_a_no_op_and_never_an_advance() -> Bool
     AdmissionActionAuthorized { action: a } =>
       match a {
         FleetDesiredSupersededAction { accepted: _, current: _ } => true
-        FleetDesiredRemoteAdvance { accepted: _, expected_prior: _ } => false
+        FleetDesiredRemoteAdvance { accepted: _, expected: _ } => false
         FleetDesiredAlreadyConvergedAction { revision: _ } => false
       }
   }
@@ -279,34 +283,32 @@ test fn an_unobservable_prior_refuses_rather_than_authorizing_a_creation() -> Bo
   }
 }
 
-// AN ABSENT REF IS NOT AN ADVANCE, AND NOT AN ERROR EITHER -- it is the one state this gate is
-// not authorized to resolve, because creating the ref establishes a fleet baseline that no prior
-// admission ever proved. The refusal is the wall; an admitting arm here would let a deleted ref
-// be silently recreated from whatever landed next.
-test fn an_absent_ref_refuses_rather_than_authorizing_an_initial_creation() -> Bool {
+// AN ABSENT REF AUTHORIZES A CREATION, AND THIS ROW ASSERTED THE OPPOSITE UNTIL 2026-08-21.
+//
+// It read `an_absent_ref_refuses_rather_than_authorizing_an_initial_creation` and was GREEN,
+// because the decision it tested had regressed with it. gunbc#8746 landed creation on main by
+// widening the admitted decision to carry a GitRemoteRefExpectation; merging main into this branch
+// brought that code in, and the wholesale rewrite here replaced it with a bare prior oid -- a
+// carrier in which creation is not representable at all. Nothing conflicted; the two changes
+// touched different declarations of one function.
+//
+// The row is inverted rather than deleted, and that matters: a witness asserting a capability's
+// ABSENCE is the thing that makes a silent capability deletion look verified. This one would have
+// defended the regression through review.
+test fn an_absent_ref_authorizes_a_creation_leasing_on_absence() -> Bool {
   match action_for(input: FleetDesiredRefAbsentInput { accepted: accepted_fixture() }) {
-    AdmissionActionAuthorized { action: _ } => false
-    AdmissionRefused { cause: _ } => true
-  }
-}
-
-// A RELATION IS EVIDENCE ONLY ABOUT THE PAIR IT WAS COMPUTED FOR. This row hands the decision a
-// well-formed relation whose endpoints are a DIFFERENT pair from the one being decided -- the
-// shape a stale or misrouted observation takes. It must refuse rather than classify, because the
-// verdict is perfectly valid and simply about something else; that is precisely the failure a
-// bare relation could not have expressed, and the reason the input carries the observation.
-test fn a_relation_about_another_pair_refuses_rather_than_being_applied() -> Bool {
-  match action_for(input: FleetDesiredObservedCurrentInput {
-    accepted: accepted_fixture(),
-    current: fixture_oid(hex: fixture_prior_hex),
-    relation: FleetRevisionRelationObservation {
-      current: fixture_oid(hex: "4444444444444444444444444444444444444444"),
-      accepted: fixture_oid(hex: "5555555555555555555555555555555555555555"),
-      relation: DeployedIsAncestor,
-    },
-  }) {
-    AdmissionActionAuthorized { action: _ } => false
-    AdmissionRefused { cause: _ } => true
+    AdmissionRefused { cause: _ } => false
+    AdmissionActionAuthorized { action: a } =>
+      match a {
+        FleetDesiredRemoteAdvance { accepted: to, expected: e } =>
+          (git_object_id_wire_hex(oid: to) as String == fixture_candidate_hex)
+            && match e {
+                 RemoteRefMustBeAbsent => true
+                 RemoteRefMustEqual { oid: _ } => false
+               }
+        FleetDesiredAlreadyConvergedAction { revision: _ } => false
+        FleetDesiredSupersededAction { accepted: _, current: _ } => false
+      }
   }
 }
 
@@ -319,11 +321,54 @@ test fn the_authorized_advance_carries_the_observed_prior_as_the_cas_expectation
   let script = fleet_desired_authorized_action_script(
     action: FleetDesiredRemoteAdvance {
       accepted: fixture_oid(hex: fixture_candidate_hex),
-      expected_prior: fixture_oid(hex: fixture_prior_hex),
+      expected: RemoteRefMustEqual { oid: fixture_oid(hex: fixture_prior_hex) },
     },
   ) as String
   string_contains(s: script, pattern: concat("--force-with-lease=refs/fleet/desired:", fixture_prior_hex))
     && string_contains(s: script, pattern: concat(fixture_candidate_hex, ":refs/fleet/desired"))
+}
+
+// THE CREATION PUSH LEASES ON THE REF BEING ABSENT, which git spells as an EMPTY expect value --
+// so the lease reads `--force-with-lease=refs/fleet/desired:` with nothing after the colon. The
+// trailing space in the pattern is what pins that: without it, a lease that silently rendered the
+// prior-oid form would still match.
+test fn the_creation_push_leases_on_the_ref_being_absent() -> Bool {
+  let script = fleet_desired_authorized_action_script(
+    action: FleetDesiredRemoteAdvance {
+      accepted: fixture_oid(hex: fixture_candidate_hex),
+      expected: RemoteRefMustBeAbsent,
+    },
+  ) as String
+  string_contains(s: script, pattern: "--force-with-lease=refs/fleet/desired: ")
+    && string_contains(s: script, pattern: concat(fixture_candidate_hex, ":refs/fleet/desired"))
+    && !string_contains(s: script, pattern: fixture_prior_hex)
+}
+
+// THE RECEIPT MUST NAME THE EXPECTED PRIOR, AND THE ABSENT ARM MUST NAME IT AS A WORD.
+// The regression this guards shipped as collateral of a correct change: when the admitted decision
+// widened from a prior oid to an expectation, the echo could no longer print `from` on the absent
+// arm, and dropping it for BOTH arms was the path of least resistance. What actually happened stays
+// recoverable from git's range line; what was EXPECTED then appeared nowhere in the run.
+//
+// The second conjunct is the discriminating half: an empty rendering would leave `expected-prior "`
+// in the script, which is indistinguishable from an operand nobody printed. That is exactly the
+// shape the regression had, so this row goes red if it ever returns.
+test fn the_receipt_names_the_expected_prior_on_both_arms() -> Bool {
+  let advancing = fleet_desired_authorized_action_script(
+    action: FleetDesiredRemoteAdvance {
+      accepted: fixture_oid(hex: fixture_candidate_hex),
+      expected: RemoteRefMustEqual { oid: fixture_oid(hex: fixture_prior_hex) },
+    },
+  ) as String
+  let creating = fleet_desired_authorized_action_script(
+    action: FleetDesiredRemoteAdvance {
+      accepted: fixture_oid(hex: fixture_candidate_hex),
+      expected: RemoteRefMustBeAbsent,
+    },
+  ) as String
+  string_contains(s: advancing, pattern: concat("expected-prior ", fixture_prior_hex))
+    && string_contains(s: creating, pattern: "expected-prior absent")
+    && !string_contains(s: creating, pattern: "expected-prior \"")
 }
 
 // THE WALL THE EXECUTING STEP DEPENDS ON. `test -s` distinguishes "authorization produced
@@ -385,17 +430,37 @@ test fn the_admission_workflow_filters_the_trigger_to_the_default_branch() -> Bo
     && string_contains(s: trigger, pattern: gunbc_default_branch_name)
 }
 
-// EVERY ADMISSIBLE MAIN COMPLETION MUST BE QUEUED, NOT REPLACED. The default concurrency group
-// holds one running and one PENDING entry and an arriving entry CANCELS the pending one, so under
-// it a green admission could be dropped by a later run that cannot advance -- a red floor, a
-// manual dispatch, an older rerun. The trigger filter cannot close that half: those all carry
-// head_branch main, and whether they can advance is decided in-model, after the run exists.
-// So the emitted mapping must carry `queue: max`.
+// MAIN-FLOOR COMPLETIONS ARE RETAINED FOR ADJUDICATION RATHER THAN PENDING-REPLACED, AND THE
+// CLAIM IS BOUNDED BY THE PLATFORM'S QUEUE CAPACITY.
+//
+// The default concurrency group holds one running and one PENDING entry, and an arriving entry
+// CANCELS the pending one -- so under it a green admission could be dropped by a later run that
+// cannot advance (a red floor, a manual dispatch, an older rerun). The trigger filter cannot close
+// that half: those all carry head_branch main, and whether they can advance is decided in-model,
+// after the run exists. So the emitted mapping must carry `queue: max`.
+//
+// THIS ROW WAS NAMED `..._queues_every_admissible_completion_...` AND THAT WAS AN OVERCLAIM.
+// GitHub documents the ceiling explicitly: "Up to 100 jobs or workflow runs can be `pending` in
+// the concurrency group. When the queue is full, any additional jobs or workflow runs are
+// canceled." (docs.github.com, workflow syntax, concurrency; read 2026-08-21.) So the honest claim
+// is retention-instead-of-replacement WHILE THE GROUP SITS BELOW 100 PENDING -- not "every".
+//
+// The overclaim was not observable from the bytes this row reads, which is exactly why the NAME
+// mattered: at 100 pending the mechanism cancels and this row still greens, because a queue depth
+// is not a fact about an emitted mapping. A name is the claim the next reader inherits, and this
+// one promised something the witness cannot witness.
+//
+// IF ABSOLUTE LOSSLESSNESS EVER BECOMES REQUIRED, THE NEXT RUNG IS NOT A BIGGER QUEUE. It is
+// durable reconciliation over (eligible floor-green revisions MINUS recorded admission decisions).
+// `queue: max` is a strong bounded transport, not an unbounded event ledger -- and it cannot buy
+// ordering either, since GitHub processes pending entries by when they began waiting and does not
+// guarantee order. Found by side-chat review, relayed by nimble-fox-671; the 100-entry cap and the
+// cancel-when-full half were both verified against the documentation rather than taken on report.
 //
 // cancel-in-progress must ALSO be false, and it is a separate assertion rather than an implied
 // one: it is what keeps a RUNNING admission from being interrupted between the compare-and-swap
 // decision and the push, which is the one property the default group was genuinely providing.
-test fn the_admission_workflow_queues_every_admissible_completion_instead_of_replacing_it() -> Bool {
+test fn the_admission_workflow_uses_the_maximum_pending_queue_instead_of_pending_replacement() -> Bool {
   let yml = expected_fleet_desired_yml()
   let concurrency = split(s: split(s: yml, delimiter: "concurrency:").last(), delimiter: "jobs:").first()
   string_contains(s: concurrency, pattern: "queue: max")

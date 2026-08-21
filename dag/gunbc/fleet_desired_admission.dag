@@ -4,7 +4,11 @@ import std.types { String, Bool, FilePath }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
-import extdeps.git.publication_transport { RemoteRefMustBeAbsent, RemoteRefMustEqual }
+import extdeps.git.publication_transport {
+  GitRemoteRefExpectation, RemoteRefMustBeAbsent, RemoteRefMustEqual,
+  GitRemoteRefCasRequest, git_remote_ref_lease_word, git_remote_ref_cas_refspec,
+}
+import extdeps.git.object_store { GitRefName }
 import extdeps.github.workflow_runs {
   WorkflowRunConclusion,
   Success, Failure, Cancelled, Neutral, Skipped, TimedOut, ActionRequired, StartupFailure,
@@ -130,7 +134,7 @@ data fleet_desired_admission_repo_root: FilePath = "." as FilePath
 // the fold rather than a structural guarantee. What it does buy is that adding a fourth action
 // cannot silently produce an empty script without deleting a literal on purpose.
 type FleetDesiredAuthorizedAction
-  = FleetDesiredRemoteAdvance { accepted: GitObjectId, expected_prior: GitObjectId }
+  = FleetDesiredRemoteAdvance { accepted: GitObjectId, expected: GitRemoteRefExpectation }
   | FleetDesiredAlreadyConvergedAction { revision: GitObjectId }
   | FleetDesiredSupersededAction { accepted: GitObjectId, current: GitObjectId }
 
@@ -199,9 +203,9 @@ fn fleet_desired_action_from_decision(
   decision: FleetDesiredAdvanceDecision<NonEmptyStr, NonEmptyStr>,
 ) -> FleetDesiredAdmissionOutcome {
   match decision {
-    FleetDesiredAdvanceAdmitted { accepted: a, expected_prior: prior } =>
+    FleetDesiredAdvanceAdmitted { accepted: a, expected: e } =>
       AdmissionActionAuthorized {
-        action: FleetDesiredRemoteAdvance { accepted: a.revision, expected_prior: prior },
+        action: FleetDesiredRemoteAdvance { accepted: a.revision, expected: e },
       }
     FleetDesiredAlreadyConverged { accepted: a } =>
       AdmissionActionAuthorized {
@@ -250,17 +254,37 @@ data fleet_desired_authorized_action_shell_dissolution_trigger: DissolutionCondi
 // "authorization produced nothing" -- a transport or writer failure -- from "authorization said
 // do nothing". If a no-op could render empty, those two states would collide at the only place
 // that can still tell them apart, and a dropped authorization would read as a converged fleet.
+// THE RECEIPT AND THE LEASE NEED DIFFERENT RENDERINGS OF THE SAME FACT, AND SHARING ONE IS HOW
+// THE OPERAND GOT LOST. git spells "the ref must be absent" as an EMPTY expect value, which is
+// exactly right for the lease word and useless in a receipt: an empty string there is
+// indistinguishable from an operand nobody printed. So the receipt renders the absent arm as a
+// positive word, and it matches over the closed expectation sum rather than over the lease's
+// hex-or-empty text. Design owed to nimble-fox-671, who traced the regression that motivated it.
+fn fleet_desired_receipt_expected_phrase(expected: GitRemoteRefExpectation) -> String {
+  match expected {
+    RemoteRefMustBeAbsent => "absent"
+    RemoteRefMustEqual { oid: prior } => git_object_id_wire_hex(oid: prior) as String
+  }
+}
+
 fn fleet_desired_authorized_action_script(action: FleetDesiredAuthorizedAction) -> NonEmptyStr {
   match action {
-    FleetDesiredRemoteAdvance { accepted: to, expected_prior: from } =>
+    FleetDesiredRemoteAdvance { accepted: to, expected: e } => {
+      let request = GitRemoteRefCasRequest {
+        remote: "origin" as NonEmptyStr,
+        ref_name: fleet_desired_ref_name as GitRefName,
+        new_oid: to,
+        expected: e,
+      }
       join([
         "set -eu\n",
-        "git push --force-with-lease=", fleet_desired_ref_name, ":",
-        git_object_id_wire_hex(oid: from) as String,
-        " origin ", git_object_id_wire_hex(oid: to) as String, ":", fleet_desired_ref_name, "\n",
-        "echo \"[fleet-desired] advanced ", git_object_id_wire_hex(oid: from) as String,
-        " -> ", git_object_id_wire_hex(oid: to) as String, "\"\n",
+        "git push ", git_remote_ref_lease_word(request: request) as String,
+        " ", request.remote as String,
+        " ", git_remote_ref_cas_refspec(request: request) as String, "\n",
+        "echo \"[fleet-desired] admitted ", git_object_id_wire_hex(oid: to) as String,
+        " expected-prior ", fleet_desired_receipt_expected_phrase(expected: e), "\"\n",
       ], "") as NonEmptyStr
+    }
     FleetDesiredAlreadyConvergedAction { revision: rev } =>
       join([
         "set -eu\n",
