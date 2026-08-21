@@ -44,7 +44,7 @@ import gunbc.fleet_revision_acceptance {
   required_ci_refusal_message,
   default_branch_refusal_message,
 }
-import gunbc.fleet_desired_observe { observe_fleet_revision_relation, observe_fleet_desired_revision }
+import gunbc.fleet_desired_observe { observe_fleet_revision_relation, observe_fleet_desired_revision, observe_local_tree_revision }
 import gunbc.fleet_main_revision {
   FleetDesiredAdvanceInput,
   FleetDesiredExpectationRefusedInput,
@@ -67,7 +67,6 @@ import gunbc.fleet_main_revision {
   FleetDesiredAdmitted,
   FleetDesiredUnobserved,
 }
-import gunbc.fleet_desired_observe { observe_fleet_desired_revision, observe_local_tree_revision }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
