@@ -71,3 +71,33 @@ fn v1_call_forwarding_clone_bound_wrapper_param_names(
   }
   v1_union_clone_param_names(base: bare_match, extra: compound_match)
 }
+
+// Pure decision core for the equality bound, Node-free like its siblings above so the
+// Node-consuming walk stays at the call site in emit_fn_def (see the import note at the top of
+// this module -- importing emit_rust's accessors here would close an acyclicity-forbidden cycle).
+//
+// The predicate resolves operand TYPES, never the `==` spelling, and that distinction is
+// load-bearing rather than stylistic. A body may carry several comparisons and only some earn a
+// bound: comparing two values of a concrete closed enum needs nothing, while comparing two values
+// of the fn's own generic param K is what rustc refuses with E0369. A spelling-matching predicate
+// bounds both, and a spurious bound is NOT free -- adding `K: PartialEq` tightens the signature, so
+// every caller instantiating K with a non-PartialEq type stops compiling. Over-approximation here
+// breaks working code; under-approximation only leaves the existing error in place.
+//
+// Returns List<String> (empty or one name) rather than an optional, matching the plain-List
+// convention this module's own note argues for and keeping the core free of any Optional import.
+fn v1_equality_bound_param_name(
+  left_type_name: String,
+  right_type_name: String,
+  generic_param_names: List<String>
+) -> List<String> {
+  if left_type_name == "" || right_type_name == "" {
+    []
+  } else {
+    if left_type_name == right_type_name && (generic_param_names |> any(g => g == left_type_name)) {
+      [left_type_name]
+    } else {
+      []
+    }
+  }
+}

@@ -35,9 +35,11 @@ pub use crate::v1_compiler_closure_stub_v2_std_integer_rust::closure_stub_v2_std
 pub use crate::v1_compiler_closure_stub_v2_std_text_rust::closure_stub_v2_std_text_source;
 pub use crate::v1_compiler_coercion::decl_identity_file;
 pub use crate::v1_compiler_coercion::{
-    coerce_primitive_type, is_copy, lookup_checkpoint, type_reference_decl_file,
+    coerce_primitive_type, is_copy, lookup_checkpoint, rust_seed_host_numeric_alias,
+    type_reference_decl_file,
 };
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
+use crate::v1_compiler_emit::EmitterOutcome::{Emitted, Refused};
 pub use crate::v1_compiler_emit::{
     compute_service_fields, effective_operation_transport, emit_bin_op_symbol, emit_container,
     emit_data_value_json, emit_error_expr, emit_ident, emit_keyword, emit_lambda,
@@ -52,7 +54,7 @@ pub use crate::v1_compiler_emit::{
     service_field_ctors, service_field_decls, tco_reassign_core, typed_named_arg_matches,
 };
 pub use crate::v1_compiler_emit::{
-    BlockEmitState, InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput,
+    BlockEmitState, EmitterOutcome, InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput,
 };
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
@@ -118,17 +120,17 @@ pub use crate::v1_compiler_ownership::{
 pub use crate::v1_compiler_resolve::get_exported_names;
 pub use crate::v1_compiler_runtime_rust::rust_runtime_source;
 pub use crate::v1_compiler_trait_bound_witness::{
-    v1_call_forwarding_clone_bound_wrapper_param_names,
+    v1_call_forwarding_clone_bound_wrapper_param_names, v1_equality_bound_param_name,
     v1_rc_match_scrutinee_clone_bound_param_names, v1_union_clone_param_names,
 };
 pub use crate::v1_compiler_trait_derive_emit::{
     rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible,
     trait_derive_emit_fn_clone_bound_keyed_carrier_module, v1_clone_bounded_type_params,
     v1_clone_impl_required_type_params, v1_emit_enum_derives, v1_emit_enum_supplemental_impls,
-    v1_emit_struct_from_capability_table, v1_emit_type_params_with_clone_bounds,
-    v1_generic_params_needing_clone_bound, v1_item_clone_bounded_param_names,
-    v1_item_clone_undecided_head, v1_item_field_type_exprs, v1_map_key_required_type_names,
-    v1_trait_derive_refuse, v1_with_map_key_requirement,
+    v1_emit_struct_from_capability_table, v1_emit_type_params_with_bounds,
+    v1_emit_type_params_with_clone_bounds, v1_generic_params_needing_clone_bound,
+    v1_item_clone_bounded_param_names, v1_item_clone_undecided_head, v1_item_field_type_exprs,
+    v1_map_key_required_type_names, v1_trait_derive_refuse, v1_with_map_key_requirement,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -736,57 +738,13 @@ pub fn reference_use_lines_representation_invariant_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn numeric_realization_identity_note() -> String {
+pub fn numeric_realization_relocation_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Realization is keyed on the DECLARING MODULE of the type, never on the authored spelling alone. Two declarations may share a spelling -- std.nat.Nat is CommutativeSemiring<Magnitude> and realizes natively, while v2.std.nat.Nat is the Peano coproduct Zero|Succ and must NOT -- so a bare-name rule realizes the wrong one. decl_file is the resolved declaration's ident_span file; the empty string means identity is UNKNOWN at this site, which yields NO realization (render structurally) rather than a guess. This replaces the deleted rust_corpus_repr closure-provenance switch: what a declaration realizes as is a fact about that declaration and its target, never about which other sources happen to share the closure.".to_string()
+            "RELOCATED to v1.compiler.coercion (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, review 54335): numeric_realization_identity_note, numeric_realization_roster_extension_note, numeric_realization_declaring_modules, decl_file_realizes_natively and rust_seed_host_numeric_alias moved there in full, completing the relocation checkpoint_table_bypasses_identity_note's structural_declaration_modules_for precedent already established for the negative-form (structural) half of this same two-authority shape -- this was the positive-form (native) half, still sitting in this module and reached back into by v1.compiler.coercion type_realization_decision, an import cycle DESIGN section 3 forbids (emit_rust already imports FROM coercion; coercion calling back into emit_rust closes the cycle). This module now imports only rust_seed_host_numeric_alias back from v1.compiler.coercion, exactly as it already imports lookup_checkpoint from there -- one direction, no cycle; numeric_realization_declaring_modules and decl_file_realizes_natively have no consumer left in this module, since rust_seed_host_numeric_alias was their only caller here and it moved with them. Agreed with swift-moth-294 (msg_502982ac, 2026-08-21) and sequenced behind gunbc#8716 (merged 2026-08-21T06:19:19Z), which is why the move landed now rather than when first proposed.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
-}
-
-pub fn numeric_realization_roster_extension_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "THIS ROSTER IS A LIVE ENUMERATION AND A ROW MAY ONLY BE ADDED FOR A DECLARATION WHOSE NATIVE REALIZATION IS ALREADY TRUE, NEVER TO MAKE A FAILING SITE COMPILE. A module belongs here when the types it declares ARE the host numeric type at the target -- dag/std/nat.dag and dag/std/integer.dag are the two grounded numeric authorities, and the <kernel: prefix covers declarations the seed mints with no source file. Adding a module to silence an E0308 or an E0109 at some call site is the §5 workaround: it converts one site's diagnostic into a corpus-wide realization change, and it does so by editing the roster rather than the fact the roster reports. The tell is that the author cannot say what the added module's type IS at the target without referring to the site that failed. If a site needs a realization this roster does not grant, the question is whether that declaration is genuinely a host numeric -- and if it is not, the fix is at the site or in the checkpoint binding, never here. This enumeration is itself provisional: it exists because there is no corpus-side declaration-to-Rust-type binding yet, and it dissolves into that binding when it lands -- see checkpoint_table_bypasses_identity_note for the two-authority shape.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn numeric_realization_declaring_modules() -> Rc<Vec<String>> {
-    Rc::new(vec![
-        "dag/std/nat.dag".to_string(),
-        "dag/std/integer.dag".to_string(),
-        "<kernel:".to_string(),
-    ])
-}
-
-pub fn decl_file_realizes_natively(decl_file: String) -> bool {
-    if (decl_file.clone() == "".to_string()) {
-        false
-    } else {
-        {
-            let mut __found = false;
-            for m in numeric_realization_declaring_modules().iter().cloned() {
-                if v1_rt::contains(decl_file.clone(), m.clone()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        }
-    }
-}
-
-pub fn rust_seed_host_numeric_alias(name: String, decl_file: String) -> Option<String> {
-    if (((name.clone() == "Nat".to_string()) || (name.clone() == "Int".to_string()))
-        && decl_file_realizes_natively(decl_file.clone()))
-    {
-        Some("i64".to_string())
-    } else {
-        None
-    }
 }
 
 pub fn checkpoint_table_bypasses_identity_note() -> String {
@@ -5243,6 +5201,7 @@ pub fn v1_item_signature_type_exprs(item: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 pub fn v1_map_key_seed_type_exprs(
     modules: Rc<Vec<Rc<TypedModule>>>,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
     {
         let declaration_field_exprs = Rc::new({
@@ -5250,7 +5209,9 @@ pub fn v1_map_key_seed_type_exprs(
             for type_name in Rc::new(v1_rt::map_keys(&type_decl_items)).iter().cloned() {
                 __result.extend(
                     (*match v1_rt::map_get(&type_decl_items, type_name.clone()) {
-                        Some(item) => v1_item_field_type_exprs(item.clone()),
+                        Some(item) => {
+                            v1_item_field_type_exprs(item.clone(), source_indices.clone())
+                        }
                         None => Rc::new(vec![]),
                     })
                     .iter()
@@ -5309,7 +5270,11 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             merged_module_source_indices(typed.modules.clone()),
         );
         let map_key_required = v1_map_key_required_type_names(
-            v1_map_key_seed_type_exprs(typed.modules.clone(), base_info.type_decl_items.clone()),
+            v1_map_key_seed_type_exprs(
+                typed.modules.clone(),
+                base_info.type_decl_items.clone(),
+                merged_module_source_indices(typed.modules.clone()),
+            ),
             hand_maintained_map_key_required_type_names(),
             base_info.type_decl_items.clone(),
             merged_module_source_indices(typed.modules.clone()),
@@ -5818,6 +5783,7 @@ pub fn emit_module(
             v1_map_key_seed_type_exprs(
                 Rc::new(vec![typed_module.clone()]),
                 base_info.type_decl_items.clone(),
+                merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
             ),
             hand_maintained_map_key_required_type_names(),
             base_info.type_decl_items.clone(),
@@ -14888,6 +14854,98 @@ pub fn v1_fn_body_derived_clone_param_names(
     }
 }
 
+pub fn v1_fn_bounds_by_param(
+    clone_param_names: Rc<Vec<String>>,
+    eq_param_names: Rc<Vec<String>>,
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    {
+        let with_clone = clone_param_names.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+            |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| {
+                v1_rt::rc_map_insert(m, n.clone(), Rc::new(vec!["Clone".to_string()]))
+            },
+        );
+        eq_param_names.clone().iter().cloned().fold(
+            with_clone.clone(),
+            |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| match v1_rt::map_get(&m, n.clone())
+            {
+                Some(traits) => v1_rt::rc_map_insert(
+                    m.clone(),
+                    n.clone(),
+                    v1_rt::concat(traits.clone(), Rc::new(vec!["PartialEq".to_string()])),
+                ),
+                None => v1_rt::rc_map_insert(
+                    m.clone(),
+                    n.clone(),
+                    Rc::new(vec!["PartialEq".to_string()]),
+                ),
+            },
+        )
+    }
+}
+
+pub fn v1_fn_body_equality_bound_param_names(
+    body: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let here = match (*body.expr_data.clone()).clone() {
+            ExprData::ExprBinOp { op, .. } => {
+                if is_equality_comparison(op.clone()) {
+                    v1_equality_bound_param_name(
+                        v1_resolved_type_name_or_empty(
+                            binop_left(body.clone()),
+                            source_indices.clone(),
+                        ),
+                        v1_resolved_type_name_or_empty(
+                            binop_right(body.clone()),
+                            source_indices.clone(),
+                        ),
+                        generic_param_names.clone(),
+                    )
+                } else {
+                    Rc::new(vec![])
+                }
+            }
+            _ => Rc::new(vec![]),
+        };
+        body.children.clone().iter().cloned().fold(
+            here.clone(),
+            |acc: Rc<Vec<String>>, child: Rc<Node>| {
+                v1_union_clone_param_names(
+                    acc,
+                    v1_fn_body_equality_bound_param_names(
+                        child.clone(),
+                        generic_param_names.clone(),
+                        source_indices.clone(),
+                    ),
+                )
+            },
+        )
+    })
+}
+
+pub fn is_equality_comparison(op: BinOp) -> bool {
+    match op.clone() {
+        BinOp::Eq => true,
+        BinOp::Ne => true,
+        _ => false,
+    }
+}
+
+pub fn v1_resolved_type_name_or_empty(
+    e: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match e.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            authored_name_at(source_indices.clone(), rt.clone())
+        }
+        _ => "".to_string(),
+    }
+}
+
 pub fn v1_call_forwarding_clone_bound_param_names(
     generic_param_names: Rc<Vec<String>>,
     body: Rc<Node>,
@@ -15074,11 +15132,19 @@ pub fn emit_fn_def(
                 } else {
                     derived_clone_param_names_with_rc_match.clone()
                 };
-                let needs_clone_bound = ((clone_param_names.clone().len() as i64) > 0);
-                let type_params_str = if needs_clone_bound.clone() {
-                    v1_emit_type_params_with_clone_bounds(
+                let eq_param_names = v1_fn_body_equality_bound_param_names(
+                    body.clone(),
+                    generic_param_names.clone(),
+                    si.clone(),
+                );
+                let bounds_by_param =
+                    v1_fn_bounds_by_param(clone_param_names.clone(), eq_param_names.clone());
+                let needs_bound = (((clone_param_names.clone().len() as i64) > 0)
+                    || ((eq_param_names.clone().len() as i64) > 0));
+                let type_params_str = if needs_bound.clone() {
+                    v1_emit_type_params_with_bounds(
                         type_params.clone(),
-                        clone_param_names.clone(),
+                        bounds_by_param.clone(),
                         si.clone(),
                     )
                 } else {
@@ -27888,9 +27954,10 @@ pub fn emit_dry_run_branch_from_props(
             {
                 let first_mock = mock_props.clone().first().cloned();
                 match first_mock.clone() {
-    Some(mp) => {
-                    let mock_json = emit_data_value_json(field_init_node_value(mp.clone()), source_indices.clone());
-let is_multi_field_conj = ((inferred.connective.clone() == Connective::Conj) && ((inferred.children.clone().len() as i64) > 1));
+    Some(mp) => match (*emit_data_value_json(field_init_node_value(mp.clone()), source_indices.clone())).clone() {
+    EmitterOutcome::Refused { reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(log_line.clone(), "\ncompile_error!(\"".to_string()), escape_string_literal_body(r.clone())), "\");".to_string()),
+    EmitterOutcome::Emitted { json: mock_json, .. } => {
+                    let is_multi_field_conj = ((inferred.connective.clone() == Connective::Conj) && ((inferred.children.clone().len() as i64) > 1));
 if is_multi_field_conj.clone() {
                         {
                             let children = inferred.children.clone();
@@ -27952,6 +28019,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
                     } else {
                         v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(log_line.clone(), "\n".to_string()), "let mock_value: serde_json::Value = serde_json::from_str(r#\"".to_string()), mock_json.clone()), "\"#)?;\n".to_string()), "Ok(serde_json::from_value(mock_value)?)".to_string())
                     }
+},
 },
     None => v1_rt::concat(log_line.clone(), "\ncompile_error!(\"mock property list was non-empty but first() returned None\")".to_string()),
 }
@@ -30449,12 +30517,20 @@ pub fn emit_data_def_body(
                 scope.type_env.clone().source_indices.clone(),
             ) && !data_value_has_cross_refs(value.clone()))
             {
+                match (*emit_data_value_json(
+                    value.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                ))
+                .clone()
                 {
-                    let json_str = emit_data_value_json(
-                        value.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                    );
-                    v1_rt::concat(
+                    EmitterOutcome::Refused { reason: r, .. } => v1_rt::concat(
+                        v1_rt::concat(
+                            "            compile_error!(\"".to_string(),
+                            escape_string_literal_body(r.clone()),
+                        ),
+                        "\")".to_string(),
+                    ),
+                    EmitterOutcome::Emitted { json: json_str, .. } => v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
                                 "            serde_json::from_value(serde_json::json!(".to_string(),
@@ -30463,7 +30539,7 @@ pub fn emit_data_def_body(
                             "))\n".to_string(),
                         ),
                         "                .expect(\"valid data definition\")".to_string(),
-                    )
+                    ),
                 }
             } else {
                 {

@@ -261,9 +261,9 @@ pub struct PartialFunction<K, V> {
     pub get: Rc<dyn Fn(K) -> Option<V>>,
     pub insert: Rc<dyn Fn(K, V) -> Rc<PartialFunction<K, V>>>,
     pub merge: Rc<dyn Fn(Rc<PartialFunction<K, V>>) -> Rc<PartialFunction<K, V>>>,
-    pub keys: Rc<dyn Fn() -> Rc<FreeMonoid<K>>>,
-    pub values: Rc<dyn Fn() -> Rc<FreeMonoid<V>>>,
-    pub has: Rc<dyn Fn(K) -> bool>,
+    pub map_keys: Rc<dyn Fn() -> Rc<FreeMonoid<K>>>,
+    pub map_values: Rc<dyn Fn() -> Rc<FreeMonoid<V>>>,
+    pub map_has: Rc<dyn Fn(K) -> bool>,
     pub contains_key: Rc<dyn Fn(K) -> bool>,
     pub size: Rc<dyn Fn() -> i64>,
     pub _phantom: std::marker::PhantomData<(K, V)>,
@@ -1479,19 +1479,6 @@ pub fn partial_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             callback_element_position: None,
         }),
         Rc::new(AlgebraFieldTemplate {
-            name: "has".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::ReceiverKey),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                name: "Bool".to_string(),
-            }),
-            size_effect: None,
-            cost_shape: None,
-            callback_element_position: None,
-        }),
-        Rc::new(AlgebraFieldTemplate {
             name: "map_has".to_string(),
             param_types: Rc::new(vec![
                 Rc::new(AlgebraTypeTemplate::ReceiverSelf),
@@ -1518,19 +1505,6 @@ pub fn partial_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             callback_element_position: None,
         }),
         Rc::new(AlgebraFieldTemplate {
-            name: "keys".to_string(),
-            param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
-            return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
-                source: Rc::new(ContainerSource::Named {
-                    name: "List".to_string(),
-                }),
-                element: Rc::new(AlgebraTypeTemplate::ReceiverKey),
-            }),
-            size_effect: None,
-            cost_shape: None,
-            callback_element_position: None,
-        }),
-        Rc::new(AlgebraFieldTemplate {
             name: "map_keys".to_string(),
             param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
@@ -1538,19 +1512,6 @@ pub fn partial_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
                     name: "List".to_string(),
                 }),
                 element: Rc::new(AlgebraTypeTemplate::ReceiverKey),
-            }),
-            size_effect: None,
-            cost_shape: None,
-            callback_element_position: None,
-        }),
-        Rc::new(AlgebraFieldTemplate {
-            name: "values".to_string(),
-            param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
-            return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
-                source: Rc::new(ContainerSource::Named {
-                    name: "List".to_string(),
-                }),
-                element: Rc::new(AlgebraTypeTemplate::ReceiverValue),
             }),
             size_effect: None,
             cost_shape: None,

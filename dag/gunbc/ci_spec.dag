@@ -1,4 +1,8 @@
 module gunbc.ci_spec
+import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_resource }
+import gunbc.spark.credential_workflow { spark_administrator_password_secret_ref }
+import gunbc.spark.grant_privileged_operation { spark_grant_credential_path_env }
+import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
@@ -543,6 +547,78 @@ fn gunbc_ci_fleet_key_agent_script() -> String {
   ], "")
 }
 
+// A3 in-run administrator-credential materialization, the same lifecycle as the fleet key one step
+// above and deliberately not a variation on it: WIF token from the google_auth_action step by env,
+// one PINNED secret version, a 0600 file under RUNNER_TEMP, and a trap armed BEFORE the credential
+// touches disk so any failure removes it regardless of where set -e aborts.
+//
+// WHAT GOES TO GITHUB_ENV IS THE PATH, NEVER THE CREDENTIAL. An environment variable holding the
+// password would be readable by every child process the job spawns and printed by any diagnostic
+// that dumps the environment — and this repository's own receipts print argv. A path discloses
+// nothing to anyone who cannot already read the file.
+//
+// The URL is derived from the modeled SecretRef rather than spelled, so this step and the lease that
+// authorizes it cannot name different versions. There is no fingerprint check as there is for the
+// key: a password has no derivable public half to compare against, so the identity evidence is
+// sudo's own accept-or-reject, which the privileged step classifies as its own outcome.
+//
+// THE HTTP STATUS IS CLASSIFIED, NOT COLLAPSED, and the first cut of this step got that wrong in a
+// way that cost a run to discover. It piped `curl -sSf` straight into a decoder and checked the file
+// size afterwards, so a 403 surfaced as a JSON decode traceback followed by "produced no payload" --
+// a sentence true of the file and false about the world. Unreadable and enrolled-but-blank have
+// different remedies, and neither is discoverable from an empty file.
+//
+// A 403 DOES NOT ESTABLISH THAT THE SECRET EXISTS, and the second cut of this step claimed it did:
+// "an access grant and not a missing secret". Secret Manager answers 403 both for a version that
+// exists and is not readable and for one that does not exist -- it hides existence from principals
+// who may not read it. gunbc.spark.bootstrap_provision already records exactly this ambiguity about
+// exactly this API, having been burned by reading an empty testIamPermissions response as proof of
+// denial rather than of nothing. So the refusal states the ambiguity and gives the remedy that
+// covers both arms, rather than picking the arm that happens to fit the current guess.
+data gunbc_ci_spark_admin_credential_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_spark_admin_credential_script",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_spark_admin_credential_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_spark_admin_credential_script — concat-built foreign-executor (GitHub Actions run:) shell materializing the spark administrator password from its modeled Secret Manager version into a 0600 RUNNER_TEMP file whose PATH (never the credential) is exported; DISSOLVES WHEN a job-scoped secret-materialization lifetime (SecretRef -> run-local file that PERSISTS across GitHub Actions steps, with explicit cleanup) is modeled on the CI-emission layer -- the root v2.workflow.gunbc_invoke_step_emit gunbc_run_step_script already dissolved four sibling markers through -- and this step becomes an emitted typed effect. THIS TRIGGER WAS REWRITTEN 2026-08-21 BECAUSE ITS FIRST FORM COULD NEVER FIRE, and the correction is recorded rather than silently swapped because an unfalsifiable trigger is worse than no trigger: it reads as tracked debt while being unreachable. It named host_effect_apply, whose HostEffectIntent.target is a NodeControlPlane, whose only two arms both require a ComputeHost -- a full hardware description in gunbc.fleet_intent (baseboard, processors, memory devices, storage, network interfaces). An ephemeral GitHub runner is not one, and gunbc.ci_deploy_target_host already refuses exactly this conflation (runner identity does not prove target host). It also cited SECRET-VERSION-LIFECYCLE-0, which models secret ROTATION -- how a secret's value is replaced -- and never answers how a running step consumes a secret already at rest. Both errors have the same origin: reaching for the nearest carrier whose NAME matched, without checking that its subject did. The real foundation is gunbc.auth.materialized_secret, whose SshKeyFile leg is landed and correctly scoped to fleet transports authenticating to real ComputeHosts; its own Scaffold row is falsifiable BECAUSE its population fits that surface. This step is the other population -- a runner materializing a secret for its own local use, authenticating to no host -- and the lifetime it needs is not the landed materialize/use/shred bracket, which is synchronous and single-call, but one that survives the step boundary by design")
+
+fn gunbc_ci_spark_admin_credential_script() -> String {
+  join([
+    "# ", dissolution_description(condition: gunbc_ci_spark_admin_credential_shell_emit_dissolution_trigger), "\n",
+    "set -euo pipefail\n",
+    "umask 077\n",
+    "CRED_FILE=\"$RUNNER_TEMP/spark-administrator-credential\"\n",
+    "cleanup() { rm -f \"$CRED_FILE\" \"$RUNNER_TEMP/spark-administrator-response.json\"; }\n",
+    "trap cleanup EXIT\n",
+    "RESP_FILE=\"$RUNNER_TEMP/spark-administrator-response.json\"\n",
+    "HTTP_CODE=\"$(curl -sS -o \"$RESP_FILE\" -w '%\{http_code}' -H \"Authorization: Bearer $WIF_ACCESS_TOKEN\" \"", secret_ref_access_url(ref: spark_administrator_password_secret_ref), "\" || echo 000)\"\n",
+    "if [ \"$HTTP_CODE\" = 403 ]; then echo \"SparkAdministratorCredentialUnreadable: ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), " answered 403 to ", spark_bootstrap_cloud_principal_member(), ". Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant that principal roles/secretmanager.secretAccessor on it. Contacting NO host.\" >&2; exit 1; fi\n",
+    "if [ \"$HTTP_CODE\" = 404 ]; then echo \"SparkAdministratorCredentialAbsent: ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), " answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host.\" >&2; exit 1; fi\n",
+    "if [ \"$HTTP_CODE\" != 200 ]; then echo \"SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), "; contacting NO host.\" >&2; exit 1; fi\n",
+    "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$RESP_FILE\" > \"$CRED_FILE\"\n",
+    "rm -f \"$RESP_FILE\"\n",
+    "chmod 600 \"$CRED_FILE\"\n",
+    "if [ ! -s \"$CRED_FILE\" ]; then echo \"SparkAdministratorCredentialEmpty: ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), " returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host\" >&2; exit 1; fi\n",
+    "trap - EXIT\n",
+    "echo \"", spark_grant_credential_path_env as String, "=$CRED_FILE\" >> \"$GITHUB_ENV\"\n",
+    "echo \"spark-admin-credential: materialized from ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), " to a 0600 run-local file; the PATH is exported, the credential is not\"\n",
+  ], "")
+}
+
+// The credential teardown, a FRESH per-job effect for the same reason the agent teardown is: each
+// isolated job materializes and must remove its own file. Named so the workflow step and any
+// fresh-effect list reference ONE authority rather than an inline literal duplicated per job.
+fn gunbc_ci_spark_admin_credential_cleanup_script() -> String {
+  join([
+    "if [ -n \"$\{", spark_grant_credential_path_env as String, ":-}\" ]; then rm -f \"$\{",
+    spark_grant_credential_path_env as String, "}\" || true; fi\n",
+  ], "")
+}
+
 // The in-run ssh-agent teardown — a FRESH per-job effect (each isolated job starts and
 // must kill its own agent; nothing is memoizable across jobs), named so both the workflow
 // step and the materialization gate's fresh-effect list reference ONE authority (§3),
@@ -613,12 +689,41 @@ fn gunbc_ci_fleet_converge_apply_invoke() -> String {
 
 
 
+fn gunbc_ci_spark_serving_reboot_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/spark/serving_reboot_probe.dag",
+    function: "spark_serving_reboot_ci_wet",
+    claim_run: false,
+    receipt_rel: "target/spark-serving-reboot-receipt.txt"
+  )
+}
+
+fn gunbc_ci_spark_serving_durability_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/spark/serving_durability.dag",
+    function: "spark_serving_durability_ci_wet",
+    claim_run: false,
+    receipt_rel: "target/spark-serving-durability-receipt.txt"
+  )
+}
+
+fn gunbc_ci_spark_grant_install_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/spark/grant_install.dag",
+    function: "spark_grant_install_ci_wet",
+    claim_run: false,
+    receipt_rel: "target/spark-grant-install-receipt.txt"
+  )
+}
 
 
 fn gunbc_ci_spark_serving_observe_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
-    entry: "dag/gunbc/spark_serving_observe.dag",
+    entry: "dag/gunbc/spark/serving_observe.dag",
     function: "spark_serving_observe_ci_wet",
     claim_run: false,
     receipt_rel: "target/spark-serving-observe-ci-receipt.txt"
@@ -628,7 +733,7 @@ fn gunbc_ci_spark_serving_observe_invoke() -> String {
 fn gunbc_ci_spark_serving_converge_slice_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
-    entry: "dag/gunbc/spark_serving_converge_slice_wet.dag",
+    entry: "dag/gunbc/spark/serving_converge_slice_wet.dag",
     function: "spark_serving_converge_slice_ci_wet",
     claim_run: false,
     receipt_rel: "target/spark-serving-converge-slice-wet-receipt.txt"

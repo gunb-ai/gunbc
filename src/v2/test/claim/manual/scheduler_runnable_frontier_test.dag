@@ -109,7 +109,7 @@ data scheduler_mixed_runnable_blocked_dependencies: List<DependencyView> = [
   }
 ]
 
-fn scheduler_initial_frontier() -> RunnableFrontier {
+fn scheduler_initial_frontier() -> RunnableFrontier<Node> {
   runnable_frontier_from_dependencies(
     nodes: scheduler_fixture_nodes,
     dependencies: scheduler_fixture_dependencies,
@@ -117,7 +117,7 @@ fn scheduler_initial_frontier() -> RunnableFrontier {
   )
 }
 
-fn scheduler_after_independent_frontier() -> RunnableFrontier {
+fn scheduler_after_independent_frontier() -> RunnableFrontier<Node> {
   runnable_frontier_from_dependencies(
     nodes: scheduler_fixture_nodes,
     dependencies: scheduler_fixture_dependencies,
@@ -125,7 +125,7 @@ fn scheduler_after_independent_frontier() -> RunnableFrontier {
   )
 }
 
-fn scheduler_reversed_initial_frontier() -> RunnableFrontier {
+fn scheduler_reversed_initial_frontier() -> RunnableFrontier<Node> {
   runnable_frontier_from_dependencies(
     nodes: scheduler_fixture_nodes,
     dependencies: scheduler_fixture_reversed_dependencies,
@@ -133,7 +133,7 @@ fn scheduler_reversed_initial_frontier() -> RunnableFrontier {
   )
 }
 
-fn scheduler_contains_noise_frontier() -> RunnableFrontier {
+fn scheduler_contains_noise_frontier() -> RunnableFrontier<Node> {
   runnable_frontier_from_dependencies(
     nodes: scheduler_fixture_nodes,
     dependencies: scheduler_fixture_dependencies_with_contains_noise,
