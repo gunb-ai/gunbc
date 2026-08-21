@@ -109,7 +109,7 @@ fn canonical_template_name(n: Node, source_indices: Map<String, NewlineIndex>) -
 }
 
 fn is_declared_container_alias_spelling(name: String) -> Bool {
-  match container_template_algebra(name: qualified_last_segment(name: name)) {
+  match container_template_alias_algebra(name: qualified_last_segment(name: name)) {
     Present { value: _ } => true
     Absent => false
   }
