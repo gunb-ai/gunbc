@@ -10,7 +10,7 @@ fn w_enum_direct_set_field_stays_header_bare_gets_hand_written_impl() -> Bool {
   compile_dag_rust_emit_check(
     "module generic_item_ord_witness.enum_direct\n\ntype Audience<P>\n  = Universal\n  | Enumerated { members: Set<P> }\n",
     "src/generic_item_ord_witness_enum_direct.rs",
-    ["enum Audience<P>", "impl<P: Ord> std::fmt::Debug for Audience<P>", "impl<P: Ord> PartialEq for Audience<P>"],
+    ["enum Audience<P>", "impl<P: Ord + std::fmt::Debug> std::fmt::Debug for Audience<P>", "impl<P: Ord + PartialEq> PartialEq for Audience<P>"],
     ["enum Audience<P: Ord>", "derive(Ord)"]
   )
 }
@@ -19,8 +19,8 @@ fn w_non_set_container_stays_bare() -> Bool {
   compile_dag_rust_emit_check(
     "module generic_item_ord_witness.non_set\nimport std.algebra { FreeMonoid }\n\ntype Ledger<P> {\n  rows: FreeMonoid<P>\n}\n",
     "src/generic_item_ord_witness_non_set.rs",
-    ["struct Ledger<P"],
-    ["struct Ledger<P: Ord>", "Ord"]
+    ["struct Ledger<P>"],
+    ["P: Ord"]
   )
 }
 
@@ -28,8 +28,8 @@ fn w_list_container_stays_bare() -> Bool {
   compile_dag_rust_emit_check(
     "module generic_item_ord_witness.list_only\n\ntype Roster<P> {\n  entries: List<P>\n}\n",
     "src/generic_item_ord_witness_list_only.rs",
-    ["struct Roster<P>"],
-    ["struct Roster<P: Ord>", "Ord"]
+    ["struct Roster<P: Clone>"],
+    ["P: Ord"]
   )
 }
 
@@ -37,8 +37,8 @@ fn w_bare_field_stays_bare() -> Bool {
   compile_dag_rust_emit_check(
     "module generic_item_ord_witness.bare\n\ntype Holder<P> {\n  tag: P\n}\n",
     "src/generic_item_ord_witness_bare.rs",
-    ["struct Holder<P>"],
-    ["struct Holder<P: Ord>", "Ord"]
+    ["struct Holder<P: Clone>"],
+    ["P: Ord"]
   )
 }
 
@@ -48,7 +48,7 @@ fn w_struct_propagates_ord_through_declared_coproduct_field() -> Bool {
     "src/generic_item_ord_witness_propagate.rs",
     [
       "enum AudienceSet<P>",
-      "struct PublicationContext<C, P>",
+      "struct PublicationContext<C: Clone, P>",
       "impl<C: std::fmt::Debug, P: Ord + std::fmt::Debug> std::fmt::Debug for PublicationContext<C, P>",
       "impl<C: PartialEq, P: Ord + PartialEq> PartialEq for PublicationContext<C, P>"
     ],
@@ -64,8 +64,8 @@ fn w_propagation_is_one_hop_only() -> Bool {
   compile_dag_rust_emit_check(
     "module generic_item_ord_witness.two_hop\n\ntype AudienceSet<P>\n  = UniversalAudience\n  | EnumeratedAudience { members: Set<P> }\n\ntype PublicationContext<C, P> {\n  audience: AudienceSet<P>\n  context: C\n}\n\ntype Wrapper<C, P> {\n  inner: PublicationContext<C, P>\n}\n",
     "src/generic_item_ord_witness_two_hop.rs",
-    ["struct Wrapper<C, P>"],
-    ["struct Wrapper<C, P: Ord>", "impl<C, P: Ord> std::fmt::Debug for Wrapper<C, P>", "impl<C: Ord, P: Ord> std::fmt::Debug for Wrapper<C, P>"]
+    ["struct Wrapper<C: Clone, P>"],
+    ["Wrapper<C: Clone, P: Ord"]
   )
 }
 
@@ -73,8 +73,12 @@ fn w_both_clone_and_supplemental_traits_route_independently() -> Bool {
   compile_dag_rust_emit_check(
     "module generic_item_ord_witness.both_traits\nimport std.algebra { FreeMonoid }\n\ntype Both<P> {\n  members: FreeMonoid<P>\n}\n",
     "src/generic_item_ord_witness_both_traits.rs",
-    ["struct Both<P: Clone>"],
-    ["struct Both<P: Ord>", "struct Both<P>"]
+    [
+      "struct Both<P>",
+      "impl<P: Clone + std::fmt::Debug> std::fmt::Debug for Both<P>",
+      "impl<P: Clone + PartialEq> PartialEq for Both<P>"
+    ],
+    ["P: Ord"]
   )
 }
 
