@@ -39,7 +39,8 @@ test fn scaffold_host_observation_is_live_and_observed() -> Bool {
       manifest_content_identity: digest,
       tracked_rust_repo_paths: tracked,
       prior_tracked_rust_repo_paths: prior,
-      cargo_bin_repo_paths: cargo
+      cargo_bin_repo_paths: cargo,
+      emit_population_evidence: _
     } => revision != ""
       && digest != ""
       && length(xs: tracked) > 0

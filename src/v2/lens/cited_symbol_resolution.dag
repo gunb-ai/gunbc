@@ -7,6 +7,8 @@ import gunbc.doc_graph_roots {
   hand_authored_works_resolution_pool_roots,
 }
 import gunbc.documentary_refs { generated_document_declaration_refs }
+import gunbc.lambda_argument_typing_gate { lambda_typing_gate_declaration_refs }
+import gunbc.list_membership_operation_gap { list_membership_gap_declaration_refs }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { SubstrateMandatoryTag }
 import v2.lens.common.construction_justification {
@@ -54,10 +56,15 @@ data cited_symbol_population_widened_note: String = "THE DENOMINATOR NOW INCLUDE
 
 data cited_symbol_roster_registry_widening_note: String = "THE DENOMINATOR NOW ALSO INCLUDES gunbc.roster_registry, and this widening was bought by a live defect rather than proposed for symmetry. A RosterRegistration carries typed DeclarationRefs — the roster it names, and for a ByDerivation row the predicate it claims computes membership — and nothing resolved either of them. gunbc.stage0_emit_plan_generated generated_stage0_files stayed registered ByDerivation from gunbc.stage0_emit_plan generated_stage0_files_from_emission_plan for as long as that module has been deleted; the registry's own lens stayed green throughout, because it checks the membership SHAPE and a ByDerivation arm is a standard shape whatever its payload names. That is the DESIGN section 3 stale-citation class living inside a structural carrier instead of inside prose, which is why the remedy is enrollment here and not more review diligence: the reference is an ordinary reference the substrate can already resolve.\n\nWHY THIS IS THE LAW'S OWN NEXT STEP RATHER THAN A NEW SCOPE: cited_symbol_resolution_law dissolves on 'enrollment widens to every structural DeclarationRef carrier'. The registry is such a carrier, so it enrolls under the existing resolver — v2.std.decl_ref_resolution stays the single authority for what resolving a reference means, and no second algorithm is written. WHAT DOES NOT WIDEN: the synthetic refs in v2.test.claim.roster_registry_test are constructed inside test functions and are not members of the live roster_registry data, so they never reach this population; the permanent planted controls stay excluded exactly as before."
 
+data cited_symbol_instance_gap_carrier_widening_note: String = "THE DENOMINATOR NOW ALSO INCLUDES THE INSTANCE-GAP CARRIERS, and this widening closes a rot mode on the artifact form several lanes use as their OUTPUT. An instance-gap carrier records a measured defect as typed rows whose content is almost entirely DeclarationRefs — the sites where the defect was found. Nothing imported those modules, so nothing resolved their refs: rename a cited declaration and the row goes quietly false while every required check stays green. That is worse than the same rot in prose, because the row's typed shape reads as machine-checked when it was not.\n\nWHY WIDENING RATHER THAN A NEW CHECK: cited_symbol_resolution_law dissolves on 'enrollment widens to every structural DeclarationRef carrier'. These are such carriers, so they enroll under v2.std.decl_ref_resolution unchanged — no second algorithm, for the reason the generated-document widening already states. WHAT DOES NOT WIDEN: the carriers' String fields. lambda_argument_typing_gate.callee_spelled stays a String on purpose — the defect it records IS that the callee is consulted by spelling rather than by declaration, so typing it would assert the resolution the row exists to prove absent."
+
 fn cited_symbol_production_declaration_refs() -> List<DeclarationRef> {
   concat(
-    concat(hand_authored_production_doc_declaration_refs(), generated_document_declaration_refs()),
-    roster_registry_declaration_refs()
+    concat(
+      concat(hand_authored_production_doc_declaration_refs(), generated_document_declaration_refs()),
+      roster_registry_declaration_refs()
+    ),
+    concat(lambda_typing_gate_declaration_refs(), list_membership_gap_declaration_refs())
   )
 }
 

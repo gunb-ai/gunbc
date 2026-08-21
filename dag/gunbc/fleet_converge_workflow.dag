@@ -18,8 +18,6 @@ import gunbc.fleet_workflow_steps {
   ci_release_bins_unpack_verify_step,
   ci_fleet_wif_auth_step,
   ci_fleet_key_agent_step,
-  ci_spark_admin_credential_step,
-  ci_spark_admin_credential_cleanup_step,
   ci_fleet_key_agent_cleanup_step,
   gunbc_ci_aux_step_timeout_minutes,
   gunbc_ci_spark_serving_step_timeout_minutes,
@@ -27,6 +25,9 @@ import gunbc.fleet_workflow_steps {
   gunbc_ci_fleet_job_backstop_timeout_minutes,
   gunbc_ci_release_build_step_timeout_minutes,
   gunbc_ci_prelude_allowance_minutes,
+  checked_job_timeout_minutes,
+  JobTimeoutWithinCeiling,
+  JobTimeoutExceedsCeiling,
 }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.ci_spec {
@@ -236,13 +237,14 @@ fn fleet_converge_spark_durability_step() -> Step {
 
 fn fleet_converge_spark_grants_step() -> Step {
   RunStep {
-    name: Present { value: "Spark managed grant reconcile (installs only the grants measured missing at the named target)" },
+    name: Present { value: "Spark managed grant reconcile (materializes its own administrator credential in-run, installs only the grants measured missing at the named target, removes the credential within this same step)" },
     id: Present { value: "spark_grants" },
     run: gunbc_ci_spark_grant_install_invoke(),
     shell: none,
     env: Present {
       value: [
         kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
+        kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
       ]
     },
     working_directory: none,
@@ -285,7 +287,6 @@ fn fleet_converge_job() -> Job {
           ci_release_bins_unpack_verify_step(),
           ci_fleet_wif_auth_step(),
           ci_fleet_key_agent_step(),
-          ci_spark_admin_credential_step(if_condition: fleet_converge_spark_grants_step_if),
         ]
       ),
       [
@@ -298,7 +299,6 @@ fn fleet_converge_job() -> Job {
         fleet_converge_spark_observe_step(),
         fleet_converge_spark_reboot_step(),
         fleet_converge_spark_durability_step(),
-        ci_spark_admin_credential_cleanup_step(),
         ci_fleet_key_agent_cleanup_step(),
       ]
     ),
@@ -370,6 +370,15 @@ data fleet_converge_workflow: Workflow = Workflow {
   jobs: [fleet_converge_build_job(), fleet_converge_job()],
 }
 
-fn expected_fleet_converge_yml() -> String {
-  serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_converge_workflow))
+type FleetConvergeYamlGenerationOutcome
+  = FleetConvergeYamlGenerated { content: String }
+  | FleetConvergeYamlGenerationRefused { reason: String }
+
+fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
+  match checked_job_timeout_minutes(computed: gunbc_ci_fleet_job_backstop_timeout_minutes()) {
+    JobTimeoutExceedsCeiling { minutes: _, ceiling: _ } =>
+      FleetConvergeYamlGenerationRefused { reason: "fleet-converge job backstop timeout exceeds extdeps.github.actions max_job_timeout_minutes — split the job or reduce a tier's per-step budget, do not raise past the platform ceiling (see gunbc_ci_fleet_job_backstop_timeout_note in gunbc.fleet_workflow_steps)" }
+    JobTimeoutWithinCeiling { minutes: _ } =>
+      FleetConvergeYamlGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_converge_workflow)) }
+  }
 }

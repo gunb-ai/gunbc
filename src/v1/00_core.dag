@@ -194,6 +194,7 @@ type CompilerDiagnostic
   | CallPositionalDeficit { callee: String, parameter: String, supplied: Int, required: Int, span: SourceSpan }
   | CallNamedArgOnFunctionValue { callee: String, argument: String, span: SourceSpan }
   | OccurrenceTransportViolation { refusal: OccurrenceTransportRefusal }
+  | ContainerSpellingUnrecognized { name: String, container_leaf: String, span: SourceSpan }
 
 type ErrorNode {
   diagnostic: CompilerDiagnostic
@@ -325,6 +326,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
         Present { value: span } => span
         Absent => no_span()
       }
+    ContainerSpellingUnrecognized { name: _, container_leaf: _, span: s } => s
   }
 }
 
@@ -394,6 +396,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("call shape mismatch calling function value '", c, "': named argument '", a, "' is not supported — use positional arguments")
     OccurrenceTransportViolation { refusal: refusal } =>
       occurrence_transport_refusal_diagnostic_message(refusal: refusal)
+    ContainerSpellingUnrecognized { name: n, container_leaf: leaf, span: _ } =>
+      concat("unrecognized container spelling '", n, "': its last segment '", leaf, "' names a container, but no arity is declared for '", n, "' in std.types container_type_arity — declare the row or spell the container by a declared name")
   }
 }
 
@@ -1823,6 +1827,82 @@ fn qualified_last_segment(name: String) -> String {
   match module_path_segments(path: name) |> last {
     Present { value: s } => s
     Absent => name
+  }
+}
+
+// A container-table lookup has THREE answers, not two. container_expected_arity
+// returning Absent conflates "this name is not a container" -- String, Bool, and
+// every user record, which is the correct answer for the overwhelming majority of
+// type-position names -- with "this IS a container spelling, and it is one we do
+// not recognize", which is ignorance. Rendering the second as the first is the
+// empty-observation narrow of DESIGN section 5: the arm answers "not under-
+// parameterized" / "not a keyed map" about a name it could not classify at all,
+// and the wrong answer produces no evidence of itself.
+//
+// The discriminator refuses; it never DECIDES. Matching on the leaf to pick a
+// container kind would collapse a qualified spelling onto the kernel row and
+// silently realize the wrong one (the std.nat.Nat collision class). Matching on
+// the leaf to REFUSE selects no kind and no template: its worst case is a located
+// diagnostic closed by declaring the row it names.
+type ContainerSpellingVerdict
+  = ContainerSpellingDeclared { arity: Int }
+  | NotAContainerSpelling
+  | ContainerSpellingUnknown { container_leaf: String }
+
+// The known container leaves are read from container_type_arity itself -- the same
+// authority the Present arm consults -- so this is not a third roster (DESIGN
+// section 3). The lowercase alias spellings that container_template_alias_rows
+// additionally carries are deliberately NOT read here: "list", "map" and "set" are
+// ordinary identifier spellings, so a binder or field named `map` would be refused
+// as an unrecognized container. The wall is drawn where the refusal cannot be
+// wrong about what kind of name it is looking at.
+fn known_container_leaf(name: String) -> String? {
+  let leaf = qualified_last_segment(name: name)
+  match container_expected_arity(name: leaf) {
+    Present { value: _ } => Present { value: leaf }
+    Absent => none
+  }
+}
+
+fn container_spelling_verdict(name: String) -> ContainerSpellingVerdict {
+  match container_expected_arity(name: name) {
+    Present { value: arity } => ContainerSpellingDeclared { arity: arity }
+    Absent =>
+      match known_container_leaf(name: name) {
+        Present { value: leaf } => ContainerSpellingUnknown { container_leaf: leaf }
+        Absent => NotAContainerSpelling
+      }
+  }
+}
+
+// Only a name the compiler can read back out of real authored source may be
+// refused. A synthesized type node carries a <kernel:...> span whose file is in no
+// source index -- and the service path is exactly that: check_service_field_access_node
+// builds nominal_type_ref(name: "cron.Tab.List"), a LEAF TYPE NODE whose last
+// segment is a container name and which is not a container. Excluding it by
+// authorship rather than by an exception list is what keeps the six known
+// false-refusals (cron.Tab.List, Filesystem.List, github.Pulls.List,
+// tmux.Session.List, os.Hostname.Set, req.Header.Set) out by construction: a
+// seventh service operation named after a container needs no edit here.
+fn type_node_name_is_authored(node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match node.ident_span {
+    Present { value: span } =>
+      match map_get(source_indices, span.file) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn authored_container_spelling_verdict(node: Node, source_indices: Map<String, NewlineIndex>) -> ContainerSpellingVerdict {
+  if type_node_name_is_authored(node: node, source_indices: source_indices) {
+    container_spelling_verdict(name: authored_name_at(source_indices: source_indices, node: node))
+  } else {
+    match container_expected_arity(name: authored_name_at(source_indices: source_indices, node: node)) {
+      Present { value: arity } => ContainerSpellingDeclared { arity: arity }
+      Absent => NotAContainerSpelling
+    }
   }
 }
 

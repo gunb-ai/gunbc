@@ -7,21 +7,44 @@ import gunbc.output_policy { ExpectSuccess }
 import gunbc.repo_identity { gunbc_merge_target_ref }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.stage0_emitted_population_manifest {
+  emitted_population_manifest_basename,
+  emitted_population_manifest_line_prefix,
+  emitted_population_manifest_line_separator
+}
 import gunbc.stage0_cargo_manifest {
   CargoManifestBinParse,
   CargoManifestBinsParsed,
   CargoManifestBinsParseRefused,
   stage0_cargo_toml_repo_path,
-  stage0_package_root
+  stage0_package_root,
+  stage0_source_dir_relative_to_package
 }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import std.types { CommitSha, GitRef, String }
-import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.algebra { fold_list, length, list_map, list_snoc_item }
 import v2.std.collection { List }
 
 data stage0_rust_host_observation_note: String = "Rust-source OBSERVATION prerequisite only; lifecycle totality remains downstream in gunbc.stage0_rust_source_lifecycle_scaffold / v1-honest-frontier. extdeps.git owns the Git operation shapes. This module supplies repository policy (HEAD versus gunbc_merge_target_ref), filters the exact revision-addressed path population, normalizes authored Cargo target paths, hashes the exact manifest text through std.content_hash, and joins those facts. The temporary Rust seed owns only TOML decoding into CargoManifestBinParse plus its interpreter projection. CargoBin is a source role and cannot satisfy a maintenance disposition."
+
+// WHAT THE EMITTER DECLARED IT PRODUCED, AS AN OBSERVED FACT RATHER THAN A RECONSTRUCTION.
+//
+// This axis is a coproduct and not a bare `List<String>` because "the emitter produced nothing"
+// and "this observation makes no claim about the emit population" are DIFFERENT STATES with
+// different remedies, and collapsing them into an empty list is the state-space conflation
+// DESIGN's failure-mode list names. An empty list would read as a total claim -- every tracked
+// stage0 path unaccounted for -- from a subject that never looked.
+//
+// `EmitPopulationUnobserved` is therefore NOT a permissive default. Every consumer that needs the
+// population must REFUSE on it (see `stage0_rust_source_lifecycle_scaffold`'s
+// `EmitPopulationUnobservedEvidence` arm); it is the honest value for a fixture exercising some
+// other axis, and it is a typed, located line-stop anywhere else. Reading it as "carry on with a
+// reconstruction" would be the absorbing fallback with the deficit's frequency zeroed.
+type EmitPopulationEvidence
+  = EmitPopulationConfirmed { emitted_stage0_repo_paths: List<String> }
+  | EmitPopulationUnobserved { detail: String }
 
 type RustSourceHostObservation
   = RustManifestObserved {
@@ -29,7 +52,8 @@ type RustSourceHostObservation
       manifest_content_identity: Fnv1a64Structural,
       tracked_rust_repo_paths: List<String>,
       prior_tracked_rust_repo_paths: List<String>,
-      cargo_bin_repo_paths: List<String>
+      cargo_bin_repo_paths: List<String>,
+      emit_population_evidence: EmitPopulationEvidence
     }
   | RustManifestReadRefused { detail: String }
   | RustManifestParseRefused { detail: String }
@@ -122,6 +146,79 @@ fn normalize_cargo_bin_repo_paths(
   )
 }
 
+data emitted_population_manifest_repo_path: String = concat(
+  stage0_package_root,
+  concat(stage0_source_dir_relative_to_package, emitted_population_manifest_basename)
+)
+
+// THE READ IS THE STRUCTURAL INVERSE OF THE WRITE, NOT A SECOND PARSER.
+//
+// `v1.compiler.emit_rust` `emit_emitted_population_manifest` renders one line per produced path
+// as `line_prefix ++ path`, joined by the separator. This recovers them by splitting on that
+// separator and stripping that prefix, reading BOTH literals from the same authority the writer
+// reads (`gunbc.stage0_emitted_population_manifest`). No Rust grammar is involved: the artifact
+// is a `.rs` so that it is covered by the regen comparison, but nothing here parses Rust, which
+// is the whole reason it is comment lines rather than a `const &[&str]`.
+//
+// A line that does not carry the prefix is DROPPED rather than guessed at. The manifest is
+// emitter-produced and every line carries it by construction, so a line that does not is
+// evidence the artifact is not what this function was pointed at -- and the emptiness that
+// results is caught by the caller, which refuses on an empty population rather than reporting
+// "the emitter produced nothing".
+fn emitted_population_paths_from_manifest(content: String) -> List<String> {
+  let prefix_length = string_length(s: emitted_population_manifest_line_prefix)
+  let lines = split(s: content, delimiter: emitted_population_manifest_line_separator)
+  list_map(
+    xs: filter(
+      xs: lines,
+      predicate: fn(line) {
+        starts_with(s: line, prefix: emitted_population_manifest_line_prefix)
+      }
+    ),
+    f: fn(line) { substring(s: line, start: prefix_length, end: string_length(s: line)) }
+  )
+}
+
+// The manifest declares TARGET-relative paths (`src/cli_run.rs`), because that is the space the
+// emitter writes in. Everything downstream of this observation addresses REPOSITORY-relative
+// paths. The conversion is composition with the package root, and it lives here rather than in
+// the shared manifest authority for the reason stated there: only the parts that are genuinely
+// one fact are shared, and a path is not -- the two ends speak different spaces.
+fn emitted_population_repo_paths(content: String) -> List<String> {
+  list_map(
+    xs: emitted_population_paths_from_manifest(content: content),
+    f: fn(target_relative) { concat(stage0_package_root, target_relative) }
+  )
+}
+
+fn observe_emit_population_evidence(revision: CommitSha) -> EmitPopulationEvidence {
+  let manifest = git.Core.Show(
+    ref: revision as GitRef,
+    path: emitted_population_manifest_repo_path,
+    expect: ExpectSuccess
+  )
+  if !manifest.success {
+    EmitPopulationUnobserved {
+      detail: git_refusal_detail(
+        operation: concat("git.Core.Show(", concat(emitted_population_manifest_repo_path, ")")),
+        stderr: manifest.stderr
+      )
+    }
+  } else {
+    let paths = emitted_population_repo_paths(content: manifest.content)
+    if length(xs: paths) == 0 {
+      EmitPopulationUnobserved {
+        detail: concat(
+          emitted_population_manifest_repo_path,
+          " carried no declared paths -- it is not the emitted-population manifest"
+        )
+      }
+    } else {
+      EmitPopulationConfirmed { emitted_stage0_repo_paths: paths }
+    }
+  }
+}
+
 fn observe_stage0_rust_sources(
   manifest_repo_path: String,
   package_root: String,
@@ -197,7 +294,8 @@ fn observe_stage0_rust_sources(
                       manifest_content_identity: content_hash_atom(value: manifest.content),
                       tracked_rust_repo_paths: rust_paths_from_nul(raw: current_tree.paths_nul),
                       prior_tracked_rust_repo_paths: rust_paths_from_nul(raw: prior_tree.paths_nul),
-                      cargo_bin_repo_paths: cargo_bin_repo_paths
+                      cargo_bin_repo_paths: cargo_bin_repo_paths,
+                      emit_population_evidence: observe_emit_population_evidence(revision: revision)
                     }
                 }
             }
