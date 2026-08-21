@@ -1,31 +1,55 @@
 module v2.test.emit.trait_derive_seed_emit_binding_test
 
+import extdeps.languages.rust.capabilities {
+  RustCapability,
+  RustDebug,
+  RustClone,
+  RustCopy,
+  RustPartialEq,
+  RustEq,
+  RustPartialOrd,
+  RustOrd,
+  RustHash,
+  RustSerialize,
+  RustDeserialize,
+  RustAdd,
+  RustSub,
+  RustMul,
+  RustDiv,
+  RustRem,
+  RustNeg,
+  kernel_int_arithmetic_traits,
+  nullary_coproduct_derive_traits,
+  payload_coproduct_derive_traits,
+  record_derive_traits_copy,
+  record_derive_traits_heap,
+  rust_capability_shape_table,
+  symbol_wrapped_ord_carrier_derive_traits
+}
+
 import std.trait_derive_shape {
   ReprDeriveElemNullaryEnumCopy,
   ReprDeriveElemPayloadCoproduct,
   ReprDeriveElemSymbolWrappedOrdCarrier,
   ReprDeriveElemKernelInt,
-  nullary_coproduct_derive_traits,
-  payload_coproduct_derive_traits,
-  symbol_wrapped_ord_carrier_derive_traits,
-  record_derive_traits_heap,
-  record_derive_traits_copy,
   repr_grounding_derive_completeness_predicate,
   repr_grounding_group_completion_carrier,
-  repr_grounding_supplemental_bool_host_bridge_target,
-  kernel_int_arithmetic_traits
+  repr_grounding_supplemental_bool_host_bridge_target
 }
 import extdeps.languages.rust.emit {
   rust_trait_derive_attr_from_traits,
   rust_supplemental_impls_group_completion,
   rust_supplemental_impls_bool_coproduct
 }
-import v2.std.logic { Bool }
+import v2.std.logic {
+  Bool
+}
 
 data trait_derive_seed_emit_binding_note: String = "Layer-boundary mock: std.trait_derive_shape trait lists + supplemental target predicates → extdeps.languages.rust.emit spellings (same authorities v1.compiler.trait_derive_emit composes for seed emit; v1 module not importable from v2 claim closure)."
 
 test fn nullary_coproduct_predicate_satisfied() -> Bool {
   repr_grounding_derive_completeness_predicate(
+    rust_capability_shape_table(),
     nullary_coproduct_derive_traits(),
     ReprDeriveElemNullaryEnumCopy
   )
@@ -39,6 +63,7 @@ test fn record_heap_attr_contains_serde() -> Bool {
 
 test fn ord_carrier_shape_rejects_nullary_copy_traits() -> Bool {
   repr_grounding_derive_completeness_predicate(
+    rust_capability_shape_table(),
     nullary_coproduct_derive_traits(),
     ReprDeriveElemSymbolWrappedOrdCarrier
   ) == false
@@ -52,6 +77,7 @@ test fn ord_carrier_attr_differs_from_nullary() -> Bool {
 
 test fn payload_coproduct_predicate_satisfied() -> Bool {
   repr_grounding_derive_completeness_predicate(
+    rust_capability_shape_table(),
     payload_coproduct_derive_traits(),
     ReprDeriveElemPayloadCoproduct
   )
@@ -64,6 +90,7 @@ test fn group_completion_supplemental_impl_present() -> Bool {
     name: "GroupCompletion"
   )
   let predicate_ok = repr_grounding_derive_completeness_predicate(
+    rust_capability_shape_table(),
     kernel_int_arithmetic_traits(),
     ReprDeriveElemKernelInt
   )
@@ -127,6 +154,7 @@ test fn bool_supplemental_impl_present() -> Bool {
     name: "Bool"
   )
   let predicate_ok = repr_grounding_derive_completeness_predicate(
+    rust_capability_shape_table(),
     nullary_coproduct_derive_traits(),
     ReprDeriveElemNullaryEnumCopy
   )
