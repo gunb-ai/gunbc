@@ -23,7 +23,7 @@ import gunbc.membership_reconcile {
   EffectReplace,
   EffectRemove,
 }
-import gunbc.spark_serving_desired {
+import gunbc.spark.serving_desired {
   spark_serving_desired_release_admission,
   SparkServingDesiredAdmitted,
   SparkServingDesiredRefused,
@@ -31,9 +31,9 @@ import gunbc.spark_serving_desired {
   spark_serving_desired_model_artifact,
   spark_serving_automation_principal,
 }
-import gunbc.spark_serving_install_paths { spark_serving_user_unit_path }
-import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
-import gunbc.spark_serving_membership {
+import gunbc.spark.serving_install_paths { spark_serving_user_unit_path }
+import gunbc.spark.serving_unit_identity { spark_serving_unit_name }
+import gunbc.spark.serving_membership {
   SparkServingMember,
   SparkServingMemberAt,
   SparkServingResourceAddress,

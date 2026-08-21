@@ -2,7 +2,7 @@ module gunbc.fleet_ssh_access
 
 import std.types { List, NonEmptyStr }
 import extdeps.ssh { SshPublicKey, Ed25519 }
-import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, secret_ref_access_url }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.fleet_posix_accounts { FleetPosixAccountKey, FleetAccountOperator }
@@ -51,15 +51,7 @@ fn fleet_automation_privkey_version_segment() -> String {
 // secret, and version all come from the one authority, so the CI fetch cannot drift from
 // the modeled reference.
 fn fleet_automation_privkey_sm_access_url() -> String {
-  join([
-    "https://secretmanager.googleapis.com/v1/projects/",
-    fleet_secrets_gcp_project as String,
-    "/secrets/",
-    fleet_automation_ssh_privkey_secret.secret as String,
-    "/",
-    fleet_automation_privkey_version_segment(),
-    ":access",
-  ], "")
+  secret_ref_access_url(ref: fleet_automation_ssh_privkey_secret)
 }
 
 type SecretOwner {
