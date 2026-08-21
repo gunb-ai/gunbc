@@ -540,3 +540,100 @@ on the current design, and no divergence count is published.
 are exactly 25 arm-A sites. The relation should be many-to-one, so equal counts are as consistent with
 coincidence as with a join. Upgrading it requires a join on the **same occurrences**, not on both sets
 having 25 members.
+
+## THE MEASUREMENT ABOVE IS PRE-RECONCILE — the subject claim is withdrawn (2026-08-21)
+
+Everything above about `0 of 111` is a real measurement of the **wrong phase**, and the sentence that
+made it look like a production finding is withdrawn here rather than amended in place.
+
+**Verified first-hand in `v1.compiler.compile` `compile_to_resolved_with_options`:**
+
+```
+let frontend = front_end_sources(sources: sources)     <- what the census walks
+let norm     = normalize_graph(graph: graph, ...)
+let typed    = reconcile_with_census_extra(graph: norm.graph, ...)
+ResolvedPipelineResult { graph: typed, ... }
+```
+
+and `emit_artifact(typed: ResolvedGraph, artifact: Artifact)` consumes the **typed** graph. So
+`front_end_sources` returns the **input** to normalization and inference — not the output.
+
+| | |
+|---|---|
+| **what `0 of 111` establishes** | type references in the **pre-reconcile** tree do not carry the inference answer that reconcile is responsible for producing |
+| **what it does NOT establish** | that production emission takes the fallback at those sites |
+
+The second sentence was published in this document and in this lane's PR body. **Withdrawn.**
+
+This is the same shape as the other errors recorded in this lane: the instrument ran, the number is
+correct, and it answers a *neighbouring* question. The earlier (b′) correction moved the census onto
+`front_end_sources` because the v2 assembly was the wrong **tree** — it fixed the tree and missed the
+**phase**.
+
+**What survives unconditionally:** the helper's shape defect. `type_reference_decl_file` cannot
+distinguish *this node IS the declaration* from *this is a reference whose declaration was not
+recovered here*, and in the second case returns the file containing the reference. That is
+state-space conflation on any tree. What is **unmeasured** is whether the production typed graph
+reaches the bad arm for the T2 population. The three-case cross-module trace recorded above is built
+on the withdrawn premise and is likewise unconfirmed for production.
+
+### The corrected grain
+
+`compile_to_resolved` → `ResolvedGraph.modules` → `TypedModule.items` + `TypedModule.type_env`.
+
+Every `TypedModule` carries both, which is exactly the pair the census needs, and `05_emit_rust.dag`
+**already imports `lookup_type_for`** — so this is an existing dependency, not a new abstraction. The
+renderers visibly receive `env` while the current identity helper ignores it.
+
+At every occurrence, record all three answers **independently**, never letting one substitute for
+another before comparison:
+
+| column | source |
+|---|---|
+| `inferred_declaration` | `n.inferred` → `Resolved` node, if present |
+| `environment_declaration` | `lookup_type_for(m.type_env, n)`, if present |
+| `legacy_file_key` | `type_reference_decl_file(n)` |
+
+Two constraints on the carrier. `ReferenceIsDeclaration` may be produced **only** when the resolved
+declaration is demonstrably the same declaration node — never merely because inference was absent,
+since that is the conflation under measurement and the instrument must not reproduce it. And the raw
+reference-file fallback appears only as `LegacyFallbackUsed { reference_file }`, an observation of
+current behaviour; it is **never** labelled declaration identity.
+
+### The four outcomes, fixed before the data
+
+- **A — inference resolves and agrees with the TypeEnv.** The identity key is *not* the active T2
+  root; the first-line text shortcut is the primary defect, and routing proceeds after recalibration
+  on the typed tree.
+- **B — inference absent but `lookup_type_for` resolves correctly.** The defect is narrower than
+  "inference is broken": `type_reference_decl_file` reads the **wrong carrier** for declaration
+  identity. Repair the helper to consume the TypeEnv or an already-resolved declaration; do **not**
+  modify global inference to populate a redundant field. Most plausible, given the renderers already
+  carry `env`.
+- **C — both fail.** The binding/inference defect is genuinely upstream and becomes the primary
+  front; T2 is downstream. Refusal stays explicit — no falling back to reference file or bare
+  spelling.
+- **D — they resolve different declarations.** Strongest possible finding: two resolution authorities
+  disagreeing inside the production typed tree. Realization work stops and that fork closes first.
+
+### T3 is not wholly downstream of an identity repair
+
+Recorded as a correction to this document's own framing. The collection paths are decided by separate
+mechanisms — `rust_seed_host_container_base`, `node_is_keyed_collection`, `node_is_set_collection`,
+`emit_map_type`, element-collection rendering, declared-structure record construction — which select
+`Vec` / `HashMap` / `BTreeSet` / `PartialFunction` / `PointwisePower` independently of the checkpoint
+decision. A correct declaration key is **necessary infrastructure** for a unified realization
+authority, but will not by itself make `HashMap`↔`PartialFunction` or `BTreeSet`↔`PointwisePower`
+converge.
+
+So **"52 sites are one root" reads from here on as one _non-confluence class_** — target
+representation selected by position — **and not as one implementation repair.** Likely decomposition:
+(I) exact reference→declaration identity, (II) T2 text-carrier base realization, (III) T3 parametric
+collection realization, (IV) shared reference-layer projection.
+
+### What is blocked and what is not
+
+The **production routing edit** is blocked; the lane is not. Proceeding: refresh the 52-site
+population against the current 399-error board, map each site to its type/value rendering consumer,
+separate T2 from T3, and prepare the counterfactual comparison. **The six shortcuts are not deleted
+until the identity census has a trustworthy key.**
