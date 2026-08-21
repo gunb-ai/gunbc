@@ -312,6 +312,15 @@ pub fn map_key_alias_hop_gap_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn map_key_alias_hop_reconciliation_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "RECONCILED (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, merging gunbc#8736 into this branch's own review-54323-finding-3 work): this branch independently developed a map-key-only alias-hop arm (v1_map_key_propagate_alias, gated on is_type_alias_item in v1_map_key_propagate_round) that called v1.compiler.coercion type_realization_decision directly, concurrently with gunbc#8736 landing the fold-in above on main. DROPPED IN FAVOR OF THE LANDED VERSION, not run alongside it: this branch's own v1.compiler.coercion lookup_checkpoint was separately refactored in the same review cycle into a thin derivation of type_realization_decision for every decl_file != \"\" caller (coercion.dag's own note beside lookup_checkpoint records this), so v1_item_alias_hop_type_exprs's call to lookup_checkpoint already answers from type_realization_decision as the underlying authority -- a second, map-key-only function asking the same decision through a different name would be exactly the forked second copy DESIGN section 2/3 forbids and v1_item_field_type_exprs_alias_hop_note's own reasoning (below) already argues against. The two implementations are not merely similar, they are behaviorally identical for every case this fold-in covers: lookup_checkpoint(target, dag_name, decl_file) for decl_file != \"\" maps Realized -> Present, Unrealized -> Absent, Refused -> Absent, so the guard 'lookup_checkpoint == Absent' used above is the same predicate as 'type_realization_decision answers Unrealized or Refused' this branch's dropped arm matched separately. coercion.dag's DECLARED RESIDUE note, written before this reconciliation, named this arm as a caller required to use type_realization_decision directly; that requirement is satisfied indirectly, through lookup_checkpoint, and is corrected there rather than left standing.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn v1_map_key_propagate_round(
     round: Rc<MapKeyRequirementRound>,
     declared_type_names: Rc<Vec<String>>,
