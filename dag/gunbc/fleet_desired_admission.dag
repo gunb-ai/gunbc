@@ -44,7 +44,7 @@ import gunbc.fleet_main_revision {
   fleet_desired_advance_expectation,
   fleet_desired_revision_target,
 }
-import gunbc.fleet_desired_observe { observe_fleet_desired_revision }
+import gunbc.fleet_desired_observe { observe_fleet_desired_revision, observe_local_tree_revision }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -311,16 +311,17 @@ fn fleet_desired_receipt_expected_phrase(expected: GitRemoteRefExpectation) -> S
 // coincide exactly when the CAS held, which is the thing a receipt is supposed to let a reader
 // check rather than assume. Measured before this row: eleven successful admissions whose expected
 // prior appears nowhere in their logs.
-fn fleet_desired_authorized_push_script(expected: GitRemoteRefExpectation, to: GitObjectId) -> String {
+fn fleet_desired_authorized_push_script(expected: GitRemoteRefExpectation, to: GitObjectId, judge: GitObjectId) -> String {
   let request = fleet_desired_authorized_push_cas_request(expected: expected, to: to)
   let to_hex = git_object_id_wire_hex(oid: to) as String
   let expected_phrase = fleet_desired_receipt_expected_phrase(expected: expected)
+  let judge_hex = git_object_id_wire_hex(oid: judge) as String
   join([
     "set -eu\n",
     "git push ", git_remote_ref_lease_word(request: request) as String,
     " ", request.remote as String,
     " ", git_remote_ref_cas_refspec(request: request) as String, "\n",
-    "echo \"[fleet-desired] admitted ", to_hex, " expected-prior ", expected_phrase, "\"\n",
+    "echo \"[fleet-desired] admitted ", to_hex, " expected-prior ", expected_phrase, " judge ", judge_hex, "\"\n",
   ], "")
 }
 
@@ -332,24 +333,40 @@ func admit_fleet_desired_from_floor_event_wet() -> ProcessExit {
         observed: observe_fleet_desired_revision(repo: fleet_desired_admission_repo_root),
       ) {
         AdmissionRefused { cause: why } => exit_failure(reason: why)
-        AdmissionAdvanceAuthorized { expected: expected, to: to_oid } => {
-          let wrote = Filesystem.Write(
-            path: fleet_desired_admission_authorized_push_path,
-            content: fleet_desired_authorized_push_script(expected: expected, to: to_oid),
-          )
-          if wrote.success {
-            ExitSuccess
-          } else {
-            exit_failure(
-              reason: join([
-                "fleet_desired_admission: the advance was admitted but the authorized push could not be written to ",
-                fleet_desired_admission_authorized_push_path,
-                ": ",
-                wrote.error,
-              ], ""),
-            )
+        AdmissionAdvanceAuthorized { expected: expected, to: to_oid } =>
+          match observe_local_tree_revision(repo: fleet_desired_admission_repo_root) {
+            Absent =>
+              exit_failure(
+                reason: join([
+                  "fleet_desired_admission: the advance to ",
+                  git_object_id_wire_hex(oid: to_oid) as String,
+                  " was admitted, but the JUDGE revision could not be observed, so the run cannot ",
+                  "record which code adjudicated it — refusing to actuate rather than publish an ",
+                  "unattributable advance (gunbc.fleet_desired_observe observe_local_tree_revision ",
+                  "returned no revision for ",
+                  fleet_desired_admission_repo_root,
+                  ")",
+                ], ""),
+              )
+            Present { value: judge } => {
+              let wrote = Filesystem.Write(
+                path: fleet_desired_admission_authorized_push_path,
+                content: fleet_desired_authorized_push_script(expected: expected, to: to_oid, judge: judge),
+              )
+              if wrote.success {
+                ExitSuccess
+              } else {
+                exit_failure(
+                  reason: join([
+                    "fleet_desired_admission: the advance was admitted but the authorized push could not be written to ",
+                    fleet_desired_admission_authorized_push_path,
+                    ": ",
+                    wrote.error,
+                  ], ""),
+                )
+              }
+            }
           }
-        }
       }
     WorkflowRunEventMemberAbsent { member: m } =>
       exit_failure(reason: concat("fleet_desired_admission: floor run event payload is missing a required member: ", m))

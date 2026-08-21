@@ -26,6 +26,7 @@ import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml }
 
 data fixture_prior_hex: String = "1111111111111111111111111111111111111111"
 data fixture_candidate_hex: String = "2222222222222222222222222222222222222222"
+data fixture_judge_hex: String = "4444444444444444444444444444444444444444"
 data fixture_repo: String = "gunb-ai/gunbc"
 
 fn fixture_oid(hex: String) -> GitObjectId {
@@ -239,6 +240,7 @@ test fn the_authorized_push_carries_the_observed_prior_as_the_cas_expectation() 
   let script = fleet_desired_authorized_push_script(
     expected: RemoteRefMustEqual { oid: fixture_oid(hex: fixture_prior_hex) },
     to: fixture_oid(hex: fixture_candidate_hex),
+    judge: fixture_oid(hex: fixture_judge_hex),
   )
   string_contains(s: script, pattern: concat("--force-with-lease=refs/fleet/desired:", fixture_prior_hex))
     && string_contains(s: script, pattern: concat(fixture_candidate_hex, ":refs/fleet/desired"))
@@ -251,10 +253,48 @@ test fn the_creation_push_leases_on_the_ref_being_absent() -> Bool {
   let script = fleet_desired_authorized_push_script(
     expected: RemoteRefMustBeAbsent,
     to: fixture_oid(hex: fixture_candidate_hex),
+    judge: fixture_oid(hex: fixture_judge_hex),
   )
   string_contains(s: script, pattern: "--force-with-lease=refs/fleet/desired: ")
     && string_contains(s: script, pattern: concat(fixture_candidate_hex, ":refs/fleet/desired"))
     && !string_contains(s: script, pattern: fixture_prior_hex)
+}
+
+// THE JUDGE IS THE THIRD OPERAND AND IT ANSWERS A DIFFERENT QUESTION FROM THE OTHER TWO. `to` and
+// `expected-prior` say what the compare-and-swap did; the judge says WHICH CODE DECIDED IT. That is
+// not recoverable from anything else the run leaves behind -- the workflow checks out the default
+// branch tip at run start rather than the candidate, so J == C is a timing coincidence and nothing
+// in the run says whether it held. A receipt that cannot name its judge cannot make that
+// falsifiable, which is the whole purpose of recording it before the pinning lands.
+test fn the_receipt_names_the_judge_that_decided_the_advance() -> Bool {
+  let script = fleet_desired_authorized_push_script(
+    expected: RemoteRefMustEqual { oid: fixture_oid(hex: fixture_prior_hex) },
+    to: fixture_oid(hex: fixture_candidate_hex),
+    judge: fixture_oid(hex: fixture_judge_hex),
+  )
+  string_contains(s: script, pattern: concat(" judge ", fixture_judge_hex))
+    && string_contains(s: script, pattern: concat("admitted ", fixture_candidate_hex))
+    && string_contains(s: script, pattern: concat("expected-prior ", fixture_prior_hex))
+}
+
+// The judge is DISTINCT from both other operands. A renderer that echoed the target or the prior
+// into the judge position would satisfy a bare "names three hexes" claim, so the fixture uses a
+// third value and this pins that the positions are not interchangeable.
+//
+// THE FIRST CONJUNCT IS NOT REDUNDANT WITH THE CLAIM ABOVE, and it is here because the red control
+// caught this row passing VACUOUSLY: with the judge operand deleted from the receipt entirely, both
+// negations are trivially true and this returned PASS while its sibling correctly returned FAIL. A
+// claim that cannot fail for the reason it exists is not evidence, so it now asserts the operand is
+// PRESENT before asserting what it is not.
+test fn the_judge_operand_is_not_the_target_or_the_prior() -> Bool {
+  let script = fleet_desired_authorized_push_script(
+    expected: RemoteRefMustEqual { oid: fixture_oid(hex: fixture_prior_hex) },
+    to: fixture_oid(hex: fixture_candidate_hex),
+    judge: fixture_oid(hex: fixture_judge_hex),
+  )
+  string_contains(s: script, pattern: " judge ")
+    && !string_contains(s: script, pattern: concat(" judge ", fixture_candidate_hex))
+    && !string_contains(s: script, pattern: concat(" judge ", fixture_prior_hex))
 }
 
 // THE RECEIPT HALF, WHICH THE TWO CLAIMS ABOVE DO NOT COVER. They assert what the push DEMANDS;
@@ -266,6 +306,7 @@ test fn the_receipt_names_both_operands_of_the_compare_and_swap() -> Bool {
   let script = fleet_desired_authorized_push_script(
     expected: RemoteRefMustEqual { oid: fixture_oid(hex: fixture_prior_hex) },
     to: fixture_oid(hex: fixture_candidate_hex),
+    judge: fixture_oid(hex: fixture_judge_hex),
   )
   string_contains(s: script, pattern: concat("[fleet-desired] admitted ", concat(fixture_candidate_hex, concat(" expected-prior ", fixture_prior_hex))))
 }
@@ -277,6 +318,7 @@ test fn the_creation_receipt_names_absence_rather_than_nothing() -> Bool {
   let script = fleet_desired_authorized_push_script(
     expected: RemoteRefMustBeAbsent,
     to: fixture_oid(hex: fixture_candidate_hex),
+    judge: fixture_oid(hex: fixture_judge_hex),
   )
   string_contains(s: script, pattern: "expected-prior absent")
     && !string_contains(s: script, pattern: "expected-prior \"")
