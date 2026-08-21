@@ -25,7 +25,8 @@ import extdeps.github.actions {
   Step, RunStep, UsesStep,
   checkout_action, setup_rust_action, cache_action,
   google_auth_action,
-  upload_artifact_action, download_artifact_action
+  upload_artifact_action, download_artifact_action,
+  max_job_timeout_minutes,
 }
 import gunbc.ci_workflow_expressions {
   ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys,
@@ -357,7 +358,7 @@ data ci_native_cache_prelude_order_bridge_note: String = "Adjacency-as-proxy ord
 data ci_release_bins_artifact_name: String = "release-bins"
 
 
-data gunbc_ci_aux_step_timeout_minutes: Int = 5
+data gunbc_ci_aux_step_timeout_minutes: Duration = 5
 
 data gunbc_ci_spark_serving_step_timeout_minutes: Duration = 60
 
@@ -375,21 +376,21 @@ data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 15
 
 data gunbc_ci_v1_compiler_tests_compile_gate_timeout_note: String = "v1-compiler-tests retained-kernel execution gate step budget. Originally a compile-contract gate (operator ruling 2026-08-05, PR A / fierce-heron-177): reordered after the release build and switched to cargo test --release --no-run so v1-compiler compiles once per job. --no-run removed 2026-08-11 with the suite cutover; the crate shrank from 98 modules / 740 tests to the 9 declared retained modules / 30 tests, which execute rather than only compile. Warm runs should complete in seconds once the release artifact is warm; 15m retains the prior cold-host envelope without raising the cap."
 
-data gunbc_ci_stage0_partition_compile_gate_timeout_minutes: Int = 15
+data gunbc_ci_stage0_partition_compile_gate_timeout_minutes: Duration = 15
 
 data gunbc_ci_stage0_partition_compile_gate_timeout_note: String = "stage0 partition compile gate step budget (sharp-fox-403 C1): seven sequential cargo check -p v1-stage0-* partition crates enrolled as the build-job compile backstop over stage0_partition_crate_rows. Cold-host envelope matches v1-compiler-tests compile gate until a dedicated receipt exists; warm partition crates are smaller than the monolith test crate."
 
-data gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_minutes: Int = 10
+data gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_minutes: Duration = 10
 
 data gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_note: String = "v1-compiler test-targets compile gate step budget. 10 minutes against 67s MEASURED for this step's exact argv (cargo check -p v1-compiler --all-targets, cold, remote runner, on the repaired tree after gunbc#8167 / gunbc#8173 landed the lib-test compile fix). The earlier figure recorded here was 99s from cargo check --workspace --all-targets, which was an upper BOUND rather than this step's cost — it was all that could be measured while main's lib test target did not compile, and it is superseded rather than kept beside the real number. Deliberately BELOW the 15m carried by the v1-compiler-tests and partition gates rather than copied from them: those two inherited a cold-host envelope with no dedicated receipt, and repeating a number nobody measured is how an unmeasured envelope becomes precedent. The gate runs AFTER the release build for the same reason the retained-kernel gate does — v1-compiler is already compiled in release with the shared feature set, so the check reuses that artifact instead of forcing a second compile. Raising this needs a measurement, not a round number."
 
-data gunbc_ci_artifact_transfer_step_timeout_minutes: Int = 10
+data gunbc_ci_artifact_transfer_step_timeout_minutes: Duration = 10
 
 data gunbc_ci_artifact_transfer_step_note: String = "Cross-job handoff of the release bins (operator job-split ruling 2026-07-11): the build job packs ci_floor_required_artifact_names into one tgz (tar preserves the executable bits a raw artifact zip would drop) and uploads it; the ci floor job downloads, unpacks into target/release, and re-verifies via claim_executor --verify-build-artifacts before any step consumes a bin (fail-closed: a missing or truncated artifact reds the job at the verify, never as a mid-floor bin fallback). 10m is the transfer envelope for a ~200MB archive under fleet pressure; upload uses if-no-files-found: error so an empty pack is loud."
 
-data gunbc_ci_prelude_allowance_minutes: Int = 5
+data gunbc_ci_prelude_allowance_minutes: Duration = 5
 
-data gunbc_ci_release_build_step_timeout_minutes: Int = 45
+data gunbc_ci_release_build_step_timeout_minutes: Duration = 45
 
 data srv1_dashboard_deploy_concurrency_group: String = "srv1-dashboard-deploy"
 data srv1_dashboard_deploy_serialization_note: String = "Blue/green selection is observe-then-mutate, so two deploy jobs may not overlap: both could observe blue active, then the first flips green while the second restarts what has become the active green slot, recreating the outage. Job-grain concurrency serializes the entire cutover with cancel-in-progress=false; QueueNotMax may replace an older pending deployment with the newest main revision, but it never interrupts the one holding the host mutation window."
@@ -398,32 +399,34 @@ fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
   gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes + gunbc_ci_stage0_partition_compile_gate_timeout_minutes + gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
-data gunbc_ci_artifact_transfer_step_timeout_minutes: Int = 10
+data gunbc_ci_fleet_job_always_run_aux_step_count: Int = 5
 
-data gunbc_ci_artifact_transfer_step_note: String = "Cross-job handoff of the release bins (operator job-split ruling 2026-07-11): the build job packs ci_floor_required_artifact_names into one tgz (tar preserves the executable bits a raw artifact zip would drop) and uploads it; the ci floor job downloads, unpacks into target/release, and re-verifies via claim_executor --verify-build-artifacts before any step consumes a bin (fail-closed: a missing or truncated artifact reds the job at the verify, never as a mid-floor bin fallback). 10m is the transfer envelope for a ~200MB archive under fleet pressure; upload uses if-no-files-found: error so an empty pack is loud."
+data gunbc_ci_fleet_job_always_run_artifact_transfer_step_count: Int = 1
 
-data gunbc_ci_prelude_allowance_minutes: Int = 5
+data gunbc_ci_fleet_job_worst_case_mode_aux_step_count: Int = 1
 
-data gunbc_ci_release_build_step_timeout_minutes: Int = 45
+data gunbc_ci_fleet_job_worst_case_mode_spark_step_count: Int = 1
 
-data srv1_dashboard_deploy_concurrency_group: String = "srv1-dashboard-deploy"
-data srv1_dashboard_deploy_serialization_note: String = "Blue/green selection is observe-then-mutate, so two deploy jobs may not overlap: both could observe blue active, then the first flips green while the second restarts what has become the active green slot, recreating the outage. Job-grain concurrency serializes the entire cutover with cancel-in-progress=false; QueueNotMax may replace an older pending deployment with the newest main revision, but it never interrupts the one holding the host mutation window."
+data gunbc_ci_fleet_job_backstop_timeout_note: String = "SUPERSEDES the 2026-08-21 first correction (prelude + 7*aux + 3*transfer + 5*spark = 370m), which fixed the tier miscount in the prior 11*aux+2*spark formula but kept its structural error: summing every tier-step COUNT as though every step in fleet_converge_job() executes in one run. It does not. The job's steps are gated by the single-select `mode` DispatchInput (InputChoice, exactly one value per dispatch — fleet_converge_workflow.dag DispatchInput \"mode\"), so plan/apply/spark_linger/spark_grants/spark_observe/spark_reboot/spark_durability are MUTUALLY EXCLUSIVE per run, not concurrent tiers to sum. Recounted from fleet_converge_job()'s actual step list (fleet_converge_workflow.dag:280-303) by what a single dispatch can actually execute: ALWAYS-RUN, no if_condition or if_condition: always() — ci_release_bins_download_step (transfer), ci_release_bins_unpack_verify_step, ci_fleet_wif_auth_step, ci_fleet_key_agent_step, ci_spark_admin_credential_cleanup_step, ci_fleet_key_agent_cleanup_step (5 aux + 1 transfer, always). MODE-GATED, at most one bundle applies per dispatch: mode=plan adds fleet_converge_plan_step(aux)+fleet_converge_plan_upload_step(transfer)=15m; mode=apply adds fleet_converge_plan_download_step(transfer)+fleet_converge_apply_step(aux)=15m; mode=spark_linger/spark_observe/spark_reboot/spark_durability each add exactly one spark step=60m; mode=spark_grants adds ci_spark_admin_credential_step(aux)+fleet_converge_spark_grants_step(spark)=65m, the WORST CASE because it is the only mode combining an aux-tier step with a spark-tier step. Worst-case single-run total: 5 + (5+1)*5 + 1*10 + 1*60 = 105m, comfortably inside extdeps.github.actions max_job_timeout_minutes (360m) — the >360 conflict raised on review of the first correction (bright-ferret-335, gunbc#8782) dissolves under the corrected model rather than needing a rounded-down number or a job split; checked_job_timeout_minutes below still guards the class for any future per-tier raise. These counts remain hand-authored cardinals against fleet_converge_job()'s step list (fleet_workflow_steps cannot import fleet_converge_workflow without a cycle), so this note is the single authority to update alongside any change to that job's step composition, if_condition gating, or mode set."
 
+type JobTimeoutBudget
+  = JobTimeoutWithinCeiling { minutes: Int }
+  | JobTimeoutExceedsCeiling { minutes: Int, ceiling: Int }
 
-fn gunbc_ci_fleet_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_prelude_allowance_minutes + (11 * gunbc_ci_aux_step_timeout_minutes) + (2 * gunbc_ci_spark_serving_step_timeout_minutes)
+data checked_job_timeout_minutes_note: String = "Consumes extdeps.github.actions max_job_timeout_minutes by construction (operator review, bright-ferret-335, gunbc#8782): a computed backstop that would exceed GitHub Actions' platform ceiling must refuse rather than emit a timeout-minutes value the platform will reject or silently clamp — clamping is the fabricated-plausible-output failure one layer up, since the job would then die at the clamped cap while the model believed it had the computed value. This is a wall on any future per-tier raise, not evidence the current backstop is at risk: see gunbc_ci_fleet_job_backstop_timeout_note for why the honest worst-case-single-run total sits well under the ceiling today."
+
+fn checked_job_timeout_minutes(computed: Int) -> JobTimeoutBudget {
+  if computed <= max_job_timeout_minutes {
+    JobTimeoutWithinCeiling { minutes: computed }
+  } else {
+    JobTimeoutExceedsCeiling { minutes: computed, ceiling: max_job_timeout_minutes }
+  }
 }
 
-data gunbc_ci_release_build_step_timeout_minutes: Int = 45
-
-data srv1_dashboard_deploy_concurrency_group: String = "srv1-dashboard-deploy"
-data srv1_dashboard_deploy_serialization_note: String = "Blue/green selection is observe-then-mutate, so two deploy jobs may not overlap: both could observe blue active, then the first flips green while the second restarts what has become the active green slot, recreating the outage. Job-grain concurrency serializes the entire cutover with cancel-in-progress=false; QueueNotMax may replace an older pending deployment with the newest main revision, but it never interrupts the one holding the host mutation window."
-
-
-data gunbc_ci_prelude_allowance_minutes: Int = 5
-
-data gunbc_ci_release_build_step_timeout_minutes: Int = 45
-
-data srv1_dashboard_deploy_concurrency_group: String = "srv1-dashboard-deploy"
-data srv1_dashboard_deploy_serialization_note: String = "Blue/green selection is observe-then-mutate, so two deploy jobs may not overlap: both could observe blue active, then the first flips green while the second restarts what has become the active green slot, recreating the outage. Job-grain concurrency serializes the entire cutover with cancel-in-progress=false; QueueNotMax may replace an older pending deployment with the newest main revision, but it never interrupts the one holding the host mutation window."
+fn gunbc_ci_fleet_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_prelude_allowance_minutes
+    + ((gunbc_ci_fleet_job_always_run_aux_step_count + gunbc_ci_fleet_job_worst_case_mode_aux_step_count) * gunbc_ci_aux_step_timeout_minutes)
+    + (gunbc_ci_fleet_job_always_run_artifact_transfer_step_count * gunbc_ci_artifact_transfer_step_timeout_minutes)
+    + (gunbc_ci_fleet_job_worst_case_mode_spark_step_count * gunbc_ci_spark_serving_step_timeout_minutes)
+}
 
