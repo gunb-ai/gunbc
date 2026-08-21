@@ -15,14 +15,14 @@ fn orch_if_streq_empty_then_intent() -> v2.std.orchestration.PipelineStep {
           run: v2.std.orchestration.Run {
             command: "verdict=absent",
             env: Empty,
-            redirect: v2.std.collection.Absent,
-            capture: v2.std.collection.Absent
+            redirect: v2.std.optional.Absent,
+            capture: v2.std.optional.Absent
           }
         }
       ],
       on_failure: v2.std.orchestration.FailFast
     },
-    else_: v2.std.collection.Absent
+    else_: v2.std.optional.Absent
   }
 }
 
@@ -35,14 +35,14 @@ fn orch_if_streq_empty_then_perturbed_intent() -> v2.std.orchestration.PipelineS
           run: v2.std.orchestration.Run {
             command: "verdict=absent",
             env: Empty,
-            redirect: v2.std.collection.Absent,
-            capture: v2.std.collection.Absent
+            redirect: v2.std.optional.Absent,
+            capture: v2.std.optional.Absent
           }
         }
       ],
       on_failure: v2.std.orchestration.FailFast
     },
-    else_: v2.std.collection.Absent
+    else_: v2.std.optional.Absent
   }
 }
 
@@ -59,22 +59,22 @@ fn orch_if_streq_else_intent() -> v2.std.orchestration.PipelineStep {
           run: v2.std.orchestration.Run {
             command: "verdict=converged",
             env: Empty,
-            redirect: v2.std.collection.Absent,
-            capture: v2.std.collection.Absent
+            redirect: v2.std.optional.Absent,
+            capture: v2.std.optional.Absent
           }
         }
       ],
       on_failure: v2.std.orchestration.FailFast
     },
-    else_: v2.std.collection.Present {
+    else_: v2.std.optional.Present {
       value: v2.std.orchestration.Pipeline {
         steps: [
           v2.std.orchestration.Do {
             run: v2.std.orchestration.Run {
               command: "verdict=drifted",
               env: Empty,
-              redirect: v2.std.collection.Absent,
-              capture: v2.std.collection.Absent
+              redirect: v2.std.optional.Absent,
+              capture: v2.std.optional.Absent
             }
           }
         ],
@@ -95,8 +95,8 @@ fn orch_if_exit_zero_negated_intent() -> v2.std.orchestration.PipelineStep {
         run: v2.std.orchestration.Run {
           command: "mkdir -p \"$7\"",
           env: Empty,
-          redirect: v2.std.collection.Absent,
-          capture: v2.std.collection.Absent
+          redirect: v2.std.optional.Absent,
+          capture: v2.std.optional.Absent
         }
       }
     },
@@ -106,14 +106,14 @@ fn orch_if_exit_zero_negated_intent() -> v2.std.orchestration.PipelineStep {
           run: v2.std.orchestration.Run {
             command: "echo missing",
             env: Empty,
-            redirect: v2.std.collection.Absent,
-            capture: v2.std.collection.Absent
+            redirect: v2.std.optional.Absent,
+            capture: v2.std.optional.Absent
           }
         }
       ],
       on_failure: v2.std.orchestration.FailFast
     },
-    else_: v2.std.collection.Absent
+    else_: v2.std.optional.Absent
   }
 }
 
@@ -127,8 +127,8 @@ fn orch_if_run_redirect_ignore_fail_intent() -> v2.std.orchestration.PipelineSte
       run: v2.std.orchestration.Run {
         command: "(cd \"$checkout\" && git fetch --prune origin)",
         env: Empty,
-        redirect: v2.std.collection.Present { value: v2.std.orchestration.DiscardAll },
-        capture: v2.std.collection.Present { value: v2.std.orchestration.IgnoreFail }
+        redirect: v2.std.optional.Present { value: v2.std.orchestration.DiscardAll },
+        capture: v2.std.optional.Present { value: v2.std.orchestration.IgnoreFail }
       }
     },
     then_: v2.std.orchestration.Pipeline {
@@ -137,14 +137,14 @@ fn orch_if_run_redirect_ignore_fail_intent() -> v2.std.orchestration.PipelineSte
           run: v2.std.orchestration.Run {
             command: "echo ok",
             env: Empty,
-            redirect: v2.std.collection.Absent,
-            capture: v2.std.collection.Absent
+            redirect: v2.std.optional.Absent,
+            capture: v2.std.optional.Absent
           }
         }
       ],
       on_failure: v2.std.orchestration.FailFast
     },
-    else_: v2.std.collection.Absent
+    else_: v2.std.optional.Absent
   }
 }
 
@@ -164,14 +164,14 @@ fn orch_if_log_matches_intent() -> v2.std.orchestration.PipelineStep {
           run: v2.std.orchestration.Run {
             command: "echo retry",
             env: Empty,
-            redirect: v2.std.collection.Absent,
-            capture: v2.std.collection.Absent
+            redirect: v2.std.optional.Absent,
+            capture: v2.std.optional.Absent
           }
         }
       ],
       on_failure: v2.std.orchestration.FailFast
     },
-    else_: v2.std.collection.Absent
+    else_: v2.std.optional.Absent
   }
 }
 
@@ -191,14 +191,14 @@ fn orch_if_and_tests_intent() -> v2.std.orchestration.PipelineStep {
           run: v2.std.orchestration.Run {
             command: "pin_ok=1",
             env: Empty,
-            redirect: v2.std.collection.Absent,
-            capture: v2.std.collection.Absent
+            redirect: v2.std.optional.Absent,
+            capture: v2.std.optional.Absent
           }
         }
       ],
       on_failure: v2.std.orchestration.FailFast
     },
-    else_: v2.std.collection.Absent
+    else_: v2.std.optional.Absent
   }
 }
 

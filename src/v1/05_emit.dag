@@ -997,7 +997,7 @@ fn tco_reassign_core(
 fn emit_shared_tco_expr(
   frame: TcoFrame,
   fn_name: String,
-  emit_self_call_reassign: fn(TcoReassignInput) -> String,
+  emit_self_call_reassign: fn(v1.compiler.emit.TcoReassignInput) -> String,
   emit_non_self_call: fn(TcoFrame) -> String,
   emit_if: fn(TcoFrame) -> String,
   emit_match: fn(TcoFrame) -> String,

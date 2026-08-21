@@ -7,8 +7,8 @@ fn orch_pipeline_step1() -> v2.std.orchestration.PipelineStep {
     run: v2.std.orchestration.Run {
       command: "cargo build -p v1-compiler --release --bins",
       env: Empty,
-      redirect: v2.std.collection.Absent,
-      capture: v2.std.collection.Absent
+      redirect: v2.std.optional.Absent,
+      capture: v2.std.optional.Absent
     }
   }
 }
@@ -18,8 +18,8 @@ fn orch_pipeline_step2() -> v2.std.orchestration.PipelineStep {
     run: v2.std.orchestration.Run {
       command: "cargo test --workspace",
       env: [v2.std.orchestration.EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }],
-      redirect: v2.std.collection.Absent,
-      capture: v2.std.collection.Absent
+      redirect: v2.std.optional.Absent,
+      capture: v2.std.optional.Absent
     }
   }
 }
@@ -72,7 +72,7 @@ test fn orch_pipeline_join_has_teeth_holds() -> Bool {
 
 test fn orch_run_empty_env_delegates_to_shell_emit_holds() -> Bool {
   match v2.compiler.emit_orchestration.orch_emit_run(
-    r: v2.std.orchestration.Run { command: "cargo build", env: Empty, redirect: v2.std.collection.Absent, capture: v2.std.collection.Absent },
+    r: v2.std.orchestration.Run { command: "cargo build", env: Empty, redirect: v2.std.optional.Absent, capture: v2.std.optional.Absent },
     medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
@@ -86,8 +86,8 @@ test fn orch_run_env_prefixed_structured_holds() -> Bool {
     r: v2.std.orchestration.Run {
       command: "cargo test --workspace",
       env: [v2.std.orchestration.EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }],
-      redirect: v2.std.collection.Absent,
-      capture: v2.std.collection.Absent
+      redirect: v2.std.optional.Absent,
+      capture: v2.std.optional.Absent
     },
     medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
@@ -99,12 +99,12 @@ test fn orch_run_env_prefixed_structured_holds() -> Bool {
 
 fn orch_if_cond() -> v2.std.orchestration.Predicate {
   v2.std.orchestration.ExitZero {
-    run: v2.std.orchestration.Run { command: "[ -z \"$1\" ]", env: Empty, redirect: v2.std.collection.Absent, capture: v2.std.collection.Absent }
+    run: v2.std.orchestration.Run { command: "[ -z \"$1\" ]", env: Empty, redirect: v2.std.optional.Absent, capture: v2.std.optional.Absent }
   }
 }
 
 fn orch_do_step(command: String) -> v2.std.orchestration.PipelineStep {
-  v2.std.orchestration.Do { run: v2.std.orchestration.Run { command: command, env: Empty, redirect: v2.std.collection.Absent, capture: v2.std.collection.Absent } }
+  v2.std.orchestration.Do { run: v2.std.orchestration.Run { command: command, env: Empty, redirect: v2.std.optional.Absent, capture: v2.std.optional.Absent } }
 }
 
 fn orch_if_then_one_step() -> v2.std.orchestration.Pipeline {
@@ -138,7 +138,7 @@ fn orch_if_pipeline(then_: v2.std.orchestration.Pipeline, else_: v2.std.optional
 
 test fn orch_if_single_step_no_else_byte_identical_holds() -> Bool {
   match v2.compiler.emit_orchestration.orch_emit_pipeline(
-    p: orch_if_pipeline(then_: orch_if_then_one_step(), else_: v2.std.collection.Absent),
+    p: orch_if_pipeline(then_: orch_if_then_one_step(), else_: v2.std.optional.Absent),
     medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
@@ -160,7 +160,7 @@ test fn orch_if_single_step_with_else_byte_identical_holds() -> Bool {
 
 test fn orch_if_multi_step_then_no_else_block_form_holds() -> Bool {
   match v2.compiler.emit_orchestration.orch_emit_pipeline(
-    p: orch_if_pipeline(then_: orch_if_then_two_steps(), else_: v2.std.collection.Absent),
+    p: orch_if_pipeline(then_: orch_if_then_two_steps(), else_: v2.std.optional.Absent),
     medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
@@ -197,7 +197,7 @@ fn orch_if_empty_pipeline() -> v2.std.orchestration.Pipeline {
 
 test fn orch_if_empty_then_no_else_noop_holds() -> Bool {
   match v2.compiler.emit_orchestration.orch_emit_pipeline(
-    p: orch_if_pipeline(then_: orch_if_empty_pipeline(), else_: v2.std.collection.Absent),
+    p: orch_if_pipeline(then_: orch_if_empty_pipeline(), else_: v2.std.optional.Absent),
     medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
@@ -247,8 +247,8 @@ test fn orch_run_env_unset_multi_binding_structured_holds() -> Bool {
         v2.std.orchestration.EnvUnset { name: "RUSTC_WRAPPER" },
         v2.std.orchestration.EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }
       ],
-      redirect: v2.std.collection.Absent,
-      capture: v2.std.collection.Absent
+      redirect: v2.std.optional.Absent,
+      capture: v2.std.optional.Absent
     },
     medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()
   ) {
