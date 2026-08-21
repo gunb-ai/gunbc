@@ -1486,55 +1486,264 @@ fn srv3_apt_install_then_reprobe(
 }
 
 
+// THE SEQUENCE IS A VALUE, SO THE EVIDENCE CAN ASSERT WHAT RAN.
+//
+// The defect this replaces: srv3_ensure_websocat bound mkdir, chown, curl and chmod as four lets
+// and then handed the results to srv3_predicate_all. In a strict language a let executes when it
+// is bound, so ALL FOUR MUTATIONS RAN REGARDLESS OF EACH OTHER -- a failed mkdir still downloaded
+// the file and chmod'd it -- and the readback sat in the argument list, so it ran after any of
+// them failed. srv3_predicate_all then classified the batch correctly AFTER THE FACT. The value
+// was right and the execution was wrong, which is why no witness in this file saw it: they all
+// assert the returned coproduct, and this class never changes it.
+//
+// Four of those unconditional mutations predate the three-valued cut; the eagerly-evaluated
+// readback was introduced by it. Both are closed here.
+//
+// The repair separates the SEQUENCING DECISION from the EXECUTION. websocat_after is a pure
+// total function -- given a stage and its outcome, what happens next -- so a test can assert the
+// whole transition table without a host. The driver performs effects and consumes that single
+// authority, which is what keeps the tested decision and the executed decision the same one.
+type WebsocatStage
+  = ObserveInstalled
+  | ResolveCurl
+  | EnsureDirectory
+  | EnsureOwnership
+  | Download
+  | EnsureExecutableMode
+  | Readback
+
+type WebsocatStep
+  = WebsocatContinue { next: WebsocatStage }
+  | WebsocatStop { verdict: Srv3HostPredicate }
+  | WebsocatAlreadySatisfied
+
+// A stage advances ONLY on Holds. Fails and Unobserved both stop, and they stop carrying their
+// own verdict rather than a shared one -- an unreachable host and a genuinely failed mkdir are
+// different states with different remedies, which is the distinction the three-valued carrier
+// exists to preserve.
+// Advancing and stopping are the same two shapes at every stage but the first and last, so they
+// are named once. `next` is a pure stage value, not an effect -- passing it as an argument is
+// safe, and the distinction is worth stating in a file whose defects were all about effects in
+// argument position: eager evaluation only matters when evaluating causes something to happen.
+fn websocat_advance(outcome: Srv3HostPredicate, next: WebsocatStage) -> WebsocatStep {
+  match outcome {
+    Srv3PredicateHolds => WebsocatContinue { next: next }
+    Srv3PredicateFails => WebsocatStop { verdict: Srv3PredicateFails }
+    Srv3PredicateUnobserved { reason: why } =>
+      WebsocatStop { verdict: Srv3PredicateUnobserved { reason: why } }
+  }
+}
+
+fn websocat_terminal(outcome: Srv3HostPredicate) -> WebsocatStep {
+  match outcome {
+    Srv3PredicateHolds => WebsocatStop { verdict: Srv3PredicateHolds }
+    Srv3PredicateFails => WebsocatStop { verdict: Srv3PredicateFails }
+    Srv3PredicateUnobserved { reason: why } =>
+      WebsocatStop { verdict: Srv3PredicateUnobserved { reason: why } }
+  }
+}
+
+// ObserveInstalled IS THE ONLY STAGE WHERE Fails MEANS PROCEED. "Is it already installed"
+// answering no is the whole reason to install, so that arm continues; every other stage's Fails is
+// a real failure and stops. Unobserved stops at every stage including that one -- a host that could
+// not be asked whether the binary exists must not be handed an install.
+fn websocat_after(stage: WebsocatStage, outcome: Srv3HostPredicate) -> WebsocatStep {
+  match stage {
+    ObserveInstalled =>
+      match outcome {
+        Srv3PredicateHolds => WebsocatAlreadySatisfied
+        Srv3PredicateFails => WebsocatContinue { next: ResolveCurl }
+        Srv3PredicateUnobserved { reason: why } =>
+          WebsocatStop { verdict: Srv3PredicateUnobserved { reason: why } }
+      }
+    ResolveCurl => websocat_advance(outcome: outcome, next: EnsureDirectory)
+    EnsureDirectory => websocat_advance(outcome: outcome, next: EnsureOwnership)
+    EnsureOwnership => websocat_advance(outcome: outcome, next: Download)
+    Download => websocat_advance(outcome: outcome, next: EnsureExecutableMode)
+    EnsureExecutableMode => websocat_advance(outcome: outcome, next: Readback)
+    Readback => websocat_terminal(outcome: outcome)
+  }
+}
+
+// THE ACTION TRACE, derived from the same transition function the driver uses. Given the outcome
+// each stage would produce, this yields exactly the stages that execute -- so a witness can assert
+// "a failed mkdir means Download never runs" as a claim about EXECUTION rather than about the
+// value that came back.
+//
+// The walk CARRIES the next stage rather than re-deriving it from what already ran. An earlier
+// draft of this file derived it, which put the stage order in two places -- websocat_after and the
+// deriving function -- and that is the §3 fork this module keeps being about. websocat_after is
+// the only thing that knows what follows what.
+type WebsocatWalk {
+  stages: std.types.List<WebsocatStage>
+  current: WebsocatStage?
+  verdict: Srv3HostPredicate
+}
+
+data websocat_walk_start: WebsocatWalk = WebsocatWalk {
+  stages: [],
+  current: Present { value: ObserveInstalled },
+  verdict: Srv3PredicateFails,
+}
+
+fn websocat_walk_step(walk: WebsocatWalk, outcome: Srv3HostPredicate) -> WebsocatWalk {
+  match walk.current {
+    Absent => walk
+    Present { value: stage } => {
+      let ran = v2.std.algebra.list_snoc_item(xs: walk.stages, item: stage)
+      match websocat_after(stage: stage, outcome: outcome) {
+        WebsocatAlreadySatisfied =>
+          WebsocatWalk { stages: ran, current: none, verdict: Srv3PredicateHolds }
+        WebsocatStop { verdict: v } =>
+          WebsocatWalk { stages: ran, current: none, verdict: v }
+        WebsocatContinue { next: n } =>
+          WebsocatWalk { stages: ran, current: Present { value: n }, verdict: walk.verdict }
+      }
+    }
+  }
+}
+
+fn websocat_trace_from_outcomes(outcomes: std.types.List<Srv3HostPredicate>) -> WebsocatWalk {
+  v2.std.algebra.fold_list(
+    xs: outcomes,
+    empty: websocat_walk_start,
+    cons: fn(acc, outcome) { websocat_walk_step(walk: acc, outcome: outcome) },
+  )
+}
+
+fn websocat_stage_label(stage: WebsocatStage) -> String {
+  match stage {
+    ObserveInstalled => "observe-installed"
+    ResolveCurl => "resolve-curl"
+    EnsureDirectory => "ensure-directory"
+    EnsureOwnership => "ensure-ownership"
+    Download => "download"
+    EnsureExecutableMode => "ensure-executable-mode"
+    Readback => "readback"
+  }
+}
+
+fn websocat_trace_labels(walk: WebsocatWalk) -> std.types.List<String> {
+  list_map(xs: walk.stages, f: fn(st) { websocat_stage_label(stage: st) })
+}
+
+// THE DRIVER. Every effect sits inside a match arm, so it executes only when the preceding stage
+// held. Nothing is bound with `let` before its turn, and nothing effectful appears in an argument
+// or list position -- those were the two shapes that made the previous body run mutations it had
+// no business running.
+//
+// The nesting is deliberate and is not a fold: each stage needs a different effect and some need
+// values the previous stage produced (the resolved curl path), so a uniform step function would
+// have to carry a union of every stage's inputs. The sequencing decision is still folded -- that
+// is websocat_after, which this driver and the trace witness both consume.
 fn srv3_ensure_websocat(transport: gunbc.host_effect.HostEffectTransport) -> Srv3HostPredicate {
   let install_path = extdeps.tools.websocat.websocat_install_path as String
-  match srv3_transport_test_executable(path: install_path, transport: transport) {
-    Srv3PredicateHolds => Srv3PredicateHolds
-    Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
-    Srv3PredicateFails =>
+  match websocat_after(
+    stage: ObserveInstalled,
+    outcome: srv3_transport_test_executable(path: install_path, transport: transport),
+  ) {
+    WebsocatAlreadySatisfied => Srv3PredicateHolds
+    WebsocatStop { verdict: v } => v
+    WebsocatContinue { next: _ } =>
       match srv3_tool_bin_path(tool_name: extdeps.tools.curl.curl_cli_tool.name, transport: transport) {
         Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
         Srv3TokenAbsent => Srv3PredicateFails
-        Srv3TokenObserved { value: curl_path } => {
-          let bin_dir = extdeps.bmc.os_install_actuator_toolchain.gunbc_bin_dir as String
-          let url = srv3_actuator_toolchain_websocat_release_download_url()
-          let mkdir = srv3_transport_witness_bin_success(
+        Srv3TokenObserved { value: curl_path } =>
+          srv3_websocat_install_from(
+            curl_path: curl_path,
+            install_path: install_path,
             transport: transport,
-            workdir: "/",
-            bin_path: "/usr/bin/sudo",
-            args: ["mkdir", "-p", bin_dir],
           )
-          let chown = srv3_chown_directory_to_current_user(path: bin_dir, transport: transport)
-          let curl = srv3_transport_witness_bin_success(
-            transport: transport,
-            workdir: "/",
-            bin_path: curl_path,
-            args: ["-fsSL", url, "-o", install_path],
-          )
-          let chmod = srv3_transport_witness_bin_success(
-            transport: transport,
-            workdir: "/",
-            bin_path: "/bin/chmod",
-            args: ["+x", install_path],
-          )
-          srv3_predicate_all(
-            steps: [
-              mkdir,
-              chown,
-              curl,
-              chmod,
-              srv3_transport_test_executable(path: install_path, transport: transport),
-            ],
-          )
-        }
       }
+  }
+}
+
+fn srv3_websocat_install_from(
+  curl_path: String,
+  install_path: String,
+  transport: gunbc.host_effect.HostEffectTransport,
+) -> Srv3HostPredicate {
+  let bin_dir = extdeps.bmc.os_install_actuator_toolchain.gunbc_bin_dir as String
+  match websocat_after(
+    stage: EnsureDirectory,
+    outcome: srv3_transport_witness_bin_success(
+      transport: transport,
+      workdir: "/",
+      bin_path: "/usr/bin/sudo",
+      args: ["mkdir", "-p", bin_dir],
+    ),
+  ) {
+    WebsocatAlreadySatisfied => Srv3PredicateHolds
+    WebsocatStop { verdict: v } => v
+    WebsocatContinue { next: _ } =>
+      match websocat_after(
+        stage: EnsureOwnership,
+        outcome: srv3_chown_directory_to_current_user(path: bin_dir, transport: transport),
+      ) {
+        WebsocatAlreadySatisfied => Srv3PredicateHolds
+        WebsocatStop { verdict: v } => v
+        WebsocatContinue { next: _ } =>
+          match websocat_after(
+            stage: Download,
+            outcome: srv3_transport_witness_bin_success(
+              transport: transport,
+              workdir: "/",
+              bin_path: curl_path,
+              args: [
+                "-fsSL",
+                srv3_actuator_toolchain_websocat_release_download_url(),
+                "-o",
+                install_path,
+              ],
+            ),
+          ) {
+            WebsocatAlreadySatisfied => Srv3PredicateHolds
+            WebsocatStop { verdict: v } => v
+            WebsocatContinue { next: _ } =>
+              match websocat_after(
+                stage: EnsureExecutableMode,
+                outcome: srv3_transport_witness_bin_success(
+                  transport: transport,
+                  workdir: "/",
+                  bin_path: "/bin/chmod",
+                  args: ["+x", install_path],
+                ),
+              ) {
+                WebsocatAlreadySatisfied => Srv3PredicateHolds
+                WebsocatStop { verdict: v } => v
+                WebsocatContinue { next: _ } =>
+                  websocat_after_readback(
+                    outcome: srv3_transport_test_executable(
+                      path: install_path,
+                      transport: transport,
+                    ),
+                  )
+              }
+          }
+      }
+  }
+}
+
+// The readback is the ONLY thing that admits convergence. A successful chmod is not evidence the
+// binary is executable; the previous body treated the batch as the answer and re-observed only as
+// one more element of it.
+fn websocat_after_readback(outcome: Srv3HostPredicate) -> Srv3HostPredicate {
+  match websocat_after(stage: Readback, outcome: outcome) {
+    WebsocatAlreadySatisfied => Srv3PredicateHolds
+    WebsocatStop { verdict: v } => v
+    WebsocatContinue { next: _ } => Srv3PredicateFails
   }
 }
 
 // CONJUNCTION THAT DOES NOT LOSE THE THIRD STATE. `&&` over Bool answered false whether a step
 // failed or could not be run; this reports Unobserved if ANY step could not be observed, and
 // Fails only when every step was actually observed and one of them said no.
-fn srv3_predicate_all(steps: std.types.List<Srv3HostPredicate>) -> Srv3HostPredicate {
+// A SUMMARY, NOT A SEQUENCER, and the name now says so. It folds observations that have ALREADY
+// been made independently -- four separate tool ensures, none of which gates another -- and it
+// cannot sequence anything, because by the time a list reaches it every element has been
+// evaluated. Reading it as "run these in order, stopping on failure" is what let the websocat
+// path run four mutations unconditionally. Sequencing lives in websocat_after and nowhere else.
+fn srv3_summarize_independent_observations(steps: std.types.List<Srv3HostPredicate>) -> Srv3HostPredicate {
   v2.std.algebra.fold_list(
     xs: steps,
     empty: Srv3PredicateHolds,
@@ -1593,7 +1802,7 @@ fn srv3_realize_os_install_actuator_toolchain_ensure_body(
     transport: transport,
   )
   let websocat_ok = srv3_ensure_websocat(transport: transport)
-  let verdict = srv3_predicate_all(steps: [curl_ok, nbdkit_ok, socat_ok, websocat_ok])
+  let verdict = srv3_summarize_independent_observations(steps: [curl_ok, nbdkit_ok, socat_ok, websocat_ok])
   let stdout = concat(
     concat(
       concat(

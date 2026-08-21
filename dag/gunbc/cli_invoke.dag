@@ -1,8 +1,6 @@
 module gunbc.cli_invoke
 
-
-
-data cli_invoke_shell_spelling_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: cli_invoke _shell builders — interim GHA emit surface for Phase 3a; delete when gunbc run / claim_executor call sites render through bash emit (shell→intent open thread, docs/plans/shell-intent-emit-realization-design.md Phase 3 completion).")
+data cli_invoke_shell_spelling_dissolve_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: cli_invoke claim_executor _shell builders (claim_executor_run_plan_shell, claim_executor_verify_artifacts_shell, source_roots_shell_flags and the SourceRootShellStyle they read) — interim GHA emit surface for Phase 3a; delete when claim_executor call sites render through bash emit (shell→intent open thread, docs/plans/shell-intent-emit-realization-design.md Phase 3 completion). THE gunbc run HALF IS DONE, not deferred: gunbc_run_shell and gunbc_bin_shell are DELETED and every emitted gunbc run step now renders from the one typed invocation shape gunbc_run_invocation_words through v2.workflow.gunbc_invoke_step_emit. This row is narrowed rather than retired because the claim_executor lane still carries its own shell spelling beside claim_executor_run_plan_transport_argv, which is the same fork one authority up.")
 
 type SourceRootShellStyle
   = SourceRootBare
@@ -11,7 +9,7 @@ type SourceRootShellStyle
 data claim_executor_bin_name: String = "claim_executor"
 data gunbc_bin_name: String = "gunbc"
 
-fn source_root_transport_argv(roots: List<String>) -> List<String> {
+fn source_root_transport_argv(roots: std.types.List<String>) -> std.types.List<String> {
   fold(roots, init: [], f: (acc, r) => concat(acc, ["--source-root", r]))
 }
 
@@ -23,7 +21,7 @@ fn source_root_shell_flag(root: String, style: SourceRootShellStyle) -> String {
   }
 }
 
-fn source_roots_shell_flags(roots: List<String>, style: SourceRootShellStyle) -> String {
+fn source_roots_shell_flags(roots: std.types.List<String>, style: SourceRootShellStyle) -> String {
   fold(roots, init: "", f: (acc, r) => concat(acc, source_root_shell_flag(root: r, style: style)))
 }
 
@@ -39,10 +37,6 @@ fn release_bin_shell_path(bin_name: String) -> String {
 
 fn claim_executor_bin_shell() -> String {
   release_bin_shell_path(bin_name: claim_executor_bin_name)
-}
-
-fn gunbc_bin_shell() -> String {
-  release_bin_shell_path(bin_name: gunbc_bin_name)
 }
 
 fn claim_executor_notice_title_normalized(notice_title: String?) -> String? {
@@ -73,11 +67,11 @@ fn plan_function_name(p: PlanFunction) -> String {
 }
 
 fn claim_executor_run_plan_transport_argv(
-  source_roots: List<String>,
+  source_roots: std.types.List<String>,
   plan_entry: String,
   plan_function: PlanFunction,
   notice_title: String?
-) -> List<String> {
+) -> std.types.List<String> {
   let base = concat(
     source_root_transport_argv(roots: source_roots),
     ["--plan-entry", plan_entry, "--plan-function", plan_function_name(p: plan_function)]
@@ -88,25 +82,81 @@ fn claim_executor_run_plan_transport_argv(
   }
 }
 
-fn claim_executor_verify_artifacts_transport_argv(artifact_paths: List<String>) -> List<String> {
+fn claim_executor_verify_artifacts_transport_argv(artifact_paths: std.types.List<String>) -> std.types.List<String> {
   concat(["--verify-build-artifacts"], artifact_paths)
 }
 
-fn gunbc_run_transport_argv(
-  source_roots: List<String>,
+// THE SINGLE AUTHORITY for the shape of a `gunbc run` invocation's arguments. It was
+// two authorities until now: gunbc_run_transport_argv built the typed argv the
+// gunbc.WitnessBin.Run route takes, and the deleted gunbc_run_shell built a bash
+// spelling of the same invocation for emitted workflow steps. Both had to be edited to
+// change one fact and nothing made them agree (DESIGN section 3 -- one concept, one
+// authority). A word is either an ordinary literal or a repository-root-relative path;
+// that distinction is what the two realizations need and the only thing a flat
+// List<String> could not carry, since rooting is a per-word fact (source roots are
+// rooted, --entry is not). Realizations: the argv projection below, and the emitted
+// bash step in v2.workflow.gunbc_invoke_step_emit. Neither is named here -- the
+// dispatch that selects a realization is itself realization.
+type InvocationWord
+  = LiteralWord { spelling: String }
+  | RootRelativeWord { rel: String }
+
+fn invocation_word_bare(w: InvocationWord) -> String {
+  match w {
+    LiteralWord { spelling: s } => s
+    RootRelativeWord { rel: r } => r
+  }
+}
+
+fn invocation_words_bare(words: std.types.List<InvocationWord>) -> std.types.List<String> {
+  fold(words, init: [], f: (acc, w) => concat(acc, [invocation_word_bare(w: w)]))
+}
+
+fn source_root_invocation_words(roots: std.types.List<String>) -> std.types.List<InvocationWord> {
+  fold(
+    roots,
+    init: [],
+    f: (acc, r) =>
+      concat(acc, [LiteralWord { spelling: "--source-root" }, RootRelativeWord { rel: r }])
+  )
+}
+
+fn gunbc_run_invocation_words(
+  source_roots: std.types.List<String>,
   entry: String,
   function: String,
   claim_run: Bool
-) -> List<String> {
+) -> std.types.List<InvocationWord> {
   let base = concat(
-    concat(["run"], source_root_transport_argv(roots: source_roots)),
-    ["--entry", entry, "--function", function]
+    concat([LiteralWord { spelling: "run" }], source_root_invocation_words(roots: source_roots)),
+    [
+      LiteralWord { spelling: "--entry" },
+      LiteralWord { spelling: entry },
+      LiteralWord { spelling: "--function" },
+      LiteralWord { spelling: function }
+    ]
   )
   if claim_run {
-    concat(base, ["--claim-run"])
+    concat(base, [LiteralWord { spelling: "--claim-run" }])
   } else {
     base
   }
+}
+
+fn gunbc_run_transport_argv(
+  source_roots: std.types.List<String>,
+  entry: String,
+  function: String,
+  claim_run: Bool
+) -> std.types.List<String> {
+  invocation_words_bare(
+    words: gunbc_run_invocation_words(
+      source_roots: source_roots,
+      entry: entry,
+      function: function,
+      claim_run: claim_run
+    )
+  )
 }
 
 
@@ -118,7 +168,7 @@ fn claim_executor_notice_title_shell_suffix(notice_title: String?) -> String {
 }
 
 fn claim_executor_run_plan_shell(
-  source_roots: List<String>,
+  source_roots: std.types.List<String>,
   plan_entry: String,
   plan_function: PlanFunction,
   notice_title: String?,
@@ -140,27 +190,7 @@ fn claim_executor_run_plan_shell(
   )
 }
 
-fn claim_executor_verify_artifacts_shell(artifact_paths: List<String>) -> String {
+fn claim_executor_verify_artifacts_shell(artifact_paths: std.types.List<String>) -> String {
   let paths = fold(artifact_paths, init: "", f: (acc, p) => concat(acc, concat(" ", p)))
   concat(concat(concat(claim_executor_bin_shell(), " --verify-build-artifacts"), paths), "\n")
-}
-
-fn gunbc_run_shell(
-  source_roots: List<String>,
-  entry: String,
-  function: String,
-  rooted: Bool,
-  claim_run: Bool
-) -> String {
-  let style = if rooted {
-    SourceRootRooted { root_var: "$ROOT" }
-  } else {
-    SourceRootBare
-  }
-  let flags = source_roots_shell_flags(roots: source_roots, style: style)
-  let claim = if claim_run { " --claim-run" } else { "" }
-  concat(
-    concat(concat(gunbc_bin_shell(), " run"), flags),
-    concat(concat(concat(" --entry ", entry), concat(" --function ", function)), concat(claim, "\n"))
-  )
 }

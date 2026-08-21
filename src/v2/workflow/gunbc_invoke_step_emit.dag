@@ -1,0 +1,294 @@
+module v2.workflow.gunbc_invoke_step_emit
+
+// THE SINGLE ROOT for emitting a `gunbc run` workflow step. Before this module every
+// such step was a per-site concat of a shell string (gunbc.cli_invoke gunbc_run_shell),
+// forked from the typed argv the same invocation takes on the gunbc.WitnessBin.Run
+// route -- two spellings of one fact, so a change to the invocation shape had to be
+// made twice and could silently disagree. The invocation SHAPE is now one authority
+// (gunbc.cli_invoke gunbc_run_invocation_words); this module is one of its two
+// realizations (foreign-executor bash, via orchestration emit), the argv projection is
+// the other. Realization sits peripheral to the interface (DESIGN section 3), so nothing
+// here is a fact about what a gunbc run invocation IS.
+
+// WHAT THIS ROOT DISSOLVED AND WHAT IT DID NOT, counted rather than implied, because a
+// root that retires most of a marked population reads as having retired all of it.
+// MEASURED on the emitted tree (grep dissolve-on over .github/workflows/*.yml), not on
+// a brief count: NINE marked foreign-executor blocks are live, all in fleet-converge.yml
+// -- the other emitted workflows, fleet-desired.yml and witnesses.yml, carry none. They
+// do NOT share one trigger, which is the finding: only FOUR name this root (the converge
+// plan and apply steps and the two spark serving steps, each a gunbc run invocation).
+// The remaining five name three DIFFERENT roots and are untouched here, each still
+// carrying its own dissolution row in gunbc.ci_spec:
+//   (1) ci_release_build_script, ci_release_bins_pack_script and
+//       ci_release_bins_unpack_verify_script -- cargo and tar transports. Their leaves
+//       are not bin invocations at all, so binding them needs typed cargo/archive
+//       operations on host_effect_apply, which is their own stated trigger.
+//   (2) gunbc_ci_fleet_key_agent_script -- its trigger is the typed secret-materialization
+//       effect (SecretRef to in-run agent). It is deliberately NOT bound here: the secret
+//       reaches the agent over a pipe, and this root renders argv words, so routing it
+//       through the binding would move a secret onto a command line. That is a refusal,
+//       not a gap to close by widening.
+//   (3) ci_native_cache_root_script -- ALREADY orchestration-emitted
+//       (v2.workflow.ci_workflow_run_emit); its trigger is a typed toolchain probe on
+//       host_effect_apply, so the marker survives the binding it already has.
+// Beyond the emitted nine, this root also carries the eleven gunbc run call sites in
+// gunbc.ci_spec whose emitted consumers were deleted by the CI cut, so a re-added
+// workflow inherits the binding rather than re-minting the shell spelling.
+
+data gunbc_invoke_step_root_var: String = "$ROOT"
+
+// THE REFUSAL MUST NOT ITSELF BE AN INJECTION VECTOR, and this row exists because the
+// first version of it was. That version spliced the offending word verbatim into the
+// marker line -- "Refused word: dag/gunbc/evil.dag; rm -rf /". The marker is emitted into
+// a GitHub Actions run: block, so bash would fail the unknown first token and then
+// execute the attacker-chosen remainder as a SECOND COMMAND: a refusal that re-opens
+// exactly the hole it refused, and strictly worse than admitting the word, because it
+// wears the name of the wall. Caught by the discriminating RED
+// (gunbc_invoke_word_wall_refuses_metacharacter_entry_holds), which is why that witness
+// asserts the ABSENCE OF THE PAYLOAD and not merely the presence of the marker -- a
+// marker-only assertion would have passed over this defect.
+// THE FIX, and why it is construction rather than another check: the offending word never
+// reaches shell context at all. It is projected through the SAME alphabet that judged it
+// (orch_shell_unquoted_path_ok, per character), every refused character replaced by a
+// fixed safe token, so the emitted bytes are inside the alphabet by construction and no
+// input can widen them. The refusal stays located -- the sanitized shape identifies which
+// word failed and where its bad characters were -- and stays countable, without any byte
+// of untrusted input reaching a runner.
+data gunbc_invoke_refused_char_token: String = "_"
+
+fn gunbc_invoke_sanitize_at(word: String, i: Int, n: Int, acc: String) -> String {
+  if i >= n {
+    acc
+  } else {
+    let ch = char_at(s: word, pos: i)
+    let safe = if v2.compiler.emit_orchestration.orch_shell_unquoted_path_ok(path: ch) { ch } else { gunbc_invoke_refused_char_token }
+    gunbc_invoke_sanitize_at(word: word, i: i + 1, n: n, acc: concat(acc, safe))
+  }
+}
+
+fn gunbc_invoke_sanitize_word(word: String) -> String {
+  gunbc_invoke_sanitize_at(word: word, i: 0, n: string_length(s: word), acc: "")
+}
+
+data gunbc_invoke_step_emit_refused_poison_prefix: String = "__GUNBC_INVOKE_EMIT_REFUSED__ v2.workflow.gunbc_invoke_step_emit refused to render a gunbc run step: an invocation word carried characters outside the emitter unquoted-word alphabet. This marker is not valid workflow shell, so the committed workflow drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN section 5: refuse, never widen). The refused word is shown SANITIZED through that same alphabet, every refused character replaced by an underscore, so no byte of the refused input reaches a runner. Sanitized refused word: "
+
+data gunbc_invoke_step_orch_refused_poison: String = "__GUNBC_INVOKE_EMIT_REFUSED__ v2.compiler.emit_orchestration rejected the gunbc run step pipeline; this marker is not valid workflow shell, so the committed workflow drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN section 5: refuse, never widen)\n"
+
+fn gunbc_invoke_word_unsafe_poison(word: String) -> String {
+  concat(
+    gunbc_invoke_step_emit_refused_poison_prefix,
+    concat(gunbc_invoke_sanitize_word(word: word), "\n")
+  )
+}
+
+// Fail-closed word wall. Every rendered word -- literal flag, entry path, function name,
+// source root -- must lie inside the orchestration emitter's own unquoted-word alphabet
+// (v2.compiler.emit_orchestration orch_shell_unquoted_path_ok, the SAME authority
+// ToFile/ExitStatus already refuse against; not a second alphabet minted here). A word
+// outside it could carry a shell metacharacter and open a second command, so it is
+// refused at emit rather than quoted-and-hoped. Returns the first offending word, or ""
+// when every word is safe.
+fn gunbc_invoke_first_unsafe_word(words: std.types.List<gunbc.cli_invoke.InvocationWord>) -> String {
+  fold(
+    words,
+    init: "",
+    f: (acc, w) =>
+      if acc != "" {
+        acc
+      } else {
+        let spelling = gunbc.cli_invoke.invocation_word_bare(w: w)
+        if v2.compiler.emit_orchestration.orch_shell_unquoted_path_ok(path: spelling) { "" } else { spelling }
+      }
+  )
+}
+
+fn gunbc_invoke_root_relative_shell(rel: String) -> String {
+  concat("\"", concat(gunbc_invoke_step_root_var, concat("/", concat(rel, "\""))))
+}
+
+fn gunbc_invoke_word_shell(w: gunbc.cli_invoke.InvocationWord) -> String {
+  match w {
+    gunbc.cli_invoke.LiteralWord { spelling: s } => s
+    gunbc.cli_invoke.RootRelativeWord { rel: r } => gunbc_invoke_root_relative_shell(rel: r)
+  }
+}
+
+fn gunbc_invoke_words_command(words: std.types.List<gunbc.cli_invoke.InvocationWord>) -> String {
+  fold(
+    words,
+    init: gunbc_invoke_root_relative_shell(rel: gunbc.cli_invoke.release_bin_rel_path(bin_name: gunbc.cli_invoke.gunbc_bin_name)),
+    f: (acc, w) => concat(acc, concat(" ", gunbc_invoke_word_shell(w: w)))
+  )
+}
+
+fn gunbc_invoke_run(command: String) -> v2.std.orchestration.Run {
+  v2.std.orchestration.Run {
+    command: command,
+    env: std.algebra.Empty,
+    redirect: v2.std.optional.Absent,
+    capture: v2.std.optional.Absent
+  }
+}
+
+fn gunbc_invoke_do(command: String) -> v2.std.orchestration.PipelineStep {
+  v2.std.orchestration.Do { run: gunbc_invoke_run(command: command) }
+}
+
+fn gunbc_invoke_root_stamp_step() -> v2.std.orchestration.PipelineStep {
+  gunbc_invoke_do(command: concat("ROOT=", gunbc.merge_admission_produce.ci_repo_root_shell()))
+}
+
+fn gunbc_invoke_receipt_steps(receipt_rel: String?) -> std.types.List<v2.std.orchestration.PipelineStep> {
+  match receipt_rel {
+    Present { value: rel } =>
+      [gunbc_invoke_do(command: concat("cat ", gunbc_invoke_root_relative_shell(rel: rel)))]
+    Absent => []
+  }
+}
+
+fn gunbc_invoke_run_with_env(command: String, env: std.algebra.FreeMonoid<v2.std.orchestration.EnvBinding>) -> v2.std.orchestration.Run {
+  v2.std.orchestration.Run {
+    command: command,
+    env: env,
+    redirect: v2.std.optional.Absent,
+    capture: v2.std.optional.Absent
+  }
+}
+
+// The rendered single command, fail-closed. Every caller that needs only the invocation
+// line -- not the whole step -- reads this, so the word wall is crossed exactly once.
+fn gunbc_run_command(
+  source_roots: std.types.List<String>,
+  entry: String,
+  function: String,
+  claim_run: Bool
+) -> String {
+  let words = gunbc.cli_invoke.gunbc_run_invocation_words(
+    source_roots: source_roots,
+    entry: entry,
+    function: function,
+    claim_run: claim_run
+  )
+  let unsafe_word = gunbc_invoke_first_unsafe_word(words: words)
+  if unsafe_word != "" {
+    gunbc_invoke_word_unsafe_poison(word: unsafe_word)
+  } else {
+    gunbc_invoke_words_command(words: words)
+  }
+}
+
+// The composable root: the ordinary step as a Pipeline, so a caller with its own typed
+// preamble (the converge-apply plan-hash check) prepends steps and emits ONCE through
+// gunbc_invoke_step_emit_pipeline rather than concatenating two rendered strings.
+fn gunbc_run_step_intent(
+  prelude: std.types.List<v2.std.orchestration.PipelineStep>,
+  source_roots: std.types.List<String>,
+  entry: String,
+  function: String,
+  claim_run: Bool,
+  receipt_rel: String?
+) -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
+    steps: concat(
+      concat(
+        prelude,
+        [
+          gunbc_invoke_root_stamp_step(),
+          gunbc_invoke_do(
+            command: gunbc_run_command(
+              source_roots: source_roots,
+              entry: entry,
+              function: function,
+              claim_run: claim_run
+            )
+          )
+        ]
+      ),
+      gunbc_invoke_receipt_steps(receipt_rel: receipt_rel)
+    ),
+    on_failure: v2.std.orchestration.FailFast
+  }
+}
+
+fn gunbc_invoke_step_emit_pipeline(p: v2.std.orchestration.Pipeline) -> String {
+  match v2.compiler.emit_orchestration.orch_emit_pipeline(p: p, medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        v2.std.diagnostic.None => source.carried
+        v2.std.diagnostic.Some { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
+      }
+    Rejected { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
+  }
+}
+
+// The whole-step root every ordinary call site uses: ROOT stamp, one gunbc run
+// invocation, optional receipt cat.
+fn gunbc_run_step_script(
+  source_roots: std.types.List<String>,
+  entry: String,
+  function: String,
+  claim_run: Bool,
+  receipt_rel: String?
+) -> String {
+  gunbc_invoke_step_emit_pipeline(
+    p: gunbc_run_step_intent(
+      prelude: [],
+      source_roots: source_roots,
+      entry: entry,
+      function: function,
+      claim_run: claim_run,
+      receipt_rel: receipt_rel
+    )
+  )
+}
+
+// Same root with a typed preamble in front of the ROOT stamp.
+fn gunbc_run_step_script_with_prelude(
+  prelude: std.types.List<v2.std.orchestration.PipelineStep>,
+  source_roots: std.types.List<String>,
+  entry: String,
+  function: String,
+  claim_run: Bool,
+  receipt_rel: String?
+) -> String {
+  gunbc_invoke_step_emit_pipeline(
+    p: gunbc_run_step_intent(
+      prelude: prelude,
+      source_roots: source_roots,
+      entry: entry,
+      function: function,
+      claim_run: claim_run,
+      receipt_rel: receipt_rel
+    )
+  )
+}
+
+// Same root for a call site that carries env bindings on the invocation itself and
+// inherits ROOT from the step it is composed into (the heal dispatch wire). The bindings
+// are the orchestration EnvBinding carrier, not a hand-spelled "NAME=value " prefix.
+fn gunbc_run_invocation_script_with_env(
+  env: std.algebra.FreeMonoid<v2.std.orchestration.EnvBinding>,
+  source_roots: std.types.List<String>,
+  entry: String,
+  function: String,
+  claim_run: Bool
+) -> String {
+  gunbc_invoke_step_emit_pipeline(
+    p: v2.std.orchestration.Pipeline {
+      steps: [
+        v2.std.orchestration.Do {
+          run: gunbc_invoke_run_with_env(
+            command: gunbc_run_command(
+              source_roots: source_roots,
+              entry: entry,
+              function: function,
+              claim_run: claim_run
+            ),
+            env: env
+          )
+        }
+      ],
+      on_failure: v2.std.orchestration.FailFast
+    }
+  )
+}
