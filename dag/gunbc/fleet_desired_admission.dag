@@ -191,6 +191,12 @@ fn fleet_desired_floor_green(conclusion: WorkflowRunConclusion) -> Bool {
 // apart. Collapsing them would make an ls-remote failure create the ref from scratch and
 // overwrite an admitted revision it simply could not read, which is the empty-observation narrow
 // with the fleet as the blast radius.
+//
+// AdvanceAdmitted's `from` is discarded at the admitting arm below, and that is deliberate: the
+// CAS operand this gate publishes is the EXPECTATION, and both it and `current` are derived from
+// the same observation by the same authority — re-deriving the prior from the admission's echo
+// would be a second spelling of one fact. The prior is still passed IN, so the authority is asked
+// the question it models rather than a narrowed one.
 fn fleet_desired_admission_expectation_refusal_cause(refusal: FleetDesiredExpectationRefusal) -> String {
   match refusal {
     FleetDesiredRefUnobserved { cause: why } =>
@@ -236,11 +242,6 @@ fn fleet_desired_admission_decide(event: WorkflowRunEvent, observed: FleetDesire
                       "]",
                     ], ""),
                   }
-                // `from` is discarded because the CAS operand this gate publishes is the
-                // EXPECTATION, and both it and `current` are derived from the same observation by
-                // the same authority — re-deriving the prior from the admission's echo would be a
-                // second spelling of one fact. The prior is still passed IN, so the authority is
-                // asked the question it models rather than a narrowed one.
                 AdvanceAdmitted { from: _, to: admitted } =>
                   AdmissionAdvanceAuthorized { expected: expected, to: admitted }
               }
