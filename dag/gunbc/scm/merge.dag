@@ -206,6 +206,14 @@ type MergeRefusal
   | RequiredDependencyRemoved { dependency: MergeDependency, removed_role: Symbol }
   | DependencyKindUnsupportedForMerge { dependent: Symbol, required: Symbol, kind: Symbol }
 
+// THE REFUSAL ARM IS MergeRefused, NOT CouldNotLand, and that is a claim about what this layer
+// can establish rather than a naming preference. "Could not land" asserts TERMINALITY, and the
+// engine cannot establish it: DependencyKindUnsupportedForMerge may mean this implementation has
+// not modeled the relation yet, and TargetRootMissing may mean an incomplete fetch rather than a
+// permanently invalid target. Whether an engine refusal is terminal, machine-owned, or awaiting
+// more work is a decision above this module, so naming the arm for the terminal conclusion would
+// be the same overclaim as a status ledger reporting DONE for work that merely compiled.
+//
 // THE ARM NAMES ARE MERGE-QUALIFIED BECAUSE THEY WOULD OTHERWISE BE DUPLICATE TOP-LEVEL
 // DEFINITIONS. gunbc.native_scm_interaction_contract already declares ChoiceRequired and
 // CouldNotLand, as arms of its user-facing NativeScmPrimaryOutcome, with different payloads.
@@ -221,6 +229,23 @@ type MergeRefusal
 // a real section 3 question this change does not settle -- it removes the corpus-wide
 // ambiguity without pretending the layering is resolved.
 //
+// THE OUTCOME SAYS WHAT COMPETED, NOT MERELY WHERE. An earlier revision carried only the role,
+// which locates the conflict and then discards the two things that caused it -- the same
+// information-loss defect as a usage_site that duplicates its own dependent. Both sides are in
+// hand at the moment the conflict is detected, so dropping them means every consumer must
+// re-derive what the engine already knew, and a presentation layer asking "which alternatives?"
+// cannot be answered from a role at all.
+//
+// THE ENGINE OWNS THE FACT, NOT THE QUESTION. This carries the competing pair; it does not carry
+// a rendered question or a resumable continuation, because those need audience authorization,
+// stable resume identities and proof the alternatives are materially distinct -- none of which
+// the engine holds. Manufacturing them here would be fabricating evidence one layer early.
+type MergeChoiceEvidence {
+  role: Symbol
+  held: RoleValue?
+  incoming: Requirement
+}
+
 // CHOICE IS AN ANSWER, NOT A FAILURE. Two proposals stating different values for one role is a
 // QUESTION the system is not entitled to answer: latest-wins, first-wins and branch-priority-wins are
 // all fabricated plausible output, and each silently discards an authored requirement. Requiring a
@@ -228,8 +253,8 @@ type MergeRefusal
 // the same arm rather than being quietly resolved in favour of either.
 type MergeOutcome
   = Merged { store: ObjectStore, commit: Commit, roles: List<ResolvedRole> }
-  | MergeChoiceRequired { role: Symbol }
-  | MergeCouldNotLand { cause: MergeRefusal }
+  | MergeChoiceRequired { evidence: MergeChoiceEvidence }
+  | MergeRefused { cause: MergeRefusal }
 
 fn edge_label_role(label: EdgeLabel) -> Symbol? {
   match label {
@@ -307,7 +332,7 @@ type MergeApplyAcc {
   store: ObjectStore
   roles: List<ResolvedRole>
   authored: List<Symbol>
-  choice: Symbol?
+  choice: MergeChoiceEvidence?
   refusal: MergeRefusal?
 }
 
@@ -319,6 +344,13 @@ fn already_authored(authored: List<Symbol>, role: Symbol) -> Bool {
   fold(authored, init: false, f: fn(seen, a) {
     if seen { true } else { (a as String) == (role as String) }
   })
+}
+
+fn held_role_value(roles: List<ResolvedRole>, role: Symbol) -> RoleValue? {
+  match role_named(roles: roles, role: role) {
+    Absent => none
+    Present { value: r } => Present { value: r.value }
+  }
 }
 
 fn apply_requirement(acc: MergeApplyAcc, req: Requirement) -> MergeApplyAcc {
@@ -334,7 +366,13 @@ fn apply_requirement(acc: MergeApplyAcc, req: Requirement) -> MergeApplyAcc {
               store: acc.store,
               roles: acc.roles,
               authored: acc.authored,
-              choice: Present { value: role },
+              choice: Present {
+                value: MergeChoiceEvidence {
+                  role: role,
+                  held: held_role_value(roles: acc.roles, role: role),
+                  incoming: req,
+                },
+              },
               refusal: none,
             }
           } else {
@@ -505,7 +543,7 @@ fn merge(
   proposals: List<Proposal>,
 ) -> MergeOutcome {
   match target_roles(store: store, target: target) {
-    TargetUnreadable { cause: cause } => MergeCouldNotLand { cause: cause }
+    TargetUnreadable { cause: cause } => MergeRefused { cause: cause }
     TargetRead { roles: base } => {
       let applied = fold(
         proposals,
@@ -523,10 +561,10 @@ fn merge(
         },
       )
       match applied.refusal {
-        Present { value: cause } => MergeCouldNotLand { cause: cause }
+        Present { value: cause } => MergeRefused { cause: cause }
         Absent =>
           match applied.choice {
-            Present { value: role } => MergeChoiceRequired { role: role }
+            Present { value: evidence } => MergeChoiceRequired { evidence: evidence }
             Absent =>
               finish_merge(
                 applied: applied,
@@ -554,7 +592,7 @@ fn finish_merge(
     authored: applied.authored,
   )
   match validate_dependencies(roles: applied.roles, deps: deps) {
-    Present { value: cause } => MergeCouldNotLand { cause: cause }
+    Present { value: cause } => MergeRefused { cause: cause }
     Absent => {
       let built = fold(
         applied.roles,
@@ -562,14 +600,14 @@ fn finish_merge(
         f: fn(acc, r) { root_edge_step(store: applied.store, acc: acc, r: r) },
       )
       match built.refusal {
-        Present { value: cause } => MergeCouldNotLand { cause: cause }
+        Present { value: cause } => MergeRefused { cause: cause }
         Absent =>
           match store_node(
             store: applied.store,
             n: root_node_of(edges: built.edges),
           ) {
             LocatorCollision { identity: identity, existing: _, incoming: _ } =>
-              MergeCouldNotLand {
+              MergeRefused {
                 cause: BindingLocatorCollision { role: ^commit_root, identity: identity },
               }
             Stored { store: store, identity: identity } =>

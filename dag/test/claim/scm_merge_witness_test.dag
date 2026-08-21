@@ -37,7 +37,8 @@ import gunbc.scm.merge {
   MergeOutcome,
   Merged,
   MergeChoiceRequired,
-  MergeCouldNotLand,
+  MergeChoiceEvidence,
+  MergeRefused,
   MergeRefusal,
   RequiredDependencyRemoved,
   DependencyKindUnsupportedForMerge,
@@ -121,16 +122,16 @@ fn remove_f_proposal() -> Proposal {
 fn outcome_is_merged(o: MergeOutcome) -> Bool {
   match o {
     Merged { store: _, commit: _, roles: _ } => true
-    MergeChoiceRequired { role: _ } => false
-    MergeCouldNotLand { cause: _ } => false
+    MergeChoiceRequired { evidence: _ } => false
+    MergeRefused { cause: _ } => false
   }
 }
 
 fn merged_roles(o: MergeOutcome) -> List<ResolvedRole> {
   match o {
     Merged { store: _, commit: _, roles: roles } => roles
-    MergeChoiceRequired { role: _ } => []
-    MergeCouldNotLand { cause: _ } => []
+    MergeChoiceRequired { evidence: _ } => []
+    MergeRefused { cause: _ } => []
   }
 }
 
@@ -146,8 +147,8 @@ fn refusal_locates(
 ) -> Bool {
   match o {
     Merged { store: _, commit: _, roles: _ } => false
-    MergeChoiceRequired { role: _ } => false
-    MergeCouldNotLand { cause: cause } =>
+    MergeChoiceRequired { evidence: _ } => false
+    MergeRefused { cause: cause } =>
       match cause {
         RequiredDependencyRemoved { dependency: dep, removed_role: removed } =>
           ((dep.dependent as String) == (dependent as String))
@@ -272,7 +273,7 @@ test fn the_arm_a_dependency_row_is_actually_read() -> Bool {
     ],
   )
   match out {
-    MergeCouldNotLand { cause: cause } =>
+    MergeRefused { cause: cause } =>
       match cause {
         DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: kind } =>
           (kind as String) == (^barrier_before as String)
@@ -282,7 +283,7 @@ test fn the_arm_a_dependency_row_is_actually_read() -> Bool {
         BindingLocatorCollision { role: _, identity: _ } => false
       }
     Merged { store: _, commit: _, roles: _ } => false
-    MergeChoiceRequired { role: _ } => false
+    MergeChoiceRequired { evidence: _ } => false
   }
 }
 
@@ -469,7 +470,7 @@ test fn an_unsupported_dependency_kind_refuses() -> Bool {
     proposals: [],
   )
   match out {
-    MergeCouldNotLand { cause: cause } =>
+    MergeRefused { cause: cause } =>
       match cause {
         DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: kind } =>
           (kind as String) == (^placement_depends_on as String)
@@ -479,7 +480,17 @@ test fn an_unsupported_dependency_kind_refuses() -> Bool {
         BindingLocatorCollision { role: _, identity: _ } => false
       }
     Merged { store: _, commit: _, roles: _ } => false
-    MergeChoiceRequired { role: _ } => false
+    MergeChoiceRequired { evidence: _ } => false
+  }
+}
+
+// THE CHOICE CARRIES THE COMPETING PAIR, so this asserts the second authoring is the ABSENCE
+// requirement -- not merely that some conflict was found at f. A claim that checked only the
+// role would pass against an outcome that had forgotten what competed.
+fn choice_incoming_is_absence(incoming: Requirement) -> Bool {
+  match incoming {
+    RequireBindingAbsent { role: _ } => true
+    RequireBinding { role: _, value: _ } => false
   }
 }
 
@@ -500,9 +511,11 @@ test fn one_role_authored_twice_asks() -> Bool {
     ],
   )
   match out {
-    MergeChoiceRequired { role: role } => (role as String) == (^f as String)
+    MergeChoiceRequired { evidence: evidence } =>
+      ((evidence.role as String) == (^f as String))
+        && choice_incoming_is_absence(incoming: evidence.incoming)
     Merged { store: _, commit: _, roles: _ } => false
-    MergeCouldNotLand { cause: _ } => false
+    MergeRefused { cause: _ } => false
   }
 }
 
