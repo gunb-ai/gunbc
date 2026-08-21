@@ -9,7 +9,8 @@ import gunbc.generated_artifact {
   Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
   Stage0CratePartitionGeneratedDagArtifact,
   V1InterpreterDispatchGeneratedRsArtifact,
-  artifact_path
+  artifact_path,
+  committed_generated_artifacts
 }
 import gunbc.fleet_converge_workflow { expected_fleet_converge_yml }
 import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml }
@@ -106,5 +107,34 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     AutoinstallUserDataArtifact { spec: _ } => true
     ProxyDhcpDnsmasqArtifact { spec: _ } => true
     PlanArtifact { plan: _ } => true
+  }
+}
+
+// WHY A THIRD STATE. The consumer asks "what is the generated body for this path", and the
+// honest answers are three, not two: produced, refused, and NOT A GENERATED ARTIFACT AT ALL.
+// Folding the third into ArtifactGenerationRefused would tell a caller holding an ordinary
+// mirror path that generation FAILED for it, which is false -- nothing was ever supposed to
+// generate it -- and a caller acting on that difference would act wrongly. Two zeros, one
+// spelling, is the conflation DESIGN names; the third variant is what keeps them apart.
+type GeneratedArtifactPathBody
+  = GeneratedArtifactPathBodyProduced { content: String }
+  | GeneratedArtifactPathBodyRefused { reason: String }
+  | GeneratedArtifactPathNotGenerated
+
+// The generated-artifact population, keyed by path instead of by artifact.
+//
+// PURELY A PROJECTION. It mints no roster, forks no dispatch, and edits neither authority it
+// consults: `committed_generated_artifacts` is the population main_wet folds over, `artifact_path`
+// is the artifact->path authority, and `artifact_generate` is the single artifact->content
+// dispatch. This asks those three the question a path-holding consumer has, which is the whole
+// reason it can exist without becoming a second answer to anything.
+fn generated_artifact_body_for_path(path: String) -> GeneratedArtifactPathBody {
+  match committed_generated_artifacts() |> filter(a => artifact_path(a: a) == path) |> first {
+    Absent => GeneratedArtifactPathNotGenerated
+    Present { value: a } =>
+      match artifact_generate(a: a) {
+        ArtifactGenerated { content } => GeneratedArtifactPathBodyProduced { content: content }
+        ArtifactGenerationRefused { reason } => GeneratedArtifactPathBodyRefused { reason: reason }
+      }
   }
 }

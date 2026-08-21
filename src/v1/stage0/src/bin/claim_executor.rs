@@ -1790,6 +1790,37 @@ const MERGE_ADMISSION_REFRESH_REFUSAL_WIRE: &str = "target/merge-admission-refre
 /// toplevel resolution falls back to the bare relpath — the pre-anchor behavior — because
 /// the wire read is itself a diagnostic path: degrading its precision is acceptable,
 /// swallowing the stage failure it decorates is not.
+/// Run one zero- or one-argument wet `func` from a `.dag` entry and read its `Bool`.
+///
+/// The merge-admission producers are host-effect `func`s: they read git, write attempt-scoped
+/// wires, and return whether they succeeded. This is the same resolve/context/run shape the
+/// native-bundle selector uses; it is factored out here because two phases need it and because a
+/// non-`Bool` return must be a REFUSAL rather than a coerced `false` -- a producer that returned
+/// the wrong shape has not written the wire either, and reporting that as an ordinary `false`
+/// would lose the distinction between "declined" and "did not run".
+fn run_merge_admission_producer(
+    source_roots: &[String],
+    entry: &str,
+    function: &str,
+    args: &[(Option<String>, Value)],
+) -> Result<bool, String> {
+    let (graph, indices) = resolve_entry_graph(source_roots, entry)
+        .map_err(|e| format!("{entry} resolve refused: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+    let outcome = if args.is_empty() {
+        run_in_context(&ctx, function, false)
+    } else {
+        run_in_context_with_args(&ctx, function, args, false)
+    };
+    match outcome.map_err(|e| format!("{function} refused: {e}"))? {
+        Value::Bool(b) => Ok(b),
+        other => Err(format!("{function} returned non-bool {other:?}")),
+    }
+}
+
+const MERGE_ADMISSION_CAPTURE_ENTRY: &str = "dag/tools/merge_admission_capture.dag";
+const MERGE_ADMISSION_WALK_ENTRY: &str = "dag/tools/merge_admission_walk.dag";
+
 fn merge_admission_wire_read(relpath: &str) -> std::io::Result<String> {
     let toplevel = std::process::Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
@@ -10564,6 +10595,57 @@ fn run() -> Result<ExitCode, ExitCode> {
         let mut phase_failures: Vec<String> = Vec::new();
         let mut ran: Vec<&'static str> = Vec::new();
 
+        // PHASE 0 — capture the TESTED SUBJECT, before anything is tested.
+        //
+        // WHY IT IS FIRST AND NOT BESIDE THE FLOOR. The subject is what this run is ABOUT: the
+        // head it checked out and the base tree it composed against. It has to be recorded before
+        // any phase runs, because after they run the only thing left is the receipt's own claim
+        // about what it tested, and a receipt that both states and certifies its subject can
+        // restate it (gunbc.merge_admission merge_admission_subject_binding_note: three bindings
+        // are required BEFORE any freshness question).
+        //
+        // AN ABSENT ATTEMPT IDENTITY IS A SKIP, NOT A FAILURE, AND THE ARM IS UNREACHABLE ON CI.
+        // The identity derives from GITHUB_RUN_ID + GITHUB_RUN_ATTEMPT + GITHUB_JOB, which GitHub
+        // always sets; off CI there is no merge attempt to admit and therefore no subject, which
+        // is the phase-5 NoSubject shape rather than the phase-3 shape. Every OTHER refusal cause
+        // -- head unreadable, base tree unreadable, unparseable oid, attempt dir, write -- is a
+        // real failure to record a subject that exists, and fails the phase. The cause is read
+        // from the modeled refusal wire, so the classification is the producer's, not a guess.
+        let mut merge_admission_subject_captured = false;
+        eprintln!("required-ci: phase merge-admission-capture (tested subject, before any phase)");
+        match run_merge_admission_producer(
+            &source_roots,
+            MERGE_ADMISSION_CAPTURE_ENTRY,
+            "capture_tested_subject",
+            &[],
+        ) {
+            Ok(true) => {
+                merge_admission_subject_captured = true;
+                eprintln!("required-ci: merge-admission-capture OK tested subject recorded");
+            }
+            Ok(false) => {
+                let cause = match merge_admission_wire_read(MERGE_ADMISSION_CAPTURE_REFUSAL_WIRE) {
+                    Ok(text) => text.trim().to_string(),
+                    Err(e) => format!("cause wire unreadable: {e}"),
+                };
+                if cause.contains("attempt-identity-absent") {
+                    eprintln!(
+                        "required-ci: phase merge-admission-capture SKIPPED — no walk-attempt \
+                         identity, so this run is not a merge attempt and has no subject to \
+                         record. Not a pass over a captured subject: the subject is absent"
+                    );
+                } else {
+                    eprintln!("required-ci: merge-admission-capture FAIL {cause}");
+                    phase_failures.push(format!("merge-admission-capture ({cause})"));
+                }
+            }
+            Err(e) => {
+                eprintln!("required-ci: merge-admission-capture refused: {e}");
+                phase_failures.push(format!("merge-admission-capture refused: {e}"));
+            }
+        }
+        ran.push("merge-admission-capture");
+
         // PHASE 1 — src/v1 .dag parse sweep. Independent of everything below it.
         eprintln!("required-ci: phase parse (src/v1 .dag)");
         match v1_compiler::cli_run::run_v1_src_dag_parse(&v1_compiler::cli_run::workspace_root()) {
@@ -10742,6 +10824,50 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
         }
         ran.push("floor");
+
+        // PHASE 7 — mint the floor receipt, carrying the conclusion this run actually reached.
+        //
+        // THE CONCLUSION IS THE MEASUREMENT, NOT A CONSTANT. tools.merge_admission_walk
+        // stamp_tested_floor writes `Success` literally; that was true only under the WalkPlan's
+        // ordering law ("stamp is reachable only after the whole ordinary floor and its
+        // finalization passed"), and the floor cut deleted the WalkPlan while leaving the
+        // constant. Calling it from here would certify Success over a red run -- a fabricated
+        // plausible output aimed at the one consumer that must never be lied to. So this calls
+        // stamp_tested_floor_for_exit_code with the real phase tally: a receipt exists for every
+        // attempt, and it says what happened.
+        //
+        // NO SUBJECT MEANS NO RECEIPT, and that is fail-closed rather than a gap: the merge gate
+        // refuses on a missing wire (tools.merge_admission_current_context "floor-receipt wire
+        // missing"), so declining to stamp cannot admit anything.
+        if merge_admission_subject_captured {
+            let exit_code = i64::from(!phase_failures.is_empty());
+            eprintln!(
+                "required-ci: phase merge-admission-stamp (receipt, conclusion from this run)"
+            );
+            match run_merge_admission_producer(
+                &source_roots,
+                MERGE_ADMISSION_WALK_ENTRY,
+                "stamp_tested_floor_for_exit_code",
+                &[(Some("exit_code".to_string()), Value::Int(exit_code))],
+            ) {
+                Ok(true) => eprintln!(
+                    "required-ci: merge-admission-stamp OK receipt minted conclusion={}",
+                    if exit_code == 0 { "success" } else { "failure" }
+                ),
+                Ok(false) => eprintln!(
+                    "required-ci: merge-admission-stamp declined — the producer did not write a \
+                     receipt. The merge gate refuses on a missing receipt, so nothing is admitted \
+                     by this; it is reported, not absorbed"
+                ),
+                Err(e) => eprintln!("required-ci: merge-admission-stamp refused: {e}"),
+            }
+            ran.push("merge-admission-stamp");
+        } else {
+            eprintln!(
+                "required-ci: phase merge-admission-stamp SKIPPED — no tested subject was \
+                 captured, so there is nothing to certify"
+            );
+        }
 
         eprintln!(
             "required-ci: phases_run={} failed={}",
@@ -19915,6 +20041,82 @@ fn nondeterministic_call_functions(
     names
 }
 
+/// What the generated-artifact population says about one repo-relative path.
+///
+/// Three states because the honest answers are three. `NotGenerated` is a POSITIVE answer -- this
+/// path is not in the generated-artifact population at all -- and is what routes a caller to the
+/// mirror-emit population. Folding it into `Refused` would tell a caller that generation FAILED
+/// for an ordinary mirror, which is false and differently actionable.
+enum GeneratedArtifactPathBody {
+    Produced(String),
+    Refused(String),
+    NotGenerated,
+}
+
+/// Ask the already-resolved generated-artifact authority for the body it generates at a path.
+///
+/// THIS IS NOT A SECOND PRODUCER. The `.dag` side is a projection over the same three authorities
+/// `main_wet` uses -- the committed-artifact roster, `artifact_path`, and the single
+/// `artifact_generate` dispatch -- asked by path instead of by artifact. Reaching past it to a
+/// per-artifact emitter would have been the forked dispatch DESIGN §3 forbids.
+///
+/// COST SHAPE, and it is why this takes a CONTEXT rather than `source_roots`. The first draft
+/// resolved `generated_artifact_emit`'s whole closure inside the per-module loop, making the unit
+/// of computation the corpus while the unit of fact was one path -- DESIGN §6's cost-shape defect,
+/// where the rule is that a proven one is fixed regardless of the realized n. The caller resolves
+/// once; each path is then one interpreter call against that context.
+fn generated_artifact_body_for_path(
+    ctx: &v1_compiler::v1_interpreter::InterpContext,
+    repo_rel_path: &str,
+) -> Result<GeneratedArtifactPathBody, String> {
+    use v1_compiler::v1_interpreter::Value;
+    let out = v1_compiler::v1_interpreter::run_in_context_with_args(
+        ctx,
+        "generated_artifact_body_for_path",
+        &[(
+            Some("path".to_string()),
+            Value::Str(repo_rel_path.to_string().into()),
+        )],
+        false,
+    )
+    .map_err(|e| format!("generated_artifact_body_for_path({repo_rel_path}): {e:?}"))?;
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &out
+    else {
+        // No default arm: a shape this code does not understand is ignorance, and guessing
+        // NotGenerated here would silently route a real generated artifact to the mirror emit
+        // and refuse it there for the wrong reason.
+        return Err(format!(
+            "generated_artifact_body_for_path({repo_rel_path}) returned a non-variant value"
+        ));
+    };
+    if ctx.sym_eq(*variant_name, "GeneratedArtifactPathNotGenerated") {
+        return Ok(GeneratedArtifactPathBody::NotGenerated);
+    }
+    if ctx.sym_eq(*variant_name, "GeneratedArtifactPathBodyProduced") {
+        return match ctx.field(fields, "content") {
+            Some(Value::Str(c)) => Ok(GeneratedArtifactPathBody::Produced(c.to_string())),
+            _ => Err(format!(
+                "GeneratedArtifactPathBodyProduced for {repo_rel_path} carried no String content"
+            )),
+        };
+    }
+    if ctx.sym_eq(*variant_name, "GeneratedArtifactPathBodyRefused") {
+        return match ctx.field(fields, "reason") {
+            Some(Value::Str(r)) => Ok(GeneratedArtifactPathBody::Refused(r.to_string())),
+            _ => Err(format!(
+                "GeneratedArtifactPathBodyRefused for {repo_rel_path} carried no String reason"
+            )),
+        };
+    }
+    Err(format!(
+        "generated_artifact_body_for_path({repo_rel_path}) returned an unknown variant"
+    ))
+}
+
 /// Map an authority module path to the emitted mirror that declares it as its authority.
 ///
 /// DERIVED, never authored: each generated file names its authority in its own header, written
@@ -20823,18 +21025,135 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
     // is the SAME partition the admission was decided from. Recomputing it from the plan
     // afterwards would be a second producer of one fact, and the one that gets reported is the
     // one that never gated anything.
+    // ONE RESOLVE for the whole loop -- see `generated_artifact_body_for_path`'s cost-shape note.
+    // Built before the loop rather than lazily inside it: every selected module asks this
+    // question, so laziness would buy nothing and would put a corpus resolve at an unpredictable
+    // point in the middle of a differential.
+    let generated_entry = "dag/gunbc/generated_artifact_emit.dag";
+    let (generated_graph, generated_indices) =
+        v1_compiler::cli_run::resolve_entry_graph_shared(source_roots, generated_entry)
+            .map_err(|e| format!("resolve {generated_entry}: {e}"))?;
+    let generated_ctx = v1_compiler::cli_run::make_eval_context(
+        &generated_graph,
+        generated_indices,
+        // HERMETIC, not Wet. The projection is pure -- it folds a roster and returns a String --
+        // so a host effect reached during it would mean a generator is doing something this gate
+        // must not perform on its behalf. Hermetic refuses there instead of carrying it out.
+        v1_compiler::v1_interpreter::ExecutionMode::Hermetic,
+    );
     let mut denominators: Vec<String> = Vec::new();
     let mut nondeterministic_calls_total = 0usize;
     let mut nondeterministic_modules = 0usize;
     for (mirror, plan, alias) in &plans {
-        let Some(candidate_source) = emitted.get(mirror) else {
-            eprintln!(
-                "behavioral-receipt: {} REFUSED — the emit produced no {mirror}, so there is no \
-                 candidate to compare. Not equivalence: a missing candidate is ignorance",
-                plan.module_path
-            );
-            all_equivalent = false;
-            continue;
+        // WHICH POPULATION OWNS THIS MIRROR, decided before anything is fetched.
+        //
+        // Two generators write into `src/v1/stage0/src`: the v1 compiler emits module mirrors,
+        // and gunbc's artifact emitters write a handful of generated files whose headers say so.
+        // This fragment used to ask only the first and refuse when it came back empty, which made
+        // the SECOND population permanently unaskable -- any change to the interpreter dispatch
+        // roster or the stage0 crate layout redded this phase with "a missing candidate is
+        // ignorance", correct as written and with no reachable green.
+        //
+        // The population is asked FIRST and answers positively. This is deliberately not a
+        // fallback from the mirror-emit miss: a fallback would make absence in one producer mean
+        // presence in the other, so a genuinely unknown path would silently be regenerated from
+        // nothing instead of refused. Here each population answers for what it owns, and a path
+        // in neither still refuses.
+        let repo_rel = format!("src/v1/stage0/src/{mirror}");
+        let generated = match generated_artifact_body_for_path(&generated_ctx, &repo_rel) {
+            Ok(g) => g,
+            Err(e) => {
+                eprintln!(
+                    "behavioral-receipt: {} REFUSED — could not ask the generated-artifact \
+                     population about {repo_rel}: {e}. Not equivalence: an unanswered question \
+                     is ignorance",
+                    plan.module_path
+                );
+                all_equivalent = false;
+                continue;
+            }
+        };
+        let owned_candidate: Option<String> = match generated {
+            GeneratedArtifactPathBody::Produced(content) => Some(content),
+            GeneratedArtifactPathBody::Refused(reason) => {
+                eprintln!(
+                    "behavioral-receipt: {} REFUSED — {repo_rel} is a generated artifact and its \
+                     generator refused: {reason}",
+                    plan.module_path
+                );
+                all_equivalent = false;
+                continue;
+            }
+            GeneratedArtifactPathBody::NotGenerated => None,
+        };
+        // A GENERATED ARTIFACT IS CHECKED BY IDENTITY, NOT BY CALLING IT -- and this is the
+        // correct check for it, not a weaker stand-in for the differential.
+        //
+        // MEASURED, after the first draft of this change got it wrong. Producing the candidate
+        // was necessary and not sufficient: with the candidate in hand the differential went one
+        // step further and refused again, because it compiles a driver that CALLS the authority's
+        // declared functions against the mirror --
+        //
+        //   the driver did not compile against the mirror: error[E0425]: cannot find function
+        //   `v1_interpreter_arm_shape_derivability` in module v1_compiler::v1_interpreter_dispatch_generated
+        //
+        // -- and `v1_interpreter_dispatch_generated.rs` exposes enums and `lookup_*` fns. It is a
+        // file DERIVED FROM the authority's data, not a Rust projection of the authority's
+        // functions, so those functions are not there and never will be. The differential's
+        // precondition (the mirror answers the same calls the authority declares) simply does not
+        // hold for this population.
+        //
+        // For a generated artifact the whole content IS the product, so byte identity between a
+        // freshly generated candidate and the committed file is the complete statement of
+        // correctness -- which is exactly the drift check that has had no owner since the
+        // generated-artifact drift gates were dropped in the floor cut.
+        let candidate_source: &String = match owned_candidate.as_ref() {
+            Some(candidate) => {
+                let committed_path = workspace.join(&repo_rel);
+                match fs::read_to_string(&committed_path) {
+                    Err(e) => {
+                        eprintln!(
+                            "behavioral-receipt: {} REFUSED — {repo_rel} is a generated artifact \
+                             but its committed bytes could not be read ({e}), so identity cannot \
+                             be established",
+                            plan.module_path
+                        );
+                        all_equivalent = false;
+                    }
+                    Ok(committed_bytes) if committed_bytes == *candidate => {
+                        eprintln!(
+                            "behavioral-receipt: {} ARTIFACT-IDENTICAL — {repo_rel} regenerates \
+                             byte-for-byte from its authority. This is identity, not behavioural \
+                             equivalence: the artifact exposes no function this fragment could \
+                             call, so its bytes are the whole claim",
+                            plan.module_path
+                        );
+                    }
+                    Ok(_) => {
+                        eprintln!(
+                            "behavioral-receipt: {} ARTIFACT-DRIFT — {repo_rel} does not match \
+                             what its authority generates. Regenerate it (main_wet on \
+                             dag/tools/generated_artifact_gate.dag) and commit the result",
+                            plan.module_path
+                        );
+                        all_equivalent = false;
+                    }
+                }
+                continue;
+            }
+            None => match emitted.get(mirror) {
+                Some(c) => c,
+                None => {
+                    eprintln!(
+                        "behavioral-receipt: {} REFUSED — {mirror} is in neither population: the \
+                         v1 emit produced no mirror for it and it is not a committed generated \
+                         artifact. Not equivalence: a missing candidate is ignorance",
+                        plan.module_path
+                    );
+                    all_equivalent = false;
+                    continue;
+                }
+            },
         };
         // Infallible in fact -- selection only pushed plans that admitted -- but derived here
         // rather than asserted, so the differential's precondition is carried by the value it
