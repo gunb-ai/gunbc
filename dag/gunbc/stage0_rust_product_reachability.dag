@@ -1,6 +1,7 @@
 module gunbc.stage0_rust_product_reachability
 
 import gunbc.stage0_rust_host_observation {
+  EmitPopulationConfirmed,
   GitObservationRefused,
   RustManifestObserved,
   RustManifestParseRefused,
@@ -85,7 +86,8 @@ fn product_reachability_receipt(
       tracked_rust_repo_paths: tracked_paths,
       cargo_bin_repo_paths: cargo_bin_repo_paths,
       manifest_content_identity: _,
-      prior_tracked_rust_repo_paths: _
+      prior_tracked_rust_repo_paths: _,
+      emit_population_evidence: _
     } =>
       if revision == "" {
         ProductReachabilityObservationRefused
@@ -220,6 +222,12 @@ fn product_reachability_witness_observation(
     manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
     tracked_rust_repo_paths: tracked_paths,
     prior_tracked_rust_repo_paths: tracked_paths,
-    cargo_bin_repo_paths: cargo_bin_repo_paths
+    cargo_bin_repo_paths: cargo_bin_repo_paths,
+    // This fixture's subject is cargo-target reachability, not the generated/hand split, so it
+    // declares its whole tracked list as emitted: the emit population is stated, not dodged, and
+    // stating it this way keeps every path classified so no unrelated arm fires first.
+    emit_population_evidence: EmitPopulationConfirmed {
+      emitted_stage0_repo_paths: tracked_paths
+    }
   }
 }

@@ -3,6 +3,7 @@ module gunbc.stage0_rust_lifecycle_totality
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import gunbc.stage0_rust_host_observation {
+  EmitPopulationConfirmed,
   GitObservationRefused,
   RustManifestObserved,
   RustManifestParseRefused,
@@ -163,7 +164,8 @@ fn lifecycle_totality_receipt(
       tracked_rust_repo_paths: tracked_paths,
       cargo_bin_repo_paths: cargo_bin_repo_paths,
       manifest_content_identity: _,
-      prior_tracked_rust_repo_paths: _
+      prior_tracked_rust_repo_paths: _,
+      emit_population_evidence: _
     } =>
       if revision == "" {
         LifecycleTotalityObservationRefused
@@ -281,7 +283,10 @@ fn lifecycle_totality_witness_observation(extra_paths: List<String>) -> RustMani
     manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
     tracked_rust_repo_paths: list_concat_unique(acc: classified, items: extra_paths),
     prior_tracked_rust_repo_paths: classified,
-    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
+    emit_population_evidence: EmitPopulationConfirmed {
+      emitted_stage0_repo_paths: witness_generated_stage0_fixture_paths
+    }
   }
 }
 
