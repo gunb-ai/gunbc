@@ -224,7 +224,6 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/instrument/pip_boy_3000.dag",
   "dag/extdeps/instrument/pip_boy_3000_mk_v.dag",
   "dag/extdeps/linux/proc_self_cgroup.dag",
-  "dag/extdeps/network/iproute2_ss.dag",
   "dag/extdeps/os/debian.dag",
   "dag/extdeps/physics/bach_et_al_2013_double_slit.dag",
   "dag/extdeps/physics/chapman_et_al_1995_atom_interferometer_which_path.dag",

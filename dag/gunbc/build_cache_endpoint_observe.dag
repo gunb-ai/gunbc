@@ -5,11 +5,7 @@ import std.nat { Nat }
 import std.disposition { Disposition, SingleAuthority }
 import std.algebra { trim }
 import std.checked_arithmetic { CheckedNat, CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
-import extdeps.network.iproute2_ss {
-  ss_unix_listening_at_path_argv,
-  ss_tcp_listening_on_port_argv,
-  ss_process_column_pid_token,
-}
+import extdeps.linux.procfs { ProcfsPath, ProcNetUnix, procfs_path_literal }
 import extdeps.cache.sccache { SccacheServerUnixSocket, SccacheServerTcpPort }
 import extdeps.linux.proc_self_cgroup {
   ProcPidCgroupMembershipRecord,
@@ -46,6 +42,7 @@ import gunbc.build_cache_endpoint_path {
   EndpointPathState,
   EndpointPathAbsent,
   EndpointListening,
+  EndpointStaleSocket,
   EndpointPathConflict,
   EndpointPathObservationUnavailable,
   ObservationCurrency,
@@ -64,7 +61,7 @@ type HostRead
   = HostReadText { text: String }
   | HostReadFailed { detail: NonEmptyStr }
 
-data host_read_carries_failure_not_emptiness_note: String = "A FAILED READ IS NOT AN EMPTY READ, and conflating them is the empty-observation narrow DESIGN names beside the absorbing fallback. `ss` printing nothing means no listener; `ss` not running, or being denied, also prints nothing on stdout. If both arrive as the same String the decoder answers 'nothing is listening' to a question it never got an answer to, and the caller then unlinks a socket or starts a unit on that basis. So the runner classifies exit status into these two arms before any text reaches a decoder, and every decode of HostReadFailed lands on an Unavailable/Undecided arm rather than on an absence."
+data host_read_carries_failure_not_emptiness_note: String = "A FAILED READ IS NOT AN EMPTY READ, and conflating them is the empty-observation narrow DESIGN names beside the absorbing fallback. find printing nothing means no process holds the socket; find not running, or being denied, also prints nothing on stdout. If both arrive as the same String the decoder answers 'nothing is listening' to a question it never got an answer to, and the caller then unlinks a socket or starts a unit on that basis. So the runner classifies exit status into these two arms before any text reaches a decoder, and every decode of HostReadFailed lands on an Unavailable/Undecided arm rather than on an absence."
 
 type EndpointListenerRead
   = ListenerOwnerPid { pid: Nat }
@@ -84,6 +81,7 @@ data path_kind_no_filesystem_path_note: String = "A TCP ENDPOINT HAS NO PATH, AN
 type BuildCacheEndpointReads {
   boot_id: HostRead
   path_kind: EndpointPathKind
+  listen_inode: EndpointInodeLookup
   listener: EndpointListenerRead
   owner_cgroup: HostRead
   owner_proc_stat: HostRead
@@ -100,11 +98,10 @@ type BuildCacheEndpointSurvey {
 
 // --- argv construction ------------------------------------------------------
 
-fn endpoint_listener_argv(instance: BuildCacheInstance) -> List<String> {
-  match instance.endpoint {
-    SccacheServerUnixSocket { path: p } => ss_unix_listening_at_path_argv(path: p)
-    SccacheServerTcpPort { port: n } => ss_tcp_listening_on_port_argv(port: to_string(n))
-  }
+data listener_chain_is_the_receipt_chain_note: String = "THIS IS THE CHAIN THE STEP-1 PLACEMENT RECEIPT EXECUTED BY HAND, and it is here rather than a tool that answers the same question in one call because the receipt and gunbc.build_cache_instance endpoint_ownership_note both specify it and both explicitly exclude ss, pgrep, head -1 and lsof. An earlier revision of this module DID use ss, on the stated ground that resolving a socket inode to its holder needs a glob over /proc and therefore a shell this lane may not emit. THAT GROUND WAS FALSE and was refuted by execution 2026-08-21, twice independently: find takes the whole walk as one argv with no shell (extdeps.shell shell.Find SocketInodeHolders), so the receipt's chain was reachable the whole time and the substitution bought nothing. The measurement that produced the error is worth as much as the one that corrected it -- the first probe used the bracketed pattern socket:[N], find read the brackets as a glob character class, it matched nothing, and 'found nothing' was accepted as confirmation that the walk could not be done. A zero with no nonzero beside it in the same run is not a measurement. It is recorded rather than quietly corrected because the false claim had already been written into three carrier notes and a PR body as a capability boundary, and a fabricated boundary is worse than a missing feature -- it tells the next person not to try.\n\nWHAT THE CORRECTION BUYS, concretely: the fd-holder step IS clause (3) of gunbc.build_cache_endpoint_path's stale-socket observer contract -- no open descriptor anywhere in /proc still resolves to the socket's inode. Under ss that clause was unreadable, so EndpointStaleSocket could never be produced and srv4's stranded socket refused forever. It is readable now, so the arm is produced and the admitted unlink is reachable."
+
+fn proc_net_unix_read_argv() -> List<String> {
+  ["cat", procfs_path_literal(p: ProcNetUnix) as String]
 }
 
 data boot_id_path: String = "/proc/sys/kernel/random/boot_id"
@@ -179,37 +176,116 @@ fn nat_from_digits(digits: String, whence: String) -> EndpointListenerRead {
   }
 }
 
-data listener_decode_keys_on_the_token_note: String = "THE PID IS FOUND BY THE `pid=` TOKEN, NOT BY A COLUMN OFFSET. ss renders address, state and queue columns at widths that vary with the socket, so counting fields would be a positional citation of a moving target -- the same decay DESIGN section 3 names for file:line citations, arrived at from the wire side. Two or more `pid=` tokens is EndpointOwnershipAmbiguous rather than a first-match pick: a `head -1` here is the fabricated plausible output, because the whole value of this observation is that the endpoint resolves to exactly one owner. A line that arrived with no `pid=` at all is Undecided and not None -- ss annotates ownership only when the caller may see it, so a missing process column is usually a privilege gap, and reading it as 'nobody is listening' would license an unlink against a live server."
+data proc_net_unix_columns_note: String = "/proc/net/unix IS COLUMN-STRUCTURED AND proc(5) FIXES THE COLUMNS, so this decode reads fields by their documented position rather than by scanning for a token: Num RefCount Protocol Flags Type St Inode Path, eight fields, with St the connection state and 01 meaning LISTEN. Reading a documented, versioned wire format positionally is not the positional citation DESIGN section 3 warns about -- that rule is about naming something the containment tree already names by where it sits, and a kernel-fixed column has no name to use instead. The PATH is matched exactly, never by prefix: /var/lib/ctrl/sccache-ci/server.sock and /var/lib/ctrl/sccache/server.sock are two different instances on the same host (gunbc.build_cache_instance ci_cache_instance and session_cache_instance), so a prefix match would classify one instance's server as the other's.\n\nA LINE WITH FEWER THAN EIGHT FIELDS IS UNNAMED, NOT UNMATCHED. An abstract-namespace or unnamed socket has no path column at all, which is ordinary and must not be read as a malformed table -- it simply is not our endpoint. What IS refused is a read that failed, because then the table was never seen."
 
-fn listener_of_ss_output(read: HostRead) -> EndpointListenerRead {
-  match read {
-    HostReadFailed { detail: d } => ListenerUndecided { detail: d }
-    HostReadText { text: t } => {
-      let parts = t.split(ss_process_column_pid_token as String)
-      let owners = parts.count() - 1
-      if owners == 0 {
-        if trim(t) == "" {
-          ListenerNone
-        } else {
-          ListenerUndecided {
-            detail: "ss listed a listening socket at this endpoint but annotated no owning process; the process column is normally withheld for want of privilege, so this is an unresolved owner rather than an absent one" as NonEmptyStr,
-          }
+data proc_net_unix_listen_state: String = "01"
+data proc_net_unix_path_field_index: Int = 7
+data proc_net_unix_state_field_index: Int = 5
+data proc_net_unix_inode_field_index: Int = 6
+
+type EndpointInodeLookup
+  = ListenInodeFound { inode: NonEmptyStr }
+  | NoListenEntryAtPath
+  | InodeLookupUndecided { detail: NonEmptyStr }
+
+fn proc_net_unix_fields(line: String) -> List<String> {
+  filter(trim(line).split(" "), w => w != "")
+}
+
+fn proc_net_unix_line_is_listen_at(line: String, path: NonEmptyStr) -> Bool {
+  let f = proc_net_unix_fields(line: line)
+  if f.count() < 8 {
+    false
+  } else {
+    match f.skip(proc_net_unix_path_field_index).first() {
+      Absent => false
+      Present { value: observed_path } =>
+        match f.skip(proc_net_unix_state_field_index).first() {
+          Absent => false
+          Present { value: state } =>
+            observed_path == (path as String) && state == proc_net_unix_listen_state
         }
-      } else if owners > 1 {
-        match checked_int_magnitude(a: owners) {
-          CheckedNatReady { value: n } => ListenerAmbiguous { candidate_count: n }
-          CheckedNatOverflow { cause: _ } =>
-            ListenerUndecided { detail: "ss reported an uncountable number of endpoint owners" as NonEmptyStr }
+    }
+  }
+}
+
+fn proc_net_unix_line_inode(line: String) -> String {
+  match proc_net_unix_fields(line: line).skip(proc_net_unix_inode_field_index).first() {
+    Absent => ""
+    Present { value: inode } => inode
+  }
+}
+
+fn listen_inode_at_path(read: HostRead, path: NonEmptyStr) -> EndpointInodeLookup {
+  match read {
+    HostReadFailed { detail: d } =>
+      InodeLookupUndecided {
+        detail: concat("/proc/net/unix could not be read, so whether anything is listening at this endpoint is unknown: ", d as String) as NonEmptyStr,
+      }
+    HostReadText { text: t } => {
+      let listening = filter(t.split("\n"), l => proc_net_unix_line_is_listen_at(line: l, path: path))
+      if listening.count() == 0 {
+        NoListenEntryAtPath
+      } else if listening.count() > 1 {
+        InodeLookupUndecided {
+          detail: "/proc/net/unix carries more than one LISTEN entry for this exact endpoint path, which the kernel does not produce for a single bound socket; refusing rather than picking one" as NonEmptyStr,
         }
       } else {
-        match parts.skip(1).first() {
-          Present { value: tail } =>
-            nat_from_digits(digits: leading_digits(trim(tail)), whence: "ss's pid= token")
+        match listening.first() {
           Absent =>
-            ListenerUndecided { detail: "ss output split on pid= yielded no tail to read a process id from" as NonEmptyStr }
+            InodeLookupUndecided { detail: "a counted LISTEN line could not be re-read" as NonEmptyStr }
+          Present { value: line } => {
+            let inode = leading_digits(proc_net_unix_line_inode(line: line))
+            if inode == "" {
+              InodeLookupUndecided {
+                detail: "the LISTEN entry for this endpoint carries no numeric inode" as NonEmptyStr,
+              }
+            } else {
+              ListenInodeFound { inode: inode as NonEmptyStr }
+            }
+          }
         }
       }
     }
+  }
+}
+
+data fd_holder_is_clause_three_note: String = "THE FD-HOLDER READ ANSWERS TWO QUESTIONS AT ONCE, AND THAT IS WHY IT IS ONE READ. Asked of a LISTENING socket's inode it names the endpoint owner -- the pid whose cgroup bounds every cache-miss compile on the host, which is the whole placement axis. Asked of a socket that has NO listen entry it answers clause (3) of the stale-socket contract: whether any process still holds the socket open without listening on it. An empty result is therefore load-bearing evidence in one direction and a refusal in the other, which is exactly why the read's FAILURE must be distinguishable from its EMPTINESS -- see host_read_carries_failure_not_emptiness_note. find exits 0 with empty stdout when nothing matches, and the runner classifies a nonzero exit as HostReadFailed, so the two states arrive here as different values rather than as one empty string."
+
+fn fd_holder_of_find_output(read: HostRead) -> EndpointListenerRead {
+  match read {
+    HostReadFailed { detail: d } => ListenerUndecided { detail: d }
+    HostReadText { text: t } => {
+      let holders = filter(t.split("\n"), l => trim(l) != "")
+      if holders.count() == 0 {
+        ListenerNone
+      } else if holders.count() > 1 {
+        match checked_int_magnitude(a: holders.count()) {
+          CheckedNatReady { value: n } => ListenerAmbiguous { candidate_count: n }
+          CheckedNatOverflow { cause: _ } =>
+            ListenerUndecided { detail: "an uncountable number of processes hold this endpoint's socket open" as NonEmptyStr }
+        }
+      } else {
+        match holders.first() {
+          Absent =>
+            ListenerUndecided { detail: "a counted fd-holder line could not be re-read" as NonEmptyStr }
+          Present { value: line } => pid_of_proc_fd_path(fd_path: trim(line))
+        }
+      }
+    }
+  }
+}
+
+data pid_is_the_second_segment_note: String = "find prints the matching link's PATH -- /proc/<pid>/fd/<n> -- so the pid is the second segment, read by splitting on / rather than by a character offset. Splitting is total: a line that does not have the shape yields no digits and refuses, rather than producing a pid from whatever happened to be there."
+
+fn pid_of_proc_fd_path(fd_path: String) -> EndpointListenerRead {
+  match fd_path.split("/").skip(2).first() {
+    Absent =>
+      ListenerUndecided {
+        detail: concat("a /proc fd link path had no pid segment: ", fd_path) as NonEmptyStr,
+      }
+    Present { value: seg } =>
+      nat_from_digits(digits: leading_digits(seg), whence: "the pid segment of the /proc fd link path")
   }
 }
 
@@ -489,9 +565,49 @@ fn endpoint_owner_observation(
   }
 }
 
-data path_and_owner_are_joined_not_duplicated_note: String = "THE PATH AXIS READS THE SAME LISTENER FACT THE OWNER AXIS DOES, AND THAT IS A JOIN RATHER THAN A SECOND OPINION. gunbc.build_cache_endpoint_path's authority note fixes why the axes are separate: EndpointStaleSocket and EndpointPathAbsent both project to EndpointAbsent on the ownership axis, so ownership cannot carry the distinction actuation needs. What they must never do is disagree about whether a listener exists, which is exactly what would happen if each ran its own probe. So there is ONE listener read and both axes are derived from it -- the owner axis asks who, the path axis asks what is at the path -- and a host where the socket file is present with no listener yields EndpointStaleSocket on one axis and EndpointAbsent on the other by construction rather than by luck.\n\nTHE OBSERVER CONTRACT FOR EndpointStaleSocket IS SATISFIED HERE FOR THREE OF ITS FOUR CLAUSES AND THE FOURTH IS DECLARED. Clause (1), stat says socket: read. Clause (2), no listening entry at the path: read, and by ss's positive endpoint query rather than a name scan. Clause (4), one boot id across the pass: read, and an unreadable one degrades the whole survey to ObservationCurrencyUnknown, which the unlink admission refuses. Clause (3) -- that no /proc/*/fd entry resolves to the socket's inode, catching a process holding it open without listening -- is NOT read, because resolving it needs a glob over /proc, i.e. a shell, i.e. the emitted-shell surface this lane may not grow. The consequence is bounded and it is a refusal rather than a widen: this producer never returns EndpointStaleSocket, it returns EndpointPathObservationUnavailable naming the unread clause, so srv4's stranded socket stays refused-and-located instead of being unlinked on three quarters of the evidence. DISSOLVE-ON: a typed fd-inode operation (the same #5828 typed-argv work this lane's shell dissolution waits on) makes clause (3) readable, at which point this arm returns EndpointStaleSocket and the unlink becomes reachable."
+data path_and_owner_are_joined_not_duplicated_note: String = "THE PATH AXIS AND THE OWNER AXIS ARE DERIVED FROM ONE PAIR OF READS, AND THAT IS A JOIN RATHER THAN A SECOND OPINION. gunbc.build_cache_endpoint_path's authority note fixes why the axes are separate: EndpointStaleSocket and EndpointPathAbsent both project to EndpointAbsent on the ownership axis, so ownership cannot carry the distinction actuation needs. What they must never do is disagree about whether a listener exists, which is what would happen if each ran its own probe. So /proc/net/unix is read once and the fd-holder walk is run once, and both axes are derived from those -- the owner axis asks who, the path axis asks what is at the path.\n\nALL FOUR CLAUSES OF THE EndpointStaleSocket OBSERVER CONTRACT ARE READ. Clause (1), stat reports a socket. Clause (2), no LISTEN entry for the exact path in /proc/net/unix. Clause (3), no /proc/*/fd link resolves to the socket's inode -- the fd-holder walk returning empty, which is why its empty result had to be distinguishable from its failure. Clause (4), one boot id across the pass; an unreadable boot id degrades the survey to ObservationCurrencyUnknown, which the unlink admission refuses. So this producer DOES return EndpointStaleSocket, and srv4's stranded socket becomes an admitted unlink rather than a permanent refusal.\n\nAn earlier revision of this note declared clause (3) unreadable and called that a bounded residue. It was not bounded and it was not a residue -- it was a false capability claim, refuted by executing the find walk (listener_chain_is_the_receipt_chain_note carries the measurement). The correction is recorded here rather than the sentence quietly deleted, because that claim shipped in a PR body and two other carriers as a reason not to try."
 
-data stale_socket_unread_clause_detail: NonEmptyStr = "the endpoint path holds a socket that nothing is listening on, which is the stale-socket shape; but this observer cannot establish the third clause of the stale-socket contract -- that no open file descriptor anywhere in /proc still resolves to the socket's inode -- because resolving it requires a glob over /proc that this lane may not emit as shell. Refusing rather than unlinking on partial evidence: a process holding the socket open without listening is exactly the case the unread clause catches, and unlinking under it severs a live server"
+data socket_held_open_without_listening_detail: NonEmptyStr = "the endpoint path holds a socket with no LISTEN entry, but a process still holds an open descriptor on its inode -- so it is NOT stale. This is exactly the state clause (3) of the stale-socket contract exists to catch: unlinking here severs a live process's socket and leaves it running and unreachable. Refusing, with the holder observable in the same walk"
+
+fn stale_or_held(reads: BuildCacheEndpointReads) -> EndpointPathState {
+  match reads.listen_inode {
+    InodeLookupUndecided { detail: d } =>
+      EndpointPathObservationUnavailable { reason: EndpointPathUnreadable { detail: d } }
+    ListenInodeFound { inode: _ } =>
+      EndpointPathObservationUnavailable {
+        reason: EndpointPathUnreadable {
+          detail: "/proc/net/unix reports a LISTEN entry for this endpoint while the fd walk resolved no owner for its inode; the two reads disagree, so the path state is unread rather than stale" as NonEmptyStr,
+        },
+      }
+    NoListenEntryAtPath =>
+      match reads.listener {
+        ListenerNone =>
+          EndpointStaleSocket {
+            detail: "a socket file with no LISTEN entry and no process holding its inode open; all four clauses of the stale-socket observer contract are established, so a bind here would fail with address-in-use until it is unlinked" as NonEmptyStr,
+          }
+        ListenerOwnerPid { pid: _ } =>
+          EndpointPathConflict { detail: socket_held_open_without_listening_detail }
+        ListenerAmbiguous { candidate_count: _ } =>
+          EndpointPathConflict { detail: socket_held_open_without_listening_detail }
+        ListenerUndecided { detail: d } =>
+          EndpointPathObservationUnavailable { reason: EndpointPathUnreadable { detail: d } }
+      }
+  }
+}
+
+data holder_is_not_listener_note: String = "AN OBSERVED HOLDER IS NOT A LISTENER, AND THIS ARM IS WHERE THAT WAS CONFLATED. The owner observation is built from the fd-holder walk -- some process has an open descriptor on the socket's inode -- while LISTENING is a separate read, the St==01 row for this exact path in /proc/net/unix. An earlier revision of endpoint_path_state answered EndpointListening from the owner observation alone, so a socket held open by a process that is NOT accepting connections was reported as a healthy listening endpoint. Both states refuse, so nothing was destroyed by it, but they refuse for DIFFERENT reasons and only one of them is true: EnsureEndpointOccupied says 'a live server is serving here, leave it alone', which is the wrong sentence to put in front of an operator whose cache is unreachable precisely because nothing is serving.\n\nIt is the state-space conflation DESIGN names, on the two reads that must stay separate for the whole stale-socket contract to mean anything -- clause (2) is 'no LISTEN entry' and clause (3) is 'no fd holder', and a decoder that lets either one answer for the other has collapsed a four-clause contract into a two-clause one. It was found by a witness whose fixture pairs a no-listen /proc/net/unix text with a non-empty holder walk, which is exactly the combination neither clause alone can distinguish."
+
+fn socket_owner_path_state(reads: BuildCacheEndpointReads, owner: ProcessIdentity) -> EndpointPathState {
+  match reads.listen_inode {
+    ListenInodeFound { inode: _ } => EndpointListening { owner: owner }
+    NoListenEntryAtPath =>
+      EndpointPathConflict {
+        detail: socket_held_open_without_listening_detail,
+      }
+    InodeLookupUndecided { detail: d } =>
+      EndpointPathObservationUnavailable { reason: EndpointPathUnreadable { detail: d } }
+  }
+}
 
 fn endpoint_path_state(
   instance: BuildCacheInstance,
@@ -549,11 +665,8 @@ fn endpoint_path_state(
           instance: _, owner: o, executable: _, principal: _,
           owner_context: _, memory_limits: _, memory_events: _,
         } =>
-          EndpointListening { owner: o }
-        EndpointAbsent { instance: _ } =>
-          EndpointPathObservationUnavailable {
-            reason: EndpointPathUnreadable { detail: stale_socket_unread_clause_detail },
-          }
+          socket_owner_path_state(reads: reads, owner: o)
+        EndpointAbsent { instance: _ } => stale_or_held(reads: reads)
         EndpointOwnershipAmbiguous { instance: _, candidate_count: _ } =>
           EndpointPathObservationUnavailable {
             reason: EndpointPathUnreadable {
@@ -584,6 +697,7 @@ fn unreachable_host_reads(detail: NonEmptyStr) -> BuildCacheEndpointReads {
   BuildCacheEndpointReads {
     boot_id: HostReadFailed { detail: detail },
     path_kind: PathKindUnreadable { detail: detail },
+    listen_inode: InodeLookupUndecided { detail: detail },
     listener: ListenerUndecided { detail: detail },
     owner_cgroup: HostReadFailed { detail: detail },
     owner_proc_stat: HostReadFailed { detail: detail },

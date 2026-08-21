@@ -209,13 +209,18 @@ import gunbc.build_cache_endpoint_observe {
   ListenerUndecided,
   boot_id_read_argv,
   endpoint_path_kind_argv,
-  endpoint_listener_argv,
+  proc_net_unix_read_argv,
+  EndpointInodeLookup,
+  ListenInodeFound,
+  NoListenEntryAtPath,
+  InodeLookupUndecided,
+  listen_inode_at_path,
+  fd_holder_of_find_output,
   owner_cgroup_argv,
   owner_proc_stat_argv,
   owner_principal_argv,
   owner_executable_argv,
   path_kind_of_stat_read,
-  listener_of_ss_output,
   survey_build_cache_endpoint,
 }
 import gunbc.build_cache_endpoint_path {
@@ -3558,42 +3563,128 @@ data unread_owner_facts_are_failures_not_blanks_note: String = "WHEN NO OWNER RE
 
 data owner_facts_unread_detail: NonEmptyStr = "no single listening owner resolved at the endpoint, so the owner's cgroup, start time, principal and executable were not read"
 
+data tcp_endpoint_observation_is_unmodeled_note: String = "A TCP-ENDPOINT INSTANCE REFUSES RATHER THAN BEING OBSERVED THROUGH THE UNIX CHAIN. /proc/net/unix answers for unix sockets only; the TCP equivalent is /proc/net/tcp with its own hex-encoded address columns and its own decode, which nothing in this repository has modeled. No BuildCacheInstance in the tree carries a TCP endpoint today -- both ci_cache_instance and session_cache_instance are unix sockets -- so this is an unbuilt arm rather than a live gap, and it is a POSITIVE typed refusal so that the day one is authored it stops the line instead of being silently classified through a table that cannot see it. An earlier revision reached ss for both shapes, which appeared to support TCP and was never exercised against one; an untested arm that answers is worse than one that refuses."
+
+fn build_cache_listen_inode_read(
+  instance: BuildCacheInstance,
+  transport: HostEffectTransport,
+) -> EndpointInodeLookup {
+  match instance.endpoint {
+    SccacheServerTcpPort { port: _ } =>
+      InodeLookupUndecided {
+        detail: "this instance's endpoint is a TCP port; endpoint ownership for TCP would be read from /proc/net/tcp, which this repository has not modeled. Refusing rather than reporting an unobserved placement." as NonEmptyStr,
+      }
+    SccacheServerUnixSocket { path: p } =>
+      listen_inode_at_path(
+        read: build_cache_host_read(argv: proc_net_unix_read_argv(), transport: transport),
+        path: p,
+      )
+  }
+}
+
+fn build_cache_fd_holder_read(
+  listen_inode: EndpointInodeLookup,
+  instance: BuildCacheInstance,
+  transport: HostEffectTransport,
+) -> EndpointListenerRead {
+  match listen_inode {
+    InodeLookupUndecided { detail: d } => ListenerUndecided { detail: d }
+    ListenInodeFound { inode: n } =>
+      fd_holder_of_find_output(read: build_cache_socket_holder_read(inode: n, transport: transport))
+    NoListenEntryAtPath =>
+      match instance.endpoint {
+        SccacheServerTcpPort { port: _ } => ListenerNone
+        SccacheServerUnixSocket { path: p } =>
+          match build_cache_socket_inode_at_path(path: p, transport: transport) {
+            Absent => ListenerNone
+            Present { value: n } =>
+              fd_holder_of_find_output(read: build_cache_socket_holder_read(inode: n, transport: transport))
+          }
+      }
+  }
+}
+
+data holder_walk_runs_on_the_unlistened_socket_too_note: String = "WHEN THERE IS NO LISTEN ENTRY THE WALK STILL RUNS, against the inode read off the FILE rather than off /proc/net/unix, and that is the whole of clause (3). A socket with no LISTEN entry is either stale (nothing holds it) or held open by a process that is not listening (unlinking severs it). Those two states are indistinguishable without asking whether any descriptor resolves to the file's inode, so skipping the walk here because 'nothing is listening' would collapse them -- and collapse them in the direction that unlinks a live process's socket."
+
+fn build_cache_socket_inode_at_path(path: NonEmptyStr, transport: HostEffectTransport) -> NonEmptyStr? {
+  match build_cache_host_read_observed(argv: ["stat", "-c", "%i", "--", path as String], transport: transport) {
+    BuildCacheReadRefused { reason: _ } => none
+    BuildCacheReadRan { observed: o } =>
+      if o.success == true {
+        match trim(o.stdout) {
+          "" => none
+          inode => Present { value: inode as NonEmptyStr }
+        }
+      } else {
+        none
+      }
+  }
+}
+
+fn build_cache_socket_holder_read(inode: NonEmptyStr, transport: HostEffectTransport) -> HostRead {
+  match transport {
+    LocalShell => {
+      let r = shell.Find.SocketInodeHolders(inode: inode)
+      if r.success {
+        HostReadText { text: r.stdout }
+      } else {
+        HostReadFailed {
+          detail: concat("the /proc fd walk for this endpoint's socket inode failed: ", r.stderr) as NonEmptyStr,
+        }
+      }
+    }
+    SshShell { ssh_host: _ } => build_cache_host_read(argv: socket_inode_holder_argv(inode: inode), transport: transport)
+    FleetSsh { target: _, context: _ } => build_cache_host_read(argv: socket_inode_holder_argv(inode: inode), transport: transport)
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      HostReadFailed {
+        detail: "EnsureBuildCacheInstance cannot walk /proc over EmitArtifactThenThinRun; typed mismatch." as NonEmptyStr,
+      }
+  }
+}
+
+fn socket_inode_holder_argv(inode: NonEmptyStr) -> List<String> {
+  ["find", "/proc", "-maxdepth", "3", "-path", "*/fd/*", "-lname", concat("socket:?", concat(inode as String, "?"))]
+}
+
 fn build_cache_endpoint_reads(
   instance: BuildCacheInstance,
   transport: HostEffectTransport,
 ) -> BuildCacheEndpointReads {
   let boot_id = build_cache_host_read(argv: boot_id_read_argv(), transport: transport)
   let path_kind = build_cache_path_kind_read(instance: instance, transport: transport)
-  let listener = listener_of_ss_output(
-    read: build_cache_host_read(argv: endpoint_listener_argv(instance: instance), transport: transport),
-  )
+  let listen_inode = build_cache_listen_inode_read(instance: instance, transport: transport)
+  let listener = build_cache_fd_holder_read(listen_inode: listen_inode, instance: instance, transport: transport)
   match listener {
     ListenerOwnerPid { pid: pid } =>
       BuildCacheEndpointReads {
         boot_id: boot_id,
         path_kind: path_kind,
+        listen_inode: listen_inode,
         listener: listener,
         owner_cgroup: build_cache_host_read(argv: owner_cgroup_argv(pid: pid), transport: transport),
         owner_proc_stat: build_cache_host_read(argv: owner_proc_stat_argv(pid: pid), transport: transport),
         owner_principal: build_cache_host_read(argv: owner_principal_argv(pid: pid), transport: transport),
         owner_executable: build_cache_host_read(argv: owner_executable_argv(pid: pid), transport: transport),
       }
-    ListenerNone => build_cache_reads_without_owner(boot_id: boot_id, path_kind: path_kind, listener: listener)
+    ListenerNone =>
+      build_cache_reads_without_owner(boot_id: boot_id, path_kind: path_kind, listen_inode: listen_inode, listener: listener)
     ListenerAmbiguous { candidate_count: _ } =>
-      build_cache_reads_without_owner(boot_id: boot_id, path_kind: path_kind, listener: listener)
+      build_cache_reads_without_owner(boot_id: boot_id, path_kind: path_kind, listen_inode: listen_inode, listener: listener)
     ListenerUndecided { detail: _ } =>
-      build_cache_reads_without_owner(boot_id: boot_id, path_kind: path_kind, listener: listener)
+      build_cache_reads_without_owner(boot_id: boot_id, path_kind: path_kind, listen_inode: listen_inode, listener: listener)
   }
 }
 
 fn build_cache_reads_without_owner(
   boot_id: HostRead,
   path_kind: EndpointPathKind,
+  listen_inode: EndpointInodeLookup,
   listener: EndpointListenerRead,
 ) -> BuildCacheEndpointReads {
   BuildCacheEndpointReads {
     boot_id: boot_id,
     path_kind: path_kind,
+    listen_inode: listen_inode,
     listener: listener,
     owner_cgroup: HostReadFailed { detail: owner_facts_unread_detail },
     owner_proc_stat: HostReadFailed { detail: owner_facts_unread_detail },
