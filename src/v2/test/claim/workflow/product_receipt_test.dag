@@ -48,8 +48,8 @@ fn chained_observation(
   BoundaryObservation {
     boundary: boundary,
     standing: BoundaryCompleted,
-    consumed: product_artifact_identity(value: consumed_value),
-    produced: product_artifact_identity(value: produced_value)
+    consumed: product_artifact_identity(value: consumed_value, file_count: 1),
+    produced: product_artifact_identity(value: produced_value, file_count: 1)
   }
 }
 
@@ -61,7 +61,7 @@ fn green_receipt() -> ProductReceipt {
         boundary: HostDerivesManifest,
         standing: BoundaryCompleted,
         consumed: ArtifactIdentityAbsent { cause: BoundaryNotReached },
-        produced: product_artifact_identity(value: a1)
+        produced: product_artifact_identity(value: a1, file_count: 1)
       },
       chained_observation(boundary: ManifestPopulationAdmitted, consumed_value: a1, produced_value: a2),
       chained_observation(boundary: RefsHashVerified, consumed_value: a2, produced_value: a3),
@@ -89,7 +89,7 @@ fn independently_green_components_receipt() -> ProductReceipt {
         boundary: HostDerivesManifest,
         standing: BoundaryCompleted,
         consumed: ArtifactIdentityAbsent { cause: BoundaryNotReached },
-        produced: product_artifact_identity(value: a1)
+        produced: product_artifact_identity(value: a1, file_count: 1)
       },
       chained_observation(boundary: ManifestPopulationAdmitted, consumed_value: a1, produced_value: a2),
       chained_observation(boundary: RefsHashVerified, consumed_value: a2, produced_value: a3),
@@ -121,7 +121,7 @@ fn refused_tail_receipt() -> ProductReceipt {
         boundary: HostDerivesManifest,
         standing: BoundaryCompleted,
         consumed: ArtifactIdentityAbsent { cause: BoundaryNotReached },
-        produced: product_artifact_identity(value: a1)
+        produced: product_artifact_identity(value: a1, file_count: 1)
       },
       chained_observation(boundary: ManifestPopulationAdmitted, consumed_value: a1, produced_value: a2),
       chained_observation(boundary: RefsHashVerified, consumed_value: a2, produced_value: a3),
@@ -131,7 +131,7 @@ fn refused_tail_receipt() -> ProductReceipt {
       BoundaryObservation {
         boundary: CargoBuild,
         standing: BoundaryRefused { cause: CargoBuildFailed },
-        consumed: product_artifact_identity(value: a6),
+        consumed: product_artifact_identity(value: a6, file_count: 1),
         produced: ArtifactIdentityAbsent { cause: BoundaryNotReached }
       }
     ]
@@ -156,7 +156,7 @@ fn six_boundary_receipt() -> ProductReceipt {
         boundary: HostDerivesManifest,
         standing: BoundaryCompleted,
         consumed: ArtifactIdentityAbsent { cause: BoundaryNotReached },
-        produced: product_artifact_identity(value: a1)
+        produced: product_artifact_identity(value: a1, file_count: 1)
       },
       chained_observation(boundary: ManifestPopulationAdmitted, consumed_value: a1, produced_value: a2),
       chained_observation(boundary: RefsHashVerified, consumed_value: a2, produced_value: a3),
@@ -191,5 +191,39 @@ test fn an_unexercised_boundary_is_neither_completed_nor_green() -> Bool {
     ]
   }
   !product_receipt_every_boundary_completed(receipt: receipt)
+    && !product_receipt_green(receipt: receipt)
+}
+
+// SAME BYTES, DIFFERENT SHAPE, IS NOT THE SAME ARTIFACT. This is the guard
+// against the reading that costs the most: this chain carries the closure-emit
+// driver's own single-medium emission, while the board everyone quotes
+// measures a many-file candidate from a second producer over the same subject.
+// If carriage compared digests alone, a receipt could report a hand-off
+// between two producers' artifacts as intact.
+test fn identity_carriage_refuses_a_matching_digest_carried_at_a_different_shape() -> Bool {
+  let receipt = ProductReceipt {
+    subject: fixture_subject,
+    observations: [
+      BoundaryObservation {
+        boundary: HostDerivesManifest,
+        standing: BoundaryCompleted,
+        consumed: ArtifactIdentityAbsent { cause: BoundaryNotReached },
+        produced: product_artifact_identity(value: a1, file_count: 1)
+      },
+      BoundaryObservation {
+        boundary: ManifestPopulationAdmitted,
+        standing: BoundaryCompleted,
+        consumed: product_artifact_identity(value: a1, file_count: 177),
+        produced: product_artifact_identity(value: a2, file_count: 1)
+      },
+      chained_observation(boundary: RefsHashVerified, consumed_value: a2, produced_value: a3),
+      chained_observation(boundary: ClosureCandidateEmitted, consumed_value: a3, produced_value: a4),
+      chained_observation(boundary: SeedLinkedAssembly, consumed_value: a4, produced_value: a5),
+      chained_observation(boundary: AuthorityCargoManifest, consumed_value: a5, produced_value: a6),
+      chained_observation(boundary: CargoBuild, consumed_value: a6, produced_value: a7)
+    ]
+  }
+  product_receipt_every_boundary_completed(receipt: receipt)
+    && !product_receipt_identity_chain_intact(receipt: receipt)
     && !product_receipt_green(receipt: receipt)
 }

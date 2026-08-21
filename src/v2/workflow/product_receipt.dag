@@ -68,8 +68,16 @@ type ArtifactIdentityAbsentCause
   = BoundaryNotReached
   | ProducerReportedNoArtifact
 
+// The identity carries a FILE COUNT beside the digest, and that is a field
+// rather than a caveat in a probe document. Two producers can hand the same
+// boundary a candidate for the same subject -- this receipt's chain carries
+// the closure-emit driver's own single-medium emission, while the rustc board
+// everyone quotes measures a many-file candidate from a second producer. The
+// moment a receipt goes green, a reader will difference it against that
+// board. A number without its producer's shape cannot be safely differenced,
+// and the document holding the caveat does not travel with the number.
 type ArtifactIdentity
-  = ArtifactIdentityKnown { digest: Fnv1a64Structural }
+  = ArtifactIdentityKnown { digest: Fnv1a64Structural, file_count: Int }
   | ArtifactIdentityAbsent { cause: ArtifactIdentityAbsentCause }
 
 type BoundaryObservation {
@@ -142,8 +150,14 @@ fn boundary_standing_label(standing: BoundaryStanding) -> String {
 
 fn artifact_identity_label(identity: ArtifactIdentity) -> String {
   match identity {
-    ArtifactIdentityKnown { digest: digest } =>
-      concat("fnv1a64:", digest.digest)
+    ArtifactIdentityKnown { digest: digest, file_count: file_count } =>
+      concat(
+        "fnv1a64:",
+        concat(
+          digest.digest,
+          concat(" over ", concat(to_string(file_count), " file(s)"))
+        )
+      )
     ArtifactIdentityAbsent { cause: cause } =>
       match cause {
         BoundaryNotReached => "<boundary not reached>"
@@ -152,11 +166,14 @@ fn artifact_identity_label(identity: ArtifactIdentity) -> String {
   }
 }
 
-fn product_artifact_identity(value: String) -> ArtifactIdentity {
+fn product_artifact_identity(value: String, file_count: Int) -> ArtifactIdentity {
   if value == "" {
     ArtifactIdentityAbsent { cause: ProducerReportedNoArtifact }
   } else {
-    ArtifactIdentityKnown { digest: content_hash_atom(value: value as NonEmptyStr) }
+    ArtifactIdentityKnown {
+      digest: content_hash_atom(value: value as NonEmptyStr),
+      file_count: file_count
+    }
   }
 }
 
@@ -171,11 +188,12 @@ fn boundary_is_completed(observation: BoundaryObservation) -> Bool {
 fn artifact_identity_carried(produced: ArtifactIdentity, consumed: ArtifactIdentity) -> Bool {
   match produced {
     ArtifactIdentityAbsent { cause: _ } => false
-    ArtifactIdentityKnown { digest: left } =>
+    ArtifactIdentityKnown { digest: left, file_count: left_files } =>
       match consumed {
         ArtifactIdentityAbsent { cause: _ } => false
-        ArtifactIdentityKnown { digest: right } =>
+        ArtifactIdentityKnown { digest: right, file_count: right_files } =>
           content_hash_eq_structural(left: left, right: right)
+            && (left_files == right_files)
       }
   }
 }

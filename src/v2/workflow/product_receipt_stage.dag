@@ -100,9 +100,10 @@ data product_receipt_stage_manifest_rel: String = "/manifest/host_source_root_in
 data product_receipt_stage_candidate_rel: String = "/candidate"
 data product_receipt_stage_receipt_rel: String = "/receipt.txt"
 
-fn stage_identity_from_hex(hex: String) -> ArtifactIdentity {
+fn stage_identity_from_hex(hex: String, file_count: Int) -> ArtifactIdentity {
   match fnv1a64_structural_hex_digest(hex: hex) {
-    Present { value: digest } => ArtifactIdentityKnown { digest: digest }
+    Present { value: digest } =>
+      ArtifactIdentityKnown { digest: digest, file_count: file_count }
     Absent => ArtifactIdentityAbsent { cause: ProducerReportedNoArtifact }
   }
 }
@@ -159,7 +160,10 @@ fn stage_cause_belongs_to_read(cause: BoundaryRefusalCause) -> Bool {
 fn stage_population_digest_identity() -> ArtifactIdentity {
   match discovered_source_refs_digest_for_refs(refs: host_source_root_closure_refs) {
     DiscoveredSourceRefsDigestFromList { digest: digest } =>
-      ArtifactIdentityKnown { digest: digest }
+      ArtifactIdentityKnown {
+        digest: digest,
+        file_count: host_source_root_ingest_coverage_receipt.ingest_read_count
+      }
     DiscoveredSourceRefsDigestUnavailable { cause: _ } =>
       ArtifactIdentityAbsent { cause: ProducerReportedNoArtifact }
   }
@@ -259,7 +263,7 @@ func product_receipt_candidate_materialize(
         observation: stage_completed(
           boundary: ClosureCandidateEmitted,
           consumed: population_digest,
-          produced: product_artifact_identity(value: emitted_source)
+          produced: product_artifact_identity(value: emitted_source, file_count: 1)
         ),
         emitted_source: emitted_source
       }
@@ -302,7 +306,7 @@ func product_receipt_cargo_tail(
     content: cargo_manifest_text
   )
   if written.success {
-    let manifest_identity = product_artifact_identity(value: cargo_manifest_text)
+    let manifest_identity = product_artifact_identity(value: cargo_manifest_text, file_count: 1)
     let build = cargo.Build.BuildManifest(
       workdir: candidate_dir,
       manifest_path: concat(candidate_dir, "/Cargo.toml"),
@@ -320,7 +324,7 @@ func product_receipt_cargo_tail(
         stage_completed(
           boundary: CargoBuild,
           consumed: manifest_identity,
-          produced: product_artifact_identity(value: "cargo-completed-with-zero-errors")
+          produced: product_artifact_identity(value: "cargo-completed-with-zero-errors", file_count: 1)
         )
       } else {
         stage_refused(
@@ -353,7 +357,7 @@ func product_receipt_tail(
   if !b4_ok {
     product_receipt_tail_not_exercised()
   } else {
-    let candidate_identity = product_artifact_identity(value: emitted_source)
+    let candidate_identity = product_artifact_identity(value: emitted_source, file_count: 1)
     let assemble = gunbc.WitnessBin.Run(
       workdir: root,
       bin_path: concat(root, "/target/release/cssl_assemble"),
@@ -365,10 +369,18 @@ func product_receipt_tail(
       ]
     )
     let assembled_read = Filesystem.Read(path: concat(candidate_dir, "/src/lib.rs"))
+    let assembled_files = shell.Find.FilesByNameSorted(
+      root: concat(candidate_dir, "/src"),
+      name_glob: "*.rs"
+    )
+    let assembled_file_count = length(xs: assembled_files.stdout.split("\n")) - 1
     if assemble.success
       && string_contains(s: assemble.stdout, pattern: "CSSL_ASSEMBLE: PASS")
       && assembled_read.success {
-      let assembled_identity = product_artifact_identity(value: assembled_read.content)
+      let assembled_identity = product_artifact_identity(
+        value: assembled_read.content,
+        file_count: assembled_file_count
+      )
       product_receipt_cargo_tail(
         root: root,
         candidate_dir: candidate_dir,
@@ -398,11 +410,11 @@ func run_product_receipt_stage(txn: String, manifest_identity: String, entry: St
   let candidate_dir = concat(txn, product_receipt_stage_candidate_rel)
   let root = git.Inspect.Toplevel()
 
-  let b1_produced = stage_identity_from_hex(hex: manifest_identity)
+  let b1_produced = stage_identity_from_hex(hex: manifest_identity, file_count: 1)
 
   let manifest_read = Filesystem.Read(path: manifest_path)
   let b2_consumed = if manifest_read.success {
-    product_artifact_identity(value: manifest_read.content)
+    product_artifact_identity(value: manifest_read.content, file_count: 1)
   } else {
     ArtifactIdentityAbsent { cause: ProducerReportedNoArtifact }
   }
