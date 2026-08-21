@@ -19927,13 +19927,12 @@ enum GeneratedArtifactPathBody {
     NotGenerated,
 }
 
-/// Ask `gunbc.generated_artifact_emit` for the body it generates at `repo_rel_path`.
-///
-/// THIS IS NOT A SECOND PRODUCER. `generated_artifact_body_for_path` is a projection over the
-/// same three authorities `main_wet` uses -- the committed-artifact roster, `artifact_path`, and
-/// the single `artifact_generate` dispatch -- asked by path instead of by artifact. Reaching past
-/// it to a per-artifact emitter would have been the forked dispatch DESIGN §3 forbids.
 /// Ask the already-resolved generated-artifact authority for the body it generates at a path.
+///
+/// THIS IS NOT A SECOND PRODUCER. The `.dag` side is a projection over the same three authorities
+/// `main_wet` uses -- the committed-artifact roster, `artifact_path`, and the single
+/// `artifact_generate` dispatch -- asked by path instead of by artifact. Reaching past it to a
+/// per-artifact emitter would have been the forked dispatch DESIGN §3 forbids.
 ///
 /// COST SHAPE, and it is why this takes a CONTEXT rather than `source_roots`. The first draft
 /// resolved `generated_artifact_emit`'s whole closure inside the per-module loop, making the unit
