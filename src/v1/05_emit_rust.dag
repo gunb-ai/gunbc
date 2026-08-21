@@ -7986,6 +7986,38 @@ fn emit_typed_function_value_call(func: String, args: List<Node>, registry: Map<
   concat(emit_ident(name: func, target: Rust), "(", arg_strs |> join(separator: ", "), ")")
 }
 
+// A lambda ARGUMENT is emitted in the call's scope extended by that lambda's OWN parameters, and by
+// nothing else. Those parameter nodes already carry the callee's DECLARED parameter types: inference
+// passes each formal as the argument's `expected` (v1.compiler.infer infer_expr, ExprCall arm) and the
+// ExprLambda arm binds the lambda's parameters from `exp.params` and writes the resolved types back
+// onto the parameter nodes. So the declaration is consulted once, where it resolves, and the emitter
+// reads the residue rather than re-deriving it from a second authority.
+//
+// WHAT THIS REPLACES: the binding used to be gated on the callee's BARE NAME being one of `map`,
+// `filter`, `flat_map` or `fold`. A bare-name roster cannot discriminate a call at all -- `fold_list`
+// is not `fold`, and `is_prefix_of` is on no list -- so every other higher-order call emitted its
+// closure body against a scope in which the closure's own parameters did not exist. Widening the
+// roster to a fifth and sixth name is the same defect with a longer table (DESIGN section 5,
+// construction over validation; the type side's structural_declaration_gate_note records the same
+// root reached from the other direction). The predicate is now the argument's own shape, which is
+// decidable from the node, so no roster exists to fall out of date.
+//
+// SCOPE, deliberately per-argument rather than per-call: the previous form extended ONE scope for the
+// whole call, so the last lambda's parameter names were also visible while emitting its sibling
+// arguments and the callee's filled default expressions -- positions where those names are not bound.
+// Binding at the argument makes that leak unrepresentable instead of merely unused.
+fn lambda_argument_scope(arg: Node, scope: InferScope) -> InferScope {
+  match arg.expr_data {
+    ExprLambda =>
+      lambda_scope_from_children(
+        scope: scope,
+        params: lambda_param_names_at(texpr: arg, source_indices: scope.type_env.source_indices),
+        param_nodes: arg.children |> skip(1)
+      )
+    _ => scope
+  }
+}
+
 fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Bool, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   if callee_is_function_value {
     return emit_typed_function_value_call(func: func, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
@@ -8064,32 +8096,20 @@ fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Boo
     }
     return disc_result
   }
-  let collection_scope = if func == "map" || func == "filter" || func == "flat_map" || func == "fold" {
-    let call_args = order_typed_call_args(args: args, func: func, scope: scope)
-    match call_args |> last {
-      Present { value: a } =>
-        match arg_value(n: a).expr_data {
-          ExprLambda =>
-            let lps = lambda_param_names_at(texpr: arg_value(n: a), source_indices: scope.type_env.source_indices)
-            lambda_scope_from_children(scope: scope, params: lps, param_nodes: arg_value(n: a).children |> skip(1))
-          _ => scope
-        }
-      Absent => scope
-    }
-  } else { scope }
-  let ordered_args = order_typed_call_args(args: args, func: func, scope: collection_scope)
+  let ordered_args = order_typed_call_args(args: args, func: func, scope: scope)
   let callee = lookup_item(registry: registry, name: qualified_last_segment(name: func))
-  let filled_args = fill_default_args(ordered: ordered_args, callee: callee, registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  let filled_args = fill_default_args(ordered: ordered_args, callee: callee, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let is_rt = callee_is_function_value == false && map_contains_key(rt_functions(), func)
   let is_rt_ref_map = callee_is_function_value == false && map_contains_key(rt_ref_map_functions(), func)
   let arg_strs = filled_args |> enumerate |> map(pair =>
     let idx = pair.first
     let a = pair.second
+    let arg_scope = lambda_argument_scope(arg: arg_value(n: a), scope: scope)
     if is_rt_ref_map && idx == 0 {
-      let base = emit_typed_expr_base(texpr: arg_value(n: a), registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      let base = emit_typed_expr_base(texpr: arg_value(n: a), registry: registry, scope: arg_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       concat("&", base)
     } else {
-      let base = emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      let base = emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: arg_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       rust_call_arg_fail_closed_unwrap(arg_str: base, arg: arg_value(n: a), callee: callee, idx: idx, func: func)
     }
   )
