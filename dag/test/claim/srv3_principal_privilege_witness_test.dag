@@ -14,6 +14,7 @@ import extdeps.posix.identity {
 }
 import extdeps.tools.chown { chown_argv, chown_binary_path }
 import extdeps.tools.mkdir { mkdir_parents_argv }
+import extdeps.tools.chmod { chmod_add_executable_argv }
 import extdeps.sudo.elevation { sudo_elevate, sudo_binary_path }
 import gunbc.host_effect_realize {
   Srv3EffectiveOwner,
@@ -121,6 +122,14 @@ test fn elevation_prefixes_sudo_and_the_non_interactive_flag() -> Bool {
 
 test fn elevating_an_empty_command_is_the_flag_alone() -> Bool {
   sudo_elevate(command: []).args == ["-n"]
+}
+
+// THE SYMBOLIC MODE IS THE MODEL, not an octal literal. `+x` ADDS the execute bit; an octal mode
+// REPLACES the whole set, so the two are not interchangeable spellings of "make it executable" --
+// one preserves the other bits and one silently decides them.
+test fn chmod_argv_adds_the_execute_bit_rather_than_replacing_the_mode() -> Bool {
+  chmod_add_executable_argv(path: "/opt/gunbc/bin/websocat") ==
+    ["/bin/chmod", "+x", "/opt/gunbc/bin/websocat"]
 }
 
 test fn mkdir_parents_argv_is_the_idempotent_form() -> Bool {

@@ -57,6 +57,7 @@ import extdeps.shell.exec
 import extdeps.tools.id { id_uid_argv, id_gid_argv, id_binary_path }
 import extdeps.tools.mkdir { mkdir_parents_argv }
 import extdeps.tools.chown { chown_argv }
+import extdeps.tools.chmod { chmod_add_executable_argv }
 import extdeps.tools.stat { stat_owner_user_argv, stat_owner_group_argv }
 import extdeps.posix.path_ownership {
   PathOwnershipObservation,
@@ -1385,7 +1386,7 @@ fn srv3_transport_witness_bin_success(
     decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_apt_tool_version_ok"),
     decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_run_tool_by_name"),
     decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "websocat_stage_download"),
-    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "websocat_stage_ensure_executable_mode"),
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_transport_argv_success"),
   ]
 {
   match transport {
@@ -1838,6 +1839,31 @@ fn srv3_predicate_from_ownership_outcome(outcome: PathOwnershipEnsureOutcome) ->
 // hand-read attributed two calls to the wrong enclosing function and invented a fifth caller that
 // does not exist. Nothing would have caught that -- an in-module list the compiler does not check
 // is a list nothing verifies, which is the second reason the next-rung trigger matters.
+// THE ARGV-SHAPED SIBLING. Every extdeps tool row returns a complete argv, and the witness-bin
+// surface takes a binary and its tail separately, so each caller was splitting the argv back apart
+// by hand at the call site -- or, more often, not building one at all and passing a literal binary
+// beside a literal args list. This splits it once.
+fn srv3_transport_argv_success(
+  transport: HostEffectTransport,
+  argv: List<String>,
+) -> Srv3HostPredicate
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "websocat_stage_ensure_executable_mode"),
+  ]
+{
+  match argv {
+    Empty =>
+      Srv3PredicateUnobserved { reason: "srv3 exec: an empty argv names no binary to run" }
+    Cons { head: bin, tail: rest } =>
+      srv3_transport_witness_bin_success(
+        transport: transport,
+        workdir: "/",
+        bin_path: bin,
+        args: rest,
+      )
+  }
+}
+
 fn srv3_elevated_witness_bin_success(
   transport: HostEffectTransport,
   command: List<String>,
@@ -2310,11 +2336,9 @@ fn websocat_stage_ensure_executable_mode(
 ) -> Srv3HostPredicate {
   match websocat_after(
     stage: EnsureExecutableMode,
-    outcome: srv3_transport_witness_bin_success(
+    outcome: srv3_transport_argv_success(
       transport: transport,
-      workdir: "/",
-      bin_path: "/bin/chmod",
-      args: ["+x", install_path],
+      argv: chmod_add_executable_argv(path: install_path),
     ),
   ) {
     WebsocatAlreadySatisfied => Srv3PredicateHolds
