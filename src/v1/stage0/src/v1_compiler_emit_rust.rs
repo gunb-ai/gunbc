@@ -402,7 +402,7 @@ pub fn render_rust_type_without_applied_binding(
                                 );
                                 let tn = authored_name_at(source_indices.clone(), n.clone());
                                 let base = emit_container(
-                                    to_snake(tn.clone()),
+                                    to_snake(qualified_last_segment(tn.clone())),
                                     inner_str.clone(),
                                     RenderTarget::Rust,
                                 );
@@ -2122,7 +2122,11 @@ if peel.clone() {
                                                             match arg_list.clone().first().cloned()
                                                             {
                                                                 Some(inner) => emit_container(
-                                                                    to_snake(name.clone()),
+                                                                    to_snake(
+                                                                        qualified_last_segment(
+                                                                            name.clone(),
+                                                                        ),
+                                                                    ),
                                                                     inner.clone(),
                                                                     RenderTarget::Rust,
                                                                 ),
@@ -4757,15 +4761,16 @@ pub fn rust_render_type_leaf_name(
     name: String,
     variant_to_enum: Rc<HashMap<String, String>>,
 ) -> String {
-    if (name.clone() == "Unit".to_string()) {
+    let leaf = qualified_last_segment(name.clone());
+    if (leaf.clone() == "Unit".to_string()) {
         "()".to_string()
     } else {
-        if is_value_variant_type_arg(Rc::new(vec![]), variant_to_enum.clone(), name.clone()) {
+        if is_value_variant_type_arg(Rc::new(vec![]), variant_to_enum.clone(), leaf.clone()) {
             "()".to_string()
         } else {
-            match rust_opaque_kernel_alias_carrier(name.clone()) {
+            match rust_opaque_kernel_alias_carrier(leaf.clone()) {
                 Some(carrier) => carrier.clone(),
-                None => rust_qualify_type_leaf_name(name.clone(), variant_to_enum.clone()),
+                None => rust_qualify_type_leaf_name(leaf.clone(), variant_to_enum.clone()),
             }
         }
     }
@@ -7840,10 +7845,11 @@ pub fn emit_import_name(n: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>) 
             Some(info) => (info.kind.clone() == ItemKind::DataItem),
             None => false,
         };
+        let leaf = qualified_last_segment(n.clone());
         if is_data.clone() {
-            to_snake(n.clone())
+            to_snake(leaf.clone())
         } else {
-            n.clone()
+            leaf.clone()
         }
     }
 }
@@ -19868,6 +19874,7 @@ pub fn emit_discriminant_call_lowering(
         );
         let ty_name =
             resolved_type_name(arg.clone(), scope.type_env.clone().source_indices.clone());
+        let ty_leaf = qualified_last_segment(ty_name.clone());
         match lookup_type_by_name(scope.type_env.clone(), ty_name.clone()) {
             Some(enum_node) => {
                 if is_coproduct_type(enum_node.clone()) {
@@ -19880,7 +19887,7 @@ pub fn emit_discriminant_call_lowering(
                                         authored_name(scope.type_env.clone(), child.clone());
                                     let pat = if ((child.children.clone().len() as i64) == 0) {
                                         v1_rt::concat(
-                                            v1_rt::concat(ty_name.clone(), "::".to_string()),
+                                            v1_rt::concat(ty_leaf.clone(), "::".to_string()),
                                             child_text.clone(),
                                         )
                                     } else {
@@ -19891,7 +19898,7 @@ pub fn emit_discriminant_call_lowering(
                                             v1_rt::concat(
                                                 v1_rt::concat(
                                                     v1_rt::concat(
-                                                        ty_name.clone(),
+                                                        ty_leaf.clone(),
                                                         "::".to_string(),
                                                     ),
                                                     child_text.clone(),
@@ -19902,7 +19909,7 @@ pub fn emit_discriminant_call_lowering(
                                             v1_rt::concat(
                                                 v1_rt::concat(
                                                     v1_rt::concat(
-                                                        ty_name.clone(),
+                                                        ty_leaf.clone(),
                                                         "::".to_string(),
                                                     ),
                                                     child_text.clone(),
@@ -19934,7 +19941,7 @@ pub fn emit_discriminant_call_lowering(
                             }
                             __result
                         });
-                        let scrut_ref = if v1_rt::set_contains(&shared_types, ty_name.clone()) {
+                        let scrut_ref = if v1_rt::set_contains(&shared_types, ty_leaf.clone()) {
                             v1_rt::concat(
                                 v1_rt::concat("&*(".to_string(), scrutinee.clone()),
                                 ")".to_string(),
@@ -20221,10 +20228,10 @@ pub fn emit_typed_call(
                     1024,
                 );
                 let type_name = if (base_arg.inferred.clone() != None) {
-                    authored_name_at(
+                    qualified_last_segment(authored_name_at(
                         scope.type_env.clone().source_indices.clone(),
                         resolved_type(base_arg.clone()),
-                    )
+                    ))
                 } else {
                     "compile_error!(\"with call missing resolved record type\")".to_string()
                 };
@@ -22267,7 +22274,10 @@ pub fn emit_rust_with_method_call(
                 if (rt_is_error.clone() || (rt.ident_span.clone() == None)) {
                     "compile_error!(\"with method missing resolved record type\")".to_string()
                 } else {
-                    authored_name_at(scope.type_env.clone().source_indices.clone(), rt.clone())
+                    qualified_last_segment(authored_name_at(
+                        scope.type_env.clone().source_indices.clone(),
+                        rt.clone(),
+                    ))
                 }
             }
             _ => "compile_error!(\"with method missing resolved record type\")".to_string(),

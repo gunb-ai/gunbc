@@ -475,8 +475,19 @@ fn emit_bin_op_symbol(op: std.syntax.BinOp, target: v1.compiler.artifact.RenderT
   }
 }
 
+// Construction wall for the dotted-render class in CONTAINER-BASE position -- the third and last
+// position of the class already walled in TYPE-LEAF position (rust_render_type_leaf_name), FN-SIG
+// position (rust_fn_sig_leaf_name) and PATTERN position (variant_pattern_qualified_path). Both
+// lookups below are keyed on the BARE declared container name: to_snake of a namespace-qualified
+// spelling yields std.types._list, which matches no coerce_container_template row, so the Absent arm
+// rendered the dotted string verbatim -- 'expected one of !, (, +, ::, <, where, or {, found .', the
+// same rustc PARSE error that masks every later diagnostic in the module. Reducing here makes the
+// lookup key and the emitted fallback bare TOGETHER, at the single point all seven callers pass
+// through, rather than forking the reduction across each call site. qualified_last_segment is the
+// identity on an unqualified name, so every already-bare container renders exactly as before.
 fn emit_container(name: String, inner: String, target: v1.compiler.artifact.RenderTarget) -> String {
-  let kind = v1.compiler.emit_core_support.to_snake(name: name)
+  let leaf = v1.std.core.qualified_last_segment(name: name)
+  let kind = v1.compiler.emit_core_support.to_snake(name: leaf)
   if kind == "optional" {
     v1.compiler.emit_core_support.apply_type_template1(template: v1.compiler.coercion.target_optional_template(target: target), arg0: inner)
   } else {
@@ -484,7 +495,7 @@ fn emit_container(name: String, inner: String, target: v1.compiler.artifact.Rend
       Present { value: template } => v1.compiler.emit_core_support.apply_type_template1(template: template, arg0: inner)
       Absent =>
         let spec = v1.compiler.emit_core_support.language_spec(target: target)
-        concat(name, spec.type_arg_open, inner, spec.type_arg_close)
+        concat(leaf, spec.type_arg_open, inner, spec.type_arg_close)
     }
   }
 }
@@ -530,7 +541,7 @@ fn render_named_type_base(n: v1.std.core.Node, target: v1.compiler.artifact.Rend
 }
 
 fn render_node_type(n: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, shared_types: std.types.Set<String>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
-  let tn = v1.std.core.authored_name_at(source_indices: source_indices, node: n)
+  let tn = v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: n))
   let n_is_error = if n.inferred != none { v1.std.core.is_compiler_error(inferred: n.inferred.value) } else { false }
   let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
 

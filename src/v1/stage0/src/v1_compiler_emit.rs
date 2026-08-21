@@ -1331,7 +1331,10 @@ pub fn render_node_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let tn = authored_name_at(source_indices.clone(), n.clone());
+        let tn = crate::v1_std_core::qualified_last_segment(authored_name_at(
+            source_indices.clone(),
+            n.clone(),
+        ));
         let n_is_error = if (n.inferred.clone() != None) {
             is_compiler_error(n.inferred.clone().clone().unwrap())
         } else {
