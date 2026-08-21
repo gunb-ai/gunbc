@@ -1,0 +1,39 @@
+module test.claim.map_key_alias_hop_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data map_key_alias_hop_witness_note: String = "Executing floor witness for the alias-hop arm landed in v1.compiler.trait_derive_emit (v1_item_alias_hop_type_exprs, folded into v1_item_field_type_exprs per map_key_alias_hop_gap_note, gunbc#8736) -- reached indirectly through v1.compiler.coercion lookup_checkpoint, itself a thin derivation of type_realization_decision, the decision this witness was originally justified by (v1.compiler.coercion's own type_realization_decision comment names this exact gap; map_key_alias_hop_reconciliation_note in trait_derive_emit.dag records that this branch's own map-key-only implementation of the same arm was dropped in favor of the landed fold-in once the two were confirmed behaviorally identical). map_key_derive_requirement_witness_test.dag already covers the FIELD-position propagation half; this file covers the ALIAS-leaf half that field propagation cannot reach, because a bare-leaf alias item has no fields for v1_item_field_type_exprs to walk directly.
+
+POSITIVE (w_structural_alias_hop_follows_to_its_target): a type Map<K, Int> where K is a bare alias to a declared record. K has no checkpoint row and no structural_declaration_modules_for row, so type_realization_decision answers Unrealized for it -- the alias renders structurally in the emitted crate, which is exactly why the record it aliases must earn Eq + Hash: rustc will bind K's Hash bound to that record's own derive, not to K's (nonexistent) own impl. Asserts the aliased record's emitted struct carries the derive.
+
+NEGATIVE (w_realized_alias_does_not_hop): same shape, but K is spelled with a name a Rust checkpoint row already realizes natively (Bytes, extdeps.languages.rust.types rust_type_checkpoints) -- type_realization_decision answers Realized for it regardless of which module declares it, because the checkpoint table is bare-name keyed (checkpoint_table_bypasses_identity_note, v1.compiler.emit_rust). A realized alias renders as its host type (Vec<u8>), which already has Eq + Hash, so the record it locally aliases must NOT gain the derive -- this is the exact false-positive shape map_key_alias_hop_gap_note measured for Int/Nat (a realized alias's declared-structure fields must never reach the fixpoint, because the emitter never renders that structure). Bytes is chosen over Int/Bool/Symbol/Unit because those four carry kernel-level literal or identifier semantics this virtual single-module fixture should not risk perturbing; Bytes, Secret and Json are ordinary checkpoint rows with no such role.
+
+Both fixtures compile through compile_dag_rust_emit_check, so this is green-by-execution against the real emitter (DESIGN section 5), not a re-derivation of v1_item_alias_hop_type_exprs's own formula."
+
+fn w_structural_alias_hop_follows_to_its_target() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_alias_hop_witness.structural\n\ntype AliasedPayload {\n  tag: Int\n}\n\ntype StructuralKeyAlias = AliasedPayload\n\ntype AliasHopTable {\n  entries: Map<StructuralKeyAlias, Int>\n}\n",
+    "src/map_key_alias_hop_witness_structural.rs",
+    ["Eq, std::hash::Hash)]\npub struct AliasedPayload"],
+    []
+  )
+}
+
+fn w_realized_alias_does_not_hop() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_alias_hop_witness.realized\n\ntype RealizedAliasPayload {\n  tag: Int\n}\n\ntype Bytes = RealizedAliasPayload\n\ntype AliasHopRealizedTable {\n  entries: Map<Bytes, Int>\n}\n",
+    "src/map_key_alias_hop_witness_realized.rs",
+    ["pub struct RealizedAliasPayload"],
+    ["std::hash::Hash"]
+  )
+}
+
+test fn structural_alias_hop_follows_to_its_target() -> Bool {
+  w_structural_alias_hop_follows_to_its_target()
+}
+
+test fn realized_alias_does_not_hop() -> Bool {
+  w_realized_alias_does_not_hop()
+}

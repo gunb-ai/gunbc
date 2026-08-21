@@ -4,7 +4,7 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 
-import std.types { NonEmptyStr, String, Bool }
+import std.types { NonEmptyStr, String, Bool, List, Timestamp }
 import std.content_hash {
   ContentHash,
   compare_content_hash,
@@ -55,6 +55,56 @@ type Pin<Subject> {
 }
 
 data subject_projected_pin_note: String = "When a pin subject fully determines cited digest identity for its grain, Pin<Subject> would duplicate one fact in independently writable fields — the OciDescriptor failure class and review 44999 on SccacheBinaryArtifact. SubjectProjectedPin carries subject + selection only; identity and version are projected by the instantiation module and supplied at the reconcile bridge — never stored twice (construction, deep-eagle-728 oracle msg_36c1fcf1). admit_subject_projected_pin_integrity and subject_projected_pin_value_eq live HERE as the single admission and value_eq authority for every SubjectProjectedPin instantiation; instantiation modules own projection fns (content_identity, pin_version, key_of) only. P2 membership_reconcile bridges via subject_projected_pin_as_pin(pin, expected_identity, version) — both fields passed explicitly, symmetric with identity projection, so Pin.version Absent is never representable (msg_fac61885 regression fix). Pin<Subject> over subjects that declare ContentHash remain dissolve-on feature:pin-subject-self-identity-lens targets."
+
+// A MOVING REFERENCE IS NOT A PIN SUBJECT, and this is the carrier for the case Pin<Subject> and
+// SubjectProjectedPin both refuse. Pin supplies an identity the subject lacks and requires an exact
+// VersionIdentity beside it; SubjectProjectedPin applies when the subject itself determines the
+// identity. An upstream TAG is neither: `gpt-oss:20b` carries no version (upstream models it as a
+// tag with no version field, so a VersionIdentity would be locally coined), and it does not determine
+// its content -- one ref has now projected to two manifest identities over time, which is the whole
+// incident this carrier exists to make expressible.
+//
+// So the two facts are separated: the moving REFERENCE is the selection source, and the exact
+// IDENTITY is the selected result. The relation between them is a resolution that happened at a
+// moment, on evidence -- not a property of either end.
+//
+// FIRST_EVIDENCE IS NOT OPTIONAL, which is the construction claim. A resolution with no evidence is
+// an assertion about upstream bytes with nothing behind it, and that is exactly the shape that let an
+// authored literal travel as an "observed" digest. Making the evidence a required field means an
+// evidence-free resolution has no constructor rather than failing a check.
+type TrackedReferenceResolution<Reference, Evidence> sole_constructor {
+  reference: Reference
+  resolved_identity: ContentHash
+  resolved_at: Timestamp
+  first_evidence: Evidence
+  further_evidence: List<Evidence>
+}
+
+// The only mint. sole_constructor already refuses construction outside this module; this is the
+// surface every instantiation routes through, so the required-evidence argument holds at one place.
+fn tracked_reference_resolution<Reference, Evidence>(
+  reference: Reference,
+  resolved_identity: ContentHash,
+  resolved_at: Timestamp,
+  first_evidence: Evidence,
+  further_evidence: List<Evidence>,
+) -> TrackedReferenceResolution<Reference, Evidence> {
+  TrackedReferenceResolution {
+    reference: reference,
+    resolved_identity: resolved_identity,
+    resolved_at: resolved_at,
+    first_evidence: first_evidence,
+    further_evidence: further_evidence,
+  }
+}
+
+// Every evidence reading in one list, primary first, so a consumer counting confirmations does not
+// have to know that the first one is stored in a different field than the rest.
+fn tracked_reference_resolution_evidence<Reference, Evidence>(
+  resolution: TrackedReferenceResolution<Reference, Evidence>,
+) -> List<Evidence> {
+  concat([resolution.first_evidence], resolution.further_evidence)
+}
 
 type SubjectProjectedPin<Subject> {
   subject: Subject

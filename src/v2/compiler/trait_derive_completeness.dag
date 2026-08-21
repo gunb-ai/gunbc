@@ -49,6 +49,10 @@ import v2.std.optional {
 import v2.std.logic {
   Bool
 }
+import v2.std.algebra { Cons, Empty }
+import v2.std.collection { List }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Conj,

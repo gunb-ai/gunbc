@@ -11,7 +11,7 @@ use crate::std_disposition::Disposition::Scaffold;
 pub use crate::std_disposition::{ConstructionMechanism, Disposition};
 pub use crate::std_trait_derive_shape::ReprGroundingDeriveTrait;
 use crate::std_trait_derive_shape::ReprGroundingDeriveTrait::{
-    ReprDeriveClone, ReprDeriveDebug, ReprDeriveDeserialize, ReprDerivePartialEq,
+    ReprDeriveClone, ReprDeriveDebug, ReprDeriveDeserialize, ReprDeriveOrd, ReprDerivePartialEq,
     ReprDeriveSerialize,
 };
 use crate::v1_rt;
@@ -105,13 +105,69 @@ pub fn im_15_1_0_vector_serialize_impl_authority() -> Rc<ExternalAuthority> {
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
 }
 
-pub fn rust_1_93_btree_set_trait_implementations_authority() -> Rc<ExternalAuthority> {
+pub fn im_15_1_0_ord_set_clone_impl_authority() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
         uri: Rc::new(Uri {
         scheme: UriScheme::Https,
-        locator: "doc.rust-lang.org/1.93.0/std/collections/struct.BTreeSet.html#trait-implementations".to_string(),
+        locator: "docs.rs/crate/im/15.1.0/source/src/ord/set.rs#830".to_string(),
+    }),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
+
+pub fn im_15_1_0_ord_set_debug_impl_authority() -> Rc<ExternalAuthority> {
+    thread_local! {
+            static CACHED: Rc<ExternalAuthority> = {
+                Rc::new(ExternalAuthority {
+        uri: Rc::new(Uri {
+        scheme: UriScheme::Https,
+        locator: "docs.rs/crate/im/15.1.0/source/src/ord/set.rs#937".to_string(),
+    }),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
+
+pub fn im_15_1_0_ord_set_partial_eq_impl_authority() -> Rc<ExternalAuthority> {
+    thread_local! {
+            static CACHED: Rc<ExternalAuthority> = {
+                Rc::new(ExternalAuthority {
+        uri: Rc::new(Uri {
+        scheme: UriScheme::Https,
+        locator: "docs.rs/crate/im/15.1.0/source/src/ord/set.rs#844".to_string(),
+    }),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
+
+pub fn im_15_1_0_ord_set_serialize_impl_authority() -> Rc<ExternalAuthority> {
+    thread_local! {
+            static CACHED: Rc<ExternalAuthority> = {
+                Rc::new(ExternalAuthority {
+        uri: Rc::new(Uri {
+        scheme: UriScheme::Https,
+        locator: "docs.rs/crate/im/15.1.0/source/src/ser.rs#134".to_string(),
+    }),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
+
+pub fn im_15_1_0_ord_set_deserialize_impl_authority() -> Rc<ExternalAuthority> {
+    thread_local! {
+            static CACHED: Rc<ExternalAuthority> = {
+                Rc::new(ExternalAuthority {
+        uri: Rc::new(Uri {
+        scheme: UriScheme::Https,
+        locator: "docs.rs/crate/im/15.1.0/source/src/ser.rs#125".to_string(),
     }),
     })
             };
@@ -126,34 +182,6 @@ pub fn rust_1_93_hash_set_trait_implementations_authority() -> Rc<ExternalAuthor
         uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "doc.rust-lang.org/1.93.0/std/collections/struct.HashSet.html#trait-implementations".to_string(),
-    }),
-    })
-            };
-        }
-    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
-}
-
-pub fn serde_1_0_228_btree_set_serialize_authority() -> Rc<ExternalAuthority> {
-    thread_local! {
-            static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
-        scheme: UriScheme::Https,
-        locator: "docs.rs/serde/1.0.228/serde/ser/trait.Serialize.html#impl-Serialize-for-BTreeSet%3CT%3E".to_string(),
-    }),
-    })
-            };
-        }
-    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
-}
-
-pub fn serde_1_0_228_btree_set_deserialize_authority() -> Rc<ExternalAuthority> {
-    thread_local! {
-            static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
-        scheme: UriScheme::Https,
-        locator: "docs.rs/serde/1.0.228/serde/trait.Deserialize.html#impl-Deserialize%3C'de%3E-for-BTreeSet%3CT%3E".to_string(),
     }),
     })
             };
@@ -231,6 +259,49 @@ pub fn rust_vec_freemonoid_supplemental_generic_bound_rows(
     CACHED.with(|c: &Rc<Vec<Rc<RustVecSupplementalGenericBoundRow>>>| c.clone())
 }
 
+pub fn rust_btree_set_supplemental_generic_bound_rows_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "SINGLE AUTHORITY for the trait -> supplemental-generic-bound facts of the Set/BTreeSet realization -- CORRECTED 2026-08-21: the realized type is NOT std::collections::BTreeSet, it is im-15.1.0's im::OrdSet, aliased `as BTreeSet` in every emitted use statement (src/v1/stage0/src/lib.rs: `use im::{OrdSet as BTreeSet, Vector as Vec};`), so this row list must cite OrdSet's own impls, not std's. Verified against the vendored im-15.1.0 crate source: `impl<A> Clone for OrdSet<A>` (src/ord/set.rs#830) is unconditional, no row. `impl<A: Ord> PartialEq for OrdSet<A>` (set.rs#844) and `impl<A: Ord + Debug> Debug for OrdSet<A>` (set.rs#937) each require only P: Ord. `impl<A: Ord + Clone + Serialize> Serialize for OrdSet<A>` and `impl<'de, A: Deserialize<'de> + Ord + Clone> Deserialize<'de> for OrdSet<A>` (src/ser.rs#134, #125) each require BOTH P: Ord and P: Clone -- two rows per trait, sharing one upstream authority, merged into one requirement set by v2.extdeps.languages.rust rust_collection_supplemental_generic_bound_contracts_merge_row rather than the earlier single-row-per-derive_trait fold (which would have silently dropped one of the two on insert). This module is dag-rooted so both pools read one authority: the v1 seed emitter (regen pool [src/v1, dag]) consumes these rows in v1.compiler.trait_derive_emit, and v2.extdeps.languages.rust folds them into rust_btree_set_supplemental_generic_bound_contracts -- mirroring rust_vec_freemonoid_supplemental_generic_bound_rows's row-authority split rather than restating the requirement inline a second time.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_btree_set_supplemental_generic_bound_rows(
+) -> Rc<Vec<Rc<RustVecSupplementalGenericBoundRow>>> {
+    thread_local! {
+            static CACHED: Rc<Vec<Rc<RustVecSupplementalGenericBoundRow>>> = {
+                Rc::new(vec![Rc::new(RustVecSupplementalGenericBoundRow {
+        derive_trait: ReprGroundingDeriveTrait::ReprDeriveDebug,
+        required: ReprGroundingDeriveTrait::ReprDeriveOrd,
+        authority: im_15_1_0_ord_set_debug_impl_authority(),
+    }), Rc::new(RustVecSupplementalGenericBoundRow {
+        derive_trait: ReprGroundingDeriveTrait::ReprDerivePartialEq,
+        required: ReprGroundingDeriveTrait::ReprDeriveOrd,
+        authority: im_15_1_0_ord_set_partial_eq_impl_authority(),
+    }), Rc::new(RustVecSupplementalGenericBoundRow {
+        derive_trait: ReprGroundingDeriveTrait::ReprDeriveSerialize,
+        required: ReprGroundingDeriveTrait::ReprDeriveOrd,
+        authority: im_15_1_0_ord_set_serialize_impl_authority(),
+    }), Rc::new(RustVecSupplementalGenericBoundRow {
+        derive_trait: ReprGroundingDeriveTrait::ReprDeriveSerialize,
+        required: ReprGroundingDeriveTrait::ReprDeriveClone,
+        authority: im_15_1_0_ord_set_serialize_impl_authority(),
+    }), Rc::new(RustVecSupplementalGenericBoundRow {
+        derive_trait: ReprGroundingDeriveTrait::ReprDeriveDeserialize,
+        required: ReprGroundingDeriveTrait::ReprDeriveOrd,
+        authority: im_15_1_0_ord_set_deserialize_impl_authority(),
+    }), Rc::new(RustVecSupplementalGenericBoundRow {
+        derive_trait: ReprGroundingDeriveTrait::ReprDeriveDeserialize,
+        required: ReprGroundingDeriveTrait::ReprDeriveClone,
+        authority: im_15_1_0_ord_set_deserialize_impl_authority(),
+    })])
+            };
+        }
+    CACHED.with(|c: &Rc<Vec<Rc<RustVecSupplementalGenericBoundRow>>>| c.clone())
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RustSupplementalGenericBoundContractCoverageDisposition {
     pub owner: Rc<DeclarationRef>,
@@ -250,14 +321,14 @@ pub fn rust_hash_set_supplemental_generic_bound_contract_coverage_disposition(
     }),
         lane: Rc::new(DeclarationRef {
         module_path: "v2.std.compilers.target_model".to_string(),
-        decl_name: "RequiredTraitWitness".to_string(),
+        decl_name: "TargetCapabilityRequirement".to_string(),
         field: Rc::new(DeclField::WholeDeclaration),
     }),
         dissolution: Rc::new(Disposition::Scaffold {
         dissolves_to: ConstructionMechanism::SingleAuthority,
         bind: Rc::new(DeclarationRef {
         module_path: "v2.std.compilers.target_model".to_string(),
-        decl_name: "RequiredTraitWitness".to_string(),
+        decl_name: "TargetCapabilityRequirement".to_string(),
         field: Rc::new(DeclField::WholeDeclaration),
     }),
     }),

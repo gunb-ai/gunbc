@@ -81,6 +81,13 @@ import std.types { List, String, Int }
 
 data witness_floor_workflow_job_id: String = "witnesses"
 
+// The workflow's own name, hoisted to a declaration because a second consumer now joins on
+// it. gunbc.fleet_desired_admission refuses a workflow_run payload whose workflow_name is
+// not the required floor's; spelling "witnesses" a second time there would fork the name
+// (DESIGN §3) and the fork would fail open, not loud — a renamed workflow would leave the
+// admission comparing against a name nothing produces, refusing every candidate forever.
+data witness_floor_workflow_name: String = "witnesses"
+
 // CANCELLATION IS A PER-EVENT FACT, AND THE GROUP CARRIES HALF OF IT. Operator ruling
 // 2026-08-17: every push to main must finish; only pull-request runs may be superseded.
 // The predecessor collapsed both axes into one group keyed on `github.ref` with an
@@ -338,7 +345,7 @@ fn witness_floor_precondition() -> String {
 
 fn witness_floor_run_step() -> Step {
   RunStep {
-    name: Present { value: "Required CI: parse, regen, regen determinism, witness floor" },
+    name: Present { value: "Required CI: parse, regen, regen determinism, behavioral receipt, witness floor" },
     id: none,
     run: witness_floor_run_script(),
     shell: none,
@@ -428,6 +435,21 @@ fn witness_floor_capability_closure_holds() -> Bool {
   )
 }
 
+// THE BEHAVIORAL RECEIPT IS NOT A STEP HERE, AND THAT IS THE POINT.
+//
+// It was two steps until #8647 collapsed this job's step ladder into one invocation. Re-adding
+// two more would have rebuilt the ladder that PR removed: order in a YAML list, preconditions
+// naming another step's outcome, one process per phase. The receipt's two phases -- the
+// controlled-fixture control and the per-PR comparison against the modules a diff changed --
+// therefore live INSIDE `--required-ci`, sequenced by the program whose phases they are.
+//
+// The consequence worth recording, because it is a behavioural difference and not a relocation:
+// the per-PR phase used to be gated by `github.event_name == 'pull_request'` in this file. A
+// single invocation cannot carry a per-phase trigger condition, so the phase now decides for
+// itself from what it can OBSERVE -- when the merge base resolves to the head there is no diff
+// to read, and it reports SKIPPED with that reason rather than passing over an empty selection.
+// That is strictly better than the trigger name: it is derived from the state that actually
+// makes the observation impossible, so it holds on any trigger anyone adds later.
 fn witness_floor_job() -> Job {
   Job {
     id: witness_floor_workflow_job_id,
@@ -446,7 +468,7 @@ fn witness_floor_job() -> Job {
 }
 
 data witness_floor_workflow: Workflow = {
-  name: "witnesses",
+  name: witness_floor_workflow_name,
   on: [
     WorkflowDispatch { inputs: [] },
     Push { branches: [gunbc_default_branch_name], paths: [] },
@@ -498,11 +520,15 @@ data witness_floor_workflow: Workflow = {
 // nothing in this repository could refuse it.
 data witness_floor_capability_closure_refusal: String = "REFUSED gunbc.witness_floor_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in witness_floor_bound_steps or the order of the steps themselves."
 
-fn expected_witness_floor_yml() -> String {
+type WitnessFloorGenerationOutcome
+  = WitnessFloorGenerated { content: String }
+  | WitnessFloorGenerationRefused
+
+fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
   if witness_floor_capability_closure_holds() {
-    serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow))
+    WitnessFloorGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow)) }
   } else {
-    witness_floor_capability_closure_refusal
+    WitnessFloorGenerationRefused
   }
 }
 
