@@ -24,6 +24,8 @@ import gunbc.fleet_main_revision {
   fleet_desired_ref_name,
   FleetDesiredRevision,
   FleetDesiredAdmitted,
+  FleetDesiredAbsent,
+  FleetDesiredUndecodable,
   FleetDesiredUnobserved,
   FleetDesiredAdvance,
   AdvanceAdmitted,
@@ -173,6 +175,23 @@ fn fleet_desired_admission_decide(event: WorkflowRunEvent, observed: FleetDesire
               "fleet_desired_admission: the admitted prior could not be observed, so no advance is authorized (an unobserved prior is never read as an absent one): ",
               why,
             ], ""),
+          }
+        FleetDesiredAbsent =>
+          // FleetDesiredAbsent is now (gunbc#8701) a distinguished claim -- origin advertises
+          // no fleet_desired_ref_name at all -- rather than a failure to look. It is refused
+          // here rather than admitted as a first push: AdmissionAdvanceAuthorized.from is a
+          // required GitObjectId, so authorizing a "no prior" advance needs that outcome shape
+          // to widen to an optional prior, which is a typed carrier decision this narrow
+          // exhaustiveness fix does not make unilaterally (DESIGN.md fail-closed: never guess
+          // a first-admission arm into existence). Refusing costs nothing real -- the ref
+          // origin advertises none today, so nothing regresses -- and names its own next-rung
+          // trigger rather than silently picking a behavior.
+          AdmissionRefused {
+            cause: "fleet_desired_admission: origin advertises no admitted prior (first-admission authorization is unmodeled -- AdmissionAdvanceAuthorized.from has no Absent arm; refusing rather than guessing)",
+          }
+        FleetDesiredUndecodable { advertised: line } =>
+          AdmissionRefused {
+            cause: concat("fleet_desired_admission: the admitted prior's advertisement did not decode, so no advance is authorized: ", line),
           }
         FleetDesiredAdmitted { revision: prior } =>
           match git_object_id_from_untagged_hex(hex: event.head_sha as String) {
