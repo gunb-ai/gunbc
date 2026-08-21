@@ -131,6 +131,24 @@ type FleetDesiredAdvance
   = AdvanceAdmitted { expected: GitRemoteRefExpectation, to: GitObjectId }
   | AdvanceRefused { cause: FleetDesiredAdvanceRefusal }
 
+// The typed refusal rendered for a human-facing receipt. Rendering lives beside the type so a
+// new refusal arm cannot be added without this fold refusing to compile -- the message set and
+// the cause set stay one authority. Consumers that need to ROUTE still match the variants; this
+// is for the line an operator reads, never a substitute for the typed cause.
+fn fleet_desired_advance_refusal_message(cause: FleetDesiredAdvanceRefusal) -> String {
+  match cause {
+    AdvanceFloorNotGreen =>
+      "fleet_main_revision: candidate revision's floor is not green; the desired ref never advances onto an unproven revision (raw-HEAD simultaneous fleet-bricking is the prevented class)"
+    AdvanceExpectationUnavailable { cause: why } =>
+      match why {
+        FleetDesiredRefUndecodable { advertised: line } =>
+          concat("fleet_main_revision: the desired ref exists but its advertisement is not a decodable object id, so it must not be written over: ", line)
+        FleetDesiredRefUnobserved { cause: c } =>
+          concat("fleet_main_revision: the desired ref could not be observed, so no expectation licenses a write: ", c)
+      }
+  }
+}
+
 fn admit_fleet_desired_advance(
   candidate: GitObjectId,
   floor_green: Bool,

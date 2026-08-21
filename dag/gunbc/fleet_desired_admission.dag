@@ -24,6 +24,8 @@ import gunbc.fleet_main_revision {
   FleetDesiredAbsent,
   FleetDesiredUndecodable,
   fleet_desired_ref_name,
+  fleet_desired_advance_expectation,
+  fleet_desired_advance_refusal_message,
   fleet_desired_ref_name,
   FleetDesiredRevision,
   FleetDesiredAdmitted,
@@ -217,12 +219,12 @@ fn fleet_desired_admission_decide(event: WorkflowRunEvent, observed: FleetDesire
               match admit_fleet_desired_advance(
                 candidate: candidate,
                 floor_green: fleet_desired_floor_green(conclusion: event.conclusion),
-                current: Present { value: prior },
+                expectation: fleet_desired_advance_expectation(observed: observed),
               ) {
                 AdvanceRefused { cause: why } =>
                   AdmissionRefused {
                     cause: join([
-                      why,
+                      fleet_desired_advance_refusal_message(cause: why),
                       " [floor conclusion: ",
                       workflow_run_conclusion_wire_label(conclusion: event.conclusion),
                       "; candidate: ",
@@ -230,7 +232,7 @@ fn fleet_desired_admission_decide(event: WorkflowRunEvent, observed: FleetDesire
                       "]",
                     ], ""),
                   }
-                AdvanceAdmitted { from: _, to: admitted } =>
+                AdvanceAdmitted { expected: _, to: admitted } =>
                   AdmissionAdvanceAuthorized { from: prior, to: admitted }
               }
           }
