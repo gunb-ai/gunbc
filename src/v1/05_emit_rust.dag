@@ -998,6 +998,68 @@ fn rust_carrier_realizes_as_machine_scalar(n: Node, type_name: String) -> Bool {
   }
 }
 
+// THE CARRIER'S REFERENCE LAYER, ASKED OF THE CARRIER.
+//
+// Four call sites below used to answer "is this carrier at the shared reference layer?" and each
+// answered it differently:
+//
+//   the struct-FIELD type position keyed set_contains(shared_types, authored_name_at(..)) -- the
+//     name AS AUTHORED, which post-#6848 resolution delivers namespace-QUALIFIED, while
+//     shared_types is keyed on the BARE declared name (the same mismatch
+//     alias_rhs_qualified_name_routing_note records for every other lookup on that path). So a
+//     qualified reference matched nothing and the field rendered BARE;
+//   the match-scrutinee position keyed the same membership but refused any leaf carrying type
+//     arguments, so an applied shared carrier answered "not wrapped" while it renders as Rc<..>;
+//   two value positions rendered the type to TEXT and prefix-matched "Rc<" against it
+//     (rust_type_is_rc_wrapped -> sharing_type_is_wrapped_for_target), so an OPTIONAL shared
+//     carrier rendering as Option<Rc<Foo>> answered "not wrapped" and took a second layer on top.
+//
+// Those are not four readings of one authority, they are four authorities, and they disagree in
+// BOTH DIRECTIONS on a single carrier. MEASURED on the emitted closure rooted at
+// src/v2/compiler/03_ingest.dag (177 files) at 1ebac31a099: v2.std.nat.Nat -- a Peano coproduct,
+// Zero | Succ, NOT the natively-realizing dag/std/nat.dag declaration -- appears 18 times as
+// "expected Nat, found Rc<Nat>" and 20 times as "expected Rc<Nat>, found Nat" in the same board.
+// One inconsistency, two error directions; the specimen is Nat's own recursive field, declared
+// `prev: Nat` by the field position and constructed `Rc::new(Nat::Succ { prev: .. })` by the value
+// position. SpanIndex, SubjectRoster, ScopeRoster and ConsumerRequirement carry the same signature.
+//
+// The repair is the one the note above rust_carrier_realizes_as_machine_scalar names: ask the
+// CARRIER, not its rendering and not its authored spelling. A layer is a fact about what the
+// carrier realizes as, so it is decided once -- leaf identity, then machine-scalar realization,
+// then sharing membership -- and every position projects that one answer.
+//
+// SCOPE, stated because the function name invites a wider reading than the change makes. This
+// replaces the "is this carrier at the layer" question at the four sites listed above. It does NOT
+// replace the double-wrap idempotence guards elsewhere in this file, which ask a different question
+// -- "did the sub-rendering I just produced already apply the layer" -- and which are still
+// answered by the prefix test; two of those guards remain composed with this predicate at the sites
+// it now feeds. Those are the same class and they are the next cut; they are left alone here
+// because each is a distinct rendering path whose idempotence has to be established per path rather
+// than asserted for all of them at once. Also OUT of scope and named so they are not read as
+// covered: rust_normalize_witness_type_text (573) and rust_normalize_partial_function_field_type_text
+// (707), two string REPLACEs over rendered type text, and the struct_name == "PartialFunction"
+// literal comparison that selects them.
+//
+// RUNG (DESIGN 4b): MITIGATABLE, and no higher. The invalid state is still writable -- nothing stops
+// a future site from re-deriving the layer from text -- and the carrier key inherits the ceiling
+// numeric_realization_identity_note and checkpoint_table_bypasses_identity_note already record: the
+// scalar arm keys on a NAME plus a declaring file, and sharing membership keys on a bare leaf name,
+// so two declarations sharing a spelling and differing in sharing are still conflated. The next rung
+// is the modeled layer transition v2.compiler.wrap_decision names, whose TargetReferenceLayer and
+// target_layer_transition carriers already exist in src/v2/std/compilers/target_model.dag; it is not
+// reachable from here because the v1 seed's source roots do not include src/v2, and lifting the
+// layer model to a root both compilers import is a carrier move that belongs ahead of this pipeline
+// edit rather than inside it. This function is deliberately Bool-projected rather than a v1-local
+// copy of TargetReferenceLayer, so that when the model becomes reachable there is one authority to
+// route to and no second layer enum to merge away first.
+fn rust_carrier_is_at_shared_layer(n: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>) -> Bool {
+  let leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
+  leaf != ""
+    && !rust_carrier_realizes_as_machine_scalar(n: n, type_name: leaf)
+    && n.return_cardinality != CardOptional
+    && set_contains(shared_types, leaf)
+}
+
 fn render_rust_shared_type_with_optional(n: Node, type_name: String, rendered: String, shared_types: Set<String>) -> String {
   if rust_carrier_realizes_as_machine_scalar(n: n, type_name: type_name) {
     return rust_carrier_optional_wrap(n: n, rendered: rendered)
@@ -5434,7 +5496,7 @@ fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_
   }
   let final_ty = if needs_box_wrapping(n: rt_child, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
     concat("Box<", generic_ty, ">")
-  } else if rt_child.return_cardinality != CardOptional && set_contains(shared_types, authored_name_at(source_indices: env.source_indices, node: rt_child)) && !rust_type_is_rc_wrapped(type_name: generic_ty) {
+  } else if rust_carrier_is_at_shared_layer(n: rt_child, source_indices: env.source_indices, shared_types: shared_types) && !rust_type_is_rc_wrapped(type_name: generic_ty) {
     wrap_shared_type(target: Rust, inner: generic_ty)
   } else { generic_ty }
   let needs_serde = struct_needs_serde(name: struct_name, emit_info: emit_info)
@@ -6736,9 +6798,7 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
   }
   let scrutinee_is_rc_wrapped = match scrutinee.inferred {
     Present { value: Resolved { node: rt } } =>
-      if rt.children |> count == 0 && rt.ident_span != none {
-        set_contains(shared_types, authored_name_at(source_indices: source_indices, node: rt))
-      } else { false }
+      rust_carrier_is_at_shared_layer(n: rt, source_indices: source_indices, shared_types: shared_types)
     _ => false
   }
   let arms_want_option = arm_analyses |> any(a => a.matches_option_rc_variant)
@@ -6747,7 +6807,7 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
     Present { value: Resolved { node: rt } } =>
       is_optional_like_parent_name(name: authored_name_at(source_indices: source_indices, node: rt))
         && rt.return_cardinality != CardOptional
-        && rust_type_is_rc_wrapped(type_name: render_rust_type(n: rt, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
+        && rust_carrier_is_at_shared_layer(n: rt, source_indices: source_indices, shared_types: shared_types)
     _ => false
   }
 
@@ -10833,7 +10893,7 @@ fn rust_nominal_identity_data_expr(type_node: Node, value: Node, source_indices:
 fn value_inferred_type_is_rc_wrapped(value: Node, shared_types: Set<String>, scope: InferScope, emit_info: EmitGraphInfo) -> Bool {
   match value.inferred {
     Present { value: Resolved { node: rt } } =>
-      rust_type_is_rc_wrapped(type_name: render_rust_type(n: rt, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info))
+      rust_carrier_is_at_shared_layer(n: rt, source_indices: scope.type_env.source_indices, shared_types: shared_types)
     _ => false
   }
 }
