@@ -308,3 +308,57 @@ fn census_write_smoke_receipt() -> Bool {
     content: census_receipt_for_paths(paths: census_smoke_subject_paths)
   ).success
 }
+
+// THE CALIBRATION CONTROL (smart-ram-730's ruling: mandatory, and the census is
+// unreportable until it passes). The subject is the import closure of
+// `src/v2/compiler/01_tokenize.dag`, computed by following `import` edges to a fixed
+// point -- NOT the whole 03_ingest closure, because ALL 25 arm-A sites recorded in
+// `arbiter_arms.tsv` are in `src/v2_compiler_tokenize.rs`, which this one module emits.
+// Naming the larger closure would have made the control weaker, not stronger: every
+// module beyond this one adds occurrences the control cannot join to any known site, so
+// the reproduce-the-25 test would be diluted by rows it has no verdict for.
+//
+// WHAT THE CONTROL ASSERTS, and it is a JOIN, not a count: the divergence rows this walk
+// produces must be exactly the DECLARATIONS the 25 arm-A sites consume -- joined on
+// (source module, enclosing declaration, position kind), NEVER on line. The relation is
+// many-to-one by construction: an arm-A site is a USE of a carrier-typed declaration, and
+// several uses share one declaration, so |divergence rows| < 25 is EXPECTED and is not a
+// miss. A count equality here would be the wrong oracle (DESIGN §5: completeness is an
+// identity join, not a count equality).
+//
+// If the join leaves an arm-A site with no declaration in this set, the walk does not
+// reach what the emitter reaches, and the census is WRONG -- report the mismatch, never a
+// divergence count.
+data census_calibration_subject_paths: List<String> = [
+  "dag/std/algebra.dag",
+  "dag/std/content_hash.dag",
+  "dag/std/decl_ref.dag",
+  "dag/std/disposition.dag",
+  "dag/std/dissolution.dag",
+  "dag/std/error_primitives.dag",
+  "dag/std/occurrence_identity.dag",
+  "dag/std/primitives.dag",
+  "dag/std/source_annotation.dag",
+  "dag/std/types.dag",
+  "src/v2/compiler/01_tokenize.dag",
+  "src/v2/std/algebra.dag",
+  "src/v2/std/collection.dag",
+  "src/v2/std/compilers/lexing.dag",
+  "src/v2/std/diagnostic.dag",
+  "src/v2/std/logic.dag",
+  "src/v2/std/nat.dag",
+  "src/v2/std/node.dag",
+  "src/v2/std/node_shape.dag",
+  "src/v2/std/optional.dag",
+  "src/v2/std/text.dag",
+  "src/v2/std/witness.dag"
+]
+
+data census_calibration_receipt_path: String = "target/carrier-realization-census/calibration.tsv"
+
+fn census_write_calibration_receipt() -> Bool {
+  Filesystem.Write(
+    path: census_calibration_receipt_path,
+    content: census_receipt_for_paths(paths: census_calibration_subject_paths)
+  ).success
+}
