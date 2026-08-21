@@ -1,12 +1,12 @@
 module tools.merge_admission_walk
 
-import std.types { FilePath, GitRef, Seconds, String }
+import std.types { FilePath, GitRef, Int, Seconds, String }
 import extdeps.git { git_remote_ref_parts }
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.github.checks { Success }
+import extdeps.github.checks { CheckConclusion, Success }
 import gunbc.merge_admission {
   MergeAdmissionReceiptV2,
   MergeAdmitted,
@@ -23,6 +23,7 @@ import gunbc.merge_admission_subject {
   parse_tested_subject_wire,
 }
 import gunbc.merge_admission_produce {
+  floor_exit_to_check_conclusion,
   MergeTargetTreeHashOk,
   MergeTargetTreeHashRefused,
   observe_merge_target_tree_hash,
@@ -68,7 +69,25 @@ fn read_floor_receipt(root: String, attempt_id: WalkAttemptId) -> MergeAdmission
   }
 }
 
-func stamp_tested_floor() -> Bool {
+// THE CONCLUSION IS AN OPERAND, NOT A CONSTANT, AND THAT IS THE WHOLE POINT OF THIS SHAPE.
+//
+// stamp_tested_floor took no conclusion and wrote `conclusion: Success` literally. That was not a
+// defect while it ran, because its safety came from an ORDERING LAW held outside it: the WalkPlan
+// declared "stamp is reachable only after the whole ordinary floor and its finalization passed",
+// so the constant could only ever be written over a run that had in fact passed.
+//
+// THE FLOOR CUT DELETED THE WALKPLAN. The constant survived; the law that made it true did not.
+// A caller that invokes this after a RED floor now mints a receipt certifying Success over a run
+// that failed — a fabricated plausible output (DESIGN §5) aimed at the merge gate, which is the
+// one consumer that must never be lied to. Nothing in the tree detects it, because a receipt is
+// believed exactly to the extent that it is well-formed.
+//
+// So the conclusion is passed IN. A green certificate over a red run stops being a thing a caller
+// can produce by forgetting an ordering rule, and becomes a thing it would have to state — which
+// is the §4b climb from mitigatable (a law someone must remember) toward structural (the value
+// has to come from the measurement). The zero-argument form is retained for the existing
+// success-stage claim, where the constant remains true by that stage's own reachability.
+func stamp_tested_floor_with_conclusion(conclusion: CheckConclusion) -> Bool {
   match capture_walk_attempt_id() {
     Absent => false
     Present { value: attempt_id } =>
@@ -83,7 +102,7 @@ func stamp_tested_floor() -> Bool {
             tested_head_sha: subject.head_sha,
             tested_base_tree_hash: subject.base_tree_hash,
             gate_roster_hash: current_gate_roster_hash,
-            conclusion: Success,
+            conclusion: conclusion,
           }
           Filesystem.Write(
             path: merge_admission_floor_receipt_path(root: root, attempt_id: attempt_id),
@@ -91,6 +110,17 @@ func stamp_tested_floor() -> Bool {
           ).success
       }
   }
+}
+
+// The exit-code entry, for a caller that holds a process result rather than a modeled conclusion.
+// It routes through gunbc.merge_admission_produce floor_exit_to_check_conclusion rather than
+// re-deciding what a zero exit means, so there is one place that answers that question.
+func stamp_tested_floor_for_exit_code(exit_code: Int) -> Bool {
+  stamp_tested_floor_with_conclusion(conclusion: floor_exit_to_check_conclusion(exit_code: exit_code))
+}
+
+func stamp_tested_floor() -> Bool {
+  stamp_tested_floor_with_conclusion(conclusion: Success)
 }
 
 type MergeTargetRefreshRefusal
