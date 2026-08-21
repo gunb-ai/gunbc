@@ -10784,6 +10784,20 @@ fn run() -> Result<ExitCode, ExitCode> {
         // main the merge base is the head — there is no pull request to check, and never was.
         // Counting that as a failure would red every main push over a check that has no subject;
         // reporting it as a pass is the vacuous arm review 54102 caught. So it is neither.
+        //
+        // AND THE COVERAGE CONSEQUENCE, WHICH IS NOT OPTIONAL READING: a phase whose subject is a
+        // DIFF can never be exercised by the branch it protects. Its coverage is entirely
+        // PR-side, by construction. So NO main run, green or otherwise, is evidence about this
+        // phase -- comparing a PR's red against main's green compares a run against a SKIP -- and
+        // a defect that reds every PR touching one class of authority can sit indefinitely while
+        // main stays green. That is not hypothetical: it is how the wet-actuator selection defect
+        // (gunbc#8704, excluded at selection since) survived. Measured on main run 32475483128 at
+        // 7d3fec269a4, where this arm printed and nothing else ran.
+        //
+        // NEXT-RUNG TRIGGER, named rather than built: a push to main has no PR diff, but it does
+        // have the PUSH RANGE, which is a real subject. Giving this phase that subject on main is
+        // what would end the PR-only coverage; until someone does it, the sentence above stands
+        // and a green main must not be read as evidence for anything here.
         eprintln!("required-ci: phase receipt (changed authorities vs their mirrors)");
         match behavioral_receipt_plan(&source_roots) {
             Ok(ReceiptPlanOutcome::Ran { agreed: true }) => {
@@ -18456,6 +18470,41 @@ enum ReceiptExclusion {
     /// skipped, because a changed authority that maps to nothing must be visible.
     NoEmittedMirror { module_path: String },
 
+    /// A mirror DOES name this authority, and the emit is structurally never going to produce
+    /// that mirror: it is a wet-actuator artifact, written by `main_wet` or a sibling actuator
+    /// rather than by `compile_stage0`, and `emitted_generated_sources` filters it out of the
+    /// candidate map by the very same predicate this arm asks.
+    ///
+    /// WHY THIS IS THE SAME DEFECT AS `NoFunctionHasACorpus` AND NOT A NEIGHBOUR OF IT. Both are
+    /// the phase asking a question that has no subject: there is no candidate to compare in one
+    /// case and no behaviour that could diverge in the other. Before this arm existed the first
+    /// case was not excluded at all -- selection admitted the module on the header alone, the
+    /// differential then looked for the candidate, did not find it, and REFUSED as `missing
+    /// candidate is ignorance`. That refusal is correct about a mirror the emit owes and did not
+    /// write, and simply false about one it was never going to write; stated against a
+    /// wet-actuator mirror it reds every PR that touches such an authority, with no closing move
+    /// available to the author -- the shape DESIGN.md calls a gate that launders rather than
+    /// enforces. So the two states are separated at SELECTION, where the fact is decidable
+    /// without an emit, and the differential's refusal keeps the meaning it always had.
+    ///
+    /// It is an exclusion and not a silent drop: it is counted in the module-grain line and
+    /// printed with its mirror, because a changed authority that reaches no verdict must be
+    /// visible (DESIGN.md section 5 -- a failure arm refuses and counts, it never widens or
+    /// drops).
+    MirrorOutsideEmittedPopulation { module_path: String, mirror: String },
+
+    /// The authority declares NO functions at all, so it has no behaviour that could diverge.
+    ///
+    /// SEPARATE FROM `NoFunctionHasACorpus` BECAUSE THEY ARE DIFFERENT STATES WITH DIFFERENT
+    /// REMEDIES, and the arm that used to carry both said something false about this one. A
+    /// module with twenty functions none of whose corpora this fragment can derive is a DEFICIT
+    /// in the derivation -- it ranks, it names the types responsible, and closing them makes the
+    /// module checkable. A module with zero functions is not a deficit at all: there is nothing
+    /// to derive and never will be, so reporting it as `none of its 0 declared functions yields
+    /// a call` sends a reader to fix a derivation that has no subject, and inflates the
+    /// non-derivability population with rows no work can remove.
+    NoFunctionDeclared { module_path: String },
+
     /// NOT ONE FUNCTION in this authority yields a call, so there is no corpus to compare -- and
     /// the arm carries EVERY declared function with the cause that stopped it, because the
     /// deficit lives at the function and a module-level "nothing derived" cannot be acted on.
@@ -19370,6 +19419,50 @@ fn function_grain_coverage(plan: &ModuleCorpusPlan) -> FunctionGrainCoverage {
         uncovered.push((name.clone(), cause.clone()));
     }
     FunctionGrainCoverage { covered, uncovered }
+}
+
+/// THE PLAN-GRAIN HALF OF THE ONE SELECTION CRITERION: is there a subject to compare?
+///
+/// `Ok(None)` selects. `Ok(Some(_))` excludes, typed and counted. `Err(_)` refuses, because the
+/// third state is the reader's own blindness and it is not a property of the authority.
+///
+/// The three answers used to be two, and the missing distinction is the whole point. `zero
+/// functions covered` was one arm covering three different states -- an authority with no
+/// functions at all, an authority whose functions all defeat derivation, and a parse this
+/// fragment failed to read -- with one message that was false about two of them. That is the
+/// state-space conflation DESIGN.md names: one value standing for several states whose remedies
+/// differ. Splitting it costs nothing and makes each population rankable on its own terms.
+fn plan_grain_selection(
+    plan: &ModuleCorpusPlan,
+    coverage: FunctionGrainCoverage,
+) -> Result<Option<ReceiptExclusion>, String> {
+    // THE READER'S OWN BLINDNESS IS NOT A PROPERTY OF THE AUTHORITY. The `fn ` line count and the
+    // parsed signature count are two readers of one fact, and the pair is carried precisely so a
+    // disagreement is visible. When the parser sees none of the functions the source declares,
+    // `zero covered` is IGNORANCE rather than the fact that nothing is derivable, and excluding
+    // on it would publish a reader deficit as a fact about the module.
+    if plan.parsed_signatures == 0 && plan.declared_fn_lines > 0 {
+        return Err(format!(
+            "behavioral-receipt: {} declares {} `fn ` line(s) and the parser produced no \
+             signature at all. The two readers disagree, so this selection cannot say whether \
+             the module has no derivable function or whether this fragment simply failed to read \
+             it -- and those have opposite remedies. Refusing rather than excluding: an exclusion \
+             here would publish the reader's blindness as a fact about the authority",
+            plan.module_path, plan.declared_fn_lines
+        ));
+    }
+    if plan.parsed_signatures == 0 {
+        return Ok(Some(ReceiptExclusion::NoFunctionDeclared {
+            module_path: plan.module_path.clone(),
+        }));
+    }
+    if coverage.covered.is_empty() {
+        return Ok(Some(ReceiptExclusion::NoFunctionHasACorpus {
+            module_path: plan.module_path.clone(),
+            uncovered: coverage.uncovered,
+        }));
+    }
+    Ok(None)
 }
 
 /// A plan CARRYING AT LEAST ONE CALL. There is no other way to build one.
@@ -20773,6 +20866,16 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
         };
         match mirror_index.by_module.get(&module_path).cloned() {
             None => exclusions.push(ReceiptExclusion::NoEmittedMirror { module_path }),
+            Some(mirror) if v1_compiler::cli_run::mirror_outside_emitted_population(&mirror) => {
+                // ASKED HERE, BEFORE ANY WORK IS SPENT, and asked of the emit's own filter rather
+                // than of a roster kept beside it. A mirror the emit structurally never writes
+                // cannot produce a candidate, so selecting it buys a refusal about ignorance over
+                // a fact that was decidable for free.
+                exclusions.push(ReceiptExclusion::MirrorOutsideEmittedPopulation {
+                    module_path,
+                    mirror,
+                })
+            }
             Some(mirror) => {
                 // The Rust module path is the mirror's basename without its extension — derived
                 // from the artifact, like the mapping that found it, never spelled out here.
@@ -20792,17 +20895,15 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
                 );
                 // ADMISSION IS DECIDED HERE, AT FUNCTION GRAIN, and it is decided from a fact the
                 // source already carries -- no build, no emit, no differential is spent on a
-                // module that cannot produce a call.
+                // module that cannot produce a call. The decision itself is a PURE function, so
+                // both of its exclusion arms and its refusal can be executed against hand-built
+                // states rather than only against whatever the live corpus happens to hold.
                 let coverage = function_grain_coverage(&plan);
                 declared_functions += coverage.covered.len() + coverage.uncovered.len();
                 covered_functions += coverage.covered.len();
-                if coverage.covered.is_empty() {
-                    exclusions.push(ReceiptExclusion::NoFunctionHasACorpus {
-                        module_path,
-                        uncovered: coverage.uncovered,
-                    });
-                } else {
-                    plans.push((mirror, plan, alias))
+                match plan_grain_selection(&plan, coverage)? {
+                    Some(exclusion) => exclusions.push(exclusion),
+                    None => plans.push((mirror, plan, alias)),
                 }
             }
         }
@@ -20813,8 +20914,32 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
     // count alone reads as what happened but hides how much of the corpus was in scope at all.
     // The gap between the two sentences is the thing worth seeing, and a reader given one number
     // infers the other one wrongly.
+    //
+    // EXCLUSIONS ARE COUNTED PER ARM, not as one total. A total says how many changed authorities
+    // reached no verdict; only the split says WHY, and the arms rank differently: a
+    // non-derivability row is work someone can do, an outside-the-population row is a fact no
+    // work removes. Collapsing them is how a population that cannot shrink gets read as debt that
+    // simply has not been paid.
+    let mut excluded_no_mirror = 0usize;
+    let mut excluded_outside_population = 0usize;
+    let mut excluded_no_function_declared = 0usize;
+    let mut excluded_no_corpus = 0usize;
+    for e in &exclusions {
+        match e {
+            ReceiptExclusion::NoEmittedMirror { .. } => excluded_no_mirror += 1,
+            ReceiptExclusion::MirrorOutsideEmittedPopulation { .. } => {
+                excluded_outside_population += 1
+            }
+            ReceiptExclusion::NoFunctionDeclared { .. } => excluded_no_function_declared += 1,
+            ReceiptExclusion::NoFunctionHasACorpus { .. } => excluded_no_corpus += 1,
+        }
+    }
     eprintln!(
-        "behavioral-receipt: GRAIN module: changed_authorities={} selected={} excluded={} | \
+        "behavioral-receipt: GRAIN module: changed_authorities={} selected={} excluded={} \
+         (no-emitted-mirror={excluded_no_mirror} \
+         mirror-outside-emitted-population={excluded_outside_population} \
+         no-function-declared={excluded_no_function_declared} \
+         no-function-has-a-corpus={excluded_no_corpus}) | \
          function: declared={declared_functions} covered={covered_functions} uncovered={}",
         changed.len(),
         plans.len(),
@@ -20828,6 +20953,24 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
                  generated population names it as its authority, under either header \
                  convention (the index refuses outright if any generated file is \
                  unindexable, so this is a fact about the corpus and not a lookup miss)"
+            ),
+            ReceiptExclusion::MirrorOutsideEmittedPopulation {
+                module_path,
+                mirror,
+            } => eprintln!(
+                "behavioral-receipt: excluded {module_path} — its emitted mirror {mirror} is \
+                 outside the emit's population: it is a wet-actuator artifact, produced by \
+                 another actuator and filtered out of the candidate map by the emit's own \
+                 predicate, so no run of this phase can ever obtain a candidate for it. NOT a \
+                 missing candidate: the emit does not owe this file. No work closes this row \
+                 short of the artifact acquiring a compile_stage0 producer"
+            ),
+            ReceiptExclusion::NoFunctionDeclared { module_path } => eprintln!(
+                "behavioral-receipt: excluded {module_path} — the authority declares no \
+                 functions, so it carries no behaviour that could diverge and there is nothing \
+                 for a differential to compare. NOT a derivation deficit: it contributes no \
+                 uncovered function to the FUNCTION-GRAIN line, because there is no function to \
+                 cover"
             ),
             ReceiptExclusion::NoFunctionHasACorpus {
                 module_path,
@@ -20895,8 +21038,8 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
     if plans.is_empty() {
         eprintln!(
             "behavioral-receipt: no changed authority module reached the differential — every one \
-             was excluded above, either for having no emitted mirror or for yielding no call from \
-             any of its declared functions. Nothing to compare, so this run costs nothing. That \
+             was excluded above, each under one of the four typed arms counted on the \
+             module-grain line. Nothing to compare, so this run costs nothing. That \
              is a real pass over an EMPTY selection, stated rather than printed as a bare PASS, \
              and the FUNCTION-GRAIN counts above say how much surface that silence covers"
         );
@@ -20955,8 +21098,11 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
     for (mirror, plan, alias) in &plans {
         let Some(candidate_source) = emitted.get(mirror) else {
             eprintln!(
-                "behavioral-receipt: {} REFUSED — the emit produced no {mirror}, so there is no \
-                 candidate to compare. Not equivalence: a missing candidate is ignorance",
+                "behavioral-receipt: {} REFUSED — the emit OWES {mirror} and produced no such \
+                 file, so there is no candidate to compare. Not equivalence: a missing candidate \
+                 is ignorance. This arm now means only that: a mirror the emit was never going \
+                 to write is excluded at selection under \
+                 mirror-outside-emitted-population and never reaches here",
                 plan.module_path
             );
             all_equivalent = false;
@@ -21168,6 +21314,76 @@ mod function_grain_admission_tests {
         RefusalCause::UnboundedString {
             ty: "String".to_string(),
         }
+    }
+
+    /// BOTH ARMS OF THE ONE DEFECT, IN ONE TEST, and it goes green only when BOTH are closed.
+    ///
+    /// The specimen is gunbc#8704, which tripped both in a single run:
+    /// `v2.compiler.self_host.stage0_crate_layout` (a wet-actuator mirror the emit never writes)
+    /// and `gunbc.stage0_crate_layout_generated` (zero declared functions). A fix closing one
+    /// half leaves a live red reachable by the very change that motivated it, so the assertions
+    /// are stated together rather than in two tests that could be satisfied separately.
+    #[test]
+    fn a_zero_function_authority_is_excluded_as_such_and_not_as_a_derivation_deficit() {
+        let mut p = plan(vec![], vec![]);
+        p.declared_fn_lines = 0;
+        p.parsed_signatures = 0;
+        let coverage = function_grain_coverage(&p);
+        match plan_grain_selection(&p, coverage).expect("a module with no functions is a fact") {
+            Some(ReceiptExclusion::NoFunctionDeclared { module_path }) => {
+                assert_eq!(module_path, "test.module")
+            }
+            other => panic!(
+                "an authority declaring no function has no behaviour that could diverge, so it \
+                 must be excluded AS SUCH -- reporting it as `none of its 0 declared functions \
+                 yields a call` sends a reader to close a derivation with no subject: {other:?}"
+            ),
+        }
+    }
+
+    /// THE FALSE-POSITIVE CONTROL for the arm above, read beside it: a module that DOES declare
+    /// functions, none of them derivable, must still land on the derivation-deficit arm. Without
+    /// this, a fix could satisfy the test above by sending every uncovered module to the new arm
+    /// and the deficit population would silently go to zero.
+    #[test]
+    fn a_module_whose_functions_all_refuse_stays_a_derivation_deficit() {
+        let p = plan(vec![], vec![("alpha", unbounded())]);
+        let coverage = function_grain_coverage(&p);
+        match plan_grain_selection(&p, coverage).expect("non-derivability is a fact, not ignorance")
+        {
+            Some(ReceiptExclusion::NoFunctionHasACorpus { uncovered, .. }) => {
+                assert_eq!(uncovered.len(), 1)
+            }
+            other => panic!("a declared-but-underivable function is a rankable deficit: {other:?}"),
+        }
+    }
+
+    /// A module with one derivable function is SELECTED -- the arm that must not be swallowed by
+    /// either exclusion above.
+    #[test]
+    fn a_module_with_a_derivable_function_is_selected() {
+        let p = plan(vec![("alpha", 2)], vec![("beta", unbounded())]);
+        let coverage = function_grain_coverage(&p);
+        assert!(plan_grain_selection(&p, coverage)
+            .expect("a derivable function is a subject")
+            .is_none());
+    }
+
+    /// THE READER-BLINDNESS ARM. `fn ` lines declared and no signature parsed is a disagreement
+    /// between two readers of one fact; answering it with an exclusion would publish this
+    /// fragment's own failure as a property of the authority, so it refuses.
+    #[test]
+    fn a_parse_that_sees_none_of_the_declared_functions_refuses_rather_than_excluding() {
+        let mut p = plan(vec![], vec![]);
+        p.declared_fn_lines = 7;
+        p.parsed_signatures = 0;
+        let coverage = function_grain_coverage(&p);
+        let refusal = plan_grain_selection(&p, coverage)
+            .expect_err("two readers disagreeing is ignorance, not a fact about the module");
+        assert!(
+            refusal.contains("readers disagree") && refusal.contains("test.module"),
+            "the refusal must name what it refused and why: {refusal}"
+        );
     }
 
     /// THE DISCRIMINATING RED for the whole change. A module whose every declared function refuses

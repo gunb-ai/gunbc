@@ -886,6 +886,22 @@ fn is_hand_maintained_path(path: &str) -> bool {
     HAND_MAINTAINED_STAGE0_FILES.contains(&emit_path_basename(path))
 }
 
+/// Is this emitted-mirror basename OUTSIDE `compile_stage0`'s population, structurally and not
+/// by accident?
+///
+/// This is the SAME predicate `emitted_generated_sources` filters the emitted map with, exposed
+/// rather than restated: a consumer that wanted to know "will the emit produce this file?" and
+/// answered it with its own roster would be a second producer of one fact, and the two would
+/// disagree the first time the layout authority moved. Asking the filter itself cannot.
+///
+/// It answers `true` for a wet-actuator mirror -- a generated file whose producer is some other
+/// actuator (`main_wet` and friends), which the emit deliberately never writes. A consumer that
+/// selects work from mirror headers needs this to distinguish "the emit owes me this file and
+/// did not produce it" (ignorance) from "the emit was never going to produce it" (a fact).
+pub fn mirror_outside_emitted_population(basename: &str) -> bool {
+    is_hand_maintained_path(basename)
+}
+
 fn compare_generated_surfaces(
     stage0_src: &Path,
     emitted: &HashMap<String, String>,
