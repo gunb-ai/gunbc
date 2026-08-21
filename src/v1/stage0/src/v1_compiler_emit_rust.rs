@@ -24424,6 +24424,119 @@ pub fn rust_struct_field_lookup_candidates(
     }
 }
 
+pub fn expr_var_occurrence_names(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let self_name = match (*n.expr_data.clone()).clone() {
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => {
+                let nm = expr_var_name_at(n.clone(), source_indices.clone());
+                if (nm.clone() != "".to_string()) {
+                    Rc::new(vec![nm.clone()])
+                } else {
+                    Rc::new(vec![])
+                }
+            }
+            _ => Rc::new(vec![]),
+        };
+        let child_names = Rc::new({
+            let mut __result = Vec::new();
+            for c in n.children.clone().iter().cloned() {
+                __result.extend(
+                    (*expr_var_occurrence_names(c.clone(), source_indices.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        });
+        let body_names = match n.body.clone() {
+            Some(b) => expr_var_occurrence_names(b.clone(), source_indices.clone()),
+            None => Rc::new(vec![]),
+        };
+        unique_strings(v1_rt::concat(
+            self_name.clone(),
+            v1_rt::concat(child_names.clone(), body_names.clone()),
+        ))
+    })
+}
+
+pub fn rust_callable_capture_preamble(lambda_node: Rc<Node>, scope: Rc<InferScope>) -> String {
+    {
+        let names = expr_var_occurrence_names(
+            lambda_node.clone(),
+            scope.type_env.clone().source_indices.clone(),
+        );
+        let captured = Rc::new({
+            let mut __result = Vec::new();
+            for nm in names.clone().iter().cloned() {
+                if emit_map_has(scope.body_locals.clone(), nm.clone()) {
+                    __result.push(nm);
+                }
+            }
+            __result
+        });
+        Rc::new({
+            let mut __result = Vec::new();
+            for nm in captured.clone().iter().cloned() {
+                __result.push(v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                "let ".to_string(),
+                                emit_ident(nm.clone(), RenderTarget::Rust),
+                            ),
+                            " = ".to_string(),
+                        ),
+                        emit_ident(nm.clone(), RenderTarget::Rust),
+                    ),
+                    ".clone(); ".to_string(),
+                ));
+            }
+            __result
+        })
+        .join(&"".to_string())
+    }
+}
+
+pub fn rust_callable_field_value_wrap(
+    raw: String,
+    value_node: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> String {
+    {
+        let lambda = match value_node.clone() {
+            Some(vn) => match (*vn.expr_data.clone()).clone() {
+                ExprData::ExprLambda => Some(vn.clone()),
+                _ => None,
+            },
+            None => None,
+        };
+        match lambda.clone() {
+            None => rust_shared_wrap_ctor(raw.clone()),
+            Some(ln) => match language_spec(RenderTarget::Rust)
+                .callable_value_wrap_template
+                .clone()
+            {
+                Some(t) => v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "{ ".to_string(),
+                            rust_callable_capture_preamble(ln.clone(), scope.clone()),
+                        ),
+                        apply_type_template1(t.clone(), raw.clone()),
+                    ),
+                    " }".to_string(),
+                ),
+                None => rust_shared_wrap_ctor(raw.clone()),
+            },
+        }
+    }
+}
+
 pub fn rust_struct_field_type_node(
     scope: Rc<InferScope>,
     struct_name: String,
@@ -24564,6 +24677,7 @@ pub fn rust_record_field_needs_box(
 
 pub fn wrap_rust_record_field_value(
     raw: String,
+    value_node: Option<Rc<Node>>,
     scope: Rc<InferScope>,
     emit_info: Rc<EmitGraphInfo>,
     shared_types: Rc<BTreeSet<String>>,
@@ -24573,13 +24687,13 @@ pub fn wrap_rust_record_field_value(
     {
         let is_bounded_lattice_field = (struct_name.clone() == "BoundedLattice".to_string());
         if rust_record_field_needs_fn_rc(scope.clone(), struct_name.clone(), field_name.clone()) {
-            rust_shared_wrap_ctor(raw.clone())
+            rust_callable_field_value_wrap(raw.clone(), value_node.clone(), scope.clone())
         } else {
             if (is_bounded_lattice_field.clone()
                 && ((field_name.clone() == "meet".to_string())
                     || (field_name.clone() == "join".to_string())))
             {
-                rust_shared_wrap_ctor(raw.clone())
+                rust_callable_field_value_wrap(raw.clone(), value_node.clone(), scope.clone())
             } else {
                 if rust_record_field_needs_box(
                     scope.clone(),
@@ -25133,6 +25247,7 @@ pub fn emit_typed_record_lit(
                                             {
                                                 let wrapped_val = wrap_rust_record_field_value(
                                                     fval0.clone(),
+                                                    Some(field_init_node_value(f.clone())),
                                                     scope.clone(),
                                                     emit_info.clone(),
                                                     shared_types.clone(),
@@ -25615,6 +25730,7 @@ pub fn emit_typed_record_lit(
                                                 };
                                                 let stored_val = wrap_rust_record_field_value(
                                                     field_val.clone(),
+                                                    Some(f_value.clone()),
                                                     scope.clone(),
                                                     emit_info.clone(),
                                                     shared_types.clone(),
@@ -25715,7 +25831,7 @@ pub fn emit_typed_record_lit(
                                                     for fname in missing.clone().iter().cloned() {
                                                         __result.extend((*if is_optional_struct_field(emit_info.clone(), variant_summary_name.clone(), fname.clone()) {
                                             {
-                                                let wrapped_none = wrap_rust_record_field_value("None".to_string(), scope.clone(), emit_info.clone(), shared_types.clone(), ctor_name.clone(), fname.clone());
+                                                let wrapped_none = wrap_rust_record_field_value("None".to_string(), None, scope.clone(), emit_info.clone(), shared_types.clone(), ctor_name.clone(), fname.clone());
 Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_string(), emit_ident(fname.clone(), RenderTarget::Rust)), ": ".to_string()), wrapped_none.clone()), ",".to_string())])
 }
                                         } else {
