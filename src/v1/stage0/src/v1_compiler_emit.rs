@@ -4,6 +4,7 @@
 use self::EmitterOutcome::*;
 use self::ExprCategory::*;
 use self::FuncBodyShape::*;
+use self::JsonFragmentsAccum::*;
 use self::TcoExprShape::*;
 pub use crate::extdeps_languages_go_emit::go_method_templates_flat;
 pub use crate::extdeps_languages_python_emit::python_method_templates_flat;
@@ -822,26 +823,62 @@ pub enum EmitterOutcome {
     Refused { reason: String },
 }
 
-pub fn first_refusal(outcomes: Rc<Vec<Rc<EmitterOutcome>>>) -> Option<Rc<EmitterOutcome>> {
-    outcomes
-        .clone()
-        .iter()
-        .cloned()
-        .fold(None, |acc: _, outcome: Rc<EmitterOutcome>| {
-            match acc.clone() {
-                Some(_) => acc.clone(),
-                None => match (*outcome.clone()).clone() {
-                    EmitterOutcome::Refused { reason: _, .. } => Some(outcome.clone()),
-                    EmitterOutcome::Emitted { json: _, .. } => None,
-                },
-            }
-        })
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum JsonFragmentsAccum {
+    FragmentsAccumulated { pieces: Rc<Vec<String>> },
+    FragmentsRefused { reason: String },
 }
 
-pub fn unwrap_emitted_json(outcome: Rc<EmitterOutcome>) -> String {
-    match (*outcome.clone()).clone() {
-        EmitterOutcome::Emitted { json: j, .. } => j.clone(),
-        EmitterOutcome::Refused { reason: r, .. } => r.clone(),
+pub fn accumulate_json_fragment(
+    acc: Rc<JsonFragmentsAccum>,
+    outcome: Rc<EmitterOutcome>,
+) -> Rc<JsonFragmentsAccum> {
+    match (*acc.clone()).clone() {
+        JsonFragmentsAccum::FragmentsRefused { reason: _, .. } => acc.clone(),
+        JsonFragmentsAccum::FragmentsAccumulated { pieces: ps, .. } => {
+            match (*outcome.clone()).clone() {
+                EmitterOutcome::Refused { reason: r, .. } => {
+                    Rc::new(JsonFragmentsAccum::FragmentsRefused { reason: r.clone() })
+                }
+                EmitterOutcome::Emitted { json: j, .. } => {
+                    Rc::new(JsonFragmentsAccum::FragmentsAccumulated {
+                        pieces: v1_rt::concat(ps.clone(), Rc::new(vec![j.clone()])),
+                    })
+                }
+            }
+        }
+    }
+}
+
+pub fn accumulate_json_field(
+    acc: Rc<JsonFragmentsAccum>,
+    name: String,
+    outcome: Rc<EmitterOutcome>,
+) -> Rc<JsonFragmentsAccum> {
+    match (*acc.clone()).clone() {
+        JsonFragmentsAccum::FragmentsRefused { reason: _, .. } => acc.clone(),
+        JsonFragmentsAccum::FragmentsAccumulated { pieces: ps, .. } => match (*outcome.clone())
+            .clone()
+        {
+            EmitterOutcome::Refused { reason: r, .. } => {
+                Rc::new(JsonFragmentsAccum::FragmentsRefused { reason: r.clone() })
+            }
+            EmitterOutcome::Emitted { json: j, .. } => {
+                Rc::new(JsonFragmentsAccum::FragmentsAccumulated {
+                    pieces: v1_rt::concat(
+                        ps.clone(),
+                        Rc::new(vec![v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat("\"".to_string(), escape_json_string(name.clone())),
+                                "\": ".to_string(),
+                            ),
+                            j.clone(),
+                        )]),
+                    ),
+                })
+            }
+        },
     }
 }
 
@@ -882,76 +919,55 @@ pub fn emit_data_value_json(
                 }),
             },
             ExprData::ExprListLit => {
-                let outcomes = Rc::new({
-                    let mut __result = Vec::new();
-                    for e in value.children.clone().iter().cloned() {
-                        __result.push(emit_data_value_json(e.clone(), source_indices.clone()));
-                    }
-                    __result
-                });
-                match first_refusal(outcomes.clone()) {
-                    Some(r) => r.clone(),
-                    None => Rc::new(EmitterOutcome::Emitted {
-                        json: v1_rt::concat(
-                            v1_rt::concat(
-                                "[".to_string(),
-                                Rc::new(
-                                    outcomes
-                                        .clone()
-                                        .iter()
-                                        .cloned()
-                                        .map(unwrap_emitted_json)
-                                        .collect::<Vec<_>>(),
-                                )
-                                .join(&", ".to_string()),
-                            ),
-                            "]".to_string(),
-                        ),
+                let accum = value.children.clone().iter().cloned().fold(
+                    Rc::new(JsonFragmentsAccum::FragmentsAccumulated {
+                        pieces: Rc::new(vec![]),
                     }),
+                    |acc: Rc<JsonFragmentsAccum>, e: Rc<Node>| {
+                        accumulate_json_fragment(
+                            acc,
+                            emit_data_value_json(e.clone(), source_indices.clone()),
+                        )
+                    },
+                );
+                match (*accum.clone()).clone() {
+                    JsonFragmentsAccum::FragmentsRefused { reason: r, .. } => {
+                        Rc::new(EmitterOutcome::Refused { reason: r.clone() })
+                    }
+                    JsonFragmentsAccum::FragmentsAccumulated { pieces: ps, .. } => {
+                        Rc::new(EmitterOutcome::Emitted {
+                            json: v1_rt::concat(
+                                v1_rt::concat("[".to_string(), ps.clone().join(&", ".to_string())),
+                                "]".to_string(),
+                            ),
+                        })
+                    }
                 }
             }
             ExprData::ExprRecordLit { parent_enum: _, .. } => {
-                let field_outcomes = Rc::new({
-                    let mut __result = Vec::new();
-                    for f in value.children.clone().iter().cloned() {
-                        __result.push(emit_data_value_json(
-                            field_init_node_value(f.clone()),
-                            source_indices.clone(),
-                        ));
+                let accum = value.children.clone().iter().cloned().fold(
+                    Rc::new(JsonFragmentsAccum::FragmentsAccumulated {
+                        pieces: Rc::new(vec![]),
+                    }),
+                    |acc: Rc<JsonFragmentsAccum>, fld: Rc<Node>| {
+                        accumulate_json_field(
+                            acc,
+                            field_init_node_name_at(fld.clone(), source_indices.clone()),
+                            emit_data_value_json(
+                                field_init_node_value(fld.clone()),
+                                source_indices.clone(),
+                            ),
+                        )
+                    },
+                );
+                match (*accum.clone()).clone() {
+                    JsonFragmentsAccum::FragmentsRefused { reason: r, .. } => {
+                        Rc::new(EmitterOutcome::Refused { reason: r.clone() })
                     }
-                    __result
-                });
-                match first_refusal(field_outcomes.clone()) {
-                    Some(r) => r.clone(),
-                    None => {
-                        let field_strs = Rc::new({
-                            let mut __result = Vec::new();
-                            for f in value.children.clone().iter().cloned() {
-                                __result.push(v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            "\"".to_string(),
-                                            escape_json_string(field_init_node_name_at(
-                                                f.clone(),
-                                                source_indices.clone(),
-                                            )),
-                                        ),
-                                        "\": ".to_string(),
-                                    ),
-                                    unwrap_emitted_json(emit_data_value_json(
-                                        field_init_node_value(f.clone()),
-                                        source_indices.clone(),
-                                    )),
-                                ));
-                            }
-                            __result
-                        });
+                    JsonFragmentsAccum::FragmentsAccumulated { pieces: ps, .. } => {
                         Rc::new(EmitterOutcome::Emitted {
                             json: v1_rt::concat(
-                                v1_rt::concat(
-                                    "{".to_string(),
-                                    field_strs.clone().join(&", ".to_string()),
-                                ),
+                                v1_rt::concat("{".to_string(), ps.clone().join(&", ".to_string())),
                                 "}".to_string(),
                             ),
                         })

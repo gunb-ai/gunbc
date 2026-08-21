@@ -378,22 +378,27 @@ type EmitterOutcome
   = Emitted { json: String }
   | Refused { reason: String }
 
-fn first_refusal(outcomes: List<EmitterOutcome>) -> EmitterOutcome? {
-  outcomes |> fold(init: Absent, f: (acc, outcome) =>
-    match acc {
-      Present { value: _ } => acc
-      Absent => match outcome {
-        Refused { reason: _ } => Present { value: outcome }
-        Emitted { json: _ } => Absent
-      }
+type JsonFragmentsAccum
+  = FragmentsAccumulated { pieces: List<String> }
+  | FragmentsRefused { reason: String }
+
+fn accumulate_json_fragment(acc: JsonFragmentsAccum, outcome: EmitterOutcome) -> JsonFragmentsAccum {
+  match acc {
+    FragmentsRefused { reason: _ } => acc
+    FragmentsAccumulated { pieces: ps } => match outcome {
+      Refused { reason: r } => FragmentsRefused { reason: r }
+      Emitted { json: j } => FragmentsAccumulated { pieces: concat(ps, [j]) }
     }
-  )
+  }
 }
 
-fn unwrap_emitted_json(outcome: EmitterOutcome) -> String {
-  match outcome {
-    Emitted { json: j } => j
-    Refused { reason: r } => r
+fn accumulate_json_field(acc: JsonFragmentsAccum, name: String, outcome: EmitterOutcome) -> JsonFragmentsAccum {
+  match acc {
+    FragmentsRefused { reason: _ } => acc
+    FragmentsAccumulated { pieces: ps } => match outcome {
+      Refused { reason: r } => FragmentsRefused { reason: r }
+      Emitted { json: j } => FragmentsAccumulated { pieces: concat(ps, [concat("\"", escape_json_string(s: name), "\": ", j)]) }
+    }
   }
 }
 
@@ -408,22 +413,25 @@ fn emit_data_value_json(value: Node, source_indices: Map<String, NewlineIndex>) 
       LitNull => Emitted { json: "null" }
     }
     ExprListLit => {
-      let outcomes = value.children |> map(e => emit_data_value_json(value: e, source_indices: source_indices))
-      match first_refusal(outcomes) {
-        Present { value: r } => r
-        Absent => Emitted { json: concat("[", outcomes |> map(unwrap_emitted_json) |> join(separator: ", "), "]") }
+      let accum = value.children |> fold(init: FragmentsAccumulated { pieces: [] }, f: (acc, e) =>
+        accumulate_json_fragment(acc: acc, outcome: emit_data_value_json(value: e, source_indices: source_indices))
+      )
+      match accum {
+        FragmentsRefused { reason: r } => Refused { reason: r }
+        FragmentsAccumulated { pieces: ps } => Emitted { json: concat("[", ps |> join(separator: ", "), "]") }
       }
     }
     ExprRecordLit { parent_enum: _ } => {
-      let field_outcomes = value.children |> map(f => emit_data_value_json(value: field_init_node_value(n: f), source_indices: source_indices))
-      match first_refusal(field_outcomes) {
-        Present { value: r } => r
-        Absent => {
-          let field_strs = value.children |> map(f =>
-            concat("\"", escape_json_string(s: field_init_node_name_at(n: f, source_indices: source_indices)), "\": ", unwrap_emitted_json(emit_data_value_json(value: field_init_node_value(n: f), source_indices: source_indices)))
-          )
-          Emitted { json: concat("{", field_strs |> join(separator: ", "), "}") }
-        }
+      let accum = value.children |> fold(init: FragmentsAccumulated { pieces: [] }, f: (acc, fld) =>
+        accumulate_json_field(
+          acc: acc,
+          name: field_init_node_name_at(n: fld, source_indices: source_indices),
+          outcome: emit_data_value_json(value: field_init_node_value(n: fld), source_indices: source_indices)
+        )
+      )
+      match accum {
+        FragmentsRefused { reason: r } => Refused { reason: r }
+        FragmentsAccumulated { pieces: ps } => Emitted { json: concat("{", ps |> join(separator: ", "), "}") }
       }
     }
     ExprVar { binding_kind: _ } => Emitted { json: concat("\"", escape_json_string(s: expr_var_name_at(texpr: value, source_indices: source_indices)), "\"") }
