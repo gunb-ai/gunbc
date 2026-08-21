@@ -88,50 +88,71 @@ Two constraints that are load-bearing, not stylistic:
    structural declaration) and `Refused` (identity not supplied) are different answers. Merging them
    reproduces the bypass under a newer name — the exact defect this work exists to delete.
 
-### Step 1 has a shape decision that must be made before it is built
+### Step 1 shape: RULED — (b), a separate substrate walk, plus a mandatory calibration control
 
-Reconnaissance done, and it surfaced a fork the brief does not settle. Recording it here rather than
-picking one, because `v1.compiler.05_emit_rust` is a load-bearing file and this lane exists precisely
-because a spelling test was once put where an identity query belonged.
+Reconnaissance surfaced a fork the brief did not settle, and `smart-ram-730` ruled it. Both the fork
+and the ruling are recorded, because the reasoning constrains how step 1 may report.
 
-**What is already available, and is not the problem.** Both inputs the census needs are pure and
-exist today:
+**What was never the obstacle.** Both inputs the census needs are pure and exist today:
+`v1.compiler.coercion` `type_realization_decision` is importable (three modules already import from
+that module), and `v1.compiler.05_emit_rust` `is_host_text_carrier_type` is pure — but **private to
+that module**, imported by nothing.
 
-- `v1.compiler.coercion` `type_realization_decision` — importable; `v1.compiler.05_emit`,
-  `v1.compiler.05_emit_rust` and `v1.compiler.trait_derive_emit` already import from that module.
-- `v1.compiler.05_emit_rust` `is_host_text_carrier_type` — pure, but currently **private to that
-  module**: nothing imports it.
+**The fork was where the census runs.**
 
-**The fork is where the census runs.**
+- **(a) Inside the emitter** — the brief's literal shape: both answers at each of the six renderers,
+  legacy one emitted, receipt routed out. The v1 Rust emit path's file writing is host-driven, so
+  routing a receipt out means a **second output channel through a load-bearing file**.
+- **(b) A separate substrate walk** — a `v2.workflow` census module over the same assembled closure,
+  a probe entry, and a thin host driver: the shape `v2.workflow.realization_sweep` and
+  `realization_sweep_survey.rs` already establish, substrate analysing and host transporting.
 
-- **(a) Inside the emitter.** Literally what the brief describes: compute both answers at each of the
-  six renderers, keep emitting the legacy one, and route a receipt out. The obstacle is that the v1
-  Rust emit path's file writing is host-driven, so "route a receipt out" means a **second output
-  channel through the emit path** — a real signature change in the load-bearing file, and one whose
-  own correctness (did the receipt change any emitted byte?) then has to be established rather than
-  assumed.
-- **(b) A separate substrate walk.** A new `v2.workflow` census module over the same assembled
-  closure, a probe entry, and a thin host driver — the shape `v2.workflow.realization_sweep` and
-  `realization_sweep_survey.rs` already establish, where the substrate does the analysis and the host
-  is transport and aggregation only. Emitter untouched. Its one cost is making
-  `is_host_text_carrier_type` importable — a visibility change, not a logic change, and it must be
-  imported rather than re-derived, since a second copy of the predicate is exactly the §3 fork this
-  work exists to remove.
+**Ruled: (b).** On the merits: (a) obliges step 1 to prove its own inertness before it can report
+anything about its subject, and *an instrument that must first prove it did not disturb the thing it
+measures is a worse instrument than one that cannot disturb it*. Under (b), acceptance condition 8 —
+bytes outside the divergence population unchanged — is true **by construction** for step 1 rather
+than something step 1 establishes.
 
-  What (b) does **not** get for free: `realization_sweep`'s existing rows are per-entry-fn
-  phase/cause (`sweep_rows_with_identities` → `attempt_closure_rows`), not per-occurrence. A
-  per-occurrence walk carrying resolved declaration identity is new substrate work under that
-  pattern, not a reuse of it.
+**The objection against (b), and what neutralises it.** A parallel walk can drift from the control
+flow it claims to describe, and *this lane exists because a parallel answer path was authoritative in
+the wrong place*. That suspicion is correct, but the drift risk is not uniform across the two things
+(b) borrows, and separating them is what decides it:
 
-**Recommendation: (b).** It makes acceptance condition 8 — emitted bytes outside the divergence
-population unchanged — true *by construction* for step 1 rather than something step 1 must itself
-prove, it keeps the load-bearing emit path out of a measurement change, and it has a working
-precedent. (a) is closer to the brief's literal wording and buys one thing (b) cannot: it observes
-the answer at the exact call the renderer makes, so it cannot drift from the renderer's real control
-flow the way a parallel walk can. That is a genuine advantage and it is why this is a decision rather
-than an obvious call.
+- **The predicate cannot drift**, because `is_host_text_carrier_type` is **imported, not
+  re-derived**. A re-derived copy would be the same §3 fork again and is an immediate refusal;
+  importing it is the whole reason (b) is admissible.
+- **The traversal can drift.** The walk may visit occurrences the emitter never renders, or miss ones
+  it does. That is the real exposure, and it is not hypothetical: a subtly wrong occurrence set makes
+  every count wrong while looking perfectly well-formed.
 
-**Not started pending that decision.** Everything above this heading is unaffected by it.
+**So the calibration control is a precondition of the census being reportable, not a nice-to-have:**
+
+> The walk must **reproduce the known 25 as its diagnostic-producing divergence subset.** Partition
+> the walk's `DivergesWithExactIdentity` rows by whether the occurrence currently produces a rustc
+> diagnostic; that subset must equal the 25 sites of arm A — joined by source declaration + enclosing
+> emitted declaration + operation, **never by line**. **If it does not, the census is WRONG and its
+> divergence count must not be published. Report the mismatch instead.**
+
+This converts the drift objection from an argument into a measurement, which is the only way to
+settle it. Note what it does **not** require: the walk need not *explain* the 25, only **find** them.
+It composes with the cross-tab already committed to — the calibration is one cell of it, and the
+interesting cell (`DivergesWithExactIdentity` at zero diagnostics) is trustworthy only once the
+calibrated cell checks out.
+
+### (b) is NOT zero-touch on `05_emit_rust`, stated plainly
+
+An earlier revision of this document described the emitter as "untouched" under (b). That
+**overstates it**. Making `is_host_text_carrier_type` importable **is a change to
+`v1.compiler.05_emit_rust`**, the load-bearing file this whole lane is about.
+
+It is a much better change than a second output channel — semantically inert, no control flow
+altered, no byte emitted differently — and that is the honest description, not "untouched". A
+reviewer who finds an undisclosed edit to the load-bearing file is right to discount everything else
+in the document.
+
+Worth stating on its own account: **making a pure predicate importable is arguably correct
+independent of this lane.** A predicate that two consumers must agree on should be shareable, and its
+privacy is part of what made the fork possible in the first place.
 
 ## Step 2 — Four counterfactual crates over one pinned tree
 
