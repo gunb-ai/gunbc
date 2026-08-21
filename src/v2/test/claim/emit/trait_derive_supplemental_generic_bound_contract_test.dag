@@ -35,10 +35,8 @@ import v2.std.compilers.target_model {
   TargetCapabilityKey,
   TargetCollectionRealization,
   TargetCapabilityEligibilityRow,
-  TargetCapabilityEligibilityTable,
   TargetCapabilityElementEligibility,
   TargetCapabilityRequirement,
-  target_capability_eligibility_empty,
   TargetCollectionReprVec,
   TargetDeriveSupplementalGenericBoundContract,
   TargetDeriveSupplementalGenericBoundContractAuthority,
@@ -341,20 +339,21 @@ fn sgb_nested_choice() -> TargetRepresentationChoice {
   )
 }
 
-fn sgb_capability_eligibility() -> TargetCapabilityEligibilityTable {
-  map_insert(
-    m: map_insert(
-      m: map_insert(
-        m: target_capability_eligibility_empty(),
-        key: ^target_collection_trait_ord,
-        value: TargetCapabilityElementEligibility { kernel_atoms: sgb_capability_kernel_atoms }
-      ),
-      key: ^target_collection_trait_hash,
-      value: TargetCapabilityElementEligibility { kernel_atoms: sgb_capability_kernel_atoms }
-    ),
-    key: ^target_collection_trait_eq,
-    value: TargetCapabilityElementEligibility { kernel_atoms: sgb_capability_kernel_atoms }
-  )
+fn sgb_capability_eligibility() -> List<TargetCapabilityEligibilityRow> {
+  [
+    TargetCapabilityEligibilityRow {
+      capability_key: ^target_collection_trait_ord,
+      eligibility: TargetCapabilityElementEligibility { kernel_atoms: sgb_capability_kernel_atoms }
+    },
+    TargetCapabilityEligibilityRow {
+      capability_key: ^target_collection_trait_hash,
+      eligibility: TargetCapabilityElementEligibility { kernel_atoms: sgb_capability_kernel_atoms }
+    },
+    TargetCapabilityEligibilityRow {
+      capability_key: ^target_collection_trait_eq,
+      eligibility: TargetCapabilityElementEligibility { kernel_atoms: sgb_capability_kernel_atoms }
+    }
+  ]
 }
 
 data sgb_capability_kernel_atoms: List<Symbol> = [
