@@ -28,7 +28,10 @@ type TypeCheckpoint {
 // is what this split exists to remove.
 //
 // WHAT THIS REPLACES, so the shape is not re-collapsed later. One field answering both questions is
-// an ARITY defect, not a wrong value: whichever spelling the field carries, one consumer is wrong.
+// a TWO-ROLE defect, not a wrong value: whichever spelling the field carries, one consumer is wrong.
+// (The word ARITY is deliberately avoided: in this area it already means type-parameter count --
+// v1.compiler.emit_rust carries AliasDeclArityVerdict and a scalar declared-arity guard -- so naming
+// this defect that way would collide with a live, different meaning a few declarations away.)
 // The cost while it stood was a compensating fork at the consumer -- v1.compiler.emit_rust's type
 // alias arm special-cased `item_text == "String"` and emitted the grounded line by hand, ahead of and
 // bypassing the identity-keyed authority every other consumer already routed through. So the
