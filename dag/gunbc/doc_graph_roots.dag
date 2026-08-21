@@ -1313,8 +1313,8 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: ProbeDoc,
     slug: "root_b_primitive_repr_fork_2026-08-16",
-    primary_work: DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "decl_file_realizes_natively", field: WholeDeclaration },
-    additional_works: [DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_seed_host_numeric_alias", field: WholeDeclaration }, DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "type_reference_decl_file", field: WholeDeclaration }],
+    primary_work: DeclarationRef { module_path: "v1.compiler.coercion", decl_name: "decl_file_realizes_natively", field: WholeDeclaration },
+    additional_works: [DeclarationRef { module_path: "v1.compiler.coercion", decl_name: "rust_seed_host_numeric_alias", field: WholeDeclaration }, DeclarationRef { module_path: "v1.compiler.coercion", decl_name: "type_reference_decl_file", field: WholeDeclaration }],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the checkpoint table stops being keyed on the bare dag_name -- a corpus-side declaration-to-Rust-type binding supersedes the spelling row, so realization is decided by declaration identity on every name rather than on the names the table happens to miss; at that point the residue this probe measured is closed and the record is fully superseded") },
   },
   HandAuthoredDocBind {
