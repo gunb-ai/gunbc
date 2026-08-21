@@ -35,9 +35,11 @@ pub use crate::v1_compiler_closure_stub_v2_std_integer_rust::closure_stub_v2_std
 pub use crate::v1_compiler_closure_stub_v2_std_text_rust::closure_stub_v2_std_text_source;
 pub use crate::v1_compiler_coercion::decl_identity_file;
 pub use crate::v1_compiler_coercion::{
-    coerce_primitive_type, is_copy, lookup_checkpoint, type_reference_decl_file,
+    coerce_primitive_type, is_copy, lookup_checkpoint, rust_seed_host_numeric_alias,
+    type_reference_decl_file,
 };
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
+use crate::v1_compiler_emit::EmitterOutcome::{Emitted, Refused};
 pub use crate::v1_compiler_emit::{
     compute_service_fields, effective_operation_transport, emit_bin_op_symbol, emit_container,
     emit_data_value_json, emit_error_expr, emit_ident, emit_keyword, emit_lambda,
@@ -52,7 +54,7 @@ pub use crate::v1_compiler_emit::{
     service_field_ctors, service_field_decls, tco_reassign_core, typed_named_arg_matches,
 };
 pub use crate::v1_compiler_emit::{
-    BlockEmitState, InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput,
+    BlockEmitState, EmitterOutcome, InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput,
 };
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
@@ -118,17 +120,17 @@ pub use crate::v1_compiler_ownership::{
 pub use crate::v1_compiler_resolve::get_exported_names;
 pub use crate::v1_compiler_runtime_rust::rust_runtime_source;
 pub use crate::v1_compiler_trait_bound_witness::{
-    v1_call_forwarding_clone_bound_wrapper_param_names,
+    v1_call_forwarding_clone_bound_wrapper_param_names, v1_equality_bound_param_name,
     v1_rc_match_scrutinee_clone_bound_param_names, v1_union_clone_param_names,
 };
 pub use crate::v1_compiler_trait_derive_emit::{
     rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible,
     trait_derive_emit_fn_clone_bound_keyed_carrier_module, v1_clone_bounded_type_params,
     v1_clone_impl_required_type_params, v1_emit_enum_derives, v1_emit_enum_supplemental_impls,
-    v1_emit_struct_from_capability_table, v1_emit_type_params_with_clone_bounds,
-    v1_generic_params_needing_clone_bound, v1_item_clone_bounded_param_names,
-    v1_item_clone_undecided_head, v1_item_field_type_exprs, v1_map_key_required_type_names,
-    v1_trait_derive_refuse, v1_with_map_key_requirement,
+    v1_emit_struct_from_capability_table, v1_emit_type_params_with_bounds,
+    v1_emit_type_params_with_clone_bounds, v1_generic_params_needing_clone_bound,
+    v1_item_clone_bounded_param_names, v1_item_clone_undecided_head, v1_item_field_type_exprs,
+    v1_map_key_required_type_names, v1_trait_derive_refuse, v1_with_map_key_requirement,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -397,7 +399,7 @@ pub fn render_rust_type_without_applied_binding(
                                 );
                                 let tn = authored_name_at(source_indices.clone(), n.clone());
                                 let base = emit_container(
-                                    to_snake(tn.clone()),
+                                    tn.clone(),
                                     inner_str.clone(),
                                     RenderTarget::Rust,
                                 );
@@ -736,63 +738,19 @@ pub fn reference_use_lines_representation_invariant_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn numeric_realization_identity_note() -> String {
+pub fn numeric_realization_relocation_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Realization is keyed on the DECLARING MODULE of the type, never on the authored spelling alone. Two declarations may share a spelling -- std.nat.Nat is CommutativeSemiring<Magnitude> and realizes natively, while v2.std.nat.Nat is the Peano coproduct Zero|Succ and must NOT -- so a bare-name rule realizes the wrong one. decl_file is the resolved declaration's ident_span file; the empty string means identity is UNKNOWN at this site, which yields NO realization (render structurally) rather than a guess. This replaces the deleted rust_corpus_repr closure-provenance switch: what a declaration realizes as is a fact about that declaration and its target, never about which other sources happen to share the closure.".to_string()
+            "RELOCATED to v1.compiler.coercion (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, review 54335): numeric_realization_identity_note, numeric_realization_roster_extension_note, numeric_realization_declaring_modules, decl_file_realizes_natively and rust_seed_host_numeric_alias moved there in full, completing the relocation checkpoint_table_bypasses_identity_note's structural_declaration_modules_for precedent already established for the negative-form (structural) half of this same two-authority shape -- this was the positive-form (native) half, still sitting in this module and reached back into by v1.compiler.coercion type_realization_decision, an import cycle DESIGN section 3 forbids (emit_rust already imports FROM coercion; coercion calling back into emit_rust closes the cycle). This module now imports only rust_seed_host_numeric_alias back from v1.compiler.coercion, exactly as it already imports lookup_checkpoint from there -- one direction, no cycle; numeric_realization_declaring_modules and decl_file_realizes_natively have no consumer left in this module, since rust_seed_host_numeric_alias was their only caller here and it moved with them. Agreed with swift-moth-294 (msg_502982ac, 2026-08-21) and sequenced behind gunbc#8716 (merged 2026-08-21T06:19:19Z), which is why the move landed now rather than when first proposed.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
-}
-
-pub fn numeric_realization_roster_extension_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "THIS ROSTER IS A LIVE ENUMERATION AND A ROW MAY ONLY BE ADDED FOR A DECLARATION WHOSE NATIVE REALIZATION IS ALREADY TRUE, NEVER TO MAKE A FAILING SITE COMPILE. A module belongs here when the types it declares ARE the host numeric type at the target -- dag/std/nat.dag and dag/std/integer.dag are the two grounded numeric authorities, and the <kernel: prefix covers declarations the seed mints with no source file. Adding a module to silence an E0308 or an E0109 at some call site is the §5 workaround: it converts one site's diagnostic into a corpus-wide realization change, and it does so by editing the roster rather than the fact the roster reports. The tell is that the author cannot say what the added module's type IS at the target without referring to the site that failed. If a site needs a realization this roster does not grant, the question is whether that declaration is genuinely a host numeric -- and if it is not, the fix is at the site or in the checkpoint binding, never here. This enumeration is itself provisional: it exists because there is no corpus-side declaration-to-Rust-type binding yet, and it dissolves into that binding when it lands -- see checkpoint_table_bypasses_identity_note for the two-authority shape.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn numeric_realization_declaring_modules() -> Rc<Vec<String>> {
-    Rc::new(vec![
-        "dag/std/nat.dag".to_string(),
-        "dag/std/integer.dag".to_string(),
-        "<kernel:".to_string(),
-    ])
-}
-
-pub fn decl_file_realizes_natively(decl_file: String) -> bool {
-    if (decl_file.clone() == "".to_string()) {
-        false
-    } else {
-        {
-            let mut __found = false;
-            for m in numeric_realization_declaring_modules().iter().cloned() {
-                if v1_rt::contains(decl_file.clone(), m.clone()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        }
-    }
-}
-
-pub fn rust_seed_host_numeric_alias(name: String, decl_file: String) -> Option<String> {
-    if (((name.clone() == "Nat".to_string()) || (name.clone() == "Int".to_string()))
-        && decl_file_realizes_natively(decl_file.clone()))
-    {
-        Some("i64".to_string())
-    } else {
-        None
-    }
 }
 
 pub fn checkpoint_table_bypasses_identity_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "CEILING, STATED BECAUSE THE CODE DELIVERS LESS THAN THE DELETION OF RustCorpusRepr SUGGESTS. lookup_checkpoint is keyed on the BARE dag_name and is consulted BEFORE the identity-keyed arm, so any name carrying a checkpoint row in extdeps/languages/rust/types.dag bypasses declaration keying entirely. Nat carries no row and therefore discriminates correctly -- dag/std/nat.dag realizes natively, src/v2/std/nat.dag refuses. Names WITH a row do not. This is not a regression introduced here: the table was already bare-name keyed and the global corpus mode was hiding the question. It is the honest rung. The class is MECHANICALLY PREVENTABLE rather than structurally impossible, and its executing evidence is v1.tests.claim.checkpoint_identity_keying_witness_test, which asserts the CURRENT bypassing answers on purpose so the gap is counted instead of assumed closed. THAT CITATION WAS FALSE WHEN THIS NOTE FIRST LANDED AND IS REPAIRED RATHER THAN SOFTENED. It named the residue block generated by v1.compiler.compiler_tests_rust ct_groupcompletion_checkpoint_fires_under_faithful_corpus_test, which emits into a module declared `#[cfg(test)] mod compiler_tests;` inside the v1-compiler crate -- while the only test step CI runs is `cargo test -p v1-compiler-tests`, a SEPARATE package consuming v1-compiler as an ordinary dependency, so cfg(test) is never set for it and the block is not compiled, let alone executed. Measured rather than reasoned: that step's binary enumerates 30 tests and none is this one, against a positive control confirming the enumeration is non-empty. So a ceiling disclosure cited evidence that had never run -- DESIGN section 4b(1) rung honesty violated in the compiler's own self-description, which is worse than sitting low because an inflated class never ranks for climbing. The assertions were re-authored as an enrolled .dag witness and now execute (seven rows PASS, including the discriminating row where two declarations share the spelling Nat and answer differently); the superseded generated-Rust block is deleted rather than left standing as a second, silent copy. POPULATION (census by vivid-wren-870, who owns the rows): SEVEN of the table's names are also declared under src/v2 -- Int, Float, Bool, Symbol, Unit, String, Hash; Bytes, Secret and Json are not. That is a LOWER BOUND obtained by grepping line-start `type <name>` declarations under src/v2; it does not find names introduced any other way, and it says NOTHING about how many sites bite in any real closure. Three of the seven are the same shape as Int in that the v2 declaration is a genuinely different STRUCTURE rather than a spelling coincidence -- Int is GroupCompletion<Nat>, String is FreeMonoid<Char>, Bool is a two-variant coproduct. Symbol and Unit are bodyless and may be declared-abstract rather than competing realizations, so their bypass may be harmless. Hash is the one that costs a GUARANTEE rather than merely a representation, and it belongs with the same-shape three rather than apart from them: the row targets v1_rt::Hash, which is `pub type Hash = String` in the seed, against a v2 declaration of Fnv1a64Structural -- a single-field record whose digest field is `String where lower_hex_16`. std.content_hash content_hash_family_constructor_note states the public forgeable record constructors are DELETED and that the where-refinement IS the construction wall, so realizing that type as a bare String alias renders away the carrier the wall is attached to. A name-keyed spelling row can therefore silently drop a §4b construction rung. Established from declarations at both ends (vivid-wren-870, re-read here); NO live site is claimed, because no closure reaching a v2-declared Hash through lookup_checkpoint has been emitted by either of us. NEXT-RUNG TRIGGER -- AND THE OBVIOUS SHAPE IS THE WRONG ONE. An earlier revision of this note named `the checkpoint rows gain a declaring-module column`. vivid-wren-870 refused that shape with an argument this note adopts: a TypeCheckpoint row is cited to the Rust reference and states how RUST spells a type, whereas which dag module declares Int is a gunbc-corpus fact, so a declaring-module column puts corpus data inside an extdeps upstream authority -- a layer inversion, and the same class as a row being asked a question its cited authority cannot answer. The expected terminal shape is TWO authorities rather than one wider one: extdeps keeps Rust type -> spelling, a corpus-side binding says this dag declaration realizes as that Rust type, and lookup_checkpoint keys on the second. That also lets the seven differ from each other, which one column keyed on a single module cannot express. Recorded as a proposal from the rows owner, not as a decision, and unbuilt at the time of writing. When it lands the residue assertions flip to None and the flip is the dissolution signal, not a regression. LANDED FOR HASH (this PR, T7): the second authority is v1.compiler.coercion structural_declaration_modules_for, a corpus-side row roster keyed on the dag_name and enumerating the modules whose declaration of that name is structural rather than native -- \"Hash\" => [\"src/v2/std/node.dag\"] is its one row. lookup_checkpoint (v1.compiler.coercion) now consults it before the bare-name table: when decl_file_declares_structurally holds, lookup_checkpoint refuses (none) rather than answering from the table, and every consumer that already carried a correct identity-arm fallback -- coerce_primitive_type, is_copy, literal_suffix, and the direct callers of lookup_checkpoint itself -- inherits the refusal once decl_file is threaded to the call, which it now is at every production call site across v1.compiler.emit_rust and v1.compiler.emit. table_present_hash_refuses_under_structural_declaration in the witness below is the flip this note predicted; it is no longer residue. Int, Float, Bool, Symbol, String remain open -- they have no row in structural_declaration_modules_for -- and are the population the next instance of this class (a name question answered by authored spelling instead of declaration identity) inherits, per the class-level framing this ceiling was folded into. The roster is deliberately a single generic, identity-keyed mechanism with one row rather than a Hash-specific special case, so a future row for Int or String is an addition to this same authority, not a new mechanism. MEASURED CONSEQUENCE AT ARTIFACT GRAIN, added after this note first landed: the bypass is observable in the emitted FILE SET, not only in the emitter's answer. In a two-arm emission of one v2-only closure the file v2_std_integer.rs is present before the cut and ABSENT after it. That module declares exactly one item, the v2-declared structural Int, and its only type-position consumer was a single generated re-export line in std_algebra.rs; with Int reaching the bare-name checkpoint the re-export is no longer generated, nothing references the module, and it is not emitted. Every other hunk in that file is an offset shift from the deleted line -- the Int string literals are unchanged and the i64 count in the file is identical across arms, so nothing became native that was structural. AND THE DROP IS THE MINORITY CASE -- THE WRONG REALIZATION IS EMITTED, NOT AVOIDED. Across eleven emitted closures measured by smart-ibex-716 (corpus a6bceb6903, binaries a6bceb6903 and ad05a2f2d5), the module disappears in only 2; in the other 9 it SURVIVES with its content changed, from pub type Int = GroupCompletion<Rc<Nat>> to pub type Int = i64. So the native realization of the v2-declared Peano-completion type is already present in the emitted artifact. What is absent is only a consumer: the same census found ZERO type-position uses of the v2 Int in any of the eleven -- every qualified occurrence sits on a use line, and the only bare occurrences surviving a use-line exclusion were four string literals inside prose, one of them a parser test fixture. Two false positives were found and discarded on the way to that zero, both by pulling the specimen rather than trusting the count. The residue is therefore NOT a dead re-export being dropped, which was this note's first reading and is corrected here; it is a wrong realization sitting inert with no diagnostic attached, so the day any declaration binds a bare Int in one of those closures it binds i64 silently. THE HAZARD TRIGGER IS THEREFORE A TYPE POSITION APPEARING, not the re-export returning. This is recorded because a module leaving OR silently changing an alias target is the kind of consequence a content-only diff of one closure reads as offset noise: the instruments that name it are a file-set diff and a cross-closure alias-target read, and neither was in this PR's original receipt.".to_string()
+            "CEILING, STATED BECAUSE THE CODE DELIVERS LESS THAN THE DELETION OF RustCorpusRepr SUGGESTS. lookup_checkpoint is keyed on the BARE dag_name and is consulted BEFORE the identity-keyed arm, so any name carrying a checkpoint row in extdeps/languages/rust/types.dag bypasses declaration keying entirely. Nat carries no row and therefore discriminates correctly -- dag/std/nat.dag realizes natively, src/v2/std/nat.dag refuses. Names WITH a row do not. This is not a regression introduced here: the table was already bare-name keyed and the global corpus mode was hiding the question. It is the honest rung. The class is MECHANICALLY PREVENTABLE rather than structurally impossible, and its executing evidence is v1.tests.claim.checkpoint_identity_keying_witness_test, which asserts the CURRENT bypassing answers on purpose so the gap is counted instead of assumed closed. THAT CITATION WAS FALSE WHEN THIS NOTE FIRST LANDED AND IS REPAIRED RATHER THAN SOFTENED. It named the residue block generated by v1.compiler.compiler_tests_rust ct_groupcompletion_checkpoint_fires_under_faithful_corpus_test, which emits into a module declared `#[cfg(test)] mod compiler_tests;` inside the v1-compiler crate -- while the only test step CI runs is `cargo test -p v1-compiler-tests`, a SEPARATE package consuming v1-compiler as an ordinary dependency, so cfg(test) is never set for it and the block is not compiled, let alone executed. Measured rather than reasoned: that step's binary enumerates 30 tests and none is this one, against a positive control confirming the enumeration is non-empty. So a ceiling disclosure cited evidence that had never run -- DESIGN section 4b(1) rung honesty violated in the compiler's own self-description, which is worse than sitting low because an inflated class never ranks for climbing. The assertions were re-authored as an enrolled .dag witness and now execute (seven rows PASS, including the discriminating row where two declarations share the spelling Nat and answer differently); the superseded generated-Rust block is deleted rather than left standing as a second, silent copy. POPULATION (census by vivid-wren-870, who owns the rows): SEVEN of the table's names are also declared under src/v2 -- Int, Float, Bool, Symbol, Unit, String, Hash; Bytes, Secret and Json are not. That is a LOWER BOUND obtained by grepping line-start `type <name>` declarations under src/v2; it does not find names introduced any other way, and it says NOTHING about how many sites bite in any real closure. Three of the seven are the same shape as Int in that the v2 declaration is a genuinely different STRUCTURE rather than a spelling coincidence -- Int is GroupCompletion<Nat>, String is FreeMonoid<Char>, Bool is a two-variant coproduct. Symbol and Unit are bodyless and may be declared-abstract rather than competing realizations, so their bypass may be harmless. Hash is the one that costs a GUARANTEE rather than merely a representation, and it belongs with the same-shape three rather than apart from them: the row targets v1_rt::Hash, which is `pub type Hash = String` in the seed, against a v2 declaration of Fnv1a64Structural -- a single-field record whose digest field is `String where lower_hex_16`. std.content_hash content_hash_family_constructor_note states the public forgeable record constructors are DELETED and that the where-refinement IS the construction wall, so realizing that type as a bare String alias renders away the carrier the wall is attached to. A name-keyed spelling row can therefore silently drop a §4b construction rung. Established from declarations at both ends (vivid-wren-870, re-read here); NO live site is claimed, because no closure reaching a v2-declared Hash through lookup_checkpoint has been emitted by either of us. NEXT-RUNG TRIGGER -- AND THE OBVIOUS SHAPE IS THE WRONG ONE. An earlier revision of this note named `the checkpoint rows gain a declaring-module column`. vivid-wren-870 refused that shape with an argument this note adopts: a TypeCheckpoint row is cited to the Rust reference and states how RUST spells a type, whereas which dag module declares Int is a gunbc-corpus fact, so a declaring-module column puts corpus data inside an extdeps upstream authority -- a layer inversion, and the same class as a row being asked a question its cited authority cannot answer. The expected terminal shape is TWO authorities rather than one wider one: extdeps keeps Rust type -> spelling, a corpus-side binding says this dag declaration realizes as that Rust type, and lookup_checkpoint keys on the second. That also lets the seven differ from each other, which one column keyed on a single module cannot express. Recorded as a proposal from the rows owner, not as a decision, and unbuilt at the time of writing. When it lands the residue assertions flip to None and the flip is the dissolution signal, not a regression. LANDED FOR HASH (this PR, T7): the second authority is v1.compiler.coercion structural_declaration_modules_for, a corpus-side row roster keyed on the dag_name and enumerating the modules whose declaration of that name is structural rather than native -- \"Hash\" => [\"src/v2/std/node.dag\"] is its one row. lookup_checkpoint (v1.compiler.coercion) now consults it before the bare-name table: when decl_file_declares_structurally holds, lookup_checkpoint refuses (none) rather than answering from the table, and every consumer that already carried a correct identity-arm fallback -- coerce_primitive_type, is_copy, literal_suffix, and the direct callers of lookup_checkpoint itself -- inherits the refusal once decl_file is threaded to the call, which it now is at every production call site across v1.compiler.emit_rust and v1.compiler.emit. table_present_hash_refuses_under_structural_declaration in the witness below is the flip this note predicted; it is no longer residue. LANDED FOR STRING (session merry-lark-67, per smart-ram-730's dispatch): structural_declaration_modules_for gained a second row, \"String\" => [\"src/v2/std/text.dag\", \"dag/std/string_type.dag\"] -- both declare `type String = FreeMonoid<Char>`, the structural free-monoid-over-Char carrier, never a host string, so a reference resolving to either module now refuses the bare-name table's `String`/`.to_string()` spelling instead of silently rendering it. residue_table_present_string_bypasses_identity in the legacy oracle (src/v1/tests/claim/checkpoint_identity_keying_witness_test.dag) is retired for the same reason table_present_hash_refuses_under_structural_declaration closed for Hash, and is replaced there by table_present_string_refuses_under_structural_declaration_text / _string_type rather than repaired back to a passing bypass -- the flip is the dissolution signal, not a regression. LANDED FOR BOOL (session merry-lark-67, corpus-wide histogram from smart-ram-730; corrected same session, commit 127ad848070, per review 54257): structural_declaration_modules_for gained a third row, \"Bool\" => [\"src/v2/std/logic.dag\"] -- the initial enrollment mirrored String's two-row shape onto Bool and also listed dag/std/types.dag, but that module is the ordinary corpus-wide native Bool prelude (imported by 300+ dag/test/claim modules with no bit/width/encoding modeling riding on it), directly analogous to dag/std/integer.dag for Int, which sits in the POSITIVE numeric_realization_declaring_modules roster, never the negative structural one. Only src/v2/std/logic.dag's Bool is genuinely structural, carrying BoolWidthFact/BoolEncodingFact/BooleanAlgebra<Bool> modeling over the two-variant coproduct; a reference resolving to it refuses the bare-name table's `bool`/`false` spelling instead of silently rendering it, while a reference resolving to dag/std/types.dag renders natively as designed. The over-broad row caused required-floor to refuse native bool rendering for 5 unrelated fixtures (e0308_mechanical_trio_test, optional_carrier_signature_test) and caused required-regen to see drift across the self-hosted std_*.rs mirrors; both are the fabricated-plausible-ceiling failure this note elsewhere criticizes, disclosed and repaired here rather than left standing. Bool never had a residue row in the legacy oracle to flip; it lands directly as one CLOSED row, table_present_bool_refuses_under_structural_declaration_logic, alongside table_present_bool_renders_natively_for_the_corpus_prelude confirming dag/std/types.dag's native rendering. KNOWN GAP THIS ROW DOES NOT CLOSE, FOUND WHILE MEASURING IT: emit_typed_item's type-alias arm special-cases `item_text == \"String\"` UNCONDITIONALLY -- rust_string_grounded_type_alias_decl_line emits `pub type String = std::string::String;` at the DECLARATION site regardless of decl_file, never consulting rust_scalar_checkpoint_render_base or this roster at all. So the module that declares `type String = FreeMonoid<Char>` keeps emitting itself as a host-String alias even after this row makes every REFERENCE to it refuse the bare-name table; the declaration and its own references can now disagree in the SAME emitted file. This is not fixed here -- it is a separate emit_rust mechanism, unconditional on decl_file, that this row's PR does not touch -- and is recorded as the next-rung trigger for String's declaration-site emission specifically, distinct from the reference-site gate this note otherwise describes. Int, Float, Symbol remain open -- they have no row in structural_declaration_modules_for -- and are the population the next instance of this class (a name question answered by authored spelling instead of declaration identity) inherits, per the class-level framing this ceiling was folded into. The roster is deliberately a single generic, identity-keyed mechanism with one row rather than a Hash-specific special case, so a future row for Int or String is an addition to this same authority, not a new mechanism. MEASURED CONSEQUENCE AT ARTIFACT GRAIN, added after this note first landed: the bypass is observable in the emitted FILE SET, not only in the emitter's answer. In a two-arm emission of one v2-only closure the file v2_std_integer.rs is present before the cut and ABSENT after it. That module declares exactly one item, the v2-declared structural Int, and its only type-position consumer was a single generated re-export line in std_algebra.rs; with Int reaching the bare-name checkpoint the re-export is no longer generated, nothing references the module, and it is not emitted. Every other hunk in that file is an offset shift from the deleted line -- the Int string literals are unchanged and the i64 count in the file is identical across arms, so nothing became native that was structural. AND THE DROP IS THE MINORITY CASE -- THE WRONG REALIZATION IS EMITTED, NOT AVOIDED. Across eleven emitted closures measured by smart-ibex-716 (corpus a6bceb6903, binaries a6bceb6903 and ad05a2f2d5), the module disappears in only 2; in the other 9 it SURVIVES with its content changed, from pub type Int = GroupCompletion<Rc<Nat>> to pub type Int = i64. So the native realization of the v2-declared Peano-completion type is already present in the emitted artifact. What is absent is only a consumer: the same census found ZERO type-position uses of the v2 Int in any of the eleven -- every qualified occurrence sits on a use line, and the only bare occurrences surviving a use-line exclusion were four string literals inside prose, one of them a parser test fixture. Two false positives were found and discarded on the way to that zero, both by pulling the specimen rather than trusting the count. The residue is therefore NOT a dead re-export being dropped, which was this note's first reading and is corrected here; it is a wrong realization sitting inert with no diagnostic attached, so the day any declaration binds a bare Int in one of those closures it binds i64 silently. THE HAZARD TRIGGER IS THEREFORE A TYPE POSITION APPEARING, not the re-export returning. This is recorded because a module leaving OR silently changing an alias target is the kind of consequence a content-only diff of one closure reads as offset noise: the instruments that name it are a file-set diff and a cross-closure alias-target read, and neither was in this PR's original receipt.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -925,14 +883,6 @@ pub fn rust_named_type_base(name: String, decl_file: String) -> String {
 
 pub fn rust_applied_type_base(name: String, decl_file: String) -> String {
     rust_named_type_base(name.clone(), decl_file.clone())
-}
-
-pub fn rust_normalize_witness_type_text(rendered: String) -> String {
-    v1_rt::replace(
-        rendered.clone(),
-        "witness<".to_string(),
-        "Witness<".to_string(),
-    )
 }
 
 pub fn rust_witness_parent_leaf(parent: String) -> bool {
@@ -1244,22 +1194,6 @@ pub fn rust_witness_variant_ctor_path(
         }
         None => ctor_name,
     }
-}
-
-pub fn rust_normalize_partial_function_field_type_text(rendered: String) -> String {
-    v1_rt::replace(
-        v1_rt::replace(
-            v1_rt::replace(
-                rendered.clone(),
-                "HashMap<K, V>".to_string(),
-                "PartialFunction<K, V>".to_string(),
-            ),
-            "Vec<K>".to_string(),
-            "FreeMonoid<K>".to_string(),
-        ),
-        "Vec<V>".to_string(),
-        "FreeMonoid<V>".to_string(),
-    )
 }
 
 pub fn is_parametric_opaque_type_by_name(env: Rc<TypeEnv>, type_name: String) -> bool {
@@ -1821,6 +1755,20 @@ pub fn rust_carrier_realizes_as_machine_scalar(n: Rc<Node>, type_name: String) -
     }
 }
 
+pub fn rust_carrier_is_at_shared_layer(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    shared_types: Rc<BTreeSet<String>>,
+) -> bool {
+    {
+        let leaf = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
+        ((((leaf.clone() != "".to_string())
+            && !rust_carrier_realizes_as_machine_scalar(n.clone(), leaf.clone()))
+            && (n.return_cardinality.clone() != Cardinality::CardOptional))
+            && v1_rt::set_contains(&shared_types, leaf.clone()))
+    }
+}
+
 pub fn render_rust_shared_type_with_optional(
     n: Rc<Node>,
     type_name: String,
@@ -2137,7 +2085,7 @@ if peel.clone() {
                                                             match arg_list.clone().first().cloned()
                                                             {
                                                                 Some(inner) => emit_container(
-                                                                    to_snake(name.clone()),
+                                                                    name.clone(),
                                                                     inner.clone(),
                                                                     RenderTarget::Rust,
                                                                 ),
@@ -5253,6 +5201,7 @@ pub fn v1_item_signature_type_exprs(item: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 pub fn v1_map_key_seed_type_exprs(
     modules: Rc<Vec<Rc<TypedModule>>>,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
     {
         let declaration_field_exprs = Rc::new({
@@ -5260,7 +5209,9 @@ pub fn v1_map_key_seed_type_exprs(
             for type_name in Rc::new(v1_rt::map_keys(&type_decl_items)).iter().cloned() {
                 __result.extend(
                     (*match v1_rt::map_get(&type_decl_items, type_name.clone()) {
-                        Some(item) => v1_item_field_type_exprs(item.clone()),
+                        Some(item) => {
+                            v1_item_field_type_exprs(item.clone(), source_indices.clone())
+                        }
                         None => Rc::new(vec![]),
                     })
                     .iter()
@@ -5319,7 +5270,11 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             merged_module_source_indices(typed.modules.clone()),
         );
         let map_key_required = v1_map_key_required_type_names(
-            v1_map_key_seed_type_exprs(typed.modules.clone(), base_info.type_decl_items.clone()),
+            v1_map_key_seed_type_exprs(
+                typed.modules.clone(),
+                base_info.type_decl_items.clone(),
+                merged_module_source_indices(typed.modules.clone()),
+            ),
             hand_maintained_map_key_required_type_names(),
             base_info.type_decl_items.clone(),
             merged_module_source_indices(typed.modules.clone()),
@@ -5828,6 +5783,7 @@ pub fn emit_module(
             v1_map_key_seed_type_exprs(
                 Rc::new(vec![typed_module.clone()]),
                 base_info.type_decl_items.clone(),
+                merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
             ),
             hand_maintained_map_key_required_type_names(),
             base_info.type_decl_items.clone(),
@@ -9949,16 +9905,13 @@ pub fn emit_parametric_phantom_opaque_struct(
         let item_text = authored_name_at(source_indices.clone(), item.clone());
         let type_params = emit_type_params(item.params.clone(), source_indices.clone());
         let generic_names = item_generic_param_names(item.clone(), source_indices.clone());
-        let marker_ty = match generic_names.clone().first().cloned() {
-            Some(g) => v1_rt::concat(
-                v1_rt::concat(
-                    "std::marker::PhantomData<".to_string(),
-                    to_pascal(g.clone()),
-                ),
-                ">".to_string(),
+        let marker_ty = v1_rt::concat(
+            v1_rt::concat(
+                "std::marker::PhantomData<".to_string(),
+                rust_phantom_marker_inner(generic_names.clone()),
             ),
-            None => "std::marker::PhantomData<()>".to_string(),
-        };
+            ">".to_string(),
+        );
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
@@ -12777,6 +12730,20 @@ pub fn emit_item_type_params_with_clone_bounds(
     }
 }
 
+pub fn v1_carrier_param_needs_clone_bound(
+    item_name: String,
+    generic_param_names: Rc<Vec<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> bool {
+    ((v1_item_clone_bounded_param_names(
+        item_name.clone(),
+        generic_param_names.clone(),
+        emit_info.clone_bounded_type_params.clone(),
+    )
+    .len() as i64)
+        > 0)
+}
+
 pub fn emit_item_clone_bound_refusal(
     item: Rc<Node>,
     item_name: String,
@@ -12828,11 +12795,31 @@ pub fn emit_type_def_from_connective(
                         &emit_info.map_key_required_type_names.clone(),
                         item_text.clone(),
                     ),
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for p in item.params.clone().iter().cloned() {
+                            __result
+                                .push(generic_param_name_at(p.clone(), env.source_indices.clone()));
+                        }
+                        __result
+                    }),
                     env.source_indices.clone(),
+                    v1_carrier_param_needs_clone_bound(
+                        item_text.clone(),
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for p in item.params.clone().iter().cloned() {
+                                __result.push(generic_param_name_at(
+                                    p.clone(),
+                                    env.source_indices.clone(),
+                                ));
+                            }
+                            __result
+                        }),
+                        emit_info.clone(),
+                    ),
                 );
-                let type_params = if ((capability_surface.impl_bodies.clone() == "".to_string())
-                    && !has_fn_fields.clone())
-                {
+                let type_params = if !has_fn_fields.clone() {
                     emit_item_type_params_with_clone_bounds(
                         item_text.clone(),
                         item.params.clone(),
@@ -13213,7 +13200,13 @@ pub fn emit_struct_from_children(
             shared_types.clone(),
             has_fn_fields.clone(),
             v1_rt::set_contains(&emit_info.map_key_required_type_names.clone(), name.clone()),
+            generic_param_names.clone(),
             env.source_indices.clone(),
+            v1_carrier_param_needs_clone_bound(
+                name.clone(),
+                generic_param_names.clone(),
+                emit_info.clone(),
+            ),
         );
         if ((children.clone().len() as i64) == 0) {
             v1_rt::concat(
@@ -13609,13 +13602,6 @@ pub fn emit_struct_field_from_child(
                 }
             }
         };
-        let generic_ty = if (struct_name.clone() == "PartialFunction".to_string()) {
-            rust_normalize_partial_function_field_type_text(rust_normalize_witness_type_text(
-                ty.clone(),
-            ))
-        } else {
-            ty.clone()
-        };
         let final_ty = if needs_box_wrapping(
             rt_child.clone(),
             recursive_types.clone(),
@@ -13623,20 +13609,19 @@ pub fn emit_struct_field_from_child(
             env.source_indices.clone(),
         ) {
             v1_rt::concat(
-                v1_rt::concat("Box<".to_string(), generic_ty.clone()),
+                v1_rt::concat("Box<".to_string(), ty.clone()),
                 ">".to_string(),
             )
         } else {
-            if (((rt_child.return_cardinality.clone() != Cardinality::CardOptional)
-                && v1_rt::set_contains(
-                    &shared_types,
-                    authored_name_at(env.source_indices.clone(), rt_child.clone()),
-                ))
-                && !rust_type_is_rc_wrapped(generic_ty.clone()))
+            if (rust_carrier_is_at_shared_layer(
+                rt_child.clone(),
+                env.source_indices.clone(),
+                shared_types.clone(),
+            ) && !rust_type_is_rc_wrapped(ty.clone()))
             {
-                wrap_shared_type(RenderTarget::Rust, generic_ty.clone())
+                wrap_shared_type(RenderTarget::Rust, ty.clone())
             } else {
-                generic_ty.clone()
+                ty.clone()
             }
         };
         let needs_serde = struct_needs_serde(struct_name.clone(), emit_info.clone());
@@ -13738,12 +13723,16 @@ pub fn emit_rust_field_definition(
 pub fn enum_derives(
     name: String,
     children: Rc<Vec<Rc<Node>>>,
+    has_fn_fields: bool,
+    generic_param_names: Rc<Vec<String>>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     v1_emit_enum_derives(
         children.clone(),
+        has_fn_fields.clone(),
         v1_rt::set_contains(&emit_info.map_key_required_type_names.clone(), name.clone()),
+        generic_param_names.clone(),
         source_indices.clone(),
     )
 }
@@ -13760,12 +13749,20 @@ pub fn emit_enum_from_children(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
+        let has_fn_fields = type_has_fn_fields(name.clone(), emit_info.clone());
         let derives = enum_derives(
             name.clone(),
             children.clone(),
+            has_fn_fields.clone(),
+            generic_param_names.clone(),
             emit_info.clone(),
             env.source_indices.clone(),
         );
+        let effective_serde_policy = if has_fn_fields.clone() {
+            rust_serde_policy("".to_string(), None, None, None)
+        } else {
+            serde_policy.clone()
+        };
         let variant_lines = Rc::new({
             let mut __result = Vec::new();
             for child in children.clone().iter().cloned() {
@@ -13776,17 +13773,17 @@ pub fn emit_enum_from_children(
                     recursive_types.clone(),
                     shared_types.clone(),
                     env.clone(),
-                    serde_policy.clone(),
+                    effective_serde_policy.clone(),
                     emit_info.clone(),
                 ));
             }
             __result
         });
         let variants_str = variant_lines.clone().join(&"\n".to_string());
-        let tag_line = if (serde_policy.enum_attr.clone() == "".to_string()) {
+        let tag_line = if (effective_serde_policy.enum_attr.clone() == "".to_string()) {
             "".to_string()
         } else {
-            v1_rt::concat(serde_policy.enum_attr.clone(), "\n".to_string())
+            v1_rt::concat(effective_serde_policy.enum_attr.clone(), "\n".to_string())
         };
         let enum_def = v1_rt::concat(
             v1_rt::concat(
@@ -13826,7 +13823,13 @@ pub fn emit_enum_from_children(
             env.clone(),
             emit_info.clone(),
         );
-        let supplemental = v1_emit_enum_supplemental_impls(env.module_path.clone(), name.clone());
+        let supplemental = v1_emit_enum_supplemental_impls(
+            env.module_path.clone(),
+            name.clone(),
+            children.clone(),
+            generic_param_names.clone(),
+            env.source_indices.clone(),
+        );
         let with_accessors = if (accessor_impl.clone() == "".to_string()) {
             enum_def.clone()
         } else {
@@ -14851,6 +14854,98 @@ pub fn v1_fn_body_derived_clone_param_names(
     }
 }
 
+pub fn v1_fn_bounds_by_param(
+    clone_param_names: Rc<Vec<String>>,
+    eq_param_names: Rc<Vec<String>>,
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    {
+        let with_clone = clone_param_names.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+            |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| {
+                v1_rt::rc_map_insert(m, n.clone(), Rc::new(vec!["Clone".to_string()]))
+            },
+        );
+        eq_param_names.clone().iter().cloned().fold(
+            with_clone.clone(),
+            |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| match v1_rt::map_get(&m, n.clone())
+            {
+                Some(traits) => v1_rt::rc_map_insert(
+                    m.clone(),
+                    n.clone(),
+                    v1_rt::concat(traits.clone(), Rc::new(vec!["PartialEq".to_string()])),
+                ),
+                None => v1_rt::rc_map_insert(
+                    m.clone(),
+                    n.clone(),
+                    Rc::new(vec!["PartialEq".to_string()]),
+                ),
+            },
+        )
+    }
+}
+
+pub fn v1_fn_body_equality_bound_param_names(
+    body: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let here = match (*body.expr_data.clone()).clone() {
+            ExprData::ExprBinOp { op, .. } => {
+                if is_equality_comparison(op.clone()) {
+                    v1_equality_bound_param_name(
+                        v1_resolved_type_name_or_empty(
+                            binop_left(body.clone()),
+                            source_indices.clone(),
+                        ),
+                        v1_resolved_type_name_or_empty(
+                            binop_right(body.clone()),
+                            source_indices.clone(),
+                        ),
+                        generic_param_names.clone(),
+                    )
+                } else {
+                    Rc::new(vec![])
+                }
+            }
+            _ => Rc::new(vec![]),
+        };
+        body.children.clone().iter().cloned().fold(
+            here.clone(),
+            |acc: Rc<Vec<String>>, child: Rc<Node>| {
+                v1_union_clone_param_names(
+                    acc,
+                    v1_fn_body_equality_bound_param_names(
+                        child.clone(),
+                        generic_param_names.clone(),
+                        source_indices.clone(),
+                    ),
+                )
+            },
+        )
+    })
+}
+
+pub fn is_equality_comparison(op: BinOp) -> bool {
+    match op.clone() {
+        BinOp::Eq => true,
+        BinOp::Ne => true,
+        _ => false,
+    }
+}
+
+pub fn v1_resolved_type_name_or_empty(
+    e: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match e.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            authored_name_at(source_indices.clone(), rt.clone())
+        }
+        _ => "".to_string(),
+    }
+}
+
 pub fn v1_call_forwarding_clone_bound_param_names(
     generic_param_names: Rc<Vec<String>>,
     body: Rc<Node>,
@@ -15037,11 +15132,19 @@ pub fn emit_fn_def(
                 } else {
                     derived_clone_param_names_with_rc_match.clone()
                 };
-                let needs_clone_bound = ((clone_param_names.clone().len() as i64) > 0);
-                let type_params_str = if needs_clone_bound.clone() {
-                    v1_emit_type_params_with_clone_bounds(
+                let eq_param_names = v1_fn_body_equality_bound_param_names(
+                    body.clone(),
+                    generic_param_names.clone(),
+                    si.clone(),
+                );
+                let bounds_by_param =
+                    v1_fn_bounds_by_param(clone_param_names.clone(), eq_param_names.clone());
+                let needs_bound = (((clone_param_names.clone().len() as i64) > 0)
+                    || ((eq_param_names.clone().len() as i64) > 0));
+                let type_params_str = if needs_bound.clone() {
+                    v1_emit_type_params_with_bounds(
                         type_params.clone(),
-                        clone_param_names.clone(),
+                        bounds_by_param.clone(),
                         si.clone(),
                     )
                 } else {
@@ -15055,6 +15158,7 @@ pub fn emit_fn_def(
                     emit_info.read_only_params.clone(),
                     emit_info.variant_to_enum.clone(),
                     scope.type_env.clone(),
+                    ((inferred.params.clone().len() as i64) > 0),
                 );
                 let ret_str = emit_inferred(
                     inferred.clone(),
@@ -15961,6 +16065,7 @@ pub fn emit_tco_param(
                 source_indices.clone(),
                 variant_to_enum.clone(),
                 env.clone(),
+                false,
             )
         } else {
             render_rust_param_sig_type(
@@ -16010,6 +16115,7 @@ pub fn emit_func_params(
                     read_only_params.clone(),
                     variant_to_enum.clone(),
                     env.clone(),
+                    false,
                 ));
             }
             __result
@@ -16080,6 +16186,7 @@ pub fn emit_params(
     read_only_params: Rc<BTreeSet<String>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
+    enclosing_returns_arrow: bool,
 ) -> String {
     {
         let strs = Rc::new({
@@ -16093,6 +16200,7 @@ pub fn emit_params(
                     read_only_params.clone(),
                     variant_to_enum.clone(),
                     env.clone(),
+                    enclosing_returns_arrow.clone(),
                 ));
             }
             __result
@@ -16129,6 +16237,7 @@ pub fn emit_rust_param_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
+    enclosing_returns_arrow: bool,
 ) -> String {
     if ((n.params.clone().len() as i64) > 0) {
         {
@@ -16158,15 +16267,23 @@ pub fn emit_rust_param_type(
                 ),
                 _ => "()".to_string(),
             };
+            let static_bound = if enclosing_returns_arrow.clone() {
+                " + 'static".to_string()
+            } else {
+                "".to_string()
+            };
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
-                        v1_rt::concat("impl Fn(".to_string(), param_str.clone()),
-                        ") -> ".to_string(),
+                        v1_rt::concat(
+                            v1_rt::concat("impl Fn(".to_string(), param_str.clone()),
+                            ") -> ".to_string(),
+                        ),
+                        ret_str.clone(),
                     ),
-                    ret_str.clone(),
+                    " + Clone".to_string(),
                 ),
-                " + Clone".to_string(),
+                static_bound.clone(),
             )
         }
     } else {
@@ -16189,6 +16306,7 @@ pub fn emit_param(
     read_only_params: Rc<BTreeSet<String>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
+    enclosing_returns_arrow: bool,
 ) -> String {
     {
         let pname = param_node_name_at(param.clone(), source_indices.clone());
@@ -16201,6 +16319,7 @@ pub fn emit_param(
                 source_indices.clone(),
                 variant_to_enum.clone(),
                 env.clone(),
+                enclosing_returns_arrow.clone(),
             )
         } else {
             render_rust_param_sig_type(
@@ -17336,16 +17455,11 @@ pub fn analyze_rc_match(
             _ => false,
         };
         let scrutinee_is_rc_wrapped = match scrutinee.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: rt, .. }) => {
-                if (((rt.children.clone().len() as i64) == 0) && (rt.ident_span.clone() != None)) {
-                    v1_rt::set_contains(
-                        &shared_types,
-                        authored_name_at(source_indices.clone(), rt.clone()),
-                    )
-                } else {
-                    false
-                }
-            }
+            Some(InferredNode::Resolved { node: rt, .. }) => rust_carrier_is_at_shared_layer(
+                rt.clone(),
+                source_indices.clone(),
+                shared_types.clone(),
+            ),
             _ => false,
         };
         let arms_want_option = {
@@ -17375,12 +17489,11 @@ pub fn analyze_rc_match(
                     source_indices.clone(),
                     rt.clone(),
                 )) && (rt.return_cardinality.clone() != Cardinality::CardOptional))
-                    && rust_type_is_rc_wrapped(render_rust_type(
+                    && rust_carrier_is_at_shared_layer(
                         rt.clone(),
-                        shared_types.clone(),
                         source_indices.clone(),
-                        emit_info.clone(),
-                    )))
+                        shared_types.clone(),
+                    ))
             }
             _ => false,
         };
@@ -20365,9 +20478,7 @@ pub fn rust_call_arg_fail_closed_unwrap(
     func: String,
 ) -> String {
     match callee.clone() {
-        Some(info) => match info
-            .params
-            .clone()
+        Some(info) => match function_value_params(info.params.clone())
             .iter()
             .cloned()
             .skip(idx.clone() as usize)
@@ -20389,6 +20500,85 @@ pub fn rust_call_arg_fail_closed_unwrap(
             None => arg_str.clone(),
         },
         None => arg_str.clone(),
+    }
+}
+
+pub fn rust_call_arg_function_value_adapt(
+    arg_str: String,
+    arg: Rc<Node>,
+    callee: Option<Rc<ItemInfo>>,
+    idx: i64,
+) -> String {
+    {
+        let is_call_result = match (*arg.expr_data.clone()).clone() {
+            ExprData::ExprCall { .. } => true,
+            _ => false,
+        };
+        if !is_call_result.clone() {
+            return arg_str.clone();
+        }
+        match callee.clone() {
+            Some(info) => match function_value_params(info.params.clone())
+                .iter()
+                .cloned()
+                .skip(idx.clone() as usize)
+                .next()
+            {
+                Some(param) => {
+                    let arity = (param_node_type_expr(param.clone()).params.clone().len() as i64);
+                    if (arity.clone() > 0) {
+                        {
+                            let closure_params = Rc::new({
+                                let mut __result = Vec::new();
+                                for pair in Rc::new(
+                                    param_node_type_expr(param.clone())
+                                        .params
+                                        .clone()
+                                        .iter()
+                                        .cloned()
+                                        .enumerate()
+                                        .map(|(i, v)| (i as i64, v))
+                                        .collect::<Vec<_>>(),
+                                )
+                                .iter()
+                                .cloned()
+                                {
+                                    __result.push(v1_rt::concat(
+                                        "__adapt_a".to_string(),
+                                        (pair.0.clone()).to_string(),
+                                    ));
+                                }
+                                __result
+                            });
+                            let closure_params_str = closure_params.clone().join(&", ".to_string());
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "{ let __adapt_f = ".to_string(),
+                                                    arg_str.clone(),
+                                                ),
+                                                "; move |".to_string(),
+                                            ),
+                                            closure_params_str.clone(),
+                                        ),
+                                        "| __adapt_f(".to_string(),
+                                    ),
+                                    closure_params_str.clone(),
+                                ),
+                                ") }".to_string(),
+                            )
+                        }
+                    } else {
+                        arg_str.clone()
+                    }
+                }
+                None => arg_str.clone(),
+            },
+            None => arg_str.clone(),
+        }
     }
 }
 
@@ -20743,12 +20933,18 @@ pub fn emit_typed_call(
                                 shared_types.clone(),
                                 emit_info.clone(),
                             );
-                            rust_call_arg_fail_closed_unwrap(
+                            let unwrapped = rust_call_arg_fail_closed_unwrap(
                                 base.clone(),
                                 arg_value(a.clone()),
                                 callee.clone(),
                                 idx.clone(),
                                 func.clone(),
+                            );
+                            rust_call_arg_function_value_adapt(
+                                unwrapped.clone(),
+                                arg_value(a.clone()),
+                                callee.clone(),
+                                idx.clone(),
                             )
                         }
                     }
@@ -27614,6 +27810,7 @@ pub fn emit_operation_method(
                         env.source_indices.clone(),
                         v1_rt::rc_empty_map::<String, String>(),
                         env.clone(),
+                        false,
                     ),
                 ));
             }
@@ -27757,9 +27954,10 @@ pub fn emit_dry_run_branch_from_props(
             {
                 let first_mock = mock_props.clone().first().cloned();
                 match first_mock.clone() {
-    Some(mp) => {
-                    let mock_json = emit_data_value_json(field_init_node_value(mp.clone()), source_indices.clone());
-let is_multi_field_conj = ((inferred.connective.clone() == Connective::Conj) && ((inferred.children.clone().len() as i64) > 1));
+    Some(mp) => match (*emit_data_value_json(field_init_node_value(mp.clone()), source_indices.clone())).clone() {
+    EmitterOutcome::Refused { reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(log_line.clone(), "\ncompile_error!(\"".to_string()), escape_string_literal_body(r.clone())), "\");".to_string()),
+    EmitterOutcome::Emitted { json: mock_json, .. } => {
+                    let is_multi_field_conj = ((inferred.connective.clone() == Connective::Conj) && ((inferred.children.clone().len() as i64) > 1));
 if is_multi_field_conj.clone() {
                         {
                             let children = inferred.children.clone();
@@ -27821,6 +28019,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
                     } else {
                         v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(log_line.clone(), "\n".to_string()), "let mock_value: serde_json::Value = serde_json::from_str(r#\"".to_string()), mock_json.clone()), "\"#)?;\n".to_string()), "Ok(serde_json::from_value(mock_value)?)".to_string())
                     }
+},
 },
     None => v1_rt::concat(log_line.clone(), "\ncompile_error!(\"mock property list was non-empty but first() returned None\")".to_string()),
 }
@@ -29845,6 +30044,7 @@ pub fn emit_capability_method(
                         env.source_indices.clone(),
                         v1_rt::rc_empty_map::<String, String>(),
                         env.clone(),
+                        false,
                     ),
                 ));
             }
@@ -30150,12 +30350,11 @@ pub fn value_inferred_type_is_rc_wrapped(
     emit_info: Rc<EmitGraphInfo>,
 ) -> bool {
     match value.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: rt, .. }) => rust_type_is_rc_wrapped(render_rust_type(
+        Some(InferredNode::Resolved { node: rt, .. }) => rust_carrier_is_at_shared_layer(
             rt.clone(),
-            shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
-            emit_info.clone(),
-        )),
+            shared_types.clone(),
+        ),
         _ => false,
     }
 }
@@ -30318,12 +30517,20 @@ pub fn emit_data_def_body(
                 scope.type_env.clone().source_indices.clone(),
             ) && !data_value_has_cross_refs(value.clone()))
             {
+                match (*emit_data_value_json(
+                    value.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                ))
+                .clone()
                 {
-                    let json_str = emit_data_value_json(
-                        value.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                    );
-                    v1_rt::concat(
+                    EmitterOutcome::Refused { reason: r, .. } => v1_rt::concat(
+                        v1_rt::concat(
+                            "            compile_error!(\"".to_string(),
+                            escape_string_literal_body(r.clone()),
+                        ),
+                        "\")".to_string(),
+                    ),
+                    EmitterOutcome::Emitted { json: json_str, .. } => v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
                                 "            serde_json::from_value(serde_json::json!(".to_string(),
@@ -30332,7 +30539,7 @@ pub fn emit_data_def_body(
                             "))\n".to_string(),
                         ),
                         "                .expect(\"valid data definition\")".to_string(),
-                    )
+                    ),
                 }
             } else {
                 {
@@ -30563,6 +30770,7 @@ pub fn rust_test_signature_comment(projection: Rc<TestProjection>) -> String {
                         projection.source_indices.clone(),
                         v1_rt::rc_empty_map::<String, String>(),
                         projection.type_env.clone(),
+                        false,
                     ),
                 ));
             }

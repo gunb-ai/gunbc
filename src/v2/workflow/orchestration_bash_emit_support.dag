@@ -11,7 +11,7 @@ data orchestration_bash_emit_support_note: String = "Shared run/do/comment/emit_
 fn orch_bash_run(command: String) -> Run {
   Run {
     command: command,
-    env: [],
+    env: Empty,
     redirect: Absent,
     capture: Absent
   }

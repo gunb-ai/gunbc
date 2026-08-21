@@ -10,16 +10,17 @@ import std.trait_derive_shape {
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.languages.rust.derive_contracts {
   RustSupplementalGenericBoundContractCoverageDisposition,
+  RustVecSupplementalGenericBoundRow,
+  rust_vec_freemonoid_supplemental_generic_bound_rows,
   im_15_1_0_vector_clone_impl_authority,
   im_15_1_0_vector_debug_impl_authority,
   im_15_1_0_vector_deserialize_impl_authority,
   im_15_1_0_vector_partial_eq_impl_authority,
   im_15_1_0_vector_serialize_impl_authority,
-  rust_1_93_btree_set_trait_implementations_authority,
+  im_15_1_0_ord_set_clone_impl_authority,
   rust_1_93_hash_set_trait_implementations_authority,
+  rust_btree_set_supplemental_generic_bound_rows,
   rust_hash_set_supplemental_generic_bound_contract_coverage_disposition,
-  serde_1_0_228_btree_set_deserialize_authority,
-  serde_1_0_228_btree_set_serialize_authority,
   serde_1_0_228_hash_set_deserialize_authority,
   serde_1_0_228_hash_set_serialize_authority
 }
@@ -74,7 +75,8 @@ import v2.std.collection {
   Set,
   empty_map,
   list_at_optional,
-  map_insert
+  map_insert,
+  map_lookup
 }
 import v2.std.optional {
   Absent,
@@ -221,10 +223,10 @@ import v2.std.compilers.target_model {
   TargetDeriveSupplementalGenericBoundRequirementSet,
   TargetDeriveTraitKey,
   TargetRepresentationParameterSlot,
-  RequiredTraitWitness,
-  TargetCollectionWitnessOrd,
-  TargetCollectionWitnessHash,
-  TargetCollectionWitnessEq,
+  TargetCapabilityElementEligibility,
+  TargetCapabilityEligibilityRow,
+  TargetCapabilityEligibilityTable,
+  TargetCapabilityRequirement,
   target_collection_set_carrier_node,
   TargetCollectionReprBTreeSet,
   TargetCollectionReprHashSet,
@@ -1586,96 +1588,99 @@ fn rust_collection_representation_parameters() -> Map<Symbol, TargetRepresentati
   )
 }
 
-fn rust_single_parameter_supplemental_generic_bound_requirements(
-  required_trait: ReprGroundingDeriveTrait,
-  authority: ExternalAuthority
-) -> Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
-  map_insert(
-    m: target_derive_supplemental_generic_bound_contract_requirements_empty(),
+// A single required-parameter's requirement-set as it stands in an in-progress contract map,
+// defaulting to empty when the derive_trait has no entry yet (first row for that trait) --
+// the read half of the merge, so a second row for a derive_trait already carrying one
+// required trait ADDS to that set rather than the map_insert-at-the-outer-map overwrite that
+// insert_with_requirements alone would produce (needed once a derive_trait's supplemental
+// bound has more than one required trait, e.g. BTreeSet's Serialize/Deserialize needing both
+// Ord and Clone from one upstream im::OrdSet impl).
+fn rust_collection_supplemental_generic_bound_requirement_set_for_param(
+  requirements: Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>,
+  representation_parameter: Symbol
+) -> TargetDeriveSupplementalGenericBoundRequirementSet {
+  match map_lookup(m: requirements, key: representation_parameter) {
+    Present { value: set } => set
+    Absent => target_derive_supplemental_generic_bound_requirement_set_empty()
+  }
+}
+
+// Folds one RustVecSupplementalGenericBoundRow into an in-progress contract map, merging into
+// whatever requirement set the row's derive_trait already carries rather than replacing it --
+// the single merge point both rust_vec_supplemental_generic_bound_contracts and
+// rust_btree_set_supplemental_generic_bound_contracts fold over, so a derive_trait needing N
+// required traits is N rows in the shared derive_contracts.dag row list, never a bespoke
+// per-collection accumulator.
+fn rust_collection_supplemental_generic_bound_contracts_merge_row(
+  contracts: Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority>,
+  row: RustVecSupplementalGenericBoundRow
+) -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+  let key = target_grounding_derive_trait_key(derive_trait: row.derive_trait)
+  let existing_requirements = match map_lookup(m: contracts, key: key) {
+    Present { value: contract } => contract.requirements
+    Absent => target_derive_supplemental_generic_bound_contract_requirements_empty()
+  }
+  let existing_set = rust_collection_supplemental_generic_bound_requirement_set_for_param(
+    requirements: existing_requirements,
+    representation_parameter: ^target_collection_type_param_t
+  )
+  let merged_set = map_insert(
+    m: existing_set,
+    key: target_grounding_derive_trait_key(derive_trait: row.required),
+    value: TargetDeriveSupplementalGenericBoundRequirementAuthority { authority: row.authority }
+  )
+  let merged_requirements = map_insert(
+    m: existing_requirements,
     key: ^target_collection_type_param_t,
-    value: map_insert(
-      m: target_derive_supplemental_generic_bound_requirement_set_empty(),
-      key: target_grounding_derive_trait_key(derive_trait: required_trait),
-      value: TargetDeriveSupplementalGenericBoundRequirementAuthority {
-        authority: authority
-      }
-    )
+    value: merged_set
+  )
+  target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
+    contracts: contracts,
+    derive_trait: row.derive_trait,
+    authority: row.authority,
+    requirements: merged_requirements
   )
 }
 
+// The trait -> supplemental-bound FACTS live once, dag-rooted, in
+// extdeps.languages.rust.derive_contracts rust_vec_freemonoid_supplemental_generic_bound_rows
+// (readable from both the regen pool and this tree); this fn only lifts them into the
+// target_model-typed contract map. Clone's requirement-free entry stays here because the shared
+// rows deliberately carry no Clone row (derive(Clone)'s conditional impl needs no supplement).
 fn rust_vec_supplemental_generic_bound_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
-  let debug_contract = target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
-      contracts: target_derive_supplemental_generic_bound_contract_authorities_empty(),
-      derive_trait: ReprDeriveDebug,
-      authority: im_15_1_0_vector_debug_impl_authority,
-      requirements: rust_single_parameter_supplemental_generic_bound_requirements(
-        required_trait: ReprDeriveClone,
-        authority: im_15_1_0_vector_debug_impl_authority
-      )
-    )
-  let clone_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
-      contracts: debug_contract,
-      derive_trait: ReprDeriveClone,
-      authority: im_15_1_0_vector_clone_impl_authority
-    )
-  let partial_eq_contract = target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
-      contracts: clone_contract,
-      derive_trait: ReprDerivePartialEq,
-      authority: im_15_1_0_vector_partial_eq_impl_authority,
-      requirements: rust_single_parameter_supplemental_generic_bound_requirements(
-        required_trait: ReprDeriveClone,
-        authority: im_15_1_0_vector_partial_eq_impl_authority
-      )
-    )
-  let serialize_contract = target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
-      contracts: partial_eq_contract,
-      derive_trait: ReprDeriveSerialize,
-      authority: im_15_1_0_vector_serialize_impl_authority,
-      requirements: rust_single_parameter_supplemental_generic_bound_requirements(
-        required_trait: ReprDeriveClone,
-        authority: im_15_1_0_vector_serialize_impl_authority
-      )
-    )
-  target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
-    contracts: serialize_contract,
-    derive_trait: ReprDeriveDeserialize,
-    authority: im_15_1_0_vector_deserialize_impl_authority,
-    requirements: rust_single_parameter_supplemental_generic_bound_requirements(
-      required_trait: ReprDeriveClone,
-      authority: im_15_1_0_vector_deserialize_impl_authority
-    )
+  let from_rows = fold_list(
+    xs: rust_vec_freemonoid_supplemental_generic_bound_rows,
+    empty: target_derive_supplemental_generic_bound_contract_authorities_empty(),
+    cons: fn(acc, row) {
+      rust_collection_supplemental_generic_bound_contracts_merge_row(contracts: acc, row: row)
+    }
+  )
+  target_derive_supplemental_generic_bound_contract_authority_insert(
+    contracts: from_rows,
+    derive_trait: ReprDeriveClone,
+    authority: im_15_1_0_vector_clone_impl_authority
   )
 }
 
+// The Debug/PartialEq/Serialize/Deserialize -> Ord/Clone supplemental-bound FACTS live once,
+// dag-rooted, in extdeps.languages.rust.derive_contracts rust_btree_set_supplemental_generic_bound_rows
+// (readable from both the regen pool and this tree, and consumed by v1's seed emitter for the
+// same facts); this fn only lifts them into the target_model-typed contract map, folded through
+// rust_collection_supplemental_generic_bound_contracts_merge_row exactly as
+// rust_vec_supplemental_generic_bound_contracts is, since Serialize and Deserialize each carry
+// two rows (Ord and Clone) that must merge into one requirement set rather than overwrite.
 fn rust_btree_set_supplemental_generic_bound_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
-  let debug_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
-      contracts: target_derive_supplemental_generic_bound_contract_authorities_empty(),
-      derive_trait: ReprDeriveDebug,
-      authority: rust_1_93_btree_set_trait_implementations_authority
-    )
-  let clone_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
-      contracts: debug_contract,
-      derive_trait: ReprDeriveClone,
-      authority: rust_1_93_btree_set_trait_implementations_authority
-    )
-  let partial_eq_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
-      contracts: clone_contract,
-      derive_trait: ReprDerivePartialEq,
-      authority: rust_1_93_btree_set_trait_implementations_authority
-    )
-  let serialize_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
-      contracts: partial_eq_contract,
-      derive_trait: ReprDeriveSerialize,
-      authority: serde_1_0_228_btree_set_serialize_authority
-    )
-  target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
-    contracts: serialize_contract,
-    derive_trait: ReprDeriveDeserialize,
-    authority: serde_1_0_228_btree_set_deserialize_authority,
-    requirements: rust_single_parameter_supplemental_generic_bound_requirements(
-      required_trait: ReprDeriveOrd,
-      authority: serde_1_0_228_btree_set_deserialize_authority
-    )
+  let from_rows = fold_list(
+    xs: rust_btree_set_supplemental_generic_bound_rows,
+    empty: target_derive_supplemental_generic_bound_contract_authorities_empty(),
+    cons: fn(acc, row) {
+      rust_collection_supplemental_generic_bound_contracts_merge_row(contracts: acc, row: row)
+    }
+  )
+  target_derive_supplemental_generic_bound_contract_authority_insert(
+    contracts: from_rows,
+    derive_trait: ReprDeriveClone,
+    authority: im_15_1_0_ord_set_clone_impl_authority
   )
 }
 
@@ -1699,20 +1704,20 @@ fn rust_hash_set_supplemental_generic_bound_contracts() -> Map<TargetDeriveTrait
 
 type RustSupplementalGenericBoundContractCoverageBlocker {
   derive_trait: ReprGroundingDeriveTrait
-  requirements: Set<RequiredTraitWitness>
+  requirements: Set<TargetCapabilityRequirement>
   authority: ExternalAuthority
   coverage: RustSupplementalGenericBoundContractCoverageDisposition
 }
 
 fn rust_hash_set_eq_hash_supplemental_generic_bound_requirements(
   representation_parameter: Symbol
-) -> Set<RequiredTraitWitness> {
+) -> Set<TargetCapabilityRequirement> {
   Set {
     member: fn(requirement) {
       fold_list(
         xs: [
-          TargetCollectionWitnessEq { type_param: representation_parameter },
-          TargetCollectionWitnessHash { type_param: representation_parameter }
+          TargetCapabilityRequirement { representation_parameter: representation_parameter, capability_key: ^target_collection_trait_eq },
+          TargetCapabilityRequirement { representation_parameter: representation_parameter, capability_key: ^target_collection_trait_hash }
         ],
         empty: false,
         cons: fn(found, expected) {
@@ -1750,7 +1755,7 @@ fn rust_set_collection_primary_choice() -> TargetRepresentationChoice {
     },
     representation_parameters: rust_collection_representation_parameters(),
     constraints: [
-      TargetCollectionWitnessOrd { type_param: ^target_collection_type_param_t }
+      TargetCapabilityRequirement { representation_parameter: ^target_collection_type_param_t, capability_key: ^target_collection_trait_ord }
     ],
     supplemental_generic_bound_contracts: rust_btree_set_supplemental_generic_bound_contracts()
   }
@@ -1764,8 +1769,8 @@ fn rust_set_collection_hash_choice() -> TargetRepresentationChoice {
     },
     representation_parameters: rust_collection_representation_parameters(),
     constraints: [
-      TargetCollectionWitnessHash { type_param: ^target_collection_type_param_t },
-      TargetCollectionWitnessEq { type_param: ^target_collection_type_param_t }
+      TargetCapabilityRequirement { representation_parameter: ^target_collection_type_param_t, capability_key: ^target_collection_trait_hash },
+      TargetCapabilityRequirement { representation_parameter: ^target_collection_type_param_t, capability_key: ^target_collection_trait_eq }
     ],
     supplemental_generic_bound_contracts: rust_hash_set_supplemental_generic_bound_contracts()
   }
@@ -1832,53 +1837,20 @@ fn rust_collection_repr_bundle_node(form: TargetRepresentation) -> Node {
 }
 }
 
-fn rust_collection_witness_bundle_node(witness: RequiredTraitWitness) -> Node {
-  match witness {
-    TargetCollectionWitnessOrd { type_param: type_param } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          rust_named_edge(
-            name: ^target_collection_witness_field_trait_name,
-            target: rust_inhabitant_atom(id: ^target_collection_trait_ord)
-          ),
-          rust_named_edge(
-            name: ^target_collection_witness_field_type_param,
-            target: rust_inhabitant_atom(id: type_param)
-          )
-        ],
-        occurrence_id: SyntheticOccurrence
-}
-    TargetCollectionWitnessHash { type_param: type_param } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          rust_named_edge(
-            name: ^target_collection_witness_field_trait_name,
-            target: rust_inhabitant_atom(id: ^target_collection_trait_hash)
-          ),
-          rust_named_edge(
-            name: ^target_collection_witness_field_type_param,
-            target: rust_inhabitant_atom(id: type_param)
-          )
-        ],
-        occurrence_id: SyntheticOccurrence
-}
-    TargetCollectionWitnessEq { type_param: type_param } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          rust_named_edge(
-            name: ^target_collection_witness_field_trait_name,
-            target: rust_inhabitant_atom(id: ^target_collection_trait_eq)
-          ),
-          rust_named_edge(
-            name: ^target_collection_witness_field_type_param,
-            target: rust_inhabitant_atom(id: type_param)
-          )
-        ],
-        occurrence_id: SyntheticOccurrence
-}
+fn rust_collection_witness_bundle_node(requirement: TargetCapabilityRequirement) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: ^target_collection_witness_field_trait_name,
+        target: rust_inhabitant_atom(id: requirement.capability_key)
+      ),
+      rust_named_edge(
+        name: ^target_collection_witness_field_type_param,
+        target: rust_inhabitant_atom(id: requirement.representation_parameter)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
   }
 }
 
@@ -1914,6 +1886,65 @@ fn rust_collection_choice_bundle_node(choice: TargetRepresentationChoice) -> Nod
 }
 }
 
+fn rust_capability_eligibility_row_node(row: TargetCapabilityEligibilityRow) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: ^target_capability_eligibility_field_capability,
+        target: rust_inhabitant_atom(id: row.capability_key)
+      ),
+      rust_named_edge(
+        name: ^target_capability_eligibility_field_kernel_atoms,
+        target: fold_list_node(
+          xs: row.eligibility.kernel_atoms,
+          item_node: rust_capability_kernel_atom_node
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rust_capability_kernel_atom_node(id: Symbol) -> Node {
+  rust_inhabitant_atom(id: id)
+}
+
+data rust_collection_capability_kernel_atoms: List<Symbol> = [
+  ^target_collection_kernel_string,
+  ^target_collection_kernel_int,
+  ^target_collection_kernel_bool,
+  ^target_collection_kernel_unit
+]
+
+data rust_collection_capability_eligibility_rows: List<TargetCapabilityEligibilityRow> = [
+  TargetCapabilityEligibilityRow {
+    capability_key: ^target_collection_trait_ord,
+    eligibility: TargetCapabilityElementEligibility {
+      kernel_atoms: rust_collection_capability_kernel_atoms
+    }
+  },
+  TargetCapabilityEligibilityRow {
+    capability_key: ^target_collection_trait_hash,
+    eligibility: TargetCapabilityElementEligibility {
+      kernel_atoms: rust_collection_capability_kernel_atoms
+    }
+  },
+  TargetCapabilityEligibilityRow {
+    capability_key: ^target_collection_trait_eq,
+    eligibility: TargetCapabilityElementEligibility {
+      kernel_atoms: rust_collection_capability_kernel_atoms
+    }
+  }
+]
+
+fn rust_capability_eligibility_bundle_node() -> Node {
+  fold_list_node(
+    xs: rust_collection_capability_eligibility_rows,
+    item_node: rust_capability_eligibility_row_node
+  )
+}
+
 fn rust_set_collection_realization_bundle_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -1936,6 +1967,10 @@ fn rust_set_collection_realization_bundle_node() -> Node {
       rust_named_edge(
         name: ^target_collection_row_field_fallback,
         target: rust_inhabitant_atom(id: ^target_collection_set_no_representation)
+      ),
+      rust_named_edge(
+        name: ^target_collection_row_field_capability_eligibility,
+        target: rust_capability_eligibility_bundle_node()
       )
     ],
     occurrence_id: SyntheticOccurrence
@@ -1968,6 +2003,10 @@ fn rust_free_monoid_collection_realization_bundle_node() -> Node {
       rust_named_edge(
         name: ^target_collection_row_field_text_carrier,
         target: rust_free_monoid_text_carrier_bundle_node()
+      ),
+      rust_named_edge(
+        name: ^target_collection_row_field_capability_eligibility,
+        target: rust_capability_eligibility_bundle_node()
       )
     ],
     occurrence_id: SyntheticOccurrence

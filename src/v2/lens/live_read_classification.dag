@@ -988,12 +988,6 @@ fn tail_module_facts(xs: List<ModuleDeclarationFact>) -> List<ModuleDeclarationF
   }
 }
 
-fn tail_decls(xs: List<FnArrowDecl>) -> List<FnArrowDecl> {
-  match list_tail(xs: xs) {
-    TailFound { tail: t } => t
-    TailAbsent => empty_decl_list
-  }
-}
 
 fn bind_g2_root(
   entry_path: String,

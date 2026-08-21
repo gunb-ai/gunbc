@@ -1,0 +1,364 @@
+module test.claim.fleet_desired_admission_witness_test
+
+import std.types { String, Bool, CommitSha, NonEmptyStr }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import extdeps.github.workflow_runs {
+  WorkflowRunConclusion, Success, Failure, Cancelled, Skipped, TimedOut, Neutral, ActionRequired, StartupFailure,
+}
+import extdeps.github.workflow_run_event { WorkflowRunEvent }
+import gunbc.witness_floor_workflow { witness_floor_workflow_name }
+import gunbc.repo_identity { gunbc_default_branch_name }
+import extdeps.git.publication_transport {
+  GitRemoteRefExpectation, RemoteRefMustBeAbsent, RemoteRefMustEqual,
+}
+import gunbc.fleet_main_revision {
+  FleetDesiredRevision, FleetDesiredAdmitted, FleetDesiredAbsent,
+  FleetDesiredUndecodable, FleetDesiredUnobserved,
+}
+import gunbc.fleet_desired_admission {
+  FleetDesiredAdmissionOutcome, AdmissionAdvanceAuthorized, AdmissionRefused,
+  fleet_desired_admission_decide,
+  fleet_desired_floor_green,
+  fleet_desired_authorized_push_script,
+  fleet_desired_admission_authorized_push_path,
+}
+import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml }
+
+data fixture_prior_hex: String = "1111111111111111111111111111111111111111"
+data fixture_candidate_hex: String = "2222222222222222222222222222222222222222"
+data fixture_repo: String = "gunb-ai/gunbc"
+
+fn fixture_oid(hex: String) -> GitObjectId {
+  match git_object_id_from_untagged_hex(hex: hex) {
+    Present { value: oid } => oid
+    Absent => "0000000000000000000000000000000000000000" as GitObjectId
+  }
+}
+
+fn fixture_prior() -> FleetDesiredRevision {
+  FleetDesiredAdmitted { revision: fixture_oid(hex: fixture_prior_hex) }
+}
+
+fn fixture_event(workflow_name: String, conclusion: WorkflowRunConclusion, branch: String, head_repo: String, activity: String) -> WorkflowRunEvent {
+  WorkflowRunEvent {
+    activity: activity,
+    run_id: "1" as NonEmptyStr,
+    workflow_name: workflow_name,
+    workflow_id: "2" as NonEmptyStr,
+    workflow_path: ".github/workflows/witnesses.yml",
+    conclusion: conclusion,
+    html_url: "https://example.invalid/run" as NonEmptyStr,
+    run_started_at: "2026-08-20T00:00:00Z" as NonEmptyStr,
+    head_sha: fixture_candidate_hex as CommitSha,
+    head_branch: branch,
+    head_repository_full_name: head_repo,
+    originating_event: "push",
+    repository_full_name: fixture_repo,
+  }
+}
+
+fn admitting_event() -> WorkflowRunEvent {
+  fixture_event(
+    workflow_name: witness_floor_workflow_name,
+    conclusion: Success,
+    branch: gunbc_default_branch_name,
+    head_repo: fixture_repo,
+    activity: "completed",
+  )
+}
+
+fn decided(event: WorkflowRunEvent, observed: FleetDesiredRevision) -> FleetDesiredAdmissionOutcome {
+  fleet_desired_admission_decide(event: event, observed: observed)
+}
+
+fn is_refused(o: FleetDesiredAdmissionOutcome) -> Bool {
+  match o {
+    AdmissionRefused { cause: _ } => true
+    AdmissionAdvanceAuthorized { expected: _, to: _ } => false
+  }
+}
+
+fn expectation_is_prior(expected: GitRemoteRefExpectation, hex: String) -> Bool {
+  match expected {
+    RemoteRefMustEqual { oid: prior } => git_object_id_wire_hex(oid: prior) as String == hex
+    RemoteRefMustBeAbsent => false
+  }
+}
+
+fn expectation_is_absent(expected: GitRemoteRefExpectation) -> Bool {
+  match expected {
+    RemoteRefMustBeAbsent => true
+    RemoteRefMustEqual { oid: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL. Every refusal claim below removes exactly one fact from THIS event, so a
+// refusal that fired for an unrelated reason would show up here as a failure to admit at all.
+test fn a_floor_green_default_branch_run_admits_the_candidate() -> Bool {
+  match decided(event: admitting_event(), observed: fixture_prior()) {
+    AdmissionRefused { cause: _ } => false
+    AdmissionAdvanceAuthorized { expected: e, to: t } =>
+      expectation_is_prior(expected: e, hex: fixture_prior_hex)
+        && (git_object_id_wire_hex(oid: t) as String == fixture_candidate_hex)
+  }
+}
+
+// THE OTHER WRITE THE AUTHORITY ADMITS, and the one this gate could not express at all until the
+// outcome stopped carrying a bare prior oid. An origin that advertises no such ref is an ANSWER
+// about the remote, so first creation is authorized — and it is authorized as a compare-and-swap
+// expecting absence, never as an unconditional push.
+test fn an_absent_desired_ref_authorizes_a_creation_expecting_absence() -> Bool {
+  match decided(event: admitting_event(), observed: FleetDesiredAbsent) {
+    AdmissionRefused { cause: _ } => false
+    AdmissionAdvanceAuthorized { expected: e, to: t } =>
+      expectation_is_absent(expected: e)
+        && (git_object_id_wire_hex(oid: t) as String == fixture_candidate_hex)
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE ARM THAT DID NOT EXIST. An undecodable advertisement means the
+// ref EXISTS holding something unreadable; a write would destroy it and a retry will not fix it.
+// The claim pins the remedy-bearing wording so this cannot be satisfied by the unobserved arm's
+// cause — the two refusals must stay distinguishable, which is why the authority kept them apart.
+test fn an_undecodable_desired_ref_refuses_without_writing_over_it() -> Bool {
+  match decided(
+    event: admitting_event(),
+    observed: FleetDesiredUndecodable { advertised: "not-a-sha refs/fleet/desired" },
+  ) {
+    AdmissionAdvanceAuthorized { expected: _, to: _ } => false
+    AdmissionRefused { cause: c } =>
+      string_contains(s: c, pattern: "a write would destroy it")
+        && string_contains(s: c, pattern: "not-a-sha refs/fleet/desired")
+        && !string_contains(s: c, pattern: "never read as an absent one")
+  }
+}
+
+// THE KEYSTONE. This is the defect the emitted deploy.yml carried: a candidate whose floor is not
+// green was advanced anyway. The refusal must come from the modeled authority, so the claim pins
+// the authority's own prevented-class wording rather than merely observing that something refused.
+test fn a_floor_red_candidate_is_refused_by_the_modeled_authority() -> Bool {
+  match decided(
+    event: fixture_event(
+      workflow_name: witness_floor_workflow_name,
+      conclusion: Failure,
+      branch: gunbc_default_branch_name,
+      head_repo: fixture_repo,
+      activity: "completed",
+    ),
+    observed: fixture_prior(),
+  ) {
+    AdmissionAdvanceAuthorized { expected: _, to: _ } => false
+    AdmissionRefused { cause: c } =>
+      string_contains(s: c, pattern: "raw-HEAD simultaneous fleet-bricking")
+        && string_contains(s: c, pattern: "failure")
+  }
+}
+
+// Every non-Success conclusion is red. Cancelled and Skipped are the two that most invite a
+// "close enough" arm — a cancelled floor proves nothing and a skipped one ran nothing.
+test fn only_success_is_floor_green() -> Bool {
+  fleet_desired_floor_green(conclusion: Success)
+    && !fleet_desired_floor_green(conclusion: Failure)
+    && !fleet_desired_floor_green(conclusion: Cancelled)
+    && !fleet_desired_floor_green(conclusion: Skipped)
+    && !fleet_desired_floor_green(conclusion: TimedOut)
+    && !fleet_desired_floor_green(conclusion: Neutral)
+    && !fleet_desired_floor_green(conclusion: ActionRequired)
+    && !fleet_desired_floor_green(conclusion: StartupFailure)
+}
+
+test fn a_conclusion_from_another_workflow_is_refused() -> Bool {
+  is_refused(o: decided(
+    event: fixture_event(
+      workflow_name: "deploy",
+      conclusion: Success,
+      branch: gunbc_default_branch_name,
+      head_repo: fixture_repo,
+      activity: "completed",
+    ),
+    observed: fixture_prior(),
+  ))
+}
+
+test fn a_non_default_branch_run_is_refused() -> Bool {
+  is_refused(o: decided(
+    event: fixture_event(
+      workflow_name: witness_floor_workflow_name,
+      conclusion: Success,
+      branch: "session/nimble-fox-671",
+      head_repo: fixture_repo,
+      activity: "completed",
+    ),
+    observed: fixture_prior(),
+  ))
+}
+
+test fn a_fork_head_repository_is_refused() -> Bool {
+  is_refused(o: decided(
+    event: fixture_event(
+      workflow_name: witness_floor_workflow_name,
+      conclusion: Success,
+      branch: gunbc_default_branch_name,
+      head_repo: "someone-else/gunbc",
+      activity: "completed",
+    ),
+    observed: fixture_prior(),
+  ))
+}
+
+test fn an_incomplete_activity_is_refused() -> Bool {
+  is_refused(o: decided(
+    event: fixture_event(
+      workflow_name: witness_floor_workflow_name,
+      conclusion: Success,
+      branch: gunbc_default_branch_name,
+      head_repo: fixture_repo,
+      activity: "requested",
+    ),
+    observed: fixture_prior(),
+  ))
+}
+
+// THE EMPTY-OBSERVATION NARROW, AS A CLAIM. An unreadable prior must refuse, not be treated as an
+// absent one — the arm that would create the ref from scratch and overwrite an admitted revision
+// nobody could read. This is the discriminating input: the event is otherwise fully admitting.
+test fn an_unobservable_prior_refuses_rather_than_creating_the_ref() -> Bool {
+  match decided(
+    event: admitting_event(),
+    observed: FleetDesiredUnobserved { cause: "ls-remote refused: network unreachable" },
+  ) {
+    AdmissionAdvanceAuthorized { expected: _, to: _ } => false
+    AdmissionRefused { cause: c } =>
+      string_contains(s: c, pattern: "never read as an absent one")
+  }
+}
+
+// The authorized push names the observed prior as the compare-and-swap expectation, so a
+// concurrent admission refuses at the remote instead of overwriting.
+test fn the_authorized_push_carries_the_observed_prior_as_the_cas_expectation() -> Bool {
+  let script = fleet_desired_authorized_push_script(
+    expected: RemoteRefMustEqual { oid: fixture_oid(hex: fixture_prior_hex) },
+    to: fixture_oid(hex: fixture_candidate_hex),
+  )
+  string_contains(s: script, pattern: concat("--force-with-lease=refs/fleet/desired:", fixture_prior_hex))
+    && string_contains(s: script, pattern: concat(fixture_candidate_hex, ":refs/fleet/desired"))
+}
+
+// The creation push is still a compare-and-swap: git's empty `<expect>` is "the ref must not
+// already exist". The claim pins the space after the colon so an expectation that silently
+// rendered the prior-oid form — or dropped the lease entirely — cannot satisfy it.
+test fn the_creation_push_leases_on_the_ref_being_absent() -> Bool {
+  let script = fleet_desired_authorized_push_script(
+    expected: RemoteRefMustBeAbsent,
+    to: fixture_oid(hex: fixture_candidate_hex),
+  )
+  string_contains(s: script, pattern: "--force-with-lease=refs/fleet/desired: ")
+    && string_contains(s: script, pattern: concat(fixture_candidate_hex, ":refs/fleet/desired"))
+    && !string_contains(s: script, pattern: fixture_prior_hex)
+}
+
+// THE RECEIPT HALF, WHICH THE TWO CLAIMS ABOVE DO NOT COVER. They assert what the push DEMANDS;
+// this asserts what the run RECORDS. The two came apart once already: #8746 replaced the `from`
+// operand with the expectation sum and the echo silently lost its prior, leaving eleven successful
+// admissions whose demanded prior appears nowhere in their logs — the lease is real but unechoed
+// (`set -eu`, no trace), and git's range line reports what happened, not what was required.
+test fn the_receipt_names_both_operands_of_the_compare_and_swap() -> Bool {
+  let script = fleet_desired_authorized_push_script(
+    expected: RemoteRefMustEqual { oid: fixture_oid(hex: fixture_prior_hex) },
+    to: fixture_oid(hex: fixture_candidate_hex),
+  )
+  string_contains(s: script, pattern: concat("[fleet-desired] admitted ", concat(fixture_candidate_hex, concat(" expected-prior ", fixture_prior_hex))))
+}
+
+// The creation arm has no prior to name, and the receipt must say so POSITIVELY. git spells the
+// absent expectation as an empty <expect>, and an empty string in a receipt is indistinguishable
+// from an operand that was never printed — which is the state this whole pair exists to refuse.
+test fn the_creation_receipt_names_absence_rather_than_nothing() -> Bool {
+  let script = fleet_desired_authorized_push_script(
+    expected: RemoteRefMustBeAbsent,
+    to: fixture_oid(hex: fixture_candidate_hex),
+  )
+  string_contains(s: script, pattern: "expected-prior absent")
+    && !string_contains(s: script, pattern: "expected-prior \"")
+}
+
+// THE EMISSION HALF. The pure decision above proves the gate decides correctly; it proves nothing
+// about what the workflow actually runs, so these read the emitted bytes.
+test fn the_admission_workflow_triggers_on_the_floor_workflow_completing() -> Bool {
+  let yml = expected_fleet_desired_yml()
+  string_contains(s: yml, pattern: "workflow_run:")
+    && string_contains(s: yml, pattern: witness_floor_workflow_name)
+    && string_contains(s: yml, pattern: "admit_fleet_desired_from_floor_event_wet")
+}
+
+// THE ACTUATION CARRIES NO DECISION. If the push step ever names the ref or a revision expression
+// of its own, it has re-acquired the ability to push something the gate did not admit.
+test fn the_admission_workflow_push_step_names_no_revision_of_its_own() -> Bool {
+  let yml = expected_fleet_desired_yml()
+  string_contains(s: yml, pattern: fleet_desired_admission_authorized_push_path)
+    && !string_contains(s: yml, pattern: "GITHUB_SHA")
+    && !string_contains(s: yml, pattern: "force-with-lease")
+    && !string_contains(s: yml, pattern: "ls-remote")
+}
+
+// the_deploy_workflow_no_longer_advances_the_fleet_revision WAS HERE and is deleted, not
+// relocated. It asserted that deploy.yml still ran the modeled apply while no longer mutating
+// refs/fleet/desired -- a claim about a workflow that no longer exists, since the root cut
+// deleted the deploy workflow authority outright. A claim whose subject is gone cannot be kept
+// alive by repointing it at something else; that would be a witness named for one fact
+// asserting another.
+//
+// The property it guarded is not lost, it is subsumed: a workflow that does not exist cannot
+// advance the ref, and test.claim.deploy_workflow_retirement_witness asserts the retired path
+// is absent from the committed artifact roster -- which is what stops the file being
+// regenerated, and is strictly stronger than "the file exists but no longer pushes".
+//
+// Found by a dangling import after merging the root cut: this file had NO merge conflict, so
+// git reported nothing. The enumeration has to be re-run after every refresh for exactly this
+// reason -- the hazard was in a file neither side touched.
+
+// WHAT THESE TWO CLAIMS ARE, STATED HONESTLY, because their first names asserted more than
+// they establish. They are TEXTUAL PROJECTION SENTINELS over the emitted yaml, not proofs
+// that a Cargo consumer is dominated by a Cargo provider.
+//
+// The motivating defect is real: deploy.yml invoked cargo on this same srv1 runner with no
+// toolchain and never reached actuation on any observed run -- 30 runs between
+// 2026-08-20T03:55:43Z and 2026-08-20T17:14:32Z, 29 failure and 1 cancelled, zero successes
+// ever (dated receipt, not a live count). The actuator never once reached its own
+// terminal step -- and this workflow builds on that runner too. Both claims were observed RED
+// against a model with the toolchain step removed before being accepted green.
+//
+// But the predicate is `split(yml, "cargo build")`, and that has two unequal failure modes:
+//
+//   the literal spelling changes (for example to "$CARGO_BIN" build, which is exactly how
+//   fleet-converge.yml already invokes cargo)  ->  first conjunct false  ->  RED.
+//   A false alarm, but fail-CLOSED.
+//
+//   a second, non-literal invocation appears BEFORE the provider while a later literal one
+//   remains  ->  .first() spans both the variable invocation and the provider  ->  PASS.
+//   A false green, and fail-OPEN.
+//
+// Adding "$CARGO_BIN" to the match would not fix that; it would enlarge the set of spellings
+// the search happens to recognise and move the hole one substitution along. A text search over
+// emitted bytes cannot see what a step executes. That is the ceiling, not a gap in effort.
+//
+// RUNG: mitigatable. NEXT-RUNG TRIGGER: workflow capability closure -- a typed step operation
+// deriving CargoCapability (the derivation already exists for validations in
+// gunbc.roadmap_execution_contract) and a projection that refuses to emit a job whose derived
+// capabilities are unclosed. The permanent control then becomes structural -- a Cargo operation
+// with no dominating provider REFUSES -- which is invariant under every spelling above because
+// it never inspects one. When that lands these two claims are deleted or demoted to a byte
+// regression fixture for this particular yaml; they must not accumulate beside it as though
+// both were safety mechanisms.
+test fn the_emitted_admission_yaml_places_a_setup_action_before_its_literal_cargo_build() -> Bool {
+  let yml = expected_fleet_desired_yml()
+  let before_cargo = split(s: yml, delimiter: "cargo build").first()
+  string_contains(s: yml, pattern: "cargo build")
+    && string_contains(s: before_cargo, pattern: "setup-rust-toolchain")
+}
+
+test fn the_emitted_admission_yaml_disables_the_shared_home_cache_on_its_setup_action() -> Bool {
+  let yml = expected_fleet_desired_yml()
+  let after_toolchain = split(s: yml, delimiter: "setup-rust-toolchain").last()
+  string_contains(s: after_toolchain, pattern: "cache: false")
+}
