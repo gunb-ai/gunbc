@@ -4,7 +4,7 @@ module v1.compiler.emit_rust
 
 
 
-fn render_rust_applied_via_emit_info(n: v1.std.core.Node, shared_types: Set<String>, source_indices: Map<String, v1.std.core.NewlineIndex>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
+fn render_rust_applied_via_emit_info(n: v1.std.core.Node, shared_types: std.types.Set<String>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   render_rust_applied_type_shared(n: n, generic_param_names: emit_info.fn_generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: emit_info.fn_type_env)
 }
 
@@ -2454,7 +2454,7 @@ fn emitted_population_manifest_path() -> String {
   concat(rust_source_root(), gunbc.stage0_emitted_population_manifest.emitted_population_manifest_basename)
 }
 
-fn emit_emitted_population_manifest(files: List<v1.std.core.TextFile>) -> v1.std.core.TextFile {
+fn emit_emitted_population_manifest(files: std.types.List<v1.std.core.TextFile>) -> v1.std.core.TextFile {
   let declared = concat(files |> map(f => f.path), [emitted_population_manifest_path()])
   let lines = declared
     |> sort_by(path => path)
@@ -5815,7 +5815,7 @@ fn emit_variant_from_child(child: v1.std.core.Node, enum_name: String, generic_p
   }
 }
 
-data v1_fn_body_derived_clone_param_names_note: String = "Extracted from emit_fn_def (dashboard node adhoc-574e999b-39c, Row 1b) rather than duplicated: this is the SAME derivation emit_fn_def already ran for the function being emitted -- structural (v1_generic_params_needing_clone_bound) unioned with RC-match-scrutinee (v1_rc_match_scrutinee_clone_bound_param_names, trait_bound_witness.dag) -- now callable a second time on a CALLEE's own declared params/inferred/body (looked up via emit_info.fn_decl_items), so a wrapper fn that forwards its args directly into an already-Clone-bounded callee can derive its own bound from that callee's real requirement (DESIGN.md S5 construction-over-validation: the fact already exists on the callee's declaration Node, never a text scan of emitted Rust) instead of the emitter reasoning about it ad hoc at each call site (DESIGN.md S2 -- one derivation, two call sites)."
+data v1_fn_body_derived_clone_param_names_note: String = "Extracted from emit_fn_def (dashboard node adhoc-574e999b-39c, Row 1b) rather than duplicated: this is the SAME derivation emit_fn_def already ran for the function being emitted -- structural (v1_generic_params_needing_clone_bound) unioned with RC-match-scrutinee (v1_rc_match_scrutinee_clone_bound_param_names, trait_bound_witness.dag) -- now callable a second time on a CALLEE's own declared params/inferred/body (looked up via emit_info.fn_decl_items), so a wrapper fn that forwards its args directly into an already-Clone-bounded callee can derive its own bound from that callee's real requirement (DESIGN.md S5 construction-over-validation: the fact already exists on the callee's declaration v1.std.core.Node, never a text scan of emitted Rust) instead of the emitter reasoning about it ad hoc at each call site (DESIGN.md S2 -- one derivation, two call sites)."
 
 fn v1_fn_body_derived_clone_param_names(params: std.types.List<v1.std.core.Node>, inferred: v1.std.core.Node, body: v1.std.core.Node, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, shared_types: std.types.Set<String>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> std.types.List<String> {
   let si = source_indices
@@ -6150,7 +6150,7 @@ fn v1_call_site_equality_forwarded_param_names(
   }
 }
 
-fn emit_fn_def(name: String, params: List<v1.std.core.Node>, inferred: v1.std.core.Node, body: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
+fn emit_fn_def(name: String, params: std.types.List<v1.std.core.Node>, inferred: v1.std.core.Node, body: v1.std.core.Node, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, shared_types: std.types.Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
   let host_text_op = rust_host_string_op_fn_emit(name: name)
   if host_text_op != none {
@@ -8216,7 +8216,7 @@ fn lambda_argument_scope(arg: v1.std.core.Node, scope: v1.compiler.infer.InferSc
   }
 }
 
-fn emit_typed_call(func: String, args: List<v1.std.core.Node>, callee_is_function_value: Bool, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
+fn emit_typed_call(func: String, args: std.types.List<v1.std.core.Node>, callee_is_function_value: Bool, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: std.types.Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   if callee_is_function_value {
     return emit_typed_function_value_call(func: func, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }
@@ -9207,7 +9207,7 @@ fn ungroupable_arm_plan(variant: String, pat_str: String) -> RcGroupedArmPlan {
   RcGroupedArmPlan { groupable: false, variant: variant, pat_str: pat_str, ref_field: "", inner_pat_str: "" }
 }
 
-fn variant_pattern_field_binding_named(pattern: MatchPattern, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn variant_pattern_field_binding_named(pattern: v1.std.core.MatchPattern, field_name: String, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.Node? {
   match pattern {
     VariantPattern { name: _, parent_enum: _, field_bindings: fbs } =>
       fbs |> filter(fb => field_binding_name_at(n: fb, source_indices: source_indices) == field_name) |> first
@@ -9222,7 +9222,7 @@ fn variant_pattern_bare_name(pattern: MatchPattern) -> String {
   }
 }
 
-fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String) -> RcGroupedArmPlan {
+fn rc_grouped_arm_plan(arm: v1.std.core.Node, scope: v1.compiler.infer.InferScope, shared_types: std.types.Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, scrut_type: String) -> RcGroupedArmPlan {
   let si = scope.type_env.source_indices
   let arm_pat = arm_pattern(n: arm)
   let rc_raw = analyze_rc_pattern(pattern: arm_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: si)
@@ -9272,25 +9272,25 @@ fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, 
 // emitted outer pattern and the discriminated field. One dissenting arm -- a wildcard field, a
 // second Rc-bound field, an authored guard -- and the whole variant keeps the #8570 guard, which
 // is the honest arm: the guards are what make those arms selectable in the first place.
-fn rc_group_members(entries: List<RcGroupedArmEntry>, variant: String) -> List<RcGroupedArmEntry> {
+fn rc_group_members(entries: std.types.List<RcGroupedArmEntry>, variant: String) -> std.types.List<RcGroupedArmEntry> {
   entries |> filter(e => e.plan.variant == variant)
 }
 
-fn rc_group_is_whole_coverage(entries: List<RcGroupedArmEntry>, plan: RcGroupedArmPlan) -> Bool {
+fn rc_group_is_whole_coverage(entries: std.types.List<RcGroupedArmEntry>, plan: RcGroupedArmPlan) -> Bool {
   let members = rc_group_members(entries: entries, variant: plan.variant)
   (members |> all(e =>
     e.plan.groupable && e.plan.ref_field == plan.ref_field && e.plan.pat_str == plan.pat_str
   ))
 }
 
-fn emit_rc_grouped_match_arm(members: List<RcGroupedArmEntry>, plan: RcGroupedArmPlan, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, match_result_type: Node) -> String {
+fn emit_rc_grouped_match_arm(members: std.types.List<RcGroupedArmEntry>, plan: RcGroupedArmPlan, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: std.types.Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, match_result_type: v1.std.core.Node) -> String {
   let inner_arms = members |> map(e =>
     concat("    ", e.plan.inner_pat_str, " => ", emit_typed_match_arm_body_str(arm: e.arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type), ",")
   ) |> join(separator: "\n")
   concat("    ", plan.pat_str, " => { match ", emit_ident(name: plan.ref_field, target: Rust), ".as_ref() {\n", inner_arms, "\n} },")
 }
 
-fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, match_result_type: Node) -> List<String> {
+fn emit_typed_match_arm_strs(arms: std.types.List<v1.std.core.Node>, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: std.types.Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, scrut_type: String, match_result_type: v1.std.core.Node) -> std.types.List<String> {
   let has_irrefutable = arms |> any(a => match_pattern_is_irrefutable(pattern: arm_pattern(n: a)))
   if has_irrefutable {
     arms |> map(arm => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false))
@@ -9320,7 +9320,7 @@ fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, 
   }
 }
 
-fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+fn emit_typed_match(scrutinee: v1.std.core.Node, arms: std.types.List<v1.std.core.Node>, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: std.types.Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   let scrut_str = emit_typed_expr(texpr: scrutinee, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let scrut_type = match scrutinee.inferred {
     Present { value: v1.std.core.Resolved { node: rt } } =>
@@ -9362,14 +9362,14 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
   }
 }
 
-fn emit_typed_match_arm_body_str(arm: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, match_result_type: Node) -> String {
+fn emit_typed_match_arm_body_str(arm: v1.std.core.Node, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: std.types.Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, match_result_type: v1.std.core.Node) -> String {
   let arm_b = arm_body(n: arm)
   let si = scope.type_env.source_indices
   match arm_b.expr_data {
     ExprVar { binding_kind: body_binding_kind } =>
       let body_name = expr_var_name_at(texpr: arm_b, source_indices: si)
       if variant_parent_from_binding_kind(binding_kind: body_binding_kind) != none {
-        emit_var_ref(name: body_name, binding_kind: body_binding_kind, resolved_type: Present { value: Resolved { node: match_result_type } }, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: si, module_name: scope.module_name)
+        emit_var_ref(name: body_name, binding_kind: body_binding_kind, resolved_type: Present { value: v1.std.core.Resolved { node: match_result_type } }, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: si, module_name: scope.module_name)
       } else {
         emit_typed_expr(texpr: arm_b, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       }
@@ -9377,7 +9377,7 @@ fn emit_typed_match_arm_body_str(arm: Node, registry: Map<String, ItemInfo>, sco
   }
 }
 
-fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, match_result_type: Node, string_from_mode: Bool) -> String {
+fn emit_typed_match_arm(arm: v1.std.core.Node, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: std.types.Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, scrut_type: String, match_result_type: v1.std.core.Node, string_from_mode: Bool) -> String {
   let arm_pat = arm_pattern(n: arm)
   let arm_g = arm_guard(n: arm)
   let arm_b = arm_body(n: arm)
