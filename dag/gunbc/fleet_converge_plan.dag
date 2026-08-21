@@ -19,6 +19,20 @@ import std.content_hash {
 }
 import std.temporal_effect { HeldLease, HeldLeaseObservedState, LeaseAbsent, LeaseEpoch, held_lease }
 import extdeps.exec.command { ArgvCommand }
+import v2.extdeps.languages.bash_build {
+  bash_build_assign,
+  bash_build_command_with_words,
+  bash_build_exit,
+  bash_build_if_from_stmts,
+  bash_build_test_bracket,
+  bash_build_with_redir_to_file,
+  bash_build_word_cmdsubst,
+  bash_build_word_lit,
+  bash_build_word_var,
+}
+import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_stmts_semi }
+import v2.std.node { Node }
+import v2.std.diagnostic { Accepted, Rejected, None }
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberAction,
@@ -750,11 +764,62 @@ fn fleet_converge_parse_nonneg_generation_text(content: String) -> Int? {
   }
 }
 
-fn fleet_converge_generation_from_store_content(store_present: Bool, content: String) -> Int? {
+// AN UNREADABLE STORE IS NOT A STORE THAT SAYS ZERO, AND A STORE THAT DOES NOT EXIST YET IS
+// NEITHER OF THOSE. fleet_converge_generation_from_store_content used to answer `Int?` over two
+// inputs and fold three states into two: it returned Present{0} whenever the read had not
+// succeeded, so "no store yet, this host has never applied" and "the store is there and I could
+// not read it" produced the same number, and only a corrupt-but-readable store refused. That is
+// the empty-observation narrow (DESIGN, recurring failure modes) pointed at a lease guard: ⊥-as-
+// answer conflated with ⊥-as-ignorance, on the value that decides whether a converge apply may
+// proceed.
+//
+// So the observation carries three variants and ONLY ONE OF THEM HAS A NUMBER. Neither
+// not-yet-existing nor could-not-read is given a numeric payload, because giving a state with no
+// number a number is the entire defect. What the absent store MEANS — that this host is at the
+// first generation — is a decision, and it lives in fleet_converge_generation_admission below
+// where it is one named arm rather than a coercion hidden inside a read.
+type GenerationStoreObservation
+  = GenerationObserved { generation: Int }
+  | GenerationStoreAbsent
+  | GenerationUnobserved { reason: String }
+
+fn fleet_converge_generation_observation(
+  store_present: Bool,
+  content: String,
+) -> GenerationStoreObservation {
   if !store_present {
-    Present { value: 0 }
+    GenerationStoreAbsent
   } else {
-    fleet_converge_parse_nonneg_generation_text(content: content)
+    match fleet_converge_parse_nonneg_generation_text(content: content) {
+      Present { value: n } => GenerationObserved { generation: n }
+      Absent =>
+        GenerationUnobserved {
+          reason: concat(
+            "fleet_converge: generation store is present but does not decode to a non-negative integer at ",
+            fleet_converge_generation_store_path,
+          ),
+        }
+    }
+  }
+}
+
+// THE ONE PLACE THE FIRST-GENERATION RULE LIVES. Both the modelled admission below and the
+// emitted apply guard read this row, so the shell cannot drift into a different idea of what a
+// host that has never applied is at.
+data fleet_converge_first_generation: Int = 0
+
+type GenerationAdmission
+  = GenerationAdmitted { generation: Int }
+  | GenerationAdmissionRefused { reason: String }
+
+fn fleet_converge_generation_admission(observation: GenerationStoreObservation) -> GenerationAdmission {
+  match observation {
+    GenerationObserved { generation: n } => GenerationAdmitted { generation: n }
+    GenerationStoreAbsent => GenerationAdmitted { generation: fleet_converge_first_generation }
+    GenerationUnobserved { reason: why } =>
+      GenerationAdmissionRefused {
+        reason: concat("fleet_converge: refusing to plan on an unobserved generation store — ", why),
+      }
   }
 }
 
@@ -762,51 +827,176 @@ data fleet_converge_generation_lock_path: String = "/var/lib/gunbc/fleet-converg
 
 data fleet_converge_locked_apply_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_converge_locked_apply_script — flock-guarded generation compare, apply.sh, and store commit in one shell transport; DISSOLVES WHEN bash-emit or host_effect_apply provides typed lease acquisition without medium-as-string concat")
 
+// THE LEASE GUARD IS A PROGRAM, AND IT USED TO BE SPLICED INTO ANOTHER ONE BY HAND.
+// The previous form built the inner body by joining concatenated command text and then wrote
+// `sudo -n flock -x PATH bash -c '` ++ inner ++ `'` — hand-typed single quotes wrapped around a
+// multi-line body carrying a command substitution, a redirect to stderr and a redirect to a file.
+// Nothing structurally prevented an apostrophe reaching that body, and the failure mode of one
+// arriving is not a refusal: it closes the quoting early and the remainder reparses as different
+// shell, under flock, as root. The inner body is now a modelled bash statement list serialized
+// once, and it enters the outer command as a single WORD, so the quoting is the serializer's
+// (extdeps.posix.shell_command_language posix_single_quote) rather than an author's.
+//
+// THE READ ARM IS THE OTHER HALF, and it is the reason this function changed at all. The old
+// guard read the store as `CURRENT=$(cat PATH 2>/dev/null || echo 0)` — every failure, whether
+// the store was missing or present-and-unreadable, became the number zero. The modelled reader in
+// this same module refuses that coercion in as many words, so the two halves of one rule
+// disagreed and only the modelled half was ever read by a reviewer. The emitted guard now
+// discriminates the same three states the model does: the default is the named
+// fleet_converge_first_generation row (not a coerced read), the store is consulted only when it
+// exists, and a store that exists but cannot be read aborts the guard under `set -e` instead of
+// passing as generation zero.
+//
+// WHAT IS NOT CLAIMED: this is derivation of the emitted guard's CONSTANTS and arms from the
+// modelled rows, not execution of the modelled decision on the host. The comparison itself is
+// still spelled twice — once as fleet_converge_apply_generation_admits and once as the emitted
+// `[ "$_gunbc_current" != "<prior>" ]` — and the witness below pins the emitted operands against
+// the modelled ones so the two cannot drift silently. A single spelling needs the guard to call
+// back into the substrate on the host, which is what this row's dissolution trigger names.
+data fleet_converge_locked_apply_current_var: String = "_gunbc_current"
+
+fn fleet_converge_generation_store_default_stmt() -> Node {
+  bash_build_assign(
+    name: fleet_converge_locked_apply_current_var,
+    value: bash_build_word_lit(text: to_string(fleet_converge_first_generation)),
+  )
+}
+
+// Read the store ONLY where it exists. A present-but-unreadable store makes the command
+// substitution fail, and `set -euo pipefail` at the head of this body turns that into a nonzero
+// exit — a refusal, not a zero.
+fn fleet_converge_generation_store_read_stmt() -> Node {
+  bash_build_if_from_stmts(
+    cond: bash_build_test_bracket(words: [
+      bash_build_word_lit(text: "-e"),
+      bash_build_word_lit(text: fleet_converge_generation_store_path),
+    ]),
+    then_stmts: [
+      bash_build_assign(
+        name: fleet_converge_locked_apply_current_var,
+        value: bash_build_word_cmdsubst(
+          body: bash_build_command_with_words(words: [
+            bash_build_word_lit(text: "cat"),
+            bash_build_word_lit(text: fleet_converge_generation_store_path),
+          ]),
+        ),
+      ),
+    ],
+  )
+}
+
+fn fleet_converge_generation_stale_guard_stmt(prior_generation: Int, planned_generation: Int) -> Node {
+  bash_build_if_from_stmts(
+    cond: bash_build_test_bracket(words: [
+      bash_build_word_var(name: fleet_converge_locked_apply_current_var),
+      bash_build_word_lit(text: "!="),
+      bash_build_word_lit(text: to_string(prior_generation)),
+    ]),
+    then_stmts: [
+      bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "echo"),
+        bash_build_word_lit(text: "LeaseGenerationStale"),
+        bash_build_word_lit(text: concat("planned=", to_string(planned_generation))),
+        bash_build_word_lit(text: "observed="),
+        bash_build_word_var(name: fleet_converge_locked_apply_current_var),
+      ]),
+      bash_build_exit(code: "1"),
+    ],
+  )
+}
+
+fn fleet_converge_locked_apply_inner_stmts(
+  prior_generation: Int,
+  planned_generation: Int,
+  apply_shell_path: String,
+) -> List<Node> {
+  [
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "set"),
+      bash_build_word_lit(text: "-euo"),
+      bash_build_word_lit(text: "pipefail"),
+    ]),
+    fleet_converge_generation_store_default_stmt(),
+    fleet_converge_generation_store_read_stmt(),
+    fleet_converge_generation_stale_guard_stmt(
+      prior_generation: prior_generation,
+      planned_generation: planned_generation,
+    ),
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "bash"),
+      bash_build_word_lit(text: apply_shell_path),
+    ]),
+    bash_build_with_redir_to_file(
+      inner: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "printf"),
+        bash_build_word_lit(text: "%s\n"),
+        bash_build_word_lit(text: to_string(planned_generation)),
+      ]),
+      path: bash_build_word_lit(text: fleet_converge_generation_store_path),
+    ),
+  ]
+}
+
+data fleet_converge_locked_apply_emit_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ fleet-converge lease guard intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid shell, so the apply refuses loudly rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)"
+
+fn fleet_converge_bash_or_poison(stmts: List<Node>) -> String {
+  match bash_fold_serialize_stmts_semi(stmts: stmts) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source
+        Some { diagnostics: _ } => fleet_converge_locked_apply_emit_refused_poison
+      }
+    Rejected { diagnostics: _ } => fleet_converge_locked_apply_emit_refused_poison
+  }
+}
+
+fn fleet_converge_locked_apply_inner_script(
+  prior_generation: Int,
+  planned_generation: Int,
+  apply_shell_path: String,
+) -> String {
+  fleet_converge_bash_or_poison(
+    stmts: fleet_converge_locked_apply_inner_stmts(
+      prior_generation: prior_generation,
+      planned_generation: planned_generation,
+      apply_shell_path: apply_shell_path,
+    ),
+  )
+}
+
 fn fleet_converge_locked_apply_script(
   prior_generation: Int,
   planned_generation: Int,
   apply_shell_path: String,
 ) -> String {
-  let inner = join(
-    [
-      concat(
-        "CURRENT=$(cat \"",
-        fleet_converge_generation_store_path,
-        "\" 2>/dev/null || echo 0)",
-      ),
-      concat("if [ \"$CURRENT\" != \"", to_string(prior_generation), "\" ]; then"),
-      concat(
-        "  echo LeaseGenerationStale planned=",
-        to_string(planned_generation),
-        " observed=$CURRENT >&2",
-      ),
-      "  exit 1",
-      "fi",
-      concat("bash \"", apply_shell_path, "\""),
-      concat(
-        "echo \"",
-        to_string(planned_generation),
-        "\" > \"",
-        fleet_converge_generation_store_path,
-        "\"",
-      ),
-    ],
-    "\n",
-  )
-  join(
-    [
-      "set -euo pipefail",
-      "sudo -n mkdir -p /var/lib/gunbc/fleet-converge",
-      concat(
-        "sudo -n flock -x \"",
-        fleet_converge_generation_lock_path,
-        "\" bash -c '",
-        inner,
-        "'",
-      ),
-    ],
-    "\n",
-  )
+  fleet_converge_bash_or_poison(stmts: [
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "set"),
+      bash_build_word_lit(text: "-euo"),
+      bash_build_word_lit(text: "pipefail"),
+    ]),
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "sudo"),
+      bash_build_word_lit(text: "-n"),
+      bash_build_word_lit(text: "mkdir"),
+      bash_build_word_lit(text: "-p"),
+      bash_build_word_lit(text: "/var/lib/gunbc/fleet-converge"),
+    ]),
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "sudo"),
+      bash_build_word_lit(text: "-n"),
+      bash_build_word_lit(text: "flock"),
+      bash_build_word_lit(text: "-x"),
+      bash_build_word_lit(text: fleet_converge_generation_lock_path),
+      bash_build_word_lit(text: "bash"),
+      bash_build_word_lit(text: "-c"),
+      bash_build_word_lit(text: fleet_converge_locked_apply_inner_script(
+        prior_generation: prior_generation,
+        planned_generation: planned_generation,
+        apply_shell_path: apply_shell_path,
+      )),
+    ]),
+  ])
 }
 
 fn fleet_converge_apply_shell(timer_plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>) -> String {
