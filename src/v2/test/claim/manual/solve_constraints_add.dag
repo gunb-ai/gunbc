@@ -20,16 +20,16 @@ data witness_solve_constraints_add_accepts: Bool = match anchor_solve_constraint
       && (g.witness.structural.evidence == fixture_add_resolved_tree())
       && (g.witness.closedness.property == ^constraint_property_candidate_set_closedness)
       && (d == v2.std.diagnostic.None)
-  Rejected { diagnostics: _ } => false
+  v2.std.diagnostic.Rejected { diagnostics: _ } => false
 }
-fn solve_constraints_witness_fail_node() -> Node {
+fn solve_constraints_witness_fail_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^solve_constraints_witness_fail_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
-fn solve_constraints_claim_input(ok: Bool) -> Node {
+fn solve_constraints_claim_input(ok: Bool) -> v2.std.node.Node {
   if ok {
     fixture_add_resolved_node()
   } else {

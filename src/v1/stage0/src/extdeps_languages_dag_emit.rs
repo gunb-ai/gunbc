@@ -2,8 +2,9 @@
 // Source module: extdeps.languages.dag.emit
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
-use crate::extdeps_uri::UriScheme::Https;
+use crate::extdeps_uri::UriScheme::*;
 pub use crate::extdeps_uri::{Uri, UriScheme};
+pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -15,10 +16,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+        uri: Uri {
         scheme: UriScheme::Https,
         locator: "github.com/gunb-ai/gunbc/blob/main/DESIGN.md#4-the-closed-grounded-substrate".to_string(),
-    }),
+    },
     })
             };
         }

@@ -65,7 +65,7 @@ data sym_lit_4_name: String = "4"
 data sym_lit_1_name: String = "1"
 data sym_add: v2.std.node.Symbol = ^add
 
-fn path_is_test_dag(path: String) -> Bool {
+fn path_is_test_dag(path: String) -> v2.std.logic.Bool {
   string_contains(s: path, pattern: "_test.dag")
 }
 
@@ -113,7 +113,7 @@ fn node_atom_name(n: v2.std.node.Node) -> String {
   node_atom_sym(n: n)
 }
 
-fn sym_is_empty(sym: v2.std.node.Symbol) -> Bool {
+fn sym_is_empty(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   sym == empty_sym
 }
 
@@ -136,12 +136,12 @@ fn eq_site_from_conj(node: v2.std.node.Node) -> List<EqNodeSite> {
     TypeNode { connective: Conj } => {
       let kids = node_positional_child_targets(node: node)
       match list_at_optional(xs: kids, index: 0) {
-        Present { value: lhs } =>
+        v2.std.optional.Present { value: lhs } =>
           match list_at_optional(xs: kids, index: 1) {
-            Present { value: rhs } => [EqNodeSite { lhs: lhs, rhs: rhs }]
-            Absent => empty_eq_node_sites
+            v2.std.optional.Present { value: rhs } => [EqNodeSite { lhs: lhs, rhs: rhs }]
+            v2.std.optional.Absent => empty_eq_node_sites
           }
-        Absent => empty_eq_node_sites
+        v2.std.optional.Absent => empty_eq_node_sites
       }
     }
     _ => empty_eq_node_sites
@@ -173,19 +173,19 @@ fn eq_sites_from_output(root: v2.std.node.Node) -> List<EqNodeSite> {
   )
 }
 
-fn skeleton_is_callee_atom(node: v2.std.node.Node) -> Bool {
+fn skeleton_is_callee_atom(node: v2.std.node.Node) -> v2.std.logic.Bool {
   match node.kind {
     TypeNode { connective: Atom { identity: _ } } => true
     _ => false
   }
 }
 
-fn skeleton_is_call(node: v2.std.node.Node) -> Bool {
+fn skeleton_is_call(node: v2.std.node.Node) -> v2.std.logic.Bool {
   match node.kind {
     TypeNode { connective: Conj } =>
       match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
-        Present { value: callee } => skeleton_is_callee_atom(node: callee)
-        Absent => false
+        v2.std.optional.Present { value: callee } => skeleton_is_callee_atom(node: callee)
+        v2.std.optional.Absent => false
       }
     _ => false
   }
@@ -193,8 +193,8 @@ fn skeleton_is_call(node: v2.std.node.Node) -> Bool {
 
 fn skeleton_callee_target(node: v2.std.node.Node) -> v2.std.node.Node {
   match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
-    Present { value: callee } => callee
-    Absent => v2.lens.no_dual_representation_test.scan.atom_node(sym: empty_sym)
+    v2.std.optional.Present { value: callee } => callee
+    v2.std.optional.Absent => v2.lens.no_dual_representation_test.scan.atom_node(sym: empty_sym)
   }
 }
 
@@ -215,8 +215,8 @@ fn callee_name_from_call(operand: v2.std.node.Node) -> String {
 
 fn first_call_arg_name(operand: v2.std.node.Node) -> String {
   match list_at_optional(xs: skeleton_call_argument_targets(node: operand), index: 0) {
-    Present { value: arg } => node_atom_name(n: arg)
-    Absent => ""
+    v2.std.optional.Present { value: arg } => node_atom_name(n: arg)
+    v2.std.optional.Absent => ""
   }
 }
 
@@ -224,7 +224,7 @@ fn body_alpha_equivalent_to_single_arg_call(
   lhs: v2.std.node.Node,
   rhs: v2.std.node.Node,
   fns: List<DualRepFnFact>
-) -> Bool {
+) -> v2.std.logic.Bool {
   let callee = callee_name_from_call(operand: lhs)
   if is_empty(xs: callee) {
     false
@@ -245,18 +245,18 @@ fn body_alpha_equivalent_to_single_arg_call(
   }
 }
 
-fn char_eq(a: std.types.Char, b: std.types.Char) -> Bool {
+fn char_eq(a: std.types.Char, b: std.types.Char) -> v2.std.logic.Bool {
   a == b
 }
 
-fn qualified_name_in_module(qname: String, module: String) -> Bool {
+fn qualified_name_in_module(qname: String, module: String) -> v2.std.logic.Bool {
   is_prefix_of(prefix: concat(module, "."), xs: qname, eq: v2.lens.no_dual_representation_test.scan.char_eq)
 }
 
 fn first_param_sym(params: List<v2.std.node.Symbol>) -> v2.std.node.Symbol {
   match list_at_optional(xs: params, index: 0) {
-    Present { value: p } => p
-    Absent => empty_sym
+    v2.std.optional.Present { value: p } => p
+    v2.std.optional.Absent => empty_sym
   }
 }
 
@@ -427,7 +427,7 @@ fn dual_rep_eq_site_count_from_scans(scans: List<DualRepModuleScan>) -> Int {
   )
 }
 
-fn dual_rep_coverage_honesty_holds(eq_site_count: Int, frontier_declared: Bool) -> Bool {
+fn dual_rep_coverage_honesty_holds(eq_site_count: Int, frontier_declared: v2.std.logic.Bool) -> v2.std.logic.Bool {
   if eq_site_count > 0 {
     true
   } else {
@@ -450,7 +450,7 @@ fn dual_rep_violation_count_from_scans(scans: List<DualRepModuleScan>) -> Int {
   )
 }
 
-fn dual_rep_clean_holds_for_scans(scans: List<DualRepModuleScan>) -> Bool {
+fn dual_rep_clean_holds_for_scans(scans: List<DualRepModuleScan>) -> v2.std.logic.Bool {
   dual_rep_violation_count_from_scans(scans: scans) == 0
 }
 
@@ -458,7 +458,7 @@ fn dual_rep_test_file_count_from_scans(scans: List<DualRepModuleScan>) -> Int {
   length(xs: scans)
 }
 
-fn decl_belongs_to_module(decl: v2.std.fn_index.FnArrowDecl, fact: DualRepModuleRef) -> Bool {
+fn decl_belongs_to_module(decl: v2.std.fn_index.FnArrowDecl, fact: DualRepModuleRef) -> v2.std.logic.Bool {
   path_is_test_dag(path: fact.path)
     && qualified_name_in_module(qname: decl.qualified_name, module: fact.module)
 }
@@ -484,7 +484,7 @@ fn module_fns_for_fact(
   })
 }
 
-fn data_init_belongs_to_module(decl: v2.std.data_index.DataInitDecl, fact: DualRepModuleRef) -> Bool {
+fn data_init_belongs_to_module(decl: v2.std.data_index.DataInitDecl, fact: DualRepModuleRef) -> v2.std.logic.Bool {
   decl.module == fact.module
 }
 

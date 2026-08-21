@@ -31,7 +31,7 @@ fn tokenize_lex_e1_unrecognized_char_diagnostic(at: v2.std.diagnostic.Locus) -> 
   }
 }
 
-fn char_in_class(c: std.types.Char, class: v2.std.compilers.lexing.LexCharClass) -> Bool {
+fn char_in_class(c: std.types.Char, class: v2.std.compilers.lexing.LexCharClass) -> v2.std.logic.Bool {
   match class {
     WhitespaceChar =>
       c == 32 || c == 9 || c == 10 || c == 13
@@ -86,14 +86,14 @@ fn lex_match_prefix(prefix: String, source: String) -> v2.compiler.tokenize.LexM
 type RepeatState {
   remaining: String
   lexeme: String
-  done: Bool
+  done: v2.std.logic.Bool
 }
 
 type DelimitedState {
   remaining: String
   lexeme: String
-  done: Bool
-  failed: Bool
+  done: v2.std.logic.Bool
+  failed: v2.std.logic.Bool
 }
 
 fn lex_rule_pattern(rule: v2.std.compilers.lexing.LexRule) -> v2.std.compilers.lexing.LexPattern {
@@ -104,7 +104,7 @@ fn lex_rule_pattern(rule: v2.std.compilers.lexing.LexRule) -> v2.std.compilers.l
   }
 }
 
-fn lex_match_char_pred(pred: fn(Char) -> Bool, source: String) -> v2.compiler.tokenize.LexMatchResult {
+fn lex_match_char_pred(pred: fn(Char) -> v2.std.logic.Bool, source: String) -> v2.compiler.tokenize.LexMatchResult {
   match v2.std.text.string_is_empty(s: source) {
     true => LexMatchRejected
     false =>
@@ -383,10 +383,10 @@ type LexWalkAcc {
   remaining: String
   tokens: List<v2.std.compilers.lexing.Token>
   annotations: List<v2.std.compilers.lexing.UnboundSourceAnnotation>
-  line_prefix_indent_only: Bool
+  line_prefix_indent_only: v2.std.logic.Bool
   pos: Int
-  done: Bool
-  error: Bool
+  done: v2.std.logic.Bool
+  error: v2.std.logic.Bool
   file: v2.std.node.Symbol
   rules: List<v2.compiler.tokenize.CompiledLexRule>
 }
@@ -405,7 +405,7 @@ fn lex_walk_init(src: String, file: v2.std.node.Symbol, rules: v2.std.compilers.
   }
 }
 
-fn lex_walk_is_done(acc: v2.compiler.tokenize.LexWalkAcc) -> Bool {
+fn lex_walk_is_done(acc: v2.compiler.tokenize.LexWalkAcc) -> v2.std.logic.Bool {
   acc.done
 }
 
@@ -571,7 +571,7 @@ fn lex_walk_artifact(source: String, file: v2.std.node.Symbol, rules: v2.std.com
 
 fn lex_walk(source: String, file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRuleSet) -> v2.std.diagnostic.Outcome<v2.std.compilers.lexing.TokenStream> {
   match lex_walk_artifact(source: source, file: file, rules: rules) {
-    Rejected { diagnostics: ds } =>
+    v2.std.diagnostic.Rejected { diagnostics: ds } =>
       v2.std.diagnostic.Rejected { diagnostics: ds }
     Accepted { value: artifact, diagnostics: ds } =>
       v2.std.diagnostic.Accepted { value: v2.std.compilers.lexing.lex_artifact_semantic_tokens(artifact: artifact), diagnostics: ds }

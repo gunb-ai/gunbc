@@ -162,11 +162,11 @@ fn resolve_host_effect_cell(target: gunbc.host_effect.NodeControlPlane, effect: 
               EnsureRunnerMemoryCapsOnHost { node: n, slot: s }
             gunbc.host_effect.ActivateRunnerSlot { slot: s } =>
               ActivateRunnerSlotOnHost { node: n, slot: s }
-            ReplaceRunnerIncarnation { from: inc, cause: c } =>
+            gunbc.host_effect.ReplaceRunnerIncarnation { from: inc, cause: c } =>
               ReplaceRunnerIncarnationOnHost { node: n, from: inc, cause: c }
-            ObserveRunnerLocalState { slot: s } =>
+            gunbc.host_effect.ObserveRunnerLocalState { slot: s } =>
               ObserveRunnerLocalStateOnHost { node: n, slot: s }
-            ObserveGitHubRunnerRegistration { slot: s, organization: o } =>
+            gunbc.host_effect.ObserveGitHubRunnerRegistration { slot: s, organization: o } =>
               ObserveGitHubRunnerRegistrationOnHost { node: n, slot: s, organization: o }
             gunbc.host_effect.DeployAccessPreflight {} =>
               IncompatibleCell {
@@ -174,7 +174,7 @@ fn resolve_host_effect_cell(target: gunbc.host_effect.NodeControlPlane, effect: 
               }
           }
       }
-    BmcController { node: n } =>
+    gunbc.host_effect.BmcController { node: n } =>
       match effect {
         gunbc.host_effect.OsInstallActuatorToolchainEnsure {} =>
           IncompatibleCell { reason: "host_effect: OsInstallActuatorToolchainEnsure is in-band (actuator host toolchain) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
@@ -247,11 +247,11 @@ fn resolve_host_effect_cell(target: gunbc.host_effect.NodeControlPlane, effect: 
               IncompatibleCell { reason: "host_effect: EnsureRunnerMemoryCaps is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             gunbc.host_effect.ActivateRunnerSlot { slot: _ } =>
               IncompatibleCell { reason: "host_effect: ActivateRunnerSlot is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ReplaceRunnerIncarnation { from: _, cause: _ } =>
+            gunbc.host_effect.ReplaceRunnerIncarnation { from: _, cause: _ } =>
               IncompatibleCell { reason: "host_effect: ReplaceRunnerIncarnation is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ObserveRunnerLocalState { slot: _ } =>
+            gunbc.host_effect.ObserveRunnerLocalState { slot: _ } =>
               IncompatibleCell { reason: "host_effect: ObserveRunnerLocalState is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ObserveGitHubRunnerRegistration { slot: _, organization: _ } =>
+            gunbc.host_effect.ObserveGitHubRunnerRegistration { slot: _, organization: _ } =>
               IncompatibleCell { reason: "host_effect: ObserveGitHubRunnerRegistration is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             gunbc.host_effect.DeployAccessPreflight {} =>
               IncompatibleCell { reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot target BmcController; typed mismatch, DESIGN section 5." }
@@ -262,7 +262,7 @@ fn resolve_host_effect_cell(target: gunbc.host_effect.NodeControlPlane, effect: 
 
 type ShellExecObserved {
   exit_code: Int
-  success: std.types.Bool
+  success: Bool
   stdout: String
   stderr: String
 }
@@ -397,7 +397,7 @@ fn srv3_seeded_install_media_toolchain_receipt_line(outcome: std.types.NonEmptyS
   )
 }
 
-fn srv3_seeded_install_media_toolchain_privileged_apt_install_is_gated() -> std.types.Bool {
+fn srv3_seeded_install_media_toolchain_privileged_apt_install_is_gated() -> Bool {
   let args = srv3_actuator_toolchain_privileged_apt_install_args(package: extdeps.apt.package_xorriso)
   args == ["-n", extdeps.apt.apt_get_binary_path as String, "install", "-y", extdeps.apt.package_xorriso as String]
 }
@@ -445,7 +445,7 @@ fn realize_seeded_install_media_toolchain_ensure_body(
 }
 
 fn srv3_seeded_install_media_toolchain_ensure_after_pre(
-  was_present: std.types.Bool,
+  was_present: Bool,
   transport: gunbc.host_effect.HostEffectTransport,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
@@ -479,8 +479,8 @@ fn srv3_seeded_install_media_toolchain_ensure_after_pre(
 }
 
 fn srv3_seeded_install_media_toolchain_ensure_receipt(
-  was_present: std.types.Bool,
-  ensure_ok: std.types.Bool,
+  was_present: Bool,
+  ensure_ok: Bool,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   let outcome = if was_present { "Present" } else { "Installed" }
@@ -609,7 +609,7 @@ fn bmcweb_token_extract_jq_args(response_path: String) -> std.types.List<String>
   ["-e", "-r", ".token", response_path]
 }
 
-fn bmcweb_token_extraction_verdict(jq_success: std.types.Bool, jq_stdout: String) -> BmcwebTokenExtraction {
+fn bmcweb_token_extraction_verdict(jq_success: Bool, jq_stdout: String) -> BmcwebTokenExtraction {
   if jq_success {
     let token = std.algebra.trim(s: jq_stdout)
     if token == "" {
@@ -873,12 +873,12 @@ fn provision_codex_runtime_refuse(
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   match gunbc.host_codex_runtime_provision_verdict.provision_codex_runtime_verdict(host: host, observed: observed) {
-    ProvisionConverged { executable: _, version_line: _ } =>
+    gunbc.host_codex_runtime_provision_verdict.ProvisionConverged { executable: _, version_line: _ } =>
       std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: ProvisionCodexRuntime verdict unexpectedly converged from a refusal-classified observation; fail-closed.",
         applied: intent,
       }
-    ProvisionRefused { cause: _, reason: reason } =>
+    gunbc.host_codex_runtime_provision_verdict.ProvisionRefused { cause: _, reason: reason } =>
       std.realization_reconcile.NotConverged { reason: reason as String, applied: intent }
   }
 }
@@ -952,7 +952,7 @@ fn provision_codex_runtime_reconcile(
 fn provision_codex_runtime_target_host(effect_intent: gunbc.host_effect.HostEffectIntent) -> product.placement_supply.HostIdentity? {
   match effect_intent.target {
     HostOs { node: n } => Present { value: n.identity }
-    BmcController { node: _ } => none
+    gunbc.host_effect.BmcController { node: _ } => none
   }
 }
 
@@ -1378,12 +1378,12 @@ fn srv3_actuator_toolchain_websocat_release_download_url() -> String {
   )
 }
 
-fn srv3_actuator_toolchain_realizer_apt_install_is_privileged_gated() -> std.types.Bool {
+fn srv3_actuator_toolchain_realizer_apt_install_is_privileged_gated() -> Bool {
   let args = srv3_actuator_toolchain_privileged_apt_install_args(package: extdeps.apt.package_curl)
   args == ["-n", extdeps.apt.apt_get_binary_path as String, "install", "-y", extdeps.apt.package_curl as String]
 }
 
-fn srv3_actuator_toolchain_realizer_websocat_uses_github_release_not_apt() -> std.types.Bool {
+fn srv3_actuator_toolchain_realizer_websocat_uses_github_release_not_apt() -> Bool {
   string_contains(
     s: srv3_actuator_toolchain_websocat_release_download_url(),
     pattern: "github.com/vi/websocat/releases/download/",
@@ -1391,7 +1391,7 @@ fn srv3_actuator_toolchain_realizer_websocat_uses_github_release_not_apt() -> st
     && string_contains(s: extdeps.tools.websocat.websocat_install_path as String, pattern: extdeps.bmc.os_install_actuator_toolchain.gunbc_bin_dir as String)
 }
 
-fn srv3_actuator_toolchain_realizer_websocat_installs_to_modeled_path_with_namespace_upsert() -> std.types.Bool {
+fn srv3_actuator_toolchain_realizer_websocat_installs_to_modeled_path_with_namespace_upsert() -> Bool {
   string_contains(s: extdeps.tools.websocat.websocat_install_path as String, pattern: concat(extdeps.bmc.os_install_actuator_toolchain.gunbc_bin_dir as String, "/"))
 }
 
@@ -1411,7 +1411,7 @@ fn srv3_actuator_toolchain_realizer_websocat_installs_to_modeled_path_with_names
 fn srv3_ensure_apt_tool(
   tool_name: std.types.NonEmptyStr,
   package: std.types.NonEmptyStr,
-  require_version_probe: std.types.Bool,
+  require_version_probe: Bool,
   transport: gunbc.host_effect.HostEffectTransport,
 ) -> Srv3HostPredicate {
   match srv3_apt_tool_present(tool_name: tool_name, transport: transport) {
@@ -1461,7 +1461,7 @@ fn srv3_probe_present_then_version(
 fn srv3_apt_install_then_reprobe(
   tool_name: std.types.NonEmptyStr,
   package: std.types.NonEmptyStr,
-  require_version_probe: std.types.Bool,
+  require_version_probe: Bool,
   transport: gunbc.host_effect.HostEffectTransport,
 ) -> Srv3HostPredicate {
   match srv3_privileged_apt_install(package: package, transport: transport) {
@@ -1770,7 +1770,7 @@ fn srv3_predicate_label(p: Srv3HostPredicate) -> String {
   }
 }
 
-fn srv3_toolchain_observed(success: std.types.Bool, stdout: String) -> ShellExecObserved {
+fn srv3_toolchain_observed(success: Bool, stdout: String) -> ShellExecObserved {
   ShellExecObserved {
     exit_code: if success { 0 } else { 1 },
     success: success,
@@ -1986,14 +1986,14 @@ data build_cache_provision_shell_script_scaffold: std.disposition.Disposition = 
   }
 }
 
-fn build_cache_provision_read_back_fails_closed() -> std.types.Bool {
+fn build_cache_provision_read_back_fails_closed() -> Bool {
   let body = build_cache_read_back_body(binary: extdeps.cache.sccache.sccache_installed_binary_path)
   string_contains(s: body, pattern: "read_back=FAILED")
     && string_contains(s: body, pattern: "exit 1")
     && !string_contains(s: body, pattern: "stats_rc")
 }
 
-fn build_cache_fragment_words_are_shell_safe() -> std.types.Bool {
+fn build_cache_fragment_words_are_shell_safe() -> Bool {
   fold(
     extdeps.cache.sccache.sccache_misconfigured_log_fragments,
     init: true,
@@ -2001,7 +2001,7 @@ fn build_cache_fragment_words_are_shell_safe() -> std.types.Bool {
   )
 }
 
-fn build_cache_install_is_cited_not_package_manager() -> std.types.Bool {
+fn build_cache_install_is_cited_not_package_manager() -> Bool {
   let body = build_cache_provision_script_body(
     instance: gunbc.build_cache_instance.ci_cache_instance(host: gunbc.fleet_intent.srv1_host.identity),
     arch_token: "aarch64" as std.types.NonEmptyStr,
@@ -2013,7 +2013,7 @@ fn build_cache_install_is_cited_not_package_manager() -> std.types.Bool {
     && !string_contains(s: body, pattern: "/usr/bin/sccache")
 }
 
-fn build_cache_classifier_covers_every_cited_fragment() -> std.types.Bool {
+fn build_cache_classifier_covers_every_cited_fragment() -> Bool {
   fold(
     extdeps.cache.sccache.sccache_misconfigured_log_fragments,
     init: true,
@@ -2031,7 +2031,7 @@ fn provision_build_cache_host_arch(effect_intent: gunbc.host_effect.HostEffectIn
         Present { value: cpu } => Present { value: cpu.catalog.architecture }
         Absent => none
       }
-    BmcController { node: _ } => none
+    gunbc.host_effect.BmcController { node: _ } => none
   }
 }
 
@@ -2501,7 +2501,7 @@ fn realize_sudo_nopasswd_execute_probe_on_host(
 fn sudo_nopasswd_grant_list_observed(
   probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdGrantListProbeShape,
   exit_code: Int,
-  query_success: std.types.Bool,
+  query_success: Bool,
   stdout: String,
   stderr: String,
 ) -> ShellExecObserved {
@@ -2913,7 +2913,7 @@ fn deploy_access_shell_apply_success_stdout(
     evidence: gunbc.host_effect.host_effect_read_evidence,
     transport: access.transport,
   ) {
-    Converged { evidence: e, applied: _ } =>
+    std.realization_reconcile.Converged { evidence: e, applied: _ } =>
       match e {
         ShellEffectApplied { stdout: out, exit_code: code, stderr: _ } =>
           if code == 0 {
@@ -2937,7 +2937,7 @@ fn deploy_access_observed_principal(access: gunbc.ci_deploy_access.DeployAccess)
   }
 }
 
-fn deploy_access_sudo_check_cmd(access: gunbc.ci_deploy_access.DeployAccess, cmd: gunbc.ci_deploy_access.PrivilegedCommand) -> std.types.Bool {
+fn deploy_access_sudo_check_cmd(access: gunbc.ci_deploy_access.DeployAccess, cmd: gunbc.ci_deploy_access.PrivilegedCommand) -> Bool {
   match deploy_access_shell_apply_success_stdout(
     access: access,
     effect: gunbc.ci_deploy_access.deploy_access_sudo_probe_effect(cmd: cmd),
@@ -2947,7 +2947,7 @@ fn deploy_access_sudo_check_cmd(access: gunbc.ci_deploy_access.DeployAccess, cmd
   }
 }
 
-fn deploy_access_sudo_all_granted(access: gunbc.ci_deploy_access.DeployAccess) -> std.types.Bool {
+fn deploy_access_sudo_all_granted(access: gunbc.ci_deploy_access.DeployAccess) -> Bool {
   v2.std.algebra.fold_list(
     xs: access.privileged_commands,
     empty: true,
@@ -3065,7 +3065,7 @@ fn host_effect_apply_gated(
           std.realization_reconcile.NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
         IncompatibleCell { reason: why } => std.realization_reconcile.NotConverged { reason: why, applied: intent }
       }
-    Deny { refusal: _ } =>
+    std.access.Deny { refusal: _ } =>
       std.realization_reconcile.NotConverged {
         reason: gunbc.ci_deploy_access.deploy_access_decision_reason(d: verdict),
         applied: gunbc.host_effect.HostEffectIntent {
@@ -3090,7 +3090,7 @@ fn not_converged_directive(drive: gunbc.host_effect.Drive) -> ConvergeDirective 
 
 fn host_effect_drive_directive(r: std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence>) -> ConvergeDirective {
   match r {
-    Converged { evidence: _, applied: _ } => Settled
+    std.realization_reconcile.Converged { evidence: _, applied: _ } => Settled
     std.realization_reconcile.NotConverged { reason: why, applied: intent } =>
       match intent.privilege_denial {
         Present { value: std.access.Deny { refusal: _ } } => Refused { reason: why }

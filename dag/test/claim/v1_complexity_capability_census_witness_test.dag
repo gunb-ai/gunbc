@@ -71,7 +71,7 @@ fn fixture_retired() -> gunbc.v1_complexity_capability_census.V1ComplexityInvent
   gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
     item: gunbc.v1_complexity_capability_census.LegacyRealizationItem { realization: ParserProgressV1WalkerRealization, of_capability: ParserProgressFactProduction },
     v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "parser_state_expr_progress"),
-    disposition: Retired {
+    disposition: gunbc.v1_complexity_capability_census.Retired {
       reason: "fixture — uninhabited by the roster, proven here so the arm is not green-by-vacancy" as std.types.NonEmptyStr
     }
   }

@@ -3,7 +3,7 @@ module v2.test.manual.node_minimal_representation_test
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn substrate_v2_node() -> Node {
+fn substrate_v2_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^node_minimal_probe } },
     children: [],

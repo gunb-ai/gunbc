@@ -1407,7 +1407,7 @@ fn wasm_grammar() -> v2.std.grammar.ParseGrammar {
   v2.std.grammar.ModeledGrammar { root: wasm_grammar_root() }
 }
 
-fn wasm_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn wasm_lex_token_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.compilers.lexing.lex_rule_set_token_class_member(
     rules: wasm_lex_rules(),
     token_class: sym
@@ -1416,21 +1416,21 @@ fn wasm_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
 
 fn wasm_integer_catalog_surface_symbol_step(
   sym: v2.std.node.Symbol,
-  acc: Bool,
+  acc: v2.std.logic.Bool,
   facts: WasmIntegerPrimitiveFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   acc || sym == facts.surface_spelling
 }
 
 fn wasm_float_catalog_surface_symbol_step(
   sym: v2.std.node.Symbol,
-  acc: Bool,
+  acc: v2.std.logic.Bool,
   facts: WasmFloatPrimitiveFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   acc || sym == facts.surface_spelling
 }
 
-fn wasm_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn wasm_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: wasm_integer_facts_catalog,
     empty: false,
@@ -1440,7 +1440,7 @@ fn wasm_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn wasm_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn wasm_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: wasm_float_facts_catalog,
     empty: false,
@@ -1450,7 +1450,7 @@ fn wasm_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn wasm_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn wasm_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   wasm_integer_catalog_surface_symbol(sym: sym) ||
     wasm_float_catalog_surface_symbol(sym: sym)
 }

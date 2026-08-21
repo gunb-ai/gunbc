@@ -1,77 +1,77 @@
 module v2.std.timeseries_signal
 
 
-type Voltage = std.measure.Measure<std.measure.ElectricPotential, std.measure.Micro, Int>
-type Current = std.measure.Measure<std.measure.ElectricCurrent, std.measure.Micro, Int>
-type ResistanceMicro = std.measure.Measure<std.measure.Resistance, std.measure.Micro, Int>
-type CapacitanceMicro = std.measure.Measure<std.measure.Capacitance, std.measure.Micro, Int>
-type InductanceMicro = std.measure.Measure<std.measure.Inductance, std.measure.Micro, Int>
-type ChargeMicro = std.measure.Measure<std.measure.ElectricCharge, std.measure.Micro, Int>
-type FluxMicro = std.measure.Measure<std.measure.MagneticFlux, std.measure.Micro, Int>
+type Voltage = std.measure.Measure<std.measure.ElectricPotential, std.measure.Micro, v2.std.integer.Int>
+type Current = std.measure.Measure<std.measure.ElectricCurrent, std.measure.Micro, v2.std.integer.Int>
+type ResistanceMicro = std.measure.Measure<std.measure.Resistance, std.measure.Micro, v2.std.integer.Int>
+type CapacitanceMicro = std.measure.Measure<std.measure.Capacitance, std.measure.Micro, v2.std.integer.Int>
+type InductanceMicro = std.measure.Measure<std.measure.Inductance, std.measure.Micro, v2.std.integer.Int>
+type ChargeMicro = std.measure.Measure<std.measure.ElectricCharge, std.measure.Micro, v2.std.integer.Int>
+type FluxMicro = std.measure.Measure<std.measure.MagneticFlux, std.measure.Micro, v2.std.integer.Int>
 
-type DurationMicro = std.measure.Measure<std.measure.Time, std.measure.Micro, Int>
+type DurationMicro = std.measure.Measure<std.measure.Time, std.measure.Micro, v2.std.integer.Int>
 
-fn voltage(n: Int) -> Voltage {
+fn voltage(n: v2.std.integer.Int) -> Voltage {
   Voltage { count: n }
 }
 
-fn voltage_count(v: Voltage) -> Int {
+fn voltage_count(v: Voltage) -> v2.std.integer.Int {
   v.count
 }
 
-fn current(n: Int) -> Current {
+fn current(n: v2.std.integer.Int) -> Current {
   Current { count: n }
 }
 
-fn current_count(c: Current) -> Int {
+fn current_count(c: Current) -> v2.std.integer.Int {
   c.count
 }
 
-fn resistance_micro(n: Int) -> ResistanceMicro {
+fn resistance_micro(n: v2.std.integer.Int) -> ResistanceMicro {
   ResistanceMicro { count: n }
 }
 
-fn resistance_micro_count(r: ResistanceMicro) -> Int {
+fn resistance_micro_count(r: ResistanceMicro) -> v2.std.integer.Int {
   r.count
 }
 
-fn capacitance_micro(n: Int) -> CapacitanceMicro {
+fn capacitance_micro(n: v2.std.integer.Int) -> CapacitanceMicro {
   CapacitanceMicro { count: n }
 }
 
-fn capacitance_micro_count(c: CapacitanceMicro) -> Int {
+fn capacitance_micro_count(c: CapacitanceMicro) -> v2.std.integer.Int {
   c.count
 }
 
-fn inductance_micro(n: Int) -> InductanceMicro {
+fn inductance_micro(n: v2.std.integer.Int) -> InductanceMicro {
   InductanceMicro { count: n }
 }
 
-fn inductance_micro_count(l: InductanceMicro) -> Int {
+fn inductance_micro_count(l: InductanceMicro) -> v2.std.integer.Int {
   l.count
 }
 
-fn charge_micro(n: Int) -> ChargeMicro {
+fn charge_micro(n: v2.std.integer.Int) -> ChargeMicro {
   ChargeMicro { count: n }
 }
 
-fn charge_micro_count(q: ChargeMicro) -> Int {
+fn charge_micro_count(q: ChargeMicro) -> v2.std.integer.Int {
   q.count
 }
 
-fn flux_micro(n: Int) -> FluxMicro {
+fn flux_micro(n: v2.std.integer.Int) -> FluxMicro {
   FluxMicro { count: n }
 }
 
-fn flux_micro_count(phi: FluxMicro) -> Int {
+fn flux_micro_count(phi: FluxMicro) -> v2.std.integer.Int {
   phi.count
 }
 
-fn duration_micro(n: Int) -> DurationMicro {
+fn duration_micro(n: v2.std.integer.Int) -> DurationMicro {
   DurationMicro { count: n }
 }
 
-fn duration_micro_count(t: DurationMicro) -> Int {
+fn duration_micro_count(t: DurationMicro) -> v2.std.integer.Int {
   t.count
 }
 
@@ -138,7 +138,7 @@ type PassiveComponentSpec
 fn potential_reference_eq(
   left: PotentialReference,
   right: PotentialReference
-) -> Bool {
+) -> v2.std.logic.Bool {
   match left {
     GroundReference => match right {
       GroundReference => true
@@ -182,7 +182,7 @@ fn absolute_potential_from_named(
 fn absolute_potential_from_named_preserves_reference(
   named: NamedAffineVoltage,
   magnitude: Voltage
-) -> Bool {
+) -> v2.std.logic.Bool {
   let absolute = absolute_potential_from_named(named: named, magnitude: magnitude)
   potential_reference_eq(
     left: potential_reference_of_named(named: named),
@@ -311,7 +311,7 @@ fn capacitor_fold_step(
         }
         diagnostics: v2.std.diagnostic.None
       }
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -333,7 +333,7 @@ fn fold_capacitor_transient(
             current: current,
             dt: dt,
           )
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
       }
     }
   )
@@ -382,6 +382,6 @@ fn inductor_fold_step(
         }
         diagnostics: v2.std.diagnostic.None
       }
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }

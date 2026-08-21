@@ -170,7 +170,7 @@ fn normalize_cost_expr_to_symbolic(expr: CostExpr) -> SymbolicCost {
         )
       } else {
         match a {
-          SizeOf { variable: v } => LogCost { variable: v }
+          SizeOf { variable: v } => v2.lens.cost.LogCost { variable: v }
           _ =>
             normalize_cost_expr_to_symbolic(
               expr: CostRefused {

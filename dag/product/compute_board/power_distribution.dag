@@ -30,7 +30,7 @@ type BankUse
 // The supplying net is common to both uses: an unused bank's VCCIO pin is still a pin that must
 // be connected to something, and saying which is the whole content of the vendor constraint.
 type BankAssignment {
-  bank: Int
+  bank: std.integer.Int
   use: BankUse
   supplied_by: product.electrical.connectivity.NetIdentity
 }
@@ -59,11 +59,11 @@ type PowerRefusal
   = RailOutsideDeviceWindow { rail: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail, supplied: std.measure.Millivolt, minimum: std.measure.Millivolt, maximum: std.measure.Millivolt }
   | RailBuiltForAnUnconnectedPin { rail: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail, supplied: std.measure.Millivolt }
   | RequiredRailNotBuilt { rail: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail }
-  | BankStandardOutsideRailWindow { bank: Int, standard_name: std.types.NonEmptyStr, supplied: std.measure.Millivolt, minimum: std.measure.Millivolt, maximum: std.measure.Millivolt }
-  | BankSuppliedByNoDeclaredRail { bank: Int, net: product.electrical.connectivity.NetIdentity }
+  | BankStandardOutsideRailWindow { bank: std.integer.Int, standard_name: std.types.NonEmptyStr, supplied: std.measure.Millivolt, minimum: std.measure.Millivolt, maximum: std.measure.Millivolt }
+  | BankSuppliedByNoDeclaredRail { bank: std.integer.Int, net: product.electrical.connectivity.NetIdentity }
   | LikeVoltageRailsOnSeparateSupplies { left: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail, right: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail, voltage: std.measure.Millivolt }
-  | UnusedBankNotTiedToCore { bank: Int, net: product.electrical.connectivity.NetIdentity, core_net: product.electrical.connectivity.NetIdentity }
-  | UnusedBankCoreRailNotBuilt { bank: Int, core_rail: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail }
+  | UnusedBankNotTiedToCore { bank: std.integer.Int, net: product.electrical.connectivity.NetIdentity, core_net: product.electrical.connectivity.NetIdentity }
+  | UnusedBankCoreRailNotBuilt { bank: std.integer.Int, core_rail: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail }
 
 type PowerAdmission
   = PowerIntentAdmitted { intent: BoardPowerIntent }
@@ -240,7 +240,7 @@ fn power_causes(intent: BoardPowerIntent) -> List<PowerRefusal> {
   concat(concat(rail_side, bank_side), cross_side)
 }
 
-fn power_refusal_count(cs: List<PowerRefusal>) -> Int {
+fn power_refusal_count(cs: List<PowerRefusal>) -> std.integer.Int {
   fold(cs, init: 0, f: fn(acc, _c) { acc + 1 })
 }
 

@@ -173,7 +173,7 @@ data java_noninteger_facts_catalog: List<JavaNonIntegerPrimitiveFacts> = [
   java_facts_boolean,
 ]
 
-data java_bool_grounding: std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra
+data java_bool_grounding: std.algebra.BooleanAlgebra<v2.std.logic.Bool> = v2.std.logic.bool_boolean_algebra
 
 fn java_inhabitant_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
@@ -1425,29 +1425,29 @@ fn java_language_model() -> v2.std.language_model.LanguageModel {
 
 fn java_integer_catalog_surface_symbol_step(
   sym: v2.std.node.Symbol,
-  acc: Bool,
+  acc: v2.std.logic.Bool,
   facts: JavaIntegerPrimitiveFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   acc || sym == facts.surface_spelling
 }
 
 fn java_float_catalog_surface_symbol_step(
   sym: v2.std.node.Symbol,
-  acc: Bool,
+  acc: v2.std.logic.Bool,
   facts: JavaFloatPrimitiveFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   acc || sym == facts.surface_spelling
 }
 
 fn java_noninteger_catalog_surface_symbol_step(
   sym: v2.std.node.Symbol,
-  acc: Bool,
+  acc: v2.std.logic.Bool,
   facts: JavaNonIntegerPrimitiveFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   acc || sym == facts.surface_spelling
 }
 
-fn java_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn java_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: java_integer_facts_catalog,
     empty: false,
@@ -1457,7 +1457,7 @@ fn java_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn java_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn java_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: java_float_facts_catalog,
     empty: false,
@@ -1467,7 +1467,7 @@ fn java_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn java_noninteger_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn java_noninteger_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: java_noninteger_facts_catalog,
     empty: false,
@@ -1477,13 +1477,13 @@ fn java_noninteger_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn java_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn java_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   java_integer_catalog_surface_symbol(sym: sym) ||
     java_float_catalog_surface_symbol(sym: sym) ||
     java_noninteger_catalog_surface_symbol(sym: sym)
 }
 
-fn java_method_add_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn java_method_add_lex_token_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   sym == ^java_token_kw_static ||
     sym == ^java_token_ident ||
     sym == ^java_token_kw_int ||

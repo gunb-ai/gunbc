@@ -25,7 +25,7 @@ fn symbol_index_fill_containment_edge(
   edge: v2.std.node.Edge
 ) -> v2.std.symbol_index.SymbolIndex {
   match edge.label {
-    Named { name: sym } =>
+    v2.std.node.Named { name: sym } =>
       if dag_surface_module_header_metadata_edge(name: sym) {
         symbol_index_fill_containment_node(
           index: index,
@@ -70,13 +70,13 @@ fn symbol_index_fill_containment_node(
   match node.kind {
     TypeNode { connective: Conj } =>
       match namespace_graft_spine_segment_edge_optional(node: node) {
-        Present { value: spine_edge } =>
+        v2.std.optional.Present { value: spine_edge } =>
           symbol_index_fill_containment_node(
             index: index,
             path: path,
             node: spine_edge.target
           )
-        Absent =>
+        v2.std.optional.Absent =>
           fold(node.children, init: index, f: fn(acc, edge) {
             symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
           })
@@ -84,7 +84,7 @@ fn symbol_index_fill_containment_node(
     TypeNode { connective: Disj } =>
       fold(node.children, init: index, f: fn(acc, edge) {
         match edge.label {
-          Named { name: sym } =>
+          v2.std.node.Named { name: sym } =>
             let variant_path = qualified_name_snoc(qn: path, segment: sym)
             let with_variant = v2.std.symbol_index.symbol_index_insert(
               index: acc,
@@ -101,13 +101,13 @@ fn symbol_index_fill_containment_node(
       })
     TypeNode { connective: Arrow } =>
       match list_at_optional(xs: node.children, index: 0) {
-        Present { value: domain_edge } =>
+        v2.std.optional.Present { value: domain_edge } =>
           symbol_index_fill_containment_node(
             index: index,
             path: path,
             node: domain_edge.target
           )
-        Absent => index
+        v2.std.optional.Absent => index
       }
     _ =>
       fold(node.children, init: index, f: fn(acc, edge) {
@@ -119,10 +119,10 @@ fn symbol_index_fill_containment_node(
 fn disj_variant_count_of(counts: Map<v2.std.node.Symbol, Int>, sym: v2.std.node.Symbol) -> Int {
   match v2.std.collection.map_get(counts, sym) {
     Accepted { value: opt, diagnostics: _ } => match opt {
-      Present { value: n } => n
-      Absent => 0
+      v2.std.optional.Present { value: n } => n
+      v2.std.optional.Absent => 0
     }
-    Rejected { diagnostics: _ } => 0
+    v2.std.diagnostic.Rejected { diagnostics: _ } => 0
   }
 }
 
@@ -135,7 +135,7 @@ fn disj_variant_counts_in_module(root: v2.std.node.Node) -> Map<v2.std.node.Symb
         TypeNode { connective: Disj } =>
           fold(n.children, init: counts, f: fn(c, e) {
             match e.label {
-              Named { name: sym } =>
+              v2.std.node.Named { name: sym } =>
                 map_insert(
                   m: c,
                   key: sym,
@@ -157,16 +157,16 @@ fn symbol_index_fill_alias_binding(
   decl: v2.std.node.Node
 ) -> v2.std.symbol_index.SymbolIndex {
   match alias_binding_row_from_decl_node(decl: decl, module_root: root) {
-    Rejected { diagnostics: _ } => index
+    v2.std.diagnostic.Rejected { diagnostics: _ } => index
     Accepted { value: row, diagnostics: _ } =>
       match v2.std.symbol_index.symbol_index_lookup(index: index, qualified_path: row.target) {
-        Present { value: resolved } =>
+        v2.std.optional.Present { value: resolved } =>
           v2.std.symbol_index.symbol_index_insert(
             index: index,
             qualified_path: qualified_name_snoc(qn: module_qn, segment: row.binding),
             resolved: resolved
           )
-        Absent => index
+        v2.std.optional.Absent => index
       }
   }
 }
@@ -204,7 +204,7 @@ fn symbol_index_fill_unique_variant_aliases(
         TypeNode { connective: Disj } =>
           fold(n.children, init: acc, f: fn(a2, e) {
             match e.label {
-              Named { name: sym } =>
+              v2.std.node.Named { name: sym } =>
                 if disj_variant_count_of(counts: counts, sym: sym) == 1 {
                   v2.std.symbol_index.symbol_index_insert(
                     index: a2,
@@ -239,7 +239,7 @@ fn symbol_index_fill_module_root(index: v2.std.symbol_index.SymbolIndex, root: v
         module_qn: module_qn,
         root: root
       )
-    Rejected { diagnostics: _ } => index
+    v2.std.diagnostic.Rejected { diagnostics: _ } => index
   }
 }
 

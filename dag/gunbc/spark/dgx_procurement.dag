@@ -3,7 +3,7 @@ module gunbc.spark.dgx_procurement
 
 // SPARK-0 (2026-08-05). Three deliberately separate fact classes: (1) the vendor catalog (extdeps.systems.nvidia) -- what NVIDIA documents the product to be; (2) operator procurement intent (this module) -- that two units were ordered and that srv5/srv6 are RESERVED identities for them; (3) deployment observation -- physical binding evidence that must never be fabricated. A reserved identity is explicitly NOT enrollment: srv5/srv6 do not appear in gunbc.fleet_intent_network's endpoint list, gunbc.fleet_intent's ComputeHost list, or any phase matrix/compute offer.
 // SPARK-LANE-A (2026-08-06) moved the identities to gunbc.fleet_intent_network, the single authority for a host's fleet identity (§3 -- SPARK-0 forked them privately here only because that file was mid-refactor at the time).
-// SPARK-LANE-A revision (2026-08-07), operator review of #7952. Two identity defects and one staleness, repaired below and in gunbc.fleet_lifecycle_observation. The staleness: BOTH UNITS ARRIVED and hold Static, Active CR1000A reservations, so the earlier "not yet arrived / no MAC exists / no address chosen" rows were false. Arrival is DERIVED from the observed reservation rows (dgx_spark_arrival_standing) rather than asserted in prose that can drift. SPARK-ALLOC-LAND-0 (2026-08-07): the slot allocation was delegated by the operator ("the 5, 6 decision is arbitrary - just make it yourself") and decided on ascending address order; it is recorded as an OperatorAllocation receipt, never as an observation.
+// SPARK-LANE-A revision (2026-08-07), operator review of #7952. Two identity defects and one staleness, repaired below and in gunbc.fleet_lifecycle_observation. The staleness: BOTH UNITS ARRIVED and hold Static, extdeps.dhcp.v4.Active CR1000A reservations, so the earlier "not yet arrived / no MAC exists / no address chosen" rows were false. Arrival is DERIVED from the observed reservation rows (dgx_spark_arrival_standing) rather than asserted in prose that can drift. SPARK-ALLOC-LAND-0 (2026-08-07): the slot allocation was delegated by the operator ("the 5, 6 decision is arbitrary - just make it yourself") and decided on ascending address order; it is recorded as an OperatorAllocation receipt, never as an observation.
 type HardwareProcurementIntent {
   vendor_catalog: extdeps.systems.types.IntegratedComputeSystemCatalogRow
   unit_count: Int
@@ -17,7 +17,7 @@ data spark_a3ee_reservation: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow 
   ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222),
   lease: extdeps.dhcp.v4.StaticDhcpReservation {
     reservation_label: "spark-a3ee" as std.types.NonEmptyStr,
-    status: Active,
+    status: extdeps.dhcp.v4.Active,
   },
 }
 
@@ -26,7 +26,7 @@ data spark_3bd5_reservation: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow 
   ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 223),
   lease: extdeps.dhcp.v4.StaticDhcpReservation {
     reservation_label: "spark-3bd5" as std.types.NonEmptyStr,
-    status: Active,
+    status: extdeps.dhcp.v4.Active,
   },
 }
 
@@ -100,7 +100,7 @@ data dgx_spark_router_bindings: std.types.List<DgxSparkRouterBinding> = [srv5_ro
 // Arrival is DERIVED from the observed router rows, never stored beside them: a stored "arrived"
 // flag is a second representation of what the reservation roster already says, and it is the copy
 // that goes stale -- which is exactly how this module came to claim the units had not arrived while
-// they were sitting on the LAN. Each row is a Static, Active reservation the operator read off the
+// they were sitting on the LAN. Each row is a Static, extdeps.dhcp.v4.Active reservation the operator read off the
 // CR1000A, which is presence evidence; the count against unit_count is the standing.
 type DgxSparkArrivalStanding
   = AllOrderedUnitsObservedOnLan { observed_count: Int }
@@ -274,7 +274,7 @@ fn admit_dgx_spark_deployment(
   router_binding: DgxSparkRouterBinding,
 ) -> DgxSparkAdmissionOutcome {
   match selection {
-    ObservationMissing { subject: _ } =>
+    gunbc.fleet_lifecycle_observation.ObservationMissing { subject: _ } =>
       DgxSparkDeploymentRefused {
         reason: DeploymentAdmissionNoEvidence { requested_identity: identity }
       }

@@ -97,12 +97,12 @@ fn tailscale_status_web_entry_proxies(entry: extdeps.languages.json.emit.JsonVal
 
 fn tailscale_status_web_proxies(web: extdeps.languages.json.emit.JsonValue, mount: TailscaleServeMount) -> List<String> {
   match web {
-    JsonObject { members } => flat_map(members, member => tailscale_status_web_entry_proxies(entry: member.value, mount: mount))
-    JsonNull => []
-    JsonBool { value: _ } => []
-    JsonNumber { lexeme: _ } => []
-    JsonString { value: _ } => []
-    JsonArray { elements: _ } => []
+    extdeps.languages.json.emit.JsonObject { members } => flat_map(members, member => tailscale_status_web_entry_proxies(entry: member.value, mount: mount))
+    extdeps.languages.json.emit.JsonNull => []
+    extdeps.languages.json.emit.JsonBool { value: _ } => []
+    extdeps.languages.json.emit.JsonNumber { lexeme: _ } => []
+    extdeps.languages.json.emit.JsonString { value: _ } => []
+    extdeps.languages.json.emit.JsonArray { elements: _ } => []
   }
 }
 

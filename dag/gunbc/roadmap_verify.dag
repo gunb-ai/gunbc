@@ -473,7 +473,7 @@ fn verification_outcome_label(outcome: VerificationOutcome) -> String {
 // A func RETURNS ProcessExit, and both wet entries returned VerificationOutcome. That is not a style point: a func is the boundary where a .dag value becomes a process result, and the runner reads an exit status there. Returning a domain coproduct means the boundary has no exit code to report, so every outcome — passed, failed, refused — leaves the process indistinguishable from every other.\n\nThe mapping is deliberate about which states are failures OF THE PROCESS. A passing validation exits success. A failing one exits failure, because the verifier's job is to report that the obligation does not hold and a caller scripting against it needs a nonzero status. A REFUSAL also exits failure, and carries its reason: nothing was learned, and exiting success on 'the check could not run' is the absorbing fallback in its purest form — a green process standing for an unanswered question.\n\nUnbound exits failure too. It is not a defect in the work, but it IS a defect in the request: the caller asked to verify a node that declares nothing to verify, and answering that with success would report a green verification of nothing.
 fn verification_process_exit(outcome: VerificationOutcome) -> std.process.ProcessExit {
   match outcome {
-    VerificationPassed { node_id: _, validations_run: _ } => ExitSuccess
+    VerificationPassed { node_id: _, validations_run: _ } => std.process.ExitSuccess
     VerificationFailed { node_id, label, detail } =>
       exit_failure(reason: join([
         node_id, ": ", label as String, " failed: ", detail,

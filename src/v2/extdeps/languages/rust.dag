@@ -999,7 +999,7 @@ fn rust_signature_type_ref_tokens(type_node: v2.std.node.Node) -> v2.std.diagnos
 
 fn rust_signature_one_param_tokens(edge: v2.std.node.Edge) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match edge.label {
-    Named { name: pname } =>
+    v2.std.node.Named { name: pname } =>
       v2.std.diagnostic.bind_outcome(
         o: rust_signature_type_ref_tokens(type_node: edge.target),
         f: fn(type_toks) {
@@ -1082,9 +1082,9 @@ fn rust_signature_return_arrow_tokens() -> std.types.List<v2.std.compilers.targe
 
 fn rust_signature_from_name_and_arrow(fn_name: v2.std.node.Symbol, arrow: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: arrow), index: 0) {
-    Present { value: domain } =>
+    v2.std.optional.Present { value: domain } =>
       match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: arrow), index: 1) {
-        Present { value: codomain } =>
+        v2.std.optional.Present { value: codomain } =>
           v2.std.diagnostic.bind_outcome(
             o: rust_signature_params_tokens(params: domain.children),
             f: fn(param_toks) {
@@ -1110,12 +1110,12 @@ fn rust_signature_from_name_and_arrow(fn_name: v2.std.node.Symbol, arrow: v2.std
               )
             }
           )
-        Absent =>
+        v2.std.optional.Absent =>
           v2.std.diagnostic.outcome_rejected(
             d: rust_signature_diagnostic(reason: ^rust_signature_codomain_missing, node: arrow)
           )
       }
-    Absent =>
+    v2.std.optional.Absent =>
       v2.std.diagnostic.outcome_rejected(
         d: rust_signature_diagnostic(reason: ^rust_signature_domain_missing, node: arrow)
       )
@@ -1126,16 +1126,16 @@ fn rust_signature_with_open_from_decl(decl: v2.std.node.Node) -> v2.std.diagnost
   match decl.kind {
     v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
       match v2.std.collection.list_at_optional(xs: decl.children, index: 0) {
-        Present { value: decl_edge } =>
+        v2.std.optional.Present { value: decl_edge } =>
           match decl_edge.label {
-            Named { name: fn_name } =>
+            v2.std.node.Named { name: fn_name } =>
               rust_signature_from_name_and_arrow(fn_name: fn_name, arrow: decl_edge.target)
             v2.std.node.Positional =>
               v2.std.diagnostic.outcome_rejected(
                 d: rust_signature_diagnostic(reason: ^rust_signature_decl_unnamed, node: decl)
               )
           }
-        Absent =>
+        v2.std.optional.Absent =>
           v2.std.diagnostic.outcome_rejected(
             d: rust_signature_diagnostic(reason: ^rust_signature_decl_empty, node: decl)
           )
@@ -1255,8 +1255,8 @@ fn rust_collection_supplemental_generic_bound_requirement_set_for_param(
   representation_parameter: v2.std.node.Symbol
 ) -> v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementSet {
   match map_lookup(m: requirements, key: representation_parameter) {
-    Present { value: set } => set
-    Absent => target_derive_supplemental_generic_bound_requirement_set_empty()
+    v2.std.optional.Present { value: set } => set
+    v2.std.optional.Absent => target_derive_supplemental_generic_bound_requirement_set_empty()
   }
 }
 
@@ -1272,8 +1272,8 @@ fn rust_collection_supplemental_generic_bound_contracts_merge_row(
 ) -> std.types.Map<v2.std.compilers.target_model.TargetDeriveTraitKey, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundContractAuthority> {
   let key = target_grounding_derive_trait_key(derive_trait: row.derive_trait)
   let existing_requirements = match map_lookup(m: contracts, key: key) {
-    Present { value: contract } => contract.requirements
-    Absent => target_derive_supplemental_generic_bound_contract_requirements_empty()
+    v2.std.optional.Present { value: contract } => contract.requirements
+    v2.std.optional.Absent => target_derive_supplemental_generic_bound_contract_requirements_empty()
   }
   let existing_set = rust_collection_supplemental_generic_bound_requirement_set_for_param(
     requirements: existing_requirements,
@@ -2159,7 +2159,7 @@ fn rust_trait_derive_surface_binding_for_coproduct(coproduct: v2.std.node.Node) 
   }
 }
 
-fn rust_trait_derive_surface_binding_for_record(heap_allocated: Bool) -> v2.std.node.Symbol {
+fn rust_trait_derive_surface_binding_for_record(heap_allocated: v2.std.logic.Bool) -> v2.std.node.Symbol {
   if heap_allocated {
     ^rust_decl_derive_struct_binding
   } else {
@@ -2610,29 +2610,29 @@ fn rust_fn_add_grammar() -> v2.std.grammar.ParseGrammar {
 
 fn rust_integer_catalog_surface_symbol_step(
   sym: v2.std.node.Symbol,
-  acc: Bool,
+  acc: v2.std.logic.Bool,
   facts: RustIntegerPrimitiveFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   acc || sym == facts.surface_spelling
 }
 
 fn rust_float_catalog_surface_symbol_step(
   sym: v2.std.node.Symbol,
-  acc: Bool,
+  acc: v2.std.logic.Bool,
   facts: RustFloatPrimitiveFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   acc || sym == facts.surface_spelling
 }
 
 fn rust_noninteger_catalog_surface_symbol_step(
   sym: v2.std.node.Symbol,
-  acc: Bool,
+  acc: v2.std.logic.Bool,
   facts: RustNonIntegerPrimitiveFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   acc || sym == facts.surface_spelling
 }
 
-fn rust_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn rust_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: rust_integer_facts_catalog,
     empty: false,
@@ -2642,7 +2642,7 @@ fn rust_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn rust_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn rust_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: rust_float_facts_catalog,
     empty: false,
@@ -2652,7 +2652,7 @@ fn rust_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn rust_noninteger_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn rust_noninteger_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: rust_noninteger_facts_catalog,
     empty: false,
@@ -2662,13 +2662,13 @@ fn rust_noninteger_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn rust_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn rust_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   rust_integer_catalog_surface_symbol(sym: sym) ||
     rust_float_catalog_surface_symbol(sym: sym) ||
     rust_noninteger_catalog_surface_symbol(sym: sym)
 }
 
-fn rust_fn_add_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn rust_fn_add_lex_token_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.compilers.lexing.lex_rule_set_token_class_member(rules: rust_fn_add_lex_rules(), token_class: sym)
 }
 
@@ -3611,11 +3611,11 @@ fn rust_formal_productions() -> std.types.List<v2.std.grammar.FormalProduction> 
   ]
 }
 
-fn rust_formal_production_matches_lhs(production: v2.std.grammar.FormalProduction, lhs: v2.std.node.Symbol) -> Bool {
+fn rust_formal_production_matches_lhs(production: v2.std.grammar.FormalProduction, lhs: v2.std.node.Symbol) -> v2.std.logic.Bool {
   production.lhs.identity == lhs
 }
 
-fn rust_formal_production_list_has_lhs(productions: std.types.List<v2.std.grammar.FormalProduction>, lhs: v2.std.node.Symbol) -> Bool {
+fn rust_formal_production_list_has_lhs(productions: std.types.List<v2.std.grammar.FormalProduction>, lhs: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: productions,
     empty: false,
@@ -4607,7 +4607,7 @@ fn rust_sg2_emitted_without_named_edge(base: v2.std.node.Node, field: v2.std.nod
     kind: base.kind,
     children: fold(base.children, init: std.algebra.Empty, f: fn(acc, e) {
       match e.label {
-        Named { name: n } =>
+        v2.std.node.Named { name: n } =>
           if n == field {
             acc
           } else {

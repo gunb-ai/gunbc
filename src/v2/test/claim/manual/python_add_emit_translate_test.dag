@@ -4,9 +4,9 @@ module v2.test.manual.python_add_emit_translate
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 data python_add_forbidden_authority_source_text: String = "authority_source_text_fallback_forbidden"
 
-data python_add_int_inhabitant: Node = python_int_inhabitant_node()
+data python_add_int_inhabitant: v2.std.node.Node = python_int_inhabitant_node()
 
-data python_add_emitted_root: Node = v2.std.node.Node {
+data python_add_emitted_root: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Arrow },
   children: [
     v2.std.node.Edge { label: Positional, target: python_add_int_inhabitant },
@@ -16,7 +16,7 @@ data python_add_emitted_root: Node = v2.std.node.Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data python_add_int_facts_node: Node = python_integer_facts_node(facts: python_facts_int)
+data python_add_int_facts_node: v2.std.node.Node = python_integer_facts_node(facts: python_facts_int)
 
 data python_add_target_model: v2.std.compilers.target_model.TargetModel = python_target_model()
 
@@ -30,7 +30,7 @@ data python_add_poisoned_authority_target_model: v2.std.compilers.target_model.T
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-data python_add_empty_translation_rules_bundle: Node = v2.std.node.Node {
+data python_add_empty_translation_rules_bundle: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
@@ -58,14 +58,14 @@ data python_add_serialize_reject_receipt: v2.std.diagnostic.Outcome<extdeps.comm
 test fn python_add_serialize_reject_receipt_holds() -> Bool {
   match python_add_serialize_reject_receipt {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d != v2.std.diagnostic.None
+    v2.std.diagnostic.Rejected { diagnostics: d } => d != v2.std.diagnostic.None
   }
 }
 
 
 fn python_add_canonical_grounding(
-  node: Node,
-  algebra: Node
+  node: v2.std.node.Node,
+  algebra: v2.std.node.Node
 ) -> v2.std.constraints.CanonicalGrounding {
   v2.std.constraints.CanonicalGrounding {
     node: node,
@@ -82,7 +82,7 @@ fn python_add_canonical_grounding(
   }
 }
 
-fn python_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
+fn python_add_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == python_add_emitted_root {
     v2.std.witness.Holds {
       value: python_add_canonical_grounding(
@@ -143,7 +143,7 @@ fn python_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.
   }
 }
 
-fn python_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn python_add_inferred_facts_for(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   match python_add_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -158,7 +158,7 @@ fn python_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tr
   }
 }
 
-fn python_add_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn python_add_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   python_add_inferred_facts_for(node: key)
 }
 
@@ -170,7 +170,7 @@ data python_add_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compi
 }
 
 fn anchor_python_add_emit_accepts() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
-  emit(tree: python_add_inferred_tree, target: python_add_target_model)
+  v2.compiler.emit.emit(tree: python_add_inferred_tree, target: python_add_target_model)
 }
 
 fn anchor_python_add_compile_inferred_accepts() -> v2.std.diagnostic.Outcome<v2.compiler.compile.CompileOutput> {
@@ -186,7 +186,7 @@ test fn python_add_emit_add_fn_accepts_holds() -> Bool {
   match python_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == python_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -195,7 +195,7 @@ data python_add_compile_inferred_receipt: v2.std.diagnostic.Outcome<v2.compiler.
 test fn python_add_compile_inferred_receipt_holds() -> Bool {
   match python_add_compile_inferred_receipt {
     Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

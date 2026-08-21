@@ -12,7 +12,7 @@ module gunbc.typed_module_cache_capacity
 // start; it is not licence for the DERIVATION to be unmodelled.
 //
 // So the derivation lands here as the authority, and the seed keeps its own copy
-// as a declared Scaffold below rather than as an implicit fork.
+// as a declared std.disposition.Scaffold below rather than as an implicit fork.
 data typed_module_cache_capacity_note: String = "The typed-module-cache entry cap, modelled. The cap bounds the memory used to RESOLVE the corpus, which is why the seed cannot simply read this value: cli_run enforce_typed_cache_entry_cap needs it while modules are being resolved, so it cannot be a value obtained by resolving them. That is a genuine bootstrap constraint rather than ordinary seed-shrink debt, and it is the reason the mirror below is a Scaffold with a stated dissolution rather than a deletion. What changes here is which side is the AUTHORITY: this module states the derivation, and the seed is checkable against it.\n\nThe three constants are cited to the v1-run-stability M0/M1 receipts (~2-11 MiB per module observed; 3 MiB is the interim declared denominator until measured space lands) and the floor/ceiling the seed already enforces. The refusal arm is not a default: an unreadable budget yields CapEntryRefused, never the ceiling. That distinction is the whole receipt of gunbc.host_budget_source no_fallback_arm_note -- the previous unwrap_or(CEIL) turned an unknown budget into the most permissive cap available and OOM-killed the witness corpus twice."
 
 data typed_module_bytes_per_entry_estimate: std.measure.ByteSize = byte_size(count: 3145728)

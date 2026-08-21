@@ -40,7 +40,7 @@ data structural_coverage_gap_pricing_operations_residual: List<String> = [
 
 service tcgplayer.Pricing {
   config {
-    endpoint: production_api_base
+    endpoint: extdeps.tcgplayer.tcgplayer.production_api_base
     auth: Bearer
     auth_input: bearer_token
 

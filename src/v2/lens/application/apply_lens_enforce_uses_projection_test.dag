@@ -11,7 +11,7 @@ data projection_test_root: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
-      label: Named { name: ^projection_section_step },
+      label: v2.std.node.Named { name: ^projection_section_step },
       target: projection_test_section
     }
   ],
@@ -32,7 +32,7 @@ fn projection_test_project(output: v2.std.node.Symbol) -> v2.std.node.Symbol {
   ^projection_projected_symbol
 }
 
-fn projection_test_violates(output: v2.std.node.Symbol, declared: v2.std.node.Symbol) -> Bool {
+fn projection_test_violates(output: v2.std.node.Symbol, declared: v2.std.node.Symbol) -> v2.std.logic.Bool {
   output == ^projection_budget_fail && declared == ^projection_budget_fail
 }
 
@@ -50,7 +50,7 @@ data projection_test_declaration: v2.lens.application.DeclarationId = v2.lens.ap
   path: v2.std.node.Path { steps: [^projection_section_step] }
 }
 
-test fn apply_lens_enforce_projection_claim_holds() -> Bool {
+test fn apply_lens_enforce_projection_claim_holds() -> v2.std.logic.Bool {
   match apply_lens_enforce(
     enforceable: projection_test_enforceable,
     section: v2.lens.application.DeclarationScope { declaration: projection_test_declaration },
@@ -59,6 +59,6 @@ test fn apply_lens_enforce_projection_claim_holds() -> Bool {
   ) {
     Accepted { value: result, diagnostics: _ } =>
       result.output == ^projection_section_symbol && result.projected == ^projection_projected_symbol
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

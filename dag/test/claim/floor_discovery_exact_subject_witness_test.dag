@@ -60,7 +60,7 @@ fn canonical_subject() -> v2.workflow.floor_discovery.FloorDiscoverySubject {
 }
 
 fn canonical_request() -> v2.workflow.floor_discovery.FloorDiscoveryRequest {
-  request_fx(subject: canonical_subject(), scope: ["dag/test/claim"], mode: Hermetic)
+  request_fx(subject: canonical_subject(), scope: ["dag/test/claim"], mode: std.execution_mode.Hermetic)
 }
 
 test fn exact_subject_binds() -> Bool {
@@ -113,7 +113,7 @@ test fn request_preserves_subject_refusal() -> Bool {
   let wrong_subject = test.claim.floor_discovery_exact_subject_witness.subject_fx(commit: test.claim.floor_discovery_exact_subject_witness.tested_commit, tree: other_tree, roots: ["dag", "src/v1"])
   match v2.workflow.floor_discovery.floor_discovery_request_bind(
     expected: test.claim.floor_discovery_exact_subject_witness.canonical_request(),
-    observed: request_fx(subject: wrong_subject, scope: ["dag/test/claim"], mode: Hermetic),
+    observed: request_fx(subject: wrong_subject, scope: ["dag/test/claim"], mode: std.execution_mode.Hermetic),
   ) {
     FloorDiscoveryRequestRefused {
       cause: FloorDiscoveryRequestSubjectMismatch {
@@ -127,7 +127,7 @@ test fn request_preserves_subject_refusal() -> Bool {
 test fn wrong_scope_refuses_without_widening() -> Bool {
   match v2.workflow.floor_discovery.floor_discovery_request_bind(
     expected: test.claim.floor_discovery_exact_subject_witness.canonical_request(),
-    observed: request_fx(subject: canonical_subject(), scope: [], mode: Hermetic),
+    observed: request_fx(subject: canonical_subject(), scope: [], mode: std.execution_mode.Hermetic),
   ) {
     FloorDiscoveryRequestRefused {
       cause: FloorDiscoveryScopeMismatch { expected: _, observed: _ }
@@ -164,14 +164,14 @@ test fn commit_and_tree_each_move_request_identity() -> Bool {
     request: request_fx(
       subject: test.claim.floor_discovery_exact_subject_witness.subject_fx(commit: other_commit, tree: test.claim.floor_discovery_exact_subject_witness.tested_tree, roots: ["dag", "src/v1"]),
       scope: ["dag/test/claim"],
-      mode: Hermetic,
+      mode: std.execution_mode.Hermetic,
     )
   )
   let changed_tree = v2.workflow.floor_discovery.floor_discovery_request_identity(
     request: request_fx(
       subject: test.claim.floor_discovery_exact_subject_witness.subject_fx(commit: test.claim.floor_discovery_exact_subject_witness.tested_commit, tree: other_tree, roots: ["dag", "src/v1"]),
       scope: ["dag/test/claim"],
-      mode: Hermetic,
+      mode: std.execution_mode.Hermetic,
     )
   )
   canonical.digest != changed_commit.digest

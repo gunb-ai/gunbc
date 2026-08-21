@@ -12,7 +12,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 test fn unreadable_target_version_refuses_rather_than_assuming() -> Bool {
   match firmware_release_applicability(
     prerequisite: asrock_altrad8ud_bios_3_10_openbmc_release.prerequisite,
-    observed: Absent,
+    observed: v2.std.optional.Absent,
   ) {
     FirmwarePrerequisiteUnobserved { target: t, minimum: m } =>
       t == extdeps.firmware.types.BmcController && m.major == 3 && m.minor == 22
@@ -27,7 +27,7 @@ test fn unreadable_target_version_refuses_rather_than_assuming() -> Bool {
 test fn the_srv3_push_is_refused_by_the_catalog() -> Bool {
   match firmware_release_applicability(
     prerequisite: asrock_altrad8ud_bios_3_10_openbmc_release.prerequisite,
-    observed: Present {
+    observed: v2.std.optional.Present {
       value: firmware_semantic_version(major: 2, minor: 7, patch: 0),
     },
   ) {
@@ -41,7 +41,7 @@ test fn the_srv3_push_is_refused_by_the_catalog() -> Bool {
 test fn the_srv4_push_is_admitted_by_the_catalog() -> Bool {
   match firmware_release_applicability(
     prerequisite: asrock_altrad8ud_bios_3_10_openbmc_release.prerequisite,
-    observed: Present {
+    observed: v2.std.optional.Present {
       value: firmware_semantic_version(major: 3, minor: 22, patch: 0),
     },
   ) {
@@ -57,7 +57,7 @@ test fn the_srv4_push_is_admitted_by_the_catalog() -> Bool {
 test fn a_higher_major_with_lower_minor_is_still_unmet() -> Bool {
   match firmware_release_applicability(
     prerequisite: asrock_altrad8ud_bios_3_10_openbmc_release.prerequisite,
-    observed: Present {
+    observed: v2.std.optional.Present {
       value: firmware_semantic_version(major: 3, minor: 6, patch: 0),
     },
   ) {
@@ -74,7 +74,7 @@ test fn a_higher_major_with_lower_minor_is_still_unmet() -> Bool {
 test fn the_rom_packaging_is_applicable_with_no_readable_bmc_version() -> Bool {
   match firmware_release_applicability(
     prerequisite: asrock_altrad8ud_bios_3_10_instant_flash_release.prerequisite,
-    observed: Absent,
+    observed: v2.std.optional.Absent,
   ) {
     FirmwareApplicable => true
     _ => false
@@ -84,7 +84,7 @@ test fn the_rom_packaging_is_applicable_with_no_readable_bmc_version() -> Bool {
 data srv4_e588_signature: gunbc.host_boot_supervision.HostBootStallSignature = gunbc.host_boot_supervision.HostBootStallSignature {
   host: "srv4",
   last_checkpoint: "P012",
-  error_code: Present { value: "E588" },
+  error_code: v2.std.optional.Present { value: "E588" },
   observed_cycles: 6,
   observed_at: 1786580000000,
 }
@@ -131,7 +131,7 @@ test fn no_error_code_after_a_clean_stop_is_unobserved_not_attributed() -> Bool 
     signature: gunbc.host_boot_supervision.HostBootStallSignature {
       host: "srv4",
       last_checkpoint: "P012",
-      error_code: Absent,
+      error_code: v2.std.optional.Absent,
       observed_cycles: 3,
       observed_at: 1786580000000,
     },

@@ -44,9 +44,9 @@ fn normalize_sugar_key_optional(folded: v2.std.node.Node) -> v2.std.compilers.su
       v2.std.optional.optional_present(value: v2.std.compilers.sugar.SurfaceAtomKey { atom: id })
     TypeNode { connective: _ } =>
       match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: folded) {
-        Present { value: id } =>
+        v2.std.optional.Present { value: id } =>
           v2.std.optional.optional_present(value: v2.std.compilers.sugar.ProductionIdentityKey { identity: id })
-        Absent => v2.std.optional.optional_absent()
+        v2.std.optional.Absent => v2.std.optional.optional_absent()
       }
     ComputationNode { behavior: _ } => v2.std.optional.optional_absent()
   }
@@ -54,9 +54,9 @@ fn normalize_sugar_key_optional(folded: v2.std.node.Node) -> v2.std.compilers.su
 
 fn normalize_sugar_finish(n: v2.std.node.Node, folded: v2.std.node.Node, cd: v2.std.diagnostic.Diagnostics) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match normalize_sugar_key_optional(folded: folded) {
-    Present { value: key } =>
+    v2.std.optional.Present { value: key } =>
       match v2.std.compilers.sugar.sugar_rule_for_key(key: key) {
-        Present { value: rule } =>
+        v2.std.optional.Present { value: rule } =>
           match v2.std.compilers.sugar.apply_sugar(rule: rule, n: n, folded: folded) {
             Rejected { diagnostics: r } =>
               v2.std.diagnostic.Rejected {
@@ -68,10 +68,10 @@ fn normalize_sugar_finish(n: v2.std.node.Node, folded: v2.std.node.Node, cd: v2.
                 diagnostics: v2.std.diagnostic.diagnostics_merge(outer: cd, inner: d)
               }
           }
-        Absent =>
+        v2.std.optional.Absent =>
           v2.std.diagnostic.Accepted { value: folded, diagnostics: cd }
       }
-    Absent =>
+    v2.std.optional.Absent =>
       v2.std.diagnostic.Accepted { value: folded, diagnostics: cd }
   }
 }
@@ -90,7 +90,7 @@ fn normalize_fn_body_pass_through_at_seam(emitted: v2.std.node.Symbol, under_fn_
 
 fn normalize_node_ctx(n: v2.std.node.Node, under_fn_decl: Bool) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: n) {
-    Present { value: emitted } =>
+    v2.std.optional.Present { value: emitted } =>
       if v2.compiler.body_lowering_fold.body_lower_is_deferred_lower_at_normalize(
         emitted: emitted,
         under_fn_decl: normalize_scope_under_fn_decl(under_fn_decl: under_fn_decl, emitted: emitted)
@@ -120,7 +120,7 @@ fn normalize_node_ctx(n: v2.std.node.Node, under_fn_decl: Bool) -> v2.std.diagno
           )
         )
       }
-    Absent => normalize_node_fold_children_ctx(n: n, under_fn_decl: under_fn_decl)
+    v2.std.optional.Absent => normalize_node_fold_children_ctx(n: n, under_fn_decl: under_fn_decl)
   }
 }
 

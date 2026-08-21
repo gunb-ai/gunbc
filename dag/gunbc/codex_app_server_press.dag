@@ -148,7 +148,7 @@ fn codex_plan_type_from_wire(native: String) -> CodexPlanTypeReading {
 
 fn codex_chatgpt_plan_reading(account: extdeps.languages.json.emit.JsonValue) -> CodexPlanTypeReading {
   match json_object_unique_member(v: account, key: codex_account_plan_type_key as String) {
-    JsonMemberFound { value: JsonString { value: p } } => codex_plan_type_from_wire(native: p)
+    JsonMemberFound { value: extdeps.languages.json.emit.JsonString { value: p } } => codex_plan_type_from_wire(native: p)
     JsonMemberFound { value: _ } =>
       CodexPlanTypeMalformed {
         cause: "account/read chatgpt planType is not a JSON string" as std.types.NonEmptyStr,
@@ -176,10 +176,10 @@ fn codex_account_not_an_object_realm() -> CodexAccountRealm {
 
 fn codex_account_realm_from_account_value(account: extdeps.languages.json.emit.JsonValue) -> CodexAccountRealm {
   match account {
-    JsonNull => CodexAccountRealmAbsent
-    JsonObject { members: _ } =>
+    extdeps.languages.json.emit.JsonNull => CodexAccountRealmAbsent
+    extdeps.languages.json.emit.JsonObject { members: _ } =>
       match json_object_unique_member(v: account, key: codex_account_type_key as String) {
-        JsonMemberFound { value: JsonString { value: t } } =>
+        JsonMemberFound { value: extdeps.languages.json.emit.JsonString { value: t } } =>
           if t == (codex_account_type_wire_name(t: CodexAccountTypeChatgpt) as String) {
             CodexChatgptRealm { plan: codex_chatgpt_plan_reading(account: account) }
           } else if t == (codex_account_type_wire_name(t: CodexAccountTypeApiKey) as String) {
@@ -210,10 +210,10 @@ fn codex_account_realm_from_account_value(account: extdeps.languages.json.emit.J
             reason: "account/read account member is not a JSON object" as std.types.NonEmptyStr,
           }
       }
-    JsonString { value: _ } => codex_account_not_an_object_realm()
-    JsonNumber { lexeme: _ } => codex_account_not_an_object_realm()
-    JsonBool { value: _ } => codex_account_not_an_object_realm()
-    JsonArray { elements: _ } => codex_account_not_an_object_realm()
+    extdeps.languages.json.emit.JsonString { value: _ } => codex_account_not_an_object_realm()
+    extdeps.languages.json.emit.JsonNumber { lexeme: _ } => codex_account_not_an_object_realm()
+    extdeps.languages.json.emit.JsonBool { value: _ } => codex_account_not_an_object_realm()
+    extdeps.languages.json.emit.JsonArray { elements: _ } => codex_account_not_an_object_realm()
   }
 }
 
@@ -400,12 +400,12 @@ fn codex_press_account_trip_script(
 
 fn json_rpc_id_as_int(v: extdeps.languages.json.emit.JsonValue) -> Int? {
   match v {
-    JsonNumber { lexeme: l } => parse_int(s: l as String)
-    JsonNull => none
-    JsonBool { value: _ } => none
-    JsonString { value: _ } => none
-    JsonArray { elements: _ } => none
-    JsonObject { members: _ } => none
+    extdeps.languages.json.emit.JsonNumber { lexeme: l } => parse_int(s: l as String)
+    extdeps.languages.json.emit.JsonNull => none
+    extdeps.languages.json.emit.JsonBool { value: _ } => none
+    extdeps.languages.json.emit.JsonString { value: _ } => none
+    extdeps.languages.json.emit.JsonArray { elements: _ } => none
+    extdeps.languages.json.emit.JsonObject { members: _ } => none
   }
 }
 
@@ -413,7 +413,7 @@ data json_rpc_error_message_note: String = "NO CANNED MESSAGE (review 50535). Th
 
 fn json_rpc_error_message(err: extdeps.languages.json.emit.JsonValue) -> std.types.NonEmptyStr? {
   match json_object_unique_member(v: err, key: "message") {
-    JsonMemberFound { value: JsonString { value: msg } } =>
+    JsonMemberFound { value: extdeps.languages.json.emit.JsonString { value: msg } } =>
       if msg == "" {
         none
       } else {
@@ -438,7 +438,7 @@ fn disposition_from_initialize_result(result: extdeps.languages.json.emit.JsonVa
     v: result,
     key: codex_initialize_result_user_agent_key as String,
   ) {
-    JsonMemberFound { value: JsonString { value: ua } } =>
+    JsonMemberFound { value: extdeps.languages.json.emit.JsonString { value: ua } } =>
       if ua == "" {
         AccountTripMissing
       } else {
@@ -455,8 +455,8 @@ fn disposition_from_account_read_result(result: extdeps.languages.json.emit.Json
     v: result,
     key: codex_account_read_result_account_key as String,
   ) {
-    JsonMemberFound { value: JsonNull } => AccountTripLoginRequiredSignal
-    JsonMemberFound { value: JsonObject { members: ms } } =>
+    JsonMemberFound { value: extdeps.languages.json.emit.JsonNull } => AccountTripLoginRequiredSignal
+    JsonMemberFound { value: extdeps.languages.json.emit.JsonObject { members: ms } } =>
       if count(ms) == 0 {
         AccountTripMissing
       } else {
@@ -468,7 +468,7 @@ fn disposition_from_account_read_result(result: extdeps.languages.json.emit.Json
         v: result,
         key: codex_account_read_result_requires_openai_auth_key as String,
       ) {
-        JsonMemberFound { value: JsonBool { value: true } } => AccountTripLoginRequiredSignal
+        JsonMemberFound { value: extdeps.languages.json.emit.JsonBool { value: true } } => AccountTripLoginRequiredSignal
         _ => AccountTripMissing
       }
     JsonMemberDuplicated { count: _ } => AccountTripMissing
@@ -478,12 +478,12 @@ fn disposition_from_account_read_result(result: extdeps.languages.json.emit.Json
 
 fn json_number_as_int(v: extdeps.languages.json.emit.JsonValue) -> Int? {
   match v {
-    JsonNumber { lexeme: l } => parse_int(s: l as String)
-    JsonNull => none
-    JsonBool { value: _ } => none
-    JsonString { value: _ } => none
-    JsonArray { elements: _ } => none
-    JsonObject { members: _ } => none
+    extdeps.languages.json.emit.JsonNumber { lexeme: l } => parse_int(s: l as String)
+    extdeps.languages.json.emit.JsonNull => none
+    extdeps.languages.json.emit.JsonBool { value: _ } => none
+    extdeps.languages.json.emit.JsonString { value: _ } => none
+    extdeps.languages.json.emit.JsonArray { elements: _ } => none
+    extdeps.languages.json.emit.JsonObject { members: _ } => none
   }
 }
 
@@ -532,13 +532,13 @@ fn rate_limits_snapshot_has_exhaustion_signal(snapshot: extdeps.languages.json.e
     v: snapshot,
     key: codex_rate_limits_snapshot_rate_limit_reached_type_key as String,
   ) {
-    JsonMemberFound { value: JsonString { value: t } } => t != ""
+    JsonMemberFound { value: extdeps.languages.json.emit.JsonString { value: t } } => t != ""
     _ =>
       match json_object_unique_member(
         v: snapshot,
         key: codex_rate_limits_snapshot_spend_control_reached_key as String,
       ) {
-        JsonMemberFound { value: JsonBool { value: true } } => true
+        JsonMemberFound { value: extdeps.languages.json.emit.JsonBool { value: true } } => true
         _ =>
           rate_limits_snapshot_window_saturated(
             snapshot: snapshot,
@@ -593,7 +593,7 @@ fn rate_limits_reached_type(snapshot: extdeps.languages.json.emit.JsonValue) -> 
     v: snapshot,
     key: codex_rate_limits_snapshot_rate_limit_reached_type_key as String,
   ) {
-    JsonMemberFound { value: JsonString { value: t } } =>
+    JsonMemberFound { value: extdeps.languages.json.emit.JsonString { value: t } } =>
       if t == "" {
         none
       } else {
@@ -615,7 +615,7 @@ fn rate_limits_snapshot_limit_id(snapshot: extdeps.languages.json.emit.JsonValue
     v: snapshot,
     key: codex_rate_limits_snapshot_limit_id_key as String,
   ) {
-    JsonMemberFound { value: JsonString { value: id } } =>
+    JsonMemberFound { value: extdeps.languages.json.emit.JsonString { value: id } } =>
       if id == "" {
         CodexRateLimitIdMalformed {
           cause: "rateLimits snapshot limitId is an empty string" as std.types.NonEmptyStr,
@@ -665,7 +665,7 @@ fn verdict_from_rate_limits_snapshot(
 
 fn rate_limit_buckets_from_by_limit_id(by_id: extdeps.languages.json.emit.JsonValue) -> List<CodexRateLimitBucketVerdict> {
   match by_id {
-    JsonObject { members: ms } =>
+    extdeps.languages.json.emit.JsonObject { members: ms } =>
       fold(
         ms,
         init: [],
@@ -692,7 +692,7 @@ fn rate_limit_buckets_from_result(result: extdeps.languages.json.emit.JsonValue)
   ) {
     JsonMemberFound { value: by_id } =>
       match by_id {
-        JsonObject { members: _ } => rate_limit_buckets_from_by_limit_id(by_id: by_id)
+        extdeps.languages.json.emit.JsonObject { members: _ } => rate_limit_buckets_from_by_limit_id(by_id: by_id)
         _ => rate_limit_buckets_from_legacy_rate_limits(result: result)
       }
     JsonMemberAbsent => rate_limit_buckets_from_legacy_rate_limits(result: result)
@@ -710,7 +710,7 @@ fn rate_limit_buckets_from_legacy_rate_limits(
   ) {
     JsonMemberFound { value: snapshot } =>
       match snapshot {
-        JsonObject { members: _ } =>
+        extdeps.languages.json.emit.JsonObject { members: _ } =>
           match rate_limits_snapshot_limit_id(snapshot: snapshot) {
             CodexRateLimitIdObserved { limit_id: observed } =>
               [
@@ -741,8 +741,8 @@ fn disposition_from_rate_limits_result(result: extdeps.languages.json.emit.JsonV
   ) {
     JsonMemberFound { value: snapshot } =>
       match snapshot {
-        JsonObject { members: _ } => AccountTripResultOk
-        JsonNull => AccountTripMissing
+        extdeps.languages.json.emit.JsonObject { members: _ } => AccountTripResultOk
+        extdeps.languages.json.emit.JsonNull => AccountTripMissing
         _ => AccountTripMissing
       }
     JsonMemberAbsent => AccountTripMissing
@@ -811,7 +811,7 @@ data account_trip_structured_error_code_note: String = "Business classifications
 
 fn disposition_from_structured_rpc_error(err: extdeps.languages.json.emit.JsonValue) -> AccountTripFrameDisposition {
   match json_object_unique_member(v: err, key: "code") {
-    JsonMemberFound { value: JsonString { value: code } } =>
+    JsonMemberFound { value: extdeps.languages.json.emit.JsonString { value: code } } =>
       if code == (codex_structured_error_code_rate_limit_reached as String)
         || code == (codex_structured_error_code_quota_exceeded as String) {
         AccountTripQuotaSignal
@@ -821,7 +821,7 @@ fn disposition_from_structured_rpc_error(err: extdeps.languages.json.emit.JsonVa
       } else {
         native_cause_from_json_rpc_error(err: err)
       }
-    JsonMemberFound { value: JsonNumber { lexeme: n } } =>
+    JsonMemberFound { value: extdeps.languages.json.emit.JsonNumber { lexeme: n } } =>
       AccountTripNativeCauseNumericCode { code: n }
     _ =>
       native_cause_from_json_rpc_error(err: err)

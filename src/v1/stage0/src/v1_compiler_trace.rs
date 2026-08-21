@@ -3,9 +3,12 @@
 
 use self::TraceEvent::*;
 use self::TraceFilter::*;
-pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{List, Map};
+pub use crate::v1_compiler_emit_core_support::to_string;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v2_lens_application::SourceSpan;
+pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

@@ -27,7 +27,7 @@ fn length_interval(low: std.measure.Millimeter, high: std.measure.Millimeter) ->
 
 // Width comparison without subtraction: for ordered intervals,
 //   (high_a - low_a) <= (high_b - low_b)  <=>  (high_a + low_b) <= (high_b + low_a)
-// The additive form is used because the magnitude carrier counts in Nat, where a subtraction would
+// The additive form is used because the magnitude carrier counts in std.nat.Nat, where a subtraction would
 // need a partiality story of its own; this needs none.
 fn length_uncertainty_admissible(actual: LengthInterval, budget: LengthInterval) -> Bool {
   let a_hi = millimeter_count(m: interval_high(interval: actual))

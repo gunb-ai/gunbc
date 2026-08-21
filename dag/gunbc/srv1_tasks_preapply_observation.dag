@@ -119,7 +119,7 @@ func observe_srv1_tasks_preapply_wet() -> std.process.ProcessExit {
     exit_failure(reason: join(["receipt write failed: ", w.error], ""))
   } else {
     match receipt {
-      Srv1TasksPreApplyObserved { host: _, desired_tasks_max: _, observer_cgroup_membership: _, units: _ } => ExitSuccess
+      Srv1TasksPreApplyObserved { host: _, desired_tasks_max: _, observer_cgroup_membership: _, units: _ } => std.process.ExitSuccess
       Srv1TasksPreApplyRefused { cause: why } => exit_failure(reason: why)
     }
   }

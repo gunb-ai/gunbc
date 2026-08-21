@@ -118,7 +118,7 @@ data witness_observed_wrong_source: std.citation.ObservedCitedRepresentation = o
 )
 
 data witness_http_access_route: extdeps.uri.Uri = extdeps.uri.Uri {
-  scheme: Http,
+  scheme: extdeps.uri.Http,
   locator: "example.test/cit0-fixture",
 }
 
@@ -461,7 +461,7 @@ test fn reconcile_observation_missing_when_no_observed() -> Bool {
     expected_pin: witness_citation_pin,
     observed: none,
   ) {
-    ObservationMissing => true
+    std.citation.ObservationMissing => true
     _ => false
   }
 }

@@ -43,7 +43,7 @@ fn host_logical_run_from_exit(exit: HostExit, stdout_bytes: v2.std.host_transpor
       }
     v2.std.diagnostic.Accepted { value: Violates { diagnostic: d }, diagnostics: None } =>
       v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
-    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
+    v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
   }
 }
 

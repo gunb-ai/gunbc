@@ -8,7 +8,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 // the population it measured. This asserts exact two-direction identity
 // equality between the discovered Rust test modules and the declared retained
 // rows, so the wall cannot be satisfied by a count that merely fell.
-test fn retained_rust_kernel_wall_holds_against_live_tree() -> Bool {
+test fn retained_rust_kernel_wall_holds_against_live_tree() -> v2.std.logic.Bool {
   return retained_rust_kernel_wall_holds_live()
 }
 
@@ -30,75 +30,75 @@ fn fixture_discovered_missing_one() -> List<String> {
 
 // An undeclared Rust test module appearing in the tree must red: every
 // discovered module must be declared.
-test fn planted_undeclared_module_refuses() -> Bool {
+test fn planted_undeclared_module_refuses() -> v2.std.logic.Bool {
   return !(fixture_discovered_with_undeclared()
     |> all(f => list_contains_name(xs: fixture_declared(), needle: f)))
 }
 
 // A declared row whose module no longer exists must red as a stale row.
-test fn planted_stale_retention_row_refuses() -> Bool {
+test fn planted_stale_retention_row_refuses() -> v2.std.logic.Bool {
   return !(fixture_declared()
     |> all(f => list_contains_name(xs: fixture_discovered_missing_one(), needle: f)))
 }
 
 // A duplicated row must red rather than silently double-counting.
-test fn planted_duplicate_row_refuses() -> Bool {
+test fn planted_duplicate_row_refuses() -> v2.std.logic.Bool {
   return !names_are_duplicate_free(xs: ["alpha_test.rs", "alpha_test.rs"])
 }
 
 // The clean fixture must be admitted, so the three refusals above are
 // discriminating rather than blanket.
-test fn clean_fixture_is_admitted() -> Bool {
+test fn clean_fixture_is_admitted() -> v2.std.logic.Bool {
   return names_are_duplicate_free(xs: fixture_declared())
     && (fixture_declared() |> all(f => list_contains_name(xs: fixture_declared(), needle: f)))
 }
 
 // A retained row pointing at a module with no discovered #[test] must red.
-test fn planted_module_without_tests_refuses() -> Bool {
+test fn planted_module_without_tests_refuses() -> v2.std.logic.Bool {
   return !retained_module_has_a_discovered_test(source_file: "zzz_nonexistent_module_test.rs")
 }
 
 // THE EXECUTION-WALL CONTROLS. Each plants the exact route by which a retained
 // test could stay discovered and compiled while never running.
-test fn planted_ignored_test_refuses() -> Bool {
+test fn planted_ignored_test_refuses() -> v2.std.logic.Bool {
   return !module_body_has_no_skip_attribute(body: "#[test]\n#[ignore]\nfn t() {}")
 }
 
-test fn planted_should_panic_test_refuses() -> Bool {
+test fn planted_should_panic_test_refuses() -> v2.std.logic.Bool {
   return !module_body_has_no_skip_attribute(body: "#[test]\n#[should_panic]\nfn t() {}")
 }
 
-test fn plain_test_body_is_admitted() -> Bool {
+test fn plain_test_body_is_admitted() -> v2.std.logic.Bool {
   return module_body_has_no_skip_attribute(body: "#[test]\nfn t() { assert!(true); }")
 }
 
-test fn planted_custom_harness_refuses() -> Bool {
+test fn planted_custom_harness_refuses() -> v2.std.logic.Bool {
   return !manifest_uses_default_harness(manifest: "[[test]]\nname = \"x\"\nharness = false\n")
 }
 
-test fn planted_unspaced_custom_harness_refuses() -> Bool {
+test fn planted_unspaced_custom_harness_refuses() -> v2.std.logic.Bool {
   return !manifest_uses_default_harness(manifest: "[lib]\nharness=false\n")
 }
 
 // An unreadable or absent manifest must refuse rather than read as "no custom
 // harness found" — absence of evidence is not evidence of the default harness.
-test fn planted_empty_manifest_refuses() -> Bool {
+test fn planted_empty_manifest_refuses() -> v2.std.logic.Bool {
   return !manifest_uses_default_harness(manifest: "")
 }
 
-test fn default_harness_manifest_is_admitted() -> Bool {
+test fn default_harness_manifest_is_admitted() -> v2.std.logic.Bool {
   return manifest_uses_default_harness(manifest: "[package]\nname = \"x\"\n")
 }
 
 // And the same two clauses against the LIVE tree, so the controls above are not
 // merely exercising a function nothing calls in production.
-test fn live_retained_kernel_is_fully_executed() -> Bool {
+test fn live_retained_kernel_is_fully_executed() -> v2.std.logic.Bool {
   return no_retained_module_is_skipped() && retained_kernel_uses_default_harness()
 }
 
 // Live populations are nonempty, so an emptied tree cannot pass the equality
 // above vacuously.
-test fn live_populations_are_nonempty() -> Bool {
+test fn live_populations_are_nonempty() -> v2.std.logic.Bool {
   return count(discovered_rust_test_modules()) > 0
     && count(retained_declared_source_files()) > 0
     && count(discovered_legacy_behavior_ids()) > 0

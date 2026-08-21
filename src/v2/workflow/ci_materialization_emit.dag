@@ -18,13 +18,13 @@ fn ci_sccache_provider_shell_injection_intent() -> v2.std.orchestration.Pipeline
   let _note = gunbc.ci_materialization.ci_sccache_provider_skip_is_counted_note
   v2.std.orchestration.Pipeline {
     steps: [
-      If {
+      v2.std.orchestration.If {
         cond: v2.std.orchestration.ExitZero {
           run: v2.std.orchestration.Run {
             command: ci_sccache_show_stats_command,
             env: Empty,
-            redirect: Present { value: DiscardAll },
-            capture: Absent
+            redirect: v2.std.optional.Present { value: DiscardAll },
+            capture: v2.std.optional.Absent
           }
         },
         then_: v2.std.orchestration.Pipeline {
@@ -35,7 +35,7 @@ fn ci_sccache_provider_shell_injection_intent() -> v2.std.orchestration.Pipeline
           ],
           on_failure: FailFast
         },
-        else_: Present {
+        else_: v2.std.optional.Present {
           value: v2.std.orchestration.Pipeline {
             steps: [orch_bash_do(command: ci_sccache_skipped_receipt_command)],
             on_failure: FailFast

@@ -56,9 +56,9 @@ data mt_mitchell_revision_table: List<OcpSpecificationRevisionRow> = [
 // DERIVED from the option instead of stored, so an option whose slot count does
 // not divide by its channel count fails a join rather than reading plausibly.
 type MtMitchellArchitectureOption {
-  socket_count: Int
-  ddr_channels_per_socket: Int
-  dimm_slot_total: Int
+  socket_count: std.integer.Int
+  ddr_channels_per_socket: std.integer.Int
+  dimm_slot_total: std.integer.Int
 }
 
 data mt_mitchell_two_socket_eight_channel: MtMitchellArchitectureOption = MtMitchellArchitectureOption {
@@ -85,11 +85,11 @@ data mt_mitchell_architecture_options: List<MtMitchellArchitectureOption> = [
   mt_mitchell_one_socket_twelve_channel,
 ]
 
-fn architecture_channel_total(option: MtMitchellArchitectureOption) -> Int {
+fn architecture_channel_total(option: MtMitchellArchitectureOption) -> std.integer.Int {
   option.socket_count * option.ddr_channels_per_socket
 }
 
-fn architecture_dimms_per_channel(option: MtMitchellArchitectureOption) -> Int {
+fn architecture_dimms_per_channel(option: MtMitchellArchitectureOption) -> std.integer.Int {
   option.dimm_slot_total / architecture_channel_total(option: option)
 }
 
@@ -112,13 +112,13 @@ data mt_mitchell_pcie_generation: extdeps.storage.types.PcieGeneration = Gen5
 // CONNECTORS (section 7.2). Thirteen MCIO connectors, six carrying CPU0 PCIe
 // ports and seven carrying CPU1 ports; the total is derived so the document's
 // own cross-foot is the check rather than three independent literals.
-data mt_mitchell_mcio_connectors_cpu0: Int = 6
+data mt_mitchell_mcio_connectors_cpu0: std.integer.Int = 6
 
-data mt_mitchell_mcio_connectors_cpu1: Int = 7
+data mt_mitchell_mcio_connectors_cpu1: std.integer.Int = 7
 
-data mt_mitchell_mcio_connector_total: Int = 13
+data mt_mitchell_mcio_connector_total: std.integer.Int = 13
 
-fn mt_mitchell_derived_mcio_connector_total() -> Int {
+fn mt_mitchell_derived_mcio_connector_total() -> std.integer.Int {
   mt_mitchell_mcio_connectors_cpu0 + mt_mitchell_mcio_connectors_cpu1
 }
 
@@ -132,11 +132,11 @@ type OcpNicHostMode
   | SingleHostX16
   | MultiHostX16
 
-data mt_mitchell_ocp_nic_connector_count: Int = 2
+data mt_mitchell_ocp_nic_connector_count: std.integer.Int = 2
 
 data mt_mitchell_ocp_nic_connector_family: std.types.NonEmptyStr = "SFF-TA-1002 4C+"
 
-fn ocp_nic_host_mode_lane_count(mode: OcpNicHostMode) -> Int {
+fn ocp_nic_host_mode_lane_count(mode: OcpNicHostMode) -> std.integer.Int {
   match mode {
     SingleHostX8 => 8
     SingleHostX16 => 16
@@ -173,7 +173,7 @@ data mt_mitchell_inter_processor_link_ports: List<MtMitchellInterProcessorLinkPo
   Socket1RootComplex6,
 ]
 
-fn inter_processor_link_socket(port: MtMitchellInterProcessorLinkPort) -> Int {
+fn inter_processor_link_socket(port: MtMitchellInterProcessorLinkPort) -> std.integer.Int {
   match port {
     Socket0RootComplex0 => 0
     Socket0RootComplex5 => 0

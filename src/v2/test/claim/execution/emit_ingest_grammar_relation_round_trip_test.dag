@@ -36,18 +36,18 @@ fn emit_ingest_canonical_emitted() -> v2.std.node.Node {
   v2.extdeps.languages.dag.dag_fixture_emitted_add_fn
 }
 
-test fn emit_backward_selects_canonical_row_holds() -> Bool {
+test fn emit_backward_selects_canonical_row_holds() -> v2.std.logic.Bool {
   match v2.compiler.translate.grammar_relation_row_for_emitted(
     rules: emit_ingest_shared_rules(),
     emitted: emit_ingest_canonical_emitted()
   ) {
     Accepted { value: row, diagnostics: _ } =>
       row == emit_ingest_canonical_row()
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn ingest_forward_selects_canonical_emitted_holds() -> Bool {
+test fn ingest_forward_selects_canonical_emitted_holds() -> v2.std.logic.Bool {
   match v2.test.execution.emit_ingest_grammar_relation_round_trip.grammar_relation_row_token_spine_classes(row: emit_ingest_canonical_row()) {
     Accepted { value: frontier, diagnostics: _ } =>
       match v2.compiler.ingest.grammar_relation_row_forward_selection(
@@ -56,13 +56,13 @@ test fn ingest_forward_selects_canonical_emitted_holds() -> Bool {
       ) {
         Accepted { value: emitted, diagnostics: _ } =>
           emitted == emit_ingest_canonical_emitted()
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn emit_then_ingest_selector_identity_holds() -> Bool {
+test fn emit_then_ingest_selector_identity_holds() -> v2.std.logic.Bool {
   match v2.compiler.translate.grammar_relation_row_for_emitted(
     rules: emit_ingest_shared_rules(),
     emitted: emit_ingest_canonical_emitted()
@@ -76,15 +76,15 @@ test fn emit_then_ingest_selector_identity_holds() -> Bool {
           ) {
             Accepted { value: recovered, diagnostics: _ } =>
               recovered == emit_ingest_canonical_emitted()
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn ingest_then_emit_selector_identity_holds() -> Bool {
+test fn ingest_then_emit_selector_identity_holds() -> v2.std.logic.Bool {
   match v2.test.execution.emit_ingest_grammar_relation_round_trip.grammar_relation_row_token_spine_classes(row: emit_ingest_canonical_row()) {
     Accepted { value: frontier, diagnostics: _ } =>
       match v2.compiler.ingest.grammar_relation_row_forward_selection(
@@ -98,11 +98,11 @@ test fn ingest_then_emit_selector_identity_holds() -> Bool {
           ) {
             Accepted { value: row, diagnostics: _ } =>
               row == emit_ingest_canonical_row()
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -125,7 +125,7 @@ fn emit_ingest_parsed_add_tree() -> v2.std.diagnostic.Outcome<v2.std.grammar.Par
   )
 }
 
-test fn same_grammar_parse_ingest_bridge_holds() -> Bool {
+test fn same_grammar_parse_ingest_bridge_holds() -> v2.std.logic.Bool {
   match emit_ingest_parsed_add_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       match v2.compiler.ingest.parse_tree_to_emitted_node(
@@ -134,9 +134,9 @@ test fn same_grammar_parse_ingest_bridge_holds() -> Bool {
       ) {
         Accepted { value: recovered, diagnostics: _ } =>
           recovered == emit_ingest_canonical_emitted()
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

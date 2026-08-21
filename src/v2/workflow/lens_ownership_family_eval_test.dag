@@ -3,8 +3,8 @@ module v2.test.workflow.lens_ownership_family_eval
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn lens_ownership_family_gate() -> Bool {
+fn lens_ownership_family_gate() -> v2.std.logic.Bool {
   ownership_resource_dependency_claim_passes
 }
 
-test data witness_lens_ownership_family_gate_closed: Bool = lens_ownership_family_gate()
+test data witness_lens_ownership_family_gate_closed: v2.std.logic.Bool = lens_ownership_family_gate()

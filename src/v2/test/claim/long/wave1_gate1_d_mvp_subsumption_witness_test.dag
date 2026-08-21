@@ -5,6 +5,6 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data wave1_gate1_d_long_witness_note: String = "Wave 1 Gate 1 Stage D long lane: census ingest well-formedness + behavior-kind checks (Transform/Branch/Bind/Loop/Match). Ingested bind/loop execution+RED: long/wave1_gate1_d_ingested_bind_loop_eval_witness_test.dag."
 
-test fn wave1_gate1_d_census_subsumption_witness_holds() -> Bool {
+test fn wave1_gate1_d_census_subsumption_witness_holds() -> v2.std.logic.Bool {
   wave1_gate1_d_census_subsumption_holds()
 }

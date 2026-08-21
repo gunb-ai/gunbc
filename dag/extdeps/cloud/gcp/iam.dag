@@ -95,12 +95,12 @@ fn gcp_condition_eq(a: IamCondition?, b: IamCondition?) -> Bool {
     Absent =>
       match b {
         Absent => true
-        Present { value: _ } => false
+        v2.std.optional.Present { value: _ } => false
       }
-    Present { value: ca } =>
+    v2.std.optional.Present { value: ca } =>
       match b {
         Absent => false
-        Present { value: cb } => ca.title == cb.title && ca.expression == cb.expression
+        v2.std.optional.Present { value: cb } => ca.title == cb.title && ca.expression == cb.expression
       }
   }
 }
@@ -320,7 +320,7 @@ service gcp.ResourceManager {
 
   operation GetIamPolicy {
     input { access_token: Secret, project_id: extdeps.cloud.gcp.gcp.GcpProjectId }
-    output { bindings: Json, etag: String }
+    output { bindings: std.types.Json, etag: String }
     readonly
     transport rest { method: POST, path: "/v1/projects/\{project_id\}:getIamPolicy" }
     response {
@@ -336,7 +336,7 @@ service gcp.ResourceManager {
     input {
       access_token: Secret
       project_id: extdeps.cloud.gcp.gcp.GcpProjectId
-      bindings: Json
+      bindings: std.types.Json
       etag: std.types.NonEmptyStr
     }
     output { ok: Bool }

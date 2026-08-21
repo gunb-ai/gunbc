@@ -18,7 +18,7 @@ fn emit_match_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.inferred
   )
 }
 
-fn emit_match_eval_composed_facts(key: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn emit_match_eval_composed_facts(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   v2.std.optional.optional_present(value: emit_match_eval_generic_facts(node: key))
 }
 
@@ -31,7 +31,7 @@ fn emit_match_eval_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infe
           facts: std.types.Map { lookup: emit_match_eval_composed_facts }
         }
       )
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -44,7 +44,7 @@ fn emit_match_eval_swapped_producer_tree() -> v2.std.diagnostic.Outcome<v2.compi
           facts: std.types.Map { lookup: emit_match_eval_composed_facts }
         }
       )
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -65,11 +65,11 @@ fn emit_match_eval_diagnostic(reason: v2.std.node.Symbol, node: v2.std.node.Node
   }
 }
 
-fn emit_match_eval_bool_true(value: v2.std.runtime.RuntimeValue) -> Bool {
+fn emit_match_eval_bool_true(value: v2.std.runtime.RuntimeValue) -> v2.std.logic.Bool {
   value == emit_match_eval_octet_value(n: 1)
 }
 
-fn emit_match_eval_bool_false(value: v2.std.runtime.RuntimeValue) -> Bool {
+fn emit_match_eval_bool_false(value: v2.std.runtime.RuntimeValue) -> v2.std.logic.Bool {
   value == emit_match_eval_octet_value(n: 0)
 }
 
@@ -137,11 +137,11 @@ fn emit_match_eval_bind_value(
 
 fn emit_match_eval_nth_arm_wire(node: v2.std.node.Node, wanted: Int) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match v2.std.collection.list_at_optional(xs: node.children, index: wanted) {
-    Present { value: child } =>
+    v2.std.optional.Present { value: child } =>
       match child {
         Edge { label: _, target: arm_wire } => v2.std.diagnostic.outcome_accepted(value: arm_wire)
       }
-    Absent =>
+    v2.std.optional.Absent =>
       v2.std.diagnostic.outcome_rejected(
         d: emit_match_eval_diagnostic(reason: ^emit_match_eval_arm_miss, node: node)
       )
@@ -151,7 +151,7 @@ fn emit_match_eval_nth_arm_wire(node: v2.std.node.Node, wanted: Int) -> v2.std.d
 fn emit_match_eval_arm_body_node(arm_wire: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match v2.std.node_query.find_named_child(root: arm_wire, name: v2.std.node.match_arm_body) {
     Accepted { value: body, diagnostics: _ } => v2.std.diagnostic.outcome_accepted(value: body)
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -164,13 +164,13 @@ fn emit_match_eval_choose_arm(
     match emit_match_eval_nth_arm_wire(node: node, wanted: 1) {
       Accepted { value: arm, diagnostics: _ } =>
         emit_match_eval_arm_body_node(arm_wire: extdeps.vendor.arm.arm)
-      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }
   } else if emit_match_eval_bool_false(value: scrutinee) {
     match emit_match_eval_nth_arm_wire(node: node, wanted: 2) {
       Accepted { value: arm, diagnostics: _ } =>
         emit_match_eval_arm_body_node(arm_wire: extdeps.vendor.arm.arm)
-      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }
   } else {
     v2.std.diagnostic.outcome_rejected(
@@ -234,43 +234,43 @@ fn emit_match_eval_run(tree: v2.compiler.inferred_tree.InferredTree) -> v2.compi
   )
 }
 
-fn emit_match_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> Bool {
+fn emit_match_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> v2.std.logic.Bool {
   match run.verdict {
     Pass => true
     SemanticMismatch { actual: _, falsification: _ } => false
-    BuildFailed { actual: _, diagnostic: _ } => false
+    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
 }
 
-fn emit_match_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> Bool {
+fn emit_match_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> v2.std.logic.Bool {
   match run.verdict {
     SemanticMismatch { actual: _, falsification: _ } => true
     Pass => false
-    BuildFailed { actual: _, diagnostic: _ } => false
+    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
 }
 
-test fn emit_host_match_equals_eval_holds() -> Bool {
+test fn emit_host_match_equals_eval_holds() -> v2.std.logic.Bool {
   match emit_match_eval_producer_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       emit_match_eval_verdict_is_pass(run: emit_match_eval_run(tree: tree))
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn emit_host_match_wrong_fixture_refuses_holds() -> Bool {
+test fn emit_host_match_wrong_fixture_refuses_holds() -> v2.std.logic.Bool {
   match emit_match_eval_swapped_producer_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       emit_match_eval_verdict_is_semantic_mismatch(run: emit_match_eval_run(tree: tree))
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn emit_host_match_eval_only_accepts() -> Bool {
+test fn emit_host_match_eval_only_accepts() -> v2.std.logic.Bool {
   match emit_match_eval_producer_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       match v2.compiler.eval.eval(
@@ -279,20 +279,20 @@ test fn emit_host_match_eval_only_accepts() -> Bool {
         inputs: v2.compiler.eval.inputs_root_only(root: emit_match_eval_subgraph_node)
       ) {
         Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn emit_host_match_emit_only_accepts() -> Bool {
+test fn emit_host_match_emit_only_accepts() -> v2.std.logic.Bool {
   match emit_match_eval_producer_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       match v2.compiler.emit.emit(tree: tree, target: v2.extdeps.languages.rust_test.rust_match_target_model_staging()) {
         Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

@@ -46,7 +46,7 @@ data all_positive_control_unit: List<v2.std.verification.TestClaim> = [
   v2.test.impossible_bug.suboptimal_complexity.claim_within_structural_bound_passes
 ]
 
-test fn negative_control_correctly_rejected() -> Bool {
+test fn negative_control_correctly_rejected() -> v2.std.logic.Bool {
   !unit_is_discriminating(unit: all_positive_control_unit)
 }
 
@@ -69,7 +69,7 @@ data non_perturbed_control_unit: List<v2.std.verification.TestClaim> = [
   non_perturbed_red_over_green_input
 ]
 
-test fn non_perturbed_control_correctly_rejected() -> Bool {
+test fn non_perturbed_control_correctly_rejected() -> v2.std.logic.Bool {
   !unit_is_discriminating(unit: non_perturbed_control_unit)
 }
 
@@ -79,11 +79,11 @@ data mixed_input_non_perturbed_control_unit: List<v2.std.verification.TestClaim>
   non_perturbed_red_over_green_input
 ]
 
-test fn mixed_input_non_perturbed_control_correctly_rejected() -> Bool {
+test fn mixed_input_non_perturbed_control_correctly_rejected() -> v2.std.logic.Bool {
   !unit_is_discriminating(unit: mixed_input_non_perturbed_control_unit)
 }
 
-fn all_rows_discriminating(rows: List<List<v2.std.verification.TestClaim>>) -> Bool {
+fn all_rows_discriminating(rows: List<List<v2.std.verification.TestClaim>>) -> v2.std.logic.Bool {
   fold_list(
     xs: rows,
     empty: true,
@@ -93,7 +93,7 @@ fn all_rows_discriminating(rows: List<List<v2.std.verification.TestClaim>>) -> B
   )
 }
 
-fn discrimination_family_gate() -> Bool {
+fn discrimination_family_gate() -> v2.std.logic.Bool {
   let rows = discrimination_subject_rows()
   if is_empty(xs: rows) {
     false

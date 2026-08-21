@@ -3,7 +3,7 @@ module v2.test.std_grounding.runtime_value_node_projection
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn rvnp_test_type_node(sym: v2.std.node.Symbol) -> Node {
+fn rvnp_test_type_node(sym: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
     children: [],
@@ -90,21 +90,21 @@ fn rvnp_test_unit_value() -> v2.std.runtime.RuntimeValue {
   }
 }
 
-fn rvnp_test_is_projected(value: v2.std.runtime.RuntimeValue) -> Bool {
+fn rvnp_test_is_projected(value: v2.std.runtime.RuntimeValue) -> v2.std.logic.Bool {
   match runtime_value_node_projection(value: value) {
     RuntimeValueNodeProjected { node: _ } => true
     RuntimeValueNodeUnrepresentable => false
   }
 }
 
-fn rvnp_test_is_unrepresentable(value: v2.std.runtime.RuntimeValue) -> Bool {
+fn rvnp_test_is_unrepresentable(value: v2.std.runtime.RuntimeValue) -> v2.std.logic.Bool {
   match runtime_value_node_projection(value: value) {
     RuntimeValueNodeProjected { node: _ } => false
     RuntimeValueNodeUnrepresentable => true
   }
 }
 
-fn primitive_projection_type_and_bytes_round_trip(value: v2.std.runtime.RuntimeValue) -> Bool {
+fn primitive_projection_type_and_bytes_round_trip(value: v2.std.runtime.RuntimeValue) -> v2.std.logic.Bool {
   let expected_type = rvnp_test_type_node(sym: ^rvnp_test_i64_sym)
   match runtime_value_node_projection(value: value) {
     RuntimeValueNodeProjected { node: projected } =>
@@ -112,30 +112,30 @@ fn primitive_projection_type_and_bytes_round_trip(value: v2.std.runtime.RuntimeV
         Accepted { value: type_node, diagnostics: _ } =>
           match find_named_child(root: projected, name: ^runtime_primitive_bytes_node_projection) {
             Accepted { value: _, diagnostics: _ } => type_node == expected_type
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
     RuntimeValueNodeUnrepresentable => false
   }
 }
 
-fn primitive_projection_bytes_edge_present(value: v2.std.runtime.RuntimeValue) -> Bool {
+fn primitive_projection_bytes_edge_present(value: v2.std.runtime.RuntimeValue) -> v2.std.logic.Bool {
   match runtime_value_node_projection(value: value) {
     RuntimeValueNodeProjected { node: projected } =>
       match find_named_child(root: projected, name: ^runtime_primitive_bytes_node_projection) {
         Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
     RuntimeValueNodeUnrepresentable => false
   }
 }
 
-fn red_reference_fabrication_would_break_aggregate_fail_closed() -> Bool {
+fn red_reference_fabrication_would_break_aggregate_fail_closed() -> v2.std.logic.Bool {
   rvnp_test_is_unrepresentable(value: rvnp_test_aggregate_with_reference_field())
 }
 
-test fn runtime_value_node_projection_honest_partial_holds() -> Bool {
+test fn runtime_value_node_projection_honest_partial_holds() -> v2.std.logic.Bool {
   primitive_projection_type_and_bytes_round_trip(value: rvnp_test_primitive_value())
     && primitive_projection_bytes_edge_present(value: rvnp_test_primitive_value())
     && rvnp_test_is_projected(value: rvnp_test_aggregate_value())

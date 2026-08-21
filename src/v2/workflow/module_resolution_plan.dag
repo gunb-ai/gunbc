@@ -15,7 +15,7 @@ type ModuleImportEdge {
 
 type ModuleNodeBinding {
   module: String
-  node: Node
+  node: v2.std.node.Node
 }
 
 type ModuleDependencyViewsResult
@@ -31,10 +31,10 @@ fn declared_module_match(decl: v2.lens.module_graph.ModuleDeclarationFact, path:
 }
 
 fn declared_module_for_path(declarations: List<v2.lens.module_graph.ModuleDeclarationFact>, path: String) -> String? {
-  fold(declarations, init: Absent, f: fn(acc, decl) {
+  fold(declarations, init: v2.std.optional.Absent, f: fn(acc, decl) {
     match acc {
-      Present { value: _ } => acc
-      Absent => declared_module_match(decl: decl, path: path)
+      v2.std.optional.Present { value: _ } => acc
+      v2.std.optional.Absent => declared_module_match(decl: decl, path: path)
     }
   })
 }
@@ -46,12 +46,12 @@ fn module_import_edges(
   fold(imports, init: [], f: fn(acc, fact) {
     if fact.target_declared {
       match declared_module_for_path(declarations: declarations, path: fact.path) {
-        Present { value: importer } =>
+        v2.std.optional.Present { value: importer } =>
           list_snoc_item(xs: acc, item: ModuleImportEdge {
             source_module: fact.import_module,
             dependent_module: importer
           })
-        Absent => acc
+        v2.std.optional.Absent => acc
       }
     } else {
       acc
@@ -59,7 +59,7 @@ fn module_import_edges(
   })
 }
 
-fn binding_node_match(binding: ModuleNodeBinding, module: String) -> Node? {
+fn binding_node_match(binding: ModuleNodeBinding, module: String) -> v2.std.node.Node? {
   if binding.module == module {
     optional_present(value: binding.node)
   } else {
@@ -67,11 +67,11 @@ fn binding_node_match(binding: ModuleNodeBinding, module: String) -> Node? {
   }
 }
 
-fn module_node_for(bindings: List<ModuleNodeBinding>, module: String) -> Node? {
-  fold(bindings, init: Absent, f: fn(acc, binding) {
+fn module_node_for(bindings: List<ModuleNodeBinding>, module: String) -> v2.std.node.Node? {
+  fold(bindings, init: v2.std.optional.Absent, f: fn(acc, binding) {
     match acc {
-      Present { value: _ } => acc
-      Absent => binding_node_match(binding: binding, module: module)
+      v2.std.optional.Present { value: _ } => acc
+      v2.std.optional.Absent => binding_node_match(binding: binding, module: module)
     }
   })
 }
@@ -85,11 +85,11 @@ fn module_dependency_views(
       ModuleNodeBindingMissing { module: _ } => acc
       ModuleDependencyViews { views: views } =>
         match module_node_for(bindings: bindings, module: edge.source_module) {
-          Absent => ModuleNodeBindingMissing { module: edge.source_module }
-          Present { value: source_node } =>
+          v2.std.optional.Absent => ModuleNodeBindingMissing { module: edge.source_module }
+          v2.std.optional.Present { value: source_node } =>
             match module_node_for(bindings: bindings, module: edge.dependent_module) {
-              Absent => ModuleNodeBindingMissing { module: edge.dependent_module }
-              Present { value: dependent_node } =>
+              v2.std.optional.Absent => ModuleNodeBindingMissing { module: edge.dependent_module }
+              v2.std.optional.Present { value: dependent_node } =>
                 ModuleDependencyViews {
                   views: list_snoc_item(xs: views, item: v2.std.dependency.DependencyView {
                     source: source_node,
@@ -105,7 +105,7 @@ fn module_dependency_views(
 }
 
 fn module_resolution_schedule(
-  nodes: List<Node>,
+  nodes: List<v2.std.node.Node>,
   dependencies: List<v2.std.dependency.DependencyView>
 ) -> RunnerSchedulePlan<v2.workflow.realization_runner.RunnerOrderingResult> {
   runner_schedule_plan_from_dependencies(

@@ -9,7 +9,7 @@ type SparkServingRuntimeArchiveAdmissionReceipt {
   release_asset_digest_hex: std.types.NonEmptyStr
 }
 
-data spark_serving_executor_home: FilePath = "/home/gunbc-automation" as FilePath
+data spark_serving_executor_home: std.types.FilePath = "/home/gunbc-automation" as std.types.FilePath
 
 data spark_serving_runtime_receipt_rel: String = ".local/share/gunbc/spark-serving/ollama-runtime-receipt.json"
 
@@ -17,15 +17,15 @@ data spark_serving_runtime_receipt_release_asset_digest_member: String = "releas
 
 data spark_serving_runtime_receipt_path_note: String = "Receipt path is fleet-constant under gunbc-automation on every Spark host (/home/gunbc-automation/.local/share/gunbc/spark-serving/ollama-runtime-receipt.json). Wet SSH probe selects which machine to read; the path string does not vary because srv5 and srv6 share the same executor home layout. The receipt record carries only the admitted release-asset digest — not which host was probed or which host ran the writer. Unit basename is gunbc.spark.serving_unit_identity spark_serving_unit_name."
 
-fn spark_serving_runtime_receipt_wire_path() -> FilePath {
+fn spark_serving_runtime_receipt_wire_path() -> std.types.FilePath {
   spark_serving_runtime_receipt_path()
 }
 
-fn spark_serving_runtime_receipt_path() -> FilePath {
+fn spark_serving_runtime_receipt_path() -> std.types.FilePath {
   concat(
     spark_serving_executor_home as String,
     concat("/", spark_serving_runtime_receipt_rel),
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
 fn spark_serving_runtime_receipt_probe_words() -> std.types.List<String> {
@@ -112,11 +112,11 @@ fn spark_serving_runtime_receipt_field_from_probe(
   }
 }
 
-fn spark_serving_runtime_receipt_parent_path() -> FilePath {
+fn spark_serving_runtime_receipt_parent_path() -> std.types.FilePath {
   concat(
     spark_serving_executor_home as String,
     "/.local/share/gunbc/spark-serving",
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
 fn ensure_spark_serving_runtime_receipt_parent_dir() -> Bool {
@@ -126,18 +126,18 @@ fn ensure_spark_serving_runtime_receipt_parent_dir() -> Bool {
 fn spark_serving_runtime_archive_admission_receipt_json(
   receipt: SparkServingRuntimeArchiveAdmissionReceipt,
 ) -> String {
-  serialize_json(v: JsonObject {
+  serialize_json(v: extdeps.languages.json.emit.JsonObject {
     members: [
       extdeps.languages.json.emit.JsonKeyValue {
         key: spark_serving_runtime_receipt_release_asset_digest_member,
-        value: JsonString { value: receipt.release_asset_digest_hex as String },
+        value: extdeps.languages.json.emit.JsonString { value: receipt.release_asset_digest_hex as String },
       },
     ],
   })
 }
 
 fn write_spark_serving_runtime_archive_admission_receipt_at_path(
-  path: FilePath,
+  path: std.types.FilePath,
   receipt: SparkServingRuntimeArchiveAdmissionReceipt,
 ) -> Bool {
   Filesystem.Write(
@@ -159,7 +159,7 @@ fn write_spark_serving_runtime_archive_admission_receipt(
   }
 }
 
-fn read_spark_serving_runtime_archive_admission_receipt_bytes_at_path(path: FilePath) -> String? {
+fn read_spark_serving_runtime_archive_admission_receipt_bytes_at_path(path: std.types.FilePath) -> String? {
   let read = Filesystem.Read(path: path as String)
   if read.success == false {
     none

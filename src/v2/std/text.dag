@@ -24,7 +24,7 @@ type CharResult
   = CharFound { value: std.types.Char }
   | CharAbsent
 
-fn string_is_empty(s: String) -> Bool {
+fn string_is_empty(s: String) -> v2.std.logic.Bool {
   is_empty(xs: s)
 }
 fn string_head(s: String) -> CharResult {
@@ -40,7 +40,7 @@ fn string_tail(s: String) -> ListTailResult<std.types.Char> {
 type SourceFold<R> {
   init: fn(String) -> R
   step: fn(R) -> R
-  is_done: fn(R) -> Bool
+  is_done: fn(R) -> v2.std.logic.Bool
 }
 
 fn fold_source<R>(src: String, algebra: SourceFold<R>) -> R {

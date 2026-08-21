@@ -14,8 +14,8 @@ data stage0_crate_layout_carve_out_note: String = "CARVED OUT of v2.compiler.sel
 
 type SeedRetainedIntrinsicRegistration {
   basename: String
-  has_pub_mod: Bool
-  is_dir: Bool
+  has_pub_mod: v2.std.logic.Bool
+  is_dir: v2.std.logic.Bool
 }
 
 type SeedRetainedScaffoldRegistration {

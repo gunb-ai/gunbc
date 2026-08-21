@@ -34,30 +34,30 @@ fn triple_parallel_shape() -> v2.lens.cost.summary.ComplexitySummary {
   )
 }
 
-fn is_pair_of_unit_costs(expr: v2.lens.cost.expr.CostExpr) -> Bool {
+fn is_pair_of_unit_costs(expr: v2.lens.cost.expr.CostExpr) -> v2.std.logic.Bool {
   match expr {
-    CostAdd {
-      left: CostConst { value: Succ { prev: Zero } },
-      right: CostConst { value: Succ { prev: Zero } }
+    v2.lens.cost.expr.CostAdd {
+      left: v2.lens.cost.expr.CostConst { value: Succ { prev: Zero } },
+      right: v2.lens.cost.expr.CostConst { value: Succ { prev: Zero } }
     } => true
     _ => false
   }
 }
 
-fn is_triple_of_unit_costs(expr: v2.lens.cost.expr.CostExpr) -> Bool {
+fn is_triple_of_unit_costs(expr: v2.lens.cost.expr.CostExpr) -> v2.std.logic.Bool {
   match expr {
-    CostAdd {
-      left: CostConst { value: Succ { prev: Zero } },
-      right: CostAdd {
-        left: CostConst { value: Succ { prev: Zero } },
-        right: CostConst { value: Succ { prev: Zero } }
+    v2.lens.cost.expr.CostAdd {
+      left: v2.lens.cost.expr.CostConst { value: Succ { prev: Zero } },
+      right: v2.lens.cost.expr.CostAdd {
+        left: v2.lens.cost.expr.CostConst { value: Succ { prev: Zero } },
+        right: v2.lens.cost.expr.CostConst { value: Succ { prev: Zero } }
       }
     } => true
     _ => false
   }
 }
 
-test fn sequential_summary_adds_work_and_span() -> Bool {
+test fn sequential_summary_adds_work_and_span() -> v2.std.logic.Bool {
   let left = unit_complexity_summary()
   let right = unit_complexity_summary()
   let combined = summary_sequential(left: left, right: right)
@@ -65,18 +65,18 @@ test fn sequential_summary_adds_work_and_span() -> Bool {
     && is_pair_of_unit_costs(expr: combined.span)
 }
 
-test fn parallel_summary_adds_work_but_maxes_span() -> Bool {
+test fn parallel_summary_adds_work_but_maxes_span() -> v2.std.logic.Bool {
   let left = unit_complexity_summary()
   let right = unit_complexity_summary()
   let combined = summary_parallel(left: left, right: right)
   match combined.span {
-    CostMax { left: _, right: _ } =>
+    v2.lens.cost.expr.CostMax { left: _, right: _ } =>
       is_pair_of_unit_costs(expr: combined.work)
     _ => false
   }
 }
 
-test fn equal_work_different_shape_derives_equal_work_different_span() -> Bool {
+test fn equal_work_different_shape_derives_equal_work_different_span() -> v2.std.logic.Bool {
   let sequential = triple_sequential_shape()
   let parallel = triple_parallel_shape()
   is_triple_of_unit_costs(expr: sequential.work)
@@ -85,15 +85,15 @@ test fn equal_work_different_shape_derives_equal_work_different_span() -> Bool {
     && sequential.span != parallel.span
 }
 
-test fn equal_work_span_operands_match_exactly() -> Bool {
+test fn equal_work_span_operands_match_exactly() -> v2.std.logic.Bool {
   let left = unit_complexity_summary()
   let right = unit_complexity_summary()
   let sequential = summary_sequential(left: left, right: right)
   let parallel = summary_parallel(left: left, right: right)
   match sequential.span {
-    CostAdd { left: seq_l, right: seq_r } =>
+    v2.lens.cost.expr.CostAdd { left: seq_l, right: seq_r } =>
       match parallel.span {
-        CostMax { left: par_l, right: par_r } =>
+        v2.lens.cost.expr.CostMax { left: par_l, right: par_r } =>
           seq_l == par_l
             && seq_r == par_r
             && sequential.work == parallel.work

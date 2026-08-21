@@ -183,7 +183,7 @@ pub fn passing_candidate_count(
     enumeration_candidate_list(candidates.clone(), predicate.clone())
         .iter()
         .cloned()
-        .fold(0, |acc: i64, candidate: _| {
+        .fold(0, |acc: i64, candidate: Rc<Node>| {
             if preservation_predicate_holds(
                 source_facts.clone(),
                 candidate.clone(),
@@ -206,7 +206,7 @@ pub fn only_passing_candidate(
         .cloned()
         .fold(
             Rc::new(PassingCandidateFold::NoPassingCandidate),
-            |acc: _, candidate: _| {
+            |acc: _, candidate: Rc<Node>| {
                 if preservation_predicate_holds(
                     source_facts.clone(),
                     candidate.clone(),
@@ -256,7 +256,7 @@ pub fn selected_candidate_count(
     enumeration_candidate_list(candidates.clone(), predicate.clone())
         .iter()
         .cloned()
-        .fold(0, |acc: i64, candidate: _| {
+        .fold(0, |acc: i64, candidate: Rc<Node>| {
             if ((candidate.clone() == selection.clone())
                 && preservation_predicate_holds(
                     source_facts.clone(),

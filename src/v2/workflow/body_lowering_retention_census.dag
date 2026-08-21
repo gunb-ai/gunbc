@@ -25,7 +25,7 @@ type RetainedProduction {
 // THREE STATES, NOT A BOOL. "The census was written", "no census was
 // applicable because this run produced no retained population", and "the
 // census could not be written" are different facts with different remedies,
-// and a Bool spelled them as two. The middle one is the common case on every
+// and a v2.std.logic.Bool spelled them as two. The middle one is the common case on every
 // non-refused path, so a true there was reporting a write that never
 // happened -- harmless as a gate today and a lie the moment anything reads
 // the field for what it says. Splitting it is the repository's own
@@ -35,7 +35,7 @@ type CensusOutcome
   | CensusNotApplicable
   | CensusWriteFailed
 
-fn census_outcome_admits(outcome: CensusOutcome) -> Bool {
+fn census_outcome_admits(outcome: CensusOutcome) -> v2.std.logic.Bool {
   match outcome {
     CensusWritten => true
     CensusNotApplicable => true
@@ -55,7 +55,7 @@ fn connective_label(c: v2.std.node.Connective) -> String {
     v2.std.node.Conj => "Conj"
     v2.std.node.Disj => "Disj"
     v2.std.node.Arrow => "Arrow"
-    Cardinality => "Cardinality"
+    v2.std.node.Cardinality => "Cardinality"
     v2.std.node.Instantiation => "Instantiation"
   }
 }
@@ -63,7 +63,7 @@ fn connective_label(c: v2.std.node.Connective) -> String {
 fn behavior_label(b: v2.std.node.Behavior) -> String {
   match b {
     v2.std.node.Value => "Value"
-    Transform => "Transform"
+    v2.std.node.Transform => "Transform"
     v2.std.node.Branch => "Branch"
     v2.std.node.Loop => "Loop"
     v2.std.node.Bind => "Bind"
@@ -84,8 +84,8 @@ fn node_shape_label(kind: v2.std.node.NodeKind) -> String {
 // and collapsing them would hide the first inside the second.
 fn emitted_production_label(node: v2.std.node.Node) -> String {
   match parse_production_emitted_identity_optional(node: node) {
-    Present { value: sym } => symbol_lexeme(sym: sym)
-    Absent => "<no production identity on the retained node>"
+    v2.std.optional.Present { value: sym } => symbol_lexeme(sym: sym)
+    v2.std.optional.Absent => "<no production identity on the retained node>"
   }
 }
 
@@ -117,15 +117,15 @@ fn retained_production_key(observation: RetainedProduction) -> String {
 // The other two are reported as unattributable rather than skipped: a census
 // that silently drops the loci it cannot read would understate the population
 // it exists to size.
-fn retained_node_optional(d: Diagnostic) -> Optional<v2.std.node.Node> {
+fn retained_node_optional(d: v2.std.diagnostic.Diagnostic) -> v2.std.optional.Optional<v2.std.node.Node> {
   match d.at {
-    v2.std.diagnostic.NodeLocus { anchor: anchor } => Present { value: anchor.at }
-    v2.std.diagnostic.Textual { file: _, extent: _ } => Absent
-    v2.std.diagnostic.PortLocus { anchor: _ } => Absent
+    v2.std.diagnostic.NodeLocus { anchor: anchor } => v2.std.optional.Present { value: anchor.at }
+    v2.std.diagnostic.Textual { file: _, extent: _ } => v2.std.optional.Absent
+    v2.std.diagnostic.PortLocus { anchor: _ } => v2.std.optional.Absent
   }
 }
 
-fn retention_family_holds(families: std.types.List<RetentionFamily>, key: String) -> Bool {
+fn retention_family_holds(families: std.types.List<RetentionFamily>, key: String) -> v2.std.logic.Bool {
   fold_list(
     xs: families,
     empty: false,
@@ -173,22 +173,22 @@ fn retention_families_total(families: std.types.List<RetentionFamily>) -> Int {
   fold_list(xs: families, empty: 0, cons: fn(total, row) { total + row.count })
 }
 
-fn diagnostic_is_wrapper_retained(d: Diagnostic) -> Bool {
+fn diagnostic_is_wrapper_retained(d: v2.std.diagnostic.Diagnostic) -> v2.std.logic.Bool {
   d.reason == ^body_lowering_reason_wrapper_retained_emitted
 }
 
 fn retention_census_step(
   families: std.types.List<RetentionFamily>,
-  d: Diagnostic
+  d: v2.std.diagnostic.Diagnostic
 ) -> std.types.List<RetentionFamily> {
   if diagnostic_is_wrapper_retained(d: d) {
     match retained_node_optional(d: d) {
-      Present { value: node } =>
+      v2.std.optional.Present { value: node } =>
         retention_family_bump(
           families: families,
           observation: retained_production_of(node: node)
         )
-      Absent =>
+      v2.std.optional.Absent =>
         retention_family_bump(
           families: families,
           observation: RetainedProduction {

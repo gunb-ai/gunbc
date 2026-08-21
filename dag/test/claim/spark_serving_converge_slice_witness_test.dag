@@ -64,7 +64,7 @@ test fn a_single_effect_still_realizes_to_exactly_one_command() -> Bool {
 
 test fn an_unrealized_effect_still_refuses_the_whole_sequence() -> Bool {
   match realize_spark_serving_install_effect_commands(
-    effects: [EnableLingerForOwnAccount, gunbc.spark.serving_realization.RunContainerAsOwnUser],
+    effects: [gunbc.spark.serving_realization.EnableLingerForOwnAccount, gunbc.spark.serving_realization.RunContainerAsOwnUser],
     executor_login: spark_serving_automation_principal_login(),
   ) {
     gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => true
@@ -113,7 +113,7 @@ test fn linger_slice_freezes_enable_linger_typed_row() -> Bool {
     gunbc.spark.serving_converge_plan.SparkServingPlanArtifactReady { artifact: artifact } =>
       length(scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions)) == 1
         && match spark_serving_frozen_linger_effect(row: scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions)[0]) {
-          Present { value: e } => e == EnableLingerForOwnAccount
+          Present { value: e } => e == gunbc.spark.serving_realization.EnableLingerForOwnAccount
           Absent => false
         }
         && string_contains(
@@ -489,7 +489,7 @@ fn tamper_row(state: std.types.NonEmptyStr, ops: std.types.List<gunbc.remote_ope
       ),
     },
     first_execution: gunbc.fleet_converge_plan.PlannedEffectExecution {
-      effect: EnableLingerForOwnAccount,
+      effect: gunbc.spark.serving_realization.EnableLingerForOwnAccount,
       first_step: gunbc.remote_operation.PlannedRemoteStep {
         identity: "tamper-head" as std.types.NonEmptyStr,
         operation: match ops.first() {

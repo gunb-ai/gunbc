@@ -68,7 +68,7 @@ fn role_tag(r: BoardComponentRole) -> std.types.NonEmptyStr {
 // directly and carried eleven nested wildcard arms over a closed coproduct. The third replaced
 // both with a projected key record whose discriminator was a bare Int.
 // NO KEY RECORD, BECAUSE A KEY RECORD IS A WRITABLE ILLEGAL STATE. An earlier revision projected
-// each role to RoleKey { kind: Int, slot }, and the Int was an in-band discriminator: kind 99 was
+// each role to RoleKey { kind: std.integer.Int, slot }, and the std.integer.Int was an in-band discriminator: kind 99 was
 // constructible, the numbers were arbitrary (ProcessorPackage ended up 12 because it was added
 // last, which is the "pick another magic number" hazard showing itself), and the record carried
 // the bad state around. The ordinal below is not stored anywhere -- it exists only inside the
@@ -81,7 +81,7 @@ fn role_tag(r: BoardComponentRole) -> std.types.NonEmptyStr {
 // missing it, with no arm to update and no failure pointing here. Two total projections give the
 // same guarantee at twelve arms each: neither has a wildcard, so a thirteenth role fails to
 // compile in both until someone decides its ordinal and whether it carries a slot.
-fn role_ordinal(r: BoardComponentRole) -> Int {
+fn role_ordinal(r: BoardComponentRole) -> std.integer.Int {
   match r {
     MemoryModuleSlot { slot: _ } => 1
     ProcessorSocket => 2
@@ -186,7 +186,7 @@ type PlacementRefusal
   | RequiredRoleUnfilled { role: BoardComponentRole }
   | ComponentFillsNoRequiredRole { component: std.types.NonEmptyStr, role_named: std.types.NonEmptyStr }
   | PlannedIdentityRepeated { component: std.types.NonEmptyStr }
-  | RoleFilledMoreThanOnce { role: BoardComponentRole, fills: Int }
+  | RoleFilledMoreThanOnce { role: BoardComponentRole, fills: std.integer.Int }
   | PlanWasBuiltFromADifferentDesign { plan_design: std.decl_ref.DeclarationRef, admitted_against: std.decl_ref.DeclarationRef }
   | RequiredFunctionWithoutJustifiedPartOnBoard { requirement: product.altra_motherboard.realization.BoardRequirementIdentity }
 
@@ -261,7 +261,7 @@ fn required_roles(d: product.altra_motherboard.minimal_design.AltraMinimalMother
   )
 }
 
-fn role_fill_count(plan: BoardPlacementPlan, r: BoardComponentRole) -> Int {
+fn role_fill_count(plan: BoardPlacementPlan, r: BoardComponentRole) -> std.integer.Int {
   fold(plan.components, init: 0, f: fn(acc, c) { if roles_equal(a: c.role, b: r) { acc + 1 } else { acc } })
 }
 
@@ -320,7 +320,7 @@ fn envelope_refusals(plan: BoardPlacementPlan) -> List<PlacementRefusal> {
   })
 }
 
-fn planned_identity_occurrences(cs: List<PlannedComponent>, id: std.types.NonEmptyStr) -> Int {
+fn planned_identity_occurrences(cs: List<PlannedComponent>, id: std.types.NonEmptyStr) -> std.integer.Int {
   fold(cs, init: 0, f: fn(acc, c) { if (c.identity as String) == (id as String) { acc + 1 } else { acc } })
 }
 
@@ -379,7 +379,7 @@ fn placement_causes(d: product.altra_motherboard.minimal_design.AltraMinimalMoth
   )
 }
 
-fn placement_refusal_count(cs: List<PlacementRefusal>) -> Int {
+fn placement_refusal_count(cs: List<PlacementRefusal>) -> std.integer.Int {
   fold(cs, init: 0, f: fn(acc, _c) { acc + 1 })
 }
 
@@ -416,11 +416,11 @@ fn placeable_components(plan: BoardPlacementPlan) -> List<product.pcb.physical.C
   })
 }
 
-fn established_envelope_count(plan: BoardPlacementPlan) -> Int {
+fn established_envelope_count(plan: BoardPlacementPlan) -> std.integer.Int {
   fold(placeable_components(plan: plan), init: 0, f: fn(acc, _c) { acc + 1 })
 }
 
-fn outstanding_obligation_count(plan: BoardPlacementPlan) -> Int {
+fn outstanding_obligation_count(plan: BoardPlacementPlan) -> std.integer.Int {
   placement_refusal_count(cs: envelope_refusals(plan: plan))
 }
 
@@ -523,7 +523,7 @@ fn socket_envelope_blocker() -> product.altra_motherboard.attachment_stack.FactA
   }
 }
 
-fn obligation(g: product.altra_motherboard.attachment_stack.FactAuthorityBlocker, id: std.types.NonEmptyStr, r: BoardComponentRole, x: Int, y: Int) -> PlannedComponent {
+fn obligation(g: product.altra_motherboard.attachment_stack.FactAuthorityBlocker, id: std.types.NonEmptyStr, r: BoardComponentRole, x: std.integer.Int, y: std.integer.Int) -> PlannedComponent {
   PlannedComponent {
     identity: id,
     role: r,
@@ -656,7 +656,7 @@ fn board_article(plan: BoardPlacementPlan) -> product.pcb.physical.BoardPhysical
 // have cited bodies on the plan — those parts were checked geometrically, so they do not belong
 // in this count. The other placement refusals describe parts that ARE present and are defects in
 // what was checked rather than gaps in what was not.
-fn parts_not_geometrically_checked(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, d_ref: std.decl_ref.DeclarationRef, plan: BoardPlacementPlan) -> Int {
+fn parts_not_geometrically_checked(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, d_ref: std.decl_ref.DeclarationRef, plan: BoardPlacementPlan) -> std.integer.Int {
   fold(placement_causes(d: d, d_ref: d_ref, plan: plan), init: 0, f: fn(acc, c) {
     match c {
       RequiredRoleUnfilled { role: _ } => acc + 1
@@ -683,7 +683,7 @@ fn parts_not_geometrically_checked(d: product.altra_motherboard.minimal_design.A
 // arm has no constructor reachable while anything is owed.
 type BoardBodyLayoutStanding
   = BodyLayoutAdmittedOverEveryRequiredPart { article: product.pcb.physical.BoardPhysicalArticle }
-  | BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: Int, geometry: product.pcb.physical.PhysicalAdmission }
+  | BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: std.integer.Int, geometry: product.pcb.physical.PhysicalAdmission }
   | BodyLayoutRefused { causes: product.pcb.physical.PhysicalRefusalSet }
 
 fn board_body_layout_standing(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, d_ref: std.decl_ref.DeclarationRef, plan: BoardPlacementPlan) -> BoardBodyLayoutStanding {

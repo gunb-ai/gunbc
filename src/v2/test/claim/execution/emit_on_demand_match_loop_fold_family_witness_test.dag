@@ -15,9 +15,9 @@ data family_provider: std.materialization_ladder.CacheProvider = std.materializa
   retention: std.materialization_ladder.persistent_retention(capacity: std.cache_interface.CapacityBounded { limit: std.cache_interface.ByteCapacity { limit: std.cache_interface.ExactLimit { value: std.measure.byte_size(count: 1000000) } }, at_capacity: std.cache_interface.ReplaceExisting { strategy: std.cache_interface.LeastRecentlyUsed } })
 )
 
-fn family_open_test_store() -> Optional<std.artifact_store.ArtifactStore> {
+fn family_open_test_store() -> v2.std.optional.Optional<std.artifact_store.ArtifactStore> {
   match std.artifact_store.store_over_provider(provider: family_provider) {
-    StoreReady { store: s } => optional_present(value: s)
+    std.artifact_store.StoreReady { store: s } => optional_present(value: s)
     StoreRefusedRetention { provider_id: _, declared: _ } => optional_absent()
   }
 }
@@ -144,7 +144,7 @@ fn mlf_family_member_run(
             && stdout.bytes == emit_host_octets_byte_string(octets: expected_octets)
         _ => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -163,9 +163,9 @@ fn mlf_family_member_run_refused(
     Accepted { value: receipt, diagnostics: _ } =>
       match receipt.logical_run {
         Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -367,18 +367,18 @@ test fn emit_on_demand_match_loop_fold_family_one_build_holds() -> Bool {
                               loop_tree: loop_tree,
                               loop_alt: loop_alt
                             )
-                          Rejected { diagnostics: _ } => false
+                          v2.std.diagnostic.Rejected { diagnostics: _ } => false
                         }
-                      Rejected { diagnostics: _ } => false
+                      v2.std.diagnostic.Rejected { diagnostics: _ } => false
                     }
                   }
-                Rejected { diagnostics: _ } => false
+                v2.std.diagnostic.Rejected { diagnostics: _ } => false
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -399,7 +399,7 @@ test fn emit_on_demand_match_loop_fold_grain_keys_differ_holds() -> Bool {
         grain: std.emit_on_demand.NativeArtifact
       )
       (source == native) == false
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -407,7 +407,7 @@ test fn emit_on_demand_match_loop_fold_materialize_share_on_hit_holds() -> Bool 
   match match_primary_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       match family_open_test_store() {
-        Present { value: store } =>
+        v2.std.optional.Present { value: store } =>
           let key = family_native_key_for(tree: tree)
           std.artifact_store.store_put_fold(
             outcome: std.artifact_store.store_put(store: store, key: key, artifact_bytes: std.measure.byte_size(count: 64)),
@@ -422,9 +422,9 @@ test fn emit_on_demand_match_loop_fold_materialize_share_on_hit_holds() -> Bool 
             },
             did_not_fit: (a, b) => false
           )
-        Absent => false
+        v2.std.optional.Absent => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -432,7 +432,7 @@ test fn emit_on_demand_match_loop_fold_materialize_recompute_on_miss_holds() -> 
   match match_primary_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       match family_open_test_store() {
-        Present { value: store } =>
+        v2.std.optional.Present { value: store } =>
           let lookup = std.emit_on_demand.emit_on_demand_lookup(
             store: store,
             key: family_native_key_for(tree: tree)
@@ -441,9 +441,9 @@ test fn emit_on_demand_match_loop_fold_materialize_recompute_on_miss_holds() -> 
             EmitOnDemandMiss => std.emit_on_demand.materialization_for_lookup(lookup: lookup) == std.realization.Recompute
             EmitOnDemandHit { receipt: _ } => false
           }
-        Absent => false
+        v2.std.optional.Absent => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -462,9 +462,9 @@ test fn emit_on_demand_match_loop_fold_schedule_refuses_unreadable_budget_holds(
       ) {
         BudgetRefused => true
         PackedWidth { width: _ } => false
-        MaturationReserve { width: _ } => false
+        std.realize_pack.MaturationReserve { width: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

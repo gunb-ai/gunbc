@@ -117,21 +117,21 @@ test fn firmware_classification_reuses_upsert_states_and_refuses_unapproved_upda
   )
   srv3.verdict == std.upsert_decision.Drifted
     && match srv3.decision {
-      Refuse { reason: _ } => true
+      std.upsert_decision.Refuse { reason: _ } => true
       Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
     && srv4.verdict == std.upsert_decision.Converged
     && match srv4.decision {
       Noop => true
-      Refuse { reason: _ } => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Refuse { reason: _ } => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
     && unknown.verdict == UnknownRefused
     && match unknown.decision {
-      Refuse { reason: _ } => true
+      std.upsert_decision.Refuse { reason: _ } => true
       Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
 }
 
@@ -154,19 +154,19 @@ test fn approved_exact_firmware_artifact_builds_a_typed_srv3_update_plan() -> Bo
   )
   classified.verdict == std.upsert_decision.Drifted
     && match classified.decision {
-      Apply { plan: plan } =>
+      std.upsert_decision.Apply { plan: plan } =>
         plan.host == srv3_host.identity
           && plan.observed == srv3_bmc_firmware_2_07_00_observation
           && plan.artifact == fixture_approved_openbmc_3_22_artifact
           && plan.update_service == srv3_bmc_update_service_observation
       Noop => false
-      Refuse { reason: _ } => false
+      std.upsert_decision.Refuse { reason: _ } => false
     }
     && without_update_surface.verdict == std.upsert_decision.Drifted
     && match without_update_surface.decision {
-      Refuse { reason: _ } => true
+      std.upsert_decision.Refuse { reason: _ } => true
       Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
 }
 
@@ -636,11 +636,11 @@ test fn srv4_bmc_reboot_persistence_receipt_proves_same_config_and_noop() -> Boo
     && receipt.post_reboot_converge_noop_exit_success
     && classified.verdict == UnknownRefused
     && match classified.decision {
-      Refuse { reason: reason } =>
+      std.upsert_decision.Refuse { reason: reason } =>
         string_contains(s: reason, pattern: "caller-asserted definition linkages")
           && string_contains(s: reason, pattern: "count 6")
       Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
 }
 
@@ -658,11 +658,11 @@ test fn srv4_receipt_cannot_qualify_a_later_perturbation_generation() -> Bool {
   )
   classified.verdict == UnknownRefused
     && match classified.decision {
-      Refuse { reason: reason } =>
+      std.upsert_decision.Refuse { reason: reason } =>
         string_contains(s: reason, pattern: "caller-asserted definition linkages")
           && string_contains(s: reason, pattern: "count 6")
       Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
 }
 
@@ -682,11 +682,11 @@ test fn duplicate_srv4_durability_receipts_refuse_instead_of_first_wins() -> Boo
   )
   classified.verdict == UnknownRefused
     && match classified.decision {
-      Refuse { reason: reason } =>
+      std.upsert_decision.Refuse { reason: reason } =>
         string_contains(s: reason, pattern: "caller-asserted definition linkages")
           && string_contains(s: reason, pattern: "count 6")
       Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
 }
 
@@ -707,8 +707,8 @@ test fn converged_srv4_curve_without_topology_projection_refuses_noop() -> Bool 
   classified.verdict == UnknownRefused
     && match classified.decision {
       Noop => false
-      Refuse { reason: _ } => true
-      Apply { plan: _ } => false
+      std.upsert_decision.Refuse { reason: _ } => true
+      std.upsert_decision.Apply { plan: _ } => false
     }
 }
 
@@ -728,11 +728,11 @@ test fn converged_curve_and_installed_tach_topology_are_noop() -> Bool {
   )
   classified.verdict == UnknownRefused
     && match classified.decision {
-      Refuse { reason: reason } =>
+      std.upsert_decision.Refuse { reason: reason } =>
         string_contains(s: reason, pattern: "caller-asserted definition linkages")
           && string_contains(s: reason, pattern: "count 6")
       Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
 }
 
@@ -762,9 +762,9 @@ test fn desired_curve_with_stale_uninstalled_fan_input_still_builds_apply_plan()
   )
   classified.verdict == std.upsert_decision.Drifted
     && match classified.decision {
-      Apply { plan: _ } => true
+      std.upsert_decision.Apply { plan: _ } => true
       Noop => false
-      Refuse { reason: _ } => false
+      std.upsert_decision.Refuse { reason: _ } => false
     }
 }
 
@@ -805,26 +805,26 @@ test fn drifted_srv4_curve_builds_typed_overlay_plan_only_with_exact_projection_
   )
   with_storage.verdict == std.upsert_decision.Drifted
     && match with_storage.decision {
-      Apply { plan: plan } =>
+      std.upsert_decision.Apply { plan: plan } =>
         plan.host == srv4_host.identity
           && plan.config_path == "/usr/share/swampd/config-asrr.json"
           && plan.controller_service == "phosphor-pid-control.service"
           && plan.desired_curve == fleet_quiet_temp_soc_fan_curve
           && plan.projection == srv4_bmc_fan_projection_capability
       Noop => false
-      Refuse { reason: _ } => false
+      std.upsert_decision.Refuse { reason: _ } => false
     }
     && without_storage.verdict == UnknownRefused
     && match without_storage.decision {
-      Refuse { reason: _ } => true
+      std.upsert_decision.Refuse { reason: _ } => true
       Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
     && without_projection.verdict == UnknownRefused
     && match without_projection.decision {
-      Refuse { reason: _ } => true
+      std.upsert_decision.Refuse { reason: _ } => true
       Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
 }
 
@@ -854,9 +854,9 @@ test fn projection_firmware_mismatch_refuses_a_322_projection_on_a_306_host() ->
   )
   classified.verdict == UnknownRefused
     && match classified.decision {
-      Refuse { reason: _ } => true
+      std.upsert_decision.Refuse { reason: _ } => true
       Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
 }
 
@@ -876,9 +876,9 @@ test fn srv3_fan_realization_refuses_without_a_modeled_projection() -> Bool {
   )
   classified.verdict == UnknownRefused
     && match classified.decision {
-      Refuse { reason: _ } => true
+      std.upsert_decision.Refuse { reason: _ } => true
       Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
 }
 
@@ -994,14 +994,14 @@ test fn relabeled_reboot_construction_refusal_propagates_through_classification(
   )
   classified.verdict == UnknownRefused
     && match classified.decision {
-      Refuse { reason: reason } =>
+      std.upsert_decision.Refuse { reason: reason } =>
         string_contains(s: reason, pattern: "durability evidence construction refused")
           && string_contains(
             s: reason,
             pattern: "active config digest does not match the perturbation capability projected config digest",
           )
       Noop => false
-      Apply { plan: _ } => false
+      std.upsert_decision.Apply { plan: _ } => false
     }
 }
 
@@ -1031,9 +1031,9 @@ test fn semantically_converged_live_digest_mismatch_refuses_noop() -> Bool {
   )
   classified.verdict == std.upsert_decision.Drifted
     && match classified.decision {
-      Apply { plan: _ } => true
+      std.upsert_decision.Apply { plan: _ } => true
       Noop => false
-      Refuse { reason: _ } => false
+      std.upsert_decision.Refuse { reason: _ } => false
     }
 }
 
@@ -1052,9 +1052,9 @@ test fn drifted_policy_applies_without_prior_durability_evidence() -> Bool {
   )
   classified.verdict == std.upsert_decision.Drifted
     && match classified.decision {
-      Apply { plan: _ } => true
+      std.upsert_decision.Apply { plan: _ } => true
       Noop => false
-      Refuse { reason: _ } => false
+      std.upsert_decision.Refuse { reason: _ } => false
     }
 }
 

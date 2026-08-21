@@ -1,11 +1,11 @@
 module v2.test.claim.self_host.emit_coverage_frontier_test
 
 
-test fn witness_roster_total_holds() -> Bool {
+test fn witness_roster_total_holds() -> v2.std.logic.Bool {
   coverage_frontier_total_holds()
 }
 
-test fn witness_each_subject_has_exactly_one_row() -> Bool {
+test fn witness_each_subject_has_exactly_one_row() -> v2.std.logic.Bool {
   fold(
     emit_coverage_frontier_roster,
     init: true,
@@ -15,7 +15,7 @@ test fn witness_each_subject_has_exactly_one_row() -> Bool {
   )
 }
 
-test fn witness_unlisted_subject_has_no_row() -> Bool {
+test fn witness_unlisted_subject_has_no_row() -> v2.std.logic.Bool {
   length(
     xs: coverage_frontier_row_for_subject(
       subject: coverage_subject(
@@ -26,12 +26,12 @@ test fn witness_unlisted_subject_has_no_row() -> Bool {
   ) == 0
 }
 
-test fn witness_split_matches_expected() -> Bool {
+test fn witness_split_matches_expected() -> v2.std.logic.Bool {
   (length(xs: self_emitted_native_rows()) == 1)
     && (length(xs: interpreter_retained_rows()) == 14)
 }
 
-test fn witness_only_classical_not_ingested_is_native() -> Bool {
+test fn witness_only_classical_not_ingested_is_native() -> v2.std.logic.Bool {
   let natives = self_emitted_native_rows()
   (length(xs: natives) == 1)
     && fold(
@@ -41,7 +41,7 @@ test fn witness_only_classical_not_ingested_is_native() -> Bool {
     )
 }
 
-test fn witness_real_native_row_is_backed() -> Bool {
+test fn witness_real_native_row_is_backed() -> v2.std.logic.Bool {
   fold(
     self_emitted_native_rows(),
     init: true,
@@ -49,7 +49,7 @@ test fn witness_real_native_row_is_backed() -> Bool {
   )
 }
 
-test fn witness_all_claims_backed_holds() -> Bool {
+test fn witness_all_claims_backed_holds() -> v2.std.logic.Bool {
   coverage_frontier_all_native_claims_backed()
 }
 
@@ -70,7 +70,7 @@ fn synthetic_unbacked_native_row() -> v2.compiler.self_host.emit_coverage_fronti
   }
 }
 
-test fn witness_synthetic_unbacked_claim_reds() -> Bool {
+test fn witness_synthetic_unbacked_claim_reds() -> v2.std.logic.Bool {
   let probe = synthetic_unbacked_native_row()
   coverage_row_is_native(row: probe) && !coverage_row_backing_is_enrolled(row: probe)
 }

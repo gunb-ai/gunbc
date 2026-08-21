@@ -43,7 +43,7 @@ fn supply_rail_symbol(r: Ice40SupplyRail) -> std.types.NonEmptyStr {
 // silently redefines the equality relation, and two members could be made equal by a copy-edit.
 // The exhaustive match means a new member cannot be added without receiving one, and the residual
 // risk becomes a shared tag, which a witness decides by execution.
-fn supply_rail_tag(r: Ice40SupplyRail) -> Int {
+fn supply_rail_tag(r: Ice40SupplyRail) -> std.integer.Int {
   match r {
     CoreSupply => 1
     PllSupply => 2
@@ -95,7 +95,7 @@ fn configuration_mode_name(m: Ice40ConfigurationMode) -> std.types.NonEmptyStr {
   }
 }
 
-fn configuration_mode_tag(m: Ice40ConfigurationMode) -> Int {
+fn configuration_mode_tag(m: Ice40ConfigurationMode) -> std.integer.Int {
   match m {
     SlaveSpiConfiguration => 1
     MasterSpiConfiguration => 2

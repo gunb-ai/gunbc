@@ -12,7 +12,7 @@ test fn a_listing_naming_only_linger_puts_reboot_in_the_install_set() -> Bool {
   missing.length() == 1
     && any(missing, m => match m {
          gunbc.spark.managed_access_bootstrap.RebootThisHost => true
-         EnableLingerForOwnAccount => false
+         gunbc.spark.managed_access_bootstrap.EnableLingerForOwnAccount => false
        })
 }
 
@@ -27,7 +27,7 @@ test fn the_same_listing_with_reboot_added_installs_nothing() -> Bool {
 // Sudo demanding a password IS the answer "none", successfully obtained, so every desired grant is
 // missing and the remedy is to install them.
 test fn a_password_demand_is_an_observation_that_no_grant_is_held() -> Bool {
-  let o = GrantAbsent { detail: "exit=1 stderr=sudo: a password is required" }
+  let o = gunbc.spark.managed_access_bootstrap.GrantAbsent { detail: "exit=1 stderr=sudo: a password is required" }
   spark_managed_grants_to_install(outcome: o).length() == spark_managed_grant_population.length()
     && spark_managed_grants_unobserved(outcome: o).length() == 0
 }
@@ -37,7 +37,7 @@ test fn a_password_demand_is_an_observation_that_no_grant_is_held() -> Bool {
 // entries on a host we could not measure is actuating on ignorance, and it is the exact shape of the
 // absorbing fallback the repo forbids.
 test fn a_probe_that_failed_for_another_reason_installs_nothing() -> Bool {
-  let o = GrantAbsent { detail: "exit=255 stderr=ssh: connect to host srv6 port 22: No route to host" }
+  let o = gunbc.spark.managed_access_bootstrap.GrantAbsent { detail: "exit=255 stderr=ssh: connect to host srv6 port 22: No route to host" }
   spark_managed_grants_to_install(outcome: o).length() == 0
     && spark_managed_grants_unobserved(outcome: o).length() == spark_managed_grant_population.length()
     && !spark_managed_grants_converged(outcome: o)
@@ -87,7 +87,7 @@ test fn no_grant_is_written_as_a_wildcard() -> Bool {
 // would differ from the first.
 test fn each_grant_lands_in_its_own_dropin_file() -> Bool {
   spark_managed_grant_dropin_path(grant: gunbc.spark.managed_access_bootstrap.RebootThisHost) as String
-    != spark_managed_grant_dropin_path(grant: EnableLingerForOwnAccount) as String
+    != spark_managed_grant_dropin_path(grant: gunbc.spark.managed_access_bootstrap.EnableLingerForOwnAccount) as String
     && string_contains(spark_managed_grant_dropin_path(grant: gunbc.spark.managed_access_bootstrap.RebootThisHost) as String, "/etc/sudoers.d/")
 }
 
@@ -103,7 +103,7 @@ test fn the_report_names_the_missing_grant_and_where_it_goes() -> Bool {
 
 test fn a_held_grant_reports_held_rather_than_silence() -> Bool {
   match spark_managed_grant_standing_from_outcome(
-    grant: EnableLingerForOwnAccount,
+    grant: gunbc.spark.managed_access_bootstrap.EnableLingerForOwnAccount,
     outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_before },
   ) {
     gunbc.spark.managed_grant_reconcile.GrantHeld { grant: _ } => true

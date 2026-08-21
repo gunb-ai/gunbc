@@ -63,7 +63,7 @@ fn positional(target: v2.std.node.Node) -> v2.std.node.Edge {
 // FROZEN VECTORS -- exhaustive over the protocol's closed branches.
 //
 // The expected digest for each arm comes from a MATCH over the coproduct, not a list of claims. That
-// is the point: adding a `Connective` or `Behavior` arm makes these matches non-exhaustive and the
+// is the point: adding a `v2.std.node.Connective` or `Behavior` arm makes these matches non-exhaustive and the
 // module stops compiling until the new arm is given a vector. Coverage of the current protocol is
 // therefore structural rather than a roster someone must remember to extend.
 
@@ -72,7 +72,7 @@ fn expected_childless_connective_digest(c: v2.std.node.Connective) -> String {
     Conj => "c56b5515d62d08bf"
     Disj => "d18c6b0885dc88e2"
     Arrow => "cddb68d14dfd306e"
-    Cardinality => "dbe6cb930047e16f"
+    v2.std.node.Cardinality => "dbe6cb930047e16f"
     Instantiation => "4d19a656f5ebd992"
     Atom { identity: _ } => "8a32b46ce830ef4c"
   }
@@ -81,24 +81,24 @@ fn expected_childless_connective_digest(c: v2.std.node.Connective) -> String {
 fn expected_childless_behavior_digest(b: v2.std.node.Behavior) -> String {
   match b {
     Value => "985af5d2060f85ca"
-    Transform => "1381ca3dff032667"
+    v2.std.node.Transform => "1381ca3dff032667"
     Branch => "b3d4fb128d8a0e0f"
     Loop => "c61f8557ca6645ac"
-    Bind => "662cad8d0032d8ee"
+    v2.std.node.Bind => "662cad8d0032d8ee"
     Match => "9b19b7f9a41ec60a"
   }
 }
 
-fn connective_vector_holds(c: v2.std.node.Connective) -> std.types.Bool {
+fn connective_vector_holds(c: v2.std.node.Connective) -> Bool {
   digest_of(n: ty(c: c, children: [])) == expected_childless_connective_digest(c: c)
 }
 
-fn behavior_vector_holds(b: v2.std.node.Behavior) -> std.types.Bool {
+fn behavior_vector_holds(b: v2.std.node.Behavior) -> Bool {
   digest_of(n: comp(b: b, children: [])) == expected_childless_behavior_digest(b: b)
 }
 
-// Every Connective arm. The Atom vector uses ^alpha, the symbol its expected value was derived for.
-test fn every_connective_matches_its_frozen_vector() -> std.types.Bool {
+// Every v2.std.node.Connective arm. The Atom vector uses ^alpha, the symbol its expected value was derived for.
+test fn every_connective_matches_its_frozen_vector() -> Bool {
   connective_vector_holds(c: v2.std.node.Conj)
     && connective_vector_holds(c: v2.std.node.Disj)
     && connective_vector_holds(c: v2.std.node.Arrow)
@@ -108,7 +108,7 @@ test fn every_connective_matches_its_frozen_vector() -> std.types.Bool {
 }
 
 // Every Behavior arm.
-test fn every_behavior_matches_its_frozen_vector() -> std.types.Bool {
+test fn every_behavior_matches_its_frozen_vector() -> Bool {
   behavior_vector_holds(b: v2.std.node.Value)
     && behavior_vector_holds(b: v2.std.node.Transform)
     && behavior_vector_holds(b: v2.std.node.Branch)
@@ -129,18 +129,18 @@ test fn every_behavior_matches_its_frozen_vector() -> std.types.Bool {
 // implementation that did no reordering at all, so each composite specimen below is authored
 // DELIBERATELY OUT OF ORDER.
 
-test fn no_edges_discipline_matches_its_vector() -> std.types.Bool {
+test fn no_edges_discipline_matches_its_vector() -> Bool {
   digest_of(n: atom_node(identity: ^alpha)) == "8a32b46ce830ef4c"
 }
 
-test fn labeled_edges_discipline_matches_its_vector() -> std.types.Bool {
+test fn labeled_edges_discipline_matches_its_vector() -> Bool {
   digest_of(n: ty(c: v2.std.node.Conj, children: [
     named(name: ^f, target: atom_node(identity: ^alpha)),
     named(name: ^g, target: atom_node(identity: ^beta)),
   ])) == "27b43e6a2a853e35"
 }
 
-test fn positional_edges_discipline_matches_its_vector() -> std.types.Bool {
+test fn positional_edges_discipline_matches_its_vector() -> Bool {
   digest_of(n: ty(c: v2.std.node.Cardinality, children: [
     positional(target: atom_node(identity: ^alpha)),
     positional(target: atom_node(identity: ^beta)),
@@ -149,7 +149,7 @@ test fn positional_edges_discipline_matches_its_vector() -> std.types.Bool {
 
 // Authored body-first, then g, then the positional signature, then f -- i.e. every group out of
 // canonical order at once.
-test fn arrow_body_discipline_matches_its_vector() -> std.types.Bool {
+test fn arrow_body_discipline_matches_its_vector() -> Bool {
   digest_of(n: ty(c: v2.std.node.Arrow, children: [
     named(name: ^arrow_body_edge, target: atom_node(identity: ^body)),
     named(name: ^g, target: atom_node(identity: ^beta)),
@@ -158,7 +158,7 @@ test fn arrow_body_discipline_matches_its_vector() -> std.types.Bool {
   ])) == "838a07cf36bb337b"
 }
 
-test fn loop_bound_discipline_matches_its_vector() -> std.types.Bool {
+test fn loop_bound_discipline_matches_its_vector() -> Bool {
   digest_of(n: comp(b: v2.std.node.Loop, children: [
     named(name: ^loop_bound_edge, target: atom_node(identity: ^bound)),
     named(name: ^g, target: atom_node(identity: ^beta)),
@@ -168,7 +168,7 @@ test fn loop_bound_discipline_matches_its_vector() -> std.types.Bool {
 }
 
 // Parent assembly from child identities, two levels deep.
-test fn nested_assembly_matches_its_vector() -> std.types.Bool {
+test fn nested_assembly_matches_its_vector() -> Bool {
   digest_of(n: ty(c: v2.std.node.Conj, children: [
     named(name: ^f, target: ty(c: v2.std.node.Conj, children: [
       named(name: ^g, target: atom_node(identity: ^deep)),
@@ -195,21 +195,21 @@ fn minted_atom(identity: v2.std.node.Symbol, id: Int) -> v2.std.node.Node {
 
 // LAW: occurrence provenance is erased. Occurrence ids are graph-scoped allocator output, so two
 // independently-built copies of one program carry different ones and must still be one identity.
-test fn occurrence_provenance_is_erased() -> std.types.Bool {
+test fn occurrence_provenance_is_erased() -> Bool {
   digest_of(n: atom_node(identity: ^alpha)) == digest_of(n: minted_atom(identity: ^alpha, id: 41))
     && digest_of(n: minted_atom(identity: ^alpha, id: 41))
       == digest_of(n: minted_atom(identity: ^alpha, id: 900))
 }
 
 // LAW: occurrence provenance is erased at DEPTH, not only at the root.
-test fn nested_occurrence_provenance_is_erased() -> std.types.Bool {
+test fn nested_occurrence_provenance_is_erased() -> Bool {
   digest_of(n: ty(c: v2.std.node.Conj, children: [named(name: ^f, target: atom_node(identity: ^alpha))]))
     == digest_of(n: ty(c: v2.std.node.Conj, children: [named(name: ^f, target: minted_atom(identity: ^alpha, id: 77))]))
 }
 
 // LAW: authored order of NAMED siblings is erased under LabeledEdges. Both orders are one identity,
 // and the frozen vector above pins which identity that is.
-test fn authored_named_sibling_order_is_erased() -> std.types.Bool {
+test fn authored_named_sibling_order_is_erased() -> Bool {
   digest_of(n: ty(c: v2.std.node.Conj, children: [
     named(name: ^f, target: atom_node(identity: ^alpha)),
     named(name: ^g, target: atom_node(identity: ^beta)),
@@ -220,7 +220,7 @@ test fn authored_named_sibling_order_is_erased() -> std.types.Bool {
 }
 
 // LAW: named sibling order is erased at DEPTH. This is the one a root-only canonicalizer fails.
-test fn nested_named_sibling_order_is_erased() -> std.types.Bool {
+test fn nested_named_sibling_order_is_erased() -> Bool {
   digest_of(n: ty(c: v2.std.node.Conj, children: [named(name: ^f, target: ty(c: v2.std.node.Conj, children: [
     named(name: ^f, target: atom_node(identity: ^x)),
     named(name: ^g, target: atom_node(identity: ^y)),
@@ -243,30 +243,30 @@ test fn nested_named_sibling_order_is_erased() -> std.types.Bool {
 // which fnv1a64 cannot support anyway -- a 64-bit locator has collisions by counting.
 
 // The kind axis: two Behaviors, nothing else differing.
-test fn behavior_is_not_erased() -> std.types.Bool {
+test fn behavior_is_not_erased() -> Bool {
   digest_of(n: comp(b: v2.std.node.Transform, children: [])) != digest_of(n: comp(b: v2.std.node.Branch, children: []))
 }
 
 // The kind axis across the TypeNode/ComputationNode split.
-test fn node_kind_family_is_not_erased() -> std.types.Bool {
+test fn node_kind_family_is_not_erased() -> Bool {
   digest_of(n: ty(c: v2.std.node.Conj, children: [])) != digest_of(n: comp(b: v2.std.node.Value, children: []))
 }
 
 // The atom symbol axis -- a rule that hashed only the constructor tag would pass everything above.
-test fn atom_symbol_is_not_erased() -> std.types.Bool {
+test fn atom_symbol_is_not_erased() -> Bool {
   digest_of(n: atom_node(identity: ^alpha)) != digest_of(n: atom_node(identity: ^beta))
 }
 
 // The edge label axis: same child, same kind, different binding name.
-test fn named_edge_label_is_not_erased() -> std.types.Bool {
+test fn named_edge_label_is_not_erased() -> Bool {
   digest_of(n: ty(c: v2.std.node.Conj, children: [named(name: ^f, target: atom_node(identity: ^x))]))
     != digest_of(n: ty(c: v2.std.node.Conj, children: [named(name: ^g, target: atom_node(identity: ^x))]))
 }
 
 // The positional order axis. This is the counterpart to the named-order quotient law: named order is
 // erased, positional order is PRESERVED, and a canonicalizer that sorted everything uniformly would
-// satisfy the quotient laws while destroying this. Cardinality takes PositionalEdges.
-test fn positional_order_is_not_erased() -> std.types.Bool {
+// satisfy the quotient laws while destroying this. v2.std.node.Cardinality takes PositionalEdges.
+test fn positional_order_is_not_erased() -> Bool {
   digest_of(n: ty(c: v2.std.node.Cardinality, children: [
     positional(target: atom_node(identity: ^a)),
     positional(target: atom_node(identity: ^b)),
@@ -278,7 +278,7 @@ test fn positional_order_is_not_erased() -> std.types.Bool {
 
 // The child content axis: identical shape and labels, one differing leaf, so the parent digest must
 // differ. This is what makes the identity structural rather than shape-only.
-test fn child_content_is_not_erased() -> std.types.Bool {
+test fn child_content_is_not_erased() -> Bool {
   digest_of(n: ty(c: v2.std.node.Conj, children: [named(name: ^f, target: atom_node(identity: ^x))]))
     != digest_of(n: ty(c: v2.std.node.Conj, children: [named(name: ^f, target: atom_node(identity: ^y))]))
 }
@@ -286,7 +286,7 @@ test fn child_content_is_not_erased() -> std.types.Bool {
 // The distinguished-edge position axis: under ArrowBodyEdges the body edge is pinned LAST regardless
 // of authored position, so moving an ORDINARY named edge across it must still change nothing (that
 // is the quotient), while the body edge carrying different content must change the digest.
-test fn arrow_body_content_is_not_erased() -> std.types.Bool {
+test fn arrow_body_content_is_not_erased() -> Bool {
   digest_of(n: ty(c: v2.std.node.Arrow, children: [
     named(name: ^arrow_body_edge, target: atom_node(identity: ^body)),
     positional(target: atom_node(identity: ^sig)),

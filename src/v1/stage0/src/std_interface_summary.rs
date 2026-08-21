@@ -3,16 +3,14 @@
 
 use self::ExportKind::*;
 use self::InterfaceContract::*;
-use crate::std_content_hash::ContentHash::*;
+pub use crate::std_content_hash::Fnv1a64Structural;
 pub use crate::std_content_hash::{
-    as_content_hash_structural, content_hash_atom, content_hash_combine_structural,
-    content_hash_tagged, content_hash_tagged_structural,
+    content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural,
 };
-pub use crate::std_content_hash::{ContentHash, Fnv1a64Structural};
-use crate::std_decl_ref::DeclField::WholeDeclaration;
+use crate::std_decl_ref::DeclField::*;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
-use crate::std_disposition::ConstructionMechanism::SingleAuthority;
-use crate::std_disposition::Disposition::Scaffold;
+use crate::std_disposition::ConstructionMechanism::*;
+use crate::std_disposition::Disposition::*;
 pub use crate::std_disposition::{ConstructionMechanism, Disposition};
 pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
@@ -77,11 +75,11 @@ pub fn interface_summary_v0_dissolution_trigger() -> Rc<Disposition> {
             static CACHED: Rc<Disposition> = {
                 Rc::new(Disposition::Scaffold {
         dissolves_to: ConstructionMechanism::SingleAuthority,
-        bind: Rc::new(DeclarationRef {
+        bind: DeclarationRef {
         module_path: "std.interface_summary".to_string(),
         decl_name: "export_entry_fingerprint".to_string(),
         field: Rc::new(DeclField::WholeDeclaration),
-    }),
+    },
     })
             };
         }
@@ -156,14 +154,14 @@ pub fn module_key(
     )
 }
 
-pub fn typed_module_key_note() -> NonEmptyStr {
+pub fn typed_module_key_note() -> String {
     thread_local! {
-        static CACHED: NonEmptyStr = {
+        static CACHED: String = {
             serde_json::from_value(serde_json::json!("A typed module's content-key = its interface module_key (source hash + direct-import interface hashes) + the compiler's own identity. The compiler is itself an input to the typed result (a seed regen changes inference), so a memo keyed on module_key alone would serve a stale typed module across a rebuild. compiler_identity is consumed here, not authored here — its derivation is the store realization's concern. This is the pure key for the cross-entry typed-module memo (docs/plans/cross-entry-typed-module-memo-sketch.md); the store, eviction, and ComputationIdentity wrapping land downstream."))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &NonEmptyStr| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn typed_module_key_v1_seed_bridge_note() -> String {

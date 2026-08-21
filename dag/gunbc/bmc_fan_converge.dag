@@ -1332,7 +1332,7 @@ fn bmc_fan_observe_only_with_credential(
         durability_evidence: target.durability_evidence,
       )
       match classified.decision {
-        Refuse { reason: reason } =>
+        std.upsert_decision.Refuse { reason: reason } =>
           exit_failure(reason: concat("BMC fan read-only classification refused: ", reason))
         Noop =>
           match target.projection {
@@ -1344,7 +1344,7 @@ fn bmc_fan_observe_only_with_credential(
                 intent: fleet_bmc_valid_state,
                 projection: projection,
               ) {
-                Absent => ExitSuccess
+                Absent => std.process.ExitSuccess
                 Present { value: reason } =>
                   exit_failure(
                     reason: concat(
@@ -1354,7 +1354,7 @@ fn bmc_fan_observe_only_with_credential(
                   )
               }
           }
-        Apply { plan: plan } =>
+        std.upsert_decision.Apply { plan: plan } =>
           match bmc_fan_live_thermal_tach_safety_refusal(
             observation: observed,
             intent: fleet_bmc_valid_state,
@@ -1407,7 +1407,7 @@ fn bmc_fan_converge_with_credential(
         durability_evidence: target.durability_evidence,
       )
       match classified.decision {
-        Refuse { reason: reason } =>
+        std.upsert_decision.Refuse { reason: reason } =>
           exit_failure(reason: concat("BMC fan convergence refused: ", reason))
         Noop =>
           match target.projection {
@@ -1419,7 +1419,7 @@ fn bmc_fan_converge_with_credential(
                 intent: fleet_bmc_valid_state,
                 projection: projection,
               ) {
-                Absent => ExitSuccess
+                Absent => std.process.ExitSuccess
                 Present { value: reason } =>
                   exit_failure(
                     reason: concat(
@@ -1429,7 +1429,7 @@ fn bmc_fan_converge_with_credential(
                   )
               }
           }
-        Apply { plan: plan } =>
+        std.upsert_decision.Apply { plan: plan } =>
           match bmc_fan_live_thermal_tach_safety_refusal(
             observation: observed,
             intent: fleet_bmc_valid_state,

@@ -27,7 +27,7 @@ data vivid_eagle_srv3_installation_probe_note: String = "vivid-eagle-131 read-on
 
 data srv4_installation_reach_refused_note: String = "srv4 NO OBSERVATION (vivid-eagle-131 2026-08-07): srv2->192.168.1.196 as briansrls/ubuntu/ghrunner and srv3 hop all Permission denied or host-key verification failed. Carry ReachRefused — do not infer slot state from srv3."
 
-data runner_slot_installation_predicate_family_disposition: std.disposition.Disposition = Terminal {
+data runner_slot_installation_predicate_family_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "runner_slot_add_requires_incarnation_replace and the runner_slot_installation_is_* / runner_slot_installation_observation_* Bool helpers are total matches over RunnerSlotInstallationState / RunnerSlotInstallationObservation — every variant has an explicit arm, no top-level wildcard false arm. Unlike fleet_runner_connectivity connectivity_verdict_is_* (wildcard false arms, enrolled in non_fold_residue_frontier), these dissolve at authoring; NFR rows would stale the roster."
 }
 

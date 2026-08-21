@@ -9,18 +9,18 @@ fn hole_kind() -> v2.std.node.NodeKind {
 fn hole_node() -> v2.std.node.Node {
   node_synthetic(kind: hole_kind(), children: [])
 }
-fn is_hole(n: v2.std.node.Node) -> Bool {
+fn is_hole(n: v2.std.node.Node) -> v2.std.logic.Bool {
   n.kind == hole_kind()
 }
 
-fn is_leaf(n: v2.std.node.Node) -> Bool {
+fn is_leaf(n: v2.std.node.Node) -> v2.std.logic.Bool {
   v2.std.algebra.is_empty(xs: n.children)
 }
 
-fn edge_labels_eq(ea: v2.std.node.Edge, eb: v2.std.node.Edge) -> Bool {
+fn edge_labels_eq(ea: v2.std.node.Edge, eb: v2.std.node.Edge) -> v2.std.logic.Bool {
   ea.label == eb.label
 }
-fn children_aligned(a: v2.std.node.Node, b: v2.std.node.Node) -> Bool {
+fn children_aligned(a: v2.std.node.Node, b: v2.std.node.Node) -> v2.std.logic.Bool {
   a.kind == b.kind
     && zip_eq(a: a.children, b: b.children, eq: fn(ea, eb) { edge_labels_eq(ea: ea, eb: eb) })
 }
@@ -113,11 +113,11 @@ fn anti_unify_chain(steps: FreeMonoid<v2.std.node.Node>) -> ChainGeneralization 
   chain_generalization_for(template: chain_template(steps: steps), steps: steps)
 }
 
-fn template_has_hole(template: v2.std.node.Node) -> Bool {
+fn template_has_hole(template: v2.std.node.Node) -> v2.std.logic.Bool {
   any(xs: node_subtree_nodes(root: template), predicate: fn(n) { is_hole(n) })
 }
 
-fn fillings_all_leaves(per_element: FreeMonoid<FreeMonoid<v2.std.node.Node>>) -> Bool {
+fn fillings_all_leaves(per_element: FreeMonoid<FreeMonoid<v2.std.node.Node>>) -> v2.std.logic.Bool {
   for_all(
     xs: per_element,
     predicate: fn(fills) { for_all(xs: fills, predicate: fn(f) { is_leaf(f) }) }

@@ -54,7 +54,7 @@ fn spark_serving_grant_outcome_from_probe(probe: extdeps.ssh.session.SshSessionE
       if r.success {
         gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: r.stdout }
       } else {
-        GrantAbsent { detail: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+        gunbc.spark.managed_access_bootstrap.GrantAbsent { detail: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
       }
   }
 }
@@ -587,7 +587,7 @@ func spark_serving_observe_with_attempt(attempt_raw: String) -> std.process.Proc
       } else {
         let w = Filesystem.Write(path: spark_serving_observe_receipt_path, content: receipt)
         if w.success {
-          ExitSuccess
+          std.process.ExitSuccess
         } else {
           exit_failure(reason: join(["spark serving observe receipt write failed: ", w.error], ""))
         }
@@ -655,7 +655,7 @@ func spark_serving_observe_ci_with_context(
       ),
     )
   } else {
-    ExitSuccess
+    std.process.ExitSuccess
   }
 }
 
@@ -947,7 +947,7 @@ fn spark_serving_manifest_layer_digests(doc: extdeps.languages.json.emit.JsonVal
   match json_object_unique_member(v: doc, key: "layers") {
     extdeps.languages.json.parse.JsonMemberFound { value: layers } =>
       match layers {
-        JsonArray { elements: els } =>
+        extdeps.languages.json.emit.JsonArray { elements: els } =>
           fold(els, init: SparkServingManifestNamesNoBlobs, f: fn(acc, el) {
             match acc {
               SparkServingManifestMalformed { detail: d } =>
@@ -969,15 +969,15 @@ fn spark_serving_manifest_layer_digests(doc: extdeps.languages.json.emit.JsonVal
                 }
             }
           })
-        JsonObject { members: _ } =>
+        extdeps.languages.json.emit.JsonObject { members: _ } =>
           SparkServingManifestMalformed { detail: "manifest layers is not an array" as std.types.NonEmptyStr }
-        JsonString { value: _ } =>
+        extdeps.languages.json.emit.JsonString { value: _ } =>
           SparkServingManifestMalformed { detail: "manifest layers is not an array" as std.types.NonEmptyStr }
-        JsonNumber { lexeme: _ } =>
+        extdeps.languages.json.emit.JsonNumber { lexeme: _ } =>
           SparkServingManifestMalformed { detail: "manifest layers is not an array" as std.types.NonEmptyStr }
-        JsonBool { value: _ } =>
+        extdeps.languages.json.emit.JsonBool { value: _ } =>
           SparkServingManifestMalformed { detail: "manifest layers is not an array" as std.types.NonEmptyStr }
-        JsonNull =>
+        extdeps.languages.json.emit.JsonNull =>
           SparkServingManifestMalformed { detail: "manifest layers is not an array" as std.types.NonEmptyStr }
       }
     extdeps.languages.json.parse.JsonMemberAbsent => SparkServingManifestNamesNoBlobs

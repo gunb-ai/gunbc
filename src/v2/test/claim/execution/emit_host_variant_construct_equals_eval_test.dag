@@ -18,7 +18,7 @@ fn emit_variant_construct_eval_generic_facts(node: v2.std.node.Node) -> v2.compi
   )
 }
 
-fn emit_variant_construct_eval_composed_facts(key: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn emit_variant_construct_eval_composed_facts(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   v2.std.optional.optional_present(value: emit_variant_construct_eval_generic_facts(node: key))
 }
 
@@ -63,7 +63,7 @@ fn emit_variant_construct_eval_variant_tag_id(node: v2.std.node.Node) -> v2.std.
                 d: emit_variant_construct_eval_diagnostic(reason: ^emit_variant_construct_eval_variant_tag_miss, node: node)
               )
           }
-        Rejected { diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: _ } =>
           v2.std.diagnostic.outcome_rejected(
             d: emit_variant_construct_eval_diagnostic(reason: ^emit_variant_construct_eval_variant_tag_miss, node: node)
           )
@@ -161,11 +161,11 @@ fn emit_variant_construct_eval_bind_value(
 
 fn emit_variant_construct_eval_nth_arm_wire(node: v2.std.node.Node, wanted: Int) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match v2.std.collection.list_at_optional(xs: node.children, index: wanted) {
-    Present { value: child } =>
+    v2.std.optional.Present { value: child } =>
       match child {
         Edge { label: _, target: arm_wire } => v2.std.diagnostic.outcome_accepted(value: arm_wire)
       }
-    Absent =>
+    v2.std.optional.Absent =>
       v2.std.diagnostic.outcome_rejected(
         d: emit_variant_construct_eval_diagnostic(reason: ^emit_variant_construct_eval_arm_miss, node: node)
       )
@@ -175,15 +175,15 @@ fn emit_variant_construct_eval_nth_arm_wire(node: v2.std.node.Node, wanted: Int)
 fn emit_variant_construct_eval_arm_body_node(arm_wire: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match v2.std.node_query.find_named_child(root: arm_wire, name: v2.std.node.match_arm_body) {
     Accepted { value: body, diagnostics: _ } => v2.std.diagnostic.outcome_accepted(value: body)
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
-fn emit_variant_construct_eval_scrutinee_is_holds(value: v2.std.runtime.RuntimeValue) -> Bool {
+fn emit_variant_construct_eval_scrutinee_is_holds(value: v2.std.runtime.RuntimeValue) -> v2.std.logic.Bool {
   value == emit_variant_construct_eval_octet_value(n: 1)
 }
 
-fn emit_variant_construct_eval_scrutinee_is_true(value: v2.std.runtime.RuntimeValue) -> Bool {
+fn emit_variant_construct_eval_scrutinee_is_true(value: v2.std.runtime.RuntimeValue) -> v2.std.logic.Bool {
   value == emit_variant_construct_eval_octet_value(n: 0)
 }
 
@@ -196,13 +196,13 @@ fn emit_variant_construct_eval_choose_arm(
     match emit_variant_construct_eval_nth_arm_wire(node: node, wanted: 1) {
       Accepted { value: arm, diagnostics: _ } =>
         emit_variant_construct_eval_arm_body_node(arm_wire: extdeps.vendor.arm.arm)
-      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }
   } else if emit_variant_construct_eval_scrutinee_is_true(value: scrutinee) {
     match emit_variant_construct_eval_nth_arm_wire(node: node, wanted: 2) {
       Accepted { value: arm, diagnostics: _ } =>
         emit_variant_construct_eval_arm_body_node(arm_wire: extdeps.vendor.arm.arm)
-      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }
   } else {
     v2.std.diagnostic.outcome_rejected(
@@ -266,31 +266,31 @@ fn emit_variant_construct_eval_run(tree: v2.compiler.inferred_tree.InferredTree)
   )
 }
 
-fn emit_variant_construct_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> Bool {
+fn emit_variant_construct_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> v2.std.logic.Bool {
   match run.verdict {
     Pass => true
     SemanticMismatch { actual: _, falsification: _ } => false
-    BuildFailed { actual: _, diagnostic: _ } => false
+    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
 }
 
-fn emit_variant_construct_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> Bool {
+fn emit_variant_construct_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> v2.std.logic.Bool {
   match run.verdict {
     SemanticMismatch { actual: _, falsification: _ } => true
     Pass => false
-    BuildFailed { actual: _, diagnostic: _ } => false
+    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
 }
 
-test fn emit_host_variant_construct_equals_eval_holds() -> Bool {
+test fn emit_host_variant_construct_equals_eval_holds() -> v2.std.logic.Bool {
   emit_variant_construct_eval_verdict_is_pass(run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree))
 }
 
-test fn emit_host_variant_construct_wrong_fixture_refuses_holds() -> Bool {
+test fn emit_host_variant_construct_wrong_fixture_refuses_holds() -> v2.std.logic.Bool {
   emit_variant_construct_eval_verdict_is_semantic_mismatch(
     run: emit_variant_construct_eval_run(tree: emit_variant_construct_eval_wrong_value_tree)
   )

@@ -3,19 +3,19 @@ module v2.test.manual.fold_call_closure_emit
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn fold_call_atom(id: v2.std.node.Symbol) -> Node {
+fn fold_call_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } }, children: [])
 }
 
-fn fold_call_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: Named { name: name }, target: target }
+fn fold_call_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: target }
 }
 
-fn fold_call_positional(target: Node) -> v2.std.node.Edge {
+fn fold_call_positional(target: v2.std.node.Node) -> v2.std.node.Edge {
   v2.std.node.Edge { label: Positional, target: target }
 }
 
-fn fold_call_domain_conj(params: List<v2.std.node.Symbol>) -> Node {
+fn fold_call_domain_conj(params: List<v2.std.node.Symbol>) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -25,7 +25,7 @@ fn fold_call_domain_conj(params: List<v2.std.node.Symbol>) -> Node {
   )
 }
 
-fn fold_call_closure_arrow(left_operand: v2.std.node.Symbol, right_operand: v2.std.node.Symbol) -> Node {
+fn fold_call_closure_arrow(left_operand: v2.std.node.Symbol, right_operand: v2.std.node.Symbol) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -60,7 +60,7 @@ fn fold_call_closure_arrow(left_operand: v2.std.node.Symbol, right_operand: v2.s
   )
 }
 
-fn fold_call_body(closure: Node) -> Node {
+fn fold_call_body(closure: v2.std.node.Node) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
     children: [
@@ -72,7 +72,7 @@ fn fold_call_body(closure: Node) -> Node {
   )
 }
 
-fn fold_call_arrow(closure: Node) -> Node {
+fn fold_call_arrow(closure: v2.std.node.Node) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -88,7 +88,7 @@ fn fold_call_arrow(closure: Node) -> Node {
   )
 }
 
-fn fold_call_canonical_arrow() -> Node {
+fn fold_call_canonical_arrow() -> v2.std.node.Node {
   fold_call_arrow(
     closure: fold_call_closure_arrow(
       left_operand: ^fold_call_closure_acc,
@@ -97,7 +97,7 @@ fn fold_call_canonical_arrow() -> Node {
   )
 }
 
-fn fold_call_swapped_arrow() -> Node {
+fn fold_call_swapped_arrow() -> v2.std.node.Node {
   fold_call_arrow(
     closure: fold_call_closure_arrow(
       left_operand: ^fold_call_closure_h,
@@ -106,7 +106,7 @@ fn fold_call_swapped_arrow() -> Node {
   )
 }
 
-fn fold_call_operator_catalog() -> Node {
+fn fold_call_operator_catalog() -> v2.std.node.Node {
   target_operator_realizations_catalog_node(
     rows: [
       target_operator_realization_node(
@@ -143,7 +143,7 @@ fn fold_call_target_model() -> v2.std.compilers.target_model.TargetModel {
   }
 }
 
-fn fold_call_emit_body_tokens(arrow: Node) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+fn fold_call_emit_body_tokens(arrow: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   let target = fold_call_target_model()
   bind_outcome(
     o: target_project_arrow_body_to_value_expression(
@@ -195,30 +195,30 @@ fn fold_call_expected_canonical_tokens() -> List<v2.std.compilers.target_model.C
 fn fold_call_tokens_equal(
   left: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
   right: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
-) -> Bool {
+) -> v2.std.logic.Bool {
   content_hash(n: concrete_syntax_token_list_to_node(tokens: left)) == content_hash(n: concrete_syntax_token_list_to_node(tokens: right))
 }
 
-fn fold_call_emit_matches(arrow: Node, expected: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> Bool {
+fn fold_call_emit_matches(arrow: v2.std.node.Node, expected: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> v2.std.logic.Bool {
   match fold_call_emit_body_tokens(arrow: arrow) {
     Accepted { value: tokens, diagnostics: d } =>
       fold_call_tokens_equal(left: tokens, right: expected) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn fold_call_fixtures_well_formed() -> Bool {
+test fn fold_call_fixtures_well_formed() -> v2.std.logic.Bool {
   well_formed(n: fold_call_canonical_arrow()) && well_formed(n: fold_call_swapped_arrow())
 }
 
-test fn fold_call_emit_holds() -> Bool {
+test fn fold_call_emit_holds() -> v2.std.logic.Bool {
   fold_call_emit_matches(
     arrow: fold_call_canonical_arrow(),
     expected: fold_call_expected_canonical_tokens()
   )
 }
 
-test fn fold_call_swap_discriminates() -> Bool {
+test fn fold_call_swap_discriminates() -> v2.std.logic.Bool {
   !fold_call_emit_matches(
     arrow: fold_call_swapped_arrow(),
     expected: fold_call_expected_canonical_tokens()
@@ -228,9 +228,9 @@ test fn fold_call_swap_discriminates() -> Bool {
       match fold_call_emit_body_tokens(arrow: fold_call_swapped_arrow()) {
         Accepted { value: swapped, diagnostics: _ } =>
           !fold_call_tokens_equal(left: canonical, right: swapped)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

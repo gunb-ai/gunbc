@@ -21,7 +21,7 @@ fn memory_level_from_l1_cache(level_id: std.machine_shape.LevelId, row: extdeps.
   std.machine_shape.MemoryLevel {
     id: level_id
     capacity: row.l1_cache.data_capacity_per_core
-    transfer_grain: Present { value: row.l1_cache.line_size }
+    transfer_grain: v2.std.optional.Present { value: row.l1_cache.line_size }
     bandwidth: none
     latency: none
   }
@@ -31,7 +31,7 @@ fn memory_level_from_l2_cache(level_id: std.machine_shape.LevelId, row: extdeps.
   std.machine_shape.MemoryLevel {
     id: level_id
     capacity: row.l2_cache.capacity_per_core
-    transfer_grain: Present { value: row.l2_cache.line_size }
+    transfer_grain: v2.std.optional.Present { value: row.l2_cache.line_size }
     bandwidth: none
     latency: none
   }
@@ -41,7 +41,7 @@ fn memory_level_from_l3_cache(level_id: std.machine_shape.LevelId, row: extdeps.
   std.machine_shape.MemoryLevel {
     id: level_id
     capacity: row.l3_cache.capacity
-    transfer_grain: Present { value: row.l3_cache.line_size }
+    transfer_grain: v2.std.optional.Present { value: row.l3_cache.line_size }
     bandwidth: none
     latency: none
   }

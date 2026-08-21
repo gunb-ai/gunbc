@@ -208,7 +208,7 @@ type KeyDerivationFacts {
 type CacheRowEvidence
   = VendorCitation { source: std.types.NonEmptyStr, url: std.types.NonEmptyStr }
   | RunnerObserved { receipt: std.types.NonEmptyStr, observed_at: std.types.LogicalTime }
-  | OperatorObserved { note: std.types.NonEmptyStr, observed_at: Optional<std.types.LogicalTime> }
+  | OperatorObserved { note: std.types.NonEmptyStr, observed_at: v2.std.optional.Optional<std.types.LogicalTime> }
   | CiReceiptCitation { workflow_run_id: std.types.NonEmptyStr, step_id: std.types.NonEmptyStr }
 
 type CacheEvidence {

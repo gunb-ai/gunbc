@@ -37,7 +37,7 @@ fn seed_self_verify_run(output: v2.std.node.Symbol, digest: v2.std.node.Symbol) 
   )
 }
 
-fn seed_self_verify_same_artifact_refuses() -> Bool {
+fn seed_self_verify_same_artifact_refuses() -> v2.std.logic.Bool {
   let same = seed_self_verify_run(
     output: ^seed_honesty_same_artifact,
     digest: ^seed_honesty_matching_digest
@@ -46,12 +46,12 @@ fn seed_self_verify_same_artifact_refuses() -> Bool {
     claim: same,
     check: same
   ) {
-    Rejected { diagnostics: d } => d.head.reason == ^bootstrap_self_verify_same_artifact
+    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^bootstrap_self_verify_same_artifact
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-fn seed_self_verify_planted_divergence_refuses() -> Bool {
+fn seed_self_verify_planted_divergence_refuses() -> v2.std.logic.Bool {
   match v2.workflow.bootstrap.seed_self_verify_check(
     claim: seed_self_verify_run(
       output: ^seed_honesty_claim_artifact,
@@ -62,12 +62,12 @@ fn seed_self_verify_planted_divergence_refuses() -> Bool {
       digest: ^seed_honesty_perturbed_digest
     )
   ) {
-    Rejected { diagnostics: d } => d.head.reason == ^bootstrap_self_verify_diverged
+    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^bootstrap_self_verify_diverged
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-fn seed_self_verify_provenance_mismatch_refuses() -> Bool {
+fn seed_self_verify_provenance_mismatch_refuses() -> v2.std.logic.Bool {
   match v2.workflow.bootstrap.seed_self_verify_check(
     claim: seed_self_verify_run(
       output: ^seed_honesty_claim_artifact,
@@ -81,12 +81,12 @@ fn seed_self_verify_provenance_mismatch_refuses() -> Bool {
       pin: ^seed_honesty_closing_contract_hash_pin
     )
   ) {
-    Rejected { diagnostics: d } => d.head.reason == ^bootstrap_self_verify_provenance_mismatch
+    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^bootstrap_self_verify_provenance_mismatch
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-fn seed_self_verify_distinct_equal_artifacts_hold() -> Bool {
+fn seed_self_verify_distinct_equal_artifacts_hold() -> v2.std.logic.Bool {
   match v2.workflow.bootstrap.seed_self_verify_check(
     claim: seed_self_verify_run(
       output: ^seed_honesty_claim_artifact,
@@ -100,11 +100,11 @@ fn seed_self_verify_distinct_equal_artifacts_hold() -> Bool {
     Accepted { value: receipt, diagnostics: None } =>
       !(receipt.claim.output == receipt.check.output)
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn seed_honesty_closing_contract_over(decision: v2.workflow.bootstrap.SeedHonestyDecision) -> Bool {
+fn seed_honesty_closing_contract_over(decision: v2.workflow.bootstrap.SeedHonestyDecision) -> v2.std.logic.Bool {
   seed_self_verify_same_artifact_refuses()
     && seed_self_verify_planted_divergence_refuses()
     && seed_self_verify_provenance_mismatch_refuses()
@@ -116,18 +116,18 @@ fn seed_honesty_closing_contract_over(decision: v2.workflow.bootstrap.SeedHonest
     }
 }
 
-test fn v1_seed_honesty_decision_closing_contract_holds() -> Bool {
+test fn v1_seed_honesty_decision_closing_contract_holds() -> v2.std.logic.Bool {
   seed_honesty_closing_contract_over(decision: v2.workflow.bootstrap.seed_honesty_decision)
 }
 
-test fn seed_honesty_check_four_poles_hold_before_decision() -> Bool {
+test fn seed_honesty_check_four_poles_hold_before_decision() -> v2.std.logic.Bool {
   seed_self_verify_same_artifact_refuses()
     && seed_self_verify_planted_divergence_refuses()
     && seed_self_verify_provenance_mismatch_refuses()
     && seed_self_verify_distinct_equal_artifacts_hold()
 }
 
-test fn seed_honesty_undecided_would_keep_closing_contract_red() -> Bool {
+test fn seed_honesty_undecided_would_keep_closing_contract_red() -> v2.std.logic.Bool {
   !seed_honesty_closing_contract_over(decision: SeedHonestyUndecided)
 }
 
@@ -167,14 +167,14 @@ fn seed_honesty_fabricated_agreement(
   }
 }
 
-fn seed_honesty_discharge_refuses_when_unavailable() -> Bool {
+fn seed_honesty_discharge_refuses_when_unavailable() -> v2.std.logic.Bool {
   match v2.workflow.bootstrap.bootstrap_seed_honesty_discharge {
     Violates { diagnostic: d } => d.reason == ^bootstrap_diverse_compilation_mismatch
     Holds { value: _ } => false
   }
 }
 
-fn seed_honesty_discharge_witness_refuses_holds_agreement() -> Bool {
+fn seed_honesty_discharge_witness_refuses_holds_agreement() -> v2.std.logic.Bool {
   match v2.workflow.bootstrap.bootstrap_seed_honesty_discharge_witness(
     axiom: ^seed_honesty_axiom,
     diverse_double_compilation: seed_honesty_fabricated_agreement(
@@ -187,7 +187,7 @@ fn seed_honesty_discharge_witness_refuses_holds_agreement() -> Bool {
   }
 }
 
-fn seed_honesty_discharge_witness_refuses_old_magic_atom() -> Bool {
+fn seed_honesty_discharge_witness_refuses_old_magic_atom() -> v2.std.logic.Bool {
   match v2.workflow.bootstrap.bootstrap_seed_honesty_discharge_witness(
     axiom: ^seed_honesty_axiom,
     diverse_double_compilation: seed_honesty_fabricated_agreement(
@@ -200,7 +200,7 @@ fn seed_honesty_discharge_witness_refuses_old_magic_atom() -> Bool {
   }
 }
 
-fn independent_compiler_pair_witness_refuses_distinct_compilers_unavailable() -> Bool {
+fn independent_compiler_pair_witness_refuses_distinct_compilers_unavailable() -> v2.std.logic.Bool {
   match v2.workflow.bootstrap.independent_compiler_pair_witness(
     primary: seed_honesty_primary_compiler,
     secondary: seed_honesty_secondary_compiler,
@@ -211,7 +211,7 @@ fn independent_compiler_pair_witness_refuses_distinct_compilers_unavailable() ->
   }
 }
 
-fn independent_compiler_pair_witness_refuses_matching_compilers_unavailable() -> Bool {
+fn independent_compiler_pair_witness_refuses_matching_compilers_unavailable() -> v2.std.logic.Bool {
   match v2.workflow.bootstrap.independent_compiler_pair_witness(
     primary: seed_honesty_shared_compiler,
     secondary: seed_honesty_shared_compiler,
@@ -222,7 +222,7 @@ fn independent_compiler_pair_witness_refuses_matching_compilers_unavailable() ->
   }
 }
 
-fn independent_compiler_pair_witness_refuses_perturbed_compilers_unavailable() -> Bool {
+fn independent_compiler_pair_witness_refuses_perturbed_compilers_unavailable() -> v2.std.logic.Bool {
   match v2.workflow.bootstrap.independent_compiler_pair_witness(
     primary: seed_honesty_perturbed_primary_compiler,
     secondary: seed_honesty_perturbed_secondary_compiler,
@@ -233,26 +233,26 @@ fn independent_compiler_pair_witness_refuses_perturbed_compilers_unavailable() -
   }
 }
 
-test fn seed_honesty_discharge_unavailable_top_level_refuses() -> Bool {
+test fn seed_honesty_discharge_unavailable_top_level_refuses() -> v2.std.logic.Bool {
   seed_honesty_discharge_refuses_when_unavailable()
 }
 
-test fn seed_honesty_discharge_unavailable_holds_agreement_refuses() -> Bool {
+test fn seed_honesty_discharge_unavailable_holds_agreement_refuses() -> v2.std.logic.Bool {
   seed_honesty_discharge_witness_refuses_holds_agreement()
 }
 
-test fn seed_honesty_discharge_unavailable_old_magic_atom_refuses() -> Bool {
+test fn seed_honesty_discharge_unavailable_old_magic_atom_refuses() -> v2.std.logic.Bool {
   seed_honesty_discharge_witness_refuses_old_magic_atom()
 }
 
-test fn independent_compiler_pair_unavailable_distinct_refuses() -> Bool {
+test fn independent_compiler_pair_unavailable_distinct_refuses() -> v2.std.logic.Bool {
   independent_compiler_pair_witness_refuses_distinct_compilers_unavailable()
 }
 
-test fn independent_compiler_pair_unavailable_matching_refuses() -> Bool {
+test fn independent_compiler_pair_unavailable_matching_refuses() -> v2.std.logic.Bool {
   independent_compiler_pair_witness_refuses_matching_compilers_unavailable()
 }
 
-test fn independent_compiler_pair_unavailable_perturbed_refuses() -> Bool {
+test fn independent_compiler_pair_unavailable_perturbed_refuses() -> v2.std.logic.Bool {
   independent_compiler_pair_witness_refuses_perturbed_compilers_unavailable()
 }

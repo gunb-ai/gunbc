@@ -69,23 +69,23 @@ fn runner_memory_knob_apply_interpreted(knob: gunbc.host_converge.ConvergeKnob) 
 
 fn host_runner_memory_provision_scope_binds_realize_frontier() -> Bool {
   match host_runner_memory_provision_scope_disposition {
-    Scaffold {
+    std.disposition.Scaffold {
       dissolves_to: RealizationDispatch,
       bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
     } =>
       m == "gunbc.host_converge_realize" && n == "interpret_converge_knob"
-    Terminal { reason: _ } => false
+    std.disposition.Terminal { reason: _ } => false
   }
 }
 
 fn provision_runner_memory_caps_routes_through_host_effect_apply() -> Bool {
   match host_runner_memory_provision_realize_scaffold {
-    Scaffold {
+    std.disposition.Scaffold {
       dissolves_to: RealizationDispatch,
       bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
     } =>
       m == "gunbc.host_effect_realize" && n == "host_effect_apply_gated"
-    Terminal { reason: _ } => false
+    std.disposition.Terminal { reason: _ } => false
   }
 }
 
@@ -113,7 +113,7 @@ func provision_runner_memory_caps(host: product.placement_supply.HostIdentity) -
                 transport: access.transport,
                 fixture_actor: none,
               ) {
-                Converged { evidence: _, applied: _ } => ExitSuccess
+                std.realization_reconcile.Converged { evidence: _, applied: _ } => std.process.ExitSuccess
                 NotConverged { reason: why, applied: _ } => exit_failure(reason: why)
               }
             Absent =>

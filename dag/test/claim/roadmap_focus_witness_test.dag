@@ -93,7 +93,7 @@ fn fx(id: String, owner: String) -> gunbc.roadmap_model.RoadmapNode {
     sizing: gunbc.roadmap_model.Sized { intricacy: IntricacyMedium, volume: VolumeMedium, repo: "gunbc", acceptance: ManualAcceptance },
     execution: ExecutionContractUnspecified,
     owner: owner,
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 

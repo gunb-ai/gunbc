@@ -32,7 +32,7 @@ fn use_site_verdict_to_node(verdict: UseSiteVerdict) -> v2.std.node.Node {
       node_synthetic(
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: use_site_verdict_move_field_tag } },
         children: [
-          v2.std.node.Edge { label: Named { name: use_site_verdict_field_edge }, target: use_site_verdict_atom(tag: f) }
+          v2.std.node.Edge { label: v2.std.node.Named { name: use_site_verdict_field_edge }, target: use_site_verdict_atom(tag: f) }
         ]
       )
     Borrow => use_site_verdict_atom(tag: use_site_verdict_borrow_tag)
@@ -48,8 +48,8 @@ fn use_site_verdict_move_field_of(children: List<v2.std.node.Edge>) -> UseSiteVe
         TypeNode { connective: Atom { identity: f } } => MoveField { field: f }
         _ => Unclassified
       }
-    Absent => Unclassified
-    Ambiguous => Unclassified
+    v2.std.node.Absent => Unclassified
+    v2.std.node.Ambiguous => Unclassified
   }
 }
 
@@ -74,8 +74,8 @@ fn use_site_verdict_of_node(target: v2.std.node.Node) -> UseSiteVerdict {
 fn use_site_verdict_lookup(node: v2.std.node.Node) -> UseSiteVerdictLookup {
   match named_edge_target_lookup(children: node.children, name: use_site_verdict_edge) {
     Found { target: t } => VerdictFound { verdict: use_site_verdict_of_node(target: t) }
-    Absent => VerdictAbsent
-    Ambiguous => VerdictAmbiguous
+    v2.std.node.Absent => VerdictAbsent
+    v2.std.node.Ambiguous => VerdictAmbiguous
   }
 }
 
@@ -84,7 +84,7 @@ fn attach_use_site_verdict(node: v2.std.node.Node, verdict: UseSiteVerdict) -> v
     n: node,
     children: list_snoc_item(
       xs: node.children,
-      item: v2.std.node.Edge { label: Named { name: use_site_verdict_edge }, target: use_site_verdict_to_node(verdict: verdict) }
+      item: v2.std.node.Edge { label: v2.std.node.Named { name: use_site_verdict_edge }, target: use_site_verdict_to_node(verdict: verdict) }
     )
   )
 }

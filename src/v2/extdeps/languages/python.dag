@@ -134,7 +134,7 @@ data python_singleton_facts_catalog: List<PythonSingletonPrimitiveFacts> = [
   python_facts_ellipsis
 ]
 
-data py_bool_grounding: std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra
+data py_bool_grounding: std.algebra.BooleanAlgebra<v2.std.logic.Bool> = v2.std.logic.bool_boolean_algebra
 
 fn python_inhabitant_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
@@ -205,7 +205,7 @@ fn python_catalog_surface_symbol_in_rows<T>(
   sym: v2.std.node.Symbol,
   rows: List<T>,
   row_surface_spelling: fn(T) -> v2.std.node.Symbol
-) -> Bool {
+) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: rows,
     empty: false,
@@ -443,7 +443,7 @@ fn python_g1_2_insert_entries(
   match registry {
     Accepted { value: r, diagnostics: _ } =>
       python_g1_2_insert_fact_bundle_entry(registry: r, entry: entry)
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
@@ -474,10 +474,10 @@ fn python_g1_2_snoc_primitive_bundle(
           value: v2.std.algebra.list_snoc_item(xs: bundles, item: bundle),
           diagnostics: d
         }
-      Rejected { diagnostics: d } =>
+      v2.std.diagnostic.Rejected { diagnostics: d } =>
         v2.std.diagnostic.Rejected { diagnostics: d }
     }
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
@@ -570,10 +570,10 @@ fn python_g1_2_append_primitive_bundle_outcomes(
     Accepted { value: l, diagnostics: _ } => match right {
       Accepted { value: r, diagnostics: d } =>
         v2.std.diagnostic.Accepted { value: v2.std.algebra.list_append(left: l, right: r), diagnostics: d }
-      Rejected { diagnostics: d } =>
+      v2.std.diagnostic.Rejected { diagnostics: d } =>
         v2.std.diagnostic.Rejected { diagnostics: d }
     }
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
@@ -600,7 +600,7 @@ fn python_g1_2_primitive_fact_bundles() -> v2.std.diagnostic.Outcome<List<v2.std
   match python_g1_2_fact_bundle_registry() {
     Accepted { value: registry, diagnostics: _ } =>
       python_g1_2_primitive_bundles_from_registry(registry: registry)
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
@@ -715,7 +715,7 @@ fn python_model_core() -> v2.std.diagnostic.Outcome<v2.std.model_core.ModelCore>
         },
         diagnostics: d
       }
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
@@ -1370,14 +1370,14 @@ fn python_grammar() -> v2.std.grammar.ParseGrammar {
   v2.std.grammar.ModeledGrammar { root: python_grammar_root() }
 }
 
-fn python_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn python_lex_token_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.compilers.lexing.lex_rule_set_token_class_member(
     rules: python_lex_rules(),
     token_class: sym
   )
 }
 
-fn python_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn python_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   python_catalog_surface_symbol_in_rows(
     sym: sym,
     rows: python_integer_facts_catalog,
@@ -1385,7 +1385,7 @@ fn python_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn python_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn python_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   python_catalog_surface_symbol_in_rows(
     sym: sym,
     rows: python_float_facts_catalog,
@@ -1393,7 +1393,7 @@ fn python_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn python_complex_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn python_complex_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   python_catalog_surface_symbol_in_rows(
     sym: sym,
     rows: python_complex_facts_catalog,
@@ -1401,7 +1401,7 @@ fn python_complex_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn python_bool_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn python_bool_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   python_catalog_surface_symbol_in_rows(
     sym: sym,
     rows: python_bool_facts_catalog,
@@ -1409,7 +1409,7 @@ fn python_bool_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn python_singleton_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn python_singleton_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   python_catalog_surface_symbol_in_rows(
     sym: sym,
     rows: python_singleton_facts_catalog,
@@ -1417,7 +1417,7 @@ fn python_singleton_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn python_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn python_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   python_integer_catalog_surface_symbol(sym: sym) ||
     python_float_catalog_surface_symbol(sym: sym) ||
     python_complex_catalog_surface_symbol(sym: sym) ||
@@ -1451,7 +1451,7 @@ fn python_language_model() -> v2.std.diagnostic.Outcome<v2.std.language_model.La
         },
         diagnostics: d
       }
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }

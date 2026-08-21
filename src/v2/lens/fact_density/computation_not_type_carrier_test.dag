@@ -6,6 +6,6 @@ data computation_not_type_carrier_input: v2.std.node.Node = v2.std.node.Node {
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn computation_not_type_carrier_claim_holds() -> Bool {
+test fn computation_not_type_carrier_claim_holds() -> v2.std.logic.Bool {
   v2.lens.fact_density.carrier_spec_fact(carrier: computation_not_type_carrier_input) == v2.lens.fact_density.NotATypeCarrier
 }

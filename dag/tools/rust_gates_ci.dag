@@ -29,7 +29,7 @@ func run_gates() -> std.process.ProcessExit {
   fmt = cargo.Build.Fmt(extra_args: ["--all", "--check"])
   test = cargo.Build.Nextest(extra_args: ["-p", "v1-compiler-tests"], build_jobs_args: rust_gate_build_jobs_args())
   return if fmt.success && test.success {
-    ExitSuccess
+    std.process.ExitSuccess
   } else {
     exit_failure(reason: rust_gate_reason(
       fmt_success: fmt.success, fmt_stdout: fmt.stdout, fmt_stderr: fmt.stderr,
@@ -47,7 +47,7 @@ func run_rust_monolith_gate() -> std.process.ProcessExit {
   return if should_run_gates(paths: changed.paths, git_success: changed.success) {
     run_gates()
   } else {
-    ExitSuccess
+    std.process.ExitSuccess
   }
 }
 

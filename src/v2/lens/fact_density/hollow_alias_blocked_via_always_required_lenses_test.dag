@@ -19,12 +19,12 @@ fn hollow_alias_ar_tree() -> v2.compiler.inferred_tree.InferredTree {
   )
 }
 
-test fn hollow_alias_blocked_via_always_required_lenses_holds() -> Bool {
+test fn hollow_alias_blocked_via_always_required_lenses_holds() -> v2.std.logic.Bool {
   match run_required_lens_gates(
     inferred: hollow_alias_ar_tree(),
     lenses: always_required_lenses()
   ) {
-    Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
+    v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
     Accepted { value: _, diagnostics: _ } => false
   }
 }

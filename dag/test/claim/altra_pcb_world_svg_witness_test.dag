@@ -22,7 +22,7 @@ fn scene_or_empty() -> String? {
   }
 }
 
-fn count_substring(haystack: String, needle: String) -> Int {
+fn count_substring(haystack: String, needle: String) -> std.integer.Int {
   fold(split(s: haystack, delimiter: needle), init: 0, f: fn(acc, _part) { acc + 1 }) - 1
 }
 
@@ -191,22 +191,22 @@ test fn w_unmodeled_capabilities_are_pending_with_a_nonempty_obligation() -> Boo
     Present { value: w } =>
       let p = pcb_world_physical(w: w)
       match p.routes {
-        CapabilityRefused { cause: _ } => false
+        product.pcb.world.CapabilityRefused { cause: _ } => false
         CapabilityEstablished { authority: _ } => false
         CapabilityPending { owed: o } =>
           (o.first.what_is_owed as String) != ""
             && match w.electrical.nets {
-              CapabilityRefused { cause: _ } => false
+              product.pcb.world.CapabilityRefused { cause: _ } => false
               CapabilityEstablished { authority: _ } => false
               CapabilityPending { owed: n } => (n.first.what_is_owed as String) != ""
             }
             && match w.manufacturing.artifacts {
-              CapabilityRefused { cause: _ } => false
+              product.pcb.world.CapabilityRefused { cause: _ } => false
               CapabilityEstablished { authority: _ } => false
               CapabilityPending { owed: a } => (a.first.what_is_owed as String) != ""
             }
             && match p.stackup {
-              CapabilityRefused { cause: _ } => false
+              product.pcb.world.CapabilityRefused { cause: _ } => false
               CapabilityEstablished { authority: _ } => false
               CapabilityPending { owed: s } => (s.first.what_is_owed as String) != ""
             }
@@ -592,7 +592,7 @@ test fn w_attachment_label_offsets_are_micrometre_measures() -> Bool {
 }
 
 // THE DISCRIMINATING CONTROL FOR THE CAPABILITY GATE. The world below is the real one with every
-// capability standing replaced by CapabilityRefused, which is the mutation that used to admit it:
+// capability standing replaced by product.pcb.world.CapabilityRefused, which is the mutation that used to admit it:
 // the old projection answered Absent for a refused capability, so an all-refused world read as a
 // world with nothing outstanding and fell through to the placement check. That it did not in fact
 // reach AdmittedPcbWorld was an accident of placement failing for an unrelated reason, and an
@@ -602,7 +602,7 @@ fn all_capabilities_refused(w: product.pcb.world.PcbWorld) -> product.pcb.world.
   let p = pcb_world_physical(w: w)
   pcb_world(
     design: pcb_world_design(w: w),
-    electrical: product.pcb.world.PcbElectricalWorld { nets: CapabilityRefused { cause: "planted refusal: nets" } },
+    electrical: product.pcb.world.PcbElectricalWorld { nets: product.pcb.world.CapabilityRefused { cause: "planted refusal: nets" } },
     physical: product.pcb.world.PcbPhysicalWorld {
       board: p.board,
       components: p.components,
@@ -611,13 +611,13 @@ fn all_capabilities_refused(w: product.pcb.world.PcbWorld) -> product.pcb.world.
       attachment_obligations: p.attachment_obligations,
       functional_obligations: p.functional_obligations,
       body_layout: p.body_layout,
-      stackup: CapabilityRefused { cause: "planted refusal: stackup" },
-      footprints: CapabilityRefused { cause: "planted refusal: footprints" },
-      pads: CapabilityRefused { cause: "planted refusal: pads" },
-      routes: CapabilityRefused { cause: "planted refusal: routes" },
+      stackup: product.pcb.world.CapabilityRefused { cause: "planted refusal: stackup" },
+      footprints: product.pcb.world.CapabilityRefused { cause: "planted refusal: footprints" },
+      pads: product.pcb.world.CapabilityRefused { cause: "planted refusal: pads" },
+      routes: product.pcb.world.CapabilityRefused { cause: "planted refusal: routes" },
     },
     manufacturing: product.pcb.world.PcbManufacturingWorld {
-      artifacts: CapabilityRefused { cause: "planted refusal: artifacts" },
+      artifacts: product.pcb.world.CapabilityRefused { cause: "planted refusal: artifacts" },
     },
   )
 }

@@ -7,18 +7,18 @@ fn gha_fold_oracle_job(job: extdeps.github.actions.Job) -> String {
   extdeps.languages.yaml.emit.serialize_yaml(v: extdeps.languages.yaml.gha_workflow.job_yaml(job: job))
 }
 
-fn gha_fold_serialize_emitted(target: v2.std.compilers.target_model.TargetModel, emitted: Node) -> v2.std.diagnostic.Outcome<String> {
+fn gha_fold_serialize_emitted(target: v2.std.compilers.target_model.TargetModel, emitted: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
   match target_serialize_source_from_model(target: target, emitted: emitted) {
     Accepted { value: source, diagnostics: d } =>
       match d {
         None => v2.std.diagnostic.Accepted { value: source.carried, diagnostics: v2.std.diagnostic.None }
         Some { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
-fn gha_fold_fold_matches_oracle(job: extdeps.github.actions.Job) -> Bool {
+fn gha_fold_fold_matches_oracle(job: extdeps.github.actions.Job) -> v2.std.logic.Bool {
   let oracle = gha_fold_oracle_job(job: job)
   match gha_fold_target_model_for_job_witness(job: job, source_text: oracle) {
     Holds { value: target } =>
@@ -27,7 +27,7 @@ fn gha_fold_fold_matches_oracle(job: extdeps.github.actions.Job) -> Bool {
           match target_serialize_source_from_model(target: target, emitted: emitted) {
             Accepted { value: source, diagnostics: d } =>
               (source.carried == oracle) && (d == v2.std.diagnostic.None)
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
         Violates { diagnostic: _ } => false
       }
@@ -35,13 +35,13 @@ fn gha_fold_fold_matches_oracle(job: extdeps.github.actions.Job) -> Bool {
   }
 }
 
-test fn gha_fold_pilot_job_byte_identical_holds() -> Bool {
+test fn gha_fold_pilot_job_byte_identical_holds() -> v2.std.logic.Bool {
   gha_fold_prod_kind_sentinel == from_code_point(cp: 2)
     && gha_fold_scalar_kind_sentinel == from_code_point(cp: 0)
     && gha_fold_fold_matches_oracle(job: gunbc.gha_yaml_fold_pilot.gha_fold_pilot_job)
 }
 
-test fn gha_fold_wrong_production_rejects_oracle_holds() -> Bool {
+test fn gha_fold_wrong_production_rejects_oracle_holds() -> v2.std.logic.Bool {
   let oracle = gha_fold_oracle_job(job: gunbc.gha_yaml_fold_pilot.gha_fold_pilot_job)
   match gha_fold_job_wrong_production_target_model_witness(source_text: oracle) {
     Holds { value: target } =>
@@ -50,13 +50,13 @@ test fn gha_fold_wrong_production_rejects_oracle_holds() -> Bool {
         emitted: gha_fold_job_wrong_production_emitted
       ) {
         Accepted { value: folded, diagnostics: _ } => folded != oracle
-        Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
       }
     Violates { diagnostic: _ } => true
   }
 }
 
-test fn gha_fold_flat_steps_perturbation_rejects_oracle_holds() -> Bool {
+test fn gha_fold_flat_steps_perturbation_rejects_oracle_holds() -> v2.std.logic.Bool {
   let oracle = gha_fold_oracle_job(job: gunbc.gha_yaml_fold_pilot.gha_fold_pilot_job)
   match gha_fold_flat_steps_wrong_target_model_witness(source_text: oracle) {
     Holds { value: target } =>
@@ -65,7 +65,7 @@ test fn gha_fold_flat_steps_perturbation_rejects_oracle_holds() -> Bool {
         emitted: gha_fold_flat_steps_wrong_emitted
       ) {
         Accepted { value: folded, diagnostics: _ } => folded != oracle
-        Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
       }
     Violates { diagnostic: _ } => true
   }

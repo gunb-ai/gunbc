@@ -3,7 +3,7 @@ module v2.test.execution.emit_host_transport_wire
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn wire_probe_node() -> Node {
+fn wire_probe_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^emit_host_wire_probe } },
     children: [],
@@ -65,19 +65,19 @@ fn wire_escaping_row() -> v2.std.host_transport.EmitHostRuntimeRow {
   }
 }
 
-test fn emit_host_transport_outside_grant_refuses_holds() -> Bool {
+test fn emit_host_transport_outside_grant_refuses_holds() -> v2.std.logic.Bool {
   match run_host_process(
     row: wire_escaping_row(),
     target: rust_target_model_staging(),
     source: wire_source(),
     fixture_inputs: wire_inputs()
   ) {
-    Rejected { diagnostics: r } => r.head.reason == ^emit_host_transport_outside_grant
+    v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^emit_host_transport_outside_grant
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-test fn emit_host_transport_green_run_holds() -> Bool {
+test fn emit_host_transport_green_run_holds() -> v2.std.logic.Bool {
   match run_emit_host(
     target: rust_target_model_staging(),
     source: wire_source(),
@@ -89,15 +89,15 @@ test fn emit_host_transport_green_run_holds() -> Bool {
           match runtime_value_parse(target: rust_target_model_staging(), stdout: stdout) {
             Accepted { value: _, diagnostics: _ } =>
               stdout.bytes == emit_host_octets_byte_string(octets: [0, 5, 0, 0, 0])
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
         _ => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn emit_host_transport_nonzero_exit_refuses_holds() -> Bool {
+test fn emit_host_transport_nonzero_exit_refuses_holds() -> v2.std.logic.Bool {
   match run_host_process(
     row: wire_fixed_main_row(main_text: "fn main() { std::process::exit(3); }"),
     target: rust_target_model_staging(),
@@ -106,14 +106,14 @@ test fn emit_host_transport_nonzero_exit_refuses_holds() -> Bool {
   ) {
     Accepted { value: receipt, diagnostics: _ } =>
       match receipt.logical_run {
-        Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
         Accepted { value: _, diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn emit_host_transport_byte_width_mismatch_refuses_holds() -> Bool {
+test fn emit_host_transport_byte_width_mismatch_refuses_holds() -> v2.std.logic.Bool {
   match run_host_process(
     row: wire_fixed_main_row(main_text: "fn main() { let _ = std::io::Write::write_all(&mut std::io::stdout(), &[0u8; 4]); }"),
     target: rust_target_model_staging(),
@@ -124,27 +124,27 @@ test fn emit_host_transport_byte_width_mismatch_refuses_holds() -> Bool {
       match receipt.logical_run {
         Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
           match runtime_value_parse(target: rust_target_model_staging(), stdout: stdout) {
-            Rejected { diagnostics: _ } => true
+            v2.std.diagnostic.Rejected { diagnostics: _ } => true
             Accepted { value: _, diagnostics: _ } => false
           }
         _ => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn emit_host_row_bound_executable_identity_holds() -> Bool {
+test fn emit_host_row_bound_executable_identity_holds() -> v2.std.logic.Bool {
   match emit_host_process_program_name(program: v2.std.host_transport.HostToolProgram { executable: "go" }) {
     Accepted { value: name, diagnostics: None } => name == "go"
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: Some { diagnostics: _ } } => false
   }
 }
 
-test fn emit_host_row_bound_executable_identity_discriminates_holds() -> Bool {
+test fn emit_host_row_bound_executable_identity_discriminates_holds() -> v2.std.logic.Bool {
   match emit_host_process_program_name(program: v2.std.host_transport.HostToolProgram { executable: "python3" }) {
     Accepted { value: name, diagnostics: None } => name == "python3"
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: Some { diagnostics: _ } } => false
   }
 }

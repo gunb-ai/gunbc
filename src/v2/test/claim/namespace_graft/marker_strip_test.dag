@@ -3,7 +3,7 @@ module v2.test.claim.namespace_graft.marker_strip_test
 
 data marker_strip_note: String = "Discriminating witness (operator ruling msg_0f14dee1): stripping ^dag_surface_module provenance shell must not change symbol_index fill semantics — position/extent/QN live only on the Named containment spine. Resolve comparison lands after resolve dissolve (commits 4-5); this witness pins fill/census path first."
 
-fn ms_sym_node(sym: v2.std.node.Symbol) -> Node {
+fn ms_sym_node(sym: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
     children: [],
@@ -11,7 +11,7 @@ fn ms_sym_node(sym: v2.std.node.Symbol) -> Node {
   }
 }
 
-fn ms_qn_spine(segments: FreeMonoid<v2.std.node.Symbol>) -> Node {
+fn ms_qn_spine(segments: FreeMonoid<v2.std.node.Symbol>) -> v2.std.node.Node {
   fold_list_node(
     xs: segments,
     item_node: fn(sym) { ms_sym_node(sym: sym) }
@@ -21,7 +21,7 @@ fn ms_qn_spine(segments: FreeMonoid<v2.std.node.Symbol>) -> Node {
 fn ms_pre_graft_module_root(
   qn: v2.std.qualified_name.QualifiedName,
   body_edges: List<v2.std.node.Edge>
-) -> Node {
+) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: concat(
@@ -45,20 +45,20 @@ data ms_module_qn: v2.std.qualified_name.QualifiedName = qualified_name_from_dot
   dotted: "v2.test.namespace_graft.marker"
 )
 
-data ms_pre_graft_root: Node = ms_pre_graft_module_root(
+data ms_pre_graft_root: v2.std.node.Node = ms_pre_graft_module_root(
   qn: ms_module_qn,
   body_edges: [
     v2.std.node.Edge {
-      label: Named { name: ^MsPilotType },
+      label: v2.std.node.Named { name: ^MsPilotType },
       target: v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: Disj },
         children: [
           v2.std.node.Edge {
-            label: Named { name: ^MsYes },
+            label: v2.std.node.Named { name: ^MsYes },
             target: ms_sym_node(sym: ^MsYes)
           },
           v2.std.node.Edge {
-            label: Named { name: ^MsNo },
+            label: v2.std.node.Named { name: ^MsNo },
             target: ms_sym_node(sym: ^MsNo)
           }
         ],
@@ -68,16 +68,16 @@ data ms_pre_graft_root: Node = ms_pre_graft_module_root(
   ]
 )
 
-data ms_grafted_root: Node = match module_header_containment_graft(root: ms_pre_graft_root) {
+data ms_grafted_root: v2.std.node.Node = match module_header_containment_graft(root: ms_pre_graft_root) {
   Accepted { value: grafted, diagnostics: _ } => grafted
   Rejected { diagnostics: _ } => ms_pre_graft_root
 }
 
-data ms_stripped_root: Node = namespace_graft_strip_provenance_marker(root: ms_grafted_root)
+data ms_stripped_root: v2.std.node.Node = namespace_graft_strip_provenance_marker(root: ms_grafted_root)
 
-fn ms_fill_index(root: Node) -> v2.std.symbol_index.SymbolIndex {
+fn ms_fill_index(root: v2.std.node.Node) -> v2.std.symbol_index.SymbolIndex {
   symbol_index_fill_containment_node(
-    index: empty_symbol_index(),
+    index: v2.std.symbol_index.empty_symbol_index(),
     path: Empty,
     node: root
   )
@@ -87,22 +87,22 @@ fn ms_lookup_pair_eq(
   marked: v2.std.symbol_index.SymbolIndex,
   stripped: v2.std.symbol_index.SymbolIndex,
   path: v2.std.qualified_name.QualifiedName
-) -> Bool {
-  match symbol_index_lookup(index: marked, qualified_path: path) {
-    Present { value: marked_node } =>
-      match symbol_index_lookup(index: stripped, qualified_path: path) {
-        Present { value: stripped_node } => marked_node == stripped_node
-        Absent => false
+) -> v2.std.logic.Bool {
+  match v2.std.symbol_index.symbol_index_lookup(index: marked, qualified_path: path) {
+    v2.std.optional.Present { value: marked_node } =>
+      match v2.std.symbol_index.symbol_index_lookup(index: stripped, qualified_path: path) {
+        v2.std.optional.Present { value: stripped_node } => marked_node == stripped_node
+        v2.std.optional.Absent => false
       }
-    Absent =>
-      match symbol_index_lookup(index: stripped, qualified_path: path) {
-        Present { value: _ } => false
-        Absent => true
+    v2.std.optional.Absent =>
+      match v2.std.symbol_index.symbol_index_lookup(index: stripped, qualified_path: path) {
+        v2.std.optional.Present { value: _ } => false
+        v2.std.optional.Absent => true
       }
   }
 }
 
-fn ms_marker_strip_fill_equivalent_holds() -> Bool {
+fn ms_marker_strip_fill_equivalent_holds() -> v2.std.logic.Bool {
   let marked = ms_fill_index(root: ms_grafted_root)
   let stripped = ms_fill_index(root: ms_stripped_root)
   let type_path = qualified_name_from_dotted_string(
@@ -119,7 +119,7 @@ fn ms_marker_strip_fill_equivalent_holds() -> Bool {
     && ms_lookup_pair_eq(marked: marked, stripped: stripped, path: no_path)
 }
 
-test fn namespace_graft_marker_strip_fill_equivalent_holds() -> Bool {
+test fn namespace_graft_marker_strip_fill_equivalent_holds() -> v2.std.logic.Bool {
   ms_marker_strip_fill_equivalent_holds()
 }
 

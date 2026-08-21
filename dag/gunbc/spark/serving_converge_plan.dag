@@ -439,9 +439,9 @@ fn spark_serving_linger_slice_noop_when_converged(linger_enabled: Bool) -> Bool 
 fn spark_serving_frozen_linger_effect(row: gunbc.fleet_converge_plan.FleetConvergeSparkServingTypedAction) -> gunbc.spark.serving_realization.ServingInstallEffect? {
   if spark_serving_install_effects_include(
     effects: fleet_converge_spark_serving_row_effects(row: row),
-    needle: EnableLingerForOwnAccount,
+    needle: gunbc.spark.serving_realization.EnableLingerForOwnAccount,
   ) {
-    Present { value: EnableLingerForOwnAccount }
+    Present { value: gunbc.spark.serving_realization.EnableLingerForOwnAccount }
   } else {
     none
   }

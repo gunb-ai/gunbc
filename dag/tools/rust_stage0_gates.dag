@@ -14,7 +14,7 @@ fn any_rust_monolith(paths: List<String>) -> Bool {
   fold(paths, false, fn(acc, p) { acc || path_is_rust_monolith(path: p) })
 }
 
-data consumed_input_closure_concept_note: std.disposition.Disposition = Terminal {
+data consumed_input_closure_concept_note: std.disposition.Disposition = std.disposition.Terminal {
   reason: "consume-input vs produce-artifact is a permanent §3 distinction (different direction + domain from NodeArtifactProvenance). The declared fact here is ENROLLMENT ONLY (unit + entry_path): the consumed .dag closure itself is DERIVED at read time from v2.lens.affected_set.entry_selection.entry_affected_by_dependency_view over gunbc.ci_layer_roots.witness_layer_roots (DependencyView reverse-reachability, replacing import_closure_live). Per-PR live execution gated on #6239 via corpus_dependency_view_per_pr_execution_gate. The former drift walls (src/v1 consumed_input_closure_drift_test.rs and the import_closure_completeness floor witness) were deleted with the hand-typed path list they guarded, not relocated"
 }
 
@@ -48,7 +48,7 @@ fn any_declared_unit_affected(paths: List<String>) -> Bool {
   fold(declared_consumed_input_units, false, fn(acc, u) { acc || unit_is_affected(u: u, paths: paths) })
 }
 
-data unit_must_run_failclosed_note: std.disposition.Disposition = Terminal {
+data unit_must_run_failclosed_note: std.disposition.Disposition = std.disposition.Terminal {
   reason: "fail-closed per-unit selection is a permanent §5 invariant: absent declaration = must-run, keeping coverage sound while declarations are added incrementally"
 }
 
@@ -67,7 +67,7 @@ fn unit_must_run(unit: String, paths: List<String>) -> Bool {
   })
 }
 
-data should_run_gates_coverage_note: std.disposition.Disposition = Terminal {
+data should_run_gates_coverage_note: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Coverage fire (Edge-(b)) is a permanent §5 design invariant: the rust gate ALSO runs when a changed .dag affects a declared unit's derived import closure, only ever ADDING fires, never newly skipping"
 }
 

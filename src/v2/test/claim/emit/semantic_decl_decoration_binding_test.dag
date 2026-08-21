@@ -1,18 +1,18 @@
 module v2.test.emit.semantic_decl_decoration_binding_test
 
 
-fn bool_coproduct() -> Node {
+fn bool_coproduct() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Disj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^True }, target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } },
-      v2.std.node.Edge { label: Named { name: ^False }, target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } }
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^True }, target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^False }, target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn lines_use_enum_copy_binding(lines: List<v2.std.compilers.semantic_decl_emission.TargetSemanticDeclDecorationLine>) -> Bool {
+fn lines_use_enum_copy_binding(lines: List<v2.std.compilers.semantic_decl_emission.TargetSemanticDeclDecorationLine>) -> v2.std.logic.Bool {
   fold_list(
     xs: lines,
     empty: false,
@@ -26,7 +26,7 @@ fn lines_use_enum_copy_binding(lines: List<v2.std.compilers.semantic_decl_emissi
   )
 }
 
-test fn nullary_bool_uses_enum_copy_derive_binding() -> Bool {
+test fn nullary_bool_uses_enum_copy_derive_binding() -> v2.std.logic.Bool {
   match semantic_decl_emission_from_target(target: rust_target_model()) {
     Accepted { value: emission, diagnostics: _ } =>
       match target_semantic_decl_coproduct_decoration_lines(
@@ -35,8 +35,8 @@ test fn nullary_bool_uses_enum_copy_derive_binding() -> Bool {
       ) {
         Accepted { value: lines, diagnostics: _ } =>
           !is_empty(xs: lines) && lines_use_enum_copy_binding(lines: lines)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

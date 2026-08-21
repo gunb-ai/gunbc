@@ -12,6 +12,6 @@ fn gha_expression_core_advertises_lossless() -> Bool {
         Lossless => true
         Lossy => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

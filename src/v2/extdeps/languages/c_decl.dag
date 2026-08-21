@@ -43,7 +43,7 @@ fn c_stage1_type_decl_frontier_rows() -> List<CStage1TypeDeclFrontierRow> {
   ]
 }
 
-fn c_stage1_type_decl_frontier_deferred_count() -> Int {
+fn c_stage1_type_decl_frontier_deferred_count() -> v2.std.integer.Int {
   v2.std.algebra.fold_list(
     xs: c_stage1_type_decl_frontier_rows(),
     empty: 0,
@@ -327,7 +327,7 @@ fn c_semantic_decl_lex_rows() -> List<v2.std.node.Node> {
 
 fn c_semantic_decl_binding_spelling_rows() -> List<v2.std.node.Node> {
   [
-    v2.std.compilers.semantic_decl_emission.semantic_decl_binding_spelling_row(binding: ^Int, spelling: "int"),
+    v2.std.compilers.semantic_decl_emission.semantic_decl_binding_spelling_row(binding: ^v2.std.integer.Int, spelling: "int"),
     v2.std.compilers.semantic_decl_emission.semantic_decl_binding_spelling_row(binding: ^c_decl_shape_enum_binding, spelling: ""),
     v2.std.compilers.semantic_decl_emission.semantic_decl_binding_spelling_row(binding: ^c_decl_shape_tagged_binding, spelling: ""),
     v2.std.compilers.semantic_decl_emission.semantic_decl_binding_spelling_row(binding: ^c_token_union_field, spelling: "u"),

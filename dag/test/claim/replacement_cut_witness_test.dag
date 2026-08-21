@@ -109,7 +109,7 @@ fn cut_with(
 fn causes_of(admission: gunbc.replacement_cut.PlanAdmission) -> std.types.List<gunbc.replacement_cut.CutRefusalCause> {
   match admission {
     PlanAdmitted { admitted: _ } => []
-    PlanRefused { causes: cs } => cs
+    gunbc.replacement_cut.PlanRefused { causes: cs } => cs
   }
 }
 
@@ -145,7 +145,7 @@ test fn fully_dispositioned_cut_admits_with_exact_counts() -> Bool {
     PlanAdmitted { admitted: a } =>
       a.retained_count == 1 && a.replaced_count == 1 && a.evidence_only_count == 1
         && a.retired_count == 1 && a.covered_region_count == 2
-    PlanRefused { causes: _ } => false
+    gunbc.replacement_cut.PlanRefused { causes: _ } => false
   }
 }
 
@@ -163,7 +163,7 @@ test fn admitted_verdict_is_bound_to_the_plan_it_judged() -> Bool {
   match gunbc.replacement_cut.admit_replacement_cut_plan(cut: plan) {
     PlanAdmitted { admitted: a } =>
       gunbc.replacement_cut.admitted_matches_plan(admitted: a, cut: plan) && !gunbc.replacement_cut.admitted_matches_plan(admitted: a, cut: mutated)
-    PlanRefused { causes: _ } => false
+    gunbc.replacement_cut.PlanRefused { causes: _ } => false
   }
 }
 
@@ -206,7 +206,7 @@ test fn retired_consumer_needs_no_coverage() -> Bool {
   match admission {
     PlanAdmitted { admitted: a } =>
       a.retained_count == 0 && a.replaced_count == 0 && a.evidence_only_count == 0 && a.retired_count == 1
-    PlanRefused { causes: _ } => false
+    gunbc.replacement_cut.PlanRefused { causes: _ } => false
   }
 }
 
@@ -333,7 +333,7 @@ test fn enumerated_empty_census_refuses_but_declared_empty_admits() -> Bool {
   causes_include(causes: test.claim.replacement_cut_witness.causes_of(admission: ambiguous), tag: "enumerated-census-empty", subject: "")
     && (match gunbc.replacement_cut.admit_replacement_cut_plan(cut: declared) {
       PlanAdmitted { admitted: a } => a.retained_count == 0 && a.covered_region_count == 2
-      PlanRefused { causes: _ } => false
+      gunbc.replacement_cut.PlanRefused { causes: _ } => false
     })
 }
 
@@ -356,7 +356,7 @@ test fn empty_external_role_list_refuses_but_justified_no_oracle_admits() -> Boo
     && std.types.list_length(items: test.claim.replacement_cut_witness.causes_of(admission: ambiguous)) == 1
     && (match justified {
       PlanAdmitted { admitted: a } => a.covered_region_count == 2
-      PlanRefused { causes: _ } => false
+      gunbc.replacement_cut.PlanRefused { causes: _ } => false
     })
 }
 
@@ -406,7 +406,7 @@ test fn descended_cut_names_its_parent_by_typed_identity() -> Bool {
 fn is_admitted(a: gunbc.replacement_cut.PlanAdmission) -> Bool {
   match a {
     PlanAdmitted { admitted: _ } => true
-    PlanRefused { causes: _ } => false
+    gunbc.replacement_cut.PlanRefused { causes: _ } => false
   }
 }
 

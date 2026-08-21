@@ -9,7 +9,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
   }
 }
 
-data install_media_fetch_bash_emit_dissolution_trigger: std.disposition.Disposition = Terminal {
+data install_media_fetch_bash_emit_dissolution_trigger: std.disposition.Disposition = std.disposition.Terminal {
   reason: "in-process typed reconcile (shell.Test.IsFile, sha256sum_verify_via_shell, http.Client.DownloadToFile, shell.Move.File) replaces ShellProgram/serialize_bash - no shell text is built or serialized"
 }
 

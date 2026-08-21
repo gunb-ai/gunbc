@@ -3,7 +3,7 @@ module v2.test.lens_vacuity.vacuity_test
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn vacuity_test_atom(identity: v2.std.node.Symbol) -> Node {
+fn vacuity_test_atom(identity: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
@@ -11,10 +11,10 @@ fn vacuity_test_atom(identity: v2.std.node.Symbol) -> Node {
   }
 }
 
-data vacuity_test_literal_x: Node = vacuity_test_atom(identity: ^vacuity_test_literal_x)
-data vacuity_test_literal_y: Node = vacuity_test_atom(identity: ^vacuity_test_literal_y)
-data vacuity_test_readback_lhs: Node = vacuity_test_atom(identity: ^vacuity_test_readback_field)
-data vacuity_test_literal_rhs: Node = vacuity_test_atom(identity: ^vacuity_test_literal_oracle)
+data vacuity_test_literal_x: v2.std.node.Node = vacuity_test_atom(identity: ^vacuity_test_literal_x)
+data vacuity_test_literal_y: v2.std.node.Node = vacuity_test_atom(identity: ^vacuity_test_literal_y)
+data vacuity_test_readback_lhs: v2.std.node.Node = vacuity_test_atom(identity: ^vacuity_test_readback_field)
+data vacuity_test_literal_rhs: v2.std.node.Node = vacuity_test_atom(identity: ^vacuity_test_literal_oracle)
 
 data vacuity_test_emit_vs_eval_claim: v2.std.verification.TestClaim = claim_phase1_nat_semiring_rung5_rust_add_left_identity_emit_equals_eval
 
@@ -247,7 +247,7 @@ data vacuity_case_row_structural_equals_single_eval: v2.lens.vacuity.VacuityCens
   carries_parallel_authority_debt: false
 )
 
-// Item 6 (mandate): replaces the former exact-distribution-pin test (hardcoded proven_duplicate_count == 4, proven_independent_count == 6, unknown_count == 2) with a typed VacuityFalsificationCaseId/VacuityFalsificationCase roster whose per-case `expected` field is DERIVED by hand-tracing classify_test_claim_vacuity/classify_vacuity_same_eval_record's actual decision tree for each row's actual provenance/claim inputs, not guessed and not reverse-engineered from the old hardcoded totals. Verified by direct execution before this roster was written (three isolated debug assertions against the real computed VacuityAdvisoryCensus, since removed): proven_duplicate_count == 4, proven_independent_count == 4, unknown_count == 4 — the OLD hardcoded distribution (4/6/2) was stale/wrong; in particular diagnostic_behavioral, round_trip_behavioral, and compiles_unknown_provenance each pass operand_provenance: OperandProvenanceUnknown (despite the '_behavioral' naming, which names the TestClaim variant under test — DiagnosticClaim/RoundTripClaim — not an asserted BehavioralComputation provenance), so classify_test_claim_vacuity's DiagnosticClaim/RoundTripClaim arms and the CompilesClaim same-eval unknown-provenance path all correctly return Unknown, not the ProvenIndependent the stale pin implicitly assumed. The aggregate counts below are DERIVED from this roster's own `expected` column (vacuity_falsification_expected_count), never independently hardcoded a second time, so the test can never silently drift out of sync with the roster when cases are added, removed, or re-labeled — exactly the vacuity-class failure (two representations of one fact, reconciled by hand) this whole lane exists to remove, this time in its own suite.
+// Item 6 (mandate): replaces the former exact-distribution-pin test (hardcoded proven_duplicate_count == 4, proven_independent_count == 6, unknown_count == 2) with a typed VacuityFalsificationCaseId/VacuityFalsificationCase roster whose per-case `expected` field is DERIVED by hand-tracing classify_test_claim_vacuity/classify_vacuity_same_eval_record's actual decision tree for each row's actual provenance/claim inputs, not guessed and not reverse-engineered from the old hardcoded totals. Verified by direct execution before this roster was written (three isolated debug assertions against the real computed VacuityAdvisoryCensus, since removed): proven_duplicate_count == 4, proven_independent_count == 4, unknown_count == 4 — the OLD hardcoded distribution (4/6/2) was stale/wrong; in particular diagnostic_behavioral, round_trip_behavioral, and compiles_unknown_provenance each pass operand_provenance: OperandProvenanceUnknown (despite the '_behavioral' naming, which names the TestClaim variant under test — DiagnosticClaim/RoundTripClaim — not an asserted BehavioralComputation provenance), so classify_test_claim_vacuity's DiagnosticClaim/RoundTripClaim arms and the CompilesClaim same-eval unknown-provenance path all correctly return v2.lens.vacuity.Unknown, not the ProvenIndependent the stale pin implicitly assumed. The aggregate counts below are DERIVED from this roster's own `expected` column (vacuity_falsification_expected_count), never independently hardcoded a second time, so the test can never silently drift out of sync with the roster when cases are added, removed, or re-labeled — exactly the vacuity-class failure (two representations of one fact, reconciled by hand) this whole lane exists to remove, this time in its own suite.
 type VacuityFalsificationCaseId =
   RungFiveEmitVsEval
   | SingleEvalReadback
@@ -279,15 +279,15 @@ fn vacuity_falsification_case(
 data vacuity_falsification_suite_cases: List<VacuityFalsificationCase> = [
   vacuity_falsification_case(id: RungFiveEmitVsEval, row: vacuity_case_row_rung_5_emit_vs_eval, expected: ProvenIndependent),
   vacuity_falsification_case(id: SingleEvalReadback, row: vacuity_case_row_single_eval_readback, expected: ProvenDuplicate),
-  vacuity_falsification_case(id: UnknownProvenance, row: vacuity_case_row_unknown_provenance, expected: Unknown),
+  vacuity_falsification_case(id: UnknownProvenance, row: vacuity_case_row_unknown_provenance, expected: v2.lens.vacuity.Unknown),
   vacuity_falsification_case(id: ConstantInequalityTaxonomy, row: vacuity_case_row_constant_inequality_taxonomy, expected: ProvenDuplicate),
   vacuity_falsification_case(id: DatasheetIndependentTranscriptions, row: vacuity_case_row_datasheet_independent_transcriptions, expected: ProvenIndependent),
   vacuity_falsification_case(id: RenderingTransformOracle, row: vacuity_case_row_rendering_transform_oracle, expected: ProvenIndependent),
   vacuity_falsification_case(id: TemporalExternalAuthorityCase, row: vacuity_case_row_temporal_external_authority, expected: ProvenIndependent),
   vacuity_falsification_case(id: HelperAliasDuplicate, row: vacuity_case_row_helper_alias_duplicate, expected: ProvenDuplicate),
-  vacuity_falsification_case(id: DiagnosticBehavioral, row: vacuity_case_row_diagnostic_behavioral, expected: Unknown),
-  vacuity_falsification_case(id: RoundTripBehavioral, row: vacuity_case_row_round_trip_behavioral, expected: Unknown),
-  vacuity_falsification_case(id: CompilesUnknownProvenance, row: vacuity_case_row_compiles_unknown_provenance, expected: Unknown),
+  vacuity_falsification_case(id: DiagnosticBehavioral, row: vacuity_case_row_diagnostic_behavioral, expected: v2.lens.vacuity.Unknown),
+  vacuity_falsification_case(id: RoundTripBehavioral, row: vacuity_case_row_round_trip_behavioral, expected: v2.lens.vacuity.Unknown),
+  vacuity_falsification_case(id: CompilesUnknownProvenance, row: vacuity_case_row_compiles_unknown_provenance, expected: v2.lens.vacuity.Unknown),
   vacuity_falsification_case(id: StructuralEqualsSingleEval, row: vacuity_case_row_structural_equals_single_eval, expected: ProvenDuplicate)
 ]
 
@@ -298,7 +298,7 @@ data vacuity_falsification_suite_rows: List<v2.lens.vacuity.VacuityCensusRow> = 
   f: fn(c) { c.row }
 )
 
-fn vacuity_falsification_case_matches_expected(case: VacuityFalsificationCase) -> Bool {
+fn vacuity_falsification_case_matches_expected(case: VacuityFalsificationCase) -> v2.std.logic.Bool {
   vacuity_evidence_eq(a: case.row.evidence, b: case.expected)
 }
 
@@ -306,7 +306,7 @@ fn vacuity_falsification_expected_count(cases: List<VacuityFalsificationCase>, t
   count_where(xs: cases, predicate: fn(c) { vacuity_evidence_eq(a: c.expected, b: target) })
 }
 
-test fn vacuity_rung5_emit_vs_eval_classifies_proven_independent() -> Bool {
+test fn vacuity_rung5_emit_vs_eval_classifies_proven_independent() -> v2.std.logic.Bool {
   return vacuity_evidence_eq(
     a: classify_test_claim_vacuity(
       claim: vacuity_test_emit_vs_eval_claim,
@@ -319,7 +319,7 @@ test fn vacuity_rung5_emit_vs_eval_classifies_proven_independent() -> Bool {
   )
 }
 
-test fn vacuity_single_eval_readback_classifies_proven_duplicate() -> Bool {
+test fn vacuity_single_eval_readback_classifies_proven_duplicate() -> v2.std.logic.Bool {
   return vacuity_evidence_eq(
     a: classify_test_claim_vacuity(
       claim: vacuity_test_single_eval_readback_claim,
@@ -332,7 +332,7 @@ test fn vacuity_single_eval_readback_classifies_proven_duplicate() -> Bool {
   )
 }
 
-test fn vacuity_unknown_provenance_classifies_unknown() -> Bool {
+test fn vacuity_unknown_provenance_classifies_unknown() -> v2.std.logic.Bool {
   return vacuity_evidence_eq(
     a: classify_test_claim_vacuity(
       claim: vacuity_test_unknown_provenance_claim,
@@ -345,7 +345,7 @@ test fn vacuity_unknown_provenance_classifies_unknown() -> Bool {
   )
 }
 
-test fn vacuity_constant_inequality_taxonomy_classifies_proven_duplicate() -> Bool {
+test fn vacuity_constant_inequality_taxonomy_classifies_proven_duplicate() -> v2.std.logic.Bool {
   return vacuity_evidence_eq(
     a: classify_test_claim_vacuity(
       claim: vacuity_test_constant_inequality_claim,
@@ -358,7 +358,7 @@ test fn vacuity_constant_inequality_taxonomy_classifies_proven_duplicate() -> Bo
   )
 }
 
-test fn vacuity_rendering_transform_classifies_proven_independent() -> Bool {
+test fn vacuity_rendering_transform_classifies_proven_independent() -> v2.std.logic.Bool {
   return vacuity_evidence_eq(
     a: classify_test_claim_vacuity(
       claim: vacuity_test_rendering_transform_claim,
@@ -371,7 +371,7 @@ test fn vacuity_rendering_transform_classifies_proven_independent() -> Bool {
   )
 }
 
-test fn vacuity_unified_node_corpus_matches_transport_classifier() -> Bool {
+test fn vacuity_unified_node_corpus_matches_transport_classifier() -> v2.std.logic.Bool {
   return vacuity_evidence_eq(
     a: classify_unified_test_claim_vacuity(
       claim: v2.std.verification.NodeCorpus {
@@ -386,7 +386,7 @@ test fn vacuity_unified_node_corpus_matches_transport_classifier() -> Bool {
   )
 }
 
-test fn vacuity_datasheet_transcriptions_classify_proven_independent_with_parallel_debt() -> Bool {
+test fn vacuity_datasheet_transcriptions_classify_proven_independent_with_parallel_debt() -> v2.std.logic.Bool {
   return vacuity_evidence_eq(
     a: classify_test_claim_vacuity(
       claim: vacuity_test_datasheet_transcription_claim,
@@ -403,14 +403,14 @@ test fn vacuity_datasheet_transcriptions_classify_proven_independent_with_parall
     )
 }
 
-test fn vacuity_falsification_cases_each_match_expected_evidence() -> Bool {
+test fn vacuity_falsification_cases_each_match_expected_evidence() -> v2.std.logic.Bool {
   return count_where(
       xs: vacuity_falsification_suite_cases,
       predicate: fn(c) { vacuity_falsification_case_matches_expected(case: c) }
     ) == length(xs: vacuity_falsification_suite_cases)
 }
 
-test fn vacuity_advisory_census_partitions_falsification_suite() -> Bool {
+test fn vacuity_advisory_census_partitions_falsification_suite() -> v2.std.logic.Bool {
   let census = vacuity_advisory_census_from_rows(rows: vacuity_falsification_suite_rows)
   return vacuity_advisory_census_matches_row_count(
       rows: vacuity_falsification_suite_rows,
@@ -426,11 +426,11 @@ test fn vacuity_advisory_census_partitions_falsification_suite() -> Bool {
     )
     && census.unknown_count == vacuity_falsification_expected_count(
       cases: vacuity_falsification_suite_cases,
-      target: Unknown
+      target: v2.lens.vacuity.Unknown
     )
 }
 
-test fn vacuity_falsification_suite_nonempty() -> Bool {
+test fn vacuity_falsification_suite_nonempty() -> v2.std.logic.Bool {
   return length(xs: vacuity_falsification_suite_rows) > 0
 }
 

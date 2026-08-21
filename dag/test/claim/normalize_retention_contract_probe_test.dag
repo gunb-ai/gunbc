@@ -30,7 +30,7 @@ fn classify_reasons(first: v2.std.node.Symbol, rest: List<v2.std.node.Symbol>) -
 // classify_source now returns an Outcome, because grammar preparation can refuse and that is a
 // fact about the world rather than about this source. The claim matches the Accepted arm
 // explicitly: collapsing it would let a refused preparation satisfy a claim about lexing.
-test fn classifier_separates_lex_from_accepted() -> Bool {
+test fn classifier_separates_lex_from_accepted() -> v2.std.logic.Bool {
   match classify_source(source: unterminated_string_source) {
     Accepted { value: st, diagnostics: _ } => frontend_stage_eq(a: st, b: LexRefused)
     Rejected { diagnostics: _ } => false
@@ -40,12 +40,12 @@ test fn classifier_separates_lex_from_accepted() -> Bool {
 // The roster identity separates denominators rather than naming one. Same rows in the same order
 // give the same identity; a changed path gives a different one. Both directions are asserted,
 // because an identity function that returned a constant would satisfy the first alone.
-test fn roster_identity_is_stable_across_calls() -> Bool {
+test fn roster_identity_is_stable_across_calls() -> v2.std.logic.Bool {
   let c = compare_content_hash(left: frontier_roster_identity(), right: frontier_roster_identity())
   c == ContentHashEqual
 }
 
-test fn roster_identity_separates_different_paths_RED() -> Bool {
+test fn roster_identity_separates_different_paths_RED() -> v2.std.logic.Bool {
   let c = compare_content_hash(
     left: roster_identity(rows: two_row_roster),
     right: roster_identity(rows: duplicate_path_roster)
@@ -56,7 +56,7 @@ test fn roster_identity_separates_different_paths_RED() -> Bool {
 // Order is part of the denominator, so a reordering is a different identity even though
 // verify_roster calls both rosters valid. The two claims say different things and both are load
 // bearing: validity is order-insensitive, identity is not.
-test fn roster_identity_separates_reordered_rows_RED() -> Bool {
+test fn roster_identity_separates_reordered_rows_RED() -> v2.std.logic.Bool {
   let c = compare_content_hash(
     left: roster_identity(rows: two_row_roster),
     right: roster_identity(rows: two_row_roster_reordered)
@@ -65,10 +65,10 @@ test fn roster_identity_separates_reordered_rows_RED() -> Bool {
 }
 
 
-// The normalize classifier is exercised DIRECTLY. Testing reasons_contain alone would not stop
+// The normalize classifier is exercised DIRECTLY. Testing gunbc.tools.frontier_ingestion_probe.reasons_contain alone would not stop
 // classify_normalize_diagnostics reverting to a head read: each pair below puts an unrelated
 // diagnostic FIRST, so a head read returns the wrong verdict while a containment read does not.
-test fn classifier_reads_graft_refusal_behind_a_prepended_diagnostic() -> Bool {
+test fn classifier_reads_graft_refusal_behind_a_prepended_diagnostic() -> v2.std.logic.Bool {
   frontend_stage_eq(
     a: classify_reasons(
       first: ^body_lowering_reason_wrapper_retained_emitted,
@@ -78,7 +78,7 @@ test fn classifier_reads_graft_refusal_behind_a_prepended_diagnostic() -> Bool {
   )
 }
 
-test fn classifier_reads_retention_pair_behind_a_prepended_diagnostic() -> Bool {
+test fn classifier_reads_retention_pair_behind_a_prepended_diagnostic() -> v2.std.logic.Bool {
   frontend_stage_eq(
     a: classify_reasons(
       first: ^body_lowering_reason_unsupported_form,
@@ -91,14 +91,14 @@ test fn classifier_reads_retention_pair_behind_a_prepended_diagnostic() -> Bool 
   )
 }
 
-test fn classifier_calls_a_plain_rejection_other() -> Bool {
+test fn classifier_calls_a_plain_rejection_other() -> v2.std.logic.Bool {
   frontend_stage_eq(
     a: classify_reasons(first: ^body_lowering_reason_unsupported_form, rest: []),
     b: NormalizeOther
   )
 }
 
-test fn classifier_does_not_call_retention_alone_retained_RED() -> Bool {
+test fn classifier_does_not_call_retention_alone_retained_RED() -> v2.std.logic.Bool {
   frontend_stage_eq(
     a: classify_reasons(first: ^body_lowering_reason_wrapper_retained_emitted, rest: []),
     b: NormalizeOther
@@ -106,7 +106,7 @@ test fn classifier_does_not_call_retention_alone_retained_RED() -> Bool {
 }
 
 
-test fn containment_read_finds_reason_behind_prepended_carrier() -> Bool {
+test fn containment_read_finds_reason_behind_prepended_carrier() -> v2.std.logic.Bool {
   gunbc.tools.frontier_ingestion_probe.reasons_contain(
     reasons: [
       ^body_lowering_reason_wrapper_retained_emitted,
@@ -116,7 +116,7 @@ test fn containment_read_finds_reason_behind_prepended_carrier() -> Bool {
   )
 }
 
-test fn containment_read_refuses_absent_reason_RED() -> Bool {
+test fn containment_read_refuses_absent_reason_RED() -> v2.std.logic.Bool {
   gunbc.tools.frontier_ingestion_probe.reasons_contain(
     reasons: [^body_lowering_reason_wrapper_retained_emitted],
     sym: ^normalize_reason_post_normalize_not_well_formed
@@ -127,7 +127,7 @@ test fn containment_read_refuses_absent_reason_RED() -> Bool {
 // Every stage renders to a distinct label. frontend_stage_eq is defined over the label, so a
 // collision would silently make two stages compare equal and every classifier claim above would
 // hold for the wrong reason.
-test fn stage_labels_are_pairwise_distinct() -> Bool {
+test fn stage_labels_are_pairwise_distinct() -> v2.std.logic.Bool {
   let labels = [
     frontend_stage_label(s: LexRefused),
     frontend_stage_label(s: ParseRefused),
@@ -164,16 +164,16 @@ fn observations_missing_one() -> List<gunbc.tools.frontier_ingestion_probe.Membe
   })
 }
 
-test fn census_over_the_whole_roster_is_complete() -> Bool {
+test fn census_over_the_whole_roster_is_complete() -> v2.std.logic.Bool {
   gunbc.tools.frontier_ingestion_probe.census_is_complete(obs: observations_for_whole_roster())
 }
 
-test fn census_missing_one_member_is_incomplete_RED() -> Bool {
+test fn census_missing_one_member_is_incomplete_RED() -> v2.std.logic.Bool {
   gunbc.tools.frontier_ingestion_probe.census_is_complete(obs: observations_missing_one()) == false
 }
 
 // A count equality would accept this: fifteen observations, none of them a roster member.
-test fn census_of_the_right_size_but_wrong_members_is_incomplete_RED() -> Bool {
+test fn census_of_the_right_size_but_wrong_members_is_incomplete_RED() -> v2.std.logic.Bool {
   let wrong = v2.std.algebra.fold_list(xs: frontier_roster, empty: [] as List<gunbc.tools.frontier_ingestion_probe.MemberObservation>, cons: fn(acc, m) {
     concat(acc, [gunbc.tools.frontier_ingestion_probe.MemberObservation { label: ^not_a_roster_member, stage: NormalizeOther }])
   })
@@ -184,7 +184,7 @@ test fn census_of_the_right_size_but_wrong_members_is_incomplete_RED() -> Bool {
 // THE TWO DIRECTIONS THE COVERING HALF ALONE ACCEPTED. Both censuses below contain every roster
 // member, so a per-label existence check passes on each. They are the discriminating inputs for
 // reconciliation, and each names its own offending label rather than reporting a bare false.
-test fn census_with_an_unrostered_observation_is_refused_RED() -> Bool {
+test fn census_with_an_unrostered_observation_is_refused_RED() -> v2.std.logic.Bool {
   let strayed = concat(
     observations_for_whole_roster(),
     [gunbc.tools.frontier_ingestion_probe.MemberObservation { label: ^not_a_roster_member, stage: NormalizeOther }]
@@ -195,7 +195,7 @@ test fn census_with_an_unrostered_observation_is_refused_RED() -> Bool {
   }
 }
 
-test fn census_observing_one_member_twice_is_refused_RED() -> Bool {
+test fn census_observing_one_member_twice_is_refused_RED() -> v2.std.logic.Bool {
   let doubled = concat(
     observations_for_whole_roster(),
     [gunbc.tools.frontier_ingestion_probe.MemberObservation { label: ^entry, stage: NormalizeOther }]
@@ -206,14 +206,14 @@ test fn census_observing_one_member_twice_is_refused_RED() -> Bool {
   }
 }
 
-test fn census_missing_one_member_names_that_member() -> Bool {
+test fn census_missing_one_member_names_that_member() -> v2.std.logic.Bool {
   match reconcile_census(obs: observations_missing_one()) {
     CensusMissingMember { label: l } => l == ^entry
     _ => false
   }
 }
 
-test fn whole_roster_census_reconciles_exactly() -> Bool {
+test fn whole_roster_census_reconciles_exactly() -> v2.std.logic.Bool {
   match reconcile_census(obs: observations_for_whole_roster()) {
     CensusExact => true
     _ => false
@@ -246,21 +246,21 @@ data two_row_roster_reordered: List<gunbc.tools.frontier_ingestion_probe.Frontie
   gunbc.tools.frontier_ingestion_probe.FrontierMember { label: ^a, path: "dag/std/one.dag" },
 ]
 
-test fn live_frontier_roster_is_valid() -> Bool {
+test fn live_frontier_roster_is_valid() -> v2.std.logic.Bool {
   match verify_frontier_roster() {
     FrontierRosterValid => true
     _ => false
   }
 }
 
-test fn roster_with_a_duplicate_label_refuses_and_names_it_RED() -> Bool {
+test fn roster_with_a_duplicate_label_refuses_and_names_it_RED() -> v2.std.logic.Bool {
   match verify_roster(rows: duplicate_label_roster) {
     FrontierRosterDuplicateLabel { label: l } => l == ^a
     _ => false
   }
 }
 
-test fn roster_with_one_path_under_two_labels_refuses_and_names_it_RED() -> Bool {
+test fn roster_with_one_path_under_two_labels_refuses_and_names_it_RED() -> v2.std.logic.Bool {
   match verify_roster(rows: duplicate_path_roster) {
     FrontierRosterDuplicatePath { path: p } => p == "dag/std/one.dag"
     _ => false
@@ -268,7 +268,7 @@ test fn roster_with_one_path_under_two_labels_refuses_and_names_it_RED() -> Bool
 }
 
 // Row order is not a fact about the roster, so it must not be a fact about the verdict.
-test fn roster_verdict_is_stable_under_row_reordering() -> Bool {
+test fn roster_verdict_is_stable_under_row_reordering() -> v2.std.logic.Bool {
   let a = match verify_roster(rows: two_row_roster) {
     FrontierRosterValid => true
     _ => false

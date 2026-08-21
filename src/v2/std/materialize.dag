@@ -25,11 +25,11 @@ fn materialized_mark_peers_share(acc: List<MaterializedNode>, h: std.content_has
   )
 }
 
-fn materialized_has_peer(acc: List<MaterializedNode>, h: std.content_hash.ContentHash) -> Bool {
+fn materialized_has_peer(acc: List<MaterializedNode>, h: std.content_hash.ContentHash) -> v2.std.logic.Bool {
   any(xs: acc, predicate: fn(e) { e.hash == h })
 }
 
-fn materialize_fold_step(acc: List<MaterializedNode>, n: Node) -> List<MaterializedNode> {
+fn materialize_fold_step(acc: List<MaterializedNode>, n: v2.std.node.Node) -> List<MaterializedNode> {
   let h = content_hash(n: n)
   if materialized_has_peer(acc: acc, h: h) {
     list_snoc_item(
@@ -41,7 +41,7 @@ fn materialize_fold_step(acc: List<MaterializedNode>, n: Node) -> List<Materiali
   }
 }
 
-fn materialize(root: Node) -> List<MaterializedNode> {
+fn materialize(root: v2.std.node.Node) -> List<MaterializedNode> {
   fold_list(
     xs: node_subtree_nodes(root: root),
     empty: empty_materialized,
@@ -49,7 +49,7 @@ fn materialize(root: Node) -> List<MaterializedNode> {
   )
 }
 
-fn materialization_is_share(m: std.realization.Materialization) -> Bool {
+fn materialization_is_share(m: std.realization.Materialization) -> v2.std.logic.Bool {
   match m {
     Share => true
     Recompute => false
@@ -57,11 +57,11 @@ fn materialization_is_share(m: std.realization.Materialization) -> Bool {
   }
 }
 
-fn hashes_contain(hs: List<std.content_hash.ContentHash>, h: std.content_hash.ContentHash) -> Bool {
+fn hashes_contain(hs: List<std.content_hash.ContentHash>, h: std.content_hash.ContentHash) -> v2.std.logic.Bool {
   any(xs: hs, predicate: fn(x) { x == h })
 }
 
-fn distinct_hashes(root: Node) -> List<std.content_hash.ContentHash> {
+fn distinct_hashes(root: v2.std.node.Node) -> List<std.content_hash.ContentHash> {
   fold_list(
     xs: node_subtree_nodes(root: root),
     empty: empty_hashes,
@@ -72,19 +72,19 @@ fn distinct_hashes(root: Node) -> List<std.content_hash.ContentHash> {
   )
 }
 
-fn materialize_node_count(root: Node) -> Int {
+fn materialize_node_count(root: v2.std.node.Node) -> v2.std.integer.Int {
   length(xs: node_subtree_nodes(root: root))
 }
 
-fn materialize_distinct_computation_count(root: Node) -> Int {
+fn materialize_distinct_computation_count(root: v2.std.node.Node) -> v2.std.integer.Int {
   length(xs: distinct_hashes(root: root))
 }
 
-fn materialize_redundant_computation_count(root: Node) -> Int {
+fn materialize_redundant_computation_count(root: v2.std.node.Node) -> v2.std.integer.Int {
   materialize_node_count(root: root) - materialize_distinct_computation_count(root: root)
 }
 
-fn materialize_has_duplicate_computation(root: Node) -> Bool {
+fn materialize_has_duplicate_computation(root: v2.std.node.Node) -> v2.std.logic.Bool {
   materialize_redundant_computation_count(root: root) > 0
 }
 
@@ -94,10 +94,10 @@ fn materialize_share_identity_grade() -> std.computation_identity.ComputationIde
   StructurallyIdentical
 }
 
-fn materialize_share_grade_permits_share() -> Bool {
+fn materialize_share_grade_permits_share() -> v2.std.logic.Bool {
   std.computation_identity.identity_permits_share(ci: materialize_share_identity_grade())
 }
 
 fn materialize_ungrounded_identity(detail: String) -> std.computation_identity.ComputationIdentity {
-  IdentityUnknown { cause: std.computation_identity.MissingConcept { detail: detail } }
+  std.computation_identity.IdentityUnknown { cause: std.computation_identity.MissingConcept { detail: detail } }
 }

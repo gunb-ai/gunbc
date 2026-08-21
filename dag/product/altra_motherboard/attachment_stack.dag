@@ -465,7 +465,7 @@ fn open_blockers() -> List<LayerBlocker> {
 // The contact COUNT is shared and is deliberately the only thing that crosses: however the socket
 // terminates, a 4926-contact processor needs 4926 board-side terminations, so the population is a
 // join key between the two layers even though the geometry is not.
-fn board_side_termination_population() -> Int {
+fn board_side_termination_population() -> std.integer.Int {
   altra_declared_contact_count()
 }
 

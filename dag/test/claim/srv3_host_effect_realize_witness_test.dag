@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 test fn os_install_actuator_toolchain_ensure_rejects_bmc_controller_target() -> Bool {
   match host_effect_apply(
-    target: BmcController { node: srv1_host },
+    target: gunbc.host_effect.BmcController { node: srv1_host },
     effect: gunbc.host_effect.OsInstallActuatorToolchainEnsure {},
     evidence: host_effect_identity_evidence,
     transport: LocalShell,

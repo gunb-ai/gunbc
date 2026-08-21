@@ -34,7 +34,7 @@ func main() -> std.process.ProcessExit {
     expected_healed_sha: healed_head
   )
   if receipt.workflow_run_id > 0 {
-    ExitSuccess
+    std.process.ExitSuccess
   } else {
     exit_failure(reason: "HealDispatchRefused: dispatch response carried no workflow run identity")
   }

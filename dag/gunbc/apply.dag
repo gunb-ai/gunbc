@@ -41,8 +41,8 @@ fn parse_apply_mode(value: String) -> ApplyModeParse {
 
 fn runner_capacity_plan_exit(plan: gunbc.runner_capacity_plan.RunnerCapacityPlan) -> std.process.ProcessExit {
   match plan {
-    PlanReady { hosts: _ } => ExitSuccess
-    PlanRefused { reason: r } => exit_failure(reason: r)
+    PlanReady { hosts: _ } => std.process.ExitSuccess
+    gunbc.runner_capacity_plan.PlanRefused { reason: r } => exit_failure(reason: r)
   }
 }
 

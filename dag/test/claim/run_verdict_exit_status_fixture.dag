@@ -21,7 +21,7 @@ func verdict_failure() -> std.process.ProcessExit {
 }
 
 func verdict_success() -> std.process.ProcessExit {
-  ExitSuccess
+  std.process.ExitSuccess
 }
 
 // NOT a ProcessExit. The driver must REFUSE this rather than print it and exit 0 —

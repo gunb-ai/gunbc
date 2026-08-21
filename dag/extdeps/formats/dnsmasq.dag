@@ -37,5 +37,5 @@ fn dnsmasq_to_doc(directives: List<DnsmasqDirective>) -> std.layout.Doc {
 }
 
 fn serialize_dnsmasq(directives: List<DnsmasqDirective>) -> String {
-  render(doc: dnsmasq_to_doc(directives: directives), proto: dnsmasq_protocol)
+  std.layout.render(doc: dnsmasq_to_doc(directives: directives), proto: dnsmasq_protocol)
 }

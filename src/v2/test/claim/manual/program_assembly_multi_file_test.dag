@@ -3,14 +3,14 @@ module v2.test.manual.program_assembly_multi_file
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn pa_graft_module_root(root: Node) -> Node {
+fn pa_graft_module_root(root: v2.std.node.Node) -> v2.std.node.Node {
   match module_header_containment_graft(root: root) {
     Accepted { value: grafted, diagnostics: _ } => grafted
-    Rejected { diagnostics: _ } => root
+    v2.std.diagnostic.Rejected { diagnostics: _ } => root
   }
 }
 
-fn pa_qn_node(seg: v2.std.node.Symbol) -> Node {
+fn pa_qn_node(seg: v2.std.node.Symbol) -> v2.std.node.Node {
   fold_list_node(
     xs: std.algebra.Cons { head: seg, tail: std.algebra.Empty },
     item_node: fn(sym) {
@@ -23,7 +23,7 @@ fn pa_qn_node(seg: v2.std.node.Symbol) -> Node {
   )
 }
 
-fn pa_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, export_atom: v2.std.node.Symbol) -> Node {
+fn pa_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, export_atom: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -36,7 +36,7 @@ fn pa_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, expor
         target: pa_qn_node(seg: seg)
       ),
       v2.std.node.Edge {
-        label: Named { name: export_sym },
+        label: v2.std.node.Named { name: export_sym },
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: export_atom } },
           children: [],
@@ -48,7 +48,7 @@ fn pa_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, expor
   }
 }
 
-fn pa_subject_with_import_use() -> Node {
+fn pa_subject_with_import_use() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -61,7 +61,7 @@ fn pa_subject_with_import_use() -> Node {
         target: pa_qn_node(seg: ^pa_subject_seg)
       ),
       v2.std.node.Edge {
-        label: Named { name: ^pa_import_use_sym },
+        label: v2.std.node.Named { name: ^pa_import_use_sym },
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^pa_imported_decl } },
           children: [],
@@ -134,7 +134,7 @@ fn pa_cross_file_admission() -> v2.compiler.name_resolve.Admission {
 
 test fn program_assembly_cross_file_import_assembles_holds() -> Bool {
   match pa_cross_file_roots() {
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: admitted_roots, diagnostics: _ } =>
     match assemble_program_from_module_roots(
       roots: admitted_roots,
@@ -142,14 +142,14 @@ test fn program_assembly_cross_file_import_assembles_holds() -> Bool {
       lm: dag_language_model_surface_empty_prelude()
     ) {
       Accepted { value: _, diagnostics: _ } => true
-      Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
     }
   }
 }
 
 test fn program_assembly_duplicate_module_roots_rejects() -> Bool {
   match pa_duplicate_module_roots() {
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: admitted_roots, diagnostics: _ } =>
     match assemble_program_from_module_roots(
       roots: admitted_roots,
@@ -157,14 +157,14 @@ test fn program_assembly_duplicate_module_roots_rejects() -> Bool {
       lm: dag_language_model_surface_empty_prelude()
     ) {
       Accepted { value: _, diagnostics: _ } => false
-      Rejected { diagnostics: _ } => true
+      v2.std.diagnostic.Rejected { diagnostics: _ } => true
     }
   }
 }
 
 data pa_ingest_stub_source: Medium<String> = extdeps.communication.medium.Medium { carried: "module pa_subject_seg", fidelity: extdeps.communication.medium.Lossless }
 data pa_ingest_source_file_artifact: v2.std.artifact.Artifact = v2.std.artifact.Artifact {
-  kind: SourceFile,
+  kind: v2.std.artifact.SourceFile,
   id: ^pa_ingest_source_file_artifact,
   file_path: "src/v2/test/fixture/program_assembly/pa_ingest_peer.dag"
 }
@@ -206,7 +206,7 @@ test fn program_assembly_ingest_non_source_file_rejects() -> Bool {
     lm: dag_language_model_surface_empty_prelude()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       d.head.reason == ^source_authority_read_artifact_not_source_file
   }
 }

@@ -42,7 +42,7 @@ fn floor_component_subject(run_id: std.types.NonEmptyStr, index: std.nat.Nat, la
 // This function reconstructs an outcome from a TAG plus the fields the tag lost. That is a lossy
 // projection followed by re-supply, and it is structurally the same defect the frontier note
 // describes one layer down: ClaimOutcome::RuntimeError flattened the typed budget pair into a
-// formatted String, so the executor could not fill TimedOut's fields without re-parsing its own
+// formatted String, so the executor could not fill std.observation.TimedOut's fields without re-parsing its own
 // prose. The String form was deleted at the seam (2026-08-18); the tag form is the residue of
 // the same shape.
 //
@@ -88,17 +88,17 @@ fn floor_component_outcome_of_failure_mode(mode: std.types.NonEmptyStr, detail: 
 
 fn floor_component_outcome_members(o: std.observation.ObservationOutcome) -> List<extdeps.languages.json.emit.JsonKeyValue> {
   match o {
-    Done => []
-    Refused { diagnostic: d } => [json_kv(key: "diagnostic", value: json_string(s: d as String))]
-    Failed { error: e, output: out } => [
+    std.observation.Done => []
+    std.observation.Refused { diagnostic: d } => [json_kv(key: "diagnostic", value: json_string(s: d as String))]
+    std.observation.Failed { error: e, output: out } => [
       json_kv(key: "error", value: json_string(s: e as String)),
       json_kv(key: "output", value: json_string(s: out))
     ]
-    TimedOut { basis: _, budget: b, elapsed: el } => [
+    std.observation.TimedOut { basis: _, budget: b, elapsed: el } => [
       json_kv(key: "budget_ms", value: json_int(n: millisecond_count(m: b))),
       json_kv(key: "elapsed_ms", value: json_int(n: millisecond_count(m: el)))
     ]
-    Skipped { reason: r } => [json_kv(key: "reason", value: json_string(s: r as String))]
+    std.observation.Skipped { reason: r } => [json_kv(key: "reason", value: json_string(s: r as String))]
     Final { shown_failures: n } => [json_kv(key: "shown_failures", value: json_int(n: n))]
   }
 }
@@ -106,7 +106,7 @@ fn floor_component_outcome_members(o: std.observation.ObservationOutcome) -> Lis
 fn floor_component_transition_outcome(t: std.observation.ObservationTransition) -> std.observation.ObservationOutcome? {
   match t {
     Begin => none
-    Step { k: _, n: _ } => none
+    std.observation.Step { k: _, n: _ } => none
     Concluded { outcome: o } => Present { value: o }
   }
 }
@@ -268,11 +268,11 @@ fn floor_component_row_is_done(row: FloorComponentRow) -> Bool {
     Absent => false
     Present { value: o } =>
       match o {
-        Done => true
-        Refused { diagnostic: _ } => false
-        Failed { error: _, output: _ } => false
-        TimedOut { basis: _, budget: _, elapsed: _ } => false
-        Skipped { reason: _ } => false
+        std.observation.Done => true
+        std.observation.Refused { diagnostic: _ } => false
+        std.observation.Failed { error: _, output: _ } => false
+        std.observation.TimedOut { basis: _, budget: _, elapsed: _ } => false
+        std.observation.Skipped { reason: _ } => false
         Final { shown_failures: n } => n == 0
       }
   }

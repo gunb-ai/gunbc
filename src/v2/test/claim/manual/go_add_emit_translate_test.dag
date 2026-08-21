@@ -4,17 +4,17 @@ module v2.test.manual.go_add_emit_translate
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 data go_add_forbidden_authority_source_text: String = "authority_source_text_fallback_forbidden"
 
-data go_add_int_inhabitant: Node = go_int_inhabitant_node()
+data go_add_int_inhabitant: v2.std.node.Node = go_int_inhabitant_node()
 
-data go_add_emitted_root: Node = go_emitted_add_fn_node()
+data go_add_emitted_root: v2.std.node.Node = go_emitted_add_fn_node()
 
-data go_add_int_facts_node: Node = go_integer_facts_node(facts: go_facts_int)
+data go_add_int_facts_node: v2.std.node.Node = go_integer_facts_node(facts: go_facts_int)
 
-data go_add_int_width_node: Node = go_signed_int_width_node(width: SignedPlatformInt)
+data go_add_int_width_node: v2.std.node.Node = go_signed_int_width_node(width: SignedPlatformInt)
 
-data go_add_int_kind_signed_node: Node = go_int_kind_node(kind: v2.extdeps.languages.go.Signed)
+data go_add_int_kind_signed_node: v2.std.node.Node = go_int_kind_node(kind: v2.extdeps.languages.go.Signed)
 
-data go_add_int_overflow_node: Node = go_overflow_node(
+data go_add_int_overflow_node: v2.std.node.Node = go_overflow_node(
   overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
 )
 
@@ -30,7 +30,7 @@ data go_add_poisoned_authority_target_model: v2.std.compilers.target_model.Targe
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-data go_add_empty_translation_rules_bundle: Node = v2.std.node.Node {
+data go_add_empty_translation_rules_bundle: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
@@ -58,14 +58,14 @@ data go_add_serialize_reject_receipt: v2.std.diagnostic.Outcome<extdeps.communic
 test fn go_add_serialize_reject_receipt_holds() -> Bool {
   match go_add_serialize_reject_receipt {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d != v2.std.diagnostic.None
+    v2.std.diagnostic.Rejected { diagnostics: d } => d != v2.std.diagnostic.None
   }
 }
 
 
 fn go_add_canonical_grounding(
-  node: Node,
-  algebra: Node
+  node: v2.std.node.Node,
+  algebra: v2.std.node.Node
 ) -> v2.std.constraints.CanonicalGrounding {
   v2.std.constraints.CanonicalGrounding {
     node: node,
@@ -82,7 +82,7 @@ fn go_add_canonical_grounding(
   }
 }
 
-fn go_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
+fn go_add_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == go_add_emitted_root {
     v2.std.witness.Holds {
       value: go_add_canonical_grounding(
@@ -185,7 +185,7 @@ fn go_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.Cano
   }
 }
 
-fn go_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn go_add_inferred_facts_for(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   match go_add_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -200,7 +200,7 @@ fn go_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.I
   }
 }
 
-fn go_add_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn go_add_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   go_add_inferred_facts_for(node: key)
 }
 
@@ -212,7 +212,7 @@ data go_add_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.
 }
 
 fn anchor_go_add_emit_accepts() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
-  emit(tree: go_add_inferred_tree, target: go_add_target_model)
+  v2.compiler.emit.emit(tree: go_add_inferred_tree, target: go_add_target_model)
 }
 
 fn anchor_go_add_compile_inferred_accepts() -> v2.std.diagnostic.Outcome<v2.compiler.compile.CompileOutput> {
@@ -228,7 +228,7 @@ test fn go_add_emit_add_fn_accepts_holds() -> Bool {
   match go_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == go_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -237,7 +237,7 @@ data go_add_compile_inferred_receipt: v2.std.diagnostic.Outcome<v2.compiler.comp
 test fn go_add_compile_inferred_receipt_holds() -> Bool {
   match go_add_compile_inferred_receipt {
     Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

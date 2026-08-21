@@ -2,12 +2,12 @@ module v2.lens.wiring_liveness
 
 
 type WiringRelation {
-  output: Node
-  declared_input: Node
+  output: v2.std.node.Node
+  declared_input: v2.std.node.Node
   dependence: List<v2.std.dependency.DependencyView>
 }
 
-fn wiring_reaches(dependence: List<v2.std.dependency.DependencyView>, from: Node, to: Node) -> Bool {
+fn wiring_reaches(dependence: List<v2.std.dependency.DependencyView>, from: v2.std.node.Node, to: v2.std.node.Node) -> v2.std.logic.Bool {
   graph_reaches(dependence: dependence, from: from, to: to)
 }
 
@@ -27,14 +27,14 @@ fn wiring_relation_verdict(relation: WiringRelation) -> v2.std.lens_verdict.Lens
   )
 }
 
-fn wiring_relation_is_wired(relation: WiringRelation) -> Bool {
+fn wiring_relation_is_wired(relation: WiringRelation) -> v2.std.logic.Bool {
   match wiring_relation_verdict(relation: relation) {
     Holds => true
     _ => false
   }
 }
 
-fn wiring_relation_from_tree(output: Node, declared_input: Node) -> WiringRelation {
+fn wiring_relation_from_tree(output: v2.std.node.Node, declared_input: v2.std.node.Node) -> WiringRelation {
   WiringRelation {
     output: output,
     declared_input: declared_input,
@@ -42,7 +42,7 @@ fn wiring_relation_from_tree(output: Node, declared_input: Node) -> WiringRelati
   }
 }
 
-fn wiring_input_is_wired(output: Node, declared_input: Node) -> Bool {
+fn wiring_input_is_wired(output: v2.std.node.Node, declared_input: v2.std.node.Node) -> v2.std.logic.Bool {
   wiring_relation_is_wired(
     relation: wiring_relation_from_tree(output: output, declared_input: declared_input)
   )
@@ -54,22 +54,22 @@ type WiringDeadWire {
   param: v2.std.node.Symbol
 }
 
-fn wiring_output_reachable_nodes(output: Node) -> List<Node> {
+fn wiring_output_reachable_nodes(output: v2.std.node.Node) -> List<v2.std.node.Node> {
   ready_set(graph_node: output)
 }
 
-fn wiring_param_reaches_output(reachable: List<Node>, declared_input: Node) -> Bool {
+fn wiring_param_reaches_output(reachable: List<v2.std.node.Node>, declared_input: v2.std.node.Node) -> v2.std.logic.Bool {
   graph_reach_contains(reached: reachable, n: declared_input)
 }
 
-fn wiring_param_is_dead_wire(reachable: List<Node>, declared_input: Node) -> Bool {
+fn wiring_param_is_dead_wire(reachable: List<v2.std.node.Node>, declared_input: v2.std.node.Node) -> v2.std.logic.Bool {
   std.perturbation.perturbation_is_violation(
     reading: std.perturbation.BackwardDiffInDiffOut,
     output_responded: wiring_param_reaches_output(reachable: reachable, declared_input: declared_input)
   )
 }
 
-fn wiring_param_violation_verdict(relation: WiringRelation, reachable: List<Node>) -> v2.std.lens_verdict.LensVerdict {
+fn wiring_param_violation_verdict(relation: WiringRelation, reachable: List<v2.std.node.Node>) -> v2.std.lens_verdict.LensVerdict {
   if wiring_param_is_dead_wire(
     reachable: reachable,
     declared_input: relation.declared_input
@@ -144,7 +144,7 @@ fn wiring_liveness_corpus_dead_wire_count() -> Int {
   length(xs: wiring_liveness_corpus_dead_wires())
 }
 
-fn wiring_liveness_corpus_is_clean() -> Bool {
+fn wiring_liveness_corpus_is_clean() -> v2.std.logic.Bool {
   match wiring_liveness_corpus_verdict() {
     Holds => true
     _ => false

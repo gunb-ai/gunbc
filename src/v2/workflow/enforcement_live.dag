@@ -56,7 +56,7 @@ fn coverage_receipts_from(facts: List<v2.std.decl_index.DeclFact>) -> List<v2.le
   })
 }
 
-fn unbound_contract_count() -> Int {
+fn unbound_contract_count() -> v2.std.integer.Int {
   fold(lens_contract_registry, init: 0, f: fn(acc, c) {
     if lens_contract_is_unbound(c: c) { acc + 1 } else { acc }
   })
@@ -74,23 +74,23 @@ fn complexity_repo_wide_verdict_live() -> v2.lens.enforcement.gate.IntentVerdict
   )
 }
 
-fn enforcement_consistency_live() -> Bool {
+fn enforcement_consistency_live() -> v2.std.logic.Bool {
   blocking_consumers_enrolled(contracts: lens_contract_registry, receipts: coverage_receipts_live())
 }
 
-fn lens_closure_question_zero_holds_live() -> Bool {
+fn lens_closure_question_zero_holds_live() -> v2.std.logic.Bool {
   lens_closure_question_zero_holds()
 }
 
-fn fn_item_count_live() -> Int {
+fn fn_item_count_live() -> v2.std.integer.Int {
   fn_item_count_of(facts: enforcement_corpus_facts())
 }
 
-fn body_unavailable_count_live() -> Int {
+fn body_unavailable_count_live() -> v2.std.integer.Int {
   body_unavailable_count_of(facts: enforcement_corpus_facts())
 }
 
-fn body_judged_count_live() -> Int {
+fn body_judged_count_live() -> v2.std.integer.Int {
   body_judged_count_of(facts: enforcement_corpus_facts())
 }
 

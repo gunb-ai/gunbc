@@ -6,9 +6,9 @@ data application_subterm_root: v2.std.node.Node = v2.std.node.Node {
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn application_subterm_at_empty_path_claim_holds() -> Bool {
+test fn application_subterm_at_empty_path_claim_holds() -> v2.std.logic.Bool {
   match v2.lens.application.subterm_at(root: application_subterm_root, path: v2.std.node.Path { steps: [] }) {
     Accepted { value: n, diagnostics: _ } => n == application_subterm_root
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

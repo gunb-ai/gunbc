@@ -342,31 +342,31 @@ test fn witness_systemd_unit_emitted() -> Bool {
 
 test fn witness_remote_mutation_service_op_realization_binds_emit_shell_phase_b_axis() -> Bool {
   match gunbc.live_deploy.emit.live_deploy_remote_mutation_service_op_realization_dissolution_trigger {
-    Scaffold {
+    std.disposition.Scaffold {
       dissolves_to: std.disposition.RealizationDispatch,
       bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: n, field: std.decl_ref.WholeDeclaration },
     } =>
       m == "gunbc.live_deploy.emit"
         && n == "live_deploy_emit_shell_dissolution_trigger"
-    Terminal { reason: _ } => false
+    std.disposition.Terminal { reason: _ } => false
   }
 }
 
 test fn witness_emit_shell_dissolution_trigger_is_scaffold() -> Bool {
   match gunbc.live_deploy.emit.live_deploy_emit_shell_dissolution_trigger {
-    Scaffold { dissolves_to: _, bind: _ } => true
-    Terminal { reason: _ } => false
+    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
+    std.disposition.Terminal { reason: _ } => false
   }
 }
 
 test fn witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline() -> Bool {
   match gunbc.live_deploy.emit.live_deploy_intent_dependency_graph_emit_dissolution_trigger {
-    Scaffold {
+    std.disposition.Scaffold {
       dissolves_to: std.disposition.RealizationDispatch,
       bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: n, field: std.decl_ref.WholeDeclaration },
     } =>
       m == "v2.compiler.emit_orchestration" && n == "orch_emit_pipeline"
-    Terminal { reason: _ } => false
+    std.disposition.Terminal { reason: _ } => false
   }
 }
 

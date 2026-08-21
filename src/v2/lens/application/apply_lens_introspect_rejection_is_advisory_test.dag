@@ -21,32 +21,32 @@ fn apply_lens_mode_rejecting_gate(_tree: v2.compiler.inferred_tree.InferredTree)
 
 data apply_lens_mode_rejecting_lens: v2.compiler.compile.CompileLens = v2.compiler.compile.CompileLens { gate: apply_lens_mode_rejecting_gate }
 
-fn apply_lens_mode_gate_rejects_enforce() -> Bool {
+fn apply_lens_mode_gate_rejects_enforce() -> v2.std.logic.Bool {
   match v2.compiler.compile.apply_compile_lens(
     lens: apply_lens_mode_rejecting_lens,
     inferred: apply_lens_mode_tree(),
     mode: v2.compiler.compile.CompileLensEnforce
   ) {
-    Rejected { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
+    v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-fn introspect_witness_violates_reason_matches(w: v2.std.witness.Witness<v2.std.node.Node>) -> Bool {
+fn introspect_witness_violates_reason_matches(w: v2.std.witness.Witness<v2.std.node.Node>) -> v2.std.logic.Bool {
   match w {
     Violates { diagnostic: d } => d.reason == ^compile_lens_gate_rejected
     Holds { value: _ } => false
   }
 }
 
-fn introspect_diagnostics_head_reason_matches(od: v2.std.diagnostic.Diagnostics) -> Bool {
+fn introspect_diagnostics_head_reason_matches(od: v2.std.diagnostic.Diagnostics) -> v2.std.logic.Bool {
   match od {
     Some { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
     None => false
   }
 }
 
-fn apply_lens_mode_gate_is_advisory_in_introspect() -> Bool {
+fn apply_lens_mode_gate_is_advisory_in_introspect() -> v2.std.logic.Bool {
   match v2.compiler.compile.apply_compile_lens(
     lens: apply_lens_mode_rejecting_lens,
     inferred: apply_lens_mode_tree(),
@@ -55,10 +55,10 @@ fn apply_lens_mode_gate_is_advisory_in_introspect() -> Bool {
     Accepted { value: w, diagnostics: od } =>
       introspect_witness_violates_reason_matches(w: w) &&
       introspect_diagnostics_head_reason_matches(od: od)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn apply_lens_introspect_rejection_is_advisory_claim_holds() -> Bool {
+test fn apply_lens_introspect_rejection_is_advisory_claim_holds() -> v2.std.logic.Bool {
   apply_lens_mode_gate_rejects_enforce() && apply_lens_mode_gate_is_advisory_in_introspect()
 }

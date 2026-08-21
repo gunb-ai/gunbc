@@ -22,8 +22,8 @@ fn model_core_primitive_fact_axis_is_core(axis: v2.std.node.Symbol) -> Bool {
 }
 
 type PrimitiveFactBundle {
-  substrate_carrier: Node
-  spec_facts: Map<v2.std.node.Symbol, Node>
+  substrate_carrier: v2.std.node.Node
+  spec_facts: Map<v2.std.node.Symbol, v2.std.node.Node>
 }
 
 fn primitive_fact_axis_unbound_diagnostic(axis: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
@@ -35,26 +35,26 @@ fn primitive_fact_axis_unbound_diagnostic(axis: v2.std.node.Symbol) -> v2.std.di
 }
 
 type AlgebraInhabitanceDecl {
-  algebra: Node
-  inhabitant: Node
-  witness: Node
+  algebra: v2.std.node.Node
+  inhabitant: v2.std.node.Node
+  witness: v2.std.node.Node
 }
 
 type AlgebraLawObligation {
-  inhabitance_witness: Node
-  law: Node
+  inhabitance_witness: v2.std.node.Node
+  law: v2.std.node.Node
 }
 
 type ResourceAccess {
-  resource: Node
+  resource: v2.std.node.Node
 }
 
 type EffectSignature {
-  signature: Node
+  signature: v2.std.node.Node
 }
 
 type PrimitiveOperationRef {
-  operation: Node
+  operation: v2.std.node.Node
   effect_signature: EffectSignature
 }
 
@@ -63,14 +63,14 @@ type EffectSemanticsDecl {
 }
 
 type PartialOperationDecl {
-  operation: Node
-  precondition: Node
+  operation: v2.std.node.Node
+  precondition: v2.std.node.Node
   discharge: PartialityDischarge
 }
 
 type PartialityDischarge
   = FailClosedAtBoundary { reason: v2.std.node.Symbol }
-  | RefinementHonoring { validation: Node }
+  | RefinementHonoring { validation: v2.std.node.Node }
 
 type PartialitySemanticsDecl {
   operations: List<PartialOperationDecl>
@@ -102,7 +102,7 @@ type ModelCoreBoolLawKey
   | ModelCoreBoolComplementInvolution
   | ModelCoreBoolComplementBounds
 
-fn model_core_atom(id: v2.std.node.Symbol) -> Node {
+fn model_core_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
@@ -110,7 +110,7 @@ fn model_core_atom(id: v2.std.node.Symbol) -> Node {
 }
 }
 
-fn model_core_bool_fact_lookup(facts: v2.std.logic.BoolPrimitiveFacts, axis: v2.std.node.Symbol) -> Witness<Node> {
+fn model_core_bool_fact_lookup(facts: v2.std.logic.BoolPrimitiveFacts, axis: v2.std.node.Symbol) -> Witness<v2.std.node.Node> {
   if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
     v2.std.witness.Holds { value: bool_width_fact_node(width: facts.width) }
   } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
@@ -122,12 +122,12 @@ fn model_core_bool_fact_lookup(facts: v2.std.logic.BoolPrimitiveFacts, axis: v2.
   }
 }
 
-fn model_core_bool_spec_facts(facts: v2.std.logic.BoolPrimitiveFacts) -> Map<v2.std.node.Symbol, Node> {
+fn model_core_bool_spec_facts(facts: v2.std.logic.BoolPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
   std.types.Map {
     lookup: fn(axis) {
       match model_core_bool_fact_lookup(facts: facts, axis: axis) {
-        Holds { value: v } => Present { value: v }
-        Violates { diagnostic: _ } => Absent
+        Holds { value: v } => v2.std.optional.Present { value: v }
+        Violates { diagnostic: _ } => v2.std.optional.Absent
       }
     }
   }
@@ -140,11 +140,11 @@ fn model_core_bool_primitive_bundle() -> PrimitiveFactBundle {
   }
 }
 
-fn model_core_bool_inhabitance_witness() -> Node {
+fn model_core_bool_inhabitance_witness() -> v2.std.node.Node {
   bool_boolean_algebra_node()
 }
 
-fn model_core_bool_algebra_node() -> Node {
+fn model_core_bool_algebra_node() -> v2.std.node.Node {
   bool_boolean_algebra_type_node()
 }
 
@@ -157,20 +157,20 @@ fn model_core_bool_inhabitance() -> AlgebraInhabitanceDecl {
   }
 }
 
-fn model_core_law_node(key: ModelCoreBoolLawKey) -> Node {
+fn model_core_law_node(key: ModelCoreBoolLawKey) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: Named { name: ^model_core_law_field_subject },
+        label: v2.std.node.Named { name: ^model_core_law_field_subject },
         target: model_core_bool_inhabitance_witness()
       },
       v2.std.node.Edge {
-        label: Named { name: ^model_core_law_field_algebra },
+        label: v2.std.node.Named { name: ^model_core_law_field_algebra },
         target: model_core_bool_algebra_node()
       },
       v2.std.node.Edge {
-        label: Named { name: ^model_core_law_field_kind },
+        label: v2.std.node.Named { name: ^model_core_law_field_kind },
         target: model_core_atom(id: discriminant(v: key))
       },
     ],
@@ -207,9 +207,9 @@ fn bool_model_core() -> ModelCore {
 
 type PrimitiveBundleSubstrateHead
   = PrimitiveBundleSubstrateHeadMissing
-  | PrimitiveBundleSubstrateHeadFound { substrate: Node }
+  | PrimitiveBundleSubstrateHeadFound { substrate: v2.std.node.Node }
 
-fn model_core_empty_conj_node() -> Node {
+fn model_core_empty_conj_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [],
@@ -217,13 +217,13 @@ fn model_core_empty_conj_node() -> Node {
   }
 }
 
-fn primitive_fact_bundle_substrate(bundle: PrimitiveFactBundle) -> Node {
+fn primitive_fact_bundle_substrate(bundle: PrimitiveFactBundle) -> v2.std.node.Node {
   match bundle {
     PrimitiveFactBundle { substrate_carrier: substrate, spec_facts: _ } => substrate
   }
 }
 
-fn primitive_fact_bundle_list_head_substrate(bundles: List<PrimitiveFactBundle>) -> Node {
+fn primitive_fact_bundle_list_head_substrate(bundles: List<PrimitiveFactBundle>) -> v2.std.node.Node {
   match fold_list(
     xs: bundles,
     empty: PrimitiveBundleSubstrateHeadMissing,
@@ -242,6 +242,6 @@ fn primitive_fact_bundle_list_head_substrate(bundles: List<PrimitiveFactBundle>)
   }
 }
 
-fn model_core_first_primitive_substrate(core: ModelCore) -> Node {
+fn model_core_first_primitive_substrate(core: ModelCore) -> v2.std.node.Node {
   primitive_fact_bundle_list_head_substrate(bundles: core.primitives)
 }

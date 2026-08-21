@@ -74,7 +74,7 @@ fn bash_absolute_parts_text(parts: std.types.FilePathParts) -> String {
 
 fn bash_path_intent_text(path: std.path_intent.PathIntent) -> v2.std.diagnostic.Outcome<String> {
   match path {
-    PathRef { name: n } =>
+    std.path_intent.PathRef { name: n } =>
       if !bash_path_ident_ok(name: n as String) {
         outcome_rejected(bash_path_intent_invalid_diagnostic())
       } else {
@@ -126,7 +126,7 @@ fn bash_test_path_kind_tokens() -> List<v2.std.compilers.target_model.ConcreteSy
   ]
 }
 
-data bash_test_path_kind_emitted: Node = bash_conj_emitted_from_tokens(
+data bash_test_path_kind_emitted: v2.std.node.Node = bash_conj_emitted_from_tokens(
   tokens: bash_test_path_kind_tokens()
 )
 
@@ -137,7 +137,7 @@ fn bash_test_path_kind_lex() -> v2.std.compilers.lexing.LexRules {
   ]))
 }
 
-fn bash_test_path_kind_translation_rules_node() -> Node {
+fn bash_test_path_kind_translation_rules_node() -> v2.std.node.Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_test_path_kind,
     lhs: ^bash_production_test_path_kind,
@@ -213,7 +213,7 @@ fn bash_path_predicate_target_model(predicate: std.path_intent.PathPredicate) ->
           )
         }
       )
-    Not { inner: i } =>
+    std.path_intent.Not { inner: i } =>
       bind_outcome(
         o: bash_path_predicate_target_model(predicate: i),
         f: fn(inner) {
@@ -222,7 +222,7 @@ fn bash_path_predicate_target_model(predicate: std.path_intent.PathPredicate) ->
           )
         }
       )
-    And { lhs: l, rhs: r } =>
+    std.path_intent.And { lhs: l, rhs: r } =>
       bind_outcome(
         o: bash_path_predicate_target_model(predicate: l),
         f: fn(lhs) {
@@ -240,7 +240,7 @@ fn bash_path_predicate_target_model(predicate: std.path_intent.PathPredicate) ->
           )
         }
       )
-    Or { lhs: l, rhs: r } =>
+    std.path_intent.Or { lhs: l, rhs: r } =>
       bind_outcome(
         o: bash_path_predicate_target_model(predicate: l),
         f: fn(lhs) {
@@ -263,7 +263,7 @@ fn bash_path_predicate_target_model(predicate: std.path_intent.PathPredicate) ->
 
 fn bash_dirname_ascent_target_model(ascent: std.path_intent.DirnameAscent) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetModel> {
   match ascent.path {
-    PathRef { name: n } =>
+    std.path_intent.PathRef { name: n } =>
       if !bash_dirname_ascent_target_ok(target: ascent.target as String) {
         outcome_rejected(bash_path_intent_invalid_diagnostic())
       } else if !bash_path_ident_ok(name: n as String) {
@@ -323,7 +323,7 @@ fn bash_stmt_if_else_tokens() -> List<v2.std.compilers.target_model.ConcreteSynt
   ]
 }
 
-data bash_stmt_if_else_emitted: Node = bash_conj_emitted_from_tokens(
+data bash_stmt_if_else_emitted: v2.std.node.Node = bash_conj_emitted_from_tokens(
   tokens: bash_stmt_if_else_tokens()
 )
 
@@ -336,7 +336,7 @@ fn bash_stmt_if_else_lex() -> v2.std.compilers.lexing.LexRules {
   ]))
 }
 
-fn bash_stmt_if_else_translation_rules_node() -> Node {
+fn bash_stmt_if_else_translation_rules_node() -> v2.std.node.Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_stmt_if_else,
     lhs: ^bash_production_stmt_if_else,
@@ -404,7 +404,7 @@ fn bash_stmt_if_else_block_tokens() -> List<v2.std.compilers.target_model.Concre
   ]
 }
 
-data bash_stmt_if_else_block_emitted: Node = bash_conj_emitted_from_tokens(
+data bash_stmt_if_else_block_emitted: v2.std.node.Node = bash_conj_emitted_from_tokens(
   tokens: bash_stmt_if_else_block_tokens()
 )
 
@@ -417,7 +417,7 @@ fn bash_stmt_if_else_block_lex() -> v2.std.compilers.lexing.LexRules {
   ]))
 }
 
-fn bash_stmt_if_else_block_translation_rules_node() -> Node {
+fn bash_stmt_if_else_block_translation_rules_node() -> v2.std.node.Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_stmt_if_else_block,
     lhs: ^bash_production_stmt_if_else_block,
@@ -467,7 +467,7 @@ fn bash_test_str_eq_tokens() -> List<v2.std.compilers.target_model.ConcreteSynta
   ]
 }
 
-data bash_test_str_eq_emitted: Node = bash_conj_emitted_from_tokens(
+data bash_test_str_eq_emitted: v2.std.node.Node = bash_conj_emitted_from_tokens(
   tokens: bash_test_str_eq_tokens()
 )
 
@@ -479,7 +479,7 @@ fn bash_test_str_eq_lex() -> v2.std.compilers.lexing.LexRules {
   ]))
 }
 
-fn bash_test_str_eq_translation_rules_node() -> Node {
+fn bash_test_str_eq_translation_rules_node() -> v2.std.node.Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_test_str_eq,
     lhs: ^bash_production_test_str_eq,
@@ -528,7 +528,7 @@ fn bash_test_str_not_eq_tokens() -> List<v2.std.compilers.target_model.ConcreteS
   ]
 }
 
-data bash_test_str_not_eq_emitted: Node = bash_conj_emitted_from_tokens(
+data bash_test_str_not_eq_emitted: v2.std.node.Node = bash_conj_emitted_from_tokens(
   tokens: bash_test_str_not_eq_tokens()
 )
 
@@ -540,7 +540,7 @@ fn bash_test_str_not_eq_lex() -> v2.std.compilers.lexing.LexRules {
   ]))
 }
 
-fn bash_test_str_not_eq_translation_rules_node() -> Node {
+fn bash_test_str_not_eq_translation_rules_node() -> v2.std.node.Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_test_str_not_eq,
     lhs: ^bash_production_test_str_not_eq,
@@ -587,7 +587,7 @@ fn bash_test_str_empty_tokens() -> List<v2.std.compilers.target_model.ConcreteSy
   ]
 }
 
-data bash_test_str_empty_emitted: Node = bash_conj_emitted_from_tokens(
+data bash_test_str_empty_emitted: v2.std.node.Node = bash_conj_emitted_from_tokens(
   tokens: bash_test_str_empty_tokens()
 )
 
@@ -598,7 +598,7 @@ fn bash_test_str_empty_lex() -> v2.std.compilers.lexing.LexRules {
   ]))
 }
 
-fn bash_test_str_empty_translation_rules_node() -> Node {
+fn bash_test_str_empty_translation_rules_node() -> v2.std.node.Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_test_str_empty,
     lhs: ^bash_production_test_str_empty,
@@ -642,7 +642,7 @@ fn bash_test_str_nonempty_tokens() -> List<v2.std.compilers.target_model.Concret
   ]
 }
 
-data bash_test_str_nonempty_emitted: Node = bash_conj_emitted_from_tokens(
+data bash_test_str_nonempty_emitted: v2.std.node.Node = bash_conj_emitted_from_tokens(
   tokens: bash_test_str_nonempty_tokens()
 )
 
@@ -653,7 +653,7 @@ fn bash_test_str_nonempty_lex() -> v2.std.compilers.lexing.LexRules {
   ]))
 }
 
-fn bash_test_str_nonempty_translation_rules_node() -> Node {
+fn bash_test_str_nonempty_translation_rules_node() -> v2.std.node.Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_test_str_nonempty,
     lhs: ^bash_production_test_str_nonempty,
@@ -698,7 +698,7 @@ fn bash_log_matches_grep_tokens() -> List<v2.std.compilers.target_model.Concrete
   ]
 }
 
-data bash_log_matches_grep_emitted: Node = bash_conj_emitted_from_tokens(
+data bash_log_matches_grep_emitted: v2.std.node.Node = bash_conj_emitted_from_tokens(
   tokens: bash_log_matches_grep_tokens()
 )
 
@@ -709,7 +709,7 @@ fn bash_log_matches_grep_lex() -> v2.std.compilers.lexing.LexRules {
   ]))
 }
 
-fn bash_log_matches_grep_translation_rules_node() -> Node {
+fn bash_log_matches_grep_translation_rules_node() -> v2.std.node.Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_log_matches_grep,
     lhs: ^bash_production_log_matches_grep,
@@ -755,7 +755,7 @@ fn bash_stmt_or_ignore_fail_tokens() -> List<v2.std.compilers.target_model.Concr
   ]
 }
 
-data bash_stmt_or_ignore_fail_emitted: Node = bash_conj_emitted_from_tokens(
+data bash_stmt_or_ignore_fail_emitted: v2.std.node.Node = bash_conj_emitted_from_tokens(
   tokens: bash_stmt_or_ignore_fail_tokens()
 )
 
@@ -765,7 +765,7 @@ fn bash_stmt_or_ignore_fail_lex() -> v2.std.compilers.lexing.LexRules {
   ]))
 }
 
-fn bash_stmt_or_ignore_fail_translation_rules_node() -> Node {
+fn bash_stmt_or_ignore_fail_translation_rules_node() -> v2.std.node.Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_stmt_or_ignore_fail,
     lhs: ^bash_production_stmt_or_ignore_fail,
@@ -827,7 +827,7 @@ fn bash_stmt_while_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntax
   ]
 }
 
-data bash_stmt_while_emitted: Node = bash_conj_emitted_from_tokens(
+data bash_stmt_while_emitted: v2.std.node.Node = bash_conj_emitted_from_tokens(
   tokens: bash_stmt_while_tokens()
 )
 
@@ -839,7 +839,7 @@ fn bash_stmt_while_lex() -> v2.std.compilers.lexing.LexRules {
   ]))
 }
 
-fn bash_stmt_while_translation_rules_node() -> Node {
+fn bash_stmt_while_translation_rules_node() -> v2.std.node.Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_stmt_while,
     lhs: ^bash_production_stmt_while,
@@ -892,7 +892,7 @@ fn bash_test_int_ne_tokens() -> List<v2.std.compilers.target_model.ConcreteSynta
   ]
 }
 
-data bash_test_int_ne_emitted: Node = bash_conj_emitted_from_tokens(
+data bash_test_int_ne_emitted: v2.std.node.Node = bash_conj_emitted_from_tokens(
   tokens: bash_test_int_ne_tokens()
 )
 
@@ -904,7 +904,7 @@ fn bash_test_int_ne_lex() -> v2.std.compilers.lexing.LexRules {
   ]))
 }
 
-fn bash_test_int_ne_translation_rules_node() -> Node {
+fn bash_test_int_ne_translation_rules_node() -> v2.std.node.Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_test_int_ne,
     lhs: ^bash_production_test_int_ne,

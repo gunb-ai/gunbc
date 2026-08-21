@@ -157,13 +157,13 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
   )
 ]
 
-fn routing_frontier_total_holds() -> Bool {
+fn routing_frontier_total_holds() -> v2.std.logic.Bool {
   let roster_len = length(xs: native_routing_frontier_roster)
   let split_total = length(xs: native_routed_rows()) + length(xs: interpreted_retained_rows())
   split_total == roster_len
 }
 
-fn routing_row_is_native(row: NativeRoutingFrontierRow) -> Bool {
+fn routing_row_is_native(row: NativeRoutingFrontierRow) -> v2.std.logic.Bool {
   match row.disposition {
     NativeRouted { observation_family: f, observations: obs } =>
       parity_routing_admitted(family: f, observations: obs)
@@ -199,7 +199,7 @@ fn interpreted_retained_rows() -> List<NativeRoutingFrontierRow> {
   )
 }
 
-fn subject_eq(a: std.decl_ref.DeclarationRef, b: std.decl_ref.DeclarationRef) -> Bool {
+fn subject_eq(a: std.decl_ref.DeclarationRef, b: std.decl_ref.DeclarationRef) -> v2.std.logic.Bool {
   (a.module_path == b.module_path) && (a.decl_name == b.decl_name)
 }
 
@@ -217,7 +217,7 @@ fn routing_frontier_row_for_subject(subject: std.decl_ref.DeclarationRef) -> Lis
   )
 }
 
-fn string_eq_native_routing(a: String, b: String) -> Bool {
+fn string_eq_native_routing(a: String, b: String) -> v2.std.logic.Bool {
   a == b
 }
 
@@ -295,7 +295,7 @@ fn native_routing_closure_reaches_subject(
   closure: List<String>,
   subject: std.decl_ref.DeclarationRef,
   facts: List<v2.lens.module_graph.ModuleDeclarationFact>
-) -> Bool {
+) -> v2.std.logic.Bool {
   any(
     xs: subject_module_source_paths(subject: subject, facts: facts),
     predicate: fn(p) {

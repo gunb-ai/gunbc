@@ -18,7 +18,7 @@ type RealizationPhase
   | PhaseNativeExecute
 
 type RealizationAttemptStanding
-  = V2TranslateSerialized { emitted_nonempty: Bool }
+  = V2TranslateSerialized { emitted_nonempty: v2.std.logic.Bool }
   | V2RealizationRefused { phase: RealizationPhase, exact_cause: v2.std.node.Symbol, located: String }
 
 type EntryRealizationAttempt {
@@ -72,14 +72,14 @@ fn first_located_file(ds: v2.std.diagnostic.NonEmptyDiagnostics) -> String {
   }
 }
 
-fn first_arrow_in(root: v2.std.node.Node) -> Optional<v2.std.node.Node> {
+fn first_arrow_in(root: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match root.kind {
-    TypeNode { connective: Arrow } => Present { value: root }
+    TypeNode { connective: Arrow } => v2.std.optional.Present { value: root }
     _ =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
+      fold(root.children, init: v2.std.optional.Absent, f: fn(acc, e) {
         match acc {
-          Present { value: _ } => acc
-          Absent => first_arrow_in(root: e.target)
+          v2.std.optional.Present { value: _ } => acc
+          v2.std.optional.Absent => first_arrow_in(root: e.target)
         }
       })
   }
@@ -88,14 +88,14 @@ fn first_arrow_in(root: v2.std.node.Node) -> Optional<v2.std.node.Node> {
 fn collect_arrows(root: v2.std.node.Node, acc: List<v2.std.node.Node>) -> List<v2.std.node.Node> {
   fold(root.children, init: acc, f: fn(inner, e) {
     match e.label {
-      Named { name: decl_name } =>
+      v2.std.node.Named { name: decl_name } =>
         match first_arrow_in(root: e.target) {
-          Present { value: arrow } =>
+          v2.std.optional.Present { value: arrow } =>
             concat(inner, [node_synthetic(
               kind: v2.std.node.TypeNode { connective: Conj },
-              children: [v2.std.node.Edge { label: Named { name: decl_name }, target: arrow }]
+              children: [v2.std.node.Edge { label: v2.std.node.Named { name: decl_name }, target: arrow }]
             )])
-          Absent => inner
+          v2.std.optional.Absent => inner
         }
       _ => inner
     }
@@ -136,7 +136,7 @@ fn capture_test_markers(source: String) -> MarkedSource {
 fn attempt_entry_source(entry: String, source: String) -> v2.workflow.realization_attempt.EntryRealizationAttempt {
   let marked = capture_test_markers(source: source)
   match v2.compiler.ingested_fixture_arrows.ingested_resolved_module_from_source(source: marked.unmarked, file: ^realization_attempt_entry_file) {
-    Rejected { diagnostics: ds } =>
+    v2.std.diagnostic.Rejected { diagnostics: ds } =>
       attempt_refused_at(
         entry: entry,
         phase: PhaseFrontend,
@@ -155,7 +155,7 @@ fn attempt_entry_source(entry: String, source: String) -> v2.workflow.realizatio
               arrow_count: length(xs: arrows),
               standing: V2TranslateSerialized { emitted_nonempty: !(medium.carried == "") }
             }
-          Rejected { diagnostics: ds } =>
+          v2.std.diagnostic.Rejected { diagnostics: ds } =>
             v2.workflow.realization_attempt.EntryRealizationAttempt {
               entry: entry,
               arrow_count: length(xs: arrows),
@@ -180,7 +180,7 @@ fn attempt_entry(entry: String) -> v2.workflow.realization_attempt.EntryRealizat
   }
 }
 
-fn attempt_is_emitted(a: v2.workflow.realization_attempt.EntryRealizationAttempt) -> Bool {
+fn attempt_is_emitted(a: v2.workflow.realization_attempt.EntryRealizationAttempt) -> v2.std.logic.Bool {
   match a.standing {
     V2TranslateSerialized { emitted_nonempty: ne } => ne
     V2RealizationRefused { phase: _, exact_cause: _, located: _ } => false
@@ -204,10 +204,10 @@ fn attempt_phase_label(a: v2.workflow.realization_attempt.EntryRealizationAttemp
   }
 }
 
-fn attempt_cause(a: v2.workflow.realization_attempt.EntryRealizationAttempt) -> Optional<v2.std.node.Symbol> {
+fn attempt_cause(a: v2.workflow.realization_attempt.EntryRealizationAttempt) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   match a.standing {
-    V2TranslateSerialized { emitted_nonempty: _ } => Absent
-    V2RealizationRefused { phase: _, exact_cause: c, located: _ } => Present { value: c }
+    V2TranslateSerialized { emitted_nonempty: _ } => v2.std.optional.Absent
+    V2RealizationRefused { phase: _, exact_cause: c, located: _ } => v2.std.optional.Present { value: c }
   }
 }
 
@@ -216,14 +216,14 @@ data attempt_assembled_note: String = "The CANONICAL closure attempt (operator s
 fn decl_edges_named(root: v2.std.node.Node, fn_name: v2.std.node.Symbol, acc: List<v2.std.node.Node>) -> List<v2.std.node.Node> {
   let here = fold(root.children, init: acc, f: fn(inner, e) {
     match e.label {
-      Named { name: n } =>
+      v2.std.node.Named { name: n } =>
         if n == fn_name {
           match first_arrow_in(root: e.target) {
-            Present { value: _ } => concat(inner, [node_synthetic(
+            v2.std.optional.Present { value: _ } => concat(inner, [node_synthetic(
               kind: v2.std.node.TypeNode { connective: Conj },
-              children: [v2.std.node.Edge { label: Named { name: n }, target: e.target }]
+              children: [v2.std.node.Edge { label: v2.std.node.Named { name: n }, target: e.target }]
             )])
-            Absent => inner
+            v2.std.optional.Absent => inner
           }
         } else { inner }
       _ => inner
@@ -259,14 +259,14 @@ fn attempt_joined(program: v2.std.node.Node, fn_name: v2.std.node.Symbol, entry:
     attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_ambiguous)
   } else {
     match list_at_optional(xs: joined, index: 0) {
-      Absent => attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_absent)
-      Present { value: decl } =>
+      v2.std.optional.Absent => attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_absent)
+      v2.std.optional.Present { value: decl } =>
         match infer(tree: decl) {
-          Rejected { diagnostics: ds } =>
+          v2.std.diagnostic.Rejected { diagnostics: ds } =>
             attempt_refused_at(entry: entry, phase: PhaseInfer, cause: first_located_cause(ds: ds), located: first_located_file(ds: ds))
           Accepted { value: inferred, diagnostics: _ } =>
             match compile_inferred(inferred: inferred, mode: v2.compiler.compile.TranslateTo { target: rust_target_model_staging() }) {
-              Rejected { diagnostics: ds } =>
+              v2.std.diagnostic.Rejected { diagnostics: ds } =>
                 attempt_refused_at(entry: entry, phase: PhaseTranslate, cause: first_located_cause(ds: ds), located: first_located_file(ds: ds))
               Accepted { value: out, diagnostics: _ } =>
                 match out {
@@ -292,7 +292,7 @@ fn attempt_assembled(
   entry: String
 ) -> v2.workflow.realization_attempt.EntryRealizationAttempt {
   match assemble_program_from_ingest(ingest: ingest, admission: admission, lm: dag_language_model()) {
-    Rejected { diagnostics: ds } => {
+    v2.std.diagnostic.Rejected { diagnostics: ds } => {
       let cause = first_located_cause(ds: ds)
       attempt_refused_at(entry: entry, phase: phase_for_reason(reason: cause, fallback: PhaseResolve), cause: cause, located: first_located_file(ds: ds))
     }
@@ -322,14 +322,14 @@ fn capture_markers_ingest(ingest: v2.compiler.source_authority.SourceRootIngest)
   }
 }
 
-fn entry_witness_source(ingest: v2.compiler.source_authority.SourceRootIngest, entry: String) -> Optional<String> {
-  fold_list(xs: ingest, empty: Absent, cons: fn(acc, r) {
+fn entry_witness_source(ingest: v2.compiler.source_authority.SourceRootIngest, entry: String) -> v2.std.optional.Optional<String> {
+  fold_list(xs: ingest, empty: v2.std.optional.Absent, cons: fn(acc, r) {
     match acc {
-      Present { value: _ } => acc
-      Absent =>
+      v2.std.optional.Present { value: _ } => acc
+      v2.std.optional.Absent =>
         match r.artifact.file_path == entry {
-          true => Present { value: r.source.carried }
-          false => Absent
+          true => v2.std.optional.Present { value: r.source.carried }
+          false => v2.std.optional.Absent
         }
     }
   })
@@ -346,7 +346,7 @@ fn attempt_closure_rows(
   entry: String
 ) -> List<v2.workflow.realization_attempt.EntryRealizationAttempt> {
   match assemble_program_from_ingest(ingest: capture_markers_ingest(ingest: ingest), admission: admission, lm: dag_language_model()) {
-    Rejected { diagnostics: ds } => {
+    v2.std.diagnostic.Rejected { diagnostics: ds } => {
       let cause = first_located_cause(ds: ds)
       let phase = phase_for_reason(reason: cause, fallback: PhaseResolve)
       let located = first_located_file(ds: ds)

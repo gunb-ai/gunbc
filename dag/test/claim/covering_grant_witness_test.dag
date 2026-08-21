@@ -1,7 +1,7 @@
 module test.claim.covering_grant_witness_test
 
 
-// Discriminating witnesses for covering_grant (the P-C per-grant-binding primitive) and for admit_effect projecting EffectRequest into the one std.access kernel. An envelope carries a Read grant bound RealTransport under repo and a Write grant bound Replay (carrying a fixture_store) under scratch. covering_grant returns the COVERING grant so dispatch can read its binding: the Read target resolves to the RealTransport grant, the Write target to the Replay grant carrying its own fixture_store. An uncovered target is typed NoCoveringGrant evidence consumed by effect_grant_policy. The same cases Permit or return a located Deny through std.access, proving the migration preserves the reach wall without a second decision carrier.
+// Discriminating witnesses for covering_grant (the P-C per-grant-binding primitive) and for admit_effect projecting EffectRequest into the one std.access kernel. An envelope carries a Read grant bound RealTransport under repo and a Write grant bound Replay (carrying a fixture_store) under scratch. covering_grant returns the COVERING grant so dispatch can read its binding: the Read target resolves to the RealTransport grant, the Write target to the Replay grant carrying its own fixture_store. An uncovered target is typed NoCoveringGrant evidence consumed by effect_grant_policy. The same cases Permit or return a located std.access.Deny through std.access, proving the migration preserves the reach wall without a second decision carrier.
 data cg_frame: std.materialization_ladder.Frame = std.materialization_ladder.Frame { name: "covering-grant-witness", kind: SharedStateFrame }
 
 fn cg_envelope() -> std.effect_grant.Envelope {
@@ -91,7 +91,7 @@ test fn admit_effect_projection_admits_covered() -> Bool {
     target: filesystem_position(path: ["repo", "x"])
   ) {
     Permit => true
-    Deny { refusal: refusal } => false
+    std.access.Deny { refusal: refusal } => false
   }
 }
 
@@ -101,7 +101,7 @@ test fn admit_effect_projection_refuses_uncovered() -> Bool {
     verb: Read,
     target: filesystem_position(path: ["elsewhere"])
   ) {
-    Deny { refusal: refusal } => refusal.location.object == "elsewhere"
+    std.access.Deny { refusal: refusal } => refusal.location.object == "elsewhere"
     Permit => false
   }
 }

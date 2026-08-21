@@ -68,7 +68,7 @@ fn two_events_project_one_exact_tsv_row_holds() -> Bool {
   let eval = witness_eval_ms(count: 20)
   let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: resolve),
-    witness_cost_declaration_event(entry: entry, declaration: decl, eval: eval, outcome: Done)
+    witness_cost_declaration_event(entry: entry, declaration: decl, eval: eval, outcome: std.observation.Done)
   ]
   match project_witness_cost_receipt(events: events) {
     WitnessCostProjectionRefused { cause: _ } => false
@@ -83,11 +83,11 @@ fn two_events_project_one_exact_tsv_row_holds() -> Bool {
         witness_wall_ms_count(wall: row.warm) == 120 &&
         row.warm == witness_cost_warm(eval: eval_wall, resolve: resolve) &&
         match row.outcome {
-          Done => true
-          Refused { diagnostic: _ } => false
-          Failed { error: _, output: _ } => false
-          TimedOut { basis: _, budget: _, elapsed: _ } => false
-          Skipped { reason: _ } => false
+          std.observation.Done => true
+          std.observation.Refused { diagnostic: _ } => false
+          std.observation.Failed { error: _, output: _ } => false
+          std.observation.TimedOut { basis: _, budget: _, elapsed: _ } => false
+          std.observation.Skipped { reason: _ } => false
           Final { shown_failures: _ } => false
         }
       )
@@ -102,7 +102,7 @@ fn missing_parent_resolve_refuses_holds() -> Bool {
       entry: entry,
       declaration: decl,
       eval: witness_eval_ms(count: 20),
-      outcome: Done
+      outcome: std.observation.Done
     )
   ]
   match project_witness_cost_receipt(events: events) {
@@ -122,7 +122,7 @@ fn multiple_parent_resolve_refuses_holds() -> Bool {
       entry: entry,
       declaration: decl,
       eval: witness_eval_ms(count: 20),
-      outcome: Done
+      outcome: std.observation.Done
     )
   ]
   match project_witness_cost_receipt(events: events) {
@@ -139,8 +139,8 @@ fn resolve_wall_is_shared_not_divided_holds() -> Bool {
   let resolve = witness_wall_ms(count: 100)
   let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: resolve),
-    witness_cost_declaration_event(entry: entry, declaration: d1, eval: witness_eval_ms(count: 10), outcome: Done),
-    witness_cost_declaration_event(entry: entry, declaration: d2, eval: witness_eval_ms(count: 30), outcome: Done)
+    witness_cost_declaration_event(entry: entry, declaration: d1, eval: witness_eval_ms(count: 10), outcome: std.observation.Done),
+    witness_cost_declaration_event(entry: entry, declaration: d2, eval: witness_eval_ms(count: 30), outcome: std.observation.Done)
   ]
   match project_witness_cost_receipt(events: events) {
     WitnessCostProjectionRefused { cause: _ } => false
@@ -164,13 +164,13 @@ fn refused_outcome_distinct_from_failed_in_projection_holds() -> Bool {
       entry: entry,
       declaration: d_refused,
       eval: witness_eval_ms(count: 5),
-      outcome: Refused { diagnostic: "typed refuse" as std.types.NonEmptyStr }
+      outcome: std.observation.Refused { diagnostic: "typed refuse" as std.types.NonEmptyStr }
     ),
     witness_cost_declaration_event(
       entry: entry,
       declaration: d_failed,
       eval: witness_eval_ms(count: 5),
-      outcome: Failed { error: "boom" as std.types.NonEmptyStr, output: "" }
+      outcome: std.observation.Failed { error: "boom" as std.types.NonEmptyStr, output: "" }
     )
   ]
   match project_witness_cost_receipt(events: events) {
@@ -179,21 +179,21 @@ fn refused_outcome_distinct_from_failed_in_projection_holds() -> Bool {
       count(rows) == 2 &&
       fold(rows, init: false, f: (acc, row) =>
         acc || match row.outcome {
-          Refused { diagnostic: d } => d == ("typed refuse" as std.types.NonEmptyStr)
-          Failed { error: _, output: _ } => false
-          Done => false
-          TimedOut { basis: _, budget: _, elapsed: _ } => false
-          Skipped { reason: _ } => false
+          std.observation.Refused { diagnostic: d } => d == ("typed refuse" as std.types.NonEmptyStr)
+          std.observation.Failed { error: _, output: _ } => false
+          std.observation.Done => false
+          std.observation.TimedOut { basis: _, budget: _, elapsed: _ } => false
+          std.observation.Skipped { reason: _ } => false
           Final { shown_failures: _ } => false
         }
       ) &&
       fold(rows, init: false, f: (acc, row) =>
         acc || match row.outcome {
-          Failed { error: e, output: _ } => e == ("boom" as std.types.NonEmptyStr)
-          Refused { diagnostic: _ } => false
-          Done => false
-          TimedOut { basis: _, budget: _, elapsed: _ } => false
-          Skipped { reason: _ } => false
+          std.observation.Failed { error: e, output: _ } => e == ("boom" as std.types.NonEmptyStr)
+          std.observation.Refused { diagnostic: _ } => false
+          std.observation.Done => false
+          std.observation.TimedOut { basis: _, budget: _, elapsed: _ } => false
+          std.observation.Skipped { reason: _ } => false
           Final { shown_failures: _ } => false
         }
       )
@@ -209,7 +209,7 @@ fn w2_ambient_suppress_retains_complete_receipt_row_holds() -> Bool {
     entry: entry,
     declaration: decl,
     eval: eval,
-    outcome: Done
+    outcome: std.observation.Done
   )
   let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: resolve),
@@ -265,7 +265,7 @@ fn malformed_nested_resolve_event_refuses_holds() -> Bool {
       entry: entry,
       declaration: decl,
       eval: witness_eval_ms(count: 5),
-      outcome: Done
+      outcome: std.observation.Done
     )
   ]
   match witness_cost_event_role(event: nested) {
@@ -291,7 +291,7 @@ fn typed_event_role_extract_classifies_entry_and_declaration_holds() -> Bool {
     entry: entry,
     declaration: decl,
     eval: witness_eval_ms(count: 2),
-    outcome: Done
+    outcome: std.observation.Done
   )
   match witness_cost_event_role(event: parent) {
     Present { value: EntryResolveParent } =>
@@ -312,8 +312,8 @@ fn duplicate_declaration_identity_refuses_holds() -> Bool {
   let decl = test.claim.witness_row_cost_projection.sample_decl("duplicate")
   let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 10)),
-    witness_cost_declaration_event(entry: entry, declaration: decl, eval: witness_eval_ms(count: 1), outcome: Done),
-    witness_cost_declaration_event(entry: entry, declaration: decl, eval: witness_eval_ms(count: 2), outcome: Done)
+    witness_cost_declaration_event(entry: entry, declaration: decl, eval: witness_eval_ms(count: 1), outcome: std.observation.Done),
+    witness_cost_declaration_event(entry: entry, declaration: decl, eval: witness_eval_ms(count: 2), outcome: std.observation.Done)
   ]
   match project_witness_cost_receipt(events: events) {
     WitnessCostProjectionRefused { cause: c } =>
@@ -376,21 +376,21 @@ fn native_seed_events_preserve_order_outcome_and_perturbation_holds() -> Bool {
       ) == 26 &&
       fold(rows, init: false, f: (acc, row) =>
         acc || match row.outcome {
-          Refused { diagnostic: d } => d == ("typed refusal" as std.types.NonEmptyStr)
-          Done => false
-          Failed { error: _, output: _ } => false
-          TimedOut { basis: _, budget: _, elapsed: _ } => false
-          Skipped { reason: _ } => false
+          std.observation.Refused { diagnostic: d } => d == ("typed refusal" as std.types.NonEmptyStr)
+          std.observation.Done => false
+          std.observation.Failed { error: _, output: _ } => false
+          std.observation.TimedOut { basis: _, budget: _, elapsed: _ } => false
+          std.observation.Skipped { reason: _ } => false
           Final { shown_failures: _ } => false
         }
       ) &&
       fold(rows, init: false, f: (acc, row) =>
         acc || match row.outcome {
-          Failed { error: e, output: _ } => e == ("runtime failure" as std.types.NonEmptyStr)
-          Done => false
-          Refused { diagnostic: _ } => false
-          TimedOut { basis: _, budget: _, elapsed: _ } => false
-          Skipped { reason: _ } => false
+          std.observation.Failed { error: e, output: _ } => e == ("runtime failure" as std.types.NonEmptyStr)
+          std.observation.Done => false
+          std.observation.Refused { diagnostic: _ } => false
+          std.observation.TimedOut { basis: _, budget: _, elapsed: _ } => false
+          std.observation.Skipped { reason: _ } => false
           Final { shown_failures: _ } => false
         }
       ) &&
@@ -409,19 +409,19 @@ fn exact_nanosecond_projection_and_same_millisecond_order_holds() -> Bool {
       entry: entry,
       declaration: one,
       eval: witness_eval_ns(count: 1),
-      outcome: Done
+      outcome: std.observation.Done
     ),
     witness_cost_declaration_event(
       entry: entry,
       declaration: sub_ms,
       eval: witness_eval_ns(count: 999999),
-      outcome: Done
+      outcome: std.observation.Done
     ),
     witness_cost_declaration_event(
       entry: entry,
       declaration: one_ms,
       eval: witness_eval_ns(count: 1000000),
-      outcome: Done
+      outcome: std.observation.Done
     )
   ]
   match project_witness_cost_receipt(events: events) {
@@ -470,14 +470,14 @@ fn seed_timed_out_event_carries_the_pair_and_is_not_failed_holds() -> Bool {
       count(rows) == 1 &&
       fold(rows, init: false, f: (acc, row) =>
         acc || match row.outcome {
-          TimedOut { basis: k, budget: b, elapsed: e } =>
+          std.observation.TimedOut { basis: k, budget: b, elapsed: e } =>
             clock_basis_eq(a: k, b: WallClock) &&
             !clock_basis_eq(a: k, b: CpuClock) &&
             millisecond_count(m: b) == 900000 && millisecond_count(m: e) == 900001
-          Done => false
-          Refused { diagnostic: _ } => false
-          Failed { error: _, output: _ } => false
-          Skipped { reason: _ } => false
+          std.observation.Done => false
+          std.observation.Refused { diagnostic: _ } => false
+          std.observation.Failed { error: _, output: _ } => false
+          std.observation.Skipped { reason: _ } => false
           Final { shown_failures: _ } => false
         }
       )
@@ -503,11 +503,11 @@ fn timed_out_red_control_is_neither_done_nor_failed_holds() -> Bool {
     WitnessCostProjectionComplete { rows: rows } =>
       fold(rows, init: true, f: (acc, row) =>
         acc && match row.outcome {
-          Done => false
-          Failed { error: _, output: _ } => false
-          Refused { diagnostic: _ } => false
-          TimedOut { basis: _, budget: _, elapsed: _ } => true
-          Skipped { reason: _ } => false
+          std.observation.Done => false
+          std.observation.Failed { error: _, output: _ } => false
+          std.observation.Refused { diagnostic: _ } => false
+          std.observation.TimedOut { basis: _, budget: _, elapsed: _ } => true
+          std.observation.Skipped { reason: _ } => false
           Final { shown_failures: _ } => false
         }
       )
@@ -523,7 +523,7 @@ fn row_carries_both_clocks_and_does_not_confuse_them_holds() -> Bool {
       entry: entry,
       declaration: decl,
       eval: witness_eval_cpu_and_wall(cpu_ms: 3, wall_ms: 40),
-      outcome: Done
+      outcome: std.observation.Done
     )
   ]
   match project_witness_cost_receipt(events: events) {
@@ -550,7 +550,7 @@ fn wall_only_row_reports_cpu_absent_rather_than_zero_holds() -> Bool {
       entry: entry,
       declaration: decl,
       eval: witness_eval_ms(count: 40),
-      outcome: Done
+      outcome: std.observation.Done
     )
   ]
   match project_witness_cost_receipt(events: events) {
@@ -575,7 +575,7 @@ fn eval_with_no_wall_clock_refuses_rather_than_projecting_holds() -> Bool {
       entry: entry,
       declaration: decl,
       eval: [std.observation.TimedMeasurement { basis: CpuClock, elapsed: std.observation.MeasuredValue { value: witness_wall_ms(count: 3) } }],
-      outcome: Done
+      outcome: std.observation.Done
     )
   ]
   match project_witness_cost_receipt(events: events) {

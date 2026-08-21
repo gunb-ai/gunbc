@@ -6,7 +6,7 @@ data interpreter_replacement_cut_witness_note: String = "The first production Re
 fn causes_of(admission: gunbc.replacement_cut.PlanAdmission) -> List<gunbc.replacement_cut.CutRefusalCause> {
   match admission {
     PlanAdmitted { admitted: _ } => []
-    PlanRefused { causes: cs } => cs
+    gunbc.replacement_cut.PlanRefused { causes: cs } => cs
   }
 }
 

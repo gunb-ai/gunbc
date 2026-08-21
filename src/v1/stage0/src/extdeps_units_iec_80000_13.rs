@@ -2,11 +2,12 @@
 // Source module: extdeps.units.iec_80000_13
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
-use crate::extdeps_uri::UriScheme::Https;
+use crate::extdeps_uri::UriScheme::*;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-pub use crate::std_nat::Nat;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v2_std_nat::Nat;
+use crate::v2_std_nat::Nat::*;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -16,10 +17,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+        uri: Uri {
         scheme: UriScheme::Https,
         locator: "www.iso.org/standard/31898.html".to_string(),
-    }),
+    },
     })
             };
         }
@@ -35,10 +36,10 @@ pub fn iec_80000_13_version_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn iec_kibi_factor() -> Nat {
+pub fn iec_kibi_factor() -> Rc<Nat> {
     1024
 }
 
-pub fn octet_bit_count() -> Nat {
+pub fn octet_bit_count() -> Rc<Nat> {
     8
 }

@@ -3,14 +3,14 @@ module v2.test.manual.match_infer_fail_open_audit
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn diagnostics_contain_reason(d: v2.std.diagnostic.Diagnostics, reason: v2.std.node.Symbol) -> Bool {
+fn diagnostics_contain_reason(d: v2.std.diagnostic.Diagnostics, reason: v2.std.node.Symbol) -> v2.std.logic.Bool {
   match d {
     None => false
     Some { diagnostics: nes } => v2.test.manual.match_infer_fail_open_audit.non_empty_diagnostics_contain_reason(nes: nes, reason: reason)
   }
 }
 
-fn non_empty_diagnostics_contain_reason(nes: v2.std.diagnostic.NonEmptyDiagnostics, reason: v2.std.node.Symbol) -> Bool {
+fn non_empty_diagnostics_contain_reason(nes: v2.std.diagnostic.NonEmptyDiagnostics, reason: v2.std.node.Symbol) -> v2.std.logic.Bool {
   if nes.head.reason == reason {
     true
   } else {
@@ -24,7 +24,7 @@ fn non_empty_diagnostics_contain_reason(nes: v2.std.diagnostic.NonEmptyDiagnosti
   }
 }
 
-fn match_infer_fail_open_audit_body() -> Node {
+fn match_infer_fail_open_audit_body() -> v2.std.node.Node {
   dag_match_body_from_arms(
     scrutinee: dag_type_atom_node(identity: ^dag_token_kw_true),
     true_arm: dag_match_arm_node(
@@ -38,14 +38,14 @@ fn match_infer_fail_open_audit_body() -> Node {
   )
 }
 
-test fn match_infer_fail_open_audit_rejects_holds() -> Bool {
+test fn match_infer_fail_open_audit_rejects_holds() -> v2.std.logic.Bool {
   match infer(tree: match_infer_fail_open_audit_body()) {
     Accepted { value: _, diagnostics: d } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-fn match_infer_fail_open_audit_non_exhaustive_body() -> Node {
+fn match_infer_fail_open_audit_non_exhaustive_body() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: Match },
     children: [
@@ -65,14 +65,14 @@ fn match_infer_fail_open_audit_non_exhaustive_body() -> Node {
   }
 }
 
-test fn match_infer_fail_open_audit_non_exhaustive_rejects_holds() -> Bool {
+test fn match_infer_fail_open_audit_non_exhaustive_rejects_holds() -> v2.std.logic.Bool {
   match infer(tree: match_infer_fail_open_audit_non_exhaustive_body()) {
     Accepted { value: _, diagnostics: d } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-fn match_infer_fail_open_audit_extra_arm_body() -> Node {
+fn match_infer_fail_open_audit_extra_arm_body() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: Match },
     children: [
@@ -106,22 +106,22 @@ fn match_infer_fail_open_audit_extra_arm_body() -> Node {
   }
 }
 
-test fn match_infer_fail_open_audit_extra_arm_rejects_holds() -> Bool {
+test fn match_infer_fail_open_audit_extra_arm_rejects_holds() -> v2.std.logic.Bool {
   match infer(tree: match_infer_fail_open_audit_extra_arm_body()) {
     Accepted { value: _, diagnostics: d } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
 data match_infer_fail_open_audit_literal_arm_note: String = "literal_arm_accepts (dag_match_if_body_fixture → Accepted/None) was a never-enrolled plain fn on main; umbrella dissolution promoted it to test fn and CI returned Bool(false) (run 30223338595). Deleted rather than if-false/Symbol-pin (review 43557). Dissolve-on: re-land as test fn when infer(dag_match_if_body_fixture) is Accepted with empty diagnostics on CI hardware."
 
-fn classical_not_int_match_arrow_fixture() -> Node {
+fn classical_not_int_match_arrow_fixture() -> v2.std.node.Node {
   dag_arrow_with_body_node(
     domain: v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         v2.std.node.Edge {
-          label: Named { name: ^dag_binding_param_x },
+          label: v2.std.node.Named { name: ^dag_binding_param_x },
           target: dag_type_atom_node(identity: ^dag_binding_type_int)
         }
       ],
@@ -142,31 +142,31 @@ fn classical_not_int_match_arrow_fixture() -> Node {
   )
 }
 
-test fn complement_body_real_infer_refuses_unsupported_pattern_holds() -> Bool {
+test fn complement_body_real_infer_refuses_unsupported_pattern_holds() -> v2.std.logic.Bool {
   match infer(tree: dag_complement_body_fixture) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-test fn classical_not_int_match_arrow_real_infer_holds() -> Bool {
+test fn classical_not_int_match_arrow_real_infer_holds() -> v2.std.logic.Bool {
   match infer(tree: classical_not_int_match_arrow_fixture()) {
     Accepted { value: _, diagnostics: d } =>
       diagnostics_contain_reason(
         d: d,
         reason: ^infer_match_int_scrutinee_bool_literal_scaffold
       )
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn classical_not_int_match_non_octet_arm_fixture() -> Node {
+fn classical_not_int_match_non_octet_arm_fixture() -> v2.std.node.Node {
   dag_arrow_with_body_node(
     domain: v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         v2.std.node.Edge {
-          label: Named { name: ^dag_binding_param_x },
+          label: v2.std.node.Named { name: ^dag_binding_param_x },
           target: dag_type_atom_node(identity: ^dag_binding_type_int)
         }
       ],
@@ -187,17 +187,17 @@ fn classical_not_int_match_non_octet_arm_fixture() -> Node {
   )
 }
 
-test fn classical_not_int_match_non_octet_arm_rejects_holds() -> Bool {
+test fn classical_not_int_match_non_octet_arm_rejects_holds() -> v2.std.logic.Bool {
   match infer(tree: classical_not_int_match_non_octet_arm_fixture()) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-test fn complement_arrow_real_infer_refuses_unsupported_pattern_holds() -> Bool {
+test fn complement_arrow_real_infer_refuses_unsupported_pattern_holds() -> v2.std.logic.Bool {
   match infer(tree: dag_complement_arrow_with_body_fixture) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 

@@ -64,8 +64,8 @@ fn module_domain_segments(module: v2.std.qualified_name.QualifiedName) -> List<S
 
 fn module_domain_prefix_ok(module: v2.std.qualified_name.QualifiedName) -> Bool {
   match module_domain_segments(module: module) |> first {
-    Present { value: head } => head == expected_bridge_family_domain_segment()
-    Absent => false
+    v2.std.optional.Present { value: head } => head == expected_bridge_family_domain_segment()
+    v2.std.optional.Absent => false
   }
 }
 
@@ -175,7 +175,7 @@ fn spelling_collision_synthetic_red_control() -> Bool {
   let rows = [
     gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm {
       arm: gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveArmId { identity: "synthetic.arm_one" },
-      form: FreeCall,
+      form: gunbc.v1_interpreter_primitive_surface.FreeCall,
       authored_spelling: "shared_spelling",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
@@ -184,7 +184,7 @@ fn spelling_collision_synthetic_red_control() -> Bool {
     },
     gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm {
       arm: gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveArmId { identity: "synthetic.arm_two" },
-      form: FreeCall,
+      form: gunbc.v1_interpreter_primitive_surface.FreeCall,
       authored_spelling: "shared_spelling",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",

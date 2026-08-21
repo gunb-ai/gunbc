@@ -50,7 +50,7 @@ type ShellEmissionAuthorization
   = Authorized { justification: ShellEmissionJustification }
   | Refused { cause: ShellEmissionRefusal }
 
-fn availability_fact_is_unknown(fact: AvailabilityFact) -> Bool {
+fn availability_fact_is_unknown(fact: AvailabilityFact) -> v2.std.logic.Bool {
   match fact {
     Absent => false
     Present => false
@@ -58,13 +58,13 @@ fn availability_fact_is_unknown(fact: AvailabilityFact) -> Bool {
   }
 }
 
-fn runtime_availability_gate_has_unknown(gate: RuntimeAvailabilityGate) -> Bool {
+fn runtime_availability_gate_has_unknown(gate: RuntimeAvailabilityGate) -> v2.std.logic.Bool {
   availability_fact_is_unknown(fact: gate.gunbc_binary)
     || availability_fact_is_unknown(fact: gate.typed_transport)
     || availability_fact_is_unknown(fact: gate.plan_interpreter)
 }
 
-fn shell_emission_site_id_eq(left: ShellEmissionSiteId, right: ShellEmissionSiteId) -> Bool {
+fn shell_emission_site_id_eq(left: ShellEmissionSiteId, right: ShellEmissionSiteId) -> v2.std.logic.Bool {
   left == right
 }
 
@@ -81,7 +81,7 @@ fn shell_emission_roster_lookup(
 fn shell_emission_roster_entry_matches(
   entry: ShellEmissionRosterEntry,
   site: ShellEmissionSiteId
-) -> Bool {
+) -> v2.std.logic.Bool {
   shell_emission_site_id_eq(left: entry.site, right: site)
 }
 
@@ -149,7 +149,7 @@ fn shell_emission_authorize_by_window(
   }
 }
 
-fn shell_emission_authorization_is_authorized(auth: ShellEmissionAuthorization) -> Bool {
+fn shell_emission_authorization_is_authorized(auth: ShellEmissionAuthorization) -> v2.std.logic.Bool {
   match auth {
     Authorized { justification: _ } => true
     Refused { cause: _ } => false

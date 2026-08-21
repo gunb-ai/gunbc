@@ -25,7 +25,7 @@ test fn witness_secret_version_admits_exact() -> Bool {
 test fn witness_setup_token_capture_refuses_multiple_candidates() -> Bool {
   match admit_setup_token_capture(
     candidate_count: 2,
-    token: Present { value: "sk-ant-oat01-test" },
+    token: v2.std.optional.Present { value: "sk-ant-oat01-test" },
     format: extdeps.llm.claude_setup_token_cli.SetupTokenFormatMeasured {
       format: extdeps.llm.claude_setup_token_cli.ClaudeSetupTokenFormatMeasured {
         token_prefix: "sk-ant-oat01-" as std.types.NonEmptyStr,
@@ -42,7 +42,7 @@ test fn witness_setup_token_capture_refuses_multiple_candidates() -> Bool {
 test fn witness_setup_token_capture_admits_single_candidate() -> Bool {
   match admit_setup_token_capture(
     candidate_count: 1,
-    token: Present { value: "sk-ant-oat01-abcdefghijklmnopqrstuvwxyz" },
+    token: v2.std.optional.Present { value: "sk-ant-oat01-abcdefghijklmnopqrstuvwxyz" },
     format: extdeps.llm.claude_setup_token_cli.SetupTokenFormatMeasured {
       format: extdeps.llm.claude_setup_token_cli.ClaudeSetupTokenFormatMeasured {
         token_prefix: "sk-ant-oat01-" as std.types.NonEmptyStr,
@@ -69,7 +69,7 @@ fn witness_setup_token_format_measured() -> extdeps.llm.claude_setup_token_cli.C
 test fn witness_setup_token_capture_refuses_format_unobserved() -> Bool {
   match admit_setup_token_capture(
     candidate_count: 1,
-    token: Present { value: "sk-ant-oat01-abcdefghijklmnopqrstuvwxyz" },
+    token: v2.std.optional.Present { value: "sk-ant-oat01-abcdefghijklmnopqrstuvwxyz" },
     format: extdeps.llm.claude_setup_token_cli.SetupTokenFormatUnobserved {
       reason: "pinned executable format not yet measured" as std.types.NonEmptyStr,
     },
@@ -83,7 +83,7 @@ test fn witness_setup_token_capture_refuses_format_unobserved() -> Bool {
 test fn witness_setup_token_capture_refuses_no_candidate() -> Bool {
   match admit_setup_token_capture(
     candidate_count: 0,
-    token: Absent,
+    token: v2.std.optional.Absent,
     format: witness_setup_token_format_measured(),
   ) {
     SetupTokenCaptureRefusedNoCandidate => true
@@ -94,7 +94,7 @@ test fn witness_setup_token_capture_refuses_no_candidate() -> Bool {
 test fn witness_setup_token_capture_refuses_malformed_prefix() -> Bool {
   match admit_setup_token_capture(
     candidate_count: 1,
-    token: Present { value: "wrong-prefix-abcdefghijklmnopqrstuvwxyz" },
+    token: v2.std.optional.Present { value: "wrong-prefix-abcdefghijklmnopqrstuvwxyz" },
     format: witness_setup_token_format_measured(),
   ) {
     SetupTokenCaptureRefusedMalformedPrefix => true
@@ -105,7 +105,7 @@ test fn witness_setup_token_capture_refuses_malformed_prefix() -> Bool {
 test fn witness_setup_token_capture_refuses_malformed_length() -> Bool {
   match admit_setup_token_capture(
     candidate_count: 1,
-    token: Present { value: "sk-ant-oat01-short" },
+    token: v2.std.optional.Present { value: "sk-ant-oat01-short" },
     format: witness_setup_token_format_measured(),
   ) {
     SetupTokenCaptureRefusedMalformedLength { observed: _, min: _, max: _ } => true
@@ -201,7 +201,7 @@ test fn witness_credential_write_back_refuses_unchanged_digest() -> Bool {
     digest: "sha256:deadbeef" as std.types.NonEmptyStr,
   }
   match admit_ambient_oauth_home_write_back(
-    observation: Present {
+    observation: v2.std.optional.Present {
       value: gunbc.claude_setup_token_enrollment.ClaudeAmbientOAuthArtifactObservationPair {
         before_use: digest,
         after_use: digest,
@@ -216,7 +216,7 @@ test fn witness_credential_write_back_refuses_unchanged_digest() -> Bool {
 
 test fn witness_credential_write_back_admits_changed_digest() -> Bool {
   match admit_ambient_oauth_home_write_back(
-    observation: Present {
+    observation: v2.std.optional.Present {
       value: gunbc.claude_setup_token_enrollment.ClaudeAmbientOAuthArtifactObservationPair {
         before_use: gunbc.claude_setup_token_enrollment.ClaudeAmbientOAuthArtifactDigest {
           digest: "sha256:before" as std.types.NonEmptyStr,
@@ -234,7 +234,7 @@ test fn witness_credential_write_back_admits_changed_digest() -> Bool {
 }
 
 test fn witness_credential_write_back_refuses_missing_observation() -> Bool {
-  match admit_ambient_oauth_home_write_back(observation: Absent) {
+  match admit_ambient_oauth_home_write_back(observation: v2.std.optional.Absent) {
     AmbientOAuthWriteBackRefusedMissingObservation { reason: _ } => true
     _ => false
   }
@@ -251,11 +251,11 @@ test fn witness_setup_token_standing_is_rotation_unobserved_by_default() -> Bool
 test fn witness_enrollment_placement_refuses_unbound_operator_choices() -> Bool {
   match admit_enrollment_placement(
     choices: gunbc.claude_setup_token_enrollment.ClaudeEnrollmentOperatorChoices {
-      enrollment_host: Absent,
-      run_as_principal: Absent,
-      gcp_project: Absent,
-      secret_id_or_create_authorization: Absent,
-      account_label: Absent,
+      enrollment_host: v2.std.optional.Absent,
+      run_as_principal: v2.std.optional.Absent,
+      gcp_project: v2.std.optional.Absent,
+      secret_id_or_create_authorization: v2.std.optional.Absent,
+      account_label: v2.std.optional.Absent,
     },
     claude_runtime: gunbc.claude_setup_token_enrollment.ClaudeEnrollmentRuntimeBinding {
       executable: "claude" as std.types.NonEmptyStr,
@@ -276,13 +276,13 @@ test fn witness_enrollment_workflow_refuses_host_effects_scaffold() -> Bool {
   match admit_enrollment_workflow_start(
     placement_admission: admit_enrollment_placement(
       choices: gunbc.claude_setup_token_enrollment.ClaudeEnrollmentOperatorChoices {
-        enrollment_host: Present { value: "enrollment-host.example" as std.types.NonEmptyStr },
-        run_as_principal: Present { value: "claude-enrollment" as std.types.NonEmptyStr },
-        gcp_project: Present { value: "operator-selected-project" as std.types.NonEmptyStr },
-        secret_id_or_create_authorization: Present {
+        enrollment_host: v2.std.optional.Present { value: "enrollment-host.example" as std.types.NonEmptyStr },
+        run_as_principal: v2.std.optional.Present { value: "claude-enrollment" as std.types.NonEmptyStr },
+        gcp_project: v2.std.optional.Present { value: "operator-selected-project" as std.types.NonEmptyStr },
+        secret_id_or_create_authorization: v2.std.optional.Present {
           value: "operator-selected-secret" as std.types.NonEmptyStr,
         },
-        account_label: Present { value: "operator-selected-label" as std.types.NonEmptyStr },
+        account_label: v2.std.optional.Present { value: "operator-selected-label" as std.types.NonEmptyStr },
       },
       claude_runtime: gunbc.claude_setup_token_enrollment.ClaudeEnrollmentRuntimeBinding {
         executable: "claude" as std.types.NonEmptyStr,
@@ -323,9 +323,9 @@ test fn witness_writer_lease_refuses_concurrent_holder() -> Bool {
   match admit_enrollment_writer_lease(
     holder: "host-b" as std.types.NonEmptyStr,
     holder_epoch: 1,
-    incumbent_holder: Present { value: "host-a" as std.types.NonEmptyStr },
-    incumbent_version: Present { value: "7" as std.types.NonEmptyStr },
-    incumbent_epoch: Present { value: 2 },
+    incumbent_holder: v2.std.optional.Present { value: "host-a" as std.types.NonEmptyStr },
+    incumbent_version: v2.std.optional.Present { value: "7" as std.types.NonEmptyStr },
+    incumbent_epoch: v2.std.optional.Present { value: 2 },
   ) {
     EnrollmentLeaseRefusedConcurrent {
       incumbent_holder,
@@ -343,9 +343,9 @@ test fn witness_writer_lease_refuses_newer_binding() -> Bool {
   match admit_enrollment_writer_lease_against_binding(
     holder: "host-a" as std.types.NonEmptyStr,
     holder_epoch: 1,
-    incumbent_holder: Absent,
+    incumbent_holder: v2.std.optional.Absent,
     incumbent_version: "9" as std.types.NonEmptyStr,
-    incumbent_epoch: Absent,
+    incumbent_epoch: v2.std.optional.Absent,
     attempted_version: "8" as std.types.NonEmptyStr,
     incumbent_version_is_newer: true,
   ) {
@@ -363,9 +363,9 @@ test fn witness_writer_lease_grants_absent_incumbent() -> Bool {
   match admit_enrollment_writer_lease(
     holder: "host-a" as std.types.NonEmptyStr,
     holder_epoch: 1,
-    incumbent_holder: Absent,
-    incumbent_version: Absent,
-    incumbent_epoch: Absent,
+    incumbent_holder: v2.std.optional.Absent,
+    incumbent_version: v2.std.optional.Absent,
+    incumbent_epoch: v2.std.optional.Absent,
   ) {
     EnrollmentLeaseGranted { holder, epoch } =>
       holder == ("host-a" as std.types.NonEmptyStr) && epoch == 1

@@ -13,13 +13,13 @@ type ModuleDeclarationFact {
 type ImportResolutionFact {
   path: String
   import_module: String
-  target_declared: Bool
+  target_declared: v2.std.logic.Bool
 }
 
 type ModuleDependencyEdge {
   path: String
   target_module: String
-  target_declared: Bool
+  target_declared: v2.std.logic.Bool
 }
 
 data dependency_edge_source_migration_note: String = "EDGE SOURCE, isolated as the single swappable fact producer (operator constraint, 2026-07-10, on the entry_file_touched reground): today dependency_resolution_facts_live unions import_resolution_facts_live with strict-tier reference_derived_import_resolution_facts_live (host twin selection_adjacency in cli_run.rs). The namespace-only resolution thread (operator-signed 2026-07-06) deletes the import grammar at its terminal step and derives dependencies from container.member references instead — when that lands, dependency_resolution_facts_live swaps to reference_derived_resolution_facts_flagged_pending_reference_producer and nothing above it changes: dependency_closure, import_closure, touched_path_in_closure, entry_affected_by_touched_paths, and every consumer of the closure query are edge-source-agnostic by construction (they read ModuleDependencyEdge rows as data, never import syntax). Do not add a second edge producer beside dependency_resolution_facts_live; the swap replaces its body."
@@ -134,7 +134,7 @@ fn reference_derived_resolution_facts_flagged_pending_reference_producer(
   )
 }
 
-fn string_eq(a: String, b: String) -> Bool {
+fn string_eq(a: String, b: String) -> v2.std.logic.Bool {
   a == b
 }
 
@@ -159,10 +159,10 @@ type ImportClosureBfsState {
   queue: List<String>
 }
 
-fn map_lookup_where_rejected_unreachable<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
+fn map_lookup_where_rejected_unreachable<K, V>(m: Map<K, V>, key: K) -> v2.std.optional.Optional<V> {
   match v2.std.collection.map_get(m: m, key: key) {
     Accepted { value: v, diagnostics: _ } => v
-    Rejected { diagnostics: _ } => Absent
+    Rejected { diagnostics: _ } => v2.std.optional.Absent
   }
 }
 
@@ -190,22 +190,22 @@ fn extend_adjacency_for_dependency_edge(
   module_to_path: Map<String, String>
 ) -> Map<String, List<String>> {
   match map_lookup_where_rejected_unreachable(m: module_to_path, key: edge.target_module) {
-    Present { value: imported_path } =>
+    v2.std.optional.Present { value: imported_path } =>
       match map_lookup_where_rejected_unreachable(m: acc, key: edge.path) {
-        Present { value: existing } =>
+        v2.std.optional.Present { value: existing } =>
           map_insert(
             m: acc,
             key: edge.path,
             value: snoc_unseen_list(acc: existing, item: imported_path)
           )
-        Absent =>
+        v2.std.optional.Absent =>
           map_insert(
             m: acc,
             key: edge.path,
             value: list_snoc_item(xs: no_paths, item: imported_path)
           )
       }
-    Absent => acc
+    v2.std.optional.Absent => acc
   }
 }
 
@@ -276,18 +276,18 @@ fn import_closure_bfs_walk(
   adjacency: Map<String, List<String>>
 ) -> FreeMonoid<String> {
   match state.queue |> first {
-    Present { value: importer } =>
+    v2.std.optional.Present { value: importer } =>
       let rest = state.queue |> skip(1)
       let neighbors = match map_lookup_where_rejected_unreachable(m: adjacency, key: importer) {
-        Present { value: paths } => paths
-        Absent => no_paths
+        v2.std.optional.Present { value: paths } => paths
+        v2.std.optional.Absent => no_paths
       }
       let next = bfs_absorb_neighbors(
         state: ImportClosureBfsState { reached: state.reached, queue: rest },
         neighbors: neighbors
       )
       import_closure_bfs_walk(state: next, adjacency: adjacency)
-    Absent => state.reached
+    v2.std.optional.Absent => state.reached
   }
 }
 
@@ -364,7 +364,7 @@ fn strip_leading_dot_slash(s: String) -> String {
   }
 }
 
-fn path_matches_touched(closure_path: String, touched_path: String) -> Bool {
+fn path_matches_touched(closure_path: String, touched_path: String) -> v2.std.logic.Bool {
   let file = strip_leading_dot_slash(closure_path)
   let target = strip_leading_dot_slash(touched_path)
   v2.lens.module_graph.string_eq(a: file, b: target)
@@ -372,7 +372,7 @@ fn path_matches_touched(closure_path: String, touched_path: String) -> Bool {
     || ends_with(s: target, suffix: file)
 }
 
-fn touched_path_in_closure(closure: FreeMonoid<String>, path: String) -> Bool {
+fn touched_path_in_closure(closure: FreeMonoid<String>, path: String) -> v2.std.logic.Bool {
   any(xs: closure, predicate: fn(closure_path) { path_matches_touched(closure_path: closure_path, touched_path: path) })
 }
 
@@ -383,7 +383,7 @@ fn entry_affected_by_touched_paths_excluding(
   pool_roots: List<String>,
   touched_paths: List<String>,
   exclude_substrings: List<String>
-) -> Bool {
+) -> v2.std.logic.Bool {
   let closure = dependency_closure_live_excluding(
     entry_path: entry_path,
     pool_roots: pool_roots,
@@ -396,7 +396,7 @@ fn entry_affected_by_touched_paths(
   entry_path: String,
   pool_roots: List<String>,
   touched_paths: List<String>
-) -> Bool {
+) -> v2.std.logic.Bool {
   entry_affected_by_touched_paths_excluding(
     entry_path: entry_path,
     pool_roots: pool_roots,

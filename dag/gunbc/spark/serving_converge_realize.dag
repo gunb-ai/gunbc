@@ -520,7 +520,7 @@ fn spark_serving_runtime_receipt_write() -> SparkServingInstallRemoteCommandsVer
 // the same way for a checksum manifest, a receipt and a unit file.
 fn spark_serving_admit_typed_file_step(
   identity: std.types.NonEmptyStr,
-  path: FilePath,
+  path: std.types.FilePath,
   content: String,
 ) -> SparkServingInstallRemoteCommandsVerdict {
   match typed_remote_file_write_seal(
@@ -570,7 +570,7 @@ fn realize_spark_serving_install_effect_command(
   executor_login: std.types.NonEmptyStr,
 ) -> SparkServingInstallRemoteCommandsVerdict {
   match effect {
-    EnableLingerForOwnAccount =>
+    gunbc.spark.serving_realization.EnableLingerForOwnAccount =>
       spark_serving_enable_linger_remote_argv(login: executor_login)
     gunbc.spark.serving_realization.ReloadUserManager => spark_serving_reload_user_manager_remote_argv()
     gunbc.spark.serving_realization.EnableUserUnit => spark_serving_enable_user_unit_remote_argv()

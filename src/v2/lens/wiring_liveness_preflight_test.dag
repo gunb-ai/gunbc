@@ -3,7 +3,7 @@ module v2.test.lens_wiring_liveness.wiring_liveness_preflight_test
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn wlp_atom(identity: v2.std.node.Symbol) -> Node {
+fn wlp_atom(identity: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
@@ -11,17 +11,17 @@ fn wlp_atom(identity: v2.std.node.Symbol) -> Node {
   }
 }
 
-fn wlp_out() -> Node { wlp_atom(identity: ^wlp_output) }
-fn wlp_mid() -> Node { wlp_atom(identity: ^wlp_mid) }
-fn wlp_in() -> Node { wlp_atom(identity: ^wlp_input) }
-fn wlp_dangling() -> Node { wlp_atom(identity: ^wlp_dangling_input) }
+fn wlp_out() -> v2.std.node.Node { wlp_atom(identity: ^wlp_output) }
+fn wlp_mid() -> v2.std.node.Node { wlp_atom(identity: ^wlp_mid) }
+fn wlp_in() -> v2.std.node.Node { wlp_atom(identity: ^wlp_input) }
+fn wlp_dangling() -> v2.std.node.Node { wlp_atom(identity: ^wlp_dangling_input) }
 
-fn wlp_edge(source: Node, dependent: Node) -> v2.lens.affected_set.FrontierDependency {
+fn wlp_edge(source: v2.std.node.Node, dependent: v2.std.node.Node) -> v2.lens.affected_set.FrontierDependency {
   v2.lens.affected_set.FrontierDependency {
     dependency: v2.std.dependency.DependencyView {
       source: source,
       dependent: dependent,
-      kind: Contains,
+      kind: v2.std.dependency.Contains,
       usage_site: dependent
     },
     target: DependencyDependent
@@ -43,14 +43,14 @@ fn wlp_dead_obligation() -> v2.lens.wiring_liveness_preflight.FrontierWiringObli
   v2.lens.wiring_liveness_preflight.FrontierWiringObligation { output: wlp_out(), declared_input: wlp_dangling() }
 }
 
-fn wlp_is_failclosed(frontier: v2.lens.affected_set.ReExecFrontier) -> Bool {
+fn wlp_is_failclosed(frontier: v2.lens.affected_set.ReExecFrontier) -> v2.std.logic.Bool {
   match frontier {
-    FailClosed { reason: _ } => true
+    v2.lens.affected_set.FailClosed { reason: _ } => true
     ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } => false
   }
 }
 
-test fn preflight_wired_slice_runs() -> Bool {
+test fn preflight_wired_slice_runs() -> v2.std.logic.Bool {
   let result = preflight_reexec_frontier(
     frontier: empty_frontier(),
     dependencies: wlp_slice(),
@@ -59,7 +59,7 @@ test fn preflight_wired_slice_runs() -> Bool {
   return wlp_is_failclosed(frontier: result) == false
 }
 
-test fn preflight_dead_wire_failcloses() -> Bool {
+test fn preflight_dead_wire_failcloses() -> v2.std.logic.Bool {
   let result = preflight_reexec_frontier(
     frontier: empty_frontier(),
     dependencies: wlp_slice(),
@@ -68,7 +68,7 @@ test fn preflight_dead_wire_failcloses() -> Bool {
   return wlp_is_failclosed(frontier: result)
 }
 
-test fn preflight_mixed_slice_failcloses_on_dead() -> Bool {
+test fn preflight_mixed_slice_failcloses_on_dead() -> v2.std.logic.Bool {
   let result = preflight_reexec_frontier(
     frontier: empty_frontier(),
     dependencies: wlp_slice(),
@@ -77,7 +77,7 @@ test fn preflight_mixed_slice_failcloses_on_dead() -> Bool {
   return wlp_is_failclosed(frontier: result)
 }
 
-test fn preflight_preserves_prior_failclosed() -> Bool {
+test fn preflight_preserves_prior_failclosed() -> v2.std.logic.Bool {
   let prior = v2.lens.affected_set.FailClosed { reason: v2.lens.affected_set.ReasonSymbol { reason: ^wlp_prior_failure } }
   let result = preflight_reexec_frontier(
     frontier: prior,
@@ -87,7 +87,7 @@ test fn preflight_preserves_prior_failclosed() -> Bool {
   return wlp_is_failclosed(frontier: result)
 }
 
-test fn preflight_dead_wire_suggests_wiring_correction() -> Bool {
+test fn preflight_dead_wire_suggests_wiring_correction() -> v2.std.logic.Bool {
   let obligation = wlp_dead_obligation()
   match dead_wire_reason(
     obligation: obligation,

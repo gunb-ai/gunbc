@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 type EmitHostTargetCoverageRow {
   target: v2.std.compilers.target_model.TargetModel
-  host_smoked: Bool
+  host_smoked: v2.std.logic.Bool
 }
 
 data emit_host_coverage_row_rust: EmitHostTargetCoverageRow = EmitHostTargetCoverageRow {
@@ -53,14 +53,14 @@ data emit_host_target_coverage_rows: List<EmitHostTargetCoverageRow> = [
   emit_host_coverage_row_java
 ]
 
-fn emit_host_target_coverage_consistent(row: EmitHostTargetCoverageRow) -> Bool {
+fn emit_host_target_coverage_consistent(row: EmitHostTargetCoverageRow) -> v2.std.logic.Bool {
   match runtime_row_from_target(target: row.target) {
     Accepted { value: _, diagnostics: _ } => row.host_smoked
-    Rejected { diagnostics: _ } => !row.host_smoked
+    v2.std.diagnostic.Rejected { diagnostics: _ } => !row.host_smoked
   }
 }
 
-fn emit_host_all_targets_consistent() -> Bool {
+fn emit_host_all_targets_consistent() -> v2.std.logic.Bool {
   fold_list(
     xs: emit_host_target_coverage_rows,
     empty: true,
@@ -70,16 +70,16 @@ fn emit_host_all_targets_consistent() -> Bool {
   )
 }
 
-data emit_host_gate_declared_smoke_count: Int = 5
+data emit_host_gate_declared_smoke_count: v2.std.integer.Int = 5
 
-fn emit_host_row_is_present(row: EmitHostTargetCoverageRow) -> Bool {
+fn emit_host_row_is_present(row: EmitHostTargetCoverageRow) -> v2.std.logic.Bool {
   match runtime_row_from_target(target: row.target) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn emit_host_present_target_count() -> Int {
+fn emit_host_present_target_count() -> v2.std.integer.Int {
   fold_list(
     xs: emit_host_target_coverage_rows,
     empty: 0,
@@ -89,7 +89,7 @@ fn emit_host_present_target_count() -> Int {
   )
 }
 
-test fn emit_host_target_coverage_complete() -> Bool {
+test fn emit_host_target_coverage_complete() -> v2.std.logic.Bool {
   if is_empty(xs: emit_host_target_coverage_rows) {
     false
   } else {

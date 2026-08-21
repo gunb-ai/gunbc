@@ -15,7 +15,7 @@ fn has_kind(ds: List<extdeps.land_pattern.types.LandPatternDisagreement>, k: Str
   fold(ds, init: false, f: fn(acc, d) { acc || disagreement_kind(d: d) == k })
 }
 
-fn count_of(ds: List<extdeps.land_pattern.types.LandPatternDisagreement>) -> Int {
+fn count_of(ds: List<extdeps.land_pattern.types.LandPatternDisagreement>) -> std.integer.Int {
   fold(ds, init: 0, f: fn(acc, _d) { acc + 1 })
 }
 
@@ -40,7 +40,7 @@ fn is_admitted(a: extdeps.land_pattern.types.PartAdmission) -> Bool {
   }
 }
 
-fn refusal_count(a: extdeps.land_pattern.types.PartAdmission) -> Int {
+fn refusal_count(a: extdeps.land_pattern.types.PartAdmission) -> std.integer.Int {
   fold(refusals_of(a: a), init: 0, f: fn(acc, _r) { acc + 1 })
 }
 

@@ -3,22 +3,22 @@ module v2.test.claim.self_host.frontier_probe_semantic_family_receipt
 
 data semantic_family_receipt_test_note: String = "What these claims can and cannot do, stated so the coverage is not overread. The rows are OBSERVATIONS — a witness cannot re-derive them without re-running a twenty-minute probe per readout, so nothing here re-measures the door. What it does enforce is the internal discipline the rows must keep to stay readable as evidence: the five shards are partitioned into exactly two dispositions with no third state and no shard in both, a capped row's read count actually exceeds the cap it names (a row claiming a cap it does not breach would be a refusal with no cause), and a measured row's differing-symbol count sits strictly inside its chain length — zero would mean the chain was uniform and the masking finding would not follow, and equal to the length would mean the head appears nowhere in its own chain. The body-lowering count is pinned at 2 rather than asserted as 'both', so adding a third measured shard that lands elsewhere reds this instead of silently weakening the finding."
 
-test fn the_five_shards_partition_into_measured_and_capped_holds() -> Bool {
+test fn the_five_shards_partition_into_measured_and_capped_holds() -> v2.std.logic.Bool {
   (shard_count() == 5) && (measured_shard_count() + capped_shard_count() == shard_count())
 }
 
-test fn two_shards_are_measured_and_three_are_capped_holds() -> Bool {
+test fn two_shards_are_measured_and_three_are_capped_holds() -> v2.std.logic.Bool {
   (measured_shard_count() == 2) && (capped_shard_count() == 3)
 }
 
-test fn every_capped_shard_exceeds_the_cap_it_names_holds() -> Bool {
+test fn every_capped_shard_exceeds_the_cap_it_names_holds() -> v2.std.logic.Bool {
   every_capped_shard_exceeds_its_own_cap()
 }
 
-test fn both_measured_shards_name_body_lowering_beneath_the_mask_holds() -> Bool {
+test fn both_measured_shards_name_body_lowering_beneath_the_mask_holds() -> v2.std.logic.Bool {
   shards_naming_body_lowering_beneath_the_mask() == 2
 }
 
-test fn every_measured_chain_is_non_uniform_holds() -> Bool {
+test fn every_measured_chain_is_non_uniform_holds() -> v2.std.logic.Bool {
   every_measured_chain_is_non_uniform()
 }

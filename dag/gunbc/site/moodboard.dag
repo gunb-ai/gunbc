@@ -28,7 +28,7 @@ fn star_brighten_rules(timing: gunbc.design.material.TimingToken) -> List<gunbc.
       trigger: t,
       transition_props: "fill",
       timing: timing,
-      base_decls: [ role_decl(prop: Fill, r: FigureRole), decl(prop: Cursor, value: "pointer") ],
+      base_decls: [ role_decl(prop: Fill, r: FigureRole), decl(prop: extdeps.languages.css.properties.Cursor, value: "pointer") ],
       response_decls: [ role_decl(prop: Fill, r: FigureLitRole) ],
     })
 }
@@ -389,14 +389,14 @@ fn hallmark() -> std.markup.Fragment {
 fn moodboard_page() -> std.markup.Fragment {
   extdeps.browser.Element { tag: "html", attributes: [ attr(name: "lang", value: "en" ) ], children: [
     el("head", [
-      Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
-      Element { tag: "meta", attributes: [
+      std.markup.Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
+      std.markup.Element { tag: "meta", attributes: [
         attr(name: "name", value: "viewport" ),
         attr(name: "content", value: "width=device-width, initial-scale=1" ),
       ], children: [] },
       el("title", [ txt("gunb.ai — register moodboard (phase 0)") ]),
       el("style", [ txt(moodboard_css()) ]),
-      Element { tag: "script", attributes: [
+      std.markup.Element { tag: "script", attributes: [
         attr(name: "src", value: "assets/nav.js" ),
         attr(name: "defer", value: "" ),
       ], children: [] },

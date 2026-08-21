@@ -688,7 +688,7 @@ test fn w_a_fully_included_build_is_unconstrained_by_any_line() -> Bool {
   }
 }
 
-// TYPING THE MONEY EXPOSED A HOLE THE BARE Nat WAS HIDING. Before the basis rode
+// TYPING THE MONEY EXPOSED A HOLE THE BARE std.nat.Nat WAS HIDING. Before the basis rode
 // MoneyOnce, a build drawing one lot landed in dollars and another landed in
 // euros summed the two micro counts as though they were commensurable. They are
 // not, and product.inventory's own sum_landed_cost refuses exactly this; so does

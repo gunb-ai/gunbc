@@ -87,7 +87,7 @@ fn rung_drop_refusal_message(d: GuaranteeRungDrop) -> String {
   )
 }
 
-fn rung_drop_is_off_ladder(d: GuaranteeRungDrop) -> std.types.Bool {
+fn rung_drop_is_off_ladder(d: GuaranteeRungDrop) -> Bool {
   match d.temporary {
     OutsideTheLadder => true
     Mitigatable => false

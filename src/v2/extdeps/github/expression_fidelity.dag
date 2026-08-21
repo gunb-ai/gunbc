@@ -1,11 +1,11 @@
 module v2.extdeps.github.expression_fidelity
 
 
-fn gha_expression_modeled_fidelity_node() -> Node {
+fn gha_expression_modeled_fidelity_node() -> v2.std.node.Node {
   dag_grammar_atom(id: ^dag_fidelity_disposition_kind_modeled)
 }
 
-fn gha_expression_roundtrip_fidelity_quotient_node() -> Node {
+fn gha_expression_roundtrip_fidelity_quotient_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -18,7 +18,7 @@ fn gha_expression_roundtrip_fidelity_quotient_node() -> Node {
   }
 }
 
-fn gha_expression_roundtrip_target_model_bundle() -> Node {
+fn gha_expression_roundtrip_target_model_bundle() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [

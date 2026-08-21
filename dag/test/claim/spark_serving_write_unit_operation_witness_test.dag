@@ -113,7 +113,7 @@ test fn the_unit_write_carries_the_rendered_bytes_at_the_modeled_path() -> Bool 
 // disagree — one operation of each, but only one argv — which is what proves the argv projection is
 // a genuine subset and not the whole population.
 test fn a_mixed_sequence_keeps_both_kinds_and_their_order() -> Bool {
-  match realize(effects: [gunbc.spark.serving_realization.WriteUserUnitFile, EnableLingerForOwnAccount]) {
+  match realize(effects: [gunbc.spark.serving_realization.WriteUserUnitFile, gunbc.spark.serving_realization.EnableLingerForOwnAccount]) {
     SparkServingInstallRemoteCommandsPresent { steps: sts } =>
       remote_operation_count(operations: map(sts, st => st.operation)) == 3
         && remote_operation_file_write_count(operations: map(sts, st => st.operation)) == 1
@@ -140,7 +140,7 @@ test fn an_unrealized_effect_still_refuses_the_whole_sequence() -> Bool {
 // An argv effect is still an argv operation. The keystone above would also pass if EVERYTHING became
 // a file write, so this pins the other direction.
 test fn an_argv_effect_is_still_an_argv_operation() -> Bool {
-  match realize(effects: [EnableLingerForOwnAccount]) {
+  match realize(effects: [gunbc.spark.serving_realization.EnableLingerForOwnAccount]) {
     SparkServingInstallRemoteCommandsPresent { steps: sts } =>
       remote_operation_file_write_count(operations: map(sts, st => st.operation)) == 0
         && length(remote_operations_argv_only(operations: map(sts, st => st.operation))) == 1

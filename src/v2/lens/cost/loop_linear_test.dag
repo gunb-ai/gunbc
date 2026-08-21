@@ -1,36 +1,36 @@
 module v2.test.lens_cost.loop_linear
 
 
-data loop_linear_body_leaf: Node = v2.std.node.Node {
+data loop_linear_body_leaf: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^loop_linear_body_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data loop_linear_measure_leaf: Node = v2.std.node.Node {
+data loop_linear_measure_leaf: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^loop_linear_measure_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data loop_linear_body: Node = v2.std.node.Node {
-  kind: v2.std.node.ComputationNode { behavior: Transform },
+data loop_linear_body: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
   children: [
     v2.std.node.Edge { label: Positional, target: loop_linear_body_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data loop_linear_input: Node = v2.std.node.Node {
+data loop_linear_input: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.ComputationNode { behavior: Loop },
   children: [
     v2.std.node.Edge { label: Positional, target: loop_linear_body },
-    v2.std.node.Edge { label: Named { name: ^loop_bound_edge }, target: loop_linear_measure_leaf }
+    v2.std.node.Edge { label: v2.std.node.Named { name: ^loop_bound_edge }, target: loop_linear_measure_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-test fn loop_linear_claim_holds() -> Bool {
+test fn loop_linear_claim_holds() -> v2.std.logic.Bool {
   match cost_lens(n: loop_linear_input) {
     Holds { value: actual } =>
       match actual {

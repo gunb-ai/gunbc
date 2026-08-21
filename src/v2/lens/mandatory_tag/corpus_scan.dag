@@ -13,11 +13,11 @@ fn corpus_anchor_facts(module: v2.std.qualified_name.QualifiedName) -> ExtdepsEx
   extdeps_external_authority_facts_for_qualified_name(module: module)
 }
 
-fn corpus_live_clean_tree_holds() -> Bool {
+fn corpus_live_clean_tree_holds() -> v2.std.logic.Bool {
   extdeps_external_authority_live_clean_tree_holds()
 }
 
-fn corpus_live_roster_module_count() -> Int {
+fn corpus_live_roster_module_count() -> v2.std.integer.Int {
   extdeps_external_authority_live_roster_module_count()
 }
 

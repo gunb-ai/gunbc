@@ -37,7 +37,7 @@ fn closure_emit_driver_refusal(
 fn closure_emit_driver_population_agrees(
   receipt: v2.compiler.source_authority.SourceRootProvenanceCoverageReceipt,
   refs: std.types.List<v2.compiler.source_authority.SourceRef>
-) -> Bool {
+) -> v2.std.logic.Bool {
   v2.compiler.source_authority.discovered_source_refs_digest_eq(
     left: receipt.discovered_source_refs_digest,
     right: v2.compiler.source_authority.discovered_source_refs_digest_for_refs(refs: refs)

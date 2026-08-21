@@ -6,43 +6,43 @@ test fn witness_positive_int_authoritative_literal_two_accepts() -> Bool {
       match v2.std.refinement.positive_int_authoritative_literal(value: 2) {
         Accepted { value: literal, diagnostics: _ } =>
           v2.std.refinement.positive_int_value(p: literal) == v2.std.refinement.positive_int_value(p: accepted)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 test fn witness_positive_int_authoritative_zero_rejects() -> Bool {
   match v2.std.refinement.make_positive_int_at_authoritative(value: 0) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics } => diagnostics.head.reason == ^positive_int_out_of_range
+    v2.std.diagnostic.Rejected { diagnostics } => diagnostics.head.reason == ^positive_int_out_of_range
   }
 }
 
 test fn witness_non_negative_int_authoritative_minus_one_rejects() -> Bool {
   match v2.std.refinement.make_non_negative_int_at_authoritative(value: -1) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics } => diagnostics.head.reason == ^non_negative_int_out_of_range
+    v2.std.diagnostic.Rejected { diagnostics } => diagnostics.head.reason == ^non_negative_int_out_of_range
   }
 }
 
 test fn witness_at_least_minus_one_int_authoritative_minus_two_rejects() -> Bool {
   match v2.std.refinement.make_at_least_minus_one_int_at_authoritative(value: -2) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics } => diagnostics.head.reason == ^at_least_minus_one_int_out_of_range
+    v2.std.diagnostic.Rejected { diagnostics } => diagnostics.head.reason == ^at_least_minus_one_int_out_of_range
   }
 }
 
 test fn witness_at_least_minus_two_int_authoritative_minus_three_rejects() -> Bool {
   match v2.std.refinement.make_at_least_minus_two_int_at_authoritative(value: -3) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics } => diagnostics.head.reason == ^at_least_minus_two_int_out_of_range
+    v2.std.diagnostic.Rejected { diagnostics } => diagnostics.head.reason == ^at_least_minus_two_int_out_of_range
   }
 }
 
 test fn witness_exact_one_int_authoritative_two_rejects() -> Bool {
   match v2.std.refinement.make_exact_one_int_at_authoritative(value: 2) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics } => diagnostics.head.reason == ^exact_one_int_out_of_range
+    v2.std.diagnostic.Rejected { diagnostics } => diagnostics.head.reason == ^exact_one_int_out_of_range
   }
 }

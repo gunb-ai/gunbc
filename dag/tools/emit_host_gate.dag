@@ -50,7 +50,7 @@ func run_emit_host_gate_body() -> std.process.ProcessExit {
   node_http = run_node_http_serve_smoke()
   c = run_c_smoke()
   return if rust && python && go && ts && node_http && c {
-    ExitSuccess
+    std.process.ExitSuccess
   } else {
     gate_failure_exit(rust: rust, python: python, go: go, ts: ts, node_http: node_http, c: c)
   }

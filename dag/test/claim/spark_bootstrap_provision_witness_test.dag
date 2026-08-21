@@ -640,7 +640,7 @@ fn demand_executor() -> gunbc.spark_bootstrap_provision.FleetCloudPrincipalKey {
 fn demand_cells_of(sel: std.types.List<gunbc.spark_bootstrap_provision.SelectedSparkEffect>) -> std.types.List<gunbc.spark_bootstrap_provision.ExternalAccessDemand> {
   match spark_plan_demand(selected: sel, executor: demand_executor(), context: spark_fixture_context()) {
     gunbc.spark.bootstrap_provision.DemandDerived { cells: c } => c
-    DemandIncomplete { step: _, operation: _, cause: _ } => []
+    gunbc.spark.bootstrap_provision.DemandIncomplete { step: _, operation: _, cause: _ } => []
   }
 }
 

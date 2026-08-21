@@ -3,27 +3,27 @@ module v2.test.lens_unit_modeling.bitwidth_modeled_passes
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data bitwidth_carrier_target: Node = v2.std.node.Node {
+data bitwidth_carrier_target: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^BitWidth } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data bitwidth_modeled_input: Node = v2.std.node.Node {
+data bitwidth_modeled_input: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
-      label: Named { name: ^pointer_width },
+      label: v2.std.node.Named { name: ^pointer_width },
       target: bitwidth_carrier_target
     }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-test fn bitwidth_modeled_passes_holds() -> Bool {
+test fn bitwidth_modeled_passes_holds() -> v2.std.logic.Bool {
   match unit_modeling_gate(node: bitwidth_modeled_input) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

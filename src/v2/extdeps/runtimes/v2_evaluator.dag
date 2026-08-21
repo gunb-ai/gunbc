@@ -106,7 +106,7 @@ fn v2_eval_int_type_node() -> v2.std.node.Node {
   }
 }
 
-fn v2_eval_int_runtime_value(value: Int) -> v2.std.runtime.RuntimeValue {
+fn v2_eval_int_runtime_value(value: v2.std.integer.Int) -> v2.std.runtime.RuntimeValue {
   v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: v2_eval_int_type_node(),
@@ -115,7 +115,7 @@ fn v2_eval_int_runtime_value(value: Int) -> v2.std.runtime.RuntimeValue {
   }
 }
 
-fn v2_eval_bool_runtime_value(is_true: Bool) -> v2.std.runtime.RuntimeValue {
+fn v2_eval_bool_runtime_value(is_true: v2.std.logic.Bool) -> v2.std.runtime.RuntimeValue {
   v2.std.runtime.RuntimePrimitive {
     value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: v2_eval_bool_literal_pin,
@@ -129,7 +129,7 @@ fn v2_eval_bool_runtime_value(is_true: Bool) -> v2.std.runtime.RuntimeValue {
 }
 
 // 🟢 Terminal (FLAG D): v2_eval_is_literal_shaped_node is the sole admission predicate for eval_type_node_atom Atom literal-vs-binding dispatch; v2_eval_represent_literal routes through it before allocate dispatch — one surface, not a parallel entry guard. Atom rows project dag_node_is_eval_literal_atom (dag.dag single authority); magnitudes are supplied by the interpretation algebra allocate_literal hook, not by this runtime. Non-Atom TypeNodes (Conj record/variant constructs) route to allocate_literal in eval_type_node_atom directly.
-fn v2_eval_is_literal_shaped_node(node: v2.std.node.Node) -> Bool {
+fn v2_eval_is_literal_shaped_node(node: v2.std.node.Node) -> v2.std.logic.Bool {
   if node == v2_eval_bool_literal_pin {
     true
   } else if node == v2_eval_unit_literal_pin {
@@ -184,7 +184,7 @@ fn v2_eval_allocate_literal(node: v2.std.node.Node, env: v2.std.runtime.Evaluati
   }
 }
 
-fn v2_eval_runtime_value_as_int(value: v2.std.runtime.RuntimeValue) -> v2.std.diagnostic.Outcome<Int> {
+fn v2_eval_runtime_value_as_int(value: v2.std.runtime.RuntimeValue) -> v2.std.diagnostic.Outcome<v2.std.integer.Int> {
   match value {
     RuntimePrimitive { value: p } =>
       if p.primitive_type == v2_eval_int_type_node() {
@@ -198,13 +198,13 @@ fn v2_eval_runtime_value_as_int(value: v2.std.runtime.RuntimeValue) -> v2.std.di
 
 data v2_eval_runtime_bool_predicate_dissolution_note: String = "🟡 dissolve-on: v2_eval_runtime_bool_is_true and v2_eval_runtime_bool_is_false are coproduct RuntimeValue→Bool predicates (RuntimePrimitive bool-literal pin, one arm true / others false) — parallel to lazy_arm_runtime_bool_true/false in branch_lazy_arm_eval_acceptance_test.dag; NFR roster listing alone is not a predicate-dissolution receipt. DISSOLVES WHEN std/runtime carries canonical RuntimeValue bool decode/eq (single authority for branch condition discrimination) and v2_evaluator branch dispatch routes through it instead of hand-rolled byte probes."
 
-fn v2_eval_runtime_bool_is_true(value: v2.std.runtime.RuntimeValue) -> Bool {
+fn v2_eval_runtime_bool_is_true(value: v2.std.runtime.RuntimeValue) -> v2.std.logic.Bool {
   match value {
     RuntimePrimitive { value: p } =>
       if p.primitive_type == v2_eval_bool_literal_pin {
         match v2.std.collection.list_at_optional(xs: p.bytes, index: 0) {
-          Present { value: b } => v2.std.integer.integer_byte_bit_at(b: b, shift: 0) == 1
-          Absent => false
+          v2.std.optional.Present { value: b } => v2.std.integer.integer_byte_bit_at(b: b, shift: 0) == 1
+          v2.std.optional.Absent => false
         }
       } else {
         false
@@ -213,7 +213,7 @@ fn v2_eval_runtime_bool_is_true(value: v2.std.runtime.RuntimeValue) -> Bool {
   }
 }
 
-fn v2_eval_runtime_bool_is_false(value: v2.std.runtime.RuntimeValue) -> Bool {
+fn v2_eval_runtime_bool_is_false(value: v2.std.runtime.RuntimeValue) -> v2.std.logic.Bool {
   match value {
     RuntimePrimitive { value: p } =>
       p.primitive_type == v2_eval_bool_literal_pin && !v2_eval_runtime_bool_is_true(value: value)
@@ -221,21 +221,21 @@ fn v2_eval_runtime_bool_is_false(value: v2.std.runtime.RuntimeValue) -> Bool {
   }
 }
 
-fn v2_eval_nth_child_target(node: v2.std.node.Node, wanted: Int) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+fn v2_eval_nth_child_target(node: v2.std.node.Node, wanted: v2.std.integer.Int) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match v2.std.collection.list_at_optional(xs: node.children, index: wanted) {
-    Present { value: child } =>
+    v2.std.optional.Present { value: child } =>
       match child {
         Edge { label: _, target: arm } =>
           v2.std.diagnostic.outcome_accepted(value: extdeps.vendor.arm.arm)
       }
-    Absent =>
+    v2.std.optional.Absent =>
       v2.std.diagnostic.outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
   }
 }
 
-fn v2_eval_transform_is_int_add(node: v2.std.node.Node) -> Bool {
+fn v2_eval_transform_is_int_add(node: v2.std.node.Node) -> v2.std.logic.Bool {
   match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: node), index: 0) {
-    Present { value: op_node } =>
+    v2.std.optional.Present { value: op_node } =>
       match op_node.kind {
         TypeNode { connective: Atom { identity: id } } =>
           id == ^dag_token_plus
@@ -245,7 +245,7 @@ fn v2_eval_transform_is_int_add(node: v2.std.node.Node) -> Bool {
             )
         _ => false
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
@@ -258,9 +258,9 @@ fn v2_eval_call_primitive(
   if v2_eval_transform_is_int_add(node: node) {
     if count(args) == 2 {
       match v2.std.collection.list_at_optional(xs: args, index: 0) {
-        Present { value: left } =>
+        v2.std.optional.Present { value: left } =>
           match v2.std.collection.list_at_optional(xs: args, index: 1) {
-            Present { value: right } =>
+            v2.std.optional.Present { value: right } =>
               v2.std.diagnostic.bind_outcome(
                 o: v2_eval_runtime_value_as_int(value: left),
                 f: fn(l) {
@@ -274,10 +274,10 @@ fn v2_eval_call_primitive(
                   )
                 }
               )
-            Absent =>
+            v2.std.optional.Absent =>
               v2.std.diagnostic.outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
           }
-        Absent =>
+        v2.std.optional.Absent =>
           v2.std.diagnostic.outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
       }
     } else {
@@ -343,7 +343,7 @@ fn v2_eval_transfer(control: v2.std.runtime.ControlTransfer, frame: v2.std.runti
   match control {
     Continue { value: v } =>
       v2.std.diagnostic.outcome_rejected(d: v2_eval_runtime_diagnostic(node: v2.std.runtime.runtime_value_resolved_type(value: v)))
-    Return { value: v } =>
+    v2.std.runtime.Return { value: v } =>
       v2.std.diagnostic.outcome_rejected(d: v2_eval_runtime_diagnostic(node: v2.std.runtime.runtime_value_resolved_type(value: v)))
     Raise { diagnostic: d } =>
       v2.std.diagnostic.outcome_rejected(d: d)
@@ -356,7 +356,7 @@ fn v2_eval_terminal_value(control: v2.std.runtime.ControlTransfer, frame: v2.std
   match control {
     Continue { value: v } =>
       v2.std.diagnostic.Accepted { value: v, diagnostics: v2.std.diagnostic.None }
-    Return { value: v } =>
+    v2.std.runtime.Return { value: v } =>
       v2.std.diagnostic.Accepted { value: v, diagnostics: v2.std.diagnostic.None }
     Raise { diagnostic: d } =>
       v2.std.diagnostic.outcome_rejected(d: d)
@@ -365,7 +365,7 @@ fn v2_eval_terminal_value(control: v2.std.runtime.ControlTransfer, frame: v2.std
   }
 }
 
-fn v2_eval_boundary_allowance(allowed: Bool) -> v2.std.runtime.BoundaryAllowance {
+fn v2_eval_boundary_allowance(allowed: v2.std.logic.Bool) -> v2.std.runtime.BoundaryAllowance {
   v2.std.runtime.BoundaryAllowance {
     operation: v2.std.model_core.PrimitiveOperationRef {
       operation: v2_eval_boundary_operation_node(),

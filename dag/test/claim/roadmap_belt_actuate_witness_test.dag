@@ -77,7 +77,7 @@ fn is_exec_refused(o: gunbc.roadmap_belt_actuate.BeltExecOutcome) -> Bool {
 
 fn is_spawn_failed(o: gunbc.roadmap_belt_actuate.BeltSpawnOutcome) -> Bool {
   match o {
-    SpawnFailed { node_id: _, step: _, detail: _, provider: _ } => true
+    gunbc.roadmap_belt_actuate.SpawnFailed { node_id: _, step: _, detail: _, provider: _ } => true
     Spawned { node_id: _, session_name: _, provider: _ } => false
   }
 }
@@ -1661,7 +1661,7 @@ test fn witness_two_sessions_for_one_node_refuse_and_name_both() -> Bool {
   }
 }
 
-// THE DISCRIMINATING ONE: under first() these two orders answered Running and
+// THE DISCRIMINATING ONE: under first() these two orders answered gunbc.roadmap_belt_actuate.Running and
 // StaleTerminal respectively — same observation, different verdict, no signal.
 test fn witness_multiplicity_verdict_is_order_independent() -> Bool {
   let forward = gunbc.roadmap_belt_actuate.belt_node_session_liveness(live: [dup_running(), dup_stale()], node_id: "a")
@@ -1763,7 +1763,7 @@ test fn witness_tick_multiplicity_is_a_node_fact() -> Bool {
 
 // ── The located spawn cause reaches the receipt ─────────────────────────────────────────────────
 //
-// THE DEFECT THIS CLOSES: SpawnFailed carries node_id, step, detail and provider, and the pass fold
+// THE DEFECT THIS CLOSES: gunbc.roadmap_belt_actuate.SpawnFailed carries node_id, step, detail and provider, and the pass fold
 // discarded all four for the sentence "one or more spawn outcomes failed". The receipt is a tick's
 // only durable record, so the cause was computed and erased every time. On srv1 that turned a
 // missing provider binary into weeks of a dashboard saying "belt fault" with no way to ask why —

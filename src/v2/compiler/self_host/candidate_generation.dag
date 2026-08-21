@@ -2,17 +2,17 @@ module v2.compiler.self_host.candidate_generation
 
 
 type StageEmissionCandidate {
-  emitted: Node
+  emitted: v2.std.node.Node
 }
 
 type RustEmissionCandidate {
   source: extdeps.communication.medium.Medium<String>
-  emitted: Node
+  emitted: v2.std.node.Node
 }
 
 type ProvenancedRustArtifact {
   source: extdeps.communication.medium.Medium<String>
-  emitted: Node
+  emitted: v2.std.node.Node
   producer_receipt: v2.compiler.self_host.emitter_producer_provenance.ProducerEmissionReceipt
 }
 
@@ -68,7 +68,7 @@ fn generate_stage_candidate_from_ingest(
 }
 
 fn generate_translate_self_emit_candidate(
-  resolved_module: Node,
+  resolved_module: v2.std.node.Node,
   dag_target: v2.std.compilers.target_model.TargetModel
 ) -> v2.std.diagnostic.Outcome<StageEmissionCandidate> {
   bind_outcome(
@@ -133,7 +133,7 @@ fn mint_artifact_from_rust_emission_candidate(
     behavioral_probe: BehavioralProbeUnbound,
     realized_closure: realized_closure
   ) {
-    Present { value: receipt } =>
+    v2.std.optional.Present { value: receipt } =>
       outcome_accepted(
         value: ProvenancedRustArtifact {
           source: candidate.source,
@@ -141,7 +141,7 @@ fn mint_artifact_from_rust_emission_candidate(
           producer_receipt: receipt
         }
       )
-    Absent =>
+    v2.std.optional.Absent =>
       outcome_rejected(
         d: v2.std.diagnostic.Diagnostic {
           reason: ^direct_rust_door_producer_receipt_refused,
@@ -211,19 +211,19 @@ fn observe_provenanced_rust_emission_from_ingest(
 ) -> ProvenancedRustEmissionObservation {
   let lm = dag_language_model()
   match assemble_program_from_ingest(ingest: ingest, admission: admission, lm: lm) {
-    Rejected { diagnostics: d } => AssemblyRejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } => AssemblyRejected { diagnostics: d }
     Accepted { value: resolved, diagnostics: _ } =>
       match infer(tree: resolved) {
-        Rejected { diagnostics: d } => InferenceRejected { diagnostics: d }
+        v2.std.diagnostic.Rejected { diagnostics: d } => InferenceRejected { diagnostics: d }
         Accepted { value: inferred, diagnostics: _ } =>
           match generate_rust_emission_candidate(inferred: inferred, target: target) {
-            Rejected { diagnostics: d } => EmissionRejected { diagnostics: d }
+            v2.std.diagnostic.Rejected { diagnostics: d } => EmissionRejected { diagnostics: d }
             Accepted { value: candidate, diagnostics: _ } =>
               match mint_artifact_from_rust_emission_candidate(
                 candidate: candidate,
                 module_path: module_path
               ) {
-                Rejected { diagnostics: d } => ProducerReceiptRejected { diagnostics: d }
+                v2.std.diagnostic.Rejected { diagnostics: d } => ProducerReceiptRejected { diagnostics: d }
                 Accepted { value: artifact, diagnostics: _ } =>
                   ArtifactProduced { artifact: artifact }
               }
@@ -268,7 +268,7 @@ fn advance_written_provenanced_rust_artifact_cargo_green(
     prior: written.artifact.producer_receipt,
     cargo_green: cargo_green
   ) {
-    Present { value: receipt } =>
+    v2.std.optional.Present { value: receipt } =>
       optional_present(
         value: WrittenProvenancedRustArtifact {
           artifact: ProvenancedRustArtifact {
@@ -279,7 +279,7 @@ fn advance_written_provenanced_rust_artifact_cargo_green(
           write: written.write
         }
       )
-    Absent => optional_absent()
+    v2.std.optional.Absent => optional_absent()
   }
 }
 

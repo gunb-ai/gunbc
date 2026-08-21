@@ -34,7 +34,7 @@ fn sized_node(id: String, cell: gunbc.roadmap_forecast.SizingCell) -> gunbc.road
     },
     execution: ExecutionContractUnspecified,
     owner: "fixture",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 

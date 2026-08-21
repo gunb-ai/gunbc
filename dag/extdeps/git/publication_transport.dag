@@ -39,7 +39,7 @@ type GitPushRequest {
 
 type GitCommitRequest {
   message: std.types.NonEmptyStr
-  allow_empty: std.types.Bool
+  allow_empty: Bool
 }
 
 // A REMOTE REF ADVANCE IS A COMPARE-AND-SWAP, AND PushRefUpdate ABOVE CANNOT EXPRESS ONE.
@@ -137,7 +137,7 @@ service git.PublicationTransport {
     output {
       exit_code: Int from "exit_code"
       stderr: String from "stderr"
-      success: std.types.Bool from "exit_success"
+      success: Bool from "exit_success"
     }
     transport shell { argv: ["git", "push", "{remote}", "{refspec}"] }
     exit {
@@ -155,7 +155,7 @@ service git.PublicationTransport {
     output {
       exit_code: Int from "exit_code"
       stderr: String from "stderr"
-      success: std.types.Bool from "exit_success"
+      success: Bool from "exit_success"
     }
     transport shell { argv: ["git", "push", "{lease}", "{remote}", "{refspec}"] }
     exit {
@@ -170,7 +170,7 @@ service git.PublicationTransport {
     }
     output {
       sha: std.types.CommitSha from "stdout"
-      success: std.types.Bool from "exit_success"
+      success: Bool from "exit_success"
       stderr: String from "stderr"
     }
     transport shell { argv: ["git", "commit", "-m", "{message}"] }
@@ -186,7 +186,7 @@ service git.PublicationTransport {
     }
     output {
       sha: std.types.CommitSha from "stdout"
-      success: std.types.Bool from "exit_success"
+      success: Bool from "exit_success"
       stderr: String from "stderr"
     }
     transport shell { argv: ["git", "commit", "--allow-empty", "-m", "{message}"] }

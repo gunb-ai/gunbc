@@ -140,7 +140,7 @@ fn family_crate_member_run(
             && stdout.bytes == emit_host_octets_byte_string(octets: [0, expected_octet, 0, 0, 0])
         _ => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -169,7 +169,7 @@ fn family_crate_member_run_with_target(
             && stdout.bytes == emit_host_octets_byte_string(octets: [0, expected_octet, 0, 0, 0])
         _ => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -177,9 +177,9 @@ fn family_crate_meet_join_member_agreement_divergence(
   workspace: String,
   source: Medium<String>,
   tree: v2.compiler.inferred_tree.InferredTree,
-  subgraph: Node,
+  subgraph: v2.std.node.Node,
   member_id: String
-) -> Optional<v2.std.native_agreement.NativeAgreementDivergence> {
+) -> v2.std.optional.Optional<v2.std.native_agreement.NativeAgreementDivergence> {
   native_agreement_divergence_from_run(
     member_id: member_id,
     run: run_test_claim_from_source_emit_vs_eval_cached(
@@ -196,7 +196,7 @@ fn family_crate_meet_join_member_agreement(
   workspace: String,
   source: Medium<String>,
   tree: v2.compiler.inferred_tree.InferredTree,
-  subgraph: Node,
+  subgraph: v2.std.node.Node,
   member_id: String
 ) -> Bool {
   match family_crate_meet_join_member_agreement_divergence(
@@ -206,15 +206,15 @@ fn family_crate_meet_join_member_agreement(
     subgraph: subgraph,
     member_id: member_id
   ) {
-    Absent => true
-    Present { value: _ } => false
+    v2.std.optional.Absent => true
+    v2.std.optional.Present { value: _ } => false
   }
 }
 
 fn family_crate_complement_member_agreement_divergence(
   workspace: String,
   source: Medium<String>
-) -> Optional<v2.std.native_agreement.NativeAgreementDivergence> {
+) -> v2.std.optional.Optional<v2.std.native_agreement.NativeAgreementDivergence> {
   native_agreement_divergence_from_run(
     member_id: "complement",
     run: run_test_claim_from_source_emit_vs_eval_cached(
@@ -235,17 +235,17 @@ fn family_crate_complement_member_agreement(
     workspace: workspace,
     source: source
   ) {
-    Absent => true
-    Present { value: _ } => false
+    v2.std.optional.Absent => true
+    v2.std.optional.Present { value: _ } => false
   }
 }
 
 fn optional_divergence_to_list(
-  opt: Optional<v2.std.native_agreement.NativeAgreementDivergence>
+  opt: v2.std.optional.Optional<v2.std.native_agreement.NativeAgreementDivergence>
 ) -> List<v2.std.native_agreement.NativeAgreementDivergence> {
   match opt {
-    Absent => []
-    Present { value: d } => [d]
+    v2.std.optional.Absent => []
+    v2.std.optional.Present { value: d } => [d]
   }
 }
 
@@ -296,7 +296,7 @@ fn family_crate_pr_native_agreement_divergences() -> List<v2.std.native_agreemen
           )
         )
       )
-    Rejected { diagnostics: _ } => [family_crate_emit_family_rejected_divergence()]
+    v2.std.diagnostic.Rejected { diagnostics: _ } => [family_crate_emit_family_rejected_divergence()]
   }
 }
 
@@ -315,9 +315,9 @@ fn family_crate_member_run_refused(
     Accepted { value: receipt, diagnostics: _ } =>
       match receipt.logical_run {
         Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -408,7 +408,7 @@ test fn family_crate_one_build_members_warm_holds() -> Bool {
           source: source,
           member_id: "absent_member"
         )
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -448,7 +448,7 @@ test fn family_crate_member_change_cold_rebuild_holds() -> Bool {
             expect_compile_skipped: true,
             expected_octet: 1
           )
-      Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
     }
   }
 }
@@ -490,7 +490,7 @@ test fn family_crate_dispatch_change_cold_rebuild_holds() -> Bool {
           expect_compile_skipped: true,
           expected_octet: 0
         )
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

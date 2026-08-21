@@ -9,7 +9,7 @@ type GrammarChoiceAmbiguityRow {
   left_first_terminals: std.algebra.FreeMonoid<v2.std.node.Symbol>
   right_first_terminals: std.algebra.FreeMonoid<v2.std.node.Symbol>
   overlap_terminals: std.algebra.FreeMonoid<v2.std.node.Symbol>
-  both_nullable: Bool
+  both_nullable: v2.std.logic.Bool
 }
 
 type NonEmptyGrammarChoiceAmbiguityRows {

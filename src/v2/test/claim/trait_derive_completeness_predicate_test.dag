@@ -62,28 +62,28 @@ fn tdc_unknown_atom_node() -> v2.std.node.Node {
   }
 }
 
-fn tdc_elem_shape_is_payload_coproduct(elem: v2.std.node.Node) -> Bool {
+fn tdc_elem_shape_is_payload_coproduct(elem: v2.std.node.Node) -> v2.std.logic.Bool {
   match repr_grounding_derive_elem_shape(elem: elem) {
     std.trait_derive_shape.ReprDeriveElemPayloadCoproduct => true
     _ => false
   }
 }
 
-fn tdc_elem_shape_is_unknown(elem: v2.std.node.Node) -> Bool {
+fn tdc_elem_shape_is_unknown(elem: v2.std.node.Node) -> v2.std.logic.Bool {
   match repr_grounding_derive_elem_shape(elem: elem) {
     std.trait_derive_shape.ReprDeriveElemUnknown => true
     _ => false
   }
 }
 
-fn tdc_elem_shape_is_nullary_enum_copy(elem: v2.std.node.Node) -> Bool {
+fn tdc_elem_shape_is_nullary_enum_copy(elem: v2.std.node.Node) -> v2.std.logic.Bool {
   match repr_grounding_derive_elem_shape(elem: elem) {
     std.trait_derive_shape.ReprDeriveElemNullaryEnumCopy => true
     _ => false
   }
 }
 
-fn tdc_elem_shape_is_kernel_string(elem: v2.std.node.Node) -> Bool {
+fn tdc_elem_shape_is_kernel_string(elem: v2.std.node.Node) -> v2.std.logic.Bool {
   match repr_grounding_derive_elem_shape(elem: elem) {
     std.trait_derive_shape.ReprDeriveElemKernelString => true
     _ => false
@@ -93,7 +93,7 @@ fn tdc_elem_shape_is_kernel_string(elem: v2.std.node.Node) -> Bool {
 fn tdc_collection_requirement_gate_is_incomplete(
   requirement: v2.std.compilers.target_model.TargetCapabilityRequirement,
   elem: v2.std.node.Node
-) -> Bool {
+) -> v2.std.logic.Bool {
   match trait_derive_completeness_gate_for_collection_requirement(
     requirement: requirement,
     elem: elem
@@ -110,7 +110,7 @@ fn tdc_collection_requirement_gate_is_incomplete(
 fn tdc_collection_requirement_capability_unknown(
   requirement: v2.std.compilers.target_model.TargetCapabilityRequirement,
   elem: v2.std.node.Node
-) -> Bool {
+) -> v2.std.logic.Bool {
   match trait_derive_completeness_gate_for_collection_requirement(
     requirement: requirement,
     elem: elem
@@ -120,32 +120,32 @@ fn tdc_collection_requirement_capability_unknown(
   }
 }
 
-fn tdc_binding_is(binding: v2.std.node.Symbol, expected: v2.std.node.Symbol) -> Bool {
+fn tdc_binding_is(binding: v2.std.node.Symbol, expected: v2.std.node.Symbol) -> v2.std.logic.Bool {
   binding == expected
 }
 
 fn tdc_coproduct_binding_accepted(coproduct: v2.std.node.Node) -> v2.std.node.Symbol {
   match rust_trait_derive_surface_binding_for_coproduct(coproduct: coproduct) {
     Accepted { value: binding, diagnostics: _ } => binding
-    Rejected { diagnostics: _ } => ^tdc_impossible_coproduct_binding
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ^tdc_impossible_coproduct_binding
   }
 }
 
-fn tdc_coproduct_binding_rejected(coproduct: v2.std.node.Node) -> Bool {
+fn tdc_coproduct_binding_rejected(coproduct: v2.std.node.Node) -> v2.std.logic.Bool {
   match rust_trait_derive_surface_binding_for_coproduct(coproduct: coproduct) {
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-test fn tdc_string_kernel_satisfies_clone_ord_serde_not_add() -> Bool {
+test fn tdc_string_kernel_satisfies_clone_ord_serde_not_add() -> v2.std.logic.Bool {
   repr_grounding_derive_trait_satisfied(derive_trait: std.trait_derive_shape.ReprDeriveClone, elem: symbol_kernel_type_node())
     && repr_grounding_derive_trait_satisfied(derive_trait: std.trait_derive_shape.ReprDeriveOrd, elem: symbol_kernel_type_node())
     && repr_grounding_derive_trait_satisfied(derive_trait: std.trait_derive_shape.ReprDeriveSerialize, elem: symbol_kernel_type_node())
     && repr_grounding_derive_trait_satisfied(derive_trait: std.trait_derive_shape.ReprDeriveAdd, elem: symbol_kernel_type_node()) == false
 }
 
-test fn tdc_int_kernel_satisfies_arith_and_ord() -> Bool {
+test fn tdc_int_kernel_satisfies_arith_and_ord() -> v2.std.logic.Bool {
   repr_grounding_derive_trait_satisfied(derive_trait: std.trait_derive_shape.ReprDeriveAdd, elem: trait_derive_int_kernel_type_node())
     && repr_grounding_derive_trait_satisfied(derive_trait: std.trait_derive_shape.ReprDeriveOrd, elem: trait_derive_int_kernel_type_node())
     && repr_grounding_derive_completeness_predicate_for_elem(
@@ -157,7 +157,7 @@ test fn tdc_int_kernel_satisfies_arith_and_ord() -> Bool {
     )
 }
 
-test fn tdc_unknown_atom_refuses_ord_completeness() -> Bool {
+test fn tdc_unknown_atom_refuses_ord_completeness() -> v2.std.logic.Bool {
   repr_grounding_derive_trait_satisfied(derive_trait: std.trait_derive_shape.ReprDeriveOrd, elem: tdc_unknown_atom_node()) == false
     && tdc_elem_shape_is_unknown(elem: tdc_unknown_atom_node())
     && tdc_collection_requirement_gate_is_incomplete(
@@ -169,7 +169,7 @@ test fn tdc_unknown_atom_refuses_ord_completeness() -> Bool {
     )
 }
 
-test fn tdc_unknown_capability_refuses_rather_than_defaulting() -> Bool {
+test fn tdc_unknown_capability_refuses_rather_than_defaulting() -> v2.std.logic.Bool {
   tdc_collection_requirement_capability_unknown(
     requirement: v2.std.compilers.target_model.TargetCapabilityRequirement {
       representation_parameter: ^target_collection_type_param_t,
@@ -186,7 +186,7 @@ test fn tdc_unknown_capability_refuses_rather_than_defaulting() -> Bool {
     ) == false
 }
 
-test fn tdc_payload_coproduct_shape_and_predicate() -> Bool {
+test fn tdc_payload_coproduct_shape_and_predicate() -> v2.std.logic.Bool {
   tdc_elem_shape_is_payload_coproduct(elem: tdc_payload_enum_node())
     && std.trait_derive_shape.repr_grounding_derive_completeness_predicate(
       std.trait_derive_shape.payload_coproduct_derive_traits(),
@@ -199,7 +199,7 @@ test fn tdc_payload_coproduct_shape_and_predicate() -> Bool {
     && tdc_coproduct_binding_rejected(coproduct: tdc_unknown_atom_node())
 }
 
-test fn tdc_nullary_enum_copy_shape_and_binding() -> Bool {
+test fn tdc_nullary_enum_copy_shape_and_binding() -> v2.std.logic.Bool {
   tdc_elem_shape_is_nullary_enum_copy(elem: tdc_nullary_enum_node())
     && tdc_binding_is(
       binding: tdc_coproduct_binding_accepted(coproduct: tdc_nullary_enum_node()),
@@ -207,11 +207,11 @@ test fn tdc_nullary_enum_copy_shape_and_binding() -> Bool {
     )
 }
 
-test fn tdc_symbol_kernel_string_shape() -> Bool {
+test fn tdc_symbol_kernel_string_shape() -> v2.std.logic.Bool {
   tdc_elem_shape_is_kernel_string(elem: symbol_kernel_type_node())
 }
 
-test fn tdc_record_surface_binding_heap_vs_copy() -> Bool {
+test fn tdc_record_surface_binding_heap_vs_copy() -> v2.std.logic.Bool {
   tdc_binding_is(
     binding: rust_trait_derive_surface_binding_for_record(heap_allocated: true),
     expected: ^rust_decl_derive_struct_binding

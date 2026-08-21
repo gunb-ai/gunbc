@@ -4,7 +4,7 @@ module test.claim.devboot_build_product_witness
 
 // WHAT THE PRODUCT PROMISES, PINNED. The operation's promise is that a caller receives an exact executable or a reason, and the decisions that keep that promise are ordinary functions over ordinary values -- so they are witnessed here rather than being demonstrated once by a live run against one producer on one afternoon. The live run proves the vertical exists; these prove the arms that keep it honest still discriminate.
 
-// A REFUSAL IS NEVER AN EXECUTABLE. This is the contract law of the vertical stated at the product boundary: no arm of BuildOutcome reports a delivered binary without bytes bound to a digest. The predicate is what downstream callers branch on, and a version of it that answered true unconditionally would restore precisely the behaviour this lane was opened to delete -- a success report with an empty artifact.
+// A REFUSAL IS NEVER AN EXECUTABLE. This is the contract law of the vertical stated at the product boundary: no arm of gunbc.devboot.build.BuildOutcome reports a delivered binary without bytes bound to a digest. The predicate is what downstream callers branch on, and a version of it that answered true unconditionally would restore precisely the behaviour this lane was opened to delete -- a success report with an empty artifact.
 test fn a_refusal_never_reports_a_delivered_executable() -> Bool {
   !outcome_delivers_executable(
     outcome: gunbc.devboot.build.BuildRefused { cause: gunbc.devboot.build.ProducerDidNotAnswer { waited: second(count: 300) } },

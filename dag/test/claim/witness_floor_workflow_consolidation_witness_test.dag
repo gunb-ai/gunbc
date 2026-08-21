@@ -51,7 +51,7 @@ data consolidation_note: String = "The step ladder these replace was four steps:
 // flag tokens alone is spelling-independent, and strictly stronger as a negative, since it now
 // catches a retired invocation under ANY quoting. Verified against the emitted file: it contains
 // exactly one of these four tokens.
-test fn w_ci_invokes_one_composed_mode_not_a_step_ladder() -> std.types.Bool {
+test fn w_ci_invokes_one_composed_mode_not_a_step_ladder() -> Bool {
   match gunbc.witness_floor_workflow.expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
       string_contains(s: yml, pattern: "claim_executor")
@@ -67,7 +67,7 @@ test fn w_ci_invokes_one_composed_mode_not_a_step_ladder() -> std.types.Bool {
 // which is a different fact: a step cannot run a binary that failed to compile, and that is the
 // job's business rather than the program's. What is gone is `steps.required_regen.outcome`, the
 // data dependency that now lives in the binary as an in-memory digest handoff.
-test fn w_no_phase_precondition_reads_another_phases_outcome() -> std.types.Bool {
+test fn w_no_phase_precondition_reads_another_phases_outcome() -> Bool {
   match gunbc.witness_floor_workflow.expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
       !string_contains(s: yml, pattern: "steps.required_regen.outcome")
@@ -95,7 +95,7 @@ test fn w_no_phase_precondition_reads_another_phases_outcome() -> std.types.Bool
 // (`required-ci: parse OK 50 file(s) parse-clean`, run 32371293567). Naming the boundary is
 // the point: a static witness that claimed the phase runs would be asserting something its
 // subject does not contain.
-test fn w_the_required_workflow_does_not_build_the_parse_binary() -> std.types.Bool {
+test fn w_the_required_workflow_does_not_build_the_parse_binary() -> Bool {
   match gunbc.witness_floor_workflow.expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
       string_contains(s: yml, pattern: "--required-ci")
@@ -127,7 +127,7 @@ test fn w_the_required_workflow_does_not_build_the_parse_binary() -> std.types.B
 // needs -- the composed step exists and was read -- and still fails loudly if the composed
 // step is removed or renamed out of its family, which is the state the negative arms below
 // exist to detect.
-test fn w_RED_the_retired_step_names_do_not_return() -> std.types.Bool {
+test fn w_RED_the_retired_step_names_do_not_return() -> Bool {
   match gunbc.witness_floor_workflow.expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
       let positive_control = string_contains(s: yml, pattern: "Required CI:")

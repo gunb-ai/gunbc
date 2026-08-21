@@ -139,7 +139,7 @@ fn floor_discovery_first_row_reads_substrate_only(rows: List<v2.workflow.floor_d
 
 test fn floor_discovery_hand_rust_scaffold_binds_producer_authority() -> Bool {
   match gunbc.floor_discovery_scaffold.floor_discovery_hand_rust_scaffold {
-    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    std.disposition.Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
     _ => false
   }
 }
@@ -151,7 +151,7 @@ test fn floor_discovery_dissolve_trigger_names_producer_authority() -> Bool {
 
 test fn floor_discovery_surface_text_scan_scaffold_on_carrier() -> Bool {
   match v2.workflow.floor_discovery_producer.floor_discovery_surface_text_scan_scaffold {
-    Scaffold {
+    std.disposition.Scaffold {
       dissolves_to: SingleAuthority,
       bind: DeclarationRef {
         module_path: "v2.workflow.floor_naming_hygiene",
@@ -215,10 +215,10 @@ test fn floor_discovery_scan_test_data_decl_holds() -> Bool {
 
 test fn floor_discovery_sidecar_test_decl_misplaced_red_control() -> Bool {
   match v2.workflow.floor_discovery.floor_discovery_test_decl_sidecar_violation(entry_path: fixture_misplaced_entry) {
-    Present { value: v } =>
+    v2.std.optional.Present { value: v } =>
       (v.entry_path == fixture_misplaced_entry)
         && string_contains(s: v.required_suffix, pattern: "_test.dag")
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
@@ -226,8 +226,8 @@ test fn floor_discovery_sidecar_test_decl_allowed_holds() -> Bool {
   match v2.workflow.floor_discovery.floor_discovery_test_decl_sidecar_violation(
     entry_path: "dag/test/claim/floor_discovery_roster_fixture_test.dag"
   ) {
-    Absent => true
-    Present { value: _ } => false
+    v2.std.optional.Absent => true
+    v2.std.optional.Present { value: _ } => false
   }
 }
 
@@ -246,11 +246,11 @@ test fn floor_discovery_equivalence_misplaced_wire_contract_refuses_holds() -> B
     repo_path: fixture_misplaced_wire_contract_entry,
     content: fixture_misplaced_wire_contract_content()
   ) {
-    Present { value: msg } =>
+    v2.std.optional.Present { value: msg } =>
       string_contains(s: msg, pattern: "wire-contract decls")
         && string_contains(s: msg, pattern: "_contracts.dag")
         && string_contains(s: msg, pattern: fixture_misplaced_wire_contract_entry)
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
@@ -278,8 +278,8 @@ test fn floor_discovery_live_tree_malformed_variant_refuses_red_control() -> Boo
     entry_path: fixture_live_tree_entry,
     content: fixture_live_tree_malformed_variant_content()
   ) {
-    Present { value: msg } => string_contains(s: msg, pattern: "unknown variant")
-    Absent => false
+    v2.std.optional.Present { value: msg } => string_contains(s: msg, pattern: "unknown variant")
+    v2.std.optional.Absent => false
   }
 }
 
@@ -288,8 +288,8 @@ test fn floor_discovery_live_tree_duplicate_decl_refuses_red_control() -> Bool {
     entry_path: fixture_live_tree_entry,
     content: fixture_live_tree_duplicate_decl_content()
   ) {
-    Present { value: msg } => string_contains(s: msg, pattern: "more than once")
-    Absent => false
+    v2.std.optional.Present { value: msg } => string_contains(s: msg, pattern: "more than once")
+    v2.std.optional.Absent => false
   }
 }
 
@@ -298,8 +298,8 @@ test fn floor_discovery_live_tree_trailing_comment_refuses_red_control() -> Bool
     entry_path: fixture_live_tree_entry,
     content: fixture_live_tree_trailing_comment_content()
   ) {
-    Present { value: msg } => string_contains(s: msg, pattern: "unknown variant")
-    Absent => false
+    v2.std.optional.Present { value: msg } => string_contains(s: msg, pattern: "unknown variant")
+    v2.std.optional.Absent => false
   }
 }
 
@@ -308,8 +308,8 @@ test fn floor_discovery_live_tree_disposition_note_sibling_not_declaration_holds
     entry_path: fixture_live_tree_entry,
     content: "module m\n\ndata live_tree_disposition_note: String = \"doc row\"\n"
   ) {
-    Absent => true
-    Present { value: _ } => false
+    v2.std.optional.Absent => true
+    v2.std.optional.Present { value: _ } => false
   }
 }
 

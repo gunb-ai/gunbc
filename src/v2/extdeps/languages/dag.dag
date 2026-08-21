@@ -2808,14 +2808,14 @@ fn emit_import_decl_emitted_node(
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: match import_block {
-      Present { value: block } =>
+      v2.std.optional.Present { value: block } =>
         v2.std.algebra.list_append(
           left: prefix,
           right: [
             dag_named_edge(name: ^dag_surface_import_decl_block, target: block)
           ]
         )
-      Absent => prefix
+      v2.std.optional.Absent => prefix
     },
     occurrence_id: v2.std.node.SyntheticOccurrence
 }
@@ -2840,8 +2840,8 @@ fn emit_row_import_decl(
       import_block: import_block
     ),
     tokens: match import_block {
-      Present { value: block } => v2.std.algebra.list_append(left: prefix, right: [block])
-      Absent => prefix
+      v2.std.optional.Present { value: block } => v2.std.algebra.list_append(left: prefix, right: [block])
+      v2.std.optional.Absent => prefix
     }
   )
 }
@@ -3201,7 +3201,7 @@ fn dag_language_model_empty_canonical_symbol_set() -> std.types.Set<v2.std.node.
   }
 }
 
-fn dag_language_model_binding_canonical(sym: v2.std.node.Symbol) -> Bool {
+fn dag_language_model_binding_canonical(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   sym == ^dag_binding_fn_add
     || sym == ^dag_binding_param_x
     || sym == ^dag_binding_param_y
@@ -3260,7 +3260,7 @@ fn dag_language_model_canonical_symbols(lm: v2.std.language_model.LanguageModel)
   lm.canonical_symbols
 }
 
-fn dag_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn dag_lex_token_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.compilers.lexing.lex_rule_set_token_class_member(
     rules: dag_lex_rules(),
     token_class: sym
@@ -3328,7 +3328,7 @@ fn dag_fidelity_disposition_node(
         ],
         occurrence_id: v2.std.node.SyntheticOccurrence
       }
-    FailClosed { feature: feature } =>
+    v2.extdeps.languages.fidelity.FailClosed { feature: feature } =>
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
         children: [
@@ -3435,23 +3435,23 @@ fn dag_target_model_lossless_fidelity_quotient() -> v2.std.compilers.target_mode
   )
 }
 
-fn dag_surface_module_header_metadata_edge(name: v2.std.node.Symbol) -> Bool {
+fn dag_surface_module_header_metadata_edge(name: v2.std.node.Symbol) -> v2.std.logic.Bool {
   (name == ^dag_surface_module_header)
     || (name == ^dag_surface_module_header_qualified_name)
 }
 
-fn dag_resolve_preserve_module_metadata_subtree(node: v2.std.node.Node) -> Bool {
+fn dag_resolve_preserve_module_metadata_subtree(node: v2.std.node.Node) -> v2.std.logic.Bool {
   match parse_production_emitted_identity_optional(node: node) {
-    Present { value: id } =>
+    v2.std.optional.Present { value: id } =>
       (id == ^dag_surface_module_header) || (id == ^dag_surface_qualified_name)
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-fn dag_node_is_module_root_conj(n: v2.std.node.Node) -> Bool {
+fn dag_node_is_module_root_conj(n: v2.std.node.Node) -> v2.std.logic.Bool {
   match parse_production_emitted_identity_optional(node: n) {
-    Present { value: id } => id == ^dag_surface_module
-    Absent =>
+    v2.std.optional.Present { value: id } => id == ^dag_surface_module
+    v2.std.optional.Absent =>
       match n.kind {
         TypeNode { connective: v2.std.node.Conj } =>
           fold(
@@ -3462,7 +3462,7 @@ fn dag_node_is_module_root_conj(n: v2.std.node.Node) -> Bool {
                 true
               } else {
                 match e.label {
-                  Named { name: sym } => sym == ^dag_surface_module_header
+                  v2.std.node.Named { name: sym } => sym == ^dag_surface_module_header
                   Positional => false
                 }
               }
@@ -3961,21 +3961,21 @@ data dag_loop_arrow_with_body_fixture: v2.std.node.Node = dag_loop_arrow_with_bo
 data dag_loop_arrow_with_body_wrong_value_fixture: v2.std.node.Node = dag_loop_arrow_with_body_wrong_value_node()
 data dag_fixture_emitted_loop_fn: v2.std.node.Node = dag_loop_arrow_with_body_fixture
 
-fn dag_node_is_kw_true_atom(node: v2.std.node.Node) -> Bool {
+fn dag_node_is_kw_true_atom(node: v2.std.node.Node) -> v2.std.logic.Bool {
   match node.kind {
     v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } => id == ^dag_token_kw_true
     _ => false
   }
 }
 
-fn dag_node_is_kw_false_atom(node: v2.std.node.Node) -> Bool {
+fn dag_node_is_kw_false_atom(node: v2.std.node.Node) -> v2.std.logic.Bool {
   match node.kind {
     v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } => id == ^dag_token_kw_false
     _ => false
   }
 }
 
-fn dag_node_is_int_literal_atom(node: v2.std.node.Node) -> Bool {
+fn dag_node_is_int_literal_atom(node: v2.std.node.Node) -> v2.std.logic.Bool {
   match node.kind {
     v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } => id == ^dag_token_int_literal
     _ => false
@@ -3984,30 +3984,30 @@ fn dag_node_is_int_literal_atom(node: v2.std.node.Node) -> Bool {
 
 data dag_eval_literal_atom_authority_note: String = "Single authority for eval literal-vs-binding dispatch (v2_eval_is_literal_shaped_node projects this). Fixture pick literals admit both token_class (^dag_pick_lit_*) and branded binding (^dag_binding_pick_lit_*) rows — same ingest surface, two spellings. Complement bool literals (^dag_complement_lit_*) are logic-ingest tokens used as scrutinee/body literals in complement fixtures. dissolve-on: general body producer lands grammar-owned literal classification and this roster folds into it."
 
-fn dag_symbol_is_fixture_pick_literal(id: v2.std.node.Symbol) -> Bool {
+fn dag_symbol_is_fixture_pick_literal(id: v2.std.node.Symbol) -> v2.std.logic.Bool {
   (id == ^dag_pick_lit_one)
     || (id == ^dag_pick_lit_two)
     || (id == ^dag_binding_pick_lit_one)
     || (id == ^dag_binding_pick_lit_two)
 }
 
-fn dag_symbol_is_complement_bool_literal(id: v2.std.node.Symbol) -> Bool {
+fn dag_symbol_is_complement_bool_literal(id: v2.std.node.Symbol) -> v2.std.logic.Bool {
   (id == ^dag_complement_lit_true) || (id == ^dag_complement_lit_false)
 }
 
-fn dag_symbol_is_fixture_record_literal_atom(id: v2.std.node.Symbol) -> Bool {
+fn dag_symbol_is_fixture_record_literal_atom(id: v2.std.node.Symbol) -> v2.std.logic.Bool {
   (id == ^dag_binding_rec_v)
     || (id == ^dag_rec_lit_nine)
     || (id == ^dag_binding_type_variant_true)
 }
 
-fn dag_symbol_is_fixture_body_literal_atom(id: v2.std.node.Symbol) -> Bool {
+fn dag_symbol_is_fixture_body_literal_atom(id: v2.std.node.Symbol) -> v2.std.logic.Bool {
   dag_symbol_is_fixture_pick_literal(id: id)
     || dag_symbol_is_complement_bool_literal(id: id)
     || dag_symbol_is_fixture_record_literal_atom(id: id)
 }
 
-fn dag_node_is_eval_literal_atom(node: v2.std.node.Node) -> Bool {
+fn dag_node_is_eval_literal_atom(node: v2.std.node.Node) -> v2.std.logic.Bool {
   dag_node_is_kw_true_atom(node: node)
     || dag_node_is_kw_false_atom(node: node)
     || dag_node_is_int_literal_atom(node: node)
@@ -4033,14 +4033,14 @@ fn dag_int_literal_node_from_magnitude(magnitude: v2.std.integer.DecimalMagnitud
 
 fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: std.occurrence_identity.OccurrenceId) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match v2.std.integer.integer_string_to_decimal_digits_optional(s: lexeme) {
-    Present { value: digits } =>
+    v2.std.optional.Present { value: digits } =>
       v2.std.diagnostic.outcome_accepted(
         value: dag_int_literal_node_from_magnitude(
           magnitude: v2.std.integer.decimal_digits_to_magnitude(digits: digits),
           occurrence_id: occurrence_id
         )
       )
-    Absent =>
+    v2.std.optional.Absent =>
       v2.std.diagnostic.outcome_rejected(
         d: v2.std.diagnostic.Diagnostic {
           reason: ^dag_int_literal_lexeme_invalid,
@@ -4067,8 +4067,8 @@ fn dag_int_literal_magnitude_node_optional(node: v2.std.node.Node) -> v2.std.opt
   if dag_node_is_int_literal_atom(node: node) {
     fold(node.children, init: v2.std.optional.optional_absent(), f: fn(acc, edge) {
       match acc {
-        Present { value: _ } => acc
-        Absent => dag_int_literal_magnitude_edge_target_optional(edge: edge)
+        v2.std.optional.Present { value: _ } => acc
+        v2.std.optional.Absent => dag_int_literal_magnitude_edge_target_optional(edge: edge)
       }
     })
   } else {
@@ -4076,12 +4076,12 @@ fn dag_int_literal_magnitude_node_optional(node: v2.std.node.Node) -> v2.std.opt
   }
 }
 
-fn dag_int_literal_magnitude_int_from_node(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Int> {
+fn dag_int_literal_magnitude_int_from_node(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.integer.Int> {
   if dag_node_is_int_literal_atom(node: node) {
     match dag_int_literal_magnitude_node_optional(node: node) {
-      Present { value: magnitude_node } =>
+      v2.std.optional.Present { value: magnitude_node } =>
         v2.std.integer.integer_decimal_magnitude_node_to_int(node: magnitude_node)
-      Absent =>
+      v2.std.optional.Absent =>
         v2.std.diagnostic.outcome_rejected(
           d: v2.std.diagnostic.Diagnostic {
             reason: ^dag_int_literal_lexeme_invalid,
@@ -4102,8 +4102,8 @@ fn dag_int_literal_magnitude_int_from_node(node: v2.std.node.Node) -> v2.std.dia
 }
 
 type DagCanonicalLiteral
-  = DagCanonicalBoolLiteral { value: Bool }
-  | DagCanonicalIntLiteral { magnitude: Int }
+  = DagCanonicalBoolLiteral { value: v2.std.logic.Bool }
+  | DagCanonicalIntLiteral { magnitude: v2.std.integer.Int }
 
 fn dag_canonical_literal_shape_diagnostic(node: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
@@ -4127,7 +4127,7 @@ fn dag_canonical_literal_from_node(node: v2.std.node.Node) -> v2.std.diagnostic.
           value: DagCanonicalIntLiteral { magnitude: magnitude },
           diagnostics: d
         }
-      Rejected { diagnostics: _ } =>
+      v2.std.diagnostic.Rejected { diagnostics: _ } =>
         v2.std.diagnostic.outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
     }
   } else {
@@ -5059,7 +5059,7 @@ fn dag_bodied_fn_target_model(
   runtime_row: v2.std.optional.Optional<v2.std.host_transport.TargetEmitHostRuntimeRow>
 ) -> v2.std.compilers.target_model.TargetModel {
   match runtime_row {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       v2.std.compilers.target_model.TargetModel {
         produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
         bundle: dag_bodied_fn_target_model_bundle_node(spec: spec),
@@ -5069,7 +5069,7 @@ fn dag_bodied_fn_target_model(
         authority_source_text: spec.authority_source_text,
         runtime_row: row
       }
-    Absent =>
+    v2.std.optional.Absent =>
       v2.std.compilers.target_model.TargetModel {
         produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
         bundle: dag_bodied_fn_target_model_bundle_node(spec: spec),
@@ -5446,7 +5446,7 @@ fn dag_round_trip_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2
   v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: target }
 }
 
-fn dag_round_trip_bool_node(pass: Bool) -> v2.std.node.Node {
+fn dag_round_trip_bool_node(pass: v2.std.logic.Bool) -> v2.std.node.Node {
   if pass {
     dag_round_trip_atom(s: ^dag_round_trip_axis_ready)
   } else {
@@ -5454,7 +5454,7 @@ fn dag_round_trip_bool_node(pass: Bool) -> v2.std.node.Node {
   }
 }
 
-fn dag_round_trip_lex_ready() -> Bool {
+fn dag_round_trip_lex_ready() -> v2.std.logic.Bool {
   dag_lex_token_symbol(sym: ^dag_token_kw_module) &&
   dag_lex_token_symbol(sym: ^dag_token_kw_import) &&
   dag_lex_token_symbol(sym: ^dag_token_kw_alias) &&
@@ -5471,7 +5471,7 @@ fn dag_round_trip_lex_ready() -> Bool {
   dag_lex_token_symbol(sym: ^dag_token_arrow)
 }
 
-fn dag_round_trip_grammar_ready(lm: v2.std.language_model.LanguageModel) -> Bool {
+fn dag_round_trip_grammar_ready(lm: v2.std.language_model.LanguageModel) -> v2.std.logic.Bool {
   v2.std.grammar.grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_module) &&
   v2.std.grammar.grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_module_header) &&
   v2.std.grammar.grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_import_decl) &&
@@ -5480,13 +5480,13 @@ fn dag_round_trip_grammar_ready(lm: v2.std.language_model.LanguageModel) -> Bool
   v2.std.grammar.grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_fn_decl)
 }
 
-fn dag_round_trip_trivia_fidelity_resolved() -> Bool {
+fn dag_round_trip_trivia_fidelity_resolved() -> v2.std.logic.Bool {
   dag_whitespace_fidelity() == v2.extdeps.languages.fidelity.DeclaredNormalized { feature: DagWhitespaceDeclaredNormalized } &&
   dag_line_comment_fidelity() == v2.extdeps.languages.fidelity.FailClosed { feature: DagLineCommentFailClosed } &&
   dag_block_comment_fidelity() == v2.extdeps.languages.fidelity.FailClosed { feature: DagBlockCommentFailClosed }
 }
 
-fn dag_round_trip_authorities_ready() -> Bool {
+fn dag_round_trip_authorities_ready() -> v2.std.logic.Bool {
   let lm = dag_language_model()
   dag_round_trip_lex_ready() &&
   dag_round_trip_grammar_ready(lm: lm) &&
@@ -5496,21 +5496,21 @@ fn dag_round_trip_authorities_ready() -> Bool {
 fn parse_production_emitted_identity_optional(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   match v2.std.node_query.find_named_child(root: node, name: ^grammar_production_identity_node_projection) {
     Accepted { value: id_node, diagnostics: _ } => v2.std.grammar.node_atom_identity_optional(node: id_node)
-    Rejected { diagnostics: _ } => v2.std.optional.Absent
+    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
   }
 }
 
-fn dag_node_is_fn_decl(node: v2.std.node.Node) -> Bool {
+fn dag_node_is_fn_decl(node: v2.std.node.Node) -> v2.std.logic.Bool {
   match parse_production_emitted_identity_optional(node: node) {
-    Present { value: id } => id == ^dag_surface_fn_decl
-    Absent => false
+    v2.std.optional.Present { value: id } => id == ^dag_surface_fn_decl
+    v2.std.optional.Absent => false
   }
 }
 
 fn parse_production_captured_child_optional(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match v2.std.node_query.find_named_child(root: node, name: ^grammar_production_captured_node_projection) {
     Accepted { value: captured, diagnostics: _ } => v2.std.optional.Present { value: captured }
-    Rejected { diagnostics: _ } => v2.std.optional.Absent
+    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
   }
 }
 
@@ -5537,24 +5537,24 @@ fn parse_subtree_find_production_captured_under_children(
 
 fn parse_subtree_find_production_captured(root: v2.std.node.Node, emitted: v2.std.node.Symbol) -> ParseSubtreeFind {
   match parse_production_emitted_identity_optional(node: root) {
-    Present { value: id } =>
+    v2.std.optional.Present { value: id } =>
       if id == emitted {
         match parse_production_captured_child_optional(node: root) {
-          Present { value: captured } => ParseSubtreeFound { captured: captured }
-          Absent =>
+          v2.std.optional.Present { value: captured } => ParseSubtreeFound { captured: captured }
+          v2.std.optional.Absent =>
             parse_subtree_find_production_captured_under_children(root: root, emitted: emitted)
         }
       } else {
         parse_subtree_find_production_captured_under_children(root: root, emitted: emitted)
       }
-    Absent =>
+    v2.std.optional.Absent =>
       parse_subtree_find_production_captured_under_children(root: root, emitted: emitted)
   }
 }
 
 fn parse_qn_lexeme_segment(sym_node: v2.std.node.Node, root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Symbol> {
   match v2.std.grammar.node_atom_identity_optional(node: sym_node) {
-    Present { value: id } =>
+    v2.std.optional.Present { value: id } =>
       if id == ^dag_token_ident {
         v2.std.diagnostic.outcome_rejected(v2.std.diagnostic.Diagnostic {
           reason: ^qualified_name_projection_gated,
@@ -5570,7 +5570,7 @@ fn parse_qn_lexeme_segment(sym_node: v2.std.node.Node, root: v2.std.node.Node) -
       } else {
         v2.std.diagnostic.outcome_accepted(value: id)
       }
-    Absent =>
+    v2.std.optional.Absent =>
       v2.std.diagnostic.outcome_rejected(v2.std.diagnostic.Diagnostic {
         reason: ^qualified_name_structure_invalid,
         at: v2.std.diagnostic.node_locus(node: root),
@@ -5584,7 +5584,7 @@ fn parse_qn_repeat_suffix_ident(sequence_capture: v2.std.node.Node, root: v2.std
     root: sequence_capture,
     name: ^grammar_sequence_right_node_projection
   ) {
-    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
     Accepted { value: ident_node, diagnostics: _ } =>
       parse_qn_lexeme_segment(sym_node: ident_node, root: root)
   }
@@ -5599,19 +5599,19 @@ fn parse_qn_repeat_suffixes(repeat_capture: v2.std.node.Node, root: v2.std.node.
       root: repeat_capture,
       name: ^grammar_sequence_left_node_projection
     ) {
-      Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+      v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
       Accepted { value: head_sequence, diagnostics: _ } =>
         match parse_qn_repeat_suffix_ident(sequence_capture: head_sequence, root: root) {
-          Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+          v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
           Accepted { value: sym, diagnostics: _ } =>
             match v2.std.node_query.find_named_child(
               root: repeat_capture,
               name: ^grammar_sequence_right_node_projection
             ) {
-              Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+              v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
               Accepted { value: tail, diagnostics: _ } =>
                 match parse_qn_repeat_suffixes(repeat_capture: tail, root: root) {
-                  Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+                  v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
                   Accepted { value: suffixes, diagnostics: tail_diag } =>
                     outcome_with_diagnostics(
                       value: v2.std.algebra.list_append(
@@ -5629,19 +5629,19 @@ fn parse_qn_repeat_suffixes(repeat_capture: v2.std.node.Node, root: v2.std.node.
 
 fn parse_qualified_name_segments_from_capture(qn_capture: v2.std.node.Node, root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.node.Symbol>> {
   match v2.std.node_query.find_named_child(root: qn_capture, name: ^grammar_sequence_left_node_projection) {
-    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
     Accepted { value: head_node, diagnostics: _ } =>
       match parse_qn_lexeme_segment(sym_node: head_node, root: root) {
-        Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+        v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
         Accepted { value: head_sym, diagnostics: head_diag } =>
           match v2.std.node_query.find_named_child(
             root: qn_capture,
             name: ^grammar_sequence_right_node_projection
           ) {
-            Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+            v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
             Accepted { value: repeat_node, diagnostics: _ } =>
               match parse_qn_repeat_suffixes(repeat_capture: repeat_node, root: root) {
-                Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+                v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
                 Accepted { value: suffixes, diagnostics: tail_diag } =>
                   outcome_with_diagnostics(
                     value: v2.std.algebra.list_append(
@@ -5661,25 +5661,25 @@ fn parse_comma_ident_list_items(
   root: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.node.Symbol>> {
   match v2.std.node_query.find_named_child(root: comma_list_capture, name: ^grammar_sequence_left_node_projection) {
-    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
     Accepted { value: head_node, diagnostics: _ } =>
       match parse_qn_lexeme_segment(sym_node: head_node, root: root) {
-        Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+        v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
         Accepted { value: head_sym, diagnostics: head_diag } =>
           match v2.std.node_query.find_named_child(
             root: comma_list_capture,
             name: ^grammar_sequence_right_node_projection
           ) {
-            Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+            v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
             Accepted { value: outer_right, diagnostics: _ } =>
               match v2.std.node_query.find_named_child(
                 root: outer_right,
                 name: ^grammar_sequence_left_node_projection
               ) {
-                Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+                v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
                 Accepted { value: repeat_node, diagnostics: _ } =>
                   match parse_qn_repeat_suffixes(repeat_capture: repeat_node, root: root) {
-                    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+                    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
                     Accepted { value: suffixes, diagnostics: tail_diag } =>
                       outcome_with_diagnostics(
                         value: v2.std.algebra.list_append(
@@ -5709,13 +5709,13 @@ fn parse_import_block_idents(
         root: block_capture,
         name: ^grammar_sequence_right_node_projection
       ) {
-        Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+        v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
         Accepted { value: inner_seq, diagnostics: _ } =>
           match v2.std.node_query.find_named_child(
             root: inner_seq,
             name: ^grammar_sequence_left_node_projection
           ) {
-            Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+            v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
             Accepted { value: comma_list_capture, diagnostics: _ } =>
               parse_comma_ident_list_items(
                 comma_list_capture: comma_list_capture,
@@ -5730,19 +5730,19 @@ data alias_binding_row_not_alias_decl: v2.std.node.Symbol = ^alias_binding_row_n
 
 fn alias_binding_row_binding_from_decl(decl: v2.std.node.Node, module_root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Symbol> {
   match parse_production_captured_child_optional(node: decl) {
-    Present { value: captured } =>
+    v2.std.optional.Present { value: captured } =>
       match v2.std.node_query.find_named_child(root: captured, name: ^grammar_sequence_right_node_projection) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: after_kw, diagnostics: _ } =>
           match v2.std.node_query.find_named_child(root: after_kw, name: ^grammar_sequence_left_node_projection) {
-            Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+            v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
             Accepted { value: ident_node, diagnostics: _ } =>
               parse_qn_lexeme_segment(sym_node: ident_node, root: module_root)
           }
       }
-    Absent =>
+    v2.std.optional.Absent =>
       match v2.std.node_query.find_named_child(root: decl, name: ^dag_surface_alias_decl_binding) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: binding_node, diagnostics: _ } =>
           parse_qn_lexeme_segment(sym_node: binding_node, root: module_root)
       }
@@ -5756,13 +5756,13 @@ fn alias_binding_row_target_from_decl(decl: v2.std.node.Node, module_root: v2.st
   ) {
     ParseSubtreeFound { captured: qn_capture } =>
       match parse_qualified_name_segments_from_capture(qn_capture: qn_capture, root: module_root) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: segments, diagnostics: _ } =>
           qualified_name_from_symbol_segments(segments: segments, root: module_root)
       }
     ParseSubtreeAbsent =>
       match v2.std.node_query.find_named_child(root: decl, name: ^dag_surface_alias_decl_target) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: qn_node, diagnostics: _ } =>
           v2.std.qualified_name.qualified_name_from_node(root: qn_node)
       }
@@ -5771,7 +5771,7 @@ fn alias_binding_row_target_from_decl(decl: v2.std.node.Node, module_root: v2.st
 
 fn alias_binding_row_from_decl_node(decl: v2.std.node.Node, module_root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.namespace_alias.AliasBindingRow> {
   match parse_production_emitted_identity_optional(node: decl) {
-    Present { value: id } =>
+    v2.std.optional.Present { value: id } =>
       if id != ^dag_surface_alias_decl {
         v2.std.diagnostic.outcome_rejected(v2.std.diagnostic.Diagnostic {
           reason: ^alias_binding_row_not_alias_decl,
@@ -5780,10 +5780,10 @@ fn alias_binding_row_from_decl_node(decl: v2.std.node.Node, module_root: v2.std.
         })
       } else {
         match alias_binding_row_binding_from_decl(decl: decl, module_root: module_root) {
-          Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+          v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
           Accepted { value: binding, diagnostics: bd } =>
             match alias_binding_row_target_from_decl(decl: decl, module_root: module_root) {
-              Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+              v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
               Accepted { value: target, diagnostics: td } =>
                 v2.std.diagnostic.Accepted {
                   value: v2.std.namespace_alias.AliasBindingRow { binding: binding, target: target },
@@ -5792,14 +5792,14 @@ fn alias_binding_row_from_decl_node(decl: v2.std.node.Node, module_root: v2.std.
             }
         }
       }
-    Absent =>
+    v2.std.optional.Absent =>
       match v2.std.node_query.find_named_child(root: decl, name: ^dag_surface_alias_decl_binding) {
         Accepted { value: _, diagnostics: _ } =>
           match alias_binding_row_binding_from_decl(decl: decl, module_root: module_root) {
-            Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+            v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
             Accepted { value: binding, diagnostics: bd } =>
               match alias_binding_row_target_from_decl(decl: decl, module_root: module_root) {
-                Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+                v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
                 Accepted { value: target, diagnostics: td } =>
                   v2.std.diagnostic.Accepted {
                     value: v2.std.namespace_alias.AliasBindingRow { binding: binding, target: target },
@@ -5807,7 +5807,7 @@ fn alias_binding_row_from_decl_node(decl: v2.std.node.Node, module_root: v2.std.
                   }
               }
           }
-        Rejected { diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: _ } =>
           v2.std.diagnostic.outcome_rejected(v2.std.diagnostic.Diagnostic {
             reason: ^alias_binding_row_not_alias_decl,
             at: v2.std.diagnostic.node_locus(node: decl),
@@ -5855,13 +5855,13 @@ fn qualified_name_from_symbol_segments(segments: std.types.List<v2.std.node.Symb
 
 fn qualified_name_from_emit_shaped_module_root(root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName> {
   match v2.std.node_query.find_named_child(root: root, name: ^dag_surface_module_header) {
-    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
     Accepted { value: _, diagnostics: _ } =>
       match v2.std.node_query.find_named_child(root: root, name: ^dag_surface_module_header_qualified_name) {
-        Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+        v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
         Accepted { value: qn_node, diagnostics: _ } =>
           match v2.std.qualified_name.qualified_name_from_node(root: qn_node) {
-            Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+            v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
             Accepted { value: qn, diagnostics: _ } =>
               match qn {
                 Empty =>
@@ -5896,7 +5896,7 @@ fn qualified_name_from_parsed_module_root(root: v2.std.node.Node) -> v2.std.diag
       })
     ParseSubtreeFound { captured: qn_capture } =>
       match parse_qualified_name_segments_from_capture(qn_capture: qn_capture, root: root) {
-        Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+        v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
         Accepted { value: segments, diagnostics: _ } =>
           qualified_name_from_symbol_segments(segments: segments, root: root)
       }
@@ -5905,27 +5905,27 @@ fn qualified_name_from_parsed_module_root(root: v2.std.node.Node) -> v2.std.diag
 
 fn namespace_graft_unwrap_module_working_root(root: v2.std.node.Node) -> v2.std.node.Node {
   match parse_production_emitted_identity_optional(node: root) {
-    Present { value: id } =>
+    v2.std.optional.Present { value: id } =>
       if id == ^dag_surface_module {
         match parse_production_captured_child_optional(node: root) {
-          Present { value: captured } => captured
-          Absent => root
+          v2.std.optional.Present { value: captured } => captured
+          v2.std.optional.Absent => root
         }
       } else {
         root
       }
-    Absent => root
+    v2.std.optional.Absent => root
   }
 }
 
-fn namespace_graft_has_module_header(root: v2.std.node.Node) -> Bool {
+fn namespace_graft_has_module_header(root: v2.std.node.Node) -> v2.std.logic.Bool {
   match v2.std.node_query.find_named_child(root: root, name: ^dag_surface_module_header) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn namespace_graft_node_is_conj(node: v2.std.node.Node) -> Bool {
+fn namespace_graft_node_is_conj(node: v2.std.node.Node) -> v2.std.logic.Bool {
   match node.kind {
     TypeNode { connective: v2.std.node.Conj } => true
     _ => false
@@ -5939,10 +5939,10 @@ fn namespace_graft_spine_segment_edge_optional(node: v2.std.node.Node) -> v2.std
         v2.std.optional.optional_absent()
       } else {
         match v2.std.collection.list_at_optional(xs: node.children, index: 0) {
-          Absent => v2.std.optional.optional_absent()
-          Present { value: edge } =>
+          v2.std.optional.Absent => v2.std.optional.optional_absent()
+          v2.std.optional.Present { value: edge } =>
             match edge.label {
-              Named { name: _ } =>
+              v2.std.node.Named { name: _ } =>
                 if namespace_graft_node_is_conj(node: edge.target) {
                   v2.std.optional.optional_present(value: edge)
                 } else {
@@ -5967,22 +5967,22 @@ fn namespace_graft_graft_captured_spine(root: v2.std.node.Node) -> v2.std.option
 
 fn qualified_name_from_graft_spine(root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName> {
   match namespace_graft_graft_captured_spine(root: root) {
-    Absent =>
+    v2.std.optional.Absent =>
       v2.std.diagnostic.outcome_rejected(v2.std.diagnostic.Diagnostic {
         reason: ^qualified_name_structure_invalid,
         at: v2.std.diagnostic.node_locus(node: root),
         correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
       })
-    Present { value: captured } =>
+    v2.std.optional.Present { value: captured } =>
       namespace_graft_qualified_name_from_spine_node(node: captured, acc: std.algebra.Empty)
   }
 }
 
 fn namespace_graft_qualified_name_from_spine_node(node: v2.std.node.Node, acc: v2.std.qualified_name.QualifiedName) -> v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName> {
   match namespace_graft_spine_segment_edge_optional(node: node) {
-    Present { value: edge } =>
+    v2.std.optional.Present { value: edge } =>
       match edge.label {
-        Named { name: seg } =>
+        v2.std.node.Named { name: seg } =>
           namespace_graft_qualified_name_from_spine_node(
             node: edge.target,
             acc: v2.std.qualified_name.qualified_name_snoc(qn: acc, segment: seg)
@@ -5994,7 +5994,7 @@ fn namespace_graft_qualified_name_from_spine_node(node: v2.std.node.Node, acc: v
             correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
           })
       }
-    Absent =>
+    v2.std.optional.Absent =>
       if v2.std.algebra.is_empty(xs: acc) {
         v2.std.diagnostic.outcome_rejected(v2.std.diagnostic.Diagnostic {
           reason: ^qualified_name_structure_invalid,
@@ -6007,14 +6007,14 @@ fn namespace_graft_qualified_name_from_spine_node(node: v2.std.node.Node, acc: v
   }
 }
 
-fn namespace_graft_already_grafted(root: v2.std.node.Node) -> Bool {
+fn namespace_graft_already_grafted(root: v2.std.node.Node) -> v2.std.logic.Bool {
   let working = namespace_graft_unwrap_module_working_root(root: root)
   if namespace_graft_has_module_header(root: working) {
     false
   } else {
     match qualified_name_from_graft_spine(root: root) {
       Accepted { value: qn, diagnostics: _ } => !v2.std.algebra.is_empty(xs: qn)
-      Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
     }
   }
 }
@@ -6026,13 +6026,13 @@ fn qualified_name_from_module_node(root: v2.std.node.Node) -> v2.std.diagnostic.
     qualified_name_from_graft_spine(root: root)
   } else {
     match parse_production_emitted_identity_optional(node: root) {
-      Present { value: id } =>
+      v2.std.optional.Present { value: id } =>
         if id == ^dag_surface_module {
           qualified_name_from_parsed_module_root(root: root)
         } else {
           qualified_name_from_emit_shaped_module_root(root: root)
         }
-      Absent =>
+      v2.std.optional.Absent =>
         qualified_name_from_emit_shaped_module_root(root: root)
     }
   }

@@ -230,7 +230,7 @@ service github.Pulls {
       method: GET,
       path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}",
       headers: { "Accept": "application/vnd.github.diff" },
-      response_format: Text
+      response_format: std.serialization.Text
     }
     response {
       200 => String

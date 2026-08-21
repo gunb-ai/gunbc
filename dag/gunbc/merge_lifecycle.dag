@@ -102,7 +102,7 @@ fn apply_lifecycle_event(policy: gunbc.merge_admission.AdmissionPolicy, state: L
         head_sha: pr.head_sha,
         base_tree_hash: state.main_tip,
         gate_roster_hash: state.current_roster,
-        conclusion: Success,
+        conclusion: extdeps.github.checks.Success,
       )
       LifecycleState {
         main_tip: state.main_tip,

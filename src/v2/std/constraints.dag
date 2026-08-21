@@ -2,15 +2,15 @@ module v2.std.constraints
 
 
 type ConstraintGraph {
-  root: Node
+  root: v2.std.node.Node
 }
 
 type CanonicalGrounding {
-  node: Node
+  node: v2.std.node.Node
   witness: CanonicalGroundingWitness
 }
 type ConstraintSatisfactionPredicate {
-  algebra: Node
+  algebra: v2.std.node.Node
 }
 type ConstraintSolvePolicy {
   graph: ConstraintGraph
@@ -39,7 +39,7 @@ fn constraints_ill_formed_root_diagnostic(graph: ConstraintGraph) -> v2.std.diag
 }
 
 // v2.std.constraints.canonical_grounding_from_derived_type is the SINGLE construction authority for CanonicalGrounding: a grounding's structural evidence IS the node's resolved type (v2.compiler.infer.inferred_facts_resolved_type reads exactly this field), so a grounding whose evidence is the source node states 'this expression's type is itself' — source identity standing where a derivation belongs. That state is refused here rather than checked downstream (DESIGN §5 construction, not validation), which is why the refusal lives on the constructor and not in a lens. The derivations that legitimately inhabit it pass a type derived from the node's children (v2.compiler.infer's branch/match/loop derivations pass the unified arm type, the match body type, and the loop carrier type respectively, all via inferred_facts_from_derived_type; the claim fixtures in v2.lens.common.infer_fixture pass the declared i64/bool type node).
-fn grounding_evidence_is_source_diagnostic(node: Node) -> v2.std.diagnostic.Diagnostic {
+fn grounding_evidence_is_source_diagnostic(node: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^grounding_evidence_is_source,
     at: node_locus(node: node),
@@ -48,8 +48,8 @@ fn grounding_evidence_is_source_diagnostic(node: Node) -> v2.std.diagnostic.Diag
 }
 
 fn canonical_grounding_from_derived_type(
-  node: Node,
-  derived_type: Node,
+  node: v2.std.node.Node,
+  derived_type: v2.std.node.Node,
 ) -> Outcome<CanonicalGrounding> {
   if derived_type == node {
     outcome_rejected(grounding_evidence_is_source_diagnostic(node: node))
@@ -74,8 +74,8 @@ fn canonical_grounding_from_derived_type(
 }
 
 fn constraint_satisfaction_holds(
-  source_facts: Node,
-  candidate: Node,
+  source_facts: v2.std.node.Node,
+  candidate: v2.std.node.Node,
   predicate: ConstraintSatisfactionPredicate,
 ) -> Bool {
   v2.std.constraint_satisfaction_predicate.constraint_satisfaction_preservation_holds(
@@ -84,7 +84,7 @@ fn constraint_satisfaction_holds(
     algebra: predicate.algebra
   )
 }
-fn constraint_satisfaction_predicate(algebra: Node) -> ConstraintSatisfactionPredicate {
+fn constraint_satisfaction_predicate(algebra: v2.std.node.Node) -> ConstraintSatisfactionPredicate {
   ConstraintSatisfactionPredicate { algebra: algebra }
 }
 fn constraint_satisfaction_preservation_predicate(
@@ -95,7 +95,7 @@ fn constraint_satisfaction_preservation_predicate(
     preservation_rule: ^preservation_rule_constraint_satisfaction
   }
 }
-fn canonical_grounding_candidate_set_closedness(root: Node) -> v2.std.witness.StructuralPropertyWitness {
+fn canonical_grounding_candidate_set_closedness(root: v2.std.node.Node) -> v2.std.witness.StructuralPropertyWitness {
   v2.std.witness.StructuralPropertyWitness {
     property: ^constraint_property_candidate_set_closedness,
     evidence: root
@@ -142,7 +142,7 @@ fn solve_constraints(policy: ConstraintSolvePolicy) -> Outcome<CanonicalGroundin
             },
             diagnostics: fw_d
           )
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     }
   )

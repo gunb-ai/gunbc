@@ -1,19 +1,19 @@
 module v2.test.claim.native_cache_fusion_test
 
 
-test fn witness_warm_marker_agrees_share() -> Bool {
+test fn witness_warm_marker_agrees_share() -> v2.std.logic.Bool {
   fusion_agreement_holds_for(
     o: v2.workflow.native_cache_fusion.HostWarmObservation { marker_exists: true, cold_control: false }
   )
 }
 
-test fn witness_cold_marker_absent_agrees_recompute() -> Bool {
+test fn witness_cold_marker_absent_agrees_recompute() -> v2.std.logic.Bool {
   fusion_agreement_holds_for(
     o: v2.workflow.native_cache_fusion.HostWarmObservation { marker_exists: false, cold_control: false }
   )
 }
 
-test fn witness_cold_control_forces_recompute_agreement() -> Bool {
+test fn witness_cold_control_forces_recompute_agreement() -> v2.std.logic.Bool {
   let skipped = host_compile_skipped(
     o: v2.workflow.native_cache_fusion.HostWarmObservation { marker_exists: true, cold_control: true }
   )

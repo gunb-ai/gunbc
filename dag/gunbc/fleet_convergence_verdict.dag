@@ -19,7 +19,7 @@ type RequiredCellStanding
   | CellDrifted { host: product.placement_supply.HostIdentity, phase_label: String }
   | CellConflict { host: product.placement_supply.HostIdentity, phase_label: String }
 
-// Projection keeps the full six-arm ObservationVerdict fidelity: Absent and
+// Projection keeps the full six-arm ObservationVerdict fidelity: std.upsert_decision.Absent and
 // UnknownRefused are both "nobody observed this" (no producer, or a producer with no
 // committed observation) and land in CellUnobserved; Inaccessible is a producer that
 // ASKED and could not reach — a different remedy, kept distinct; Conflict is its own arm
@@ -28,11 +28,11 @@ fn required_cell_standing(c: gunbc.host_phase_status.HostPhaseCellStatus) -> Req
   let host = c.cell.host
   let label = c.cell.phase_label
   match host_phase_cell_verdict(c: c) {
-    Converged => CellConverged { host: host, phase_label: label }
-    Absent => CellUnobserved { host: host, phase_label: label }
+    std.upsert_decision.Converged => CellConverged { host: host, phase_label: label }
+    std.upsert_decision.Absent => CellUnobserved { host: host, phase_label: label }
     UnknownRefused => CellUnobserved { host: host, phase_label: label }
     Inaccessible => CellUnreachable { host: host, phase_label: label }
-    Drifted => CellDrifted { host: host, phase_label: label }
+    std.upsert_decision.Drifted => CellDrifted { host: host, phase_label: label }
     Conflict => CellConflict { host: host, phase_label: label }
   }
 }

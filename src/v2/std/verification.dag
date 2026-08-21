@@ -136,40 +136,40 @@ type TestClaim
   = CompilesClaim {
       label: String
       anchor: ClaimAnchorKey
-      input: Node
-      expected_value: Node
+      input: v2.std.node.Node
+      expected_value: v2.std.node.Node
       classification: TestClassification
     }
   | DiagnosticClaim {
       label: String
       anchor: ClaimAnchorKey
-      input: Node
+      input: v2.std.node.Node
       expected_rejection: v2.std.diagnostic.NonEmptyDiagnostics
       classification: TestClassification
     }
   | EqualsClaim {
       label: String
       anchor: ClaimAnchorKey
-      lhs: Node
-      rhs: Node
+      lhs: v2.std.node.Node
+      rhs: v2.std.node.Node
       classification: TestClassification
     }
 
   | StructuralEqualsClaim {
       label: String
       anchor: ClaimAnchorKey
-      lhs: Node
-      rhs: Node
+      lhs: v2.std.node.Node
+      rhs: v2.std.node.Node
       classification: TestClassification
     }
   | RoundTripClaim {
       label: String
       anchor: ClaimAnchorKey
-      input: Node
+      input: v2.std.node.Node
       classification: TestClassification
     }
 
-fn test_claim_input(c: TestClaim) -> Node {
+fn test_claim_input(c: TestClaim) -> v2.std.node.Node {
   match c {
     CompilesClaim { input: n, label: _, anchor: _, expected_value: _, classification: _ } => n
     DiagnosticClaim { input: n, label: _, anchor: _, expected_rejection: _, classification: _ } => n
@@ -204,7 +204,7 @@ fn test_claim_coproduct_variant(c: TestClaim) -> TestClaimCoproductVariant {
   }
 }
 
-fn locus_evaluation_nodes(at: v2.std.diagnostic.Locus) -> List<Node> {
+fn locus_evaluation_nodes(at: v2.std.diagnostic.Locus) -> List<v2.std.node.Node> {
   match at {
     NodeLocus { anchor: a } => list_snoc_item(xs: std.algebra.Empty, item: a.at)
     Textual { file: _, extent: _ } => std.algebra.Empty
@@ -212,21 +212,21 @@ fn locus_evaluation_nodes(at: v2.std.diagnostic.Locus) -> List<Node> {
   }
 }
 
-fn correction_evaluation_nodes(c: v2.std.diagnostic.Correction) -> List<Node> {
+fn correction_evaluation_nodes(c: v2.std.diagnostic.Correction) -> List<v2.std.node.Node> {
   match c {
     Suggested { node: n } => list_snoc_item(xs: std.algebra.Empty, item: n)
     Unavailable { reason: _ } => std.algebra.Empty
   }
 }
 
-fn diagnostic_evaluation_nodes(d: v2.std.diagnostic.Diagnostic) -> List<Node> {
+fn diagnostic_evaluation_nodes(d: v2.std.diagnostic.Diagnostic) -> List<v2.std.node.Node> {
   list_append(
     left: locus_evaluation_nodes(at: d.at),
     right: correction_evaluation_nodes(c: d.correction)
   )
 }
 
-fn diagnostic_list_evaluation_nodes(ds: List<v2.std.diagnostic.Diagnostic>) -> List<Node> {
+fn diagnostic_list_evaluation_nodes(ds: List<v2.std.diagnostic.Diagnostic>) -> List<v2.std.node.Node> {
   fold_list(
     xs: ds,
     empty: std.algebra.Empty,
@@ -236,14 +236,14 @@ fn diagnostic_list_evaluation_nodes(ds: List<v2.std.diagnostic.Diagnostic>) -> L
   )
 }
 
-fn non_empty_diagnostics_evaluation_nodes(d: v2.std.diagnostic.NonEmptyDiagnostics) -> List<Node> {
+fn non_empty_diagnostics_evaluation_nodes(d: v2.std.diagnostic.NonEmptyDiagnostics) -> List<v2.std.node.Node> {
   list_append(
     left: diagnostic_evaluation_nodes(d: d.head),
     right: diagnostic_list_evaluation_nodes(ds: d.tail)
   )
 }
 
-fn test_claim_evaluation_nodes(c: TestClaim) -> List<Node> {
+fn test_claim_evaluation_nodes(c: TestClaim) -> List<v2.std.node.Node> {
   match c {
     EqualsClaim { lhs: l, rhs: r, label: _, anchor: _, classification: _ } =>
       list_snoc_item(xs: list_snoc_item(xs: std.algebra.Empty, item: l), item: r)
@@ -261,14 +261,14 @@ fn test_claim_evaluation_nodes(c: TestClaim) -> List<Node> {
   }
 }
 
-fn node_in_subtree_by_identity(root: Node, needle: Node) -> Bool {
+fn node_in_subtree_by_identity(root: v2.std.node.Node, needle: v2.std.node.Node) -> v2.std.logic.Bool {
   any(
     xs: node_subtree_nodes(root: root),
     predicate: fn(member) { member == needle }
   )
 }
 
-fn test_claim_evaluation_node_touches_frontier(n: Node, frontier: List<Node>) -> Bool {
+fn test_claim_evaluation_node_touches_frontier(n: v2.std.node.Node, frontier: List<v2.std.node.Node>) -> v2.std.logic.Bool {
   any(
     xs: frontier,
     predicate: fn(f) {
@@ -277,14 +277,14 @@ fn test_claim_evaluation_node_touches_frontier(n: Node, frontier: List<Node>) ->
   )
 }
 
-fn test_claim_evaluation_touches_rerun_frontier(c: TestClaim, frontier: List<Node>) -> Bool {
+fn test_claim_evaluation_touches_rerun_frontier(c: TestClaim, frontier: List<v2.std.node.Node>) -> v2.std.logic.Bool {
   any(
     xs: test_claim_evaluation_nodes(c: c),
     predicate: fn(n) { test_claim_evaluation_node_touches_frontier(n: n, frontier: frontier) }
   )
 }
 
-fn test_claim_ci_selection_fail_closed(c: TestClaim) -> Bool {
+fn test_claim_ci_selection_fail_closed(c: TestClaim) -> v2.std.logic.Bool {
   match c {
     DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } =>
       true
@@ -324,7 +324,7 @@ fn test_claim_classification(c: TestClaim) -> TestClassification {
   }
 }
 
-fn test_claim_expected_outcome(c: TestClaim) -> Outcome<Outcome<Node>> {
+fn test_claim_expected_outcome(c: TestClaim) -> Outcome<Outcome<v2.std.node.Node>> {
   match c {
     CompilesClaim { expected_value: e, label: _, anchor: _, input: _, classification: _ } =>
       v2.std.diagnostic.Accepted {
@@ -402,6 +402,6 @@ fn bool_witness_matches_entry_function(
   w: BoolWitness,
   entry: String,
   function: v2.std.node.Symbol
-) -> Bool {
+) -> v2.std.logic.Bool {
   w.entry == entry && w.function == function
 }

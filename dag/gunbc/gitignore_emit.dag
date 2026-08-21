@@ -162,7 +162,7 @@ fn project_gitignore_to_doc(groups: List<gunbc.gitignore_model.IgnoreGroup>) -> 
 }
 
 fn expected_gitignore() -> String {
-  render(doc: project_gitignore_to_doc(groups: gunbc.gitignore_authority.gitignore_authority), proto: gitignore_protocol)
+  std.layout.render(doc: project_gitignore_to_doc(groups: gunbc.gitignore_authority.gitignore_authority), proto: gitignore_protocol)
 }
 
 fn gitignore_drifted(committed: String) -> Bool {

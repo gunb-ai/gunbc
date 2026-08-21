@@ -3,40 +3,39 @@
 
 use self::NodeLookupStatus::*;
 use self::PatternSubject::*;
-pub use crate::std_syntax::BinOp;
-use crate::std_syntax::BinOp::*;
 pub use crate::std_syntax::LiteralValue;
-use crate::std_syntax::LiteralValue::LitBool;
 use crate::std_syntax::LiteralValue::*;
-pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{List, Map};
 pub use crate::v1_compiler_infer_env::TypeEnv;
-pub use crate::v1_compiler_infer_env::{lookup_type, lookup_type_by_name, symbol_index_lookup};
+pub use crate::v1_compiler_infer_env::{
+    globally_unique_declaring_module, lookup_type_by_name, symbol_index_lookup,
+};
 pub use crate::v1_compiler_infer_resolve::{
-    is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots,
-    substitute_type_slots_scoped,
+    is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots_scoped,
 };
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, extract_optional_inner_node,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::Cardinality::{CardOptional, Required};
-use crate::v1_std_core::CompilerDiagnostic::{FieldNotFound, NonExhaustiveMatch, VariantNotFound};
-use crate::v1_std_core::Connective::{Disj, NoConnective};
-use crate::v1_std_core::ExprData::NoExprData;
-use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-use crate::v1_std_core::MatchPattern::LitPattern;
-pub use crate::v1_std_core::UnaryOpKind;
-use crate::v1_std_core::UnaryOpKind::*;
+use crate::v1_std_core::Cardinality::*;
+use crate::v1_std_core::CompilerDiagnostic::*;
+use crate::v1_std_core::ExprData::*;
+use crate::v1_std_core::InferredNode::*;
+use crate::v1_std_core::MatchPattern::*;
 pub use crate::v1_std_core::{
     arm_pattern, authored_name_at, error_type, find_child_named, generic_param_name_at,
-    is_compiler_error, kernel_span, make_error_node, no_span, none_type,
+    is_compiler_error, kernel_span, make_error_node, none_type,
     preserve_outer_optional_cardinality, qualified_last_segment, with_optional_cardinality,
 };
 pub use crate::v1_std_core::{
-    Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, InferredNode, MatchPattern,
-    NewlineIndex, Node,
+    Cardinality, CompilerDiagnostic, ErrorNode, ExprData, InferredNode, MatchPattern, NewlineIndex,
 };
+pub use crate::v2_lens_application::SourceSpan;
+pub use crate::v2_std_collection::empty_map;
+use crate::v2_std_node::Connective::*;
+pub use crate::v2_std_node::{Connective, Node};
+pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -86,9 +85,9 @@ pub fn expand_scrut_from_decl(
     env: Rc<TypeEnv>,
 ) -> Rc<Node> {
     {
-        let decl_is_disj = (decl.connective.clone() == Connective::Disj);
+        let decl_is_disj = (decl.connective.clone() == Rc::new(Connective::Disj));
         let has_inferred_alias = (((decl.inferred.clone() != None)
-            && (decl.connective.clone() == Connective::NoConnective))
+            && (decl.connective.clone() == Rc::new(Connective::NoConnective)))
             && ((decl.children.clone().len() as i64) == 0));
         if decl_is_disj.clone() {
             if (((decl.params.clone().len() as i64) > 0)
@@ -124,7 +123,7 @@ pub fn expand_scrut_from_decl(
                     _ => scrut_node.clone(),
                 }
             } else {
-                if (((decl.connective.clone() == Connective::Conj)
+                if (((decl.connective.clone() == Rc::new(Connective::Conj))
                     && ((decl.params.clone().len() as i64) > 0))
                     && ((scrut_node.children.clone().len() as i64) > 0))
                 {
@@ -149,7 +148,8 @@ pub fn expand_scrut_from_decl(
 pub fn expand_scrut_from_type_name(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
     {
         let name = authored_name_at(env.source_indices.clone(), scrut_node.clone());
-        let is_generic_use = (((scrut_node.connective.clone() == Connective::NoConnective)
+        let is_generic_use = (((scrut_node.connective.clone()
+            == Rc::new(Connective::NoConnective))
             && ((scrut_node.children.clone().len() as i64) > 0))
             && is_user_generic_use_site(scrut_node.clone(), env.clone()));
         match lookup_type_by_name(env.clone(), name.clone()) {
@@ -163,19 +163,19 @@ pub fn expand_scrut_from_type_name(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc
                     )
                 } else {
                     {
-                        let def_is_disj = (decl.connective.clone() == Connective::Disj);
+                        let def_is_disj = (decl.connective.clone() == Rc::new(Connective::Disj));
                         let has_inferred_body = ((decl.inferred.clone() != None)
-                            && (decl.connective.clone() == Connective::NoConnective));
+                            && (decl.connective.clone() == Rc::new(Connective::NoConnective)));
                         if def_is_disj.clone() {
                             decl.clone()
                         } else {
                             if has_inferred_body.clone() {
                                 match decl.inferred.clone().as_deref().cloned() {
                                     Some(InferredNode::Resolved { node: target, .. }) => {
-                                        let target_is_disj =
-                                            (target.connective.clone() == Connective::Disj);
+                                        let target_is_disj = (target.connective.clone()
+                                            == Rc::new(Connective::Disj));
                                         let target_is_generic_use = ((target.connective.clone()
-                                            == Connective::NoConnective)
+                                            == Rc::new(Connective::NoConnective))
                                             && ((target.children.clone().len() as i64) > 0));
                                         if target_is_disj.clone() {
                                             target.clone()
@@ -223,8 +223,8 @@ pub fn expand_scrut_type_for_variant_lookup(
 ) -> Rc<Node> {
     loop {
         let name = authored_name_at(env.source_indices.clone(), scrut_node.clone());
-        let is_disj = (scrut_node.connective.clone() == Connective::Disj);
-        let is_witness = is_witness_type_name(name.clone());
+        let is_disj = (scrut_node.connective.clone() == Rc::new(Connective::Disj));
+        let is_witness = crate::v1_compiler_infer_patterns::is_witness_type_name(name.clone());
         let is_optional = (scrut_node.return_cardinality.clone() == Cardinality::CardOptional);
         if ((is_optional.clone() || is_disj.clone()) || is_witness.clone()) {
             break scrut_node.clone();
@@ -289,9 +289,9 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
         let value_field = Rc::new(Node {
             name: "value".to_string(),
             span: scrut.span.clone(),
-            ident_span: Some(kernel_span("value".to_string())),
+            ident_span: Some(crate::v1_std_core::kernel_span("value".to_string())),
             children: Rc::new(vec![]),
-            connective: Connective::NoConnective,
+            connective: Rc::new(Connective::NoConnective),
             params: Rc::new(vec![]),
             inferred: Some(Rc::new(InferredNode::Resolved {
                 node: inner.clone(),
@@ -306,14 +306,13 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         });
         let present_node = Rc::new(Node {
             name: "Present".to_string(),
             span: scrut.span.clone(),
-            ident_span: Some(kernel_span("Present".to_string())),
+            ident_span: Some(crate::v1_std_core::kernel_span("Present".to_string())),
             children: Rc::new(vec![value_field.clone()]),
-            connective: Connective::NoConnective,
+            connective: Rc::new(Connective::NoConnective),
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -326,7 +325,6 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         });
         present_node
     }
@@ -341,9 +339,9 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
         let value_field = Rc::new(Node {
             name: "value".to_string(),
             span: scrut.span.clone(),
-            ident_span: Some(kernel_span("value".to_string())),
+            ident_span: Some(crate::v1_std_core::kernel_span("value".to_string())),
             children: Rc::new(vec![]),
-            connective: Connective::NoConnective,
+            connective: Rc::new(Connective::NoConnective),
             params: Rc::new(vec![]),
             inferred: Some(Rc::new(InferredNode::Resolved {
                 node: inner.clone(),
@@ -358,14 +356,13 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         });
         Rc::new(Node {
             name: "Holds".to_string(),
             span: scrut.span.clone(),
-            ident_span: Some(kernel_span("Holds".to_string())),
+            ident_span: Some(crate::v1_std_core::kernel_span("Holds".to_string())),
             children: Rc::new(vec![value_field.clone()]),
-            connective: Connective::NoConnective,
+            connective: Rc::new(Connective::NoConnective),
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -378,19 +375,53 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
+    }
+}
+
+pub fn resolved_kernel_diagnostic_type(
+    scrut: Rc<Node>,
+    env: Rc<TypeEnv>,
+    opaque: Rc<Node>,
+) -> Rc<Node> {
+    match globally_unique_declaring_module(env.clone(), "Diagnostic".to_string()) {
+        Some(mp) => Rc::new(Node {
+            name: v1_rt::concat(
+                v1_rt::concat(mp.clone(), ".".to_string()),
+                "Diagnostic".to_string(),
+            ),
+            span: opaque.span.clone(),
+            ident_span: Some(crate::v1_std_core::kernel_span(v1_rt::concat(
+                v1_rt::concat(mp.clone(), ".".to_string()),
+                "Diagnostic".to_string(),
+            ))),
+            children: Rc::new(vec![]),
+            connective: Rc::new(Connective::NoConnective),
+            params: Rc::new(vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+        }),
+        None => opaque.clone(),
     }
 }
 
 pub fn synthesize_witness_violates_variant(scrut: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
     {
-        let diagnostic_type = Rc::new(Node {
+        let opaque_diagnostic_type = Rc::new(Node {
             name: "Diagnostic".to_string(),
             span: scrut.span.clone(),
-            ident_span: Some(kernel_span("Diagnostic".to_string())),
+            ident_span: Some(crate::v1_std_core::kernel_span("Diagnostic".to_string())),
             children: Rc::new(vec![]),
-            connective: Connective::NoConnective,
+            connective: Rc::new(Connective::NoConnective),
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -403,28 +434,18 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>, env: Rc<TypeEnv>) ->
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         });
-        let diagnostic_type = match crate::v1_compiler_infer_env::globally_unique_declaring_module(
+        let diagnostic_type = resolved_kernel_diagnostic_type(
+            scrut.clone(),
             env.clone(),
-            "Diagnostic".to_string(),
-        ) {
-            Some(mp) => {
-                let qualified = format!("{mp}.Diagnostic");
-                Rc::new(Node {
-                    name: qualified.clone(),
-                    ident_span: Some(kernel_span(qualified)),
-                    ..(*diagnostic_type).clone()
-                })
-            }
-            None => diagnostic_type,
-        };
+            opaque_diagnostic_type.clone(),
+        );
         let diagnostic_field = Rc::new(Node {
             name: "diagnostic".to_string(),
             span: scrut.span.clone(),
-            ident_span: Some(kernel_span("diagnostic".to_string())),
+            ident_span: Some(crate::v1_std_core::kernel_span("diagnostic".to_string())),
             children: Rc::new(vec![]),
-            connective: Connective::NoConnective,
+            connective: Rc::new(Connective::NoConnective),
             params: Rc::new(vec![]),
             inferred: Some(Rc::new(InferredNode::Resolved {
                 node: diagnostic_type.clone(),
@@ -439,14 +460,13 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>, env: Rc<TypeEnv>) ->
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         });
         Rc::new(Node {
             name: "Violates".to_string(),
             span: scrut.span.clone(),
-            ident_span: Some(kernel_span("Violates".to_string())),
+            ident_span: Some(crate::v1_std_core::kernel_span("Violates".to_string())),
             children: Rc::new(vec![diagnostic_field.clone()]),
-            connective: Connective::NoConnective,
+            connective: Rc::new(Connective::NoConnective),
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -459,7 +479,6 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>, env: Rc<TypeEnv>) ->
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -488,7 +507,7 @@ pub fn pattern_subject_from_node(n: Rc<Node>) -> Rc<PatternSubject> {
         if is_error.clone() {
             Rc::new(PatternSubject::PatternLookupBlocked)
         } else {
-            if (((n.connective.clone() == Connective::NoConnective)
+            if (((n.connective.clone() == Rc::new(Connective::NoConnective))
                 && ((n.children.clone().len() as i64) > 0))
                 && (n.inferred.clone() != None))
             {
@@ -509,7 +528,7 @@ pub fn pattern_subject_from_node(n: Rc<Node>) -> Rc<PatternSubject> {
 }
 
 pub fn pattern_subject_from_inferred(n: Option<Rc<InferredNode>>) -> Rc<PatternSubject> {
-    match n.clone().as_deref().cloned() {
+    match n.clone() {
         Some(InferredNode::Resolved { node: resolved, .. }) => {
             pattern_subject_from_node(resolved.clone())
         }
@@ -588,9 +607,12 @@ pub fn lookup_variant_in_type(
         } => {
             let source_indices = env.source_indices.clone();
             if v1_rt::contains(variant_name.clone(), ".".to_string()) {
-                match symbol_index_lookup(env.symbol_index.clone(), variant_name.clone()) {
+                match crate::v1_compiler_infer_env::symbol_index_lookup(
+                    env.symbol_index.clone(),
+                    variant_name.clone(),
+                ) {
                     Some(resolved) => {
-                        if (resolved.connective.clone() == Connective::Disj) {
+                        if (resolved.connective.clone() == Rc::new(Connective::Disj)) {
                             match find_child_named(
                                 resolved.clone(),
                                 qualified_last_segment(variant_name.clone()),
@@ -631,7 +653,7 @@ pub fn lookup_variant_in_type(
                         expand_scrut_type_for_variant_lookup(scrut_node.clone(), env.clone());
                     let scrut_opt =
                         (scrut_node.return_cardinality.clone() == Cardinality::CardOptional);
-                    if (((scrut_node.connective.clone() == Connective::NoConnective)
+                    if (((scrut_node.connective.clone() == Rc::new(Connective::NoConnective))
                         && ((scrut_node.children.clone().len() as i64) == 0))
                         && (scrut_opt.clone() == false))
                     {
@@ -642,10 +664,9 @@ pub fn lookup_variant_in_type(
                                 && (authored_name_at(source_indices.clone(), scrut_node.clone())
                                     != "Optional".to_string()));
                             let witness_subject =
-                                (is_witness_type_name(authored_name_at(
-                                    source_indices.clone(),
-                                    scrut_node.clone(),
-                                )) && ((scrut_node.children.clone().len() as i64) == 1));
+                                (crate::v1_compiler_infer_patterns::is_witness_type_name(
+                                    authored_name_at(source_indices.clone(), scrut_node.clone()),
+                                ) && ((scrut_node.children.clone().len() as i64) == 1));
                             if (optional_cardinality_subject.clone()
                                 && (variant_name.clone() == "Present".to_string()))
                             {
@@ -694,7 +715,7 @@ pub fn lookup_variant_in_type(
                                                 );
                                                 let record_destructure =
                                                     ((scrut_node.connective.clone()
-                                                        == Connective::Conj)
+                                                        == Rc::new(Connective::Conj))
                                                         && (qualified_last_segment(
                                                             scrut_name.clone(),
                                                         ) == variant_name.clone()));
@@ -813,7 +834,8 @@ pub fn check_match_exhaustiveness(
     {
         let scrut_is_optional =
             (scrutinee_type.return_cardinality.clone() == Cardinality::CardOptional);
-        let has_structure = (scrutinee_type.connective.clone() != Connective::NoConnective);
+        let has_structure =
+            (scrutinee_type.connective.clone() != Rc::new(Connective::NoConnective));
         let resolved_raw = if has_structure.clone() {
             scrutinee_type.clone()
         } else {
@@ -830,13 +852,12 @@ pub fn check_match_exhaustiveness(
         } else {
             resolved_raw.clone()
         };
-        let is_coproduct = (resolved.connective.clone() == Connective::Disj);
+        let is_coproduct = (resolved.connective.clone() == Rc::new(Connective::Disj));
         let resolved_is_optional =
             (resolved.return_cardinality.clone() == Cardinality::CardOptional);
-        let resolved_is_witness = (is_witness_type_name(authored_name_at(
-            env.source_indices.clone(),
-            resolved.clone(),
-        )) && ((resolved.children.clone().len() as i64) == 1));
+        let resolved_is_witness = (crate::v1_compiler_infer_patterns::is_witness_type_name(
+            authored_name_at(env.source_indices.clone(), resolved.clone()),
+        ) && ((resolved.children.clone().len() as i64) == 1));
         if ((is_coproduct.clone() || resolved_is_optional.clone()) || resolved_is_witness.clone()) {
             {
                 let variant_names = if resolved_is_optional.clone() {
@@ -917,10 +938,23 @@ pub fn check_match_exhaustiveness(
                         );
                         let uncovered = Rc::new({
                             let mut __result = Vec::new();
-                            for v in variant_names.clone().iter().cloned() {
-                                if (emit_map_has(covered_set.clone(), v.clone()) == false) {
-                                    __result.push(v);
+                            for v in Rc::new({
+                                let mut __result = Vec::new();
+                                for v in variant_names.clone().iter().cloned() {
+                                    if (emit_map_has(
+                                        covered_set.clone(),
+                                        variant_pattern_coverage_key(v.clone()),
+                                    ) == false)
+                                    {
+                                        __result.push(v);
+                                    }
                                 }
+                                __result
+                            })
+                            .iter()
+                            .cloned()
+                            {
+                                __result.push(variant_pattern_coverage_key(v.clone()));
                             }
                             __result
                         });

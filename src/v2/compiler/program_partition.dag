@@ -22,7 +22,7 @@ fn partition_user_semantic_type_shape(node: v2.std.node.Node) -> Bool {
   }
 }
 
-fn partition_semantic_type_search_subtree(root: v2.std.node.Node) -> Optional<v2.std.node.Node> {
+fn partition_semantic_type_search_subtree(root: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   if partition_user_semantic_type_shape(node: root) {
     optional_present(value: root)
   } else {
@@ -30,20 +30,20 @@ fn partition_semantic_type_search_subtree(root: v2.std.node.Node) -> Optional<v2
       TypeNode { connective: Conj } =>
         fold(
           root.children,
-          init: Absent,
+          init: v2.std.optional.Absent,
           f: fn(acc, edge) {
             match acc {
-              Present { value: _ } => acc
-              Absent => partition_semantic_type_search_subtree(root: edge.target)
+              v2.std.optional.Present { value: _ } => acc
+              v2.std.optional.Absent => partition_semantic_type_search_subtree(root: edge.target)
             }
           }
         )
-      _ => Absent
+      _ => v2.std.optional.Absent
     }
   }
 }
 
-fn partition_semantic_type_from_decl_target(target: v2.std.node.Node) -> Optional<v2.std.node.Node> {
+fn partition_semantic_type_from_decl_target(target: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   if partition_user_semantic_type_shape(node: target) {
     optional_present(value: target)
   } else {
@@ -67,14 +67,14 @@ fn partition_collect_user_semantic_type_edge(
   edge: v2.std.node.Edge
 ) -> List<PartitionUserSemanticType> {
   match edge.label {
-    Named { name: sym } =>
+    v2.std.node.Named { name: sym } =>
       match partition_semantic_type_from_decl_target(target: edge.target) {
-        Present { value: semantic } =>
+        v2.std.optional.Present { value: semantic } =>
           partition_snoc_user_semantic_type_unique(
             acc: acc,
             item: PartitionUserSemanticType { name: sym, semantic: semantic }
           )
-        Absent => acc
+        v2.std.optional.Absent => acc
       }
     _ => acc
   }
@@ -332,7 +332,7 @@ fn partition_closure_entry_for_node(
   node: v2.std.node.Node
 ) -> Outcome<v2.compiler.inferred_tree.InferredFactsEntry> {
   match ambient.facts.lookup(node) {
-    Present { value: facts } =>
+    v2.std.optional.Present { value: facts } =>
       if partition_fail_closed_boundary_admits(
         segment_root: segment_root,
         boundary: boundary,
@@ -343,7 +343,7 @@ fn partition_closure_entry_for_node(
       } else {
         outcome_rejected(d: partition_boundary_free_ref_diagnostic(node: node))
       }
-    Absent =>
+    v2.std.optional.Absent =>
       outcome_rejected(d: partition_facts_miss_diagnostic(key: node))
   }
 }
@@ -363,7 +363,7 @@ fn facts_closure_entries_fold(
     empty: outcome_accepted(value: partition_empty_inferred_facts_entries()),
     cons: fn(acc, node) {
       match acc {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
         Accepted { value: entries, diagnostics: _ } =>
           bind_outcome(
             o: partition_closure_entry_for_node(
@@ -460,7 +460,7 @@ fn resolve_program_partition(
 
 fn partition_segment_root_is_transform_computation(root: v2.std.node.Node) -> Bool {
   match root.kind {
-    ComputationNode { behavior: Transform } => true
+    ComputationNode { behavior: v2.std.node.Transform } => true
     _ => false
   }
 }

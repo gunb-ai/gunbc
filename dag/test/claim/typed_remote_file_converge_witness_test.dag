@@ -3,7 +3,7 @@ module test.claim.typed_remote_file_converge_witness_test
 
 data unit_dir_scope: gunbc.file_access.FileTreeScope = gunbc.file_access.FileTreeScope { root_path: "/home/gunbc/.config/systemd/user" as std.types.NonEmptyStr }
 
-data subject_path: FilePath = "/home/gunbc/.config/systemd/user/gunbc-serving.service" as FilePath
+data subject_path: std.types.FilePath = "/home/gunbc/.config/systemd/user/gunbc-serving.service" as std.types.FilePath
 
 data subject_content: String = "[Unit]\nDescription=gunbc serving\n\n[Service]\nExecStart=/usr/bin/true\n"
 

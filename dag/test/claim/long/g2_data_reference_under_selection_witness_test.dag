@@ -76,7 +76,7 @@ fn specimen_projection() -> v2.std.live_read.LiveReadSelectionProjection {
   }
 }
 
-test fn specimen_classifies_as_runtime_read() -> Bool {
+test fn specimen_classifies_as_runtime_read() -> v2.std.logic.Bool {
   match specimen_projection() {
     LiveReadSelectionClassified { classification: c } =>
       v2.lens.live_read_classification.classification_has_runtime_read(classification: c)
@@ -88,7 +88,7 @@ test fn specimen_classifies_as_runtime_read() -> Bool {
 // specimen_classifies_as_runtime_read is false in TWO states that are opposites on
 // the safety axis: Classified{LocalRead}, which is the strongest safe-to-skip verdict
 // the selection seam has and is therefore the harm, and Refused, which is fail-closed
-// and licenses nothing. A single Bool cannot separate them, so on its own the
+// and licenses nothing. A single v2.std.logic.Bool cannot separate them, so on its own the
 // UNDER-selection claim would rest on the note beside it — and no Accepted program can
 // read a note (DESIGN 4c). This claim carries the other bit, so the pair has a unique
 // signature per reachable state:
@@ -108,7 +108,7 @@ test fn specimen_classifies_as_runtime_read() -> Bool {
 // to expected-red across today's population (exact_witness_admission_witness_test
 // every_declared_long_budget_row_is_also_expected_red_today). Asserting the desired
 // state keeps this inside that population instead of retiring that claim.
-test fn specimen_does_not_classify_as_local_read() -> Bool {
+test fn specimen_does_not_classify_as_local_read() -> v2.std.logic.Bool {
   match specimen_projection() {
     LiveReadSelectionClassified { classification: c } =>
       match c {

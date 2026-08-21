@@ -95,7 +95,7 @@ type CategoryConditionsResponse {
 
 service tcgplayer.Catalog {
   config {
-    endpoint: production_api_base
+    endpoint: extdeps.tcgplayer.tcgplayer.production_api_base
     auth: Bearer
     auth_input: bearer_token
 

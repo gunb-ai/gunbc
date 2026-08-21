@@ -69,19 +69,19 @@ fn subsumption_receipt_node(row: v2.lens.subsumption.DissolutionSubsumption) -> 
         kind: v2.std.node.ComputationNode { behavior: Value },
         children: [
           v2.std.node.Edge {
-            label: Named { name: ^subsumption_root_fix_edge },
+            label: v2.std.node.Named { name: ^subsumption_root_fix_edge },
             target: subsumption_symbol_node(s: row.root_fix.id)
           },
           v2.std.node.Edge {
-            label: Named { name: ^subsumption_first_leaf_edge },
+            label: v2.std.node.Named { name: ^subsumption_first_leaf_edge },
             target: subsumption_template_leaf_node(row: row)
           },
           v2.std.node.Edge {
-            label: Named { name: ^subsumption_second_leaf_edge },
+            label: v2.std.node.Named { name: ^subsumption_second_leaf_edge },
             target: subsumption_name_dispatch_leaf_node(row: row)
           },
           v2.std.node.Edge {
-            label: Named { name: ^subsumption_mechanical_claim_edge },
+            label: v2.std.node.Named { name: ^subsumption_mechanical_claim_edge },
             target: subsumption_symbol_node(s: claim.id)
           }
         ],
@@ -97,19 +97,19 @@ fn expected_rust_language_model_emit_receipt_node() -> v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: Value },
     children: [
       v2.std.node.Edge {
-        label: Named { name: ^subsumption_root_fix_edge },
+        label: v2.std.node.Named { name: ^subsumption_root_fix_edge },
         target: subsumption_symbol_node(s: ^rust_language_model_emit_root_fix)
       },
       v2.std.node.Edge {
-        label: Named { name: ^subsumption_first_leaf_edge },
+        label: v2.std.node.Named { name: ^subsumption_first_leaf_edge },
         target: subsumption_symbol_node(s: ^emit_rust_template_leaf_fix)
       },
       v2.std.node.Edge {
-        label: Named { name: ^subsumption_second_leaf_edge },
+        label: v2.std.node.Named { name: ^subsumption_second_leaf_edge },
         target: subsumption_symbol_node(s: ^emit_rust_name_dispatch_leaf_fix)
       },
       v2.std.node.Edge {
-        label: Named { name: ^subsumption_mechanical_claim_edge },
+        label: v2.std.node.Named { name: ^subsumption_mechanical_claim_edge },
         target: subsumption_symbol_node(s: ^rust_language_model_emit_mechanical_reverification_claim)
       }
     ],
@@ -125,7 +125,7 @@ fn mechanical_reverification_execution_for_run(run: v2.compiler.eval.TestClaimRu
   match run.verdict {
     Pass => completed_lens_ci_execution()
     SemanticMismatch { actual: _, falsification: _ } => Failed
-    BuildFailed { actual: _, diagnostic: _ } => Failed
+    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => Failed
     RunFailed { actual: _, diagnostic: _ } => Failed
     Deferred { actual: _, diagnostic: _ } => ReportUnavailable
   }
@@ -304,7 +304,7 @@ fn subsumption_facts(node: v2.std.node.Node) -> v2.compiler.inferred_tree.Inferr
   )
 }
 
-fn subsumption_fact_lookup(node: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn subsumption_fact_lookup(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   v2.std.optional.optional_present(value: subsumption_facts(node: node))
 }
 

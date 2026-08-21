@@ -15,7 +15,7 @@ fn policy_pilot_namespace_with_index(
   }
 }
 
-fn policy_pilot_atom(identity: v2.std.node.Symbol) -> Node {
+fn policy_pilot_atom(identity: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
@@ -29,7 +29,7 @@ fn policy_pilot_resolve(
   symbol_index: v2.std.symbol_index.SymbolIndex,
   module_qn: v2.std.qualified_name.QualifiedName,
   identity: v2.std.node.Symbol
-) -> Bool {
+) -> v2.std.logic.Bool {
   let namespace = policy_pilot_namespace_with_index(
     symbol_index: symbol_index,
     module_qn: module_qn
@@ -47,14 +47,14 @@ fn policy_pilot_resolve(
     identity: identity
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn policy_pilot_resolve_yes(
   policy: v2.std.resolution_policy.NameResolutionPolicy,
   position: v2.std.qualified_name.QualifiedName
-) -> Bool {
+) -> v2.std.logic.Bool {
   policy_pilot_resolve(
     policy: policy,
     position: position,
@@ -71,7 +71,7 @@ fn policy_pilot_resolve_rejects_with_reason(
   module_qn: v2.std.qualified_name.QualifiedName,
   identity: v2.std.node.Symbol,
   reason: v2.std.node.Symbol
-) -> Bool {
+) -> v2.std.logic.Bool {
   let namespace = policy_pilot_namespace_with_index(
     symbol_index: symbol_index,
     module_qn: module_qn
@@ -89,25 +89,25 @@ fn policy_pilot_resolve_rejects_with_reason(
     identity: identity
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == reason
+    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == reason
   }
 }
 
-test fn namespace_only_policy_disambiguates_at_type_position_holds() -> Bool {
+test fn namespace_only_policy_disambiguates_at_type_position_holds() -> v2.std.logic.Bool {
   policy_pilot_resolve_yes(
     policy: NamespaceOnlyY,
     position: qualified_name_snoc(qn: v2.test.claim.symbol_index.containment.si_module_qn, segment: ^std.logic.Classical)
   )
 }
 
-test fn import_scoped_policy_ambiguous_at_module_position_red_holds() -> Bool {
+test fn import_scoped_policy_ambiguous_at_module_position_red_holds() -> v2.std.logic.Bool {
   !policy_pilot_resolve_yes(
     policy: ImportScoped,
     position: v2.test.claim.symbol_index.containment.si_module_qn
   )
 }
 
-test fn namespace_only_policy_chain_shadow_ambiguous_refuses_holds() -> Bool {
+test fn namespace_only_policy_chain_shadow_ambiguous_refuses_holds() -> v2.std.logic.Bool {
   policy_pilot_resolve_rejects_with_reason(
     policy: NamespaceOnlyY,
     position: v2.test.claim.symbol_index.containment.si_shadow_nested_qn,
@@ -118,7 +118,7 @@ test fn namespace_only_policy_chain_shadow_ambiguous_refuses_holds() -> Bool {
   )
 }
 
-test fn namespace_only_policy_variant_alias_shadow_ambiguous_refuses_holds() -> Bool {
+test fn namespace_only_policy_variant_alias_shadow_ambiguous_refuses_holds() -> v2.std.logic.Bool {
   policy_pilot_resolve_rejects_with_reason(
     policy: NamespaceOnlyY,
     position: qualified_name_snoc(qn: v2.test.claim.symbol_index.containment.si_unique_module_qn, segment: ^std.logic.Classical),

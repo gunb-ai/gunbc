@@ -79,7 +79,7 @@ type LongHomeStorageAgreement =
   | LongPathButExecutingModule
   | ShortPathButDeclinedModule
 
-fn long_home_storage_agreement(path_is_long: Bool, module_is_long: Bool) -> LongHomeStorageAgreement {
+fn long_home_storage_agreement(path_is_long: v2.std.logic.Bool, module_is_long: v2.std.logic.Bool) -> LongHomeStorageAgreement {
   match path_is_long {
     True => match module_is_long {
       True => LongPathAndLongModule {}
@@ -258,7 +258,7 @@ fn long_home_prefixes() -> std.types.List<String> {
 // (test.claim.transport_script_wall_compile_red.wall_red_string_join_into_retained_record_refuses)
 // under whole-corpus pressure while the per-witness median remains ~1ms — 1552ms is
 // measured-max plus one scheduler-quantum, retained as calibration evidence only.
-fn required_floor_claim_cost_line_ms() -> Int {
+fn required_floor_claim_cost_line_ms() -> v2.std.integer.Int {
   1552
 }
 
@@ -268,7 +268,7 @@ fn required_floor_claim_cost_line_ms() -> Int {
 // pure in-process claim running away on the CPU clock, and the wall limit below is deliberately
 // looser so that ordinary host scheduling delay cannot itself trip an interrupt on a
 // computation that is still within its CPU envelope.
-fn required_floor_claim_cpu_safety_limit_ms() -> Int {
+fn required_floor_claim_cpu_safety_limit_ms() -> v2.std.integer.Int {
   5000
 }
 
@@ -280,7 +280,7 @@ fn required_floor_claim_cpu_safety_limit_ms() -> Int {
 // that would wrongly read as a runaway if judged on the CPU-tight figure; 10000ms gives that
 // headroom while still catching a claim that is genuinely blocked or stuck. Also a restoration
 // envelope, not a re-founded permanent ceiling.
-fn required_floor_claim_wall_safety_limit_ms() -> Int {
+fn required_floor_claim_wall_safety_limit_ms() -> v2.std.integer.Int {
   10000
 }
 
@@ -349,7 +349,7 @@ fn opaque_host_call_grandfather_population() -> std.types.List<String> {
   }
 }
 
-fn string_in_grandfather_population(needle: String, population: std.types.List<String>) -> Bool {
+fn string_in_grandfather_population(needle: String, population: std.types.List<String>) -> v2.std.logic.Bool {
   match population {
     Empty {} => false
     Cons { head: h, tail: t } =>
@@ -370,7 +370,7 @@ fn string_in_grandfather_population(needle: String, population: std.types.List<S
 // population that admits it -- it derives `OpaqueHostCallUnbounded` rather than a fictitious
 // hard-bound standing (see `claim_safety_outcome` below), never a refusal, because refusing it
 // today would refuse the whole corpus of claims that already, honestly, exercise it.
-fn claim_preemption_admission(preemption: ClaimPreemptionReachability) -> Bool {
+fn claim_preemption_admission(preemption: ClaimPreemptionReachability) -> v2.std.logic.Bool {
   match preemption {
     CooperativelyPollable => true
     OpaqueHostCallUnbounded { operation: op } =>
@@ -390,12 +390,12 @@ type ClaimSafetyOutcome =
     CompletedWithinSafetyLimits
   | SafetyInterrupted {
       raised_by: String
-      elapsed_cpu_at_least: Int
-      elapsed_wall_at_least: Int
+      elapsed_cpu_at_least: v2.std.integer.Int
+      elapsed_wall_at_least: v2.std.integer.Int
     }
   | CompletedPastSafetyLimit {
-      observed_cpu: Int
-      observed_wall: Int
+      observed_cpu: v2.std.integer.Int
+      observed_wall: v2.std.integer.Int
       preemption: ClaimPreemptionReachability
     }
 
@@ -405,9 +405,9 @@ type ClaimSafetyOutcome =
 // on the merits and matches this repository's own sibling precedent: `std.evaluation_budget`
 // (the caller-agnostic kernel this module's constants already cite) carries the identical
 // domain -- a cooperative deadline observed in milliseconds -- through `std.measure`
-// `Nanosecond`/`PositiveMillisecond`, never a bare `_ms: Int`. It is not fixed inline here
+// `Nanosecond`/`PositiveMillisecond`, never a bare `_ms: v2.std.integer.Int`. It is not fixed inline here
 // because `std.measure` `Millisecond = Measure<Time, Milli, std.nat.Nat>` is built on v1's
-// host-backed `Nat`, while this module's own `Int`/`Nat` (`v2.std.integer`, `v2.std.nat`) are
+// host-backed `Nat`, while this module's own `v2.std.integer.Int`/`Nat` (`v2.std.integer`, `v2.std.nat`) are
 // v2's inductive Peano tower (`Nat = Zero | Succ { prev: Nat }`, verified in
 // `src/v2/std/nat.dag`) -- and no bridge between the two numeric towers is established anywhere
 // in this corpus today. Converting these four fields under an unrelated CI-fix pass would mean
@@ -426,11 +426,11 @@ data flat_scalar_millisecond_fields_dissolve_on: std.dissolution.DissolutionCond
 // reachability fact and the trigger are observed at the interpreter boundary this module does
 // not itself reach into) rather than guessed here.
 fn claim_safety_outcome(
-  reached_verdict: Bool,
-  observed_cpu_ms: Int,
-  observed_wall_ms: Int,
-  cpu_limit_ms: Int,
-  wall_limit_ms: Int,
+  reached_verdict: v2.std.logic.Bool,
+  observed_cpu_ms: v2.std.integer.Int,
+  observed_wall_ms: v2.std.integer.Int,
+  cpu_limit_ms: v2.std.integer.Int,
+  wall_limit_ms: v2.std.integer.Int,
   raised_by: String,
   preemption: ClaimPreemptionReachability,
 ) -> ClaimSafetyOutcome {
@@ -498,7 +498,7 @@ fn claim_safety_outcome(
 // consumer that only checks for `SafetyInterrupted` before deciding admission reproduces the
 // silent-completion defect this whole model exists to close. This predicate is the one place
 // that fact is asserted, so a caller cannot rediscover it (or get it wrong) per call site.
-fn claim_safety_outcome_blocks(outcome: ClaimSafetyOutcome) -> Bool {
+fn claim_safety_outcome_blocks(outcome: ClaimSafetyOutcome) -> v2.std.logic.Bool {
   match outcome {
     CompletedWithinSafetyLimits => false
     SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } => true

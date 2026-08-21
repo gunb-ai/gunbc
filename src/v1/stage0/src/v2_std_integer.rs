@@ -13,7 +13,7 @@ use self::Representation::*;
 use self::StandardIntegerType::*;
 use crate::std_algebra::Ordering::*;
 pub use crate::std_algebra::{AbelianGroup, FreeMonoid, GroupCompletion, OrderedRing, Ordering};
-pub use crate::std_bit::{Byte, Word128, Word16, Word32, Word64, Word8};
+pub use crate::std_bit::Byte;
 use crate::std_error_primitives::DivError::*;
 use crate::std_error_primitives::Result::*;
 pub use crate::std_error_primitives::{DivError, Result};
@@ -36,7 +36,7 @@ pub use crate::v2_std_diagnostic::{
 pub use crate::v2_std_diagnostic::{
     Correction, Diagnostic, Diagnostics, Locus, NoCorrectionReason, Outcome,
 };
-pub use crate::v2_std_machine::{MachineWidth, PointerWidth};
+pub use crate::v2_std_machine::MachineWidth;
 pub use crate::v2_std_nat::Nat;
 use crate::v2_std_nat::Nat::*;
 pub use crate::v2_std_node::is_empty_conj_root;
@@ -83,25 +83,25 @@ pub enum OverflowDisposition {
     Trapping,
 }
 
-pub type Int8 = Compose<i64, crate::v2_std_machine::MachineWidth<crate::std_bit::Word8>>;
+pub type Int8 = Compose<i64, crate::v2_std_machine::MachineWidth<()>>;
 
-pub type Int16 = Compose<i64, crate::v2_std_machine::MachineWidth<crate::std_bit::Word16>>;
+pub type Int16 = Compose<i64, crate::v2_std_machine::MachineWidth<()>>;
 
-pub type Int32 = Compose<i64, crate::v2_std_machine::MachineWidth<crate::std_bit::Word32>>;
+pub type Int32 = Compose<i64, crate::v2_std_machine::MachineWidth<()>>;
 
-pub type Int64 = Compose<i64, crate::v2_std_machine::MachineWidth<crate::std_bit::Word64>>;
+pub type Int64 = Compose<i64, crate::v2_std_machine::MachineWidth<()>>;
 
-pub type Int128 = Compose<i64, crate::v2_std_machine::MachineWidth<crate::std_bit::Word128>>;
+pub type Int128 = Compose<i64, crate::v2_std_machine::MachineWidth<()>>;
 
-pub type UInt8 = Compose<UInt, crate::v2_std_machine::MachineWidth<crate::std_bit::Word8>>;
+pub type UInt8 = Compose<UInt, crate::v2_std_machine::MachineWidth<()>>;
 
-pub type UInt16 = Compose<UInt, crate::v2_std_machine::MachineWidth<crate::std_bit::Word16>>;
+pub type UInt16 = Compose<UInt, crate::v2_std_machine::MachineWidth<()>>;
 
-pub type UInt32 = Compose<UInt, crate::v2_std_machine::MachineWidth<crate::std_bit::Word32>>;
+pub type UInt32 = Compose<UInt, crate::v2_std_machine::MachineWidth<()>>;
 
-pub type UInt64 = Compose<UInt, crate::v2_std_machine::MachineWidth<crate::std_bit::Word64>>;
+pub type UInt64 = Compose<UInt, crate::v2_std_machine::MachineWidth<()>>;
 
-pub type UInt128 = Compose<UInt, crate::v2_std_machine::MachineWidth<crate::std_bit::Word128>>;
+pub type UInt128 = Compose<UInt, crate::v2_std_machine::MachineWidth<()>>;
 
 pub type IntPlatform =
     Compose<i64, crate::v2_std_machine::MachineWidth<crate::v2_std_machine::PointerWidth>>;
@@ -1450,7 +1450,7 @@ pub fn int_mod(a: Int, b: Int, at: Rc<Locus>) -> Rc<Outcome<i64>> {
     }
 }
 
-pub fn integer_char_code_to_decimal_digit_optional(c: i64) -> Option<DecimalDigit> {
+pub fn integer_char_code_to_decimal_digit_optional(c: i64) -> Optional<DecimalDigit> {
     if (c.clone() == 48) {
         optional_present(DecimalDigit::D0)
     } else {
@@ -1515,7 +1515,7 @@ pub fn integer_decimal_digits_snoc(
 pub fn integer_string_to_decimal_digits_step(
     mut s: String,
     mut acc: Rc<Vec<DecimalDigit>>,
-) -> Option<Rc<FreeMonoid>> {
+) -> Optional<Rc<Vec<DecimalDigit>>> {
     loop {
         match (*crate::v2_std_text::string_head(s.clone())).clone() {
             CharResult::CharAbsent => {
@@ -1523,19 +1523,21 @@ pub fn integer_string_to_decimal_digits_step(
             }
             CharResult::CharFound { value: c, .. } => {
                 match integer_char_code_to_decimal_digit_optional(c.clone()) {
-                    Some(d) => match (*crate::v2_std_text::string_tail(s.clone())).clone() {
-                        ListTailResult::TailFound { tail: rest, .. } => {
-                            let __tco_0 = rest.clone();
-                            let __tco_1 = integer_decimal_digits_snoc(acc, d.clone());
-                            s = __tco_0;
-                            acc = __tco_1;
-                            continue;
+                    Optional::Present { value: d, .. } => {
+                        match (*crate::v2_std_text::string_tail(s.clone())).clone() {
+                            ListTailResult::TailFound { tail: rest, .. } => {
+                                let __tco_0 = rest.clone();
+                                let __tco_1 = integer_decimal_digits_snoc(acc, d.clone());
+                                s = __tco_0;
+                                acc = __tco_1;
+                                continue;
+                            }
+                            ListTailResult::TailAbsent => {
+                                break optional_absent();
+                            }
                         }
-                        ListTailResult::TailAbsent => {
-                            break optional_absent();
-                        }
-                    },
-                    None => {
+                    }
+                    Optional::Absent => {
                         break optional_absent();
                     }
                 }
@@ -1544,7 +1546,7 @@ pub fn integer_string_to_decimal_digits_step(
     }
 }
 
-pub fn integer_string_to_decimal_digits_optional(s: String) -> Option<Rc<FreeMonoid>> {
+pub fn integer_string_to_decimal_digits_optional(s: String) -> Optional<Rc<Vec<DecimalDigit>>> {
     integer_string_to_decimal_digits_step(s.clone(), Rc::new(vec![]))
 }
 
@@ -1566,12 +1568,12 @@ pub fn integer_decimal_magnitude_to_int(m: Rc<DecimalMagnitude>) -> Int {
     }
 }
 
-pub fn integer_lexeme_to_int_optional(lexeme: String) -> Option<i64> {
+pub fn integer_lexeme_to_int_optional(lexeme: String) -> Optional<i64> {
     match integer_string_to_decimal_digits_optional(lexeme.clone()) {
-        Some(digits) => optional_present(integer_decimal_magnitude_to_int(
-            decimal_digits_to_magnitude(digits.clone()),
-        )),
-        None => optional_absent(),
+        Optional::Present { value: digits, .. } => optional_present(
+            integer_decimal_magnitude_to_int(decimal_digits_to_magnitude(digits.clone())),
+        ),
+        Optional::Absent => optional_absent(),
     }
 }
 
@@ -1634,14 +1636,14 @@ pub fn integer_int_to_signed_i32_le_bytes(value: Int) -> Rc<Vec<Rc<Byte>>> {
 
 pub fn integer_byte_bit_at(b: Rc<Byte>, shift: Int) -> Int {
     match list_at_optional(b.bits.clone(), shift.clone()) {
-        Some(bit) => {
+        Optional::Present { value: bit, .. } => {
             if bit.clone() {
                 1
             } else {
                 0
             }
         }
-        None => 0,
+        Optional::Absent => 0,
     }
 }
 
@@ -1687,7 +1689,7 @@ pub fn integer_signed_i32_le_bytes_to_int_value(b0: Int, b1: Int, b2: Int, b3: I
     }
 }
 
-pub fn integer_decimal_digit_from_tag_atom(id: String) -> Option<DecimalDigit> {
+pub fn integer_decimal_digit_from_tag_atom(id: String) -> Optional<DecimalDigit> {
     if (id.clone() == "integer_tag_digit_0".to_string()) {
         optional_present(DecimalDigit::D0)
     } else {
@@ -1731,7 +1733,7 @@ pub fn integer_decimal_digit_from_tag_atom(id: String) -> Option<DecimalDigit> {
     }
 }
 
-pub fn integer_decimal_digit_from_node_optional(node: Rc<Node>) -> Option<DecimalDigit> {
+pub fn integer_decimal_digit_from_node_optional(node: Rc<Node>) -> Optional<DecimalDigit> {
     match (*node.kind.clone()).clone() {
         NodeKind::TypeNode { ref connective, .. }
             if matches!(connective.as_ref(), Connective::Atom { .. }) =>
@@ -1745,7 +1747,7 @@ pub fn integer_decimal_digit_from_node_optional(node: Rc<Node>) -> Option<Decima
     }
 }
 
-pub fn integer_fold_list_node_digits_optional(node: Rc<Node>) -> Option<Rc<FreeMonoid>> {
+pub fn integer_fold_list_node_digits_optional(node: Rc<Node>) -> Optional<Rc<Vec<DecimalDigit>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if is_empty_conj_root(node.clone()) {
             optional_present(Rc::new(vec![]))
@@ -1754,24 +1756,26 @@ pub fn integer_fold_list_node_digits_optional(node: Rc<Node>) -> Option<Rc<FreeM
                 Outcome::Accepted {
                     value: head_node, ..
                 } => match integer_decimal_digit_from_node_optional(head_node.clone()) {
-                    Some(digit) => {
+                    Optional::Present { value: digit, .. } => {
                         match (*find_named_child(node.clone(), "fold_list_node_tail".to_string()))
                             .clone()
                         {
                             Outcome::Accepted {
                                 value: tail_node, ..
                             } => match integer_fold_list_node_digits_optional(tail_node.clone()) {
-                                Some(tail_digits) => optional_present(Rc::new({
+                                Optional::Present {
+                                    value: tail_digits, ..
+                                } => optional_present(Rc::new({
                                     let mut __cons_v = (*tail_digits.clone()).clone();
                                     __cons_v.insert(0, digit.clone());
                                     __cons_v
                                 })),
-                                None => optional_absent(),
+                                Optional::Absent => optional_absent(),
                             },
                             Outcome::Rejected { diagnostics: _, .. } => optional_absent(),
                         }
                     }
-                    None => optional_absent(),
+                    Optional::Absent => optional_absent(),
                 },
                 Outcome::Rejected { diagnostics: _, .. } => optional_absent(),
             }
@@ -1781,34 +1785,43 @@ pub fn integer_fold_list_node_digits_optional(node: Rc<Node>) -> Option<Rc<FreeM
 
 pub fn integer_decimal_magnitude_node_to_int(node: Rc<Node>) -> Rc<Outcome<i64>> {
     match integer_fold_list_node_digits_optional(node.clone()) {
-        Some(digits) => outcome_accepted(integer_decimal_magnitude_to_int(
-            decimal_digits_to_magnitude(digits.clone()),
-        )),
-        None => outcome_rejected(integer_standard_integer_type_decode_invalid_diagnostic(
-            node.clone(),
-        )),
+        Optional::Present { value: digits, .. } => outcome_accepted(
+            integer_decimal_magnitude_to_int(decimal_digits_to_magnitude(digits.clone())),
+        ),
+        Optional::Absent => outcome_rejected(
+            integer_standard_integer_type_decode_invalid_diagnostic(node.clone()),
+        ),
     }
 }
 
 pub fn integer_signed_i32_le_bytes_to_int(bytes: Rc<Vec<Rc<Byte>>>) -> Rc<Outcome<i64>> {
     if ((bytes.clone().len() as i64) == 4) {
         match list_at_optional(bytes.clone(), 0) {
-            Some(b0) => match list_at_optional(bytes.clone(), 1) {
-                Some(b1) => match list_at_optional(bytes.clone(), 2) {
-                    Some(b2) => match list_at_optional(bytes.clone(), 3) {
-                        Some(b3) => outcome_accepted(integer_signed_i32_le_bytes_to_int_value(
-                            integer_u8_from_byte(b0.clone()),
-                            integer_u8_from_byte(b1.clone()),
-                            integer_u8_from_byte(b2.clone()),
-                            integer_u8_from_byte(b3.clone()),
-                        )),
-                        None => outcome_rejected(integer_signed_i32_le_decode_invalid_diagnostic()),
+            Optional::Present { value: b0, .. } => match list_at_optional(bytes.clone(), 1) {
+                Optional::Present { value: b1, .. } => match list_at_optional(bytes.clone(), 2) {
+                    Optional::Present { value: b2, .. } => match list_at_optional(bytes.clone(), 3)
+                    {
+                        Optional::Present { value: b3, .. } => {
+                            outcome_accepted(integer_signed_i32_le_bytes_to_int_value(
+                                integer_u8_from_byte(b0.clone()),
+                                integer_u8_from_byte(b1.clone()),
+                                integer_u8_from_byte(b2.clone()),
+                                integer_u8_from_byte(b3.clone()),
+                            ))
+                        }
+                        Optional::Absent => {
+                            outcome_rejected(integer_signed_i32_le_decode_invalid_diagnostic())
+                        }
                     },
-                    None => outcome_rejected(integer_signed_i32_le_decode_invalid_diagnostic()),
+                    Optional::Absent => {
+                        outcome_rejected(integer_signed_i32_le_decode_invalid_diagnostic())
+                    }
                 },
-                None => outcome_rejected(integer_signed_i32_le_decode_invalid_diagnostic()),
+                Optional::Absent => {
+                    outcome_rejected(integer_signed_i32_le_decode_invalid_diagnostic())
+                }
             },
-            None => outcome_rejected(integer_signed_i32_le_decode_invalid_diagnostic()),
+            Optional::Absent => outcome_rejected(integer_signed_i32_le_decode_invalid_diagnostic()),
         }
     } else {
         outcome_rejected(integer_signed_i32_le_decode_invalid_diagnostic())

@@ -469,29 +469,29 @@ fn cpp_bool_facts_catalog() -> List<CppBoolPrimitiveFacts> {
 
 fn cpp_integer_catalog_surface_symbol_step(
   sym: v2.std.node.Symbol,
-  acc: Bool,
+  acc: v2.std.logic.Bool,
   facts: CppIntegerPrimitiveFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   acc || sym == facts.surface_spelling
 }
 
 fn cpp_character_catalog_surface_symbol_step(
   sym: v2.std.node.Symbol,
-  acc: Bool,
+  acc: v2.std.logic.Bool,
   facts: CppCharacterPrimitiveFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   acc || sym == facts.surface_spelling
 }
 
 fn cpp_bool_catalog_surface_symbol_step(
   sym: v2.std.node.Symbol,
-  acc: Bool,
+  acc: v2.std.logic.Bool,
   facts: CppBoolPrimitiveFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   acc || sym == facts.surface_spelling
 }
 
-fn cpp_integer_catalog_surface_symbol(sym: v2.std.node.Symbol, target_profile: v2.std.node.Node) -> Bool {
+fn cpp_integer_catalog_surface_symbol(sym: v2.std.node.Symbol, target_profile: v2.std.node.Node) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: cpp_integer_facts_catalog(target_profile: target_profile),
     empty: false,
@@ -501,7 +501,7 @@ fn cpp_integer_catalog_surface_symbol(sym: v2.std.node.Symbol, target_profile: v
   )
 }
 
-fn cpp_character_catalog_surface_symbol(sym: v2.std.node.Symbol, target_profile: v2.std.node.Node) -> Bool {
+fn cpp_character_catalog_surface_symbol(sym: v2.std.node.Symbol, target_profile: v2.std.node.Node) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: cpp_character_facts_catalog(target_profile: target_profile),
     empty: false,
@@ -511,7 +511,7 @@ fn cpp_character_catalog_surface_symbol(sym: v2.std.node.Symbol, target_profile:
   )
 }
 
-fn cpp_bool_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn cpp_bool_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: cpp_bool_facts_catalog(),
     empty: false,
@@ -521,7 +521,7 @@ fn cpp_bool_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn cpp_catalog_surface_symbol(sym: v2.std.node.Symbol, target_profile: v2.std.node.Node) -> Bool {
+fn cpp_catalog_surface_symbol(sym: v2.std.node.Symbol, target_profile: v2.std.node.Node) -> v2.std.logic.Bool {
   cpp_integer_catalog_surface_symbol(sym: sym, target_profile: target_profile) ||
     cpp_character_catalog_surface_symbol(sym: sym, target_profile: target_profile) ||
     cpp_bool_catalog_surface_symbol(sym: sym)
@@ -1165,4 +1165,4 @@ fn cpp_lex() -> v2.std.compilers.lexing.LexRules {
   v2.std.compilers.lexing.ModeledLexRules { root: v2.std.compilers.lexing.LexRuleSet { rules: cpp_lex_rules() } }
 }
 
-data cpp_bool_grounding: std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra
+data cpp_bool_grounding: std.algebra.BooleanAlgebra<v2.std.logic.Bool> = v2.std.logic.bool_boolean_algebra

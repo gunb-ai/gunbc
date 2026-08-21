@@ -40,15 +40,15 @@ test fn w_the_three_standings_are_distinguishable_by_match() -> Bool {
   (match capability_established(authority: a_stackup_authority) {
     CapabilityEstablished { authority: _ } => true
     CapabilityPending { owed: _ } => false
-    CapabilityRefused { cause: _ } => false
+    product.pcb.world.CapabilityRefused { cause: _ } => false
   })
     && (match capability_pending(what_is_owed: "a stackup") {
       CapabilityPending { owed: _ } => true
       CapabilityEstablished { authority: _ } => false
-      CapabilityRefused { cause: _ } => false
+      product.pcb.world.CapabilityRefused { cause: _ } => false
     })
     && match (product.pcb.world.CapabilityRefused { cause: "any cause" }) {
-      CapabilityRefused { cause: _ } => true
+      product.pcb.world.CapabilityRefused { cause: _ } => true
       CapabilityEstablished { authority: _ } => false
       CapabilityPending { owed: _ } => false
     }
@@ -63,6 +63,6 @@ test fn w_the_established_arm_retains_the_authority_it_was_given() -> Bool {
       a.decl_name == "a_stackup_authority"
         && a.module_path == "test.claim.pcb_capability_established_witness"
     CapabilityPending { owed: _ } => false
-    CapabilityRefused { cause: _ } => false
+    product.pcb.world.CapabilityRefused { cause: _ } => false
   }
 }

@@ -306,7 +306,7 @@ data default_inventory_items_limit: Int = 25
 
 service ebay.Inventory {
   config {
-    endpoint: production_api_base
+    endpoint: extdeps.ebay.ebay.production_api_base
     auth: Bearer
     auth_input: access_token
 

@@ -30,36 +30,41 @@ pub struct ContainmentPath<N: Clone> {
     pub _phantom: std::marker::PhantomData<N>,
 }
 
+compile_error!("trait_derive_emit: generic item 'BindingOccurrence' has a field applying type 'std.occurrence_binding.ContainmentPath', whose declared parameter list is not readable in this closure — the Clone bound it may require on 'BindingOccurrence' cannot be decided (see trait_derive_emit_item_clone_bound_wf_propagation_note)");
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct BindingOccurrence<N: Clone> {
+pub struct BindingOccurrence<N> {
     pub containment: Rc<ContainmentPath<N>>,
     pub _phantom: std::marker::PhantomData<N>,
 }
 
+compile_error!("trait_derive_emit: generic item 'BindingCandidate' has a field applying type 'std.occurrence_binding.ContainmentPath', whose declared parameter list is not readable in this closure — the Clone bound it may require on 'BindingCandidate' cannot be decided (see trait_derive_emit_item_clone_bound_wf_propagation_note)");
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct BindingCandidate<N: Clone> {
+pub struct BindingCandidate<N> {
     pub containment: Rc<ContainmentPath<N>>,
     pub _phantom: std::marker::PhantomData<N>,
 }
 
+compile_error!("trait_derive_emit: generic item 'OccurrenceBinding' has a field applying type 'std.occurrence_binding.BindingOccurrence', whose declared parameter list is not readable in this closure — the Clone bound it may require on 'OccurrenceBinding' cannot be decided (see trait_derive_emit_item_clone_bound_wf_propagation_note)");
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct OccurrenceBinding<N: Clone> {
+pub struct OccurrenceBinding<N> {
     pub occurrence: Rc<BindingOccurrence<N>>,
     pub candidate: Rc<BindingCandidate<N>>,
     pub _phantom: std::marker::PhantomData<N>,
 }
 
+compile_error!("trait_derive_emit: generic item 'AmbiguousBindingCandidates' has a field applying type 'std.occurrence_binding.BindingCandidate', whose declared parameter list is not readable in this closure — the Clone bound it may require on 'AmbiguousBindingCandidates' cannot be decided (see trait_derive_emit_item_clone_bound_wf_propagation_note)");
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct AmbiguousBindingCandidates<N: Clone> {
+pub struct AmbiguousBindingCandidates<N> {
     pub first: Rc<BindingCandidate<N>>,
     pub second: Rc<BindingCandidate<N>>,
     pub rest: Rc<Vec<Rc<BindingCandidate<N>>>>,
     pub _phantom: std::marker::PhantomData<N>,
 }
 
+compile_error!("trait_derive_emit: generic item 'OccurrenceBindingResult' has a field applying type 'std.occurrence_binding.OccurrenceBinding', whose declared parameter list is not readable in this closure — the Clone bound it may require on 'OccurrenceBindingResult' cannot be decided (see trait_derive_emit_item_clone_bound_wf_propagation_note)");
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum OccurrenceBindingResult<N: Clone> {
+pub enum OccurrenceBindingResult<N> {
     OccurrenceBound {
         binding: Rc<OccurrenceBinding<N>>,
     },
@@ -72,9 +77,10 @@ pub enum OccurrenceBindingResult<N: Clone> {
     },
 }
 
+compile_error!("trait_derive_emit: generic item 'OccurrenceBindingFoldState' has a field applying type 'std.occurrence_binding.BindingCandidate', whose declared parameter list is not readable in this closure — the Clone bound it may require on 'OccurrenceBindingFoldState' cannot be decided (see trait_derive_emit_item_clone_bound_wf_propagation_note)");
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum OccurrenceBindingFoldState<N: Clone> {
+pub enum OccurrenceBindingFoldState<N> {
     OccurrenceBindingFoldZero,
     OccurrenceBindingFoldOne {
         first: Rc<BindingCandidate<N>>,
@@ -85,7 +91,7 @@ pub enum OccurrenceBindingFoldState<N: Clone> {
         rest_reversed: Rc<Vec<Rc<BindingCandidate<N>>>>,
     },
 }
-impl<N: Clone> OccurrenceBindingFoldState<N> {
+impl<N> OccurrenceBindingFoldState<N> {
     pub fn first(&self) -> Rc<BindingCandidate<N>> {
         match self {
             OccurrenceBindingFoldState::OccurrenceBindingFoldZero => {
@@ -147,11 +153,11 @@ pub fn occurrence_binding_from_candidates<N: Clone>(
             }
             OccurrenceBindingFoldState::OccurrenceBindingFoldOne { first: first, .. } => {
                 Rc::new(OccurrenceBindingResult::OccurrenceBound {
-                    binding: Rc::new(OccurrenceBinding {
+                    binding: OccurrenceBinding {
                         occurrence: occurrence.clone(),
                         candidate: first.clone(),
                         _phantom: std::marker::PhantomData,
-                    }),
+                    },
                 })
             }
             OccurrenceBindingFoldState::OccurrenceBindingFoldMany {
@@ -161,12 +167,12 @@ pub fn occurrence_binding_from_candidates<N: Clone>(
                 ..
             } => Rc::new(OccurrenceBindingResult::OccurrenceAmbiguous {
                 occurrence: occurrence.clone(),
-                candidates: Rc::new(AmbiguousBindingCandidates {
+                candidates: AmbiguousBindingCandidates {
                     first: first.clone(),
                     second: second.clone(),
                     rest: v1_rt::reverse(rest_reversed.clone()),
                     _phantom: std::marker::PhantomData,
-                }),
+                },
             }),
         }
     }

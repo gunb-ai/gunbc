@@ -22,12 +22,12 @@ test fn witness_service_ready_gate_is_required_on_readback() -> Bool {
 
 test fn witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline() -> Bool {
   match live_deploy_intent_dependency_graph_emit_dissolution_trigger {
-    Scaffold {
+    std.disposition.Scaffold {
       dissolves_to: RealizationDispatch,
       bind: DeclarationRef { module_path: m, decl_name: n, field: WholeDeclaration },
     } =>
       m == "v2.compiler.emit_orchestration" && n == "orch_emit_pipeline"
-    Terminal { reason: _ } => false
+    std.disposition.Terminal { reason: _ } => false
   }
 }
 

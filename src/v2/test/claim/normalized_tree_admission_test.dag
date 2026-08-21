@@ -3,7 +3,7 @@ module v2.test.claim.normalized_tree_admission
 
 data normalized_tree_admission_witness_note: String = "BL-1's discriminating evidence. The invalid state is a root carrying wrapper-retention evidence presented to resolve as normalized -- which was reachable while NormalizedTree was an alias for Node, because the carrier had no door to refuse at. These controls execute the door: retention refuses, a clean tree admits, and retention is found ANYWHERE in the diagnostic list rather than at its head, because rejected_with_pending prepends outer diagnostics and a head-only read is systematically wrong."
 
-fn probe_shell() -> Node {
+fn probe_shell() -> v2.std.node.Node {
   node_synthetic(kind: v2.std.node.TypeNode { connective: Conj }, children: [])
 }
 
@@ -23,14 +23,14 @@ fn retention_diagnostic() -> v2.std.diagnostic.Diagnostic {
   }
 }
 
-fn is_rejected(o: v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree>) -> Bool {
+fn is_rejected(o: v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree>) -> v2.std.logic.Bool {
   match o {
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-test fn a_retained_root_is_refused_at_the_carrier_door() -> Bool {
+test fn a_retained_root_is_refused_at_the_carrier_door() -> v2.std.logic.Bool {
   v2.test.claim.normalized_tree_admission.is_rejected(o: admit_normalized_tree(
     root: v2.test.claim.normalized_tree_admission.probe_shell(),
     diagnostics: v2.std.diagnostic.Some {
@@ -39,7 +39,7 @@ test fn a_retained_root_is_refused_at_the_carrier_door() -> Bool {
   ))
 }
 
-test fn retention_is_found_past_the_diagnostic_head_RED() -> Bool {
+test fn retention_is_found_past_the_diagnostic_head_RED() -> v2.std.logic.Bool {
   v2.test.claim.normalized_tree_admission.is_rejected(o: admit_normalized_tree(
     root: v2.test.claim.normalized_tree_admission.probe_shell(),
     diagnostics: v2.std.diagnostic.Some {
@@ -51,11 +51,11 @@ test fn retention_is_found_past_the_diagnostic_head_RED() -> Bool {
   ))
 }
 
-test fn a_clean_root_is_admitted_positive_control() -> Bool {
+test fn a_clean_root_is_admitted_positive_control() -> v2.std.logic.Bool {
   (v2.test.claim.normalized_tree_admission.is_rejected(o: admit_normalized_tree(root: v2.test.claim.normalized_tree_admission.probe_shell(), diagnostics: v2.std.diagnostic.None)) == false)
 }
 
-test fn an_unrelated_diagnostic_does_not_refuse_RED() -> Bool {
+test fn an_unrelated_diagnostic_does_not_refuse_RED() -> v2.std.logic.Bool {
   (v2.test.claim.normalized_tree_admission.is_rejected(o: admit_normalized_tree(
     root: v2.test.claim.normalized_tree_admission.probe_shell(),
     diagnostics: v2.std.diagnostic.Some {
@@ -64,25 +64,25 @@ test fn an_unrelated_diagnostic_does_not_refuse_RED() -> Bool {
   )) == false)
 }
 
-test fn the_production_retention_producer_is_refused_by_the_door() -> Bool {
+test fn the_production_retention_producer_is_refused_by_the_door() -> v2.std.logic.Bool {
   match body_lower_wrapper_retained_shell(shell: v2.test.claim.normalized_tree_admission.probe_shell()) {
     Accepted { value: v, diagnostics: d } => v2.test.claim.normalized_tree_admission.is_rejected(o: admit_normalized_tree(root: v, diagnostics: d))
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn two_probe_roots() -> FreeMonoid<Node> {
+fn two_probe_roots() -> FreeMonoid<v2.std.node.Node> {
   std.algebra.Cons { head: v2.test.claim.normalized_tree_admission.probe_shell(), tail: std.algebra.Cons { head: v2.test.claim.normalized_tree_admission.probe_shell(), tail: std.algebra.Empty } }
 }
 
-test fn plural_admission_does_not_duplicate_shared_diagnostics_RED() -> Bool {
+test fn plural_admission_does_not_duplicate_shared_diagnostics_RED() -> v2.std.logic.Bool {
   match admit_normalized_roots(
     roots: two_probe_roots(),
     diagnostics: v2.std.diagnostic.Some {
       diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: v2.test.claim.normalized_tree_admission.unrelated_diagnostic(), tail: [] }
     }
   ) {
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
       diagnostics_eq(
         a: d,
@@ -93,14 +93,14 @@ test fn plural_admission_does_not_duplicate_shared_diagnostics_RED() -> Bool {
   }
 }
 
-test fn plural_admission_refuses_a_retained_batch() -> Bool {
+test fn plural_admission_refuses_a_retained_batch() -> v2.std.logic.Bool {
   match admit_normalized_roots(
     roots: two_probe_roots(),
     diagnostics: v2.std.diagnostic.Some {
       diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: retention_diagnostic(), tail: [] }
     }
   ) {
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }

@@ -3,14 +3,14 @@ module v2.test.parse.parse_binding_fidelity
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn pbf_graft_module_root(root: Node) -> Node {
+fn pbf_graft_module_root(root: v2.std.node.Node) -> v2.std.node.Node {
   match module_header_containment_graft(root: root) {
     Accepted { value: grafted, diagnostics: _ } => grafted
-    Rejected { diagnostics: _ } => root
+    v2.std.diagnostic.Rejected { diagnostics: _ } => root
   }
 }
 
-fn pbf_qn_node(seg: v2.std.node.Symbol) -> Node {
+fn pbf_qn_node(seg: v2.std.node.Symbol) -> v2.std.node.Node {
   fold_list_node(
     xs: std.algebra.Cons { head: seg, tail: std.algebra.Empty },
     item_node: fn(sym) {
@@ -23,7 +23,7 @@ fn pbf_qn_node(seg: v2.std.node.Symbol) -> Node {
   )
 }
 
-fn pbf_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, export_atom: v2.std.node.Symbol) -> Node {
+fn pbf_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, export_atom: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -36,7 +36,7 @@ fn pbf_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, expo
         target: pbf_qn_node(seg: seg)
       ),
       v2.std.node.Edge {
-        label: Named { name: export_sym },
+        label: v2.std.node.Named { name: export_sym },
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: export_atom } },
           children: [],
@@ -48,7 +48,7 @@ fn pbf_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, expo
   }
 }
 
-fn pbf_subject_with_import_use() -> Node {
+fn pbf_subject_with_import_use() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -61,7 +61,7 @@ fn pbf_subject_with_import_use() -> Node {
         target: pbf_qn_node(seg: ^pbf_subject_seg)
       ),
       v2.std.node.Edge {
-        label: Named { name: ^pbf_import_use_sym },
+        label: v2.std.node.Named { name: ^pbf_import_use_sym },
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^pbf_imported_decl } },
           children: [],
@@ -92,9 +92,9 @@ fn pbf_cross_file_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.no
   )
 }
 
-fn pbf_cross_file_import_resolves() -> Bool {
+fn pbf_cross_file_import_resolves() -> v2.std.logic.Bool {
   match pbf_cross_file_roots() {
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: admitted_roots, diagnostics: _ } =>
     match resolve_with_admission_policy(
       lm: dag_language_model_surface_empty_prelude(),
@@ -116,12 +116,12 @@ fn pbf_cross_file_import_resolves() -> Bool {
       policy: ImportScoped
     ) {
       Accepted { value: _, diagnostics: _ } => true
-      Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
     }
   }
 }
 
-fn pbf_unbound_atom_tree() -> Node {
+fn pbf_unbound_atom_tree() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -138,21 +138,21 @@ fn pbf_unbound_atom_tree() -> Node {
   }
 }
 
-fn pbf_resolve_unbound_symbol_rejects() -> Bool {
+fn pbf_resolve_unbound_symbol_rejects() -> v2.std.logic.Bool {
   match admit_normalized_tree(root: pbf_unbound_atom_tree(), diagnostics: v2.std.diagnostic.None) {
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: admitted_tree, diagnostics: _ } =>
   match v2.compiler.resolve.resolve(
     tree: admitted_tree,
     lm: dag_language_model_surface_empty_prelude()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
   }
 }
 
-fn pbf_subject_with_ambiguous_import_use() -> Node {
+fn pbf_subject_with_ambiguous_import_use() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -165,7 +165,7 @@ fn pbf_subject_with_ambiguous_import_use() -> Node {
         target: pbf_qn_node(seg: ^pbf_subject_seg)
       ),
       v2.std.node.Edge {
-        label: Named { name: ^pbf_ambiguous_export_sym },
+        label: v2.std.node.Named { name: ^pbf_ambiguous_export_sym },
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^pbf_ambiguous_export_sym } },
           children: [],
@@ -205,9 +205,9 @@ fn pbf_ambiguous_import_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compi
   )
 }
 
-fn pbf_ambiguous_export_rejects() -> Bool {
+fn pbf_ambiguous_export_rejects() -> v2.std.logic.Bool {
   match pbf_ambiguous_import_roots() {
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: admitted, diagnostics: _ } =>
     match resolve_with_admission_policy(
       lm: dag_language_model_surface_empty_prelude(),
@@ -235,23 +235,23 @@ fn pbf_ambiguous_export_rejects() -> Bool {
       policy: ImportScoped
     ) {
       Accepted { value: _, diagnostics: _ } => false
-      Rejected { diagnostics: _ } => true
+      v2.std.diagnostic.Rejected { diagnostics: _ } => true
     }
   }
 }
 
 data parse_binding_fidelity_fast_note: String = "Fixture: three cross-file binding resolution + fail-closed witness tests. Discovered per-PR via *_test.dag walk. Long-lane corpus split: long/parse_binding_fidelity_witness_test.dag (commit_workflow-enrolled module ingest tests) — see parse_binding_fidelity_long_note."
 
-test fn witness_cross_file_import_binding_resolves_holds() -> Bool {
+test fn witness_cross_file_import_binding_resolves_holds() -> v2.std.logic.Bool {
   pbf_cross_file_import_resolves()
 }
 
-test fn witness_unbound_symbol_fail_closed_holds() -> Bool {
+test fn witness_unbound_symbol_fail_closed_holds() -> v2.std.logic.Bool {
   pbf_resolve_unbound_symbol_rejects()
     && ((pbf_resolve_unbound_symbol_rejects() == false) == false)
 }
 
-test fn witness_ambiguous_export_fail_closed_holds() -> Bool {
+test fn witness_ambiguous_export_fail_closed_holds() -> v2.std.logic.Bool {
   pbf_ambiguous_export_rejects()
     && ((pbf_ambiguous_export_rejects() == false) == false)
 }

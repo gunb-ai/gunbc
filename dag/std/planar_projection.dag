@@ -55,12 +55,12 @@ module std.planar_projection
 // It is also not an AxisDirection3, which can only name a signed axis: the axonometric row looks
 // along (1,1,1), which no signed unit axis can express.
 type ViewAxisTriple {
-  x: Int
-  y: Int
-  z: Int
+  x: std.integer.Int
+  y: std.integer.Int
+  z: std.integer.Int
 }
 
-fn view_axis_triple(x: Int, y: Int, z: Int) -> ViewAxisTriple {
+fn view_axis_triple(x: std.integer.Int, y: std.integer.Int, z: std.integer.Int) -> ViewAxisTriple {
   ViewAxisTriple { x: x, y: y, z: z }
 }
 
@@ -81,7 +81,7 @@ type ProjectionRefusal
   | ProjectionFrameRefused { refusal: std.affine_space.SpatialFrameRefusal }
   | ViewDirectionParallelToUpReference { direction: ViewAxisTriple, up_reference: ViewAxisTriple }
   | ViewDirectionIsZero
-  | ViewUnitsAreNotMillimetres { axis_image_u: Int, axis_image_v: Int }
+  | ViewUnitsAreNotMillimetres { axis_image_u: std.integer.Int, axis_image_v: std.integer.Int }
 
 type ProjectionConstruction<T>
   = ProjectionReady { value: T }
@@ -92,15 +92,15 @@ type ProjectionConstruction<T>
 // is the only constructor - sole_constructor, so no record literal outside this module can assemble
 // a map that no camera produces.
 type ProjectionMap sole_constructor {
-  ux: Int
-  uy: Int
-  uz: Int
-  vx: Int
-  vy: Int
-  vz: Int
-  wx: Int
-  wy: Int
-  wz: Int
+  ux: std.integer.Int
+  uy: std.integer.Int
+  uz: std.integer.Int
+  vx: std.integer.Int
+  vy: std.integer.Int
+  vz: std.integer.Int
+  wx: std.integer.Int
+  wy: std.integer.Int
+  wz: std.integer.Int
 }
 
 // A view is the join of the map with the two frame identities it relates. Carrying both is what lets
@@ -116,11 +116,11 @@ type ProjectionView sole_constructor {
 
 type ViewPoint2 {
   view: std.coordinate_frame.CoordinateFrameIdentity
-  u: Int
-  v: Int
+  u: std.integer.Int
+  v: std.integer.Int
 }
 
-fn checked_pair_cross_term(a: Int, b: Int, c: Int, d: Int) -> std.checked_arithmetic.CheckedInt {
+fn checked_pair_cross_term(a: std.integer.Int, b: std.integer.Int, c: std.integer.Int, d: std.integer.Int) -> std.checked_arithmetic.CheckedInt {
   checked_subtract_results(
     a: checked_int_multiply(a: a, b: b),
     b: checked_int_multiply(a: c, b: d),
@@ -263,7 +263,7 @@ fn point3_components(p: std.affine_space.Point3) -> ViewAxisTriple {
   )
 }
 
-fn checked_row_dot(ax: Int, ay: Int, az: Int, p: ViewAxisTriple) -> std.checked_arithmetic.CheckedInt {
+fn checked_row_dot(ax: std.integer.Int, ay: std.integer.Int, az: std.integer.Int, p: ViewAxisTriple) -> std.checked_arithmetic.CheckedInt {
   checked_add_results(
     a: checked_add_results(
       a: checked_int_multiply(a: ax, b: p.x),
@@ -308,7 +308,7 @@ fn project_point(v: ProjectionView, p: std.affine_space.Point3) -> ProjectionCon
 // third field on ViewPoint2 because it is not a position on the page: a consumer that draws does not
 // want it, and a consumer that orders does not want the page coordinates. Fusing them would make
 // every drawing carry a number it must remember to ignore.
-fn projection_depth(v: ProjectionView, p: std.affine_space.Point3) -> ProjectionConstruction<Int> {
+fn projection_depth(v: ProjectionView, p: std.affine_space.Point3) -> ProjectionConstruction<std.integer.Int> {
   if !coordinate_frame_identity_eq(a: v.source_frame, b: p.frame) {
     ProjectionRefused { cause: projection_frame_refusal(v: v, p: p) }
   } else {
@@ -321,11 +321,11 @@ fn projection_depth(v: ProjectionView, p: std.affine_space.Point3) -> Projection
 
 // A SOURCE AXIS'S IMAGE ON THE PAGE - the map's column, which is the pair a reader would measure off
 // a drawing with a ruler. It is the quantity the millimetre question is decided by.
-fn axis_image_u(m: ProjectionMap, axis_index: Int) -> Int {
+fn axis_image_u(m: ProjectionMap, axis_index: std.integer.Int) -> std.integer.Int {
   if axis_index == 0 { m.ux } else { if axis_index == 1 { m.uy } else { m.uz } }
 }
 
-fn axis_image_v(m: ProjectionMap, axis_index: Int) -> Int {
+fn axis_image_v(m: ProjectionMap, axis_index: std.integer.Int) -> std.integer.Int {
   if axis_index == 0 { m.vx } else { if axis_index == 1 { m.vy } else { m.vz } }
 }
 
@@ -333,7 +333,7 @@ fn axis_image_v(m: ProjectionMap, axis_index: Int) -> Int {
 // when one entry is +/-1 and the other is zero, and length zero exactly when both are zero. Every
 // other column has an irrational or non-unit length, and it does not matter which - the answer to
 // "are view units millimetres" is already no.
-fn axis_image_preserves_length(m: ProjectionMap, axis_index: Int) -> Bool {
+fn axis_image_preserves_length(m: ProjectionMap, axis_index: std.integer.Int) -> Bool {
   let iu = axis_image_u(m: m, axis_index: axis_index)
   let iv = axis_image_v(m: m, axis_index: axis_index)
   let unit = (iu == 0 && (iv == 1 || iv == (0 - 1))) || (iv == 0 && (iu == 1 || iu == (0 - 1)))
@@ -349,7 +349,7 @@ fn view_units_are_millimetres(m: ProjectionMap) -> Bool {
     && axis_image_preserves_length(m: m, axis_index: 2)
 }
 
-fn first_distorted_axis(m: ProjectionMap) -> Int {
+fn first_distorted_axis(m: ProjectionMap) -> std.integer.Int {
   if !axis_image_preserves_length(m: m, axis_index: 0) {
     0
   } else {

@@ -336,12 +336,12 @@ type Millimeter = Measure<Length, Milli, std.nat.Nat>
 //
 // It is recorded rather than silently removed because the deletion is the point: leaving both
 // standing would have been a second signed-spatial authority beside the frame-owned one, which is
-// exactly the fork the migration existed to close. Nat-backed Millimeter above is untouched and is
+// exactly the fork the migration existed to close. std.nat.Nat-backed Millimeter above is untouched and is
 // NOT widened - a wall of length -3 m must remain unwritable, and that is a magnitude rather than
 // a component.
 
 // AREA AND VOLUME carry the scale their ratio to the base unit actually has. An earlier revision
-// wrote Measure<Area, Milli, Nat> and warned in a comment not to read Milli linearly - but Scale is
+// wrote Measure<Area, Milli, std.nat.Nat> and warned in a comment not to read Milli linearly - but Scale is
 // not documentation, it is a fold: scale_exponent answers Milli => -3, so the carrier asserted that
 // a square millimetre is 10^-3 of a square metre. It is 10^-6, and a comment cannot correct a fold.
 //
@@ -463,7 +463,7 @@ fn arcsecond_displacement_count(a: ArcsecondDisplacement) -> Int {
 }
 
 // EIA-310 rack unit: 1U = 1.75 in = 44.45 mm EXACTLY, which is 44450 micrometres — an
-// integer, so the quantum is exact in the Nat carrier and needs no rounding. RackUnitHeight
+// integer, so the quantum is exact in the std.nat.Nat carrier and needs no rounding. RackUnitHeight
 // is a non-decimal scale in the same sense Sixty is: scale_exponent has no answer for it and
 // the conversion lives in a domain factor function instead.
 type RackUnit = Measure<Length, RackUnitHeight, std.nat.Nat>
@@ -1025,7 +1025,7 @@ fn clock_basis_label(b: ClockBasis) -> std.types.NonEmptyStr {
 // squared/cubed relation has a modeled consumer: without them the carriers above would name an
 // authority nothing reaches.
 //
-// BOTH SIDES OF THE CONVERSION ARE TYPED. An earlier revision took a bare Nat, so the one boundary
+// BOTH SIDES OF THE CONVERSION ARE TYPED. An earlier revision took a bare std.nat.Nat, so the one boundary
 // where a unit is being CHANGED - the single place a wrong unit is most likely to enter - was the
 // one place the substrate accepted an undimensioned number.
 fn square_metres_to_square_millimetres(area: SquareMeter) -> SquareMillimeter {

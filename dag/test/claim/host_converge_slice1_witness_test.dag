@@ -55,12 +55,12 @@ test fn witness_verdict_uses_converge_target_not_string_flatten() -> Bool {
         read: runner_unit_live_read_typed(row: gunbc_srv1_runner_unit_live_read_fixture),
         knob: knob,
       ) {
-        Present { value: Drifted } =>
+        Present { value: gunbc.host_converge.Drifted } =>
           match per_slot_memory_cap_verdict_from_unit_read(
             read: runner_unit_live_read_typed(row: gunbc_srv1_runner_unit_live_read_fixture),
             target: knob.target,
           ) {
-            Present { value: Drifted } => true
+            Present { value: gunbc.host_converge.Drifted } => true
             _ => false
           }
         _ => false
@@ -128,7 +128,7 @@ test fn witness_convergence_suppresses_memory_max_set_property_apply() -> Bool {
 }
 
 // --- TasksMax knob (second knob on the slice1 circuit; desired = 16384, the incident
-// repair value — 512 is the diagnosed EAGAIN outage value and must read Drifted) ---
+// repair value — 512 is the diagnosed EAGAIN outage value and must read gunbc.host_converge.Drifted) ---
 
 test fn witness_tasks_knob_is_per_slot_tasks_max_on_srv1_and_srv3() -> Bool {
   match host_converge_slice1_tasks_knob(host: operator_host_srv1) {
@@ -150,7 +150,7 @@ test fn witness_tasks_knob_is_per_slot_tasks_max_on_srv1_and_srv3() -> Bool {
 
 // TasksMax=512 is the diagnosed EAGAIN/process-creation outage value (operator ruling on
 // PR 8045, restoring the 2026-06-21 repair 16384); the discriminating claim is that the
-// outage value reads Drifted against the repaired desired, never Converged — a converge
+// outage value reads gunbc.host_converge.Drifted against the repaired desired, never Converged — a converge
 // circuit that would re-apply 512 is the outage made reproducible by construction.
 test fn witness_tasks_verdict_outage_512_drifts() -> Bool {
   match host_converge_slice1_tasks_knob(host: operator_host_srv1) {

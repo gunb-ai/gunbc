@@ -59,7 +59,7 @@ type HostBootCode
 // On last_checkpoint:
 // The last checkpoint reached before the failure.
 // On error_code:
-// The error code emitted at the failure, if the host emitted one. Absent
+// The error code emitted at the failure, if the host emitted one. v2.std.optional.Absent
 // means the host went silent WITHOUT an error, which is a different fault
 // from an error-and-reset and must not be rendered as the same state.
 // On observed_cycles:
@@ -98,7 +98,7 @@ fn host_boot_loop_cause(
   looped_after_stop: Bool,
 ) -> HostBootLoopCause {
   match signature.error_code {
-    Present { value: code } =>
+    v2.std.optional.Present { value: code } =>
       if supervisor_stopped && looped_after_stop {
         HostSelfResetOnError { code: code }
       } else {
@@ -106,7 +106,7 @@ fn host_boot_loop_cause(
           candidates: [PowerMonForceReset, PhosphorWatchdogPowerOn],
         }
       }
-    Absent =>
+    v2.std.optional.Absent =>
       if supervisor_stopped && looped_after_stop {
         LoopCauseUnobserved
       } else {

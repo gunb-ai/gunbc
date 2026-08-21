@@ -15,7 +15,7 @@ data synthetic_unified_v2: v2.lens.fact_cardinality.FactCardinalityDeclFact = v2
   content_hash: "7e31b580ce38306e"
 }
 
-test fn synthetic_unified_green_holds() -> Bool {
+test fn synthetic_unified_green_holds() -> v2.std.logic.Bool {
   fact_cardinality_cross_tree_coexistence(
     left: synthetic_unified_dag,
     right: synthetic_unified_v2

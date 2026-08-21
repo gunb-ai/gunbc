@@ -2,24 +2,16 @@
 // Source module: extdeps.languages.rust.emit
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
-use crate::extdeps_uri::UriScheme::Https;
+use crate::extdeps_uri::UriScheme::*;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_emit_model::SimpleMethodSpec;
-use crate::std_trait_derive_shape::PairCompletionBody::{
-    PairCompletionCanonicalQuotient, PairCompletionNegatedAddend, PairCompletionSumOfProducts,
-};
-use crate::std_trait_derive_shape::PairCompletionComponent::{
-    PairCompletionNeg, PairCompletionPos,
-};
-use crate::std_trait_derive_shape::PairCompletionOperand::{PairCompletionRhs, PairCompletionSelf};
-use crate::std_trait_derive_shape::ReprGroundingDeriveTrait::{
-    ReprDeriveAdd, ReprDeriveClone, ReprDeriveCopy, ReprDeriveDebug, ReprDeriveDeserialize,
-    ReprDeriveDiv, ReprDeriveEq, ReprDeriveHash, ReprDeriveMul, ReprDeriveNeg, ReprDeriveOrd,
-    ReprDerivePartialEq, ReprDerivePartialOrd, ReprDeriveRem, ReprDeriveSerialize, ReprDeriveSub,
-};
+use crate::std_trait_derive_shape::PairCompletionBody::*;
+use crate::std_trait_derive_shape::PairCompletionComponent::*;
+use crate::std_trait_derive_shape::PairCompletionOperand::*;
+use crate::std_trait_derive_shape::ReprGroundingDeriveTrait::*;
 pub use crate::std_trait_derive_shape::{
     nullary_coproduct_derive_traits, pair_completion_body_uses_rhs, pair_completion_op_rows,
     payload_coproduct_derive_traits, record_derive_traits_copy, record_derive_traits_heap,
@@ -28,8 +20,11 @@ pub use crate::std_trait_derive_shape::{
     PairCompletionArm, PairCompletionBody, PairCompletionComponent, PairCompletionFactor,
     PairCompletionOpRow, PairCompletionOperand, PairCompletionTerm, ReprGroundingDeriveTrait,
 };
+pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v2_std_collection::empty_map;
+pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -39,10 +34,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+        uri: Uri {
         scheme: UriScheme::Https,
         locator: "doc.rust-lang.org/reference/".to_string(),
-    }),
+    },
     })
             };
         }
@@ -97,7 +92,7 @@ pub fn rust_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
 pub fn rust_method_templates() -> Rc<HashMap<String, String>> {
     rust_simple_method_specs().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, spec: _| {
+        |acc: Rc<HashMap<String, String>>, spec: Rc<SimpleMethodSpec>| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), spec.template.clone())
         },
     )
@@ -117,7 +112,7 @@ pub fn rust_method_wraps_result() -> Rc<HashMap<String, bool>> {
     .cloned()
     .fold(
         v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, spec: _| {
+        |acc: Rc<HashMap<String, bool>>, spec: Rc<SimpleMethodSpec>| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), true)
         },
     )
@@ -153,7 +148,7 @@ pub fn rust_string_types() -> Rc<Vec<String>> {
 pub fn rust_struct_derives() -> String {
     thread_local! {
         static CACHED: String = {
-            rust_trait_derive_attr_from_traits(record_derive_traits_heap())
+            rust_trait_derive_attr_from_traits(crate::std_trait_derive_shape::record_derive_traits_heap())
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -162,7 +157,7 @@ pub fn rust_struct_derives() -> String {
 pub fn rust_struct_derives_copy() -> String {
     thread_local! {
         static CACHED: String = {
-            rust_trait_derive_attr_from_traits(record_derive_traits_copy())
+            rust_trait_derive_attr_from_traits(crate::std_trait_derive_shape::record_derive_traits_copy())
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -171,7 +166,7 @@ pub fn rust_struct_derives_copy() -> String {
 pub fn rust_enum_derives() -> String {
     thread_local! {
         static CACHED: String = {
-            rust_trait_derive_attr_from_traits(payload_coproduct_derive_traits())
+            rust_trait_derive_attr_from_traits(crate::std_trait_derive_shape::payload_coproduct_derive_traits())
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -180,7 +175,7 @@ pub fn rust_enum_derives() -> String {
 pub fn rust_enum_derives_copy() -> String {
     thread_local! {
         static CACHED: String = {
-            rust_trait_derive_attr_from_traits(nullary_coproduct_derive_traits())
+            rust_trait_derive_attr_from_traits(crate::std_trait_derive_shape::nullary_coproduct_derive_traits())
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -903,13 +898,20 @@ pub fn rust_pair_completion_body_render(body: Rc<PairCompletionBody>) -> String 
     }
 }
 
-pub fn rust_pair_completion_impl_render(row: Rc<PairCompletionOpRow>) -> String {
+pub fn rust_pair_completion_impl_render(
+    row: Rc<PairCompletionOpRow>,
+    carrier_param_needs_clone: bool,
+) -> String {
     match rust_pair_completion_spelling_for(row.op.clone()) {
-    Some(spelling) => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("impl<M> ".to_string(), spelling.trait_path.clone()), " for ".to_string()), rust_pair_completion_carrier()), "<M>".to_string()), if (spelling.where_bounds.clone() == "".to_string()) {
+    Some(spelling) => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(if carrier_param_needs_clone.clone() {
+        "impl<M: Clone> ".to_string()
+    } else {
+        "impl<M> ".to_string()
+    }, spelling.trait_path.clone()), " for ".to_string()), rust_pair_completion_carrier()), "<M>".to_string()), if (spelling.where_bounds.clone() == "".to_string()) {
         " {\n".to_string()
     } else {
         v1_rt::concat(v1_rt::concat("\n".to_string(), spelling.where_bounds.clone()), "\n{\n".to_string())
-    }), "    type Output = Self;\n".to_string()), "    fn ".to_string()), spelling.method.clone()), if pair_completion_body_uses_rhs(row.body.clone()) {
+    }), "    type Output = Self;\n".to_string()), "    fn ".to_string()), spelling.method.clone()), if crate::std_trait_derive_shape::pair_completion_body_uses_rhs(row.body.clone()) {
         "(self, rhs: Self) -> Self::Output ".to_string()
     } else {
         "(self) -> Self::Output ".to_string()
@@ -918,8 +920,8 @@ pub fn rust_pair_completion_impl_render(row: Rc<PairCompletionOpRow>) -> String 
 }
 }
 
-pub fn rust_supplemental_impls_group_completion() -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat("\n// repr-grounding arm (b): GroupCompletion<M> carrier arithmetic, rendered from the\n".to_string(), "// pair-completion rows in std.trait_derive_shape (Add/Mul/Neg are row data; Sub/Div bodies\n".to_string()), "// remain keyed literals: only Add, Mul and Neg render from the PairCompletionSumOfProducts polynomial arms).\n".to_string()), Rc::new({ let mut __result = Vec::new(); for row in pair_completion_op_rows().iter().cloned() { __result.push(rust_pair_completion_impl_render(row.clone())); } __result }).join(&"".to_string()))
+pub fn rust_supplemental_impls_group_completion(carrier_param_needs_clone: bool) -> String {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat("\n// repr-grounding arm (b): GroupCompletion<M> carrier arithmetic, rendered from the\n".to_string(), "// pair-completion rows in std.trait_derive_shape (Add/Mul/Neg are row data; Sub/Div bodies\n".to_string()), "// remain keyed literals: only Add, Mul and Neg render from the PairCompletionSumOfProducts polynomial arms).\n".to_string()), Rc::new({ let mut __result = Vec::new(); for row in crate::std_trait_derive_shape::pair_completion_op_rows().iter().cloned() { __result.push(rust_pair_completion_impl_render(row.clone(), carrier_param_needs_clone.clone())); } __result }).join(&"".to_string()))
 }
 
 pub fn rust_supplemental_impls_bool_coproduct() -> String {
@@ -929,7 +931,7 @@ pub fn rust_supplemental_impls_bool_coproduct() -> String {
 pub fn rust_pair_completion_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            unbound_dissolution("Dissolves when the emitted-target operator surface is selected by the grammar-row inverse in extdeps.languages.rust rather than by this per-op spelling table, at which point trait_path/method/where_bounds become ordinary terminal rows on the Rust target model.".to_string())
+            crate::std_dissolution::unbound_dissolution("Dissolves when the emitted-target operator surface is selected by the grammar-row inverse in extdeps.languages.rust rather than by this per-op spelling table, at which point trait_path/method/where_bounds become ordinary terminal rows on the Rust target model.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
@@ -938,7 +940,7 @@ pub fn rust_pair_completion_dissolve_on() -> Rc<DissolutionCondition> {
 pub fn rust_pair_completion_nonpolynomial_body_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            unbound_dissolution("dissolve-on: the Sub and Div bodies rendered below. Scope honesty (review 43189): only Add, Mul and Neg are fully row-data — their bodies are rendered from the PairCompletionSumOfProducts polynomial arms, so perturbing a row changes the emission. Sub and Div are NOT polynomials in the four operand components, so today they render as literals keyed by variant name: Sub is a DERIVED op (Add composed".to_string())
+            crate::std_dissolution::unbound_dissolution("dissolve-on: the Sub and Div bodies rendered below. Scope honesty (review 43189): only Add, Mul and Neg are fully row-data — their bodies are rendered from the PairCompletionSumOfProducts polynomial arms, so perturbing a row changes the emission. Sub and Div are NOT polynomials in the four operand components, so today they render as literals keyed by variant name: Sub is a DERIVED op (Add composed".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())

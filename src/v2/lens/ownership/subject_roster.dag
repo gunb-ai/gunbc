@@ -1,7 +1,7 @@
 module v2.test.lens_ownership.subject_roster
 
 
-fn ownership_claim_pass_node() -> Node {
+fn ownership_claim_pass_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^lens_ownership_claim_pass_symbol } },
     children: [],
@@ -9,7 +9,7 @@ fn ownership_claim_pass_node() -> Node {
 }
 }
 
-fn ownership_claim_fail_node() -> Node {
+fn ownership_claim_fail_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^lens_ownership_claim_fail_symbol } },
     children: [],
@@ -17,7 +17,7 @@ fn ownership_claim_fail_node() -> Node {
 }
 }
 
-fn ownership_claim_input(ok: Bool) -> Node {
+fn ownership_claim_input(ok: v2.std.logic.Bool) -> v2.std.node.Node {
   if ok {
     ownership_claim_pass_node()
   } else {
@@ -33,14 +33,14 @@ data claim_lens_ownership_resource_dependency: v2.std.verification.TestClaim = v
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
-data subject_lens_ownership_resource_dependency: TestClaimEvalSubject<Node> = eval_test_claim_subject(
+data subject_lens_ownership_resource_dependency: TestClaimEvalSubject<v2.std.node.Node> = eval_test_claim_subject(
   claim: claim_lens_ownership_resource_dependency,
   context: eval_context_v4_evaluator(),
   tree: ownership_claim_tree(),
   evaluator_pin: ^lens_ownership_resource_dependency_pin
 )
 
-data lens_ownership_subject_rows: List<TestClaimEvalSubject<Node>> = [
+data lens_ownership_subject_rows: List<TestClaimEvalSubject<v2.std.node.Node>> = [
   subject_lens_ownership_resource_dependency
 ]
 
@@ -48,4 +48,4 @@ data lens_ownership_family_claim_ids: List<v2.std.node.Symbol> = [
   ^claim_lens_ownership_resource_dependency
 ]
 
-data lens_ownership_node_subject_rows: List<TestClaimEvalSubject<Node>> = lens_ownership_subject_rows
+data lens_ownership_node_subject_rows: List<TestClaimEvalSubject<v2.std.node.Node>> = lens_ownership_subject_rows

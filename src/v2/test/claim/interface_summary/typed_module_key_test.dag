@@ -29,25 +29,25 @@ fn compiler_id_y() -> std.content_hash.ContentHash {
   std.content_hash.content_hash_atom(value: "compiler-identity-y")
 }
 
-test fn typed_module_key_is_deterministic() -> Bool {
+test fn typed_module_key_is_deterministic() -> v2.std.logic.Bool {
   let k1 = std.interface_summary.typed_module_key(interface_key: interface_key_a(), compiler_identity: compiler_id_x())
   let k2 = std.interface_summary.typed_module_key(interface_key: interface_key_a(), compiler_identity: compiler_id_x())
   k1 == k2
 }
 
-test fn typed_module_key_varies_with_compiler_identity() -> Bool {
+test fn typed_module_key_varies_with_compiler_identity() -> v2.std.logic.Bool {
   let with_x = std.interface_summary.typed_module_key(interface_key: interface_key_a(), compiler_identity: compiler_id_x())
   let with_y = std.interface_summary.typed_module_key(interface_key: interface_key_a(), compiler_identity: compiler_id_y())
   with_x != with_y
 }
 
-test fn typed_module_key_varies_with_interface_key() -> Bool {
+test fn typed_module_key_varies_with_interface_key() -> v2.std.logic.Bool {
   let key_a = std.interface_summary.typed_module_key(interface_key: interface_key_a(), compiler_identity: compiler_id_x())
   let key_b = std.interface_summary.typed_module_key(interface_key: interface_key_b(), compiler_identity: compiler_id_x())
   key_a != key_b
 }
 
-test fn typed_module_key_extends_interface_key() -> Bool {
+test fn typed_module_key_extends_interface_key() -> v2.std.logic.Bool {
   let typed = std.interface_summary.typed_module_key(interface_key: interface_key_a(), compiler_identity: compiler_id_x())
   typed != interface_key_a()
 }

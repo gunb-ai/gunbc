@@ -9,7 +9,7 @@ fn curated_probe_write_cargo_toml_blob(path: String, content: String, label: Str
   }
   let w = Filesystem.Write(path: path, content: content)
   if w.success {
-    ExitSuccess
+    std.process.ExitSuccess
   } else {
     exit_failure(reason: concat(concat("write failed for ", path), concat(": ", w.error)))
   }

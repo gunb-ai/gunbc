@@ -1436,7 +1436,7 @@ fn is_structural_children(expr: v1.std.core.Node, param_name: String, vars: Map<
     ExprMethodCall { method_semantics: ms } =>
       match method_size_effect(method_semantics: ms) {
         Present { value: ShrinkEffect } => is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars, si: si)
-        Present { value: IdentityEffect } => is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars, si: si)
+        Present { value: std.algebra.IdentityEffect } => is_structural_children(expr: method_receiver(texpr: expr), param_name: param_name, vars: vars, si: si)
         _ => false
       }
 
@@ -1660,7 +1660,7 @@ fn expr_contains_descent(expr: v1.std.core.Node, param_name: String, vars: Map<S
         match method_size_effect(method_semantics: ms) {
           Present { value: ShrinkEffect } => expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
           Present { value: ProjectionEffect } => expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
-          Present { value: IdentityEffect } => expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
+          Present { value: std.algebra.IdentityEffect } => expr_contains_descent(expr: receiver, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list, si: si)
           Absent => false
         }
       _ => false
@@ -1670,7 +1670,7 @@ fn expr_contains_descent(expr: v1.std.core.Node, param_name: String, vars: Map<S
 
 fn collect_field_binding_names(fb: v1.std.core.Node, vars: Map<String, Bool>) -> Map<String, Bool> {
   match field_binding_pattern(n: fb) {
-    Bind { declaration: declaration } => map_insert(vars, declaration.name, true)
+    v1.std.core.Bind { declaration: declaration } => map_insert(vars, declaration.name, true)
     VariantPattern { name: _, parent_enum: _, field_bindings: nested } =>
       nested |> fold(init: vars, f: (inner, nested_fb) =>
         collect_field_binding_names(fb: nested_fb, vars: inner)
@@ -1827,7 +1827,7 @@ fn collect_descent_vars(body: v1.std.core.Node, param_name: String, vars: Map<St
               bindings |> fold(init: acc, f: (inner, fb) =>
                 collect_field_binding_names(fb: fb, vars: inner)
               )
-            Bind { declaration: declaration } =>
+            v1.std.core.Bind { declaration: declaration } =>
               if scrut_is_descent { map_insert(acc, declaration.name, true) } else { acc }
             _ => acc
           }
@@ -1918,7 +1918,7 @@ fn all_self_calls_descend_inc(body: v1.std.core.Node, func_name: String, param_n
               bindings |> fold(init: vars, f: (inner, fb) =>
                 collect_field_binding_names(fb: fb, vars: inner)
               )
-            Bind { declaration: declaration } =>
+            v1.std.core.Bind { declaration: declaration } =>
               if scrut_is_descent { map_insert(vars, declaration.name, true) } else { vars }
             _ => vars
           }
@@ -2238,7 +2238,7 @@ fn collect_evidence_incremental(body: v1.std.core.Node, func_name: String, param
                 bindings |> fold(init: vars, f: (inner, fb) =>
                   collect_field_binding_names(fb: fb, vars: inner)
                 )
-              Bind { declaration: declaration } =>
+              v1.std.core.Bind { declaration: declaration } =>
                 if scrut_is_descent { map_insert(vars, declaration.name, true) } else { vars }
               _ => vars
             }
@@ -3513,7 +3513,7 @@ fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool 
       AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: _, algebra_template: _ } =>
         match se {
           Present { value: ShrinkEffect } => true
-          Present { value: IdentityEffect } => true
+          Present { value: std.algebra.IdentityEffect } => true
           _ => false
         }
       _ => false

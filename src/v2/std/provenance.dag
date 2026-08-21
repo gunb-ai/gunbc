@@ -42,11 +42,11 @@ fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
       empty: base.entries,
       cons: fn(acc, id) {
         match acc.lookup(id) {
-          Present { value: _ } => acc
-          Absent =>
+          v2.std.optional.Present { value: _ } => acc
+          v2.std.optional.Absent =>
             match incoming.entries.lookup(id) {
-              Present { value: event } => v2.std.collection.map_insert(m: acc, key: id, value: event)
-              Absent => acc
+              v2.std.optional.Present { value: event } => v2.std.collection.map_insert(m: acc, key: id, value: event)
+              v2.std.optional.Absent => acc
             }
         }
       }

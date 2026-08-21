@@ -532,7 +532,7 @@ type CashRefusalCause
   | CashLineUnfulfilled { part: std.decl_ref.DeclarationRef }
   | CashCurrencyMismatch { declared: std.currency.CurrencyCode, line_currency: std.currency.CurrencyCode }
 
-// MONEY RIDES std.measure's CARRIER, never a bare Nat beside a currency code.
+// MONEY RIDES std.measure's CARRIER, never a bare std.nat.Nat beside a currency code.
 // An amount and its currency are ONE fact — MoneyOnce is exactly that carrier —
 // and splitting them across two fields is the second representation DESIGN
 // section 3 forbids: nothing would stop a fold carrying 90,000,000 micros
@@ -675,7 +675,7 @@ type BasisRefusalCause
   | BasisLandedCurrencyUnrecorded { lot: product.inventory.InventoryLotIdentity }
   | BasisCurrencyMismatchAcrossLots { first: std.currency.CurrencyCode, other: std.currency.CurrencyCode }
 
-// THE BASIS RIDES THE SAME CARRIER, and typing it exposed a hole the bare Nat
+// THE BASIS RIDES THE SAME CARRIER, and typing it exposed a hole the bare std.nat.Nat
 // was hiding: a basis summed across lots landed in DIFFERENT currencies was
 // being added up as though the numbers were commensurable. product.inventory's
 // own sum_landed_cost refuses that case; so does this, with the same shape.

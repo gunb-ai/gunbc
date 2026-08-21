@@ -12,14 +12,14 @@ data absolute_outside: String = "/etc/passwd"
 fn is_refused(a: std.access.AccessDecision) -> Bool {
   match a {
     Permit => false
-    Deny { refusal: refusal } => true
+    std.access.Deny { refusal: refusal } => true
   }
 }
 
 fn is_admitted(a: std.access.AccessDecision) -> Bool {
   match a {
     Permit => true
-    Deny { refusal: refusal } => false
+    std.access.Deny { refusal: refusal } => false
   }
 }
 
@@ -39,7 +39,7 @@ test fn cli_run_repo_grant_refuses_absolute_outside_holds() -> Bool {
 
 test fn cli_run_repo_grant_refusal_is_located() -> Bool {
   match cli_run_repo_write_admissible(rel: escaping_rel) {
-    Deny { refusal: refusal } =>
+    std.access.Deny { refusal: refusal } =>
       refusal.location.profile == "EffectRequest"
         && refusal.location.subject == cli_run_repo_frame.name
         && refusal.location.action == "write"

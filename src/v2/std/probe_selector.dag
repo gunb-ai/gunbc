@@ -15,7 +15,7 @@ type DiagnosticCapabilityFacts {
 
 type HostSupplyProjectionInput {
   identity: String
-  isolation_is_vm: Bool
+  isolation_is_vm: v2.std.logic.Bool
 }
 
 type CostBudget {
@@ -38,7 +38,7 @@ type HostHealthProbeKind
 type ProbePrior
   = HostHealthPrior { hypothesis: HostHealthHypothesis }
   | CiAffectedPrior { affected: v2.std.change.AffectedSet }
-  | CiRerunPrior { frontier: List<Node> }
+  | CiRerunPrior { frontier: List<v2.std.node.Node> }
   | CiFailClosedPrior {}
 
 type ProbeCatalogEntry {
@@ -53,7 +53,7 @@ type ProbeCatalog<P> {
 }
 
 type ProbeResult {
-  passed: Bool
+  passed: v2.std.logic.Bool
 }
 
 type TemporalAggregator {
@@ -73,7 +73,7 @@ data host_health_hypothesis_standoff_cap_vddq: HostHealthHypothesis = HostHealth
 fn diagnostic_interface_kind_eq(
   left: DiagnosticInterfaceKind,
   right: DiagnosticInterfaceKind
-) -> Bool {
+) -> v2.std.logic.Bool {
   match left {
     DiagnosticSsh =>
       match right {
@@ -111,7 +111,7 @@ fn diagnostic_interface_kind_eq(
 fn diagnostic_capability_contains(
   available: DiagnosticCapabilityFacts,
   required: DiagnosticInterfaceKind
-) -> Bool {
+) -> v2.std.logic.Bool {
   contains(
     xs: available.interfaces,
     item: required,
@@ -122,7 +122,7 @@ fn diagnostic_capability_contains(
 fn diagnostic_all_requires_available(
   requires: List<DiagnosticInterfaceKind>,
   available: DiagnosticCapabilityFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   fold_list(
     xs: requires,
     empty: true,
@@ -153,7 +153,7 @@ fn probe_catalog_entry_requires(
 fn probe_catalog_entry_within_budget(
   entry: ProbeCatalogEntry,
   budget: CostBudget
-) -> Bool {
+) -> v2.std.logic.Bool {
   probe_catalog_entry_cost(entry: entry) <= budget.max_cost
 }
 
@@ -202,7 +202,7 @@ fn probe_discrimination_tied(
   right: ProbeCatalogEntry,
   left_coverage: Int,
   right_coverage: Int
-) -> Bool {
+) -> v2.std.logic.Bool {
   !probe_discrimination_beats_with_coverage(
     challenger: left,
     challenger_coverage: left_coverage,
@@ -222,7 +222,7 @@ fn probe_discrimination_beats_with_coverage(
   challenger_coverage: Int,
   incumbent: ProbeCatalogEntry,
   incumbent_coverage: Int
-) -> Bool {
+) -> v2.std.logic.Bool {
   let challenger_cost = probe_catalog_entry_cost(entry: challenger)
   let incumbent_cost = probe_catalog_entry_cost(entry: incumbent)
   challenger_coverage * incumbent_cost > incumbent_coverage * challenger_cost
@@ -284,7 +284,7 @@ fn probe_select_best_under_budget(
   }
 }
 
-fn ci_test_claim_coverage_for_frontier(claim: v2.std.verification.TestClaim, frontier: List<Node>) -> Int {
+fn ci_test_claim_coverage_for_frontier(claim: v2.std.verification.TestClaim, frontier: List<v2.std.node.Node>) -> Int {
   if test_claim_ci_selection_fail_closed(c: claim) {
     1
   } else {
@@ -385,7 +385,7 @@ fn probe_select(
 fn test_claim_selected_by_probe_catalog(
   claim: v2.std.verification.TestClaim,
   selected: List<ProbeCatalogEntry>
-) -> Bool {
+) -> v2.std.logic.Bool {
   probe_catalog_contains_label(
     selected: selected,
     label: test_claim_label(c: claim)
@@ -428,7 +428,7 @@ fn probe_select_affected_test_claims(
 
 fn probe_select_rerun_test_claims(
   roster: List<v2.std.verification.TestClaim>,
-  frontier: List<Node>,
+  frontier: List<v2.std.node.Node>,
   budget: CostBudget,
   available: DiagnosticCapabilityFacts
 ) -> List<v2.std.verification.TestClaim> {
@@ -443,14 +443,14 @@ fn probe_select_rerun_test_claims(
 fn temporal_aggregator_drainable(
   agg: TemporalAggregator,
   now_ms: Int
-) -> Bool {
+) -> v2.std.logic.Bool {
   agg.consecutive_failures >= agg.min_failures
     && (now_ms - agg.first_failed_at_ms) >= agg.min_down_ms
 }
 
 fn host_supply_projection_input(
   identity: String,
-  isolation_is_vm: Bool
+  isolation_is_vm: v2.std.logic.Bool
 ) -> HostSupplyProjectionInput {
   HostSupplyProjectionInput {
     identity: identity,
@@ -553,14 +553,14 @@ data host_health_probe_catalog: ProbeCatalog<String> = ProbeCatalog {
   entries: host_health_probe_catalog_entries
 }
 
-fn probe_catalog_entry_label_eq(entry: ProbeCatalogEntry, label: String) -> Bool {
+fn probe_catalog_entry_label_eq(entry: ProbeCatalogEntry, label: String) -> v2.std.logic.Bool {
   probe_catalog_entry_label(entry: entry) == label
 }
 
 fn probe_catalog_contains_label(
   selected: List<ProbeCatalogEntry>,
   label: String
-) -> Bool {
+) -> v2.std.logic.Bool {
   count_where(
     xs: selected,
     predicate: fn(entry) { probe_catalog_entry_label_eq(entry: entry, label: label) }
@@ -578,7 +578,7 @@ fn host_health_probe_canonical_entry(kind: HostHealthProbeKind) -> ProbeCatalogE
 fn probe_catalog_entry_matches_host_probe(
   entry: ProbeCatalogEntry,
   kind: HostHealthProbeKind
-) -> Bool {
+) -> v2.std.logic.Bool {
   let canonical = host_health_probe_canonical_entry(kind: kind)
   probe_catalog_entry_label_eq(
     entry: entry,
@@ -589,7 +589,7 @@ fn probe_catalog_entry_matches_host_probe(
 fn probe_catalog_contains_host_probe_kind(
   selected: List<ProbeCatalogEntry>,
   kind: HostHealthProbeKind
-) -> Bool {
+) -> v2.std.logic.Bool {
   count_where(
     xs: selected,
     predicate: fn(entry) {
@@ -611,7 +611,7 @@ fn probe_select_host_health(
   )
 }
 
-fn probe_ipmi_ecc_stress_unselectable_on_cloud_vm_holds() -> Bool {
+fn probe_ipmi_ecc_stress_unselectable_on_cloud_vm_holds() -> v2.std.logic.Bool {
   let selected = probe_select_host_health(
     prior: SuspectedCausePrior { hypothesis: host_health_hypothesis_standoff_cap_vddq },
     budget: CostBudget { max_cost: 100 },
@@ -623,7 +623,7 @@ fn probe_ipmi_ecc_stress_unselectable_on_cloud_vm_holds() -> Bool {
   )
 }
 
-fn probe_ipmi_ecc_stress_selectable_on_srv1_holds() -> Bool {
+fn probe_ipmi_ecc_stress_selectable_on_srv1_holds() -> v2.std.logic.Bool {
   let selected = probe_select_host_health(
     prior: SuspectedCausePrior { hypothesis: host_health_hypothesis_standoff_cap_vddq },
     budget: CostBudget { max_cost: 100 },
@@ -635,7 +635,7 @@ fn probe_ipmi_ecc_stress_selectable_on_srv1_holds() -> Bool {
   )
 }
 
-fn probe_degenerate_today_selects_docker_only_holds() -> Bool {
+fn probe_degenerate_today_selects_docker_only_holds() -> v2.std.logic.Bool {
   let selected = probe_select_host_health(
     prior: SuspectedCausePrior { hypothesis: host_health_hypothesis_reachability },
     budget: CostBudget { max_cost: 100 },
@@ -648,7 +648,7 @@ fn probe_degenerate_today_selects_docker_only_holds() -> Bool {
     )
 }
 
-fn probe_availability_conditioning_keystone_holds() -> Bool {
+fn probe_availability_conditioning_keystone_holds() -> v2.std.logic.Bool {
   probe_ipmi_ecc_stress_unselectable_on_cloud_vm_holds()
     && probe_ipmi_ecc_stress_selectable_on_srv1_holds()
 }

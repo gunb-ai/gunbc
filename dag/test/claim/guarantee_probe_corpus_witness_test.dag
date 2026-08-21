@@ -29,13 +29,13 @@ fn measured_v1_compile_harness_source() -> std.types.NonEmptyStr {
 fn witness_harness_revision(probe: gunbc.guarantee_measurement.GuaranteeProbeId) -> gunbc.guarantee_measurement.MeasurementRevision {
   let harness_source = measured_v1_compile_harness_source()
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       gunbc.guarantee_probe_corpus.v1_compile_harness_revision(
         probe: probe,
         expectation: row.expectation,
         harness_source: harness_source,
       )
-    Absent =>
+    v2.std.optional.Absent =>
       gunbc.guarantee_probe_corpus.v1_compile_harness_revision(
         probe: probe,
         expectation: gunbc.guarantee_probe_corpus.ExpectBlockingRefusal { diagnostic_class: "witness-harness-row-absent" as std.types.NonEmptyStr },
@@ -94,313 +94,313 @@ data sole_ctor_admitted_caller_source: String = "module probe_sealed_admitted_ca
 
 data sole_constructor_probe_scope_note: String = "UriValidatedScalar (#7790) enrolled on the guarantee probe corpus, not a parallel compile_dag_rust_emit_check fork. RED: cross-module record literal UriValidatedScalar { admitted_cp: 55296 } must refuse SoleConstructorViolation. Green control: cross-module mint-via-exported-fn through test.fixture.sole_constructor_sealed.definer — the sanctioned construction form that must stay zero-diagnostics; UriValidatedScalar's runtime witnesses carry the domain-specific legal paths. Known hole, expecting-red: cross-module uri_validated_scalar_construction(55296) still compile-accepts without blocking SoleConstructorViolation; runtime refusal is not compile evidence. sole_constructor_mint_fn_hole_still_compile_clean witnesses the hole until the wall extends."
 
-test fn identity_registry_is_unique() -> std.types.Bool {
+test fn identity_registry_is_unique() -> Bool {
   gunbc.guarantee_measurement.guarantee_class_ids_unique(ids: gunbc.guarantee_probe_corpus.guarantee_probe_class_ids())
     && gunbc.guarantee_measurement.guarantee_path_ids_unique(paths: gunbc.guarantee_probe_corpus.guarantee_probe_paths())
     && gunbc.guarantee_measurement.guarantee_probe_ids_unique(ids: gunbc.guarantee_probe_corpus.guarantee_probe_ids())
 }
 
-test fn duplicate_probe_id_reds_registry() -> std.types.Bool {
+test fn duplicate_probe_id_reds_registry() -> Bool {
   gunbc.guarantee_measurement.guarantee_probe_ids_unique(ids: gunbc.guarantee_probe_corpus.guarantee_probe_ids())
     && !gunbc.guarantee_measurement.guarantee_probe_ids_unique(ids: [gunbc.guarantee_probe_corpus.call_mislabel_red_probe, gunbc.guarantee_probe_corpus.call_mislabel_red_probe])
 }
 
-test fn probe_set_digest_is_stable() -> std.types.Bool {
+test fn probe_set_digest_is_stable() -> Bool {
   let a = gunbc.guarantee_measurement.probe_set_digest(probe_ids: gunbc.guarantee_probe_corpus.guarantee_probe_ids()) as String
   let b = gunbc.guarantee_measurement.probe_set_digest(probe_ids: gunbc.guarantee_probe_corpus.guarantee_probe_ids()) as String
   a == b && a != ""
 }
 
-test fn bare_none_scalar_red_refuses_blocking_field_admission() -> std.types.Bool {
+test fn bare_none_scalar_red_refuses_blocking_field_admission() -> Bool {
   let census = census_of(source: bare_none_scalar_red_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.bare_none_scalar_red_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: row)
         && match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census, wanted: "BareNoneNotAdmittedByFieldType") {
-          Present { value: n } => n == 1
-          Absent => false
+          v2.std.optional.Present { value: n } => n == 1
+          v2.std.optional.Absent => false
         }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn bare_none_collection_red_refuses_blocking_field_admission() -> std.types.Bool {
+test fn bare_none_collection_red_refuses_blocking_field_admission() -> Bool {
   let census = census_of(source: bare_none_collection_red_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.bare_none_collection_red_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: row)
         && match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census, wanted: "BareNoneNotAdmittedByFieldType") {
-          Present { value: n } => n == 2
-          Absent => false
+          v2.std.optional.Present { value: n } => n == 2
+          v2.std.optional.Absent => false
         }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn bare_none_green_control_has_zero_diagnostics() -> std.types.Bool {
+test fn bare_none_green_control_has_zero_diagnostics() -> Bool {
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.bare_none_green_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census_of(source: bare_none_green_source), row: row)
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn bare_none_generic_parameter_field_is_outside_the_wall_boundary() -> std.types.Bool {
+test fn bare_none_generic_parameter_field_is_outside_the_wall_boundary() -> Bool {
   let census = census_of(source: bare_none_generic_parameter_boundary_source)
   match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census, wanted: "BareNoneNotAdmittedByFieldType") {
-    Present { value: n } => n == 0
-    Absent => false
+    v2.std.optional.Present { value: n } => n == 0
+    v2.std.optional.Absent => false
   }
 }
 
-test fn bare_none_red_does_not_satisfy_green_expectation() -> std.types.Bool {
+test fn bare_none_red_does_not_satisfy_green_expectation() -> Bool {
   let census = census_of(source: bare_none_scalar_red_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.bare_none_scalar_red_probe) {
-    Present { value: red_row } =>
+    v2.std.optional.Present { value: red_row } =>
       match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.bare_none_green_probe) {
-        Present { value: green_row } =>
+        v2.std.optional.Present { value: green_row } =>
           gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: red_row)
             && !gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: green_row)
-        Absent => false
+        v2.std.optional.Absent => false
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn call_mislabel_red_refuses_blocking_call_argument_name_unknown() -> std.types.Bool {
+test fn call_mislabel_red_refuses_blocking_call_argument_name_unknown() -> Bool {
   let census = census_of(source: call_mislabel_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: row)
         && match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census, wanted: "CallArgumentNameUnknown") {
-          Present { value: n } => n >= 1
-          Absent => false
+          v2.std.optional.Present { value: n } => n >= 1
+          v2.std.optional.Absent => false
         }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn call_surplus_red_refuses_blocking_call_positional_surplus() -> std.types.Bool {
+test fn call_surplus_red_refuses_blocking_call_positional_surplus() -> Bool {
   let census = census_of(source: call_surplus_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_surplus_red_probe) {
-    Present { value: row } => gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: row)
-    Absent => false
+    v2.std.optional.Present { value: row } => gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: row)
+    v2.std.optional.Absent => false
   }
 }
 
-test fn call_deficit_red_refuses_blocking_call_positional_deficit() -> std.types.Bool {
+test fn call_deficit_red_refuses_blocking_call_positional_deficit() -> Bool {
   let census = census_of(source: call_deficit_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_deficit_red_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: row)
         && match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census, wanted: "CallPositionalDeficit") {
-          Present { value: n } => n >= 1
-          Absent => false
+          v2.std.optional.Present { value: n } => n >= 1
+          v2.std.optional.Absent => false
         }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn call_shape_green_control_has_zero_diagnostics() -> std.types.Bool {
+test fn call_shape_green_control_has_zero_diagnostics() -> Bool {
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_shape_green_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census_of(source: call_shape_green_source), row: row)
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn call_duplicate_red_refuses_blocking_call_argument_duplicate() -> std.types.Bool {
+test fn call_duplicate_red_refuses_blocking_call_argument_duplicate() -> Bool {
   let census = census_of(source: call_duplicate_red_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_duplicate_red_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: row)
         && match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census, wanted: "CallArgumentDuplicate") {
-          Present { value: n } => n >= 1
-          Absent => false
+          v2.std.optional.Present { value: n } => n >= 1
+          v2.std.optional.Absent => false
         }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn call_duplicate_mixed_positional_named_red_refuses_blocking_call_argument_duplicate() -> std.types.Bool {
+test fn call_duplicate_mixed_positional_named_red_refuses_blocking_call_argument_duplicate() -> Bool {
   let census = census_of(source: call_duplicate_mixed_red_source)
   match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census, wanted: "CallArgumentDuplicate") {
-    Present { value: n } => n >= 1
-    Absent => false
+    v2.std.optional.Present { value: n } => n >= 1
+    v2.std.optional.Absent => false
   }
 }
 
-test fn call_duplicate_named_then_positional_red_refuses_blocking_call_argument_duplicate() -> std.types.Bool {
+test fn call_duplicate_named_then_positional_red_refuses_blocking_call_argument_duplicate() -> Bool {
   let census = census_of(source: call_duplicate_named_then_positional_red_source)
   match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census, wanted: "CallArgumentDuplicate") {
-    Present { value: n } => n >= 1
-    Absent => false
+    v2.std.optional.Present { value: n } => n >= 1
+    v2.std.optional.Absent => false
   }
 }
 
-test fn call_duplicate_green_control_has_zero_diagnostics() -> std.types.Bool {
+test fn call_duplicate_green_control_has_zero_diagnostics() -> Bool {
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_duplicate_green_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census_of(source: call_duplicate_green_source), row: row)
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn call_duplicate_two_anonymous_positional_params_never_collide() -> std.types.Bool {
+test fn call_duplicate_two_anonymous_positional_params_never_collide() -> Bool {
   let census = census_of(source: call_duplicate_green_source)
   match gunbc.guarantee_probe_corpus.census_any_count_for_class(census: census, wanted: "CallArgumentDuplicate") {
-    Present { value: n } => n == 0
-    Absent => true
+    v2.std.optional.Present { value: n } => n == 0
+    v2.std.optional.Absent => true
   }
 }
 
-test fn call_duplicate_red_does_not_satisfy_mislabel_or_surplus_expectation() -> std.types.Bool {
+test fn call_duplicate_red_does_not_satisfy_mislabel_or_surplus_expectation() -> Bool {
   let census = census_of(source: call_duplicate_red_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_duplicate_red_probe) {
-    Present { value: dup_row } =>
+    v2.std.optional.Present { value: dup_row } =>
       match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe) {
-        Present { value: mislabel_row } =>
+        v2.std.optional.Present { value: mislabel_row } =>
           match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_surplus_red_probe) {
-            Present { value: surplus_row } =>
+            v2.std.optional.Present { value: surplus_row } =>
               gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: dup_row)
                 && !gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: mislabel_row)
                 && !gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: surplus_row)
-            Absent => false
+            v2.std.optional.Absent => false
           }
-        Absent => false
+        v2.std.optional.Absent => false
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn method_missing_red_refuses_blocking_method_not_found() -> std.types.Bool {
+test fn method_missing_red_refuses_blocking_method_not_found() -> Bool {
   let census = census_of(source: method_missing_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.method_missing_red_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: row)
         && match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census, wanted: "MethodNotFound") {
-          Present { value: n } => n >= 3
-          Absent => false
+          v2.std.optional.Present { value: n } => n >= 3
+          v2.std.optional.Absent => false
         }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn method_green_control_has_zero_diagnostics() -> std.types.Bool {
+test fn method_green_control_has_zero_diagnostics() -> Bool {
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.method_green_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census_of(source: method_green_source), row: row)
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn conformance_scalar_red_refuses_blocking_type_mismatch() -> std.types.Bool {
+test fn conformance_scalar_red_refuses_blocking_type_mismatch() -> Bool {
   let census = census_of(source: conformance_scalar_red_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.conformance_scalar_red_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: row)
         && match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census, wanted: "TypeMismatch") {
-          Present { value: n } => n >= 2
-          Absent => false
+          v2.std.optional.Present { value: n } => n >= 2
+          v2.std.optional.Absent => false
         }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn conformance_green_control_has_zero_diagnostics() -> std.types.Bool {
+test fn conformance_green_control_has_zero_diagnostics() -> Bool {
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.conformance_green_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census_of(source: conformance_green_source), row: row)
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn sole_constructor_forged_literal_red_refuses() -> std.types.Bool {
+test fn sole_constructor_forged_literal_red_refuses() -> Bool {
   let census = census_of(source: sole_ctor_forged_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.sole_ctor_forged_red_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: row)
         && match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census, wanted: "SoleConstructorViolation") {
-          Present { value: n } => n >= 1
-          Absent => false
+          v2.std.optional.Present { value: n } => n >= 1
+          v2.std.optional.Absent => false
         }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn sole_constructor_sanctioned_mint_green_control_has_zero_diagnostics() -> std.types.Bool {
+test fn sole_constructor_sanctioned_mint_green_control_has_zero_diagnostics() -> Bool {
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.sole_ctor_green_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census_of(source: sole_ctor_green_source), row: row)
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn sole_constructor_cross_module_cast_red_refuses() -> std.types.Bool {
+test fn sole_constructor_cross_module_cast_red_refuses() -> Bool {
   let census = census_of(source: sole_ctor_cast_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.sole_ctor_cast_red_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: row)
         && match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census, wanted: "SoleConstructorViolation") {
-          Present { value: n } => n >= 1
-          Absent => false
+          v2.std.optional.Present { value: n } => n >= 1
+          v2.std.optional.Absent => false
         }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn sole_constructor_unadmitted_caller_red_refuses() -> std.types.Bool {
+test fn sole_constructor_unadmitted_caller_red_refuses() -> Bool {
   let census = census_of(source: sole_ctor_unadmitted_caller_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.sole_ctor_unadmitted_caller_red_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: row)
         && match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census, wanted: "ConstructorCallAdmissionRefused") {
-          Present { value: n } => n >= 1
-          Absent => false
+          v2.std.optional.Present { value: n } => n >= 1
+          v2.std.optional.Absent => false
         }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn sole_constructor_admitted_caller_green_control_has_zero_diagnostics() -> std.types.Bool {
+test fn sole_constructor_admitted_caller_green_control_has_zero_diagnostics() -> Bool {
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.sole_ctor_admitted_caller_green_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census_of(source: sole_ctor_admitted_caller_source), row: row)
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn sole_constructor_mint_fn_hole_still_compile_clean() -> std.types.Bool {
+test fn sole_constructor_mint_fn_hole_still_compile_clean() -> Bool {
   let census = census_of(source: sole_ctor_mint_fn_hole_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.sole_ctor_mint_fn_hole_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       match census {
         CensusNotRunnable { cause: _ } => false
         CensusObserved { rows: rows } =>
           gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_blocking_rows(rows: rows)) == 0
             && !gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: row)
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn sole_constructor_forged_red_does_not_satisfy_green_expectation() -> std.types.Bool {
+test fn sole_constructor_forged_red_does_not_satisfy_green_expectation() -> Bool {
   let census = census_of(source: sole_ctor_forged_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.sole_ctor_forged_red_probe) {
-    Present { value: red_row } =>
+    v2.std.optional.Present { value: red_row } =>
       match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.sole_ctor_green_probe) {
-        Present { value: green_row } =>
+        v2.std.optional.Present { value: green_row } =>
           gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: red_row)
             && !gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: green_row)
-        Absent => false
+        v2.std.optional.Absent => false
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn migrated_receipt_joins_its_v1_compile_path() -> std.types.Bool {
+test fn migrated_receipt_joins_its_v1_compile_path() -> Bool {
   match gunbc.guarantee_probe_corpus.active_v1_compile_probe_row(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       let receipt = gunbc.guarantee_probe_corpus.build_v1_compile_receipt(
         row: row,
         census: census_of(source: call_mislabel_source),
@@ -410,14 +410,14 @@ test fn migrated_receipt_joins_its_v1_compile_path() -> std.types.Bool {
       gunbc.guarantee_probe_corpus.receipt_joins_v1_compile_path(receipt: receipt)
         && gunbc.guarantee_probe_corpus.receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
         && (receipt.path as String) == (gunbc.guarantee_probe_corpus.v1_compile_rust_path_id as String)
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn blocking_refusal_observation_is_a_verdict() -> std.types.Bool {
+test fn blocking_refusal_observation_is_a_verdict() -> Bool {
   let census = census_of(source: method_missing_source)
   match gunbc.guarantee_probe_corpus.active_v1_compile_probe_row(probe: gunbc.guarantee_probe_corpus.method_missing_red_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       let receipt = gunbc.guarantee_probe_corpus.build_v1_compile_receipt(
         row: row,
         census: census,
@@ -427,16 +427,16 @@ test fn blocking_refusal_observation_is_a_verdict() -> std.types.Bool {
       gunbc.guarantee_measurement.observed_is_verdict(o: receipt.observed)
         && gunbc.guarantee_probe_corpus.receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
         && match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census, wanted: "MethodNotFound") {
-          Present { value: n } => gunbc.guarantee_probe_corpus.observation_refused_count(o: receipt.observed) == n
-          Absent => false
+          v2.std.optional.Present { value: n } => gunbc.guarantee_probe_corpus.observation_refused_count(o: receipt.observed) == n
+          v2.std.optional.Absent => false
         }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn green_control_observation_is_accepted_clean() -> std.types.Bool {
+test fn green_control_observation_is_accepted_clean() -> Bool {
   match gunbc.guarantee_probe_corpus.active_v1_compile_probe_row(probe: gunbc.guarantee_probe_corpus.call_shape_green_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       let receipt = gunbc.guarantee_probe_corpus.build_v1_compile_receipt(
         row: row,
         census: census_of(source: call_shape_green_source),
@@ -445,11 +445,11 @@ test fn green_control_observation_is_accepted_clean() -> std.types.Bool {
       )
       gunbc.guarantee_probe_corpus.observation_is_clean(o: receipt.observed)
         && gunbc.guarantee_probe_corpus.receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn advisory_demotion_would_not_satisfy_blocking_expectation() -> std.types.Bool {
+test fn advisory_demotion_would_not_satisfy_blocking_expectation() -> Bool {
   let advisory_only = gunbc.compile_diagnostic_census.CensusObserved {
     rows: [{
       diagnostic_class: "CallArgumentNameUnknown" as std.types.NonEmptyStr,
@@ -463,12 +463,12 @@ test fn advisory_demotion_would_not_satisfy_blocking_expectation() -> std.types.
     expectation: gunbc.guarantee_probe_corpus.ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as std.types.NonEmptyStr },
   )
     && match gunbc.guarantee_probe_corpus.census_any_count_for_class(census: advisory_only, wanted: "CallArgumentNameUnknown") {
-      Present { value: n } => n >= 1
-      Absent => false
+      v2.std.optional.Present { value: n } => n >= 1
+      v2.std.optional.Absent => false
     }
 }
 
-test fn not_runnable_never_satisfies_expectation() -> std.types.Bool {
+test fn not_runnable_never_satisfies_expectation() -> Bool {
   let not_runnable = gunbc.compile_diagnostic_census.CensusNotRunnable { cause: "harness error" as std.types.NonEmptyStr }
   !gunbc.guarantee_probe_corpus.probe_expectation_holds(census: not_runnable, expectation: gunbc.guarantee_probe_corpus.ExpectZeroDiagnostics)
     && !gunbc.guarantee_probe_corpus.probe_expectation_holds(
@@ -477,67 +477,67 @@ test fn not_runnable_never_satisfies_expectation() -> std.types.Bool {
     )
 }
 
-test fn probe_ids_are_canonically_ordered() -> std.types.Bool {
+test fn probe_ids_are_canonically_ordered() -> Bool {
   gunbc.guarantee_probe_corpus.probe_ids_are_lexicographically_ordered(ids: gunbc.guarantee_probe_corpus.guarantee_probe_ids())
     && count(gunbc.guarantee_probe_corpus.guarantee_probe_id_strings()) == count(gunbc.guarantee_probe_corpus.guarantee_probe_ids())
 }
 
-test fn mislabel_red_does_not_satisfy_surplus_expectation() -> std.types.Bool {
+test fn mislabel_red_does_not_satisfy_surplus_expectation() -> Bool {
   let census = census_of(source: call_mislabel_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe) {
-    Present { value: mislabel_row } =>
+    v2.std.optional.Present { value: mislabel_row } =>
       match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_surplus_red_probe) {
-        Present { value: surplus_row } =>
+        v2.std.optional.Present { value: surplus_row } =>
           gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: mislabel_row)
             && !gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: surplus_row)
-        Absent => false
+        v2.std.optional.Absent => false
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn surplus_red_does_not_satisfy_mislabel_expectation() -> std.types.Bool {
+test fn surplus_red_does_not_satisfy_mislabel_expectation() -> Bool {
   let census = census_of(source: call_surplus_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_surplus_red_probe) {
-    Present { value: surplus_row } =>
+    v2.std.optional.Present { value: surplus_row } =>
       match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe) {
-        Present { value: mislabel_row } =>
+        v2.std.optional.Present { value: mislabel_row } =>
           gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: surplus_row)
             && !gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: mislabel_row)
-        Absent => false
+        v2.std.optional.Absent => false
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn green_control_fails_blocking_refusal_expectation() -> std.types.Bool {
+test fn green_control_fails_blocking_refusal_expectation() -> Bool {
   let census = census_of(source: call_shape_green_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_shape_green_probe) {
-    Present { value: green_row } =>
+    v2.std.optional.Present { value: green_row } =>
       match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe) {
-        Present { value: mislabel_row } =>
+        v2.std.optional.Present { value: mislabel_row } =>
           gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: green_row)
             && !gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: mislabel_row)
-        Absent => false
+        v2.std.optional.Absent => false
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn observation_fold_routes_blocking_refusal() -> std.types.Bool {
+test fn observation_fold_routes_blocking_refusal() -> Bool {
   let obs = gunbc.guarantee_probe_corpus.probe_observation_from_census(census: census_of(source: call_mislabel_source))
   gunbc.guarantee_probe_corpus.observation_is_blocking_refusal(o: obs, wanted: "CallArgumentNameUnknown" as std.types.NonEmptyStr)
     && !gunbc.guarantee_probe_corpus.observation_is_clean(o: obs)
 }
 
-test fn wrong_expectation_does_not_fabricate_clean_receipt() -> std.types.Bool {
+test fn wrong_expectation_does_not_fabricate_clean_receipt() -> Bool {
   let census = census_of(source: call_mislabel_source)
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe) {
-    Present { value: registry_row } =>
+    v2.std.optional.Present { value: registry_row } =>
       match gunbc.guarantee_probe_corpus.active_v1_compile_probe_row(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe) {
-        Present { value: row } =>
+        v2.std.optional.Present { value: row } =>
           match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_surplus_red_probe) {
-            Present { value: wrong_row } =>
+            v2.std.optional.Present { value: wrong_row } =>
               gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: registry_row)
                 && !gunbc.guarantee_probe_corpus.probe_row_expectation_holds(census: census, row: wrong_row)
                 && gunbc.guarantee_probe_corpus.observation_is_blocking_refusal(
@@ -550,15 +550,15 @@ test fn wrong_expectation_does_not_fabricate_clean_receipt() -> std.types.Bool {
                   subject_revision: gunbc.guarantee_probe_corpus.synthetic_program_subject_revision(source: call_mislabel_source),
                   harness_revision: witness_harness_revision(probe: row.probe),
                 ).observed) == false
-            Absent => false
+            v2.std.optional.Absent => false
           }
-        Absent => false
+        v2.std.optional.Absent => false
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn subject_revision_is_content_derived_not_fabricated_constant() -> std.types.Bool {
+test fn subject_revision_is_content_derived_not_fabricated_constant() -> Bool {
   let mislabel_subject = gunbc.guarantee_probe_corpus.synthetic_program_subject_revision(source: call_mislabel_source)
   let surplus_subject = gunbc.guarantee_probe_corpus.synthetic_program_subject_revision(source: call_surplus_source)
   let mislabel_harness = witness_harness_revision(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe)
@@ -566,12 +566,12 @@ test fn subject_revision_is_content_derived_not_fabricated_constant() -> std.typ
   mislabel_subject != surplus_subject && mislabel_harness != surplus_harness
 }
 
-test fn harness_revision_tracks_expectation_not_probe_id_alone() -> std.types.Bool {
+test fn harness_revision_tracks_expectation_not_probe_id_alone() -> Bool {
   let harness_source = measured_v1_compile_harness_source()
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe) {
-    Present { value: mislabel } =>
+    v2.std.optional.Present { value: mislabel } =>
       match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_shape_green_probe) {
-        Present { value: green } =>
+        v2.std.optional.Present { value: green } =>
           let mislabel_harness = gunbc.guarantee_probe_corpus.v1_compile_harness_revision(
             probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe,
             expectation: mislabel.expectation,
@@ -583,15 +583,15 @@ test fn harness_revision_tracks_expectation_not_probe_id_alone() -> std.types.Bo
             harness_source: harness_source,
           )
           mislabel_harness != green_harness
-        Absent => false
+        v2.std.optional.Absent => false
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn harness_revision_tracks_measured_source_not_symbol_spine() -> std.types.Bool {
+test fn harness_revision_tracks_measured_source_not_symbol_spine() -> Bool {
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       let measured = measured_v1_compile_harness_source()
       let from_measured = gunbc.guarantee_probe_corpus.v1_compile_harness_revision(
         probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe,
@@ -604,20 +604,20 @@ test fn harness_revision_tracks_measured_source_not_symbol_spine() -> std.types.
         harness_source: "compile_dag_diagnostic_census|probe_observation_from_census|probe_row_expectation_holds|probe_expectation_fold" as std.types.NonEmptyStr,
       )
       from_measured != from_symbol_spine
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn synthetic_revisions_use_content_fingerprint_not_git_revision() -> std.types.Bool {
+test fn synthetic_revisions_use_content_fingerprint_not_git_revision() -> Bool {
   match gunbc.guarantee_probe_corpus.synthetic_program_subject_revision(source: call_mislabel_source) {
     ContentFingerprint { digest: _ } => true
     GitRevision { commit: _ } => false
   }
 }
 
-test fn receipt_probe_set_digest_matches_executed_probe_set() -> std.types.Bool {
+test fn receipt_probe_set_digest_matches_executed_probe_set() -> Bool {
   match gunbc.guarantee_probe_corpus.active_v1_compile_probe_row(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       let executed = gunbc.guarantee_probe_corpus.executed_probe_ids_for_probe(probe: row.probe)
       let receipt = gunbc.guarantee_probe_corpus.build_v1_compile_receipt(
         row: row,
@@ -627,13 +627,13 @@ test fn receipt_probe_set_digest_matches_executed_probe_set() -> std.types.Bool 
       )
       (receipt.probe_set_digest as String) == (gunbc.guarantee_measurement.probe_set_digest(probe_ids: executed) as String)
         && !((receipt.probe_set_digest as String) == (gunbc.guarantee_measurement.probe_set_digest(probe_ids: gunbc.guarantee_probe_corpus.guarantee_probe_ids()) as String))
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn harness_revision_includes_compiler_pipeline_not_schema_only() -> std.types.Bool {
+test fn harness_revision_includes_compiler_pipeline_not_schema_only() -> Bool {
   match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       let full = measured_v1_compile_harness_source()
       let schema_only = measured_harness_source_material(
         paths: [
@@ -653,11 +653,11 @@ test fn harness_revision_includes_compiler_pipeline_not_schema_only() -> std.typ
         harness_source: schema_only,
       )
       from_full != from_schema
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn canonical_probe_rows_bind_class_path_and_probe() -> std.types.Bool {
+test fn canonical_probe_rows_bind_class_path_and_probe() -> Bool {
   count(gunbc.guarantee_probe_corpus.guarantee_probe_rows()) == count(gunbc.guarantee_probe_corpus.guarantee_probe_ids())
     && gunbc.guarantee_measurement.guarantee_probe_ids_unique(ids: gunbc.guarantee_probe_corpus.guarantee_probe_ids())
     && match gunbc.guarantee_probe_corpus.resolve_canonical_probe_row(wanted: gunbc.guarantee_probe_corpus.v2_frontier_red_probe) {
@@ -669,14 +669,14 @@ test fn canonical_probe_rows_bind_class_path_and_probe() -> std.types.Bool {
       ProbeRowDuplicate { wanted: _, matches: _ } => false
     }
     && match gunbc.guarantee_probe_corpus.active_probe_row(probe: gunbc.guarantee_probe_corpus.call_mislabel_red_probe) {
-      Present { value: row } =>
+      v2.std.optional.Present { value: row } =>
         (row.class as String) == (gunbc.guarantee_probe_corpus.call_label_surplus_class as String)
           && (row.path as String) == (gunbc.guarantee_probe_corpus.v1_compile_rust_path_id as String)
-      Absent => false
+      v2.std.optional.Absent => false
     }
 }
 
-test fn canonical_probe_resolution_refuses_duplicate_population() -> std.types.Bool {
+test fn canonical_probe_resolution_refuses_duplicate_population() -> Bool {
   gunbc.guarantee_probe_corpus.canonical_probe_row_resolution_refuses_duplicate_population()
 }
 
@@ -699,7 +699,7 @@ test fn canonical_probe_resolution_refuses_duplicate_population() -> std.types.B
 // arm. Membership here is not an exemption from evidence: each row still carries a discriminating
 // RED or a positive control executed by a test in this file.
 // The three arms must partition, or a row could claim two contradictory standings at once.
-test fn dark_suite_dispositions_cover_migrated_v1_probes() -> std.types.Bool {
+test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
   let dispositions = gunbc.guarantee_probe_corpus.guarantee_probe_dark_suite_dispositions()
   let disposition_probes: std.types.List<gunbc.guarantee_measurement.GuaranteeProbeId> = dispositions
     |> flat_map(d => match d {
@@ -749,7 +749,7 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> std.types.Bool {
     && every_v1_compile_probe_is_disposed_or_a_named_gap
 }
 
-test fn v2_frontier_identities_are_declared() -> std.types.Bool {
+test fn v2_frontier_identities_are_declared() -> Bool {
   (gunbc.guarantee_probe_corpus.v2_infer_eval_path_id as String) == "v2-infer-eval"
     && (gunbc.guarantee_probe_corpus.v2_self_grounding_frontier_class as String) == "v2-self-grounding-frontier"
     && (gunbc.guarantee_probe_corpus.v2_frontier_red_probe as String) == "v2-self-grounding-frontier-value-red"

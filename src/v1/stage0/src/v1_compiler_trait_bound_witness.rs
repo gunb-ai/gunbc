@@ -2,6 +2,7 @@
 // Source module: v1.compiler.trait_bound_witness
 
 use self::TraitBoundWitnessScope::*;
+pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -46,10 +47,10 @@ pub fn v1_call_forwarding_clone_bound_note() -> String {
 }
 
 pub fn v1_rc_match_scrutinee_clone_bound_param_names(
-    generic_param_names: Rc<Vec<String>>,
-    scrutinee_type_arg_names: Rc<Vec<String>>,
+    generic_param_names: Vec<String>,
+    scrutinee_type_arg_names: Vec<String>,
     rc_match_needs_deref: bool,
-) -> Rc<Vec<String>> {
+) -> Vec<String> {
     if !rc_match_needs_deref.clone() {
         Rc::new(vec![])
     } else {
@@ -121,9 +122,9 @@ pub fn v1_call_forwarding_bound_wrapper_param_names(
     callee_generic_param_names: Rc<Vec<String>>,
     callee_bound_param_names: Rc<Vec<String>>,
     arg_type_name: String,
-    arg_type_arg_names: Rc<Vec<String>>,
-    wrapper_generic_param_names: Rc<Vec<String>>,
-) -> Rc<Vec<String>> {
+    arg_type_arg_names: Vec<String>,
+    wrapper_generic_param_names: Vec<String>,
+) -> Vec<String> {
     {
         let bare_match = if (({
             let mut __found = false;
@@ -224,8 +225,8 @@ pub fn v1_call_forwarding_bound_wrapper_param_names(
 pub fn v1_equality_bound_param_name(
     left_type_name: String,
     right_type_name: String,
-    generic_param_names: Rc<Vec<String>>,
-) -> Rc<Vec<String>> {
+    generic_param_names: Vec<String>,
+) -> Vec<String> {
     if ((left_type_name.clone() == "".to_string()) || (right_type_name.clone() == "".to_string())) {
         Rc::new(vec![])
     } else {

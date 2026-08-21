@@ -639,7 +639,7 @@ fn explicit_witness_admission_cadence_executes(cadence: std.witness_admission.Wi
     FalsifierSubstrateLongLane => true
     BinWitnessWet => true
     DiscoverySelection => false
-    OfflineLocalRecipe => false
+    std.witness_admission.OfflineLocalRecipe => false
     FixtureExplicitRoster => false
     NoConsumer => false
   }

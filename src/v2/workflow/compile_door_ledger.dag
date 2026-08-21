@@ -18,7 +18,7 @@ type DoorLedgerRow {
 
 type CauseCount {
   reason: v2.std.node.Symbol
-  count: Int
+  count: v2.std.integer.Int
 }
 
 type ModuleGraphFacts {
@@ -41,9 +41,9 @@ type AdmissionDerivation
   = AdmissionRefused { reason: v2.std.node.Symbol }
   | AdmissionDerived { admission: v2.compiler.name_resolve.Admission }
 
-fn derive_module_admission(root: Node) -> AdmissionDerivation {
+fn derive_module_admission(root: v2.std.node.Node) -> AdmissionDerivation {
   match admission_from_module_root(root: root) {
-    Rejected { diagnostics: d } => AdmissionRefused { reason: d.head.reason }
+    v2.std.diagnostic.Rejected { diagnostics: d } => AdmissionRefused { reason: d.head.reason }
     Accepted { value: admission, diagnostics: _ } =>
       AdmissionDerived { admission: admission }
   }
@@ -57,7 +57,7 @@ fn ledger_read_witness(path: String) -> v2.compiler.source_authority.DagSourceRe
   v2.compiler.source_authority.DagSourceReadWitness {
     source: extdeps.communication.medium.Medium { carried: filesystem_read(path: path).content, fidelity: extdeps.communication.medium.Lossless },
     artifact: v2.std.artifact.Artifact {
-      kind: SourceFile,
+      kind: v2.std.artifact.SourceFile,
       id: symbol_intern_lexeme(lexeme: path),
       file_path: path
     },
@@ -82,7 +82,7 @@ fn door_ledger_row(subject_path: String, facts: ModuleGraphFacts) -> DoorLedgerR
     source_text: subject_text,
     file: symbol_intern_lexeme(lexeme: subject_path)
   ) {
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       DoorLedgerRow { module_path: subject_path, outcome: DoorRefused { reason: d.head.reason } }
     Accepted { value: parse_root, diagnostics: _ } =>
       match derive_module_admission(root: parse_root) {
@@ -102,7 +102,7 @@ fn door_ledger_row(subject_path: String, facts: ModuleGraphFacts) -> DoorLedgerR
           ) {
             Accepted { value: _, diagnostics: _ } =>
               DoorLedgerRow { module_path: subject_path, outcome: DoorCompiled }
-            Rejected { diagnostics: d } =>
+            v2.std.diagnostic.Rejected { diagnostics: d } =>
               DoorLedgerRow {
                 module_path: subject_path,
                 outcome: DoorRefused { reason: d.head.reason }
@@ -157,7 +157,7 @@ fn door_ledger_over_affected_set(pool_roots: List<String>) -> AffectedLedgerResu
 
 type CauseBumpState {
   rows: List<CauseCount>
-  found: Bool
+  found: v2.std.logic.Bool
 }
 
 fn cause_count_bump(counts: List<CauseCount>, reason: v2.std.node.Symbol) -> List<CauseCount> {
@@ -196,7 +196,7 @@ fn ledger_cause_histogram(rows: List<DoorLedgerRow>) -> List<CauseCount> {
   )
 }
 
-fn ledger_compiled_count(rows: List<DoorLedgerRow>) -> Int {
+fn ledger_compiled_count(rows: List<DoorLedgerRow>) -> v2.std.integer.Int {
   fold_list(
     xs: rows,
     empty: 0,
@@ -209,11 +209,11 @@ fn ledger_compiled_count(rows: List<DoorLedgerRow>) -> Int {
   )
 }
 
-fn ledger_refused_count(rows: List<DoorLedgerRow>) -> Int {
+fn ledger_refused_count(rows: List<DoorLedgerRow>) -> v2.std.integer.Int {
   length(xs: rows) - ledger_compiled_count(rows: rows)
 }
 
-fn ledger_cause_count(rows: List<DoorLedgerRow>, reason: v2.std.node.Symbol) -> Int {
+fn ledger_cause_count(rows: List<DoorLedgerRow>, reason: v2.std.node.Symbol) -> v2.std.integer.Int {
   fold_list(
     xs: ledger_cause_histogram(rows: rows),
     empty: 0,
@@ -223,7 +223,7 @@ fn ledger_cause_count(rows: List<DoorLedgerRow>, reason: v2.std.node.Symbol) -> 
   )
 }
 
-fn ledger_all_compiled(rows: List<DoorLedgerRow>) -> Bool {
+fn ledger_all_compiled(rows: List<DoorLedgerRow>) -> v2.std.logic.Bool {
   ledger_refused_count(rows: rows) == 0
 }
 
@@ -265,7 +265,7 @@ data known_frontier_causes: List<CauseOwnership> = [
 
 data list_find_first_promotion_note: String = "list_find_first is a short-circuiting element-returning find — the std/algebra gap beside any/filter/contains (which return Bool or the whole filtered list, never the first match with early-exit). Homed locally with ONE consumer (cause_ownership_lookup) per the facts-before-abstraction discipline: promote to v2.std.algebra when a second consumer inhabits it, not before. Short-circuit matters by the standing bare-minimum-cost ruling (2026-07-10): 'n is small here' is not time-stable — known_frontier_causes grows as causes are modeled — so the find returns on the first hit rather than folding the whole table."
 
-fn list_find_first<T>(xs: std.algebra.FreeMonoid<T>, predicate: fn(T) -> Bool) -> Optional<T> {
+fn list_find_first<T>(xs: std.algebra.FreeMonoid<T>, predicate: fn(T) -> v2.std.logic.Bool) -> v2.std.optional.Optional<T> {
   match xs {
     Empty => optional_absent()
     Cons { head: h, tail: t } =>
@@ -277,18 +277,18 @@ fn list_find_first<T>(xs: std.algebra.FreeMonoid<T>, predicate: fn(T) -> Bool) -
   }
 }
 
-fn cause_ownership_lookup(cause: v2.std.node.Symbol) -> Optional<CauseOwnership> {
+fn cause_ownership_lookup(cause: v2.std.node.Symbol) -> v2.std.optional.Optional<CauseOwnership> {
   list_find_first(xs: known_frontier_causes, predicate: fn(row) { row.cause == cause })
 }
 
-fn cause_is_attributed(cause: v2.std.node.Symbol) -> Bool {
+fn cause_is_attributed(cause: v2.std.node.Symbol) -> v2.std.logic.Bool {
   match cause_ownership_lookup(cause: cause) {
-    Present { value: _ } => true
-    Absent => false
+    v2.std.optional.Present { value: _ } => true
+    v2.std.optional.Absent => false
   }
 }
 
-fn all_refused_causes_attributed(rows: List<DoorLedgerRow>) -> Bool {
+fn all_refused_causes_attributed(rows: List<DoorLedgerRow>) -> v2.std.logic.Bool {
   fold_list(
     xs: ledger_cause_histogram(rows: rows),
     empty: true,

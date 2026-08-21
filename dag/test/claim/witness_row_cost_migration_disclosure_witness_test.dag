@@ -41,7 +41,7 @@ fn sample_row(name: String, eval_ms: std.nat.Nat) -> gunbc.witness_row_cost.Witn
     ),
     resolve: millisecond_to_nanosecond(m: millisecond(count: 1)),
     warm: millisecond_to_nanosecond(m: millisecond(count: eval_ms + 1)),
-    outcome: Done
+    outcome: std.observation.Done
   }
 }
 

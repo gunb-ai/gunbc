@@ -53,26 +53,26 @@ data legacy_uint128_spec: v2.std.integer.IntegerIntervalSpec = integer_interval(
   inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: v2.std.integer.DecimalNonZeroMagnitude { lead: NonZeroD3, tail: [D4, D0, D2, D8, D2, D3, D6, D6, D9, D2, D0, D9, D3, D8, D4, D6, D3, D4, D6, D3, D3, D7, D4, D6, D0, D7, D4, D3, D1, D7, D6, D8, D2, D1, D1, D4, D5, D5] })
 )
 
-fn bound_eq(a: v2.std.integer.IntegerIntervalBound, b: v2.std.integer.IntegerIntervalBound) -> Bool {
+fn bound_eq(a: v2.std.integer.IntegerIntervalBound, b: v2.std.integer.IntegerIntervalBound) -> v2.std.logic.Bool {
   match integer_interval_bound_compare(left: a, right: b) {
     Equal => true
     _ => false
   }
 }
 
-fn spec_eq(a: v2.std.integer.IntegerIntervalSpec, b: v2.std.integer.IntegerIntervalSpec) -> Bool {
+fn spec_eq(a: v2.std.integer.IntegerIntervalSpec, b: v2.std.integer.IntegerIntervalSpec) -> v2.std.logic.Bool {
   bound_eq(a: a.inclusive_min, b: b.inclusive_min)
     && bound_eq(a: a.inclusive_max, b: b.inclusive_max)
 }
 
-fn derived_matches_legacy(standard_integer_type: v2.std.integer.StandardIntegerType, legacy: v2.std.integer.IntegerIntervalSpec) -> Bool {
+fn derived_matches_legacy(standard_integer_type: v2.std.integer.StandardIntegerType, legacy: v2.std.integer.IntegerIntervalSpec) -> v2.std.logic.Bool {
   spec_eq(
     a: integer_standard_integer_type_interval_spec(standard_integer_type: standard_integer_type),
     b: legacy
   )
 }
 
-test fn interval_derivation_matches_all_legacy_spelled_bounds() -> Bool {
+test fn interval_derivation_matches_all_legacy_spelled_bounds() -> v2.std.logic.Bool {
   derived_matches_legacy(standard_integer_type: v2.std.integer.Int8, legacy: legacy_int8_spec)
     && derived_matches_legacy(standard_integer_type: v2.std.integer.Int16, legacy: legacy_int16_spec)
     && derived_matches_legacy(standard_integer_type: v2.std.integer.Int32, legacy: legacy_int32_spec)
@@ -90,11 +90,11 @@ data planted_wrong_int8_spec: v2.std.integer.IntegerIntervalSpec = integer_inter
   inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: v2.std.integer.DecimalNonZeroMagnitude { lead: NonZeroD1, tail: [D2, D8] })
 )
 
-test fn derivation_discriminates_planted_off_by_one() -> Bool {
+test fn derivation_discriminates_planted_off_by_one() -> v2.std.logic.Bool {
   !derived_matches_legacy(standard_integer_type: v2.std.integer.Int8, legacy: planted_wrong_int8_spec)
 }
 
-test fn pow2_digit_shapes_hold() -> Bool {
+test fn pow2_digit_shapes_hold() -> v2.std.logic.Bool {
   let one = integer_pow2_magnitude(exponent: 0)
   let one_two_eight = integer_pow2_magnitude(exponent: 7)
   let two_pow_127 = integer_pow2_magnitude(exponent: 127)
@@ -106,7 +106,7 @@ test fn pow2_digit_shapes_hold() -> Bool {
     && (length(xs: two_pow_127.tail) == 38)
 }
 
-test fn interval_min_not_above_max_for_all_standard_types() -> Bool {
+test fn interval_min_not_above_max_for_all_standard_types() -> v2.std.logic.Bool {
   fold_list(
     xs: integer_standard_integer_type_roster,
     empty: true,
@@ -117,20 +117,20 @@ test fn interval_min_not_above_max_for_all_standard_types() -> Bool {
   )
 }
 
-fn signedness_eq(a: std.integer.Signedness, b: std.integer.Signedness) -> Bool {
+fn signedness_eq(a: std.integer.Signedness, b: std.integer.Signedness) -> v2.std.logic.Bool {
   match a {
-    Signed => match b {
-      Signed => true
-      Unsigned => false
+    v2.std.integer.Signed => match b {
+      v2.std.integer.Signed => true
+      v2.std.integer.Unsigned => false
     }
-    Unsigned => match b {
-      Signed => false
-      Unsigned => true
+    v2.std.integer.Unsigned => match b {
+      v2.std.integer.Signed => false
+      v2.std.integer.Unsigned => true
     }
   }
 }
 
-fn standard_integer_type_eq(a: v2.std.integer.StandardIntegerType, b: v2.std.integer.StandardIntegerType) -> Bool {
+fn standard_integer_type_eq(a: v2.std.integer.StandardIntegerType, b: v2.std.integer.StandardIntegerType) -> v2.std.logic.Bool {
   signedness_eq(
     a: integer_standard_integer_type_signedness(standard_integer_type: a),
     b: integer_standard_integer_type_signedness(standard_integer_type: b)
@@ -138,7 +138,7 @@ fn standard_integer_type_eq(a: v2.std.integer.StandardIntegerType, b: v2.std.int
     && (integer_standard_integer_type_width_bits(standard_integer_type: a) == integer_standard_integer_type_width_bits(standard_integer_type: b))
 }
 
-test fn from_node_round_trips_all_standard_types() -> Bool {
+test fn from_node_round_trips_all_standard_types() -> v2.std.logic.Bool {
   fold_list(
     xs: integer_standard_integer_type_roster,
     empty: true,
@@ -146,7 +146,7 @@ test fn from_node_round_trips_all_standard_types() -> Bool {
       let node = integer_interval_spec_node(spec: integer_standard_integer_type_interval_spec(standard_integer_type: t))
       acc && match integer_standard_integer_type_from_node(node: node) {
         Accepted { value: decoded, diagnostics: _ } => standard_integer_type_eq(a: decoded, b: t)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
     }
   )

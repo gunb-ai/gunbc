@@ -61,14 +61,14 @@ fn float_special_rank(t: FloatSpecial) -> v2.std.nat.Nat {
   }
 }
 
-fn float_body_is_nan(x: FloatBody) -> Bool {
+fn float_body_is_nan(x: FloatBody) -> v2.std.logic.Bool {
   match x {
     NonFinite { tag: QuietNan } => true
     NonFinite { tag: SignalingNan } => true
     _ => false
   }
 }
-fn float_finite_magnitude_zero(e: v2.std.nat.Nat, f: v2.std.nat.Nat) -> Bool {
+fn float_finite_magnitude_zero(e: v2.std.nat.Nat, f: v2.std.nat.Nat) -> v2.std.logic.Bool {
   is_zero(e) && is_zero(f)
 }
 fn float_body_compare_semantic_total(a: FloatBody, b: FloatBody) -> std.algebra.Ordering {

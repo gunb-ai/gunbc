@@ -51,7 +51,7 @@ data ts_facts_boolean: TsBooleanPrimitiveFacts = TsBooleanPrimitiveFacts {
   encoding: ^ts_repr_boolean_ecma_boolean,
 }
 
-data ts_bool_grounding: std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra
+data ts_bool_grounding: std.algebra.BooleanAlgebra<v2.std.logic.Bool> = v2.std.logic.bool_boolean_algebra
 
 data ts_numeric_facts_catalog: List<TsEcma262NumericPrimitiveFactsUnion> = [
   TsNumericFactsNumber { facts: ts_facts_number },
@@ -865,7 +865,7 @@ fn ts_grammar_relation_row_token_edges_witness(row: v2.std.node.Node) -> v2.std.
             }
           }
       }
-    Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
+    v2.std.diagnostic.Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
   }
 }
 
@@ -1920,7 +1920,7 @@ fn ts_fn_add_grammar() -> v2.std.grammar.ParseGrammar {
   v2.std.grammar.ModeledGrammar { root: ts_fn_add_grammar_root() }
 }
 
-fn ts_fn_add_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn ts_fn_add_lex_token_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   sym == ^ts_token_kw_function ||
     sym == ^ts_token_kw_return ||
     sym == ^ts_token_ident ||
@@ -1935,7 +1935,7 @@ fn ts_fn_add_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
     sym == ^ts_token_semicolon
 }
 
-fn ts_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn ts_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   sym == ts_facts_boolean.surface_spelling ||
   v2.std.algebra.fold_list(
     xs: ts_numeric_facts_catalog,
@@ -2258,7 +2258,7 @@ fn ts_lex() -> v2.std.compilers.lexing.LexRules {
   v2.std.compilers.lexing.ModeledLexRules { root: ts_lex_rules() }
 }
 
-fn ts_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn ts_lex_token_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.compilers.lexing.lex_rule_set_token_class_member(rules: ts_lex_rules(), token_class: sym)
 }
 
@@ -3126,28 +3126,28 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
                                     axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
                                     value: ts_inhabitant_atom(id: ts_facts_string.encoding)
                                   )
-                                Rejected { diagnostics: d } =>
+                                v2.std.diagnostic.Rejected { diagnostics: d } =>
                                   v2.std.diagnostic.Rejected { diagnostics: d }
                               }
-                            Rejected { diagnostics: d } =>
+                            v2.std.diagnostic.Rejected { diagnostics: d } =>
                               v2.std.diagnostic.Rejected { diagnostics: d }
                           }
-                        Rejected { diagnostics: d } =>
+                        v2.std.diagnostic.Rejected { diagnostics: d } =>
                           v2.std.diagnostic.Rejected { diagnostics: d }
                       }
-                    Rejected { diagnostics: d } =>
+                    v2.std.diagnostic.Rejected { diagnostics: d } =>
                       v2.std.diagnostic.Rejected { diagnostics: d }
                   }
-                Rejected { diagnostics: d } =>
+                v2.std.diagnostic.Rejected { diagnostics: d } =>
                   v2.std.diagnostic.Rejected { diagnostics: d }
               }
-            Rejected { diagnostics: d } =>
+            v2.std.diagnostic.Rejected { diagnostics: d } =>
               v2.std.diagnostic.Rejected { diagnostics: d }
           }
-        Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           v2.std.diagnostic.Rejected { diagnostics: d }
       }
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }

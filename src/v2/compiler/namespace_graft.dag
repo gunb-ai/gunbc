@@ -22,31 +22,31 @@ fn namespace_graft_module_root_edge_disposition(name: v2.std.node.Symbol) -> Mod
   }
 }
 
-fn namespace_graft_is_metadata_edge(name: v2.std.node.Symbol) -> Bool {
+fn namespace_graft_is_metadata_edge(name: v2.std.node.Symbol) -> v2.std.logic.Bool {
   dag_surface_module_header_metadata_edge(name: name)
 }
 
-fn namespace_graft_is_module_shell(root: v2.std.node.Node) -> Bool {
+fn namespace_graft_is_module_shell(root: v2.std.node.Node) -> v2.std.logic.Bool {
   match parse_production_emitted_identity_optional(node: root) {
-    Present { value: id } => id == ^dag_surface_module
-    Absent => false
+    v2.std.optional.Present { value: id } => id == ^dag_surface_module
+    v2.std.optional.Absent => false
   }
 }
 
-fn namespace_graft_parse_projection_edge(name: v2.std.node.Symbol) -> Bool {
+fn namespace_graft_parse_projection_edge(name: v2.std.node.Symbol) -> v2.std.logic.Bool {
   (name == ^grammar_production_identity_node_projection)
     || (name == ^grammar_production_captured_node_projection)
     || ends_with(s: symbol_lexeme(sym: name), suffix: "_node_projection")
 }
 
-fn namespace_graft_is_module_header_subtree(node: v2.std.node.Node) -> Bool {
+fn namespace_graft_is_module_header_subtree(node: v2.std.node.Node) -> v2.std.logic.Bool {
   match parse_production_emitted_identity_optional(node: node) {
-    Present { value: id } => id == ^dag_surface_module_header
-    Absent => false
+    v2.std.optional.Present { value: id } => id == ^dag_surface_module_header
+    v2.std.optional.Absent => false
   }
 }
 
-fn namespace_graft_is_transparent_sequence_spine(node: v2.std.node.Node) -> Bool {
+fn namespace_graft_is_transparent_sequence_spine(node: v2.std.node.Node) -> v2.std.logic.Bool {
   match node.kind {
     TypeNode { connective: Conj } =>
       if count(node.children) == 0 {
@@ -57,7 +57,7 @@ fn namespace_graft_is_transparent_sequence_spine(node: v2.std.node.Node) -> Bool
             false
           } else {
             match e.label {
-              Named { name: sym } => namespace_graft_parse_projection_edge(name: sym)
+              v2.std.node.Named { name: sym } => namespace_graft_parse_projection_edge(name: sym)
               Positional => true
             }
           }
@@ -69,7 +69,7 @@ fn namespace_graft_is_transparent_sequence_spine(node: v2.std.node.Node) -> Bool
 
 fn namespace_graft_collect_body_edge(acc: List<v2.std.node.Edge>, edge: v2.std.node.Edge) -> List<v2.std.node.Edge> {
   match edge.label {
-    Named { name: sym } =>
+    v2.std.node.Named { name: sym } =>
       if namespace_graft_is_metadata_edge(name: sym) {
         acc
       } else if namespace_graft_parse_projection_edge(name: sym) {
@@ -98,7 +98,7 @@ fn namespace_graft_collect_body_edges_from_node(node: v2.std.node.Node) -> List<
   })
 }
 
-fn namespace_graft_is_graft_candidate(root: v2.std.node.Node) -> Bool {
+fn namespace_graft_is_graft_candidate(root: v2.std.node.Node) -> v2.std.logic.Bool {
   if namespace_graft_already_grafted(root: root) {
     false
   } else if namespace_graft_is_module_shell(root: root) {
@@ -123,7 +123,7 @@ fn namespace_graft_collect_body_edges(root: v2.std.node.Node) -> List<v2.std.nod
 // A module with no declarations at all (header only) keeps its legitimate empty
 // body: the discriminant is declaration presence, not body emptiness alone. This
 // guard covers total dissolution; partial-drop fidelity is the deeper graft repair.
-fn namespace_graft_subtree_contains_atom(n: v2.std.node.Node, sym: v2.std.node.Symbol) -> Bool {
+fn namespace_graft_subtree_contains_atom(n: v2.std.node.Node, sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
       if id == sym {
@@ -135,7 +135,7 @@ fn namespace_graft_subtree_contains_atom(n: v2.std.node.Node, sym: v2.std.node.S
   }
 }
 
-fn namespace_graft_children_contain_atom(n: v2.std.node.Node, sym: v2.std.node.Symbol) -> Bool {
+fn namespace_graft_children_contain_atom(n: v2.std.node.Node, sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   fold(n.children, init: false, f: fn(found, e) {
     if found {
       true
@@ -145,7 +145,7 @@ fn namespace_graft_children_contain_atom(n: v2.std.node.Node, sym: v2.std.node.S
   })
 }
 
-fn namespace_graft_body_dissolved(root: v2.std.node.Node, body_edges: List<v2.std.node.Edge>) -> Bool {
+fn namespace_graft_body_dissolved(root: v2.std.node.Node, body_edges: List<v2.std.node.Edge>) -> v2.std.logic.Bool {
   if count(body_edges) == 0 {
     namespace_graft_subtree_contains_atom(
       n: namespace_graft_unwrap_module_working_root(root: root),
@@ -169,7 +169,7 @@ fn namespace_graft_wrap_segment(segment: v2.std.node.Symbol, inner: v2.std.node.
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: Named { name: segment },
+        label: v2.std.node.Named { name: segment },
         target: inner
       }
     ],
@@ -212,7 +212,7 @@ fn namespace_graft_wrap_module_shell(captured: v2.std.node.Node) -> v2.std.node.
   }
 }
 
-fn namespace_graft_has_explicit_braced_container(root: v2.std.node.Node, first_segment: v2.std.node.Symbol) -> Bool {
+fn namespace_graft_has_explicit_braced_container(root: v2.std.node.Node, first_segment: v2.std.node.Symbol) -> v2.std.logic.Bool {
   let working = namespace_graft_unwrap_module_working_root(root: root)
   fold(
     working.children,
@@ -222,7 +222,7 @@ fn namespace_graft_has_explicit_braced_container(root: v2.std.node.Node, first_s
         true
       } else {
         match edge.label {
-          Named { name: sym } =>
+          v2.std.node.Named { name: sym } =>
             if namespace_graft_is_metadata_edge(name: sym) {
               false
             } else if sym == first_segment {
@@ -240,12 +240,12 @@ fn namespace_graft_has_explicit_braced_container(root: v2.std.node.Node, first_s
   )
 }
 
-fn namespace_graft_dual_position_refused(root: v2.std.node.Node) -> Bool {
+fn namespace_graft_dual_position_refused(root: v2.std.node.Node) -> v2.std.logic.Bool {
   if !namespace_graft_is_graft_candidate(root: root) {
     false
   } else {
     match qualified_name_from_module_node(root: root) {
-      Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
       Accepted { value: qn, diagnostics: _ } =>
         match qn {
           Empty => false
@@ -269,7 +269,7 @@ fn module_header_containment_graft(root: v2.std.node.Node) -> Outcome<v2.std.nod
     outcome_accepted(value: root)
   } else {
     match qualified_name_from_module_node(root: root) {
-      Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+      v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
       Accepted { value: qn, diagnostics: _ } =>
         match qn {
           Empty =>

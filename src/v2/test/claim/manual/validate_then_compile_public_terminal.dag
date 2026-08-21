@@ -15,7 +15,7 @@ data rust_target_model_stub: v2.std.compilers.target_model.TargetModel = v2.std.
   authority_source_text: std.algebra.Empty,
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
-fn claim_symbol_node(s: v2.std.node.Symbol) -> Node {
+fn claim_symbol_node(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     children: [],
@@ -23,7 +23,7 @@ fn claim_symbol_node(s: v2.std.node.Symbol) -> Node {
 }
 }
 
-fn always_reject_lens_gate(_tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+fn always_reject_lens_gate(_tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>> {
   outcome_rejected(
     compile_lens_gate_rejected_diagnostic(
       at: port_locus(port: ^rejecting_lens_gate_at)
@@ -33,7 +33,7 @@ fn always_reject_lens_gate(_tree: v2.compiler.inferred_tree.InferredTree) -> v2.
 
 data rejecting_lens: v2.compiler.compile.CompileLens = v2.compiler.compile.CompileLens { gate: always_reject_lens_gate }
 
-fn grounding_sanity_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+fn grounding_sanity_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>> {
   outcome_accepted(v2.std.witness.Holds { value: tree.root })
 }
 
@@ -59,7 +59,7 @@ fn claim_empty_lenses_matches_compile_core_outcome(
   actual: v2.std.diagnostic.Outcome<v2.compiler.compile.Validated<v2.compiler.compile.CompileOutput>>
 ) -> Bool {
   match actual {
-    Rejected { diagnostics: r } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } =>
       r.head.reason != ^compile_lens_gate_rejected
     Accepted { value: v, diagnostics: _ } => match v.value {
       TranslateResult { source: _ } => true
@@ -72,7 +72,7 @@ fn claim_rejecting_lens_is_compile_lens_gate_rejected(
   actual: v2.std.diagnostic.Outcome<v2.compiler.compile.Validated<v2.compiler.compile.CompileOutput>>
 ) -> Bool {
   match actual {
-    Rejected { diagnostics: r } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } =>
       r.head.reason == ^compile_lens_gate_rejected
     Accepted { value: _, diagnostics: _ } => false
   }
@@ -94,7 +94,7 @@ data claim_empty_lenses_skips_gate: v2.std.verification.TestClaim = v2.std.verif
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
-fn claim_validate_then_compile_skips_gate_passes() -> Node {
+fn claim_validate_then_compile_skips_gate_passes() -> v2.std.node.Node {
   if claim_empty_lenses_matches_compile_core_outcome(
     actual: anchor_validate_then_compile_empty_lenses()
   ) {
@@ -116,7 +116,7 @@ data claim_rejecting_lens_blocks_before_compile: v2.std.verification.TestClaim =
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
-fn claim_rejecting_lens_blocks_passes() -> Node {
+fn claim_rejecting_lens_blocks_passes() -> v2.std.node.Node {
   if claim_rejecting_lens_is_compile_lens_gate_rejected(
     actual: anchor_validate_then_compile_rejecting_lens()
   ) {

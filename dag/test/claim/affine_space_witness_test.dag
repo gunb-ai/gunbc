@@ -249,7 +249,7 @@ fn witness_dot_and_cross_are_exact_and_dimensioned() -> Bool {
        }
 }
 
-fn dot_is(a: std.affine_space.Vector3, b: std.affine_space.Vector3, expected: Int) -> Bool {
+fn dot_is(a: std.affine_space.Vector3, b: std.affine_space.Vector3, expected: std.integer.Int) -> Bool {
   match dot3(registry: test.claim.affine_space_witness.mm_registry(), a: a, b: b) {
     SpatialFrameRefused { refusal: _ } => false
     SpatialArithmeticRefused { cause: _ } => false
@@ -257,7 +257,7 @@ fn dot_is(a: std.affine_space.Vector3, b: std.affine_space.Vector3, expected: In
   }
 }
 
-fn area_vector_equals(a: std.euclidean_geometry.AreaVector3, x: Int, y: Int, z: Int) -> Bool {
+fn area_vector_equals(a: std.euclidean_geometry.AreaVector3, x: std.integer.Int, y: std.integer.Int, z: std.integer.Int) -> Bool {
   signed_square_millimeter_count(m: a.x) == x
     && signed_square_millimeter_count(m: a.y) == y
     && signed_square_millimeter_count(m: a.z) == z

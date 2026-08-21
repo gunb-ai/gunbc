@@ -12,17 +12,17 @@ fn real_ingest_from_manifest() -> v2.compiler.source_authority.SourceRootIngest 
   }
 }
 
-test fn program_assembly_real_ingest_module_roots_parse_holds() -> Bool {
+test fn program_assembly_real_ingest_module_roots_parse_holds() -> v2.std.logic.Bool {
   match module_roots_from_source_root_ingest(
     ingest: real_ingest_from_manifest(),
     lm: dag_language_model()
   ) {
     Accepted { value: roots, diagnostics: _ } => length(xs: roots) == 2
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn program_assembly_real_ingest_host_manifest_receipt_holds() -> Bool {
+test fn program_assembly_real_ingest_host_manifest_receipt_holds() -> v2.std.logic.Bool {
   source_root_coverage_is_complete(coverage: host_source_root_ingest_coverage_receipt.coverage)
     && (host_source_root_ingest_coverage_receipt.ingest_read_count == 2)
     && (host_source_root_ingest_coverage_receipt.produced_row_count == 2)
@@ -30,7 +30,7 @@ test fn program_assembly_real_ingest_host_manifest_receipt_holds() -> Bool {
     && (string_is_empty(s: host_source_root_ingest_content_hash) == false)
 }
 
-test fn program_assembly_real_ingest_validate_module_roots_red_on_parsed_roots() -> Bool {
+test fn program_assembly_real_ingest_validate_module_roots_red_on_parsed_roots() -> v2.std.logic.Bool {
   match module_roots_from_source_root_ingest(
     ingest: real_ingest_from_manifest(),
     lm: dag_language_model()
@@ -38,8 +38,8 @@ test fn program_assembly_real_ingest_validate_module_roots_red_on_parsed_roots()
     Accepted { value: roots, diagnostics: _ } =>
       match validate_module_roots(roots: roots) {
         Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

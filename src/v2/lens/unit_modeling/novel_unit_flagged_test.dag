@@ -3,26 +3,26 @@ module v2.test.lens_unit_modeling.novel_unit_flagged
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data int_leaf_target_novel: Node = v2.std.node.Node {
+data int_leaf_target_novel: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_binding_type_int } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data novel_unit_input: Node = v2.std.node.Node {
+data novel_unit_input: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
-      label: Named { name: ^throughput },
+      label: v2.std.node.Named { name: ^throughput },
       target: int_leaf_target_novel
     }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-test fn novel_unit_flagged_holds() -> Bool {
+test fn novel_unit_flagged_holds() -> v2.std.logic.Bool {
   match unit_modeling_gate(node: novel_unit_input) {
-    Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_blocked_pending_carrier
+    v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_blocked_pending_carrier
     Accepted { value: _, diagnostics: _ } => false
   }
 }

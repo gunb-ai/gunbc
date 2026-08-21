@@ -41,7 +41,7 @@ test fn probe_wire_unknown_failure_is_transport_unavailable_never_reachable() ->
 // Reach verdict projection: transport-unavailable and authentication-refused stay
 // DISTINCT outcome arms even though both project Inaccessible — the distinction lives on
 // the receipt, and this witness pins that both arms exist separately AND project the
-// same fail-closed verdict (neither is ever Converged or Absent).
+// same fail-closed verdict (neither is ever std.upsert_decision.Converged or Absent).
 test fn reach_projection_covers_all_arms() -> Bool {
   reach_verdict_from_outcome(o: gunbc.host_reach_identity_probe.ProbeReachable { observed_short_hostname: "srv1", observed_principal: "gunbc-fleet" }) == std.upsert_decision.Converged
     && reach_verdict_from_outcome(o: gunbc.host_reach_identity_probe.ProbeTransportUnavailable { cause: "timeout" }) == Inaccessible
@@ -51,7 +51,7 @@ test fn reach_projection_covers_all_arms() -> Bool {
 }
 
 // Identity deduction: reachable-and-matching converges; reachable-but-different is
-// Drifted (the divergence SetHostnameCas corrects); unreachable/unauthenticated cannot
+// std.upsert_decision.Drifted (the divergence SetHostnameCas corrects); unreachable/unauthenticated cannot
 // say (Inaccessible); a host-key mismatch is Conflict — the machine answering may not be
 // the enrolled host, so its hostname must never launder into an identity observation.
 test fn identity_projection_discriminates_match_drift_and_wrong_machine() -> Bool {
@@ -69,7 +69,7 @@ test fn identity_projection_discriminates_match_drift_and_wrong_machine() -> Boo
 // Join 4 (operator verdict): the executed probe run's receipts ARE the registry now —
 // the producers answer Present for a probed host, and the verdicts REFLECT the run:
 // srv1 crossed command reach on run 31333011288 (gunbc-fleet principal), so its cells
-// read Converged from the SAME receipt; coverage GREW from the executed run, not from
+// read std.upsert_decision.Converged from the SAME receipt; coverage GREW from the executed run, not from
 // wiring. A host outside the registry still answers none.
 test fn committed_probe_receipts_feed_producers_and_grow_coverage() -> Bool {
   match host_reach_identity_probe_receipt_for(host: operator_host_srv1) {

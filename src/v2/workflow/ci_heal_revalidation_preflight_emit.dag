@@ -42,14 +42,14 @@ fn ci_heal_revalidation_run_subject_mismatch_arm() -> v2.std.orchestration.Pipel
 fn ci_heal_revalidation_expected_arm() -> v2.std.orchestration.Pipeline {
   v2.std.orchestration.Pipeline {
     steps: [
-      Let {
+      v2.std.orchestration.Let {
         name: "ACTUAL_HEAD",
         value: v2.std.orchestration.ExprCmdSubst {
           callee: "git",
           args: extdeps.git.shape_git_rev_parse_head_args()
         }
       },
-      If {
+      v2.std.orchestration.If {
         cond: v2.std.orchestration.Not {
           inner: v2.std.orchestration.StrEq {
             lhs: "\"$RUN_SUBJECT_HEAD\"",
@@ -59,7 +59,7 @@ fn ci_heal_revalidation_expected_arm() -> v2.std.orchestration.Pipeline {
         then_: ci_heal_revalidation_run_subject_mismatch_arm(),
         else_: Absent
       },
-      If {
+      v2.std.orchestration.If {
         cond: v2.std.orchestration.Not {
           inner: v2.std.orchestration.StrEq {
             lhs: "\"$ACTUAL_HEAD\"",
@@ -78,15 +78,15 @@ fn ci_heal_revalidation_expected_arm() -> v2.std.orchestration.Pipeline {
 fn ci_heal_revalidation_preflight_intent() -> v2.std.orchestration.Pipeline {
   v2.std.orchestration.Pipeline {
     steps: [
-      Let {
+      v2.std.orchestration.Let {
         name: "EXPECTED_HEALED_SHA",
         value: v2.std.orchestration.ExprLit { spelling: ci_heal_expected_head_input_expr }
       },
-      Let {
+      v2.std.orchestration.Let {
         name: "RUN_SUBJECT_HEAD",
         value: v2.std.orchestration.ExprLit { spelling: ci_heal_run_subject_head_expr }
       },
-      If {
+      v2.std.orchestration.If {
         cond: v2.std.orchestration.StrNonempty { operand: "\"$EXPECTED_HEALED_SHA\"" },
         then_: ci_heal_revalidation_expected_arm(),
         else_: Absent

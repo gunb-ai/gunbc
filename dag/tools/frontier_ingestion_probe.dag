@@ -19,7 +19,7 @@ fn all_reasons(d: v2.std.diagnostic.NonEmptyDiagnostics) -> List<v2.std.node.Sym
   })
 }
 
-fn reasons_contain(reasons: List<v2.std.node.Symbol>, sym: v2.std.node.Symbol) -> Bool {
+fn reasons_contain(reasons: List<v2.std.node.Symbol>, sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(xs: reasons, empty: false, cons: fn(acc, r) {
     acc || (r == sym)
   })
@@ -58,7 +58,7 @@ fn frontend_stage_label(s: FrontendStage) -> String {
 // compiling and quietly answering false for every comparison involving it. Enumerated, the
 // addition fails to typecheck at all thirty-six positions, so the new stage cannot be introduced
 // without deciding its equality against each existing one.
-fn frontend_stage_eq(a: FrontendStage, b: FrontendStage) -> Bool {
+fn frontend_stage_eq(a: FrontendStage, b: FrontendStage) -> v2.std.logic.Bool {
   match a {
     LexRefused =>
       match b {
@@ -139,7 +139,7 @@ type FrontendWorld {
 
 fn prepare_frontend_world() -> v2.std.diagnostic.Outcome<FrontendWorld> {
   match v2.compiler.parse.prepare_grammar(grammar: v2.extdeps.languages.dag.dag_grammar()) {
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     Accepted { value: prepared, diagnostics: residue } =>
       v2.std.diagnostic.Accepted {
         value: FrontendWorld {
@@ -162,18 +162,18 @@ fn classify_after_lex(
     prepared: prepared,
     validation_residue: residue
   ) {
-    Rejected { diagnostics: _ } => ParseRefused
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ParseRefused
     Accepted { value: parsed, diagnostics: _ } =>
       match v2.compiler.normalize.normalize(parse_tree: gunbc.tools.frontier_ingestion_probe.artifact_tree(artifact: parsed)) {
         Accepted { value: _, diagnostics: _ } => NormalizeAccepted
-        Rejected { diagnostics: d } => classify_normalize_diagnostics(d: d)
+        v2.std.diagnostic.Rejected { diagnostics: d } => classify_normalize_diagnostics(d: d)
       }
   }
 }
 
 fn classify_source_in(world: FrontendWorld, source: String) -> FrontendStage {
   match v2.compiler.tokenize.lex_walk_artifact(source: source, file: ^frontier_probe, rules: world.lex_rules) {
-    Rejected { diagnostics: _ } => LexRefused
+    v2.std.diagnostic.Rejected { diagnostics: _ } => LexRefused
     Accepted { value: a, diagnostics: _ } =>
       classify_after_lex(prepared: world.prepared, residue: world.validation_residue, artifact: a)
   }
@@ -183,11 +183,11 @@ data single_source_laziness_note: String = "classify_source PREPARES LAZILY, and
 
 fn classify_source(source: String) -> v2.std.diagnostic.Outcome<FrontendStage> {
   match v2.compiler.tokenize.lex_walk_artifact(source: source, file: ^frontier_probe, rules: v2.extdeps.languages.dag.dag_lex_rules()) {
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       v2.std.diagnostic.Accepted { value: LexRefused, diagnostics: v2.std.diagnostic.None }
     Accepted { value: a, diagnostics: _ } =>
       match v2.compiler.parse.prepare_grammar(grammar: v2.extdeps.languages.dag.dag_grammar()) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: prepared, diagnostics: residue } =>
           v2.std.diagnostic.Accepted {
             value: classify_after_lex(prepared: prepared, residue: residue, artifact: a),
@@ -289,7 +289,7 @@ data census_over_rows_note: String = "take_census_over takes the roster as an ar
 
 fn take_census_over(rows: List<FrontierMember>) -> FrontendCensusReceipt {
   match prepare_frontend_world() {
-    Rejected { diagnostics: _ } => CensusRefusedAtWorld
+    v2.std.diagnostic.Rejected { diagnostics: _ } => CensusRefusedAtWorld
     Accepted { value: world, diagnostics: _ } => {
       let obs = observe_rows_in(world: world, rows: rows)
       let verdict = reconcile_census_over(obs: obs, rows: rows)
@@ -321,13 +321,13 @@ type FrontierRosterVerdict
 // verify_roster takes the rows rather than reading frontier_roster, so a malformed roster is a
 // constructible input. A validator that could only ever see the one live roster would be
 // unfalsifiable: it would report valid, and nothing could establish that it reports anything else.
-fn count_roster_label(rows: List<FrontierMember>, label: v2.std.node.Symbol) -> Int {
+fn count_roster_label(rows: List<FrontierMember>, label: v2.std.node.Symbol) -> v2.std.integer.Int {
   v2.std.algebra.fold_list(xs: rows, empty: 0, cons: fn(acc, m) {
     if m.label == label { acc + 1 } else { acc }
   })
 }
 
-fn count_roster_path(rows: List<FrontierMember>, path: String) -> Int {
+fn count_roster_path(rows: List<FrontierMember>, path: String) -> v2.std.integer.Int {
   v2.std.algebra.fold_list(xs: rows, empty: 0, cons: fn(acc, m) {
     if m.path == path { acc + 1 } else { acc }
   })
@@ -355,17 +355,17 @@ fn verify_frontier_roster() -> FrontierRosterVerdict {
   verify_roster(rows: frontier_roster)
 }
 
-fn count_label(obs: List<MemberObservation>, label: v2.std.node.Symbol) -> Int {
+fn count_label(obs: List<MemberObservation>, label: v2.std.node.Symbol) -> v2.std.integer.Int {
   v2.std.algebra.fold_list(xs: obs, empty: 0, cons: fn(acc, o) {
     if o.label == label { acc + 1 } else { acc }
   })
 }
 
-fn roster_contains(label: v2.std.node.Symbol) -> Bool {
+fn roster_contains(label: v2.std.node.Symbol) -> v2.std.logic.Bool {
   rows_contain_label(rows: frontier_roster, label: label)
 }
 
-fn rows_contain_label(rows: List<FrontierMember>, label: v2.std.node.Symbol) -> Bool {
+fn rows_contain_label(rows: List<FrontierMember>, label: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(xs: rows, empty: false, cons: fn(acc, m) {
     acc || (m.label == label)
   })
@@ -422,7 +422,7 @@ fn reconcile_against_valid_rows(
   }
 }
 
-fn census_is_complete(obs: List<MemberObservation>) -> Bool {
+fn census_is_complete(obs: List<MemberObservation>) -> v2.std.logic.Bool {
   match reconcile_census(obs: obs) {
     CensusExact => true
     _ => false
@@ -434,7 +434,7 @@ data stage_count_absence_note: String = "THERE IS NO PER-STAGE COUNT HERE, delib
 fn render_classified(source_outcome: v2.std.diagnostic.Outcome<FrontendStage>) -> String {
   match source_outcome {
     Accepted { value: st, diagnostics: _ } => frontend_stage_label(s: st)
-    Rejected { diagnostics: _ } => "WORLD_PREPARATION_REFUSED"
+    v2.std.diagnostic.Rejected { diagnostics: _ } => "WORLD_PREPARATION_REFUSED"
   }
 }
 

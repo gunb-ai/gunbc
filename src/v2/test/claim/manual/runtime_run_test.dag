@@ -33,7 +33,7 @@ fn runtime_run_facts_for(node: v2.std.node.Node) -> v2.compiler.inferred_tree.In
   )
 }
 
-fn runtime_run_fact_lookup(node: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn runtime_run_fact_lookup(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   if node == runtime_run_node_a {
     v2.std.optional.optional_present(value: runtime_run_facts_for(node: runtime_run_node_a))
   } else if node == runtime_run_node_b {
@@ -135,7 +135,7 @@ fn runtime_run_context() -> v2.compiler.eval.EvalContext {
   )
 }
 
-test fn runtime_run_step_appends_receipt_holds() -> Bool {
+test fn runtime_run_step_appends_receipt_holds() -> v2.std.logic.Bool {
   let init = v2.workflow.runtime_run.RuntimeRunState { log: v2.workflow.runtime_run.runtime_run_log_empty(), scheduled: [] }
   let frontier = v2.workflow.scheduler.RunnableFrontier { ready: [runtime_run_node_a] }
   let state = v2.workflow.runtime_run.runtime_run_step_from_frontier(
@@ -147,7 +147,7 @@ test fn runtime_run_step_appends_receipt_holds() -> Bool {
   v2.std.algebra.length(xs: state.log.entries) == 1 && state.scheduled == [runtime_run_node_a]
 }
 
-test fn runtime_run_completes_both_nodes_holds() -> Bool {
+test fn runtime_run_completes_both_nodes_holds() -> v2.std.logic.Bool {
   match v2.workflow.runtime_run.runtime_run(
     nodes: runtime_run_nodes,
     dependencies: runtime_run_dependencies,
@@ -160,7 +160,7 @@ test fn runtime_run_completes_both_nodes_holds() -> Bool {
   }
 }
 
-test fn runtime_run_step_is_bounded_to_frontier_holds() -> Bool {
+test fn runtime_run_step_is_bounded_to_frontier_holds() -> v2.std.logic.Bool {
   let init = v2.workflow.runtime_run.RuntimeRunState { log: v2.workflow.runtime_run.runtime_run_log_empty(), scheduled: [] }
   let frontier = v2.workflow.scheduler.RunnableFrontier { ready: [runtime_run_node_a] }
   let state = v2.workflow.runtime_run.runtime_run_step_from_frontier(

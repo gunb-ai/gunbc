@@ -5,7 +5,7 @@ data receipt_note: String = "Discriminating receipt for the Symbol/String emit g
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn fmc_freemonoid_char_source_node() -> Node {
+fn fmc_freemonoid_char_source_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Instantiation },
     children: [
@@ -20,32 +20,32 @@ fn fmc_target() -> v2.std.compilers.target_model.TargetModel {
   rust_sg2_type_expr_projection_probe_target_model()
 }
 
-fn fmc_native_string_type_form_node() -> Node {
+fn fmc_native_string_type_form_node() -> v2.std.node.Node {
   rust_target_atom_realization_symbol.type_form.node
 }
 
-fn fmc_projected_node() -> Node {
+fn fmc_projected_node() -> v2.std.node.Node {
   match translate_type_expression_project(
     node: fmc_freemonoid_char_source_node(),
     target: fmc_target(),
     projection: rust_type_expression_projection()
   ) {
     Accepted { value: emitted, diagnostics: _ } => emitted
-    Rejected { diagnostics: _ } => fmc_freemonoid_char_source_node()
+    v2.std.diagnostic.Rejected { diagnostics: _ } => fmc_freemonoid_char_source_node()
   }
 }
 
-test fn fmc_projection_accepts() -> Bool {
+test fn fmc_projection_accepts() -> v2.std.logic.Bool {
   match translate_type_expression_project(
     node: fmc_freemonoid_char_source_node(),
     target: fmc_target(),
     projection: rust_type_expression_projection()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn fmc_freemonoid_char_grounds_to_native_string() -> Bool {
+test fn fmc_freemonoid_char_grounds_to_native_string() -> v2.std.logic.Bool {
   content_hash(n: fmc_projected_node()) == content_hash(n: fmc_native_string_type_form_node())
 }

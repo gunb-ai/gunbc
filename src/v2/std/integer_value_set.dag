@@ -18,7 +18,7 @@ fn integer_unbounded_value_set_node() -> v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: Named { name: ^integer_value_set_field_kind },
+        label: v2.std.node.Named { name: ^integer_value_set_field_kind },
         target: integer_value_set_atom(id: ^integer_value_set_kind_unbounded)
       }
     ],
@@ -31,11 +31,11 @@ fn integer_interval_value_set_node(interval: v2.std.node.Node) -> v2.std.node.No
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: Named { name: ^integer_value_set_field_kind },
+        label: v2.std.node.Named { name: ^integer_value_set_field_kind },
         target: integer_value_set_atom(id: ^integer_value_set_kind_interval)
       },
       v2.std.node.Edge {
-        label: Named { name: ^integer_value_set_field_interval },
+        label: v2.std.node.Named { name: ^integer_value_set_field_interval },
         target: interval
       }
     ],
@@ -70,7 +70,7 @@ fn integer_value_set_from_node(value_set: v2.std.node.Node) -> v2.std.diagnostic
                     d: integer_value_set_decode_invalid_diagnostic(source_carrier: value_set)
                   )
                 }
-              Rejected { diagnostics: _ } =>
+              v2.std.diagnostic.Rejected { diagnostics: _ } =>
                 v2.std.diagnostic.Accepted { value: IntegerValueSetUnbounded, diagnostics: v2.std.diagnostic.None }
             }
           } else {
@@ -93,7 +93,7 @@ fn integer_value_set_from_node(value_set: v2.std.node.Node) -> v2.std.diagnostic
                     )
                   }
                 }
-              Rejected { diagnostics: _ } =>
+              v2.std.diagnostic.Rejected { diagnostics: _ } =>
                 v2.std.diagnostic.Rejected {
                   diagnostics: diagnostics_singleton(
                     d: integer_value_set_decode_invalid_diagnostic(source_carrier: value_set)
@@ -114,7 +114,7 @@ fn integer_value_set_from_node(value_set: v2.std.node.Node) -> v2.std.diagnostic
             )
           }
         }
-      Rejected { diagnostics: _ } =>
+      v2.std.diagnostic.Rejected { diagnostics: _ } =>
         v2.std.diagnostic.Rejected {
           diagnostics: diagnostics_singleton(
             d: integer_value_set_decode_invalid_diagnostic(source_carrier: value_set)
@@ -149,9 +149,9 @@ fn integer_value_set_contains(container: v2.std.node.Node, contained: v2.std.nod
             container: decoded_container,
             contained: decoded_contained
           )
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

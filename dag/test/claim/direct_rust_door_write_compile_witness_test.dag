@@ -5,6 +5,6 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data direct_rust_door_write_compile_witness_note: String = "Lane B wet compile receipt (wise-ram-22 PR1 containment): v2-emitted rust add source is written through mint_written_synthetic_emitted_artifact_from_fixture_inferred to a temp lib crate and compiles via cargo.Build.BuildManifest; FixtureCargoGreen only — no production ProducerEmissionReceipt on this path."
 
-test fn direct_rust_door_emit_write_compile_holds() -> Bool {
+test fn direct_rust_door_emit_write_compile_holds() -> v2.std.logic.Bool {
   run_direct_rust_door_emit_write_compile_smoke()
 }

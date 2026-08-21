@@ -48,11 +48,11 @@ fn rust_bind_let_target_model() -> v2.std.compilers.target_model.TargetModel {
   }
 }
 
-fn rust_bind_let_facts_miss(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn rust_bind_let_facts_miss(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
-fn rust_bind_let_inferred_tree_for(root: Node) -> v2.compiler.inferred_tree.InferredTree {
+fn rust_bind_let_inferred_tree_for(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map { lookup: rust_bind_let_facts_miss }
@@ -66,7 +66,7 @@ fn rust_bind_let_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferr
         value: rust_bind_let_inferred_tree_for(root: root),
         diagnostics: d
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -77,7 +77,7 @@ fn rust_bind_let_wrong_value_producer_tree() -> v2.std.diagnostic.Outcome<v2.com
         value: rust_bind_let_inferred_tree_for(root: root),
         diagnostics: d
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -85,7 +85,7 @@ fn rust_bind_let_emit_from_producer(target: v2.std.compilers.target_model.Target
   bind_outcome(
     o: rust_bind_let_producer_tree(),
     f: fn(tree) {
-      emit(tree: tree, target: target)
+      v2.compiler.emit.emit(tree: tree, target: target)
     }
   )
 }
@@ -94,20 +94,20 @@ fn rust_bind_let_emit_wrong_value_from_producer(target: v2.std.compilers.target_
   bind_outcome(
     o: rust_bind_let_wrong_value_producer_tree(),
     f: fn(tree) {
-      emit(tree: tree, target: target)
+      v2.compiler.emit.emit(tree: tree, target: target)
     }
   )
 }
 
-test fn rust_bind_let_emit_holds() -> Bool {
+test fn rust_bind_let_emit_holds() -> v2.std.logic.Bool {
   match rust_bind_let_emit_from_producer(target: rust_bind_let_target_model()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_bind_let_expected_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn rust_bind_let_emit_wrong_value_discriminates() -> Bool {
+test fn rust_bind_let_emit_wrong_value_discriminates() -> v2.std.logic.Bool {
   match rust_bind_let_emit_from_producer(target: rust_bind_let_target_model()) {
     Accepted { value: canonical, diagnostics: dc } =>
       match rust_bind_let_emit_wrong_value_from_producer(target: rust_bind_let_target_model()) {
@@ -115,9 +115,9 @@ test fn rust_bind_let_emit_wrong_value_discriminates() -> Bool {
           (wrong.carried == rust_bind_let_wrong_value_source_text) &&
           (wrong.carried != canonical.carried) &&
           (dc == v2.std.diagnostic.None) && (dw == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

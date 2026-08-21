@@ -43,7 +43,7 @@ type CapabilityClosureScan {
   verdict: CapabilityClosureVerdict
 }
 
-fn capability_label_present(labels: std.types.List<String>, wanted: String) -> std.types.Bool {
+fn capability_label_present(labels: std.types.List<String>, wanted: String) -> Bool {
   v2.std.algebra.fold_list(
     xs: labels,
     empty: false,
@@ -95,7 +95,7 @@ fn workflow_job_capability_closure(steps: std.types.List<CapabilityAnnotatedStep
   scanned.verdict
 }
 
-fn capability_closure_is_closed(v: CapabilityClosureVerdict) -> std.types.Bool {
+fn capability_closure_is_closed(v: CapabilityClosureVerdict) -> Bool {
   match v {
     CapabilityClosureClosed => true
     CapabilityClosureUnprovided { step_name: _, capability_label: _ } => false

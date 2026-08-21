@@ -3,12 +3,12 @@ module v2.test.manual.field_access_emit
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data field_access_emitted_root: Node = dag_fixture_emitted_field_access_fn
+data field_access_emitted_root: v2.std.node.Node = dag_fixture_emitted_field_access_fn
 data field_access_target_model: v2.std.compilers.target_model.TargetModel = dag_field_access_target_model()
 
 fn field_access_canonical_grounding(
-  node: Node,
-  algebra: Node
+  node: v2.std.node.Node,
+  algebra: v2.std.node.Node
 ) -> v2.std.constraints.CanonicalGrounding {
   v2.std.constraints.CanonicalGrounding {
     node: node,
@@ -25,7 +25,7 @@ fn field_access_canonical_grounding(
   }
 }
 
-fn field_access_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
+fn field_access_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == dag_fixture_emitted_field_access_fn {
     v2.std.witness.Holds { value: field_access_canonical_grounding(node: node, algebra: node) }
   } else if node == dag_field_access_body_fixture {
@@ -67,7 +67,7 @@ fn field_access_canonical_grounding_for(node: Node) -> Witness<v2.std.constraint
   }
 }
 
-fn field_access_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn field_access_inferred_facts_for(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   match field_access_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -82,7 +82,7 @@ fn field_access_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_
   }
 }
 
-fn field_access_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn field_access_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   field_access_inferred_facts_for(node: key)
 }
 
@@ -91,40 +91,40 @@ data field_access_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.com
   facts: std.types.Map { lookup: field_access_facts_lookup }
 }
 
-test fn field_access_emit_holds() -> Bool {
+test fn field_access_emit_holds() -> v2.std.logic.Bool {
   match target_serialize_source_from_model(
     target: v2.test.manual.field_access_emit.field_access_target_model,
     emitted: field_access_emitted_root
   ) {
     Accepted { value: authority, diagnostics: ad } =>
-      match emit(tree: field_access_inferred_tree, target: v2.test.manual.field_access_emit.field_access_target_model) {
+      match v2.compiler.emit.emit(tree: field_access_inferred_tree, target: v2.test.manual.field_access_emit.field_access_target_model) {
         Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn field_access_grammar_inverse_holds() -> Bool {
+test fn field_access_grammar_inverse_holds() -> v2.std.logic.Bool {
   match grammar_inverse_source_validated(
     target: v2.test.manual.field_access_emit.field_access_target_model,
     emitted: field_access_emitted_root
   ) {
     Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn field_access_coercion_quality_is_faithful(q: v2.std.coercion.CoercionQuality) -> Bool {
+fn field_access_coercion_quality_is_faithful(q: v2.std.coercion.CoercionQuality) -> v2.std.logic.Bool {
   match q {
-    Exact => true
+    v2.std.coercion.Exact => true
     Identity => true
     Widened => false
   }
 }
 
-test fn field_access_ingest_via_coerce_matches_canonical() -> Bool {
+test fn field_access_ingest_via_coerce_matches_canonical() -> v2.std.logic.Bool {
   match coerce_grounded_node(
     source: field_access_emitted_root,
     tree: field_access_inferred_tree,
@@ -134,19 +134,19 @@ test fn field_access_ingest_via_coerce_matches_canonical() -> Bool {
       (result.target == dag_fixture_emitted_field_access_fn)
         && field_access_coercion_quality_is_faithful(q: result.quality)
         && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn field_access_emit_holds_keystone() -> Bool {
+test fn field_access_emit_holds_keystone() -> v2.std.logic.Bool {
   field_access_emit_holds()
 }
 
-test fn field_access_grammar_inverse_holds_keystone() -> Bool {
+test fn field_access_grammar_inverse_holds_keystone() -> v2.std.logic.Bool {
   field_access_grammar_inverse_holds()
 }
 
-test fn field_access_ingest_via_coerce_holds_keystone() -> Bool {
+test fn field_access_ingest_via_coerce_holds_keystone() -> v2.std.logic.Bool {
   field_access_ingest_via_coerce_matches_canonical()
 }
 

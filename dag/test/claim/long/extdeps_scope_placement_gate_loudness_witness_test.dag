@@ -14,7 +14,7 @@ fn exit_reason_of(e: std.process.ProcessExit) -> String {
 }
 
 fn exit_is_failure(e: std.process.ProcessExit) -> Bool {
-  match e { ExitSuccess => false  _ => true }
+  match e { std.process.ExitSuccess => false  _ => true }
 }
 
 fn reason_names_all(exit: std.process.ProcessExit, markers: List<String>) -> Bool {

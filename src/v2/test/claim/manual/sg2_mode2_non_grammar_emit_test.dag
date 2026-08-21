@@ -38,7 +38,7 @@ data sg2_mode2_perturbed_inferred_tree: v2.compiler.inferred_tree.InferredTree =
   }
 }
 
-test fn sg2_mode2_translation_rules_empty() -> Bool {
+test fn sg2_mode2_translation_rules_empty() -> v2.std.logic.Bool {
   match v2.compiler.translate.target_bundle_child(
     target: sg2_mode2_target(),
     edge_name: ^target_model_edge_translation_rules
@@ -48,11 +48,11 @@ test fn sg2_mode2_translation_rules_empty() -> Bool {
         TypeNode { connective: v2.std.node.Conj } => v2.std.algebra.is_empty(xs: rules.children)
         _ => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn sg2_mode2_emitted_has_no_grammar_row(emitted: v2.std.node.Node) -> Bool {
+fn sg2_mode2_emitted_has_no_grammar_row(emitted: v2.std.node.Node) -> v2.std.logic.Bool {
   match v2.compiler.translate.target_bundle_child(
     target: sg2_mode2_target(),
     edge_name: ^target_model_edge_translation_rules
@@ -60,13 +60,13 @@ fn sg2_mode2_emitted_has_no_grammar_row(emitted: v2.std.node.Node) -> Bool {
     Accepted { value: rules, diagnostics: _ } =>
       match v2.compiler.translate.grammar_relation_row_for_emitted(rules: rules, emitted: emitted) {
         Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn sg2_mode2_wire_has_kind_authority(emitted: v2.std.node.Node) -> Bool {
+fn sg2_mode2_wire_has_kind_authority(emitted: v2.std.node.Node) -> v2.std.logic.Bool {
   match v2.std.compilers.target_model.target_type_expr_emitted_kind(node: emitted) {
     TypeExprKindAuthority { value: _ } => true
     TypeExprKindNotEmitted => false
@@ -74,54 +74,54 @@ fn sg2_mode2_wire_has_kind_authority(emitted: v2.std.node.Node) -> Bool {
   }
 }
 
-fn sg2_mode2_serialize_accepts(emitted: v2.std.node.Node) -> Bool {
+fn sg2_mode2_serialize_accepts(emitted: v2.std.node.Node) -> v2.std.logic.Bool {
   match v2.compiler.translate.target_serialize_source_from_model(target: sg2_mode2_target(), emitted: emitted) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn sg2_mode2_serialized_text(emitted: v2.std.node.Node) -> String {
   match v2.compiler.translate.target_serialize_source_from_model(target: sg2_mode2_target(), emitted: emitted) {
     Accepted { value: source, diagnostics: _ } => source.carried
-    Rejected { diagnostics: _ } => sg2_mode2_fail_text
+    v2.std.diagnostic.Rejected { diagnostics: _ } => sg2_mode2_fail_text
   }
 }
 
 fn sg2_mode2_translate_emitted() -> v2.std.node.Node {
   match v2.compiler.translate.translate(tree: sg2_mode2_inferred_tree, target: sg2_mode2_target()) {
     Accepted { value: emitted, diagnostics: _ } => emitted
-    Rejected { diagnostics: _ } => sg2_mode2_fail_node()
+    v2.std.diagnostic.Rejected { diagnostics: _ } => sg2_mode2_fail_node()
   }
 }
 
-test fn sg2_mode2_translate_matches_golden() -> Bool {
+test fn sg2_mode2_translate_matches_golden() -> v2.std.logic.Bool {
   v2.std.node.content_hash(n: sg2_mode2_translate_emitted()) ==
     v2.std.node.content_hash(n: v2.extdeps.languages.rust.rust_sg2_rc_foobar_xy_emitted())
 }
 
-test fn sg2_mode2_emit_accepts() -> Bool {
+test fn sg2_mode2_emit_accepts() -> v2.std.logic.Bool {
   match v2.compiler.emit.emit(tree: sg2_mode2_inferred_tree, target: sg2_mode2_target()) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn sg2_mode2_emit_text() -> String {
   match v2.compiler.emit.emit(tree: sg2_mode2_inferred_tree, target: sg2_mode2_target()) {
     Accepted { value: source, diagnostics: _ } => source.carried
-    Rejected { diagnostics: _ } => sg2_mode2_fail_text
+    v2.std.diagnostic.Rejected { diagnostics: _ } => sg2_mode2_fail_text
   }
 }
 
 fn sg2_mode2_perturbed_emit_text() -> String {
   match v2.compiler.emit.emit(tree: sg2_mode2_perturbed_inferred_tree, target: sg2_mode2_target()) {
     Accepted { value: source, diagnostics: _ } => source.carried
-    Rejected { diagnostics: _ } => sg2_mode2_fail_text
+    v2.std.diagnostic.Rejected { diagnostics: _ } => sg2_mode2_fail_text
   }
 }
 
-test fn sg2_mode2_emit_discriminates_perturbed_twin() -> Bool {
+test fn sg2_mode2_emit_discriminates_perturbed_twin() -> v2.std.logic.Bool {
   sg2_mode2_emit_text() == sg2_mode2_expected_instantiation_text
     && sg2_mode2_perturbed_emit_text() == sg2_mode2_expected_perturbed_text
     && sg2_mode2_emit_text() != sg2_mode2_perturbed_emit_text()
@@ -152,10 +152,10 @@ fn sg2_mode2_outcome_node_source_type() -> v2.std.node.Node {
 }
 }
 
-test fn sg2_mode2_lex_only_absent_from_binding_spellings() -> Bool {
+test fn sg2_mode2_lex_only_absent_from_binding_spellings() -> v2.std.logic.Bool {
   match v2.extdeps.languages.rust.rust_sg2_binding_spellings().lookup(^rust_binding_sg2_lex_only_atom) {
-    Absent => true
-    Present { value: _ } => false
+    v2.std.optional.Absent => true
+    v2.std.optional.Present { value: _ } => false
   }
 }
 
@@ -173,42 +173,42 @@ fn sg2_mode2_outcome_return_shell() -> v2.std.node.Node {
         use_site: v2.std.compilers.target_model.OwnershipAtFunctionReturn
       ) {
         Accepted { value: wrapped, diagnostics: _ } => wrapped
-        Rejected { diagnostics: _ } => sg2_mode2_fail_node()
+        v2.std.diagnostic.Rejected { diagnostics: _ } => sg2_mode2_fail_node()
       }
-    Rejected { diagnostics: _ } => sg2_mode2_fail_node()
+    v2.std.diagnostic.Rejected { diagnostics: _ } => sg2_mode2_fail_node()
   }
 }
 
-test fn sg2_mode2_golden_wire_has_no_grammar_row() -> Bool {
+test fn sg2_mode2_golden_wire_has_no_grammar_row() -> v2.std.logic.Bool {
   sg2_mode2_emitted_has_no_grammar_row(emitted: v2.extdeps.languages.rust.rust_sg2_rc_foobar_xy_emitted())
 }
 
-test fn sg2_mode2_golden_wire_has_kind_authority() -> Bool {
+test fn sg2_mode2_golden_wire_has_kind_authority() -> v2.std.logic.Bool {
   sg2_mode2_wire_has_kind_authority(emitted: v2.extdeps.languages.rust.rust_sg2_rc_foobar_xy_emitted())
 }
 
-fn sg2_mode2_arrow_serialized_text_matches_expected() -> Bool {
+fn sg2_mode2_arrow_serialized_text_matches_expected() -> v2.std.logic.Bool {
   sg2_mode2_serialized_text(emitted: v2.extdeps.languages.rust.rust_sg2_arrow_xy_emitted()) == sg2_mode2_expected_arrow_text
 }
 
-test fn sg2_mode2_conj_serialized_text_matches_expected() -> Bool {
+test fn sg2_mode2_conj_serialized_text_matches_expected() -> v2.std.logic.Bool {
   sg2_mode2_serialized_text(emitted: v2.extdeps.languages.rust.rust_sg2_conj_xy_emitted()) == sg2_mode2_expected_conj_text
 }
 
-test fn sg2_mode2_sum_serialized_text_matches_expected() -> Bool {
+test fn sg2_mode2_sum_serialized_text_matches_expected() -> v2.std.logic.Bool {
   sg2_mode2_serialized_text(emitted: v2.extdeps.languages.rust.rust_sg2_sum_xy_emitted()) == sg2_mode2_expected_sum_text
 }
 
-test fn sg2_mode2_gap1_outcome_return_rc_serializes() -> Bool {
+test fn sg2_mode2_gap1_outcome_return_rc_serializes() -> v2.std.logic.Bool {
   sg2_mode2_serialized_text(emitted: sg2_mode2_outcome_return_shell()) ==
     sg2_mode2_expected_rc_outcome_node
 }
 
-fn sg2_mode2_gap2_lex_only_atom_rejects_binding_spellings() -> Bool {
+fn sg2_mode2_gap2_lex_only_atom_rejects_binding_spellings() -> v2.std.logic.Bool {
   !sg2_mode2_serialize_accepts(emitted: v2.extdeps.languages.rust.rust_sg2_lex_only_atom_emitted())
 }
 
-fn sg2_mode2_gap2_lex_only_atom_serializes_via_ident_token() -> Bool {
+fn sg2_mode2_gap2_lex_only_atom_serializes_via_ident_token() -> v2.std.logic.Bool {
   sg2_mode2_serialized_text(emitted: v2.extdeps.languages.rust.rust_sg2_lex_only_atom_emitted()) ==
     v2.extdeps.languages.rust.rust_sg2_lex_only_atom_spelling
 }

@@ -1,13 +1,13 @@
 module v2.test.impossible_bug.unenumerated_effects
 
 
-fn atom_node(s: v2.std.node.Symbol) -> Node {
+fn atom_node(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
-fn effect_subject(signature: Node, body: Node) -> Node {
+fn effect_subject(signature: v2.std.node.Node, body: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -18,28 +18,28 @@ fn effect_subject(signature: Node, body: Node) -> Node {
 }
 }
 
-data effect_derived_from_signature_input: Node = v2.std.node.Node {
+data effect_derived_from_signature_input: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
-      label: Named { name: ^effect_read_subject_field },
+      label: v2.std.node.Named { name: ^effect_read_subject_field },
       target: effect_subject(signature: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^read_signature_symbol), body: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^read_signature_symbol))
     },
     v2.std.node.Edge {
-      label: Named { name: ^effect_write_subject_field },
+      label: v2.std.node.Named { name: ^effect_write_subject_field },
       target: effect_subject(signature: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^write_signature_symbol), body: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^write_signature_symbol))
     },
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data explicit_reread_input: Node = effect_subject(signature: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^read_signature_symbol), body: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^explicit_reread_symbol))
+data explicit_reread_input: v2.std.node.Node = effect_subject(signature: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^read_signature_symbol), body: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^explicit_reread_symbol))
 
-data falsification_redundant_read: Node = v2.std.node.Node {
+data falsification_redundant_read: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [
-    v2.std.node.Edge { label: Named { name: ^effect_signature_field }, target: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^read_signature_symbol) },
-    v2.std.node.Edge { label: Named { name: ^effect_body_field }, target: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^read_signature_symbol) },
+    v2.std.node.Edge { label: v2.std.node.Named { name: ^effect_signature_field }, target: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^read_signature_symbol) },
+    v2.std.node.Edge { label: v2.std.node.Named { name: ^effect_body_field }, target: v2.test.impossible_bug.unenumerated_effects.atom_node(s: ^read_signature_symbol) },
   ],
   occurrence_id: SyntheticOccurrence
 }

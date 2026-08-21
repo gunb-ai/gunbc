@@ -46,19 +46,19 @@ fn resolve_decl_fact_by_qualified_name(
 fn skeleton_marshal_atom_lexeme_optional(node: v2.std.node.Node) -> SkeletonMarshalAtomLexeme? {
   match node.kind {
     v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } } =>
-      Present { value: v2.std.compilers.lexing.symbol_lexeme(sym: sym) }
+      v2.std.optional.Present { value: v2.std.compilers.lexing.symbol_lexeme(sym: sym) }
     TypeNode { connective: v2.std.node.Conj } =>
       fold(
         v2.std.node_query.node_positional_child_targets(node: node),
-        init: Absent,
+        init: v2.std.optional.Absent,
         f: fn(acc, nested) {
           match acc {
-            Present { value: _ } => acc
-            Absent => skeleton_marshal_atom_lexeme_optional(node: nested)
+            v2.std.optional.Present { value: _ } => acc
+            v2.std.optional.Absent => skeleton_marshal_atom_lexeme_optional(node: nested)
           }
         }
       )
-    _ => Absent
+    _ => v2.std.optional.Absent
   }
 }
 
@@ -119,9 +119,9 @@ fn decl_fact_skeleton_for_resolution(
   resolution: DeclFactQualifiedNameResolution
 ) -> v2.std.node.Node? {
   match resolution {
-    DeclFactResolvedUnique { fact } => Present { value: fact.node }
-    DeclFactResolvedMissing { qualified_name: _ } => Absent
-    DeclFactResolvedAmbiguous { qualified_name: _, match_count: _ } => Absent
+    DeclFactResolvedUnique { fact } => v2.std.optional.Present { value: fact.node }
+    DeclFactResolvedMissing { qualified_name: _ } => v2.std.optional.Absent
+    DeclFactResolvedAmbiguous { qualified_name: _, match_count: _ } => v2.std.optional.Absent
   }
 }
 
@@ -160,7 +160,7 @@ type AtomLexemeCensus {
 
 fn skeleton_edge_is_construction_spelling(e: v2.std.node.Edge) -> Bool {
   match e.label {
-    Named { name: nm } => nm == ^record_construction_spelling
+    v2.std.node.Named { name: nm } => nm == ^record_construction_spelling
     Positional => false
   }
 }

@@ -28,7 +28,6 @@ pub use crate::v2_std_node::{
     ArmPayload, Connective, CoproductArm, CoproductArmPayloadPair, Edge, EdgeLabel,
     NamedEdgeTargetLookup, Node, NodeKind, Symbol,
 };
-pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -378,8 +377,8 @@ pub fn node_is_call(node: Rc<Node>) -> bool {
             node_positional_child_targets(node.clone()),
             0,
         ) {
-            Some(callee) => node_is_callee_reference(callee.clone()),
-            None => false,
+            Optional::Present { value: callee, .. } => node_is_callee_reference(callee.clone()),
+            Optional::Absent => false,
         },
         _ => false,
     }
@@ -391,8 +390,8 @@ pub fn call_callee_target(node: Rc<Node>) -> Rc<Outcome<Rc<Node>>> {
             node_positional_child_targets(node.clone()),
             0,
         ) {
-            Some(callee) => outcome_accepted(callee.clone()),
-            None => outcome_rejected(Rc::new(Diagnostic {
+            Optional::Present { value: callee, .. } => outcome_accepted(callee.clone()),
+            Optional::Absent => outcome_rejected(Rc::new(Diagnostic {
                 reason: "call_callee_absent".to_string(),
                 at: node_locus(node.clone()),
                 correction: Rc::new(Correction::Unavailable {
@@ -643,8 +642,10 @@ pub fn arrow_domain_named_param_bindings(arrow: Rc<Node>) -> Rc<Outcome<Rc<Vec<S
                 node_positional_child_targets(arrow.clone()),
                 0,
             ) {
-                Some(domain) => conj_ordered_named_param_binding_ids(domain.clone()),
-                None => outcome_rejected(Rc::new(Diagnostic {
+                Optional::Present { value: domain, .. } => {
+                    conj_ordered_named_param_binding_ids(domain.clone())
+                }
+                Optional::Absent => outcome_rejected(Rc::new(Diagnostic {
                     reason: "arrow_domain_named_param_bindings_missing".to_string(),
                     at: node_locus(arrow.clone()),
                     correction: Rc::new(Correction::Unavailable {

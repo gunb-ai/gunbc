@@ -12,7 +12,7 @@ data reach_repair_surgical_body_diff: v2.std.node.Diff = v2.std.node.Diff {
   edits: [reach_repair_surgical_body_edit]
 }
 
-fn rr_atom(identity: v2.std.node.Symbol) -> Node {
+fn rr_atom(identity: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
@@ -20,16 +20,16 @@ fn rr_atom(identity: v2.std.node.Symbol) -> Node {
   }
 }
 
-fn rr_out() -> Node { rr_atom(identity: ^rr_output) }
-fn rr_mid() -> Node { rr_atom(identity: ^rr_mid) }
-fn rr_in() -> Node { rr_atom(identity: ^rr_input) }
-fn rr_dangling() -> Node { rr_atom(identity: ^rr_dangling) }
+fn rr_out() -> v2.std.node.Node { rr_atom(identity: ^rr_output) }
+fn rr_mid() -> v2.std.node.Node { rr_atom(identity: ^rr_mid) }
+fn rr_in() -> v2.std.node.Node { rr_atom(identity: ^rr_input) }
+fn rr_dangling() -> v2.std.node.Node { rr_atom(identity: ^rr_dangling) }
 
-fn rr_edge(source: Node, dependent: Node) -> v2.std.dependency.DependencyView {
+fn rr_edge(source: v2.std.node.Node, dependent: v2.std.node.Node) -> v2.std.dependency.DependencyView {
   v2.std.dependency.DependencyView {
     source: source,
     dependent: dependent,
-    kind: Contains,
+    kind: v2.std.dependency.Contains,
     usage_site: dependent
   }
 }
@@ -57,23 +57,23 @@ fn rr_dead_wire_diagnostic() -> v2.std.diagnostic.Diagnostic {
   )
 }
 
-fn rr_correction_is_suggested(c: v2.std.diagnostic.Correction) -> Bool {
+fn rr_correction_is_suggested(c: v2.std.diagnostic.Correction) -> v2.std.logic.Bool {
   match c {
     Suggested { node: _ } => true
     Unavailable { reason: _ } => false
   }
 }
 
-fn rr_wrong_correction() -> Node {
+fn rr_wrong_correction() -> v2.std.node.Node {
   rr_atom(identity: ^rr_wrong_correction_leaf)
 }
 
-test fn witness_dead_wire_produces_suggested_not_unavailable() -> Bool {
+test fn witness_dead_wire_produces_suggested_not_unavailable() -> v2.std.logic.Bool {
   let d = rr_dead_wire_diagnostic()
   rr_correction_is_suggested(c: d.correction)
 }
 
-test fn witness_apply_correction_reruns_satisfied() -> Bool {
+test fn witness_apply_correction_reruns_satisfied() -> v2.std.logic.Bool {
   let d = rr_dead_wire_diagnostic()
   match graph_reach_apply_diagnostic_correction(root: rr_out(), d: d) {
     Accepted { value: patched, diagnostics: _ } =>
@@ -84,11 +84,11 @@ test fn witness_apply_correction_reruns_satisfied() -> Bool {
         },
         target: rr_dangling()
       )
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn witness_wrong_correction_stays_violated() -> Bool {
+test fn witness_wrong_correction_stays_violated() -> v2.std.logic.Bool {
   match apply_diff(
     root: rr_out(),
     d: v2.std.node.Diff {
@@ -103,15 +103,15 @@ test fn witness_wrong_correction_stays_violated() -> Bool {
         },
         target: rr_dangling()
       ) == false
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn rr_repaired_root() -> Node {
+fn rr_repaired_root() -> v2.std.node.Node {
   graph_reach_add_edge_repair(root: rr_out(), edge_target: rr_dangling())
 }
 
-test fn witness_apply_edit_emits_corrected_source() -> Bool {
+test fn witness_apply_edit_emits_corrected_source() -> v2.std.logic.Bool {
   match serialize_diff_as_source_patch(
     root: dag_loop_arrow_with_body_wrong_value_fixture,
     diff: reach_repair_surgical_body_diff,
@@ -124,13 +124,13 @@ test fn witness_apply_edit_emits_corrected_source() -> Bool {
       ) {
         Accepted { value: authority_after, diagnostics: _ } =>
           patch.after == authority_after && patch.before != patch.after
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn witness_suggested_correction_matches_add_edge_repair() -> Bool {
+test fn witness_suggested_correction_matches_add_edge_repair() -> v2.std.logic.Bool {
   let d = rr_dead_wire_diagnostic()
   correction_eq(
     a: d.correction,
@@ -138,7 +138,7 @@ test fn witness_suggested_correction_matches_add_edge_repair() -> Bool {
   )
 }
 
-test fn witness_reach_lens_verdict_holds_on_reachable() -> Bool {
+test fn witness_reach_lens_verdict_holds_on_reachable() -> v2.std.logic.Bool {
   match graph_invariant_reach_verdict(
     reason: ^graph_invariant_reach_repair_witness,
     root: rr_out(),
@@ -150,7 +150,7 @@ test fn witness_reach_lens_verdict_holds_on_reachable() -> Bool {
   }
 }
 
-test fn witness_reach_lens_verdict_violation_suggested_on_unreachable() -> Bool {
+test fn witness_reach_lens_verdict_violation_suggested_on_unreachable() -> v2.std.logic.Bool {
   match graph_invariant_reach_verdict(
     reason: ^graph_invariant_reach_repair_witness,
     root: rr_out(),

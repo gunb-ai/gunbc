@@ -37,34 +37,34 @@ data lens_module_gate_genuinely_new_surface: List<v2.lens.enforcement.lens_modul
   }
 ]
 
-test fn lens_closure_question_zero_holds_live() -> Bool {
+test fn lens_closure_question_zero_holds_live() -> v2.std.logic.Bool {
   lens_closure_question_zero_holds_live()
 }
 
-test fn lens_module_gate_holds_live() -> Bool {
+test fn lens_module_gate_holds_live() -> v2.std.logic.Bool {
   lens_module_gate_holds()
 }
 
-test fn red_control_unenrolled_lens_refused() -> Bool {
+test fn red_control_unenrolled_lens_refused() -> v2.std.logic.Bool {
   lens_module_gate_unenrolled_count_from_facts(
     facts: lens_module_gate_fixture_facts,
     bound_module_paths: lens_module_gate_fixture_bound
   ) > 0
 }
 
-test fn red_control_redundant_verdict_remedy_refused() -> Bool {
+test fn red_control_redundant_verdict_remedy_refused() -> v2.std.logic.Bool {
   lens_module_gate_redundant_blocking_count_from_surfaces(
     surfaces: lens_module_gate_fixture_surfaces
   ) > 0
 }
 
-test fn red_control_genuinely_new_distinct_surface_passes() -> Bool {
+test fn red_control_genuinely_new_distinct_surface_passes() -> v2.std.logic.Bool {
   lens_module_gate_redundant_blocking_count_from_surfaces(
     surfaces: lens_module_gate_genuinely_new_surface
   ) == 0
 }
 
-test fn red_control_fully_authorized_fixture_clean() -> Bool {
+test fn red_control_fully_authorized_fixture_clean() -> v2.std.logic.Bool {
   lens_module_gate_unenrolled_count_from_facts(
     facts: lens_module_gate_fixture_facts,
     bound_module_paths: ["v2.lens.alpha_fixture", "v2.lens.synthetic_redundant_lens"]
@@ -75,7 +75,7 @@ test fn red_control_fully_authorized_fixture_clean() -> Bool {
     ) == 0
 }
 
-test fn question_zero_verdict_live_holds() -> Bool {
+test fn question_zero_verdict_live_holds() -> v2.std.logic.Bool {
   let v = lens_closure_question_zero_verdict(
     intent: standing_intent_lens_closure_question_zero,
     facts: [],
@@ -89,11 +89,11 @@ test fn question_zero_verdict_live_holds() -> Bool {
     && leg_holds(l: v.audit_residue_counted)
 }
 
-test fn audit_residue_counted_for_known_pending_fork() -> Bool {
+test fn audit_residue_counted_for_known_pending_fork() -> v2.std.logic.Bool {
   lens_module_gate_audit_residue_count_from_surfaces(surfaces: lens_module_gate_surfaces()) > 0
 }
 
-test fn question_zero_fixture_redundant_leg_fails() -> Bool {
+test fn question_zero_fixture_redundant_leg_fails() -> v2.std.logic.Bool {
   leg_fails(
     l: lens_closure_question_zero_verdict(
       intent: standing_intent_lens_closure_question_zero,
@@ -104,6 +104,6 @@ test fn question_zero_fixture_redundant_leg_fails() -> Bool {
   )
 }
 
-test fn lens_closure_question_zero_live_matches_gate() -> Bool {
+test fn lens_closure_question_zero_live_matches_gate() -> v2.std.logic.Bool {
   lens_closure_question_zero_holds() == lens_module_gate_blocking_holds()
 }

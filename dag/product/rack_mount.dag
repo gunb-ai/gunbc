@@ -51,7 +51,7 @@ module product.rack_mount
 // External dimensions arrive when a cited row carries them.
 
 // Every quantity in a refusal carries its carrier rather than its unit in a field NAME. An earlier
-// revision of this sum spelled its heights with _um suffixes on bare Int - the "unit in the name,
+// revision of this sum spelled its heights with _um suffixes on bare std.integer.Int - the "unit in the name,
 // scalar in the type" pattern std.measure exists to remove, on the refusal path of the very change
 // that added the Micrometer carrier to stop truncating. Positions take product.placement_supply's
 // RackUnitPosition and capacities take std.measure's RackUnit: a position is an ordinal slot index
@@ -114,24 +114,24 @@ type MountAdmission {
 
 fn admit_mount(acc: MountAdmission, rack: extdeps.rack.types.RackCatalogRow, m: ChassisMount) -> MountAdmission {
   match acc.refusal {
-    Present { value: r } => MountAdmission { admitted: acc.admitted, refusal: Present { value: r } }
-    Absent =>
+    v2.std.optional.Present { value: r } => MountAdmission { admitted: acc.admitted, refusal: v2.std.optional.Present { value: r } }
+    v2.std.optional.Absent =>
       if m.lowest_unit < 1 {
-        MountAdmission { admitted: acc.admitted, refusal: Present { value: MountBelowFirstUnit { lowest_unit: m.lowest_unit } } }
+        MountAdmission { admitted: acc.admitted, refusal: v2.std.optional.Present { value: MountBelowFirstUnit { lowest_unit: m.lowest_unit } } }
       } else if mount_top_unit(m: m) > rack_unit_count(u: rack.rack_units) {
         MountAdmission {
           admitted: acc.admitted,
-          refusal: Present { value: MountExceedsRackHeight { top_unit: mount_top_unit(m: m), rack_capacity: rack.rack_units } },
+          refusal: v2.std.optional.Present { value: MountExceedsRackHeight { top_unit: mount_top_unit(m: m), rack_capacity: rack.rack_units } },
         }
       } else {
         let conflict = fold(acc.admitted, init: none, f: (found, other) =>
           match found {
-            Present { value: r } => Present { value: r }
-            Absent =>
+            v2.std.optional.Present { value: r } => v2.std.optional.Present { value: r }
+            v2.std.optional.Absent =>
               if product.rack_mount.asset_eq(a: other.asset, b: m.asset) {
-                Present { value: AssetMountedTwice { asset: m.asset } }
+                v2.std.optional.Present { value: AssetMountedTwice { asset: m.asset } }
               } else if mounts_collide(a: other, b: m) {
-                Present {
+                v2.std.optional.Present {
                   value: if other.lowest_unit <= m.lowest_unit {
                     MountsCollide { lower: other.asset, upper: m.asset }
                   } else {
@@ -143,8 +143,8 @@ fn admit_mount(acc: MountAdmission, rack: extdeps.rack.types.RackCatalogRow, m: 
               }
           })
         match conflict {
-          Present { value: r } => MountAdmission { admitted: acc.admitted, refusal: Present { value: r } }
-          Absent => MountAdmission { admitted: concat(acc.admitted, [m]), refusal: none }
+          v2.std.optional.Present { value: r } => MountAdmission { admitted: acc.admitted, refusal: v2.std.optional.Present { value: r } }
+          v2.std.optional.Absent => MountAdmission { admitted: concat(acc.admitted, [m]), refusal: none }
         }
       }
   }
@@ -160,8 +160,8 @@ fn rack_instance(identity: product.placement_supply.RackIdentity, catalog: extde
   let admitted = fold(mounts, init: MountAdmission { admitted: [], refusal: none }, f: (acc, m) =>
     admit_mount(acc: acc, rack: catalog, m: m))
   match admitted.refusal {
-    Present { value: r } => MountRefused { cause: r }
-    Absent => MountReady { value: RackInstance { identity: identity, catalog: catalog, mounts: mounts } }
+    v2.std.optional.Present { value: r } => MountRefused { cause: r }
+    v2.std.optional.Absent => MountReady { value: RackInstance { identity: identity, catalog: catalog, mounts: mounts } }
   }
 }
 

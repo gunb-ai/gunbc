@@ -35,7 +35,7 @@ pub fn optional_absent_unwrap_diagnostic() -> Rc<Diagnostic> {
     })
 }
 
-pub fn optional_present_witness<T: Clone>(opt: Option<T>) -> Rc<Witness<T>> {
+pub fn optional_present_witness<T: Clone>(opt: Optional<T>) -> Rc<Witness<T>> {
     witness_from_optional(opt.clone(), optional_absent_unwrap_diagnostic())
 }
 
@@ -86,17 +86,19 @@ pub fn empty_map<K, V>() -> Rc<HashMap<K, V>> {
 pub fn map_insert<K: Clone, V: Clone>(m: Rc<HashMap<K, V>>, key: K, value: V) -> Rc<HashMap<K, V>> {
     PartialFunction {
         lookup: |candidate| match (candidate.clone() == key.clone()) {
-            true => Some(value.clone()),
+            true => Optional::Present {
+                value: value.clone(),
+            },
             false => v1_rt::lookup(&m, candidate.clone()),
         },
     }
 }
 
-pub fn map_lookup<K: Clone, V: Clone>(m: Rc<HashMap<K, V>>, key: K) -> Option<V> {
+pub fn map_lookup<K: Clone, V: Clone>(m: Rc<HashMap<K, V>>, key: K) -> Optional<V> {
     v1_rt::lookup(&m, key.clone())
 }
 
-pub fn map_get<K: Clone, V: Clone>(m: Rc<HashMap<K, V>>, key: K) -> Rc<Outcome<_>> {
+pub fn map_get<K: Clone, V: Clone>(m: Rc<HashMap<K, V>>, key: K) -> Rc<Outcome<Optional<V>>> {
     outcome_accepted(map_lookup(m.clone(), key.clone()))
 }
 
@@ -128,7 +130,7 @@ pub fn list_nth<T: Clone>(xs: Rc<Vec<T>>, wanted: i64, absent: Rc<Diagnostic>) -
     .clone()
 }
 
-pub fn list_at_optional<T: Clone>(xs: Rc<Vec<T>>, index: i64) -> Option<T> {
+pub fn list_at_optional<T: Clone>(xs: Rc<Vec<T>>, index: i64) -> Optional<T> {
     match (*fold_list(
         xs.clone(),
         Rc::new(ListAtLookup::ListAtMissing {

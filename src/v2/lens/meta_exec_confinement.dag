@@ -28,11 +28,11 @@ type MetaExecConfinementLeak {
 
 data empty_meta_exec_leaks: List<MetaExecConfinementLeak> = []
 
-fn char_eq(a: std.types.Char, b: std.types.Char) -> Bool {
+fn char_eq(a: std.types.Char, b: std.types.Char) -> v2.std.logic.Bool {
   a == b
 }
 
-fn list_contains_str(xs: List<String>, target: String) -> Bool {
+fn list_contains_str(xs: List<String>, target: String) -> v2.std.logic.Bool {
   fold_list(
     xs: xs,
     empty: false,
@@ -40,7 +40,7 @@ fn list_contains_str(xs: List<String>, target: String) -> Bool {
   )
 }
 
-fn path_has_any_prefix(prefixes: List<String>, path: String) -> Bool {
+fn path_has_any_prefix(prefixes: List<String>, path: String) -> v2.std.logic.Bool {
   fold_list(
     xs: prefixes,
     empty: false,
@@ -48,11 +48,11 @@ fn path_has_any_prefix(prefixes: List<String>, path: String) -> Bool {
   )
 }
 
-fn path_is_meta_exec_realization_edge(path: String) -> Bool {
+fn path_is_meta_exec_realization_edge(path: String) -> v2.std.logic.Bool {
   v2.lens.meta_exec_confinement.path_has_any_prefix(prefixes: meta_exec_realization_edge_path_prefixes, path: path)
 }
 
-fn is_meta_exec_confinement_leak(fact: v2.std.layer.LayerImportFact, roster: List<String>) -> Bool {
+fn is_meta_exec_confinement_leak(fact: v2.std.layer.LayerImportFact, roster: List<String>) -> v2.std.logic.Bool {
   fact.import_module == target_meta_exec_module
     && (path_is_meta_exec_realization_edge(path: fact.path) == false)
     && (v2.lens.meta_exec_confinement.list_contains_str(xs: roster, target: fact.path) == false)
@@ -91,7 +91,7 @@ fn meta_exec_leak_count(
 fn meta_exec_confinement_holds(
   facts: List<v2.std.layer.LayerImportFact>,
   roster: List<String>
-) -> Bool {
+) -> v2.std.logic.Bool {
   is_empty(xs: scan_facts_for_leaks(facts: facts, roster: roster))
 }
 
@@ -99,7 +99,7 @@ fn meta_exec_leak_count_canonical(facts: List<v2.std.layer.LayerImportFact>) -> 
   meta_exec_leak_count(facts: facts, roster: meta_exec_confinement_exception_paths())
 }
 
-fn meta_exec_confinement_holds_canonical(facts: List<v2.std.layer.LayerImportFact>) -> Bool {
+fn meta_exec_confinement_holds_canonical(facts: List<v2.std.layer.LayerImportFact>) -> v2.std.logic.Bool {
   meta_exec_confinement_holds(facts: facts, roster: meta_exec_confinement_exception_paths())
 }
 
@@ -121,7 +121,7 @@ fn meta_exec_leak_count_live(scan_roots: List<String>) -> Int {
   )
 }
 
-fn meta_exec_confinement_clean_live(scan_roots: List<String>) -> Bool {
+fn meta_exec_confinement_clean_live(scan_roots: List<String>) -> v2.std.logic.Bool {
   meta_exec_confinement_holds_canonical(
     facts: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: [])
   )
@@ -177,7 +177,7 @@ fn meta_exec_roster_stale_count(
 fn meta_exec_roster_sound(
   roster: List<String>,
   live_leak_paths: List<String>
-) -> Bool {
+) -> v2.std.logic.Bool {
   is_empty(xs: meta_exec_stale_roster_entries(roster: roster, live_leak_paths: live_leak_paths))
 }
 
@@ -188,7 +188,7 @@ fn meta_exec_roster_stale_count_live(scan_roots: List<String>) -> Int {
   )
 }
 
-fn meta_exec_roster_sound_live(scan_roots: List<String>) -> Bool {
+fn meta_exec_roster_sound_live(scan_roots: List<String>) -> v2.std.logic.Bool {
   meta_exec_roster_sound(
     roster: meta_exec_confinement_exception_paths(),
     live_leak_paths: meta_exec_live_leak_candidate_paths(scan_roots: scan_roots)

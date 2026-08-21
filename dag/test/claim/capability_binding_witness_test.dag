@@ -24,7 +24,7 @@ fn a_host(container: gunbc.host_realization.ApplicationContainerKind, renderer: 
       field: WholeDeclaration
     },
     container_product_build: gunbc.host_realization.RefReducedByPolicy { reported: "150.0.0.0" },
-    runtime_engine: RefResolved {
+    runtime_engine: gunbc.host_realization.RefResolved {
       declaration: std.decl_ref.DeclarationRef {
         module_path: "extdeps.browser.chromium",
         decl_name: "chromium",
@@ -333,7 +333,7 @@ fn witness_a_rejected_tap_carries_its_typed_causes() -> Bool {
     CapabilitySupported { receipt } => false
     CapabilityQualifiedAgainstProvisionalRequirement { receipt, pending } => false
     CapabilityUnavailable { obstacle } => false
-    CapabilityUnobserved => false
+    gunbc.capability_binding.CapabilityUnobserved => false
   }
 }
 
@@ -407,7 +407,7 @@ fn witness_every_obstacle_reaches_unavailable_with_its_own_typed_cause() -> Bool
          CapabilitySupported { receipt } => false
          CapabilityQualifiedAgainstProvisionalRequirement { receipt, pending } => false
          CapabilityDegraded { missing, alternative } => false
-         CapabilityUnobserved => false
+         gunbc.capability_binding.CapabilityUnobserved => false
        }
 }
 
@@ -434,7 +434,7 @@ fn degraded_alternative_module(s: gunbc.capability_binding.BindingStreamState) -
     CapabilitySupported { receipt } => ""
     CapabilityQualifiedAgainstProvisionalRequirement { receipt, pending } => ""
     CapabilityUnavailable { obstacle } => ""
-    CapabilityUnobserved => ""
+    gunbc.capability_binding.CapabilityUnobserved => ""
   }
 }
 

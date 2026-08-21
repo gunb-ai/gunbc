@@ -3,53 +3,53 @@ module v2.test.extdeps.coordination_claims
 
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
-fn coord_not(b: Bool) -> Bool {
+fn coord_not(b: v2.std.logic.Bool) -> v2.std.logic.Bool {
   b == false
 }
 
-fn exchange_is_request_reply(e: v2.extdeps.coordination.ExchangePattern) -> Bool {
+fn exchange_is_request_reply(e: v2.extdeps.coordination.ExchangePattern) -> v2.std.logic.Bool {
   match e {
     RequestReply => true
     _ => false
   }
 }
 
-fn exchange_is_fire_and_forget(e: v2.extdeps.coordination.ExchangePattern) -> Bool {
+fn exchange_is_fire_and_forget(e: v2.extdeps.coordination.ExchangePattern) -> v2.std.logic.Bool {
   match e {
     FireAndForget => true
     _ => false
   }
 }
 
-fn exchange_is_stream(e: v2.extdeps.coordination.ExchangePattern) -> Bool {
+fn exchange_is_stream(e: v2.extdeps.coordination.ExchangePattern) -> v2.std.logic.Bool {
   match e {
     StreamExchange => true
     _ => false
   }
 }
 
-fn exchange_is_publish_subscribe(e: v2.extdeps.coordination.ExchangePattern) -> Bool {
+fn exchange_is_publish_subscribe(e: v2.extdeps.coordination.ExchangePattern) -> v2.std.logic.Bool {
   match e {
     PublishSubscribe => true
     _ => false
   }
 }
 
-fn settlement_is_immediate(s: v2.extdeps.coordination.SettlementGuarantee<v2.extdeps.coordination.RequiredSettleBound>) -> Bool {
+fn settlement_is_immediate(s: v2.extdeps.coordination.SettlementGuarantee<v2.extdeps.coordination.RequiredSettleBound>) -> v2.std.logic.Bool {
   match s {
     ImmediateSettlement => true
     _ => false
   }
 }
 
-fn settlement_is_within(s: v2.extdeps.coordination.SettlementGuarantee<v2.extdeps.coordination.RequiredSettleBound>) -> Bool {
+fn settlement_is_within(s: v2.extdeps.coordination.SettlementGuarantee<v2.extdeps.coordination.RequiredSettleBound>) -> v2.std.logic.Bool {
   match s {
     SettlesWithin { bound: _ } => true
     _ => false
   }
 }
 
-test fn coordination_obligation_exchange_arm_sharp_holds() -> Bool {
+test fn coordination_obligation_exchange_arm_sharp_holds() -> v2.std.logic.Bool {
   exchange_is_request_reply(e: coordination_effect_obligation(effect: v2.extdeps.coordination.Http).required_exchange)
     && exchange_is_fire_and_forget(e: coordination_effect_obligation(effect: Queue).required_exchange)
     && exchange_is_stream(e: coordination_effect_obligation(effect: Stream).required_exchange)
@@ -57,7 +57,7 @@ test fn coordination_obligation_exchange_arm_sharp_holds() -> Bool {
     && coord_not(b: exchange_is_fire_and_forget(e: coordination_effect_obligation(effect: v2.extdeps.coordination.Http).required_exchange))
 }
 
-test fn coordination_obligation_settlement_arm_sharp_holds() -> Bool {
+test fn coordination_obligation_settlement_arm_sharp_holds() -> v2.std.logic.Bool {
   settlement_is_immediate(s: coordination_effect_obligation(effect: v2.extdeps.coordination.Http).required_settlement)
     && settlement_is_within(s: coordination_effect_obligation(effect: Queue).required_settlement)
     && settlement_is_within(s: coordination_effect_obligation(effect: Stream).required_settlement)

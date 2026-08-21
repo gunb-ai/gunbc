@@ -5,11 +5,11 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data rust_variant_construct_emit_wrong_value_source_text: String = "fn one_or_two() -> i32 { match (Holds { value: 1 }) { Holds { value: v } => v, True => 2 } }"
 
-fn rust_variant_construct_emit_facts_miss(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn rust_variant_construct_emit_facts_miss(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
-fn rust_variant_construct_emit_inferred_tree_for(root: Node) -> v2.compiler.inferred_tree.InferredTree {
+fn rust_variant_construct_emit_inferred_tree_for(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map { lookup: rust_variant_construct_emit_facts_miss }
@@ -20,19 +20,19 @@ data rust_variant_construct_emit_inferred_tree: v2.compiler.inferred_tree.Inferr
 
 data rust_variant_construct_emit_wrong_value_inferred_tree: v2.compiler.inferred_tree.InferredTree = rust_variant_construct_emit_inferred_tree_for(root: dag_variant_construct_arrow_with_body_wrong_value_fixture)
 
-test fn rust_variant_construct_emit_holds_accepts() -> Bool {
-  match emit(
+test fn rust_variant_construct_emit_holds_accepts() -> v2.std.logic.Bool {
+  match v2.compiler.emit.emit(
     tree: rust_variant_construct_emit_inferred_tree,
     target: rust_variant_construct_target_model_staging()
   ) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_variant_construct_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn rust_variant_construct_emit_wrong_value_discriminates() -> Bool {
-  match emit(
+test fn rust_variant_construct_emit_wrong_value_discriminates() -> v2.std.logic.Bool {
+  match v2.compiler.emit.emit(
     tree: rust_variant_construct_emit_wrong_value_inferred_tree,
     target: rust_variant_construct_target_model_staging()
   ) {
@@ -40,7 +40,7 @@ test fn rust_variant_construct_emit_wrong_value_discriminates() -> Bool {
       (source.carried == rust_variant_construct_emit_wrong_value_source_text) &&
       (source.carried != rust_variant_construct_source_text) &&
       (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

@@ -5,12 +5,12 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data source_bridged_pipeline_bridge_long_note: String = "Full tokenize→parse→normalize→resolve bridge exceeds the per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note)."
 
-test fn source_bridged_pipeline_bridge_resolves_add_source() -> Bool {
+test fn source_bridged_pipeline_bridge_resolves_add_source() -> v2.std.logic.Bool {
   match source_bridged_resolved_root(
     source_text: ingested_add_module_source,
     file: ^source_bridged_pipeline_bridge_test_file
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

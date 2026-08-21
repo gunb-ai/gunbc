@@ -96,7 +96,7 @@ fn spark_serving_slice_verdict_is_converged(verdict: String) -> Bool {
 
 // A HOST REPORT CARRIES ITS OWN VERDICT, NOT JUST ITS RENDERING. The receipt line used to be
 // the only product, so an execute-mode run whose actuation FAILED still wrote a file and
-// returned ExitSuccess — the workflow step greened on a failed loginctl enable-linger, with
+// returned std.process.ExitSuccess — the workflow step greened on a failed loginctl enable-linger, with
 // the refusal visible only as text a human might read (review 52578). Fail-open at the
 // actuation boundary. Carrying the verdict as data is what lets the entry set its exit status
 // from what happened rather than from whether a file got written.
@@ -560,7 +560,7 @@ func spark_serving_converge_slice_wet() -> std.process.ProcessExit
 
 // FAIL-CLOSED AT THE ACTUATION BOUNDARY. Writing a file is not evidence that anything
 // converged. Before this, an execute-mode run whose enable-linger FAILED still returned
-// ExitSuccess and greened the dispatch, with the refusal visible only as receipt text a human
+// std.process.ExitSuccess and greened the dispatch, with the refusal visible only as receipt text a human
 // might happen to read (review 52578). The exit status now derives from the per-host verdicts.
 // The receipt travels in the failure reason because the emitted step runs under bash -e: a
 // non-zero exit aborts before the step cats the file, so carrying the body here is what keeps
@@ -614,7 +614,7 @@ fn spark_serving_converge_slice_emit_receipt(
                       ], ""),
                     )
                   } else {
-                    ExitSuccess
+                    std.process.ExitSuccess
                   }
 }
 

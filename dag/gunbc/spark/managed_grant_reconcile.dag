@@ -41,7 +41,7 @@ fn spark_managed_grant_standing_from_outcome(
       } else {
         GrantNotHeld { grant: grant }
       }
-    GrantAbsent { detail: d } =>
+    gunbc.spark.managed_access_bootstrap.GrantAbsent { detail: d } =>
       if spark_grant_listing_reports_no_passwordless_grant(detail: d) {
         GrantNotHeld { grant: grant }
       } else {
@@ -104,7 +104,7 @@ fn spark_managed_grants_converged(outcome: gunbc.spark.managed_access_bootstrap.
 // whose second run differs from its first is not a reconcile.
 fn spark_managed_grant_dropin_name(grant: gunbc.spark.managed_access_bootstrap.SparkManagedGrant) -> std.types.NonEmptyStr {
   match grant {
-    EnableLingerForOwnAccount => "gunbc-enable-linger" as std.types.NonEmptyStr
+    gunbc.spark.managed_access_bootstrap.EnableLingerForOwnAccount => "gunbc-enable-linger" as std.types.NonEmptyStr
     gunbc.spark.managed_access_bootstrap.RebootThisHost => "gunbc-reboot" as std.types.NonEmptyStr
   }
 }

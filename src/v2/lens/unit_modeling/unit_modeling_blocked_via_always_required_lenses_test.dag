@@ -3,24 +3,24 @@ module v2.test.lens_unit_modeling.unit_modeling_blocked_via_always_required_lens
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data unit_ar_int_leaf: Node = v2.std.node.Node {
+data unit_ar_int_leaf: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_binding_type_int } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data unit_ar_root: Node = v2.std.node.Node {
+data unit_ar_root: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
-      label: Named { name: ^ram_bytes },
+      label: v2.std.node.Named { name: ^ram_bytes },
       target: unit_ar_int_leaf
     }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data unit_ar_authority: Node = claim_atom_node(s: ^unit_ar_symbol)
+data unit_ar_authority: v2.std.node.Node = claim_atom_node(s: ^unit_ar_symbol)
 
 fn unit_ar_tree() -> v2.compiler.inferred_tree.InferredTree {
   claim_inferred_tree(
@@ -33,12 +33,12 @@ fn unit_ar_tree() -> v2.compiler.inferred_tree.InferredTree {
   )
 }
 
-test fn unit_modeling_blocked_via_always_required_lenses_holds() -> Bool {
+test fn unit_modeling_blocked_via_always_required_lenses_holds() -> v2.std.logic.Bool {
   match run_required_lens_gates(
     inferred: unit_ar_tree(),
     lenses: always_required_lenses()
   ) {
-    Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_unit_leaf_fixable
+    v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_unit_leaf_fixable
     Accepted { value: _, diagnostics: _ } => false
   }
 }

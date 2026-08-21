@@ -58,7 +58,6 @@ pub use crate::v2_std_node::{
     Behavior, Connective, Diff, Edit, Hash, Node, NodeKind, NodeOccurrenceId, Path, Symbol,
 };
 pub use crate::v2_std_node_query::coproduct_arm_keys;
-pub use crate::v2_std_optional::Optional;
 pub use crate::v2_std_witness::Witness;
 use crate::v2_std_witness::Witness::*;
 use crate::NonEmptyBTreeSet;
@@ -66,7 +65,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub type Dag = Rc<crate::v2_std_node::Node>;
+pub type Dag = Rc<Node>;
 
 pub type AffectedDimension = String;
 
@@ -881,7 +880,9 @@ pub fn mark_excluded(
             ..
         } => match (*crate::v2_std_collection::map_get(decisions.clone(), key.clone())).clone() {
             Outcome::Accepted { value: opt, .. } => match opt.clone() {
-                Some(decision) => match (*decision.clone()).clone() {
+                Optional::Present {
+                    value: decision, ..
+                } => match (*decision.clone()).clone() {
                     FrontierDecision::Rerun => Rc::new(ReExecFrontier::ChangedSubgraphFrontier {
                         boundary_exclusions: boundary_exclusions.clone(),
                         decisions: decisions.clone(),
@@ -900,7 +901,7 @@ pub fn mark_excluded(
                         })
                     }
                 },
-                None => Rc::new(ReExecFrontier::ChangedSubgraphFrontier {
+                Optional::Absent => Rc::new(ReExecFrontier::ChangedSubgraphFrontier {
                     boundary_exclusions: boundary_exclusions.clone(),
                     decisions: v1_rt::rc_map_insert(
                         decisions.clone(),
@@ -1570,7 +1571,7 @@ pub fn union_dimension_lists(left: Rc<Vec<String>>, right: Rc<Vec<String>>) -> R
 
 pub fn list_to_changed_dimension_receipt(dims: Rc<Vec<String>>) -> Rc<ChangedDimensionReceipt> {
     match list_at_optional(dims.clone(), 0) {
-        Some(first) => match list_tail(dims.clone()) {
+        Optional::Present { value: first, .. } => match list_tail(dims.clone()) {
             ListTailResult::TailFound { tail: rest, .. } => {
                 Rc::new(ChangedDimensionReceipt::ChangedDimensions {
                     first: first.clone(),
@@ -1582,7 +1583,7 @@ pub fn list_to_changed_dimension_receipt(dims: Rc<Vec<String>>) -> Rc<ChangedDim
                 rest: Rc::new(vec![]),
             }),
         },
-        None => Rc::new(ChangedDimensionReceipt::ChangedDimensionsUnknown {
+        Optional::Absent => Rc::new(ChangedDimensionReceipt::ChangedDimensionsUnknown {
             reason: "affected_set_reason_changed_dimension_unresolved".to_string(),
         }),
     }

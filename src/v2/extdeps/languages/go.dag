@@ -299,7 +299,7 @@ data go_string_facts_catalog: List<GoStringPrimitiveFacts> = [
   go_facts_string,
 ]
 
-data go_bool_grounding: std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra
+data go_bool_grounding: std.algebra.BooleanAlgebra<v2.std.logic.Bool> = v2.std.logic.bool_boolean_algebra
 
 fn go_inhabitant_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
@@ -1922,7 +1922,7 @@ fn go_grammar() -> v2.std.grammar.ParseGrammar {
   v2.std.grammar.ModeledGrammar { root: go_grammar_root() }
 }
 
-fn go_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn go_lex_token_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.compilers.lexing.lex_rule_set_token_class_member(
     rules: go_lex_rules(),
     token_class: sym
@@ -1931,9 +1931,9 @@ fn go_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
 
 fn go_integer_catalog_surface_symbol_step(
   sym: v2.std.node.Symbol,
-  acc: Bool,
+  acc: v2.std.logic.Bool,
   facts: GoIntegerPrimitiveFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   match facts {
     GoSignedIntegerPrimitiveFacts {
       surface_spelling,
@@ -1952,37 +1952,37 @@ fn go_integer_catalog_surface_symbol_step(
 
 fn go_float_catalog_surface_symbol_step(
   sym: v2.std.node.Symbol,
-  acc: Bool,
+  acc: v2.std.logic.Bool,
   facts: GoFloatPrimitiveFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   acc || sym == facts.surface_spelling
 }
 
 fn go_complex_catalog_surface_symbol_step(
   sym: v2.std.node.Symbol,
-  acc: Bool,
+  acc: v2.std.logic.Bool,
   facts: GoComplexPrimitiveFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   acc || sym == facts.surface_spelling
 }
 
 fn go_bool_catalog_surface_symbol_step(
   sym: v2.std.node.Symbol,
-  acc: Bool,
+  acc: v2.std.logic.Bool,
   facts: GoBoolPrimitiveFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   acc || sym == facts.surface_spelling
 }
 
 fn go_string_catalog_surface_symbol_step(
   sym: v2.std.node.Symbol,
-  acc: Bool,
+  acc: v2.std.logic.Bool,
   facts: GoStringPrimitiveFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   acc || sym == facts.surface_spelling
 }
 
-fn go_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn go_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: go_integer_facts_catalog,
     empty: false,
@@ -1992,7 +1992,7 @@ fn go_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn go_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn go_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: go_float_facts_catalog,
     empty: false,
@@ -2002,7 +2002,7 @@ fn go_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn go_complex_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn go_complex_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: go_complex_facts_catalog,
     empty: false,
@@ -2012,7 +2012,7 @@ fn go_complex_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn go_bool_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn go_bool_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: go_bool_facts_catalog,
     empty: false,
@@ -2022,7 +2022,7 @@ fn go_bool_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn go_string_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn go_string_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: go_string_facts_catalog,
     empty: false,
@@ -2032,7 +2032,7 @@ fn go_string_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn go_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn go_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   go_integer_catalog_surface_symbol(sym: sym) ||
     go_float_catalog_surface_symbol(sym: sym) ||
     go_complex_catalog_surface_symbol(sym: sym) ||

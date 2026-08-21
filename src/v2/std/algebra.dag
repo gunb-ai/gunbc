@@ -93,8 +93,8 @@ fn skip<T>(xs: std.algebra.FreeMonoid<T>, n: Int) -> std.algebra.FreeMonoid<T> {
 }
 fn fold_list_node<T>(
   xs: std.algebra.FreeMonoid<T>,
-  item_node: fn(T) -> Node
-) -> Node {
+  item_node: fn(T) -> v2.std.node.Node
+) -> v2.std.node.Node {
   fold_list_right(
     xs: xs,
     empty: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [],
@@ -104,8 +104,8 @@ fn fold_list_node<T>(
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: Conj },
         children: [
-          v2.std.node.Edge { label: Named { name: ^fold_list_node_head }, target: item_node(item) },
-          v2.std.node.Edge { label: Named { name: ^fold_list_node_tail }, target: tail_node },
+          v2.std.node.Edge { label: v2.std.node.Named { name: ^fold_list_node_head }, target: item_node(item) },
+          v2.std.node.Edge { label: v2.std.node.Named { name: ^fold_list_node_tail }, target: tail_node },
         ],
         occurrence_id: SyntheticOccurrence
 }
@@ -113,18 +113,18 @@ fn fold_list_node<T>(
   )
 }
 
-fn algebra_empty_conj() -> Node {
+fn algebra_empty_conj() -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
-fn free_monoid_tail_type_fixpoint(inhabitant: Node) -> Node {
+fn free_monoid_tail_type_fixpoint(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   algebra_inhabitance_node(
     algebra: v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: Conj },
       children: [
-        v2.std.node.Edge { label: Named { name: ^free_monoid_type_fixpoint }, target: algebra_empty_conj() },
+        v2.std.node.Edge { label: v2.std.node.Named { name: ^free_monoid_type_fixpoint }, target: algebra_empty_conj() },
       ],
       occurrence_id: SyntheticOccurrence
 },
@@ -132,19 +132,19 @@ fn free_monoid_tail_type_fixpoint(inhabitant: Node) -> Node {
   )
 }
 
-fn free_monoid_type_node(inhabitant: Node) -> Node {
+fn free_monoid_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Disj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^free_monoid_variant_empty }, target: algebra_empty_conj() },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^free_monoid_variant_empty }, target: algebra_empty_conj() },
       v2.std.node.Edge {
-        label: Named { name: ^free_monoid_variant_cons },
+        label: v2.std.node.Named { name: ^free_monoid_variant_cons },
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: Conj },
           children: [
-            v2.std.node.Edge { label: Named { name: ^free_monoid_field_head }, target: inhabitant },
+            v2.std.node.Edge { label: v2.std.node.Named { name: ^free_monoid_field_head }, target: inhabitant },
             v2.std.node.Edge {
-              label: Named { name: ^free_monoid_field_tail },
+              label: v2.std.node.Named { name: ^free_monoid_field_tail },
               target: free_monoid_tail_type_fixpoint(inhabitant: inhabitant),
             },
           ],
@@ -156,7 +156,7 @@ fn free_monoid_type_node(inhabitant: Node) -> Node {
 }
 }
 
-fn algebra_binary_fn_node(domain: Node, codomain: Node) -> Node {
+fn algebra_binary_fn_node(domain: v2.std.node.Node, codomain: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -168,7 +168,7 @@ fn algebra_binary_fn_node(domain: Node, codomain: Node) -> Node {
 }
 }
 
-fn algebra_unary_fn_node(domain: Node, codomain: Node) -> Node {
+fn algebra_unary_fn_node(domain: v2.std.node.Node, codomain: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -179,24 +179,24 @@ fn algebra_unary_fn_node(domain: Node, codomain: Node) -> Node {
 }
 }
 
-fn ordering_type_node() -> Node {
+fn ordering_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Disj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^ordering_variant_less }, target: algebra_empty_conj() },
-      v2.std.node.Edge { label: Named { name: ^ordering_variant_equal }, target: algebra_empty_conj() },
-      v2.std.node.Edge { label: Named { name: ^ordering_variant_greater }, target: algebra_empty_conj() },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^ordering_variant_less }, target: algebra_empty_conj() },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^ordering_variant_equal }, target: algebra_empty_conj() },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^ordering_variant_greater }, target: algebra_empty_conj() },
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn magma_type_node(inhabitant: Node) -> Node {
+fn magma_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: Named { name: ^magma_field_op },
+        label: v2.std.node.Named { name: ^magma_field_op },
         target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
       },
     ],
@@ -204,44 +204,44 @@ fn magma_type_node(inhabitant: Node) -> Node {
 }
 }
 
-fn semigroup_type_node(inhabitant: Node) -> Node {
+fn semigroup_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^semigroup_field_magma }, target: magma_type_node(inhabitant: inhabitant) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^semigroup_field_magma }, target: magma_type_node(inhabitant: inhabitant) },
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn monoid_type_node(inhabitant: Node) -> Node {
+fn monoid_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^monoid_field_semigroup }, target: semigroup_type_node(inhabitant: inhabitant) },
-      v2.std.node.Edge { label: Named { name: ^monoid_field_identity }, target: inhabitant },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^monoid_field_semigroup }, target: semigroup_type_node(inhabitant: inhabitant) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^monoid_field_identity }, target: inhabitant },
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn commutative_monoid_type_node(inhabitant: Node) -> Node {
+fn commutative_monoid_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^commutative_monoid_field_monoid }, target: monoid_type_node(inhabitant: inhabitant) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^commutative_monoid_field_monoid }, target: monoid_type_node(inhabitant: inhabitant) },
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn group_type_node(inhabitant: Node) -> Node {
+fn group_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^group_field_monoid }, target: monoid_type_node(inhabitant: inhabitant) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^group_field_monoid }, target: monoid_type_node(inhabitant: inhabitant) },
       v2.std.node.Edge {
-        label: Named { name: ^group_field_inverse },
+        label: v2.std.node.Named { name: ^group_field_inverse },
         target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)
       },
     ],
@@ -249,65 +249,65 @@ fn group_type_node(inhabitant: Node) -> Node {
 }
 }
 
-fn abelian_group_type_node(inhabitant: Node) -> Node {
+fn abelian_group_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^abelian_group_field_group }, target: group_type_node(inhabitant: inhabitant) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^abelian_group_field_group }, target: group_type_node(inhabitant: inhabitant) },
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn semiring_type_node(inhabitant: Node) -> Node {
+fn semiring_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^semiring_field_add }, target: commutative_monoid_type_node(inhabitant: inhabitant) },
-      v2.std.node.Edge { label: Named { name: ^semiring_field_mul }, target: monoid_type_node(inhabitant: inhabitant) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^semiring_field_add }, target: commutative_monoid_type_node(inhabitant: inhabitant) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^semiring_field_mul }, target: monoid_type_node(inhabitant: inhabitant) },
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn commutative_semiring_type_node(inhabitant: Node) -> Node {
+fn commutative_semiring_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^commutative_semiring_field_semiring }, target: semiring_type_node(inhabitant: inhabitant) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^commutative_semiring_field_semiring }, target: semiring_type_node(inhabitant: inhabitant) },
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn ring_type_node(inhabitant: Node) -> Node {
+fn ring_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^ring_field_add }, target: abelian_group_type_node(inhabitant: inhabitant) },
-      v2.std.node.Edge { label: Named { name: ^ring_field_mul }, target: monoid_type_node(inhabitant: inhabitant) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^ring_field_add }, target: abelian_group_type_node(inhabitant: inhabitant) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^ring_field_mul }, target: monoid_type_node(inhabitant: inhabitant) },
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn commutative_ring_type_node(inhabitant: Node) -> Node {
+fn commutative_ring_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^commutative_ring_field_ring }, target: ring_type_node(inhabitant: inhabitant) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^commutative_ring_field_ring }, target: ring_type_node(inhabitant: inhabitant) },
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn ordered_ring_type_node(inhabitant: Node) -> Node {
+fn ordered_ring_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^ordered_ring_field_ring }, target: ring_type_node(inhabitant: inhabitant) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^ordered_ring_field_ring }, target: ring_type_node(inhabitant: inhabitant) },
       v2.std.node.Edge {
-        label: Named { name: ^ordered_ring_field_compare },
+        label: v2.std.node.Named { name: ^ordered_ring_field_compare },
         target: algebra_binary_fn_node(domain: inhabitant, codomain: ordering_type_node())
       },
     ],
@@ -315,49 +315,49 @@ fn ordered_ring_type_node(inhabitant: Node) -> Node {
 }
 }
 
-fn field_type_node(inhabitant: Node) -> Node {
+fn field_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^field_field_commutative_ring }, target: commutative_ring_type_node(inhabitant: inhabitant) },
-      v2.std.node.Edge { label: Named { name: ^field_field_reciprocal }, target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^field_field_commutative_ring }, target: commutative_ring_type_node(inhabitant: inhabitant) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^field_field_reciprocal }, target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant) },
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn field_reciprocal_operation_node() -> Node {
+fn field_reciprocal_operation_node() -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^field_reciprocal_operation } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
-fn field_reciprocal_nonzero_precondition_node() -> Node {
+fn field_reciprocal_nonzero_precondition_node() -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^field_reciprocal_nonzero_precondition } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
-fn approximate_field_type_node(inhabitant: Node) -> Node {
+fn approximate_field_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: Named { name: ^approximate_field_field_add },
+        label: v2.std.node.Named { name: ^approximate_field_field_add },
         target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
       },
-      v2.std.node.Edge { label: Named { name: ^approximate_field_field_zero }, target: inhabitant },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^approximate_field_field_zero }, target: inhabitant },
       v2.std.node.Edge {
-        label: Named { name: ^approximate_field_field_negate },
+        label: v2.std.node.Named { name: ^approximate_field_field_negate },
         target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)
       },
       v2.std.node.Edge {
-        label: Named { name: ^approximate_field_field_mul },
+        label: v2.std.node.Named { name: ^approximate_field_field_mul },
         target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
       },
-      v2.std.node.Edge { label: Named { name: ^approximate_field_field_one }, target: inhabitant },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^approximate_field_field_one }, target: inhabitant },
       v2.std.node.Edge {
-        label: Named { name: ^approximate_field_field_compare },
+        label: v2.std.node.Named { name: ^approximate_field_field_compare },
         target: algebra_binary_fn_node(domain: inhabitant, codomain: ordering_type_node())
       },
     ],
@@ -365,16 +365,16 @@ fn approximate_field_type_node(inhabitant: Node) -> Node {
 }
 }
 
-fn lattice_type_node(inhabitant: Node) -> Node {
+fn lattice_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: Named { name: ^lattice_field_meet },
+        label: v2.std.node.Named { name: ^lattice_field_meet },
         target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
       },
       v2.std.node.Edge {
-        label: Named { name: ^lattice_field_join },
+        label: v2.std.node.Named { name: ^lattice_field_join },
         target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
       },
     ],
@@ -382,28 +382,28 @@ fn lattice_type_node(inhabitant: Node) -> Node {
 }
 }
 
-fn bounded_lattice_type_node(inhabitant: Node) -> Node {
+fn bounded_lattice_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^bounded_lattice_field_lattice }, target: lattice_type_node(inhabitant: inhabitant) },
-      v2.std.node.Edge { label: Named { name: ^bounded_lattice_field_top }, target: inhabitant },
-      v2.std.node.Edge { label: Named { name: ^bounded_lattice_field_bottom }, target: inhabitant },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^bounded_lattice_field_lattice }, target: lattice_type_node(inhabitant: inhabitant) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^bounded_lattice_field_top }, target: inhabitant },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^bounded_lattice_field_bottom }, target: inhabitant },
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn boolean_algebra_type_node(inhabitant: Node) -> Node {
+fn boolean_algebra_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: Named { name: ^boolean_algebra_field_bounded_lattice },
+        label: v2.std.node.Named { name: ^boolean_algebra_field_bounded_lattice },
         target: bounded_lattice_type_node(inhabitant: inhabitant)
       },
       v2.std.node.Edge {
-        label: Named { name: ^boolean_algebra_field_complement },
+        label: v2.std.node.Named { name: ^boolean_algebra_field_complement },
         target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)
       },
     ],
@@ -411,116 +411,116 @@ fn boolean_algebra_type_node(inhabitant: Node) -> Node {
 }
 }
 
-fn algebra_inhabitance_node(algebra: Node, inhabitant: Node) -> Node {
+fn algebra_inhabitance_node(algebra: v2.std.node.Node, inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^algebra_edge }, target: algebra },
-      v2.std.node.Edge { label: Named { name: ^inhabitant_edge }, target: inhabitant },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^algebra_edge }, target: algebra },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^inhabitant_edge }, target: inhabitant },
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn magma_node(inhabitant: Node) -> Node {
+fn magma_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   algebra_inhabitance_node(
     algebra: magma_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
 
-fn semigroup_node(inhabitant: Node) -> Node {
+fn semigroup_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   algebra_inhabitance_node(
     algebra: semigroup_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
 
-fn monoid_node(inhabitant: Node) -> Node {
+fn monoid_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   algebra_inhabitance_node(
     algebra: monoid_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
 
-fn commutative_monoid_node(inhabitant: Node) -> Node {
+fn commutative_monoid_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   algebra_inhabitance_node(
     algebra: commutative_monoid_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
 
-fn group_node(inhabitant: Node) -> Node {
+fn group_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   algebra_inhabitance_node(
     algebra: group_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
 
-fn abelian_group_node(inhabitant: Node) -> Node {
+fn abelian_group_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   algebra_inhabitance_node(
     algebra: abelian_group_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
 
-fn semiring_node(inhabitant: Node) -> Node {
+fn semiring_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   algebra_inhabitance_node(
     algebra: semiring_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
 
-fn commutative_semiring_node(inhabitant: Node) -> Node {
+fn commutative_semiring_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   algebra_inhabitance_node(
     algebra: commutative_semiring_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
 
-fn ring_node(inhabitant: Node) -> Node {
+fn ring_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   algebra_inhabitance_node(
     algebra: ring_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
 
-fn commutative_ring_node(inhabitant: Node) -> Node {
+fn commutative_ring_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   algebra_inhabitance_node(
     algebra: commutative_ring_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
 
-fn ordered_ring_node(inhabitant: Node) -> Node {
+fn ordered_ring_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   algebra_inhabitance_node(
     algebra: ordered_ring_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
 
-fn field_node(inhabitant: Node) -> Node {
+fn field_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   algebra_inhabitance_node(
     algebra: field_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
 
-fn approximate_field_node(inhabitant: Node) -> Node {
+fn approximate_field_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   algebra_inhabitance_node(
     algebra: approximate_field_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
 
-fn lattice_node(inhabitant: Node) -> Node {
+fn lattice_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   algebra_inhabitance_node(
     algebra: lattice_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
 
-fn bounded_lattice_node(inhabitant: Node) -> Node {
+fn bounded_lattice_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   algebra_inhabitance_node(
     algebra: bounded_lattice_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
@@ -537,30 +537,30 @@ type BoundedLatticeInstanceCompleteness
   | BoundedLatticeComplete
   | BoundedLatticePartial { missing: BoundedLatticeMissingWitness }
 
-fn boolean_algebra_node(inhabitant: Node) -> Node {
+fn boolean_algebra_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   algebra_inhabitance_node(
     algebra: boolean_algebra_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
 
-fn bool_type_node() -> Node {
+fn bool_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Disj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^bool_variant_true }, target: algebra_empty_conj() },
-      v2.std.node.Edge { label: Named { name: ^bool_variant_false }, target: algebra_empty_conj() },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^bool_variant_true }, target: algebra_empty_conj() },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^bool_variant_false }, target: algebra_empty_conj() },
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn equivalence_type_node(inhabitant: Node) -> Node {
+fn equivalence_type_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: Named { name: ^equivalence_field_eq },
+        label: v2.std.node.Named { name: ^equivalence_field_eq },
         target: algebra_binary_fn_node(domain: inhabitant, codomain: bool_type_node())
       },
     ],
@@ -568,14 +568,14 @@ fn equivalence_type_node(inhabitant: Node) -> Node {
 }
 }
 
-fn equivalence_node(inhabitant: Node) -> Node {
+fn equivalence_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   algebra_inhabitance_node(
     algebra: equivalence_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant
   )
 }
 
-fn free_monoid_node(inhabitant: Node) -> Node {
+fn free_monoid_node(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   algebra_inhabitance_node(
     algebra: free_monoid_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant

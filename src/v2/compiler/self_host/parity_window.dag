@@ -6,8 +6,8 @@ data parity_window_note: String = "Parity window, DEMOTED to post-flip monitorin
 type ParityWindowReceipt {
   family: String
   cadence_window_id: String
-  agreement_green: Bool
-  warm_compile_skipped: Bool
+  agreement_green: v2.std.logic.Bool
+  warm_compile_skipped: v2.std.logic.Bool
 }
 
 type ParityObservation
@@ -33,7 +33,7 @@ type ParityFoldState {
   cursor: ParityCadenceCursor
 }
 
-fn receipt_is_green(r: ParityWindowReceipt) -> Bool {
+fn receipt_is_green(r: ParityWindowReceipt) -> v2.std.logic.Bool {
   r.agreement_green && r.warm_compile_skipped
 }
 
@@ -51,7 +51,7 @@ fn observation_family(o: ParityObservation) -> String {
   }
 }
 
-fn cadence_admits(cursor: ParityCadenceCursor, s: Int) -> Bool {
+fn cadence_admits(cursor: ParityCadenceCursor, s: Int) -> v2.std.logic.Bool {
   match cursor {
     NoCadenceYet => true
     CadenceAt { value: v } => s > v
@@ -167,7 +167,7 @@ fn parity_monitor_verdict(
   final_state.verdict
 }
 
-fn parity_routing_admitted(family: String, observations: List<ParityObservation>) -> Bool {
+fn parity_routing_admitted(family: String, observations: List<ParityObservation>) -> v2.std.logic.Bool {
   match parity_monitor_verdict(family: family, observations: observations) {
     ParityHolding { family: _, consecutive_green: _ } => true
     ParityRevertRequired { family: _, red_window_id: _ } => false

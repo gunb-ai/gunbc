@@ -53,7 +53,7 @@ fn residue_of(diff_text: String) -> List<gunbc.prose_row_frontier.ProseRowRef> {
 
 fn verdict_refuses(diff_text: String) -> Bool {
   match prose_row_introduction_verdict(observation: observe(diff_text: diff_text)) {
-    ExitSuccess => false
+    std.process.ExitSuccess => false
     ExitFailure { code: _, reason: _ } => true
   }
 }

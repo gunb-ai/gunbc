@@ -26,7 +26,7 @@ fn variant_construct_family_native_key_for(tree: v2.compiler.inferred_tree.Infer
 
 fn variant_construct_family_test_store() -> std.artifact_store.ArtifactStore {
   match std.artifact_store.store_over_provider(provider: variant_construct_family_provider) {
-    StoreReady { store: s } => s
+    std.artifact_store.StoreReady { store: s } => s
     StoreRefusedRetention { provider_id: _, declared: _ } =>
       std.artifact_store.ArtifactStore { budget: std.measure.byte_size(count: 0), next_ordinal: 1, rows: [] }
   }
@@ -67,7 +67,7 @@ fn variant_construct_family_cached_run_with_source(
             && stdout.bytes == emit_host_octets_byte_string(octets: [0, expected_octet, 0, 0, 0])
         _ => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -77,7 +77,7 @@ fn variant_construct_family_cached_run_checks(
   expect_compile_skipped: Bool,
   expected_octet: Int
 ) -> Bool {
-  match emit(tree: tree, target: rust_variant_construct_target_model_staging()) {
+  match v2.compiler.emit.emit(tree: tree, target: rust_variant_construct_target_model_staging()) {
     Accepted { value: source, diagnostics: _ } =>
       variant_construct_family_cached_run_with_source(
         workspace: workspace,
@@ -86,7 +86,7 @@ fn variant_construct_family_cached_run_checks(
         expect_compile_skipped: expect_compile_skipped,
         expected_octet: expected_octet
       )
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -95,7 +95,7 @@ fn variant_construct_family_cached_cold_then_warm(
   tree: v2.compiler.inferred_tree.InferredTree,
   expected_octet: Int
 ) -> Bool {
-  match emit(tree: tree, target: rust_variant_construct_target_model_staging()) {
+  match v2.compiler.emit.emit(tree: tree, target: rust_variant_construct_target_model_staging()) {
     Accepted { value: source, diagnostics: _ } =>
       variant_construct_family_cached_run_with_source(
         workspace: workspace,
@@ -111,7 +111,7 @@ fn variant_construct_family_cached_cold_then_warm(
           expect_compile_skipped: true,
           expected_octet: expected_octet
         )
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -173,7 +173,7 @@ test fn emit_on_demand_variant_construct_schedule_refuses_unreadable_budget_hold
   ) {
     BudgetRefused => true
     PackedWidth { width: _ } => false
-    MaturationReserve { width: _ } => false
+    std.realize_pack.MaturationReserve { width: _ } => false
   }
 }
 

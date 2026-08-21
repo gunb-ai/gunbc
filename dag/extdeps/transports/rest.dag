@@ -125,7 +125,7 @@ fn rest_fixture_scan(
     let next = if matches {
       RestFixtureScan {
         count: scan.count + 1,
-        observation: Present { value: fixture.observation },
+        observation: v2.std.optional.Present { value: fixture.observation },
       }
     } else {
       scan
@@ -148,14 +148,14 @@ fn rest_exchange_fixture_lookup(
     fixtures: fixtures,
     store: store,
     invocation: invocation,
-    scan: RestFixtureScan { count: 0, observation: Absent },
+    scan: RestFixtureScan { count: 0, observation: v2.std.optional.Absent },
   )
   if scan.count == 0 {
     RestFixtureAbsent { invocation: invocation }
   } else if scan.count == 1 {
     match scan.observation {
-      Present { value } => RestFixtureFound { observation: value }
-      Absent => RestFixtureAbsent { invocation: invocation }
+      v2.std.optional.Present { value } => RestFixtureFound { observation: value }
+      v2.std.optional.Absent => RestFixtureAbsent { invocation: invocation }
     }
   } else {
     RestFixtureAmbiguous { invocation: invocation, count: scan.count }

@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 data rust_add_forbidden_authority_source_text: String = "authority_source_text_fallback_forbidden"
 
 
-data rust_add_emitted_root: Node = rust_fixture_emitted_add_fn
+data rust_add_emitted_root: v2.std.node.Node = rust_fixture_emitted_add_fn
 
 data rust_add_target_model: v2.std.compilers.target_model.TargetModel = rust_target_model()
 
@@ -19,7 +19,7 @@ data rust_add_poisoned_authority_target_model: v2.std.compilers.target_model.Tar
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-data rust_add_empty_translation_rules_bundle: Node = v2.std.node.Node {
+data rust_add_empty_translation_rules_bundle: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
@@ -47,18 +47,18 @@ data rust_add_serialize_reject_receipt: v2.std.diagnostic.Outcome<extdeps.commun
 test fn rust_add_serialize_reject_receipt_holds() -> Bool {
   match rust_add_serialize_reject_receipt {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d != v2.std.diagnostic.None
+    v2.std.diagnostic.Rejected { diagnostics: d } => d != v2.std.diagnostic.None
   }
 }
 
 
-fn rust_add_i32_facts_node() -> Node {
+fn rust_add_i32_facts_node() -> v2.std.node.Node {
   rust_integer_facts_node(facts: rust_facts_i32)
 }
 
 fn rust_add_canonical_grounding(
-  node: Node,
-  algebra: Node
+  node: v2.std.node.Node,
+  algebra: v2.std.node.Node
 ) -> v2.std.constraints.CanonicalGrounding {
   v2.std.constraints.CanonicalGrounding {
     node: node,
@@ -75,7 +75,7 @@ fn rust_add_canonical_grounding(
   }
 }
 
-fn rust_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
+fn rust_add_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == rust_fixture_emitted_add_fn {
     v2.std.witness.Holds {
       value: rust_add_canonical_grounding(
@@ -90,7 +90,7 @@ fn rust_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.Ca
         algebra: rust_add_i32_facts_node()
       )
     }
-  } else if node == rust_inhabitant_atom(id: ^rust_inhabitant_i32) {
+  } else if node == v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_inhabitant_i32) {
     v2.std.witness.Holds {
       value: rust_add_canonical_grounding(
         node: node,
@@ -104,14 +104,14 @@ fn rust_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.Ca
         algebra: node
       )
     }
-  } else if node == rust_inhabitant_atom(id: ^rust_surface_spelling_i32) {
+  } else if node == v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_surface_spelling_i32) {
     v2.std.witness.Holds {
       value: rust_add_canonical_grounding(
         node: node,
         algebra: rust_add_i32_facts_node()
       )
     }
-  } else if node == rust_inhabitant_atom(id: ^rust_std_projection_int32) {
+  } else if node == v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_std_projection_int32) {
     v2.std.witness.Holds {
       value: rust_add_canonical_grounding(
         node: node,
@@ -146,21 +146,21 @@ fn rust_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.Ca
         algebra: rust_i32_overflow_disposition_node()
       )
     }
-  } else if node == rust_inhabitant_atom(id: ^rust_tag_scalar_int) {
+  } else if node == v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_tag_scalar_int) {
     v2.std.witness.Holds {
       value: rust_add_canonical_grounding(
         node: node,
         algebra: rust_i32_scalar_node()
       )
     }
-  } else if node == rust_inhabitant_atom(id: ^rust_tag_signed) {
+  } else if node == v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_tag_signed) {
     v2.std.witness.Holds {
       value: rust_add_canonical_grounding(
         node: node,
         algebra: rust_i32_scalar_node()
       )
     }
-  } else if node == rust_inhabitant_atom(id: ^rust_tag_bits32) {
+  } else if node == v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_tag_bits32) {
     v2.std.witness.Holds {
       value: rust_add_canonical_grounding(
         node: node,
@@ -181,14 +181,14 @@ fn rust_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.Ca
         algebra: rust_i32_overflow_disposition_node()
       )
     }
-  } else if node == rust_inhabitant_atom(id: ^rust_tag_panic_on_overflow) {
+  } else if node == v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_tag_panic_on_overflow) {
     v2.std.witness.Holds {
       value: rust_add_canonical_grounding(
         node: node,
         algebra: rust_overflow_node(overflow: v2.extdeps.languages.rust.PanicOnOverflow)
       )
     }
-  } else if node == rust_inhabitant_atom(id: ^rust_tag_two_complement_wrap) {
+  } else if node == v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_tag_two_complement_wrap) {
     v2.std.witness.Holds {
       value: rust_add_canonical_grounding(
         node: node,
@@ -206,7 +206,7 @@ fn rust_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.Ca
   }
 }
 
-fn rust_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn rust_add_inferred_facts_for(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   match rust_add_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -221,7 +221,7 @@ fn rust_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree
   }
 }
 
-fn rust_add_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn rust_add_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   rust_add_inferred_facts_for(node: key)
 }
 
@@ -233,7 +233,7 @@ data rust_add_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compile
 }
 
 fn anchor_rust_add_emit_accepts() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
-  emit(tree: rust_add_inferred_tree, target: rust_add_target_model)
+  v2.compiler.emit.emit(tree: rust_add_inferred_tree, target: rust_add_target_model)
 }
 
 fn anchor_rust_add_compile_inferred_accepts() -> v2.std.diagnostic.Outcome<v2.compiler.compile.CompileOutput> {
@@ -249,7 +249,7 @@ test fn rust_add_emit_add_fn_accepts_holds() -> Bool {
   match rust_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -258,7 +258,7 @@ data rust_add_compile_inferred_receipt: v2.std.diagnostic.Outcome<v2.compiler.co
 test fn rust_add_compile_inferred_receipt_holds() -> Bool {
   match rust_add_compile_inferred_receipt {
     Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

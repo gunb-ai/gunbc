@@ -21,7 +21,7 @@ fn deploy_raw(command: String) -> v2.std.orchestration.PipelineStep {
   }
 }
 
-fn systemctl_disable_now_argv_for_deploy(unit: std.types.NonEmptyStr, privileged: std.types.Bool) -> std.types.List<String> {
+fn systemctl_disable_now_argv_for_deploy(unit: std.types.NonEmptyStr, privileged: Bool) -> std.types.List<String> {
   if privileged {
     concat(["sudo", "-n"], extdeps.systemd.systemctl.systemctl_disable_now_argv(unit: unit))
   } else {
@@ -42,7 +42,7 @@ fn systemctl_load_state_assignment_intent(unit: std.types.NonEmptyStr) -> v2.std
   )
 }
 
-fn systemctl_disable_now_when_loaded_intent(unit: std.types.NonEmptyStr, privileged: std.types.Bool) -> v2.std.node.Node {
+fn systemctl_disable_now_when_loaded_intent(unit: std.types.NonEmptyStr, privileged: Bool) -> v2.std.node.Node {
   v2.extdeps.languages.bash_build.bash_build_if_from_stmts(
     cond: v2.extdeps.languages.bash_build.bash_build_test_bracket(words: [
       v2.extdeps.languages.bash_build.bash_build_word_var(name: "_gunbc_load_state"),
@@ -64,11 +64,11 @@ fn bash_intent_command_or_poison(intent: v2.std.node.Node) -> String {
         None => source
         Some { diagnostics: _ } => live_deploy_systemd_retirement_emit_refused_poison
       }
-    Rejected { diagnostics: _ } => live_deploy_systemd_retirement_emit_refused_poison
+    v2.std.diagnostic.Rejected { diagnostics: _ } => live_deploy_systemd_retirement_emit_refused_poison
   }
 }
 
-fn systemctl_disable_now_if_present_steps(unit: std.types.NonEmptyStr, privileged: std.types.Bool) -> std.types.List<v2.std.orchestration.PipelineStep> {
+fn systemctl_disable_now_if_present_steps(unit: std.types.NonEmptyStr, privileged: Bool) -> std.types.List<v2.std.orchestration.PipelineStep> {
   [
     deploy_raw(command: bash_intent_command_or_poison(
       intent: systemctl_load_state_assignment_intent(unit: unit)
@@ -79,7 +79,7 @@ fn systemctl_disable_now_if_present_steps(unit: std.types.NonEmptyStr, privilege
   ]
 }
 
-fn ensure_apt_package_step(pkg: std.types.NonEmptyStr, privileged: std.types.Bool) -> v2.std.orchestration.PipelineStep {
+fn ensure_apt_package_step(pkg: std.types.NonEmptyStr, privileged: Bool) -> v2.std.orchestration.PipelineStep {
   v2.std.orchestration.If {
     cond: v2.std.orchestration.Not { inner: v2.std.orchestration.ExitZero {
       run: v2.std.orchestration.Run {
@@ -104,7 +104,7 @@ fn emit_pipeline_or_poison(p: v2.std.orchestration.Pipeline, refused: String) ->
         None => source.carried
         Some { diagnostics: _ } => refused
       }
-    Rejected { diagnostics: _ } => refused
+    v2.std.diagnostic.Rejected { diagnostics: _ } => refused
   }
 }
 
@@ -357,9 +357,9 @@ fn deployment_step_key(step: gunbc.live_deploy.spec.DeploymentStep) -> std.types
   }
 }
 
-fn deployment_step_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> std.types.Bool { a == b }
+fn deployment_step_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> Bool { a == b }
 
-fn deployment_step_value_eq(a: gunbc.live_deploy.spec.DeploymentStep, b: gunbc.live_deploy.spec.DeploymentStep) -> std.types.Bool { a == b }
+fn deployment_step_value_eq(a: gunbc.live_deploy.spec.DeploymentStep, b: gunbc.live_deploy.spec.DeploymentStep) -> Bool { a == b }
 
 fn deployment_step_ownership_opt(step: gunbc.live_deploy.spec.DeploymentStep) -> gunbc.ownership.Ownership? {
   v2.std.optional.Present { value: gunbc.live_deploy.spec.deployment_step_ownership(step: step) }
@@ -488,7 +488,7 @@ fn install_d_owned_command(spec: gunbc.live_deploy.spec.DeploymentSpec, path: St
 
 data ensure_dependency_steps_note: String = "THE DISPATCH THAT ADMITS A SECOND KIND OF ENSURED RESOURCE, written so the package arm is untouched. A package still lowers to exactly the ensure step it always did, at both privilege settings, so no existing emitted byte moves -- the widening adds a kind, it does not redefine what ensuring a package means.\\n\\nA directory lowers to the same owned install -d the artifact steps use, through the same single authority, with the owner taken from the ensured subject rather than from a deployment spec. That is what lets a host-level resource be stated without an instance: an ensured host directory is a fact about the host, and threading a spec through it would have made it look like a per-instance fact again -- the exact confusion that put this root in the owned roster to begin with.\\n\\nprivileged is consumed only by the package arm because it describes how apt is invoked; install -d is privileged in both contexts and takes the same form either way."
 
-fn ensure_dependency_steps(dep: gunbc.live_deploy.spec.DeploymentDependencyStep, privileged: std.types.Bool) -> std.types.List<v2.std.orchestration.PipelineStep> {
+fn ensure_dependency_steps(dep: gunbc.live_deploy.spec.DeploymentDependencyStep, privileged: Bool) -> std.types.List<v2.std.orchestration.PipelineStep> {
   match dep.subject {
     EnsuredPackage { package } => [ensure_apt_package_step(pkg: package, privileged: privileged)]
     EnsuredHostDirectory { path, owner } => [
@@ -811,7 +811,7 @@ fn live_deploy_apply_script_for(spec: gunbc.live_deploy.spec.DeploymentSpec, rev
             p: apply_intent_from_effects(spec: spec, effects: es, access: access, revision: revision),
             refused: live_deploy_apply_emit_refused_poison
           )
-        ApplyRefused { refusals: rs } =>
+        gunbc.membership_reconcile.ApplyRefused { refusals: rs } =>
           live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "APPLY")
       }
   }
@@ -839,7 +839,7 @@ fn live_deploy_retract_script_with_scoped_removal(spec: gunbc.live_deploy.spec.D
             p: retract_intent_from_effects(spec: spec, effects: es, access: access),
             refused: live_deploy_retract_emit_refused_poison
           )
-        ApplyRefused { refusals: rs } =>
+        gunbc.membership_reconcile.ApplyRefused { refusals: rs } =>
           live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "RETRACT")
       }
   }

@@ -3,11 +3,11 @@
 
 use self::ScopeDecision::*;
 use self::ScopeFinding::*;
-use crate::extdeps_uri::UriScheme::File;
+use crate::extdeps_uri::UriScheme::*;
 pub use crate::extdeps_uri::{Uri, UriScheme};
+pub use crate::std_decl_ref::declaration_ref_eq;
 pub use crate::std_decl_ref::DeclarationRef;
-pub use crate::std_roster_frontier::declaration_ref_eq;
-pub use crate::std_types::NonEmptyStr;
+pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -272,10 +272,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+        uri: Uri {
         scheme: UriScheme::File,
         locator: "DESIGN.md#3-single-authority".to_string(),
-    }),
+    },
     })
             };
         }

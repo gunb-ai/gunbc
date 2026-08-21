@@ -27,7 +27,7 @@ fn artifact_generate(a: gunbc.generated_artifact.GeneratedArtifact) -> ArtifactG
       GitattributesGenerationRefused => ArtifactGenerationRefused { reason: "generated projection path population refused" }
     }
     gunbc.generated_artifact.RoadmapArtifact => artifact_generated(content: gunbc.roadmap_authority.expected_roadmap_md())
-    DesignArtifact => artifact_generated(content: gunbc.design_document.expected_design_md())
+    gunbc.generated_artifact.DesignArtifact => artifact_generated(content: gunbc.design_document.expected_design_md())
     gunbc.generated_artifact.GithooksPrePushArtifact => artifact_generated(content: gunbc.githooks_pre_push_emit.expected_githooks_pre_push_sh())
     gunbc.generated_artifact.GithooksPreCommitArtifact => artifact_generated(content: gunbc.githooks_pre_commit_emit.expected_githooks_pre_commit_sh())
     gunbc.generated_artifact.GeneratedArtifactMergeDriverArtifact => artifact_generated(content: gunbc.generated_artifact_merge_driver.expected_generated_artifact_merge_driver_sh(regen_command: gunbc.ci_spec.ci_heal_author_commit_regen_command))
@@ -56,7 +56,7 @@ fn artifact_extra_valid(a: gunbc.generated_artifact.GeneratedArtifact, generated
     gunbc.generated_artifact.GitignoreArtifact => true
     gunbc.generated_artifact.GitattributesArtifact => true
     gunbc.generated_artifact.RoadmapArtifact => true
-    DesignArtifact => true
+    gunbc.generated_artifact.DesignArtifact => true
     gunbc.generated_artifact.GithooksPrePushArtifact => true
     gunbc.generated_artifact.GithooksPreCommitArtifact => true
     gunbc.generated_artifact.GeneratedArtifactMergeDriverArtifact => true

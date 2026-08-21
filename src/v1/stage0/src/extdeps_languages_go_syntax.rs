@@ -2,16 +2,13 @@
 // Source module: extdeps.languages.go.syntax
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
-use crate::extdeps_uri::UriScheme::Https;
+use crate::extdeps_uri::UriScheme::*;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-use crate::std_syntax::BinOp::{
-    Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
-};
-use crate::std_syntax::BodyKind::{BlockBody, NoBody, TypeBody};
-use crate::std_syntax::ItemFormKind::{
-    EnumForm, FuncForm, ModuleForm, OtherForm, StructForm, TypeAliasForm,
-};
+use crate::std_syntax::BinOp::*;
+use crate::std_syntax::BodyKind::*;
+use crate::std_syntax::ItemFormKind::*;
 pub use crate::std_syntax::{BinOp, BodyKind, ItemForm, ItemFormKind, OperatorSpec};
+pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -23,10 +20,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+        uri: Uri {
         scheme: UriScheme::Https,
         locator: "go.dev/ref/spec#Operators".to_string(),
-    }),
+    },
     })
             };
         }

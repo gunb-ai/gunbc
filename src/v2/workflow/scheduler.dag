@@ -5,7 +5,7 @@ module v2.workflow.scheduler
 //
 // Frontier, layering, completion and blocked-evidence are facts about a prerequisite graph, not
 // about program structure, so they are stated once over a subject parameter. The compiler binds the
-// subject to Node; host convergence binds it to a planned operation identity. Neither is privileged
+// subject to v2.std.node.Node; host convergence binds it to a planned operation identity. Neither is privileged
 // and there is exactly one implementation, so cycle refusal and readiness cannot drift apart between
 // them -- which is the whole reason this is a parameterization rather than a second scheduler.
 type RunnableFrontier<Subject> {
@@ -370,7 +370,7 @@ fn scheduler_plan(graph_node: v2.std.node.Node) -> SchedulerPlan<v2.std.node.Nod
 }
 
 // THE NODE-SUBJECT WRAPPERS. The kernel above is subject-generic; the compiler's own consumers
-// schedule `Node` and supply structural identity, so the binding of `S = Node` with `node_eq`
+// schedule `v2.std.node.Node` and supply structural identity, so the binding of `S = v2.std.node.Node` with `node_eq`
 // lives here once rather than at each call site.
 fn scheduler_node_eq(left: v2.std.node.Node, right: v2.std.node.Node) -> Bool {
   left == right
@@ -397,7 +397,7 @@ fn scheduler_append_node_once(nodes: std.types.List<v2.std.node.Node>, node: v2.
   scheduler_append_subject_once(xs: nodes, item: node, eq: scheduler_node_eq)
 }
 
-// The Node-subject view filter, kept at its established name and signature. Consumers ask which
+// The v2.std.node.Node-subject view filter, kept at its established name and signature. Consumers ask which
 // dependencies order execution and get DependencyViews back, because that is what they hold and what
 // carries their usage_site; the generic kernel answers the same question over relations.
 fn scheduler_execution_dependencies(dependencies: std.types.List<v2.std.dependency.DependencyView>) -> std.types.List<v2.std.dependency.DependencyView> {

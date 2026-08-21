@@ -20,17 +20,17 @@ pub use crate::std_computation::{
 use crate::std_termination::DescentEvidence::*;
 use crate::std_termination::PositiveDescentAmount::*;
 use crate::std_termination::ProportionalDivisor::*;
-use crate::std_termination::RankingDimension::*;
 pub use crate::std_termination::{
     peano_literal_materialization_cap, positive_descent_amount_from_positive_int,
     positive_descent_count, proportional_divisor_from_int_at_least_two,
     proportional_divisor_to_int,
 };
-pub use crate::std_termination::{
-    DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension,
-};
+pub use crate::std_termination::{DescentEvidence, PositiveDescentAmount, ProportionalDivisor};
+pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v2_std_cardinality::RankingDimension;
+pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -747,13 +747,17 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
                                 }
                             } else {
                                 match int_pow_bounded(base.clone(), (exp.clone() - 1)) {
-                                    Some(prev) => match checked_int_optional(checked_int_multiply(
-                                        base.clone(),
-                                        prev.clone(),
-                                    )) {
-                                        Some(prod) => Some(prod.clone()),
-                                        None => None,
-                                    },
+                                    Some(prev) => {
+                                        match crate::std_checked_arithmetic::checked_int_optional(
+                                            crate::std_checked_arithmetic::checked_int_multiply(
+                                                base.clone(),
+                                                prev.clone(),
+                                            ),
+                                        ) {
+                                            Some(prod) => Some(prod.clone()),
+                                            None => None,
+                                        }
+                                    }
                                     None => None,
                                 }
                             }
@@ -778,22 +782,28 @@ pub fn ceil_log_iter(mut base: i64, mut argument: i64, mut k: i64, mut power: i6
         if (power.clone() >= argument.clone()) {
             break Some(k.clone());
         } else {
-            match checked_int_optional(checked_int_multiply(power.clone(), base.clone())) {
+            match crate::std_checked_arithmetic::checked_int_optional(
+                crate::std_checked_arithmetic::checked_int_multiply(power.clone(), base.clone()),
+            ) {
                 None => {
                     break None;
                 }
-                Some(next_power) => match checked_int_optional(checked_int_add(k.clone(), 1)) {
-                    None => {
-                        break None;
+                Some(next_power) => {
+                    match crate::std_checked_arithmetic::checked_int_optional(
+                        crate::std_checked_arithmetic::checked_int_add(k.clone(), 1),
+                    ) {
+                        None => {
+                            break None;
+                        }
+                        Some(k1) => {
+                            let __tco_0 = k1.clone();
+                            let __tco_1 = next_power.clone();
+                            k = __tco_0;
+                            power = __tco_1;
+                            continue;
+                        }
                     }
-                    Some(k1) => {
-                        let __tco_0 = k1.clone();
-                        let __tco_1 = next_power.clone();
-                        k = __tco_0;
-                        power = __tco_1;
-                        continue;
-                    }
-                },
+                }
             }
         }
     }

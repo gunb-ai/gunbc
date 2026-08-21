@@ -13,20 +13,20 @@ data fixture_absolute_outside: String = "/etc/passwd"
 fn dag_admits(rel: String) -> Bool {
   match cli_run_repo_write_admissible(rel: rel) {
     Permit => true
-    Deny { refusal: refusal } => false
+    std.access.Deny { refusal: refusal } => false
   }
 }
 
 fn dag_refuses(rel: String) -> Bool {
   match cli_run_repo_write_admissible(rel: rel) {
     Permit => false
-    Deny { refusal: refusal } => true
+    std.access.Deny { refusal: refusal } => true
   }
 }
 
 test fn cli_run_repo_grant_hand_rust_scaffold_is_seed_retained() -> Bool {
   match gunbc.cli_run_repo_grant_scaffold.cli_run_repo_grant_hand_rust_scaffold {
-    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    std.disposition.Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
     _ => false
   }
 }
@@ -41,7 +41,7 @@ test fn cli_run_repo_grant_equivalence_dag_contained_admits_holds() -> Bool {
   dag_admits(rel: fixture_contained_rel)
     && match cli_run_repo_read_admissible(rel: fixture_contained_rel) {
       Permit => true
-      Deny { refusal: refusal } => false
+      std.access.Deny { refusal: refusal } => false
     }
 }
 

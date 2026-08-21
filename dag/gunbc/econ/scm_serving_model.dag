@@ -207,7 +207,7 @@ data egress_dominance_note: String = "The reason this model separates network fr
 
 data progressive_tier_note: String = "Flat-rate multiplication is correct only below the first tier boundary, and an SCM crosses those boundaries exactly when it starts to matter: at a million users on this profile the workload holds 100 TB and moves 500 TB a month, which is past AWS's 50 TB storage step and past all three of its egress steps. Vendor tiers are PROGRESSIVE (each rate applies only to the slice inside its own band, like tax brackets), so pricing the whole volume at the top band's rate under-states the bill and pricing it at the first band's rate over-states it. This fold applies each band to its own slice; a ladder is a list of rows ascending by lower bound, and the last band runs to the workload's actual volume."
 
-// Nat subtraction below zero is not representable, and a tier slice legitimately goes negative when the workload never reaches that band -- so the clamp is explicit rather than an if-branch returning a bare literal (which types as Int and would fork the carrier).
+// std.nat.Nat subtraction below zero is not representable, and a tier slice legitimately goes negative when the workload never reaches that band -- so the clamp is explicit rather than an if-branch returning a bare literal (which types as Int and would fork the carrier).
 fn saturating_sub(a: std.nat.Nat, b: std.nat.Nat) -> std.nat.Nat {
   std.nat.nat_max(a: a, b: b) - b
 }

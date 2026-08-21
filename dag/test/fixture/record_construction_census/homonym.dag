@@ -4,7 +4,7 @@ module test.fixture.record_construction_census.homonym
 data record_construction_census_homonym_note: String = "Same-spelling, different-declaration specimen: this module declares its OWN CensusProbeSubject, a distinct declaration from specimens.CensusProbeSubject sharing only the spelling. Its construction counts toward the bare ^CensusProbeSubject target (same_spelling_other_module_counts_toward_bare_target) — deliberately exposing that the record_construction_spelling edge carries authored spelling, not resolved declaration identity, so a spelling census over-approximates: it cannot tell WHICH same-spelled declaration was constructed. Sound for emptiness verdicts; not an exact per-declaration authority."
 
 type CensusProbeSubject {
-  tag: Int
+  tag: v2.std.integer.Int
 }
 
 fn census_probe_constructs_homonym_subject() -> CensusProbeSubject {

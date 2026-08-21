@@ -192,7 +192,7 @@ fn dispatch_btn_base_decls() -> List<gunbc.design.material.CssDecl> {
     decl(prop: BorderRadius, value: scale_var(t: radius_999)),
     decl(prop: Padding, value: scale_pair(a: space_8, b: space_16)),
     decl(prop: MarginLeft, value: scale_var(t: space_6)),
-    decl(prop: Cursor, value: "pointer"),
+    decl(prop: extdeps.languages.css.properties.Cursor, value: "pointer"),
     decl(prop: Display, value: "inline-flex"),
     decl(prop: AlignItems, value: "center"),
     decl(prop: JustifyContent, value: "center"),
@@ -332,7 +332,7 @@ fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
       decl(prop: MarginTop, value: scale_var(t: space_20)),
     ] },
     gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: "details.section-fold > summary" }, decls: [
-      decl(prop: Cursor, value: "pointer"),
+      decl(prop: extdeps.languages.css.properties.Cursor, value: "pointer"),
       decl(prop: ListStyle, value: "none"),
     ] },
     gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: "details.section-fold > summary::-webkit-details-marker" }, decls: [
@@ -566,7 +566,7 @@ fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
       decl(prop: BorderRadius, value: scale_var(t: radius_3)),
       decl(prop: Padding, value: scale_pair(a: space_1, b: space_6)),
       decl(prop: MarginLeft, value: "auto"),
-      decl(prop: Cursor, value: "pointer"),
+      decl(prop: extdeps.languages.css.properties.Cursor, value: "pointer"),
       decl(prop: MinWidth, value: sound_toggle_reserved_width()),
       decl(prop: TextAlign, value: "center"),
       decl(prop: TextTransform, value: "lowercase"),
@@ -619,7 +619,7 @@ fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
     ], "") }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_10)),
       role_decl(prop: Color, r: TextDimRole),
-      decl(prop: Cursor, value: "pointer"),
+      decl(prop: extdeps.languages.css.properties.Cursor, value: "pointer"),
     ] },
     gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: activity_obligation_class }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_10)),
@@ -728,7 +728,7 @@ fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
       decl(prop: MarginLeft, value: scale_var(t: space_12)),
     ] },
     gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: "details.item-detail > summary" }, decls: [
-      decl(prop: Cursor, value: "pointer"),
+      decl(prop: extdeps.languages.css.properties.Cursor, value: "pointer"),
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: FontSize, value: scale_var(t: text_11)),
       decl(prop: ListStyle, value: "none"),
@@ -755,12 +755,12 @@ fn roadmap_instance_rules_head() -> List<gunbc.design.material.BuildRule> {
       decl(prop: BorderRadius, value: scale_var(t: radius_3)),
       decl(prop: Padding, value: scale_pair(a: space_1, b: space_6)),
       decl(prop: MarginLeft, value: scale_var(t: space_2)),
-      decl(prop: Cursor, value: "pointer"),
+      decl(prop: extdeps.languages.css.properties.Cursor, value: "pointer"),
       decl(prop: TextTransform, value: "lowercase"),
       decl(prop: LetterSpacing, value: "0.03em"),
     ] },
     gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.RawSelector { text: ".cleanup-chip:disabled" }, decls: [
-      decl(prop: Cursor, value: "default"),
+      decl(prop: extdeps.languages.css.properties.Cursor, value: "default"),
       decl(prop: Opacity, value: "0.64"),
     ] },
     gunbc.design.material.StaticRule { selector: extdeps.languages.css.selectors.ClassSelector { name: "dispatch-attempts" }, decls: [
@@ -838,7 +838,7 @@ fn roadmap_instance_rules_tail() -> List<gunbc.design.material.BuildRule> {
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
       decl(prop: BorderRadius, value: scale_var(t: radius_3)),
       decl(prop: Padding, value: scale_pair(a: space_1, b: space_6)),
-      decl(prop: Cursor, value: "pointer"),
+      decl(prop: extdeps.languages.css.properties.Cursor, value: "pointer"),
       decl(prop: MinWidth, value: swatch_toggle_reserved_width()),
       decl(prop: TextAlign, value: "center"),
       decl(prop: TextTransform, value: "lowercase"),
@@ -853,7 +853,7 @@ fn roadmap_instance_rules_tail() -> List<gunbc.design.material.BuildRule> {
       decl(prop: BorderRadius, value: scale_var(t: radius_3)),
       decl(prop: Padding, value: scale_pair(a: space_1, b: space_6)),
       decl(prop: MarginLeft, value: scale_var(t: space_2)),
-      decl(prop: Cursor, value: "pointer"),
+      decl(prop: extdeps.languages.css.properties.Cursor, value: "pointer"),
       decl(prop: MinWidth, value: theme_toggle_reserved_width()),
       decl(prop: TextAlign, value: "center"),
       decl(prop: TextTransform, value: "lowercase"),

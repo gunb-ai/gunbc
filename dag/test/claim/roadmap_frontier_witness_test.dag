@@ -14,7 +14,7 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> gunbc.roadmap_m
     sizing: gunbc.roadmap_model.Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 
@@ -40,7 +40,7 @@ fn unsized_derivable(id: String, prs: List<Int>, title: String) -> gunbc.roadmap
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 
@@ -168,7 +168,7 @@ fn superseded_node_fixture(id: String, by: String) -> gunbc.roadmap_model.Roadma
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 

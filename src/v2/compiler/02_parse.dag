@@ -210,8 +210,8 @@ fn grammar_first_production_named(
     empty: v2.std.optional.Absent,
     cons: fn(acc, p) {
       match acc {
-        Present { value: _ } => acc
-        Absent =>
+        v2.std.optional.Present { value: _ } => acc
+        v2.std.optional.Absent =>
           match p.name == name {
             true => v2.std.optional.Present { value: p }
             false => v2.std.optional.Absent
@@ -223,8 +223,8 @@ fn grammar_first_production_named(
 
 fn grammar_lookup_production(root: v2.std.grammar.GrammarRoot, name: v2.std.node.Symbol) -> v2.std.witness.Witness<v2.std.grammar.GrammarProduction> {
   match grammar_first_production_named(root: root, name: name) {
-    Present { value: production } => v2.std.witness.Holds { value: production }
-    Absent =>
+    v2.std.optional.Present { value: production } => v2.std.witness.Holds { value: production }
+    v2.std.optional.Absent =>
       v2.std.witness.Violates {
         diagnostic: parse_grammar_undefined_nonterminal_diagnostic(
           at: v2.std.diagnostic.port_locus(port: ^parse_stage_locus_port)
@@ -290,7 +290,7 @@ fn parse_table_memo_store_refused_diagnostic(at: v2.std.diagnostic.Locus) -> v2.
 
 fn parse_table_memo_store_refused_reason(d: v2.std.diagnostic.Diagnostic) -> Bool {
   match d {
-    Diagnostic { reason: r, at: _, correction: _ } =>
+    v2.std.diagnostic.Diagnostic { reason: r, at: _, correction: _ } =>
       r == ^parse_table_memo_store_refused
   }
 }
@@ -311,7 +311,7 @@ fn parse_table_memo_insert_refused(
   match v2.std.collection.map_get(m: after.entries, key: key) {
     Accepted { value: v2.std.optional.Absent } => true
     v2.std.diagnostic.Accepted { value: v2.std.optional.Present { value: _ } } => false
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -773,13 +773,13 @@ fn parse_next_brace_depth(tok: v2.std.compilers.lexing.Token, depth: Int) -> Int
 fn parse_scan_fat_arrow_after_lbrace(tokens: std.types.List<v2.std.compilers.lexing.Token>, depth: Int) -> Bool {
   if depth <= 0 {
     match parse_token_first(tokens: tokens) {
-      Absent => false
-      Present { value: tok } => parse_token_lexeme_is(tok: tok, lit: "=>")
+      v2.std.optional.Absent => false
+      v2.std.optional.Present { value: tok } => parse_token_lexeme_is(tok: tok, lit: "=>")
     }
   } else {
     match parse_token_first(tokens: tokens) {
-      Absent => false
-      Present { value: tok } =>
+      v2.std.optional.Absent => false
+      v2.std.optional.Present { value: tok } =>
         match v2.std.algebra.list_tail(xs: tokens) {
           TailAbsent => false
           TailFound { tail: rest } =>
@@ -809,13 +809,13 @@ fn parse_tokens_drop(tokens: std.types.List<v2.std.compilers.lexing.Token>, coun
 
 fn parse_looks_like_match_arm_start(tokens: std.types.List<v2.std.compilers.lexing.Token>) -> Bool {
   match parse_token_first(tokens: tokens) {
-    Absent => false
-    Present { value: tok0 } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tok0 } =>
       match v2.std.text.string_head(s: tok0.lexeme) {
         CharFound { value: c } =>
           if parse_char_is_arm_pattern_lead(c: c) {
             match parse_token_second(tokens: tokens) {
-              Present { value: tok1 } =>
+              v2.std.optional.Present { value: tok1 } =>
                 if parse_token_lexeme_is(tok: tok1, lit: "=>") {
                   true
                 } else if parse_token_lexeme_is(tok: tok1, lit: "{") {
@@ -826,7 +826,7 @@ fn parse_looks_like_match_arm_start(tokens: std.types.List<v2.std.compilers.lexi
                 } else {
                   false
                 }
-              Absent => false
+              v2.std.optional.Absent => false
             }
           } else {
             false
@@ -842,8 +842,8 @@ fn parse_stamp_match_arm_stmt_nodes(
 ) -> ParseStampResult {
   if v2.std.algebra.length(xs: acc_nodes) == 1 {
     match v2.std.collection.list_at_optional(xs: acc_nodes, index: 0) {
-      Present { value: only } => ParseStampResult { node: only, prov: prov }
-      Absent => ParseStampResult { node: v2.std.grammar.grammar_empty_node(), prov: prov }
+      v2.std.optional.Present { value: only } => ParseStampResult { node: only, prov: prov }
+      v2.std.optional.Absent => ParseStampResult { node: v2.std.grammar.grammar_empty_node(), prov: prov }
     }
   } else {
     parse_stamp_derived_repeat(acc_nodes: acc_nodes, prov: prov)
@@ -1156,7 +1156,7 @@ fn production_first_row_lookup(rows: std.types.Map<v2.std.node.Symbol, std.types
   match v2.std.collection.map_get(m: rows, key: name) {
     v2.std.diagnostic.Accepted { value: v2.std.optional.Present { value: terminals }, diagnostics: _ } => terminals
     Accepted { value: v2.std.optional.Absent, diagnostics: _ } => grammar_empty_terminal_list()
-    Rejected { diagnostics: _ } => grammar_empty_terminal_list()
+    v2.std.diagnostic.Rejected { diagnostics: _ } => grammar_empty_terminal_list()
   }
 }
 
@@ -1349,7 +1349,7 @@ fn collect_choice_ambiguities_in_expr(
   acc: std.types.List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>
 ) -> std.types.List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
   match expr {
-    Terminal { token_class: _, stamp: _ } => acc
+    v2.std.grammar.Terminal { token_class: _, stamp: _ } => acc
     Nonterminal { production: _ } => acc
     Sequence { left: left, right: right } =>
       collect_choice_ambiguities_in_expr(
@@ -1388,7 +1388,7 @@ fn collect_choice_ambiguities_in_expr(
         )
       )
     }
-    Optional { element: element } =>
+    v2.std.optional.Optional { element: element } =>
       collect_choice_ambiguities_in_expr(
         expr: element,
         production: production,
@@ -1396,7 +1396,7 @@ fn collect_choice_ambiguities_in_expr(
         first_rows: first_rows,
         acc: acc
       )
-    Repeat { element: element } =>
+    v2.std.grammar.Repeat { element: element } =>
       collect_choice_ambiguities_in_expr(
         expr: element,
         production: production,
@@ -1617,7 +1617,7 @@ fn left_corner_row(rows: std.types.Map<v2.std.node.Symbol, std.types.List<v2.std
   match v2.std.collection.map_get(m: rows, key: name) {
     v2.std.diagnostic.Accepted { value: v2.std.optional.Present { value: reached }, diagnostics: _ } => reached
     Accepted { value: v2.std.optional.Absent, diagnostics: _ } => std.algebra.Empty
-    Rejected { diagnostics: _ } => std.algebra.Empty
+    v2.std.diagnostic.Rejected { diagnostics: _ } => std.algebra.Empty
   }
 }
 
@@ -1784,8 +1784,8 @@ fn parse_grammar_choice_overlap_residue_diagnostic(at: v2.std.diagnostic.Locus, 
 
 fn diagnostics_from_diagnostic_list(items: std.types.List<v2.std.diagnostic.Diagnostic>) -> v2.std.diagnostic.Diagnostics {
   match v2.std.collection.list_at_optional(xs: items, index: 0) {
-    Absent => v2.std.diagnostic.None
-    Present { value: first } =>
+    v2.std.optional.Absent => v2.std.diagnostic.None
+    v2.std.optional.Present { value: first } =>
       match v2.std.algebra.list_tail(xs: items) {
         TailAbsent => v2.std.diagnostic.Some { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: first, tail: std.algebra.Empty } }
         TailFound { tail: rest } =>
@@ -1899,8 +1899,8 @@ fn parse_expr_terminal(
   prov: ParseProvenanceState
 ) -> ParseExprResult {
   match parse_token_first(tokens: tokens) {
-    Absent => ParseExprRejected { diagnostics: [], table: table }
-    Present { value: tok } =>
+    v2.std.optional.Absent => ParseExprRejected { diagnostics: [], table: table }
+    v2.std.optional.Present { value: tok } =>
       match tok.class == token_class {
         true =>
           match v2.std.algebra.list_tail(xs: tokens) {
@@ -1924,7 +1924,7 @@ fn parse_expr_terminal(
                       prov: minted.prov,
                       table: table
                     }
-                  Rejected { diagnostics: d } =>
+                  v2.std.diagnostic.Rejected { diagnostics: d } =>
                     ParseExprRejected { diagnostics: d, table: table }
                 }
               } else {
@@ -2076,7 +2076,7 @@ fn parse_choice_first_dispatch(
     )
   } else {
     match parse_token_first(tokens: tokens) {
-      Absent =>
+      v2.std.optional.Absent =>
         if left_first.nullable {
           parse_expr_with_first(expr: left, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
         } else if right_first.nullable {
@@ -2084,7 +2084,7 @@ fn parse_choice_first_dispatch(
         } else {
           ParseExprRejected { diagnostics: [], table: table }
         }
-      Present { value: tok } =>
+      v2.std.optional.Present { value: tok } =>
         parse_choice_on_present_token(
           left: left,
           right: right,
@@ -2222,7 +2222,7 @@ fn parse_expr_with_first(
   prov: ParseProvenanceState
 ) -> ParseExprResult {
   match expr {
-    Terminal { token_class: token_class, stamp: stamp } =>
+    v2.std.grammar.Terminal { token_class: token_class, stamp: stamp } =>
       parse_expr_terminal(
         token_class: token_class,
         stamp: stamp,
@@ -2259,7 +2259,7 @@ fn parse_expr_with_first(
         table: table,
         prov: prov
       )
-    Optional { element: element } =>
+    v2.std.optional.Optional { element: element } =>
       parse_expr_optional(
         element: element,
         tokens: tokens,
@@ -2268,7 +2268,7 @@ fn parse_expr_with_first(
         table: table,
         prov: prov
       )
-    Repeat { element: element } =>
+    v2.std.grammar.Repeat { element: element } =>
       parse_expr_repeat(
         element: element,
         tokens: tokens,
@@ -2398,7 +2398,7 @@ fn parse_production_tree(
   ) {
     Accepted { value: artifact, diagnostics: d } =>
       v2.std.diagnostic.Accepted { value: artifact.tree, diagnostics: d }
-    Rejected { diagnostics: r } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } =>
       v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
@@ -2433,7 +2433,7 @@ fn overlap_residue_stage_from_prepared(prepared: PreparedGrammar) -> v2.std.opti
 
 fn overlap_residue_stage_from_parse_grammar(grammar: v2.std.grammar.ParseGrammar) -> v2.std.optional.Optional<v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics> {
   match prepare_grammar(grammar: grammar) {
-    Rejected { diagnostics: _ } => v2.std.optional.optional_absent()
+    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.optional_absent()
     Accepted { value: prepared, diagnostics: _ } =>
       overlap_residue_stage_from_prepared(prepared: prepared)
   }
@@ -2468,7 +2468,7 @@ fn parse_module_prepared(
             value: artifact,
             diagnostics: v2.std.diagnostic.diagnostics_merge(outer: validation_residue, inner: parse_diags)
           }
-        Rejected { diagnostics: parse_rejected } =>
+        v2.std.diagnostic.Rejected { diagnostics: parse_rejected } =>
           v2.std.diagnostic.Rejected {
             diagnostics: v2.std.diagnostic.rejected_with_pending(pending: validation_residue, rejected: parse_rejected)
           }
@@ -2488,7 +2488,7 @@ fn parse(tokens: v2.std.compilers.lexing.TokenStream, grammar: v2.std.grammar.Pa
   match parse_module(tokens: tokens, grammar: grammar) {
     Accepted { value: artifact, diagnostics: d } =>
       v2.std.diagnostic.Accepted { value: artifact.tree, diagnostics: d }
-    Rejected { diagnostics: r } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } =>
       v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }

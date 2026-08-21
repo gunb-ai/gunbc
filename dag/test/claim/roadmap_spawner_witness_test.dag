@@ -14,7 +14,7 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> gunbc.roadmap_m
     sizing: gunbc.roadmap_model.Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 
@@ -53,7 +53,7 @@ fn unsized_derivable(id: String, prs: List<Int>, title: String) -> gunbc.roadmap
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 
@@ -215,7 +215,7 @@ fn superseded_node(id: String, by: String, content: String) -> gunbc.roadmap_mod
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 
@@ -242,7 +242,7 @@ test fn witness_superseded_control_open_parent_still_gates() -> Bool {
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
   let node_child = test.claim.roadmap_spawner.sized_derivable(id: "sp-child", prs: [200], title: "Child Node")
   let edges = [gunbc.roadmap_model.RoadmapEdge { child: roadmap_spawner_nid(s: "sp-child"), parent: roadmap_spawner_nid(s: "sp-old") }]

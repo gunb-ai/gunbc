@@ -59,7 +59,7 @@ fn non_add_action_refusal(action: gunbc.runner_capacity_plan.RunnerCapacityActio
       Present {
         value: concat("RunnerSlotRemove outside runner-capacity apply on ", host as String),
       }
-    RunnerIncarnationReplace { slot: _, cause: _ } =>
+    gunbc.runner_capacity_plan.RunnerIncarnationReplace { slot: _, cause: _ } =>
       Present {
         value: concat(
           "RunnerIncarnationReplace outside runner-capacity apply on ",
@@ -95,7 +95,7 @@ fn count_add_actions_in_host_plan(host_plan: gunbc.runner_capacity_plan.RunnerCa
 
 fn count_runner_slot_add_actions(plan: gunbc.runner_capacity_plan.RunnerCapacityPlan) -> Int {
   match plan {
-    PlanRefused { reason: _ } => 0
+    gunbc.runner_capacity_plan.PlanRefused { reason: _ } => 0
     PlanReady { hosts: hs } =>
       fold(
         hs,
@@ -156,7 +156,7 @@ fn runner_capacity_reapply_plans_zero_additions(
 
 fn runner_capacity_apply_plan(plan: gunbc.runner_capacity_plan.RunnerCapacityPlan) -> RunnerCapacityApplyOutcome {
   match plan {
-    PlanRefused { reason: r } => RunnerCapacityApplyRefused { reason: r }
+    gunbc.runner_capacity_plan.PlanRefused { reason: r } => RunnerCapacityApplyRefused { reason: r }
     PlanReady { hosts: hs } =>
       RunnerCapacityApplyCompleted {
         hosts: map(hs, h => runner_capacity_apply_host_plan(host_plan: h)),
@@ -227,6 +227,6 @@ fn runner_capacity_apply_wet_exit(srv3_width: Int, srv4_width: Int) -> std.proce
   if runner_capacity_apply_any_host_refused(outcome: outcome) {
     exit_failure(reason: "runner-capacity apply: one or more hosts refused; see per-host receipts")
   } else {
-    ExitSuccess
+    std.process.ExitSuccess
   }
 }

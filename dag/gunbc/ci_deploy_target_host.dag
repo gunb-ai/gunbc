@@ -42,7 +42,7 @@ fn deploy_target_host_observed() -> DeployTargetHostObservation {
 fn deploy_target_host_decision_reason(d: std.access.AccessDecision) -> String {
   match d {
     Permit => ""
-    Deny { refusal: refusal } => access_refusal_reason(refusal: refusal)
+    std.access.Deny { refusal: refusal } => access_refusal_reason(refusal: refusal)
   }
 }
 

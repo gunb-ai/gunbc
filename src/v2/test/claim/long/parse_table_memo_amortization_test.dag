@@ -83,36 +83,36 @@ fn memo_amort_single_root_content_hash(ingest: v2.compiler.source_authority.Sour
         false =>
           memo_amort_not_single_root_rejection()
       }
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
-test fn memo_amort_parse_one_file_holds() -> Bool {
+test fn memo_amort_parse_one_file_holds() -> v2.std.logic.Bool {
   match v2.compiler.program_assembly.module_roots_from_source_root_ingest(
     ingest: memo_amort_ingest_one_file,
     lm: v2.extdeps.languages.dag.dag_language_model()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn memo_amort_parse_two_files_holds() -> Bool {
+fn memo_amort_parse_two_files_holds() -> v2.std.logic.Bool {
   match v2.compiler.program_assembly.module_roots_from_source_root_ingest(
     ingest: memo_amort_ingest_two_files,
     lm: v2.extdeps.languages.dag.dag_language_model()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn memo_amort_parse_two_files_twice_holds() -> Bool {
+test fn memo_amort_parse_two_files_twice_holds() -> v2.std.logic.Bool {
   memo_amort_parse_two_files_holds() && memo_amort_parse_two_files_holds()
 }
 
-fn witness_parse_table_memo_hit_path_content_hash_stable() -> Bool {
+fn witness_parse_table_memo_hit_path_content_hash_stable() -> v2.std.logic.Bool {
   match memo_amort_single_root_content_hash(ingest: memo_amort_ingest_bisect_add) {
     Accepted { value: hash_miss, diagnostics: _ } =>
       match memo_amort_single_root_content_hash(ingest: memo_amort_ingest_bisect_add) {
@@ -120,30 +120,30 @@ fn witness_parse_table_memo_hit_path_content_hash_stable() -> Bool {
           match memo_amort_single_root_content_hash(ingest: memo_amort_ingest_one_file) {
             Accepted { value: hash_empty, diagnostics: _ } =>
               hash_miss == hash_hit && hash_miss != hash_empty
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn parse_table_grammar_memo_multi_file_ingest_parses() -> Bool {
+test fn parse_table_grammar_memo_multi_file_ingest_parses() -> v2.std.logic.Bool {
   memo_amort_parse_two_files_holds()
 }
 
-test fn parse_table_memo_hit_path_content_hash_stable_holds() -> Bool {
+test fn parse_table_memo_hit_path_content_hash_stable_holds() -> v2.std.logic.Bool {
   witness_parse_table_memo_hit_path_content_hash_stable()
 }
 
 data empty_ingest_guard_note: String = "Covers the empty-ingest branch of program_assembly_fold_ingest, added with the prepare-once hoist: an empty ingest must assemble to empty roots WITHOUT paying the one-time grammar preparation (well-formed + 5-check validation + FIRST analysis) for zero modules. Discriminating — RED if the guard rejected, fabricated a root, or (regression) fell through to prepare_grammar for no modules. Fast by construction (no prepare, no parse), unlike the multi-file amortization witnesses above which each pay exactly ONE preparation for the whole fold."
 
-test fn empty_ingest_assembles_to_empty_roots_without_prepare() -> Bool {
+test fn empty_ingest_assembles_to_empty_roots_without_prepare() -> v2.std.logic.Bool {
   match v2.compiler.program_assembly.module_roots_from_source_root_ingest(
     ingest: std.algebra.Empty,
     lm: v2.extdeps.languages.dag.dag_language_model()
   ) {
     Accepted { value: roots, diagnostics: _ } => v2.std.algebra.length(xs: roots) == 0
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

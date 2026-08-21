@@ -4,8 +4,7 @@
 use self::FuncSigLookup::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
-pub use crate::std_syntax::BinOp;
-use crate::std_syntax::BinOp::*;
+pub use crate::std_types::{List, Map};
 pub use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection;
 use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection::*;
 pub use crate::v1_compiler_infer_occurrence_binding::{
@@ -14,15 +13,15 @@ pub use crate::v1_compiler_infer_occurrence_binding::{
 pub use crate::v1_compiler_infer_types::emit_map_has;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::CompilerDiagnostic::MissingAnnotation;
-use crate::v1_std_core::ExprData::ExprCall;
-use crate::v1_std_core::InferredNode::*;
-use crate::v1_std_core::MatchPattern::*;
+use crate::v1_std_core::CompilerDiagnostic::*;
+use crate::v1_std_core::ExprData::*;
 pub use crate::v1_std_core::{authored_name_at, expr_call_func_at, make_error_node, no_span};
 pub use crate::v1_std_core::{
-    CompilerDiagnostic, DeclaredFuncSig, ErrorNode, ExprData, NewlineIndex, Node,
+    CompilerDiagnostic, DeclaredFuncSig, ErrorNode, ExprData, NewlineIndex,
 };
-pub use crate::v1_std_core::{InferredNode, MatchPattern};
+pub use crate::v2_std_collection::empty_map;
+pub use crate::v2_std_node::{Edge, Node};
+pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -96,7 +95,7 @@ pub fn flatten_parent_envs(
         });
         let dedup = ordered.clone().iter().cloned().fold(
             Rc::new(FlattenAccum {
-                seen: v1_rt::rc_empty_map::<String, bool>(),
+                seen: v1_rt::rc_empty_map::<_, _>(),
                 out: Rc::new(vec![]),
             }),
             |acc: Rc<FlattenAccum>, p: Rc<ResolvedFuncEnv>| {
@@ -124,7 +123,7 @@ pub struct ParentSigScan {
 pub fn func_sig_lookup_outcome_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "namespace-resolution-design.md 13 / 8 step 1, fn path: ResolvedFuncSig? overloaded Absent as 'keep looking' (the census fallback fires on it), so a refusal had nowhere to go — the first-hit over func_env.parents was the fn silent-pick class (fn_parent_first_hit) with NO refusal arm at all. FuncSigLookup is the 3-state outcome: FuncSigResolved binds, FuncSigUnresolved means genuinely-no-sig (census fallback may still run), FuncSigAmbiguous carries the full candidate list and REFUSES — it never falls through to a fallback. Under ImportScoped (host bracket false) the first-hit behavior remains until the downstream production flip; under NamespaceOnlyY exactly-one match across the flat parent closure resolves, two-plus refuses through module_path_owner_binding_decide. Own-module local hit stays first on both arms.".to_string()
+            "namespace-resolution-design.md 13 / 8 step 1, fn path: v1.compiler.infer_sigs.ResolvedFuncSig? overloaded Absent as 'keep looking' (the census fallback fires on it), so a refusal had nowhere to go — the first-hit over func_env.parents was the fn silent-pick class (fn_parent_first_hit) with NO refusal arm at all. FuncSigLookup is the 3-state outcome: FuncSigResolved binds, FuncSigUnresolved means genuinely-no-sig (census fallback may still run), FuncSigAmbiguous carries the full candidate list and REFUSES — it never falls through to a fallback. Under ImportScoped (host bracket false) the first-hit behavior remains until the downstream production flip; under NamespaceOnlyY exactly-one match across the flat parent closure resolves, two-plus refuses through module_path_owner_binding_decide. Own-module local hit stays first on both arms.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -468,11 +467,11 @@ pub fn topo_resolve_loop(
                         },
                     );
                 return Rc::new(ResolveFuncSigsResult {
-                    func_env: Rc::new(ResolvedFuncEnv {
+                    func_env: ResolvedFuncEnv {
                         name: module_name.clone(),
                         local: all_resolved.clone(),
                         parents: parent_envs.clone(),
-                    }),
+                    },
                     diagnostics: diagnostics.clone(),
                 });
             }
@@ -572,8 +571,7 @@ pub fn topo_resolve_loop(
                     .cloned()
                     .fold(
                         cycle_accum.signatures.clone(),
-                        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-                         dsig: Rc<DeclaredFuncSig>| {
+                        |acc: HashMap<String, Rc<ResolvedFuncSig>>, dsig: Rc<DeclaredFuncSig>| {
                             if (dsig.inferred.clone() != None) {
                                 v1_rt::rc_map_insert(
                                     acc.clone(),
@@ -586,11 +584,11 @@ pub fn topo_resolve_loop(
                         },
                     );
                 return Rc::new(ResolveFuncSigsResult {
-                    func_env: Rc::new(ResolvedFuncEnv {
+                    func_env: ResolvedFuncEnv {
                         name: module_name.clone(),
                         local: all_resolved.clone(),
                         parents: parent_envs.clone(),
-                    }),
+                    },
                     diagnostics: v1_rt::concat(
                         diagnostics.clone(),
                         cycle_accum.diagnostics.clone(),
@@ -700,7 +698,7 @@ pub fn resolve_func_sigs(
         );
         topo_resolve_loop(
             local_func_names.clone(),
-            v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
+            v1_rt::rc_empty_map::<_, _>(),
             declared_sigs.clone(),
             call_edges.clone(),
             local_func_set.clone(),

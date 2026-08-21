@@ -217,9 +217,9 @@ fn attribute_within(
 
 
 // A SPAN IS A START PLUS A WIDTH, which is how a producer records one and why it is the caller's
-// input shape: a Nat width cannot be negative, so the ordered-pair refusal that OrderedClosedInterval
+// input shape: a std.nat.Nat width cannot be negative, so the ordered-pair refusal that OrderedClosedInterval
 // exists to catch is already impossible at this door. The refusal arm below is therefore unreachable
-// under Nat arithmetic and is still carried, because "cannot happen" is a claim about today's
+// under std.nat.Nat arithmetic and is still carried, because "cannot happen" is a claim about today's
 // carrier and not a licence to fabricate a span if it ever does.
 type ExtentSpec {
   occurrence: std.observation.OccurrenceId

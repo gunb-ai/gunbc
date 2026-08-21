@@ -1,11 +1,11 @@
 module gunbc.srv3_install_media_fetch
 
 
-data gunbc_srv3_install_media_fetch_scope_disposition: std.disposition.Disposition = Terminal {
+data gunbc_srv3_install_media_fetch_scope_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "srv3 Ubuntu 24.04.3 live-server arm64 ISO acquisition — CreateIfAbsent keyed on content_sha256; N mirror transport handlers on one cited artifact row; runnable on srv1 actuator host before nbd-proxy serve."
 }
 
-data srv3_install_media_fetch_shell_runner_scaffold: std.disposition.Disposition = Terminal {
+data srv3_install_media_fetch_shell_runner_scaffold: std.disposition.Disposition = std.disposition.Terminal {
   reason: "srv3_install_media_fetch() routes through host_effect_apply to install_media_fetch_reconcile() in-process (TypedReconcileOnHost cell, dag/gunbc/host_effect_realize.dag) - no shell script is built, serialized, or run for this effect"
 }
 

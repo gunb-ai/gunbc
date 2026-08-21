@@ -42,7 +42,7 @@ test fn orch_pipeline_single_step_is_run_holds() -> Bool {
   match v2.compiler.emit_orchestration.orch_emit_pipeline(p: orch_pipeline_one_step(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "cargo build -p v1-compiler --release --bins") && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -58,7 +58,7 @@ test fn orch_pipeline_two_steps_newline_joined_holds() -> Bool {
   match v2.compiler.emit_orchestration.orch_emit_pipeline(p: orch_pipeline_two_steps(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == orch_pipeline_two_steps_expected()) && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -66,7 +66,7 @@ test fn orch_pipeline_join_has_teeth_holds() -> Bool {
   match v2.compiler.emit_orchestration.orch_emit_pipeline(p: orch_pipeline_two_steps(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: src, diagnostics: _ } =>
       src.carried != orch_pipeline_two_steps_space_joined_wrong()
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -77,7 +77,7 @@ test fn orch_run_empty_env_delegates_to_shell_emit_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "cargo build") && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -93,7 +93,7 @@ test fn orch_run_env_prefixed_structured_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "CARGO_BUILD_JOBS=1 cargo test --workspace") && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -143,7 +143,7 @@ test fn orch_if_single_step_no_else_byte_identical_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "if [ -z \"$1\" ]; then verdict=absent; fi") && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -154,7 +154,7 @@ test fn orch_if_single_step_with_else_byte_identical_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "if [ -z \"$1\" ]; then verdict=absent; else verdict=present; fi") && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -165,7 +165,7 @@ test fn orch_if_multi_step_then_no_else_block_form_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "if [ -z \"$1\" ]; then\nverdict=absent\necho \"$verdict\"\nfi") && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -176,7 +176,7 @@ test fn orch_if_multi_step_then_and_else_block_form_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "if [ -z \"$1\" ]; then\nverdict=absent\necho \"$verdict\"\nelse\nverdict=present\necho \"$verdict\"\nfi") && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -187,7 +187,7 @@ test fn orch_if_multi_step_else_only_block_form_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "if [ -z \"$1\" ]; then\nverdict=absent\nelse\nverdict=present\necho \"$verdict\"\nfi") && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -202,7 +202,7 @@ test fn orch_if_empty_then_no_else_noop_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "if [ -z \"$1\" ]; then :; fi") && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -213,7 +213,7 @@ test fn orch_if_empty_then_with_nonempty_else_noop_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "if [ -z \"$1\" ]; then :; else verdict=present; fi") && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -224,7 +224,7 @@ test fn orch_if_nonempty_then_with_empty_else_noop_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "if [ -z \"$1\" ]; then verdict=absent; else :; fi") && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -235,7 +235,7 @@ test fn orch_if_both_arms_empty_noop_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "if [ -z \"$1\" ]; then :; else :; fi") && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -255,6 +255,6 @@ test fn orch_run_env_unset_multi_binding_structured_holds() -> Bool {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 cargo test --workspace")
         && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

@@ -6,6 +6,6 @@ data sibling_degenerate_node: v2.std.node.Node = v2.std.node.Node {
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn sibling_degenerate_not_hollow_claim_holds() -> Bool {
+test fn sibling_degenerate_not_hollow_claim_holds() -> v2.std.logic.Bool {
   v2.lens.coverage.coverage_defect_degenerate_type != v2.lens.coverage.coverage_defect_hollow_type
 }

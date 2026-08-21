@@ -50,11 +50,11 @@ fn designs_eq(a: product.altra_motherboard.minimal_design.AltraMinimalMotherboar
     && a.pcie_lanes_broken_out == b.pcie_lanes_broken_out
 }
 
-fn mt_jade_reference_board_width_um() -> Int {
+fn mt_jade_reference_board_width_um() -> std.integer.Int {
   micrometer_count(m: mt_jade_motherboard_mechanical.outline_width)
 }
 
-fn mt_jade_reference_board_depth_um() -> Int {
+fn mt_jade_reference_board_depth_um() -> std.integer.Int {
   micrometer_count(m: mt_jade_motherboard_mechanical.outline_depth)
 }
 
@@ -267,8 +267,8 @@ fn admit_pcb_world(d: product.altra_motherboard.minimal_design.AltraMinimalMothe
           Present { value: r } => product.pcb.world.PcbWorldRefused { cause: r }
           Absent =>
             match admit_placement(d: d, d_ref: d_ref, plan: plan) {
-              PlacementAdmitted { plan: _ } => product.pcb.world.AdmittedPcbWorld { value: w }
-              PlacementRefused { causes: cs } =>
+              product.altra_motherboard.placement.PlacementAdmitted { plan: _ } => product.pcb.world.AdmittedPcbWorld { value: w }
+              product.altra_motherboard.placement.PlacementRefused { causes: cs } =>
                 match design_mismatch_from_causes(cs: cs) {
                   Present { value: r } => product.pcb.world.PcbWorldRefused { cause: r }
                   Absent => product.pcb.world.PcbWorldRefused { cause: PcbPlacementNotAdmitted }

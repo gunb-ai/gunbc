@@ -6,7 +6,7 @@ data build_cache_endpoint_observation_authority_disposition: std.disposition.Dis
 // THE CI CACHE ENDPOINT PRODUCER for units, caps, and owner context. gunbc.build_cache_instance carries
 // desired intent and placement derivation; this module will walk /proc for listener ownership, cgroup
 // memory limits, and unit names. It gates on shell transport and returns EndpointObservationUnavailable
-// with ReachRefused when transport fails — never EndpointAbsent (unreachable ≠ no listener).
+// with gunbc.build_cache_instance.ReachRefused when transport fails — never EndpointAbsent (unreachable ≠ no listener).
 
 fn build_cache_ci_endpoint_observed_producer(host: product.placement_supply.HostIdentity) -> gunbc.build_cache_instance.BuildCacheEndpointObservation {
   let instance = ci_cache_instance(host: host)
@@ -21,12 +21,12 @@ fn build_cache_ci_endpoint_observed_producer(host: product.placement_supply.Host
     ShellTransportReachRefused { observed_on: _, principal: _, detail: d, gap: _ } =>
       gunbc.build_cache_instance.EndpointObservationUnavailable {
         instance: instance,
-        reason: ReachRefused { detail: d },
+        reason: gunbc.build_cache_instance.ReachRefused { detail: d },
       }
     ShellTransportUnobserved { reason: r } =>
       gunbc.build_cache_instance.EndpointObservationUnavailable {
         instance: instance,
-        reason: ReachRefused {
+        reason: gunbc.build_cache_instance.ReachRefused {
           detail: concat("shell transport unobserved: ", r) as std.types.NonEmptyStr,
         },
       }

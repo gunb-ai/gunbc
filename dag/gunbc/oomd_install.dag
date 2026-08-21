@@ -75,18 +75,18 @@ fn grounding_check(ok: Bool, reason: String) -> OomdGroundingCheck {
 
 fn unit_is_active(s: extdeps.systemd.SystemdUnitActiveState) -> Bool {
   match s {
-    Active => true
-    Inactive => false
+    extdeps.systemd.Active => true
+    extdeps.systemd.Inactive => false
     Activating => false
     Deactivating => false
     Reloading => false
-    Failed => false
+    extdeps.systemd.Failed => false
   }
 }
 
 fn unit_is_enabled(s: extdeps.systemd.systemctl.UnitFileState) -> Bool {
   match s {
-    UnitEnabled => true
+    extdeps.systemd.systemctl.UnitEnabled => true
     UnitEnabledRuntime => false
     UnitLinked => false
     UnitMasked => false
@@ -184,7 +184,7 @@ fn reconcile_oomd(read: std.realization_reconcile.ShowEffectiveRead<OomdEffectiv
 
 fn oomd_evidence_from_reconciliation(r: std.realization_reconcile.Reconciliation<OomdApplyEffect, gunbc.ci_floor_measurement.OomdEnforcementEvidence>) -> gunbc.ci_floor_measurement.OomdEnforcementEvidence {
   match r {
-    Converged { evidence: e, applied: _ } => e
+    std.realization_reconcile.Converged { evidence: e, applied: _ } => e
     NotConverged { reason: _, applied: _ } => OomdUnverified
   }
 }

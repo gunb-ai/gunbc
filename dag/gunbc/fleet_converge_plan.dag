@@ -383,11 +383,11 @@ type FleetConvergePlanArtifact {
 // variant would have landed as "UnmodeledServingInstallEffect" and read as a legitimate wire label
 // that simply missed. Every variant now names itself, so the wire string says WHICH effect was
 // asked for, and adding a variant makes this match non-exhaustive rather than defaulting.
-// Behaviour for the implemented slice is unchanged: EnableLingerForOwnAccount is still the only
+// Behaviour for the implemented slice is unchanged: gunbc.spark.serving_realization.EnableLingerForOwnAccount is still the only
 // effect the linger vertical realizes.
 fn fleet_converge_spark_serving_effect_wire(effect: gunbc.spark_serving_realization.ServingInstallEffect) -> String {
   match effect {
-    EnableLingerForOwnAccount => "EnableLingerForOwnAccount"
+    gunbc.spark.serving_realization.EnableLingerForOwnAccount => "EnableLingerForOwnAccount"
     gunbc.spark.serving_realization.WriteSystemUnitFile => "WriteSystemUnitFile"
     gunbc.spark.serving_realization.ReloadSystemManager => "ReloadSystemManager"
     gunbc.spark.serving_realization.EnableSystemUnit => "EnableSystemUnit"

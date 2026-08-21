@@ -17,7 +17,7 @@ fn unobserved(reason: String) -> gunbc.host_effect_realize.Srv3HostPredicate {
   gunbc.host_effect_realize.Srv3PredicateUnobserved { reason: reason }
 }
 
-fn labels_equal(actual: std.types.List<String>, expected: std.types.List<String>) -> std.types.Bool {
+fn labels_equal(actual: std.types.List<String>, expected: std.types.List<String>) -> Bool {
   join(actual, ",") == join(expected, ",")
 }
 
@@ -26,7 +26,7 @@ fn trace_of(outcomes: std.types.List<gunbc.host_effect_realize.Srv3HostPredicate
 }
 
 // Already present: observe only. No mutation stage is reachable.
-test fn already_installed_runs_observe_only() -> std.types.Bool {
+test fn already_installed_runs_observe_only() -> Bool {
   labels_equal(
     actual: trace_of(outcomes: [gunbc.host_effect_realize.Srv3PredicateHolds]),
     expected: ["observe-installed"],
@@ -34,7 +34,7 @@ test fn already_installed_runs_observe_only() -> std.types.Bool {
 }
 
 // An unobservable first probe must not lead to an install on a host that was never reached.
-test fn unobservable_observation_runs_observe_only() -> std.types.Bool {
+test fn unobservable_observation_runs_observe_only() -> Bool {
   labels_equal(
     actual: trace_of(outcomes: [unobserved(reason: "transport refused")]),
     expected: ["observe-installed"],
@@ -43,7 +43,7 @@ test fn unobservable_observation_runs_observe_only() -> std.types.Bool {
 
 // THE CENTRAL RED. A failed mkdir stops the walk: no download, no chmod, no readback.
 // Before this cut all three ran anyway.
-test fn a_failed_directory_ensure_stops_before_download() -> std.types.Bool {
+test fn a_failed_directory_ensure_stops_before_download() -> Bool {
   labels_equal(
     actual: trace_of(
       outcomes: [gunbc.host_effect_realize.Srv3PredicateFails, gunbc.host_effect_realize.Srv3PredicateHolds, gunbc.host_effect_realize.Srv3PredicateFails, gunbc.host_effect_realize.Srv3PredicateHolds, gunbc.host_effect_realize.Srv3PredicateHolds, gunbc.host_effect_realize.Srv3PredicateHolds, gunbc.host_effect_realize.Srv3PredicateHolds],
@@ -54,7 +54,7 @@ test fn a_failed_directory_ensure_stops_before_download() -> std.types.Bool {
 
 // An unobservable chown must not be followed by a download either -- Unobserved is not a weaker
 // Fails, it is "the host was never asked", and proceeding would mutate a host in unknown state.
-test fn an_unobservable_ownership_ensure_stops_before_download() -> std.types.Bool {
+test fn an_unobservable_ownership_ensure_stops_before_download() -> Bool {
   labels_equal(
     actual: trace_of(
       outcomes: [gunbc.host_effect_realize.Srv3PredicateFails, gunbc.host_effect_realize.Srv3PredicateHolds, gunbc.host_effect_realize.Srv3PredicateHolds, unobserved(reason: "ssh refused"), gunbc.host_effect_realize.Srv3PredicateHolds, gunbc.host_effect_realize.Srv3PredicateHolds, gunbc.host_effect_realize.Srv3PredicateHolds],
@@ -65,7 +65,7 @@ test fn an_unobservable_ownership_ensure_stops_before_download() -> std.types.Bo
 
 // A failed download must not be chmod'd or read back -- the previous body chmod'd a file the
 // download had not produced, then re-observed it.
-test fn a_failed_download_stops_before_chmod() -> std.types.Bool {
+test fn a_failed_download_stops_before_chmod() -> Bool {
   labels_equal(
     actual: trace_of(
       outcomes: [gunbc.host_effect_realize.Srv3PredicateFails, gunbc.host_effect_realize.Srv3PredicateHolds, gunbc.host_effect_realize.Srv3PredicateHolds, gunbc.host_effect_realize.Srv3PredicateHolds, gunbc.host_effect_realize.Srv3PredicateFails, gunbc.host_effect_realize.Srv3PredicateHolds, gunbc.host_effect_realize.Srv3PredicateHolds],
@@ -83,7 +83,7 @@ test fn a_failed_download_stops_before_chmod() -> std.types.Bool {
 // exactly the defect it names. Measured -- it was the one witness the never-stop mutation did
 // not redden. The seventh outcome removes the exhaustion crutch, so the only thing that can
 // keep readback out of the trace is the sequencing.
-test fn the_readback_never_runs_after_a_failed_step() -> std.types.Bool {
+test fn the_readback_never_runs_after_a_failed_step() -> Bool {
   v2.std.algebra.fold_list(
     xs: [
       trace_of(outcomes: [gunbc.host_effect_realize.Srv3PredicateFails, gunbc.host_effect_realize.Srv3PredicateFails, gunbc.host_effect_realize.Srv3PredicateHolds, gunbc.host_effect_realize.Srv3PredicateHolds, gunbc.host_effect_realize.Srv3PredicateHolds, gunbc.host_effect_realize.Srv3PredicateHolds, gunbc.host_effect_realize.Srv3PredicateHolds]),
@@ -102,7 +102,7 @@ test fn the_readback_never_runs_after_a_failed_step() -> std.types.Bool {
 // THE POSITIVE CONTROL, without which every test above passes on a walk that never runs anything.
 // It passes SEVEN outcomes for seven stages. An earlier draft passed six and could not have
 // reached readback -- the test would have "passed" by asserting a chain it never walked.
-test fn a_fully_successful_install_runs_the_complete_chain_then_reads_back() -> std.types.Bool {
+test fn a_fully_successful_install_runs_the_complete_chain_then_reads_back() -> Bool {
   labels_equal(
     actual: trace_of(
       outcomes: [

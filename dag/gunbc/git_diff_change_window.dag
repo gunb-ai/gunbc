@@ -77,14 +77,14 @@ fn git_diff_window_required_string(doc: extdeps.languages.json.emit.JsonValue, k
     JsonMemberNotAnObject => none
     JsonMemberFound { value: v } =>
       match v {
-        JsonString { value: raw } =>
+        extdeps.languages.json.emit.JsonString { value: raw } =>
           let line = std.algebra.trim(raw)
           if line == "" { none } else { Present { value: line } }
-        JsonNull => none
-        JsonBool { value: _ } => none
-        JsonNumber { lexeme: _ } => none
-        JsonArray { elements: _ } => none
-        JsonObject { members: _ } => none
+        extdeps.languages.json.emit.JsonNull => none
+        extdeps.languages.json.emit.JsonBool { value: _ } => none
+        extdeps.languages.json.emit.JsonNumber { lexeme: _ } => none
+        extdeps.languages.json.emit.JsonArray { elements: _ } => none
+        extdeps.languages.json.emit.JsonObject { members: _ } => none
       }
   }
 }

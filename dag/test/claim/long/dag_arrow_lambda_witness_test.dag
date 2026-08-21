@@ -3,7 +3,7 @@ module test.claim.long.dag_arrow_lambda_witness_test
 
 data arrow_lambda_witness_note: String = "CI2-0 grammar-extension proof obligation (operator repair sequencing msg_7152180b item a; premise corrected by direct probe 2026-08-10): the v2 grammar already admits |> — the measured corpus-wide parse wall in dag/std/algebra.dag, a dependency the v2 compiler itself imports, is the ARROW LAMBDA, v1-only surface syntax. This witness admits it parse-only, mirroring the v1 frontend's exact admission (single bare ident, or parenthesized >=2 idents; () and (x) are NOT lambdas in v1 and stay refused). The rule-removed RED rebuilds the grammar with the EXPR production's expression swapped back to the pre-repair shape, selected by DECLARED production identity with the replacement count asserted, so the discrimination is single-variable at the production grain. Non-interference rows pin the neighbors that share tokens with the new arm: match-arm fat arrows, named args, parenthesized arithmetic, and the recently-landed leading-pipe sum admission."
 
-fn parse_accepts_with(source: String, grammar: v2.std.grammar.ParseGrammar) -> Bool {
+fn parse_accepts_with(source: String, grammar: v2.std.grammar.ParseGrammar) -> v2.std.logic.Bool {
   match v2.compiler.tokenize.lex_walk_artifact(source: source, file: ^lambda_probe, rules: v2.extdeps.languages.dag.dag_lex_rules()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: a, diagnostics: _ } =>
@@ -14,7 +14,7 @@ fn parse_accepts_with(source: String, grammar: v2.std.grammar.ParseGrammar) -> B
   }
 }
 
-fn parse_accepts(source: String) -> Bool {
+fn parse_accepts(source: String) -> v2.std.logic.Bool {
   parse_accepts_with(source: source, grammar: v2.extdeps.languages.dag.dag_grammar())
 }
 
@@ -103,66 +103,66 @@ fn pre_repair_grammar() -> v2.std.grammar.ParseGrammar {
   }
 }
 
-fn pre_repair_swap_targeted_exactly_one() -> Bool {
+fn pre_repair_swap_targeted_exactly_one() -> v2.std.logic.Bool {
   match v2.extdeps.languages.dag.dag_grammar() {
     ModeledGrammar { root: r } => swapped_count(productions: r.productions) == 1
     VoidGrammar => false
   }
 }
 
-test fn witness_single_param_lambda_parses() -> Bool {
+test fn witness_single_param_lambda_parses() -> v2.std.logic.Bool {
   parse_accepts(source: single_param_lambda_source)
 }
 
-test fn witness_multi_param_lambda_parses() -> Bool {
+test fn witness_multi_param_lambda_parses() -> v2.std.logic.Bool {
   parse_accepts(source: multi_param_lambda_source)
 }
 
-test fn witness_lambda_in_pipeline_parses() -> Bool {
+test fn witness_lambda_in_pipeline_parses() -> v2.std.logic.Bool {
   parse_accepts(source: lambda_in_pipeline_source)
 }
 
-test fn witness_authored_algebra_shape_parses() -> Bool {
+test fn witness_authored_algebra_shape_parses() -> v2.std.logic.Bool {
   parse_accepts(source: authored_algebra_shape_source)
 }
 
-test fn witness_lambda_block_body_parses() -> Bool {
+test fn witness_lambda_block_body_parses() -> v2.std.logic.Bool {
   parse_accepts(source: lambda_block_body_source)
 }
 
-test fn witness_match_arm_fat_arrow_unchanged() -> Bool {
+test fn witness_match_arm_fat_arrow_unchanged() -> v2.std.logic.Bool {
   parse_accepts(source: match_arm_unchanged_source)
 }
 
-test fn witness_named_arg_unchanged() -> Bool {
+test fn witness_named_arg_unchanged() -> v2.std.logic.Bool {
   parse_accepts(source: named_arg_unchanged_source)
 }
 
-test fn witness_paren_arithmetic_unchanged() -> Bool {
+test fn witness_paren_arithmetic_unchanged() -> v2.std.logic.Bool {
   parse_accepts(source: paren_arithmetic_unchanged_source)
 }
 
-test fn witness_sum_decl_unchanged() -> Bool {
+test fn witness_sum_decl_unchanged() -> v2.std.logic.Bool {
   parse_accepts(source: sum_decl_unchanged_source)
 }
 
-test fn witness_missing_body_refuses_RED() -> Bool {
+test fn witness_missing_body_refuses_RED() -> v2.std.logic.Bool {
   parse_accepts(source: missing_body_source) == false
 }
 
-test fn witness_missing_param_refuses_RED() -> Bool {
+test fn witness_missing_param_refuses_RED() -> v2.std.logic.Bool {
   parse_accepts(source: missing_param_source) == false
 }
 
-test fn witness_single_paren_param_refuses_RED() -> Bool {
+test fn witness_single_paren_param_refuses_RED() -> v2.std.logic.Bool {
   parse_accepts(source: single_paren_param_source) == false
 }
 
-test fn witness_zero_param_refuses_RED() -> Bool {
+test fn witness_zero_param_refuses_RED() -> v2.std.logic.Bool {
   parse_accepts(source: zero_param_source) == false
 }
 
-test fn witness_pre_repair_grammar_restores_the_RED() -> Bool {
+test fn witness_pre_repair_grammar_restores_the_RED() -> v2.std.logic.Bool {
   pre_repair_swap_targeted_exactly_one()
     && (parse_accepts_with(source: single_param_lambda_source, grammar: pre_repair_grammar()) == false)
     && (parse_accepts_with(source: authored_algebra_shape_source, grammar: pre_repair_grammar()) == false)

@@ -598,7 +598,7 @@ fn source_root_ingest_from_source_refs(refs: List<SourceRef>) -> v2.std.diagnost
   match source_root_ingest_build_from_source_refs(refs: refs) {
     SourceRootIngestBuildReadFailed { result: r } =>
       match source_ref_read_result_to_outcome(result: r) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: _, diagnostics: _ } =>
           v2.std.diagnostic.outcome_rejected(
             d: source_ref_read_failed_diagnostic(
@@ -620,7 +620,7 @@ type ModuleStorageProvenance
 
 data module_storage_host_parse_note: String = "Task 4 (module-identity-storage-binding-design.md Phase 1): the host producer build_module_path_index (src/v1/stage0/src/module_path_index) routes through v1_compiler_parse::v2.compiler.parse.parse — the same bootstrap v2.compiler.parse.parse path the in-graph oracle uses at the module-name grain — so host rows are ParsedFromSource, not a parallel substring scan. DeclarationScanned was deleted with this repoint: it existed only to record honestly that extract_module_path never parsed; keeping it after the repoint would be a second way to say the same thing (§3). Bootstrap host emission records ident_span byte ranges in span_index via span_index_record; full OccurrenceId mint parity with v2.compiler.parse's stamp pipeline is a named follow-on (dissolve-on: v1 bootstrap v2.compiler.parse.parse stamps NodeOccurrenceId the way parse_production_prepared does)."
 
-// Host manifest emission (discover_source_root_ingest --emit-module-binding-manifest) records the module declaration's ident_span as a FromSource Textual locus in span_index. The OccurrenceId is keyed by the span start offset within the file — deterministic and sufficient for binding-authority consumers that only need file⇄module, not full occurrence navigation. It is NOT the v2 parse stamp's minted occurrence graph; conflating the two would fabricate stamps the bootstrap parser never produced (§5).
+// Host manifest emission (discover_source_root_ingest --emit-module-binding-manifest) records the module declaration's ident_span as a FromSource Textual locus in span_index. The OccurrenceId is keyed by the span start offset within the file — deterministic and sufficient for binding-authority consumers that only need file⇄module, not full occurrence navigation. It is NOT the v2 v2.compiler.parse.parse stamp's minted occurrence graph; conflating the two would fabricate stamps the bootstrap parser never produced (§5).
 type ModuleStorageBinding {
   module: v2.std.qualified_name.QualifiedName
   provenance: ModuleStorageProvenance
@@ -761,7 +761,7 @@ fn source_ir_artifact_provenance_from_model(
   lm: v2.std.language_model.LanguageModel
 ) -> v2.std.diagnostic.Outcome<SourceIrArtifactProvenance> {
   match source_read.artifact.kind {
-    SourceFile =>
+    v2.std.artifact.SourceFile =>
       v2.std.diagnostic.bind_outcome(
         o: v2.compiler.tokenize.tokenize(
           text: source_read.source.carried,
@@ -813,7 +813,7 @@ fn module_storage_binding_from_provenance(
           source_root: source_root
         }
       )
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
@@ -843,7 +843,7 @@ fn module_storage_binding_from_read_prepared(
   residue: v2.std.diagnostic.Diagnostics
 ) -> v2.std.diagnostic.Outcome<ModuleStorageBinding> {
   match source_read.artifact.kind {
-    SourceFile =>
+    v2.std.artifact.SourceFile =>
       v2.std.diagnostic.bind_outcome(
         o: v2.compiler.tokenize.tokenize(
           text: source_read.source.carried,
@@ -878,7 +878,7 @@ fn module_storage_binding_from_read_with_model(
   lm: v2.std.language_model.LanguageModel
 ) -> v2.std.diagnostic.Outcome<ModuleStorageBinding> {
   match v2.compiler.parse.prepare_grammar(grammar: lm.grammar) {
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     Accepted { value: prepared, diagnostics: residue } =>
       module_storage_binding_from_read_prepared(
         source_read: source_read,
@@ -947,11 +947,11 @@ fn module_storage_fold_step(
         prepared: prepared,
         residue: residue
       ) {
-        Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           ModuleStorageFoldFailed { diagnostics: d }
         Accepted { value: binding, diagnostics: _ } =>
           match module_storage_index_insert(index: acc, binding: binding) {
-            Rejected { diagnostics: d } =>
+            v2.std.diagnostic.Rejected { diagnostics: d } =>
               ModuleStorageFoldFailed { diagnostics: d }
             Accepted { value: next, diagnostics: _ } =>
               ModuleStorageFoldOk { bindings: next }
@@ -992,7 +992,7 @@ fn module_storage_bindings_from_ingest_with_model(
     Empty => v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty)
     _ =>
       match v2.compiler.parse.prepare_grammar(grammar: lm.grammar) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: prepared, diagnostics: residue } =>
           module_storage_bindings_from_ingest_prepared(
             ingest: ingest,
@@ -1093,11 +1093,11 @@ fn module_storage_agreement_for_binding(
   host: ModuleStorageIndex
 ) -> ModuleStorageAgreement {
   match module_storage_binding_file_path(binding: oracle_binding) {
-    Absent => ModuleStorageAgrees
-    Present { value: p } =>
+    v2.std.optional.Absent => ModuleStorageAgrees
+    v2.std.optional.Present { value: p } =>
       match module_storage_module_for_path(index: host, file_path: p) {
-        Absent => ModuleStorageUncovered { path: p }
-        Present { value: host_module } =>
+        v2.std.optional.Absent => ModuleStorageUncovered { path: p }
+        v2.std.optional.Present { value: host_module } =>
           if host_module == module_storage_binding_module(binding: oracle_binding) {
             ModuleStorageAgrees
           } else {
@@ -1142,16 +1142,16 @@ fn module_storage_module_for_path(
     empty: v2.std.optional.optional_absent(),
     cons: fn(found, binding) {
       match found {
-        Present { value: v } => v2.std.optional.optional_present(value: v)
-        Absent =>
+        v2.std.optional.Present { value: v } => v2.std.optional.optional_present(value: v)
+        v2.std.optional.Absent =>
           match module_storage_binding_file_path(binding: binding) {
-            Present { value: p } =>
+            v2.std.optional.Present { value: p } =>
               if p == file_path {
                 v2.std.optional.optional_present(value: module_storage_binding_module(binding: binding))
               } else {
                 v2.std.optional.optional_absent()
               }
-            Absent => v2.std.optional.optional_absent()
+            v2.std.optional.Absent => v2.std.optional.optional_absent()
           }
       }
     }
@@ -1167,8 +1167,8 @@ fn module_storage_path_for_module(
     empty: v2.std.optional.optional_absent(),
     cons: fn(found, binding) {
       match found {
-        Present { value: v } => v2.std.optional.optional_present(value: v)
-        Absent =>
+        v2.std.optional.Present { value: v } => v2.std.optional.optional_present(value: v)
+        v2.std.optional.Absent =>
           if module_storage_binding_module(binding: binding) == module {
             module_storage_binding_file_path(binding: binding)
           } else {
@@ -1191,7 +1191,7 @@ fn source_ir_node_artifact_provenance_from_model(
           artifact: prov.artifact
         }
       )
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -1227,7 +1227,7 @@ fn node_artifact_provenance_fold_step(
           NodeArtifactProvenanceFoldOk {
             provenance: v2.std.algebra.list_snoc_item(xs: acc, item: row)
           }
-        Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           NodeArtifactProvenanceFoldFailed { diagnostics: d }
       }
   }

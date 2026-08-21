@@ -9,7 +9,7 @@ data planted_minimal_source: String = "module m\n\nfn add(x: Int, y: Int) -> Int
 
 data planted_garbage_source: String = "module planted.garbage\n\nfn ((((\n"
 
-test fn witness_planted_minimal_module_emits() -> Bool {
+test fn witness_planted_minimal_module_emits() -> v2.std.logic.Bool {
   let a = v2.workflow.realization_attempt.attempt_entry_source(entry: "planted://minimal", source: planted_minimal_source)
   match a.standing {
     V2TranslateSerialized { emitted_nonempty: ne } => ne && a.arrow_count == 1
@@ -17,7 +17,7 @@ test fn witness_planted_minimal_module_emits() -> Bool {
   }
 }
 
-test fn witness_planted_garbage_refuses_frontend_RED() -> Bool {
+test fn witness_planted_garbage_refuses_frontend_RED() -> v2.std.logic.Bool {
   let a = v2.workflow.realization_attempt.attempt_entry_source(entry: "planted://garbage", source: planted_garbage_source)
   match a.standing {
     V2TranslateSerialized { emitted_nonempty: _ } => false
@@ -28,7 +28,7 @@ test fn witness_planted_garbage_refuses_frontend_RED() -> Bool {
   }
 }
 
-test fn witness_real_corpus_entry_produces_typed_standing() -> Bool {
+test fn witness_real_corpus_entry_produces_typed_standing() -> v2.std.logic.Bool {
   let a = v2.workflow.realization_attempt.attempt_entry(entry: "dag/test/claim/witness_execution_class_test.dag")
   let label = v2.workflow.realization_attempt.attempt_phase_label(a: a)
   (label != "") && (label != "read")
@@ -63,13 +63,13 @@ fn ka_admission() -> v2.compiler.name_resolve.Admission {
   }
 }
 
-test fn witness_assembled_cross_module_subject_reaches_typed_standing() -> Bool {
+test fn witness_assembled_cross_module_subject_reaches_typed_standing() -> v2.std.logic.Bool {
   let a = v2.workflow.realization_attempt.attempt_assembled(ingest: ka_two_module_ingest(), admission: ka_admission(), fn_name: ^subject, entry: "planted://ka_importer")
   let label = v2.workflow.realization_attempt.attempt_phase_label(a: a)
   label != ""
 }
 
-test fn witness_assembled_identity_absent_refuses_RED() -> Bool {
+test fn witness_assembled_identity_absent_refuses_RED() -> v2.std.logic.Bool {
   let a = v2.workflow.realization_attempt.attempt_assembled(ingest: ka_two_module_ingest(), admission: ka_admission(), fn_name: ^no_such_declaration, entry: "planted://ka_importer")
   match a.standing {
     V2TranslateSerialized { emitted_nonempty: _ } => false

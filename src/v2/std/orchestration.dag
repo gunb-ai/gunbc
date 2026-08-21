@@ -28,8 +28,8 @@ data capture_spec_tee_cmdsubst_finding: String = "FINDING (filed, unowned, not f
 type Run {
   command: String
   env: FreeMonoid<EnvBinding>
-  redirect: Optional<RedirectSpec>
-  capture: Optional<CaptureSpec>
+  redirect: v2.std.optional.Optional<RedirectSpec>
+  capture: v2.std.optional.Optional<CaptureSpec>
 }
 
 type ValueSource
@@ -74,7 +74,7 @@ type PipelineStep
   = Do { run: v2.std.orchestration.Run }
   | Comment { text: String }
   | Exit { status: String }
-  | If { cond: Predicate, then_: Pipeline, else_: Optional<Pipeline> }
+  | If { cond: Predicate, then_: Pipeline, else_: v2.std.optional.Optional<Pipeline> }
   | For { binder: v2.std.node.Symbol, over: ValueSource, body: Pipeline }
   | While { cond: Predicate, body: Pipeline }
   | Retry {

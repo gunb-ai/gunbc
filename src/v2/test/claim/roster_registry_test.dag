@@ -30,22 +30,22 @@ fn synthetic_registration(membership: gunbc.roster_registry.GroupMembership) -> 
 
 fn nickname_registration() -> gunbc.roster_registry.RosterRegistration {
   synthetic_registration(
-    membership: DeclaredFrontier { reason: "", dissolution: std.dissolution.unbound_dissolution(description: "nickname-class control: the reason axis is the writable one") }
+    membership: gunbc.roster_registry.DeclaredFrontier { reason: "", dissolution: std.dissolution.unbound_dissolution(description: "nickname-class control: the reason axis is the writable one") }
   )
 }
 
-test fn roster_registry_standard_holds_live() -> Bool {
+test fn roster_registry_standard_holds_live() -> v2.std.logic.Bool {
   roster_registry_standard_holds() && (roster_registry_nonstandard_count() == 0)
 }
 
-test fn roster_registry_enrolls_known_rosters() -> Bool {
+test fn roster_registry_enrolls_known_rosters() -> v2.std.logic.Bool {
   length(xs: gunbc.roster_registry.roster_registry) >= 26
 }
 
 
 fn empty_trigger_registration() -> gunbc.roster_registry.RosterRegistration {
   synthetic_registration(
-    membership: DeclaredFrontier {
+    membership: gunbc.roster_registry.DeclaredFrontier {
       reason: "a reason without a trigger is not a frontier row",
       dissolution: v2.test.claim.roster_registry_test.synthetic_empty_condition(text: "")
     }
@@ -55,13 +55,13 @@ fn empty_trigger_registration() -> gunbc.roster_registry.RosterRegistration {
 // Restored alongside the production guard, for the same reason: an empty
 // condition is still constructible, so this is the executing evidence that the
 // restored check refuses it.
-test fn roster_registry_red_control_empty_trigger_reds() -> Bool {
+test fn roster_registry_red_control_empty_trigger_reds() -> v2.std.logic.Bool {
   roster_registry_nonstandard_count_from(
     registrations: [empty_trigger_registration()]
   ) == 1
 }
 
-test fn roster_registry_red_control_nickname_reds() -> Bool {
+test fn roster_registry_red_control_nickname_reds() -> v2.std.logic.Bool {
   let findings = nonstandard_registrations_from(
     registrations: [nickname_registration()]
   )
@@ -73,7 +73,7 @@ test fn roster_registry_red_control_nickname_reds() -> Bool {
     )
 }
 
-test fn roster_registry_green_control_standard_forms_pass() -> Bool {
+test fn roster_registry_green_control_standard_forms_pass() -> v2.std.logic.Bool {
   roster_registry_nonstandard_count_from(
     registrations: [
       synthetic_registration(membership: ByContainment),
@@ -83,7 +83,7 @@ test fn roster_registry_green_control_standard_forms_pass() -> Bool {
         }
       ),
       synthetic_registration(
-        membership: DeclaredFrontier {
+        membership: gunbc.roster_registry.DeclaredFrontier {
           reason: "declared with a reason",
           dissolution: std.dissolution.unbound_dissolution(description: "and a trigger")
         }

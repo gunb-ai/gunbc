@@ -39,7 +39,7 @@ data structural_coverage_gap_github_token_metadata_verification: List<extdeps.co
 func github_token() -> extdeps.github.github.GitHubAuthToken
 {
   cred = match default_github_auth_source.credential_source {
-    EnvVar { name } => env_credential(env_var: name as std.types.NonEmptyStr)
+    std.credentials.EnvVar { name } => env_credential(env_var: name as std.types.NonEmptyStr)
   }
   return {
     token: cred.token,

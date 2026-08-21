@@ -28,18 +28,18 @@ fn no_dual_representation_test_live_eq_site_count() -> Int {
   dual_rep_eq_site_count_from_scans(scans: dual_rep_live_module_scans())
 }
 
-fn no_dual_representation_body_partial_frontier_declared() -> Bool {
+fn no_dual_representation_body_partial_frontier_declared() -> v2.std.logic.Bool {
   no_dual_representation_body_partial_frontier_note != ""
 }
 
-fn no_dual_representation_test_coverage_honesty_holds() -> Bool {
+fn no_dual_representation_test_coverage_honesty_holds() -> v2.std.logic.Bool {
   dual_rep_coverage_honesty_holds(
     eq_site_count: no_dual_representation_test_live_eq_site_count(),
     frontier_declared: no_dual_representation_body_partial_frontier_declared()
   )
 }
 
-fn no_dual_representation_test_clean_holds() -> Bool {
+fn no_dual_representation_test_clean_holds() -> v2.std.logic.Bool {
   dual_rep_clean_holds_for_scans(scans: dual_rep_live_module_scans())
 }
 

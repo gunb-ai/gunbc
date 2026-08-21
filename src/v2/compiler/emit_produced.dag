@@ -13,9 +13,9 @@ fn emit_produced_decl_inner_arrow(decl: v2.std.node.Node) -> Outcome<v2.std.node
   match decl.kind {
     TypeNode { connective: Conj } =>
       match list_at_optional(xs: decl.children, index: 0) {
-        Present { value: edge } =>
+        v2.std.optional.Present { value: edge } =>
           match edge.label {
-            Named { name: _ } => v2.std.diagnostic.Accepted { value: edge.target, diagnostics: v2.std.diagnostic.None }
+            v2.std.node.Named { name: _ } => v2.std.diagnostic.Accepted { value: edge.target, diagnostics: v2.std.diagnostic.None }
             Positional =>
               v2.std.diagnostic.Rejected {
                 diagnostics: diagnostics_singleton(
@@ -23,7 +23,7 @@ fn emit_produced_decl_inner_arrow(decl: v2.std.node.Node) -> Outcome<v2.std.node
                 )
               }
           }
-        Absent =>
+        v2.std.optional.Absent =>
           v2.std.diagnostic.Rejected {
             diagnostics: diagnostics_singleton(
               d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_empty, node: decl)

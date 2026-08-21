@@ -109,9 +109,9 @@ fn instrument_frame_rule(p: gunbc.design.instrument_physical.InstrumentPreferenc
       decl(prop: BorderRadius, value: scale_var(t: radius_3)),
       decl(prop: Padding, value: scale_var(t: space_16)),
       decl(prop: Background, value: role_var(r: SurfaceRole)),
-      decl(prop: Transform, value: "translateY(0)"),
+      decl(prop: extdeps.languages.css.properties.Transform, value: "translateY(0)"),
     ],
-    response_decls: [decl(prop: Transform, value: impulse_translate_value(p: p))],
+    response_decls: [decl(prop: extdeps.languages.css.properties.Transform, value: impulse_translate_value(p: p))],
   }
 }
 
@@ -479,8 +479,8 @@ fn instrument_sandbox_page() -> std.markup.Fragment {
     attributes: [ attr(name: "lang", value: "en" ) ],
     children: [
       el("head", [
-        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
-        Element {
+        std.markup.Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
+        std.markup.Element {
           tag: "meta",
           attributes: [
             attr(name: "name", value: "viewport" ),

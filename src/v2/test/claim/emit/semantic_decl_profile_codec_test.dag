@@ -18,7 +18,7 @@ fn binding_spelling(
   bound_spelling_from_map(binding_spellings: binding_spellings, binding: binding)
 }
 
-test fn decoded_lex_derive_enum_copy_matches_live() -> Bool {
+test fn decoded_lex_derive_enum_copy_matches_live() -> v2.std.logic.Bool {
   match decoded_profile() {
     Accepted { value: ser_profile, diagnostics: _ } =>
       match semantic_decl_profile_lex_rules(profile: ser_profile) {
@@ -27,17 +27,17 @@ test fn decoded_lex_derive_enum_copy_matches_live() -> Bool {
             Accepted { value: decoded, diagnostics: _ } =>
               match v2.test.emit.semantic_decl_profile_codec.lex_literal(rules: rust_decl_general_lex(), token_class: ^rust_token_derive_enum_copy) {
                 Accepted { value: live, diagnostics: _ } => decoded == live
-                Rejected { diagnostics: _ } => false
+                v2.std.diagnostic.Rejected { diagnostics: _ } => false
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn decoded_binding_spellings_match_live() -> Bool {
+test fn decoded_binding_spellings_match_live() -> v2.std.logic.Bool {
   match decoded_profile() {
     Accepted { value: ser_profile, diagnostics: _ } =>
       match semantic_decl_profile_binding_spellings(profile: ser_profile) {
@@ -52,12 +52,12 @@ test fn decoded_binding_spellings_match_live() -> Bool {
                 binding: ^rust_decl_derive_enum_copy_binding
               ) {
                 Accepted { value: live, diagnostics: _ } => decoded == live
-                Rejected { diagnostics: _ } => false
+                v2.std.diagnostic.Rejected { diagnostics: _ } => false
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

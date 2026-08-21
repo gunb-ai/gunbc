@@ -48,7 +48,7 @@ fn population_kind_name(k: ContactPopulationKind) -> std.types.NonEmptyStr {
 // the better failure because it is decidable by execution: the witness asserts the tags are
 // pairwise distinct across every kind, so a duplicate reds instead of quietly fusing two
 // populations.
-fn population_kind_tag(k: ContactPopulationKind) -> Int {
+fn population_kind_tag(k: ContactPopulationKind) -> std.integer.Int {
   match k {
     AllPackageLeads => 1
     VendorGeneralPurposeIo => 2

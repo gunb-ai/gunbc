@@ -2,7 +2,6 @@
 // Source module: std.emit_model
 
 use self::PlaceholderConvention::*;
-pub use crate::std_decl_ref::DeclarationRef;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

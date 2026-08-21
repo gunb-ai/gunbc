@@ -362,7 +362,7 @@ test fn witness_exit_model_finish_lines_bind_declared_terminals() -> Bool {
 }
 
 test fn witness_completed_ticket_cannot_reenter_active_graph() -> Bool {
-  !active_node_admissible(n: red_fixture(line: red_ticket(done: true), signoff: Unsigned))
+  !active_node_admissible(n: red_fixture(line: red_ticket(done: true), signoff: gunbc.roadmap_status.Unsigned))
 }
 
 test fn witness_accepted_ticket_cannot_reenter_active_graph() -> Bool {
@@ -380,7 +380,7 @@ test fn witness_accepted_ticket_cannot_reenter_active_graph() -> Bool {
 test fn witness_superseded_row_cannot_reenter_active_graph() -> Bool {
   !active_node_admissible(n: red_fixture(
     line: gunbc.roadmap_status.SupersededLine { by: "replacement", content: "retired history" },
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   ))
 }
 

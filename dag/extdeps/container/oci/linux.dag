@@ -85,7 +85,7 @@ fn accept_linux_platform(p: LinuxPlatform) -> LinuxPlatformOutcome {
     null => LinuxPlatformAccepted { value: p }
     namespaces =>
       match duplicate_namespace_type(namespaces, index: 0, seen: []) {
-        Present { value: ns_type } =>
+        v2.std.optional.Present { value: ns_type } =>
           LinuxPlatformRejected { reason: DuplicateNamespaceType { ns_type: ns_type } }
         Absent => LinuxPlatformAccepted { value: p }
       }
@@ -112,7 +112,7 @@ fn duplicate_namespace_type(
       ns =>
         let ns_type = ns.namespace_type
         if contains_namespace_type(seen, ns_type) {
-          Present { value: ns_type }
+          v2.std.optional.Present { value: ns_type }
         } else {
           duplicate_namespace_type(
             namespaces,

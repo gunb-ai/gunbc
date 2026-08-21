@@ -3,12 +3,12 @@ module v2.test.manual.record_construct_emit
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data record_construct_emitted_root: Node = dag_fixture_emitted_rec_fn
+data record_construct_emitted_root: v2.std.node.Node = dag_fixture_emitted_rec_fn
 data record_construct_target_model: v2.std.compilers.target_model.TargetModel = dag_rec_target_model()
 
 fn record_construct_canonical_grounding(
-  node: Node,
-  algebra: Node
+  node: v2.std.node.Node,
+  algebra: v2.std.node.Node
 ) -> v2.std.constraints.CanonicalGrounding {
   v2.std.constraints.CanonicalGrounding {
     node: node,
@@ -25,7 +25,7 @@ fn record_construct_canonical_grounding(
   }
 }
 
-fn record_construct_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
+fn record_construct_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == dag_fixture_emitted_rec_fn {
     v2.std.witness.Holds { value: record_construct_canonical_grounding(node: node, algebra: node) }
   } else if node == dag_rec_construct_body_fixture {
@@ -65,7 +65,7 @@ fn record_construct_canonical_grounding_for(node: Node) -> Witness<v2.std.constr
   }
 }
 
-fn record_construct_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn record_construct_inferred_facts_for(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   match record_construct_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -80,7 +80,7 @@ fn record_construct_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer
   }
 }
 
-fn record_construct_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn record_construct_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   record_construct_inferred_facts_for(node: key)
 }
 
@@ -89,40 +89,40 @@ data record_construct_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2
   facts: std.types.Map { lookup: record_construct_facts_lookup }
 }
 
-test fn record_construct_emit_holds() -> Bool {
+test fn record_construct_emit_holds() -> v2.std.logic.Bool {
   match target_serialize_source_from_model(
     target: v2.test.manual.record_construct_emit.record_construct_target_model,
     emitted: record_construct_emitted_root
   ) {
     Accepted { value: authority, diagnostics: ad } =>
-      match emit(tree: record_construct_inferred_tree, target: v2.test.manual.record_construct_emit.record_construct_target_model) {
+      match v2.compiler.emit.emit(tree: record_construct_inferred_tree, target: v2.test.manual.record_construct_emit.record_construct_target_model) {
         Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn record_construct_grammar_inverse_holds() -> Bool {
+test fn record_construct_grammar_inverse_holds() -> v2.std.logic.Bool {
   match grammar_inverse_source_validated(
     target: v2.test.manual.record_construct_emit.record_construct_target_model,
     emitted: record_construct_emitted_root
   ) {
     Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn record_construct_coercion_quality_is_faithful(q: v2.std.coercion.CoercionQuality) -> Bool {
+fn record_construct_coercion_quality_is_faithful(q: v2.std.coercion.CoercionQuality) -> v2.std.logic.Bool {
   match q {
-    Exact => true
+    v2.std.coercion.Exact => true
     Identity => true
     Widened => false
   }
 }
 
-test fn record_construct_ingest_via_coerce_matches_canonical() -> Bool {
+test fn record_construct_ingest_via_coerce_matches_canonical() -> v2.std.logic.Bool {
   match coerce_grounded_node(
     source: record_construct_emitted_root,
     tree: record_construct_inferred_tree,
@@ -132,19 +132,19 @@ test fn record_construct_ingest_via_coerce_matches_canonical() -> Bool {
       (result.target == dag_fixture_emitted_rec_fn)
         && record_construct_coercion_quality_is_faithful(q: result.quality)
         && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn record_construct_emit_holds_keystone() -> Bool {
+test fn record_construct_emit_holds_keystone() -> v2.std.logic.Bool {
   record_construct_emit_holds()
 }
 
-test fn record_construct_grammar_inverse_holds_keystone() -> Bool {
+test fn record_construct_grammar_inverse_holds_keystone() -> v2.std.logic.Bool {
   record_construct_grammar_inverse_holds()
 }
 
-test fn record_construct_ingest_via_coerce_holds_keystone() -> Bool {
+test fn record_construct_ingest_via_coerce_holds_keystone() -> v2.std.logic.Bool {
   record_construct_ingest_via_coerce_matches_canonical()
 }
 

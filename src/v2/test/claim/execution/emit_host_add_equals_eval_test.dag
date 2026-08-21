@@ -24,11 +24,11 @@ fn emit_eval_allocate_literal(_node: v2.std.node.Node, _env: v2.std.runtime.Eval
   v2.std.diagnostic.Accepted { value: emit_eval_oct5_value(n: 2), diagnostics: v2.std.diagnostic.None }
 }
 
-fn emit_eval_arg_is_two(value: v2.std.runtime.RuntimeValue) -> Bool {
+fn emit_eval_arg_is_two(value: v2.std.runtime.RuntimeValue) -> v2.std.logic.Bool {
   value == emit_eval_oct5_value(n: 2)
 }
 
-fn emit_eval_args_are_two_twos(args: std.types.List<v2.std.runtime.RuntimeValue>) -> Bool {
+fn emit_eval_args_are_two_twos(args: std.types.List<v2.std.runtime.RuntimeValue>) -> v2.std.logic.Bool {
   if count(args) == 2 {
     match v2.std.collection.list_nth(xs: args, wanted: 0, absent: emit_eval_diagnostic(reason: ^emit_eval_args_bad, node: v2.test.manual.eval_runtime.eval_add_subgraph_node)) {
       Holds { value: left } =>
@@ -121,10 +121,10 @@ fn emit_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.inferred_tree.
   )
 }
 
-fn emit_eval_composed_facts(node: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn emit_eval_composed_facts(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   match v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree.facts.lookup(node) {
-    Present { value: f } => v2.std.optional.optional_present(value: f)
-    Absent => v2.std.optional.optional_present(value: emit_eval_generic_facts(node: node))
+    v2.std.optional.Present { value: f } => v2.std.optional.optional_present(value: f)
+    v2.std.optional.Absent => v2.std.optional.optional_present(value: emit_eval_generic_facts(node: node))
   }
 }
 
@@ -165,27 +165,27 @@ fn emit_eval_run(
   )
 }
 
-fn emit_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> Bool {
+fn emit_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> v2.std.logic.Bool {
   match run.verdict {
     Pass => true
     SemanticMismatch { actual: _, falsification: _ } => false
-    BuildFailed { actual: _, diagnostic: _ } => false
+    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
 }
 
-fn emit_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> Bool {
+fn emit_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> v2.std.logic.Bool {
   match run.verdict {
     SemanticMismatch { actual: _, falsification: _ } => true
     Pass => false
-    BuildFailed { actual: _, diagnostic: _ } => false
+    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
 }
 
-test fn emit_host_add_equals_eval_holds() -> Bool {
+test fn emit_host_add_equals_eval_holds() -> v2.std.logic.Bool {
   emit_eval_verdict_is_pass(
     run: emit_eval_run(
       call_primitive: emit_eval_call_primitive_five,
@@ -194,7 +194,7 @@ test fn emit_host_add_equals_eval_holds() -> Bool {
   )
 }
 
-test fn emit_host_add_wrong_oracle_refuses_holds() -> Bool {
+test fn emit_host_add_wrong_oracle_refuses_holds() -> v2.std.logic.Bool {
   emit_eval_verdict_is_semantic_mismatch(
     run: emit_eval_run(
       call_primitive: emit_eval_call_primitive_six,

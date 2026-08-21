@@ -70,7 +70,7 @@ fn empty_store() -> ObjectStore {
   ObjectStore { objects: [] }
 }
 
-fn object_id_eq(left: ObjectId, right: ObjectId) -> std.types.Bool {
+fn object_id_eq(left: ObjectId, right: ObjectId) -> Bool {
   (left.digest as String) == (right.digest as String)
 }
 
@@ -84,7 +84,7 @@ fn find_object(store: ObjectStore, identity: ObjectId) -> ObjectRecord? {
   })
 }
 
-fn store_contains(store: ObjectStore, identity: ObjectId) -> std.types.Bool {
+fn store_contains(store: ObjectStore, identity: ObjectId) -> Bool {
   match find_object(store: store, identity: identity) {
     Absent => false
     Present { value: _ } => true
@@ -135,7 +135,7 @@ type StoreOutcome
 // Record equality is the substrate's own structural equality over both fields. StoredEdge is a
 // label and a derived child identity, so comparing the child LISTS compares the whole subtree by
 // its already-derived identities -- no re-walk, no digest projection, no hand-written pairwise fold.
-fn records_equal(left: ObjectRecord, right: ObjectRecord) -> std.types.Bool {
+fn records_equal(left: ObjectRecord, right: ObjectRecord) -> Bool {
   (left.kind == right.kind) && (left.children == right.children)
 }
 
@@ -204,7 +204,7 @@ type StoreEdgeAcc {
 //
 // Storing the canonical form makes that unrepresentable rather than checked. The consequence is a
 // real semantic commitment and not an implementation detail: CHECKOUT RETURNS THE CANONICAL PROGRAM,
-// not the authored one. Named-edge order is not a fact this store preserves, because it is not a
+// not the authored one. v2.std.node.Named-edge order is not a fact this store preserves, because it is not a
 // fact the substrate's own identity preserves.
 //
 // The canonicalization is applied at EVERY node, not once at the root -- the recursion below
@@ -342,7 +342,7 @@ fn collision_probe_identity(outcome: StoreOutcome, fallback: ObjectId) -> Object
 
 // ONE LOCATOR, TWO DIFFERENT CANONICAL RECORDS -- the store must refuse, and the refusal must carry
 // both records so a caller can see what disagreed rather than merely that something did.
-fn a_different_record_under_one_locator_refuses() -> std.types.Bool {
+fn a_different_record_under_one_locator_refuses() -> Bool {
   let real = store_node(store: empty_store(), n: collision_probe_atom(identity: ^collide_a))
   let identity = collision_probe_identity(
     outcome: real,
@@ -361,7 +361,7 @@ fn a_different_record_under_one_locator_refuses() -> std.types.Bool {
 
 // CONTROL: re-inserting the SAME canonical record under that locator is idempotent, not a collision.
 // Without this, the claim above would pass against an insert that refused every second write.
-fn the_same_record_under_one_locator_is_idempotent() -> std.types.Bool {
+fn the_same_record_under_one_locator_is_idempotent() -> Bool {
   let real = store_node(store: empty_store(), n: collision_probe_atom(identity: ^collide_a))
   let store = collision_probe_stored(outcome: real)
   match store_node(store: store, n: collision_probe_atom(identity: ^collide_a)) {
@@ -374,7 +374,7 @@ fn the_same_record_under_one_locator_is_idempotent() -> std.types.Bool {
 // A COLLISION ON A CHILD MUST PROPAGATE OUT OF THE RECURSION. This is the arm that matters most and
 // the one nothing exercised: a parent whose child refuses must not itself be reported Stored, or the
 // store would hand back a commit whose closure was never written.
-fn a_child_collision_propagates_and_the_parent_is_not_stored() -> std.types.Bool {
+fn a_child_collision_propagates_and_the_parent_is_not_stored() -> Bool {
   let child = store_node(store: empty_store(), n: collision_probe_atom(identity: ^collide_child))
   let child_identity = collision_probe_identity(
     outcome: child,
@@ -400,7 +400,7 @@ fn a_child_collision_propagates_and_the_parent_is_not_stored() -> std.types.Bool
 
 // CONTROL for the propagation claim: the same parent stores cleanly against an UNSEEDED store, so
 // the refusal above is caused by the seeded impostor and not by the parent fixture being unstorable.
-fn the_same_parent_stores_cleanly_without_the_impostor() -> std.types.Bool {
+fn the_same_parent_stores_cleanly_without_the_impostor() -> Bool {
   match store_node(
     store: empty_store(),
     n: collision_probe_parent(child: collision_probe_atom(identity: ^collide_child)),
@@ -419,7 +419,7 @@ fn the_same_parent_stores_cleanly_without_the_impostor() -> std.types.Bool {
 //
 // The existing present-source and absent-source claims are the controls: together they establish
 // that copy_object does not always answer collision.
-fn a_copy_into_a_colliding_destination_refuses() -> std.types.Bool {
+fn a_copy_into_a_colliding_destination_refuses() -> Bool {
   let real = store_node(store: empty_store(), n: collision_probe_atom(identity: ^collide_copy))
   let identity = collision_probe_identity(
     outcome: real,

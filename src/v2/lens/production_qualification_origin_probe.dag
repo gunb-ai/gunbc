@@ -50,18 +50,18 @@ data ingest_mint_skeleton_classifier_note: String = "Ingest entry skeleton grain
 // CompilerDerived is declared but UNWRITABLE at skeleton grain: callee identity proves a qualification boundary was called, not that the InferredTree argument came from production infer(assemble(...)). Until call/dataflow evidence connects arguments, non-fixture mint surfaces classify UnknownOrigin and fail admission.
 data ingest_mint_entry_name_suffix: String = "generate_provenanced_rust_candidate_from_ingest"
 
-fn string_eq(a: String, b: String) -> Bool {
+fn string_eq(a: String, b: String) -> v2.std.logic.Bool {
   a == b
 }
 
-fn symbol_eq(a: v2.std.node.Symbol, b: v2.std.node.Symbol) -> Bool {
+fn symbol_eq(a: v2.std.node.Symbol, b: v2.std.node.Symbol) -> v2.std.logic.Bool {
   a == b
 }
 
 fn production_qualification_origin_eq(
   left: ProductionQualificationOrigin,
   right: ProductionQualificationOrigin
-) -> Bool {
+) -> v2.std.logic.Bool {
   match left {
     CompilerDerived =>
       match right {
@@ -88,7 +88,7 @@ fn site_row_already_present(
   sites: List<DerivedProductionQualificationMintSiteRow>,
   qualified_name: String,
   axis: v2.compiler.self_host.emitter_producer_provenance.EmissionQualification
-) -> Bool {
+) -> v2.std.logic.Bool {
   v2.std.algebra.any(
     xs: sites,
     predicate: fn(row) {
@@ -132,13 +132,13 @@ fn atom_collect_init(n: v2.std.node.Node) -> AtomCollectState {
 
 fn atom_collect_step(acc: AtomCollectState, _edge: v2.std.node.Edge, child: AtomCollectState) -> AtomCollectState {
   let atoms = match v2.std.grammar.node_atom_identity_optional(node: child.node) {
-    Present { value: sym } =>
+    v2.std.optional.Present { value: sym } =>
       if v2.std.algebra.contains(xs: acc.atoms, item: sym, eq: v2.lens.production_qualification_origin_probe.symbol_eq) {
         acc.atoms
       } else {
         v2.std.algebra.list_snoc_item(xs: acc.atoms, item: sym)
       }
-    Absent => acc.atoms
+    v2.std.optional.Absent => acc.atoms
   }
   AtomCollectState { node: acc.node, atoms: atoms }
 }
@@ -150,17 +150,17 @@ fn atom_collect_algebra() -> v2.std.node.NodeFold<AtomCollectState> {
 fn atom_identities_in_node(node: v2.std.node.Node) -> List<v2.std.node.Symbol> {
   let from_descendants = v2.std.node.fold_node(n: node, algebra: v2.lens.production_qualification_origin_probe.atom_collect_algebra()).atoms
   match v2.std.grammar.node_atom_identity_optional(node: node) {
-    Present { value: sym } =>
+    v2.std.optional.Present { value: sym } =>
       if v2.std.algebra.contains(xs: from_descendants, item: sym, eq: v2.lens.production_qualification_origin_probe.symbol_eq) {
         from_descendants
       } else {
         v2.std.algebra.list_snoc_item(xs: from_descendants, item: sym)
       }
-    Absent => from_descendants
+    v2.std.optional.Absent => from_descendants
   }
 }
 
-fn node_contains_atom_text(node: v2.std.node.Node, wanted: String) -> Bool {
+fn node_contains_atom_text(node: v2.std.node.Node, wanted: String) -> v2.std.logic.Bool {
   v2.std.algebra.any(
     xs: v2.lens.production_qualification_origin_probe.atom_identities_in_node(node: node),
     predicate: fn(sym) { v2.lens.production_qualification_origin_probe.string_eq(a: v2.std.compilers.lexing.symbol_lexeme(sym: sym), b: wanted) }
@@ -189,11 +189,11 @@ fn callee_text_from_call_node(node: v2.std.node.Node) -> List<String> {
     match v2.std.node_query.call_callee_target(node: node) {
       Accepted { value: callee_node, diagnostics: _ } =>
         match v2.std.grammar.node_atom_identity_optional(node: callee_node) {
-          Present { value: sym } =>
+          v2.std.optional.Present { value: sym } =>
             [v2.std.compilers.lexing.symbol_lexeme(sym: sym)]
-          Absent => empty_string_list
+          v2.std.optional.Absent => empty_string_list
         }
-      Rejected { diagnostics: _ } => empty_string_list
+      v2.std.diagnostic.Rejected { diagnostics: _ } => empty_string_list
     }
   } else {
     empty_string_list
@@ -246,21 +246,21 @@ fn callees_from_node(node: v2.std.node.Node) -> List<String> {
   callee_collect_merge(left: from_call_walk, right: callees_from_atom_scan(node: node))
 }
 
-fn decl_contains_callee(decl: v2.std.fn_index.FnArrowDecl, callee: String) -> Bool {
+fn decl_contains_callee(decl: v2.std.fn_index.FnArrowDecl, callee: String) -> v2.std.logic.Bool {
   v2.std.algebra.contains(xs: v2.lens.production_qualification_origin_probe.callees_from_node(node: decl.output), item: callee, eq: v2.lens.production_qualification_origin_probe.string_eq)
 }
 
-fn decl_contains_atom(decl: v2.std.fn_index.FnArrowDecl, atom: String) -> Bool {
+fn decl_contains_atom(decl: v2.std.fn_index.FnArrowDecl, atom: String) -> v2.std.logic.Bool {
   node_contains_atom_text(node: decl.output, wanted: atom)
 }
 
-fn decl_has_qualifying_mint_callee(decl: v2.std.fn_index.FnArrowDecl) -> Bool {
+fn decl_has_qualifying_mint_callee(decl: v2.std.fn_index.FnArrowDecl) -> v2.std.logic.Bool {
   decl_contains_callee(decl: decl, callee: mint_written_callee)
     || decl_contains_callee(decl: decl, callee: mint_provenanced_callee)
     || decl_contains_callee(decl: decl, callee: advance_cargo_green_callee)
 }
 
-fn decl_has_source_produced_mint_callee(decl: v2.std.fn_index.FnArrowDecl) -> Bool {
+fn decl_has_source_produced_mint_callee(decl: v2.std.fn_index.FnArrowDecl) -> v2.std.logic.Bool {
   decl_contains_callee(decl: decl, callee: mint_written_callee)
     || decl_contains_callee(decl: decl, callee: mint_provenanced_callee)
 }
@@ -268,7 +268,7 @@ fn decl_has_source_produced_mint_callee(decl: v2.std.fn_index.FnArrowDecl) -> Bo
 data direct_rust_door_target_model_callee: String = "direct_rust_door_target_model"
 
 // FixtureDerived requires the direct_rust_door_inferred_tree fixture-tree marker atom in the fn-arrow skeleton. Target-model choice (direct_rust_door_target_model) is NOT an origin proxy — mint_written + target without the fixture-tree marker classifies UnknownOrigin.
-fn decl_has_fixture_marker(decl: v2.std.fn_index.FnArrowDecl) -> Bool {
+fn decl_has_fixture_marker(decl: v2.std.fn_index.FnArrowDecl) -> v2.std.logic.Bool {
   decl_contains_atom(decl: decl, atom: direct_rust_door_inferred_tree_atom)
 }
 
@@ -331,7 +331,7 @@ fn derived_production_qualification_mint_sites_live() -> List<DerivedProductionQ
 fn count_derived_mint_sites_with_origin(
   sites: List<DerivedProductionQualificationMintSiteRow>,
   origin: ProductionQualificationOrigin
-) -> Int {
+) -> v2.std.integer.Int {
   v2.std.algebra.fold_list(
     xs: sites,
     empty: 0,
@@ -347,16 +347,16 @@ fn count_derived_mint_sites_with_origin(
 
 fn count_derived_fixture_origin_mint_sites(
   sites: List<DerivedProductionQualificationMintSiteRow>
-) -> Int {
+) -> v2.std.integer.Int {
   count_derived_mint_sites_with_origin(sites: sites, origin: FixtureDerived)
 }
 
 // Closed-subject oracle (DESIGN §5): structural_red_control_planted_decl carries exactly one FixtureDerived SourceProduced row by construction — independent of fn_arrow_decl_facts_live() population.
-data production_qualification_planted_fixture_origin_oracle_count: Int = 1
+data production_qualification_planted_fixture_origin_oracle_count: v2.std.integer.Int = 1
 
 data production_qualification_live_scope_fixture_origin_policy_note: String = "Live-scope policy (DESIGN §5, review 48255): G2 fn-arrow marshal does not yet surface mint callees on live fixture fns in the witness entry closure, so known_fixture_origin_mint_surface_count_in_scope() reads zero today — documented expectation, NOT an executing tree-copied equality oracle. Discriminating signal is the planted closed-subject oracle (production_qualification_planted_fixture_origin_oracle_count). Frontier: witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds (explicit_witness_admission) expects live FixtureDerived discovery once marshal exposes callee atoms — greens when count > 0, then row deletes and a closed-subject expected population or monotone debt contract may enroll."
 
-fn planted_fixture_origin_mint_site_count() -> Int {
+fn planted_fixture_origin_mint_site_count() -> v2.std.integer.Int {
   count_derived_fixture_origin_mint_sites(
     sites: derived_sites_for_decl(
       sites: empty_site_list,
@@ -365,13 +365,13 @@ fn planted_fixture_origin_mint_site_count() -> Int {
   )
 }
 
-fn known_fixture_origin_mint_surface_count_in_scope() -> Int {
+fn known_fixture_origin_mint_surface_count_in_scope() -> v2.std.integer.Int {
   count_derived_fixture_origin_mint_sites(
     sites: derived_production_qualification_mint_sites_live()
   )
 }
 
-fn ingest_mint_surface_discovered_in_live_scope() -> Bool {
+fn ingest_mint_surface_discovered_in_live_scope() -> v2.std.logic.Bool {
   v2.std.algebra.any(
     xs: derived_production_qualification_mint_sites_live(),
     predicate: fn(row) {
@@ -387,7 +387,7 @@ fn ingest_mint_surface_discovered_in_live_scope() -> Bool {
 // Production admission (not mere classification totality): refuses both UnknownOrigin and FixtureDerived discovered rows — fixture-derived production qualification is the forbidden class. discovered_origin_classification_is_total_for_decls is the weaker predicate (UnknownOrigin count zero only) for witnesses that need classification totality without production admission.
 fn discovered_origin_classification_is_total_for_decls(
   decls: List<v2.std.fn_index.FnArrowDecl>
-) -> Bool {
+) -> v2.std.logic.Bool {
   count_derived_mint_sites_with_origin(
     sites: derived_production_qualification_mint_sites_from_facts(decls: decls),
     origin: UnknownOrigin
@@ -396,7 +396,7 @@ fn discovered_origin_classification_is_total_for_decls(
 
 fn production_qualification_origin_probe_admission_holds_for_decls(
   decls: List<v2.std.fn_index.FnArrowDecl>
-) -> Bool {
+) -> v2.std.logic.Bool {
   let sites = derived_production_qualification_mint_sites_from_facts(decls: decls)
   (count_derived_mint_sites_with_origin(sites: sites, origin: UnknownOrigin) == 0)
     && (count_derived_mint_sites_with_origin(sites: sites, origin: FixtureDerived) == 0)
@@ -510,7 +510,7 @@ fn target_without_fixture_tree_red_control_planted_decl() -> v2.std.fn_index.FnA
 
 fn structural_red_control_live_fixture_mint_site_discovered(
   live_qualified_name: String
-) -> Bool {
+) -> v2.std.logic.Bool {
   v2.std.algebra.any(
     xs: derived_production_qualification_mint_sites_live(),
     predicate: fn(row) {
@@ -527,7 +527,7 @@ fn structural_red_control_live_fixture_mint_site_discovered(
   )
 }
 
-fn production_qualification_origin_probe_admission_holds() -> Bool {
+fn production_qualification_origin_probe_admission_holds() -> v2.std.logic.Bool {
   production_qualification_origin_probe_admission_holds_for_decls(
     decls: v2.std.fn_index.fn_arrow_decl_facts_live()
   )

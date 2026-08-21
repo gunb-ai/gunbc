@@ -158,7 +158,7 @@ type FirmwarePrerequisiteObservation {
 // exact field a consumer reads to judge how well-bounded the threshold is
 // (DESIGN section 5). It was also order-dependent: later observations were
 // discarded once a bound was set, so the same evidence in a different order
-// gave different bounds. Absent now means absent.
+// gave different bounds. v2.std.optional.Absent now means absent.
 type PrerequisiteEvidenceVerdict
   = PrerequisiteConsistentUpperBound {
       highest_refusal: FirmwareSemanticVersion?
@@ -194,15 +194,15 @@ fn highest_refused_version(
 ) -> FirmwareSemanticVersion? {
   fold(
     observations,
-    init: Absent,
+    init: v2.std.optional.Absent,
     f: (acc, observation) =>
       match observation.outcome {
         PushAcceptedByTarget => acc
         PushRefusedByTarget { diagnostic: _ } =>
           match acc {
-            Absent => Present { value: observation.gating_version }
-            Present { value: current } =>
-              Present {
+            v2.std.optional.Absent => v2.std.optional.Present { value: observation.gating_version }
+            v2.std.optional.Present { value: current } =>
+              v2.std.optional.Present {
                 value: higher_version(a: current, b: observation.gating_version),
               }
           }
@@ -217,15 +217,15 @@ fn lowest_accepted_version(
 ) -> FirmwareSemanticVersion? {
   fold(
     observations,
-    init: Absent,
+    init: v2.std.optional.Absent,
     f: (acc, observation) =>
       match observation.outcome {
         PushRefusedByTarget { diagnostic: _ } => acc
         PushAcceptedByTarget =>
           match acc {
-            Absent => Present { value: observation.gating_version }
-            Present { value: current } =>
-              Present {
+            v2.std.optional.Absent => v2.std.optional.Present { value: observation.gating_version }
+            v2.std.optional.Present { value: current } =>
+              v2.std.optional.Present {
                 value: lower_version(a: current, b: observation.gating_version),
               }
           }
@@ -328,8 +328,8 @@ fn firmware_release_applicability(
     NoFirmwarePrerequisite => FirmwareApplicable
     RequiresMinimumTargetFirmware { target: t, minimum: m } =>
       match observed {
-        Absent => FirmwarePrerequisiteUnobserved { target: t, minimum: m }
-        Present { value: v } =>
+        v2.std.optional.Absent => FirmwarePrerequisiteUnobserved { target: t, minimum: m }
+        v2.std.optional.Present { value: v } =>
           if firmware_semantic_version_at_least(observed: v, minimum: m) {
             FirmwareApplicable
           } else {

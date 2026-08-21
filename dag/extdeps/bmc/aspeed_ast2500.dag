@@ -14,12 +14,12 @@ data aspeed_ast2500_datasheet_note: String = "AST2500/AST2520 A2 Datasheet V1.6 
 // closed — not an open-ended sensor enum — because the datasheet names exactly
 // these controller blocks for management I/O.
 type Ast2500ManagementAcquisitionPath
-  = GpioDigitalTripInput { gpio_pin_count: Int }
-  | SgpioShiftRegisterTripInput { sgpio_input_port_count: Int }
-  | I2cSmbusSensorBus { controller_count: Int }
-  | AdcAnalogInput { channel_count: Int }
-  | PeciProcessorTelemetry { max_cpu_count: Int, max_domain_per_cpu: Int }
-  | FanTachPulseCounter { tach_input_count: Int }
+  = GpioDigitalTripInput { gpio_pin_count: std.integer.Int }
+  | SgpioShiftRegisterTripInput { sgpio_input_port_count: std.integer.Int }
+  | I2cSmbusSensorBus { controller_count: std.integer.Int }
+  | AdcAnalogInput { channel_count: std.integer.Int }
+  | PeciProcessorTelemetry { max_cpu_count: std.integer.Int, max_domain_per_cpu: std.integer.Int }
+  | FanTachPulseCounter { tach_input_count: std.integer.Int }
 
 // THE INTERACTION MODE IS ORTHOGONAL TO THE CONTROLLER IDENTITY. Two arms, not
 // a preference flag on each path: hardwired trip lines are interrupt-qualified
@@ -68,7 +68,7 @@ data aspeed_ast2500_catalog: AspeedAst2500CatalogRow = AspeedAst2500CatalogRow {
 
 fn ast2500_hardwired_trip_line_path_count(
   paths: List<Ast2500ManagementAcquisitionPath>,
-) -> Int {
+) -> std.integer.Int {
   fold(paths, init: 0, f: fn(acc, p) {
     match ast2500_management_acquisition_mode(path: p) {
       HardwiredTripLine => acc + 1
@@ -79,7 +79,7 @@ fn ast2500_hardwired_trip_line_path_count(
 
 fn ast2500_pollable_sensor_reading_path_count(
   paths: List<Ast2500ManagementAcquisitionPath>,
-) -> Int {
+) -> std.integer.Int {
   fold(paths, init: 0, f: fn(acc, p) {
     match ast2500_management_acquisition_mode(path: p) {
       HardwiredTripLine => acc

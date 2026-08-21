@@ -29,7 +29,7 @@ fn mm_registry() -> std.spatial_frame.SpatialFrameRegistry {
 fn extent_is_mm(e: std.spatial_frame.FrameExtent, want: std.nat.Nat) -> Bool {
   match e {
     ExtentFrameUnregistered { identity: _ } => false
-    ExtentInFrame { length: l } =>
+    std.spatial_frame.ExtentInFrame { length: l } =>
       match frame_length_as_millimeter(l: l) {
         LengthProjectionRefused { cause: _ } => false
         LengthProjected { value: v } => millimeter_count(m: v) == want
@@ -336,7 +336,7 @@ test fn a_reader_takes_the_unit_from_the_frame_not_from_itself() -> Bool {
     OrthogonalReady { value: rect } =>
       match rectangle2_width(registry: test.claim.orthogonal_geometry_witness.micro_registry(), r: rect) {
         ExtentFrameUnregistered { identity: _ } => false
-        ExtentInFrame { length: l } =>
+        std.spatial_frame.ExtentInFrame { length: l } =>
           match frame_length_as_micrometer(l: l) {
             LengthProjectionRefused { cause: _ } => false
             LengthProjected { value: um } =>
@@ -357,7 +357,7 @@ test fn an_unregistered_frame_refuses_rather_than_measuring() -> Bool {
     OrthogonalRefused { cause: _ } => false
     OrthogonalReady { value: rect } =>
       match rectangle2_width(registry: test.claim.orthogonal_geometry_witness.micro_registry(), r: rect) {
-        ExtentInFrame { length: _ } => false
+        std.spatial_frame.ExtentInFrame { length: _ } => false
         ExtentFrameUnregistered { identity: _ } => true
       }
   }

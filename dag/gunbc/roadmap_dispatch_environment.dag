@@ -96,7 +96,7 @@ fn capability_ensure_receipt(
           "independent Ensure readback did not ground the capability"
         },
       }
-    Apply { plan: _ } =>
+    std.upsert_decision.Apply { plan: _ } =>
       CapabilityEnsureReceipt {
         capability: realization.capability,
         capability_label: execution_capability_label(capability: realization.capability),
@@ -106,7 +106,7 @@ fn capability_ensure_receipt(
         evidence: ensure_observation_evidence(observation: observation),
         reason: "capability-specific apply is required before admission; no effect ran in the decision layer",
       }
-    Refuse { reason } =>
+    std.upsert_decision.Refuse { reason } =>
       CapabilityEnsureReceipt {
         capability: realization.capability,
         capability_label: execution_capability_label(capability: realization.capability),
@@ -343,7 +343,7 @@ fn capability_ensure_receipt_json(receipt: CapabilityEnsureReceipt) -> extdeps.l
       key: "decision",
       value: json_string(s: upsert_decision_label(decision: receipt.decision)),
     ),
-    json_kv(key: "grounded", value: json_bool(b: receipt.grounded)),
+    json_kv(key: "grounded", value: extdeps.languages.json.emit.json_bool(b: receipt.grounded)),
     json_kv(key: "evidence", value: json_string(s: receipt.evidence)),
     json_kv(key: "reason", value: json_string(s: receipt.reason)),
   ])

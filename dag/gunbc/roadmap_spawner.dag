@@ -3,15 +3,15 @@ module gunbc.roadmap_spawner
 
 fn element_nodes(e: gunbc.roadmap_model.SectionElement) -> List<gunbc.roadmap_model.RoadmapNode> {
   match e {
-    Prose { prose: _ } => []
-    Group { group } => group.nodes
+    gunbc.roadmap_model.Prose { prose: _ } => []
+    gunbc.roadmap_model.Group { group } => group.nodes
   }
 }
 
 fn element_edges(e: gunbc.roadmap_model.SectionElement) -> List<gunbc.roadmap_model.RoadmapEdge> {
   match e {
-    Prose { prose: _ } => []
-    Group { group } => group.edges
+    gunbc.roadmap_model.Prose { prose: _ } => []
+    gunbc.roadmap_model.Group { group } => group.edges
   }
 }
 
@@ -240,7 +240,7 @@ fn node_plan_doc_json(carriers: List<gunbc.roadmap_model.Pointer>) -> extdeps.la
   let plans = carriers |> filter(p => p.label == "plan")
   if count(plans) > 0 {
     fold(plans, init: json_null(), f: (acc, p) => match acc {
-      JsonNull => json_string(s: p.path)
+      extdeps.languages.json.emit.JsonNull => json_string(s: p.path)
       _ => acc
     })
   } else {

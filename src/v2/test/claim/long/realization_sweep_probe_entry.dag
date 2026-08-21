@@ -26,7 +26,7 @@ fn realization_sweep_entry_histogram() -> String {
   sweep_histogram_tsv(rows: sweep_entry_rows())
 }
 
-fn realization_sweep_entry_rows_typed() -> Bool {
+fn realization_sweep_entry_rows_typed() -> v2.std.logic.Bool {
   if frontier_probe_entry_module_path == "" {
     true
   } else {

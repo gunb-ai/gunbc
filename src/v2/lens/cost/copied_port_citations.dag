@@ -58,7 +58,7 @@ fn copied_port_citation_frontier_rows() -> List<CopiedPortCitationFrontierRow> {
   }
 }
 
-fn copied_port_citation_retained_count() -> Int {
+fn copied_port_citation_retained_count() -> v2.std.integer.Int {
   fold(copied_port_citation_frontier_rows(), init: 0, f: fn(count, row) {
     match row.disposition {
       CopiedPortCitationRetained { combiner: _, migration_trigger: _ } => count + 1
@@ -67,7 +67,7 @@ fn copied_port_citation_retained_count() -> Int {
   })
 }
 
-fn citation_conj_measure(left: Node, right: Node) -> Node {
+fn citation_conj_measure(left: v2.std.node.Node, right: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -78,7 +78,7 @@ fn citation_conj_measure(left: Node, right: Node) -> Node {
   }
 }
 
-fn citation_arrow_multi_linear_ambiguous(left_sym: v2.std.node.Symbol, right_sym: v2.std.node.Symbol) -> Node {
+fn citation_arrow_multi_linear_ambiguous(left_sym: v2.std.node.Symbol, right_sym: v2.std.node.Symbol) -> v2.std.node.Node {
   citation_arrow_two_param_loop(
     left_sym: left_sym,
     right_sym: right_sym,
@@ -89,7 +89,7 @@ fn citation_arrow_multi_linear_ambiguous(left_sym: v2.std.node.Symbol, right_sym
   )
 }
 
-fn citation_param_ref(sym: v2.std.node.Symbol) -> Node {
+fn citation_param_ref(sym: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
     children: [],
@@ -97,19 +97,19 @@ fn citation_param_ref(sym: v2.std.node.Symbol) -> Node {
   }
 }
 
-fn citation_loop_body_linear_in(measure: Node) -> Node {
+fn citation_loop_body_linear_in(measure: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: Loop },
     children: [
       v2.std.node.Edge {
         label: Positional,
         target: v2.std.node.Node {
-          kind: v2.std.node.ComputationNode { behavior: Transform },
+          kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
       },
-      v2.std.node.Edge { label: Named { name: ^loop_bound_edge }, target: measure }
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^loop_bound_edge }, target: measure }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -118,8 +118,8 @@ fn citation_loop_body_linear_in(measure: Node) -> Node {
 fn citation_arrow_two_param_loop(
   left_sym: v2.std.node.Symbol,
   right_sym: v2.std.node.Symbol,
-  measure: Node
-) -> Node {
+  measure: v2.std.node.Node
+) -> v2.std.node.Node {
   let left = citation_param_ref(sym: left_sym)
   let right = citation_param_ref(sym: right_sym)
   v2.std.node.Node {
@@ -130,8 +130,8 @@ fn citation_arrow_two_param_loop(
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: Conj },
           children: [
-            v2.std.node.Edge { label: Named { name: left_sym }, target: left },
-            v2.std.node.Edge { label: Named { name: right_sym }, target: right }
+            v2.std.node.Edge { label: v2.std.node.Named { name: left_sym }, target: left },
+            v2.std.node.Edge { label: v2.std.node.Named { name: right_sym }, target: right }
           ],
           occurrence_id: SyntheticOccurrence
         }
@@ -145,7 +145,7 @@ fn citation_arrow_two_param_loop(
         }
       },
       v2.std.node.Edge {
-        label: Named { name: ^arrow_body_edge },
+        label: v2.std.node.Named { name: ^arrow_body_edge },
         target: citation_loop_body_linear_in(measure: measure)
       }
     ],
@@ -196,14 +196,14 @@ fn copied_port_derived_registry_rows() -> List<v2.std.algebra.CopiedPortFact> {
     empty: std.algebra.Empty,
     cons: fn(acc, cite) {
       match derive_copied_port_fact(combiner: cite.combiner, arrow: cite.arrow) {
-        Absent => acc
-        Present { value: row } => copied_port_fact_list_prepend(row: row, xs: acc)
+        v2.std.optional.Absent => acc
+        v2.std.optional.Present { value: row } => copied_port_fact_list_prepend(row: row, xs: acc)
       }
     }
   )
 }
 
-fn copied_port_index_of(combiner: v2.std.node.Symbol) -> Optional<Int> {
+fn copied_port_index_of(combiner: v2.std.node.Symbol) -> v2.std.optional.Optional<v2.std.integer.Int> {
   copied_port_index_from_registry(
     rows: copied_port_derived_registry_rows(),
     combiner: combiner

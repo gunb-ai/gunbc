@@ -17,7 +17,7 @@ data candidate_hex: String = "3333333333333333333333333333333333333333"
 
 fn candidate() -> extdeps.git.object_store.GitObjectId? { extdeps.git.object_store.git_sha1_object_id(hex: candidate_hex) }
 
-fn admits(observed: gunbc.fleet_main_revision.FleetDesiredRevision) -> std.types.Bool {
+fn admits(observed: gunbc.fleet_main_revision.FleetDesiredRevision) -> Bool {
   match gunbc.fleet_main_revision.fleet_desired_advance_expectation(observed: observed) {
     FleetDesiredExpectationReady { expectation: _ } => true
     FleetDesiredExpectationRefused { cause: _ } => false
@@ -27,7 +27,7 @@ fn admits(observed: gunbc.fleet_main_revision.FleetDesiredRevision) -> std.types
 // Positive control: the fixture decodes. Without it a hex typo makes candidate() none, the
 // admitted-observation row below cannot be built, and its failure would look like a modeling
 // error rather than a broken literal.
-test fn the_fixture_object_id_decodes() -> std.types.Bool {
+test fn the_fixture_object_id_decodes() -> Bool {
   match candidate() {
     Present { value: _ } => true
     none => false
@@ -37,7 +37,7 @@ test fn the_fixture_object_id_decodes() -> std.types.Bool {
 // An observed ref licenses an advance FROM the exact oid observed -- not from a remembered or
 // defaulted one. The oid identity is asserted, because an expectation naming the wrong prior is
 // a lease that refuses forever.
-test fn an_observed_ref_leases_the_exact_observed_oid() -> std.types.Bool {
+test fn an_observed_ref_leases_the_exact_observed_oid() -> Bool {
   match candidate() {
     Present { value: oid } =>
       match gunbc.fleet_main_revision.fleet_desired_advance_expectation(observed: gunbc.fleet_main_revision.FleetDesiredAdmitted { revision: oid }) {
@@ -54,7 +54,7 @@ test fn an_observed_ref_leases_the_exact_observed_oid() -> std.types.Bool {
 
 // An absent ref is the ONLY observation that licenses creation. This is the claim that was
 // inexpressible before the split.
-test fn an_absent_ref_is_the_only_licence_to_create() -> std.types.Bool {
+test fn an_absent_ref_is_the_only_licence_to_create() -> Bool {
   match gunbc.fleet_main_revision.fleet_desired_advance_expectation(observed: gunbc.fleet_main_revision.FleetDesiredAbsent) {
     FleetDesiredExpectationReady { expectation: e } =>
       match e {
@@ -67,14 +67,14 @@ test fn an_absent_ref_is_the_only_licence_to_create() -> std.types.Bool {
 
 // THE DISCRIMINATING HALF. A refused transport supports no claim about the remote, so it must
 // yield no expectation at all. If this ever admits, a network fault becomes a ref creation.
-test fn a_refused_transport_licenses_nothing() -> std.types.Bool {
+test fn a_refused_transport_licenses_nothing() -> Bool {
   !admits(observed: gunbc.fleet_main_revision.FleetDesiredUnobserved { cause: "ls-remote refused: connection reset" })
 }
 
 // An undecodable advertisement refuses for a stronger reason than ignorance: the ref EXISTS
 // holding something unreadable. A lease naming any expectation would either fail forever or,
 // if it matched, overwrite a state nobody understood.
-test fn an_undecodable_advertisement_licenses_nothing() -> std.types.Bool {
+test fn an_undecodable_advertisement_licenses_nothing() -> Bool {
   !admits(observed: gunbc.fleet_main_revision.FleetDesiredUndecodable { advertised: "not-a-sha\trefs/fleet/desired" })
 }
 
@@ -82,7 +82,7 @@ test fn an_undecodable_advertisement_licenses_nothing() -> std.types.Bool {
 // that would have gone green under the Option shape these replace: `none` and `none` are equal,
 // so a consumer could not tell a corrupt ref (repair it) from an unreachable one (retry it), and
 // would have had to rematch the observation at a second decision site.
-test fn a_refused_transport_names_the_unobserved_cause() -> std.types.Bool {
+test fn a_refused_transport_names_the_unobserved_cause() -> Bool {
   match gunbc.fleet_main_revision.fleet_desired_advance_expectation(observed: gunbc.fleet_main_revision.FleetDesiredUnobserved { cause: "ls-remote refused: connection reset" }) {
     FleetDesiredExpectationRefused { cause: c } =>
       match c {
@@ -93,7 +93,7 @@ test fn a_refused_transport_names_the_unobserved_cause() -> std.types.Bool {
   }
 }
 
-test fn an_undecodable_advertisement_names_the_undecodable_cause_and_keeps_the_line() -> std.types.Bool {
+test fn an_undecodable_advertisement_names_the_undecodable_cause_and_keeps_the_line() -> Bool {
   match gunbc.fleet_main_revision.fleet_desired_advance_expectation(observed: gunbc.fleet_main_revision.FleetDesiredUndecodable { advertised: "not-a-sha\trefs/fleet/desired" }) {
     FleetDesiredExpectationRefused { cause: c } =>
       match c {

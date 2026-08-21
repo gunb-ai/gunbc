@@ -25,9 +25,9 @@ fn p3_key(emitter: String) -> std.content_hash.ContentHash {
 }
 
 fn fresh_emit_source() -> String {
-  match emit(tree: v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree, target: rust_add_target_model) {
+  match v2.compiler.emit.emit(tree: v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree, target: rust_add_target_model) {
     Accepted { value: m, diagnostics: _ } => m.carried
-    Rejected { diagnostics: _ } => ""
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
   }
 }
 
@@ -66,7 +66,7 @@ test fn emit_source_store_mutated_emitter_misses_holds() -> Bool {
 
 test fn emit_source_store_provider_gate_holds() -> Bool {
   match std.artifact_store.store_over_provider(provider: p3_provider) {
-    StoreReady { store: _ } => true
+    std.artifact_store.StoreReady { store: _ } => true
     StoreRefusedRetention { provider_id: _, declared: _ } => false
   }
 }

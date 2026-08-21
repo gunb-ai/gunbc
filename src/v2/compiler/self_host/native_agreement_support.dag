@@ -4,32 +4,32 @@ module v2.compiler.self_host.native_agreement_support
 fn native_agreement_divergence_from_run<Subj>(
   member_id: String,
   run: v2.compiler.eval.TestClaimRun<Subj, v2.std.runtime.RuntimeValue>
-) -> Optional<v2.std.native_agreement.NativeAgreementDivergence> {
+) -> v2.std.optional.Optional<v2.std.native_agreement.NativeAgreementDivergence> {
   match run.verdict {
-    Pass => Absent
+    Pass => v2.std.optional.Absent
     SemanticMismatch {
       actual: Accepted { value: native_val, diagnostics: v2.std.diagnostic.None },
-      falsification: Present {
+      falsification: v2.std.optional.Present {
         value: receipt
       }
     } =>
-      Present {
+      v2.std.optional.Present {
         value: v2.std.native_agreement.NativeAgreementDivergence {
           member_id: member_id,
           interpreted_value: runtime_value_octet_label(value: receipt.expected),
           native_value: runtime_value_octet_label(value: native_val)
         }
       }
-    SemanticMismatch { actual: _, falsification: Absent } =>
-      Present {
+    SemanticMismatch { actual: _, falsification: v2.std.optional.Absent } =>
+      v2.std.optional.Present {
         value: v2.std.native_agreement.NativeAgreementDivergence {
           member_id: member_id,
           interpreted_value: "?",
           native_value: "?"
         }
       }
-    BuildFailed { actual: _, diagnostic: _ } =>
-      Present {
+    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } =>
+      v2.std.optional.Present {
         value: v2.std.native_agreement.NativeAgreementDivergence {
           member_id: member_id,
           interpreted_value: "build_failed",
@@ -37,7 +37,7 @@ fn native_agreement_divergence_from_run<Subj>(
         }
       }
     RunFailed { actual: _, diagnostic: _ } =>
-      Present {
+      v2.std.optional.Present {
         value: v2.std.native_agreement.NativeAgreementDivergence {
           member_id: member_id,
           interpreted_value: "run_failed",
@@ -45,7 +45,7 @@ fn native_agreement_divergence_from_run<Subj>(
         }
       }
     Deferred { actual: _, diagnostic: _ } =>
-      Present {
+      v2.std.optional.Present {
         value: v2.std.native_agreement.NativeAgreementDivergence {
           member_id: member_id,
           interpreted_value: "deferred",

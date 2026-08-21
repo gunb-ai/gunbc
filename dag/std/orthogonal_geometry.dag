@@ -55,7 +55,7 @@ type OrthogonalRefusal
   | SegmentNotAxisAligned
   | ExtentNotPositive { axis: std.euclidean_geometry.Axis3 }
   | OrthogonalFrameMismatch { expected: std.coordinate_frame.CoordinateFrameIdentity, observed: std.coordinate_frame.CoordinateFrameIdentity }
-  | LoopTooFewVertices { supplied: Int }
+  | LoopTooFewVertices { supplied: std.integer.Int }
   | LoopEdgeNotAxisAligned
   | LoopEdgesNotPerpendicular
   | LoopSelfIntersects
@@ -285,7 +285,7 @@ type Plane3 sole_constructor {
   offset: std.affine_space.SignedFrameComponent
 }
 
-fn plane3(frame: std.coordinate_frame.CoordinateFrameIdentity, normal_axis: std.euclidean_geometry.Axis3, offset: Int) -> Plane3 {
+fn plane3(frame: std.coordinate_frame.CoordinateFrameIdentity, normal_axis: std.euclidean_geometry.Axis3, offset: std.integer.Int) -> Plane3 {
   Plane3 { frame: frame, normal_axis: normal_axis, offset: signed_frame_component(count: offset) }
 }
 
@@ -293,7 +293,7 @@ fn plane3_frame(p: Plane3) -> std.coordinate_frame.CoordinateFrameIdentity { p.f
 fn plane3_normal_axis(p: Plane3) -> std.euclidean_geometry.Axis3 { p.normal_axis }
 fn plane3_offset(p: Plane3) -> std.affine_space.SignedFrameComponent { p.offset }
 
-fn point3_component_on_axis(p: std.affine_space.Point3, axis: std.euclidean_geometry.Axis3) -> Int {
+fn point3_component_on_axis(p: std.affine_space.Point3, axis: std.euclidean_geometry.Axis3) -> std.integer.Int {
   match axis {
     Axis3X => signed_frame_component_count(c: p.x)
     Axis3Y => signed_frame_component_count(c: p.y)
@@ -376,8 +376,8 @@ type BoundingBox3 sole_constructor {
   max: std.affine_space.Point3
 }
 
-fn min_int(a: Int, b: Int) -> Int { if a < b { a } else { b } }
-fn max_int(a: Int, b: Int) -> Int { if a > b { a } else { b } }
+fn min_int(a: std.integer.Int, b: std.integer.Int) -> std.integer.Int { if a < b { a } else { b } }
+fn max_int(a: std.integer.Int, b: std.integer.Int) -> std.integer.Int { if a > b { a } else { b } }
 
 fn bounding_box3(points: List<std.affine_space.Point3>) -> OrthogonalConstruction<BoundingBox3> {
   match points |> first {
@@ -433,8 +433,8 @@ type OrthogonalLoop2 sole_constructor {
   vertices: List<std.affine_space.Point2>
 }
 
-fn point2_x(p: std.affine_space.Point2) -> Int { signed_frame_component_count(c: p.x) }
-fn point2_y(p: std.affine_space.Point2) -> Int { signed_frame_component_count(c: p.y) }
+fn point2_x(p: std.affine_space.Point2) -> std.integer.Int { signed_frame_component_count(c: p.x) }
+fn point2_y(p: std.affine_space.Point2) -> std.integer.Int { signed_frame_component_count(c: p.y) }
 
 fn point2_same_position(a: std.affine_space.Point2, b: std.affine_space.Point2) -> Bool {
   point2_x(p: a) == point2_x(p: b) && point2_y(p: a) == point2_y(p: b)
@@ -465,7 +465,7 @@ fn axis2_eq(a: Axis2, b: Axis2) -> Bool {
 // band restricts itself to axis-aligned geometry: the general segment-intersection predicate needs
 // cross products and a degeneracy analysis, and this one is four integer comparisons. Endpoints
 // count (closed ranges) because two non-adjacent edges of a simple loop must not even touch.
-fn ranges_overlap(a_lo: Int, a_hi: Int, b_lo: Int, b_hi: Int) -> Bool {
+fn ranges_overlap(a_lo: std.integer.Int, a_hi: std.integer.Int, b_lo: std.integer.Int, b_hi: std.integer.Int) -> Bool {
   min_int(a: a_lo, b: a_hi) <= max_int(a: b_lo, b: b_hi)
     && min_int(a: b_lo, b: b_hi) <= max_int(a: a_lo, b: a_hi)
 }
@@ -478,7 +478,7 @@ fn segments_touch(a1: std.affine_space.Point2, a2: std.affine_space.Point2, b1: 
 // Adjacency is MODULAR: edge i neighbours i-1 and i+1, and edge 0 neighbours edge n-1 across the
 // implicit closure - exactly the pair a non-modular comparison forgets, admitting a loop whose
 // closing edge lies along its first.
-fn edges_are_adjacent(i: Int, j: Int, n: Int) -> Bool {
+fn edges_are_adjacent(i: std.integer.Int, j: std.integer.Int, n: std.integer.Int) -> Bool {
   i == j || ((i + 1) % n) == j || ((j + 1) % n) == i
 }
 
@@ -492,7 +492,7 @@ fn any_repeated_vertex(vertices: List<std.affine_space.Point2>) -> Bool {
     })
 }
 
-fn any_nonadjacent_edges_touch(edges: List<LoopEdge>, n: Int) -> Bool {
+fn any_nonadjacent_edges_touch(edges: List<LoopEdge>, n: std.integer.Int) -> Bool {
   fold(edges |> enumerate, init: false, f: (acc, a_pair) =>
     if acc {
       true
@@ -657,7 +657,7 @@ type AxisAlignedSurface3 sole_constructor {
 // refusal that no arm can produce - the same rung inflation on the shape that the deleted
 // LoopNotClosed and SurfaceNotInPlane arms were on the sum. Every caller stops paying a match for
 // an arm that cannot arrive.
-fn axis_aligned_surface3(offset: Int, extent: AxisAlignedRectangle2) -> AxisAlignedSurface3 {
+fn axis_aligned_surface3(offset: std.integer.Int, extent: AxisAlignedRectangle2) -> AxisAlignedSurface3 {
   AxisAlignedSurface3 {
     plane: plane3(frame: rectangle2_frame(r: extent), normal_axis: Axis3Z, offset: offset),
     extent: extent,
@@ -688,7 +688,7 @@ type OrthogonalPrism3 sole_constructor {
 // and the field is the construction fix; refusing a non-Z argument would have been the validation
 // one (DESIGN section 5). Same dissolve-on as the surface above: a plane-carrying 2D loop is what
 // would make a genuinely X- or Y-extruded prism representable.
-fn orthogonal_prism3(footprint: OrthogonalLoop2, low: Int, high: Int) -> OrthogonalConstruction<OrthogonalPrism3> {
+fn orthogonal_prism3(footprint: OrthogonalLoop2, low: std.integer.Int, high: std.integer.Int) -> OrthogonalConstruction<OrthogonalPrism3> {
   if high <= low {
     OrthogonalRefused { cause: ExtentNotPositive { axis: Axis3Z } }
   } else {

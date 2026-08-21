@@ -136,7 +136,7 @@ type PlaywrightChromium151DiscriminatorRun {
 }
 
 fn local_http_url(locator: std.types.NonEmptyStr) -> extdeps.uri.Uri {
-  extdeps.uri.Uri { scheme: Http, locator: locator }
+  extdeps.uri.Uri { scheme: extdeps.uri.Http, locator: locator }
 }
 
 fn explicit_reload_recovery(body: std.types.NonEmptyStr) -> RecoveryTrial {

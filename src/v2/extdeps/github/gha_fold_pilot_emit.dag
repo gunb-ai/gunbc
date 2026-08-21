@@ -5,10 +5,10 @@ type GhaPilotStepEmit
   = GhaPilotRunEmit { run: String }
   | GhaPilotUsesEmit { uses: extdeps.github.actions.ActionRef }
 
-fn optional_is_absent<T>(opt: Optional<T>) -> Bool {
+fn optional_is_absent<T>(opt: v2.std.optional.Optional<T>) -> Bool {
   match opt {
-    Absent => true
-    Present { value: _ } => false
+    v2.std.optional.Absent => true
+    v2.std.optional.Present { value: _ } => false
   }
 }
 
@@ -17,14 +17,14 @@ fn gha_pilot_optionals_all_absent(checks: List<Bool>) -> Bool {
 }
 
 fn gha_pilot_run_step_non_emit_fields_absent(
-  name: Optional<String>,
-  id: Optional<String>,
-  shell: Optional<extdeps.github.actions.ShellType>,
-  env: Optional<List<extdeps.languages.yaml.types.YamlKeyValue>>,
-  working_directory: Optional<String>,
-  if_condition: Optional<String>,
-  continue_on_error: Optional<Bool>,
-  timeout_minutes: Optional<Int>
+  name: v2.std.optional.Optional<String>,
+  id: v2.std.optional.Optional<String>,
+  shell: v2.std.optional.Optional<extdeps.github.actions.ShellType>,
+  env: v2.std.optional.Optional<List<extdeps.languages.yaml.types.YamlKeyValue>>,
+  working_directory: v2.std.optional.Optional<String>,
+  if_condition: v2.std.optional.Optional<String>,
+  continue_on_error: v2.std.optional.Optional<Bool>,
+  timeout_minutes: v2.std.optional.Optional<Int>
 ) -> Bool {
   gha_pilot_optionals_all_absent(
     checks: [
@@ -41,13 +41,13 @@ fn gha_pilot_run_step_non_emit_fields_absent(
 }
 
 fn gha_pilot_uses_step_non_emit_fields_absent(
-  name: Optional<String>,
-  id: Optional<String>,
-  with: Optional<List<extdeps.languages.yaml.types.YamlKeyValue>>,
-  env: Optional<List<extdeps.languages.yaml.types.YamlKeyValue>>,
-  if_condition: Optional<String>,
-  continue_on_error: Optional<Bool>,
-  timeout_minutes: Optional<Int>
+  name: v2.std.optional.Optional<String>,
+  id: v2.std.optional.Optional<String>,
+  with: v2.std.optional.Optional<List<extdeps.languages.yaml.types.YamlKeyValue>>,
+  env: v2.std.optional.Optional<List<extdeps.languages.yaml.types.YamlKeyValue>>,
+  if_condition: v2.std.optional.Optional<String>,
+  continue_on_error: v2.std.optional.Optional<Bool>,
+  timeout_minutes: v2.std.optional.Optional<Int>
 ) -> Bool {
   gha_pilot_optionals_all_absent(
     checks: [
@@ -62,7 +62,7 @@ fn gha_pilot_uses_step_non_emit_fields_absent(
   )
 }
 
-fn gha_fold_pilot_emit_step(step: extdeps.github.actions.Step) -> Optional<GhaPilotStepEmit> {
+fn gha_fold_pilot_emit_step(step: extdeps.github.actions.Step) -> v2.std.optional.Optional<GhaPilotStepEmit> {
   match step {
     RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: wd, if_condition: ic, continue_on_error: coe, timeout_minutes: tm } =>
       match gha_pilot_run_step_non_emit_fields_absent(
@@ -76,10 +76,10 @@ fn gha_fold_pilot_emit_step(step: extdeps.github.actions.Step) -> Optional<GhaPi
         timeout_minutes: tm
       ) {
         true =>
-          Present {
+          v2.std.optional.Present {
             value: GhaPilotRunEmit { run: r }
           }
-        false => Absent
+        false => v2.std.optional.Absent
       }
     UsesStep { name: n, id: i, uses: u, with: w, env: e, if_condition: ic, continue_on_error: coe, timeout_minutes: tm } =>
       match gha_pilot_uses_step_non_emit_fields_absent(
@@ -92,10 +92,10 @@ fn gha_fold_pilot_emit_step(step: extdeps.github.actions.Step) -> Optional<GhaPi
         timeout_minutes: tm
       ) {
         true =>
-          Present {
+          v2.std.optional.Present {
             value: GhaPilotUsesEmit { uses: u }
           }
-        false => Absent
+        false => v2.std.optional.Absent
       }
   }
 }

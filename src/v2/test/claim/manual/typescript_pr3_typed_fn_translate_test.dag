@@ -2,13 +2,13 @@ module v2.test.manual.typescript_pr3_typed_fn_translate
 
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
-data typescript_pr3_emitted_root: Node = ts_pr3_identity_typed_fn_emitted()
+data typescript_pr3_emitted_root: v2.std.node.Node = ts_pr3_identity_typed_fn_emitted()
 
 fn typescript_pr3_target_model_for_emit() -> Witness<v2.std.compilers.target_model.TargetModel> {
   ts_pr3_identity_target_model_witness()
 }
 
-fn typescript_pr3_canonical_grounding(node: Node, algebra: Node) -> v2.std.constraints.CanonicalGrounding {
+fn typescript_pr3_canonical_grounding(node: v2.std.node.Node, algebra: v2.std.node.Node) -> v2.std.constraints.CanonicalGrounding {
   v2.std.constraints.CanonicalGrounding {
     node: node,
     witness: v2.std.constraints.CanonicalGroundingWitness {
@@ -24,7 +24,7 @@ fn typescript_pr3_canonical_grounding(node: Node, algebra: Node) -> v2.std.const
   }
 }
 
-fn typescript_pr3_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
+fn typescript_pr3_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == typescript_pr3_emitted_root {
     v2.std.witness.Holds {
       value: typescript_pr3_canonical_grounding(node: node, algebra: node)
@@ -56,7 +56,7 @@ fn typescript_pr3_canonical_grounding_for(node: Node) -> Witness<v2.std.constrai
   }
 }
 
-fn typescript_pr3_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn typescript_pr3_inferred_facts_for(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   match typescript_pr3_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -71,7 +71,7 @@ fn typescript_pr3_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferre
   }
 }
 
-fn typescript_pr3_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn typescript_pr3_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   typescript_pr3_inferred_facts_for(node: key)
 }
 
@@ -82,7 +82,7 @@ data typescript_pr3_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.c
 
 fn anchor_typescript_pr3_emit_accepts() -> v2.std.diagnostic.Outcome<Medium<String>> {
   match typescript_pr3_target_model_for_emit() {
-    Holds { value: target } => emit(tree: typescript_pr3_inferred_tree, target: target)
+    Holds { value: target } => v2.compiler.emit.emit(tree: typescript_pr3_inferred_tree, target: target)
     Violates { diagnostic: d } =>
       v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
@@ -106,13 +106,13 @@ data typescript_pr3_compile_inferred_receipt: v2.std.diagnostic.Outcome<v2.compi
 test fn typescript_pr3_emit_receipt_decided() -> Bool {
   match typescript_pr3_emit_receipt {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 test fn typescript_pr3_compile_inferred_receipt_decided() -> Bool {
   match typescript_pr3_compile_inferred_receipt {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 

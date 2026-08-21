@@ -22,7 +22,7 @@ fn cause_tag(r: product.altra_motherboard.placement.PlacementRefusal) -> std.typ
   }
 }
 
-fn count_tagged(cs: List<product.altra_motherboard.placement.PlacementRefusal>, wanted: String) -> Int {
+fn count_tagged(cs: List<product.altra_motherboard.placement.PlacementRefusal>, wanted: String) -> std.integer.Int {
   fold(cs, init: 0, f: fn(acc, r) { if (cause_tag(r: r) as String) == wanted { acc + 1 } else { acc } })
 }
 
@@ -45,8 +45,8 @@ test fn w_the_reference_plan_refuses_because_envelopes_are_outstanding() -> Bool
     Absent => false
     Present { value: p } =>
       match admit_placement(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p) {
-        PlacementAdmitted { plan: _ } => false
-        PlacementRefused { causes: cs } => count_tagged(cs: cs, wanted: "EnvelopeMissing") > 0
+        product.altra_motherboard.placement.PlacementAdmitted { plan: _ } => false
+        product.altra_motherboard.placement.PlacementRefused { causes: cs } => count_tagged(cs: cs, wanted: "EnvelopeMissing") > 0
       }
   }
 }
@@ -205,7 +205,7 @@ test fn w_the_package_is_larger_than_the_cpld_by_orders_of_magnitude() -> Bool {
   }
 }
 
-fn memory_role_count(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard) -> Int {
+fn memory_role_count(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard) -> std.integer.Int {
   fold(required_roles(d: d), init: 0, f: fn(acc, r) {
     if (role_tag(r: r) as String) == "MemoryModuleSlot" { acc + 1 } else { acc }
   })
@@ -393,7 +393,7 @@ fn every_role_established(template: product.altra_motherboard.placement.BoardPla
 }
 
 type IndexedComponents {
-  index: Int
+  index: std.integer.Int
   out: List<product.altra_motherboard.placement.PlannedComponent>
 }
 

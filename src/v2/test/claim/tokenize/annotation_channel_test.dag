@@ -50,7 +50,7 @@ fn annotations_of(source: String) -> List<v2.std.compilers.lexing.UnboundSourceA
   }
 }
 
-test fn annotation_rule_routes_to_the_annotation_arm() -> Bool {
+test fn annotation_rule_routes_to_the_annotation_arm() -> v2.std.logic.Bool {
   match lex_try_rule(rule: v2.std.compilers.lexing.AnnotationRule { annotation_class: ^line_comment, pattern: annotation_pattern() }, source: "// hi") {
     LexRuleAnnotation { class: c, lexeme: _, remaining: _ } => c == ^line_comment
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
@@ -59,17 +59,17 @@ test fn annotation_rule_routes_to_the_annotation_arm() -> Bool {
   }
 }
 
-test fn walk_captures_the_annotation() -> Bool {
+test fn walk_captures_the_annotation() -> v2.std.logic.Bool {
   annotation_count_rendered(source: "a\n// note\nb\n") == "1"
 }
 
 // The equality is anchored by a control rather than by a transcribed literal. A rendering that collapsed every stream to one constant — the failure mode a count or a fabricated empty already showed is real here — would satisfy the equality and prove nothing, so the second conjunct requires the SAME rendering to distinguish two streams that differ only in one token's text. Pinning an exact expected string instead would assert the class symbol's spelling, which is not what this claim is about.
-test fn semantic_tokens_are_unchanged_by_the_annotation() -> Bool {
+test fn semantic_tokens_are_unchanged_by_the_annotation() -> v2.std.logic.Bool {
   token_identity(source: "a\n// note\nb\n") == token_identity(source: "a\nb\n") &&
     token_identity(source: "a\nb\n") != token_identity(source: "a\nc\n")
 }
 
-test fn leading_and_trailing_placements_differ() -> Bool {
+test fn leading_and_trailing_placements_differ() -> v2.std.logic.Bool {
   let leading = annotations_of(source: "a\n// note\n")
   let trailing = annotations_of(source: "a // note\n")
   let l = leading |> first()
@@ -85,11 +85,11 @@ test fn leading_and_trailing_placements_differ() -> Bool {
   }
 }
 
-test fn annotation_at_eof_is_still_captured() -> Bool {
+test fn annotation_at_eof_is_still_captured() -> v2.std.logic.Bool {
   annotation_count_rendered(source: "a\n// trailing at eof") == "1"
 }
 
-test fn zero_width_annotation_rule_refuses_rather_than_looping() -> Bool {
+test fn zero_width_annotation_rule_refuses_rather_than_looping() -> v2.std.logic.Bool {
   match lex_walk_artifact(
     source: "a",
     file: ^probe,
@@ -100,11 +100,11 @@ test fn zero_width_annotation_rule_refuses_rather_than_looping() -> Bool {
   }
 }
 
-test fn source_without_annotations_captures_none() -> Bool {
+test fn source_without_annotations_captures_none() -> v2.std.logic.Bool {
   annotation_count_rendered(source: "a\nb\n") == "0"
 }
 
-test fn lex_walk_projection_drops_annotations_but_keeps_tokens() -> Bool {
+test fn lex_walk_projection_drops_annotations_but_keeps_tokens() -> v2.std.logic.Bool {
   match lex_walk(source: "a\n// note\nb\n", file: ^probe, rules: test_rules()) {
     Accepted { value: stream, diagnostics: _ } =>
       fold_list(
@@ -146,10 +146,10 @@ fn placement_after_spanning_token(token_text: String) -> String {
   }
 }
 
-test fn token_ending_on_a_fresh_indented_line_makes_the_next_annotation_leading() -> Bool {
+test fn token_ending_on_a_fresh_indented_line_makes_the_next_annotation_leading() -> v2.std.logic.Bool {
   placement_after_spanning_token(token_text: "):\n    ") == "LEADING"
 }
 
-test fn token_ending_with_semantic_text_on_its_line_makes_the_next_annotation_trailing() -> Bool {
+test fn token_ending_with_semantic_text_on_its_line_makes_the_next_annotation_trailing() -> v2.std.logic.Bool {
   placement_after_spanning_token(token_text: "\n    if ") == "TRAILING"
 }

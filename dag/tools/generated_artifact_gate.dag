@@ -3,7 +3,7 @@ module tools.generated_artifact_gate
 
 
 fn exit_ok(e: std.process.ProcessExit) -> Bool {
-  match e { ExitSuccess => true  _ => false }
+  match e { std.process.ExitSuccess => true  _ => false }
 }
 
 data run_generated_artifact_drift_gate_body_note: String = "One live pass: observe_generated_artifact_population() reads each committed file and generates each artifact exactly once (gunbc.generated_artifact_observation). The pure group and leaf assessments, and the failure diagnostic, all read that SAME retained population — no re-invocation of the producer (operator ruling: cost and correctness must not ride on incidental memoization of a repeated producer call)."
@@ -23,7 +23,7 @@ func run_generated_artifact_drift_gate_body() -> std.process.ProcessExit {
     record_generated_artifact_drift_gate_failure_detail(detail: reason)
   }
   return if all_ok {
-    ExitSuccess
+    std.process.ExitSuccess
   } else {
     exit_failure(reason: reason)
   }
@@ -41,7 +41,7 @@ data generated_artifact_drift_failure_receipt_note: String = "The loudness half:
 
 fn generated_artifact_drift_failure_reason(exit: std.process.ProcessExit) -> String {
   match exit {
-    ExitSuccess => ""
+    std.process.ExitSuccess => ""
     ExitFailure { code: _, reason: reason } => reason
   }
 }
@@ -51,7 +51,7 @@ func generated_artifact_drift_failure_receipt() -> String {
 }
 
 func main_wet() -> std.process.ProcessExit {
-  fold(committed_generated_artifacts(), init: ExitSuccess, f: fn(acc, a) {
+  fold(committed_generated_artifacts(), init: std.process.ExitSuccess, f: fn(acc, a) {
     if tools.generated_artifact_gate.exit_ok(e: acc) {
       match artifact_generate(a: a) {
         ArtifactGenerationRefused { reason } => exit_failure(reason: concat(concat("generation refused for ", artifact_path(a: a)), concat(": ", reason)))

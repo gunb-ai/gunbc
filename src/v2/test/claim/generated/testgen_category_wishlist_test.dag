@@ -143,7 +143,7 @@ fn dispatched_refinement_preservation_generator() -> v2.std.diagnostic.Outcome<v
         },
         diagnostics: d,
       }
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -192,10 +192,10 @@ fn testgen_dispatched_non_tautological_generators() -> std.types.List<TestgenWis
   ]
 }
 
-test fn pending_non_tautological_generator_count_is_three() -> Bool {
+test fn pending_non_tautological_generator_count_is_three() -> v2.std.logic.Bool {
   v2.std.algebra.length(xs: testgen_pending_non_tautological_generator_wishlist()) == 3
 }
 
-test fn dispatched_non_tautological_generator_count_is_four() -> Bool {
+test fn dispatched_non_tautological_generator_count_is_four() -> v2.std.logic.Bool {
   v2.std.algebra.length(xs: testgen_dispatched_non_tautological_generators()) == 4
 }

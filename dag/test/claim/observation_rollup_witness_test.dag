@@ -57,9 +57,9 @@ test fn elapsed_sums_only_measured_walls_and_counts_the_absent_ones() -> Bool {
   let folded = fold_events(
     rollup: observation_rollup_open(subject: test.claim.observation_rollup_witness.batch_subject()),
     events: [
-      event_at(subject: leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: Done }),
-      event_at(subject: leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: Done }),
-      unmeasured_event_at(subject: leaf_subject(entry: "dag/c.dag"), transition: std.observation.Concluded { outcome: Done }),
+      event_at(subject: leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
+      event_at(subject: leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
+      unmeasured_event_at(subject: leaf_subject(entry: "dag/c.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
     ],
   )
   let summed = match folded.elapsed {
@@ -73,8 +73,8 @@ test fn RED_a_wholly_unmeasured_batch_stays_unavailable_rather_than_reporting_ze
   let folded = fold_events(
     rollup: observation_rollup_open(subject: test.claim.observation_rollup_witness.batch_subject()),
     events: [
-      unmeasured_event_at(subject: leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: Done }),
-      unmeasured_event_at(subject: leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: Done }),
+      unmeasured_event_at(subject: leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
+      unmeasured_event_at(subject: leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
     ],
   )
   match folded.elapsed {
@@ -86,16 +86,16 @@ test fn RED_a_wholly_unmeasured_batch_stays_unavailable_rather_than_reporting_ze
 test fn peak_rss_keeps_the_maximum_reading_not_the_last_or_the_sum() -> Bool {
   let big = std.observation.ObservationEvent {
     subject: leaf_subject(entry: "dag/big.dag"),
-    transition: std.observation.Concluded { outcome: Done },
+    transition: std.observation.Concluded { outcome: std.observation.Done },
     durations: observation_durations_wall(elapsed: nanosecond(count: 1000)),
     rss: std.observation.MeasuredValue { value: byte_size(count: 9000) },
   }
   let folded = fold_events(
     rollup: observation_rollup_open(subject: test.claim.observation_rollup_witness.batch_subject()),
     events: [
-      event_at(subject: leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: Done }),
+      event_at(subject: leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
       big,
-      event_at(subject: leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: Done }),
+      event_at(subject: leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
     ],
   )
   match folded.peak_rss {
@@ -117,9 +117,9 @@ test fn routine_leaf_events_fold_into_their_batch_without_surviving_individually
     rollup: observation_rollup_open(subject: test.claim.observation_rollup_witness.batch_subject()),
     events: [
       event_at(subject: leaf_subject(entry: "dag/a.dag"), transition: Begin),
-      event_at(subject: leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: Done }),
-      event_at(subject: leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: Done }),
-      event_at(subject: leaf_subject(entry: "dag/c.dag"), transition: std.observation.Concluded { outcome: Skipped { reason: "unaffected" } }),
+      event_at(subject: leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
+      event_at(subject: leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
+      event_at(subject: leaf_subject(entry: "dag/c.dag"), transition: std.observation.Concluded { outcome: std.observation.Skipped { reason: "unaffected" } }),
     ],
   )
   folded.counts.begun == 1
@@ -132,9 +132,9 @@ test fn anomaly_classes_are_counted_so_a_zero_failed_summary_is_earned() -> Bool
   let folded = fold_events(
     rollup: observation_rollup_open(subject: test.claim.observation_rollup_witness.batch_subject()),
     events: [
-      event_at(subject: leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: Done }),
-      event_at(subject: leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: Failed { error: "witness red", output: "" } }),
-      event_at(subject: leaf_subject(entry: "dag/c.dag"), transition: std.observation.Concluded { outcome: Refused { diagnostic: "admission refused" } }),
+      event_at(subject: leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
+      event_at(subject: leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: std.observation.Failed { error: "witness red", output: "" } }),
+      event_at(subject: leaf_subject(entry: "dag/c.dag"), transition: std.observation.Concluded { outcome: std.observation.Refused { diagnostic: "admission refused" } }),
     ],
   )
   folded.counts.done == 1
@@ -146,7 +146,7 @@ test fn anomaly_classes_are_counted_so_a_zero_failed_summary_is_earned() -> Bool
 test fn RED_event_outside_the_rollup_subject_is_refused_not_folded() -> Bool {
   match observation_rollup_accept(
     rollup: observation_rollup_open(subject: test.claim.observation_rollup_witness.batch_subject()),
-    event: event_at(subject: foreign_leaf_subject(), transition: std.observation.Concluded { outcome: Done }),
+    event: event_at(subject: foreign_leaf_subject(), transition: std.observation.Concluded { outcome: std.observation.Done }),
   ) {
     RollupAccepted { rollup: _ } => false
     RollupSubjectOutOfScope { subject: _ } => true
@@ -157,8 +157,8 @@ test fn RED_a_refused_event_leaves_the_counts_untouched() -> Bool {
   let folded = fold_events(
     rollup: observation_rollup_open(subject: test.claim.observation_rollup_witness.batch_subject()),
     events: [
-      event_at(subject: foreign_leaf_subject(), transition: std.observation.Concluded { outcome: Done }),
-      event_at(subject: foreign_leaf_subject(), transition: std.observation.Concluded { outcome: Failed { error: "elsewhere", output: "" } }),
+      event_at(subject: foreign_leaf_subject(), transition: std.observation.Concluded { outcome: std.observation.Done }),
+      event_at(subject: foreign_leaf_subject(), transition: std.observation.Concluded { outcome: std.observation.Failed { error: "elsewhere", output: "" } }),
     ],
   )
   folded.counts.done == 0

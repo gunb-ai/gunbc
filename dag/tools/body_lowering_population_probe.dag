@@ -51,7 +51,7 @@ data body_lowering_batch_selection: List<v2.std.node.Symbol> = [
   ^optional,
 ]
 
-fn is_selected(label: v2.std.node.Symbol) -> Bool {
+fn is_selected(label: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(xs: body_lowering_batch_selection, empty: false, cons: fn(acc, sel) { acc || (sel == label) })
 }
 

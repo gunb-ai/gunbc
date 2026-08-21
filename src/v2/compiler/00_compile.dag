@@ -1,9 +1,9 @@
 module v2.compiler.compile
 
 
-type CoreNode = Node
+type CoreNode = v2.std.node.Node
 
-type RuntimeTarget = Node
+type RuntimeTarget = v2.std.node.Node
 
 type CompileMode
   = TranslateTo { target: v2.std.compilers.target_model.TargetModel }
@@ -11,7 +11,7 @@ type CompileMode
 
 type CompileOutput
   = TranslateResult { source: extdeps.communication.medium.Medium<String> }
-  | EvalResult { value: extdeps.communication.medium.Medium<Node> }
+  | EvalResult { value: extdeps.communication.medium.Medium<v2.std.node.Node> }
 
 type CompileLensOutcome = v2.std.diagnostic.Outcome<v2.std.witness.Witness<v2.std.node.Node>>
 
@@ -45,7 +45,7 @@ type CompileLensMode
   | CompileLensIntrospect
 
 type LensGateWitness {
-  witness: Witness<Node>
+  witness: Witness<v2.std.node.Node>
 }
 
 type Validated<T> {
@@ -103,46 +103,46 @@ fn always_required_root_lenses() -> List<CompileLens> {
   [accumulator_copy_lens, determinism_lens, machine_shape_lens, mandatory_tag_lens]
 }
 
-fn accumulator_copy_root_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+fn accumulator_copy_root_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>> {
   accumulator_copy_compile_gate(node: tree.root)
 }
 
-fn determinism_root_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+fn determinism_root_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>> {
   determinism_compile_gate(node: tree.root)
 }
 
-fn machine_shape_root_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+fn machine_shape_root_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>> {
   machine_shape_compile_gate(node: tree.root)
 }
 
-fn mandatory_tag_root_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+fn mandatory_tag_root_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>> {
   mandatory_tag_compile_gate(node: tree.root)
 }
 
-fn fact_density_hollow_alias_compile_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+fn fact_density_hollow_alias_compile_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>> {
   fact_density_hollow_alias_gate(node: tree.root)
 }
 
-fn unit_modeling_compile_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+fn unit_modeling_compile_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>> {
   unit_modeling_gate(node: tree.root)
 }
 
-fn lifecycle_carrier_compile_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+fn lifecycle_carrier_compile_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>> {
   lifecycle_carrier_gate(node: tree.root)
 }
 
-fn run_compile_lens_gate(lens: CompileLens, inferred: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+fn run_compile_lens_gate(lens: CompileLens, inferred: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>> {
   lens.gate(inferred)
 }
 
 fn apply_compile_lens_introspect(
   lens: CompileLens,
   inferred: v2.compiler.inferred_tree.InferredTree
-) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+) -> v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>> {
   match run_compile_lens_gate(lens: lens, inferred: inferred) {
     Accepted { value: w, diagnostics: od } =>
       outcome_with_diagnostics(value: w, diagnostics: od)
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       outcome_with_diagnostics(
         value: v2.std.witness.Violates { diagnostic: d.head },
         diagnostics: v2.std.diagnostic.Some { diagnostics: d }
@@ -154,7 +154,7 @@ fn apply_compile_lens(
   lens: CompileLens,
   inferred: v2.compiler.inferred_tree.InferredTree,
   mode: CompileLensMode
-) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+) -> v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>> {
   match mode {
     CompileLensEnforce => run_compile_lens_gate(lens: lens, inferred: inferred)
     CompileLensIntrospect => apply_compile_lens_introspect(lens: lens, inferred: inferred)
@@ -163,7 +163,7 @@ fn apply_compile_lens(
 
 fn prepend_lens_gate_witness(
   witnesses: List<LensGateWitness>,
-  witness: Witness<Node>
+  witness: Witness<v2.std.node.Node>
 ) -> List<LensGateWitness> {
   std.algebra.Cons { head: LensGateWitness { witness: witness }, tail: witnesses }
 }
@@ -182,7 +182,7 @@ fn run_required_lens_gates(
       init: outcome_accepted(value: empty_lens_gate_witnesses()),
       f: fn(acc_outcome, lens) {
         match acc_outcome {
-          Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+          v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
           Accepted { value: witnesses, diagnostics: od } =>
             bind_outcome_accepted(
               od: od,
@@ -346,14 +346,14 @@ fn compile_ingest_with_admission(
 ) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   let lm = dag_language_model()
   bind_outcome(
-    o: tokenize(
+    o: v2.compiler.tokenize.tokenize(
       text: source.carried,
       file: ^compile_ingest_staging_source_file,
       rules: lm.lex
     ),
     f: fn(token_stream) {
       bind_outcome(
-        o: parse(tokens: token_stream, grammar: lm.grammar),
+        o: v2.compiler.parse.parse(tokens: token_stream, grammar: lm.grammar),
         f: fn(parse_tree) {
           bind_outcome(
             o: normalize(parse_tree: parse_tree),
@@ -427,9 +427,9 @@ fn compile_source_root_ingest_with_admission(
   )
 }
 
-fn stage_tokenize(lm: v2.std.language_model.LanguageModel) -> fn(extdeps.communication.medium.Medium<String>) -> v2.std.diagnostic.Outcome<TokenStream> {
+fn stage_tokenize(lm: v2.std.language_model.LanguageModel) -> fn(extdeps.communication.medium.Medium<String>) -> v2.std.diagnostic.Outcome<v2.std.compilers.lexing.TokenStream> {
   fn(source) {
-    tokenize(
+    v2.compiler.tokenize.tokenize(
       text: source.carried,
       file: ^compile_ingest_staging_source_file,
       rules: lm.lex
@@ -437,11 +437,11 @@ fn stage_tokenize(lm: v2.std.language_model.LanguageModel) -> fn(extdeps.communi
   }
 }
 
-fn stage_parse(lm: v2.std.language_model.LanguageModel) -> fn(TokenStream) -> v2.std.diagnostic.Outcome<ParseTree> {
-  fn(token_stream) { parse(tokens: token_stream, grammar: lm.grammar) }
+fn stage_parse(lm: v2.std.language_model.LanguageModel) -> fn(v2.std.compilers.lexing.TokenStream) -> v2.std.diagnostic.Outcome<v2.std.grammar.ParseTree> {
+  fn(token_stream) { v2.compiler.parse.parse(tokens: token_stream, grammar: lm.grammar) }
 }
 
-fn stage_normalize() -> fn(ParseTree) -> v2.std.diagnostic.Outcome<NormalizedTree> {
+fn stage_normalize() -> fn(v2.std.grammar.ParseTree) -> v2.std.diagnostic.Outcome<NormalizedTree> {
   fn(parse_tree) { normalize(parse_tree: parse_tree) }
 }
 

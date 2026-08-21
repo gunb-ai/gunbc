@@ -45,7 +45,7 @@ fn project_direct_rust_door_observation(
 }
 
 // Total over DirectRustDoorObservation with no wildcard arm (DESIGN 6 non-fold residue). A `_ => false` arm here would make the coproduct grow in silence: a tenth observation variant would land as false and read as an honest negative rather than an unhandled case.
-fn direct_rust_door_observation_establishes(o: DirectRustDoorObservation) -> Bool {
+fn direct_rust_door_observation_establishes(o: DirectRustDoorObservation) -> v2.std.logic.Bool {
   match o {
     AssemblyRefused { reason: _ } => false
     InferenceRefused { reason: _ } => false
@@ -59,7 +59,7 @@ fn direct_rust_door_observation_establishes(o: DirectRustDoorObservation) -> Boo
   }
 }
 
-fn direct_rust_door_observation_is_candidate_rejection(o: DirectRustDoorObservation) -> Bool {
+fn direct_rust_door_observation_is_candidate_rejection(o: DirectRustDoorObservation) -> v2.std.logic.Bool {
   match o {
     AssemblyRefused { reason: _ } => false
     InferenceRefused { reason: _ } => false

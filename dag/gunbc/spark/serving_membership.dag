@@ -33,11 +33,11 @@ type SparkServingMember {
   principal: std.types.NonEmptyStr
   address: SparkServingResourceAddress
   state_digest: std.types.NonEmptyStr
-  ownership: Ownership
+  ownership: gunbc.ownership.Ownership
 }
 
 type SparkServingUserUnitWriteIntent {
-  path: FilePath
+  path: std.types.FilePath
   spec: gunbc.spark.serving_install_paths.SparkServingUserUnitSpec
 }
 
@@ -76,7 +76,7 @@ fn spark_serving_member_value_eq(a: SparkServingMember, b: SparkServingMember) -
   a.state_digest == b.state_digest
 }
 
-fn spark_serving_member_ownership(member: SparkServingMember) -> Ownership? {
+fn spark_serving_member_ownership(member: SparkServingMember) -> gunbc.ownership.Ownership? {
   Present { value: member.ownership }
 }
 
@@ -220,7 +220,7 @@ fn spark_serving_member(
   principal: std.types.NonEmptyStr,
   address: SparkServingResourceAddress,
   state_digest: std.types.NonEmptyStr,
-  ownership: Ownership,
+  ownership: gunbc.ownership.Ownership,
 ) -> SparkServingMember {
   SparkServingMember {
     host: host,

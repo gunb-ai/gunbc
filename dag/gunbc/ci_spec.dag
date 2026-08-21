@@ -462,7 +462,7 @@ fn gunbc_ci_multi_principal_probe_invoke() -> String {
 // trap disarms): that was measured directly against this function's body and found
 // correct, not a defect this change is fixing.
 //
-// The Scaffold and DissolutionCondition rows that stood here are deleted rather than
+// The std.disposition.Scaffold and DissolutionCondition rows that stood here are deleted rather than
 // corrected-in-place: the typed-orchestration-emit condition they should have named is
 // fulfilled by this same change (gunbc_ci_fleet_key_agent_prelude below, emitted through
 // v2.workflow.gunbc_invoke_step_emit gunbc_invoke_step_emit_pipeline), so a corrected row
@@ -655,10 +655,10 @@ fn gunbc_ci_fleet_key_agent_cleanup_script() -> String {
 // otherwise "had zero callers, a disconnected mechanism". That step lived in `ci.yml`,
 // which #8283 deleted, so the wire returned to being exactly the disconnected mechanism it
 // was added to prevent: measured at deletion, `gunbc_ci_fleet_timer_install_invoke` had no
-// consumer but the `DeclarationRef` inside its own `Scaffold` row, and
+// consumer but the `DeclarationRef` inside its own `std.disposition.Scaffold` row, and
 // `fleet_timer_self_install` appears in neither surviving workflow.
 //
-// Its registered `Scaffold` and unbound `DissolutionCondition` go with it. Both described a
+// Its registered `std.disposition.Scaffold` and unbound `DissolutionCondition` go with it. Both described a
 // concat-built foreign-executor shell awaiting bash-emit; deleting the emitter discharges
 // the obligation instead of carrying it, and an unbound condition whose subject no longer
 // exists can never report itself fired.
@@ -852,7 +852,7 @@ fn gunbc_ci_authorized_key_enroll_invoke() -> String {
 // call site from returning. The script's only other consumers were gunbc.live_deploy_workflow and
 // its witness file, both deleted with the deploy workflow authority.
 //
-// The Scaffold disposition and dissolution trigger that tracked this script's medium-as-string debt
+// The std.disposition.Scaffold disposition and dissolution trigger that tracked this script's medium-as-string debt
 // went with it -- the replacement's actuation is a model-rendered script, so that debt is re-declared
 // where the remaining shell actually lives, not inherited here.
 //

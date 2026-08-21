@@ -6,7 +6,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 data orch_tier2_golden_note: String = "Goldens below are hand-authored bytes from fleet_converge_emit.dag converge_gunbc_pinned_tree fresh_standup arm ONLY (docs/plans/shell-to-dag-residual-census-and-arc-completion.md §1B frontier rows). Ubuntu-media for/heredoc sites are EXCLUDED per purity-trap fence (FLAG B1). Each test compares emit against its golden independently of the grammar rows."
 
 fn fresh_standup_cmdsubst_assign_intent() -> v2.std.orchestration.PipelineStep {
-  Let {
+  v2.std.orchestration.Let {
     name: "dag_pin",
     value: v2.std.orchestration.ExprCmdSubst {
       callee: "converge_read_gunbc_host_pin",
@@ -26,12 +26,12 @@ test fn orch_tier2_fresh_standup_cmdsubst_assign_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == fresh_standup_cmdsubst_assign_golden()) && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn fresh_standup_decide_verdict_call_intent() -> v2.std.orchestration.PipelineStep {
-  Call {
+  v2.std.orchestration.Call {
     callee: "decide_verdict",
     args: ["\"$dag_pin\"", "\"$desired_pin\""]
   }
@@ -48,12 +48,12 @@ test fn orch_tier2_fresh_standup_procedure_call_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == fresh_standup_decide_verdict_call_golden()) && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn fresh_standup_read_pin_call_intent() -> v2.std.orchestration.PipelineStep {
-  Call {
+  v2.std.orchestration.Call {
     callee: "converge_read_gunbc_host_pin",
     args: ["\"$checkout\""]
   }
@@ -70,12 +70,12 @@ test fn orch_tier2_fresh_standup_read_pin_call_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == fresh_standup_read_pin_call_golden()) && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn fresh_standup_verdict_absent_let_intent() -> v2.std.orchestration.PipelineStep {
-  Let { name: "verdict", value: v2.std.orchestration.ExprLit { spelling: "absent" } }
+  v2.std.orchestration.Let { name: "verdict", value: v2.std.orchestration.ExprLit { spelling: "absent" } }
 }
 
 fn fresh_standup_verdict_absent_let_golden() -> String {
@@ -89,12 +89,12 @@ test fn orch_tier2_fresh_standup_verdict_absent_let_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == fresh_standup_verdict_absent_let_golden()) && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn fresh_standup_effective_var_let_intent() -> v2.std.orchestration.PipelineStep {
-  Let { name: "effective", value: v2.std.orchestration.ExprLit { spelling: "\"$dag_pin\"" } }
+  v2.std.orchestration.Let { name: "effective", value: v2.std.orchestration.ExprLit { spelling: "\"$dag_pin\"" } }
 }
 
 fn fresh_standup_effective_var_let_golden() -> String {
@@ -108,12 +108,12 @@ test fn orch_tier2_fresh_standup_effective_var_let_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == fresh_standup_effective_var_let_golden()) && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn fresh_standup_dag_pin_empty_let_intent() -> v2.std.orchestration.PipelineStep {
-  Let { name: "dag_pin", value: v2.std.orchestration.ExprLit { spelling: "\"\"" } }
+  v2.std.orchestration.Let { name: "dag_pin", value: v2.std.orchestration.ExprLit { spelling: "\"\"" } }
 }
 
 fn fresh_standup_dag_pin_empty_let_golden() -> String {
@@ -127,20 +127,20 @@ test fn orch_tier2_fresh_standup_dag_pin_empty_let_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == fresh_standup_dag_pin_empty_let_golden()) && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn decide_verdict_procedure_body() -> v2.std.orchestration.Pipeline {
   v2.std.orchestration.Pipeline {
     steps: [
-      If {
+      v2.std.orchestration.If {
         cond: v2.std.orchestration.StrEmpty { operand: "\"$1\"" },
         then_: v2.std.orchestration.Pipeline {
-          steps: [Let { name: "verdict", value: v2.std.orchestration.ExprLit { spelling: "absent" } }],
+          steps: [v2.std.orchestration.Let { name: "verdict", value: v2.std.orchestration.ExprLit { spelling: "absent" } }],
           on_failure: FailFast
         },
-        else_: Absent
+        else_: v2.std.optional.Absent
       }
     ],
     on_failure: FailFast
@@ -162,7 +162,7 @@ test fn orch_tier2_procedure_definition_band_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == decide_verdict_procedure_partial_golden()) && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -173,6 +173,6 @@ test fn orch_tier2_cmdsubst_assign_has_teeth_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: _ } =>
       src.carried != "dag_pin=\"$(converge_read_gunbc_host_pin \"$ctrl_pin\")\""
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

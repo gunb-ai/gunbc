@@ -43,7 +43,7 @@ fn check_bare_containers(n: v1.std.core.Node, module_name: String, source_indice
   } else {
     match n.inferred {
       Present { value: inf } => match inf {
-        Resolved { node: rn } => check_bare_containers(n: rn, module_name: module_name, source_indices: source_indices)
+        v1.std.core.Resolved { node: rn } => check_bare_containers(n: rn, module_name: module_name, source_indices: source_indices)
         _ => []
       }
       Absent => []

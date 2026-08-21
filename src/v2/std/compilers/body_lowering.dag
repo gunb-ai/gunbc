@@ -1,7 +1,7 @@
 module v2.std.compilers.body_lowering
 
 
-fn body_lowering_diagnostic(reason: v2.std.node.Symbol, n: Node) -> v2.std.diagnostic.Diagnostic {
+fn body_lowering_diagnostic(reason: v2.std.node.Symbol, n: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: n),
@@ -9,7 +9,7 @@ fn body_lowering_diagnostic(reason: v2.std.node.Symbol, n: Node) -> v2.std.diagn
   }
 }
 
-fn lower_binary_infix(left: Node, operator: Node, right: Node) -> Node {
+fn lower_binary_infix(left: v2.std.node.Node, operator: v2.std.node.Node, right: v2.std.node.Node) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
     children: [
@@ -20,7 +20,7 @@ fn lower_binary_infix(left: Node, operator: Node, right: Node) -> Node {
   )
 }
 
-fn lower_branch(condition: Node, then_arm: Node, else_arm: Node) -> Node {
+fn lower_branch(condition: v2.std.node.Node, then_arm: v2.std.node.Node, else_arm: v2.std.node.Node) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.ComputationNode { behavior: Branch },
     children: [
@@ -31,17 +31,17 @@ fn lower_branch(condition: Node, then_arm: Node, else_arm: Node) -> Node {
   )
 }
 
-fn lower_loop(value: Node, bound: Node) -> Node {
+fn lower_loop(value: v2.std.node.Node, bound: v2.std.node.Node) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.ComputationNode { behavior: Loop },
     children: [
       v2.std.node.Edge { label: Positional, target: value },
-      v2.std.node.Edge { label: Named { name: ^loop_bound_edge }, target: bound }
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^loop_bound_edge }, target: bound }
     ]
   )
 }
 
-fn lower_bind(key_binding: Node, value: Node, body_binding: Node) -> Node {
+fn lower_bind(key_binding: v2.std.node.Node, value: v2.std.node.Node, body_binding: v2.std.node.Node) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.ComputationNode { behavior: v2.std.node.Bind },
     children: [
@@ -52,7 +52,7 @@ fn lower_bind(key_binding: Node, value: Node, body_binding: Node) -> Node {
   )
 }
 
-fn lower_match(scrutinee: Node, arms: List<Node>) -> Node {
+fn lower_match(scrutinee: v2.std.node.Node, arms: List<v2.std.node.Node>) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.ComputationNode { behavior: Match },
     children: list_append(
@@ -64,13 +64,13 @@ fn lower_match(scrutinee: Node, arms: List<Node>) -> Node {
   )
 }
 
-fn lower_block_body_atoms(atoms: List<Node>, witness: Node) -> Outcome<Node> {
+fn lower_block_body_atoms(atoms: List<v2.std.node.Node>, witness: v2.std.node.Node) -> Outcome<v2.std.node.Node> {
   match list_at_optional(xs: atoms, index: 0) {
-    Present { value: left } =>
+    v2.std.optional.Present { value: left } =>
       match list_at_optional(xs: atoms, index: 1) {
-        Present { value: operator } =>
+        v2.std.optional.Present { value: operator } =>
           match list_at_optional(xs: atoms, index: 2) {
-            Present { value: right } =>
+            v2.std.optional.Present { value: right } =>
               if count(atoms) == 3 {
                 outcome_accepted(value: lower_binary_infix(left: left, operator: operator, right: right))
               } else {
@@ -78,17 +78,17 @@ fn lower_block_body_atoms(atoms: List<Node>, witness: Node) -> Outcome<Node> {
                   d: body_lowering_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: witness)
                 )
               }
-            Absent =>
+            v2.std.optional.Absent =>
               outcome_rejected(
                 d: body_lowering_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: witness)
               )
           }
-        Absent =>
+        v2.std.optional.Absent =>
           outcome_rejected(
             d: body_lowering_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: witness)
           )
       }
-    Absent =>
+    v2.std.optional.Absent =>
       outcome_rejected(
         d: body_lowering_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: witness)
       )

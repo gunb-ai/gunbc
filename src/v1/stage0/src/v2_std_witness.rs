@@ -19,12 +19,10 @@ pub enum Witness<C> {
     Violates { diagnostic: Rc<Diagnostic> },
 }
 
-pub fn witness_from_optional<T: Clone>(opt: Option<T>, absent: Rc<Diagnostic>) -> Rc<Witness<T>> {
+pub fn witness_from_optional<T: Clone>(opt: Optional<T>, absent: Rc<Diagnostic>) -> Rc<Witness<T>> {
     match opt.clone() {
-        Some(v) => Rc::new(
-            Witness::<compile_error!("UNRESOLVED_CompilerError")>::Holds { value: v.clone() },
-        ),
-        None => Rc::new(Witness::<T>::Violates {
+        Optional::Present { value: v, .. } => Rc::new(Witness::<T>::Holds { value: v.clone() }),
+        Optional::Absent => Rc::new(Witness::<T>::Violates {
             diagnostic: absent.clone(),
         }),
     }

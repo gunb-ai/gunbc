@@ -190,7 +190,7 @@ fn func_sig_from_global_bare(type_env: v1.compiler.infer_env.TypeEnv, name: Stri
         true =>
         let excluded = borrowed_generic_param_names(params: node.params, source_indices: type_env.source_indices)
         let raw_return = match node.inferred {
-          Present { value: Resolved { node: inferred } } => inferred
+          Present { value: v1.std.core.Resolved { node: inferred } } => inferred
           _ => match node.type_annotation {
             Present { value: ann } => ann
             Absent => error_type
@@ -271,7 +271,7 @@ fn lookup_field_type_node(n: v1.std.core.Node, field_name: String, source_indice
     } else {
 
       match n.inferred {
-        Present { value: Resolved { node: target } } =>
+        Present { value: v1.std.core.Resolved { node: target } } =>
           lookup_field_type_node(n: target, field_name: field_name, source_indices: source_indices)
         _ => none
       }
@@ -322,7 +322,7 @@ fn resolve_scrutinee_type_node_seen(env: v1.compiler.infer_env.TypeEnv, n: v1.st
   let normed = v1.compiler.infer_types.normalize_access_type_node(n: n)
   if normed.connective == NoConnective && normed.children |> count > 0 && normed.inferred != none {
     match normed.inferred {
-      Present { value: Resolved { node: target } } => preserve_outer_optional_cardinality(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: target, seen: seen))
+      Present { value: v1.std.core.Resolved { node: target } } => preserve_outer_optional_cardinality(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: target, seen: seen))
       _ => normed
     }
   } else if normed.connective == NoConnective && normed.children |> count == 0 {
@@ -330,7 +330,7 @@ fn resolve_scrutinee_type_node_seen(env: v1.compiler.infer_env.TypeEnv, n: v1.st
     if normed.inferred != none {
       let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
       match normed.inferred {
-        Present { value: Resolved { node: target } } =>
+        Present { value: v1.std.core.Resolved { node: target } } =>
           if authored_name(env: env, node: target) == canonical && target.inferred == none && target.connective == NoConnective && target.children |> count == 0 {
             normed
           } else {
@@ -443,10 +443,10 @@ type StructuralMethodLookup {
 
 fn product_field_result_type(field: v1.std.core.Node) -> v1.std.core.Node? {
   match field.inferred {
-    Present { value: Resolved { node: rt } } =>
+    Present { value: v1.std.core.Resolved { node: rt } } =>
       if rt.params |> count > 0 {
         match rt.inferred {
-          Present { value: Resolved { node: return_type } } => Present { value: return_type }
+          Present { value: v1.std.core.Resolved { node: return_type } } => Present { value: return_type }
           _ => Present { value: rt }
         }
       } else {
@@ -522,11 +522,11 @@ fn lookup_structural_method(receiver_type: v1.std.core.Node, method_name: String
 }
 
 type DeclaredArgContract
-  = ContractKnown { types: List<Node> }
+  = ContractKnown { types: List<v1.std.core.Node> }
   | MethodUnresolved
   | ContractUnavailable
 
-fn declared_arg_types_for_method(receiver_type: Node, method_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>, expand_field_type: fn(Node) -> Node) -> DeclaredArgContract {
+fn declared_arg_types_for_method(receiver_type: v1.std.core.Node, method_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>, expand_field_type: fn(v1.std.core.Node) -> v1.std.core.Node) -> DeclaredArgContract {
   let lookup = lookup_structural_method(receiver_type: receiver_type, method_name: method_name, source_indices: source_indices)
   match lookup.resolution {
     Absent => MethodUnresolved
@@ -541,7 +541,7 @@ fn declared_arg_types_for_method(receiver_type: Node, method_name: String, sourc
           ContractKnown { types: non_receiver_templates |> map(tp => v1.compiler.infer_types.instantiate_algebra_type(template: tp, base: receiver_type, source_indices: source_indices).ty) }
         Absent =>
           match mfr.field_node.inferred {
-            Present { value: Resolved { node: callable } } =>
+            Present { value: v1.std.core.Resolved { node: callable } } =>
               let expanded = if callable.params |> count > 0 { callable } else { expand_field_type(callable) }
               if expanded.params |> count > 0 {
                 ContractKnown { types: expanded.params |> map(p => param_node_type_expr(n: p)) }
@@ -554,7 +554,7 @@ fn declared_arg_types_for_method(receiver_type: Node, method_name: String, sourc
   }
 }
 
-fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, service_registry: Map<String, List<v1.compiler.infer_service.OpEntry>>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> KnownMethodResolution {
+fn resolve_known_method_node(receiver: v1.std.core.Node, receiver_type: v1.std.core.Node, method_name: String, fold_accumulator_type: v1.std.core.Node?, service_registry: Map<String, List<v1.compiler.infer_service.OpEntry>>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> KnownMethodResolution {
 
   let tier0 = lookup_structural_method(receiver_type: receiver_type, method_name: method_name, source_indices: source_indices)
   match tier0.resolution {

@@ -13,31 +13,31 @@ module test.claim.scm_object_store_collision_witness
 
 // One locator, two different canonical records -- refused, and the refusal names both records so a
 // caller sees WHAT disagreed rather than only that something did.
-test fn locator_collision_refuses_a_different_record() -> std.types.Bool {
+test fn locator_collision_refuses_a_different_record() -> Bool {
   gunbc.scm.object_store.a_different_record_under_one_locator_refuses()
 }
 
 // CONTROL: re-inserting the SAME canonical record is idempotent, not a collision. Without this the
 // claim above would pass against an insert that refused every second write.
-test fn locator_collision_does_not_fire_on_the_same_record() -> std.types.Bool {
+test fn locator_collision_does_not_fire_on_the_same_record() -> Bool {
   gunbc.scm.object_store.the_same_record_under_one_locator_is_idempotent()
 }
 
 // The arm that matters most and the one nothing exercised: a parent whose CHILD refuses must not be
 // reported Stored, or the store hands back a commit whose closure was never written.
-test fn a_child_collision_propagates_out_of_the_recursion() -> std.types.Bool {
+test fn a_child_collision_propagates_out_of_the_recursion() -> Bool {
   gunbc.scm.object_store.a_child_collision_propagates_and_the_parent_is_not_stored()
 }
 
 // CONTROL: the same parent stores cleanly against an unseeded store, so the refusal above is caused
 // by the seeded impostor rather than by an unstorable fixture.
-test fn the_parent_fixture_stores_cleanly_on_its_own() -> std.types.Bool {
+test fn the_parent_fixture_stores_cleanly_on_its_own() -> Bool {
   gunbc.scm.object_store.the_same_parent_stores_cleanly_without_the_impostor()
 }
 
 // copy_object's OWN collision arm. It was modeled and then never reached -- every mention of
 // CopyLocatorCollision in this corpus was a match arm rejecting it, never an input producing it.
 // The existing present-source and absent-source copy claims are its controls.
-test fn copying_into_a_colliding_destination_refuses() -> std.types.Bool {
+test fn copying_into_a_colliding_destination_refuses() -> Bool {
   gunbc.scm.object_store.a_copy_into_a_colliding_destination_refuses()
 }

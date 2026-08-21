@@ -143,7 +143,7 @@ fn study_root_css() -> String {
 fn accent_study_page() -> std.markup.Fragment {
   extdeps.browser.Element { tag: "html", attributes: [ attr(name: "lang", value: "en" ) ], children: [
     el("head", [
-      Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
+      std.markup.Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
       el("title", [ txt("gunb.ai — starlight accent study (phase 0, preview only)") ]),
       el("style", [ txt(study_root_css()) ]),
     ]),

@@ -25,7 +25,7 @@ fn program_unit_type() -> v2.std.node.Node {
   v2.extdeps.runtimes.v2_effect_io_pure.effect_io_pure_unit_type_node()
 }
 
-fn program_bool_value(is_true: Bool) -> v2.std.runtime.RuntimeValue {
+fn program_bool_value(is_true: v2.std.logic.Bool) -> v2.std.runtime.RuntimeValue {
   if is_true {
     v2.std.runtime.RuntimePrimitive {
       value: v2.std.runtime.RuntimePrimitiveValue {
@@ -136,12 +136,12 @@ fn program_allocate_literal(node: v2.std.node.Node, _env: v2.std.runtime.Evaluat
 
 fn program_nth_child(node: v2.std.node.Node, wanted: Int) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match v2.std.collection.list_at_optional(xs: node.children, index: wanted) {
-    Present { value: child } =>
+    v2.std.optional.Present { value: child } =>
       match child {
         Edge { label: _, target: arm } =>
           v2.std.diagnostic.Accepted { value: extdeps.vendor.arm.arm, diagnostics: v2.std.diagnostic.None }
       }
-    Absent =>
+    v2.std.optional.Absent =>
       v2.std.diagnostic.Rejected {
         diagnostics: v2.std.diagnostic.diagnostics_singleton(
           d: v2.compiler.eval.eval_diagnostic(reason: ^program_branch_shape_rejected, node: node)
@@ -176,7 +176,7 @@ fn program_choose_branch(
   }
 }
 
-fn program_runtime_bool_true(value: v2.std.runtime.RuntimeValue) -> Bool {
+fn program_runtime_bool_true(value: v2.std.runtime.RuntimeValue) -> v2.std.logic.Bool {
   match value {
     RuntimePrimitive { value: p } =>
       (p.primitive_type == program_bool_type()) && (count(p.bytes) == 1)
@@ -184,7 +184,7 @@ fn program_runtime_bool_true(value: v2.std.runtime.RuntimeValue) -> Bool {
   }
 }
 
-fn program_runtime_bool_false(value: v2.std.runtime.RuntimeValue) -> Bool {
+fn program_runtime_bool_false(value: v2.std.runtime.RuntimeValue) -> v2.std.logic.Bool {
   match value {
     RuntimePrimitive { value: p } =>
       (p.primitive_type == program_bool_type()) && (count(p.bytes) == 0)
@@ -259,7 +259,7 @@ fn program_facts_for(node: v2.std.node.Node) -> v2.compiler.inferred_tree.Inferr
   )
 }
 
-fn program_facts_lookup(node: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn program_facts_lookup(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   if node == program_pick_if_branch_with_effect_io {
     v2.std.optional.optional_present(value: program_facts_for(node: program_pick_if_branch_with_effect_io))
   } else if node == program_effect_io_roundtrip {
@@ -292,7 +292,7 @@ fn program_eval_root(root: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std
   )
 }
 
-fn program_branch_effect_io_holds() -> Bool {
+fn program_branch_effect_io_holds() -> v2.std.logic.Bool {
   match program_eval_root(root: program_pick_if_branch_with_effect_io) {
     Accepted { value: v, diagnostics: None } => v == program_unit_value()
     _ => false
@@ -301,13 +301,13 @@ fn program_branch_effect_io_holds() -> Bool {
 
 fn program_pick_if_call(callee: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
     children: [v2.std.node.Edge { label: Positional, target: callee }],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn program_pick_if_arrow_facts_lookup(node: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn program_pick_if_arrow_facts_lookup(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   v2.std.optional.optional_present(value: v2.test.lens_common.infer_fixture.claim_inferred_facts_from_nodes(
       resolved: node,
       algebra: program_i64_type(),
@@ -322,7 +322,7 @@ fn program_pick_if_arrow_tree(callee: v2.std.node.Node) -> v2.compiler.inferred_
   }
 }
 
-fn program_pick_if_arrow_holds() -> Bool {
+fn program_pick_if_arrow_holds() -> v2.std.logic.Bool {
   match v2.compiler.ingested_fixture_arrows.ingested_pick_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
       let call = program_pick_if_call(callee: arrow)
@@ -335,7 +335,7 @@ fn program_pick_if_arrow_holds() -> Bool {
         _ => false
       }
     }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -354,7 +354,7 @@ data program_run_nodes: std.types.List<v2.std.node.Node> = [program_run_branch_g
 
 data program_run_dependencies: std.types.List<v2.std.dependency.DependencyView> = [program_run_branch_to_io]
 
-fn program_runtime_run_holds() -> Bool {
+fn program_runtime_run_holds() -> v2.std.logic.Bool {
   match v2.workflow.runtime_run.runtime_run(
     nodes: program_run_nodes,
     dependencies: program_run_dependencies,
@@ -369,7 +369,7 @@ fn program_runtime_run_holds() -> Bool {
   }
 }
 
-fn program_runs_holds() -> Bool {
+fn program_runs_holds() -> v2.std.logic.Bool {
   program_branch_effect_io_holds()
     && program_pick_if_arrow_holds()
     && program_runtime_run_holds()

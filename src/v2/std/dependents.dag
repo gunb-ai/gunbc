@@ -4,7 +4,7 @@ type Dependents
   = Untracked
   | Tracked { uses: List<std.occurrence_identity.OccurrenceId> }
 
-fn no_dependents(d: Dependents) -> Bool {
+fn no_dependents(d: Dependents) -> v2.std.logic.Bool {
   match d {
     Untracked => true
     Tracked { uses } => v2.std.algebra.is_empty(xs: uses)

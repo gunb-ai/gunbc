@@ -37,13 +37,13 @@ fn read_floor_receipt(root: String, attempt_id: gunbc.merge_admission_subject.Wa
 
 // THE CONCLUSION IS AN OPERAND, NOT A CONSTANT, AND THAT IS THE WHOLE POINT OF THIS SHAPE.
 //
-// stamp_tested_floor took no conclusion and wrote `conclusion: Success` literally. That was not a
+// stamp_tested_floor took no conclusion and wrote `conclusion: extdeps.github.checks.Success` literally. That was not a
 // defect while it ran, because its safety came from an ORDERING LAW held outside it: the WalkPlan
 // declared "stamp is reachable only after the whole ordinary floor and its finalization passed",
 // so the constant could only ever be written over a run that had in fact passed.
 //
 // THE FLOOR CUT DELETED THE WALKPLAN. The constant survived; the law that made it true did not.
-// A caller that invokes this after a RED floor now mints a receipt certifying Success over a run
+// A caller that invokes this after a RED floor now mints a receipt certifying extdeps.github.checks.Success over a run
 // that failed — a fabricated plausible output (DESIGN §5) aimed at the merge gate, which is the
 // one consumer that must never be lied to. Nothing in the tree detects it, because a receipt is
 // believed exactly to the extent that it is well-formed.

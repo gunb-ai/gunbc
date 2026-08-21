@@ -89,7 +89,7 @@ fn dispatch_actuator_selection_for_provider(
 fn dispatch_cli_provider() -> DispatchCliProvider? {
   match dispatch_actuator_selection(node_sizing: Unsized) {
     DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
-      Present { value: provider }
+      v2.std.optional.Present { value: provider }
     DispatchActuatorSelectionRefused { reason: _ } => none
   }
 }
@@ -128,8 +128,8 @@ fn dispatch_capability_program(
   cap: gunbc.roadmap_execution_contract.ExecutionCapability,
 ) -> String {
   match dispatch_host_realization(environment: environment, capability: cap) {
-    Present { value: realization } => realization.executable as String
-    Absent =>
+    v2.std.optional.Present { value: realization } => realization.executable as String
+    std.upsert_decision.Absent =>
       join(
         [
           dispatch_unrealized_capability_marker,
@@ -243,7 +243,7 @@ fn dispatch_provider_instance_for(
 fn dispatch_provider_instance() -> extdeps.llm.cli_lifecycle.ProviderInstance? {
   match dispatch_actuator_selection(node_sizing: Unsized) {
     DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
-      Present { value: dispatch_provider_instance_for(provider: provider) }
+      v2.std.optional.Present { value: dispatch_provider_instance_for(provider: provider) }
     DispatchActuatorSelectionRefused { reason: _ } => none
   }
 }
@@ -252,8 +252,8 @@ fn dispatch_worker_observation_for_process(
   process: gunbc.worker_lifecycle.WorkerProcessEvidence,
 ) -> gunbc.worker_lifecycle.WorkerObservation? {
   match dispatch_provider_instance() {
-    Present { value: instance } =>
-      Present {
+    v2.std.optional.Present { value: instance } =>
+      v2.std.optional.Present {
         value: worker_observation_without_provider_probe_for_process(
           instance: instance,
           process: process,
@@ -265,8 +265,8 @@ fn dispatch_worker_observation_for_process(
 
 fn dispatch_worker_observation() -> gunbc.worker_lifecycle.WorkerObservation? {
   match dispatch_provider_instance() {
-    Present { value: instance } =>
-      Present { value: worker_observation_without_provider_probe(instance: instance) }
+    v2.std.optional.Present { value: instance } =>
+      v2.std.optional.Present { value: worker_observation_without_provider_probe(instance: instance) }
     none => none
   }
 }
@@ -274,7 +274,7 @@ fn dispatch_worker_observation() -> gunbc.worker_lifecycle.WorkerObservation? {
 fn dispatch_applied_effort() -> extdeps.llm.cli.ReasoningEffort? {
   match dispatch_actuator_selection(node_sizing: Unsized) {
     DispatchActuatorSelectionOk { provider: _, effort, process_fingerprint: _ } =>
-      Present { value: effort }
+      v2.std.optional.Present { value: effort }
     DispatchActuatorSelectionRefused { reason: _ } => none
   }
 }
@@ -285,7 +285,7 @@ fn dispatch_provider_process_fingerprint(provider: DispatchCliProvider) -> std.t
     node_sizing: Unsized,
   ) {
     DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint } =>
-      Present { value: process_fingerprint }
+      v2.std.optional.Present { value: process_fingerprint }
     DispatchActuatorSelectionRefused { reason: _ } => none
   }
 }
@@ -773,7 +773,7 @@ fn dispatch_tmux_session_scope_for_process_fingerprint(
 fn dispatch_tmux_session_scope(node_id: gunbc.roadmap_model.RoadmapNodeId) -> TmuxSessionScope? {
   match dispatch_actuator_selection(node_sizing: Unsized) {
     DispatchActuatorSelectionOk { provider: _, effort: _, process_fingerprint } =>
-      Present {
+      v2.std.optional.Present {
         value: dispatch_tmux_session_scope_for_process_fingerprint(
           node_id: node_id,
           process_fingerprint: process_fingerprint,
@@ -794,7 +794,7 @@ fn carrier_paths_label(carriers: List<gunbc.roadmap_model.Pointer>, repo: String
 fn dispatch_slot_fields(node: gunbc.roadmap_model.RoadmapNode, repo: String) -> DispatchBriefFields {
   let title = node_title(item: node.line)
   match line_ticket(item: node.line) {
-    Present { value: t } =>
+    v2.std.optional.Present { value: t } =>
       DispatchBriefFields {
         node_id: node.node,
         displaced_cost: t.displaced_cost,
@@ -807,7 +807,7 @@ fn dispatch_slot_fields(node: gunbc.roadmap_model.RoadmapNode, repo: String) -> 
         commands_to_run: "",
         expected_artifact: "",
       }
-    Absent =>
+    std.upsert_decision.Absent =>
       DispatchBriefFields {
         node_id: node.node,
         displaced_cost: title,
@@ -1067,11 +1067,11 @@ fn dispatch_provider_inner_argv_for_instance(
       }
     CodexDispatchProvider =>
       match dashboard_instance_provider_executable(instance: instance) {
-        Absent =>
+        std.upsert_decision.Absent =>
           CodexProviderExecutableAbsent {
             reason: dashboard_instance_provider_executable_refusal_detail(instance: instance) as std.types.NonEmptyStr,
           }
-        Present { value: codex_program } =>
+        v2.std.optional.Present { value: codex_program } =>
           DispatchProviderInnerArgvReady {
             argv: shape_codex_exec_argv_for_programs(
               env_program: dispatch_capability_program(
@@ -1582,7 +1582,7 @@ fn classify_tmux_session(
   obs: TmuxSessionObservation,
 ) -> std.upsert_decision.ObservationVerdict {
   match obs {
-    SessionAbsent => Absent
+    SessionAbsent => std.upsert_decision.Absent
     SessionInaccessible => Inaccessible
     SessionNameObserved {
       session_name: name,
@@ -1602,7 +1602,7 @@ fn classify_tmux_session(
         Inaccessible
       } else {
         if fingerprint == scope.expected_process_fingerprint {
-          Converged
+          std.upsert_decision.Converged
         } else {
           Conflict
         }
@@ -1617,7 +1617,7 @@ fn classify_tmux_session(
         Inaccessible
       } else {
         if fingerprint == scope.expected_process_fingerprint {
-          Drifted
+          std.upsert_decision.Drifted
         } else {
           Conflict
         }
@@ -1629,9 +1629,9 @@ fn decision_for_dispatch_lease_verdict(
   verdict: std.upsert_decision.ObservationVerdict,
 ) -> UpsertDecision<DispatchLeasePlan> {
   match verdict {
-    Converged => std.upsert_decision.Refuse { reason: "dispatch session already running for node" as std.types.NonEmptyStr }
-    Absent => std.upsert_decision.Apply { plan: SpawnSession }
-    Drifted => std.upsert_decision.Apply { plan: DrainStaleThenSpawn }
+    std.upsert_decision.Converged => std.upsert_decision.Refuse { reason: "dispatch session already running for node" as std.types.NonEmptyStr }
+    std.upsert_decision.Absent => std.upsert_decision.Apply { plan: SpawnSession }
+    std.upsert_decision.Drifted => std.upsert_decision.Apply { plan: DrainStaleThenSpawn }
     Conflict => std.upsert_decision.Refuse { reason: "foreign tmux session owns dispatch slot" as std.types.NonEmptyStr }
     Inaccessible => std.upsert_decision.Refuse { reason: "tmux session inaccessible" as std.types.NonEmptyStr }
     UnknownRefused =>
@@ -1695,11 +1695,11 @@ fn classify_dispatch_request_for_process_fingerprint(
       )
       let obs = tmux_session_observation_for_scope(scope: scope, entries: tmux_entries)
       match classify_dispatch_lease_upsert(scope: scope, obs: obs) {
-        UpsertClassification { verdict: _, decision: Refuse { reason } } =>
+        UpsertClassification { verdict: _, decision: std.upsert_decision.Refuse { reason } } =>
           DispatchRefused { reason: reason }
         UpsertClassification { verdict: _, decision: Noop } =>
           DispatchRefused { reason: "dispatch session already running for node" as std.types.NonEmptyStr }
-        UpsertClassification { verdict: _, decision: Apply { plan: _ } } =>
+        UpsertClassification { verdict: _, decision: std.upsert_decision.Apply { plan: _ } } =>
           dispatch_permitted_from_selection(
             node: node,
             attempt_key: attempt_key,
@@ -1771,12 +1771,12 @@ fn dispatch_live_session_row_for_scope(
 
 fn live_session_row(entry: extdeps.tmux.TmuxLsEntry, scope: TmuxSessionScope) -> DispatchLiveSession? {
   match dispatch_worker_observation() {
-    Present { value: worker } => {
+    v2.std.optional.Present { value: worker } => {
       let obs = SessionNameObserved {
         session_name: entry.session_name as std.types.NonEmptyStr,
         windows: entry.windows,
       }
-      Present {
+      v2.std.optional.Present {
         value: DispatchLiveSession {
           session_name: entry.session_name,
           node_id: dispatch_node_id_from_session_name(session_name: entry.session_name),
@@ -1796,14 +1796,14 @@ fn dispatch_tmux_session_scope_for_live_session(sess: DispatchLiveSession) -> Tm
     CodexCliProvider =>
       match sess.worker.process {
         WorkerProcessRunning { command } =>
-          Present {
+          v2.std.optional.Present {
             value: dispatch_tmux_session_scope_for_process_fingerprint(
               node_id: node_id,
               process_fingerprint: command as std.types.NonEmptyStr,
             ),
           }
         WorkerProcessExited { exit_code: _, last_command } =>
-          Present {
+          v2.std.optional.Present {
             value: dispatch_tmux_session_scope_for_process_fingerprint(
               node_id: node_id,
               process_fingerprint: if last_command == "" {
@@ -1816,14 +1816,14 @@ fn dispatch_tmux_session_scope_for_live_session(sess: DispatchLiveSession) -> Tm
         _ => none
       }
     ClaudeCliProvider =>
-      Present {
+      v2.std.optional.Present {
         value: dispatch_tmux_session_scope_for_process_fingerprint(
           node_id: sess.node_id as gunbc.roadmap_model.RoadmapNodeId,
           process_fingerprint: dispatch_claude_process_fingerprint,
         ),
       }
     CursorCliProvider =>
-      Present {
+      v2.std.optional.Present {
         value: dispatch_tmux_session_scope_for_process_fingerprint(
           node_id: sess.node_id as gunbc.roadmap_model.RoadmapNodeId,
           process_fingerprint: dispatch_cursor_process_fingerprint,
@@ -1834,8 +1834,8 @@ fn dispatch_tmux_session_scope_for_live_session(sess: DispatchLiveSession) -> Tm
 
 fn dispatch_session_cleanup_for_live_session(sess: DispatchLiveSession) -> DispatchSessionCleanup {
   match dispatch_tmux_session_scope_for_live_session(sess: sess) {
-    Present { value: scope } => dispatch_session_cleanup(scope: scope, session: sess)
-    Absent =>
+    v2.std.optional.Present { value: scope } => dispatch_session_cleanup(scope: scope, session: sess)
+    std.upsert_decision.Absent =>
       DispatchCleanupRefused {
         reason: "cleanup scope unavailable from session worker process evidence",
       }
@@ -1845,8 +1845,8 @@ fn dispatch_session_cleanup_for_live_session(sess: DispatchLiveSession) -> Dispa
 fn dispatch_live_session_for_entry(entry: extdeps.tmux.TmuxLsEntry) -> DispatchLiveSession? {
   let node_id = dispatch_node_id_from_session_name(session_name: entry.session_name)
   match dispatch_tmux_session_scope(node_id: node_id as gunbc.roadmap_model.RoadmapNodeId) {
-    Present { value: scope } => live_session_row(entry: entry, scope: scope)
-    Absent => none
+    v2.std.optional.Present { value: scope } => live_session_row(entry: entry, scope: scope)
+    std.upsert_decision.Absent => none
   }
 }
 
@@ -1855,8 +1855,8 @@ fn append_present_live_session(
   entry: extdeps.tmux.TmuxLsEntry,
 ) -> List<DispatchLiveSession> {
   match dispatch_live_session_for_entry(entry: entry) {
-    Present { value: row } => concat(acc, [row])
-    Absent => acc
+    v2.std.optional.Present { value: row } => concat(acc, [row])
+    std.upsert_decision.Absent => acc
   }
 }
 
@@ -1914,14 +1914,14 @@ fn parse_dispatch_attempt_branch(line: String) -> DispatchAttemptRef? {
         if node_id == "" {
           none
         } else {
-          Present { value: DispatchAttemptRef {
+          v2.std.optional.Present { value: DispatchAttemptRef {
             node_id: node_id as std.types.NonEmptyStr,
             branch: line as std.types.NonEmptyStr,
             attempt_key: last,
           } }
         }
       } else {
-        Present { value: DispatchAttemptRef {
+        v2.std.optional.Present { value: DispatchAttemptRef {
           node_id: rest as std.types.NonEmptyStr,
           branch: line as std.types.NonEmptyStr,
           attempt_key: "",
@@ -1938,8 +1938,8 @@ fn dispatch_attempt_refs(git_output: String) -> List<DispatchAttemptRef> {
     split(s: git_output, delimiter: "\n"),
     init: [],
     f: (acc, line) => match parse_dispatch_attempt_branch(line: line) {
-      Present { value: r } => append(acc, [r])
-      Absent => acc
+      v2.std.optional.Present { value: r } => append(acc, [r])
+      std.upsert_decision.Absent => acc
     },
   )
 }
@@ -1973,7 +1973,7 @@ fn parse_tmux_pane_line(line: String) -> TmuxPaneEntry? {
   let segs = split(s: line, delimiter: " ")
   if count(segs) >= 2 && segs.first() != "" {
     let name = segs.first()
-    Present { value: TmuxPaneEntry {
+    v2.std.optional.Present { value: TmuxPaneEntry {
       session_name: name,
       command: substring(s: line, start: string_length(s: name) + 1, end: string_length(s: line)),
     } }
@@ -1987,8 +1987,8 @@ fn parse_tmux_panes_output(output: String) -> List<TmuxPaneEntry> {
     split(s: output, delimiter: "\n"),
     init: [],
     f: (acc, line) => match parse_tmux_pane_line(line: line) {
-      Present { value: e } => append(acc, [e])
-      Absent => acc
+      v2.std.optional.Present { value: e } => append(acc, [e])
+      std.upsert_decision.Absent => acc
     },
   )
 }
@@ -2058,12 +2058,12 @@ fn worker_process_from_attempt_pane(
 ) -> gunbc.worker_lifecycle.WorkerProcessEvidence {
   if pane.dead {
     match pane.exit_code {
-      Present { value: code } =>
+      v2.std.optional.Present { value: code } =>
         gunbc.worker_lifecycle.WorkerProcessExited {
           exit_code: code,
           last_command: pane.command,
         }
-      Absent =>
+      std.upsert_decision.Absent =>
         gunbc.worker_lifecycle.WorkerProcessUnobserved {
           reason: "dead pane did not carry an exit status" as std.types.NonEmptyStr,
         }
@@ -2090,9 +2090,9 @@ fn worker_process_for_session(
     let matched = panes
       |> filter(pane => pane.session_name == session_name)
     match matched.first() {
-      Present { value: pane } =>
+      v2.std.optional.Present { value: pane } =>
         worker_process_from_attempt_pane(pane: pane)
-      Absent =>
+      std.upsert_decision.Absent =>
         gunbc.worker_lifecycle.WorkerProcessUnobserved {
           reason: "session was observed but no pane row was returned" as std.types.NonEmptyStr,
         }
@@ -2106,7 +2106,7 @@ fn live_session_row_with_process(
   process: gunbc.worker_lifecycle.WorkerProcessEvidence,
 ) -> DispatchLiveSession? {
   match dispatch_worker_observation_for_process(process: process) {
-    Present { value: worker } => {
+    v2.std.optional.Present { value: worker } => {
       let obs = match process {
         WorkerProcessRunning { command } =>
           SessionObserved {
@@ -2120,7 +2120,7 @@ fn live_session_row_with_process(
             windows: entry.windows,
           }
       }
-      Present {
+      v2.std.optional.Present {
         value: DispatchLiveSession {
           session_name: entry.session_name,
           node_id: dispatch_node_id_from_session_name(session_name: entry.session_name),
@@ -2142,7 +2142,7 @@ fn append_present_live_session_with_process(
 ) -> List<DispatchLiveSession> {
   let node_id = dispatch_node_id_from_session_name(session_name: entry.session_name)
   match dispatch_tmux_session_scope(node_id: node_id as gunbc.roadmap_model.RoadmapNodeId) {
-    Present { value: scope } =>
+    v2.std.optional.Present { value: scope } =>
       match live_session_row_with_process(
         entry: entry,
         scope: scope,
@@ -2152,10 +2152,10 @@ fn append_present_live_session_with_process(
           pane_observation_refusal: pane_observation_refusal,
         ),
       ) {
-        Present { value: row } => concat(acc, [row])
-        Absent => acc
+        v2.std.optional.Present { value: row } => concat(acc, [row])
+        std.upsert_decision.Absent => acc
       }
-    Absent => acc
+    std.upsert_decision.Absent => acc
   }
 }
 
@@ -2264,9 +2264,9 @@ type DispatchStopGate
 
 fn dispatch_stop_gate(scope: TmuxSessionScope, obs: TmuxSessionObservation) -> DispatchStopGate {
   match classify_tmux_session(scope: scope, obs: obs) {
-    Converged => StopPermitted { session_name: scope.session_name as String }
-    Drifted => StopPermitted { session_name: scope.session_name as String }
-    Absent => StopRefused { reason: "no live session for this node" }
+    std.upsert_decision.Converged => StopPermitted { session_name: scope.session_name as String }
+    std.upsert_decision.Drifted => StopPermitted { session_name: scope.session_name as String }
+    std.upsert_decision.Absent => StopRefused { reason: "no live session for this node" }
     Conflict => StopRefused { reason: "a foreign process wears the dispatch session name — refusing to kill what we cannot prove ours" }
     Inaccessible => StopRefused { reason: "tmux session inaccessible" }
     UnknownRefused => StopRefused { reason: "process fingerprint unobserved — no ownership proof, no reap" }
@@ -2275,8 +2275,8 @@ fn dispatch_stop_gate(scope: TmuxSessionScope, obs: TmuxSessionObservation) -> D
 
 fn dispatch_session_is_owned(session: DispatchLiveSession) -> Bool {
   match session.lease_verdict {
-    Converged => true
-    Drifted => true
+    std.upsert_decision.Converged => true
+    std.upsert_decision.Drifted => true
     _ => false
   }
 }
@@ -2291,7 +2291,7 @@ fn session_lease_reuses_process_port_classifier_shape() -> Bool {
     scope: port_scope,
     obs: PortAbsent,
   ) {
-    UpsertClassification { verdict: Absent, decision: Apply { plan: Start } } => true
+    UpsertClassification { verdict: std.upsert_decision.Absent, decision: std.upsert_decision.Apply { plan: Start } } => true
     _ => false
   }
 }

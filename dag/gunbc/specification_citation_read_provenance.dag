@@ -4,8 +4,8 @@ module gunbc.specification_citation_read_provenance
 data specification_citation_read_provenance_law: String = "OBSERVATIONS PRODUCED BY THIS REPOSITORY, NOT FACTS OWNED BY THE OBSERVED UPSTREAM (DESIGN section 3). Each receipt names the upstream declaration it is about and records what gunbc did on a particular day against a cited locator. WHETHER THE PUBLISHER PUBLISHED THE DOCUMENT PUBLICLY IS A SEPARATE UPSTREAM AXIS: DocumentPublicationStatus is an extdeps.publication fact re-landed by #8260; status values live on document modules; the rule mapping status to whether gunbc may carry facts lives in gunbc.upstream_document_carriage. OCP subject anchors in this lane carry licence terms on OcpSpecificationLicense instead. The two axes stay independent — a document may be publicly published under OWFa 1.0 while our publisher fetch was refused."
 
 type SpecificationCitationReadProvenance
-  = DocumentLocatorFetchRefused { http_status: Int, detail: std.types.NonEmptyStr }
-  | DocumentLocatorFetchedButTextUnread { http_status: Int, detail: std.types.NonEmptyStr }
+  = DocumentLocatorFetchRefused { http_status: std.integer.Int, detail: std.types.NonEmptyStr }
+  | DocumentLocatorFetchedButTextUnread { http_status: std.integer.Int, detail: std.types.NonEmptyStr }
   | DatedPublisherLocatorMirrorTextIngested {
       mirror: extdeps.external_authority.ExternalAuthority,
       capture_date: extdeps.publication.SpecificationDocumentDate,

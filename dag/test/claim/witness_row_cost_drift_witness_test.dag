@@ -15,7 +15,7 @@ fn drift_red_control_exceeds_basis_holds() -> Bool {
   let v = witness_row_cost_verdict(
     observed: millisecond(count: 21),
     observed_clock: WallClock,
-    basis: Present { value: dated_basis(clock: WallClock, eval_ms: 10, run_ref: "synthetic-red") },
+    basis: v2.std.optional.Present { value: dated_basis(clock: WallClock, eval_ms: 10, run_ref: "synthetic-red") },
   )
   match v {
     DriftExceeded { observed: o, basis: b } =>
@@ -30,7 +30,7 @@ fn within_basis_control_does_not_drift_holds() -> Bool {
   let v = witness_row_cost_verdict(
     observed: millisecond(count: 20),
     observed_clock: WallClock,
-    basis: Present { value: dated_basis(clock: WallClock, eval_ms: 10, run_ref: "synthetic-within") },
+    basis: v2.std.optional.Present { value: dated_basis(clock: WallClock, eval_ms: 10, run_ref: "synthetic-within") },
   )
   match v {
     WithinBasis => true
@@ -44,7 +44,7 @@ fn basis_absent_control_holds() -> Bool {
   let v = witness_row_cost_verdict(
     observed: millisecond(count: 999),
     observed_clock: WallClock,
-    basis: Absent,
+    basis: v2.std.optional.Absent,
   )
   match v {
     BasisAbsent => true
@@ -58,7 +58,7 @@ fn cross_clock_comparison_refuses_rather_than_answering_holds() -> Bool {
   let v = witness_row_cost_verdict(
     observed: millisecond(count: 21),
     observed_clock: CpuClock,
-    basis: Present { value: dated_basis(clock: WallClock, eval_ms: 10, run_ref: "synthetic-cross-clock") },
+    basis: v2.std.optional.Present { value: dated_basis(clock: WallClock, eval_ms: 10, run_ref: "synthetic-cross-clock") },
   )
   match v {
     BasisClockMismatch { observed: o, basis: b } =>
@@ -73,7 +73,7 @@ fn cross_clock_refusal_is_not_reachable_by_the_within_arm_holds() -> Bool {
   let v = witness_row_cost_verdict(
     observed: millisecond(count: 20),
     observed_clock: CpuClock,
-    basis: Present { value: dated_basis(clock: WallClock, eval_ms: 10, run_ref: "synthetic-cross-clock-within") },
+    basis: v2.std.optional.Present { value: dated_basis(clock: WallClock, eval_ms: 10, run_ref: "synthetic-cross-clock-within") },
   )
   match v {
     BasisClockMismatch { observed: _, basis: _ } => true

@@ -77,9 +77,9 @@ type JsonSchema
   | JsonSchemaFalse
   | JsonSchemaInstance {
       instance_type: JsonSchemaTypeSlot,
-      properties: Optional<Map<String, JsonSchema>>,
-      required: Optional<Set<String>>,
-      items: Optional<JsonSchema>,
+      properties: v2.std.optional.Optional<Map<String, JsonSchema>>,
+      required: v2.std.optional.Optional<Set<String>>,
+      items: v2.std.optional.Optional<JsonSchema>,
       additional_keywords: Map<JsonSchemaAdditionalKeywordKey, v2.extdeps.formats.json.JsonSchemaCarrierValue>,
     }
 

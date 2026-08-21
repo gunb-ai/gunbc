@@ -38,8 +38,8 @@ type SceneConstruction<T>
 type ProjectedRoom {
   identity: product.placement_supply.RoomIdentity
   corner_images: List<std.planar_projection.ViewPoint2>
-  nearest: Int
-  farthest: Int
+  nearest: std.integer.Int
+  farthest: std.integer.Int
 }
 
 type ProjectedScene sole_constructor {
@@ -67,23 +67,23 @@ fn space_corners(s: std.orthogonal_topology.EnclosedSpace) -> List<std.affine_sp
 // actually occurred rather than the last.
 type CornerAcc {
   images: List<std.planar_projection.ViewPoint2>
-  nearest: Int
-  farthest: Int
+  nearest: std.integer.Int
+  farthest: std.integer.Int
   started: Bool
   refusal: SceneRefusal?
 }
 
 fn accumulate_corner(acc: CornerAcc, v: std.planar_projection.ProjectionView, p: std.affine_space.Point3) -> CornerAcc {
   match acc.refusal {
-    Present { value: r } => CornerAcc { images: acc.images, nearest: acc.nearest, farthest: acc.farthest, started: acc.started, refusal: Present { value: r } }
-    Absent =>
+    v2.std.optional.Present { value: r } => CornerAcc { images: acc.images, nearest: acc.nearest, farthest: acc.farthest, started: acc.started, refusal: v2.std.optional.Present { value: r } }
+    v2.std.optional.Absent =>
       match project_point(v: v, p: p) {
         ProjectionRefused { cause: c } =>
-          CornerAcc { images: acc.images, nearest: acc.nearest, farthest: acc.farthest, started: acc.started, refusal: Present { value: SceneProjectionRefused { cause: c } } }
+          CornerAcc { images: acc.images, nearest: acc.nearest, farthest: acc.farthest, started: acc.started, refusal: v2.std.optional.Present { value: SceneProjectionRefused { cause: c } } }
         ProjectionReady { value: image } =>
           match projection_depth(v: v, p: p) {
             ProjectionRefused { cause: c } =>
-              CornerAcc { images: acc.images, nearest: acc.nearest, farthest: acc.farthest, started: acc.started, refusal: Present { value: SceneProjectionRefused { cause: c } } }
+              CornerAcc { images: acc.images, nearest: acc.nearest, farthest: acc.farthest, started: acc.started, refusal: v2.std.optional.Present { value: SceneProjectionRefused { cause: c } } }
             ProjectionReady { value: d } =>
               if !acc.started {
                 CornerAcc { images: concat(acc.images, [image]), nearest: d, farthest: d, started: true, refusal: none }
@@ -109,8 +109,8 @@ fn project_room(v: std.planar_projection.ProjectionView, r: product.spatial_worl
   let acc = fold(space_corners(s: r.space), init: CornerAcc { images: [], nearest: 0, farthest: 0, started: false, refusal: none }, f: (a, p) =>
     accumulate_corner(acc: a, v: v, p: p))
   match acc.refusal {
-    Present { value: c } => SceneRefused { cause: c }
-    Absent => SceneReady { value: ProjectedRoom { identity: r.identity, corner_images: acc.images, nearest: acc.nearest, farthest: acc.farthest } }
+    v2.std.optional.Present { value: c } => SceneRefused { cause: c }
+    v2.std.optional.Absent => SceneReady { value: ProjectedRoom { identity: r.identity, corner_images: acc.images, nearest: acc.nearest, farthest: acc.farthest } }
   }
 }
 
@@ -122,16 +122,16 @@ type SceneAcc {
 fn project_world(w: product.spatial_world.World, v: std.planar_projection.ProjectionView) -> SceneConstruction<ProjectedScene> {
   let acc = fold(world_rooms(w: w), init: SceneAcc { rooms: [], refusal: none }, f: (a, r) =>
     match a.refusal {
-      Present { value: c } => SceneAcc { rooms: a.rooms, refusal: Present { value: c } }
-      Absent =>
+      v2.std.optional.Present { value: c } => SceneAcc { rooms: a.rooms, refusal: v2.std.optional.Present { value: c } }
+      v2.std.optional.Absent =>
         match project_room(v: v, r: r) {
-          SceneRefused { cause: c } => SceneAcc { rooms: a.rooms, refusal: Present { value: c } }
+          SceneRefused { cause: c } => SceneAcc { rooms: a.rooms, refusal: v2.std.optional.Present { value: c } }
           SceneReady { value: pr } => SceneAcc { rooms: concat(a.rooms, [pr]), refusal: none }
         }
     })
   match acc.refusal {
-    Present { value: c } => SceneRefused { cause: c }
-    Absent => SceneReady { value: ProjectedScene { view: v, rooms: acc.rooms } }
+    v2.std.optional.Present { value: c } => SceneRefused { cause: c }
+    v2.std.optional.Absent => SceneReady { value: ProjectedScene { view: v, rooms: acc.rooms } }
   }
 }
 
@@ -139,10 +139,10 @@ fn scene_rooms(s: ProjectedScene) -> List<ProjectedRoom> { s.rooms }
 fn scene_view(s: ProjectedScene) -> std.planar_projection.ProjectionView { s.view }
 
 type PageBox {
-  min_u: Int
-  max_u: Int
-  min_v: Int
-  max_v: Int
+  min_u: std.integer.Int
+  max_u: std.integer.Int
+  min_v: std.integer.Int
+  max_v: std.integer.Int
 }
 
 type PageBoxAcc {
@@ -171,7 +171,7 @@ fn page_bounds(r: ProjectedRoom) -> PageBox {
 // STRICT OVERLAP ON BOTH AXES. Two page boxes that merely touch along an edge share no area, so
 // neither can hide any part of the other, and refusing that case would refuse every ordinary plan of
 // adjacent rooms.
-fn ranges_overlap_strictly(a_lo: Int, a_hi: Int, b_lo: Int, b_hi: Int) -> Bool {
+fn ranges_overlap_strictly(a_lo: std.integer.Int, a_hi: std.integer.Int, b_lo: std.integer.Int, b_hi: std.integer.Int) -> Bool {
   a_lo < b_hi && b_lo < a_hi
 }
 
@@ -200,14 +200,14 @@ type ContentionScan {
 // an unordered pair is what makes the DepthOrderAmbiguous refusal actionable.
 fn scan_against_seen(acc: ContentionScan, r: ProjectedRoom) -> ContentionScan {
   match acc.refusal {
-    Present { value: c } => ContentionScan { seen: acc.seen, refusal: Present { value: c } }
-    Absent =>
+    v2.std.optional.Present { value: c } => ContentionScan { seen: acc.seen, refusal: v2.std.optional.Present { value: c } }
+    v2.std.optional.Absent =>
       let hit = fold(acc.seen, init: none, f: (found, other) =>
         match found {
-          Present { value: c } => Present { value: c }
-          Absent =>
+          v2.std.optional.Present { value: c } => v2.std.optional.Present { value: c }
+          v2.std.optional.Absent =>
             if rooms_contend(a: other, b: r) {
-              Present {
+              v2.std.optional.Present {
                 value: if r.farthest < other.farthest {
                   DepthOrderAmbiguous { nearer_candidate: r.identity, farther_candidate: other.identity }
                 } else {
@@ -219,8 +219,8 @@ fn scan_against_seen(acc: ContentionScan, r: ProjectedRoom) -> ContentionScan {
             }
         })
       match hit {
-        Present { value: c } => ContentionScan { seen: acc.seen, refusal: Present { value: c } }
-        Absent => ContentionScan { seen: concat(acc.seen, [r]), refusal: none }
+        v2.std.optional.Present { value: c } => ContentionScan { seen: acc.seen, refusal: v2.std.optional.Present { value: c } }
+        v2.std.optional.Absent => ContentionScan { seen: concat(acc.seen, [r]), refusal: none }
       }
   }
 }
@@ -258,7 +258,7 @@ fn painter_order(s: ProjectedScene) -> SceneConstruction<List<ProjectedRoom>> {
   let scanned = fold(s.rooms, init: ContentionScan { seen: [], refusal: none }, f: (acc, r) =>
     scan_against_seen(acc: acc, r: r))
   match scanned.refusal {
-    Present { value: c } => SceneRefused { cause: c }
-    Absent => SceneReady { value: fold(s.rooms, init: no_rooms(), f: (sorted, r) => insert_farthest_first(sorted: sorted, r: r)) }
+    v2.std.optional.Present { value: c } => SceneRefused { cause: c }
+    v2.std.optional.Absent => SceneReady { value: fold(s.rooms, init: no_rooms(), f: (sorted, r) => insert_farthest_first(sorted: sorted, r: r)) }
   }
 }

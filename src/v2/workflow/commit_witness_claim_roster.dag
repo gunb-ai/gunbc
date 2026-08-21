@@ -4,10 +4,10 @@ module v2.workflow.commit_witness_claim_roster
 
 data commit_witness_claim_roster_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "Dissolve-on: enrollment derived from discovery so stale CommitWitnessClaim rows become unwritable (module-identity Phase-0 admission invariant). Until then: detection-only typed located counted refusals — never auto-delete or re-point roster rows.")
 
-fn commit_witness_claim_roster_holds() -> Bool {
+fn commit_witness_claim_roster_holds() -> v2.std.logic.Bool {
   commit_witness_claim_roster_unresolvable_count() == 0
 }
 
-fn commit_witness_claim_roster_live_unresolvable_count() -> Int {
+fn commit_witness_claim_roster_live_unresolvable_count() -> v2.std.integer.Int {
   commit_witness_claim_roster_unresolvable_count()
 }

@@ -1,7 +1,7 @@
 module gunbc.srv3_os_install_actuate_scope
 
 
-data gunbc_srv3_os_install_actuate_scope_boundary: std.disposition.Disposition = Terminal {
+data gunbc_srv3_os_install_actuate_scope_boundary: std.disposition.Disposition = std.disposition.Terminal {
   reason: "prefix:os-install-actuated boundary — actuator prep (stock ISO fetch, seeded-ISO remaster, derived actuator host, NBD serve/boot-once/SOL capture runnable entrypoints) + operator runbook ONLY; NOT srv3 OS install solved. Legacy solver plan (srv3_os_install_plan, NoCloudNet) seed gap stays fail-closed; actuator prep binds srv3_seeded_os_install_plan + srv3_actuator_virtual_media_iso_install_path (NoCloudLocal on-ISO). BMC runtime login resolves intent vs observed credential phase (gunbc.srv3_bmc_credential_resolve); destructive boot-once gated by workflow escalation (gunbc.srv3_os_install_actuate_workflow)."
 }
 
@@ -86,8 +86,8 @@ data srv3_os_install_actuate_credential_debt_marker: std.disposition.Disposition
 
 fn srv3_os_install_actuate_credential_resolution_is_wired() -> Bool {
   match srv3_os_install_actuate_credential_debt_marker {
-    Scaffold { dissolves_to: _, bind: _ } => true
-    Terminal { reason: _ } => false
+    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
+    std.disposition.Terminal { reason: _ } => false
   }
 }
 

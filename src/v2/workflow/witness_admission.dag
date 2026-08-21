@@ -5,7 +5,7 @@ fn schedule_row_matches(
   w: std.realization_schedule.ScheduleWitnessEntry,
   entry: String,
   function: String
-) -> Bool {
+) -> v2.std.logic.Bool {
   (w.entry == entry) && (w.function == function)
 }
 
@@ -13,18 +13,18 @@ fn schedule_contains_entry(
   xs: List<std.realization_schedule.ScheduleWitnessEntry>,
   entry: String,
   function: String
-) -> Bool {
+) -> v2.std.logic.Bool {
   v2.std.algebra.any(
     xs: xs,
     predicate: fn(w) { v2.workflow.witness_admission.schedule_row_matches(w: w, entry: entry, function: function) }
   )
 }
 
-fn path_contains_substring(path: String, sub: String) -> Bool {
+fn path_contains_substring(path: String, sub: String) -> v2.std.logic.Bool {
   string_contains(s: path, pattern: sub)
 }
 
-fn path_matches_any_substring(path: String, subs: List<String>) -> Bool {
+fn path_matches_any_substring(path: String, subs: List<String>) -> v2.std.logic.Bool {
   v2.std.algebra.any(xs: subs, predicate: fn(sub) { path_contains_substring(path: path, sub: sub) })
 }
 
@@ -89,7 +89,7 @@ fn consumer_for_explicit_rosters(entry: String, function: String) -> std.witness
 fn witness_consumer_cadence_for_row(
   entry: String,
   function: String,
-  excluded_from_discovery: Bool
+  excluded_from_discovery: v2.std.logic.Bool
 ) -> std.witness_admission.WitnessConsumerCadence {
   let explicit = consumer_for_explicit_rosters(entry: entry, function: function)
   match explicit {
@@ -115,12 +115,12 @@ fn witness_consumer_cadence_for_row(
 
 data witness_path_policy_admission_wall_note: String = "THE ARM THIS WALL CLOSED, and why it needed a wall rather than a stronger reconciliation. witness_consumer_cadence_for_row answers WHICH policy claims a row; this function answers whether that policy is an admissible answer, and until 2026-08-04 it conflated the two by refusing only NoConsumer. So OfflineLocalRecipe — the verdict a broad directory pattern produces — was accepted unconditionally, and moving a file under such a directory both removed it from per-PR discovery and satisfied admission. The exact-admission authority already forbids exactly this shape: explicit_witness_admission_cadence_executes refuses OfflineLocalRecipe on an admission row so that an admission cannot execute nowhere. The path side now meets the same bar, with the frozen legacy population (gunbc.witness_deferral_freeze) as the only exemption and that exemption itself joined by identity in both directions.
 
-READING ORDER IS LOAD-BEARING. The explicit rosters are consulted FIRST and are total for the rows they cover, so this path-policy fold decides only rows no roster claims — the same precedence witness_row_excluded_two_kinds_note states for exclusion. One consequence is deliberate and is NOT closed here: consumer_for_explicit_rosters maps a falsifier_self_host_wet row to OfflineLocalRecipe while falsifier_self_host_wet_cadence_active is false, and that reaches std.witness_admission.WitnessHasExecutingConsumer through the explicit arm rather than through this path-policy fold — the falsifier-cadence coverage misclassification is closed at witness_execution_standing_for_row (std.witness_admission.DeclaredCadenceUnrealized, dashboard node adhoc-1eb1a9f9-ad9), not here; it is adjacent scope, named here so it is not mistaken for covered."
+READING ORDER IS LOAD-BEARING. The explicit rosters are consulted FIRST and are total for the rows they cover, so this path-policy fold decides only rows no roster claims — the same precedence witness_row_excluded_two_kinds_note states for exclusion. One consequence is deliberate and is NOT closed here: consumer_for_explicit_rosters maps a falsifier_self_host_wet row to std.witness_admission.OfflineLocalRecipe while falsifier_self_host_wet_cadence_active is false, and that reaches std.witness_admission.WitnessHasExecutingConsumer through the explicit arm rather than through this path-policy fold — the falsifier-cadence coverage misclassification is closed at witness_execution_standing_for_row (std.witness_admission.DeclaredCadenceUnrealized, dashboard node adhoc-1eb1a9f9-ad9), not here; it is adjacent scope, named here so it is not mistaken for covered."
 
 fn witness_path_policy_execution_standing_in(
   entry: String,
   function: String,
-  excluded_from_discovery: Bool,
+  excluded_from_discovery: v2.std.logic.Bool,
   offline: List<String>,
   fixture: List<String>,
   frozen: List<gunbc.witness_deferral_freeze.FrozenPathDeferral>
@@ -143,7 +143,7 @@ fn witness_path_policy_execution_standing_in(
 fn witness_path_policy_execution_standing(
   entry: String,
   function: String,
-  excluded_from_discovery: Bool
+  excluded_from_discovery: v2.std.logic.Bool
 ) -> std.witness_admission.WitnessExecutionStanding {
   witness_path_policy_execution_standing_in(
     entry: entry,
@@ -161,7 +161,7 @@ WHY IT IS CHECKED HERE RATHER THAN FOLDED INTO THE CADENCE. WitnessConsumerCaden
 
 MEASURED COST OF THE OMISSION, which is why this is a correctness fix rather than an extension: 31 identities in the frozen population are enrolled on GithubActionsCiJob today. Without this check the wall would refuse witnesses that already run — a fail-closed FALSE POSITIVE, which is still a wrong answer, and it would have landed on an unrelated lane as a surprise red."
 
-fn witness_commit_roster_enrolled(entry: String, function: String) -> Bool {
+fn witness_commit_roster_enrolled(entry: String, function: String) -> v2.std.logic.Bool {
   v2.workflow.witness_admission.schedule_contains_entry(
     xs: gunbc.commit_workflow.project_ci_floor_witness_entries(roster: gunbc.commit_workflow.commit_gate_roster),
     entry: entry,
@@ -177,7 +177,7 @@ fn witness_commit_roster_enrolled(entry: String, function: String) -> Bool {
 fn witness_execution_standing_for_row(
   entry: String,
   function: String,
-  excluded_from_discovery: Bool
+  excluded_from_discovery: v2.std.logic.Bool
 ) -> std.witness_admission.WitnessExecutionStanding {
   let explicit = consumer_for_explicit_rosters(entry: entry, function: function)
   match explicit {
@@ -202,7 +202,7 @@ fn witness_execution_standing_for_row(
 
 data witness_coverage_versus_floor_gate_note: String = "THE TWO GATES, and why they must not be one function. witness_has_executing_consumer is the COVERAGE question — is this behavior actually exercised anywhere — and it admits exactly one arm, so a frozen legacy row answers NO and every downstream reader of coverage gets no rather than an admission success. witness_floor_admission_holds is the MIGRATION RATCHET — may the floor proceed with this row today — and it additionally tolerates LegacyFrozenPathDeferral while the baseline axis holds, so the tree stays green through the migration without anything claiming the frozen population executes. Collapsing them is precisely the defect this split repaired: the first shape returned one success arm for both and then read the green gate as evidence of coverage."
 
-fn witness_has_executing_consumer(standing: std.witness_admission.WitnessExecutionStanding) -> Bool {
+fn witness_has_executing_consumer(standing: std.witness_admission.WitnessExecutionStanding) -> v2.std.logic.Bool {
   match standing {
     WitnessHasExecutingConsumer { cadence: _ } => true
     LegacyFrozenPathDeferral { entry: _, function: _ } => false
@@ -212,7 +212,7 @@ fn witness_has_executing_consumer(standing: std.witness_admission.WitnessExecuti
   }
 }
 
-fn frozen_baseline_permits_legacy_debt(baseline: std.witness_admission.FrozenBaselineStanding) -> Bool {
+fn frozen_baseline_permits_legacy_debt(baseline: std.witness_admission.FrozenBaselineStanding) -> v2.std.logic.Bool {
   match baseline {
     FrozenBaselineDebtAllowed => true
     FrozenBaselineDebtShrank => true
@@ -224,7 +224,7 @@ fn frozen_baseline_permits_legacy_debt(baseline: std.witness_admission.FrozenBas
 fn witness_floor_admission_holds(
   standing: std.witness_admission.WitnessExecutionStanding,
   baseline: std.witness_admission.FrozenBaselineStanding
-) -> Bool {
+) -> v2.std.logic.Bool {
   match standing {
     WitnessHasExecutingConsumer { cadence: _ } => true
     LegacyFrozenPathDeferral { entry: _, function: _ } =>
@@ -240,7 +240,7 @@ data frozen_path_deferral_staleness_note: String = "THE SECOND DIRECTION OF THE 
 fn frozen_path_deferral_row_functions_all_discovered(
   row: gunbc.witness_deferral_freeze.FrozenPathDeferral,
   discovered: List<std.realization_schedule.ScheduleWitnessEntry>
-) -> Bool {
+) -> v2.std.logic.Bool {
   !v2.std.algebra.any(
     xs: row.functions,
     predicate: fn(name) {
@@ -252,7 +252,7 @@ fn frozen_path_deferral_row_functions_all_discovered(
 fn frozen_path_deferrals_all_discovered(
   rows: List<gunbc.witness_deferral_freeze.FrozenPathDeferral>,
   discovered: List<std.realization_schedule.ScheduleWitnessEntry>
-) -> Bool {
+) -> v2.std.logic.Bool {
   !v2.std.algebra.any(
     xs: rows,
     predicate: fn(row) {
@@ -263,7 +263,7 @@ fn frozen_path_deferrals_all_discovered(
 
 data witness_row_excluded_two_kinds_note: String = "A witness row leaves per-PR discovery for one of exactly two reasons, and they are different kinds of fact. EXACT ADMISSION: this (entry, function) has its own row on gunbc.explicit_witness_admission naming the cadence that executes it — decided at function grain, so a sibling is untouched. PATH POLICY: the entry sits under a directory- or file-wide substring rule in gunbc.ci_layer_roots.witness_exclusion_frontier — decided at path grain, and deliberately so, because `test/claim/long/ is the long-test home` is a statement about a place rather than about v2.std.algebra.any one function. Exact admission is checked FIRST and is total for the functions it covers; path policy applies only to functions with no admission. That ordering is what lets a path-offline file legitimately contain an exact-admitted function without either fact restating the other, and it is why the two must not share a representation."
 
-fn witness_row_excluded_from_discovery(entry: String, function: String) -> Bool {
+fn witness_row_excluded_from_discovery(entry: String, function: String) -> v2.std.logic.Bool {
   gunbc.explicit_witness_admission.explicit_witness_admission_covers(entry: entry, function: function)
     || v2.workflow.witness_admission.schedule_contains_entry(
       xs: gunbc.ci_layer_roots.falsifier_substrate_long_lane_entries(),
@@ -287,7 +287,7 @@ fn witness_execution_standing_for_live_row(
   )
 }
 
-fn witness_has_executing_consumer_for_row(entry: String, function: String) -> Bool {
+fn witness_has_executing_consumer_for_row(entry: String, function: String) -> v2.std.logic.Bool {
   witness_has_executing_consumer(
     standing: witness_execution_standing_for_live_row(entry: entry, function: function)
   )
@@ -297,7 +297,7 @@ fn witness_floor_admission_holds_for_row(
   entry: String,
   function: String,
   baseline: std.witness_admission.FrozenBaselineStanding
-) -> Bool {
+) -> v2.std.logic.Bool {
   witness_floor_admission_holds(
     standing: witness_execution_standing_for_live_row(entry: entry, function: function),
     baseline: baseline
@@ -333,7 +333,7 @@ fn witness_admission_explicit_consumer_manifest() -> List<String> {
   )
 }
 
-fn witness_admission_manifest_covers_row(entry: String, function: String) -> Bool {
+fn witness_admission_manifest_covers_row(entry: String, function: String) -> v2.std.logic.Bool {
   contains(
     xs: witness_admission_explicit_consumer_manifest(),
     item: witness_admission_manifest_entry_key(entry: entry, function: function),
@@ -341,7 +341,7 @@ fn witness_admission_manifest_covers_row(entry: String, function: String) -> Boo
   )
 }
 
-fn string_eq(a: String, b: String) -> Bool {
+fn string_eq(a: String, b: String) -> v2.std.logic.Bool {
   a == b
 }
 
@@ -349,7 +349,7 @@ data witness_exclusion_no_consumer_control_pattern: String = "synthetic_orphan_a
 
 data witness_exclusion_path_carrier_wall_note: String = "THE SEPARATION WALL. gunbc.ci_layer_roots.witness_exclusion_frontier is a PATH POLICY carrier, so a QuarantineProbeExpectRed row is malformed IN IT — not reconciled against a roster, refused. That classification names an exact executing consumer for one witness, which is an admission and belongs on gunbc.explicit_witness_admission; expressing it as a substring pattern is the fusion whose weakness this lane removed, since a pattern can only ever be checked for CONTAINMENT against a schedule row and containment proves neither identity nor multiplicity nor reverse coverage. The remaining executing cadences (BinWitnessWet, FalsifierRehomedBinWet, FalsifierSubstrateLongLane, FalsifierSelfHostWet) are still writable here and still reconciled by containment — a counted migration frontier, named in explicit_witness_admission_separation_note, whose dissolve-on is each roster moving to the admission authority and this predicate widening to refuse its cadence too."
 
-fn witness_exclusion_row_well_formed(row: gunbc.ci_layer_roots.WitnessExclusionRow) -> Bool {
+fn witness_exclusion_row_well_formed(row: gunbc.ci_layer_roots.WitnessExclusionRow) -> v2.std.logic.Bool {
   !gunbc.ci_layer_roots.witness_exclusion_row_is_discovery_selection(row: row)
     && !gunbc.ci_layer_roots.witness_exclusion_row_is_known_red(row: row)
     && !(row.pattern == "")
@@ -361,18 +361,18 @@ fn witness_exclusion_row_well_formed(row: gunbc.ci_layer_roots.WitnessExclusionR
     )
 }
 
-fn witness_exclusion_rows_well_formed(rows: List<gunbc.ci_layer_roots.WitnessExclusionRow>) -> Bool {
+fn witness_exclusion_rows_well_formed(rows: List<gunbc.ci_layer_roots.WitnessExclusionRow>) -> v2.std.logic.Bool {
   !v2.std.algebra.any(
     xs: rows,
     predicate: fn(row) { !witness_exclusion_row_well_formed(row: row) }
   )
 }
 
-fn witness_exclusion_rows_well_formed_holds() -> Bool {
+fn witness_exclusion_rows_well_formed_holds() -> v2.std.logic.Bool {
   witness_exclusion_rows_well_formed(rows: gunbc.ci_layer_roots.witness_exclusion_frontier)
 }
 
-fn schedule_entries_cover_pattern(xs: List<std.realization_schedule.ScheduleWitnessEntry>, pattern: String) -> Bool {
+fn schedule_entries_cover_pattern(xs: List<std.realization_schedule.ScheduleWitnessEntry>, pattern: String) -> v2.std.logic.Bool {
   v2.std.algebra.any(
     xs: xs,
     predicate: fn(w) { string_contains(s: w.entry, pattern: pattern) }
@@ -384,7 +384,7 @@ fn witness_exclusion_explicit_roster_rows_consistent(
   bin_entries: List<std.realization_schedule.ScheduleWitnessEntry>,
   rehomed_entries: List<std.realization_schedule.ScheduleWitnessEntry>,
   substrate_long_entries: List<std.realization_schedule.ScheduleWitnessEntry>
-) -> Bool {
+) -> v2.std.logic.Bool {
   !v2.std.algebra.any(
     xs: rows,
     predicate: fn(row) {
@@ -402,7 +402,7 @@ fn witness_exclusion_bin_witness_wet_universe() -> List<std.realization_schedule
   gunbc.ci_layer_roots.bin_witness_wet_entries
 }
 
-fn witness_exclusion_explicit_roster_rows_consistent_holds() -> Bool {
+fn witness_exclusion_explicit_roster_rows_consistent_holds() -> v2.std.logic.Bool {
   witness_exclusion_explicit_roster_rows_consistent(
     rows: gunbc.ci_layer_roots.witness_exclusion_frontier,
     bin_entries: witness_exclusion_bin_witness_wet_universe(),
@@ -411,7 +411,7 @@ fn witness_exclusion_explicit_roster_rows_consistent_holds() -> Bool {
   )
 }
 
-fn witness_exclusion_falsifier_rows_consistent_holds() -> Bool {
+fn witness_exclusion_falsifier_rows_consistent_holds() -> v2.std.logic.Bool {
   if !v2.compiler.self_host.wet_receipt_enrollment.falsifier_self_host_wet_cadence_is_active() {
     true
   } else {
@@ -428,7 +428,7 @@ fn witness_exclusion_falsifier_rows_consistent_holds() -> Bool {
   }
 }
 
-fn witness_whole_tree_resolve_exclusion_concat_authority_holds() -> Bool {
+fn witness_whole_tree_resolve_exclusion_concat_authority_holds() -> v2.std.logic.Bool {
   std.realization_schedule.string_list_eq(
     left: gunbc.ci_layer_roots.whole_tree_resolve_exclusion_substrings(),
     right: concat(
@@ -440,17 +440,17 @@ fn witness_whole_tree_resolve_exclusion_concat_authority_holds() -> Bool {
 
 data explicit_witness_admission_wall_note: String = "THE WALLS OVER THE ADMISSION AUTHORITY, and what each one replaces. (1) EXACTLY ONE ADMISSION PER WITNESS — gunbc.explicit_witness_admission.explicit_witness_admission_duplicate_count() == 0. The old reconciliation could not state this at all: it asked whether SOME schedule row's entry contained an exclusion pattern, which two rows satisfy as easily as one. (2) EVERY ADMISSION NAMES AN EXECUTING CADENCE — gunbc.explicit_witness_admission.explicit_witness_admissions_well_formed(), which refuses std.witness_admission.DiscoverySelection, OfflineLocalRecipe, std.witness_admission.FixtureExplicitRoster and NoConsumer on an admission row, so an admission cannot satisfy the has-a-consumer wall while executing nowhere. (3) EVERY ADMISSION IS REACHED BY ITS CADENCE'S ROSTER — witness_admission_manifest_covers_row over the derived rosters, which is now a tautology in the safe direction and that is the point: the roster IS the projection, so a row cannot be admitted and unscheduled. (4) EXCLUSION IS DERIVED, NOT AUTHORED — witness_row_excluded_from_discovery reads the admission rows directly and v2.workflow.floor_discovery_producer drops exactly those (entry, function) pairs, so there is no second place where an exclusion could disagree. (5) NO UNCONSUMED WITNESS UNDER AN EXCLUSION — the Phase 0(b) deferred-row refusal, unchanged in mechanism but strengthened by exact grain: a sibling of an admitted witness is no longer swept out with it, so it either runs per-PR or is refused by name. The reverse-coverage and atomic-deletion properties the old check lacked are not new checks here — they are consequences of there being one row: a deletion removes the admission, the roster entry and the exclusion in one edit, which is the merge hazard #7688 paid for by hand."
 
-fn explicit_witness_admission_uniqueness_holds() -> Bool {
+fn explicit_witness_admission_uniqueness_holds() -> v2.std.logic.Bool {
   gunbc.explicit_witness_admission.explicit_witness_admission_duplicate_count() == 0
 }
 
-fn explicit_witness_admission_rows_well_formed_holds() -> Bool {
+fn explicit_witness_admission_rows_well_formed_holds() -> v2.std.logic.Bool {
   gunbc.explicit_witness_admission.explicit_witness_admissions_well_formed()
 }
 
 fn explicit_witness_admissions_are_scheduled(
   rows: List<gunbc.explicit_witness_admission.ExplicitWitnessAdmission>
-) -> Bool {
+) -> v2.std.logic.Bool {
   !v2.std.algebra.any(
     xs: rows,
     predicate: fn(row) {
@@ -462,13 +462,13 @@ fn explicit_witness_admissions_are_scheduled(
   )
 }
 
-fn explicit_witness_admissions_are_scheduled_holds() -> Bool {
+fn explicit_witness_admissions_are_scheduled_holds() -> v2.std.logic.Bool {
   explicit_witness_admissions_are_scheduled(rows: gunbc.explicit_witness_admission.explicit_witness_admissions)
 }
 
 fn explicit_witness_admissions_are_excluded(
   rows: List<gunbc.explicit_witness_admission.ExplicitWitnessAdmission>
-) -> Bool {
+) -> v2.std.logic.Bool {
   !v2.std.algebra.any(
     xs: rows,
     predicate: fn(row) {
@@ -480,11 +480,11 @@ fn explicit_witness_admissions_are_excluded(
   )
 }
 
-fn explicit_witness_admissions_are_excluded_holds() -> Bool {
+fn explicit_witness_admissions_are_excluded_holds() -> v2.std.logic.Bool {
   explicit_witness_admissions_are_excluded(rows: gunbc.explicit_witness_admission.explicit_witness_admissions)
 }
 
-fn explicit_witness_admissions_each_cover_themselves() -> Bool {
+fn explicit_witness_admissions_each_cover_themselves() -> v2.std.logic.Bool {
   !v2.std.algebra.any(
     xs: gunbc.explicit_witness_admission.explicit_witness_admissions,
     predicate: fn(row) {
@@ -496,7 +496,7 @@ fn explicit_witness_admissions_each_cover_themselves() -> Bool {
   )
 }
 
-fn witness_exclusion_frontier_carries_no_admission_holds() -> Bool {
+fn witness_exclusion_frontier_carries_no_admission_holds() -> v2.std.logic.Bool {
   !v2.std.algebra.any(
     xs: gunbc.ci_layer_roots.witness_exclusion_frontier,
     predicate: fn(row) { gunbc.ci_layer_roots.witness_exclusion_row_is_known_red(row: row) }

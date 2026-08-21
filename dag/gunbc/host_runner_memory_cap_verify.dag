@@ -48,7 +48,7 @@ fn runner_memory_cap_verify_tally_knob(
         drifted: acc.drifted,
         absent: acc.absent + 1,
       }
-    Absent =>
+    gunbc.host_converge.Absent =>
       RunnerMemoryCapVerifyTally {
         converged: acc.converged,
         drifted: acc.drifted,
@@ -70,7 +70,7 @@ fn runner_memory_cap_verify_tally_from_read(
           f: fn(acc, knob) { runner_memory_cap_verify_tally_knob(acc: acc, read: read, knob: knob) }
         ),
       }
-    Absent => none
+    gunbc.host_converge.Absent => none
   }
 }
 
@@ -103,9 +103,9 @@ fn runner_memory_cap_verify_receipt_from_read(
               verdict: runner_memory_cap_verify_verdict_from_tally(tally: tally, knob_count: knob_count),
             },
           }
-        Absent => none
+        gunbc.host_converge.Absent => none
       }
-    Absent => none
+    gunbc.host_converge.Absent => none
   }
 }
 
@@ -137,7 +137,7 @@ fn runner_memory_cap_live_read(host: product.placement_supply.HostIdentity) -> g
           }
         SystemdPropertyCaptureRefused { reason: _ } => none
       }
-    Absent => none
+    gunbc.host_converge.Absent => none
   }
 }
 
@@ -157,19 +157,19 @@ fn runner_memory_cap_verify_result_from_live_read(
         Present { value: read } =>
           match runner_memory_cap_verify_receipt_from_read(host: host, read: read) {
             Present { value: receipt } => RunnerMemoryCapVerifyObserved { receipt: receipt }
-            Absent =>
+            gunbc.host_converge.Absent =>
               RunnerMemoryCapVerifyRefused {
                 host: host,
                 reason: "host_runner_memory_cap_verify: read-back tally refused after live read; fail-closed",
               }
           }
-        Absent =>
+        gunbc.host_converge.Absent =>
           RunnerMemoryCapVerifyRefused {
             host: host,
             reason: "host_runner_memory_cap_verify: live typed read absent (Clock.Now or systemd.Systemctl.ShowProperty); fail-closed (verify-only, no apply)",
           }
       }
-    Absent =>
+    gunbc.host_converge.Absent =>
       RunnerMemoryCapVerifyRefused {
         host: host,
         reason: concat(
@@ -187,7 +187,7 @@ fn runner_memory_cap_verify_run(host: product.placement_supply.HostIdentity) -> 
         host: host,
         read: runner_memory_cap_live_read(host: host),
       )
-    Absent => runner_memory_cap_verify_result_from_live_read(host: host, read: none)
+    gunbc.host_converge.Absent => runner_memory_cap_verify_result_from_live_read(host: host, read: none)
   }
 }
 

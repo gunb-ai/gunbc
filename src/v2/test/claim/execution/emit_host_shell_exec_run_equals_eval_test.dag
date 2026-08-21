@@ -49,7 +49,7 @@ fn shell_exec_run_native_run(expected_octet: Int) -> Bool {
           stdout.bytes == emit_host_octets_byte_string(octets: [0, expected_octet, 0, 0, 0])
         _ => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

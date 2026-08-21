@@ -18,7 +18,7 @@ fn emit_fold_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.inferred_
   )
 }
 
-fn emit_fold_eval_composed_facts(key: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn emit_fold_eval_composed_facts(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   v2.std.optional.optional_present(value: emit_fold_eval_generic_facts(node: key))
 }
 
@@ -48,7 +48,7 @@ fn emit_fold_eval_diagnostic(reason: v2.std.node.Symbol, node: v2.std.node.Node)
 
 fn emit_fold_eval_nth_positional_target(node: v2.std.node.Node, wanted: Int) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match v2.std.collection.list_at_optional(xs: node.children, index: wanted) {
-    Present { value: child } =>
+    v2.std.optional.Present { value: child } =>
       match child {
         Edge { label: Positional, target: t } => v2.std.diagnostic.outcome_accepted(value: test.claim.pcb_footprint_witness.t)
         Edge { label: _, target: _ } =>
@@ -56,29 +56,29 @@ fn emit_fold_eval_nth_positional_target(node: v2.std.node.Node, wanted: Int) -> 
             d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_child_miss, node: node)
           )
       }
-    Absent =>
+    v2.std.optional.Absent =>
       v2.std.diagnostic.outcome_rejected(
         d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_child_miss, node: node)
       )
   }
 }
 
-fn emit_fold_eval_closure_operator_is_sub(closure: v2.std.node.Node) -> Bool {
+fn emit_fold_eval_closure_operator_is_sub(closure: v2.std.node.Node) -> v2.std.logic.Bool {
   match v2.std.node_query.find_arrow_body_child(root: closure) {
     Accepted { value: body, diagnostics: _ } =>
       match body.kind {
-        ComputationNode { behavior: Transform } =>
+        ComputationNode { behavior: v2.std.node.Transform } =>
           match emit_fold_eval_nth_positional_target(node: body, wanted: 0) {
             Accepted { value: op, diagnostics: _ } =>
               match op.kind {
                 TypeNode { connective: Atom { identity: id } } => id == ^dag_token_minus
                 _ => false
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
         _ => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -148,7 +148,7 @@ fn emit_fold_eval_call_primitive(
       } else {
         v2.std.diagnostic.outcome_accepted(value: emit_fold_eval_octet_value(n: 7))
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -244,31 +244,31 @@ fn emit_fold_eval_run(root: v2.std.node.Node) -> v2.compiler.eval.TestClaimRun<v
   )
 }
 
-fn emit_fold_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> Bool {
+fn emit_fold_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> v2.std.logic.Bool {
   match run.verdict {
     Pass => true
     SemanticMismatch { actual: _, falsification: _ } => false
-    BuildFailed { actual: _, diagnostic: _ } => false
+    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
 }
 
-fn emit_fold_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> Bool {
+fn emit_fold_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> v2.std.logic.Bool {
   match run.verdict {
     SemanticMismatch { actual: _, falsification: _ } => true
     Pass => false
-    BuildFailed { actual: _, diagnostic: _ } => false
+    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
 }
 
-test fn emit_host_fold_closure_equals_eval_holds() -> Bool {
+test fn emit_host_fold_closure_equals_eval_holds() -> v2.std.logic.Bool {
   emit_fold_eval_verdict_is_pass(run: emit_fold_eval_run(root: v2.test.emit.fold_call_closure_fixture.fold_fixture_param_canonical_arrow))
 }
 
-test fn emit_host_fold_closure_wrong_fixture_refuses_holds() -> Bool {
+test fn emit_host_fold_closure_wrong_fixture_refuses_holds() -> v2.std.logic.Bool {
   emit_fold_eval_verdict_is_semantic_mismatch(run: emit_fold_eval_run(root: v2.test.emit.fold_call_closure_fixture.fold_fixture_param_wrong_arrow))
 }
 

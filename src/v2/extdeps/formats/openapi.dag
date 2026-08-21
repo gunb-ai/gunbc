@@ -99,8 +99,8 @@ fn openapi_admitted_to_http_method(method: OpenApiAdmittedHttpMethod) -> v2.std.
 
 type OpenApiReferenceObject {
   dollar_ref: String,
-  summary: Optional<String>,
-  description: Optional<String>,
+  summary: v2.std.optional.Optional<String>,
+  description: v2.std.optional.Optional<String>,
 }
 
 type OpenApiLinkTarget
@@ -109,7 +109,7 @@ type OpenApiLinkTarget
 
 type OpenApiLinkObject {
   target: OpenApiLinkTarget,
-  description: Optional<String>,
+  description: v2.std.optional.Optional<String>,
   link_deferred_members: Map<OpenApiLinkDeferredKey, v2.extdeps.formats.json.JsonSchemaCarrierValue>,
   link_specification_extensions: Map<OpenApiSpecificationExtensionKey, v2.extdeps.formats.json.JsonSchemaCarrierValue>,
 }
@@ -119,9 +119,9 @@ type OpenApiLinkOrReference
   | OpenApiLinkReference { reference: OpenApiReferenceObject }
 
 type OpenApiContact {
-  name: Optional<String>,
-  url: Optional<String>,
-  email: Optional<String>,
+  name: v2.std.optional.Optional<String>,
+  url: v2.std.optional.Optional<String>,
+  email: v2.std.optional.Optional<String>,
   contact_extensions: Map<OpenApiSpecificationExtensionKey, v2.extdeps.formats.json.JsonSchemaCarrierValue>,
 }
 
@@ -138,17 +138,17 @@ type OpenApiLicense {
 
 type OpenApiInfo {
   title: String,
-  summary: Optional<String>,
-  description: Optional<String>,
-  terms_of_service: Optional<String>,
-  contact: Optional<OpenApiContact>,
-  license: Optional<OpenApiLicense>,
+  summary: v2.std.optional.Optional<String>,
+  description: v2.std.optional.Optional<String>,
+  terms_of_service: v2.std.optional.Optional<String>,
+  contact: v2.std.optional.Optional<OpenApiContact>,
+  license: v2.std.optional.Optional<OpenApiLicense>,
   version: String,
   info_specification_extensions: Map<OpenApiSpecificationExtensionKey, v2.extdeps.formats.json.JsonSchemaCarrierValue>,
 }
 
 type OpenApiMediaType {
-  schema_shape: Optional<OpenApiSchema>,
+  schema_shape: v2.std.optional.Optional<OpenApiSchema>,
   media_type_deferred_members: Map<OpenApiMediaTypeDeferredKey, v2.extdeps.formats.json.JsonSchemaCarrierValue>,
   media_type_specification_extensions: Map<OpenApiSpecificationExtensionKey, v2.extdeps.formats.json.JsonSchemaCarrierValue>,
 }
@@ -163,9 +163,9 @@ type OpenApiHeaderPayloadSlot
   | OpenApiHeaderPayloadContent { content: OpenApiHeaderContentSingle }
 
 type OpenApiHeaderObject {
-  description: Optional<String>,
-  required: Optional<Bool>,
-  deprecated: Optional<Bool>,
+  description: v2.std.optional.Optional<String>,
+  required: v2.std.optional.Optional<Bool>,
+  deprecated: v2.std.optional.Optional<Bool>,
   payload: OpenApiHeaderPayloadSlot,
   header_deferred_members: Map<OpenApiHeaderDeferredKey, v2.extdeps.formats.json.JsonSchemaCarrierValue>,
   header_specification_extensions: Map<OpenApiSpecificationExtensionKey, v2.extdeps.formats.json.JsonSchemaCarrierValue>,
@@ -177,9 +177,9 @@ type OpenApiHeaderOrReference
 
 type OpenApiResponse {
   description: String,
-  content: Optional<Map<String, OpenApiMediaType>>,
-  headers: Optional<Map<String, OpenApiHeaderOrReference>>,
-  links: Optional<Map<String, OpenApiLinkOrReference>>,
+  content: v2.std.optional.Optional<Map<String, OpenApiMediaType>>,
+  headers: v2.std.optional.Optional<Map<String, OpenApiHeaderOrReference>>,
+  links: v2.std.optional.Optional<Map<String, OpenApiLinkOrReference>>,
   extensions: Map<OpenApiSpecificationExtensionKey, v2.extdeps.formats.json.JsonSchemaCarrierValue>,
 }
 
@@ -228,13 +228,13 @@ type OpenApiResponsesPrimaryEntry {
 
 type OpenApiResponses {
   primary_response: OpenApiResponsesPrimaryEntry,
-  default_response: Optional<OpenApiResponseOrReference>,
+  default_response: v2.std.optional.Optional<OpenApiResponseOrReference>,
   additional_by_status: Map<OpenApiResponseKeyNonDefault, OpenApiResponseOrReference>,
   responses_object_extensions: Map<OpenApiSpecificationExtensionKey, v2.extdeps.formats.json.JsonSchemaCarrierValue>,
 }
 
 type OpenApiOperation {
-  operation_id: Optional<String>,
+  operation_id: v2.std.optional.Optional<String>,
   responses: OpenApiResponses,
   operation_deferred_members: Map<OpenApiOperationDeferredKey, v2.extdeps.formats.json.JsonSchemaCarrierValue>,
   operation_specification_extensions: Map<OpenApiSpecificationExtensionKey, v2.extdeps.formats.json.JsonSchemaCarrierValue>,
@@ -260,8 +260,8 @@ type OpenApiPaths {
 }
 
 type OpenApiComponents {
-  schemas: Optional<Map<OpenApiComponentsMapKey, OpenApiSchema>>,
-  path_items: Optional<Map<OpenApiComponentsMapKey, OpenApiPathItemOrReference>>,
+  schemas: v2.std.optional.Optional<Map<OpenApiComponentsMapKey, OpenApiSchema>>,
+  path_items: v2.std.optional.Optional<Map<OpenApiComponentsMapKey, OpenApiPathItemOrReference>>,
   components_deferred_members: Map<OpenApiComponentsDeferredKey, v2.extdeps.formats.json.JsonSchemaCarrierValue>,
   components_specification_extensions: Map<OpenApiSpecificationExtensionKey, v2.extdeps.formats.json.JsonSchemaCarrierValue>,
 }
@@ -274,12 +274,12 @@ type OpenApiWebhooks {
 type OpenApiDocumentRoot
   = OpenApiDocumentRootPathsPresent {
       paths: OpenApiPaths,
-      components: Optional<OpenApiComponents>,
-      webhooks: Optional<OpenApiWebhooks>,
+      components: v2.std.optional.Optional<OpenApiComponents>,
+      webhooks: v2.std.optional.Optional<OpenApiWebhooks>,
     }
   | OpenApiDocumentRootComponentsWithoutPaths {
       components: OpenApiComponents,
-      webhooks: Optional<OpenApiWebhooks>,
+      webhooks: v2.std.optional.Optional<OpenApiWebhooks>,
     }
   | OpenApiDocumentRootWebhooksOnly {
       webhooks: OpenApiWebhooks,
@@ -295,7 +295,7 @@ type OpenApiConcreteSyntaxAuthority
 type OpenApiDocument {
   concrete_syntax: OpenApiConcreteSyntaxAuthority,
   openapi: OpenApiOpenapiField3_1,
-  json_schema_dialect: Optional<String>,
+  json_schema_dialect: v2.std.optional.Optional<String>,
   info: OpenApiInfo,
   root: OpenApiDocumentRoot,
   root_deferred_members: Map<OpenApiOpenapiObjectDeferredKey, v2.extdeps.formats.json.JsonSchemaCarrierValue>,
@@ -433,6 +433,6 @@ type OpenApiOperationWireContractFacts {
 
 type OpenApiDocumentWireContractFacts {
   openapi_version: OpenApiOpenapiField3_1,
-  paths: Optional<OpenApiPaths>,
+  paths: v2.std.optional.Optional<OpenApiPaths>,
   unique_names: OpenApiUniqueNameProfileFacts,
 }

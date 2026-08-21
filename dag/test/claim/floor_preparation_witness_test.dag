@@ -22,7 +22,7 @@ fn discovery_request() -> v2.workflow.floor_discovery.FloorDiscoveryRequest {
     scan_dirs: ["dag/test/claim"],
     exclude_substrings: [],
     discovery_scope_dirs: ["dag/test/claim"],
-    execution_mode: Hermetic,
+    execution_mode: std.execution_mode.Hermetic,
   }
 }
 

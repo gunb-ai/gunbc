@@ -7,11 +7,11 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 data text_witness_char_a: std.types.Char = 1
 data text_witness_char_b: std.types.Char = 2
 
-fn text_not(b: Bool) -> Bool {
+fn text_not(b: v2.std.logic.Bool) -> v2.std.logic.Bool {
   b == false
 }
 
-fn text_char_eq(a: std.types.Char, b: std.types.Char) -> Bool {
+fn text_char_eq(a: std.types.Char, b: std.types.Char) -> v2.std.logic.Bool {
   a == b
 }
 
@@ -19,7 +19,7 @@ fn text_single(c: std.types.Char) -> String {
   std.algebra.Cons { head: c, tail: std.algebra.Empty }
 }
 
-test fn text_string_freemonoid_carrier_holds() -> Bool {
+test fn text_string_freemonoid_carrier_holds() -> v2.std.logic.Bool {
   string_is_empty(s: std.algebra.Empty)
     && text_not(b: string_is_empty(s: text_single(c: text_witness_char_a)))
     && match string_head(s: text_single(c: text_witness_char_a)) {
@@ -28,7 +28,7 @@ test fn text_string_freemonoid_carrier_holds() -> Bool {
     }
 }
 
-test fn text_host_string_roundtrip_holds() -> Bool {
+test fn text_host_string_roundtrip_holds() -> v2.std.logic.Bool {
   match string_head(
     s: host_string_text_value(
       value: host_string_text(text: text_single(c: text_witness_char_a))
@@ -41,11 +41,11 @@ test fn text_host_string_roundtrip_holds() -> Bool {
   }
 }
 
-test fn text_host_string_empty_roundtrip_holds() -> Bool {
+test fn text_host_string_empty_roundtrip_holds() -> v2.std.logic.Bool {
   string_is_empty(s: host_string_text_value(value: host_string_text(text: std.algebra.Empty)))
 }
 
-test fn text_host_string_field_text_holds() -> Bool {
+test fn text_host_string_field_text_holds() -> v2.std.logic.Bool {
   match string_head(
     s: host_string_text_value(value: v2.std.text.HostStringText { text: text_single(c: text_witness_char_b) })
   ) {

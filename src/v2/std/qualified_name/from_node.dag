@@ -1,12 +1,12 @@
 module v2.test.qualified_name.from_node
 
-fn qn_sym_node(sym: v2.std.node.Symbol) -> Node {
+fn qn_sym_node(sym: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
-fn qn_bool_atom(b: Bool) -> Node {
+fn qn_bool_atom(b: v2.std.logic.Bool) -> v2.std.node.Node {
   match b {
     true => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^qn_bool_true_sym } }, children: [],
  occurrence_id: SyntheticOccurrence
@@ -17,99 +17,99 @@ fn qn_bool_atom(b: Bool) -> Node {
   }
 }
 
-fn qn_outcome_accepted(out: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>) -> Bool {
+fn qn_outcome_accepted(out: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>) -> v2.std.logic.Bool {
   match out {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn qn_value_eq(out: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>, expected: v2.std.qualified_name.QualifiedName) -> Bool {
+fn qn_value_eq(out: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>, expected: v2.std.qualified_name.QualifiedName) -> v2.std.logic.Bool {
   match out {
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: actual, diagnostics: _ } => actual == expected
   }
 }
 
-data qn_atom_node: Node = v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^qn_sym_a } }, children: [],
+data qn_atom_node: v2.std.node.Node = v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^qn_sym_a } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 
-data qn_empty_conj_node: Node = v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [],
+data qn_empty_conj_node: v2.std.node.Node = v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 
-data qn_single_list_node: Node = fold_list_node(
+data qn_single_list_node: v2.std.node.Node = fold_list_node(
   xs: std.algebra.Cons { head: ^qn_sym_a, tail: std.algebra.Empty },
   item_node: fn(sym) { qn_sym_node(sym: sym) }
 )
 
-data qn_three_list_node: Node = fold_list_node(
+data qn_three_list_node: v2.std.node.Node = fold_list_node(
   xs: std.algebra.Cons { head: ^qn_sym_a, tail: std.algebra.Cons { head: ^qn_sym_b, tail: std.algebra.Cons { head: ^qn_sym_c, tail: std.algebra.Empty } } },
   item_node: fn(sym) { qn_sym_node(sym: sym) }
 )
 
-data qn_tail_only_node: Node = v2.std.node.Node {
+data qn_tail_only_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
-  children: [v2.std.node.Edge { label: Named { name: ^fold_list_node_tail }, target: qn_empty_conj_node }],
+  children: [v2.std.node.Edge { label: v2.std.node.Named { name: ^fold_list_node_tail }, target: qn_empty_conj_node }],
   occurrence_id: SyntheticOccurrence
 }
 
-data qn_atom_with_children: Node = v2.std.node.Node {
+data qn_atom_with_children: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^qn_sym_a } },
-  children: [v2.std.node.Edge { label: Named { name: ^qn_sym_b }, target: qn_empty_conj_node }],
+  children: [v2.std.node.Edge { label: v2.std.node.Named { name: ^qn_sym_b }, target: qn_empty_conj_node }],
   occurrence_id: SyntheticOccurrence
 }
 
-data qn_single_malformed_head_node: Node = v2.std.node.Node {
+data qn_single_malformed_head_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [
-    v2.std.node.Edge { label: Named { name: ^fold_list_node_head }, target: qn_atom_with_children },
-    v2.std.node.Edge { label: Named { name: ^fold_list_node_tail }, target: qn_empty_conj_node }
+    v2.std.node.Edge { label: v2.std.node.Named { name: ^fold_list_node_head }, target: qn_atom_with_children },
+    v2.std.node.Edge { label: v2.std.node.Named { name: ^fold_list_node_tail }, target: qn_empty_conj_node }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data qn_tail_to_atom_node: Node = v2.std.node.Node {
+data qn_tail_to_atom_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [
-    v2.std.node.Edge { label: Named { name: ^fold_list_node_head }, target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^qn_sym_a } }, children: [],
+    v2.std.node.Edge { label: v2.std.node.Named { name: ^fold_list_node_head }, target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^qn_sym_a } }, children: [],
 occurrence_id: SyntheticOccurrence
 } },
-    v2.std.node.Edge { label: Named { name: ^fold_list_node_tail }, target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^qn_sym_b } }, children: [],
+    v2.std.node.Edge { label: v2.std.node.Named { name: ^fold_list_node_tail }, target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^qn_sym_b } }, children: [],
 occurrence_id: SyntheticOccurrence
 } }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data qn_single_reversed_node: Node = v2.std.node.Node {
+data qn_single_reversed_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [
-    v2.std.node.Edge { label: Named { name: ^fold_list_node_tail }, target: qn_empty_conj_node },
-    v2.std.node.Edge { label: Named { name: ^fold_list_node_head }, target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^qn_sym_a } }, children: [],
+    v2.std.node.Edge { label: v2.std.node.Named { name: ^fold_list_node_tail }, target: qn_empty_conj_node },
+    v2.std.node.Edge { label: v2.std.node.Named { name: ^fold_list_node_head }, target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^qn_sym_a } }, children: [],
 occurrence_id: SyntheticOccurrence
 } }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data qn_head_to_conj_node: Node = v2.std.node.Node {
+data qn_head_to_conj_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [
-    v2.std.node.Edge { label: Named { name: ^fold_list_node_head }, target: qn_empty_conj_node },
-    v2.std.node.Edge { label: Named { name: ^fold_list_node_tail }, target: qn_empty_conj_node }
+    v2.std.node.Edge { label: v2.std.node.Named { name: ^fold_list_node_head }, target: qn_empty_conj_node },
+    v2.std.node.Edge { label: v2.std.node.Named { name: ^fold_list_node_tail }, target: qn_empty_conj_node }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data qn_double_head_node: Node = v2.std.node.Node {
+data qn_double_head_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [
-    v2.std.node.Edge { label: Named { name: ^fold_list_node_head }, target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^qn_sym_a } }, children: [],
+    v2.std.node.Edge { label: v2.std.node.Named { name: ^fold_list_node_head }, target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^qn_sym_a } }, children: [],
 occurrence_id: SyntheticOccurrence
 } },
-    v2.std.node.Edge { label: Named { name: ^fold_list_node_head }, target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^qn_sym_b } }, children: [],
+    v2.std.node.Edge { label: v2.std.node.Named { name: ^fold_list_node_head }, target: v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^qn_sym_b } }, children: [],
 occurrence_id: SyntheticOccurrence
 } }
   ],

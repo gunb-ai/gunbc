@@ -16,7 +16,7 @@ fn parent_node() -> gunbc.roadmap_model.RoadmapNode {
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 
@@ -29,7 +29,7 @@ fn roadmap_emit_child_node() -> gunbc.roadmap_model.RoadmapNode {
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 
@@ -114,7 +114,7 @@ fn superseded_child_node() -> gunbc.roadmap_model.RoadmapNode {
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 

@@ -133,14 +133,14 @@ fn workflow_trigger_entry(trigger: extdeps.github.actions.WorkflowTrigger) -> ex
   match trigger {
     WorkflowDispatch { inputs: inputs } =>
       kv(key: "workflow_dispatch", value: workflow_dispatch_yaml(inputs: inputs))
-    Push { branches: bs, paths: ps } =>
+    extdeps.github.actions.Push { branches: bs, paths: ps } =>
       push_trigger_yaml(branches: bs, paths: ps)
-    PullRequest { branches: bs, types: ts } =>
+    extdeps.github.actions.PullRequest { branches: bs, types: ts } =>
       kv(key: "pull_request", value: yaml_mapping(entries: [
         kv(key: "branches", value: string_list_flow(items: bs)),
         kv(key: "types", value: pr_activities_flow(types: ts))
       ]))
-    Schedule { cron: c } =>
+    extdeps.github.actions.Schedule { cron: c } =>
       kv(key: "schedule", value: yaml_sequence(elements: [
         yaml_mapping(entries: [kv(key: "cron", value: yaml_string(s: render_cron_schedule(s: c)))])
       ]))

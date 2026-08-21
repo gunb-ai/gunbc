@@ -3,7 +3,7 @@ module v2.test.lens_cost.bounded_summation
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data bounded_summation_bound_leaf: Node = v2.std.node.Node {
+data bounded_summation_bound_leaf: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^bounded_summation_bound_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
@@ -21,25 +21,25 @@ fn bounded_unit_summation_expr() -> v2.lens.cost.expr.CostExpr {
   )
 }
 
-fn bounded_summation_is_representable() -> Bool {
+fn bounded_summation_is_representable() -> v2.std.logic.Bool {
   match bounded_unit_summation_expr() {
-    CostSum { binder: _, upper: _, body: _ } => true
+    v2.lens.cost.expr.CostSum { binder: _, upper: _, body: _ } => true
     _ => false
   }
 }
 
-fn bounded_summation_projects_to_linear() -> Bool {
+fn bounded_summation_projects_to_linear() -> v2.std.logic.Bool {
   match normalize_cost_expr_to_symbolic(expr: bounded_unit_summation_expr()) {
     LinearCost { variable: v } => v.source == bounded_summation_bound_leaf
     _ => false
   }
 }
 
-test fn bounded_summation_expr_authority_holds() -> Bool {
+test fn bounded_summation_expr_authority_holds() -> v2.std.logic.Bool {
   bounded_summation_is_representable() && bounded_summation_projects_to_linear()
 }
 
-test fn zero_body_loop_projects_to_zero_red_control() -> Bool {
+test fn zero_body_loop_projects_to_zero_red_control() -> v2.std.logic.Bool {
   match normalize_cost_expr_to_symbolic(
     expr: cost_loop_expr(
       binder: bounded_summation_binder,
@@ -53,7 +53,7 @@ test fn zero_body_loop_projects_to_zero_red_control() -> Bool {
   }
 }
 
-test fn existing_cost_lens_kernel_unchanged() -> Bool {
+test fn existing_cost_lens_kernel_unchanged() -> v2.std.logic.Bool {
   match cost_lens(n: bounded_summation_bound_leaf) {
     Holds { value: actual } => actual == zero_cost()
     _ => false

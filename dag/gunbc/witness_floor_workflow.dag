@@ -314,7 +314,7 @@ fn witness_floor_precondition() -> String {
   concat(witness_step_status_guard(), "steps.build_witness_fold.outcome == 'success'")
 }
 
-fn witness_floor_run_step() -> Step {
+fn witness_floor_run_step() -> extdeps.github.actions.Step {
   RunStep {
     name: Present { value: "Required CI: parse, regen, witness floor" },
     id: none,
@@ -420,8 +420,8 @@ fn witness_floor_capability_closure_holds() -> Bool {
 // which have no automated consumer, so it is run deliberately or not at all. That is a declared
 // scope narrowing rather than a climb, and naming it here is what keeps its absence from
 // reading as coverage.
-fn witness_floor_job() -> Job {
-  Job {
+fn witness_floor_job() -> extdeps.github.actions.Job {
+  extdeps.github.actions.Job {
     id: witness_floor_workflow_job_id,
     name: none,
     runner: gunbc.ci_runner_target.gunbc_ci_selected_runner_spec(),

@@ -35,7 +35,7 @@ data spice_rc_tran_deck: v2.extdeps.formats.spice.SpiceNetlist = v2.extdeps.form
             directive: v2.extdeps.formats.spice.InitialCondition {
               assignments: v2.extdeps.formats.spice.NodeVoltageBindings {
                 first: v2.extdeps.formats.spice.NodeVoltageBinding {
-                  node: Named { node: v2.extdeps.formats.spice.NamedNode { name: "n2" } },
+                  node: v2.extdeps.formats.spice.Named { node: v2.extdeps.formats.spice.NamedNode { name: "n2" } },
                   value: v2.extdeps.formats.spice.SpiceValue { lexeme: "0" }
                 },
                 rest: []

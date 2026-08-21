@@ -11,20 +11,20 @@ type Representation
 
 type OverflowDisposition = Wrapping | Saturating | UndefinedBehavior | Trapping
 
-type Int8 = Compose<Int, MachineWidth<std.bit.Word8>>
-type Int16 = Compose<Int, MachineWidth<std.bit.Word16>>
-type Int32 = Compose<Int, MachineWidth<std.bit.Word32>>
-type Int64 = Compose<Int, MachineWidth<std.bit.Word64>>
-type Int128 = Compose<Int, MachineWidth<std.bit.Word128>>
+type Int8 = Compose<Int, v2.std.machine.MachineWidth<std.bit.Word8>>
+type Int16 = Compose<Int, v2.std.machine.MachineWidth<std.bit.Word16>>
+type Int32 = Compose<Int, v2.std.machine.MachineWidth<std.bit.Word32>>
+type Int64 = Compose<Int, v2.std.machine.MachineWidth<std.bit.Word64>>
+type Int128 = Compose<Int, v2.std.machine.MachineWidth<std.bit.Word128>>
 
-type UInt8 = Compose<UInt, MachineWidth<std.bit.Word8>>
-type UInt16 = Compose<UInt, MachineWidth<std.bit.Word16>>
-type UInt32 = Compose<UInt, MachineWidth<std.bit.Word32>>
-type UInt64 = Compose<UInt, MachineWidth<std.bit.Word64>>
-type UInt128 = Compose<UInt, MachineWidth<std.bit.Word128>>
+type UInt8 = Compose<UInt, v2.std.machine.MachineWidth<std.bit.Word8>>
+type UInt16 = Compose<UInt, v2.std.machine.MachineWidth<std.bit.Word16>>
+type UInt32 = Compose<UInt, v2.std.machine.MachineWidth<std.bit.Word32>>
+type UInt64 = Compose<UInt, v2.std.machine.MachineWidth<std.bit.Word64>>
+type UInt128 = Compose<UInt, v2.std.machine.MachineWidth<std.bit.Word128>>
 
-type IntPlatform = Compose<Int, MachineWidth<v2.std.machine.PointerWidth>>
-type UIntPlatform = Compose<UInt, MachineWidth<v2.std.machine.PointerWidth>>
+type IntPlatform = Compose<Int, v2.std.machine.MachineWidth<v2.std.machine.PointerWidth>>
+type UIntPlatform = Compose<UInt, v2.std.machine.MachineWidth<v2.std.machine.PointerWidth>>
 
 type IntegerBoundSign
   = IntegerBoundNegative
@@ -314,16 +314,16 @@ type StandardIntegerType
 
 fn integer_standard_integer_type_signedness(standard_integer_type: StandardIntegerType) -> std.integer.Signedness {
   match standard_integer_type {
-    Int128 => Signed
-    Int64 => Signed
-    Int32 => Signed
-    Int16 => Signed
-    Int8 => Signed
-    UInt128 => Unsigned
-    UInt64 => Unsigned
-    UInt32 => Unsigned
-    UInt16 => Unsigned
-    UInt8 => Unsigned
+    Int128 => std.integer.Signed
+    Int64 => std.integer.Signed
+    Int32 => std.integer.Signed
+    Int16 => std.integer.Signed
+    Int8 => std.integer.Signed
+    UInt128 => std.integer.Unsigned
+    UInt64 => std.integer.Unsigned
+    UInt32 => std.integer.Unsigned
+    UInt16 => std.integer.Unsigned
+    UInt8 => std.integer.Unsigned
   }
 }
 
@@ -352,7 +352,7 @@ fn integer_magnitude_upper_bound(magnitude: DecimalMagnitude) -> IntegerInterval
 
 fn integer_machine_interval_spec(signedness: std.integer.Signedness, width_bits: Int) -> IntegerIntervalSpec {
   match signedness {
-    Signed =>
+    std.integer.Signed =>
       integer_interval(
         inclusive_min: integer_concrete_bound(
           sign: IntegerBoundNegative,
@@ -362,7 +362,7 @@ fn integer_machine_interval_spec(signedness: std.integer.Signedness, width_bits:
           magnitude: decimal_nonzero_sub_one(m: integer_pow2_magnitude(exponent: width_bits - 1))
         )
       )
-    Unsigned =>
+    std.integer.Unsigned =>
       integer_interval(
         inclusive_min: integer_concrete_zero(),
         inclusive_max: integer_magnitude_upper_bound(
@@ -395,7 +395,7 @@ fn integer_standard_integer_type_from_node(node: v2.std.node.Node) -> v2.std.dia
     cons: fn(acc, candidate) {
       match acc {
         Accepted { value: _, diagnostics: _ } => acc
-        Rejected { diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: _ } =>
           if node == integer_interval_spec_node(spec: integer_standard_integer_type_interval_spec(standard_integer_type: candidate)) {
             v2.std.diagnostic.Accepted { value: candidate, diagnostics: v2.std.diagnostic.None }
           } else {
@@ -413,8 +413,8 @@ fn integer_pointer_width_bound_compare(
   right_endpoint: IntegerRangeEndpoint
 ) -> std.algebra.Ordering {
   match left_signedness {
-    Signed => match right_signedness {
-      Signed => match left_endpoint {
+    std.integer.Signed => match right_signedness {
+      std.integer.Signed => match left_endpoint {
         IntegerRangeInclusiveMin => match right_endpoint {
           IntegerRangeInclusiveMin => Equal
           IntegerRangeInclusiveMax => Less
@@ -424,11 +424,11 @@ fn integer_pointer_width_bound_compare(
           IntegerRangeInclusiveMax => Equal
         }
       }
-      Unsigned => Less
+      std.integer.Unsigned => Less
     }
-    Unsigned => match right_signedness {
-      Signed => Greater
-      Unsigned => match left_endpoint {
+    std.integer.Unsigned => match right_signedness {
+      std.integer.Signed => Greater
+      std.integer.Unsigned => match left_endpoint {
         IntegerRangeInclusiveMin => match right_endpoint {
           IntegerRangeInclusiveMin => Equal
           IntegerRangeInclusiveMax => Less
@@ -447,11 +447,11 @@ fn integer_concrete_zero_compare_to_pointer_width(
   right_endpoint: IntegerRangeEndpoint
 ) -> std.algebra.Ordering {
   match right_signedness {
-    Signed => match right_endpoint {
+    std.integer.Signed => match right_endpoint {
       IntegerRangeInclusiveMin => Greater
       IntegerRangeInclusiveMax => Less
     }
-    Unsigned => match right_endpoint {
+    std.integer.Unsigned => match right_endpoint {
       IntegerRangeInclusiveMin => Equal
       IntegerRangeInclusiveMax => Less
     }
@@ -464,11 +464,11 @@ fn integer_concrete_bound_compare_to_pointer_width(
   right_endpoint: IntegerRangeEndpoint
 ) -> std.algebra.Ordering {
   match right_signedness {
-    Signed => match right_endpoint {
+    std.integer.Signed => match right_endpoint {
       IntegerRangeInclusiveMin => Greater
       IntegerRangeInclusiveMax => Less
     }
-    Unsigned => match right_endpoint {
+    std.integer.Unsigned => match right_endpoint {
       IntegerRangeInclusiveMin => match left_sign {
         IntegerBoundNegative => Less
         IntegerBoundNonNegative => Greater
@@ -602,9 +602,9 @@ fn integer_interval_spec_node_contains(container: v2.std.node.Node, contained: v
             container: integer_standard_integer_type_interval_spec(standard_integer_type: decoded_container),
             contained: decoded_contained
           )
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 fn integer_interval(
@@ -636,56 +636,56 @@ fn integer_pointer_width_bound(
 }
 
 fn int8_interval_spec() -> IntegerIntervalSpec {
-  integer_machine_interval_spec(signedness: Signed, width_bits: 8)
+  integer_machine_interval_spec(signedness: std.integer.Signed, width_bits: 8)
 }
 
 fn int16_interval_spec() -> IntegerIntervalSpec {
-  integer_machine_interval_spec(signedness: Signed, width_bits: 16)
+  integer_machine_interval_spec(signedness: std.integer.Signed, width_bits: 16)
 }
 
 fn int32_interval_spec() -> IntegerIntervalSpec {
-  integer_machine_interval_spec(signedness: Signed, width_bits: 32)
+  integer_machine_interval_spec(signedness: std.integer.Signed, width_bits: 32)
 }
 
 fn int64_interval_spec() -> IntegerIntervalSpec {
-  integer_machine_interval_spec(signedness: Signed, width_bits: 64)
+  integer_machine_interval_spec(signedness: std.integer.Signed, width_bits: 64)
 }
 
 fn int128_interval_spec() -> IntegerIntervalSpec {
-  integer_machine_interval_spec(signedness: Signed, width_bits: 128)
+  integer_machine_interval_spec(signedness: std.integer.Signed, width_bits: 128)
 }
 
 fn uint8_interval_spec() -> IntegerIntervalSpec {
-  integer_machine_interval_spec(signedness: Unsigned, width_bits: 8)
+  integer_machine_interval_spec(signedness: std.integer.Unsigned, width_bits: 8)
 }
 
 fn uint16_interval_spec() -> IntegerIntervalSpec {
-  integer_machine_interval_spec(signedness: Unsigned, width_bits: 16)
+  integer_machine_interval_spec(signedness: std.integer.Unsigned, width_bits: 16)
 }
 
 fn uint32_interval_spec() -> IntegerIntervalSpec {
-  integer_machine_interval_spec(signedness: Unsigned, width_bits: 32)
+  integer_machine_interval_spec(signedness: std.integer.Unsigned, width_bits: 32)
 }
 
 fn uint64_interval_spec() -> IntegerIntervalSpec {
-  integer_machine_interval_spec(signedness: Unsigned, width_bits: 64)
+  integer_machine_interval_spec(signedness: std.integer.Unsigned, width_bits: 64)
 }
 
 fn uint128_interval_spec() -> IntegerIntervalSpec {
-  integer_machine_interval_spec(signedness: Unsigned, width_bits: 128)
+  integer_machine_interval_spec(signedness: std.integer.Unsigned, width_bits: 128)
 }
 
 fn int_platform_interval_spec() -> IntegerIntervalSpec {
   integer_interval(
-    inclusive_min: integer_pointer_width_bound(signedness: Signed, endpoint: IntegerRangeInclusiveMin),
-    inclusive_max: integer_pointer_width_bound(signedness: Signed, endpoint: IntegerRangeInclusiveMax)
+    inclusive_min: integer_pointer_width_bound(signedness: std.integer.Signed, endpoint: IntegerRangeInclusiveMin),
+    inclusive_max: integer_pointer_width_bound(signedness: std.integer.Signed, endpoint: IntegerRangeInclusiveMax)
   )
 }
 
 fn uint_platform_interval_spec() -> IntegerIntervalSpec {
   integer_interval(
-    inclusive_min: integer_pointer_width_bound(signedness: Unsigned, endpoint: IntegerRangeInclusiveMin),
-    inclusive_max: integer_pointer_width_bound(signedness: Unsigned, endpoint: IntegerRangeInclusiveMax)
+    inclusive_min: integer_pointer_width_bound(signedness: std.integer.Unsigned, endpoint: IntegerRangeInclusiveMin),
+    inclusive_max: integer_pointer_width_bound(signedness: std.integer.Unsigned, endpoint: IntegerRangeInclusiveMax)
   )
 }
 
@@ -698,7 +698,7 @@ fn integer_inhabitant_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
 }
 
 fn integer_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: Named { name: name }, target: target }
+  v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: target }
 }
 
 fn integer_bound_sign_node(sign: IntegerBoundSign) -> v2.std.node.Node {
@@ -710,8 +710,8 @@ fn integer_bound_sign_node(sign: IntegerBoundSign) -> v2.std.node.Node {
 
 fn integer_signedness_node(signedness: std.integer.Signedness) -> v2.std.node.Node {
   match signedness {
-    Signed => integer_inhabitant_atom(id: ^integer_tag_signed)
-    Unsigned => integer_inhabitant_atom(id: ^integer_tag_unsigned)
+    std.integer.Signed => integer_inhabitant_atom(id: ^integer_tag_signed)
+    std.integer.Unsigned => integer_inhabitant_atom(id: ^integer_tag_unsigned)
   }
 }
 
@@ -980,7 +980,7 @@ fn int_mod(a: Int, b: Int, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Out
   }
 }
 
-fn integer_char_code_to_decimal_digit_optional(c: std.types.Char) -> Optional<DecimalDigit> {
+fn integer_char_code_to_decimal_digit_optional(c: std.types.Char) -> v2.std.optional.Optional<DecimalDigit> {
   if c == 48 {
     optional_present(value: D0)
   } else if c == 49 {
@@ -1020,12 +1020,12 @@ fn integer_decimal_digits_snoc(
 fn integer_string_to_decimal_digits_step(
   s: String,
   acc: std.algebra.FreeMonoid<DecimalDigit>
-) -> Optional<std.algebra.FreeMonoid<DecimalDigit>> {
+) -> v2.std.optional.Optional<std.algebra.FreeMonoid<DecimalDigit>> {
   match v2.std.text.string_head(s: s) {
     CharAbsent => optional_present(value: acc)
     CharFound { value: c } =>
       match integer_char_code_to_decimal_digit_optional(c: c) {
-        Present { value: d } =>
+        v2.std.optional.Present { value: d } =>
           match v2.std.text.string_tail(s: s) {
             TailFound { tail: rest } =>
               integer_string_to_decimal_digits_step(
@@ -1034,12 +1034,12 @@ fn integer_string_to_decimal_digits_step(
               )
             TailAbsent => optional_absent()
           }
-        Absent => optional_absent()
+        v2.std.optional.Absent => optional_absent()
       }
   }
 }
 
-fn integer_string_to_decimal_digits_optional(s: String) -> Optional<std.algebra.FreeMonoid<DecimalDigit>> {
+fn integer_string_to_decimal_digits_optional(s: String) -> v2.std.optional.Optional<std.algebra.FreeMonoid<DecimalDigit>> {
   integer_string_to_decimal_digits_step(s: s, acc: std.algebra.Empty)
 }
 
@@ -1061,15 +1061,15 @@ fn integer_decimal_magnitude_to_int(m: DecimalMagnitude) -> Int {
   }
 }
 
-fn integer_lexeme_to_int_optional(lexeme: String) -> Optional<Int> {
+fn integer_lexeme_to_int_optional(lexeme: String) -> v2.std.optional.Optional<Int> {
   match integer_string_to_decimal_digits_optional(s: lexeme) {
-    Present { value: digits } =>
+    v2.std.optional.Present { value: digits } =>
       optional_present(
         value: integer_decimal_magnitude_to_int(
           m: decimal_digits_to_magnitude(digits: digits)
         )
       )
-    Absent => optional_absent()
+    v2.std.optional.Absent => optional_absent()
   }
 }
 
@@ -1122,8 +1122,8 @@ fn integer_int_to_signed_i32_le_bytes(value: Int) -> List<std.bit.Byte> {
 
 fn integer_byte_bit_at(b: std.bit.Byte, shift: Int) -> Int {
   match list_at_optional(xs: b.bits, index: shift) {
-    Present { value: bit } => if bit { 1 } else { 0 }
-    Absent => 0
+    v2.std.optional.Present { value: bit } => if bit { 1 } else { 0 }
+    v2.std.optional.Absent => 0
   }
 }
 
@@ -1167,7 +1167,7 @@ fn integer_signed_i32_le_bytes_to_int_value(b0: Int, b1: Int, b2: Int, b3: Int) 
   }
 }
 
-fn integer_decimal_digit_from_tag_atom(id: v2.std.node.Symbol) -> Optional<DecimalDigit> {
+fn integer_decimal_digit_from_tag_atom(id: v2.std.node.Symbol) -> v2.std.optional.Optional<DecimalDigit> {
   if id == ^integer_tag_digit_0 {
     optional_present(value: D0)
   } else if id == ^integer_tag_digit_1 {
@@ -1193,7 +1193,7 @@ fn integer_decimal_digit_from_tag_atom(id: v2.std.node.Symbol) -> Optional<Decim
   }
 }
 
-fn integer_decimal_digit_from_node_optional(node: v2.std.node.Node) -> Optional<DecimalDigit> {
+fn integer_decimal_digit_from_node_optional(node: v2.std.node.Node) -> v2.std.optional.Optional<DecimalDigit> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
       integer_decimal_digit_from_tag_atom(id: id)
@@ -1201,39 +1201,39 @@ fn integer_decimal_digit_from_node_optional(node: v2.std.node.Node) -> Optional<
   }
 }
 
-fn integer_fold_list_node_digits_optional(node: v2.std.node.Node) -> Optional<std.algebra.FreeMonoid<DecimalDigit>> {
+fn integer_fold_list_node_digits_optional(node: v2.std.node.Node) -> v2.std.optional.Optional<std.algebra.FreeMonoid<DecimalDigit>> {
   if is_empty_conj_root(n: node) {
     optional_present(value: std.algebra.Empty)
   } else {
     match find_named_child(root: node, name: ^fold_list_node_head) {
       Accepted { value: head_node, diagnostics: _ } =>
         match integer_decimal_digit_from_node_optional(node: head_node) {
-          Present { value: digit } =>
+          v2.std.optional.Present { value: digit } =>
             match find_named_child(root: node, name: ^fold_list_node_tail) {
               Accepted { value: tail_node, diagnostics: _ } =>
                 match integer_fold_list_node_digits_optional(node: tail_node) {
-                  Present { value: tail_digits } =>
+                  v2.std.optional.Present { value: tail_digits } =>
                     optional_present(value: std.algebra.Cons { head: digit, tail: tail_digits })
-                  Absent => optional_absent()
+                  v2.std.optional.Absent => optional_absent()
                 }
-              Rejected { diagnostics: _ } => optional_absent()
+              v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
             }
-          Absent => optional_absent()
+          v2.std.optional.Absent => optional_absent()
         }
-      Rejected { diagnostics: _ } => optional_absent()
+      v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
     }
   }
 }
 
 fn integer_decimal_magnitude_node_to_int(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Int> {
   match integer_fold_list_node_digits_optional(node: node) {
-    Present { value: digits } =>
+    v2.std.optional.Present { value: digits } =>
       outcome_accepted(
         value: integer_decimal_magnitude_to_int(
           m: decimal_digits_to_magnitude(digits: digits)
         )
       )
-    Absent =>
+    v2.std.optional.Absent =>
       outcome_rejected(
         d: integer_standard_integer_type_decode_invalid_diagnostic(source_carrier: node)
       )
@@ -1243,13 +1243,13 @@ fn integer_decimal_magnitude_node_to_int(node: v2.std.node.Node) -> v2.std.diagn
 fn integer_signed_i32_le_bytes_to_int(bytes: List<std.bit.Byte>) -> v2.std.diagnostic.Outcome<Int> {
   if length(xs: bytes) == 4 {
     match list_at_optional(xs: bytes, index: 0) {
-      Present { value: b0 } =>
+      v2.std.optional.Present { value: b0 } =>
         match list_at_optional(xs: bytes, index: 1) {
-          Present { value: b1 } =>
+          v2.std.optional.Present { value: b1 } =>
             match list_at_optional(xs: bytes, index: 2) {
-              Present { value: b2 } =>
+              v2.std.optional.Present { value: b2 } =>
                 match list_at_optional(xs: bytes, index: 3) {
-                  Present { value: b3 } =>
+                  v2.std.optional.Present { value: b3 } =>
                     outcome_accepted(
                       value: integer_signed_i32_le_bytes_to_int_value(
                         b0: integer_u8_from_byte(b: b0),
@@ -1258,16 +1258,16 @@ fn integer_signed_i32_le_bytes_to_int(bytes: List<std.bit.Byte>) -> v2.std.diagn
                         b3: integer_u8_from_byte(b: b3)
                       )
                     )
-                  Absent =>
+                  v2.std.optional.Absent =>
                     outcome_rejected(d: integer_signed_i32_le_decode_invalid_diagnostic())
                 }
-              Absent =>
+              v2.std.optional.Absent =>
                 outcome_rejected(d: integer_signed_i32_le_decode_invalid_diagnostic())
             }
-          Absent =>
+          v2.std.optional.Absent =>
             outcome_rejected(d: integer_signed_i32_le_decode_invalid_diagnostic())
         }
-      Absent =>
+      v2.std.optional.Absent =>
         outcome_rejected(d: integer_signed_i32_le_decode_invalid_diagnostic())
     }
   } else {

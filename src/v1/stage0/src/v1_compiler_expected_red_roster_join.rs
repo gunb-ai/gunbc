@@ -5,6 +5,7 @@ use self::BudgetVerdictCompletion::*;
 use self::ExpectedRedJoinDisposition::*;
 use self::HermeticEffectGround::*;
 use self::WitnessEvalVerdict::*;
+pub use crate::std_types::List;
 pub use crate::v1_compiler_emit_core_support::to_string;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -275,11 +276,11 @@ pub fn classify_verdict(verdict: Rc<WitnessEvalVerdict>) -> Rc<VerdictClassifica
                                 v1_rt::concat("exceeded ".to_string(), kind.clone()),
                                 " budget (".to_string(),
                             ),
-                            (elapsed_ms.clone()).to_string(),
+                            crate::v1_compiler_emit_core_support::to_string(elapsed_ms.clone()),
                         ),
                         "ms elapsed against ".to_string(),
                     ),
-                    (budget_ms.clone()).to_string(),
+                    crate::v1_compiler_emit_core_support::to_string(budget_ms.clone()),
                 ),
                 "ms; interrupted — no subject verdict)".to_string(),
             ),
@@ -300,11 +301,11 @@ pub fn classify_verdict(verdict: Rc<WitnessEvalVerdict>) -> Rc<VerdictClassifica
                                 v1_rt::concat("passed then exceeded ".to_string(), kind.clone()),
                                 " budget (".to_string(),
                             ),
-                            (elapsed_ms.clone()).to_string(),
+                            crate::v1_compiler_emit_core_support::to_string(elapsed_ms.clone()),
                         ),
                         "ms against ".to_string(),
                     ),
-                    (budget_ms.clone()).to_string(),
+                    crate::v1_compiler_emit_core_support::to_string(budget_ms.clone()),
                 ),
                 "ms; stale roster row — prune enrollment, cost debt is separate)".to_string(),
             ),

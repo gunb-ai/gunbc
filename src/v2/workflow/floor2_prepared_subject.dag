@@ -59,7 +59,7 @@ type WitnessSite {
   entry: String
   function: String
   module_path: String
-  reads_live_tree: Bool
+  reads_live_tree: v2.std.logic.Bool
 }
 
 // WITNESS IDENTITY IS `module.function`, NEVER the bare function name.
@@ -122,7 +122,7 @@ fn floor_execution_key(
   }
 }
 
-fn floor_execution_key_is_one_prepared_subject(key: FloorExecutionKey) -> Bool {
+fn floor_execution_key_is_one_prepared_subject(key: FloorExecutionKey) -> v2.std.logic.Bool {
   match key {
     OnePreparedSubjectKey { subject: _ } => true
     EntryMajorUntilFrontierRetires => false

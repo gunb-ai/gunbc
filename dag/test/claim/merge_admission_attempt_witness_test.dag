@@ -57,7 +57,7 @@ fn receipt_fx_at(attempt: gunbc.merge_admission_subject.WalkAttemptId, head: std
     tested_head_sha: head,
     tested_base_commit_sha: base_commit,
     gate_roster_hash: roster_fx(),
-    conclusion: Success,
+    conclusion: extdeps.github.checks.Success,
   }
 }
 
@@ -84,7 +84,7 @@ fn synthetic_changed_roster_receipt() -> gunbc.merge_admission.MergeAdmissionRec
     tested_head_sha: head_sha_fx,
     tested_base_commit_sha: base_commit_fx,
     gate_roster_hash: synthetic_changed_roster_hash(),
-    conclusion: Success,
+    conclusion: extdeps.github.checks.Success,
   }
 }
 
@@ -130,7 +130,7 @@ test fn current_roster_receipt_admits_against_live_roster() -> Bool {
     tested_head_sha: head_sha_fx,
     tested_base_commit_sha: base_commit_fx,
     gate_roster_hash: current_gate_roster_hash,
-    conclusion: Success,
+    conclusion: extdeps.github.checks.Success,
   }
   match classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
@@ -174,7 +174,7 @@ test fn wrong_attempt_precedes_every_other_refusal() -> Bool {
     tested_head_sha: other_head_sha_fx,
     tested_base_commit_sha: other_base_commit_fx,
     gate_roster_hash: merge_admission_witness_gate_roster(label: "roster-stale"),
-    conclusion: Failure,
+    conclusion: extdeps.github.checks.Failure,
   }
   match classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
@@ -276,7 +276,7 @@ test fn wire_v2_roundtrips_all_fields_with_pr() -> Bool {
         && (parsed.tested_base_commit_sha == base_commit_fx)
         && (parsed.gate_roster_hash == roster_fx())
         && match parsed.pr_number { Present { value: n } => n == 7470  Absent => false }
-        && match parsed.conclusion { Success => true  _ => false }
+        && match parsed.conclusion { extdeps.github.checks.Success => true  _ => false }
     Absent => false
   }
 }
@@ -288,7 +288,7 @@ test fn wire_v2_roundtrips_without_pr() -> Bool {
     tested_head_sha: head_sha_fx,
     tested_base_commit_sha: base_commit_fx,
     gate_roster_hash: roster_fx(),
-    conclusion: Success,
+    conclusion: extdeps.github.checks.Success,
   }
   match parse_receipt_wire_v2(text: render_receipt_wire_v2(receipt: r)) {
     Present { value: parsed } =>
@@ -302,7 +302,7 @@ test fn v1_wire_refused_by_v2_parser() -> Bool {
     pr_number: Present { value: 7470 },
     head_sha: head_sha_fx,
     base_tree_hash: base_tree_fx(),
-    conclusion: Success,
+    conclusion: extdeps.github.checks.Success,
   ))
   match parse_receipt_wire_v2(text: v1) {
     Present { value: _ } => false
@@ -327,7 +327,7 @@ test fn receipt_wire_with_a_malformed_pr_line_refuses_the_whole_receipt() -> Boo
     tested_head_sha: head_sha_fx,
     tested_base_commit_sha: base_commit_fx,
     gate_roster_hash: roster_fx(),
-    conclusion: Success,
+    conclusion: extdeps.github.checks.Success,
   })
   match parse_receipt_wire_v2(text: concat(no_pr, "\nnot-a-number")) {
     Present { value: _ } => false

@@ -5,7 +5,7 @@ type SubjectJudgment
   = BodyJudged { verdict: Witness<v2.lens.cost.SymbolicCost> }
   | BodyUnavailable
 
-fn node_contains_computation(n: v2.std.node.Node) -> Bool {
+fn node_contains_computation(n: v2.std.node.Node) -> v2.std.logic.Bool {
   match n.kind {
     ComputationNode { behavior: _ } => true
     TypeNode { connective: _ } =>
@@ -23,20 +23,20 @@ fn judge_subject_node(n: v2.std.node.Node) -> SubjectJudgment {
   }
 }
 
-fn subject_is_body_unavailable(fact: v2.std.decl_index.DeclFact) -> Bool {
+fn subject_is_body_unavailable(fact: v2.std.decl_index.DeclFact) -> v2.std.logic.Bool {
   match judge_subject_node(n: fact.node) {
     BodyJudged { verdict: _ } => false
     BodyUnavailable => true
   }
 }
 
-fn fn_item_count_of(facts: List<v2.std.decl_index.DeclFact>) -> Int {
+fn fn_item_count_of(facts: List<v2.std.decl_index.DeclFact>) -> v2.std.integer.Int {
   fold(facts, init: 0, f: fn(acc, fact) {
     if decl_facts_is_fn_like(kind: fact.kind) { acc + 1 } else { acc }
   })
 }
 
-fn body_unavailable_count_of(facts: List<v2.std.decl_index.DeclFact>) -> Int {
+fn body_unavailable_count_of(facts: List<v2.std.decl_index.DeclFact>) -> v2.std.integer.Int {
   fold(facts, init: 0, f: fn(acc, fact) {
     if decl_facts_is_fn_like(kind: fact.kind) && subject_is_body_unavailable(fact: fact) {
       acc + 1
@@ -46,7 +46,7 @@ fn body_unavailable_count_of(facts: List<v2.std.decl_index.DeclFact>) -> Int {
   })
 }
 
-fn body_judged_count_of(facts: List<v2.std.decl_index.DeclFact>) -> Int {
+fn body_judged_count_of(facts: List<v2.std.decl_index.DeclFact>) -> v2.std.integer.Int {
   fn_item_count_of(facts: facts) - body_unavailable_count_of(facts: facts)
 }
 
@@ -65,17 +65,17 @@ fn discovered_subject_names(facts: List<v2.std.decl_index.DeclFact>) -> v2.lens.
   v2.lens.enforcement.vocab.SubjectRoster { entries: discovered_entries }
 }
 
-fn string_starts_with(s: String, prefix: String) -> Bool {
+fn string_starts_with(s: String, prefix: String) -> v2.std.logic.Bool {
   s.starts_with(prefix: prefix)
 }
 
-fn fact_is_unavailable_under_root(fact: v2.std.decl_index.DeclFact, root: String) -> Bool {
+fn fact_is_unavailable_under_root(fact: v2.std.decl_index.DeclFact, root: String) -> v2.std.logic.Bool {
   decl_facts_is_fn_like(kind: fact.kind)
     && string_starts_with(s: fact.rel_path, prefix: concat(root, "/"))
     && subject_is_body_unavailable(fact: fact)
 }
 
-fn root_has_body_unavailable_subject(root: String, facts: List<v2.std.decl_index.DeclFact>) -> Bool {
+fn root_has_body_unavailable_subject(root: String, facts: List<v2.std.decl_index.DeclFact>) -> v2.std.logic.Bool {
   fold(facts, init: false, f: fn(acc, fact) {
     acc || fact_is_unavailable_under_root(fact: fact, root: root)
   })
@@ -130,7 +130,7 @@ fn consumer_enrolled_for(
   }
 }
 
-fn lens_contract_is_unbound(c: v2.lens.enforcement.contract.LensContract) -> Bool {
+fn lens_contract_is_unbound(c: v2.lens.enforcement.contract.LensContract) -> v2.std.logic.Bool {
   consumer_kind_eq(
     a: consumer_enrolled_for(binding: c.consumer_witness, ci_entries: [], prepush_entries: []),
     b: std.witness_admission.NoConsumer
@@ -149,35 +149,35 @@ fn consumer_entry_identity_for(binding: v2.lens.enforcement.vocab.ConsumerWitnes
   }
 }
 
-data enforcement_red_probe_body_leaf: Node = v2.std.node.Node {
+data enforcement_red_probe_body_leaf: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^enforcement_red_probe_body } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data enforcement_red_probe_measure_leaf: Node = v2.std.node.Node {
+data enforcement_red_probe_measure_leaf: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^enforcement_red_probe_measure } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data enforcement_red_probe_extra_leaf: Node = v2.std.node.Node {
+data enforcement_red_probe_extra_leaf: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^enforcement_red_probe_extra } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data cost_red_control_probe: Node = v2.std.node.Node {
+data cost_red_control_probe: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.ComputationNode { behavior: Loop },
   children: [
     v2.std.node.Edge { label: Positional, target: enforcement_red_probe_body_leaf },
-    v2.std.node.Edge { label: Named { name: ^loop_bound_edge }, target: enforcement_red_probe_measure_leaf },
-    v2.std.node.Edge { label: Named { name: ^enforcement_red_probe_extra }, target: enforcement_red_probe_extra_leaf }
+    v2.std.node.Edge { label: v2.std.node.Named { name: ^loop_bound_edge }, target: enforcement_red_probe_measure_leaf },
+    v2.std.node.Edge { label: v2.std.node.Named { name: ^enforcement_red_probe_extra }, target: enforcement_red_probe_extra_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data cost_well_formed_probe: Node = v2.std.node.Node {
+data cost_well_formed_probe: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^enforcement_well_formed_probe } },
   children: [],
   occurrence_id: SyntheticOccurrence
@@ -198,7 +198,7 @@ fn red_control_status_for_contract(contract: v2.lens.enforcement.contract.LensCo
   }
 }
 
-fn fact_is_self_subject(fact: v2.std.decl_index.DeclFact, module_prefix: String) -> Bool {
+fn fact_is_self_subject(fact: v2.std.decl_index.DeclFact, module_prefix: String) -> v2.std.logic.Bool {
   decl_facts_is_fn_like(kind: fact.kind)
     && string_starts_with(s: fact.qualified_name, prefix: module_prefix)
 }

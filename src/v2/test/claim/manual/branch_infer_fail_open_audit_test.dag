@@ -2,7 +2,7 @@ module v2.test.manual.branch_infer_fail_open_audit
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn branch_infer_fail_open_audit_body() -> Node {
+fn branch_infer_fail_open_audit_body() -> v2.std.node.Node {
   dag_pick_if_body_from_arms(
     condition: dag_type_atom_node(identity: ^dag_token_kw_true),
     then_arm: dag_type_atom_node(identity: ^dag_pick_lit_one),
@@ -10,25 +10,25 @@ fn branch_infer_fail_open_audit_body() -> Node {
   )
 }
 
-test fn branch_infer_fail_open_audit_rejects_holds() -> Bool {
+test fn branch_infer_fail_open_audit_rejects_holds() -> v2.std.logic.Bool {
   match infer(tree: branch_infer_fail_open_audit_body()) {
     Accepted { value: _, diagnostics: d } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
     && !branch_infer_fail_open_audit_silent_accept_holds()
 }
 
-fn branch_infer_fail_open_audit_silent_accept_holds() -> Bool {
+fn branch_infer_fail_open_audit_silent_accept_holds() -> v2.std.logic.Bool {
   match infer(tree: branch_infer_fail_open_audit_body()) {
     Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn branch_infer_fail_open_audit_literal_arm_accepts_holds() -> Bool {
+test fn branch_infer_fail_open_audit_literal_arm_accepts_holds() -> v2.std.logic.Bool {
   match infer(tree: dag_pick_if_body_fixture) {
     Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

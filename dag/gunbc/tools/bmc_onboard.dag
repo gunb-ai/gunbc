@@ -97,7 +97,7 @@ func bmc_rotate_credential(plan: gunbc.bmc_onboarding.BmcOnboardingPlan, new_cre
 
   verify = redfish.Http.GetSystem(bmc_host: host, username: account, password: new_credential)
   return if verify.success {
-    ExitSuccess
+    std.process.ExitSuccess
   } else {
     exit_failure(reason: concat("rotate: reauth with new credential rejected: ", verify.body))
   }
@@ -234,7 +234,7 @@ func bmc_converge_credential(plan: gunbc.bmc_onboarding.BmcOnboardingPlan, token
   probe = bmc_probe_credential_phase(plan: plan, token_source: token_source)
   match probe {
     FactoryCredentialActive => return bmc_store_and_rotate(plan: plan, token_source: token_source, credential: mint_bmc_credential())
-    RotatedCredentialActive => return ExitSuccess
+    RotatedCredentialActive => return std.process.ExitSuccess
     CredentialAccessUpsertRequired { plan: upsert_plan } =>
       return exit_failure(
         reason: access_token_upsert_required_reason(plan: upsert_plan),

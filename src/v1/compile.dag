@@ -204,7 +204,7 @@ fn dag_emit_check_optional_ref_target(value: v1.std.core.Node?, key_to_id: Map<S
 
 fn dag_emit_check_inferred_ref_target(value: InferredNode?, key_to_id: Map<String, String>) -> List<v1.std.core.ErrorNode> {
   match value {
-    Present { value: Resolved { node: n } } => dag_emit_check_ref_target(node: n, key_to_id: key_to_id)
+    Present { value: v1.std.core.Resolved { node: n } } => dag_emit_check_ref_target(node: n, key_to_id: key_to_id)
     _ => []
   }
 }
@@ -689,7 +689,7 @@ fn serialize_expr_data(expr_node: v1.std.core.Node, source_indices: Map<String, 
 
 fn serialize_inferred_node_ref(inferred: InferredNode, key_to_id: Map<String, String>) -> String {
   match inferred {
-    Resolved { node: node } =>
+    v1.std.core.Resolved { node: node } =>
       concat("{\"kind\": \"Resolved\", \"node\": ", serialize_node_ref(node: node, key_to_id: key_to_id), "}")
     CompilerError { message: message, span: span } =>
       concat(

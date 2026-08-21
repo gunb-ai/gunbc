@@ -93,7 +93,7 @@ fn parallelism_fact(tree: v2.compiler.inferred_tree.InferredTree, dependencies: 
   }
 }
 
-fn parallelism_relation_unresolved(relation: v2.lens.common.algebraic_composition.ParallelismRelation) -> Bool {
+fn parallelism_relation_unresolved(relation: v2.lens.common.algebraic_composition.ParallelismRelation) -> v2.std.logic.Bool {
   match relation {
     UnresolvedCoupling { diagnostic: _ } => true
     DataDependent => false
@@ -102,13 +102,13 @@ fn parallelism_relation_unresolved(relation: v2.lens.common.algebraic_compositio
   }
 }
 
-fn parallelism_fact_unresolved(fact: ParallelismFact) -> Bool {
+fn parallelism_fact_unresolved(fact: ParallelismFact) -> v2.std.logic.Bool {
   fold(fact.dependencies, init: false, f: fn(acc, dep) {
     acc || parallelism_relation_unresolved(relation: dep.classification)
   })
 }
 
-fn parallelism_first_unresolved_coupling_diagnostic(fact: ParallelismFact) -> Optional<v2.std.diagnostic.Diagnostic> {
+fn parallelism_first_unresolved_coupling_diagnostic(fact: ParallelismFact) -> v2.std.optional.Optional<v2.std.diagnostic.Diagnostic> {
   fold(fact.dependencies, init: optional_absent(), f: fn(acc, dep) {
     optional_prefer_first_present(
       left: acc,
@@ -135,7 +135,7 @@ fn parallelism_witness(tree: v2.compiler.inferred_tree.InferredTree, dependencie
   }
 }
 
-fn parallelism_relation_eq(a: v2.lens.common.algebraic_composition.ParallelismRelation, b: v2.lens.common.algebraic_composition.ParallelismRelation) -> Bool {
+fn parallelism_relation_eq(a: v2.lens.common.algebraic_composition.ParallelismRelation, b: v2.lens.common.algebraic_composition.ParallelismRelation) -> v2.std.logic.Bool {
   match a {
     DataDependent => match b {
       DataDependent => true
@@ -159,11 +159,11 @@ fn parallelism_relation_eq(a: v2.lens.common.algebraic_composition.ParallelismRe
 fn parallelism_classified_eq(
   a: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.ParallelismRelation>,
   b: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.ParallelismRelation>
-) -> Bool {
+) -> v2.std.logic.Bool {
   classified_dependency_view_eq(a: a, b: b, classification_eq: parallelism_relation_eq)
 }
 
-fn parallelism_fact_eq(a: ParallelismFact, b: ParallelismFact) -> Bool {
+fn parallelism_fact_eq(a: ParallelismFact, b: ParallelismFact) -> v2.std.logic.Bool {
   bag_eq(xs: a.dependencies, ys: b.dependencies, eq: parallelism_classified_eq)
 }
 

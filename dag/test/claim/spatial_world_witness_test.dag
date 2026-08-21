@@ -25,15 +25,15 @@ fn rect(x0: Int, y0: Int, x1: Int, y1: Int) -> std.orthogonal_topology.EnclosedS
     OrthogonalReady { value: l } =>
       match orthogonal_prism3(footprint: l, low: 0, high: 2400) {
         OrthogonalRefused { cause: _ } => none
-        OrthogonalReady { value: pr } => Present { value: enclosed_space(shell: closed_shell_of_prism(prism: pr)) }
+        OrthogonalReady { value: pr } => v2.std.optional.Present { value: enclosed_space(shell: closed_shell_of_prism(prism: pr)) }
       }
   }
 }
 
 fn placed(name: String, x0: Int, y0: Int, x1: Int, y1: Int) -> product.spatial_world.PlacedSpace? {
   match test.claim.spatial_world_witness.rect(x0: x0, y0: y0, x1: x1, y1: y1) {
-    Absent => none
-    Present { value: s } => Present { value: product.spatial_world.PlacedSpace { identity: (name as product.placement_supply.RoomIdentity), space: s } }
+    v2.std.optional.Absent => none
+    v2.std.optional.Present { value: s } => v2.std.optional.Present { value: product.spatial_world.PlacedSpace { identity: (name as product.placement_supply.RoomIdentity), space: s } }
   }
 }
 
@@ -42,11 +42,11 @@ fn placed(name: String, x0: Int, y0: Int, x1: Int, y1: Int) -> product.spatial_w
 // makes a claim pass or fail for a reason unrelated to what it tests.
 fn rooms_of(a: product.spatial_world.PlacedSpace?, b: product.spatial_world.PlacedSpace?) -> List<product.spatial_world.PlacedSpace>? {
   match a {
-    Absent => none
-    Present { value: pa } =>
+    v2.std.optional.Absent => none
+    v2.std.optional.Present { value: pa } =>
       match b {
-        Absent => none
-        Present { value: pb } => Present { value: [pa, pb] }
+        v2.std.optional.Absent => none
+        v2.std.optional.Present { value: pb } => v2.std.optional.Present { value: [pa, pb] }
       }
   }
 }
@@ -56,11 +56,11 @@ fn hall() -> product.spatial_world.PlacedSpace? { test.claim.spatial_world_witne
 
 fn two_room_world() -> product.spatial_world.World? {
   match rooms_of(a: kitchen(), b: hall()) {
-    Absent => none
-    Present { value: rooms } =>
+    v2.std.optional.Absent => none
+    v2.std.optional.Present { value: rooms } =>
       match world(rooms: rooms) {
         WorldRefused { cause: _ } => none
-        WorldReady { value: w } => Present { value: w }
+        WorldReady { value: w } => v2.std.optional.Present { value: w }
       }
   }
 }
@@ -74,8 +74,8 @@ fn volume_of(w: product.spatial_world.World) -> Int {
 
 test fn a_world_joins_identity_to_geometry_and_sums_its_rooms() -> Bool {
   match test.claim.spatial_world_witness.two_room_world() {
-    Absent => false
-    Present { value: w } => world_room_count(w: w) == 2 && test.claim.spatial_world_witness.volume_of(w: w) == 2 * 9000000 * 2400
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: w } => world_room_count(w: w) == 2 && test.claim.spatial_world_witness.volume_of(w: w) == 2 * 9000000 * 2400
   }
 }
 
@@ -84,8 +84,8 @@ test fn a_world_joins_identity_to_geometry_and_sums_its_rooms() -> Bool {
 // shapes are legal on their own.
 test fn duplicate_room_identity_refuses() -> Bool {
   match rooms_of(a: kitchen(), b: test.claim.spatial_world_witness.placed(name: "kitchen", x0: 3000, y0: 0, x1: 6000, y1: 3000)) {
-    Absent => false
-    Present { value: rooms } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: rooms } =>
       match world(rooms: rooms) {
         WorldReady { value: _ } => false
         WorldRefused { cause: c } =>
@@ -98,8 +98,8 @@ test fn duplicate_room_identity_refuses() -> Bool {
 // mint and reported with the lower layer's own cause.
 test fn overlapping_rooms_refuse_through_the_geometry_layer() -> Bool {
   match rooms_of(a: kitchen(), b: test.claim.spatial_world_witness.placed(name: "pantry", x0: 1000, y0: 1000, x1: 4000, y1: 2000)) {
-    Absent => false
-    Present { value: rooms } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: rooms } =>
       match world(rooms: rooms) {
         WorldReady { value: _ } => false
         WorldRefused { cause: c } =>
@@ -124,8 +124,8 @@ fn realized_room_count(v: product.spatial_world.WorldVariant) -> Int {
 
 test fn an_empty_delta_realizes_to_the_base() -> Bool {
   match test.claim.spatial_world_witness.two_room_world() {
-    Absent => false
-    Present { value: base } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: base } =>
       let v = world_variant(base: base, delta: empty_patch())
       realized_room_count(v: v) == 2
         && match realize_variant(v: v) {
@@ -137,11 +137,11 @@ test fn an_empty_delta_realizes_to_the_base() -> Bool {
 
 test fn adding_a_room_through_a_delta_extends_the_world_and_leaves_the_base_alone() -> Bool {
   match test.claim.spatial_world_witness.two_room_world() {
-    Absent => false
-    Present { value: base } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: base } =>
       match test.claim.spatial_world_witness.rect(x0: 0, y0: 3000, x1: 3000, y1: 6000) {
-        Absent => false
-        Present { value: study } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: study } =>
           let v = world_variant(
             base: base,
             delta: std.change.KeyedPatch { hunks: [std.change.KeyedDiffAddedHunk { hunk_key: ("study" as product.placement_supply.RoomIdentity), to: study }] },
@@ -156,14 +156,14 @@ test fn adding_a_room_through_a_delta_extends_the_world_and_leaves_the_base_alon
 // overlapping world through the variant path.
 test fn a_delta_that_makes_rooms_overlap_refuses_at_realization() -> Bool {
   match test.claim.spatial_world_witness.two_room_world() {
-    Absent => false
-    Present { value: base } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: base } =>
       match kitchen() {
-        Absent => false
-        Present { value: current } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: current } =>
           match test.claim.spatial_world_witness.rect(x0: 2000, y0: 0, x1: 5000, y1: 3000) {
-            Absent => false
-            Present { value: widened } =>
+            v2.std.optional.Absent => false
+            v2.std.optional.Present { value: widened } =>
               let v = world_variant(
                 base: base,
                 delta: std.change.KeyedPatch { hunks: [std.change.KeyedDiffModifiedHunk {
@@ -190,14 +190,14 @@ test fn a_delta_that_makes_rooms_overlap_refuses_at_realization() -> Bool {
 // upsert collapse discards, and the reason std.change's modified arm carries `from` at all.
 test fn a_delta_computed_against_a_stale_base_refuses() -> Bool {
   match test.claim.spatial_world_witness.two_room_world() {
-    Absent => false
-    Present { value: base } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: base } =>
       match test.claim.spatial_world_witness.rect(x0: 0, y0: 0, x1: 2500, y1: 2500) {
-        Absent => false
-        Present { value: stale_from } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: stale_from } =>
           match test.claim.spatial_world_witness.rect(x0: 0, y0: 0, x1: 2000, y1: 2000) {
-            Absent => false
-            Present { value: to } =>
+            v2.std.optional.Absent => false
+            v2.std.optional.Present { value: to } =>
               let v = world_variant(
                 base: base,
                 delta: std.change.KeyedPatch { hunks: [std.change.KeyedDiffModifiedHunk {
@@ -219,11 +219,11 @@ test fn a_delta_computed_against_a_stale_base_refuses() -> Bool {
 // already there is not a replace. Both would let a delta from another base apply cleanly.
 test fn absent_and_present_targets_refuse_rather_than_absorbing() -> Bool {
   match test.claim.spatial_world_witness.two_room_world() {
-    Absent => false
-    Present { value: base } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: base } =>
       match kitchen() {
-        Absent => false
-        Present { value: k } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: k } =>
           let remove_missing = world_variant(
             base: base,
             delta: std.change.KeyedPatch { hunks: [std.change.KeyedDiffRemovedHunk { hunk_key: ("cellar" as product.placement_supply.RoomIdentity), from: k.space }] },
@@ -251,11 +251,11 @@ test fn absent_and_present_targets_refuse_rather_than_absorbing() -> Bool {
 
 test fn removing_a_room_shrinks_the_realized_world_only() -> Bool {
   match test.claim.spatial_world_witness.two_room_world() {
-    Absent => false
-    Present { value: base } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: base } =>
       match hall() {
-        Absent => false
-        Present { value: h } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: h } =>
           let v = world_variant(
             base: base,
             delta: std.change.KeyedPatch { hunks: [std.change.KeyedDiffRemovedHunk { hunk_key: ("hall" as product.placement_supply.RoomIdentity), from: h.space }] },
@@ -269,14 +269,14 @@ test fn removing_a_room_shrinks_the_realized_world_only() -> Bool {
 // shared and unmodified, which is the property a copy-and-edit representation cannot offer.
 test fn two_variants_over_one_base_do_not_see_each_other() -> Bool {
   match test.claim.spatial_world_witness.two_room_world() {
-    Absent => false
-    Present { value: base } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: base } =>
       match test.claim.spatial_world_witness.rect(x0: 0, y0: 3000, x1: 3000, y1: 6000) {
-        Absent => false
-        Present { value: study } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: study } =>
           match hall() {
-            Absent => false
-            Present { value: h } =>
+            v2.std.optional.Absent => false
+            v2.std.optional.Present { value: h } =>
               let grown = world_variant(base: base, delta: std.change.KeyedPatch { hunks: [std.change.KeyedDiffAddedHunk { hunk_key: ("study" as product.placement_supply.RoomIdentity), to: study }] })
               let shrunk = world_variant(base: base, delta: std.change.KeyedPatch { hunks: [std.change.KeyedDiffRemovedHunk { hunk_key: ("hall" as product.placement_supply.RoomIdentity), from: h.space }] })
               realized_room_count(v: grown) == 3
@@ -293,7 +293,7 @@ fn rect_from(vs: List<std.affine_space.Point2>) -> std.orthogonal_topology.Enclo
     OrthogonalReady { value: l } =>
       match orthogonal_prism3(footprint: l, low: 0, high: 2400) {
         OrthogonalRefused { cause: _ } => none
-        OrthogonalReady { value: pr } => Present { value: enclosed_space(shell: closed_shell_of_prism(prism: pr)) }
+        OrthogonalReady { value: pr } => v2.std.optional.Present { value: enclosed_space(shell: closed_shell_of_prism(prism: pr)) }
       }
   }
 }
@@ -306,17 +306,17 @@ fn corner(x: Int, y: Int) -> std.affine_space.Point2 { point2(frame: test.claim.
 // identical patch was refusable as stale purely for starting at another corner.
 test fn equal_regions_written_from_different_corners_and_windings_are_equal() -> Bool {
   match rect_from(vs: [corner(x: 0, y: 0), corner(x: 3000, y: 0), corner(x: 3000, y: 3000), corner(x: 0, y: 3000)]) {
-    Absent => false
-    Present { value: a } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: a } =>
       match rect_from(vs: [corner(x: 3000, y: 0), corner(x: 3000, y: 3000), corner(x: 0, y: 3000), corner(x: 0, y: 0)]) {
-        Absent => false
-        Present { value: shifted } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: shifted } =>
           match rect_from(vs: [corner(x: 0, y: 3000), corner(x: 3000, y: 3000), corner(x: 3000, y: 0), corner(x: 0, y: 0)]) {
-            Absent => false
-            Present { value: reversed } =>
+            v2.std.optional.Absent => false
+            v2.std.optional.Present { value: reversed } =>
               match rect_from(vs: [corner(x: 0, y: 0), corner(x: 3001, y: 0), corner(x: 3001, y: 3000), corner(x: 0, y: 3000)]) {
-                Absent => false
-                Present { value: moved_vertex } =>
+                v2.std.optional.Absent => false
+                v2.std.optional.Present { value: moved_vertex } =>
                   space_eq(a: a, b: shifted)
                     && space_eq(a: a, b: reversed)
                     && !space_eq(a: a, b: moved_vertex)
@@ -330,20 +330,20 @@ test fn equal_regions_written_from_different_corners_and_windings_are_equal() ->
 // performing an additional ordering change is a change with no hunk behind it.
 test fn modifying_a_room_preserves_the_room_order() -> Bool {
   match rooms_of(a: kitchen(), b: hall()) {
-    Absent => false
-    Present { value: two } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: two } =>
       match test.claim.spatial_world_witness.placed(name: "study", x0: 0, y0: 3000, x1: 3000, y1: 6000) {
-        Absent => false
-        Present { value: st } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: st } =>
           match world(rooms: concat(two, [st])) {
             WorldRefused { cause: _ } => false
             WorldReady { value: base } =>
               match hall() {
-                Absent => false
-                Present { value: h } =>
+                v2.std.optional.Absent => false
+                v2.std.optional.Present { value: h } =>
                   match test.claim.spatial_world_witness.rect(x0: 3000, y0: 0, x1: 5500, y1: 3000) {
-                    Absent => false
-                    Present { value: narrower } =>
+                    v2.std.optional.Absent => false
+                    v2.std.optional.Present { value: narrower } =>
                       let v = world_variant(
                         base: base,
                         delta: std.change.KeyedPatch { hunks: [std.change.KeyedDiffModifiedHunk {
@@ -369,14 +369,14 @@ fn room_names(w: product.spatial_world.World) -> String {
 
 test fn space_equality_is_structural_and_frame_aware() -> Bool {
   match test.claim.spatial_world_witness.rect(x0: 0, y0: 0, x1: 3000, y1: 3000) {
-    Absent => false
-    Present { value: a } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: a } =>
       match test.claim.spatial_world_witness.rect(x0: 0, y0: 0, x1: 3000, y1: 3000) {
-        Absent => false
-        Present { value: b } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: b } =>
           match test.claim.spatial_world_witness.rect(x0: 0, y0: 0, x1: 3001, y1: 3000) {
-            Absent => false
-            Present { value: c } => space_eq(a: a, b: b) && !space_eq(a: a, b: c)
+            v2.std.optional.Absent => false
+            v2.std.optional.Present { value: c } => space_eq(a: a, b: b) && !space_eq(a: a, b: c)
           }
       }
   }

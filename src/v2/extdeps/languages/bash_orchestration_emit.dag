@@ -1,7 +1,7 @@
 module v2.extdeps.languages.bash_orchestration_emit
 
 
-fn bash_orchestration_emit_registry_node() -> Node {
+fn bash_orchestration_emit_registry_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [

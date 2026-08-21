@@ -58,7 +58,7 @@ fn json_object(members: List<JsonKeyValue>) -> JsonValue {
 
 
 fn json_unicode_escape_hex4(cp: Int) -> String {
-  let h = int_to_upper_hex(n: cp)
+  let h = extdeps.numeric.base16.int_to_upper_hex(n: cp)
   let len = h.length()
   if len == 1 { concat("000", h) }
   else if len == 2 { concat("00", h) }

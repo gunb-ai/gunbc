@@ -4,7 +4,7 @@ module v2.test.long.self_host_module_emit_derisk
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data derisk_module_artifact: v2.std.artifact.Artifact = v2.std.artifact.Artifact {
-  kind: SourceFile,
+  kind: v2.std.artifact.SourceFile,
   id: ^derisk_module_artifact,
   file_path: "src/v2/pilot/derisk_pilot.dag"
 }
@@ -30,7 +30,7 @@ fn derisk_module_admission() -> v2.compiler.name_resolve.Admission {
   }
 }
 
-fn derisk_assemble_for(src: String) -> v2.std.diagnostic.Outcome<Node> {
+fn derisk_assemble_for(src: String) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   assemble_program_from_ingest(
     ingest: derisk_ingest_for(src: src),
     admission: derisk_module_admission(),
@@ -38,10 +38,10 @@ fn derisk_assemble_for(src: String) -> v2.std.diagnostic.Outcome<Node> {
   )
 }
 
-fn derisk_assemble_accepts(src: String) -> Bool {
+fn derisk_assemble_accepts(src: String) -> v2.std.logic.Bool {
   match derisk_assemble_for(src: src) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -49,30 +49,30 @@ fn derisk_infer_outcome_for(src: String) -> v2.std.diagnostic.Outcome<v2.compile
   bind_outcome(o: derisk_assemble_for(src: src), f: fn(resolved) { infer(tree: resolved) })
 }
 
-fn derisk_infer_accepts(src: String) -> Bool {
+fn derisk_infer_accepts(src: String) -> v2.std.logic.Bool {
   match derisk_infer_outcome_for(src: src) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn derisk_emit_accepts(src: String) -> Bool {
+fn derisk_emit_accepts(src: String) -> v2.std.logic.Bool {
   match emit_compiler_import_closure_from_ingest(
     ingest: derisk_ingest_for(src: src),
     admission: derisk_module_admission(),
     target: rust_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn self_host_frontier_emit_ownership_miss_accepts() -> Bool {
+test fn self_host_frontier_emit_ownership_miss_accepts() -> v2.std.logic.Bool {
   derisk_emit_accepts(src: v2.test.long.self_host_module_emit_derisk.src_single_arm_match)
     && derisk_infer_accepts(src: v2.test.long.self_host_module_emit_derisk.src_single_arm_match)
 }
 
-test fn self_host_frontier_emit_two_user_types_accepts() -> Bool {
+test fn self_host_frontier_emit_two_user_types_accepts() -> v2.std.logic.Bool {
   derisk_emit_accepts(src: src_two_user_types)
     && derisk_infer_accepts(src: src_two_user_types)
 }
@@ -84,27 +84,27 @@ data src_single_arm_match: String = "module derisk_pilot\n\ntype Flag = On | Off
 data src_two_user_types: String = "module derisk_pilot\n\ntype Flag = On | Off\n\ntype Mode = A | B\n\nfn pick(f: Flag, m: Mode) -> Flag { f }\n"
 data src_multi_arm_match: String = "module derisk_pilot\n\ntype Flag = On | Off\n\nfn flip(f: Flag) -> Flag { match f { On => Off, Off => On } }\n"
 
-test fn self_host_frontier_parse_module_header_holds() -> Bool {
+test fn self_host_frontier_parse_module_header_holds() -> v2.std.logic.Bool {
   derisk_assemble_accepts(src: v2.test.long.self_host_module_emit_derisk.src_module_header)
 }
 
-test fn self_host_frontier_parse_type_decl_holds() -> Bool {
+test fn self_host_frontier_parse_type_decl_holds() -> v2.std.logic.Bool {
   derisk_assemble_accepts(src: v2.test.long.self_host_module_emit_derisk.src_type_decl)
 }
 
-test fn self_host_frontier_parse_fn_simple_body_holds() -> Bool {
+test fn self_host_frontier_parse_fn_simple_body_holds() -> v2.std.logic.Bool {
   derisk_assemble_accepts(src: v2.test.long.self_host_module_emit_derisk.src_fn_simple_body)
 }
 
-test fn self_host_frontier_parse_single_arm_match_holds() -> Bool {
+test fn self_host_frontier_parse_single_arm_match_holds() -> v2.std.logic.Bool {
   derisk_assemble_accepts(src: v2.test.long.self_host_module_emit_derisk.src_single_arm_match)
 }
 
-test fn self_host_frontier_infer_single_arm_module_holds() -> Bool {
+test fn self_host_frontier_infer_single_arm_module_holds() -> v2.std.logic.Bool {
   derisk_infer_accepts(src: v2.test.long.self_host_module_emit_derisk.src_single_arm_match)
 }
 
-test fn self_host_frontier_parse_multi_arm_match_holds() -> Bool {
+test fn self_host_frontier_parse_multi_arm_match_holds() -> v2.std.logic.Bool {
   derisk_assemble_accepts(src: v2.test.long.self_host_module_emit_derisk.src_multi_arm_match)
     && derisk_infer_accepts(src: v2.test.long.self_host_module_emit_derisk.src_multi_arm_match)
 }

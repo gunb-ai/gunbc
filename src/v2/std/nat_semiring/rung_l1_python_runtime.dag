@@ -1,6 +1,6 @@
 module v2.test.nat_semiring.rung_l1_python_runtime
 
-data phase1_nat_semiring_l1_python_runtime_fixture_subject: Node = v2.std.node.Node {
+data phase1_nat_semiring_l1_python_runtime_fixture_subject: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode {
     connective: v2.std.node.Atom { identity: ^phase1_nat_semiring_l1_python_runtime_fixture_symbol }
   },
@@ -18,7 +18,7 @@ fn phase1_l1_python_runtime_fixture_claim(label: String) -> v2.std.verification.
   }
 }
 
-fn phase1_l1_python_runtime_claim(label: String, law_input: Node) -> v2.std.verification.TestClaim {
+fn phase1_l1_python_runtime_claim(label: String, law_input: v2.std.node.Node) -> v2.std.verification.TestClaim {
   v2.std.verification.EqualsClaim {
     label: label,
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -72,4 +72,4 @@ data phase1_nat_semiring_l1_python_runtime_claim_rows: List<v2.std.verification.
   claim_phase1_nat_semiring_l1_python_runtime_mul_associativity_exec
 ]
 
-data phase1_nat_semiring_l1_python_runtime_fixture_receipt_subject: Node = phase1_nat_semiring_l1_python_runtime_fixture_subject
+data phase1_nat_semiring_l1_python_runtime_fixture_receipt_subject: v2.std.node.Node = phase1_nat_semiring_l1_python_runtime_fixture_subject

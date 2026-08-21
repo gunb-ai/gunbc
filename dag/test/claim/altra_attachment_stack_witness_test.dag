@@ -17,7 +17,7 @@ fn blocker_layer(b: product.altra_motherboard.attachment_stack.LayerBlocker) -> 
   b.layer
 }
 
-fn count_of(xs: List<product.altra_motherboard.attachment_stack.LayerBlocker>) -> Int {
+fn count_of(xs: List<product.altra_motherboard.attachment_stack.LayerBlocker>) -> std.integer.Int {
   fold(xs, init: 0, f: fn(acc, _b) { acc + 1 })
 }
 

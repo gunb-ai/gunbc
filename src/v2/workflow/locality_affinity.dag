@@ -19,7 +19,7 @@ type AffinityDecision
   | AffinityRefused { operand: std.content_hash.ContentHash, cause: AffinityRefusalCause }
 
 type AffinityCollectAcc
-  = AffinityCollectOk { footprint: Optional<std.measure.ByteSize>, consumers: List<std.content_hash.ContentHash> }
+  = AffinityCollectOk { footprint: v2.std.optional.Optional<std.measure.ByteSize>, consumers: List<std.content_hash.ContentHash> }
   | AffinityCollectRefused { cause: AffinityRefusalCause }
 
 fn affinity_collect_step(expected: std.content_hash.ContentHash, acc: AffinityCollectAcc, row: v2.workflow.operand_flow.OperandFlowRow) -> AffinityCollectAcc {
@@ -30,7 +30,7 @@ fn affinity_collect_step(expected: std.content_hash.ContentHash, acc: AffinityCo
         OperandFlow { edge: e, operand: op, footprint: f } =>
           if op == expected {
             match fp {
-              Present { value: prior } =>
+              v2.std.optional.Present { value: prior } =>
                 if std.measure.measure_le(a: prior, b: f) && std.measure.measure_le(a: f, b: prior) {
                   AffinityCollectOk {
                     footprint: fp,
@@ -41,7 +41,7 @@ fn affinity_collect_step(expected: std.content_hash.ContentHash, acc: AffinityCo
                     cause: AffinityFootprintMismatch { operand: expected, expected: prior, found: f }
                   }
                 }
-              Absent =>
+              v2.std.optional.Absent =>
                 AffinityCollectOk {
                   footprint: optional_present(value: f),
                   consumers: list_add_distinct_hash(xs: cs, v: content_hash(n: e.dependent))
@@ -56,11 +56,11 @@ fn affinity_collect_step(expected: std.content_hash.ContentHash, acc: AffinityCo
   }
 }
 
-fn find_fitting_level(levels: List<std.machine_shape.MemoryLevel>, footprint: std.measure.ByteSize) -> Optional<std.machine_shape.LevelId> {
+fn find_fitting_level(levels: List<std.machine_shape.MemoryLevel>, footprint: std.measure.ByteSize) -> v2.std.optional.Optional<std.machine_shape.LevelId> {
   fold(levels, init: optional_absent(), f: fn(found, level) {
     match found {
-      Present { value: _ } => found
-      Absent => if std.measure.measure_le(a: footprint, b: level.capacity) {
+      v2.std.optional.Present { value: _ } => found
+      v2.std.optional.Absent => if std.measure.measure_le(a: footprint, b: level.capacity) {
         optional_present(value: level.id)
       } else {
         optional_absent()
@@ -79,14 +79,14 @@ fn derive_affinity(operand: std.content_hash.ContentHash, flows: List<v2.workflo
         AffinityRefused { operand: operand, cause: AffinityInsufficientConsumers { operand: operand } }
       } else {
         match fp {
-          Present { value: footprint } =>
+          v2.std.optional.Present { value: footprint } =>
             match find_fitting_level(levels: domain.memory, footprint: footprint) {
-              Present { value: level_id } =>
+              v2.std.optional.Present { value: level_id } =>
                 AffinityClaim { operand: operand, level: level_id, footprint: footprint, consumers: cs }
-              Absent =>
+              v2.std.optional.Absent =>
                 AffinityRefused { operand: operand, cause: AffinityNoFittingLevel { operand: operand, footprint: footprint } }
             }
-          Absent =>
+          v2.std.optional.Absent =>
             AffinityRefused { operand: operand, cause: AffinityFootprintUnresolved { operand: operand } }
         }
       }

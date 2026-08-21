@@ -1,35 +1,35 @@
 module v2.test.compiler.pipeline.stage_bridge
 
 
-fn pipeline_find_arrow_in_module(root: v2.std.node.Node) -> Optional<v2.std.node.Node> {
+fn pipeline_find_arrow_in_module(root: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match root.kind {
-    TypeNode { connective: Arrow } => Present { value: root }
+    TypeNode { connective: Arrow } => v2.std.optional.Present { value: root }
     _ =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
+      fold(root.children, init: v2.std.optional.Absent, f: fn(acc, e) {
         match acc {
-          Present { value: _ } => acc
-          Absent => pipeline_find_arrow_in_module(root: e.target)
+          v2.std.optional.Present { value: _ } => acc
+          v2.std.optional.Absent => pipeline_find_arrow_in_module(root: e.target)
         }
       })
   }
 }
 
-fn pipeline_arrow_body_has_behavior(root: v2.std.node.Node, wanted: v2.std.node.Behavior) -> Bool {
+fn pipeline_arrow_body_has_behavior(root: v2.std.node.Node, wanted: v2.std.node.Behavior) -> v2.std.logic.Bool {
   match pipeline_find_arrow_in_module(root: root) {
-    Absent => false
-    Present { value: arrow } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: arrow } =>
       match find_arrow_body_child(root: arrow) {
         Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: b } => b == wanted
             _ => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
   }
 }
 
-fn pipeline_token_stream_has_lexeme(stream: v2.std.compilers.lexing.TokenStream, lexeme: String) -> Bool {
+fn pipeline_token_stream_has_lexeme(stream: v2.std.compilers.lexing.TokenStream, lexeme: String) -> v2.std.logic.Bool {
   fold(
     token_stream_all(stream: stream),
     init: false,
@@ -41,14 +41,14 @@ fn pipeline_token_stream_has_lexeme(stream: v2.std.compilers.lexing.TokenStream,
 
 fn pipeline_tokenize_source(source: String, file: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.std.compilers.lexing.TokenStream> {
   let lm = dag_language_model()
-  tokenize(text: source, file: file, rules: lm.lex)
+  v2.compiler.tokenize.tokenize(text: source, file: file, rules: lm.lex)
 }
 
 fn pipeline_parse_tree_from_tokens(tokens: v2.std.compilers.lexing.TokenStream) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
-  match parse_module(tokens: tokens, grammar: dag_language_model().grammar) {
+  match v2.compiler.parse.parse_module(tokens: tokens, grammar: dag_language_model().grammar) {
     Accepted { value: artifact, diagnostics: d } =>
       outcome_with_diagnostics(value: artifact.tree, diagnostics: d)
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -81,8 +81,8 @@ fn pipeline_resolved_source(source: String, file: v2.std.node.Symbol) -> v2.std.
 
 fn pipeline_inferred_arrow_from_resolved(resolved: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   match pipeline_find_arrow_in_module(root: resolved) {
-    Present { value: arrow } => infer(tree: arrow)
-    Absent => infer(tree: resolved)
+    v2.std.optional.Present { value: arrow } => infer(tree: arrow)
+    v2.std.optional.Absent => infer(tree: resolved)
   }
 }
 
@@ -95,46 +95,46 @@ fn pipeline_inferred_source(source: String, file: v2.std.node.Symbol) -> v2.std.
   )
 }
 
-fn pipeline_outcome_is_accepted(o: v2.std.diagnostic.Outcome<v2.std.node.Node>) -> Bool {
+fn pipeline_outcome_is_accepted(o: v2.std.diagnostic.Outcome<v2.std.node.Node>) -> v2.std.logic.Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn pipeline_inferred_outcome_is_accepted(o: v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree>) -> Bool {
+fn pipeline_inferred_outcome_is_accepted(o: v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree>) -> v2.std.logic.Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn pipeline_pick_deep_unwrap(node: v2.std.node.Node) -> v2.std.node.Node {
   match parse_production_captured_child_optional(node: node) {
-    Present { value: captured } => pipeline_pick_deep_unwrap(node: captured)
-    Absent =>
+    v2.std.optional.Present { value: captured } => pipeline_pick_deep_unwrap(node: captured)
+    v2.std.optional.Absent =>
       match find_named_child(root: node, name: ^grammar_optional_element_node_projection) {
         Accepted { value: child, diagnostics: _ } => pipeline_pick_deep_unwrap(node: child)
-        Rejected { diagnostics: _ } => node
+        v2.std.diagnostic.Rejected { diagnostics: _ } => node
       }
   }
 }
 
-fn pipeline_pick_int_literal_in_node_optional(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
+fn pipeline_pick_int_literal_in_node_optional(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   let unwrapped = pipeline_pick_deep_unwrap(node: node)
   if dag_node_is_int_literal_atom(node: unwrapped) {
     optional_present(value: unwrapped)
   } else {
-    fold(unwrapped.children, init: Absent, f: fn(acc, e) {
+    fold(unwrapped.children, init: v2.std.optional.Absent, f: fn(acc, e) {
       match acc {
-        Present { value: _ } => acc
-        Absent => pipeline_pick_int_literal_in_node_optional(node: e.target)
+        v2.std.optional.Present { value: _ } => acc
+        v2.std.optional.Absent => pipeline_pick_int_literal_in_node_optional(node: e.target)
       }
     })
   }
 }
 
-fn pipeline_int_literal_has_magnitude_child_holds(literal: v2.std.node.Node) -> Bool {
+fn pipeline_int_literal_has_magnitude_child_holds(literal: v2.std.node.Node) -> v2.std.logic.Bool {
   if dag_node_is_int_literal_atom(node: literal) {
     fold(literal.children, init: false, f: fn(_acc, _edge) { true })
   } else {
@@ -142,44 +142,44 @@ fn pipeline_int_literal_has_magnitude_child_holds(literal: v2.std.node.Node) -> 
   }
 }
 
-fn pipeline_branch_arm_int_literal_has_magnitude_child_holds(body: v2.std.node.Node, arm_index: Int) -> Bool {
+fn pipeline_branch_arm_int_literal_has_magnitude_child_holds(body: v2.std.node.Node, arm_index: Int) -> v2.std.logic.Bool {
   match list_at_optional(xs: body.children, index: arm_index) {
-    Present { value: edge } =>
+    v2.std.optional.Present { value: edge } =>
       match edge {
         Edge { label: _, target: arm } =>
           match pipeline_pick_int_literal_in_node_optional(node: arm) {
-            Present { value: literal } =>
+            v2.std.optional.Present { value: literal } =>
               pipeline_int_literal_has_magnitude_child_holds(literal: literal)
-            Absent => false
+            v2.std.optional.Absent => false
           }
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-fn pipeline_normalize_pick_then_arm_magnitude_relationship_holds() -> Bool {
+fn pipeline_normalize_pick_then_arm_magnitude_relationship_holds() -> v2.std.logic.Bool {
   match pipeline_normalize_source(
     source: v2.test.compiler.pipeline.corpus.pipeline_corpus_pick_source,
     file: ^pipeline_corpus_pick_file
   ) {
     Accepted { value: tree, diagnostics: _ } =>
       match pipeline_find_arrow_in_module(root: tree.root) {
-        Present { value: arrow } =>
+        v2.std.optional.Present { value: arrow } =>
           match find_arrow_body_child(root: arrow) {
             Accepted { value: body, diagnostics: _ } =>
               pipeline_branch_arm_int_literal_has_magnitude_child_holds(
                 body: body,
                 arm_index: 1
               )
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Absent => false
+        v2.std.optional.Absent => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn pipeline_tokenize_add_relationship_holds() -> Bool {
+fn pipeline_tokenize_add_relationship_holds() -> v2.std.logic.Bool {
   match pipeline_tokenize_source(
     source: v2.test.compiler.pipeline.corpus.pipeline_corpus_add_source,
     file: ^pipeline_corpus_add_file
@@ -187,11 +187,11 @@ fn pipeline_tokenize_add_relationship_holds() -> Bool {
     Accepted { value: stream, diagnostics: _ } =>
       pipeline_token_stream_has_lexeme(stream: stream, lexeme: "fn")
         && pipeline_token_stream_has_lexeme(stream: stream, lexeme: "add")
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn pipeline_tokenize_pick_relationship_holds() -> Bool {
+fn pipeline_tokenize_pick_relationship_holds() -> v2.std.logic.Bool {
   match pipeline_tokenize_source(
     source: v2.test.compiler.pipeline.corpus.pipeline_corpus_pick_source,
     file: ^pipeline_corpus_pick_file
@@ -199,65 +199,65 @@ fn pipeline_tokenize_pick_relationship_holds() -> Bool {
     Accepted { value: stream, diagnostics: _ } =>
       pipeline_token_stream_has_lexeme(stream: stream, lexeme: "fn")
         && pipeline_token_stream_has_lexeme(stream: stream, lexeme: "if")
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn pipeline_parse_add_relationship_holds() -> Bool {
+fn pipeline_parse_add_relationship_holds() -> v2.std.logic.Bool {
   match pipeline_parse_source(
     source: v2.test.compiler.pipeline.corpus.pipeline_corpus_add_source,
     file: ^pipeline_corpus_add_file
   ) {
     Accepted { value: tree, diagnostics: _ } => well_formed(n: tree)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn pipeline_normalize_add_relationship_holds() -> Bool {
+fn pipeline_normalize_add_relationship_holds() -> v2.std.logic.Bool {
   match pipeline_normalize_source(
     source: v2.test.compiler.pipeline.corpus.pipeline_corpus_add_source,
     file: ^pipeline_corpus_add_file
   ) {
     Accepted { value: tree, diagnostics: _ } =>
-      pipeline_arrow_body_has_behavior(root: tree.root, wanted: Transform)
-    Rejected { diagnostics: _ } => false
+      pipeline_arrow_body_has_behavior(root: tree.root, wanted: v2.std.node.Transform)
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn pipeline_infer_add_fixture_relationship_holds() -> Bool {
+fn pipeline_infer_add_fixture_relationship_holds() -> v2.std.logic.Bool {
   pipeline_inferred_outcome_is_accepted(o: infer(tree: fixture_add_resolved_tree()))
 }
 
-fn pipeline_lower_add_fixture_relationship_holds() -> Bool {
+fn pipeline_lower_add_fixture_relationship_holds() -> v2.std.logic.Bool {
   match translate(tree: v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree, target: rust_target_model()) {
     Accepted { value: emitted, diagnostics: _ } => well_formed(n: emitted)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn pipeline_match_corpus_normalize_relationship_holds() -> Bool {
+fn pipeline_match_corpus_normalize_relationship_holds() -> v2.std.logic.Bool {
   match pipeline_normalize_source(
     source: pipeline_corpus_match_source,
     file: ^pipeline_corpus_match_file
   ) {
     Accepted { value: tree, diagnostics: _ } =>
       pipeline_arrow_body_has_behavior(root: tree.root, wanted: Match)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn pipeline_match_corpus_resolve_relationship_holds() -> Bool {
+fn pipeline_match_corpus_resolve_relationship_holds() -> v2.std.logic.Bool {
   match pipeline_resolved_source(
     source: pipeline_corpus_match_source,
     file: ^pipeline_corpus_match_file
   ) {
     Accepted { value: tree, diagnostics: _ } =>
       pipeline_arrow_body_has_behavior(root: tree, wanted: Match)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn pipeline_match_corpus_infer_relationship_holds() -> Bool {
+fn pipeline_match_corpus_infer_relationship_holds() -> v2.std.logic.Bool {
   pipeline_inferred_outcome_is_accepted(
     o: pipeline_inferred_source(
       source: pipeline_corpus_match_source,
@@ -266,7 +266,7 @@ fn pipeline_match_corpus_infer_relationship_holds() -> Bool {
   )
 }
 
-fn pipeline_match_corpus_lower_relationship_holds() -> Bool {
+fn pipeline_match_corpus_lower_relationship_holds() -> v2.std.logic.Bool {
   match pipeline_inferred_source(
     source: pipeline_corpus_match_source,
     file: ^pipeline_corpus_match_file
@@ -274,8 +274,8 @@ fn pipeline_match_corpus_lower_relationship_holds() -> Bool {
     Accepted { value: tree, diagnostics: _ } =>
       match translate(tree: tree, target: rust_target_model()) {
         Accepted { value: emitted, diagnostics: _ } => well_formed(n: emitted)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

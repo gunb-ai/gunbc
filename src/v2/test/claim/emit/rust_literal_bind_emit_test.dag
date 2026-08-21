@@ -3,19 +3,19 @@ module v2.test.emit.rust_literal_bind_emit
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn rust_literal_bind_facts_miss(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn rust_literal_bind_facts_miss(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
-fn rust_literal_bind_inferred_tree_for(root: Node) -> v2.compiler.inferred_tree.InferredTree {
+fn rust_literal_bind_inferred_tree_for(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map { lookup: rust_literal_bind_facts_miss }
   }
 }
 
-fn rust_literal_bind_emit_from_root(root: Node, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
-  emit(tree: rust_literal_bind_inferred_tree_for(root: root), target: target)
+fn rust_literal_bind_emit_from_root(root: v2.std.node.Node, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
+  v2.compiler.emit.emit(tree: rust_literal_bind_inferred_tree_for(root: root), target: target)
 }
 
 fn rust_literal_bind_int_emit_from_producer(target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
@@ -36,15 +36,15 @@ fn rust_literal_bind_int_wrong_emit_from_producer(target: v2.std.compilers.targe
   )
 }
 
-test fn rust_literal_bind_int_emit_accepts() -> Bool {
+test fn rust_literal_bind_int_emit_accepts() -> v2.std.logic.Bool {
   match rust_literal_bind_int_emit_from_producer(target: rust_bind_literal_target_model()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_bind_int_literal_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn rust_literal_bind_int_wrong_value_discriminates() -> Bool {
+test fn rust_literal_bind_int_wrong_value_discriminates() -> v2.std.logic.Bool {
   match rust_literal_bind_int_emit_from_producer(target: rust_bind_literal_target_model()) {
     Accepted { value: canonical, diagnostics: dc } =>
       match rust_literal_bind_int_wrong_emit_from_producer(target: rust_bind_literal_target_model()) {
@@ -53,24 +53,24 @@ test fn rust_literal_bind_int_wrong_value_discriminates() -> Bool {
           (wrong.carried != canonical.carried) &&
           (dc == v2.std.diagnostic.None) &&
           (dw == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn rust_literal_bind_bool_emit_accepts() -> Bool {
+test fn rust_literal_bind_bool_emit_accepts() -> v2.std.logic.Bool {
   match rust_literal_bind_emit_from_root(
     root: rust_bind_bool_literal_arrow_node(),
     target: rust_bind_literal_target_model()
   ) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_bind_bool_literal_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn rust_literal_bind_bool_wrong_value_discriminates() -> Bool {
+test fn rust_literal_bind_bool_wrong_value_discriminates() -> v2.std.logic.Bool {
   match rust_literal_bind_emit_from_root(
     root: rust_bind_bool_literal_arrow_node(),
     target: rust_bind_literal_target_model()
@@ -85,24 +85,24 @@ test fn rust_literal_bind_bool_wrong_value_discriminates() -> Bool {
           (wrong.carried != canonical.carried) &&
           (dc == v2.std.diagnostic.None) &&
           (dw == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn rust_literal_bind_char_emit_accepts() -> Bool {
+test fn rust_literal_bind_char_emit_accepts() -> v2.std.logic.Bool {
   match rust_literal_bind_emit_from_root(
     root: rust_bind_char_literal_arrow_node(),
     target: rust_bind_literal_target_model()
   ) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_bind_char_literal_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn rust_literal_bind_char_wrong_value_discriminates() -> Bool {
+test fn rust_literal_bind_char_wrong_value_discriminates() -> v2.std.logic.Bool {
   match rust_literal_bind_emit_from_root(
     root: rust_bind_char_literal_arrow_node(),
     target: rust_bind_literal_target_model()
@@ -117,13 +117,13 @@ test fn rust_literal_bind_char_wrong_value_discriminates() -> Bool {
           (wrong.carried != canonical.carried) &&
           (dc == v2.std.diagnostic.None) &&
           (dw == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn rust_literal_bind_string_rope_refusal_is_executed() -> Bool {
+test fn rust_literal_bind_string_rope_refusal_is_executed() -> v2.std.logic.Bool {
   match target_value_expression_projection_from_target(
     target: rust_bind_literal_target_model()
   ) {
@@ -139,17 +139,17 @@ test fn rust_literal_bind_string_rope_refusal_is_executed() -> Bool {
         target: rust_bind_literal_target_model(),
         projection: projection
       ) {
-        Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           (d.head.reason == ^target_value_expression_emit_unsupported_kind) &&
           (pd == v2.std.diagnostic.None) &&
           (rust_literal_emit_string_refusal_note != "")
         Accepted { value: _, diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn rust_literal_bind_string_rope_carrier_is_free_monoid() -> Bool {
+test fn rust_literal_bind_string_rope_carrier_is_free_monoid() -> v2.std.logic.Bool {
   match free_monoid_type_node(inhabitant: char_kernel_type_node()).kind {
     TypeNode { connective: Disj } => true
     _ => false

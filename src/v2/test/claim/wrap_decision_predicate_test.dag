@@ -48,9 +48,9 @@ fn wrap_decision_partial_bundle_target() -> v2.std.compilers.target_model.Target
 
 fn wrap_decision_gate_is_by_value(
   target: v2.std.compilers.target_model.TargetModel,
-  source_carrier: Node,
+  source_carrier: v2.std.node.Node,
   use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
-) -> Bool {
+) -> v2.std.logic.Bool {
   match wrap_decision_gate(
     target: target,
     source_carrier: source_carrier,
@@ -66,9 +66,9 @@ fn wrap_decision_gate_is_by_value(
 
 fn wrap_decision_gate_is_rc_reference(
   target: v2.std.compilers.target_model.TargetModel,
-  source_carrier: Node,
+  source_carrier: v2.std.node.Node,
   use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
-) -> Bool {
+) -> v2.std.logic.Bool {
   wrap_decision_gate_is_reference_layer(
     target: target,
     source_carrier: source_carrier,
@@ -79,9 +79,9 @@ fn wrap_decision_gate_is_rc_reference(
 
 fn wrap_decision_gate_is_box_reference(
   target: v2.std.compilers.target_model.TargetModel,
-  source_carrier: Node,
+  source_carrier: v2.std.node.Node,
   use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
-) -> Bool {
+) -> v2.std.logic.Bool {
   wrap_decision_gate_is_reference_layer(
     target: target,
     source_carrier: source_carrier,
@@ -92,10 +92,10 @@ fn wrap_decision_gate_is_box_reference(
 
 fn wrap_decision_gate_is_reference_layer(
   target: v2.std.compilers.target_model.TargetModel,
-  source_carrier: Node,
+  source_carrier: v2.std.node.Node,
   use_site: v2.std.compilers.target_model.TargetOwnershipUseSite,
   layer: v2.std.compilers.target_model.TargetReferenceLayer
-) -> Bool {
+) -> v2.std.logic.Bool {
   match wrap_decision_gate(
     target: target,
     source_carrier: source_carrier,
@@ -111,24 +111,24 @@ fn wrap_decision_gate_is_reference_layer(
 
 fn wrap_decision_gate_rejects(
   target: v2.std.compilers.target_model.TargetModel,
-  source_carrier: Node,
+  source_carrier: v2.std.node.Node,
   use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
-) -> Bool {
+) -> v2.std.logic.Bool {
   match wrap_decision_gate(
     target: target,
     source_carrier: source_carrier,
     use_site: use_site
   ) {
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
     _ => false
   }
 }
 
 fn wrap_decision_gate_is_inapplicable(
   target: v2.std.compilers.target_model.TargetModel,
-  source_carrier: Node,
+  source_carrier: v2.std.node.Node,
   use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
-) -> Bool {
+) -> v2.std.logic.Bool {
   match wrap_decision_gate(
     target: target,
     source_carrier: source_carrier,
@@ -139,7 +139,7 @@ fn wrap_decision_gate_is_inapplicable(
   }
 }
 
-test fn wrap_decision_diagnostics_return_is_rc() -> Bool {
+test fn wrap_decision_diagnostics_return_is_rc() -> v2.std.logic.Bool {
   wrap_decision_gate_is_rc_reference(
     target: wrap_decision_sg_rc_target(),
     source_carrier: target_carrier_diagnostics_node(),
@@ -147,7 +147,7 @@ test fn wrap_decision_diagnostics_return_is_rc() -> Bool {
   )
 }
 
-test fn wrap_decision_diagnostics_param_is_owned() -> Bool {
+test fn wrap_decision_diagnostics_param_is_owned() -> v2.std.logic.Bool {
   wrap_decision_gate_is_by_value(
     target: wrap_decision_sg_rc_target(),
     source_carrier: target_carrier_diagnostics_node(),
@@ -155,7 +155,7 @@ test fn wrap_decision_diagnostics_param_is_owned() -> Bool {
   )
 }
 
-test fn wrap_decision_probe_heap_param_miss_rejects() -> Bool {
+test fn wrap_decision_probe_heap_param_miss_rejects() -> v2.std.logic.Bool {
   wrap_decision_gate_rejects(
     target: wrap_decision_sg_rc_target(),
     source_carrier: target_carrier_probe_heap_node(),
@@ -163,7 +163,7 @@ test fn wrap_decision_probe_heap_param_miss_rejects() -> Bool {
   )
 }
 
-test fn wrap_decision_bundle_absent_inapplicable() -> Bool {
+test fn wrap_decision_bundle_absent_inapplicable() -> v2.std.logic.Bool {
   wrap_decision_gate_is_inapplicable(
     target: wrap_decision_bundle_absent_target(),
     source_carrier: target_carrier_diagnostics_node(),
@@ -171,7 +171,7 @@ test fn wrap_decision_bundle_absent_inapplicable() -> Bool {
   )
 }
 
-test fn wrap_decision_bundle_partial_rejects() -> Bool {
+test fn wrap_decision_bundle_partial_rejects() -> v2.std.logic.Bool {
   wrap_decision_gate_rejects(
     target: wrap_decision_partial_bundle_target(),
     source_carrier: target_carrier_diagnostics_node(),
@@ -179,7 +179,7 @@ test fn wrap_decision_bundle_partial_rejects() -> Bool {
   )
 }
 
-test fn wrap_decision_use_site_verdict_param_is_owned() -> Bool {
+test fn wrap_decision_use_site_verdict_param_is_owned() -> v2.std.logic.Bool {
   wrap_decision_gate_is_by_value(
     target: wrap_decision_sg_rc_target(),
     source_carrier: target_carrier_use_site_verdict_node(),
@@ -187,7 +187,7 @@ test fn wrap_decision_use_site_verdict_param_is_owned() -> Bool {
   )
 }
 
-test fn wrap_decision_use_site_verdict_return_is_owned() -> Bool {
+test fn wrap_decision_use_site_verdict_return_is_owned() -> v2.std.logic.Bool {
   wrap_decision_gate_is_by_value(
     target: wrap_decision_sg_rc_target(),
     source_carrier: target_carrier_use_site_verdict_node(),
@@ -195,7 +195,7 @@ test fn wrap_decision_use_site_verdict_return_is_owned() -> Bool {
   )
 }
 
-test fn wrap_decision_node_struct_field_is_box() -> Bool {
+test fn wrap_decision_node_struct_field_is_box() -> v2.std.logic.Bool {
   wrap_decision_gate_is_box_reference(
     target: wrap_decision_sg_rc_target(),
     source_carrier: target_carrier_node_node(),
@@ -215,7 +215,7 @@ test fn wrap_decision_node_struct_field_is_box() -> Bool {
 // OwnershipAtFunctionParameter, so binding-to-param is the over shape and param-to-binding is the
 // under shape. wrap_decision_flow_gate must refuse BOTH; today's per-position gate accepts both
 // and emits the producer's layer, which is the silent wrongness. The layer-discrimination control
-// is the one that keeps wrap_decisions_equal honest: Node is ReferenceLayerRc at binding and
+// is the one that keeps wrap_decisions_equal honest: v2.std.node.Node is ReferenceLayerRc at binding and
 // ReferenceLayerBox at struct field, two DIFFERENT reference layers, and an implementation
 // comparing only by-value against by-reference would call that agreement and pass every other
 // control here. RED, executed rather than asserted, and the profile is reported exactly as
@@ -232,27 +232,27 @@ test fn wrap_decision_node_struct_field_is_box() -> Bool {
 // implementation from earning a degenerate pass on the refusal half.
 fn wrap_decision_flow_rejects(
   target: v2.std.compilers.target_model.TargetModel,
-  source_carrier: Node,
+  source_carrier: v2.std.node.Node,
   producer_site: v2.std.compilers.target_model.TargetOwnershipUseSite,
   consumer_site: v2.std.compilers.target_model.TargetOwnershipUseSite
-) -> Bool {
+) -> v2.std.logic.Bool {
   match wrap_decision_flow_gate(
     target: target,
     source_carrier: source_carrier,
     producer_site: producer_site,
     consumer_site: consumer_site
   ) {
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
 fn wrap_decision_flow_is_by_value(
   target: v2.std.compilers.target_model.TargetModel,
-  source_carrier: Node,
+  source_carrier: v2.std.node.Node,
   producer_site: v2.std.compilers.target_model.TargetOwnershipUseSite,
   consumer_site: v2.std.compilers.target_model.TargetOwnershipUseSite
-) -> Bool {
+) -> v2.std.logic.Bool {
   match wrap_decision_flow_gate(
     target: target,
     source_carrier: source_carrier,
@@ -266,10 +266,10 @@ fn wrap_decision_flow_is_by_value(
 
 fn wrap_decision_flow_is_inapplicable(
   target: v2.std.compilers.target_model.TargetModel,
-  source_carrier: Node,
+  source_carrier: v2.std.node.Node,
   producer_site: v2.std.compilers.target_model.TargetOwnershipUseSite,
   consumer_site: v2.std.compilers.target_model.TargetOwnershipUseSite
-) -> Bool {
+) -> v2.std.logic.Bool {
   match wrap_decision_flow_gate(
     target: target,
     source_carrier: source_carrier,
@@ -281,7 +281,7 @@ fn wrap_decision_flow_is_inapplicable(
   }
 }
 
-test fn wrap_decision_flow_over_wrap_direction_refuses() -> Bool {
+test fn wrap_decision_flow_over_wrap_direction_refuses() -> v2.std.logic.Bool {
   wrap_decision_flow_rejects(
     target: wrap_decision_sg_rc_target(),
     source_carrier: target_carrier_diagnostics_node(),
@@ -290,7 +290,7 @@ test fn wrap_decision_flow_over_wrap_direction_refuses() -> Bool {
   )
 }
 
-test fn wrap_decision_flow_under_wrap_direction_refuses() -> Bool {
+test fn wrap_decision_flow_under_wrap_direction_refuses() -> v2.std.logic.Bool {
   wrap_decision_flow_rejects(
     target: wrap_decision_sg_rc_target(),
     source_carrier: target_carrier_diagnostics_node(),
@@ -299,7 +299,7 @@ test fn wrap_decision_flow_under_wrap_direction_refuses() -> Bool {
   )
 }
 
-test fn wrap_decision_flow_distinct_reference_layers_refuse() -> Bool {
+test fn wrap_decision_flow_distinct_reference_layers_refuse() -> v2.std.logic.Bool {
   wrap_decision_flow_rejects(
     target: wrap_decision_sg_rc_target(),
     source_carrier: target_carrier_node_node(),
@@ -308,7 +308,7 @@ test fn wrap_decision_flow_distinct_reference_layers_refuse() -> Bool {
   )
 }
 
-test fn wrap_decision_flow_missing_row_refuses() -> Bool {
+test fn wrap_decision_flow_missing_row_refuses() -> v2.std.logic.Bool {
   wrap_decision_flow_rejects(
     target: wrap_decision_sg_rc_target(),
     source_carrier: target_carrier_probe_heap_node(),
@@ -317,7 +317,7 @@ test fn wrap_decision_flow_missing_row_refuses() -> Bool {
   )
 }
 
-test fn wrap_decision_flow_agreeing_sites_accept() -> Bool {
+test fn wrap_decision_flow_agreeing_sites_accept() -> v2.std.logic.Bool {
   wrap_decision_flow_is_by_value(
     target: wrap_decision_sg_rc_target(),
     source_carrier: target_carrier_use_site_verdict_node(),
@@ -326,7 +326,7 @@ test fn wrap_decision_flow_agreeing_sites_accept() -> Bool {
   )
 }
 
-test fn wrap_decision_flow_bundle_absent_inapplicable() -> Bool {
+test fn wrap_decision_flow_bundle_absent_inapplicable() -> v2.std.logic.Bool {
   wrap_decision_flow_is_inapplicable(
     target: wrap_decision_bundle_absent_target(),
     source_carrier: target_carrier_diagnostics_node(),
@@ -337,14 +337,14 @@ test fn wrap_decision_flow_bundle_absent_inapplicable() -> Bool {
 
 data wrap_decision_composite_note: String = "Discriminates the wrap_decision_predicate caller-side bypass (v1_deletion_plan.dag ^wrap_decision_predicate, RE-OPENED 2026-07-24): translate_apply_use_site_ownership_to_projected_boundary must recurse ownership-wrap into TargetTypeExprInstantiation-kind wires (Option<T>/Rc<T>/List<T> shapes) instead of returning the composite unwrapped via the _ => outcome_accepted(projected) arm."
 
-fn wrap_decision_composite_projected_arg() -> Node {
+fn wrap_decision_composite_projected_arg() -> v2.std.node.Node {
   target_type_expr_atom_emitted(
     form: rust_type_expression_projection().atom_form,
     identity: ^wrap_decision_composite_leaf_binding
   )
 }
 
-fn wrap_decision_composite_projected() -> Node {
+fn wrap_decision_composite_projected() -> v2.std.node.Node {
   target_type_expr_instantiation_emitted(
     form: rust_type_expression_projection().instantiation_form,
     head: target_type_expr_atom_emitted(
@@ -355,7 +355,7 @@ fn wrap_decision_composite_projected() -> Node {
   )
 }
 
-fn wrap_decision_composite_source() -> Node {
+fn wrap_decision_composite_source() -> v2.std.node.Node {
   target_type_expr_instantiation_emitted(
     form: rust_type_expression_projection().instantiation_form,
     head: target_type_expr_atom_emitted(
@@ -366,7 +366,7 @@ fn wrap_decision_composite_source() -> Node {
   )
 }
 
-fn wrap_decision_composite_boundary_result() -> Node {
+fn wrap_decision_composite_boundary_result() -> v2.std.node.Node {
   match translate_apply_use_site_ownership_to_projected_boundary(
     projected: wrap_decision_composite_projected(),
     source_for_binding: wrap_decision_composite_source(),
@@ -375,26 +375,26 @@ fn wrap_decision_composite_boundary_result() -> Node {
     use_site: OwnershipAtStructField
   ) {
     Accepted { value: node, diagnostics: _ } => node
-    Rejected { diagnostics: _ } => wrap_decision_composite_projected()
+    v2.std.diagnostic.Rejected { diagnostics: _ } => wrap_decision_composite_projected()
   }
 }
 
-fn wrap_decision_composite_result_arg() -> Node {
+fn wrap_decision_composite_result_arg() -> v2.std.node.Node {
   match list_at_optional(
     xs: node_positional_child_targets(node: wrap_decision_composite_boundary_result()),
     index: 1
   ) {
-    Present { value: arg } => arg
-    Absent => wrap_decision_composite_projected_arg()
+    v2.std.optional.Present { value: arg } => arg
+    v2.std.optional.Absent => wrap_decision_composite_projected_arg()
   }
 }
 
-test fn wrap_decision_instantiation_arg_is_wrapped() -> Bool {
+test fn wrap_decision_instantiation_arg_is_wrapped() -> v2.std.logic.Bool {
   match target_type_expr_emitted_wire_decode(
     node: wrap_decision_composite_result_arg(),
     projection: rust_type_expression_projection()
   ) {
     Accepted { value: wire, diagnostics: _ } => wire.kind == TargetTypeExprInstantiation
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

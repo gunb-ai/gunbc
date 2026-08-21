@@ -130,7 +130,7 @@ test fn w_red_zero_users_refuses() -> Bool {
     },
     assumption: decimal_basis_assumption,
   ) {
-    ScmUsageRefused { cause: UserCountZero } => true
+    ScmUsageRefused { cause: gunbc.econ.scm_serving_model.UserCountZero } => true
     _ => false
   }
 }

@@ -36,7 +36,7 @@ type ArtifactFsListResult
 
 func artifact_fs_put(store_root: String, key: std.content_hash.ContentHash, payload: String) -> ArtifactFsPutResult {
   match artifact_store_scratch_write_admissible(store_root: store_root) {
-    Deny { refusal: refusal } => ArtifactFsPutRefused {
+    std.access.Deny { refusal: refusal } => ArtifactFsPutRefused {
       verb: Write,
       target: absolute_path_position(path: store_root),
       frame: artifact_store_scratch_frame,
@@ -54,7 +54,7 @@ func artifact_fs_put(store_root: String, key: std.content_hash.ContentHash, payl
 
 func artifact_fs_get(store_root: String, key: std.content_hash.ContentHash) -> ArtifactFsLookup {
   match artifact_store_scratch_read_admissible(store_root: store_root) {
-    Deny { refusal: refusal } => ArtifactFsRefused {
+    std.access.Deny { refusal: refusal } => ArtifactFsRefused {
       verb: Read,
       target: absolute_path_position(path: store_root),
       frame: artifact_store_scratch_frame,
@@ -72,7 +72,7 @@ func artifact_fs_get(store_root: String, key: std.content_hash.ContentHash) -> A
 
 func artifact_fs_delete(store_root: String, key: std.content_hash.ContentHash) -> ArtifactFsDeleteResult {
   match artifact_store_scratch_write_admissible(store_root: store_root) {
-    Deny { refusal: refusal } => ArtifactFsDeleteRefused {
+    std.access.Deny { refusal: refusal } => ArtifactFsDeleteRefused {
       verb: Write,
       target: absolute_path_position(path: store_root),
       frame: artifact_store_scratch_frame,
@@ -90,7 +90,7 @@ func artifact_fs_delete(store_root: String, key: std.content_hash.ContentHash) -
 
 func artifact_fs_list(store_root: String) -> ArtifactFsListResult {
   match artifact_store_scratch_read_admissible(store_root: store_root) {
-    Deny { refusal: refusal } => ArtifactFsListRefused {
+    std.access.Deny { refusal: refusal } => ArtifactFsListRefused {
       verb: Read,
       target: absolute_path_position(path: store_root),
       frame: artifact_store_scratch_frame,
@@ -130,7 +130,7 @@ func apply_store_evictions(store_root: String, evicted: List<std.content_hash.Co
   evicted |> map(key => evict_one(store_root: store_root, key: key))
 }
 
-data eviction_step_reader_contract: std.disposition.Disposition = Terminal {
+data eviction_step_reader_contract: std.disposition.Disposition = std.disposition.Terminal {
   reason: "eviction_step_fold is the only match over ArtifactEvictionStep; the predicates and counters below derive from it and contain no match of their own, so a fourth outcome is a type error at exactly one site. Same discipline this module's consumer applies to ProviderLookup / ProviderAdmission (std.materialization_provider reader contract) — a new coproduct does not get an exemption for being small (review 44258). Discriminating corpus: dag/test/claim/artifact_store_fs_witness_test.dag."
 }
 

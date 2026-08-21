@@ -69,9 +69,9 @@ type RuntimeValueNodeProjection
 
 type IdentityEvidence
   = ReferenceIdentical
-  | StructurallyCompared { equal: Bool }
+  | StructurallyCompared { equal: v2.std.logic.Bool }
 
-fn identity_evidence_equal(evidence: v2.std.runtime.IdentityEvidence) -> Bool {
+fn identity_evidence_equal(evidence: v2.std.runtime.IdentityEvidence) -> v2.std.logic.Bool {
   match evidence {
     ReferenceIdentical => true
     StructurallyCompared { equal: eq } => std.patterns.eq
@@ -89,7 +89,7 @@ fn runtime_value_resolved_type(value: v2.std.runtime.RuntimeValue) -> v2.std.nod
 }
 
 fn runtime_value_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: Named { name: name }, target: target }
+  v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: target }
 }
 
 fn runtime_value_conj_node(children: std.types.List<v2.std.node.Edge>) -> v2.std.node.Node {
@@ -103,14 +103,14 @@ fn runtime_value_symbol_atom(sym: v2.std.node.Symbol) -> v2.std.node.Node {
   )
 }
 
-fn runtime_bit_node_projection(bit: Bool) -> v2.std.node.Node {
+fn runtime_bit_node_projection(bit: v2.std.logic.Bool) -> v2.std.node.Node {
   match bit {
     true => runtime_value_symbol_atom(sym: ^runtime_bit_true_tag)
     false => runtime_value_symbol_atom(sym: ^runtime_bit_false_tag)
   }
 }
 
-fn runtime_bits_list_node(bits: std.types.List<Bool>) -> v2.std.node.Node {
+fn runtime_bits_list_node(bits: std.types.List<v2.std.logic.Bool>) -> v2.std.node.Node {
   v2.std.algebra.fold_list_node(
     xs: bits,
     item_node: fn(bit) { runtime_bit_node_projection(bit: bit) }
@@ -360,7 +360,7 @@ fn runtime_reject_match_arm(
 type BoundaryAllowance {
   operation: v2.std.model_core.PrimitiveOperationRef
   resource: v2.std.model_core.ResourceAccess
-  allowed: Bool
+  allowed: v2.std.logic.Bool
 }
 
 type ResourceEffectBoundary {

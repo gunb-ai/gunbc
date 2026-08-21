@@ -15,22 +15,22 @@ fn rpcl_serialize(expr: v2.std.compilers.target_model.TargetValueExpression, tar
   match target_value_expression_to_concrete_tokens(
     expr: expr,
     projection: rust_value_expression_projection(),
-    catalog: rust_operator_realizations_catalog_node()
+    catalog: v2.extdeps.languages.rust.rust_operator_realizations_catalog_node()
   ) {
     Accepted { value: tokens, diagnostics: _ } =>
       match serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: tokens) {
         Accepted { value: text, diagnostics: _ } =>
           v2.std.diagnostic.Accepted { value: render_target_text(t: text), diagnostics: v2.std.diagnostic.None }
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
-fn rpcl_emits(expr: v2.std.compilers.target_model.TargetValueExpression, golden: String) -> Bool {
+fn rpcl_emits(expr: v2.std.compilers.target_model.TargetValueExpression, golden: String) -> v2.std.logic.Bool {
   match rpcl_serialize(expr: expr, target: rust_target_model()) {
     Accepted { value: text, diagnostics: _ } => text == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -51,7 +51,7 @@ fn rpcl_let_expr() -> v2.std.compilers.target_model.TargetValueExpression {
 
 // The cross-golden arms are the discriminating RED: the two families share one
 // serializer and one target, so only their own spellings can tell them apart.
-test fn rust_production_emits_closure_and_let() -> Bool {
+test fn rust_production_emits_closure_and_let() -> v2.std.logic.Bool {
   rpcl_emits(expr: rpcl_closure_expr(), golden: rust_production_closure_golden)
     && rpcl_emits(expr: rpcl_let_expr(), golden: rust_production_let_golden)
     && !rpcl_emits(expr: rpcl_closure_expr(), golden: rust_production_let_golden)
@@ -61,7 +61,7 @@ test fn rust_production_emits_closure_and_let() -> Bool {
 // Body position is load-bearing, not incidental: a closure whose body names the
 // OTHER parameter must not render as the golden. Without this, a lowering that
 // dropped the body and emitted a constant shell would satisfy the arms above.
-test fn rust_production_closure_body_is_not_ignored() -> Bool {
+test fn rust_production_closure_body_is_not_ignored() -> v2.std.logic.Bool {
   !rpcl_emits(
     expr: target_value_expression_closure(
       params: [^rust_binding_param_x, ^rust_binding_param_y],
@@ -86,14 +86,14 @@ fn rpcl_serialize_fixed(token_class: v2.std.node.Symbol) -> v2.std.diagnostic.Ou
   ) {
     Accepted { value: text, diagnostics: _ } =>
       v2.std.diagnostic.Accepted { value: render_target_text(t: text), diagnostics: v2.std.diagnostic.None }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
-fn rpcl_refuses_class(token_class: v2.std.node.Symbol) -> Bool {
+fn rpcl_refuses_class(token_class: v2.std.node.Symbol) -> v2.std.logic.Bool {
   match rpcl_serialize_fixed(token_class: token_class) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
@@ -105,11 +105,11 @@ fn rpcl_refuses_class(token_class: v2.std.node.Symbol) -> Bool {
 // empty string, while an unspelled class REFUSES. If those two collapsed into
 // one answer, adding the closure spellings would have silently made every
 // unspelled class emit nothing at all.
-test fn rust_production_refuses_unspelled_token_class() -> Bool {
+test fn rust_production_refuses_unspelled_token_class() -> v2.std.logic.Bool {
   rpcl_refuses_class(token_class: ^rust_token_unwired_loop)
     && rpcl_refuses_class(token_class: ^rust_token_never_spelled_anywhere)
     && match rpcl_serialize_fixed(token_class: ^rust_token_closure_nop) {
       Accepted { value: text, diagnostics: _ } => text == ""
-      Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
     }
 }

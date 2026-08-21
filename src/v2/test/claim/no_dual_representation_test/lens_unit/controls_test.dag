@@ -3,46 +3,46 @@ module v2.test.no_dual_representation_test.lens_unit.controls
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-test fn same_symbol_equality_is_red() -> Bool {
+test fn same_symbol_equality_is_red() -> v2.std.logic.Bool {
   dual_rep_violation_count_from_scans(scans: [synthetic_same_symbol_scan()]) == 1
 }
 
-test fn literal_mirror_is_red() -> Bool {
+test fn literal_mirror_is_red() -> v2.std.logic.Bool {
   dual_rep_violation_count_from_scans(scans: [synthetic_literal_mirror_scan()]) == 1
 }
 
-test fn bool_literal_mirror_is_red() -> Bool {
+test fn bool_literal_mirror_is_red() -> v2.std.logic.Bool {
   dual_rep_violation_count_from_scans(scans: [synthetic_bool_literal_mirror_scan()]) == 1
 }
 
-test fn independent_oracle_is_green() -> Bool {
+test fn independent_oracle_is_green() -> v2.std.logic.Bool {
   dual_rep_clean_holds_for_scans(scans: [synthetic_independent_oracle_scan()])
 }
 
-test fn distinct_symbol_equality_is_green() -> Bool {
+test fn distinct_symbol_equality_is_green() -> v2.std.logic.Bool {
   dual_rep_clean_holds_for_scans(scans: [synthetic_distinct_symbol_scan()])
 }
 
-test fn body_mirror_is_red() -> Bool {
+test fn body_mirror_is_red() -> v2.std.logic.Bool {
   length(xs: dual_rep_violations_from_module(scan: synthetic_body_mirror_scan())) == 1
 }
 
-test fn parse_path_helper_tautology_is_red() -> Bool {
+test fn parse_path_helper_tautology_is_red() -> v2.std.logic.Bool {
   dual_rep_violation_count_from_scans(scans: [parse_path_helper_tautology_scan()]) == 1
 }
 
-test fn synthetic_same_symbol_eq_site_count_is_one() -> Bool {
+test fn synthetic_same_symbol_eq_site_count_is_one() -> v2.std.logic.Bool {
   dual_rep_eq_site_count_from_scans(scans: [synthetic_same_symbol_scan()]) == 1
 }
 
-test fn body_blind_without_frontier_honesty_is_red() -> Bool {
+test fn body_blind_without_frontier_honesty_is_red() -> v2.std.logic.Bool {
   dual_rep_coverage_honesty_holds(eq_site_count: 0, frontier_declared: false) == false
 }
 
-test fn body_blind_with_frontier_honesty_is_green() -> Bool {
+test fn body_blind_with_frontier_honesty_is_green() -> v2.std.logic.Bool {
   dual_rep_coverage_honesty_holds(eq_site_count: 0, frontier_declared: true)
 }
 
-test fn body_covered_honesty_is_green() -> Bool {
+test fn body_covered_honesty_is_green() -> v2.std.logic.Bool {
   dual_rep_coverage_honesty_holds(eq_site_count: 1, frontier_declared: false)
 }

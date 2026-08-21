@@ -3,16 +3,16 @@
 
 use self::SemVerIdentifier::*;
 pub use crate::extdeps_external_authority::ExternalAuthority;
-use crate::extdeps_uri::UriScheme::Https;
+use crate::extdeps_uri::UriScheme::*;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-pub use crate::extdeps_version::{VersionConstraint, VersionIdentity, VersionScheme};
+pub use crate::extdeps_version::VersionScheme;
 pub use crate::std_algebra::Ordering;
-use crate::std_algebra::Ordering::{Equal, Greater, Less};
-pub use crate::std_integer::NonNegativeInt;
-pub use crate::std_nat::nat_compare;
+use crate::std_algebra::Ordering::*;
 pub use crate::std_types::{List, NonEmptyStr};
+pub use crate::v1_compiler_emit_core_support::to_string;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v2_std_nat::nat_compare;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -22,19 +22,19 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+        uri: Uri {
         scheme: UriScheme::Https,
         locator: "semver.org/".to_string(),
-    }),
+    },
     })
             };
         }
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
 }
 
-pub type SemVerIdentity = NonEmptyStr;
+pub type SemVerIdentity = crate::std_types::NonEmptyStr;
 
-pub type SemVerConstraint = NonEmptyStr;
+pub type SemVerConstraint = crate::std_types::NonEmptyStr;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -52,8 +52,8 @@ pub struct SemVerVersion {
     pub build: Rc<Vec<Rc<SemVerIdentifier>>>,
 }
 
-pub fn semver_compare_non_negative_int(a: NonNegativeInt, b: NonNegativeInt) -> Ordering {
-    nat_compare(a.clone(), b.clone())
+pub fn semver_compare_non_negative_int(a: Rc<Nat>, b: Rc<Nat>) -> Ordering {
+    crate::std_nat::nat_compare(a.clone(), b.clone())
 }
 
 pub fn semver_compare_identifier(a: Rc<SemVerIdentifier>, b: Rc<SemVerIdentifier>) -> Ordering {

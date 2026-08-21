@@ -63,7 +63,7 @@ type SpecColumn
   | MaximumColumn
 
 // THE QUANTITY IS TYPED, and the heterogeneity is what makes it a coproduct rather than a number
-// beside a unit string. An earlier revision of this module carried value: Int with unit:
+// beside a unit string. An earlier revision of this module carried value: std.integer.Int with unit:
 // NonEmptyStr holding "ns", "us", "MHz" and "clock cycles" - a unit written in a name, which is a
 // unit no consumer can read, so a nanosecond and a megahertz became the same type and comparing
 // them typechecked. This module's sibling says exactly that about package dimensions; the excuse

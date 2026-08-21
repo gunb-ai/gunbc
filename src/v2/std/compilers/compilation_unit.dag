@@ -111,10 +111,10 @@ fn partition_provenance_eq(left: v2.std.compilers.compilation_unit.PartitionProv
 fn module_unit_id_outcome(
   assignment: Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId>,
   module: v2.std.compilers.compilation_unit.ModuleId
-) -> v2.std.diagnostic.Outcome<Optional<v2.std.compilers.compilation_unit.CompilationUnitId>> {
+) -> v2.std.diagnostic.Outcome<v2.std.optional.Optional<v2.std.compilers.compilation_unit.CompilationUnitId>> {
   match v2.std.collection.map_get(assignment, module) {
     Accepted { value: opt, diagnostics: _ } => outcome_accepted(value: opt)
-    Rejected { diagnostics: d } => outcome_rejected(d: d.head)
+    v2.std.diagnostic.Rejected { diagnostics: d } => outcome_rejected(d: d.head)
   }
 }
 
@@ -124,7 +124,7 @@ fn module_unit_id(
 ) -> v2.std.optional.Optional<v2.std.compilers.compilation_unit.CompilationUnitId> {
   match v2.std.collection.map_get(assignment, module) {
     Accepted { value: opt, diagnostics: _ } => opt
-    Rejected { diagnostics: _ } => Absent
+    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
   }
 }
 
@@ -133,9 +133,9 @@ fn module_assigned_unit_fold(
   module: v2.std.compilers.compilation_unit.ModuleId
 ) -> v2.std.optional.Optional<v2.std.compilers.compilation_unit.PartitionFoldRefusalCause> {
   match module_unit_id_outcome(assignment: assignment, module: module) {
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       optional_present(value: ModuleAssignmentLookupRejected { module: module })
-    Accepted { value: _, diagnostics: _ } => Absent
+    Accepted { value: _, diagnostics: _ } => v2.std.optional.Absent
   }
 }
 
@@ -145,11 +145,11 @@ fn partition_assignment_lookup_cause_if_rejected(
 ) -> v2.std.optional.Optional<v2.std.compilers.compilation_unit.PartitionFoldRefusalCause> {
   fold_list(
     xs: modules,
-    empty: Absent,
+    empty: v2.std.optional.Absent,
     cons: fn(acc, mod_id) {
       match acc {
-        Present { value: _ } => acc
-        Absent => module_assigned_unit_fold(assignment: assignment, module: mod_id)
+        v2.std.optional.Present { value: _ } => acc
+        v2.std.optional.Absent => module_assigned_unit_fold(assignment: assignment, module: mod_id)
       }
     }
   )
@@ -161,8 +161,8 @@ fn module_in_unit(
   unit_id: v2.std.compilers.compilation_unit.CompilationUnitId
 ) -> Bool {
   match module_unit_id(assignment: assignment, module: module) {
-    Present { value: assigned } => assigned == unit_id
-    Absent => false
+    v2.std.optional.Present { value: assigned } => assigned == unit_id
+    v2.std.optional.Absent => false
   }
 }
 
@@ -222,10 +222,10 @@ fn module_export_declarations_outcome(
   match v2.std.collection.map_get(module_dag.exports, module) {
     Accepted { value: opt, diagnostics: _ } =>
       outcome_accepted(value: match opt {
-        Present { value: nodes } => nodes
-        Absent => std.algebra.Empty
+        v2.std.optional.Present { value: nodes } => nodes
+        v2.std.optional.Absent => std.algebra.Empty
       })
-    Rejected { diagnostics: d } => outcome_rejected(d: d.head)
+    v2.std.diagnostic.Rejected { diagnostics: d } => outcome_rejected(d: d.head)
   }
 }
 
@@ -236,24 +236,24 @@ fn module_type_definition_rows_outcome(
   match v2.std.collection.map_get(module_dag.type_definitions, module) {
     Accepted { value: opt, diagnostics: _ } =>
       outcome_accepted(value: match opt {
-        Present { value: rows } => rows
-        Absent => std.algebra.Empty
+        v2.std.optional.Present { value: rows } => rows
+        v2.std.optional.Absent => std.algebra.Empty
       })
-    Rejected { diagnostics: d } => outcome_rejected(d: d.head)
+    v2.std.diagnostic.Rejected { diagnostics: d } => outcome_rejected(d: d.head)
   }
 }
 
 fn module_export_declarations(module_dag: v2.std.compilers.compilation_unit.ModuleDag, module: v2.std.compilers.compilation_unit.ModuleId) -> List<v2.std.node.Node> {
   match module_export_declarations_outcome(module_dag: module_dag, module: module) {
     Accepted { value: nodes, diagnostics: _ } => nodes
-    Rejected { diagnostics: _ } => []
+    v2.std.diagnostic.Rejected { diagnostics: _ } => []
   }
 }
 
 fn module_type_definition_rows(module_dag: v2.std.compilers.compilation_unit.ModuleDag, module: v2.std.compilers.compilation_unit.ModuleId) -> List<v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow> {
   match module_type_definition_rows_outcome(module_dag: module_dag, module: module) {
     Accepted { value: rows, diagnostics: _ } => rows
-    Rejected { diagnostics: _ } => []
+    v2.std.diagnostic.Rejected { diagnostics: _ } => []
   }
 }
 
@@ -263,8 +263,8 @@ fn type_definition_row_identity(row: v2.std.compilers.compilation_unit.ModuleTyp
 
 fn type_atom_identity(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   match node.kind {
-    TypeNode { connective: Atom { identity: id } } => Present { value: id }
-    _ => Absent
+    TypeNode { connective: Atom { identity: id } } => v2.std.optional.Present { value: id }
+    _ => v2.std.optional.Absent
   }
 }
 
@@ -284,16 +284,16 @@ fn partition_unit_dep_from_edge_fold(
   edge: v2.std.compilers.compilation_unit.ModuleDagEdge
 ) -> v2.std.optional.Optional<v2.std.compilers.compilation_unit.PartitionFoldRefusalCause> {
   match module_assigned_unit_fold(assignment: assignment, module: edge.from) {
-    Present { value: cause } => optional_present(value: cause)
-    Absent =>
+    v2.std.optional.Present { value: cause } => optional_present(value: cause)
+    v2.std.optional.Absent =>
       match module_assigned_unit_fold(assignment: assignment, module: edge.to) {
-        Present { value: cause } => optional_present(value: cause)
-        Absent =>
+        v2.std.optional.Present { value: cause } => optional_present(value: cause)
+        v2.std.optional.Absent =>
           if module_in_unit(assignment: assignment, module: edge.from, unit_id: unit_id)
             && !module_in_unit(assignment: assignment, module: edge.to, unit_id: unit_id) {
             module_assigned_unit_fold(assignment: assignment, module: edge.to)
           } else {
-            Absent
+            v2.std.optional.Absent
           }
       }
   }
@@ -308,7 +308,7 @@ fn partition_unit_dep_from_edge(
     && !module_in_unit(assignment: assignment, module: edge.to, unit_id: unit_id) {
     module_unit_id(assignment: assignment, module: edge.to)
   } else {
-    Absent
+    v2.std.optional.Absent
   }
 }
 
@@ -331,16 +331,16 @@ fn partition_unit_deps_fold(
             unit_id: unit_id,
             edge: edge
           ) {
-            Present { value: cause } => DepsBuildRefused { cause: cause }
-            Absent =>
+            v2.std.optional.Present { value: cause } => DepsBuildRefused { cause: cause }
+            v2.std.optional.Absent =>
               match partition_unit_dep_from_edge(
                 assignment: assignment,
                 unit_id: unit_id,
                 edge: edge
               ) {
-                Present { value: dep } =>
+                v2.std.optional.Present { value: dep } =>
                   DepsBuildOk { deps: list_snoc_unique(items: deps, item: dep) }
-                Absent => DepsBuildOk { deps: deps }
+                v2.std.optional.Absent => DepsBuildOk { deps: deps }
               }
           }
       }
@@ -359,8 +359,8 @@ fn partition_unit_deps(
   module_dag.edges
     |> fold(init: [], f: fn(acc, edge) {
       match partition_unit_dep_from_edge(assignment: assignment, unit_id: unit_id, edge: edge) {
-        Present { value: dep } => list_snoc_unique(items: acc, item: dep)
-        Absent => acc
+        v2.std.optional.Present { value: dep } => list_snoc_unique(items: acc, item: dep)
+        v2.std.optional.Absent => acc
       }
     })
     |> sort_by(id => id)
@@ -386,18 +386,18 @@ fn module_referenced_from_outside_unit_fold(
 ) -> v2.std.optional.Optional<v2.std.compilers.compilation_unit.PartitionFoldRefusalCause> {
   fold_list(
     xs: module_dag.edges,
-    empty: Absent,
+    empty: v2.std.optional.Absent,
     cons: fn(acc, edge) {
       match acc {
-        Present { value: _ } => acc
-        Absent =>
+        v2.std.optional.Present { value: _ } => acc
+        v2.std.optional.Absent =>
           if edge.to == member {
             module_assigned_unit_fold(
               assignment: assignment,
               module: edge.from
             )
           } else {
-            Absent
+            v2.std.optional.Absent
           }
       }
     }
@@ -446,8 +446,8 @@ fn type_atoms_in_declaration(declaration: v2.std.node.Node) -> List<v2.std.node.
   node_subtree_nodes(root: declaration)
     |> fold(init: [], f: fn(acc, node) {
       match type_atom_identity(node: node) {
-        Present { value: sym } => list_snoc_unique_symbol(items: acc, item: sym)
-        Absent => acc
+        v2.std.optional.Present { value: sym } => list_snoc_unique_symbol(items: acc, item: sym)
+        v2.std.optional.Absent => acc
       }
     })
     |> sort_by(sym => sym)
@@ -460,15 +460,15 @@ fn type_definition_for_identity_in_module(
 ) -> v2.std.optional.Optional<v2.std.node.Node> {
   fold_list(
     xs: module_type_definition_rows(module_dag: module_dag, module: member),
-    empty: Absent,
+    empty: v2.std.optional.Absent,
     cons: fn(acc, row) {
       match acc {
-        Present { value: _ } => acc
-        Absent =>
+        v2.std.optional.Present { value: _ } => acc
+        v2.std.optional.Absent =>
           if type_definition_row_identity(row: row) == identity {
             optional_present(value: row.definition)
           } else {
-            Absent
+            v2.std.optional.Absent
           }
       }
     }
@@ -482,11 +482,11 @@ fn type_definition_for_identity_in_members(
 ) -> v2.std.optional.Optional<v2.std.node.Node> {
   fold_list(
     xs: members,
-    empty: Absent,
+    empty: v2.std.optional.Absent,
     cons: fn(acc, member) {
       match acc {
-        Present { value: _ } => acc
-        Absent =>
+        v2.std.optional.Present { value: _ } => acc
+        v2.std.optional.Absent =>
           type_definition_for_identity_in_module(
             module_dag: module_dag,
             member: member,
@@ -511,8 +511,8 @@ fn partition_interface_closure_grow_once(
             members: members,
             identity: sym
           ) {
-            Present { value: defn } => list_snoc_unique_node(items: inner, item: defn)
-            Absent => inner
+            v2.std.optional.Present { value: defn } => list_snoc_unique_node(items: inner, item: defn)
+            v2.std.optional.Absent => inner
           }
         })
     })
@@ -609,17 +609,17 @@ fn module_member_dag_lookup_cause_if_rejected(
   member: v2.std.compilers.compilation_unit.ModuleId
 ) -> v2.std.optional.Optional<v2.std.compilers.compilation_unit.PartitionFoldRefusalCause> {
   match module_export_declarations_outcome(module_dag: module_dag, module: member) {
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       optional_present(
         value: ModuleDagExportsLookupRejected { module: member }
       )
     Accepted { value: _, diagnostics: _ } =>
       match module_type_definition_rows_outcome(module_dag: module_dag, module: member) {
-        Rejected { diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: _ } =>
           optional_present(
             value: ModuleDagTypeDefinitionsLookupRejected { module: member }
           )
-        Accepted { value: _, diagnostics: _ } => Absent
+        Accepted { value: _, diagnostics: _ } => v2.std.optional.Absent
       }
   }
 }
@@ -630,11 +630,11 @@ fn partition_members_dag_lookup_cause_if_rejected(
 ) -> v2.std.optional.Optional<v2.std.compilers.compilation_unit.PartitionFoldRefusalCause> {
   fold_list(
     xs: members,
-    empty: Absent,
+    empty: v2.std.optional.Absent,
     cons: fn(acc, member) {
       match acc {
-        Present { value: _ } => acc
-        Absent => module_member_dag_lookup_cause_if_rejected(module_dag: module_dag, member: member)
+        v2.std.optional.Present { value: _ } => acc
+        v2.std.optional.Absent => module_member_dag_lookup_cause_if_rejected(module_dag: module_dag, member: member)
       }
     }
   )
@@ -661,8 +661,8 @@ fn partition_cross_boundary_exports_fold(
             unit_id: unit_id,
             member: member
           ) {
-            Present { value: cause } => InterfaceBuildRefused { cause: cause }
-            Absent =>
+            v2.std.optional.Present { value: cause } => InterfaceBuildRefused { cause: cause }
+            v2.std.optional.Absent =>
               if module_referenced_from_outside_unit(
                 module_dag: module_dag,
                 assignment: assignment,
@@ -677,7 +677,7 @@ fn partition_cross_boundary_exports_fold(
                           list_snoc_unique_node(items: inner, item: decl)
                         }),
                     }
-                  Rejected { diagnostics: _ } =>
+                  v2.std.diagnostic.Rejected { diagnostics: _ } =>
                     InterfaceBuildRefused {
                       cause: ModuleDagExportsLookupRejected { module: member },
                     }
@@ -698,8 +698,8 @@ fn partition_unit_interface_fold(
   closure_fuel: Int
 ) -> v2.std.compilers.compilation_unit.PartitionInterfaceBuild {
   match partition_members_dag_lookup_cause_if_rejected(module_dag: module_dag, members: members) {
-    Present { value: cause } => InterfaceBuildRefused { cause: cause }
-    Absent =>
+    v2.std.optional.Present { value: cause } => InterfaceBuildRefused { cause: cause }
+    v2.std.optional.Absent =>
       match partition_cross_boundary_exports_fold(
         module_dag: module_dag,
         assignment: assignment,
@@ -847,8 +847,8 @@ fn partition_fold_outcome_with_closure_fuel(
     assignment: assignment,
     modules: module_dag.modules
   ) {
-    Present { value: cause } => PartitionFoldRefused { cause: cause }
-    Absent =>
+    v2.std.optional.Present { value: cause } => PartitionFoldRefused { cause: cause }
+    v2.std.optional.Absent =>
       list_unique_sorted_ids(items: assignment |> map_values)
         |> fold(init: PartitionFoldOk { units: [] }, f: fn(acc, unit_id) {
           match acc {
@@ -878,8 +878,8 @@ fn partition_fold_outcome(
     assignment: assignment,
     modules: module_dag.modules
   ) {
-    Present { value: cause } => PartitionFoldRefused { cause: cause }
-    Absent =>
+    v2.std.optional.Present { value: cause } => PartitionFoldRefused { cause: cause }
+    v2.std.optional.Absent =>
       list_unique_sorted_ids(items: assignment |> map_values)
         |> fold(init: PartitionFoldOk { units: [] }, f: fn(acc, unit_id) {
           match acc {
@@ -927,8 +927,8 @@ fn partition_unit_by_id(
   unit_id: v2.std.compilers.compilation_unit.CompilationUnitId
 ) -> v2.std.optional.Optional<v2.std.compilers.compilation_unit.CompilationUnit> {
   match units |> filter(unit => unit.id == unit_id) |> first {
-    Present { value: unit } => Present { value: unit }
-    Absent => Absent
+    v2.std.optional.Present { value: unit } => v2.std.optional.Present { value: unit }
+    v2.std.optional.Absent => v2.std.optional.Absent
   }
 }
 
@@ -943,7 +943,7 @@ fn partition_fold_deps_match_boundary_edges(
         false
       } else {
         match partition_unit_by_id(units: units, unit_id: unit_id) {
-          Present { value: unit } => {
+          v2.std.optional.Present { value: unit } => {
             let expected = partition_boundary_dep_targets(
               module_dag: module_dag,
               assignment: assignment,
@@ -951,7 +951,7 @@ fn partition_fold_deps_match_boundary_edges(
             )
             unit.deps == expected
           }
-          Absent => false
+          v2.std.optional.Absent => false
         }
       }
     })

@@ -3,26 +3,26 @@ module v2.test.lens_unit_modeling.electrical_blocked_pending_flagged
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data int_leaf_target_elec: Node = v2.std.node.Node {
+data int_leaf_target_elec: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_binding_type_int } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data electrical_field_input: Node = v2.std.node.Node {
+data electrical_field_input: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
-      label: Named { name: ^tdp_watts },
+      label: v2.std.node.Named { name: ^tdp_watts },
       target: int_leaf_target_elec
     }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-test fn electrical_blocked_pending_flagged_holds() -> Bool {
+test fn electrical_blocked_pending_flagged_holds() -> v2.std.logic.Bool {
   match unit_modeling_gate(node: electrical_field_input) {
-    Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_blocked_pending_carrier
+    v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_blocked_pending_carrier
     Accepted { value: _, diagnostics: _ } => false
   }
 }

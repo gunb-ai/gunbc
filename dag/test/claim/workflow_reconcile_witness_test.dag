@@ -132,7 +132,7 @@ test fn missing_nested_child_derives_one_reconcile_action() -> Bool {
       MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
     })
     && match report.verdict {
-      Unknown { missing } =>
+      std.reducible.Unknown { missing } =>
         string_contains(s: missing, pattern: ":database")
       _ => false
     }
@@ -320,7 +320,7 @@ test fn deep_failure_blocks_green_parent_and_siblings() -> Bool {
     && report.observed_failure_count == 1
     && workflow_reconcile_status_key(report: report) == "failed"
     && match report.verdict {
-      Unknown { missing } =>
+      std.reducible.Unknown { missing } =>
         string_contains(s: missing, pattern: ":database:failed")
       _ => false
     }
@@ -385,7 +385,7 @@ test fn green_children_do_not_complete_pending_parent() -> Bool {
   )
   report.remaining_count == 1
     && match report.verdict {
-      Unknown { missing } =>
+      std.reducible.Unknown { missing } =>
         string_contains(s: missing, pattern: ":deliver-feature:pending")
       _ => false
     }

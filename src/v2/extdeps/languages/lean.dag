@@ -115,9 +115,9 @@ type LeanFidelityFeature
   | LeanUnsupportedTheoremClass
 
 type LeanProofCheckSemantics<IRCarrier> {
-  kernel_definitional_reduction: Bool
-  opaque_axiom_boundary: Bool
-  proof_irrelevance_for_propositions: Bool
+  kernel_definitional_reduction: v2.std.logic.Bool
+  opaque_axiom_boundary: v2.std.logic.Bool
+  proof_irrelevance_for_propositions: v2.std.logic.Bool
 }
 
 data lean_bit_width_admissibility_note: String = "Lean fixed-precision integers: width axis is std.measure.BitWidth; lean_admit_bit_width is the admission boundary producing LeanBitWidthAccepted with LeanAdmittedBitWidth or LeanBitWidthRefused pinning the observed width. LeanAdmittedBitWidth is sole_constructor — cross-module forge is refused; honest rung is accepted refinement with executing refusal (witness lean_bit_width_admissibility_witness_test), not structural impossibility. Catalog fixed widths match admission Accepted before constructing LeanIntegerScalar; refusal stops at LeanWidthAdmissionRefused, not LeanIntegerWidth. Platform word is LeanPlatformWord. std.integer.Signedness is std.integer.Signedness."
@@ -359,7 +359,7 @@ data lean_primitive_facts_catalog: List<LeanPrimitiveFacts> = [
   lean_facts_bool
 ]
 
-data lean_bool_grounding: std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra
+data lean_bool_grounding: std.algebra.BooleanAlgebra<v2.std.logic.Bool> = v2.std.logic.bool_boolean_algebra
 
 fn lean_inhabitant_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
@@ -636,11 +636,11 @@ fn lean_primitive_fact_bundles() -> List<v2.std.model_core.PrimitiveFactBundle> 
   })
 }
 
-fn lean_catalog_surface_symbol_step(sym: v2.std.node.Symbol, acc: Bool, facts: LeanPrimitiveFacts) -> Bool {
+fn lean_catalog_surface_symbol_step(sym: v2.std.node.Symbol, acc: v2.std.logic.Bool, facts: LeanPrimitiveFacts) -> v2.std.logic.Bool {
   acc || sym == facts.surface_spelling
 }
 
-fn lean_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn lean_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: lean_primitive_facts_catalog,
     empty: false,
@@ -754,7 +754,7 @@ fn lean_lex() -> v2.std.compilers.lexing.LexRules {
   v2.std.compilers.lexing.ModeledLexRules { root: lean_lex_rules() }
 }
 
-fn lean_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn lean_lex_token_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.compilers.lexing.lex_rule_set_token_class_member(
     rules: lean_lex_rules(),
     token_class: sym
@@ -883,8 +883,8 @@ fn lean_scalar_algebra_inhabitance_optional(facts: LeanPrimitiveFacts) -> v2.std
 
 fn lean_inhabitance_decl_step(acc: List<v2.std.model_core.AlgebraInhabitanceDecl>, facts: LeanPrimitiveFacts) -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   match lean_scalar_algebra_inhabitance_optional(facts: facts) {
-    Present { value: decl } => v2.std.algebra.list_snoc_item(xs: acc, item: decl)
-    Absent => acc
+    v2.std.optional.Present { value: decl } => v2.std.algebra.list_snoc_item(xs: acc, item: decl)
+    v2.std.optional.Absent => acc
   }
 }
 

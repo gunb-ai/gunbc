@@ -47,24 +47,24 @@ fn bisect_through_normalize() -> v2.std.diagnostic.Outcome<v2.compiler.normalize
   )
 }
 
-test fn bisect_tokenize_terminates() -> Bool {
+test fn bisect_tokenize_terminates() -> v2.std.logic.Bool {
   match bisect_through_tokenize() {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-test fn bisect_parse_terminates() -> Bool {
+test fn bisect_parse_terminates() -> v2.std.logic.Bool {
   match bisect_through_parse() {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-test fn bisect_normalize_terminates() -> Bool {
+test fn bisect_normalize_terminates() -> v2.std.logic.Bool {
   match bisect_through_normalize() {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
@@ -86,14 +86,14 @@ fn bisect_through_grammar_validate() -> v2.std.diagnostic.Outcome<v2.std.grammar
   }
 }
 
-test fn bisect_grammar_validate_terminates() -> Bool {
+test fn bisect_grammar_validate_terminates() -> v2.std.logic.Bool {
   match bisect_through_grammar_validate() {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-fn bisect_parse_module_add_parse_accepts() -> Bool {
+fn bisect_parse_module_add_parse_accepts() -> v2.std.logic.Bool {
   let lm = v2.extdeps.languages.dag.dag_language_model()
   match v2.compiler.tokenize.tokenize(
     text: bisect_add_module_source.carried,
@@ -103,13 +103,13 @@ fn bisect_parse_module_add_parse_accepts() -> Bool {
     Accepted { value: token_stream, diagnostics: _ } =>
       match v2.compiler.parse.parse(tokens: token_stream, grammar: lm.grammar) {
         Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn bisect_parse_module_add_resolve_accepts() -> Bool {
+fn bisect_parse_module_add_resolve_accepts() -> v2.std.logic.Bool {
   let lm = v2.extdeps.languages.dag.dag_language_model()
   match v2.compiler.tokenize.tokenize(
     text: bisect_add_module_source.carried,
@@ -123,17 +123,17 @@ fn bisect_parse_module_add_resolve_accepts() -> Bool {
             Accepted { value: normalized, diagnostics: _ } =>
               match v2.compiler.resolve.resolve(tree: normalized, lm: lm) {
                 Accepted { value: _, diagnostics: _ } => true
-                Rejected { diagnostics: _ } => false
+                v2.std.diagnostic.Rejected { diagnostics: _ } => false
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn bisect_parse_module_truncated_rejects() -> Bool {
+fn bisect_parse_module_truncated_rejects() -> v2.std.logic.Bool {
   let lm = v2.extdeps.languages.dag.dag_language_model()
   match v2.compiler.tokenize.tokenize(
     text: bisect_add_module_truncated_source.carried,
@@ -143,13 +143,13 @@ fn bisect_parse_module_truncated_rejects() -> Bool {
     Accepted { value: token_stream, diagnostics: _ } =>
       match v2.compiler.parse.parse(tokens: token_stream, grammar: lm.grammar) {
         Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
       }
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-fn bisect_parse_module_add_well_formed_after_normalize() -> Bool {
+fn bisect_parse_module_add_well_formed_after_normalize() -> v2.std.logic.Bool {
   let lm = v2.extdeps.languages.dag.dag_language_model()
   match v2.compiler.tokenize.tokenize(
     text: bisect_add_module_source.carried,
@@ -161,15 +161,15 @@ fn bisect_parse_module_add_well_formed_after_normalize() -> Bool {
         Accepted { value: parsed, diagnostics: _ } =>
           match v2.compiler.normalize.normalize(parse_tree: parsed) {
             Accepted { value: normalized, diagnostics: _ } => v2.std.node.well_formed(n: normalized.root)
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn bisect_parse_module_add_normalize_accepts() -> Bool {
+fn bisect_parse_module_add_normalize_accepts() -> v2.std.logic.Bool {
   let lm = v2.extdeps.languages.dag.dag_language_model()
   match v2.compiler.tokenize.tokenize(
     text: bisect_add_module_source.carried,
@@ -181,15 +181,15 @@ fn bisect_parse_module_add_normalize_accepts() -> Bool {
         Accepted { value: parsed, diagnostics: _ } =>
           match v2.compiler.normalize.normalize(parse_tree: parsed) {
             Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn witness_bisect_parse_module_add_correctness_holds() -> Bool {
+test fn witness_bisect_parse_module_add_correctness_holds() -> v2.std.logic.Bool {
   bisect_parse_module_add_parse_accepts()
     && bisect_parse_module_add_normalize_accepts()
     && bisect_parse_module_add_well_formed_after_normalize()
@@ -202,7 +202,7 @@ data bisect_unbound_reference_source: extdeps.communication.medium.Medium<String
 data bisect_unbound_reference_no_binding_source: extdeps.communication.medium.Medium<String> = extdeps.communication.medium.Medium { carried: "module bisect.add\n\nfn add() -> Int { zzz }", fidelity: extdeps.communication.medium.Lossless }
 data bisect_unbound_reference_note: String = "Discriminating red controls for resolution vacuity (DESIGN section 5). Before the StampLexeme binding migration, every class-stamped identifier collapsed to ^dag_token_ident, which is grammar-carried and therefore canonical, so resolve accepted ANY body reference - including unbound ones (proven on main: both sources below resolved Accepted). These witnesses pin the non-vacuous behavior: a body reference with no binding (zzz, with and without params in scope) must resolve-reject. They go false if the vacuity ever returns - a canonical-symbol arm widening, a stamp regression, or an over-broad scope harvest."
 
-fn bisect_resolve_accepts_text(text: String) -> Bool {
+fn bisect_resolve_accepts_text(text: String) -> v2.std.logic.Bool {
   let lm = v2.extdeps.languages.dag.dag_language_model()
   match v2.compiler.tokenize.tokenize(
     text: text,
@@ -216,20 +216,20 @@ fn bisect_resolve_accepts_text(text: String) -> Bool {
             Accepted { value: normalized, diagnostics: _ } =>
               match v2.compiler.resolve.resolve(tree: normalized, lm: lm) {
                 Accepted { value: _, diagnostics: _ } => true
-                Rejected { diagnostics: _ } => false
+                v2.std.diagnostic.Rejected { diagnostics: _ } => false
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn witness_bisect_unbound_reference_rejected() -> Bool {
+test fn witness_bisect_unbound_reference_rejected() -> v2.std.logic.Bool {
   bisect_resolve_accepts_text(text: bisect_unbound_reference_source.carried) == false
 }
 
-test fn witness_bisect_unbound_reference_no_binding_rejected() -> Bool {
+test fn witness_bisect_unbound_reference_no_binding_rejected() -> v2.std.logic.Bool {
   bisect_resolve_accepts_text(text: bisect_unbound_reference_no_binding_source.carried) == false
 }

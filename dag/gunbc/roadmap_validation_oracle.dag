@@ -794,7 +794,7 @@ fn validation_receipt_string_member(
       }
     JsonMemberFound { value: v } =>
       match v {
-        JsonString { value: sv } => ValidationReceiptMemberRead { value: sv }
+        extdeps.languages.json.emit.JsonString { value: sv } => ValidationReceiptMemberRead { value: sv }
         _ =>
           ValidationReceiptMemberUnreadable {
             reason: concat(

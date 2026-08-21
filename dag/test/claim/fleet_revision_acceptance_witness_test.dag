@@ -45,7 +45,7 @@ fn trunk_push(head_sha: String) -> WorkflowRunEvent {
   ev(
     activity: "completed",
     workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
-    conclusion: Success,
+    conclusion: extdeps.github.workflow_runs.Success,
     head_sha: head_sha,
     head_branch: "main",
     head_repository_full_name: "gunb-ai/gunbc",
@@ -58,7 +58,7 @@ fn pull_request_run(head_sha: String) -> WorkflowRunEvent {
   ev(
     activity: "completed",
     workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
-    conclusion: Success,
+    conclusion: extdeps.github.workflow_runs.Success,
     head_sha: head_sha,
     head_branch: "topic/experiment",
     head_repository_full_name: "gunb-ai/gunbc",
@@ -135,7 +135,7 @@ test fn a_push_to_a_topic_branch_is_refused_by_the_branch_fact() -> Bool {
     event: ev(
       activity: "completed",
       workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
-      conclusion: Success,
+      conclusion: extdeps.github.workflow_runs.Success,
       head_sha: sha_a,
       head_branch: "topic/experiment",
       head_repository_full_name: "gunb-ai/gunbc",
@@ -211,7 +211,7 @@ test fn each_required_ci_identity_fact_refuses_with_its_own_cause() -> Bool {
     event: ev(
       activity: "completed",
       workflow_path: ".github/workflows/fleet-converge.yml",
-      conclusion: Success,
+      conclusion: extdeps.github.workflow_runs.Success,
       head_sha: sha_a,
       head_branch: "main",
       head_repository_full_name: "gunb-ai/gunbc",
@@ -228,7 +228,7 @@ test fn each_required_ci_identity_fact_refuses_with_its_own_cause() -> Bool {
       event: ev(
         activity: "completed",
         workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
-        conclusion: Success,
+        conclusion: extdeps.github.workflow_runs.Success,
         head_sha: sha_a,
         head_branch: "main",
         head_repository_full_name: "gunb-ai/gunbc",
@@ -245,7 +245,7 @@ test fn each_required_ci_identity_fact_refuses_with_its_own_cause() -> Bool {
       event: ev(
         activity: "completed",
         workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
-        conclusion: Success,
+        conclusion: extdeps.github.workflow_runs.Success,
         head_sha: sha_a,
         head_branch: "main",
         head_repository_full_name: "someone/fork",
@@ -262,7 +262,7 @@ test fn each_required_ci_identity_fact_refuses_with_its_own_cause() -> Bool {
       event: ev(
         activity: "requested",
         workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
-        conclusion: Success,
+        conclusion: extdeps.github.workflow_runs.Success,
         head_sha: sha_a,
         head_branch: "main",
         head_repository_full_name: "gunb-ai/gunbc",
@@ -276,8 +276,8 @@ test fn each_required_ci_identity_fact_refuses_with_its_own_cause() -> Bool {
     }
 }
 
-// A run that did not conclude Success is refused and the OBSERVED conclusion is carried. Cancelled
-// is exercised beside Failure deliberately: a cancelled run produces no failure to investigate, so
+// A run that did not conclude extdeps.github.workflow_runs.Success is refused and the OBSERVED conclusion is carried. extdeps.github.workflow_runs.Cancelled
+// is exercised beside extdeps.github.workflow_runs.Failure deliberately: a cancelled run produces no failure to investigate, so
 // it is the state most likely to be read as "nothing happened" -- and it is exactly the state that
 // must not be mistaken for a floor that ran.
 test fn only_a_successful_conclusion_admits_and_the_others_are_named() -> Bool {
@@ -285,7 +285,7 @@ test fn only_a_successful_conclusion_admits_and_the_others_are_named() -> Bool {
     event: ev(
       activity: "completed",
       workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
-      conclusion: Failure,
+      conclusion: extdeps.github.workflow_runs.Failure,
       head_sha: sha_a,
       head_branch: "main",
       head_repository_full_name: "gunb-ai/gunbc",
@@ -296,7 +296,7 @@ test fn only_a_successful_conclusion_admits_and_the_others_are_named() -> Bool {
   ) {
     RequiredCiRefused { cause: CiConclusionNotSuccess { observed: c } } =>
       match c {
-        Failure => true
+        extdeps.github.workflow_runs.Failure => true
         _ => false
       }
     _ => false
@@ -305,7 +305,7 @@ test fn only_a_successful_conclusion_admits_and_the_others_are_named() -> Bool {
       event: ev(
         activity: "completed",
         workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
-        conclusion: Cancelled,
+        conclusion: extdeps.github.workflow_runs.Cancelled,
         head_sha: sha_a,
         head_branch: "main",
         head_repository_full_name: "gunb-ai/gunbc",
@@ -316,7 +316,7 @@ test fn only_a_successful_conclusion_admits_and_the_others_are_named() -> Bool {
     ) {
       RequiredCiRefused { cause: CiConclusionNotSuccess { observed: c2 } } =>
         match c2 {
-          Cancelled => true
+          extdeps.github.workflow_runs.Cancelled => true
           _ => false
         }
       _ => false
@@ -332,7 +332,7 @@ test fn a_failed_run_of_the_wrong_workflow_refuses_as_the_wrong_workflow() -> Bo
     event: ev(
       activity: "completed",
       workflow_path: ".github/workflows/fleet-converge.yml",
-      conclusion: Failure,
+      conclusion: extdeps.github.workflow_runs.Failure,
       head_sha: sha_a,
       head_branch: "main",
       head_repository_full_name: "gunb-ai/gunbc",

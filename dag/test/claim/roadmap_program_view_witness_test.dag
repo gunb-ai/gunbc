@@ -37,7 +37,7 @@ fn fx_node_custom(
       gunbc.roadmap_execution_contract.ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [] }
     } else { ExecutionContractUnspecified },
     owner: "fixture",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 
@@ -54,7 +54,7 @@ fn fx_node(id: String, bound: Bool, sized: Bool) -> gunbc.roadmap_model.RoadmapN
       gunbc.roadmap_execution_contract.ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [] }
     } else { ExecutionContractUnspecified },
     owner: "fixture",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 
@@ -67,7 +67,7 @@ fn fx_pr_node(id: String) -> gunbc.roadmap_model.RoadmapNode {
     sizing: gunbc.roadmap_model.Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: PrsMerged },
     execution: gunbc.roadmap_execution_contract.ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [] },
     owner: "fixture",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 

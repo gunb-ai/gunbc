@@ -2,13 +2,13 @@ module v2.test.lens_cost.atom_zero
 
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
-data atom_zero_input: Node = v2.std.node.Node {
+data atom_zero_input: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^atom_zero_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-test fn atom_zero_claim_holds() -> Bool {
+test fn atom_zero_claim_holds() -> v2.std.logic.Bool {
   match cost_lens(n: atom_zero_input) {
     Holds { value: actual } => actual == zero_cost()
     _ => false

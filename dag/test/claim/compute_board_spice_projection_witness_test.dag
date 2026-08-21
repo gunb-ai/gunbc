@@ -145,7 +145,7 @@ test fn w_unmodelled_element_refuses_and_emits_nothing() -> Bool {
   ) {
     SpiceSliceRefused { cause: c } =>
       match c {
-        ElectricalModelUnavailable { part: p } => (p as String) == "bulk decoupling capacitor"
+        product.compute_board.spice_projection.ElectricalModelUnavailable { part: p } => (p as String) == "bulk decoupling capacitor"
         ModelFidelityNotEmittable { part: _, model_card: _ } => false
         ComponentModelBindingMissing { part: _ } => false
         TerminalOnNoNet { part: _ } => false
@@ -182,7 +182,7 @@ test fn w_vendor_subcircuit_refuses_rather_than_emitting_an_ideal_part() -> Bool
       match c {
         ModelFidelityNotEmittable { part: p, model_card: mc } =>
           (p as String) == "bulk decoupling capacitor" && (mc as String) == "vendor ESR/ESL subcircuit"
-        ElectricalModelUnavailable { part: _ } => false
+        product.compute_board.spice_projection.ElectricalModelUnavailable { part: _ } => false
         ComponentModelBindingMissing { part: _ } => false
         TerminalOnNoNet { part: _ } => false
         TerminalOnMultipleNets { part: _ } => false
@@ -202,7 +202,7 @@ test fn w_missing_binding_is_not_an_absent_model() -> Bool {
     SpiceSliceRefused { cause: c } =>
       match c {
         ComponentModelBindingMissing { part: p } => (p as String) == "bulk decoupling capacitor"
-        ElectricalModelUnavailable { part: _ } => false
+        product.compute_board.spice_projection.ElectricalModelUnavailable { part: _ } => false
         ModelFidelityNotEmittable { part: _, model_card: _ } => false
         TerminalOnNoNet { part: _ } => false
         TerminalOnMultipleNets { part: _ } => false
@@ -239,7 +239,7 @@ test fn w_terminal_on_no_net_refuses_rather_than_defaulting_to_reference() -> Bo
     SpiceSliceRefused { cause: c } =>
       match c {
         TerminalOnNoNet { part: p } => (p as String) == "series sense resistor"
-        ElectricalModelUnavailable { part: _ } => false
+        product.compute_board.spice_projection.ElectricalModelUnavailable { part: _ } => false
         ModelFidelityNotEmittable { part: _, model_card: _ } => false
         ComponentModelBindingMissing { part: _ } => false
         TerminalOnMultipleNets { part: _ } => false

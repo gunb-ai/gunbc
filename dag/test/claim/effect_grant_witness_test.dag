@@ -68,14 +68,14 @@ data empty_env: std.effect_grant.Envelope = std.effect_grant.Envelope {
 fn is_admitted(a: std.access.AccessDecision) -> Bool {
   match a {
     Permit => true
-    Deny { refusal: refusal } => false
+    std.access.Deny { refusal: refusal } => false
   }
 }
 
 fn is_refused(a: std.access.AccessDecision) -> Bool {
   match a {
     Permit => false
-    Deny { refusal: refusal } => true
+    std.access.Deny { refusal: refusal } => true
   }
 }
 
@@ -119,7 +119,7 @@ test fn effect_grant_execute_admission_witnesses() -> Bool {
 
 test fn effect_grant_execute_refusal_is_located_witnesses() -> Bool {
   match admit_effect(env: execute_only_env, verb: Execute, target: other_bin_target) {
-    Deny { refusal: refusal } =>
+    std.access.Deny { refusal: refusal } =>
       refusal.location.profile == "EffectRequest"
         && refusal.location.subject == test_frame.name
         && refusal.location.action == "execute"
@@ -130,7 +130,7 @@ test fn effect_grant_execute_refusal_is_located_witnesses() -> Bool {
 
 test fn effect_grant_refusal_is_located_witnesses() -> Bool {
   match admit_effect(env: write_only_env, verb: Write, target: outside_workspace) {
-    Deny { refusal: refusal } =>
+    std.access.Deny { refusal: refusal } =>
       refusal.location.profile == "EffectRequest"
         && refusal.location.subject == test_frame.name
         && refusal.location.action == "write"

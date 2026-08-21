@@ -405,14 +405,14 @@ pub fn measure_descent_fact_registry() -> Rc<Vec<Rc<MeasureDescentFact>>> {
     CACHED.with(|c: &Rc<Vec<Rc<MeasureDescentFact>>>| c.clone())
 }
 
-pub fn measure_descent_some(e: DescentEvidence) -> Option<DescentEvidence> {
-    Some(e.clone())
+pub fn measure_descent_some(e: DescentEvidence) -> Optional<DescentEvidence> {
+    Optional::Present { value: e.clone() }
 }
 
 pub fn measure_descent_fact_for(
     registry: Rc<Vec<Rc<MeasureDescentFact>>>,
     s: String,
-) -> Option<DescentEvidence> {
+) -> Optional<DescentEvidence> {
     registry
         .clone()
         .iter()
@@ -434,8 +434,8 @@ pub fn measure_descent_evidence_for_symbol(
     s: String,
 ) -> DescentEvidence {
     match measure_descent_fact_for(registry.clone(), s.clone()) {
-        Some(e) => e.clone(),
-        None => DescentEvidence::DescentUnknown,
+        Optional::Present { value: e, .. } => e.clone(),
+        Optional::Absent => DescentEvidence::DescentUnknown,
     }
 }
 
@@ -508,13 +508,13 @@ pub fn dimension_row_is_strict(row: Rc<MeasureDimensionEvidence>) -> bool {
         == crate::std_termination::evidence_rank(DescentEvidence::Strict))
 }
 
-pub fn ranking_dimension_some(d: Rc<RankingDimension>) -> Option<Rc<RankingDimension>> {
-    Some(d.clone())
+pub fn ranking_dimension_some(d: Rc<RankingDimension>) -> Optional<Rc<RankingDimension>> {
+    Optional::Present { value: d.clone() }
 }
 
 pub fn first_strict_dimension(
     rows: Rc<Vec<Rc<MeasureDimensionEvidence>>>,
-) -> Option<Rc<RankingDimension>> {
+) -> Optional<Rc<RankingDimension>> {
     rows.clone()
         .iter()
         .cloned()
@@ -569,8 +569,10 @@ pub fn non_strict_dimensions_after_first(
 
 pub fn lexicographic_multiplicity(rows: Rc<Vec<Rc<MeasureDimensionEvidence>>>) -> Rc<Multiplicity> {
     match first_strict_dimension(rows.clone()) {
-        None => Rc::new(Multiplicity::RequiresTerminationProof),
-        Some(strict_dim) => Rc::new(Multiplicity::ProvenTermination {
+        Optional::Absent => Rc::new(Multiplicity::RequiresTerminationProof),
+        Optional::Present {
+            value: strict_dim, ..
+        } => Rc::new(Multiplicity::ProvenTermination {
             proof: Rc::new(TerminationProof {
                 non_increasing: non_strict_dimensions_after_first(rows.clone()),
                 strict: strict_dim.clone(),

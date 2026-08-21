@@ -390,13 +390,13 @@ fn spark_exact_grant_row(context: gunbc.fleet_known_hosts_anchor.FleetSshExecuti
         if r.success {
           gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: r.stdout }
         } else {
-          GrantAbsent { detail: join(["exit=", to_string(r.exit_code), " stderr=", std.algebra.trim(s: r.stderr)], "") }
+          gunbc.spark.managed_access_bootstrap.GrantAbsent { detail: join(["exit=", to_string(r.exit_code), " stderr=", std.algebra.trim(s: r.stderr)], "") }
         }
     },
   }
 }
 
-// GrantAbsent is NOT a failure: "this account holds no passwordless grant" is a real, useful
+// gunbc.spark.managed_access_bootstrap.GrantAbsent is NOT a failure: "this account holds no passwordless grant" is a real, useful
 // observation and the one the Sparks are expected to report before a serving grant is widened. Only
 // GrantProbeRefused -- we could not ask -- fails the process, which is the distinction the substring
 // gate could not draw at all.
@@ -410,7 +410,7 @@ fn spark_grant_report_refusal(report: SparkGrantReport) -> String? {
           Absent => match row.outcome {
             gunbc.spark.managed_access_bootstrap.GrantProbeRefused { cause: c } => Present { value: join(["host=", row.host, " principal=", row.principal, " probe-refused cause=", c], "") }
             gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: _ } => none
-            GrantAbsent { detail: _ } => none
+            gunbc.spark.managed_access_bootstrap.GrantAbsent { detail: _ } => none
           }
         }
       })
@@ -431,7 +431,7 @@ fn spark_grant_row_text(row: SparkGrantRow) -> String {
 fn spark_grant_row_listing_text(row: SparkGrantRow) -> String {
   match row.outcome {
     gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: l } => join(["grant host=", row.host, " principal=", row.principal, " enumerated:\n", l, "\n"], "")
-    GrantAbsent { detail: d } => join(["grant host=", row.host, " principal=", row.principal, " NO-PASSWORDLESS-GRANT ", d, "\n"], "")
+    gunbc.spark.managed_access_bootstrap.GrantAbsent { detail: d } => join(["grant host=", row.host, " principal=", row.principal, " NO-PASSWORDLESS-GRANT ", d, "\n"], "")
     gunbc.spark.managed_access_bootstrap.GrantProbeRefused { cause: c } => join(["grant host=", row.host, " principal=", row.principal, " probe-refused cause=", c, "\n"], "")
   }
 }

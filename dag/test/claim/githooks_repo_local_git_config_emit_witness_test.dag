@@ -55,7 +55,7 @@ test fn witness_pre_push_enrolls_converge_shell() -> Bool {
 
 test fn witness_converge_shell_emit_is_scaffold() -> Bool {
   match githooks_repo_local_git_config_emit_shell_emit_scaffold {
-    Scaffold { dissolves_to: _, bind: _ } => true
+    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
     _ => false
   }
 }

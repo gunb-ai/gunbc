@@ -3,14 +3,14 @@ module v2.test.manual.int_literal_parse_smoke
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn int_literal_smoke_first_int_token_lexeme(source_text: String) -> Optional<String> {
+fn int_literal_smoke_first_int_token_lexeme(source_text: String) -> v2.std.optional.Optional<String> {
   let lm = dag_language_model()
-  match tokenize(text: source_text, file: ^int_literal_smoke_file, rules: lm.lex) {
+  match v2.compiler.tokenize.tokenize(text: source_text, file: ^int_literal_smoke_file, rules: lm.lex) {
     Accepted { value: stream, diagnostics: _ } =>
       fold(token_stream_all(stream: stream), init: optional_absent(), f: fn(acc, tok) {
         match acc {
-          Present { value: _ } => acc
-          Absent =>
+          v2.std.optional.Present { value: _ } => acc
+          v2.std.optional.Absent =>
             if tok.class == ^dag_token_int_literal {
               optional_present(value: tok.lexeme)
             } else {
@@ -18,49 +18,49 @@ fn int_literal_smoke_first_int_token_lexeme(source_text: String) -> Optional<Str
             }
         }
       })
-    Rejected { diagnostics: _ } => optional_absent()
+    v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
-test fn int_literal_loop_token_lexeme_builds_holds() -> Bool {
+test fn int_literal_loop_token_lexeme_builds_holds() -> v2.std.logic.Bool {
   match int_literal_smoke_first_int_token_lexeme(source_text: v2.compiler.ingested_fixture_arrows.ingested_loop_module_source) {
-    Present { value: lexeme } =>
+    v2.std.optional.Present { value: lexeme } =>
       match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence) {
         Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
 data int_literal_parse_smoke_note: String = "Full module parse for loop/pick census sources exceeds the 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note). Parse fidelity for those sources is covered by long-lane ingest witnesses (wave1_gate1_d, pick_ingested_probe, pipeline_stage_add_pick)."
 
-test fn int_literal_from_token_lexeme_holds() -> Bool {
+test fn int_literal_from_token_lexeme_holds() -> v2.std.logic.Bool {
   let lm = dag_language_model()
-  match tokenize(text: "1", file: ^int_literal_smoke_file, rules: lm.lex) {
+  match v2.compiler.tokenize.tokenize(text: "1", file: ^int_literal_smoke_file, rules: lm.lex) {
     Accepted { value: stream, diagnostics: _ } =>
-      match token_stream_first(stream: stream) {
-        Present { value: tok } =>
+      match v2.std.compilers.lexing.token_stream_first(stream: stream) {
+        v2.std.optional.Present { value: tok } =>
           match dag_int_literal_node_from_lexeme(lexeme: tok.lexeme, occurrence_id: SyntheticOccurrence) {
             Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Absent => false
+        v2.std.optional.Absent => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn int_literal_string_to_digits_holds() -> Bool {
+test fn int_literal_string_to_digits_holds() -> v2.std.logic.Bool {
   match integer_string_to_decimal_digits_optional(s: "1") {
-    Present { value: _ } => true
+    v2.std.optional.Present { value: _ } => true
     _ => false
   }
 }
 
-test fn int_literal_magnitude_node_holds() -> Bool {
+test fn int_literal_magnitude_node_holds() -> v2.std.logic.Bool {
   match integer_string_to_decimal_digits_optional(s: "1") {
-    Present { value: digits } => {
+    v2.std.optional.Present { value: digits } => {
       let _node = integer_decimal_magnitude_node(magnitude: decimal_digits_to_magnitude(digits: digits))
       true
     }
@@ -68,20 +68,20 @@ test fn int_literal_magnitude_node_holds() -> Bool {
   }
 }
 
-test fn int_literal_node_from_lexeme_one_holds() -> Bool {
+test fn int_literal_node_from_lexeme_one_holds() -> v2.std.logic.Bool {
   match dag_int_literal_node_from_lexeme(lexeme: "1", occurrence_id: SyntheticOccurrence) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn int_literal_magnitude_int_from_node_holds() -> Bool {
+test fn int_literal_magnitude_int_from_node_holds() -> v2.std.logic.Bool {
   match dag_int_literal_node_from_lexeme(lexeme: "1", occurrence_id: SyntheticOccurrence) {
     Accepted { value: node, diagnostics: _ } =>
       match dag_int_literal_magnitude_int_from_node(node: node) {
         Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

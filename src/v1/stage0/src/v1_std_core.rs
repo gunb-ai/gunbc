@@ -20,43 +20,33 @@ use self::StringPart::*;
 use self::TokenShape::*;
 use self::UnaryOpKind::*;
 use self::VarBindingKind::*;
-use crate::std_algebra::CollectionSizeEffect::*;
-use crate::std_algebra::CostShape::*;
-pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
-use crate::std_occurrence_identity::OccurrenceTransportRefusal::{
-    DuplicateAuthoredOccurrenceIdentity, DuplicateSuppliedCandidateIdentity,
-    InconsistentOccurrenceContainment, MissingAuthoredOccurrenceIdentity,
-    UnknownOccurrenceIdentity, WrongOccurrenceRole,
-};
+use crate::std_occurrence_identity::OccurrenceTransportRefusal::*;
 pub use crate::std_occurrence_identity::{
     authored_token_ordinal_space_from_allocator, authored_token_ordinal_space_initial,
     occurrence_id_allocator_advance_to,
 };
 pub use crate::std_occurrence_identity::{
-    AuthoredTokenOrdinalSpace, OccurrenceIdAllocator, OccurrenceTransportRefusal,
+    AuthoredTokenOrdinal, AuthoredTokenOrdinalSpace, OccurrenceId, OccurrenceTransportRefusal,
 };
 pub use crate::std_source_annotation::AnnotationAttachmentRefusal;
 use crate::std_source_annotation::AnnotationAttachmentRefusal::*;
 pub use crate::std_source_annotation::{
     annotation_attachment_refusal_message, annotation_attachment_refusal_origin,
 };
-use crate::std_syntax::AlgebraFieldKind::{
-    AlgAdd, AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
-};
-use crate::std_syntax::BinOp::{
-    Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
-};
-use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
+use crate::std_syntax::AlgebraFieldKind::*;
+use crate::std_syntax::BinOp::*;
+use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
-pub use crate::std_types::{
-    container_expected_arity, container_type_arity, is_container_type, is_kernel_type,
-    kernel_type_set,
-};
-pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan};
+pub use crate::std_types::container_expected_arity;
+pub use crate::std_types::{FilePath, List, Map};
+pub use crate::v1_compiler_emit_core_support::to_string;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v2_lens_application::SourceSpan;
+pub use crate::v2_std_collection::empty_map;
+pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -503,6 +493,10 @@ pub enum CompilerDiagnostic {
         permitted_callers: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
+    UnlistedImportUse {
+        name: String,
+        span: Rc<SourceSpan>,
+    },
     AmbiguousReference {
         name: String,
         candidates: Rc<Vec<String>>,
@@ -636,9 +630,10 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::SoleConstructorViolation { span: s, .. } => s.clone(),
         CompilerDiagnostic::BareNoneNotAdmittedByFieldType { span: s, .. } => s.clone(),
         CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => {
-            annotation_attachment_refusal_origin(r.clone())
+            crate::std_source_annotation::annotation_attachment_refusal_origin(r.clone())
         }
         CompilerDiagnostic::ConstructorCallAdmissionRefused { span: s, .. } => s.clone(),
+        CompilerDiagnostic::UnlistedImportUse { span: s, .. } => s.clone(),
         CompilerDiagnostic::AmbiguousReference { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallPositionalSurplus { span: s, .. } => s.clone(),
@@ -668,7 +663,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::MethodExistenceUndecided { method: m, receiver_type: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("method '".to_string(), m.clone()), "' cannot be resolved: receiver type '".to_string()), t.clone()), "' establishes no method surface, so the method's existence is not established and no declared frontier row admits it".to_string()),
     CompilerDiagnostic::MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: tr, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("method '".to_string(), m.clone()), "' on receiver type '".to_string()), t.clone()), "' is admitted by a declared unresolved-method frontier row; dissolves on: ".to_string()), tr.clone()),
     CompilerDiagnostic::ReceiverTypeUnestablished { .. } => "the receiver's own type was never established, so nothing is known about the method's existence here; this is an upstream type-propagation deficit, not a fact about the method".to_string(),
-    CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, declared: dcl, observed: obs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the declared frontier row for '".to_string(), m.clone()), v1_rt::concat("' on receiver type '".to_string(), t.clone())), "' declares ".to_string()), v1_rt::to_string(dcl.clone())), v1_rt::concat(" and this module contains ".to_string(), v1_rt::to_string(obs.clone()))), ": no longer matches what this module contains: its declared occurrence count and the count observed here differ, and both numbers are carried on this diagnostic. If MORE were observed, a new unresolved call has appeared and the receiver's type should be established rather than the count raised. If FEWER were observed, the deficit has partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground. The count is an equality, not a ceiling, in both directions.".to_string()),
+    CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("the declared frontier row for '".to_string(), m.clone()), v1_rt::concat("' on receiver type '".to_string(), t.clone())), "' no longer matches what this module contains: its declared occurrence count and the count observed here differ, and both numbers are carried on this diagnostic. If MORE were observed, a new unresolved call has appeared and the receiver's type should be established rather than the count raised. If FEWER were observed, the deficit has partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground. The count is an equality, not a ceiling, in both directions.".to_string()),
     CompilerDiagnostic::MissingField { field: f, type_name: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("missing required field '".to_string(), f.clone()), "' in literal of type '".to_string()), t.clone()), "'".to_string()),
     CompilerDiagnostic::NonExhaustiveMatch { missing: ms, .. } => v1_rt::concat("non-exhaustive match: missing variant(s) ".to_string(), ms.clone().join(&", ".to_string())),
     CompilerDiagnostic::CircularDependency { modules: ms, .. } => v1_rt::concat("circular dependency detected: ".to_string(), ms.clone().join(&" -> ".to_string())),
@@ -682,8 +677,9 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::VariantCollision { variant: v, enum1: e1, enum2: e2, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("variant '".to_string(), v.clone()), "' appears in both '".to_string()), e1.clone()), "' and '".to_string()), e2.clone()), "'".to_string()),
     CompilerDiagnostic::SoleConstructorViolation { type_name: t, .. } => v1_rt::concat(v1_rt::concat("sole_constructor type '".to_string(), t.clone()), "' cannot be constructed outside its defining module".to_string()),
     CompilerDiagnostic::BareNoneNotAdmittedByFieldType { field: f, type_name: t, declared_type: dt, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("bare 'None' cannot inhabit field '".to_string(), f.clone()), "' of '".to_string()), t.clone()), "': declared type '".to_string()), dt.clone()), "' carries no absence — it is not optional and declares no 'None' variant".to_string()),
-    CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => annotation_attachment_refusal_message(r.clone()),
+    CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => crate::std_source_annotation::annotation_attachment_refusal_message(r.clone()),
     CompilerDiagnostic::ConstructorCallAdmissionRefused { constructor_module_path: cm, constructor_decl_name: cn, caller_module_path: caller_m, caller_decl_name: caller_n, permitted_callers: permitted, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("constructor call admission refused: '".to_string(), cm.clone()), ".".to_string()), cn.clone()), "' refuses call from '".to_string()), caller_m.clone()), ".".to_string()), caller_n.clone()), "' — permitted callers: [".to_string()), permitted.clone().join(&", ".to_string())), "]".to_string()),
+    CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted import use '".to_string(), n.clone()), "' (referenced but not in any import's name list)".to_string()),
     CompilerDiagnostic::AmbiguousReference { name: n, candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous reference '".to_string(), n.clone()), "': ".to_string()), ((cs.clone().len() as i64)).to_string()), " candidates: ".to_string()), cs.clone().join(&", ".to_string())), " — qualify by containment path, alias, or rename".to_string()),
     CompilerDiagnostic::CallArgumentNameUnknown { callee: c, argument: a, declared: ds, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': no parameter named '".to_string()), a.clone()), "' (declared: [".to_string()), ds.clone().join(&", ".to_string())), "])".to_string()),
     CompilerDiagnostic::CallPositionalSurplus { callee: c, supplied: s, capacity: cap, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': too many positional arguments: ".to_string()), (s.clone()).to_string()), " supplied, ".to_string()), (cap.clone()).to_string()), " positional parameter(s) declared".to_string()),
@@ -707,7 +703,7 @@ pub fn is_where_refinement_unenforced_advisory_reason(reason: String) -> bool {
 pub fn compiler_diagnostic_seed_projection_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "HAND-RUST GATE receipt for the CompilerDiagnostic seed projection (codex reviews 45469, 45481). Adding a variant to this coproduct forces arms in two TOTAL matches in the hand-maintained seed transport, cli_run.rs's compile_clean_diagnostic_histogram_key and its method-name extractor; without them the seed does not compile, so the arms are the mechanical consequence of the .dag change, not host-side capability someone chose to write in Rust. THIS IS A DIFFERENT CLASS FROM THE GATE'S USUAL SUBJECT and the distinction is the whole receipt: the gate's other explicit deferrals — cli_run::selection_control_input_sources, the emit-surface retirement rows — are DECISION SURFACES that could live in .dag and are deferred for a stated reason, so they owe a dissolution schedule of their own. An exhaustiveness arm owes none, because it cannot live anywhere but the seed's projection of the coproduct, and it disappears exactly when the seed does. CHECKABLE RECEIPT for the FIVE variants this lane adds (MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded). It read SIX until the unjudged conformance advisory was excluded from this PR (codex review 45767); DeclaredTypeConformanceUnjudged and its arms are gone with it, which is why the figures below moved again. Two commands, and the receipt is exactly their output — EACH FIGURE NAMES THE COMMAND THAT PRODUCES IT, because a number with no command behind it cannot be checked and rots silently. (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 747 at origin/main and 747 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 23 added / 0 removed, and `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line is inside an existing fn and none declares one. The 23 lines are the five diagnostic arms plus the advisory-classification entries described next. THE NUMBERS IN A RECEIPT MUST TRACK THE DIFF THEY CERTIFY: this row read five variants and 13 lines after a sixth variant landed (codex review 45501), and then read a fn census of 742 that NO command reproduced — 501 bare `fn` and 245 `pub fn` on either side, never 742 — so the figure certifying that hand-Rust had not grown was itself unverifiable. A receipt whose number cannot be re-derived is indistinguishable from one that is wrong. Re-derive all three figures from the commands above whenever this coproduct changes, rather than carrying them forward. THE ADVISORY CLASSIFICATION IS PART OF THIS RECEIPT AND WAS THE DEFECT IT ALMOST HID: compile_clean_diagnostic_is_advisory is a CLOSED ALLOWLIST, not the complement of is_hard, so the two non-blocking variants this lane adds were counted by NEITHER predicate — rendered to the terminal while the gate reported zero of them. The residue was described as counted while nothing in the repository counted it, and the population figures quoted in review came from a grep over log text rather than from any mechanism (found by executing the gate before and after and seeing its advisory total sit unchanged at 4590 while the printed population halved). Adding a non-blocking variant to the coproduct therefore obliges a matching entry in that allowlist, or the frontier it represents is invisible to the gate that is supposed to bound it. Lane: compiler-static-failure-closure (v1-method-existence-wall / v1-declared-type-conformance-wall). Dissolves with the seed itself, ROADMAP hand-MAINTAINED to zero at v2 self-host; no separate trigger, because there is no separable work to schedule. Not migration debt and not a delete candidate.".to_string()
+            "HAND-RUST GATE receipt for the CompilerDiagnostic seed projection (codex reviews 45469, 45481). Adding a variant to this coproduct forces arms in two TOTAL matches in the hand-maintained seed transport, cli_run.rs's compile_clean_diagnostic_histogram_key and its method-name extractor; without them the seed does not compile, so the arms are the mechanical consequence of the .dag change, not host-side capability someone chose to write in Rust. THIS IS A DIFFERENT CLASS FROM THE GATE'S USUAL SUBJECT and the distinction is the whole receipt: the gate's other explicit deferrals — the emit-surface retirement rows — are DECISION SURFACES that could live in .dag and are deferred for a stated reason, so they owe a dissolution schedule of their own. This clause used to name cli_run::selection_control_input_sources alongside them; that symbol was DELETED with affected-set selection (2026-08-15), so the deferral it recorded was discharged by deletion rather than by a schedule, and the citation was left naming nothing — the DESIGN section 3 stale-citation class, inside a receipt whose own argument is that an unverifiable figure rots silently. An exhaustiveness arm owes none, because it cannot live anywhere but the seed's projection of the coproduct, and it disappears exactly when the seed does. CHECKABLE RECEIPT for the FIVE variants this lane adds (MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded). It read SIX until the unjudged conformance advisory was excluded from this PR (codex review 45767); DeclaredTypeConformanceUnjudged and its arms are gone with it, which is why the figures below moved again. Two commands, and the receipt is exactly their output — EACH FIGURE NAMES THE COMMAND THAT PRODUCES IT, because a number with no command behind it cannot be checked and rots silently. (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 747 at origin/main and 747 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 23 added / 0 removed, and `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line is inside an existing fn and none declares one. The 23 lines are the five diagnostic arms plus the advisory-classification entries described next. THE NUMBERS IN A RECEIPT MUST TRACK THE DIFF THEY CERTIFY: this row read five variants and 13 lines after a sixth variant landed (codex review 45501), and then read a fn census of 742 that NO command reproduced — 501 bare `fn` and 245 `pub fn` on either side, never 742 — so the figure certifying that hand-Rust had not grown was itself unverifiable. A receipt whose number cannot be re-derived is indistinguishable from one that is wrong. Re-derive all three figures from the commands above whenever this coproduct changes, rather than carrying them forward. THE ADVISORY CLASSIFICATION IS PART OF THIS RECEIPT AND WAS THE DEFECT IT ALMOST HID: compile_clean_diagnostic_is_advisory is a CLOSED ALLOWLIST, not the complement of is_hard, so the two non-blocking variants this lane adds were counted by NEITHER predicate — rendered to the terminal while the gate reported zero of them. The residue was described as counted while nothing in the repository counted it, and the population figures quoted in review came from a grep over log text rather than from any mechanism (found by executing the gate before and after and seeing its advisory total sit unchanged at 4590 while the printed population halved). Adding a non-blocking variant to the coproduct therefore obliges a matching entry in that allowlist, or the frontier it represents is invisible to the gate that is supposed to bound it. Lane: compiler-static-failure-closure (v1-method-existence-wall / v1-declared-type-conformance-wall). Dissolves with the seed itself, ROADMAP hand-MAINTAINED to zero at v2 self-host; no separate trigger, because there is no separable work to schedule. Not migration debt and not a delete candidate.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -752,6 +748,7 @@ pub fn diagnostic_frontier_occurrence_key_note() -> String {
 
 pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
+        CompilerDiagnostic::UnlistedImportUse { .. } => false,
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => false,
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => false,
         CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
@@ -776,6 +773,7 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
         CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
             !is_where_refinement_unenforced_advisory_reason(r.clone())
         }
+        CompilerDiagnostic::UnlistedImportUse { .. } => false,
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => false,
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => false,
         _ => true,
@@ -784,6 +782,7 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
 
 pub fn is_discovery_corpus_advisory_typecheck_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
+        CompilerDiagnostic::UnlistedImportUse { .. } => true,
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => true,
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => true,
         CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
@@ -835,7 +834,7 @@ pub struct Node {
     pub span: Rc<SourceSpan>,
     pub ident_span: Option<Rc<SourceSpan>>,
     pub children: Rc<Vec<Rc<Node>>>,
-    pub connective: Connective,
+    pub connective: Rc<Connective>,
     pub params: Rc<Vec<Rc<Node>>>,
     pub inferred: Option<Rc<InferredNode>>,
     pub return_cardinality: Cardinality,
@@ -880,7 +879,7 @@ pub fn make_expr_node(
         span: span.clone(),
         ident_span: None,
         children: children.clone(),
-        connective: Connective::NoConnective,
+        connective: Rc::new(Connective::NoConnective),
         params: Rc::new(vec![]),
         inferred: inferred.clone(),
         return_cardinality: Cardinality::Required,
@@ -893,7 +892,6 @@ pub fn make_expr_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: expr_data.clone(),
-        ident: None,
     })
 }
 
@@ -910,7 +908,7 @@ pub fn make_named_expr_node(
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), name_span.clone()),
         children: children.clone(),
-        connective: Connective::NoConnective,
+        connective: Rc::new(Connective::NoConnective),
         params: Rc::new(vec![]),
         inferred: inferred.clone(),
         return_cardinality: Cardinality::Required,
@@ -923,7 +921,6 @@ pub fn make_named_expr_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: expr_data.clone(),
-        ident: None,
     })
 }
 
@@ -948,7 +945,7 @@ pub fn make_expr_error_node(
         span: span.clone(),
         ident_span: None,
         children: Rc::new(vec![]),
-        connective: Connective::NoConnective,
+        connective: Rc::new(Connective::NoConnective),
         params: Rc::new(vec![]),
         inferred: Some(Rc::new(InferredNode::CompilerError {
             message: message.clone(),
@@ -967,7 +964,6 @@ pub fn make_expr_error_node(
             kind: kind.clone(),
             message: message.clone(),
         }),
-        ident: None,
     })
 }
 
@@ -987,7 +983,7 @@ pub fn make_arg_node(
             span: span.clone(),
             ident_span: default_ident_span(arg_name.clone(), name_span.clone()),
             children: Rc::new(vec![value.clone()]),
-            connective: Connective::NoConnective,
+            connective: Rc::new(Connective::NoConnective),
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -1000,7 +996,6 @@ pub fn make_arg_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -1021,7 +1016,7 @@ pub fn make_arm_node(
             span: span.clone(),
             ident_span: None,
             children: children.clone(),
-            connective: Connective::NoConnective,
+            connective: Rc::new(Connective::NoConnective),
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -1034,7 +1029,6 @@ pub fn make_arm_node(
             has_non_tail_self_call: false,
             match_pattern: Some(pattern.clone()),
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -1050,7 +1044,7 @@ pub fn make_resource_use_node(
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), name_span.clone()),
         children: Rc::new(vec![resource.clone()]),
-        connective: Connective::NoConnective,
+        connective: Rc::new(Connective::NoConnective),
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -1063,7 +1057,6 @@ pub fn make_resource_use_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -1096,7 +1089,7 @@ pub fn make_field_init_node(
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), name_span.clone()),
         children: Rc::new(vec![value.clone()]),
-        connective: Connective::NoConnective,
+        connective: Rc::new(Connective::NoConnective),
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -1109,7 +1102,6 @@ pub fn make_field_init_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -1124,7 +1116,7 @@ pub fn make_field_binding_node(
         span: span.clone(),
         ident_span: default_ident_span(field_name.clone(), name_span.clone()),
         children: Rc::new(vec![]),
-        connective: Connective::NoConnective,
+        connective: Rc::new(Connective::NoConnective),
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -1137,7 +1129,6 @@ pub fn make_field_binding_node(
         has_non_tail_self_call: false,
         match_pattern: Some(binding.clone()),
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -1161,7 +1152,7 @@ pub fn make_text_part_node(text: String, span: Rc<SourceSpan>) -> Rc<Node> {
         span: span.clone(),
         ident_span: None,
         children: Rc::new(vec![]),
-        connective: Connective::NoConnective,
+        connective: Rc::new(Connective::NoConnective),
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -1178,7 +1169,6 @@ pub fn make_text_part_node(text: String, span: Rc<SourceSpan>) -> Rc<Node> {
                 value: text.clone(),
             }),
         }),
-        ident: None,
     })
 }
 
@@ -1188,7 +1178,7 @@ pub fn make_interp_part_node(expr: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
         span: span.clone(),
         ident_span: None,
         children: Rc::new(vec![expr.clone()]),
-        connective: Connective::NoConnective,
+        connective: Rc::new(Connective::NoConnective),
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -1201,7 +1191,6 @@ pub fn make_interp_part_node(expr: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -1222,7 +1211,7 @@ pub fn make_param_node(
             span: span.clone(),
             ident_span: default_ident_span(name.clone(), name_span.clone()),
             children: children.clone(),
-            connective: Connective::NoConnective,
+            connective: Rc::new(Connective::NoConnective),
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -1235,7 +1224,6 @@ pub fn make_param_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -1258,7 +1246,7 @@ pub fn make_resolved_param_node(
             span: span.clone(),
             ident_span: default_ident_span(name.clone(), name_span.clone()),
             children: children.clone(),
-            connective: Connective::NoConnective,
+            connective: Rc::new(Connective::NoConnective),
             params: Rc::new(vec![]),
             inferred: Some(Rc::new(InferredNode::Resolved {
                 node: type_expr.clone(),
@@ -1273,7 +1261,6 @@ pub fn make_resolved_param_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -1408,7 +1395,7 @@ pub fn make_field_node(
                     span: no_span(),
                     ident_span: default_ident_span(fk.clone(), no_span()),
                     children: Rc::new(vec![]),
-                    connective: Connective::NoConnective,
+                    connective: Rc::new(Connective::NoConnective),
                     params: Rc::new(vec![]),
                     inferred: None,
                     return_cardinality: Cardinality::Required,
@@ -1421,7 +1408,6 @@ pub fn make_field_node(
                     has_non_tail_self_call: false,
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
                 }),
                 no_span(),
                 no_span(),
@@ -1433,7 +1419,7 @@ pub fn make_field_node(
             span: span.clone(),
             ident_span: default_ident_span(name.clone(), name_span.clone()),
             children: children.clone(),
-            connective: Connective::NoConnective,
+            connective: Rc::new(Connective::NoConnective),
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: cardinality.clone(),
@@ -1446,7 +1432,6 @@ pub fn make_field_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -1510,7 +1495,7 @@ pub fn make_variant_node(
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), name_span.clone()),
         children: fields.clone(),
-        connective: Connective::NoConnective,
+        connective: Rc::new(Connective::NoConnective),
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -1523,7 +1508,6 @@ pub fn make_variant_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -2336,7 +2320,7 @@ pub fn make_transport_node(
         span: span.clone(),
         ident_span: None,
         children: children.clone(),
-        connective: Connective::NoConnective,
+        connective: Rc::new(Connective::NoConnective),
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -2349,7 +2333,6 @@ pub fn make_transport_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -2459,7 +2442,7 @@ pub fn shell_transport_node(
             span: span.clone(),
             ident_span: None,
             children: Rc::new(vec![]),
-            connective: Connective::NoConnective,
+            connective: Rc::new(Connective::NoConnective),
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -2472,7 +2455,6 @@ pub fn shell_transport_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         });
         let zero_span = no_span();
         let stdin_props = match stdin.clone() {
@@ -2490,7 +2472,7 @@ pub fn shell_transport_node(
             span: span.clone(),
             ident_span: None,
             children: argv.clone(),
-            connective: Connective::NoConnective,
+            connective: Rc::new(Connective::NoConnective),
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -2503,7 +2485,6 @@ pub fn shell_transport_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -3415,7 +3396,7 @@ pub fn module_node(
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), span.clone()),
         children: items.clone(),
-        connective: Connective::NoConnective,
+        connective: Rc::new(Connective::NoConnective),
         params: imports.clone(),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -3428,7 +3409,6 @@ pub fn module_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -3446,7 +3426,7 @@ pub fn import_node(
                 span: span.clone(),
                 ident_span: None,
                 children: Rc::new(vec![]),
-                connective: Connective::NoConnective,
+                connective: Rc::new(Connective::NoConnective),
                 params: Rc::new(vec![]),
                 inferred: None,
                 return_cardinality: Cardinality::Required,
@@ -3459,7 +3439,6 @@ pub fn import_node(
                 has_non_tail_self_call: false,
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
             }))
         } else {
             None
@@ -3469,7 +3448,7 @@ pub fn import_node(
             span: span.clone(),
             ident_span: Some(name_span.clone()),
             children: specific_names.clone(),
-            connective: Connective::NoConnective,
+            connective: Rc::new(Connective::NoConnective),
             params: Rc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
@@ -3482,7 +3461,6 @@ pub fn import_node(
             has_non_tail_self_call: false,
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -3518,7 +3496,7 @@ pub fn leaf_node_with_span(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), span.clone()),
         children: Rc::new(vec![]),
-        connective: Connective::NoConnective,
+        connective: Rc::new(Connective::NoConnective),
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -3531,7 +3509,6 @@ pub fn leaf_node_with_span(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
 }
 
@@ -3554,7 +3531,7 @@ pub fn unit_type() -> Rc<Node> {
         span: kernel_span("Unit".to_string()),
         ident_span: Some(kernel_span("Unit".to_string())),
         children: Rc::new(vec![]),
-        connective: Connective::Conj,
+        connective: Rc::new(Connective::Conj),
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -3567,7 +3544,6 @@ pub fn unit_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
             };
         }
@@ -3582,7 +3558,7 @@ pub fn bool_type() -> Rc<Node> {
         span: kernel_span("Bool".to_string()),
         ident_span: Some(kernel_span("Bool".to_string())),
         children: Rc::new(vec![]),
-        connective: Connective::NoConnective,
+        connective: Rc::new(Connective::NoConnective),
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -3595,7 +3571,6 @@ pub fn bool_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
             };
         }
@@ -3610,7 +3585,7 @@ pub fn string_type() -> Rc<Node> {
         span: kernel_span("String".to_string()),
         ident_span: Some(kernel_span("String".to_string())),
         children: Rc::new(vec![]),
-        connective: Connective::NoConnective,
+        connective: Rc::new(Connective::NoConnective),
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -3623,7 +3598,6 @@ pub fn string_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
             };
         }
@@ -3638,7 +3612,7 @@ pub fn hash_type() -> Rc<Node> {
         span: kernel_span("Hash".to_string()),
         ident_span: Some(kernel_span("Hash".to_string())),
         children: Rc::new(vec![]),
-        connective: Connective::NoConnective,
+        connective: Rc::new(Connective::NoConnective),
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -3651,7 +3625,6 @@ pub fn hash_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
             };
         }
@@ -3666,7 +3639,7 @@ pub fn int_type() -> Rc<Node> {
         span: kernel_span("Int".to_string()),
         ident_span: Some(kernel_span("Int".to_string())),
         children: Rc::new(vec![]),
-        connective: Connective::NoConnective,
+        connective: Rc::new(Connective::NoConnective),
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -3679,7 +3652,6 @@ pub fn int_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
             };
         }
@@ -3694,7 +3666,7 @@ pub fn float_type() -> Rc<Node> {
         span: kernel_span("Float".to_string()),
         ident_span: Some(kernel_span("Float".to_string())),
         children: Rc::new(vec![]),
-        connective: Connective::NoConnective,
+        connective: Rc::new(Connective::NoConnective),
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -3707,7 +3679,6 @@ pub fn float_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
             };
         }
@@ -3722,7 +3693,7 @@ pub fn none_type() -> Rc<Node> {
         span: kernel_span("None".to_string()),
         ident_span: Some(kernel_span("None".to_string())),
         children: Rc::new(vec![]),
-        connective: Connective::NoConnective,
+        connective: Rc::new(Connective::NoConnective),
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
@@ -3735,7 +3706,6 @@ pub fn none_type() -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
     })
             };
         }
@@ -3759,7 +3729,7 @@ pub fn error_type() -> Rc<Node> {
         span: no_span(),
         ident_span: None,
         children: Rc::new(vec![]),
-        connective: Connective::NoConnective,
+        connective: Rc::new(Connective::NoConnective),
         params: Rc::new(vec![]),
         inferred: Some(Rc::new(InferredNode::CompilerError {
         message: "unresolved type".to_string(),
@@ -3778,7 +3748,6 @@ pub fn error_type() -> Rc<Node> {
         kind: ExprErrorKind::SemanticExprError,
         message: "unresolved type".to_string(),
     }),
-        ident: None,
     })
             };
         }
@@ -3948,7 +3917,8 @@ pub fn empty_intern_table() -> Rc<InternTable> {
         strings: Rc::new(vec!["".to_string()]),
         index: v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, i64>(), "".to_string(), 0),
         next_id: 1,
-        authored_token_ordinals: authored_token_ordinal_space_initial(),
+        authored_token_ordinals:
+            crate::std_occurrence_identity::authored_token_ordinal_space_initial(),
     })
 }
 
@@ -4010,13 +3980,16 @@ pub fn merge_intern_tables(tables: Rc<Vec<Rc<InternTable>>>) -> Rc<InternTable> 
     tables.clone().iter().cloned().fold(
         empty_intern_table(),
         |merged: Rc<InternTable>, t: Rc<InternTable>| {
-            let merged_allocator = occurrence_id_allocator_advance_to(
-                merged.authored_token_ordinals.clone().allocator.clone(),
-                t.authored_token_ordinals.clone(),
-            );
+            let merged_allocator =
+                crate::std_occurrence_identity::occurrence_id_allocator_advance_to(
+                    merged.authored_token_ordinals.clone().allocator.clone(),
+                    t.authored_token_ordinals.clone(),
+                );
             let merged = intern_table_with_authored_token_ordinals(
                 merged.clone(),
-                authored_token_ordinal_space_from_allocator(merged_allocator.clone()),
+                crate::std_occurrence_identity::authored_token_ordinal_space_from_allocator(
+                    merged_allocator.clone(),
+                ),
             );
             t.strings.clone().iter().cloned().fold(
                 merged.clone(),
@@ -4339,6 +4312,8 @@ pub struct OptionalValue;
 pub struct PlainCallSemantics;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LookupCallSemantics;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FunctionValueCallSemantics;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ParseRecoveryError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

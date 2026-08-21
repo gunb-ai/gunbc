@@ -6,7 +6,7 @@ fn refinement_authoritative_locus() -> v2.std.diagnostic.Locus {
 
 type Validation<B> {
   reason: v2.std.node.Symbol
-  admits: fn(B) -> Bool
+  admits: fn(B) -> v2.std.logic.Bool
 }
 
 type VacuousAdmits {}
@@ -46,183 +46,183 @@ fn refined_base<B>(r: Refined<B>) -> B {
   r.base
 }
 
-fn positive_int_admits(value: Int) -> Bool {
+fn positive_int_admits(value: v2.std.integer.Int) -> v2.std.logic.Bool {
   value >= 1
 }
 
-fn non_negative_int_admits(value: Int) -> Bool {
+fn non_negative_int_admits(value: v2.std.integer.Int) -> v2.std.logic.Bool {
   value >= 0
 }
 
-fn at_least_minus_one_int_admits(value: Int) -> Bool {
+fn at_least_minus_one_int_admits(value: v2.std.integer.Int) -> v2.std.logic.Bool {
   value >= (0 - 1)
 }
 
-fn at_least_minus_two_int_admits(value: Int) -> Bool {
+fn at_least_minus_two_int_admits(value: v2.std.integer.Int) -> v2.std.logic.Bool {
   value >= (0 - 2)
 }
 
-fn exact_one_int_admits(value: Int) -> Bool {
+fn exact_one_int_admits(value: v2.std.integer.Int) -> v2.std.logic.Bool {
   value == 1
 }
 
-data positive_int_validation: Validation<Int> = Validation {
+data positive_int_validation: Validation<v2.std.integer.Int> = Validation {
   reason: ^positive_int_out_of_range,
   admits: positive_int_admits
 }
 
-data non_negative_int_validation: Validation<Int> = Validation {
+data non_negative_int_validation: Validation<v2.std.integer.Int> = Validation {
   reason: ^non_negative_int_out_of_range,
   admits: non_negative_int_admits
 }
 
-data at_least_minus_one_int_validation: Validation<Int> = Validation {
+data at_least_minus_one_int_validation: Validation<v2.std.integer.Int> = Validation {
   reason: ^at_least_minus_one_int_out_of_range,
   admits: at_least_minus_one_int_admits
 }
 
-data at_least_minus_two_int_validation: Validation<Int> = Validation {
+data at_least_minus_two_int_validation: Validation<v2.std.integer.Int> = Validation {
   reason: ^at_least_minus_two_int_out_of_range,
   admits: at_least_minus_two_int_admits
 }
 
-data exact_one_int_validation: Validation<Int> = Validation {
+data exact_one_int_validation: Validation<v2.std.integer.Int> = Validation {
   reason: ^exact_one_int_out_of_range,
   admits: exact_one_int_admits
 }
 
 type PositiveInt {
-  refined: Refined<Int>
+  refined: Refined<v2.std.integer.Int>
 }
 
 type NonNegativeInt {
-  refined: Refined<Int>
+  refined: Refined<v2.std.integer.Int>
 }
 
 type AtLeastMinusOneInt {
-  refined: Refined<Int>
+  refined: Refined<v2.std.integer.Int>
 }
 
 type AtLeastMinusTwoInt {
-  refined: Refined<Int>
+  refined: Refined<v2.std.integer.Int>
 }
 
 type ExactOneInt {
-  refined: Refined<Int>
+  refined: Refined<v2.std.integer.Int>
 }
 
-fn positive_int_value(p: PositiveInt) -> Int {
+fn positive_int_value(p: PositiveInt) -> v2.std.integer.Int {
   refined_base(r: p.refined)
 }
 
-fn non_negative_int_value(p: NonNegativeInt) -> Int {
+fn non_negative_int_value(p: NonNegativeInt) -> v2.std.integer.Int {
   refined_base(r: p.refined)
 }
 
-fn at_least_minus_one_int_value(p: AtLeastMinusOneInt) -> Int {
+fn at_least_minus_one_int_value(p: AtLeastMinusOneInt) -> v2.std.integer.Int {
   refined_base(r: p.refined)
 }
 
-fn at_least_minus_two_int_value(p: AtLeastMinusTwoInt) -> Int {
+fn at_least_minus_two_int_value(p: AtLeastMinusTwoInt) -> v2.std.integer.Int {
   refined_base(r: p.refined)
 }
 
-fn exact_one_int_value(p: ExactOneInt) -> Int {
+fn exact_one_int_value(p: ExactOneInt) -> v2.std.integer.Int {
   refined_base(r: p.refined)
 }
 
-fn make_positive_int(value: Int, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<PositiveInt> {
+fn make_positive_int(value: v2.std.integer.Int, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<PositiveInt> {
   match refine(base: value, by: positive_int_validation, at: at) {
     Accepted { value: refined, diagnostics: diagnostics } =>
       v2.std.diagnostic.Accepted {
         value: PositiveInt { refined: refined },
         diagnostics: diagnostics
       }
-    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+    v2.std.diagnostic.Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
-fn make_non_negative_int(value: Int, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<NonNegativeInt> {
+fn make_non_negative_int(value: v2.std.integer.Int, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<NonNegativeInt> {
   match refine(base: value, by: non_negative_int_validation, at: at) {
     Accepted { value: refined, diagnostics: diagnostics } =>
       v2.std.diagnostic.Accepted {
         value: NonNegativeInt { refined: refined },
         diagnostics: diagnostics
       }
-    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+    v2.std.diagnostic.Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
-fn make_at_least_minus_one_int(value: Int, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<AtLeastMinusOneInt> {
+fn make_at_least_minus_one_int(value: v2.std.integer.Int, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<AtLeastMinusOneInt> {
   match refine(base: value, by: at_least_minus_one_int_validation, at: at) {
     Accepted { value: refined, diagnostics: diagnostics } =>
       v2.std.diagnostic.Accepted {
         value: AtLeastMinusOneInt { refined: refined },
         diagnostics: diagnostics
       }
-    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+    v2.std.diagnostic.Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
-fn make_at_least_minus_two_int(value: Int, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<AtLeastMinusTwoInt> {
+fn make_at_least_minus_two_int(value: v2.std.integer.Int, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<AtLeastMinusTwoInt> {
   match refine(base: value, by: at_least_minus_two_int_validation, at: at) {
     Accepted { value: refined, diagnostics: diagnostics } =>
       v2.std.diagnostic.Accepted {
         value: AtLeastMinusTwoInt { refined: refined },
         diagnostics: diagnostics
       }
-    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+    v2.std.diagnostic.Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
-fn make_exact_one_int(value: Int, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<ExactOneInt> {
+fn make_exact_one_int(value: v2.std.integer.Int, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<ExactOneInt> {
   match refine(base: value, by: exact_one_int_validation, at: at) {
     Accepted { value: refined, diagnostics: diagnostics } =>
       v2.std.diagnostic.Accepted {
         value: ExactOneInt { refined: refined },
         diagnostics: diagnostics
       }
-    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+    v2.std.diagnostic.Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
-fn make_positive_int_at_authoritative(value: Int) -> v2.std.diagnostic.Outcome<PositiveInt> {
+fn make_positive_int_at_authoritative(value: v2.std.integer.Int) -> v2.std.diagnostic.Outcome<PositiveInt> {
   make_positive_int(value: value, at: refinement_authoritative_locus())
 }
 
-fn make_non_negative_int_at_authoritative(value: Int) -> v2.std.diagnostic.Outcome<NonNegativeInt> {
+fn make_non_negative_int_at_authoritative(value: v2.std.integer.Int) -> v2.std.diagnostic.Outcome<NonNegativeInt> {
   make_non_negative_int(value: value, at: refinement_authoritative_locus())
 }
 
-fn make_at_least_minus_one_int_at_authoritative(value: Int) -> v2.std.diagnostic.Outcome<AtLeastMinusOneInt> {
+fn make_at_least_minus_one_int_at_authoritative(value: v2.std.integer.Int) -> v2.std.diagnostic.Outcome<AtLeastMinusOneInt> {
   make_at_least_minus_one_int(value: value, at: refinement_authoritative_locus())
 }
 
-fn make_at_least_minus_two_int_at_authoritative(value: Int) -> v2.std.diagnostic.Outcome<AtLeastMinusTwoInt> {
+fn make_at_least_minus_two_int_at_authoritative(value: v2.std.integer.Int) -> v2.std.diagnostic.Outcome<AtLeastMinusTwoInt> {
   make_at_least_minus_two_int(value: value, at: refinement_authoritative_locus())
 }
 
-fn make_exact_one_int_at_authoritative(value: Int) -> v2.std.diagnostic.Outcome<ExactOneInt> {
+fn make_exact_one_int_at_authoritative(value: v2.std.integer.Int) -> v2.std.diagnostic.Outcome<ExactOneInt> {
   make_exact_one_int(value: value, at: refinement_authoritative_locus())
 }
 
-fn positive_int_authoritative_literal(value: Int) -> v2.std.diagnostic.Outcome<PositiveInt> {
+fn positive_int_authoritative_literal(value: v2.std.integer.Int) -> v2.std.diagnostic.Outcome<PositiveInt> {
   make_positive_int_at_authoritative(value: value)
 }
 
-fn non_negative_int_authoritative_literal(value: Int) -> v2.std.diagnostic.Outcome<NonNegativeInt> {
+fn non_negative_int_authoritative_literal(value: v2.std.integer.Int) -> v2.std.diagnostic.Outcome<NonNegativeInt> {
   make_non_negative_int_at_authoritative(value: value)
 }
 
-fn at_least_minus_one_int_authoritative_literal(value: Int) -> v2.std.diagnostic.Outcome<AtLeastMinusOneInt> {
+fn at_least_minus_one_int_authoritative_literal(value: v2.std.integer.Int) -> v2.std.diagnostic.Outcome<AtLeastMinusOneInt> {
   make_at_least_minus_one_int_at_authoritative(value: value)
 }
 
-fn at_least_minus_two_int_authoritative_literal(value: Int) -> v2.std.diagnostic.Outcome<AtLeastMinusTwoInt> {
+fn at_least_minus_two_int_authoritative_literal(value: v2.std.integer.Int) -> v2.std.diagnostic.Outcome<AtLeastMinusTwoInt> {
   make_at_least_minus_two_int_at_authoritative(value: value)
 }
 
-fn exact_one_int_authoritative_literal(value: Int) -> v2.std.diagnostic.Outcome<ExactOneInt> {
+fn exact_one_int_authoritative_literal(value: v2.std.integer.Int) -> v2.std.diagnostic.Outcome<ExactOneInt> {
   make_exact_one_int_at_authoritative(value: value)
 }
 

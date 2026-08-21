@@ -3,19 +3,19 @@ module v2.test.long.production_qualification_origin_probe_witness
 
 data production_qualification_origin_probe_long_witness_note: String = "LONG lane (operator 5s rule): witnesses that walk fn_arrow_decl_facts_live() or derived_production_qualification_mint_sites_live() exceed per-PR discovery budget. GREEN witnesses only on falsifier_substrate_long_lane_rows (nightly falsifier batch 6). Expecting-RED frontier witnesses are explicit_witness_admission only — never dual-enrolled in ordinary long projection. Repository-wide call-occurrence closure has no admitted RED witness until a queryable population authority exists (wise-ram-22). Planted closed-subject witnesses stay in self_host/. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag --functions <csv>"
 
-test fn witness_production_qualification_origin_probe_admission_holds() -> Bool {
+test fn witness_production_qualification_origin_probe_admission_holds() -> v2.std.logic.Bool {
   production_qualification_origin_probe_admission_holds()
 }
 
 data witness_live_scope_fixture_origin_discoverable_in_entry_closure_red_note: String = "Admitted RED (review 48255): live FixtureDerived mint sites are not discoverable in fn_arrow_decl_facts_live() entry closure today (G2 marshal prunes callee atoms). Replaces the retired 0==0 policy-oracle equality witness — greens when marshal exposes live fixture mint surfaces and known_fixture_origin_mint_surface_count_in_scope() > 0."
 
-test fn witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds() -> Bool {
+test fn witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds() -> v2.std.logic.Bool {
   known_fixture_origin_mint_surface_count_in_scope() > 0
 }
 
 data witness_live_structural_fixture_mint_site_discovered_red_note: String = "Admitted RED: G2 fn-arrow marshal currently yields an empty skeleton for the live structural_red_control_mint_site_probe body (match/let mint call); classifier cannot discover the exact FixtureDerived SourceProduced row until call-occurrence derivation or marshal exposes callee atoms."
 
-test fn witness_live_structural_fixture_mint_site_discovered_reds() -> Bool {
+test fn witness_live_structural_fixture_mint_site_discovered_reds() -> v2.std.logic.Bool {
   structural_red_control_live_fixture_mint_site_discovered(
     live_qualified_name: v2.test.claim.self_host.production_qualification_origin_probe_structural_fixture.structural_red_control_mint_site_qualified_name
   )
@@ -23,13 +23,13 @@ test fn witness_live_structural_fixture_mint_site_discovered_reds() -> Bool {
 
 data witness_ingest_mint_surface_requires_call_occurrence_frontier_red_note: String = "Admitted RED: generate_provenanced_rust_candidate_from_ingest calls mint_provenanced_rust_artifact at fn-arrow skeleton grain; G2 marshal currently prunes that ExprCall — witness greens when structural probe discovers a SourceProduced row on the ingest entry via mint_provenanced_rust_artifact."
 
-test fn witness_ingest_mint_surface_requires_call_occurrence_frontier_reds() -> Bool {
+test fn witness_ingest_mint_surface_requires_call_occurrence_frontier_reds() -> v2.std.logic.Bool {
   ingest_mint_surface_discovered_in_live_scope()
 }
 
 data witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_red_note: String = "Admitted RED: direct-door smoke is not in the witness entry import closure without a roster import — repository-wide discovery requires call-occurrence substrate or whole-tree fn_arrow facts."
 
-test fn witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds() -> Bool {
+test fn witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds() -> v2.std.logic.Bool {
   any(
     xs: derived_production_qualification_mint_sites_live(),
     predicate: fn(row) {

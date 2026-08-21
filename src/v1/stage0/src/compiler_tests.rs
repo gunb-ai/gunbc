@@ -1820,10 +1820,6 @@ mod compiler_tests {
             coerce_primitive_type(RenderTarget::Rust, "Json".into()),
             "serde_json::Value"
         );
-        assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Hash".into()),
-            "v1_rt::Hash"
-        );
     }
 
     #[test]
@@ -1916,7 +1912,15 @@ mod compiler_tests {
             Some("Vec<{0}>".to_string())
         );
         assert_eq!(
+            coerce_container_template(RenderTarget::Rust, "std.types.List".into()),
+            Some("Vec<{0}>".to_string())
+        );
+        assert_eq!(
             coerce_container_template(RenderTarget::Rust, "Map".into()),
+            Some("HashMap<{0}, {1}>".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Rust, "std.types.Map".into()),
             Some("HashMap<{0}, {1}>".to_string())
         );
         assert_eq!(
@@ -1926,6 +1930,22 @@ mod compiler_tests {
         assert_eq!(
             coerce_container_template(RenderTarget::Rust, "Set".into()),
             Some("BTreeSet<{0}>".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Rust, "std.types.Set".into()),
+            Some("BTreeSet<{0}>".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Rust, "std.algebra.FreeMonoid".into()),
+            Some("Vec<{0}>".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Rust, "std.algebra.BooleanAlgebra".into()),
+            Some("BTreeSet<{0}>".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Rust, "std.algebra.PartialFunction".into()),
+            Some("HashMap<{0}, {1}>".to_string())
         );
         assert_eq!(
             coerce_container_template(RenderTarget::Rust, "PointwisePower".into()),
@@ -1949,7 +1969,15 @@ mod compiler_tests {
             Some("list[{0}]".to_string())
         );
         assert_eq!(
+            coerce_container_template(RenderTarget::Python, "std.types.List".into()),
+            Some("list[{0}]".to_string())
+        );
+        assert_eq!(
             coerce_container_template(RenderTarget::Python, "Map".into()),
+            Some("dict[{0}, {1}]".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Python, "std.types.Map".into()),
             Some("dict[{0}, {1}]".to_string())
         );
         assert_eq!(
@@ -1959,6 +1987,22 @@ mod compiler_tests {
         assert_eq!(
             coerce_container_template(RenderTarget::Python, "Set".into()),
             Some("set[{0}]".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Python, "std.types.Set".into()),
+            Some("set[{0}]".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Python, "std.algebra.FreeMonoid".into()),
+            Some("list[{0}]".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Python, "std.algebra.BooleanAlgebra".into()),
+            Some("set[{0}]".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Python, "std.algebra.PartialFunction".into()),
+            Some("dict[{0}, {1}]".to_string())
         );
         assert_eq!(
             coerce_container_template(RenderTarget::Python, "PointwisePower".into()),
@@ -1982,7 +2026,15 @@ mod compiler_tests {
             Some("[]{0}".to_string())
         );
         assert_eq!(
+            coerce_container_template(RenderTarget::Go, "std.types.List".into()),
+            Some("[]{0}".to_string())
+        );
+        assert_eq!(
             coerce_container_template(RenderTarget::Go, "Map".into()),
+            Some("map[{0}]{1}".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Go, "std.types.Map".into()),
             Some("map[{0}]{1}".to_string())
         );
         assert_eq!(
@@ -1992,6 +2044,22 @@ mod compiler_tests {
         assert_eq!(
             coerce_container_template(RenderTarget::Go, "Set".into()),
             Some("map[{0}]struct{}".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Go, "std.types.Set".into()),
+            Some("map[{0}]struct{}".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Go, "std.algebra.FreeMonoid".into()),
+            Some("[]{0}".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Go, "std.algebra.BooleanAlgebra".into()),
+            Some("map[{0}]struct{}".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Go, "std.algebra.PartialFunction".into()),
+            Some("map[{0}]{1}".to_string())
         );
         assert_eq!(
             coerce_container_template(RenderTarget::Go, "PointwisePower".into()),
@@ -2011,7 +2079,6 @@ mod compiler_tests {
         assert_eq!(is_copy(RenderTarget::Rust, "Bytes".into()), Some(false));
         assert_eq!(is_copy(RenderTarget::Rust, "Secret".into()), Some(false));
         assert_eq!(is_copy(RenderTarget::Rust, "Json".into()), Some(false));
-        assert_eq!(is_copy(RenderTarget::Rust, "Hash".into()), Some(false));
     }
 
     #[test]

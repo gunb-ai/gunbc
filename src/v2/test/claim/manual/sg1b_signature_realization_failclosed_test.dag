@@ -34,38 +34,38 @@ fn sg1b_fc_non_conj_catalog() -> v2.std.node.Node {
 }
 }
 
-test fn sg1b_fc_boundary_site_with_children_rejects_decode_invalid() -> Bool {
+test fn sg1b_fc_boundary_site_with_children_rejects_decode_invalid() -> v2.std.logic.Bool {
   match v2.std.compilers.target_model.target_function_boundary_site_from_node(
     n: sg1b_fc_boundary_param_with_children(),
     source_carrier: sg1b_fc_probe_node()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == ^target_function_boundary_site_decode_invalid
+    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^target_function_boundary_site_decode_invalid
   }
 }
 
-test fn sg1b_fc_boundary_site_nullary_accepts() -> Bool {
+test fn sg1b_fc_boundary_site_nullary_accepts() -> v2.std.logic.Bool {
   match v2.std.compilers.target_model.target_function_boundary_site_from_node(
     n: sg1b_fc_boundary_param_nullary(),
     source_carrier: sg1b_fc_probe_node()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn sg1b_fc_atom_catalog_non_conj_rejects_decode_invalid() -> Bool {
+test fn sg1b_fc_atom_catalog_non_conj_rejects_decode_invalid() -> v2.std.logic.Bool {
   match v2.std.compilers.target_model.target_atom_realization_lookup_in_catalog_node(
     catalog: sg1b_fc_non_conj_catalog(),
     source_carrier: sg1b_fc_probe_node(),
     host_target_model: v2.extdeps.languages.rust.rust_sg2_type_expr_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_catalog_row_decode_invalid
+    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_catalog_row_decode_invalid
   }
 }
 
-test fn sg1b_fc_signature_catalog_non_conj_rejects_decode_invalid() -> Bool {
+test fn sg1b_fc_signature_catalog_non_conj_rejects_decode_invalid() -> v2.std.logic.Bool {
   match v2.std.compilers.target_model.target_function_signature_realization_lookup_in_catalog_node(
     catalog: sg1b_fc_non_conj_catalog(),
     source_carrier: sg1b_fc_probe_node(),
@@ -73,7 +73,7 @@ test fn sg1b_fc_signature_catalog_non_conj_rejects_decode_invalid() -> Bool {
     host_target_model: v2.extdeps.languages.rust.rust_sg2_type_expr_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == ^target_function_signature_realization_row_decode_invalid
+    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^target_function_signature_realization_row_decode_invalid
   }
 }
 

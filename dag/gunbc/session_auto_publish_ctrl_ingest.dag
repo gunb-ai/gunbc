@@ -19,9 +19,9 @@ fn authenticate_ctrl_publication_ingest(
   authenticated_requester: String,
 ) -> CtrlPublicationIngestAuthority? {
   match authenticated_requester == "" || dashboard_session_id == "" {
-    true => Absent
+    true => v2.std.optional.Absent
     false =>
-      Present {
+      v2.std.optional.Present {
         value: CtrlPublicationIngestAuthority {
           authenticated_requester: authenticated_requester,
           dashboard_session_id: dashboard_session_id,
@@ -47,8 +47,8 @@ fn harness_ctrl_publication_ingest_authority() -> CtrlPublicationIngestAuthority
     dashboard_session_id: "harness",
     authenticated_requester: "harness",
   ) {
-    Present { value: authority } => authority
-    Absent =>
+    v2.std.optional.Present { value: authority } => authority
+    v2.std.optional.Absent =>
       CtrlPublicationIngestAuthority {
         authenticated_requester: "harness",
         dashboard_session_id: "harness",

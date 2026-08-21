@@ -11,7 +11,7 @@ fn target_model_live_content() -> String {
   result.content
 }
 
-test fn probe_wire_decode_call_uses_node_and_projection_args() -> Bool {
+test fn probe_wire_decode_call_uses_node_and_projection_args() -> v2.std.logic.Bool {
   let live = target_model_live_content()
   string_contains(
     s: live,

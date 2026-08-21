@@ -9,7 +9,7 @@ fn schedule_witness_entry_cited(
   probe_entry: String,
   probe_function: String,
   entries: List<std.realization_schedule.ScheduleWitnessEntry>
-) -> Bool {
+) -> v2.std.logic.Bool {
   any(
     xs: entries,
     predicate: fn(entry) {
@@ -21,7 +21,7 @@ fn schedule_witness_entry_cited(
 fn schedule_witness_entries_structurally_equal(
   left: List<std.realization_schedule.ScheduleWitnessEntry>,
   right: List<std.realization_schedule.ScheduleWitnessEntry>
-) -> Bool {
+) -> v2.std.logic.Bool {
   if length(xs: left) != length(xs: right) {
     false
   } else {

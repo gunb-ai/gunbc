@@ -1,13 +1,13 @@
 module tools.build_step
 
 
-// Shell text emission for build-artifact verification lives in v2.workflow.build_step_emit (grammar-row serializer via bash_command_fold_serialize.bash_fold_serialize_program). This module retains Node stmt construction only.
+// Shell text emission for build-artifact verification lives in v2.workflow.build_step_emit (grammar-row serializer via bash_command_fold_serialize.bash_fold_serialize_program). This module retains v2.std.node.Node stmt construction only.
 type BuildArtifact {
-  path: Node
+  path: v2.std.node.Node
   name: String
 }
 
-fn build_verify_echo(msg: Node) -> Node {
+fn build_verify_echo(msg: v2.std.node.Node) -> v2.std.node.Node {
   v2.extdeps.languages.bash_build.bash_build_with_redir(
     inner: v2.extdeps.languages.bash_build.bash_build_command_with_words(
       words: [
@@ -19,7 +19,7 @@ fn build_verify_echo(msg: Node) -> Node {
   )
 }
 
-fn build_test_not_executable(path: Node) -> Node {
+fn build_test_not_executable(path: v2.std.node.Node) -> v2.std.node.Node {
   v2.extdeps.languages.bash_build.bash_build_test_bracket(
     words: [
       v2.extdeps.languages.bash_build.bash_build_word_lit(text: "!"),
@@ -29,7 +29,7 @@ fn build_test_not_executable(path: Node) -> Node {
   )
 }
 
-fn build_test_empty(path: Node) -> Node {
+fn build_test_empty(path: v2.std.node.Node) -> v2.std.node.Node {
   v2.extdeps.languages.bash_build.bash_build_test_bracket(
     words: [
       v2.extdeps.languages.bash_build.bash_build_word_lit(text: "!"),
@@ -39,7 +39,7 @@ fn build_test_empty(path: Node) -> Node {
   )
 }
 
-fn verify_artifact_exists(art: BuildArtifact) -> Node {
+fn verify_artifact_exists(art: BuildArtifact) -> v2.std.node.Node {
   v2.extdeps.languages.bash_build.bash_build_if(
     cond: build_test_not_executable(path: art.path),
     body: v2.extdeps.languages.bash_build.bash_build_stmt_list_from_nodes(stmts: [
@@ -59,7 +59,7 @@ fn verify_artifact_exists(art: BuildArtifact) -> Node {
   )
 }
 
-fn verify_artifact_nonempty(art: BuildArtifact) -> Node {
+fn verify_artifact_nonempty(art: BuildArtifact) -> v2.std.node.Node {
   v2.extdeps.languages.bash_build.bash_build_if(
     cond: build_test_empty(path: art.path),
     body: v2.extdeps.languages.bash_build.bash_build_stmt_list_from_nodes(stmts: [
@@ -79,10 +79,10 @@ fn verify_artifact_nonempty(art: BuildArtifact) -> Node {
   )
 }
 
-fn verify_artifact(art: BuildArtifact) -> List<Node> {
+fn verify_artifact(art: BuildArtifact) -> List<v2.std.node.Node> {
   [verify_artifact_exists(art: art), verify_artifact_nonempty(art: art)]
 }
 
-fn emit_verifications(produces: List<BuildArtifact>) -> List<Node> {
+fn emit_verifications(produces: List<BuildArtifact>) -> List<v2.std.node.Node> {
   fold(produces, init: [], f: (acc, art) => concat(acc, verify_artifact(art: art)))
 }

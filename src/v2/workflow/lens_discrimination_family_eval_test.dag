@@ -3,4 +3,4 @@ module v2.test.workflow.lens_discrimination_family_eval
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-test data witness_lens_discrimination_family_gate_closed: Bool = discrimination_family_gate()
+test data witness_lens_discrimination_family_gate_closed: v2.std.logic.Bool = discrimination_family_gate()

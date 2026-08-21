@@ -3,29 +3,14 @@
 
 pub use crate::extdeps_uri_path::parse_path_template;
 pub use crate::extdeps_uri_path::PathTemplateParseResult;
-use crate::extdeps_uri_path::PathTemplateParseResult::{MalformedPathTemplate, ParsedPathTemplate};
-use crate::std_effects::CompositionVerdict::{BrokenBy, IdempotentComposition};
-use crate::std_effects::DeriveOpEffectResult::{DerivedEffect, MalformedPathInput};
-use crate::std_effects::EffectShape::{
-    AppendEffect, CreateEffect, DeleteEffect, ExecuteEffect, ReadEffect, UpsertEffect,
-};
-use crate::std_effects::IdempotencyEvidence::{IdentityEffect, LatticeEffect, NonIdempotent};
-use crate::std_effects::KeySource::{CompositeKey, InputField, PathParam};
-use crate::std_effects::ModifierAgreement::{Agrees, DerivationUnknown, Disagrees};
-pub use crate::std_effects::{
-    check_modifier_vs_derivation, compose_effects, derive_effect_shape, derive_op_effect,
-    generate_idempotency_obligations, is_idempotent_effect,
-};
-pub use crate::std_effects::{
-    CompositionVerdict, DeriveOpEffectResult, DerivedOpEffect, EffectShape, IdempotencyEvidence,
-    IdempotencyTestObligation, KeySource, ModifierAgreement, ModifierCheck, OperationEffect,
-    WorkflowEffectConcern,
-};
-use crate::std_http_path::UrlPathToken::{LiteralToken, ParamToken};
-pub use crate::std_http_path::{has_path_params, last_path_param};
-pub use crate::std_http_path::{PathTemplate, UrlPathToken};
+use crate::extdeps_uri_path::PathTemplateParseResult::*;
+use crate::std_effects::DeriveOpEffectResult::*;
+pub use crate::std_effects::{check_modifier_vs_derivation, derive_op_effect};
+pub use crate::std_effects::{DeriveOpEffectResult, DerivedOpEffect, ModifierCheck};
+pub use crate::std_http_path::has_path_params;
+pub use crate::std_http_path::PathTemplate;
 pub use crate::std_types::HttpMethod;
-use crate::std_types::HttpMethod::{DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT};
+use crate::std_types::HttpMethod::*;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

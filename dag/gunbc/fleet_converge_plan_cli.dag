@@ -110,7 +110,7 @@ func fleet_converge_plan_wet() -> std.process.ProcessExit
           match mkdir {
             std.process.ExitFailure { code: _, reason: why } =>
               std.process.exit_failure(reason: concat("fleet_converge_plan: mkdir refused: ", why))
-            ExitSuccess => {
+            std.process.ExitSuccess => {
               let w_plan = extdeps.filesystem.filesystem_io.Filesystem.Write(path: gunbc.fleet_converge_plan.fleet_converge_plan_body_path, content: artifact.plan_body)
               let w_base = extdeps.filesystem.filesystem_io.Filesystem.Write(
                 path: gunbc.fleet_converge_plan.fleet_converge_plan_baseline_hex_path,

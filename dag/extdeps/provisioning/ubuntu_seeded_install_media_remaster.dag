@@ -8,23 +8,23 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
   }
 }
 
-data install_media_remaster_bash_emit_dissolution_trigger: std.disposition.Disposition = Terminal {
+data install_media_remaster_bash_emit_dissolution_trigger: std.disposition.Disposition = std.disposition.Terminal {
   reason: "in-process typed reconcile (shell.Test.IsFile, xorriso.Iso.*, grep.Grep.MatchesFixedString, sed.Sed.InPlaceSubstitute, Filesystem.Write, shell.Move.File) replaces ShellProgram/serialize_bash - no shell text is built or serialized"
 }
 
-data install_media_remaster_classification_scaffold: std.disposition.Disposition = Terminal {
+data install_media_remaster_classification_scaffold: std.disposition.Disposition = std.disposition.Terminal {
   reason: "InstallMediaRemasterObservation (Absent|Valid|Stale|VerifyInfraFailure) is the single classification authority, derived by observe_install_media_remaster - no parallel ad hoc staleness check remains"
 }
 
-data install_media_remaster_classification_dissolution_trigger: std.disposition.Disposition = Terminal {
+data install_media_remaster_classification_dissolution_trigger: std.disposition.Disposition = std.disposition.Terminal {
   reason: "install_media_remaster_reconcile dispatches on InstallMediaRemasterObservation directly, not on inline shell text"
 }
 
-data install_media_remaster_chmod_access_upsert_scaffold: std.disposition.Disposition = Terminal {
+data install_media_remaster_chmod_access_upsert_scaffold: std.disposition.Disposition = std.disposition.Terminal {
   reason: "shell.Chmod.RecursiveWritable is the single typed authority for making the extracted work tree writable - no inline chmod RawLine remains"
 }
 
-data install_media_remaster_chmod_access_upsert_dissolution_trigger: std.disposition.Disposition = Terminal {
+data install_media_remaster_chmod_access_upsert_dissolution_trigger: std.disposition.Disposition = std.disposition.Terminal {
   reason: "install_media_remaster_build calls shell.Chmod.RecursiveWritable directly"
 }
 

@@ -25,17 +25,17 @@ fn operator_catalog_with_malformed_and_valid_rows() -> v2.std.node.Node {
   }
 }
 
-test fn operator_lookup_known_op_accepts() -> Bool {
+test fn operator_lookup_known_op_accepts() -> v2.std.logic.Bool {
   match v2.std.compilers.target_model.target_operator_realization_catalog_lookup(
     catalog: operator_catalog_with_malformed_and_valid_rows(),
     canonical_op: v2.std.compilers.target_model.canonical_operation_op_add()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn operator_lookup_empty_catalog_rejects_miss() -> Bool {
+test fn operator_lookup_empty_catalog_rejects_miss() -> v2.std.logic.Bool {
   match v2.std.compilers.target_model.target_operator_realization_catalog_lookup(
     catalog: v2.std.node.Node {
       kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
@@ -45,17 +45,17 @@ test fn operator_lookup_empty_catalog_rejects_miss() -> Bool {
     canonical_op: v2.std.compilers.target_model.canonical_operation_op_add()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == ^target_operator_realization_catalog_miss
+    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^target_operator_realization_catalog_miss
   }
 }
 
-test fn operator_catalog_with_malformed_row_skips_accepts_valid() -> Bool {
+test fn operator_catalog_with_malformed_row_skips_accepts_valid() -> v2.std.logic.Bool {
   match v2.std.compilers.target_model.target_operator_realization_catalog_lookup(
     catalog: operator_catalog_with_malformed_and_valid_rows(),
     canonical_op: v2.std.compilers.target_model.canonical_operation_op_add()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

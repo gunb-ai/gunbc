@@ -34,7 +34,7 @@ data upstream_semantic_compiler_error_class: v2.std.node.Symbol = ^CompilerError
 type FrontierProbeDetail
   = FrontierProbeDetailAbsent
   | MissingModule { requested: v2.std.qualified_name.QualifiedName }
-  | SourceRootManifestElidedProbe { read_count: Int, cap: Int }
+  | SourceRootManifestElidedProbe { read_count: v2.std.integer.Int, cap: v2.std.integer.Int }
   | FrontierProbeClosurePopulationRefused { cause: v2.std.node.Symbol }
   | FrontierProbeCoverageRefused { coverage: v2.compiler.source_authority.SourceRootCoverage }
   | SourceRefReadRefused { source_ref: v2.compiler.source_authority.SourceRef, error: String }
@@ -161,25 +161,25 @@ fn frontier_probe_source_roots_digest(source_roots: List<String>) -> std.content
   )
 }
 
-fn frontier_survey_executable_sha256_holds(digest: std.content_hash.Sha256Digest) -> Bool {
+fn frontier_survey_executable_sha256_holds(digest: std.content_hash.Sha256Digest) -> v2.std.logic.Bool {
   std.content_hash.content_hash_validate_lower_hex_length(text: digest.hex, expected_hex_digits: 64)
 }
 
-fn frontier_survey_source_roots_digest_holds(digest: std.content_hash.Fnv1a64Structural) -> Bool {
+fn frontier_survey_source_roots_digest_holds(digest: std.content_hash.Fnv1a64Structural) -> v2.std.logic.Bool {
   std.content_hash.content_hash_validate_lower_hex_length(text: digest.digest, expected_hex_digits: 16)
 }
 
 fn frontier_survey_commit_tree_binding_holds(
   commit: std.types.CommitSha,
   tree: extdeps.git.object_store.GitObjectId
-) -> Bool {
+) -> v2.std.logic.Bool {
   let result = git.Inspect.ShowTree(ref: commit as std.types.GitRef)
   if !result.success {
     false
   } else {
     match extdeps.git.object_store.git_object_id_from_untagged_hex(hex: result.tree) {
-      Present { value: observed } => extdeps.git.object_store.git_object_id_eq(left: observed, right: tree)
-      Absent => false
+      v2.std.optional.Present { value: observed } => extdeps.git.object_store.git_object_id_eq(left: observed, right: tree)
+      v2.std.optional.Absent => false
     }
   }
 }
@@ -187,7 +187,7 @@ fn frontier_survey_commit_tree_binding_holds(
 fn frontier_survey_subject_eq(
   left: FrontierSurveySubject,
   right: FrontierSurveySubject
-) -> Bool {
+) -> v2.std.logic.Bool {
   (left.source_commit == right.source_commit)
     && extdeps.git.object_store.git_object_id_eq(left: left.source_tree, right: right.source_tree)
     && (left.survey_executable.hex == right.survey_executable.hex)
@@ -200,7 +200,7 @@ fn frontier_survey_subject_eq(
 
 data frontier_survey_build_provenance_note: String = "survey_executable SHA-256 alone does not prove the binary was built from source_tree — a clean worktree can still run a stale target/release/frontier_probe_survey. Closeout requires a build receipt binding commit, tree, compiler sources, probe executable digest, source-root set, and probe-policy revision from a clean detached worktree. The seed bin embeds FRONTIER_PROBE_SURVEY_BUILD_COMMIT, BUILD_TREE, and BUILD_DIRTY at compile time (build.rs); verify_build_provenance refuses missing/empty stamps, runtime commit/tree mismatch, and dirty-worktree builds (hole 2 closed for local build; cross-machine binary provenance open). TSV rows carry all five subject fields; load_probe_rows_from_tsv enforces per-row equality before aggregation (hole 3 — seed producer only; see frontier_survey_subject_grounding_note)."
 
-fn frontier_blocker_is_name_resolution_reason(reason: v2.std.node.Symbol) -> Bool {
+fn frontier_blocker_is_name_resolution_reason(reason: v2.std.node.Symbol) -> v2.std.logic.Bool {
   reason == ^resolve_reason_unbound_symbol
     || reason == ^resolve_ambiguous_export
     || reason == ^resolve_reason_malformed_imported_root
@@ -213,7 +213,7 @@ fn frontier_blocker_is_name_resolution_reason(reason: v2.std.node.Symbol) -> Boo
     || reason == ^normalize_rejected
 }
 
-fn frontier_blocker_is_emit_surface_reason(reason: v2.std.node.Symbol) -> Bool {
+fn frontier_blocker_is_emit_surface_reason(reason: v2.std.node.Symbol) -> v2.std.logic.Bool {
   reason == ^translate_target_bundle_malformed
     || reason == ^translate_target_bundle_duplicate_edge
     || reason == ^translate_grammar_relation_row_not_found
@@ -226,14 +226,14 @@ fn frontier_blocker_is_emit_surface_reason(reason: v2.std.node.Symbol) -> Bool {
     || reason == ^target_use_site_ownership_lookup_ambiguous
 }
 
-fn frontier_blocker_is_realization_reason(reason: v2.std.node.Symbol) -> Bool {
+fn frontier_blocker_is_realization_reason(reason: v2.std.node.Symbol) -> v2.std.logic.Bool {
   reason == ^compiler_import_closure_cyclic
     || reason == ^self_host_runner_not_realized
     || reason == ^emit_host_run_transport_unrealized
     || reason == ^parse_grammar_choice_overlap_residue
 }
 
-fn frontier_blocker_is_upstream_semantic_marker_reason(reason: v2.std.node.Symbol) -> Bool {
+fn frontier_blocker_is_upstream_semantic_marker_reason(reason: v2.std.node.Symbol) -> v2.std.logic.Bool {
   reason == gate_a_flip_probe_unresolved_compiler_error_reason
 }
 
@@ -281,7 +281,7 @@ data frontier_probe_survey_host_unknown_reason_scaffold_note: String = "Seed `fr
 
 data frontier_blocker_is_probe_survey_host_reason_dispatch_note: String = "frontier_blocker_is_probe_survey_host_reason is the reason-table authority for P5 seed-bin UnknownProbeCause symbols (^frontier_probe_runtime_error, ^frontier_probe_oom_or_budget, ^probe_emit_accept_self_host_bar_unbound). Wired through frontier_classify_rejection_reason and frontier_probe_survey_host_failure_reason; the seed bin reads the latter at runtime — no parallel Rust symbol strings. Dissolves with the P5 bin scaffold."
 
-fn frontier_blocker_is_probe_survey_host_reason(reason: v2.std.node.Symbol) -> Bool {
+fn frontier_blocker_is_probe_survey_host_reason(reason: v2.std.node.Symbol) -> v2.std.logic.Bool {
   reason == frontier_probe_survey_host_runtime_error_reason
     || reason == frontier_probe_survey_host_oom_or_budget_reason
     || reason == ^probe_emit_accept_self_host_bar_unbound
@@ -335,7 +335,7 @@ WHAT DID NOT MOVE: materialization_carriers stays on curated_cargo_probe_import_
 
 DOTTED IS THE DOMINANT BLOCKER, not import-closure: 4 of the 5 probed modules (01_tokenize, 02_parse, 04_infer, program_partition) refuse on it, and it is emitted into std.collection itself — 'pub type List<T> = std.algebra.FreeMonoid<T>' in v2_std_collection.rs, invalid Rust — so it sits in essentially every deep-module closure. PR 6934 ('6848 cleanup') is MERGED and the class is still live, so it is not a closed lane. Compounding it, emit REPORTS SUCCESS while producing that line ('compiled: 50 files emitted, 0 diagnostics') — a section-5 fail-open in which invalid Rust leaves the emitter with a clean bill of health and is caught only downstream by rustc."
 
-fn frontier_probe_survey_host_failure_reason(is_oom_or_budget: Bool) -> v2.std.node.Symbol {
+fn frontier_probe_survey_host_failure_reason(is_oom_or_budget: v2.std.logic.Bool) -> v2.std.node.Symbol {
   if is_oom_or_budget {
     frontier_probe_survey_host_oom_or_budget_reason
   } else {
@@ -359,7 +359,7 @@ fn frontier_classify_rejection_reason(reason: v2.std.node.Symbol) -> FrontierBlo
   }
 }
 
-fn frontier_probe_blocker_rank(blocker: FrontierBlockerClass) -> Int {
+fn frontier_probe_blocker_rank(blocker: FrontierBlockerClass) -> v2.std.integer.Int {
   match blocker {
     SelfEmitReady => 0
     UpstreamSemanticRefusal { diagnostic_class: _, diagnostic_name: _ } => 1
@@ -374,7 +374,7 @@ fn frontier_probe_blocker_rank(blocker: FrontierBlockerClass) -> Int {
 fn frontier_blocker_class_matches(
   blocker: FrontierBlockerClass,
   target: FrontierBlockerClass
-) -> Bool {
+) -> v2.std.logic.Bool {
   match blocker {
     SelfEmitReady =>
       match target {
@@ -411,7 +411,7 @@ fn frontier_blocker_class_matches(
   }
 }
 
-fn frontier_located_reason_is_stale_knowledge_attributed(symbol: v2.std.node.Symbol) -> Bool {
+fn frontier_located_reason_is_stale_knowledge_attributed(symbol: v2.std.node.Symbol) -> v2.std.logic.Bool {
   symbol == gate_a_flip_probe_witness_std_dup_reason
 }
 

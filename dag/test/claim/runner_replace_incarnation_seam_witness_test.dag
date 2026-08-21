@@ -16,7 +16,7 @@ fn witness_replace_fixture_cause() -> gunbc.runner_lifecycle.RunnerReplacementCa
 }
 
 fn witness_replace_fixture_effect() -> gunbc.host_effect.HostEffect {
-  ReplaceRunnerIncarnation {
+  gunbc.host_effect.ReplaceRunnerIncarnation {
     from: witness_replace_fixture_incarnation(),
     cause: witness_replace_fixture_cause(),
   }
@@ -54,7 +54,7 @@ test fn witness_replace_lifecycle_realizer_preserves_from_and_cause() -> Bool {
   match runner_lifecycle_realize_replace_runner_incarnation(intent: witness_replace_fixture_intent()) {
     NotConverged { reason: _, applied: intent } =>
       match intent.effect {
-        ReplaceRunnerIncarnation { from: applied_from, cause: applied_cause } =>
+        gunbc.host_effect.ReplaceRunnerIncarnation { from: applied_from, cause: applied_cause } =>
           local_runner_slot_incarnation_fields_match(left: from, right: applied_from)
             && match applied_cause {
               ReplacementCauseConnectivityDetached { registration_id: id } => id == 42
@@ -64,7 +64,7 @@ test fn witness_replace_lifecycle_realizer_preserves_from_and_cause() -> Bool {
             }
         _ => false
       }
-    Converged { evidence: _, applied: _ } => false
+    std.realization_reconcile.Converged { evidence: _, applied: _ } => false
   }
 }
 
@@ -78,7 +78,7 @@ test fn witness_replace_host_effect_apply_routes_to_lifecycle_scaffold() -> Bool
     NotConverged { reason: r, applied: intent } =>
       string_contains(s: r, pattern: "ReplaceRunnerIncarnation")
         && match intent.effect {
-          ReplaceRunnerIncarnation { from: applied_from, cause: applied_cause } =>
+          gunbc.host_effect.ReplaceRunnerIncarnation { from: applied_from, cause: applied_cause } =>
             local_runner_slot_incarnation_fields_match(
               left: witness_replace_fixture_incarnation(),
               right: applied_from,
@@ -91,7 +91,7 @@ test fn witness_replace_host_effect_apply_routes_to_lifecycle_scaffold() -> Bool
               }
           _ => false
         }
-    Converged { evidence: _, applied: _ } => false
+    std.realization_reconcile.Converged { evidence: _, applied: _ } => false
   }
 }
 

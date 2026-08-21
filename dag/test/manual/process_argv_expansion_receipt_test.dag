@@ -62,7 +62,7 @@ test fn case4_expansion_carrier_splices() -> Bool {
     lex: probe_lex(),
     binding_spellings: v2.std.collection.empty_map()
   ) {
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: surface, diagnostics: _ } =>
       extdeps.tools.jq.jq_argv_expansion_probe(expansion: v2.std.compilers.cli_surface.process_argv_expansion(surface: surface), payload: "1") == 0
   }

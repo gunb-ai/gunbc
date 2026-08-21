@@ -24,7 +24,7 @@ test fn caps_idempotence_zero_effects() -> Bool {
     && caps_refusal_count(desired: d, observed: d) == 0
     && match caps_effects(desired: d, observed: d) {
          EffectsReady { effects: e } => list_length(items: e) == 0
-         ApplyRefused { refusals: _ } => false
+         gunbc.membership_reconcile.ApplyRefused { refusals: _ } => false
        }
 }
 
@@ -51,7 +51,7 @@ test fn caps_foreign_occupant_refuses_never_deletes() -> Bool {
   caps_refusal_count(desired: d, observed: observed) == 1
     && caps_teardown_count(desired: d, observed: observed) == 0
     && match caps_effects(desired: d, observed: observed) {
-         ApplyRefused { refusals: r } => list_length(items: r) == 1
+         gunbc.membership_reconcile.ApplyRefused { refusals: r } => list_length(items: r) == 1
          EffectsReady { effects: _ } => false
        }
     && caps_teardown_count(
@@ -74,7 +74,7 @@ test fn control_shadow_residue_teardowns_owned_unit() -> Bool {
     && control_shadow_refusal_count(desired: [], observed: observed) == 0
     && match control_shadow_effects(desired: [], observed: observed) {
          EffectsReady { effects: e } => list_length(items: e) == 1
-         ApplyRefused { refusals: _ } => false
+         gunbc.membership_reconcile.ApplyRefused { refusals: _ } => false
        }
     && control_shadow_revert_script_matches_extdeps_argv(u: control_shadow_unit(unit: shadow_unit))
 }

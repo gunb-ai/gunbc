@@ -342,7 +342,7 @@ fn prose_row_ident_end(line: String, i: Int, len: Int) -> Int {
 // Absent means `this line is not a prose row`, which is the overwhelming majority of a diff — it is a
 // classification miss, never a failure, and the caller must not treat the two alike. A line the fold
 // cannot read AT ALL is a different fact and is carried by ProseRowDiffUnreadable below.
-fn prose_row_decl_name(line: String) -> Optional<String> {
+fn prose_row_decl_name(line: String) -> v2.std.optional.Optional<String> {
   let len = string_length(s: line)
   if !starts_with(s: line, prefix: prose_row_decl_prefix) {
     none

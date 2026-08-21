@@ -79,7 +79,7 @@ fn project_connectivity_action_to_repair_plan(
   match action {
     RunnerConnectedNoop { local: _, remote: _ } =>
       RepairNoop { reason: "local and remote registration agree; no repair steps" as std.types.NonEmptyStr }
-    RunnerIncarnationReplace { slot: slot, from: from, cause: _ } =>
+    gunbc.runner_connectivity_recovery.RunnerIncarnationReplace { slot: slot, from: from, cause: _ } =>
       RepairExecute {
         slot: slot,
         steps: replace_repair_steps(slot: slot, from: from),

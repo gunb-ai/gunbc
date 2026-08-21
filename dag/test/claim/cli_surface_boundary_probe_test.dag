@@ -81,7 +81,7 @@ fn argument_texts(arguments: std.types.List<v2.std.compilers.cli_surface.CliArgu
           v2.std.algebra.list_snoc_item(xs: acc, item: v2.std.compilers.cli_surface.cli_argument_text(argument: argument))
         }
       )
-    Rejected { diagnostics: _ } => std.algebra.Empty
+    v2.std.diagnostic.Rejected { diagnostics: _ } => std.algebra.Empty
   }
 }
 
@@ -127,7 +127,7 @@ fn grouping_flat_text(arguments: std.types.List<v2.std.compilers.cli_surface.Cli
     binding_spellings: v2.std.collection.empty_map()
   ) {
     Accepted { value: text, diagnostics: _ } => v2.std.compilers.target_model.render_target_text(t: text)
-    Rejected { diagnostics: _ } => ""
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
   }
 }
 
@@ -149,7 +149,7 @@ test fn keystone_flat_text_is_nonempty() -> Bool {
   ) {
     Accepted { value: text, diagnostics: _ } =>
       v2.std.compilers.target_model.render_target_text(t: text) == "--color=never"
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -160,7 +160,7 @@ test fn keystone_flat_text_is_nonempty() -> Bool {
 // for compiler source text, where the symbol name is a legitimate rendering; fabricated
 // plausible output for runtime CLI data (DESIGN section 5).
 //
-// The assertion is deliberately Rejected-vs-Accepted rather than a text comparison: if the
+// The assertion is deliberately v2.std.diagnostic.Rejected-vs-Accepted rather than a text comparison: if the
 // fallback ever returns, this goes red because the fold ACCEPTS, and no assertion about the
 // emitted text is needed to see it.
 test fn a_bound_fragment_with_no_spelling_refuses() -> Bool {
@@ -171,7 +171,7 @@ test fn a_bound_fragment_with_no_spelling_refuses() -> Bool {
     lex: probe_lex_rules(),
     binding_spellings: v2.std.collection.empty_map()
   ) {
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }

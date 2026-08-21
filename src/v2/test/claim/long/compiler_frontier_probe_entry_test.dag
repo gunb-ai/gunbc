@@ -24,21 +24,21 @@ fn frontier_probe_entry_receipt() -> v2.compiler.self_host.frontier_probe_types.
   }
 }
 
-test fn frontier_probe_entry_blocker_is_emit_surface() -> Bool {
+test fn frontier_probe_entry_blocker_is_emit_surface() -> v2.std.logic.Bool {
   match frontier_probe_entry_receipt().blocker_class {
     EmitSurfaceGap => true
     _ => false
   }
 }
 
-test fn frontier_probe_entry_located_stage_is_emit_holds() -> Bool {
+test fn frontier_probe_entry_located_stage_is_emit_holds() -> v2.std.logic.Bool {
   frontier_probe_entry_receipt().located_stage == ProbeStageEmit
 }
 
-fn frontier_probe_entry_overlay_present() -> Bool {
+fn frontier_probe_entry_overlay_present() -> v2.std.logic.Bool {
   frontier_probe_entry_module_path != ""
 }
 
-test fn frontier_probe_entry_overlay_present_holds() -> Bool {
+test fn frontier_probe_entry_overlay_present_holds() -> v2.std.logic.Bool {
   frontier_probe_entry_overlay_present()
 }

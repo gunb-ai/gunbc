@@ -1,7 +1,7 @@
 module v2.lens.simulated_relationship
 
 
-fn chain_is_simulated(steps: FreeMonoid<Node>) -> Bool {
+fn chain_is_simulated(steps: FreeMonoid<v2.std.node.Node>) -> v2.std.logic.Bool {
   chain_collapses(steps: steps, min_len: 3, require_hole: true)
 }
 

@@ -3,11 +3,11 @@ module v2.test.manual.c_add_emit_translate
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data c_add_int_inhabitant: Node = c_int_inhabitant_node()
+data c_add_int_inhabitant: v2.std.node.Node = c_int_inhabitant_node()
 
-data c_add_emitted_root: Node = c_emitted_add_fn_node()
+data c_add_emitted_root: v2.std.node.Node = c_emitted_add_fn_node()
 
-data c_add_wrong_emitted_root: Node = v2.std.node.Node {
+data c_add_wrong_emitted_root: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Arrow },
   children: [
     v2.std.node.Edge { label: Positional, target: c_add_int_inhabitant },
@@ -18,7 +18,7 @@ data c_add_wrong_emitted_root: Node = v2.std.node.Node {
 
 data c_add_target_model: v2.std.compilers.target_model.TargetModel = c_target_model()
 
-data c_add_empty_translation_rules_bundle: Node = v2.std.node.Node {
+data c_add_empty_translation_rules_bundle: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
@@ -34,7 +34,7 @@ data c_add_missing_translation_rules_target: v2.std.compilers.target_model.Targe
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-fn c_add_canonical_grounding(node: Node, algebra: Node) -> v2.std.constraints.CanonicalGrounding {
+fn c_add_canonical_grounding(node: v2.std.node.Node, algebra: v2.std.node.Node) -> v2.std.constraints.CanonicalGrounding {
   v2.std.constraints.CanonicalGrounding {
     node: node,
     witness: v2.std.constraints.CanonicalGroundingWitness {
@@ -50,7 +50,7 @@ fn c_add_canonical_grounding(node: Node, algebra: Node) -> v2.std.constraints.Ca
   }
 }
 
-fn c_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
+fn c_add_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == c_add_emitted_root {
     v2.std.witness.Holds { value: c_add_canonical_grounding(node: node, algebra: node) }
   } else if node == c_add_int_inhabitant {
@@ -68,7 +68,7 @@ fn c_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.Canon
   }
 }
 
-fn c_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn c_add_inferred_facts_for(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   match c_add_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -83,7 +83,7 @@ fn c_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.In
   }
 }
 
-fn c_add_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn c_add_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   c_add_inferred_facts_for(node: key)
 }
 
@@ -93,7 +93,7 @@ data c_add_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.i
 }
 
 fn c_add_emit_accepts() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
-  emit(tree: c_add_inferred_tree, target: c_add_target_model)
+  v2.compiler.emit.emit(tree: c_add_inferred_tree, target: c_add_target_model)
 }
 
 data c_add_emit_receipt: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> = c_add_emit_accepts()
@@ -107,41 +107,41 @@ fn c_add_serialize_rejects_missing_translation_rules() -> v2.std.diagnostic.Outc
 
 data c_add_serialize_reject_receipt: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> = c_add_serialize_rejects_missing_translation_rules()
 
-test fn c_add_emit_add_fn_accepts_holds() -> Bool {
+test fn c_add_emit_add_fn_accepts_holds() -> v2.std.logic.Bool {
   match c_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == c_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn c_add_serialize_source_matches_authority_holds() -> Bool {
+test fn c_add_serialize_source_matches_authority_holds() -> v2.std.logic.Bool {
   match target_serialize_source_from_model(
     target: c_add_target_model,
     emitted: c_add_emitted_root
   ) {
     Accepted { value: authority, diagnostics: d } =>
       (authority.carried == c_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn c_add_serialize_rejects_missing_translation_rules_holds() -> Bool {
+test fn c_add_serialize_rejects_missing_translation_rules_holds() -> v2.std.logic.Bool {
   match c_add_serialize_reject_receipt {
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-test fn c_add_emit_wrong_node_refuses_holds() -> Bool {
+test fn c_add_emit_wrong_node_refuses_holds() -> v2.std.logic.Bool {
   let wrong_tree = v2.compiler.inferred_tree.InferredTree {
     root: c_add_wrong_emitted_root,
     facts: std.types.Map { lookup: c_add_facts_lookup }
   }
-  match emit(tree: wrong_tree, target: c_add_target_model) {
+  match v2.compiler.emit.emit(tree: wrong_tree, target: c_add_target_model) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried != c_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 

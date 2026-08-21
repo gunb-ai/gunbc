@@ -6,8 +6,8 @@ data emit_on_demand_scheduling_note: String = "Compiler-layer scheduling over th
 fn witness_family_realize_width(
   bound_bytes: std.measure.ByteSize,
   budget: std.realize_pack.HostBudget,
-  witness_root: Node,
-  independence_override: Int
+  witness_root: v2.std.node.Node,
+  independence_override: v2.std.integer.Int
 ) -> std.realize_pack.RealizeVerdict {
   let independence = if independence_override > 0 {
     independence_override

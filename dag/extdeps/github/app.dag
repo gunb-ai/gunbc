@@ -383,8 +383,8 @@ fn sha256_base64_key_fingerprint(digest: std.types.NonEmptyStr) -> GitHubAppPubl
 
 fn key_fingerprint_eq(a: GitHubAppPublicKeyFingerprint, b: GitHubAppPublicKeyFingerprint) -> Bool {
   match a.algorithm {
-    Sha256 => match b.algorithm {
-      Sha256 => match a.encoding {
+    extdeps.crypto.hash.Sha256 => match b.algorithm {
+      extdeps.crypto.hash.Sha256 => match a.encoding {
         FingerprintBase64 => match b.encoding {
           FingerprintBase64 => a.digest == b.digest
         }

@@ -2,7 +2,7 @@ module v2.test.nat_semiring.rung_0_to_2_three_targets
 
 
 
-data phase1_nat_semiring_rung_subject: Node = v2.std.node.Node {
+data phase1_nat_semiring_rung_subject: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^phase1_nat_semiring_rung_subject_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
@@ -70,4 +70,4 @@ data phase1_nat_semiring_fixture_law_roster: List<v2.std.verification.TestClaim>
   v2.test.algebra_laws.nat_semiring.claim_nat_mul_associativity
 ]
 
-data phase1_nat_semiring_rung_gate_canonical_subject: Node = nat_add_left_identity_input
+data phase1_nat_semiring_rung_gate_canonical_subject: v2.std.node.Node = nat_add_left_identity_input

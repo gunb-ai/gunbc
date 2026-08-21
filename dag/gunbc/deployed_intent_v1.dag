@@ -7,7 +7,7 @@ type DeployedIntentV1 {
   desired_hostname_short: extdeps.dns.domain_name.DnsLabel
 }
 
-data gunbc_deployed_intent_v1_scope_disposition: std.disposition.Disposition = Terminal {
+data gunbc_deployed_intent_v1_scope_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Phase-1 desired-intent carrier: desired_hostname_short is the hostname ALLOCATED to the fleet slot (gunbc.hostname_allocation), not a name parsed out of the slot identity — host identity and canonical hostname are separate facts, so a slot with no allocation fails closed to Absent rather than silently inheriting whatever its identity happens to spell. The DnsLabel carrier keeps a desired name outside the hostnamectl-safe grammar unwritable. v1 pairs with DeployedIntentV0 persisted base for keyed three-way fold."
 }
 

@@ -1,7 +1,7 @@
 module gunbc.fleet_runner_connectivity
 
 
-data fleet_runner_connectivity_authority_disposition: std.disposition.Disposition = Terminal {
+data fleet_runner_connectivity_authority_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Single authority for GITHUB REGISTRATION CONNECTIVITY versus LOCAL RUNNER INCARNATIONS. It joins one org-level registration roster (remote ground truth from the GitHub Actions runners API) to per-slot stable identities (host, index) and their local systemd incarnations. It does NOT repair wedged runners — that is PR B. It refuses to fold connected width into desired width, and it refuses to treat a roster read failure as 'everything detached' (empty-observation narrow)."
 }
 

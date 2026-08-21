@@ -19,7 +19,7 @@ fn successful_coverage(head: std.types.CommitSha) -> gunbc.merge_admission.Check
   gunbc.merge_admission.CheckCoverageComplete {
     head: head,
     roster: test.claim.heal_revalidation_witness.required_roster,
-    conclusions: [gunbc.merge_admission.CoveredGateConclusion { gate: required_gate, conclusion: Success }]
+    conclusions: [gunbc.merge_admission.CoveredGateConclusion { gate: required_gate, conclusion: extdeps.github.checks.Success }]
   }
 }
 

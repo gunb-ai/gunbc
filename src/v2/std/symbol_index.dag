@@ -3,26 +3,26 @@ module v2.std.symbol_index
 
 
 type GlobalBareBindingState
-  = GlobalBareUnique { node: Node, path: v2.std.qualified_name.QualifiedName }
+  = GlobalBareUnique { node: v2.std.node.Node, path: v2.std.qualified_name.QualifiedName }
   | GlobalBareAmbiguous
 
 type GlobalBareLookup
-  = GlobalBareHit { node: Node }
+  = GlobalBareHit { node: v2.std.node.Node }
   | GlobalBareLookupAmbiguous
   | GlobalBareLookupUnbound
 
 type LexicalBindingCandidate {
   path: v2.std.qualified_name.QualifiedName
-  node: Node
+  node: v2.std.node.Node
 }
 
 type LexicalLookup
-  = LexicalHit { node: Node, path: v2.std.qualified_name.QualifiedName }
+  = LexicalHit { node: v2.std.node.Node, path: v2.std.qualified_name.QualifiedName }
   | LexicalAmbiguous { candidates: std.algebra.FreeMonoid<LexicalBindingCandidate> }
   | LexicalUnbound
 
 type SymbolIndex {
-  entries: Map<v2.std.qualified_name.QualifiedName, Node>
+  entries: Map<v2.std.qualified_name.QualifiedName, v2.std.node.Node>
   global_bare: Map<v2.std.node.Symbol, GlobalBareBindingState>
 }
 
@@ -33,25 +33,25 @@ fn empty_symbol_index() -> SymbolIndex {
   }
 }
 
-fn symbol_index_lookup(index: SymbolIndex, qualified_path: v2.std.qualified_name.QualifiedName) -> Optional<Node> {
+fn symbol_index_lookup(index: SymbolIndex, qualified_path: v2.std.qualified_name.QualifiedName) -> v2.std.optional.Optional<v2.std.node.Node> {
   match v2.std.collection.map_get(index.entries, qualified_path) {
     Accepted { value: opt, diagnostics: _ } => opt
-    Rejected { diagnostics: _ } => optional_absent()
+    v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
 fn symbol_index_track_global_bare(
   index: SymbolIndex,
   qualified_path: v2.std.qualified_name.QualifiedName,
-  resolved: Node
+  resolved: v2.std.node.Node
 ) -> SymbolIndex {
   match qualified_name_last_segment(qn: qualified_path) {
-    Absent => index
-    Present { value: leaf } =>
+    v2.std.optional.Absent => index
+    v2.std.optional.Present { value: leaf } =>
       match v2.std.collection.map_get(index.global_bare, leaf) {
         Accepted { value: opt, diagnostics: _ } => match opt {
-          Present { value: GlobalBareAmbiguous } => index
-          Present { value: GlobalBareUnique { node: existing, path: existing_path } } =>
+          v2.std.optional.Present { value: GlobalBareAmbiguous } => index
+          v2.std.optional.Present { value: GlobalBareUnique { node: existing, path: existing_path } } =>
             if existing_path == qualified_path && existing == resolved {
               index
             } else {
@@ -64,7 +64,7 @@ fn symbol_index_track_global_bare(
                 )
               }
             }
-          Absent =>
+          v2.std.optional.Absent =>
             SymbolIndex {
               entries: index.entries,
               global_bare: map_insert(
@@ -74,12 +74,12 @@ fn symbol_index_track_global_bare(
               )
             }
         }
-        Rejected { diagnostics: _ } => index
+        v2.std.diagnostic.Rejected { diagnostics: _ } => index
       }
   }
 }
 
-fn symbol_index_insert(index: SymbolIndex, qualified_path: v2.std.qualified_name.QualifiedName, resolved: Node) -> SymbolIndex {
+fn symbol_index_insert(index: SymbolIndex, qualified_path: v2.std.qualified_name.QualifiedName, resolved: v2.std.node.Node) -> SymbolIndex {
   let with_entry = SymbolIndex {
     entries: map_insert(
       m: index.entries,
@@ -98,11 +98,11 @@ fn symbol_index_insert(index: SymbolIndex, qualified_path: v2.std.qualified_name
 fn symbol_index_global_unique_lookup(index: SymbolIndex, name: v2.std.node.Symbol) -> GlobalBareLookup {
   match v2.std.collection.map_get(index.global_bare, name) {
     Accepted { value: opt, diagnostics: _ } => match opt {
-      Present { value: GlobalBareUnique { node: n, path: _ } } => GlobalBareHit { node: n }
-      Present { value: GlobalBareAmbiguous } => GlobalBareLookupAmbiguous
-      Absent => GlobalBareLookupUnbound
+      v2.std.optional.Present { value: GlobalBareUnique { node: n, path: _ } } => GlobalBareHit { node: n }
+      v2.std.optional.Present { value: GlobalBareAmbiguous } => GlobalBareLookupAmbiguous
+      v2.std.optional.Absent => GlobalBareLookupUnbound
     }
-    Rejected { diagnostics: _ } => GlobalBareLookupUnbound
+    v2.std.diagnostic.Rejected { diagnostics: _ } => GlobalBareLookupUnbound
   }
 }
 
@@ -110,7 +110,7 @@ fn symbol_index_try_lexical_at(
   index: SymbolIndex,
   position: v2.std.qualified_name.QualifiedName,
   name: v2.std.node.Symbol
-) -> Optional<Node> {
+) -> v2.std.optional.Optional<v2.std.node.Node> {
   let candidate_path = qualified_name_snoc(qn: position, segment: name)
   v2.std.symbol_index.symbol_index_lookup(index: index, qualified_path: candidate_path)
 }
@@ -122,7 +122,7 @@ fn symbol_index_lexical_collect(
   acc: FreeMonoid<LexicalBindingCandidate>
 ) -> FreeMonoid<LexicalBindingCandidate> {
   let with_current = match symbol_index_try_lexical_at(index: index, position: position, name: name) {
-    Present { value: node } =>
+    v2.std.optional.Present { value: node } =>
       list_snoc_item(
         xs: acc,
         item: LexicalBindingCandidate {
@@ -130,7 +130,7 @@ fn symbol_index_lexical_collect(
           node: node
         }
       )
-    Absent => acc
+    v2.std.optional.Absent => acc
   }
   if is_empty(xs: position) {
     with_current

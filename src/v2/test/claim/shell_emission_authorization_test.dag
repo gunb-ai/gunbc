@@ -7,13 +7,13 @@ fn empty_roster() -> List<v2.std.execution_surface.ShellEmissionRosterEntry> {
 
 fn all_absent_gate() -> v2.std.execution_surface.RuntimeAvailabilityGate {
   v2.std.execution_surface.RuntimeAvailabilityGate {
-    gunbc_binary: Absent,
-    typed_transport: Absent,
-    plan_interpreter: Absent
+    gunbc_binary: v2.std.execution_surface.Absent,
+    typed_transport: v2.std.execution_surface.Absent,
+    plan_interpreter: v2.std.execution_surface.Absent
   }
 }
 
-test fn foreign_executor_authorizes_regardless_of_window() -> Bool {
+test fn foreign_executor_authorizes_regardless_of_window() -> v2.std.logic.Bool {
   let auth = authorize_shell_emission(
     capability: v2.std.execution_surface.ShellPayloadRequired { foreign: GitHubActionsRunStep },
     window: SteadyState,
@@ -23,11 +23,11 @@ test fn foreign_executor_authorizes_regardless_of_window() -> Bool {
   match auth {
     Authorized { justification: ForeignExecutorMandated { capability: _ } } => true
     Authorized { justification: _ } => false
-    Refused { cause: _ } => false
+    v2.std.execution_surface.Refused { cause: _ } => false
   }
 }
 
-test fn bootstrap_window_with_absent_gate_authorizes() -> Bool {
+test fn bootstrap_window_with_absent_gate_authorizes() -> v2.std.logic.Bool {
   let auth = authorize_shell_emission(
     capability: TypedArgv,
     window: v2.std.execution_surface.BootstrapBeforeRuntime { until: all_absent_gate() },
@@ -37,15 +37,15 @@ test fn bootstrap_window_with_absent_gate_authorizes() -> Bool {
   match auth {
     Authorized { justification: BootstrapProvisioned { window: _, site: _ } } => true
     Authorized { justification: _ } => false
-    Refused { cause: _ } => false
+    v2.std.execution_surface.Refused { cause: _ } => false
   }
 }
 
-test fn bootstrap_window_with_unknown_availability_refuses() -> Bool {
+test fn bootstrap_window_with_unknown_availability_refuses() -> v2.std.logic.Bool {
   let gate = v2.std.execution_surface.RuntimeAvailabilityGate {
-    gunbc_binary: Absent,
-    typed_transport: Unknown { cause: "probe not run" },
-    plan_interpreter: Absent
+    gunbc_binary: v2.std.execution_surface.Absent,
+    typed_transport: v2.std.execution_surface.Unknown { cause: "probe not run" },
+    plan_interpreter: v2.std.execution_surface.Absent
   }
   let auth = authorize_shell_emission(
     capability: TypedArgv,
@@ -54,13 +54,13 @@ test fn bootstrap_window_with_unknown_availability_refuses() -> Bool {
     roster: empty_roster()
   )
   match auth {
-    Refused { cause: UnknownAvailability { gate: _ } } => true
-    Refused { cause: _ } => false
+    v2.std.execution_surface.Refused { cause: UnknownAvailability { gate: _ } } => true
+    v2.std.execution_surface.Refused { cause: _ } => false
     Authorized { justification: _ } => false
   }
 }
 
-test fn steady_state_without_roster_entry_refuses() -> Bool {
+test fn steady_state_without_roster_entry_refuses() -> v2.std.logic.Bool {
   let auth = authorize_shell_emission(
     capability: TypedArgv,
     window: SteadyState,
@@ -68,13 +68,13 @@ test fn steady_state_without_roster_entry_refuses() -> Bool {
     roster: empty_roster()
   )
   match auth {
-    Refused { cause: RuntimePresentRequiresTypedRealization { capability: _ } } => true
-    Refused { cause: _ } => false
+    v2.std.execution_surface.Refused { cause: RuntimePresentRequiresTypedRealization { capability: _ } } => true
+    v2.std.execution_surface.Refused { cause: _ } => false
     Authorized { justification: _ } => false
   }
 }
 
-test fn steady_state_with_matching_roster_entry_authorizes() -> Bool {
+test fn steady_state_with_matching_roster_entry_authorizes() -> v2.std.logic.Bool {
   let roster = [
     v2.std.execution_surface.ShellEmissionRosterEntry {
       site: ^live_deploy_apply,
@@ -92,11 +92,11 @@ test fn steady_state_with_matching_roster_entry_authorizes() -> Bool {
     Authorized { justification: RosterException { roster_key: k, dissolution: _ } } =>
       k == "live_deploy_apply"
     Authorized { justification: _ } => false
-    Refused { cause: _ } => false
+    v2.std.execution_surface.Refused { cause: _ } => false
   }
 }
 
-test fn steady_state_roster_entry_for_other_site_still_refuses() -> Bool {
+test fn steady_state_roster_entry_for_other_site_still_refuses() -> v2.std.logic.Bool {
   let roster = [
     v2.std.execution_surface.ShellEmissionRosterEntry {
       site: ^live_deploy_apply,
@@ -111,13 +111,13 @@ test fn steady_state_roster_entry_for_other_site_still_refuses() -> Bool {
     roster: roster
   )
   match auth {
-    Refused { cause: RuntimePresentRequiresTypedRealization { capability: _ } } => true
-    Refused { cause: _ } => false
+    v2.std.execution_surface.Refused { cause: RuntimePresentRequiresTypedRealization { capability: _ } } => true
+    v2.std.execution_surface.Refused { cause: _ } => false
     Authorized { justification: _ } => false
   }
 }
 
-test fn typed_plan_interpretation_at_steady_state_still_needs_roster() -> Bool {
+test fn typed_plan_interpretation_at_steady_state_still_needs_roster() -> v2.std.logic.Bool {
   let auth = authorize_shell_emission(
     capability: TypedPlanInterpretation,
     window: SteadyState,
@@ -127,7 +127,7 @@ test fn typed_plan_interpretation_at_steady_state_still_needs_roster() -> Bool {
   !shell_emission_authorization_is_authorized(auth: auth)
 }
 
-test fn authorization_predicate_is_bool_summarizable() -> Bool {
+test fn authorization_predicate_is_bool_summarizable() -> v2.std.logic.Bool {
   let authorized = authorize_shell_emission(
     capability: v2.std.execution_surface.ShellPayloadRequired { foreign: AutoinstallLateCommand },
     window: v2.std.execution_surface.BootstrapBeforeRuntime { until: all_absent_gate() },

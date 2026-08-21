@@ -17,11 +17,11 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_t
 // roster membership in both directions.
 data deploy_workflow_retired_path: String = ".github/workflows/deploy.yml"
 
-fn roster_contains(path: String) -> std.types.Bool {
+fn roster_contains(path: String) -> Bool {
   fold(gunbc.generated_artifact.committed_generated_artifact_paths(), init: false, f: (acc, p) => acc || (p == path))
 }
 
-test fn the_retired_deploy_workflow_is_not_in_the_committed_artifact_roster() -> std.types.Bool {
+test fn the_retired_deploy_workflow_is_not_in_the_committed_artifact_roster() -> Bool {
   !roster_contains(path: deploy_workflow_retired_path)
 }
 
@@ -30,6 +30,6 @@ test fn the_retired_deploy_workflow_is_not_in_the_committed_artifact_roster() ->
 // list satisfies every "does not contain" assertion. This asserts the roster is populated
 // and still carries the workflow that DOES survive, so the negative above is a statement
 // about deploy.yml rather than about an empty read.
-test fn the_roster_is_populated_and_still_carries_the_surviving_workflow() -> std.types.Bool {
+test fn the_roster_is_populated_and_still_carries_the_surviving_workflow() -> Bool {
   roster_contains(path: ".github/workflows/witnesses.yml")
 }

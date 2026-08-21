@@ -5,7 +5,7 @@ data extdeps_enrollment_wall_note: String = "ENROLLMENT WALL (CI floor endgame D
 
 func run_extdeps_external_authority_gate_body() -> std.process.ProcessExit {
   return if claims_covered_by_cheap_pool_chunks(claims: extdeps_external_authority_claims()) {
-    ExitSuccess
+    std.process.ExitSuccess
   } else {
     exit_failure(
       reason: "extdeps external authority enrollment wall failed: an extdeps claim does not survive the pool's K-chunking transform (tools.cheap_gate_pool.chunk_claims) — its execution would be silently dropped"

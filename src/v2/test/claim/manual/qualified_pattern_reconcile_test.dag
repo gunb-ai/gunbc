@@ -9,35 +9,35 @@ fn three() -> v2.std.nat.Nat {
   v2.std.nat.Succ { prev: v2.std.nat.Succ { prev: v2.std.nat.Succ { prev: Zero } } }
 }
 
-fn is_zero_qualified(value: v2.std.nat.Nat) -> Bool {
+fn is_zero_qualified(value: v2.std.nat.Nat) -> v2.std.logic.Bool {
   match value {
     v2.std.nat.Zero => true
     Succ { prev: p } => false
   }
 }
 
-fn is_succ_qualified(value: v2.std.nat.Nat) -> Bool {
+fn is_succ_qualified(value: v2.std.nat.Nat) -> v2.std.logic.Bool {
   match value {
     v2.std.nat.Zero => false
     Succ { prev: p } => true
   }
 }
 
-fn is_zero_bare(value: v2.std.nat.Nat) -> Bool {
+fn is_zero_bare(value: v2.std.nat.Nat) -> v2.std.logic.Bool {
   match value {
     Zero => true
     Succ { prev: p } => false
   }
 }
 
-test fn qualified_pattern_reconciles_grounded_zero() -> Bool {
+test fn qualified_pattern_reconciles_grounded_zero() -> v2.std.logic.Bool {
   is_zero_qualified(value: nat_mul(a: Zero, b: three()))
 }
 
-test fn qualified_pattern_reconciles_grounded_succ() -> Bool {
+test fn qualified_pattern_reconciles_grounded_succ() -> v2.std.logic.Bool {
   is_succ_qualified(value: three())
 }
 
-test fn bare_pattern_control_holds() -> Bool {
+test fn bare_pattern_control_holds() -> v2.std.logic.Bool {
   is_zero_bare(value: nat_mul(a: Zero, b: three()))
 }

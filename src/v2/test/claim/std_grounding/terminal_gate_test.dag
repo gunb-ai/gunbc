@@ -28,7 +28,7 @@ fn terminal_gate_receipt(status: v2.std.grounding.HostVerdictSurfaceExecutionSta
   }
 }
 
-test fn witness_grounding_terminal_gate_runtime_authoritative_discriminates() -> Bool {
+test fn witness_grounding_terminal_gate_runtime_authoritative_discriminates() -> v2.std.logic.Bool {
   host_verdict_surface_runtime_authoritative(receipt: terminal_gate_receipt(status: RuntimeVerdicts))
     && (host_verdict_surface_runtime_authoritative(
       receipt: terminal_gate_receipt(status: AuthoringTimeVerdictSurface)

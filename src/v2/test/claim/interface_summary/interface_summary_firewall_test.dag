@@ -10,22 +10,22 @@ fn export_fingerprint_for_gate(module_path: std.types.NonEmptyStr) -> std.conten
     module_path: module_path,
     pool_roots: firewall_fixture_roots
   ) {
-    Present { value: summary } =>
+    v2.std.optional.Present { value: summary } =>
       fold(summary.exports, init: optional_absent(), f: fn(found, entry) {
         match found {
-          Present { value: _ } => found
-          Absent =>
+          v2.std.optional.Present { value: _ } => found
+          v2.std.optional.Absent =>
             match entry.name == "firewall_gate" {
-              true => Present { value: std.interface_summary.export_entry_fingerprint(entry: entry) }
+              true => v2.std.optional.Present { value: std.interface_summary.export_entry_fingerprint(entry: entry) }
               false => found
             }
         }
       })
-    Absent => Absent
+    v2.std.optional.Absent => v2.std.optional.Absent
   }
 }
 
-fn body_only_edit_preserves_export_fingerprint() -> Bool {
+fn body_only_edit_preserves_export_fingerprint() -> v2.std.logic.Bool {
   let v1 = export_fingerprint_for_gate(
     module_path: "v2.test.fixture.interface_summary.firewall_body_v1"
   )
@@ -33,16 +33,16 @@ fn body_only_edit_preserves_export_fingerprint() -> Bool {
     module_path: "v2.test.fixture.interface_summary.firewall_body_v2"
   )
   match v1 {
-    Present { value: fp1 } =>
+    v2.std.optional.Present { value: fp1 } =>
       match v2 {
-        Present { value: fp2 } => fp1 == fp2
-        Absent => false
+        v2.std.optional.Present { value: fp2 } => fp1 == fp2
+        v2.std.optional.Absent => false
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-fn signature_edit_changes_export_fingerprint() -> Bool {
+fn signature_edit_changes_export_fingerprint() -> v2.std.logic.Bool {
   let baseline = export_fingerprint_for_gate(
     module_path: "v2.test.fixture.interface_summary.firewall_body_v1"
   )
@@ -50,31 +50,31 @@ fn signature_edit_changes_export_fingerprint() -> Bool {
     module_path: "v2.test.fixture.interface_summary.firewall_sig_variant"
   )
   match baseline {
-    Present { value: fp1 } =>
+    v2.std.optional.Present { value: fp1 } =>
       match variant {
-        Present { value: fp2 } => fp1 != fp2
-        Absent => false
+        v2.std.optional.Present { value: fp2 } => fp1 != fp2
+        v2.std.optional.Absent => false
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-test fn interface_summary_firewall_body_only_edit_is_green() -> Bool {
+test fn interface_summary_firewall_body_only_edit_is_green() -> v2.std.logic.Bool {
   body_only_edit_preserves_export_fingerprint()
 }
 
-test fn interface_summary_firewall_signature_edit_is_red() -> Bool {
+test fn interface_summary_firewall_signature_edit_is_red() -> v2.std.logic.Bool {
   signature_edit_changes_export_fingerprint()
 }
 
-test fn export_signature_facts_host_scaffold_receipt_cites_dissolution_authorities() -> Bool {
+test fn export_signature_facts_host_scaffold_receipt_cites_dissolution_authorities() -> v2.std.logic.Bool {
   match export_signature_facts_host_scaffold_dissolution_trigger {
-    Scaffold { dissolves_to: _, bind: _ } => true
-    Terminal { reason: _ } => false
+    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
+    std.disposition.Terminal { reason: _ } => false
   }
 }
 
-test fn interface_summary_import_unresolved_refuses_module_key_hashes() -> Bool {
+test fn interface_summary_import_unresolved_refuses_module_key_hashes() -> v2.std.logic.Bool {
   let edges = [
     v2.lens.module_graph.ImportResolutionFact {
       path: "src/mod.dag",
@@ -87,7 +87,7 @@ test fn interface_summary_import_unresolved_refuses_module_key_hashes() -> Bool 
     edges: edges,
     summaries: std.algebra.Empty
   ) {
-    Absent => true
-    Present { value: _ } => false
+    v2.std.optional.Absent => true
+    v2.std.optional.Present { value: _ } => false
   }
 }

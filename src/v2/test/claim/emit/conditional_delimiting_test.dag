@@ -74,7 +74,7 @@ fn cld_projection_with(conditional_form: v2.std.compilers.target_model.TargetCon
   }
 }
 
-fn cld_delimiting_for(delimiting_closed: Bool) -> v2.std.compilers.target_model.ConditionalDelimiting {
+fn cld_delimiting_for(delimiting_closed: v2.std.logic.Bool) -> v2.std.compilers.target_model.ConditionalDelimiting {
   if delimiting_closed {
     v2.std.compilers.target_model.ConditionalClosedByToken { close_token: ^rust_token_rbrace }
   } else {
@@ -82,7 +82,7 @@ fn cld_delimiting_for(delimiting_closed: Bool) -> v2.std.compilers.target_model.
   }
 }
 
-fn cld_conditional_form_with(delimiting_closed: Bool) -> v2.std.compilers.target_model.TargetConditionalShape {
+fn cld_conditional_form_with(delimiting_closed: v2.std.logic.Bool) -> v2.std.compilers.target_model.TargetConditionalShape {
   v2.std.compilers.target_model.TargetConditionalShape {
     if_token: ^rust_token_kw_if,
     then_token: ^rust_token_lbrace,
@@ -95,7 +95,7 @@ fn cld_emit(projection: v2.std.compilers.target_model.TargetValueExpressionProje
   match target_value_expression_to_concrete_tokens(
     expr: cld_conditional(),
     projection: projection,
-    catalog: rust_operator_realizations_catalog_node()
+    catalog: v2.extdeps.languages.rust.rust_operator_realizations_catalog_node()
   ) {
     Accepted { value: tokens, diagnostics: _ } =>
       match serialize_concrete_syntax_tokens_to_source_string(
@@ -104,20 +104,20 @@ fn cld_emit(projection: v2.std.compilers.target_model.TargetValueExpressionProje
       ) {
         Accepted { value: text, diagnostics: _ } =>
           v2.std.diagnostic.Accepted { value: render_target_text(t: text), diagnostics: v2.std.diagnostic.None }
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
-fn cld_emits(delimiting_closed: Bool, golden: String) -> Bool {
+fn cld_emits(delimiting_closed: v2.std.logic.Bool, golden: String) -> v2.std.logic.Bool {
   match cld_emit(
     projection: cld_projection_with(
       conditional_form: cld_conditional_form_with(delimiting_closed: delimiting_closed)
     )
   ) {
     Accepted { value: text, diagnostics: _ } => text == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -125,7 +125,7 @@ fn cld_emits(delimiting_closed: Bool, golden: String) -> Bool {
 // differs, and it is exactly one closing token of difference. The cross arms are
 // the RED: a closing target must not emit the self-delimiting text, and a
 // self-delimiting target must not acquire a close it never declared.
-test fn conditional_close_is_derived_from_declared_discipline() -> Bool {
+test fn conditional_close_is_derived_from_declared_discipline() -> v2.std.logic.Bool {
   cld_emits(delimiting_closed: true, golden: conditional_closed_golden)
     && cld_emits(delimiting_closed: false, golden: conditional_self_delimiting_golden)
     && !cld_emits(delimiting_closed: true, golden: conditional_self_delimiting_golden)
@@ -135,14 +135,14 @@ test fn conditional_close_is_derived_from_declared_discipline() -> Bool {
 // Production Rust is wired to close, so it must agree with the closed arm rather
 // than merely being capable of it. Without this, the mechanism could be correct
 // while the Rust target still declared nothing.
-test fn production_rust_conditional_declares_a_close() -> Bool {
+test fn production_rust_conditional_declares_a_close() -> v2.std.logic.Bool {
   match cld_emit(projection: rust_value_expression_projection()) {
     Accepted { value: text, diagnostics: _ } => text == conditional_closed_golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn cld_bundle_with(discriminant: v2.std.node.Symbol) -> Node {
+fn cld_bundle_with(discriminant: v2.std.node.Symbol) -> v2.std.node.Node {
   target_model_type_conj_node(
     children: [
       target_model_named_edge(
@@ -165,10 +165,10 @@ fn cld_bundle_with(discriminant: v2.std.node.Symbol) -> Node {
   )
 }
 
-fn cld_decodes(discriminant: v2.std.node.Symbol) -> Bool {
+fn cld_decodes(discriminant: v2.std.node.Symbol) -> v2.std.logic.Bool {
   match decode_conditional_shape_bundle(bundle: cld_bundle_with(discriminant: discriminant)) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -179,7 +179,7 @@ fn cld_decodes(discriminant: v2.std.node.Symbol) -> Bool {
 // closing target decode one token short, and the defect would surface as
 // unbalanced output far from the decoder that caused it. The self-delimiting
 // positive control keeps this from passing because decode is simply broken.
-test fn unknown_delimiting_discriminant_refuses() -> Bool {
+test fn unknown_delimiting_discriminant_refuses() -> v2.std.logic.Bool {
   cld_decodes(discriminant: ^conditional_self_delimiting)
     && !cld_decodes(discriminant: ^conditional_delimiting_never_defined)
     && !cld_decodes(discriminant: ^some_symbol_that_names_no_delimiting_variant)

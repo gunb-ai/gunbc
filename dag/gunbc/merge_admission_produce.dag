@@ -194,7 +194,7 @@ fn ci_repo_root_shell() -> String {
 }
 
 fn floor_exit_to_check_conclusion(exit_code: Int) -> extdeps.github.checks.CheckConclusion {
-  if exit_code == 0 { Success } else { Failure }
+  if exit_code == 0 { extdeps.github.checks.Success } else { extdeps.github.checks.Failure }
 }
 
 fn stamp_floor_receipt(

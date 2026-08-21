@@ -1,7 +1,7 @@
 module v2.test.manual.fold_node_topdown
 
 
-fn topdown_leaf() -> Node {
+fn topdown_leaf() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^topdown_leaf_atom } },
     children: [],
@@ -9,21 +9,21 @@ fn topdown_leaf() -> Node {
   }
 }
 
-fn topdown_one_child_tree() -> Node {
+fn topdown_one_child_tree() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^topdown_child_a }, target: topdown_leaf() }
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^topdown_child_a }, target: topdown_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn topdown_two_level_chain() -> Node {
+fn topdown_two_level_chain() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^topdown_chain_child }, target: topdown_one_child_tree() }
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^topdown_chain_child }, target: topdown_one_child_tree() }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -46,7 +46,7 @@ fn depth_edge_dispatch_algebra() -> v2.std.node.NodeFoldTopDown<Int, Int> {
     init: fn(_, depth) { depth },
     child_context: fn(_, depth, e) {
       match e.label {
-        Named { name: lbl } =>
+        v2.std.node.Named { name: lbl } =>
           if lbl == ^topdown_right_child { depth + 2 } else { depth + 1 }
         Positional => depth + 1
       }
@@ -55,23 +55,23 @@ fn depth_edge_dispatch_algebra() -> v2.std.node.NodeFoldTopDown<Int, Int> {
   }
 }
 
-fn topdown_edge_dispatch_root() -> Node {
+fn topdown_edge_dispatch_root() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^topdown_left_child }, target: topdown_leaf() },
-      v2.std.node.Edge { label: Named { name: ^topdown_right_child }, target: topdown_leaf() }
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^topdown_left_child }, target: topdown_leaf() },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^topdown_right_child }, target: topdown_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 data witness_child_context_dispatches_on_edge: Bool = fold_node_topdown(n: topdown_edge_dispatch_root(), ctx: 0, algebra: depth_edge_dispatch_algebra()) == 2
 
-fn topdown_ok_node(ok: Bool) -> Node {
+fn topdown_ok_node(ok: Bool) -> v2.std.node.Node {
   if ok { topdown_leaf() } else { topdown_one_child_tree() }
 }
 
-fn topdown_expected() -> Node {
+fn topdown_expected() -> v2.std.node.Node {
   topdown_leaf()
 }
 

@@ -3,13 +3,13 @@ module v2.std.fn_index
 
 type FnArrowParam {
   name: v2.std.node.Symbol
-  node: Node
+  node: v2.std.node.Node
 }
 
 type FnArrowDecl {
   qualified_name: String
   name: String
-  output: Node
+  output: v2.std.node.Node
   params: List<FnArrowParam>
 }
 
@@ -28,6 +28,6 @@ fn fn_arrow_decl_facts_live() -> List<FnArrowDecl> {
   fn_arrow_decl_facts_live()
 }
 
-fn fn_arrow_decl_substrate_is_whole_tree() -> Bool {
+fn fn_arrow_decl_substrate_is_whole_tree() -> v2.std.logic.Bool {
   fn_arrow_decl_substrate_is_whole_tree()
 }

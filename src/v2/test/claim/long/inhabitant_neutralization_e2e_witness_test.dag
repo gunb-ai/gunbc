@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data inhabitant_neutralization_e2e_long_note: String = "Offline/long disposition for inhabitant cross-language e2e + translate/emit refusal poles (review 43557): these were never per-PR enrolled and must not use if-false orphan pins (DESIGN §5 specification-without-execution). They live under test/claim/long/ (OfflineLocalRecipe) as real test fns — local recipe / future falsifier enrollment, never fabricated reachability. Dissolve-on: re-enroll per-PR when measured under gunbc_ci_fast_lane_witness_eval_budget, or delete as duplicate of a faster mechanism receipt."
 
-test fn inhabitant_neutralization_python_to_ts_cross_language_compile_refuses_underived_holds() -> Bool {
+test fn inhabitant_neutralization_python_to_ts_cross_language_compile_refuses_underived_holds() -> v2.std.logic.Bool {
   match python_grammar_parse_fixture() {
     Accepted { value: python_parse_tree, diagnostics: _ } =>
       match cross_language_compile(
@@ -13,15 +13,15 @@ test fn inhabitant_neutralization_python_to_ts_cross_language_compile_refuses_un
         source_model: python_target_model(),
         target_model: ts_target_model()
       ) {
-        Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           d.head.reason == ^infer_grounding_not_derived
         Accepted { value: _, diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn inhabitant_neutralization_python_to_go_cross_language_compile_refuses_underived_holds() -> Bool {
+test fn inhabitant_neutralization_python_to_go_cross_language_compile_refuses_underived_holds() -> v2.std.logic.Bool {
   match python_grammar_parse_fixture() {
     Accepted { value: python_parse_tree, diagnostics: _ } =>
       match cross_language_compile(
@@ -29,15 +29,15 @@ test fn inhabitant_neutralization_python_to_go_cross_language_compile_refuses_un
         source_model: python_target_model(),
         target_model: go_target_model()
       ) {
-        Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           d.head.reason == ^infer_grounding_not_derived
         Accepted { value: _, diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn inhabitant_neutralization_python_to_go_discriminates_on_real_tree() -> Bool {
+test fn inhabitant_neutralization_python_to_go_discriminates_on_real_tree() -> v2.std.logic.Bool {
   match python_grammar_parse_fixture() {
     Accepted { value: python_parse_tree, diagnostics: _ } =>
       match cross_language_compile(
@@ -45,20 +45,20 @@ test fn inhabitant_neutralization_python_to_go_discriminates_on_real_tree() -> B
         source_model: python_target_model(),
         target_model: go_target_model()
       ) {
-        Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           d.head.reason == ^infer_grounding_not_derived
         Accepted { value: _, diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn inhabitant_neutralization_python_to_go_holds() -> Bool {
+test fn inhabitant_neutralization_python_to_go_holds() -> v2.std.logic.Bool {
   inhabitant_neutralization_python_to_go_cross_language_compile_refuses_underived_holds()
     && inhabitant_neutralization_python_to_go_discriminates_on_real_tree()
 }
 
-test fn inhabitant_neutralization_python_to_go_translate_rejects() -> Bool {
+test fn inhabitant_neutralization_python_to_go_translate_rejects() -> v2.std.logic.Bool {
   match neutralize_core_for_target(
     core: python_emitted_add_fn_node(),
     target: go_target_model()
@@ -67,16 +67,16 @@ test fn inhabitant_neutralization_python_to_go_translate_rejects() -> Bool {
       match infer(tree: neutralized) {
         Accepted { value: inferred, diagnostics: _ } =>
           match translate(tree: inferred, target: go_target_model()) {
-            Rejected { diagnostics: _ } => true
+            v2.std.diagnostic.Rejected { diagnostics: _ } => true
             Accepted { value: _, diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn inhabitant_neutralization_python_to_go_emit_rejects() -> Bool {
+test fn inhabitant_neutralization_python_to_go_emit_rejects() -> v2.std.logic.Bool {
   match neutralize_core_for_target(
     core: python_emitted_add_fn_node(),
     target: go_target_model()
@@ -84,12 +84,12 @@ test fn inhabitant_neutralization_python_to_go_emit_rejects() -> Bool {
     Accepted { value: neutralized, diagnostics: _ } =>
       match infer(tree: neutralized) {
         Accepted { value: inferred, diagnostics: _ } =>
-          match emit(tree: inferred, target: go_target_model()) {
-            Rejected { diagnostics: _ } => true
+          match v2.compiler.emit.emit(tree: inferred, target: go_target_model()) {
+            v2.std.diagnostic.Rejected { diagnostics: _ } => true
             Accepted { value: _, diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

@@ -119,7 +119,7 @@ fn emit_simple_string_interp(parts: std.types.List<v1.std.core.StringPart>, targ
   match interp.style {
     FormatArgs { placeholder: ph } =>
       let fmt_parts = parts |> map(p => match p {
-        Text { value: v } =>
+        v1.std.core.Text { value: v } =>
           let base = v1.compiler.emit_core_support.escape_string_literal_body(s: v)
           let escaped = if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
           InterpPart { format_segment: escaped, arg_expr: "" }
@@ -138,7 +138,7 @@ fn emit_simple_string_interp(parts: std.types.List<v1.std.core.StringPart>, targ
       }
     InlineExpr =>
       let segments = parts |> map(p => match p {
-        Text { value: v } =>
+        v1.std.core.Text { value: v } =>
           let base = v1.compiler.emit_core_support.escape_string_literal_body(s: v)
           if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
         extdeps.github.expressions.Interpolation { expr: e } =>
@@ -364,7 +364,7 @@ fn apply_naming_case(name: String, case_style: v1.compiler.languages.NamingCase)
       let pascal_parts = parts |> map(p => v1.compiler.emit_core_support.capitalize_first(s: p))
       pascal_parts |> join(separator: "")
     }
-    SnakeCase => v1.compiler.emit_core_support.to_snake(name: name)
+    v1.compiler.languages.SnakeCase => v1.compiler.emit_core_support.to_snake(name: name)
     std.languages.CamelCase => to_camel(name: name)
     std.serialization.AsAuthored => name
   }
@@ -1558,7 +1558,7 @@ fn apply_char_sanitization(name: String, rule: v1.compiler.languages.CharSanitiz
 fn emit_ident(name: String, target: v1.compiler.artifact.RenderTarget) -> String {
   let spec = v1.compiler.emit_core_support.language_spec(target: target)
   let converted = match spec.naming_case {
-    SnakeCase => v1.compiler.emit_core_support.to_snake(name: name)
+    v1.compiler.languages.SnakeCase => v1.compiler.emit_core_support.to_snake(name: name)
     std.languages.CamelCase => to_camel(name: name)
     std.languages.PascalCase => v1.compiler.emit_core_support.capitalize_first(s: to_camel(name: name))
     std.serialization.AsAuthored => name
@@ -2031,7 +2031,7 @@ fn emit_typed_string_interp_unified(parts: std.types.List<v1.std.core.StringPart
   match interp.style {
     FormatArgs { placeholder: ph } =>
       let fmt_parts = parts |> map(p => match p {
-        Text { value: v } =>
+        v1.std.core.Text { value: v } =>
           let base = v1.compiler.emit_core_support.escape_string_literal_body(s: v)
           let escaped = if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
           InterpPart { format_segment: escaped, arg_expr: "" }
@@ -2048,7 +2048,7 @@ fn emit_typed_string_interp_unified(parts: std.types.List<v1.std.core.StringPart
       }
     InlineExpr =>
       let segments = parts |> map(p => match p {
-        Text { value: v } =>
+        v1.std.core.Text { value: v } =>
           let base = v1.compiler.emit_core_support.escape_string_literal_body(s: v)
           if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
         extdeps.github.expressions.Interpolation { expr: e } =>

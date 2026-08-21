@@ -34,19 +34,19 @@ fn probe_subject(profile: String) -> gunbc.devboot.subject.BuildSubject? {
   }
 }
 
-// THE POSITIVE CONTROL. A stored record that is exactly this subject's rendering matches it. Without this, the refusal witnesses below would all pass on a comparison that answered SubjectDiffers unconditionally -- which is precisely the defect this seam shipped with once: an equality against a blob carrying an appended digest could never match, and every caller refused a request identical to the one that produced it.
+// THE POSITIVE CONTROL. A stored record that is exactly this subject's rendering matches it. Without this, the refusal witnesses below would all pass on a comparison that answered gunbc.devboot.outcome.SubjectDiffers unconditionally -- which is precisely the defect this seam shipped with once: an equality against a blob carrying an appended digest could never match, and every caller refused a request identical to the one that produced it.
 test fn a_record_holding_exactly_this_subject_matches() -> Bool {
   match test.claim.devboot_reuse_seams_witness.probe_subject(profile: "release") {
     Absent => false
     Present { value: subject } =>
       match stored_subject_match(record_text: render_build_subject(subject: subject), subject: subject) {
-        SubjectMatches => true
-        SubjectDiffers => false
+        gunbc.devboot.outcome.SubjectMatches => true
+        gunbc.devboot.outcome.SubjectDiffers => false
       }
   }
 }
 
-// THE PREFIX CASE, PINNED RED. This is the exact false match the comparison was changed to prevent: the request's rendering is a strict PREFIX of the stored record, which is what happens whenever the stored subject carries an axis the request does not. Under prefix matching this answered SubjectMatches and the requester asking for LESS received a binary built with configuration it never asked for. The suffix here stands for any appended axis; what the witness pins is that being a prefix is not being equal.
+// THE PREFIX CASE, PINNED RED. This is the exact false match the comparison was changed to prevent: the request's rendering is a strict PREFIX of the stored record, which is what happens whenever the stored subject carries an axis the request does not. Under prefix matching this answered gunbc.devboot.outcome.SubjectMatches and the requester asking for LESS received a binary built with configuration it never asked for. The suffix here stands for any appended axis; what the witness pins is that being a prefix is not being equal.
 test fn a_record_whose_subject_extends_this_one_refuses() -> Bool {
   match test.claim.devboot_reuse_seams_witness.probe_subject(profile: "release") {
     Absent => false
@@ -55,8 +55,8 @@ test fn a_record_whose_subject_extends_this_one_refuses() -> Bool {
         record_text: concat(render_build_subject(subject: subject), "cargo_config.0=target.linker=lld\n"),
         subject: subject,
       ) {
-        SubjectMatches => false
-        SubjectDiffers => true
+        gunbc.devboot.outcome.SubjectMatches => false
+        gunbc.devboot.outcome.SubjectDiffers => true
       }
   }
 }
@@ -70,8 +70,8 @@ test fn a_record_for_a_different_profile_refuses() -> Bool {
         Absent => false
         Present { value: dev } =>
           match stored_subject_match(record_text: render_build_subject(subject: dev), subject: released) {
-            SubjectMatches => false
-            SubjectDiffers => true
+            gunbc.devboot.outcome.SubjectMatches => false
+            gunbc.devboot.outcome.SubjectDiffers => true
           }
       }
   }
@@ -83,8 +83,8 @@ test fn an_empty_record_refuses() -> Bool {
     Absent => false
     Present { value: subject } =>
       match stored_subject_match(record_text: "", subject: subject) {
-        SubjectMatches => false
-        SubjectDiffers => true
+        gunbc.devboot.outcome.SubjectMatches => false
+        gunbc.devboot.outcome.SubjectDiffers => true
       }
   }
 }

@@ -1,7 +1,7 @@
 module v2.compiler.parse_diagnostic
 
 
-// ParseDiagnosticEvidence is parse-stage evidence orthogonal to the universal Diagnostic carrier. Grammar-choice overlap rows live here — never on Correction, Locus, or Diagnostic itself.
+// ParseDiagnosticEvidence is parse-stage evidence orthogonal to the universal v2.std.diagnostic.Diagnostic carrier. Grammar-choice overlap rows live here — never on Correction, Locus, or v2.std.diagnostic.Diagnostic itself.
 type ParseDiagnosticEvidence
   = NoParseDiagnosticEvidence
   | GrammarChoiceAmbiguityEvidence { row: v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow }
@@ -40,7 +40,7 @@ fn parse_overlap_residue_stage_diagnostic(row: v2.std.grammar_choice_ambiguity.G
 fn non_empty_parse_stage_diagnostics_from_overlap_roster(
   at: v2.std.diagnostic.Locus,
   roster: std.algebra.FreeMonoid<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>
-) -> Optional<NonEmptyParseStageDiagnostics> {
+) -> v2.std.optional.Optional<NonEmptyParseStageDiagnostics> {
   match roster {
     Empty => optional_absent()
     Cons { head: first, tail: rest } =>
@@ -73,7 +73,7 @@ fn parse_stage_diagnostic_core(d: ParseStageDiagnostic) -> v2.std.diagnostic.Dia
   d.diagnostic
 }
 
-fn parse_stage_evidence_row_optional(d: ParseStageDiagnostic) -> Optional<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
+fn parse_stage_evidence_row_optional(d: ParseStageDiagnostic) -> v2.std.optional.Optional<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
   match d.evidence {
     GrammarChoiceAmbiguityEvidence { row: row } => optional_present(value: row)
     NoParseDiagnosticEvidence => optional_absent()
@@ -98,7 +98,7 @@ fn grammar_choice_ambiguity_rows_append_parse_stage(
   d: ParseStageDiagnostic
 ) -> FreeMonoid<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
   match parse_stage_evidence_row_optional(d: d) {
-    Present { value: row } => list_snoc_item(xs: acc, item: row)
+    v2.std.optional.Present { value: row } => list_snoc_item(xs: acc, item: row)
     Absent => acc
   }
 }
@@ -118,7 +118,7 @@ fn grammar_choice_ambiguity_rows_from_non_empty_parse_stage(
 
 fn non_empty_grammar_choice_ambiguity_rows_from_parse_stage(
   d: NonEmptyParseStageDiagnostics
-) -> Optional<v2.std.grammar_choice_ambiguity.NonEmptyGrammarChoiceAmbiguityRows> {
+) -> v2.std.optional.Optional<v2.std.grammar_choice_ambiguity.NonEmptyGrammarChoiceAmbiguityRows> {
   let rows = grammar_choice_ambiguity_rows_from_non_empty_parse_stage(d: d)
   match list_head(xs: rows) {
     HeadFound { value: head } =>

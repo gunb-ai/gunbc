@@ -10,7 +10,7 @@ fn bash_orch_procedure_tokens() -> List<v2.std.compilers.target_model.ConcreteSy
   ]
 }
 
-data bash_orch_procedure_emitted: Node = bash_conj_emitted_from_tokens(
+data bash_orch_procedure_emitted: v2.std.node.Node = bash_conj_emitted_from_tokens(
   tokens: bash_orch_procedure_tokens()
 )
 
@@ -25,7 +25,7 @@ fn bash_orch_procedure_lex() -> v2.std.compilers.lexing.LexRules {
   ]))
 }
 
-fn bash_orch_procedure_translation_rules_node() -> Node {
+fn bash_orch_procedure_translation_rules_node() -> v2.std.node.Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_orch_procedure,
     lhs: ^bash_production_orch_procedure,
@@ -59,7 +59,7 @@ fn bash_orch_call_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxT
   ]
 }
 
-data bash_orch_call_emitted: Node = bash_conj_emitted_from_tokens(
+data bash_orch_call_emitted: v2.std.node.Node = bash_conj_emitted_from_tokens(
   tokens: bash_orch_call_tokens()
 )
 
@@ -73,7 +73,7 @@ fn bash_orch_call_lex(spelling: String) -> v2.std.compilers.lexing.LexRules {
   ]))
 }
 
-fn bash_orch_call_translation_rules_node() -> Node {
+fn bash_orch_call_translation_rules_node() -> v2.std.node.Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_orch_call,
     lhs: ^bash_production_orch_call,

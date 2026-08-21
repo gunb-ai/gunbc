@@ -170,10 +170,10 @@ fn host_identity_unprivileged_refusal_has_no_marker(
     NotConverged { reason: why, applied: intent } =>
       !string_contains(s: why, pattern: marker)
         && match intent.privilege_denial {
-          Present { value: Deny { refusal: _ } } => true
+          Present { value: std.access.Deny { refusal: _ } } => true
           _ => false
         }
-    Converged { evidence: _, applied: _ } => false
+    std.realization_reconcile.Converged { evidence: _, applied: _ } => false
   }
 }
 
@@ -186,7 +186,7 @@ fn host_identity_privilege_denial_reason(
         Present { value: d } => deploy_access_decision_reason(d: d)
         Absent => why
       }
-    Converged { evidence: _, applied: _ } => ""
+    std.realization_reconcile.Converged { evidence: _, applied: _ } => ""
   }
 }
 

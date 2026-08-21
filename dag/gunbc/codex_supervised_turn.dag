@@ -355,7 +355,7 @@ fn native_id_from_entity_result(result: extdeps.languages.json.emit.JsonValue, e
   match extdeps.languages.json.parse.json_object_unique_member(v: result, key: entity_key) {
     JsonMemberFound { value: entity } =>
       match entity {
-        JsonObject { members: _ } =>
+        extdeps.languages.json.emit.JsonObject { members: _ } =>
           match extdeps.languages.json.parse.json_object_unique_member(
             v: entity,
             key: extdeps.llm.codex_app_server.codex_entity_id_key as String,
@@ -429,12 +429,12 @@ fn supervised_rpc_from_id_response(
 
 fn serialize_supervised_rpc_error(err: extdeps.languages.json.emit.JsonValue) -> String {
   match err {
-    JsonObject { members: _ } => "structured error" as String
-    JsonNull => "unstructured error" as String
-    JsonBool { value: _ } => "unstructured error" as String
-    JsonNumber { lexeme: _ } => "unstructured error" as String
-    JsonString { value: _ } => "unstructured error" as String
-    JsonArray { elements: _ } => "unstructured error" as String
+    extdeps.languages.json.emit.JsonObject { members: _ } => "structured error" as String
+    extdeps.languages.json.emit.JsonNull => "unstructured error" as String
+    extdeps.languages.json.emit.JsonBool { value: _ } => "unstructured error" as String
+    extdeps.languages.json.emit.JsonNumber { lexeme: _ } => "unstructured error" as String
+    extdeps.languages.json.emit.JsonString { value: _ } => "unstructured error" as String
+    extdeps.languages.json.emit.JsonArray { elements: _ } => "unstructured error" as String
   }
 }
 
@@ -540,12 +540,12 @@ fn absorb_supervised_turn_line(
 
 fn json_rpc_id_as_int(v: extdeps.languages.json.emit.JsonValue) -> Int? {
   match v {
-    JsonNumber { lexeme: l } => parse_int(s: l as String)
-    JsonNull => none
-    JsonBool { value: _ } => none
-    JsonString { value: _ } => none
-    JsonArray { elements: _ } => none
-    JsonObject { members: _ } => none
+    extdeps.languages.json.emit.JsonNumber { lexeme: l } => parse_int(s: l as String)
+    extdeps.languages.json.emit.JsonNull => none
+    extdeps.languages.json.emit.JsonBool { value: _ } => none
+    extdeps.languages.json.emit.JsonString { value: _ } => none
+    extdeps.languages.json.emit.JsonArray { elements: _ } => none
+    extdeps.languages.json.emit.JsonObject { members: _ } => none
   }
 }
 

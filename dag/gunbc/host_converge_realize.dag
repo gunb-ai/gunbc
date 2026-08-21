@@ -21,7 +21,7 @@ fn converge_target_kind_label(t: gunbc.host_converge.ConvergeTarget) -> String {
       green_place_marker: _,
       live_apply: _,
     } => "GunbcPinnedTree"
-    CodexRuntimeBundle { host_identity: _ } => "CodexRuntimeBundle"
+    gunbc.host_converge.CodexRuntimeBundle { host_identity: _ } => "CodexRuntimeBundle"
   }
 }
 

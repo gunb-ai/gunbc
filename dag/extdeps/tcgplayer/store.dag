@@ -21,7 +21,7 @@ data structural_coverage_gap_store_operations_residual: List<String> = [
 
 service tcgplayer.Store {
   config {
-    endpoint: production_api_base
+    endpoint: extdeps.tcgplayer.tcgplayer.production_api_base
     auth: Bearer
     auth_input: bearer_token
 

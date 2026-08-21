@@ -14,7 +14,7 @@ fn emit_verilog(emitted: v2.std.node.Node) -> String {
         emitted
       ) {
         Accepted { value: text, diagnostics: _ } => v2.std.compilers.target_model.render_target_text(t: text)
-        Rejected { diagnostics: _ } => "EMISSION_REFUSED"
+        v2.std.diagnostic.Rejected { diagnostics: _ } => "EMISSION_REFUSED"
       }
     Violates { diagnostic: _ } => "ROW_NOT_DERIVED"
   }
@@ -158,7 +158,7 @@ fn emit_with(productions: List<v2.std.grammar.FormalProduction>, emitted: v2.std
         emitted
       ) {
         Accepted { value: text, diagnostics: _ } => v2.std.compilers.target_model.render_target_text(t: text)
-        Rejected { diagnostics: _ } => "EMISSION_REFUSED"
+        v2.std.diagnostic.Rejected { diagnostics: _ } => "EMISSION_REFUSED"
       }
     Violates { diagnostic: _ } => "ROW_NOT_DERIVED"
   }
@@ -195,9 +195,9 @@ fn rebuilt_from_spine() -> v2.std.node.Node {
         start_lhs: ^verilog_production_ansi_module_decl
       ) {
         Accepted { value: node, diagnostics: _ } => node
-        Rejected { diagnostics: _ } => v2.extdeps.languages.verilog.verilog_conj(children: [])
+        v2.std.diagnostic.Rejected { diagnostics: _ } => v2.extdeps.languages.verilog.verilog_conj(children: [])
       }
-    Rejected { diagnostics: _ } => v2.extdeps.languages.verilog.verilog_conj(children: [])
+    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.extdeps.languages.verilog.verilog_conj(children: [])
   }
 }
 

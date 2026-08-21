@@ -54,7 +54,7 @@ fn budget_child_named(node: BudgetNode, name: String) -> BudgetChild {
   })
 }
 
-fn admit_claims(node: BudgetNode) -> AdmissionState<Memory, One> {
+fn admit_claims(node: BudgetNode) -> extdeps.accounting.budget.AdmissionState<Memory, One> {
   admit_all(appropriation: node.appropriation, candidates: claim_items(claims: node.claims))
 }
 

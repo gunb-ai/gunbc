@@ -10,33 +10,33 @@ type PortReading
 data port_mentions_note: String = "PortComputedExpression carries the value identifiers the expression MENTIONS (collected by the same walk that decides the 0/1/many identifier split - one authority). Without the payload, a carrier buried inside a non-call computed argument (Wrapped { inner: acc }) reaching an UNREGISTERED combiner was a silent false-clean: the reading destroyed the occurrence at construction time, any_port_carries_carrier saw nothing, and no descendant call capture existed to catch it. Mentions make the unregistered-combiner arm fail closed: intersect(mentions, carriers) => ^combiner_unregistered_carrier_reaches. BindsComputed carries the same payload with the RHS's raw mentions (depth-1; see mentions_depth_note in the analyze module for why bind-time substitution was priced and deferred to Stage B). The collector itself is the linear accumulator-threading walk and earns one honest ^combiner_unregistered_carrier_reaches refusal from this lens (see roster_lens_traversal_ceiling_note in the roster gate) - linearity wins over lens-greenness per the bare-minimum-cost rule."
 
 type Finding
-  = Poly2Suspect { at: Node, cost: v2.lens.cost.SymbolicCost }
-  | Unclassifiable { at: Node, cause: v2.std.node.Symbol }
+  = Poly2Suspect { at: v2.std.node.Node, cost: v2.lens.cost.SymbolicCost }
+  | Unclassifiable { at: v2.std.node.Node, cause: v2.std.node.Symbol }
 
-fn symbol_in(needle: v2.std.node.Symbol, xs: List<v2.std.node.Symbol>) -> Bool {
+fn symbol_in(needle: v2.std.node.Symbol, xs: List<v2.std.node.Symbol>) -> v2.std.logic.Bool {
   fold(xs, init: false, f: fn(acc, s) {
     if acc { true } else { s == needle }
   })
 }
 
-fn poly_two_cost(n: Node) -> v2.lens.cost.SymbolicCost {
+fn poly_two_cost(n: v2.std.node.Node) -> v2.lens.cost.SymbolicCost {
   v2.lens.cost.PolynomialCost {
     variable: v2.lens.cost.SizeVariable { source: n },
     degree: polynomial_degree_two()
   }
 }
 
-fn some_finding(f: Finding) -> Optional<Finding> {
-  Present { value: f }
+fn some_finding(f: Finding) -> v2.std.optional.Optional<Finding> {
+  v2.std.optional.Present { value: f }
 }
 
-fn any_symbol_in(needles: List<v2.std.node.Symbol>, xs: List<v2.std.node.Symbol>) -> Bool {
+fn any_symbol_in(needles: List<v2.std.node.Symbol>, xs: List<v2.std.node.Symbol>) -> v2.std.logic.Bool {
   fold(needles, init: false, f: fn(acc, n) {
     if acc { true } else { v2.lens.complexity_accumulator_copy.symbol_in(needle: n, xs: xs) }
   })
 }
 
-fn port_carries_carrier(p: PortReading, carriers: List<v2.std.node.Symbol>) -> Bool {
+fn port_carries_carrier(p: PortReading, carriers: List<v2.std.node.Symbol>) -> v2.std.logic.Bool {
   match p {
     PortBareName { name: n } => v2.lens.complexity_accumulator_copy.symbol_in(needle: n, xs: carriers)
     PortPureLiteral => false
@@ -45,7 +45,7 @@ fn port_carries_carrier(p: PortReading, carriers: List<v2.std.node.Symbol>) -> B
   }
 }
 
-fn any_port_carries_carrier(ports: List<PortReading>, carriers: List<v2.std.node.Symbol>) -> Bool {
+fn any_port_carries_carrier(ports: List<PortReading>, carriers: List<v2.std.node.Symbol>) -> v2.std.logic.Bool {
   fold(ports, init: false, f: fn(acc, p) {
     if acc { true } else { port_carries_carrier(p: p, carriers: carriers) }
   })
@@ -62,19 +62,19 @@ type LetBinding {
 
 data let_binding_note: String = "The within-body definition closure (Stage A: def edges decide aliasing). A let binder whose RHS closes to a CARRIER joins the carriers list at bind time - transitive closure by construction, so `let g = acc  let h = g` proves h - and needs no carrier here. BindsFresh (RHS a pure literal) and BindsComputed (RHS a computed expression) substitute the port reading via resolve_port_reading BEFORE classification, so classify_call and the copied-port lattice stay untouched. A binder whose RHS is a bare name that closes to NOTHING (unbound in scope) records NO binding: its uses still refuse ^copied_port_name_may_alias - the closure only ever DECIDES, never defaults clean. Reader today: the analyze traversal's let-spine arm over surface captures (binding-name lexeme stamping, dag_grammar_let_expr); repoints to Bind definition edges when stmt-chain lowering lands, deleting the surface read."
 
-fn no_let_binding_fact() -> Optional<LetBindingFact> {
-  Absent
+fn no_let_binding_fact() -> v2.std.optional.Optional<LetBindingFact> {
+  v2.std.optional.Absent
 }
 
-fn some_let_binding_fact(fact: LetBindingFact) -> Optional<LetBindingFact> {
-  Present { value: fact }
+fn some_let_binding_fact(fact: LetBindingFact) -> v2.std.optional.Optional<LetBindingFact> {
+  v2.std.optional.Present { value: fact }
 }
 
-fn let_binding_fact_for(name: v2.std.node.Symbol, bindings: List<LetBinding>) -> Optional<LetBindingFact> {
+fn let_binding_fact_for(name: v2.std.node.Symbol, bindings: List<LetBinding>) -> v2.std.optional.Optional<LetBindingFact> {
   fold(bindings, init: no_let_binding_fact(), f: fn(acc, b) {
     match acc {
-      Present { value: _ } => acc
-      Absent =>
+      v2.std.optional.Present { value: _ } => acc
+      v2.std.optional.Absent =>
         if b.name == name {
           some_let_binding_fact(fact: b.fact)
         } else {
@@ -88,12 +88,12 @@ fn resolve_port_reading(reading: PortReading, bindings: List<LetBinding>) -> Por
   match reading {
     PortBareName { name: n } =>
       match let_binding_fact_for(name: n, bindings: bindings) {
-        Present { value: fact } =>
+        v2.std.optional.Present { value: fact } =>
           match fact {
             BindsFresh => PortPureLiteral
             BindsComputed { mentions: ms } => PortComputedExpression { mentions: ms }
           }
-        Absent => reading
+        v2.std.optional.Absent => reading
       }
     PortPureLiteral => reading
     PortComputedExpression { mentions: _ } => reading
@@ -101,7 +101,7 @@ fn resolve_port_reading(reading: PortReading, bindings: List<LetBinding>) -> Por
   }
 }
 
-fn classify_copied_port(at: Node, reading: PortReading, carriers: List<v2.std.node.Symbol>) -> Optional<Finding> {
+fn classify_copied_port(at: v2.std.node.Node, reading: PortReading, carriers: List<v2.std.node.Symbol>) -> v2.std.optional.Optional<Finding> {
   match reading {
     PortBareName { name: n } =>
       if v2.lens.complexity_accumulator_copy.symbol_in(needle: n, xs: carriers) {
@@ -109,7 +109,7 @@ fn classify_copied_port(at: Node, reading: PortReading, carriers: List<v2.std.no
       } else {
         some_finding(f: Unclassifiable { at: at, cause: ^copied_port_name_may_alias })
       }
-    PortPureLiteral => Absent
+    PortPureLiteral => v2.std.optional.Absent
     PortComputedExpression { mentions: _ } =>
       some_finding(f: Unclassifiable { at: at, cause: ^copied_port_computed_argument })
     PortMissing =>
@@ -118,23 +118,23 @@ fn classify_copied_port(at: Node, reading: PortReading, carriers: List<v2.std.no
 }
 
 fn classify_call(
-  at: Node,
+  at: v2.std.node.Node,
   combiner: v2.std.node.Symbol,
   ports: List<PortReading>,
   carriers: List<v2.std.node.Symbol>
-) -> Optional<Finding> {
+) -> v2.std.optional.Optional<Finding> {
   match v2.lens.cost.copied_port_citations.copied_port_index_of(combiner: combiner) {
-    Absent =>
+    v2.std.optional.Absent =>
       if any_port_carries_carrier(ports: ports, carriers: carriers) {
         some_finding(f: Unclassifiable { at: at, cause: ^combiner_unregistered_carrier_reaches })
       } else {
-        Absent
+        v2.std.optional.Absent
       }
-    Present { value: idx } =>
+    v2.std.optional.Present { value: idx } =>
       match list_at_optional(xs: ports, index: idx) {
-        Absent =>
+        v2.std.optional.Absent =>
           some_finding(f: Unclassifiable { at: at, cause: ^copied_port_argument_missing })
-        Present { value: reading } =>
+        v2.std.optional.Present { value: reading } =>
           classify_copied_port(at: at, reading: reading, carriers: carriers)
       }
   }

@@ -1,7 +1,7 @@
 module gunbc.build_cache_latency_probe
 
 
-data build_cache_latency_probe_disposition: std.disposition.Disposition = Terminal {
+data build_cache_latency_probe_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "The acceptance metric for the srvN build-cache placement lane, and the falsifier for any fix to it. It measures ONE thing — how long the CI `build` job takes, per host — because that duration is dominated by whether cache-miss compiles are served by a healthy sccache server, and because it is derivable from GitHub Actions job timings that already exist. No host access, no new instrumentation, no agent on the box."
 }
 

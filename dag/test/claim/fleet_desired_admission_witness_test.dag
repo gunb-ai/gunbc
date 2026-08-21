@@ -82,7 +82,7 @@ test fn an_undecodable_desired_ref_refuses_without_writing_over_it() -> Bool {
     cause: FleetDesiredRefUndecodable { advertised: "not-a-sha refs/fleet/desired" },
   }) {
     AdmissionActionAuthorized { action: _ } => false
-    AdmissionRefused { cause: c } =>
+    gunbc.fleet_desired_admission.AdmissionRefused { cause: c } =>
       string_contains(s: c, pattern: "must not be written over")
         && string_contains(s: c, pattern: "not-a-sha refs/fleet/desired")
         && !string_contains(s: c, pattern: "could not be observed")
@@ -90,7 +90,7 @@ test fn an_undecodable_desired_ref_refuses_without_writing_over_it() -> Bool {
 }
 
 // THE KEYSTONE. This is the defect the emitted deploy.yml carried: a candidate whose floor is not
-// green was advanced anyway. Every non-Success conclusion is red -- Cancelled and Skipped are the
+// green was advanced anyway. Every non-extdeps.github.workflow_runs.Success conclusion is red -- extdeps.github.workflow_runs.Cancelled and extdeps.github.workflow_runs.Skipped are the
 // two that most invite a "close enough" arm, since a cancelled floor proves nothing and a skipped
 // one ran nothing. Enumerated rather than sampled, because the arm that admits one of these is
 // exactly the arm that never fires in testing.
@@ -107,13 +107,13 @@ fn accepted_with_conclusion(conclusion: WorkflowRunConclusion) -> Bool {
 }
 
 test fn only_a_success_conclusion_is_accepted() -> Bool {
-  accepted_with_conclusion(conclusion: Success)
-    && !accepted_with_conclusion(conclusion: Failure)
-    && !accepted_with_conclusion(conclusion: Cancelled)
-    && !accepted_with_conclusion(conclusion: Skipped)
-    && !accepted_with_conclusion(conclusion: TimedOut)
-    && !accepted_with_conclusion(conclusion: Neutral)
-    && !accepted_with_conclusion(conclusion: ActionRequired)
+  accepted_with_conclusion(conclusion: extdeps.github.workflow_runs.Success)
+    && !accepted_with_conclusion(conclusion: extdeps.github.workflow_runs.Failure)
+    && !accepted_with_conclusion(conclusion: extdeps.github.workflow_runs.Cancelled)
+    && !accepted_with_conclusion(conclusion: extdeps.github.workflow_runs.Skipped)
+    && !accepted_with_conclusion(conclusion: extdeps.github.workflow_runs.TimedOut)
+    && !accepted_with_conclusion(conclusion: extdeps.github.workflow_runs.Neutral)
+    && !accepted_with_conclusion(conclusion: extdeps.github.workflow_runs.ActionRequired)
     && !accepted_with_conclusion(conclusion: StartupFailure)
 }
 
@@ -122,7 +122,7 @@ test fn only_a_success_conclusion_is_accepted() -> Bool {
 test fn a_run_of_another_workflow_path_is_refused() -> Bool {
   is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
     workflow_name: witness_floor_workflow_name,
-    conclusion: Success,
+    conclusion: extdeps.github.workflow_runs.Success,
     branch: gunbc_default_branch_name,
     head_repo: fixture_repo,
     activity: "completed",
@@ -134,7 +134,7 @@ test fn a_run_of_another_workflow_path_is_refused() -> Bool {
 test fn a_non_default_branch_run_is_refused() -> Bool {
   is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
     workflow_name: witness_floor_workflow_name,
-    conclusion: Success,
+    conclusion: extdeps.github.workflow_runs.Success,
     branch: "session/nimble-fox-671",
     head_repo: fixture_repo,
     activity: "completed",
@@ -146,7 +146,7 @@ test fn a_non_default_branch_run_is_refused() -> Bool {
 test fn a_fork_head_repository_is_refused() -> Bool {
   is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
     workflow_name: witness_floor_workflow_name,
-    conclusion: Success,
+    conclusion: extdeps.github.workflow_runs.Success,
     branch: gunbc_default_branch_name,
     head_repo: "someone-else/gunbc",
     activity: "completed",
@@ -158,7 +158,7 @@ test fn a_fork_head_repository_is_refused() -> Bool {
 test fn an_incomplete_activity_is_refused() -> Bool {
   is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
     workflow_name: witness_floor_workflow_name,
-    conclusion: Success,
+    conclusion: extdeps.github.workflow_runs.Success,
     branch: gunbc_default_branch_name,
     head_repo: fixture_repo,
     activity: "requested",
@@ -173,7 +173,7 @@ test fn an_incomplete_activity_is_refused() -> Bool {
 test fn a_non_push_originating_event_is_refused() -> Bool {
   is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
     workflow_name: witness_floor_workflow_name,
-    conclusion: Success,
+    conclusion: extdeps.github.workflow_runs.Success,
     branch: gunbc_default_branch_name,
     head_repo: fixture_repo,
     activity: "completed",
@@ -222,7 +222,7 @@ fn observed_input(current_hex: String, relation: DeployRevisionRelation) -> Flee
 // a blind overwrite wearing a compare-and-swap's name.
 test fn a_descendant_candidate_authorizes_an_advance_carrying_the_observed_prior() -> Bool {
   match action_for(input: observed_input(current_hex: fixture_prior_hex, relation: DeployedIsAncestor)) {
-    AdmissionRefused { cause: _ } => false
+    gunbc.fleet_desired_admission.AdmissionRefused { cause: _ } => false
     AdmissionActionAuthorized { action: a } =>
       match a {
         FleetDesiredRemoteAdvance { accepted: to, expected_prior: prior } =>
@@ -240,7 +240,7 @@ test fn a_descendant_candidate_authorizes_an_advance_carrying_the_observed_prior
 // converged fleet report as a broken one on every floor run.
 test fn an_already_converged_fleet_authorizes_a_no_op_rather_than_refusing() -> Bool {
   match action_for(input: observed_input(current_hex: fixture_candidate_hex, relation: SameRevision)) {
-    AdmissionRefused { cause: _ } => false
+    gunbc.fleet_desired_admission.AdmissionRefused { cause: _ } => false
     AdmissionActionAuthorized { action: a } =>
       match a {
         FleetDesiredAlreadyConvergedAction { revision: r } =>
@@ -256,7 +256,7 @@ test fn an_already_converged_fleet_authorizes_a_no_op_rather_than_refusing() -> 
 // dressed as an advance.
 test fn a_superseded_candidate_authorizes_a_no_op_and_never_an_advance() -> Bool {
   match action_for(input: observed_input(current_hex: fixture_candidate_hex, relation: CandidateIsAncestor)) {
-    AdmissionRefused { cause: _ } => false
+    gunbc.fleet_desired_admission.AdmissionRefused { cause: _ } => false
     AdmissionActionAuthorized { action: a } =>
       match a {
         FleetDesiredSupersededAction { accepted: _, current: _ } => true
@@ -275,7 +275,7 @@ test fn an_unobservable_prior_refuses_rather_than_authorizing_a_creation() -> Bo
     cause: FleetDesiredRefUnobserved { cause: "ls-remote refused: network unreachable" },
   }) {
     AdmissionActionAuthorized { action: _ } => false
-    AdmissionRefused { cause: c } => string_contains(s: c, pattern: "fleet_desired_admission: ")
+    gunbc.fleet_desired_admission.AdmissionRefused { cause: c } => string_contains(s: c, pattern: "fleet_desired_admission: ")
   }
 }
 
@@ -296,7 +296,7 @@ test fn an_unobservable_prior_refuses_rather_than_authorizing_a_creation() -> Bo
 test fn an_absent_ref_refuses_because_creation_needs_a_mint_authority() -> Bool {
   match action_for(input: FleetDesiredRefAbsentInput { accepted: accepted_fixture() }) {
     AdmissionActionAuthorized { action: _ } => false
-    AdmissionRefused { cause: c } => string_contains(s: c, pattern: "mint the fleet root")
+    gunbc.fleet_desired_admission.AdmissionRefused { cause: c } => string_contains(s: c, pattern: "mint the fleet root")
   }
 }
 
@@ -373,7 +373,7 @@ test fn a_no_op_action_renders_no_ref_mutation() -> Bool {
 
 // THE EMISSION HALF. The pure decision above proves the gate decides correctly; it proves nothing
 // about what the workflow actually runs, so these read the emitted bytes.
-test fn the_admission_workflow_triggers_on_the_floor_workflow_completing() -> std.types.Bool {
+test fn the_admission_workflow_triggers_on_the_floor_workflow_completing() -> Bool {
   let yml = gunbc.fleet_desired_admission_workflow.expected_fleet_desired_yml()
   string_contains(s: yml, pattern: "workflow_run:")
     && string_contains(s: yml, pattern: gunbc.witness_floor_workflow.witness_floor_workflow_name)
@@ -491,14 +491,14 @@ test fn the_admission_workflow_action_step_names_no_revision_of_its_own() -> Boo
 // it never inspects one. When that lands these two claims are deleted or demoted to a byte
 // regression fixture for this particular yaml; they must not accumulate beside it as though
 // both were safety mechanisms.
-test fn the_emitted_admission_yaml_places_a_setup_action_before_its_literal_cargo_build() -> std.types.Bool {
+test fn the_emitted_admission_yaml_places_a_setup_action_before_its_literal_cargo_build() -> Bool {
   let yml = gunbc.fleet_desired_admission_workflow.expected_fleet_desired_yml()
   let before_cargo = split(s: yml, delimiter: "cargo build").first()
   string_contains(s: yml, pattern: "cargo build")
     && string_contains(s: before_cargo, pattern: "setup-rust-toolchain")
 }
 
-test fn the_emitted_admission_yaml_disables_the_shared_home_cache_on_its_setup_action() -> std.types.Bool {
+test fn the_emitted_admission_yaml_disables_the_shared_home_cache_on_its_setup_action() -> Bool {
   let yml = gunbc.fleet_desired_admission_workflow.expected_fleet_desired_yml()
   let after_toolchain = split(s: yml, delimiter: "setup-rust-toolchain").last()
   string_contains(s: after_toolchain, pattern: "cache: false")

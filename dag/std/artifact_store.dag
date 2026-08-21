@@ -226,7 +226,7 @@ fn store_put(store: std.artifact_store.ArtifactStore, key: std.content_hash.Cont
   }
 }
 
-data store_put_reader_contract: std.disposition.Disposition = Terminal {
+data store_put_reader_contract: std.disposition.Disposition = std.disposition.Terminal {
   reason: "store_put_fold is the only match over StorePutOutcome; the readers below derive from it and contain no match of their own, so a third outcome is a type error at exactly one site. There is deliberately NO store_put_store(outcome, fallback) projection — answering DidNotFit with a caller-supplied store is the absorbing fallback DESIGN section 5 forbids, and it is precisely what would let the destructive behavior this type exists to remove return in a new shape. Discriminating corpus: dag/test/claim/artifact_store_witness_test.dag."
 }
 

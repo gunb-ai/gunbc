@@ -1,7 +1,7 @@
 module gunbc.srv3_os_install_diagnostic
 
 
-data gunbc_srv3_os_install_diagnostic_scope_disposition: std.disposition.Disposition = Terminal {
+data gunbc_srv3_os_install_diagnostic_scope_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "srv3 OS install actuation diagnostic fold — multi-surface observation (nbd serve, BMC session, Redfish system boot/power, virtual media, SOL console, router DHCP lease, weak KVM) over InstallAttemptIntent → InstallDiagnosticVerdict; KVM frozen/keyboard-dead is weak evidence only."
 }
 
@@ -426,7 +426,7 @@ fn router_table_has_wrong_dynamic_hostname(
     f: (acc, row) =>
       acc
         || match row.lease {
-          DynamicDhcpLease { client_hostname: Present { value: _ }, lease_time_remaining: _, status: Active } =>
+          DynamicDhcpLease { client_hostname: Present { value: _ }, lease_time_remaining: _, status: extdeps.dhcp.v4.Active } =>
             !network_identity_subsumes_fleet_slot(fleet_slot: fleet_slot, lease: row.lease)
           _ => false
         },

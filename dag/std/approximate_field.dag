@@ -25,7 +25,7 @@ type SpecialValues {
 }
 
 type ApproximateField<F> {
-  base: Field<F>
+  base: std.algebra.Field<F>
   rounding: RoundingMode
   precision: Precision
   special_values: SpecialValues

@@ -5886,9 +5886,9 @@ fn v1_fn_bounds_by_param(
   )
 }
 
-// Node-consuming extraction for the equality bound, kept here rather than in
+// v1.std.core.Node-consuming extraction for the equality bound, kept here rather than in
 // v1.compiler.trait_bound_witness for the reason that module's import note gives: the pure core
-// lives there, the Node walk lives at the call site, and reversing that would close an
+// lives there, the v1.std.core.Node walk lives at the call site, and reversing that would close an
 // emit_rust -> trait_bound_witness -> emit_rust cycle.
 //
 // This is the RECURSIVE BODY WALKER that BoundedToDirectTopLevelMatchBody and
@@ -9196,7 +9196,7 @@ type RcGroupedArmPlan {
 }
 
 type RcGroupedArmEntry {
-  arm: Node
+  arm: v1.std.core.Node
   plan: RcGroupedArmPlan
 }
 
@@ -10055,7 +10055,7 @@ fn emit_typed_string_interp(parts: std.types.List<v1.std.core.StringPart>, regis
 
 fn typed_interp_format_part(part: v1.std.core.StringPart, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: std.types.Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, has_interpolations: Bool) -> v1.compiler.emit.InterpPart {
   match part {
-    Text { value: v } =>
+    v1.std.core.Text { value: v } =>
       let escaped = if has_interpolations { v1.compiler.emit.escape_rust_interp_text(s: v) } else { v1.compiler.emit_core_support.escape_string_literal_body(s: v) }
       v1.compiler.emit.InterpPart { format_segment: escaped, arg_expr: "" }
     extdeps.github.expressions.Interpolation { expr: e } =>
@@ -10502,7 +10502,7 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: v1.std.core.Node, m
     let first_mock = mock_props |> first
     match first_mock {
       Present { value: mp } => match v1.compiler.emit.emit_data_value_json(value: v1.std.core.field_init_node_value(n: mp), source_indices: source_indices) {
-        Refused { reason: r } => concat(log_line, "\ncompile_error!(\"", v1.compiler.emit_core_support.escape_string_literal_body(s: r), "\");")
+        v1.compiler.emit.Refused { reason: r } => concat(log_line, "\ncompile_error!(\"", v1.compiler.emit_core_support.escape_string_literal_body(s: r), "\");")
         Emitted { json: mock_json } => {
         let is_multi_field_conj = inferred.connective == v1.std.core.Conj && inferred.children |> count > 1
         if is_multi_field_conj {
@@ -10670,12 +10670,12 @@ fn emit_rest_url_line(transport: v1.std.core.Node, op_name: String, source_indic
           _ => v1.std.core.Interpolation { expr: v1.std.core.arg_value(n: child) }
         })
         let fmt_segments = parts |> map(p => match p {
-          Text { value: v } => v1.compiler.emit.escape_rust_interp_text(s: v)
+          v1.std.core.Text { value: v } => v1.compiler.emit.escape_rust_interp_text(s: v)
           extdeps.github.expressions.Interpolation { expr: _ } => "{}"
         })
         let fmt_str = fmt_segments |> join(separator: "")
         let args = parts |> flat_map(p => match p {
-          Text { value: _ } => []
+          v1.std.core.Text { value: _ } => []
           extdeps.github.expressions.Interpolation { expr: e } => {
             let var_name = v1.compiler.emit.emit_ident(name: v1.std.core.expr_var_name_at(texpr: e, source_indices: source_indices), target: v1.compiler.artifact.Rust)
             let is_opt = is_optional_typed_expr(e: e)
@@ -11158,12 +11158,12 @@ fn emit_shell_argv_element(arg: v1.std.core.Node, optional_params: std.types.Map
         _ => v1.std.core.Interpolation { expr: v1.std.core.arg_value(n: child) }
       })
       let fmt_segments = parts |> map(p => match p {
-        Text { value: v } => v1.compiler.emit.escape_rust_interp_text(s: v)
+        v1.std.core.Text { value: v } => v1.compiler.emit.escape_rust_interp_text(s: v)
         extdeps.github.expressions.Interpolation { expr: _ } => "{}"
       })
       let fmt_str = fmt_segments |> join(separator: "")
       let args = parts |> flat_map(p => match p {
-        Text { value: _ } => []
+        v1.std.core.Text { value: _ } => []
         extdeps.github.expressions.Interpolation { expr: e } => {
           let name = v1.std.core.expr_var_name_at(texpr: e, source_indices: source_indices)
           let var_name = v1.compiler.emit.emit_ident(name: name, target: v1.compiler.artifact.Rust)
@@ -11461,7 +11461,7 @@ fn emit_data_def_body(type_node: v1.std.core.Node, value: v1.std.core.Node, regi
     }
   } else if v1.compiler.emit.has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) {
     match v1.compiler.emit.emit_data_value_json(value: value, source_indices: scope.type_env.source_indices) {
-      Refused { reason: r } => concat("            compile_error!(\"", v1.compiler.emit_core_support.escape_string_literal_body(s: r), "\")")
+      v1.compiler.emit.Refused { reason: r } => concat("            compile_error!(\"", v1.compiler.emit_core_support.escape_string_literal_body(s: r), "\")")
       Emitted { json: json_str } => concat("            serde_json::from_value(serde_json::json!(", json_str, "))\n",
         "                .expect(\"valid data definition\")")
     }

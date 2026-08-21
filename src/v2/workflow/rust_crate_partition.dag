@@ -88,7 +88,7 @@ data rust_crate_partition_r4_by_value_type_cycle_note: String = "Rust R4 primary
 
 data stage0_grounding_target_repointed_note: String = "REPOINTED, and the old target was wrong before it was deleted. This debt's dissolution used to name v2.compiler.self_host.frontier compiler_frontier_roster, on the premise that the self-host roster would eventually carry each module's exports and type definitions. It never could: a roster row carried a module path and a self-host disposition and nothing else, so the pointer named an authority that was not going to supply the fact even in principle. The roster is deleted, which is what surfaced the mispointing rather than causing it.
 
-The real dependency is the path-module binding authority, which is where module identity is DERIVED at parse rather than authored — v2.compiler.source_authority module_storage_binding_authority_note states that the hand-authored qualified-module rows project from it, not the other way round. So the interface maps ground when stage0 module ingest supplies real Node-carrier exports through that index."
+The real dependency is the path-module binding authority, which is where module identity is DERIVED at parse rather than authored — v2.compiler.source_authority module_storage_binding_authority_note states that the hand-authored qualified-module rows project from it, not the other way round. So the interface maps ground when stage0 module ingest supplies real v2.std.node.Node-carrier exports through that index."
 
 fn stage0_frontier_grounding_target() -> std.decl_ref.DeclarationRef {
   std.decl_ref.DeclarationRef {
@@ -116,7 +116,7 @@ fn stage0_module_dag_interface_grounding_is_debt() -> Bool {
   }
 }
 
-fn stage0_module_dag_exports_map() -> Map<v2.std.compilers.compilation_unit.ModuleId, List<Node>> {
+fn stage0_module_dag_exports_map() -> Map<v2.std.compilers.compilation_unit.ModuleId, List<v2.std.node.Node>> {
   stage0_all_partitioned_modules()
     |> fold(init: empty_map(), f: fn(acc, basename) {
       map_insert(acc, stage0_module_id(basename: basename), std.algebra.Empty)
@@ -454,15 +454,15 @@ fn assignment_has_scc_split(
         false
       } else {
         match v2.std.collection.map_get(assignment, left) {
-          Accepted { value: Present { value: left_unit }, diagnostics: _ } =>
+          Accepted { value: v2.std.optional.Present { value: left_unit }, diagnostics: _ } =>
             match v2.std.collection.map_get(assignment, right) {
-              Accepted { value: Present { value: right_unit }, diagnostics: _ } =>
+              Accepted { value: v2.std.optional.Present { value: right_unit }, diagnostics: _ } =>
                 left_unit != right_unit
-              Rejected { diagnostics: _ } => false
-              Accepted { value: Absent, diagnostics: _ } => false
+              v2.std.diagnostic.Rejected { diagnostics: _ } => false
+              Accepted { value: v2.std.optional.Absent, diagnostics: _ } => false
             }
-          Rejected { diagnostics: _ } => false
-          Accepted { value: Absent, diagnostics: _ } => false
+          v2.std.diagnostic.Rejected { diagnostics: _ } => false
+          Accepted { value: v2.std.optional.Absent, diagnostics: _ } => false
         }
       }
     })

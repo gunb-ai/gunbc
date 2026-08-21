@@ -19,6 +19,6 @@ fn roundtrip_extent_start() -> Int {
   }
 }
 
-test fn emitted_manifest_reloads_with_its_location_intact_holds() -> Bool {
+test fn emitted_manifest_reloads_with_its_location_intact_holds() -> v2.std.logic.Bool {
   roundtrip_extent_start() == 28138
 }

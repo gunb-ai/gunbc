@@ -55,23 +55,23 @@ data synthetic_oracle_c: v2.lens.duplicate_computation.ComputationDemandFact = {
   replication: v2.lens.duplicate_computation.ReplicatedOracle { runs: 2 }
 }
 
-test fn duplicate_unguarded_demands_are_violations() -> Bool {
+test fn duplicate_unguarded_demands_are_violations() -> v2.std.logic.Bool {
   duplicate_computation_violation_count(facts: [synthetic_unguarded_a, synthetic_unguarded_b]) == 1
 }
 
-test fn duplicate_guarded_demands_are_clean() -> Bool {
+test fn duplicate_guarded_demands_are_clean() -> v2.std.logic.Bool {
   duplicate_computation_clean_holds(facts: [synthetic_unguarded_a, synthetic_guarded_b])
 }
 
-test fn duplicate_distinct_keys_are_clean() -> Bool {
+test fn duplicate_distinct_keys_are_clean() -> v2.std.logic.Bool {
   duplicate_computation_clean_holds(facts: [synthetic_unguarded_a, synthetic_other_unguarded])
 }
 
-test fn duplicate_declared_oracle_is_admissible() -> Bool {
+test fn duplicate_declared_oracle_is_admissible() -> v2.std.logic.Bool {
   duplicate_computation_clean_holds(facts: [synthetic_oracle_a, synthetic_oracle_b])
 }
 
-test fn duplicate_undeclared_oracle_reds() -> Bool {
+test fn duplicate_undeclared_oracle_reds() -> v2.std.logic.Bool {
   duplicate_computation_violation_count(facts: [synthetic_oracle_a, synthetic_oracle_b, synthetic_oracle_c]) == 1
 }
 
@@ -98,15 +98,15 @@ fn synthetic_typed_pair_facts(replication: v2.lens.duplicate_computation.Replica
   )
 }
 
-test fn typed_argv_compile_pair_without_declaration_reds() -> Bool {
+test fn typed_argv_compile_pair_without_declaration_reds() -> v2.std.logic.Bool {
   duplicate_computation_violation_count(facts: synthetic_typed_pair_facts(replication: SingleRun)) == 1
 }
 
-test fn typed_argv_compile_pair_declared_oracle_is_admissible() -> Bool {
+test fn typed_argv_compile_pair_declared_oracle_is_admissible() -> v2.std.logic.Bool {
   duplicate_computation_clean_holds(facts: synthetic_typed_pair_facts(replication: v2.lens.duplicate_computation.ReplicatedOracle { runs: 2 }))
 }
 
-test fn typed_argv_non_compile_invocation_projects_no_demand() -> Bool {
+test fn typed_argv_non_compile_invocation_projects_no_demand() -> v2.std.logic.Bool {
   length(xs: typed_argv_computation_demands(
     invocation: v2.lens.duplicate_computation.TypedArgvInvocation {
       site: "synthetic.typed_version_probe",
@@ -118,7 +118,7 @@ test fn typed_argv_non_compile_invocation_projects_no_demand() -> Bool {
   )) == 0
 }
 
-test fn typed_argv_guarded_build_is_clean() -> Bool {
+test fn typed_argv_guarded_build_is_clean() -> v2.std.logic.Bool {
   duplicate_computation_clean_holds(facts: list_append(
     left: typed_argv_computation_demands(
       invocation: v2.lens.duplicate_computation.TypedArgvInvocation {

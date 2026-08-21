@@ -1,60 +1,60 @@
 module v2.test.manual.dependency_recompute_plan
 
 
-data refinement_subject_node: Node = v2.std.node.Node {
+data refinement_subject_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^refinement_subject_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data refinement_new_field_node: Node = v2.std.node.Node {
+data refinement_new_field_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^refinement_new_field_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data refinement_after_node: Node = v2.std.node.Node {
+data refinement_after_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
-      label: Named { name: ^refinement_new_field_symbol },
+      label: v2.std.node.Named { name: ^refinement_new_field_symbol },
       target: refinement_new_field_node
     }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data testclaim_lens_node: Node = v2.std.node.Node {
+data testclaim_lens_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^testclaim_lens_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data boundary_test_lens_node: Node = v2.std.node.Node {
+data boundary_test_lens_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^boundary_test_lens_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data target_test_projection_node: Node = v2.std.node.Node {
+data target_test_projection_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^target_test_projection_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data dependency_projection_subgraph: Node = v2.std.node.Node {
+data dependency_projection_subgraph: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
-      label: Named { name: ^testclaim_lens_symbol },
+      label: v2.std.node.Named { name: ^testclaim_lens_symbol },
       target: testclaim_lens_node
     },
     v2.std.node.Edge {
-      label: Named { name: ^boundary_test_lens_symbol },
+      label: v2.std.node.Named { name: ^boundary_test_lens_symbol },
       target: boundary_test_lens_node
     },
     v2.std.node.Edge {
-      label: Named { name: ^target_test_projection_symbol },
+      label: v2.std.node.Named { name: ^target_test_projection_symbol },
       target: target_test_projection_node
     }
   ],

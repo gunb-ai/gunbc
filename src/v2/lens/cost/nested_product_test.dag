@@ -22,7 +22,7 @@ data nested_product_input: v2.std.node.Node = v2.std.node.Node {
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn nested_product_claim_holds() -> Bool {
+test fn nested_product_claim_holds() -> v2.std.logic.Bool {
   match v2.lens.cost.cost_lens(n: nested_product_input) {
     Holds { value: actual } =>
       actual == v2.lens.cost.ProductCost {

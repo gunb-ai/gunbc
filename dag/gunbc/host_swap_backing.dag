@@ -36,7 +36,7 @@ fn host_swap_backing_verdict_for_stats(min_total: std.measure.ByteSize, s: extde
   if total == 0 {
     std.upsert_decision.Absent
   } else {
-    if total < byte_size_count(b: min_total) { std.upsert_decision.Drifted } else { Converged }
+    if total < byte_size_count(b: min_total) { std.upsert_decision.Drifted } else { std.upsert_decision.Converged }
   }
 }
 
@@ -45,7 +45,7 @@ fn host_swap_backing_verdict(
   observed: extdeps.tools.free.SwapStats?,
 ) -> std.upsert_decision.ObservationVerdict {
   match req {
-    SwapBackingNotRequired => Converged
+    SwapBackingNotRequired => std.upsert_decision.Converged
     SwapBackingRequired { min_total: m, requiring_declaration: d } =>
       match observed {
         Present { value: s } => host_swap_backing_verdict_for_stats(min_total: m, s: s)
@@ -61,7 +61,7 @@ fn swap_cap_verdict_qualified_by_backing(
   backing: std.upsert_decision.ObservationVerdict,
 ) -> std.upsert_decision.ObservationVerdict {
   match backing {
-    Converged => cap
+    std.upsert_decision.Converged => cap
     std.upsert_decision.Absent => std.upsert_decision.Absent
     std.upsert_decision.Drifted => std.upsert_decision.Drifted
     Conflict => Conflict
@@ -81,7 +81,7 @@ fn swap_cap_verdict_backing_blind_widen_sketch(
 
 fn observation_verdict_is_converged(v: std.upsert_decision.ObservationVerdict) -> Bool {
   match v {
-    Converged => true
+    std.upsert_decision.Converged => true
     std.upsert_decision.Absent => false
     std.upsert_decision.Drifted => false
     Conflict => false

@@ -16,7 +16,7 @@ data falsifier_self_host_wet_module_bindings: List<SelfHostWetReceiptBinding> = 
 fn wet_receipt_binding_if_path_matches(
   module_path: String,
   b: SelfHostWetReceiptBinding
-) -> Optional<SelfHostWetReceiptBinding> {
+) -> v2.std.optional.Optional<SelfHostWetReceiptBinding> {
   if b.module_path == module_path {
     optional_present(value: b)
   } else {
@@ -24,14 +24,14 @@ fn wet_receipt_binding_if_path_matches(
   }
 }
 
-fn find_wet_receipt_binding(module_path: String) -> Optional<SelfHostWetReceiptBinding> {
+fn find_wet_receipt_binding(module_path: String) -> v2.std.optional.Optional<SelfHostWetReceiptBinding> {
   fold(
     falsifier_self_host_wet_module_bindings,
-    init: Absent,
+    init: v2.std.optional.Absent,
     f: fn(acc, b) {
       match acc {
-        Present { value: _ } => acc
-        Absent => wet_receipt_binding_if_path_matches(module_path: module_path, b: b)
+        v2.std.optional.Present { value: _ } => acc
+        v2.std.optional.Absent => wet_receipt_binding_if_path_matches(module_path: module_path, b: b)
       }
     }
   )

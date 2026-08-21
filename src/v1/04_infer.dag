@@ -364,10 +364,10 @@ fn expected_variant_owner_instantiation(expected: v1.std.core.Node?, name: Strin
 // ConvergeVerdict alike). Re-targeting would leave the returned parent_enum naming one
 // coproduct while the inferred type named another.
 //
-// CARDINALITY: optionality is NOT a wrapper type here — `BinOp?` is a BinOp node whose
+// CARDINALITY: optionality is NOT a wrapper type here — `std.syntax.BinOp?` is a std.syntax.BinOp node whose
 // return_cardinality is CardOptional (00_core with_optional_cardinality), so a head-name
-// comparison alone cannot see it. For `binop: Mod` against an expected `BinOp?` the head
-// IS "BinOp" and the arm IS found, but the constructor's own type is BinOp and the
+// comparison alone cannot see it. For `binop: Mod` against an expected `std.syntax.BinOp?` the head
+// IS "BinOp" and the arm IS found, but the constructor's own type is std.syntax.BinOp and the
 // optionality is a coercion the emitter performs; adopting the expected node makes the
 // value look already-optional, the wrap is skipped, and `binop: BinOp::Mod` is emitted
 // where `Some(BinOp::Mod)` is owed. So adoption additionally requires the expected node
@@ -2909,8 +2909,8 @@ fn derive_field_provenance(scope: InferScope, scrutinee_provenance: std.inductio
 
 fn extend_scope_with_pattern_node(scope: InferScope, pattern: v1.std.core.MatchPattern, scrutinee_subject: v1.compiler.infer_patterns.PatternSubject, scrutinee_provenance: std.induction.SubValueRelation) -> PatternScopeResult {
   match pattern {
-    Bind { declaration: declaration } => PatternScopeResult { scope: extend_scope_match_bound(scope: scope, name: declaration.name, resolved: v1.compiler.infer_patterns.pattern_binding_type(subject: scrutinee_subject), provenance: scrutinee_provenance), diagnostics: [] }
-    Wildcard => PatternScopeResult { scope: scope, diagnostics: [] }
+    v1.std.core.Bind { declaration: declaration } => PatternScopeResult { scope: extend_scope_match_bound(scope: scope, name: declaration.name, resolved: v1.compiler.infer_patterns.pattern_binding_type(subject: scrutinee_subject), provenance: scrutinee_provenance), diagnostics: [] }
+    v1.std.core.Wildcard => PatternScopeResult { scope: scope, diagnostics: [] }
     LitPattern { value: _ } => PatternScopeResult { scope: scope, diagnostics: [] }
     VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
       let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
@@ -2925,7 +2925,7 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: v1.std.core.MatchP
         let field_provenance = derive_field_provenance(scope: scope, scrutinee_provenance: scrutinee_provenance, scrutinee_subject: scrutinee_subject, variant_name: vname, field_name: field_name)
         let fb_pattern = v1.std.core.field_binding_pattern(n: fb)
         match fb_pattern {
-          Bind { declaration: declaration } => PatternScopeResult {
+          v1.std.core.Bind { declaration: declaration } => PatternScopeResult {
             scope: extend_scope_match_bound(scope: acc.scope, name: declaration.name, resolved: field_type, provenance: field_provenance),
             diagnostics: concat(acc.diagnostics, field_lookup.diagnostics)
           }
@@ -4227,7 +4227,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
       let operand_typed = operand_result.typed
       let operand_diags = operand_result.diagnostics
       let result_type = match op {
-        Not => v1.std.core.bool_type
+        v1.std.core.Not => v1.std.core.bool_type
         Neg => v1.compiler.infer_types.resolved_type(n: operand_typed)
       }
       let uo_texpr = v1.std.core.make_expr_node(expr_data: v1.std.core.ExprUnaryOp { op: op }, children: [operand_typed], inferred: Present { value: v1.std.core.Resolved { node: result_type } }, span: span)
@@ -6269,7 +6269,7 @@ fn annotate_descent(body: v1.std.core.Node, ctx: DescentContext) -> v1.std.core.
                   if vname == "Present" {
                     bindings |> fold(init: ctx, f: (c, fb) =>
                       match v1.std.core.field_binding_pattern(n: fb) {
-                        Bind { declaration: declaration } =>
+                        v1.std.core.Bind { declaration: declaration } =>
                           DescentContext {
                             fn_name: c.fn_name,
                             param_names: map_insert(c.param_names, declaration.name, ind_field.element_type),
@@ -6284,7 +6284,7 @@ fn annotate_descent(body: v1.std.core.Node, ctx: DescentContext) -> v1.std.core.
                           inner_bindings |> fold(init: c, f: (ic, inner_fb) =>
                             let inner_field_name = v1.std.core.field_binding_name_at(n: inner_fb, source_indices: ctx.type_env.source_indices)
                             let inner_bind_name = match v1.std.core.field_binding_pattern(n: inner_fb) {
-                              Bind { declaration: declaration } => declaration.name
+                              v1.std.core.Bind { declaration: declaration } => declaration.name
                               _ => ""
                             }
                             let inner_matching = inner_ind_fields |> filter(f => f.variant_name == inner_vname && f.field_name == inner_field_name) |> first
@@ -6313,7 +6313,7 @@ fn annotate_descent(body: v1.std.core.Node, ctx: DescentContext) -> v1.std.core.
                   bindings |> fold(init: ctx, f: (c, fb) =>
                     let field_name = v1.std.core.field_binding_name_at(n: fb, source_indices: ctx.type_env.source_indices)
                     let bind_name = match v1.std.core.field_binding_pattern(n: fb) {
-                      Bind { declaration: declaration } => declaration.name
+                      v1.std.core.Bind { declaration: declaration } => declaration.name
                       _ => ""
                     }
                     let matching = ind_fields |> filter(f => f.variant_name == vname && f.field_name == field_name) |> first
@@ -6332,7 +6332,7 @@ fn annotate_descent(body: v1.std.core.Node, ctx: DescentContext) -> v1.std.core.
                     }
                   )
               }
-            Bind { declaration: declaration } =>
+            v1.std.core.Bind { declaration: declaration } =>
               if scrut_type != "" {
                 DescentContext {
                   fn_name: ctx.fn_name,
@@ -6761,7 +6761,7 @@ fn classify_body_provenance(expr: v1.std.core.Node, param_names: List<String>, p
             fold(bindings, init: let_prov, f: (acc, binding) =>
               let field_label = v1.std.core.field_binding_name_at(n: binding, source_indices: type_env.source_indices)
               let bind_name = match v1.std.core.field_binding_pattern(n: binding) {
-                Bind { declaration: declaration } => declaration.name
+                v1.std.core.Bind { declaration: declaration } => declaration.name
                 _ => ""
               }
               if bind_name != "" && field_label != "" {
@@ -6771,7 +6771,7 @@ fn classify_body_provenance(expr: v1.std.core.Node, param_names: List<String>, p
                 map_insert(acc, bind_name, field_prov)
               } else { acc }
             )
-          Bind { declaration: declaration } =>
+          v1.std.core.Bind { declaration: declaration } =>
             map_insert(let_prov, declaration.name, scrut_prov)
           _ => let_prov
         }
@@ -8206,7 +8206,7 @@ fn corpus_item_name_counts(modules: List<v1.compiler.resolve.ResolvedModule>, so
 // direct_call_shape_wall_note: a qualified constructor call site like
 // `gunbc.WitnessBin.Run(...)` builds exactly this 3-segment dotted name
 // (ExprMethodCall's qualified_direct_call gate, and func_sig_from_global_bare's
-// borrowed_census_decl, both call symbol_index_lookup on it) and previously found
+// borrowed_census_decl, both call v1.compiler.infer_env.symbol_index_lookup on it) and previously found
 // nothing, falling through to the generic method-call bridge instead of the
 // direct_call_shape_diags wall.
 fn symbol_index_insert_unique_disj_variant_aliases(

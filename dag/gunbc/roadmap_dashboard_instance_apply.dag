@@ -541,7 +541,7 @@ data dashboard_health_path: String = "/instance.json"
 
 fn dashboard_instance_health_uri(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> extdeps.uri.Uri {
   extdeps.uri.Uri {
-    scheme: Http,
+    scheme: extdeps.uri.Http,
     locator: join([
       dashboard_health_loopback_host,
       ":",
@@ -1640,9 +1640,9 @@ fn dashboard_apply_result_json_value(
         json_kv(key: "schema", value: json_string(s: "dashboard-instance-apply/v1")),
         json_kv(key: "instance_id", value: json_string(s: instance_id as String)),
         json_kv(key: "status", value: json_string(s: "converged")),
-        json_kv(key: "health_current", value: json_bool(b: observed.health_current)),
-        json_kv(key: "production_untouched", value: json_bool(b: observed.production_untouched)),
-        json_kv(key: "source_revision_current", value: json_bool(b: observed.source_revision_current)),
+        json_kv(key: "health_current", value: extdeps.languages.json.emit.json_bool(b: observed.health_current)),
+        json_kv(key: "production_untouched", value: extdeps.languages.json.emit.json_bool(b: observed.production_untouched)),
+        json_kv(key: "source_revision_current", value: extdeps.languages.json.emit.json_bool(b: observed.source_revision_current)),
         json_kv(key: "source_revision_detail", value: json_string(s: observed.source_revision_detail)),
         json_kv(key: "steps", value: json_array(elements: receipts |> map(r =>
           dashboard_step_receipt_json_value(receipt: r)))),
@@ -1666,7 +1666,7 @@ fn dashboard_step_receipt_json_value(
   json_object(members: [
     json_kv(key: "kind", value: json_string(s: receipt.kind as String)),
     json_kv(key: "target", value: json_string(s: receipt.target)),
-    json_kv(key: "success", value: json_bool(b: receipt.success)),
+    json_kv(key: "success", value: extdeps.languages.json.emit.json_bool(b: receipt.success)),
     json_kv(key: "detail", value: json_string(s: receipt.detail)),
   ])
 }
@@ -1912,7 +1912,7 @@ func srv1_lab_dashboard_preflight_wet() -> std.process.ProcessExit {
     DashboardApplyPreflightReady {
       instance_id: _,
       source_revision: _,
-    } => ExitSuccess
+    } => std.process.ExitSuccess
     DashboardApplyPreflightBootstrapPending {
       instance_id: _,
       source_revision: _,
@@ -1936,7 +1936,7 @@ fn srv1_lab_dashboard_apply_json() -> String {
 func srv1_lab_dashboard_apply_wet() -> std.process.ProcessExit {
   let result = srv1_lab_dashboard_apply()
   match result {
-    DashboardApplyConverged { instance_id: _, receipts: _, observed: _ } => ExitSuccess
+    DashboardApplyConverged { instance_id: _, receipts: _, observed: _ } => std.process.ExitSuccess
     DashboardApplyRefused { instance_id: _, step: _, detail: _, receipts: _ } =>
       exit_failure(reason: serialize_json(v: dashboard_apply_result_json_value(result: result)))
   }
@@ -1970,7 +1970,7 @@ func srv2_lab_dashboard_preflight_wet() -> std.process.ProcessExit {
     DashboardApplyPreflightReady {
       instance_id: _,
       source_revision: _,
-    } => ExitSuccess
+    } => std.process.ExitSuccess
     DashboardApplyPreflightBootstrapPending {
       instance_id: _,
       source_revision: _,
@@ -1994,7 +1994,7 @@ fn srv2_lab_dashboard_apply_json() -> String {
 func srv2_lab_dashboard_apply_wet() -> std.process.ProcessExit {
   let result = srv2_lab_dashboard_apply()
   match result {
-    DashboardApplyConverged { instance_id: _, receipts: _, observed: _ } => ExitSuccess
+    DashboardApplyConverged { instance_id: _, receipts: _, observed: _ } => std.process.ExitSuccess
     DashboardApplyRefused { instance_id: _, step: _, detail: _, receipts: _ } =>
       exit_failure(reason: serialize_json(v: dashboard_apply_result_json_value(result: result)))
   }

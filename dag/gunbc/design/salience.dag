@@ -103,7 +103,7 @@ fn length_is_px(l: extdeps.languages.css.values.CssLength) -> Bool {
     Px => true
     Rem => false
     Ch => false
-    Percent => false
+    extdeps.languages.css.values.Percent => false
   }
 }
 

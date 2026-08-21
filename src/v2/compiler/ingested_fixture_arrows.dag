@@ -30,14 +30,14 @@ fn ingested_fixture_diagnostic(reason: v2.std.node.Symbol, n: v2.std.node.Node) 
   }
 }
 
-fn ingested_find_arrow_in_module(root: v2.std.node.Node) -> Optional<v2.std.node.Node> {
+fn ingested_find_arrow_in_module(root: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match root.kind {
-    TypeNode { connective: Arrow } => Present { value: root }
+    TypeNode { connective: Arrow } => v2.std.optional.Present { value: root }
     _ =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
+      fold(root.children, init: v2.std.optional.Absent, f: fn(acc, e) {
         match acc {
-          Present { value: _ } => acc
-          Absent => v2.compiler.ingested_fixture_arrows.ingested_find_arrow_in_module(root: e.target)
+          v2.std.optional.Present { value: _ } => acc
+          v2.std.optional.Absent => v2.compiler.ingested_fixture_arrows.ingested_find_arrow_in_module(root: e.target)
         }
       })
   }
@@ -46,10 +46,10 @@ fn ingested_find_arrow_in_module(root: v2.std.node.Node) -> Optional<v2.std.node
 fn ingested_resolved_module_from_source(source: String, file: v2.std.node.Symbol) -> Outcome<v2.std.node.Node> {
   let lm = dag_language_model()
   bind_outcome(
-    o: tokenize(text: source, file: file, rules: lm.lex),
+    o: v2.compiler.tokenize.tokenize(text: source, file: file, rules: lm.lex),
     f: fn(tokens) {
       bind_outcome(
-        o: parse_module(tokens: tokens, grammar: lm.grammar),
+        o: v2.compiler.parse.parse_module(tokens: tokens, grammar: lm.grammar),
         f: fn(artifact) {
           bind_outcome(
             o: normalize(parse_tree: artifact.tree),
@@ -68,7 +68,7 @@ fn ingested_arrow_from_source(source: String, file: v2.std.node.Symbol) -> Outco
     o: v2.compiler.ingested_fixture_arrows.ingested_resolved_module_from_source(source: source, file: file),
     f: fn(resolved) {
       match v2.compiler.ingested_fixture_arrows.ingested_find_arrow_in_module(root: resolved) {
-        Present { value: arrow } =>
+        v2.std.optional.Present { value: arrow } =>
           if well_formed(n: arrow) {
             outcome_accepted(value: arrow)
           } else {
@@ -79,7 +79,7 @@ fn ingested_arrow_from_source(source: String, file: v2.std.node.Symbol) -> Outco
               )
             )
           }
-        Absent =>
+        v2.std.optional.Absent =>
           outcome_rejected(
             d: ingested_fixture_diagnostic(
               reason: ^ingested_fixture_reason_arrow_missing,
@@ -191,7 +191,7 @@ fn ingested_add_decl_node(fn_name: v2.std.node.Symbol) -> Outcome<v2.std.node.No
           kind: v2.std.node.TypeNode { connective: Conj },
           children: [
             v2.std.node.Edge {
-              label: Named { name: fn_name },
+              label: v2.std.node.Named { name: fn_name },
               target: arrow_with_body
             }
           ]

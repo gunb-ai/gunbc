@@ -23,7 +23,7 @@ fn lazy_arm_i64() -> v2.std.node.Node {
   lazy_arm_atom(s: ^lazy_arm_i64_sym)
 }
 
-fn lazy_arm_bool_value(is_true: Bool) -> v2.std.runtime.RuntimeValue {
+fn lazy_arm_bool_value(is_true: v2.std.logic.Bool) -> v2.std.runtime.RuntimeValue {
   if is_true {
     v2.std.runtime.RuntimePrimitive {
       value: v2.std.runtime.RuntimePrimitiveValue {
@@ -70,7 +70,7 @@ fn lazy_arm_kw_false() -> v2.std.node.Node {
 fn lazy_arm_int_literal_from_lexeme(lexeme: String) -> v2.std.node.Node {
   match v2.extdeps.languages.dag.dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence) {
     Accepted { value: n, diagnostics: _ } => n
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^lazy_arm_lit_lexeme_invalid } },
         occurrence_id: SyntheticOccurrence,
@@ -118,7 +118,7 @@ fn lazy_arm_touch_key() -> v2.std.runtime.EnvironmentBindingKey {
 fn lazy_arm_binding_keys_equal(
   a: v2.std.runtime.EnvironmentBindingKey,
   b: v2.std.runtime.EnvironmentBindingKey
-) -> Bool {
+) -> v2.std.logic.Bool {
   a.identity == b.identity
 }
 
@@ -133,10 +133,10 @@ fn lazy_arm_touch_from_env(env: v2.std.runtime.EvaluationEnvironment) -> Int {
   match v2.std.collection.map_get(m: env.bindings, key: lazy_arm_touch_key()) {
     Accepted { value: opt, diagnostics: _ } =>
       match opt {
-        Present { value: v } => lazy_arm_int_from_runtime(value: v)
-        Absent => 0
+        v2.std.optional.Present { value: v } => lazy_arm_int_from_runtime(value: v)
+        v2.std.optional.Absent => 0
       }
-    Rejected { diagnostics: _ } => 0
+    v2.std.diagnostic.Rejected { diagnostics: _ } => 0
   }
 }
 
@@ -176,7 +176,7 @@ fn lazy_arm_allocate_literal(node: v2.std.node.Node, env: v2.std.runtime.Evaluat
         } else {
           v2.std.diagnostic.outcome_rejected(d: lazy_arm_diagnostic(n: node))
         }
-      Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+      v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
   } else {
     match node.kind {
@@ -205,7 +205,7 @@ fn lazy_arm_allocate_literal(node: v2.std.node.Node, env: v2.std.runtime.Evaluat
   }
 }
 
-fn lazy_arm_runtime_bool_true(value: v2.std.runtime.RuntimeValue) -> Bool {
+fn lazy_arm_runtime_bool_true(value: v2.std.runtime.RuntimeValue) -> v2.std.logic.Bool {
   match value {
     RuntimePrimitive { value: p } =>
       (p.primitive_type == lazy_arm_bool_type()) && (count(p.bytes) == 1)
@@ -213,7 +213,7 @@ fn lazy_arm_runtime_bool_true(value: v2.std.runtime.RuntimeValue) -> Bool {
   }
 }
 
-fn lazy_arm_runtime_bool_false(value: v2.std.runtime.RuntimeValue) -> Bool {
+fn lazy_arm_runtime_bool_false(value: v2.std.runtime.RuntimeValue) -> v2.std.logic.Bool {
   match value {
     RuntimePrimitive { value: p } =>
       (p.primitive_type == lazy_arm_bool_type()) && (count(p.bytes) == 0)
@@ -223,11 +223,11 @@ fn lazy_arm_runtime_bool_false(value: v2.std.runtime.RuntimeValue) -> Bool {
 
 fn lazy_arm_nth_child_target(node: v2.std.node.Node, wanted: Int) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match v2.std.collection.list_at_optional(xs: node.children, index: wanted) {
-    Present { value: child } =>
+    v2.std.optional.Present { value: child } =>
       match child {
         Edge { label: _, target: arm } => v2.std.diagnostic.outcome_accepted(value: extdeps.vendor.arm.arm)
       }
-    Absent => v2.std.diagnostic.outcome_rejected(d: lazy_arm_diagnostic(n: node))
+    v2.std.optional.Absent => v2.std.diagnostic.outcome_rejected(d: lazy_arm_diagnostic(n: node))
   }
 }
 
@@ -325,7 +325,7 @@ fn lazy_arm_bind_node(
   body: v2.std.node.Node
 ) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.ComputationNode { behavior: Bind },
+    kind: v2.std.node.ComputationNode { behavior: v2.std.node.Bind },
     occurrence_id: SyntheticOccurrence,
     children: [
       v2.std.node.Edge { label: Positional, target: key_decl },
@@ -361,7 +361,7 @@ fn lazy_arm_branch_body(
 
 fn lazy_arm_pick_call(callee: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
     occurrence_id: SyntheticOccurrence,
     children: [v2.std.node.Edge { label: Positional, target: callee }]
   }
@@ -382,7 +382,7 @@ fn lazy_arm_arrow_with_body(body: v2.std.node.Node) -> v2.std.node.Node {
       },
       v2.std.node.Edge { label: Positional, target: lazy_arm_i64() },
       v2.std.node.Edge { label: Positional, target: lazy_arm_i64() },
-      v2.std.node.Edge { label: Named { name: ^arrow_body_edge }, target: body }
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^arrow_body_edge }, target: body }
     ]
   }
 }
@@ -392,13 +392,13 @@ fn lazy_arm_tree_root(call: v2.std.node.Node, expected: v2.std.node.Node) -> v2.
     kind: v2.std.node.TypeNode { connective: Conj },
     occurrence_id: SyntheticOccurrence,
     children: [
-      v2.std.node.Edge { label: Named { name: ^lazy_arm_actual }, target: call },
-      v2.std.node.Edge { label: Named { name: ^lazy_arm_expected }, target: expected }
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^lazy_arm_actual }, target: call },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^lazy_arm_expected }, target: expected }
     ]
   }
 }
 
-fn lazy_arm_facts_lookup(key: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn lazy_arm_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   v2.std.optional.optional_present(value: v2.test.lens_common.infer_fixture.claim_inferred_facts_from_nodes(
       resolved: key,
       algebra: lazy_arm_i64(),
@@ -442,18 +442,18 @@ fn lazy_arm_run_branch(
   )
 }
 
-fn lazy_arm_run_passes(run: v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>>) -> Bool {
+fn lazy_arm_run_passes(run: v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>>) -> v2.std.logic.Bool {
   match run {
     Accepted { value: r, diagnostics: _ } =>
       match v2.compiler.eval.test_claim_run_verdict(run: r) {
         Pass => true
         _ => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn lazy_arm_true_then_counted_else_divergent_holds() -> Bool {
+test fn lazy_arm_true_then_counted_else_divergent_holds() -> v2.std.logic.Bool {
   lazy_arm_run_passes(
     run: lazy_arm_run_branch(
       body: lazy_arm_branch_body(
@@ -466,7 +466,7 @@ test fn lazy_arm_true_then_counted_else_divergent_holds() -> Bool {
   )
 }
 
-test fn lazy_arm_false_then_divergent_else_counted_holds() -> Bool {
+test fn lazy_arm_false_then_divergent_else_counted_holds() -> v2.std.logic.Bool {
   lazy_arm_run_passes(
     run: lazy_arm_run_branch(
       body: lazy_arm_branch_body(
@@ -479,19 +479,19 @@ test fn lazy_arm_false_then_divergent_else_counted_holds() -> Bool {
   )
 }
 
-test fn lazy_arm_counted_literal_rejects_second_touch_holds() -> Bool {
+test fn lazy_arm_counted_literal_rejects_second_touch_holds() -> v2.std.logic.Bool {
   let env = v2.compiler.eval.empty_evaluation_environment()
   match lazy_arm_allocate_literal(node: lazy_arm_counted(), env: env) {
     Accepted { value: v, diagnostics: _ } =>
       match lazy_arm_bind_value(key: lazy_arm_counted_slot_key(), value: v, env: env) {
         Accepted { value: touched, diagnostics: _ } =>
           match lazy_arm_allocate_literal(node: lazy_arm_counted(), env: touched) {
-            Rejected { diagnostics: _ } => true
+            v2.std.diagnostic.Rejected { diagnostics: _ } => true
             Accepted { value: _, diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

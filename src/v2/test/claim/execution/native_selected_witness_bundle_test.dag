@@ -84,14 +84,14 @@ type SelectedLogicVerdicts {
   complement: std.selected_witness_bundle.SelectedWitnessVerdict
 }
 
-fn selected_verdict_for_byte(actual: Optional<std.bit.Byte>, expected_octet: Int) -> std.selected_witness_bundle.SelectedWitnessVerdict {
+fn selected_verdict_for_byte(actual: v2.std.optional.Optional<std.bit.Byte>, expected_octet: Int) -> std.selected_witness_bundle.SelectedWitnessVerdict {
   match actual {
-    Present { value: value } => if value == v2.compiler.emit_host.emit_host_byte_from_octet(octet: expected_octet) {
+    v2.std.optional.Present { value: value } => if value == v2.compiler.emit_host.emit_host_byte_from_octet(octet: expected_octet) {
       std.selected_witness_bundle.SelectedWitnessPassed
     } else {
       std.selected_witness_bundle.SelectedWitnessFailed
     }
-    Absent => std.selected_witness_bundle.SelectedWitnessFailed
+    v2.std.optional.Absent => std.selected_witness_bundle.SelectedWitnessFailed
   }
 }
 
@@ -116,7 +116,7 @@ fn interpreted_meet_join_verdict(
       } else {
         std.selected_witness_bundle.SelectedWitnessFailed
       }
-    Rejected { diagnostics: _ } => std.selected_witness_bundle.SelectedWitnessFailed
+    v2.std.diagnostic.Rejected { diagnostics: _ } => std.selected_witness_bundle.SelectedWitnessFailed
   }
 }
 
@@ -136,7 +136,7 @@ fn interpreted_complement_verdict(
       } else {
         std.selected_witness_bundle.SelectedWitnessFailed
       }
-    Rejected { diagnostics: _ } => std.selected_witness_bundle.SelectedWitnessFailed
+    v2.std.diagnostic.Rejected { diagnostics: _ } => std.selected_witness_bundle.SelectedWitnessFailed
   }
 }
 
@@ -152,7 +152,7 @@ fn interpreted_value_meet_join_equals(
       } else {
         v2.test.execution.emit_host_meet_join_equals_eval.meet_join_eval_bool_false(value: value)
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -168,7 +168,7 @@ fn interpreted_value_complement_equals(tree: v2.compiler.inferred_tree.InferredT
       } else {
         v2.test.execution.emit_host_complement_equals_eval.emit_complement_eval_bool_false(value: value)
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -332,14 +332,14 @@ fn observe_selected_bundle_native(
             diagnostics: v2.std.diagnostic.None
           }
         }
-        Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+        v2.std.diagnostic.Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
       }
     }
-    Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+    v2.std.diagnostic.Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
-fn selected_logic_stdout(receipt: v2.std.host_run.EmitHostRunReceipt) -> Optional<v2.std.host_transport.ByteString> {
+fn selected_logic_stdout(receipt: v2.std.host_run.EmitHostRunReceipt) -> v2.std.optional.Optional<v2.std.host_transport.ByteString> {
   match receipt.logical_run {
     v2.std.diagnostic.Accepted {
       value: v2.std.host_run.HostLogicalRun { stdout: stdout },
@@ -591,9 +591,9 @@ fn selected_logic_execution_holds(
       match observe_selected_bundle_native(workspace: workspace, source: source) {
         Accepted { value: observation, diagnostics: _ } =>
           match selected_logic_stdout(receipt: observation.cold) {
-            Present { value: cold_stdout } =>
+            v2.std.optional.Present { value: cold_stdout } =>
               match selected_logic_stdout(receipt: observation.warm) {
-                Present { value: warm_stdout } => {
+                v2.std.optional.Present { value: warm_stdout } => {
                   let receipt = selected_logic_receipt(
                     plan: plan,
                     observation: observation,
@@ -632,13 +632,13 @@ fn selected_logic_execution_holds(
                       _ => false
                     })
                 }
-                Absent => false
+                v2.std.optional.Absent => false
               }
-            Absent => false
+            v2.std.optional.Absent => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -674,9 +674,9 @@ fn selected_logic_discriminating_red_evidence() -> List<std.selected_witness_bun
       match observe_selected_bundle_native(workspace: workspace, source: source) {
         Accepted { value: observation, diagnostics: _ } =>
           match selected_logic_stdout(receipt: observation.cold) {
-            Present { value: cold_stdout } =>
+            v2.std.optional.Present { value: cold_stdout } =>
               match selected_logic_stdout(receipt: observation.warm) {
-                Present { value: warm_stdout } => {
+                v2.std.optional.Present { value: warm_stdout } => {
                   let receipt = selected_logic_receipt(
                     plan: plan,
                     observation: observation,
@@ -710,13 +710,13 @@ fn selected_logic_discriminating_red_evidence() -> List<std.selected_witness_bun
                     []
                   }
                 }
-                Absent => []
+                v2.std.optional.Absent => []
               }
-            Absent => []
+            v2.std.optional.Absent => []
           }
-        Rejected { diagnostics: _ } => []
+        v2.std.diagnostic.Rejected { diagnostics: _ } => []
       }
-    Rejected { diagnostics: _ } => []
+    v2.std.diagnostic.Rejected { diagnostics: _ } => []
   }
 }
 

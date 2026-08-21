@@ -6,28 +6,28 @@ data body_lowering_match_swapped_source: String = "module m\n\nfn classical_not(
 
 fn body_lowering_find_match_expr(root: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: root) {
-    Present { value: emitted } =>
+    v2.std.optional.Present { value: emitted } =>
       match emitted == ^dag_surface_match_expr {
         true => v2.std.optional.Present { value: root }
         false =>
           fold(root.children, init: v2.std.optional.Absent, f: fn(acc, e) {
             match acc {
-              Present { value: _ } => acc
-              Absent => body_lowering_find_match_expr(root: e.target)
+              v2.std.optional.Present { value: _ } => acc
+              v2.std.optional.Absent => body_lowering_find_match_expr(root: e.target)
             }
           })
       }
-    Absent =>
+    v2.std.optional.Absent =>
       fold(root.children, init: v2.std.optional.Absent, f: fn(acc, e) {
         match acc {
-          Present { value: _ } => acc
-          Absent => body_lowering_find_match_expr(root: e.target)
+          v2.std.optional.Present { value: _ } => acc
+          v2.std.optional.Absent => body_lowering_find_match_expr(root: e.target)
         }
       })
   }
 }
 
-fn body_lowering_tree_has_match_behavior(root: v2.std.node.Node) -> Bool {
+fn body_lowering_tree_has_match_behavior(root: v2.std.node.Node) -> v2.std.logic.Bool {
   match root.kind {
     ComputationNode { behavior: v2.std.node.Match } => true
     _ =>
@@ -44,108 +44,108 @@ fn body_lowering_tree_has_match_behavior(root: v2.std.node.Node) -> Bool {
 fn body_lowering_parsed_tree(source: String) -> v2.std.optional.Optional<v2.std.node.Node> {
   let lm = v2.extdeps.languages.dag.dag_language_model()
   match v2.compiler.tokenize.tokenize(text: source, file: ^body_lowering_match_file, rules: lm.lex) {
-    Rejected { diagnostics: _ } => v2.std.optional.Absent
+    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
     Accepted { value: ts, diagnostics: _ } =>
       match v2.compiler.parse.parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => v2.std.optional.Absent
+        v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
         Accepted { value: artifact, diagnostics: _ } => v2.std.optional.Present { value: artifact.tree }
       }
   }
 }
 
-test fn body_lowering_match_lowers_to_match() -> Bool {
+test fn body_lowering_match_lowers_to_match() -> v2.std.logic.Bool {
   match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } =>
       match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: shell } =>
           match v2.compiler.body_lowering_fold.body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
+            v2.std.optional.Present { value: captured } =>
               match v2.compiler.body_lowering_fold.body_lower_try_match_from_captured(captured: captured) {
-                Rejected { diagnostics: _ } => false
+                v2.std.diagnostic.Rejected { diagnostics: _ } => false
                 Accepted { value: lowered_opt, diagnostics: _ } =>
                   match lowered_opt {
-                    Present { value: lowered } =>
+                    v2.std.optional.Present { value: lowered } =>
                       match lowered.kind {
                         ComputationNode { behavior: v2.std.node.Match } => true
                         _ => false
                       }
-                    Absent => false
+                    v2.std.optional.Absent => false
                   }
               }
-            Absent => false
+            v2.std.optional.Absent => false
           }
       }
   }
 }
 
-test fn body_lowering_normalize_accepts_match_module() -> Bool {
+test fn body_lowering_normalize_accepts_match_module() -> v2.std.logic.Bool {
   match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } =>
       match v2.compiler.normalize.normalize(parse_tree: tree) {
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
         Accepted { value: _, diagnostics: _ } => true
       }
   }
 }
 
-test fn body_lowering_normalized_module_has_match() -> Bool {
+test fn body_lowering_normalized_module_has_match() -> v2.std.logic.Bool {
   match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } =>
       match v2.compiler.normalize.normalize(parse_tree: tree) {
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
         Accepted { value: normalized, diagnostics: _ } =>
           body_lowering_tree_has_match_behavior(root: normalized.root)
       }
   }
 }
 
-test fn body_lowering_match_swapped_arms_normalize_accepts() -> Bool {
+test fn body_lowering_match_swapped_arms_normalize_accepts() -> v2.std.logic.Bool {
   match body_lowering_parsed_tree(source: body_lowering_match_swapped_source) {
-    Absent => false
-    Present { value: tree } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } =>
       match v2.compiler.normalize.normalize(parse_tree: tree) {
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
         Accepted { value: _, diagnostics: _ } => true
       }
   }
 }
 
-test fn body_lowering_match_arms_found() -> Bool {
+test fn body_lowering_match_arms_found() -> v2.std.logic.Bool {
   match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } =>
       match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: shell } =>
           match v2.compiler.body_lowering_fold.body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
+            v2.std.optional.Present { value: captured } =>
               match v2.compiler.body_lowering_fold.body_lower_match_arms_optional(captured: captured) {
-                Rejected { diagnostics: _ } => false
+                v2.std.diagnostic.Rejected { diagnostics: _ } => false
                 Accepted { value: arms_opt, diagnostics: _ } =>
                   match arms_opt {
-                    Present { value: arms } => v2.std.algebra.length(xs: arms) > 0
-                    Absent => false
+                    v2.std.optional.Present { value: arms } => v2.std.algebra.length(xs: arms) > 0
+                    v2.std.optional.Absent => false
                   }
               }
-            Absent => false
+            v2.std.optional.Absent => false
           }
       }
   }
 }
 
-test fn body_lowering_match_first_arm_wires() -> Bool {
+test fn body_lowering_match_first_arm_wires() -> v2.std.logic.Bool {
   match body_lowering_parsed_tree(source: body_lowering_match_source) {
-    Absent => false
-    Present { value: tree } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } =>
       match body_lowering_find_match_expr(root: tree) {
-        Absent => false
-        Present { value: shell } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: shell } =>
           match v2.compiler.body_lowering_fold.body_lower_unwrap_captured(shell: shell) {
-            Present { value: captured } =>
+            v2.std.optional.Present { value: captured } =>
               match v2.extdeps.languages.dag.parse_subtree_find_production_captured(
                 root: captured,
                 emitted: ^dag_surface_match_arm
@@ -153,53 +153,53 @@ test fn body_lowering_match_first_arm_wires() -> Bool {
                 ParseSubtreeFound { captured: arm } =>
                   match v2.compiler.body_lowering_fold.body_lower_wire_match_arm_capture(arm_capture: arm) {
                     Accepted { value: _, diagnostics: _ } => true
-                    Rejected { diagnostics: _ } => false
+                    v2.std.diagnostic.Rejected { diagnostics: _ } => false
                   }
                 ParseSubtreeAbsent => false
               }
-            Absent => false
+            v2.std.optional.Absent => false
           }
       }
   }
 }
 
 // Synthetic empty Conj arm capture has no navigable match_arm production spine — body_lower_wire_match_arm_capture must refuse with ^body_lowering_reason_match_arm_navigation_refused (structural termination; no fuel budget).
-test fn body_lowering_match_unnavigable_arm_refuses() -> Bool {
+test fn body_lowering_match_unnavigable_arm_refuses() -> v2.std.logic.Bool {
   let unnavigable_arm = v2.std.node.node_synthetic(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: std.algebra.Empty
   )
   match v2.compiler.body_lowering_fold.body_lower_wire_match_arm_capture(arm_capture: unnavigable_arm) {
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       d.head.reason == ^body_lowering_reason_match_arm_navigation_refused
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-fn body_lowering_match_arms_found_witness() -> Bool {
+fn body_lowering_match_arms_found_witness() -> v2.std.logic.Bool {
   body_lowering_match_arms_found()
 }
 
-fn body_lowering_match_lowers_to_match_witness() -> Bool {
+fn body_lowering_match_lowers_to_match_witness() -> v2.std.logic.Bool {
   body_lowering_match_lowers_to_match()
 }
 
-fn body_lowering_normalize_accepts_match_module_witness() -> Bool {
+fn body_lowering_normalize_accepts_match_module_witness() -> v2.std.logic.Bool {
   body_lowering_normalize_accepts_match_module()
 }
 
-fn body_lowering_normalized_module_has_match_witness() -> Bool {
+fn body_lowering_normalized_module_has_match_witness() -> v2.std.logic.Bool {
   body_lowering_normalized_module_has_match()
 }
 
-fn body_lowering_match_swapped_arms_normalize_accepts_witness() -> Bool {
+fn body_lowering_match_swapped_arms_normalize_accepts_witness() -> v2.std.logic.Bool {
   body_lowering_match_swapped_arms_normalize_accepts()
 }
 
-fn body_lowering_match_first_arm_wires_witness() -> Bool {
+fn body_lowering_match_first_arm_wires_witness() -> v2.std.logic.Bool {
   body_lowering_match_first_arm_wires()
 }
 
-fn body_lowering_match_unnavigable_arm_refuses_witness() -> Bool {
+fn body_lowering_match_unnavigable_arm_refuses_witness() -> v2.std.logic.Bool {
   body_lowering_match_unnavigable_arm_refuses()
 }

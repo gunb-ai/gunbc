@@ -346,7 +346,7 @@ test fn fcr_receipt_decodes_through_the_strict_reader() -> Bool {
     rows: fcr_real_run_rows()
   )
   match floor_component_receipt_decode_with(text: doc, expected_schema: floor_component_receipt_schema as std.types.NonEmptyStr) {
-    ReceiptDecoded { document: d } => (d.subject.run_id as String) == (fcr_run_id as String)
+    gunbc.floor_component_receipt_document.ReceiptDecoded { document: d } => (d.subject.run_id as String) == (fcr_run_id as String)
     _ => false
   }
 }
@@ -360,7 +360,7 @@ test fn fcr_legacy_receipt_without_run_terminal_member_decodes() -> Bool {
     text: fcr_legacy_receipt_without_run_terminal,
     expected_schema: floor_component_receipt_schema as std.types.NonEmptyStr
   ) {
-    ReceiptDecoded { document: d } =>
+    gunbc.floor_component_receipt_document.ReceiptDecoded { document: d } =>
       (d.subject.run_id as String) == "30509024051"
         && !string_contains(s: fcr_legacy_receipt_without_run_terminal, pattern: "\"run_terminal\"")
     _ => false
@@ -387,7 +387,7 @@ test fn fcr_incomplete_checkpoint_receipt_decodes_through_the_strict_reader() ->
     pending_from_index: 2
   )
   match floor_component_receipt_decode_with(text: doc, expected_schema: floor_component_receipt_schema as std.types.NonEmptyStr) {
-    ReceiptDecoded { document: d } =>
+    gunbc.floor_component_receipt_document.ReceiptDecoded { document: d } =>
       (d.subject.run_id as String) == (fcr_run_id as String)
         && string_contains(s: doc, pattern: "\"disposition\": \"incomplete\"")
         && string_contains(s: doc, pattern: "\"outcome\": \"pending\"")
@@ -414,12 +414,12 @@ test fn fcr_incomplete_checkpoint_receipt_reencodes_through_document_encoder() -
     pending_from_index: 2
   )
   match floor_component_receipt_decode_with(text: doc, expected_schema: floor_component_receipt_schema as std.types.NonEmptyStr) {
-    ReceiptDecoded { document: d } =>
+    gunbc.floor_component_receipt_document.ReceiptDecoded { document: d } =>
       match floor_component_receipt_decode_with(
         text: floor_component_receipt_document_text(doc: d),
         expected_schema: floor_component_receipt_schema as std.types.NonEmptyStr
       ) {
-        ReceiptDecoded { document: roundtrip } =>
+        gunbc.floor_component_receipt_document.ReceiptDecoded { document: roundtrip } =>
           (roundtrip.subject.run_id as String) == (fcr_run_id as String)
             && string_contains(
                  s: floor_component_receipt_document_text(doc: roundtrip),

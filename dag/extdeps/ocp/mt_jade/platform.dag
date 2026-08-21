@@ -15,8 +15,8 @@ type MtJadeMotherboardMechanical {
   outline_width: std.measure.Micrometer
   outline_depth: std.measure.Micrometer
   cpu_socket_designation: std.types.NonEmptyStr
-  processor_socket_count: Int
-  ddr4_dimms_total: Int
+  processor_socket_count: std.integer.Int
+  ddr4_dimms_total: std.integer.Int
 }
 
 data mt_jade_motherboard_mechanical: MtJadeMotherboardMechanical = MtJadeMotherboardMechanical {
@@ -77,9 +77,9 @@ data processor_power_rail_enable_order: List<ProcessorPowerRail> = [
 ]
 
 // SOC_PWRGD must be asserted for more than thirty-two system clock cycles before the reset
-// release chain continues. The count is carried as an Int from the cited text rather than as a
+// release chain continues. The count is carried as an std.integer.Int from the cited text rather than as a
 // duration because the specification states a cycle count against the system clock, not a time.
-data soc_pwrgd_minimum_system_clock_cycles: Int = 32
+data soc_pwrgd_minimum_system_clock_cycles: std.integer.Int = 32
 
 // THE RESET AND FIRMWARE-HANDSHAKE CHAIN AFTER POWER GOOD. These are separate named steps
 // rather than one "booted" Bool because each step has a different owner and a different remedy

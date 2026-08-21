@@ -9,13 +9,13 @@ fn body_lowering_normalized_module() -> v2.std.optional.Optional<v2.compiler.nor
     file: ^body_lowering_add_probe_file,
     rules: lm.lex
   ) {
-    Rejected { diagnostics: _ } => v2.std.optional.Absent
+    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
     Accepted { value: ts, diagnostics: _ } =>
       match v2.compiler.parse.parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => v2.std.optional.Absent
+        v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
         Accepted { value: artifact, diagnostics: _ } =>
           match v2.compiler.normalize.normalize(parse_tree: artifact.tree) {
-            Rejected { diagnostics: _ } => v2.std.optional.Absent
+            v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
             Accepted { value: tree, diagnostics: _ } => v2.std.optional.Present { value: tree }
           }
       }
@@ -28,8 +28,8 @@ fn body_lower_find_arrow_in_module(root: v2.std.node.Node) -> v2.std.optional.Op
     _ =>
       fold(root.children, init: v2.std.optional.Absent, f: fn(acc, e) {
         match acc {
-          Present { value: _ } => acc
-          Absent => body_lower_find_arrow_in_module(root: e.target)
+          v2.std.optional.Present { value: _ } => acc
+          v2.std.optional.Absent => body_lower_find_arrow_in_module(root: e.target)
         }
       })
   }
@@ -37,22 +37,22 @@ fn body_lower_find_arrow_in_module(root: v2.std.node.Node) -> v2.std.optional.Op
 
 fn body_lower_find_fn_decl(root: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: root) {
-    Present { value: emitted } =>
+    v2.std.optional.Present { value: emitted } =>
       match emitted == ^dag_surface_fn_decl {
         true => v2.std.optional.Present { value: root }
         false =>
           fold(root.children, init: v2.std.optional.Absent, f: fn(acc, e) {
             match acc {
-              Present { value: _ } => acc
-              Absent => body_lower_find_fn_decl(root: e.target)
+              v2.std.optional.Present { value: _ } => acc
+              v2.std.optional.Absent => body_lower_find_fn_decl(root: e.target)
             }
           })
       }
-    Absent =>
+    v2.std.optional.Absent =>
       fold(root.children, init: v2.std.optional.Absent, f: fn(acc, e) {
         match acc {
-          Present { value: _ } => acc
-          Absent => body_lower_find_fn_decl(root: e.target)
+          v2.std.optional.Present { value: _ } => acc
+          v2.std.optional.Absent => body_lower_find_fn_decl(root: e.target)
         }
       })
   }
@@ -65,20 +65,20 @@ fn body_lowering_parsed_fn_decl() -> v2.std.optional.Optional<v2.std.node.Node> 
     file: ^body_lowering_add_probe_file,
     rules: lm.lex
   ) {
-    Rejected { diagnostics: _ } => v2.std.optional.Absent
+    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
     Accepted { value: ts, diagnostics: _ } =>
       match v2.compiler.parse.parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => v2.std.optional.Absent
+        v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
         Accepted { value: artifact, diagnostics: _ } =>
           body_lower_find_fn_decl(root: artifact.tree)
       }
   }
 }
 
-fn body_lower_has_arrow_token(root: v2.std.node.Node) -> Bool {
+fn body_lower_has_arrow_token(root: v2.std.node.Node) -> v2.std.logic.Bool {
   match node_atom_identity_optional(node: root) {
-    Present { value: id } => id == ^dag_token_arrow
-    Absent =>
+    v2.std.optional.Present { value: id } => id == ^dag_token_arrow
+    v2.std.optional.Absent =>
       fold(root.children, init: false, f: fn(acc, e) {
         if acc {
           true
@@ -89,220 +89,220 @@ fn body_lower_has_arrow_token(root: v2.std.node.Node) -> Bool {
   }
 }
 
-test fn body_lowering_fn_body_subtree_holds() -> Bool {
+test fn body_lowering_fn_body_subtree_holds() -> v2.std.logic.Bool {
   match body_lowering_parsed_fn_decl() {
-    Absent => false
-    Present { value: fn_decl } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: fn_decl } =>
       match v2.compiler.body_lowering_fold.body_lower_unwrap_captured(shell: fn_decl) {
-        Present { value: captured } =>
+        v2.std.optional.Present { value: captured } =>
           match v2.extdeps.languages.dag.parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_fn_body) {
             ParseSubtreeFound { captured: _ } => true
             ParseSubtreeAbsent => false
           }
-        Absent => false
+        v2.std.optional.Absent => false
       }
   }
 }
 
-test fn body_lowering_arrow_token_holds() -> Bool {
+test fn body_lowering_arrow_token_holds() -> v2.std.logic.Bool {
   match body_lowering_parsed_fn_decl() {
-    Absent => false
-    Present { value: fn_decl } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: fn_decl } =>
       match v2.compiler.body_lowering_fold.body_lower_unwrap_captured(shell: fn_decl) {
-        Present { value: captured } => body_lower_has_arrow_token(root: captured)
-        Absent => false
+        v2.std.optional.Present { value: captured } => body_lower_has_arrow_token(root: captured)
+        v2.std.optional.Absent => false
       }
   }
 }
 
 fn body_lower_collect_atoms(root: v2.std.node.Node, acc: std.types.List<v2.std.node.Symbol>) -> std.types.List<v2.std.node.Symbol> {
   let acc1 = match node_atom_identity_optional(node: root) {
-    Present { value: id } => std.algebra.Cons { head: id, tail: acc }
-    Absent => acc
+    v2.std.optional.Present { value: id } => std.algebra.Cons { head: id, tail: acc }
+    v2.std.optional.Absent => acc
   }
   fold(root.children, init: acc1, f: fn(a, e) {
     body_lower_collect_atoms(root: e.target, acc: a)
   })
 }
 
-test fn body_lowering_has_plus_token() -> Bool {
+test fn body_lowering_has_plus_token() -> v2.std.logic.Bool {
   match body_lowering_parsed_fn_decl() {
-    Absent => false
-    Present { value: fn_decl } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: fn_decl } =>
       match v2.compiler.body_lowering_fold.body_lower_unwrap_captured(shell: fn_decl) {
-        Present { value: captured } =>
+        v2.std.optional.Present { value: captured } =>
           fold(
             body_lower_collect_atoms(root: captured, acc: std.algebra.Empty),
             init: false,
             f: fn(acc, sym) { acc || sym == ^dag_token_plus }
           )
-        Absent => false
+        v2.std.optional.Absent => false
       }
   }
 }
 
-test fn body_lowering_binary_infix_holds() -> Bool {
+test fn body_lowering_binary_infix_holds() -> v2.std.logic.Bool {
   match body_lowering_parsed_fn_decl() {
-    Absent => false
-    Present { value: fn_decl } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: fn_decl } =>
       match v2.compiler.body_lowering_fold.body_lower_unwrap_captured(shell: fn_decl) {
-        Present { value: captured } =>
+        v2.std.optional.Present { value: captured } =>
           match v2.extdeps.languages.dag.parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_binary_expr) {
             ParseSubtreeFound { captured: binary } =>
               match v2.compiler.body_lowering_fold.body_lower_try_infix_transform(node: binary) {
-                Present { value: _ } => true
-                Absent => false
+                v2.std.optional.Present { value: _ } => true
+                v2.std.optional.Absent => false
               }
             ParseSubtreeAbsent => false
           }
-        Absent => false
+        v2.std.optional.Absent => false
       }
   }
 }
 
-test fn body_lowering_expr_infix_holds() -> Bool {
+test fn body_lowering_expr_infix_holds() -> v2.std.logic.Bool {
   match body_lowering_parsed_fn_decl() {
-    Absent => false
-    Present { value: fn_decl } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: fn_decl } =>
       match v2.compiler.body_lowering_fold.body_lower_unwrap_captured(shell: fn_decl) {
-        Present { value: captured } =>
+        v2.std.optional.Present { value: captured } =>
           match v2.extdeps.languages.dag.parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_expr) {
             ParseSubtreeFound { captured: expr } =>
               match v2.compiler.body_lowering_fold.body_lower_try_infix_transform(node: expr) {
-                Present { value: _ } => true
-                Absent => false
+                v2.std.optional.Present { value: _ } => true
+                v2.std.optional.Absent => false
               }
             ParseSubtreeAbsent => false
           }
-        Absent => false
+        v2.std.optional.Absent => false
       }
   }
 }
 
-test fn body_lowering_fn_body_infix_holds() -> Bool {
+test fn body_lowering_fn_body_infix_holds() -> v2.std.logic.Bool {
   match body_lowering_parsed_fn_decl() {
-    Absent => false
-    Present { value: fn_decl } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: fn_decl } =>
       match v2.compiler.body_lowering_fold.body_lower_unwrap_captured(shell: fn_decl) {
-        Present { value: captured } =>
+        v2.std.optional.Present { value: captured } =>
           match v2.extdeps.languages.dag.parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_fn_body) {
             ParseSubtreeFound { captured: body } =>
               match v2.compiler.body_lowering_fold.body_lower_try_infix_transform(node: body) {
-                Present { value: _ } => true
-                Absent => false
+                v2.std.optional.Present { value: _ } => true
+                v2.std.optional.Absent => false
               }
             ParseSubtreeAbsent => false
           }
-        Absent => false
+        v2.std.optional.Absent => false
       }
   }
 }
 
-test fn body_lowering_fn_decl_found() -> Bool {
+test fn body_lowering_fn_decl_found() -> v2.std.logic.Bool {
   match body_lowering_parsed_fn_decl() {
-    Present { value: _ } => true
-    Absent => false
+    v2.std.optional.Present { value: _ } => true
+    v2.std.optional.Absent => false
   }
 }
 
-test fn body_lowering_domain_holds() -> Bool {
+test fn body_lowering_domain_holds() -> v2.std.logic.Bool {
   match body_lowering_parsed_fn_decl() {
-    Absent => false
-    Present { value: fn_decl } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: fn_decl } =>
       match v2.compiler.body_lowering_fold.body_lower_unwrap_captured(shell: fn_decl) {
-        Present { value: captured } =>
+        v2.std.optional.Present { value: captured } =>
           match v2.extdeps.languages.dag.parse_subtree_find_production_captured(root: captured, emitted: ^dag_surface_param_list) {
             ParseSubtreeFound { captured: param_list } =>
               match v2.compiler.body_lowering_fold.body_lower_domain_from_param_list(param_list: param_list) {
-                Present { value: _ } => true
-                Absent => false
+                v2.std.optional.Present { value: _ } => true
+                v2.std.optional.Absent => false
               }
             ParseSubtreeAbsent => false
           }
-        Absent => false
+        v2.std.optional.Absent => false
       }
   }
 }
 
-test fn body_lowering_body_holds() -> Bool {
+test fn body_lowering_body_holds() -> v2.std.logic.Bool {
   match body_lowering_parsed_fn_decl() {
-    Absent => false
-    Present { value: fn_decl } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: fn_decl } =>
       match v2.compiler.body_lowering_fold.body_lower_unwrap_captured(shell: fn_decl) {
-        Present { value: captured } =>
+        v2.std.optional.Present { value: captured } =>
           match v2.compiler.body_lowering_fold.body_lower_body_from_fn_captured(captured: captured) {
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
             Accepted { value: body_opt, diagnostics: _ } =>
               match body_opt {
-                Present { value: _ } => true
-                Absent => false
+                v2.std.optional.Present { value: _ } => true
+                v2.std.optional.Absent => false
               }
           }
-        Absent => false
+        v2.std.optional.Absent => false
       }
   }
 }
 
-test fn body_lowering_return_holds() -> Bool {
+test fn body_lowering_return_holds() -> v2.std.logic.Bool {
   match body_lowering_parsed_fn_decl() {
-    Absent => false
-    Present { value: fn_decl } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: fn_decl } =>
       match v2.compiler.body_lowering_fold.body_lower_unwrap_captured(shell: fn_decl) {
-        Present { value: captured } =>
+        v2.std.optional.Present { value: captured } =>
           match v2.compiler.body_lowering_fold.body_lower_return_type_from_fn_captured(captured: captured) {
-            Present { value: _ } => true
-            Absent => false
+            v2.std.optional.Present { value: _ } => true
+            v2.std.optional.Absent => false
           }
-        Absent => false
+        v2.std.optional.Absent => false
       }
   }
 }
 
-test fn body_lowering_arrow_direct_well_formed() -> Bool {
+test fn body_lowering_arrow_direct_well_formed() -> v2.std.logic.Bool {
   match body_lowering_parsed_fn_decl() {
-    Absent => false
-    Present { value: fn_decl } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: fn_decl } =>
       match v2.compiler.body_lowering_fold.body_lower_fn_decl_to_arrow(shell: fn_decl) {
         Accepted { value: arrow, diagnostics: _ } => v2.std.node.well_formed(n: arrow)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
   }
 }
 
-test fn body_lowering_module_well_formed() -> Bool {
+test fn body_lowering_module_well_formed() -> v2.std.logic.Bool {
   match body_lowering_normalized_module() {
-    Absent => false
-    Present { value: tree } => v2.std.node.well_formed(n: tree.root)
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } => v2.std.node.well_formed(n: tree.root)
   }
 }
 
-test fn body_lowering_normalized_resolves() -> Bool {
+test fn body_lowering_normalized_resolves() -> v2.std.logic.Bool {
   match body_lowering_normalized_module() {
-    Absent => false
-    Present { value: tree } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } =>
       match v2.compiler.resolve.resolve(tree: tree, lm: v2.extdeps.languages.dag.dag_language_model()) {
         Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
   }
 }
 
-test fn body_lowering_normalize_accepts() -> Bool {
+test fn body_lowering_normalize_accepts() -> v2.std.logic.Bool {
   match body_lowering_normalized_module() {
-    Present { value: _ } => true
-    Absent => false
+    v2.std.optional.Present { value: _ } => true
+    v2.std.optional.Absent => false
   }
 }
 
-fn body_lowering_tree_contains_atom(root: v2.std.node.Node, wanted: v2.std.node.Symbol) -> Bool {
+fn body_lowering_tree_contains_atom(root: v2.std.node.Node, wanted: v2.std.node.Symbol) -> v2.std.logic.Bool {
   match node_atom_identity_optional(node: root) {
-    Present { value: id } =>
+    v2.std.optional.Present { value: id } =>
       if id == wanted {
         true
       } else {
         false
       }
-    Absent =>
+    v2.std.optional.Absent =>
       fold(root.children, init: false, f: fn(found, e) {
         if found {
           true
@@ -313,14 +313,14 @@ fn body_lowering_tree_contains_atom(root: v2.std.node.Node, wanted: v2.std.node.
   }
 }
 
-test fn body_lowering_fixture_resolves() -> Bool {
+test fn body_lowering_fixture_resolves() -> v2.std.logic.Bool {
   let lm = v2.extdeps.languages.dag.dag_language_model()
   match v2.compiler.normalized_tree.admit_normalized_tree(root: v2.extdeps.languages.dag.dag_add_arrow_with_body_fixture, diagnostics: v2.std.diagnostic.None) {
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: admitted, diagnostics: _ } =>
       match v2.compiler.resolve.resolve(tree: admitted, lm: lm) {
         Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
   }
 }
@@ -334,11 +334,11 @@ fn body_lowering_transform_operand_identities(arrow: v2.std.node.Node) -> std.ty
             match e.label {
               Positional =>
                 match v2.std.collection.list_at_optional(xs: acc, index: 0) {
-                  Present { value: _ } => acc
-                  Absent =>
+                  v2.std.optional.Present { value: _ } => acc
+                  v2.std.optional.Absent =>
                     match node_atom_identity_optional(node: e.target) {
-                      Present { value: id } => [id]
-                      Absent => acc
+                      v2.std.optional.Present { value: id } => [id]
+                      v2.std.optional.Absent => acc
                     }
                 }
               _ => acc
@@ -346,36 +346,36 @@ fn body_lowering_transform_operand_identities(arrow: v2.std.node.Node) -> std.ty
           })
         _ => std.algebra.Empty
       }
-    Rejected { diagnostics: _ } => std.algebra.Empty
+    v2.std.diagnostic.Rejected { diagnostics: _ } => std.algebra.Empty
   }
 }
 
-test fn body_lowering_normalized_operator_is_plus() -> Bool {
+test fn body_lowering_normalized_operator_is_plus() -> v2.std.logic.Bool {
   match body_lowering_normalized_module() {
-    Absent => false
-    Present { value: tree } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } =>
       match body_lower_find_arrow_in_module(root: tree.root) {
-        Absent => false
-        Present { value: arrow } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: arrow } =>
           match v2.std.node_query.find_arrow_body_child(root: arrow) {
             Accepted { value: body, diagnostics: _ } =>
               match body.kind {
                 ComputationNode { behavior: v2.std.node.Transform } =>
                   if count(body.children) >= 1 {
                     match first(body.children) {
-                      Present { value: e0 } =>
+                      v2.std.optional.Present { value: e0 } =>
                         match node_atom_identity_optional(node: e0.target) {
-                          Present { value: id } => id == ^dag_token_plus
-                          Absent => false
+                          v2.std.optional.Present { value: id } => id == ^dag_token_plus
+                          v2.std.optional.Absent => false
                         }
-                      Absent => false
+                      v2.std.optional.Absent => false
                     }
                   } else {
                     false
                   }
                 _ => false
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
       }
   }
@@ -385,75 +385,75 @@ fn body_lower_arrow_operand_identity(arrow: v2.std.node.Node, index: Int) -> v2.
   match v2.std.node_query.find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
       match v2.std.collection.list_at_optional(xs: body.children, index: index) {
-        Present { value: e } => node_atom_identity_optional(node: e.target)
-        Absent => v2.std.optional.Absent
+        v2.std.optional.Present { value: e } => node_atom_identity_optional(node: e.target)
+        v2.std.optional.Absent => v2.std.optional.Absent
       }
-    Rejected { diagnostics: _ } => v2.std.optional.Absent
+    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
   }
 }
 
 fn body_lowering_domain_named_count(arrow: v2.std.node.Node) -> Int {
   if count(arrow.children) >= 1 {
     match first(arrow.children) {
-      Present { value: e0 } =>
+      v2.std.optional.Present { value: e0 } =>
         fold(e0.target.children, init: 0, f: fn(n, e) {
           match e.label {
             Named { name: _ } => n + 1
             _ => n
           }
         })
-      Absent => 0
+      v2.std.optional.Absent => 0
     }
   } else {
     0
   }
 }
 
-test fn body_lowering_normalized_domain_has_two_params() -> Bool {
+test fn body_lowering_normalized_domain_has_two_params() -> v2.std.logic.Bool {
   match body_lowering_normalized_module() {
-    Absent => false
-    Present { value: tree } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } =>
       match body_lower_find_arrow_in_module(root: tree.root) {
-        Absent => false
-        Present { value: arrow } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: arrow } =>
           body_lowering_domain_named_count(arrow: arrow) == 2
       }
   }
 }
 
-test fn body_lowering_normalized_operand2_lexeme_is_y() -> Bool {
+test fn body_lowering_normalized_operand2_lexeme_is_y() -> v2.std.logic.Bool {
   match body_lowering_normalized_module() {
-    Absent => false
-    Present { value: tree } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } =>
       match body_lower_find_arrow_in_module(root: tree.root) {
-        Absent => false
-        Present { value: arrow } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: arrow } =>
           match body_lower_arrow_operand_identity(arrow: arrow, index: 2) {
-            Present { value: id } => v2.std.compilers.lexing.symbol_lexeme(sym: id) == "y"
-            Absent => false
+            v2.std.optional.Present { value: id } => v2.std.compilers.lexing.symbol_lexeme(sym: id) == "y"
+            v2.std.optional.Absent => false
           }
       }
   }
 }
 
-fn body_lowering_normalized_operands_swapped() -> Bool {
+fn body_lowering_normalized_operands_swapped() -> v2.std.logic.Bool {
   match body_lowering_normalized_module() {
-    Absent => false
-    Present { value: tree } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } =>
       match body_lower_find_arrow_in_module(root: tree.root) {
-        Absent => false
-        Present { value: arrow } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: arrow } =>
           match body_lower_arrow_operand_identity(arrow: arrow, index: 1) {
-            Present { value: left } =>
+            v2.std.optional.Present { value: left } =>
               match body_lower_arrow_operand_identity(arrow: arrow, index: 2) {
-                Present { value: right } =>
+                v2.std.optional.Present { value: right } =>
                   if count(arrow.children) >= 1 {
                     match first(arrow.children) {
-                      Present { value: e0 } =>
+                      v2.std.optional.Present { value: e0 } =>
                         match v2.std.collection.list_at_optional(xs: e0.target.children, index: 0) {
-                          Present { value: de0 } =>
+                          v2.std.optional.Present { value: de0 } =>
                             match v2.std.collection.list_at_optional(xs: e0.target.children, index: 1) {
-                              Present { value: de1 } =>
+                              v2.std.optional.Present { value: de1 } =>
                                 match de0.label {
                                   Named { name: bind0 } =>
                                     match de1.label {
@@ -463,18 +463,18 @@ fn body_lowering_normalized_operands_swapped() -> Bool {
                                     }
                                   _ => false
                                 }
-                              Absent => false
+                              v2.std.optional.Absent => false
                             }
-                          Absent => false
+                          v2.std.optional.Absent => false
                         }
-                      Absent => false
+                      v2.std.optional.Absent => false
                     }
                   } else {
                     false
                   }
-                Absent => false
+                v2.std.optional.Absent => false
               }
-            Absent => false
+            v2.std.optional.Absent => false
           }
       }
   }
@@ -483,45 +483,45 @@ fn body_lowering_normalized_operands_swapped() -> Bool {
 fn body_lowering_transform_child_count(arrow: v2.std.node.Node) -> Int {
   match v2.std.node_query.find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } => count(body.children)
-    Rejected { diagnostics: _ } => 0
+    v2.std.diagnostic.Rejected { diagnostics: _ } => 0
   }
 }
 
-test fn body_lowering_normalized_transform_has_three_children() -> Bool {
+test fn body_lowering_normalized_transform_has_three_children() -> v2.std.logic.Bool {
   match body_lowering_normalized_module() {
-    Absent => false
-    Present { value: tree } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } =>
       match body_lower_find_arrow_in_module(root: tree.root) {
-        Absent => false
-        Present { value: arrow } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: arrow } =>
           body_lowering_transform_child_count(arrow: arrow) == 3
       }
   }
 }
 
-test fn body_lowering_domain_operand2_match() -> Bool {
+test fn body_lowering_domain_operand2_match() -> v2.std.logic.Bool {
   match body_lowering_normalized_module() {
-    Absent => false
-    Present { value: tree } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } =>
       match body_lower_find_arrow_in_module(root: tree.root) {
-        Absent => false
-        Present { value: arrow } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: arrow } =>
           if count(arrow.children) >= 1 {
             match first(arrow.children) {
-              Present { value: e0 } =>
+              v2.std.optional.Present { value: e0 } =>
                 match v2.std.collection.list_at_optional(xs: e0.target.children, index: 1) {
-                  Present { value: de1 } =>
+                  v2.std.optional.Present { value: de1 } =>
                     match de1.label {
                       Named { name: domain_binding } =>
                         match body_lower_arrow_operand_identity(arrow: arrow, index: 2) {
-                          Present { value: operand } => domain_binding == operand
-                          Absent => false
+                          v2.std.optional.Present { value: operand } => domain_binding == operand
+                          v2.std.optional.Absent => false
                         }
                       _ => false
                     }
-                  Absent => false
+                  v2.std.optional.Absent => false
                 }
-              Absent => false
+              v2.std.optional.Absent => false
             }
           } else {
             false
@@ -533,177 +533,177 @@ test fn body_lowering_domain_operand2_match() -> Bool {
 fn body_lower_arrow_domain_first_binding(arrow: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   if count(arrow.children) >= 1 {
     match first(arrow.children) {
-      Present { value: e0 } =>
+      v2.std.optional.Present { value: e0 } =>
         fold(e0.target.children, init: optional_absent(), f: fn(found, e) {
           match found {
-            Present { value: _ } => found
-            Absent =>
+            v2.std.optional.Present { value: _ } => found
+            v2.std.optional.Absent =>
               match e.label {
                 Named { name: sym } => v2.std.optional.Present { value: sym }
                 _ => optional_absent()
               }
           }
         })
-      Absent => v2.std.optional.Absent
+      v2.std.optional.Absent => v2.std.optional.Absent
     }
   } else {
     v2.std.optional.Absent
   }
 }
 
-test fn body_lowering_domain_operand1_match() -> Bool {
+test fn body_lowering_domain_operand1_match() -> v2.std.logic.Bool {
   match body_lowering_normalized_module() {
-    Absent => false
-    Present { value: tree } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } =>
       match body_lower_find_arrow_in_module(root: tree.root) {
-        Absent => false
-        Present { value: arrow } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: arrow } =>
           match body_lower_arrow_domain_first_binding(arrow: arrow) {
-            Present { value: domain_binding } =>
+            v2.std.optional.Present { value: domain_binding } =>
               match body_lower_arrow_operand_identity(arrow: arrow, index: 1) {
-                Present { value: operand } => domain_binding == operand
-                Absent => false
+                v2.std.optional.Present { value: operand } => domain_binding == operand
+                v2.std.optional.Absent => false
               }
-            Absent => false
+            v2.std.optional.Absent => false
           }
       }
   }
 }
 
-fn body_lowering_parsed_has_param_bindings() -> Bool {
+fn body_lowering_parsed_has_param_bindings() -> v2.std.logic.Bool {
   match body_lowering_parsed_fn_decl() {
-    Absent => false
-    Present { value: fn_decl } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: fn_decl } =>
       body_lowering_tree_contains_atom(root: fn_decl, wanted: ^dag_binding_param_x)
         && body_lowering_tree_contains_atom(root: fn_decl, wanted: ^dag_binding_param_y)
   }
 }
 
-test fn body_lowering_normalized_operand1_lexeme_is_x() -> Bool {
+test fn body_lowering_normalized_operand1_lexeme_is_x() -> v2.std.logic.Bool {
   match body_lowering_normalized_module() {
-    Absent => false
-    Present { value: tree } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } =>
       match body_lower_find_arrow_in_module(root: tree.root) {
-        Absent => false
-        Present { value: arrow } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: arrow } =>
           match body_lower_arrow_operand_identity(arrow: arrow, index: 1) {
-            Present { value: id } => v2.std.compilers.lexing.symbol_lexeme(sym: id) == "x"
-            Absent => false
+            v2.std.optional.Present { value: id } => v2.std.compilers.lexing.symbol_lexeme(sym: id) == "x"
+            v2.std.optional.Absent => false
           }
       }
   }
 }
 
-fn body_lowering_operand_equals(arrow: v2.std.node.Node, index: Int, wanted: v2.std.node.Symbol) -> Bool {
+fn body_lowering_operand_equals(arrow: v2.std.node.Node, index: Int, wanted: v2.std.node.Symbol) -> v2.std.logic.Bool {
   match body_lower_arrow_operand_identity(arrow: arrow, index: index) {
-    Present { value: id } => id == wanted
-    Absent => false
+    v2.std.optional.Present { value: id } => id == wanted
+    v2.std.optional.Absent => false
   }
 }
 
-fn body_lowering_normalized_left_is_param_x() -> Bool {
+fn body_lowering_normalized_left_is_param_x() -> v2.std.logic.Bool {
   match body_lowering_normalized_module() {
-    Absent => false
-    Present { value: tree } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } =>
       match body_lower_find_arrow_in_module(root: tree.root) {
-        Absent => false
-        Present { value: arrow } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: arrow } =>
           body_lowering_operand_equals(arrow: arrow, index: 1, wanted: ^dag_binding_param_x)
       }
   }
 }
 
-fn body_lowering_normalized_right_is_param_y() -> Bool {
+fn body_lowering_normalized_right_is_param_y() -> v2.std.logic.Bool {
   match body_lowering_normalized_module() {
-    Absent => false
-    Present { value: tree } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } =>
       match body_lower_find_arrow_in_module(root: tree.root) {
-        Absent => false
-        Present { value: arrow } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: arrow } =>
           body_lowering_operand_equals(arrow: arrow, index: 2, wanted: ^dag_binding_param_y)
       }
   }
 }
 
-fn body_lowering_normalized_matches_fixture_operands() -> Bool {
+fn body_lowering_normalized_matches_fixture_operands() -> v2.std.logic.Bool {
   match body_lowering_normalized_module() {
-    Absent => false
-    Present { value: tree } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } =>
       match body_lower_find_arrow_in_module(root: tree.root) {
-        Absent => false
-        Present { value: normalized_arrow } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: normalized_arrow } =>
           match body_lower_arrow_operand_identity(arrow: normalized_arrow, index: 1) {
-            Present { value: norm_left } =>
+            v2.std.optional.Present { value: norm_left } =>
               match body_lower_arrow_operand_identity(arrow: normalized_arrow, index: 2) {
-                Present { value: norm_right } =>
+                v2.std.optional.Present { value: norm_right } =>
                   match body_lower_arrow_operand_identity(arrow: v2.extdeps.languages.dag.dag_add_arrow_with_body_fixture, index: 1) {
-                    Present { value: fix_left } =>
+                    v2.std.optional.Present { value: fix_left } =>
                       match body_lower_arrow_operand_identity(arrow: v2.extdeps.languages.dag.dag_add_arrow_with_body_fixture, index: 2) {
-                        Present { value: fix_right } =>
+                        v2.std.optional.Present { value: fix_right } =>
                           (norm_left == fix_left) && (norm_right == fix_right)
-                        Absent => false
+                        v2.std.optional.Absent => false
                       }
-                    Absent => false
+                    v2.std.optional.Absent => false
                   }
-                Absent => false
+                v2.std.optional.Absent => false
               }
-            Absent => false
+            v2.std.optional.Absent => false
           }
       }
   }
 }
 
-test fn body_lowering_normalized_left_operand_is_atom() -> Bool {
+test fn body_lowering_normalized_left_operand_is_atom() -> v2.std.logic.Bool {
   match body_lowering_normalized_module() {
-    Absent => false
-    Present { value: tree } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } =>
       match body_lower_find_arrow_in_module(root: tree.root) {
-        Absent => false
-        Present { value: arrow } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: arrow } =>
           match body_lower_arrow_operand_identity(arrow: arrow, index: 1) {
-            Present { value: _ } => true
-            Absent => false
+            v2.std.optional.Present { value: _ } => true
+            v2.std.optional.Absent => false
           }
       }
   }
 }
 
-fn body_lowering_left_operand_is_param_x() -> Bool {
+fn body_lowering_left_operand_is_param_x() -> v2.std.logic.Bool {
   match body_lowering_normalized_module() {
-    Absent => false
-    Present { value: tree } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } =>
       body_lowering_tree_contains_atom(root: tree.root, wanted: ^dag_binding_param_x)
         && body_lowering_tree_contains_atom(root: tree.root, wanted: ^dag_binding_param_y)
   }
 }
 
-test fn body_lowering_normalized_arrow_root_resolves() -> Bool {
+test fn body_lowering_normalized_arrow_root_resolves() -> v2.std.logic.Bool {
   let lm = v2.extdeps.languages.dag.dag_language_model()
   match body_lowering_normalized_module() {
-    Absent => false
-    Present { value: tree } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } =>
       match body_lower_find_arrow_in_module(root: tree.root) {
-        Absent => false
-        Present { value: arrow } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: arrow } =>
           match v2.compiler.normalized_tree.admit_normalized_tree(root: arrow, diagnostics: v2.std.diagnostic.None) {
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
             Accepted { value: admitted_arrow, diagnostics: _ } =>
               match v2.compiler.resolve.resolve(tree: admitted_arrow, lm: lm) {
                 Accepted { value: _, diagnostics: _ } => true
-                Rejected { diagnostics: _ } => false
+                v2.std.diagnostic.Rejected { diagnostics: _ } => false
               }
           }
       }
   }
 }
 
-test fn body_lowering_normalize_yields_arrow() -> Bool {
+test fn body_lowering_normalize_yields_arrow() -> v2.std.logic.Bool {
   match body_lowering_normalized_module() {
-    Absent => false
-    Present { value: tree } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: tree } =>
       match body_lower_find_arrow_in_module(root: tree.root) {
-        Absent => false
-        Present { value: arrow } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: arrow } =>
           v2.std.node.well_formed(n: arrow)
             && match v2.std.node_query.find_arrow_body_child(root: arrow) {
               Accepted { value: body, diagnostics: _ } =>
@@ -711,7 +711,7 @@ test fn body_lowering_normalize_yields_arrow() -> Bool {
                   ComputationNode { behavior: v2.std.node.Transform } => true
                   _ => false
                 }
-              Rejected { diagnostics: _ } => false
+              v2.std.diagnostic.Rejected { diagnostics: _ } => false
             }
       }
   }

@@ -105,7 +105,7 @@ fn without_filter_high_terminal(nets: List<product.electrical.connectivity.Elect
   })
 }
 
-fn terminal_member_count(nets: List<product.electrical.connectivity.ElectricalNet>) -> Int {
+fn terminal_member_count(nets: List<product.electrical.connectivity.ElectricalNet>) -> std.integer.Int {
   fold(nets, init: 0, f: fn(acc, net) {
     fold(net.members, init: acc, f: fn(macc, _m) { macc + 1 })
   })

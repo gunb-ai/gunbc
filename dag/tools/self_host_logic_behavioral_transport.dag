@@ -27,7 +27,7 @@ data slb_receipt_fail_marker: String = "SELF_HOST_LOGIC_BEHAVIORAL_RECEIPT: FAIL
 // the driver was measured walking 10 — a count sitting beside a description, joined to
 // nothing, which is the same defect the join exists to close. It was caught by compiling
 // the driver and reading its own reported count, not by re-reading either.
-data slb_corpus_cases: Int = 10
+data slb_corpus_cases: std.integer.Int = 10
 
 data slb_corpus_identity: String = "std-logic-classical-truth-table"
 
@@ -187,7 +187,7 @@ fn slb_behavioral_receipt_holds() -> Bool {
   match o.build {
     Observed { value: b } =>
       match b {
-        BuildGreen =>
+        v2.compiler.self_host.promotion_admission.BuildGreen =>
           match o.equivalence {
             Observed { value: e } =>
               match e {
@@ -204,7 +204,7 @@ fn slb_behavioral_receipt_holds() -> Bool {
               }
             ObservationUnavailable { cause: _ } => false
           }
-        BuildFailed { cause: _ } => false
+        v2.compiler.self_host.promotion_admission.BuildFailed { cause: _ } => false
       }
     ObservationUnavailable { cause: _ } => false
   }

@@ -96,7 +96,7 @@ test fn w_spark_serving_noop_when_converged() -> Bool {
       gunbc.spark_serving_membership.spark_serving_membership_noop(plan: plan)
         && match gunbc.spark_serving_membership.spark_serving_membership_effects(plan: plan) {
           gunbc.membership_reconcile.EffectsReady { effects: es } => count(es) == 0
-          ApplyRefused { refusals: _ } => false
+          gunbc.membership_reconcile.ApplyRefused { refusals: _ } => false
         }
     gunbc.spark.serving_desired.SparkServingDesiredRefused { cause: _ } => false
   }
@@ -108,7 +108,7 @@ test fn w_spark_serving_noop_when_converged_synthetic_fixture() -> Bool {
   gunbc.spark_serving_membership.spark_serving_membership_noop(plan: plan)
     && match gunbc.spark_serving_membership.spark_serving_membership_effects(plan: plan) {
       gunbc.membership_reconcile.EffectsReady { effects: es } => count(es) == 0
-      ApplyRefused { refusals: _ } => false
+      gunbc.membership_reconcile.ApplyRefused { refusals: _ } => false
     }
 }
 
@@ -249,7 +249,7 @@ test fn w_spark_serving_change_projects_effect_replace() -> Bool {
                gunbc.membership_reconcile.EffectAdd { to: _ } => false
                gunbc.membership_reconcile.EffectRemove { from: _ } => false
              })
-    ApplyRefused { refusals: _ } => false
+    gunbc.membership_reconcile.ApplyRefused { refusals: _ } => false
   }
 }
 

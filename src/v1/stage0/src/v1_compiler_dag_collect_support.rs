@@ -2,20 +2,22 @@
 // Source module: v1.compiler.dag_collect_support
 
 pub use crate::std_syntax::LiteralValue;
-use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
-pub use crate::std_types::SourceSpan;
-pub use crate::v1_compiler_emit_core_support::escape_json_string;
+use crate::std_syntax::LiteralValue::*;
+pub use crate::std_types::{List, Map};
+pub use crate::v1_compiler_emit_core_support::{escape_json_string, to_string};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::make_error_node;
-use crate::v1_std_core::CompilerDiagnostic::InternalError;
-use crate::v1_std_core::Connective::{Arrow, NoConnective};
+use crate::v1_std_core::CompilerDiagnostic::*;
 use crate::v1_std_core::ExprData::*;
-use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcard};
-pub use crate::v1_std_core::{
-    CompilerDiagnostic, Connective, ErrorNode, ExprData, InferredNode, MatchPattern, Node,
-};
+use crate::v1_std_core::InferredNode::*;
+use crate::v1_std_core::MatchPattern::*;
+pub use crate::v1_std_core::{CompilerDiagnostic, ErrorNode, ExprData, InferredNode, MatchPattern};
+pub use crate::v2_lens_application::SourceSpan;
+pub use crate::v2_std_collection::empty_map;
+use crate::v2_std_node::Connective::*;
+pub use crate::v2_std_node::{Connective, Node};
+pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -77,7 +79,10 @@ pub fn dag_collect_pack_slots(
 
 pub fn json_quote(s: String) -> String {
     v1_rt::concat(
-        v1_rt::concat("\"".to_string(), escape_json_string(s.clone())),
+        v1_rt::concat(
+            "\"".to_string(),
+            crate::v1_compiler_emit_core_support::escape_json_string(s.clone()),
+        ),
         "\"".to_string(),
     )
 }
@@ -127,8 +132,8 @@ pub fn expr_data_variant(data: Rc<ExprData>) -> String {
     }
 }
 
-pub fn connective_name(value: Connective) -> String {
-    match value.clone() {
+pub fn connective_name(value: Rc<Connective>) -> String {
+    match (*value.clone()).clone() {
         Connective::Conj => "Conj".to_string(),
         Connective::Disj => "Disj".to_string(),
         Connective::NoConnective => "NoConnective".to_string(),
@@ -161,8 +166,8 @@ pub fn dag_node_seq_hash(digests: Rc<Vec<String>>) -> String {
     )
 }
 
-pub fn child_subtree_hash(connective: Connective, digests: Rc<Vec<String>>) -> String {
-    match connective.clone() {
+pub fn child_subtree_hash(connective: Rc<Connective>, digests: Rc<Vec<String>>) -> String {
+    match (*connective.clone()).clone() {
         Connective::Conj => dag_node_bag_hash(digests.clone()),
         Connective::Disj => dag_node_bag_hash(digests.clone()),
         Connective::Arrow => dag_node_seq_hash(digests.clone()),
@@ -229,7 +234,7 @@ pub fn match_pattern_fingerprint_rec(pattern: Option<Rc<MatchPattern>>) -> Strin
         }) => {
             let base = v1_rt::atom_identity_hash(v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat("VariantPattern:".to_string(), n.clone()),
+                    v1_rt::concat("v1.std.core.VariantPattern:".to_string(), n.clone()),
                     "|".to_string(),
                 ),
                 match pe.clone() {

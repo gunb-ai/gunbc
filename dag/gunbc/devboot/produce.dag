@@ -447,12 +447,12 @@ fn stored_record_text(store_root: String, repo_root: String, token: String) -> S
 // THE RENDERING'S INJECTIVITY IS WHAT THIS RESTS ON, and it is a real obligation rather than an assumption -- render_build_subject delimits every axis and every list element, so no two distinct subjects render alike. Its discriminating control lives with the identity witnesses.
 fn stored_subject_match(record_text: String, subject: gunbc.devboot.subject.BuildSubject) -> gunbc.devboot.outcome.SubjectMatch {
   if record_text == "" {
-    SubjectDiffers
+    gunbc.devboot.outcome.SubjectDiffers
   } else {
     if trim(s: record_text) == trim(s: render_build_subject(subject: subject)) {
-      SubjectMatches
+      gunbc.devboot.outcome.SubjectMatches
     } else {
-      SubjectDiffers
+      gunbc.devboot.outcome.SubjectDiffers
     }
   }
 }
@@ -1191,7 +1191,7 @@ fn devboot_materialize_entry(
     if !string_contains(s: report, pattern: " executed_exit=0") {
       exit_failure(reason: join(["the materialized binary did not execute successfully: ", report], ""))
     } else {
-      ExitSuccess
+      std.process.ExitSuccess
     }
   }
   }
@@ -1235,8 +1235,8 @@ fn render_produce_report(report: ProduceReport, caller: String) -> String {
 
 fn produce_report_exit(report: ProduceReport) -> std.process.ProcessExit {
   match report {
-    ProduceProduced { token, artifact } => ExitSuccess
-    ProduceReused { token, artifact } => ExitSuccess
+    ProduceProduced { token, artifact } => std.process.ExitSuccess
+    ProduceReused { token, artifact } => std.process.ExitSuccess
     ProduceRefused { reason } => exit_failure(reason: reason)
   }
 }

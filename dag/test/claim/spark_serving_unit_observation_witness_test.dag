@@ -117,9 +117,9 @@ test fn the_unit_read_probe_reads_the_modeled_unit_path() -> Bool {
 // last one the trim would eat.
 test fn the_unit_read_probe_does_not_ask_for_raw_bytes() -> Bool {
   let argv = spark_serving_user_unit_read_argv()
-  !string_list_contains(xs: argv, wanted: "cat")
-    && string_list_contains(xs: argv, wanted: "-w")
-    && string_list_contains(xs: argv, wanted: "0")
+  !std.materialization_ladder.string_list_contains(xs: argv, wanted: "cat")
+    && std.materialization_ladder.string_list_contains(xs: argv, wanted: "-w")
+    && std.materialization_ladder.string_list_contains(xs: argv, wanted: "0")
 }
 
 // `is-enabled` is the INSTALL state, a different question from is-active. It is asked of the USER

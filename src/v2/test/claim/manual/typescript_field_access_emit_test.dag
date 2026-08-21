@@ -49,7 +49,7 @@ fn ts_field_access_emit_accepts() -> v2.std.diagnostic.Outcome<extdeps.communica
 fn ts_field_access_emit_source() -> String {
   match ts_field_access_emit_accepts() {
     Accepted { value: source, diagnostics: _ } => source.carried
-    Rejected { diagnostics: _ } => "FIELD_ACCESS_EMIT_REJECTED"
+    v2.std.diagnostic.Rejected { diagnostics: _ } => "FIELD_ACCESS_EMIT_REJECTED"
   }
 }
 
@@ -60,7 +60,7 @@ test fn ts_field_access_emit_source_holds() -> Bool {
 fn ts_add_emit_source() -> String {
   match anchor_typescript_add_emit_accepts() {
     Accepted { value: source, diagnostics: _ } => source.carried
-    Rejected { diagnostics: _ } => "ADD_EMIT_REJECTED"
+    v2.std.diagnostic.Rejected { diagnostics: _ } => "ADD_EMIT_REJECTED"
   }
 }
 

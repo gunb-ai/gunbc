@@ -115,22 +115,22 @@ fn paired_reason_of_two() -> v2.std.node.Symbol {
   }
 }
 
-test fn location_and_reason_are_drawn_from_the_same_diagnostic_holds() -> Bool {
+test fn location_and_reason_are_drawn_from_the_same_diagnostic_holds() -> v2.std.logic.Bool {
   paired_start_of_two() == 7 && paired_reason_of_two() == ^cause_location_probe_unclassified_reason
 }
 
-test fn textual_locus_reaches_the_textual_arm_holds() -> Bool {
+test fn textual_locus_reaches_the_textual_arm_holds() -> v2.std.logic.Bool {
   detail_location_of(d: textual_diagnostic()) == ^location_is_textual
 }
 
-test fn textual_locus_preserves_the_exact_byte_range_holds() -> Bool {
+test fn textual_locus_preserves_the_exact_byte_range_holds() -> v2.std.logic.Bool {
   textual_extent_start() == 7
 }
 
-test fn port_locus_keeps_its_port_rather_than_degrading_holds() -> Bool {
+test fn port_locus_keeps_its_port_rather_than_degrading_holds() -> v2.std.logic.Bool {
   detail_location_of(d: port_locus_diagnostic()) == ^cause_location_probe_port
 }
 
-test fn node_locus_reaches_the_not_serializable_arm_holds() -> Bool {
+test fn node_locus_reaches_the_not_serializable_arm_holds() -> v2.std.logic.Bool {
   detail_location_of(d: node_locus_diagnostic()) == ^location_is_node_not_serializable
 }

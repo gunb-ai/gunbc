@@ -22,12 +22,12 @@ data codex_runtime_provision_argv_note: String = "The observe/read-back argv bui
 
 fn provision_codex_runtime_routes_through_host_effect_apply() -> Bool {
   match host_codex_runtime_provision_realize_scaffold {
-    Scaffold {
+    std.disposition.Scaffold {
       dissolves_to: RealizationDispatch,
       bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
     } =>
       m == "gunbc.host_effect_realize" && n == "realize_provision_codex_runtime"
-    Terminal { reason: _ } => false
+    std.disposition.Terminal { reason: _ } => false
   }
 }
 
@@ -51,7 +51,7 @@ func materialize_codex_runtime_on_local_host() -> std.process.ProcessExit
         source: gunbc.host_codex_runtime_provision.committed_admitted_codex_runtime_source(),
         release_parent: placement.runtime_release_root,
       ) {
-        CodexRuntimeMaterialized { bundle: _ } => ExitSuccess
+        CodexRuntimeMaterialized { bundle: _ } => std.process.ExitSuccess
         other =>
           exit_failure(
             reason: match codex_runtime_materialization_refusal_reason(outcome: other) {

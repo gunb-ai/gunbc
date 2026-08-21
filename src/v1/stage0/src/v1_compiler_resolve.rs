@@ -2,22 +2,17 @@
 // Source module: v1.compiler.resolve
 
 pub use crate::std_occurrence_identity::{OccurrenceIndex, OccurrenceTransport};
-pub use crate::std_syntax::BinOp;
-use crate::std_syntax::BinOp::*;
 pub use crate::std_types::kernel_type_set;
+pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::CompilerDiagnostic::{
-    CircularDependency, DuplicateModule, MissingExport, UnresolvedImport,
-};
-use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
-pub use crate::v1_std_core::InferredNode;
-use crate::v1_std_core::InferredNode::*;
-pub use crate::v1_std_core::{
-    authored_name_at, import_is_all, import_node, import_specific_names_at, make_error_node,
-    module_imports, module_items, module_node, no_span,
-};
-pub use crate::v1_std_core::{CompilerDiagnostic, Connective, ErrorNode, NewlineIndex, Node};
+use crate::v1_std_core::CompilerDiagnostic::*;
+pub use crate::v1_std_core::{authored_name_at, make_error_node, module_items};
+pub use crate::v1_std_core::{CompilerDiagnostic, ErrorNode, NewlineIndex};
+pub use crate::v2_std_collection::empty_map;
+use crate::v2_std_node::Connective::*;
+pub use crate::v2_std_node::{Connective, Node};
+pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -111,7 +106,7 @@ pub fn resolve_modules_with_occurrence_transport(
                 )
             },
         );
-        let import_diags: Rc<Vec<Rc<ErrorNode>>> = Rc::new(vec![]);
+        let import_diags = Rc::new(vec![]);
         let topo_result = topological_sort(modules.clone(), source_indices.clone());
         let topo_diags = match topo_result.cycle_error.clone() {
             Some(diag) => Rc::new(vec![diag.clone()]),
@@ -192,9 +187,9 @@ pub fn resolve_modules(
                 __result.push(module_occurrence_input(
                     module.clone(),
                     Rc::new(OccurrenceTransport {
-                        index: Rc::new(OccurrenceIndex {
+                        index: OccurrenceIndex {
                             entries: Rc::new(vec![]),
-                        }),
+                        },
                         declarations: Rc::new(vec![]),
                         references: Rc::new(vec![]),
                     }),
@@ -204,9 +199,9 @@ pub fn resolve_modules(
         }),
         source_indices.clone(),
         Rc::new(OccurrenceTransport {
-            index: Rc::new(OccurrenceIndex {
+            index: OccurrenceIndex {
                 entries: Rc::new(vec![]),
-            }),
+            },
             declarations: Rc::new(vec![]),
             references: Rc::new(vec![]),
         }),
@@ -259,7 +254,7 @@ pub fn get_variant_names(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     {
-        let is_coproduct = (item.connective.clone() == Connective::Disj);
+        let is_coproduct = (item.connective.clone() == Rc::new(Connective::Disj));
         if is_coproduct.clone() {
             Rc::new({
                 let mut __result = Vec::new();
@@ -287,7 +282,7 @@ pub fn check_duplicate_modules(
     {
         let result = modules.clone().iter().cloned().fold(
             Rc::new(DuplicateCheckState {
-                seen_names: v1_rt::rc_empty_map::<String, bool>(),
+                seen_names: v1_rt::rc_empty_map::<_, _>(),
                 diagnostics: Rc::new(vec![]),
             }),
             |state: Rc<DuplicateCheckState>, m: Rc<Node>| {
@@ -349,17 +344,16 @@ pub fn topological_sort(
             }
             __result
         });
-        let sorted_names = Rc::new({
-            let mut __sorted: Vec<_> = module_names.clone().iter().cloned().collect();
-            __sorted.sort_by(|a: &String, b: &String| {
-                let __ka = (|name: String| topo_sort_key(name.clone()))(a.clone());
-                let __kb = (|name: String| topo_sort_key(name.clone()))(b.clone());
-                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
-            });
-            __sorted
-        });
         Rc::new(TopoResult {
-            sorted: sorted_names.clone(),
+            sorted: Rc::new({
+                let mut __sorted: Vec<_> = module_names.clone().iter().cloned().collect();
+                __sorted.sort_by(|a: &String, b: &String| {
+                    let __ka = (|name: String| topo_sort_key(name.clone()))(a.clone());
+                    let __kb = (|name: String| topo_sort_key(name.clone()))(b.clone());
+                    __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                });
+                __sorted
+            }),
             cycle_error: None,
         })
     }

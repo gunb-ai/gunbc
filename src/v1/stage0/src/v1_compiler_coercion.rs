@@ -14,41 +14,47 @@ pub use crate::extdeps_languages_rust_types::{
     rust_algebra_inhabitants, rust_callable, rust_cast_syntax, rust_optional_template,
     rust_type_checkpoints,
 };
-pub use crate::std_coercion::{CallableRepr, CastSyntax, InhabitantDecl, TypeCheckpoint};
+use crate::std_coercion::TypeRealizationDecision::*;
+pub use crate::std_coercion::{
+    CallableRepr, CastSyntax, InhabitantDecl, TypeCheckpoint, TypeRealizationDecision,
+};
+pub use crate::std_types::List;
 pub use crate::std_types::{canonical_container_names, container_template_algebra};
 pub use crate::v1_compiler_artifact::RenderTarget;
-use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
+use crate::v1_compiler_artifact::RenderTarget::*;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::qualified_last_segment;
+pub use crate::v2_std_node::{Edge, Node};
+pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn target_checkpoints(target: RenderTarget) -> Rc<Vec<Rc<TypeCheckpoint>>> {
+pub fn target_checkpoints(target: RenderTarget) -> Vec<Rc<TypeCheckpoint>> {
     match target.clone() {
-        RenderTarget::Rust => rust_type_checkpoints(),
-        RenderTarget::Python => python_type_checkpoints(),
-        RenderTarget::Go => go_type_checkpoints(),
-        RenderTarget::Dag => dag_type_checkpoints(),
+        RenderTarget::Rust => crate::extdeps_languages_rust_types::rust_type_checkpoints(),
+        RenderTarget::Python => crate::extdeps_languages_python_types::python_type_checkpoints(),
+        RenderTarget::Go => crate::extdeps_languages_go_types::go_type_checkpoints(),
+        RenderTarget::Dag => crate::extdeps_languages_dag_types::dag_type_checkpoints(),
     }
 }
 
-pub fn target_inhabitants(target: RenderTarget) -> Rc<Vec<Rc<InhabitantDecl>>> {
+pub fn target_inhabitants(target: RenderTarget) -> Vec<Rc<InhabitantDecl>> {
     match target.clone() {
-        RenderTarget::Rust => rust_algebra_inhabitants(),
-        RenderTarget::Python => python_algebra_inhabitants(),
-        RenderTarget::Go => go_algebra_inhabitants(),
+        RenderTarget::Rust => crate::extdeps_languages_rust_types::rust_algebra_inhabitants(),
+        RenderTarget::Python => crate::extdeps_languages_python_types::python_algebra_inhabitants(),
+        RenderTarget::Go => crate::extdeps_languages_go_types::go_algebra_inhabitants(),
         RenderTarget::Dag => Rc::new(vec![]),
     }
 }
 
 pub fn target_callable(target: RenderTarget) -> Rc<CallableRepr> {
     match target.clone() {
-        RenderTarget::Rust => rust_callable(),
-        RenderTarget::Python => python_callable(),
-        RenderTarget::Go => go_callable(),
+        RenderTarget::Rust => crate::extdeps_languages_rust_types::rust_callable(),
+        RenderTarget::Python => crate::extdeps_languages_python_types::python_callable(),
+        RenderTarget::Go => crate::extdeps_languages_go_types::go_callable(),
         RenderTarget::Dag => Rc::new(CallableRepr {
             template: "fn({params}) -> {return}".to_string(),
             param_separator: ", ".to_string(),
@@ -60,18 +66,18 @@ pub fn target_callable(target: RenderTarget) -> Rc<CallableRepr> {
 
 pub fn target_optional_template(target: RenderTarget) -> String {
     match target.clone() {
-        RenderTarget::Rust => rust_optional_template(),
-        RenderTarget::Python => python_optional_template(),
-        RenderTarget::Go => go_optional_template(),
+        RenderTarget::Rust => crate::extdeps_languages_rust_types::rust_optional_template(),
+        RenderTarget::Python => crate::extdeps_languages_python_types::python_optional_template(),
+        RenderTarget::Go => crate::extdeps_languages_go_types::go_optional_template(),
         RenderTarget::Dag => "{0}?".to_string(),
     }
 }
 
 pub fn target_cast_syntax(target: RenderTarget) -> Option<Rc<CastSyntax>> {
     match target.clone() {
-        RenderTarget::Rust => Some(rust_cast_syntax()),
-        RenderTarget::Python => Some(python_cast_syntax()),
-        RenderTarget::Go => Some(go_cast_syntax()),
+        RenderTarget::Rust => Some(crate::extdeps_languages_rust_types::rust_cast_syntax()),
+        RenderTarget::Python => Some(crate::extdeps_languages_python_types::python_cast_syntax()),
+        RenderTarget::Go => Some(crate::extdeps_languages_go_types::go_cast_syntax()),
         RenderTarget::Dag => None,
     }
 }
@@ -115,18 +121,201 @@ pub fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> 
     }
 }
 
-pub fn lookup_checkpoint(target: RenderTarget, dag_name: String) -> Option<Rc<TypeCheckpoint>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for cp in target_checkpoints(target.clone()).iter().cloned() {
-            if (cp.dag_name.clone() == dag_name.clone()) {
-                __result.push(cp);
+pub fn decl_identity_file(item: Rc<Node>) -> String {
+    match item.ident_span.clone() {
+        Some(sp) => sp.file.clone(),
+        None => "".to_string(),
+    }
+}
+
+pub fn type_reference_decl_file(n: Rc<Node>) -> String {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => decl_identity_file(rt.clone()),
+        _ => decl_identity_file(n.clone()),
+    }
+}
+
+pub fn type_reference_identity_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A realization decision is made at REFERENCE sites, not only at the declaration site, so every site that asks what a named type realizes as must supply that name's resolved declaring module. decl_identity_file reads a DECLARATION's own ident_span; type_reference_decl_file is its reference-site counterpart, projecting the resolved node inference bound to the reference and falling back to the node's own ident_span when the reference IS the declaration. Passing the empty string here is not a neutral default: the empty string means identity is unknown, which yields NO realization, so a reference site that omits identity silently renders structurally. That is exactly the regression this function exists to prevent -- the seed's own dag/std/integer.dag aliases rendered as crate::std_nat::Nat instead of i64 because eight reference sites were passing an empty identity. Homed in v1.compiler.coercion, not v1.compiler.emit_rust, because lookup_checkpoint -- the identity-gated consumer -- is target-generic and shared by v1.compiler.emit as well as v1.compiler.emit_rust; the helper lived beside one caller only because that caller was written first.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn structural_declaration_modules_for(dag_name: String) -> Vec<String> {
+    match dag_name.clone().as_str() {
+        "Hash" => Rc::new(vec!["src/v2/std/node.dag".to_string()]),
+        "String" => Rc::new(vec![
+            "src/v2/std/text.dag".to_string(),
+            "dag/std/string_type.dag".to_string(),
+        ]),
+        "Bool" => Rc::new(vec!["src/v2/std/logic.dag".to_string()]),
+        _ => Rc::new(vec![]),
+    }
+}
+
+pub fn structural_declaration_gate_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Companion to checkpoint_table_bypasses_identity_note (v1.compiler.emit_rust): a checkpoint row states how a target spells a name, never which declaration that name resolves to at a given reference site, so a bare-name-keyed table cannot by itself discriminate a name with two competing declarations. structural_declaration_modules_for is the corpus-side half DESIGN section 3 requires kept OUT of the extdeps row -- a row per colliding dag_name naming the module(s) whose declaration of that name is a structural (non-checkpoint-eligible) realization, never a positive roster of every module that realizes natively (that shape already exists for Nat/Int as numeric_realization_declaring_modules, below in this same module since the 2026-08-21 relocation off v1.compiler.emit_rust, because those two have a genuine native declaring module to match against). Hash has no native dag declaration anywhere -- lookup_checkpoint's row for Hash exists only because the seed's own runtime type happens to share the spelling -- so the correct gate is inverted: refuse the row when the reference resolves to the KNOWN structural declaration, and let every other decl_file (including unknown, the empty string) continue to answer from the row exactly as before. Widening this roster is bound by the same discipline numeric_realization_roster_extension_note states for the positive form: a name is added here because its structural declaration is a fact already true, never to silence a diagnostic at some call site by declaring victory over it.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn decl_file_declares_structurally(dag_name: String, decl_file: String) -> bool {
+    if (decl_file.clone() == "".to_string()) {
+        false
+    } else {
+        {
+            let mut __found = false;
+            for m in structural_declaration_modules_for(dag_name.clone())
+                .iter()
+                .cloned()
+            {
+                if v1_rt::contains(decl_file.clone(), m.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
+}
+
+pub fn numeric_realization_identity_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Realization is keyed on the DECLARING MODULE of the type, never on the authored spelling alone. Two declarations may share a spelling -- std.nat.Nat is CommutativeSemiring<Magnitude> and realizes natively, while v2.std.nat.Nat is the Peano coproduct Zero|Succ and must NOT -- so a bare-name rule realizes the wrong one. decl_file is the resolved declaration's ident_span file; the empty string means identity is UNKNOWN at this site, which yields NO realization (render structurally) rather than a guess. This replaces the deleted rust_corpus_repr closure-provenance switch: what a declaration realizes as is a fact about that declaration and its target, never about which other sources happen to share the closure. RELOCATED here from v1.compiler.emit_rust (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, review 54335) alongside numeric_realization_roster_extension_note, numeric_realization_declaring_modules, decl_file_realizes_natively and rust_seed_host_numeric_alias -- completing the relocation structural_declaration_modules_for's own precedent already established for the negative-form (structural) half of this two-authority shape; emit_rust now imports rust_seed_host_numeric_alias back from here exactly as it already imports lookup_checkpoint, one direction, no cycle. See v1.compiler.emit_rust numeric_realization_relocation_note for the fuller account.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn numeric_realization_roster_extension_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THIS ROSTER IS A LIVE ENUMERATION AND A ROW MAY ONLY BE ADDED FOR A DECLARATION WHOSE NATIVE REALIZATION IS ALREADY TRUE, NEVER TO MAKE A FAILING SITE COMPILE. A module belongs here when the types it declares ARE the host numeric type at the target -- dag/std/nat.dag and dag/std/integer.dag are the two grounded numeric authorities, and the <kernel: prefix covers declarations the seed mints with no source file. Adding a module to silence an E0308 or an E0109 at some call site is the §5 workaround: it converts one site's diagnostic into a corpus-wide realization change, and it does so by editing the roster rather than the fact the roster reports. The tell is that the author cannot say what the added module's type IS at the target without referring to the site that failed. If a site needs a realization this roster does not grant, the question is whether that declaration is genuinely a host numeric -- and if it is not, the fix is at the site or in the checkpoint binding, never here. This enumeration is itself provisional: it exists because there is no corpus-side declaration-to-Rust-type binding yet, and it dissolves into that binding when it lands -- see checkpoint_table_bypasses_identity_note for the two-authority shape.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn numeric_realization_declaring_modules() -> Vec<String> {
+    Rc::new(vec![
+        "dag/std/nat.dag".to_string(),
+        "dag/std/integer.dag".to_string(),
+        "<kernel:".to_string(),
+    ])
+}
+
+pub fn decl_file_realizes_natively(decl_file: String) -> bool {
+    if (decl_file.clone() == "".to_string()) {
+        false
+    } else {
+        {
+            let mut __found = false;
+            for m in numeric_realization_declaring_modules().iter().cloned() {
+                if v1_rt::contains(decl_file.clone(), m.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
+}
+
+pub fn rust_seed_host_numeric_alias(name: String, decl_file: String) -> Option<String> {
+    if (((name.clone() == "Nat".to_string()) || (name.clone() == "Int".to_string()))
+        && decl_file_realizes_natively(decl_file.clone()))
+    {
+        Some("i64".to_string())
+    } else {
+        None
+    }
+}
+
+pub fn type_realization_decision(
+    target: RenderTarget,
+    dag_name: String,
+    decl_file: String,
+) -> Rc<TypeRealizationDecision> {
+    if (decl_file.clone() == "".to_string()) {
+        Rc::new(TypeRealizationDecision::Refused {
+            cause: "declaration identity unknown: empty decl_file".to_string(),
+        })
+    } else {
+        if decl_file_declares_structurally(dag_name.clone(), decl_file.clone()) {
+            Rc::new(TypeRealizationDecision::Unrealized)
+        } else {
+            match Rc::new({
+                let mut __result = Vec::new();
+                for cp in target_checkpoints(target.clone()).iter().cloned() {
+                    if (cp.dag_name.clone() == dag_name.clone()) {
+                        __result.push(cp);
+                    }
+                }
+                __result
+            })
+            .first()
+            .cloned()
+            {
+                Some(cp) => Rc::new(TypeRealizationDecision::Realized {
+                    checkpoint: cp.clone(),
+                }),
+                None => {
+                    let native = if (target.clone() == RenderTarget::Rust) {
+                        rust_seed_host_numeric_alias(dag_name.clone(), decl_file.clone())
+                    } else {
+                        None
+                    };
+                    match native.clone() {
+                        Some(host) => Rc::new(TypeRealizationDecision::Realized {
+                            checkpoint: TypeCheckpoint {
+                                dag_name: dag_name.clone(),
+                                target_type: host.clone(),
+                                default_expr: None,
+                                is_copy: None,
+                                literal_suffix: None,
+                            },
+                        }),
+                        None => Rc::new(TypeRealizationDecision::Unrealized),
+                    }
+                }
             }
         }
-        __result
-    })
-    .first()
-    .cloned()
+    }
+}
+
+pub fn lookup_checkpoint(
+    target: RenderTarget,
+    dag_name: String,
+    decl_file: String,
+) -> Option<Rc<TypeCheckpoint>> {
+    if (decl_file.clone() == "".to_string()) {
+        Rc::new({
+            let mut __result = Vec::new();
+            for cp in target_checkpoints(target.clone()).iter().cloned() {
+                if (cp.dag_name.clone() == dag_name.clone()) {
+                    __result.push(cp);
+                }
+            }
+            __result
+        })
+        .first()
+        .cloned()
+    } else {
+        match (*type_realization_decision(target.clone(), dag_name.clone(), decl_file.clone()))
+            .clone()
+        {
+            TypeRealizationDecision::Realized { checkpoint: cp, .. } => Some(cp.clone()),
+            TypeRealizationDecision::Unrealized => None,
+            TypeRealizationDecision::Refused { cause: _, .. } => None,
+        }
+    }
 }
 
 pub fn coerce_primitive_type_dotted_fallback_note() -> String {
@@ -138,22 +327,22 @@ pub fn coerce_primitive_type_dotted_fallback_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn coerce_primitive_type(target: RenderTarget, dag_name: String) -> String {
-    match lookup_checkpoint(target.clone(), dag_name.clone()) {
+pub fn coerce_primitive_type(target: RenderTarget, dag_name: String, decl_file: String) -> String {
+    match lookup_checkpoint(target.clone(), dag_name.clone(), decl_file.clone()) {
         Some(cp) => cp.target_type.clone(),
-        None => qualified_last_segment(dag_name.clone()),
+        None => crate::v1_std_core::qualified_last_segment(dag_name.clone()),
     }
 }
 
-pub fn is_copy(target: RenderTarget, dag_name: String) -> Option<bool> {
-    match lookup_checkpoint(target.clone(), dag_name.clone()) {
+pub fn is_copy(target: RenderTarget, dag_name: String, decl_file: String) -> Option<bool> {
+    match lookup_checkpoint(target.clone(), dag_name.clone(), decl_file.clone()) {
         Some(cp) => cp.is_copy.clone(),
         None => None,
     }
 }
 
-pub fn literal_suffix(target: RenderTarget, dag_name: String) -> Option<String> {
-    match lookup_checkpoint(target.clone(), dag_name.clone()) {
+pub fn literal_suffix(target: RenderTarget, dag_name: String, decl_file: String) -> Option<String> {
+    match lookup_checkpoint(target.clone(), dag_name.clone(), decl_file.clone()) {
         Some(cp) => match cp.literal_suffix.clone() {
             Some(s) => Some(s.clone()),
             None => Some("".to_string()),
@@ -177,7 +366,7 @@ pub fn lookup_inhabitant(target: RenderTarget, algebra: String) -> Option<Rc<Inh
 }
 
 pub fn coerce_container_template(target: RenderTarget, container_name: String) -> Option<String> {
-    match container_template_algebra(container_name.clone()) {
+    match crate::std_types::container_template_algebra(container_name.clone()) {
         Some(algebra) => match lookup_inhabitant(target.clone(), algebra.clone()) {
             Some(inh) => Some(inh.template.clone()),
             None => None,
@@ -218,7 +407,7 @@ pub enum CoercionAssertion {
     },
     TemplateAssertion {
         template: String,
-        args: Rc<Vec<String>>,
+        args: Vec<String>,
         expected: String,
     },
 }
@@ -226,7 +415,7 @@ pub enum CoercionAssertion {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CoercionTestEntry {
     pub test_name: String,
-    pub assertions: Rc<Vec<Rc<CoercionAssertion>>>,
+    pub assertions: Vec<Rc<CoercionAssertion>>,
 }
 
 pub fn target_label(target: RenderTarget) -> String {
@@ -238,7 +427,7 @@ pub fn target_label(target: RenderTarget) -> String {
     }
 }
 
-pub fn checkpoint_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> {
+pub fn checkpoint_tests(target: RenderTarget) -> Vec<Rc<CoercionTestEntry>> {
     {
         let label = target_label(target.clone());
         let cps = target_checkpoints(target.clone());
@@ -266,14 +455,14 @@ pub fn checkpoint_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
     }
 }
 
-pub fn inhabitant_test_names() -> Rc<Vec<String>> {
+pub fn inhabitant_test_names() -> Vec<String> {
     v1_rt::concat(
-        canonical_container_names(),
+        crate::std_types::canonical_container_names(),
         Rc::new(vec!["PointwisePower".to_string()]),
     )
 }
 
-pub fn inhabitant_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> {
+pub fn inhabitant_tests(target: RenderTarget) -> Vec<Rc<CoercionTestEntry>> {
     {
         let label = target_label(target.clone());
         let assertions = Rc::new({
@@ -310,7 +499,7 @@ pub fn inhabitant_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
     }
 }
 
-pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
+pub fn copy_tests() -> Vec<Rc<CoercionTestEntry>> {
     {
         let cps = target_checkpoints(RenderTarget::Rust);
         let copy_assertions = Rc::new({
@@ -343,8 +532,8 @@ pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
 }
 
 pub fn unique_inhabitants_for_template_tests(
-    inhs: Rc<Vec<Rc<InhabitantDecl>>>,
-) -> Rc<Vec<Rc<InhabitantDecl>>> {
+    inhs: Vec<Rc<InhabitantDecl>>,
+) -> Vec<Rc<InhabitantDecl>> {
     inhs.clone().iter().cloned().fold(
         Rc::new(vec![]),
         |acc: Rc<Vec<Rc<InhabitantDecl>>>, inh: Rc<InhabitantDecl>| {
@@ -368,7 +557,7 @@ pub fn unique_inhabitants_for_template_tests(
     )
 }
 
-pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
+pub fn template_application_tests() -> Vec<Rc<CoercionTestEntry>> {
     {
         let targets = Rc::new(vec![
             RenderTarget::Rust,
@@ -382,8 +571,10 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
                     (*{
                         let inhs =
                             unique_inhabitants_for_template_tests(target_inhabitants(t.clone()));
-                        let int_target = coerce_primitive_type(t.clone(), "Int".to_string());
-                        let str_target = coerce_primitive_type(t.clone(), "String".to_string());
+                        let int_target =
+                            coerce_primitive_type(t.clone(), "Int".to_string(), "".to_string());
+                        let str_target =
+                            coerce_primitive_type(t.clone(), "String".to_string(), "".to_string());
                         Rc::new({
                             let mut __result = Vec::new();
                             for inh in inhs.clone().iter().cloned() {
@@ -449,7 +640,7 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
     }
 }
 
-pub fn extract_coercion_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
+pub fn extract_coercion_tests() -> Vec<Rc<CoercionTestEntry>> {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(

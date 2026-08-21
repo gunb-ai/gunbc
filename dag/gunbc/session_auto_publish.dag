@@ -98,21 +98,21 @@ fn observe_without_publishing(state: SessionPublishState) -> SessionPublishState
 fn local_checkpoint_commit(state: SessionPublishState) -> std.types.CommitSha? {
   match state.local {
     LocalCheckpointAbsent => none
-    LocalCheckpointAt { local_commit: commit } => Present { value: commit }
+    LocalCheckpointAt { local_commit: commit } => v2.std.optional.Present { value: commit }
   }
 }
 
 fn remote_branch_head(state: SessionPublishState) -> std.types.CommitSha? {
   match state.remote_branch {
     RemoteBranchPublicationAbsent => none
-    RemoteBranchPublicationAt { remote_head: head } => Present { value: head }
+    RemoteBranchPublicationAt { remote_head: head } => v2.std.optional.Present { value: head }
   }
 }
 
 fn worker_notification_head(state: SessionPublishState) -> std.types.CommitSha? {
   match state.worker {
     WorkerNotificationAbsent => none
-    WorkerNotificationStamped { notified_head: head, notified_at: _ } => Present { value: head }
+    WorkerNotificationStamped { notified_head: head, notified_at: _ } => v2.std.optional.Present { value: head }
   }
 }
 
@@ -120,14 +120,14 @@ data conflated_checkpoint_note: String = "THE OLD FALLBACK pr_publish_head || pr
 
 fn conflated_checkpoint_baseline(state: SessionPublishState) -> std.types.CommitSha? {
   match remote_branch_head(state: state) {
-    Present { value: remote } => Present { value: remote }
-    Absent =>
+    v2.std.optional.Present { value: remote } => v2.std.optional.Present { value: remote }
+    v2.std.optional.Absent =>
       match worker_notification_head(state: state) {
-        Present { value: notified } => Present { value: notified }
-        Absent =>
+        v2.std.optional.Present { value: notified } => v2.std.optional.Present { value: notified }
+        v2.std.optional.Absent =>
           match local_checkpoint_commit(state: state) {
-            Present { value: local } => Present { value: local }
-            Absent => Absent
+            v2.std.optional.Present { value: local } => v2.std.optional.Present { value: local }
+            v2.std.optional.Absent => v2.std.optional.Absent
           }
       }
   }
@@ -144,8 +144,8 @@ fn resolve_drift_diff_start(
   baseline_is_ancestor_of_merge_base: Bool,
 ) -> std.types.CommitSha {
   match merge_base_with_origin {
-    Absent => notified_baseline
-    Present { value: merge_base } =>
+    v2.std.optional.Absent => notified_baseline
+    v2.std.optional.Present { value: merge_base } =>
       if merge_base == notified_baseline {
         notified_baseline
       } else if baseline_is_ancestor_of_merge_base {
@@ -257,11 +257,11 @@ fn publication_is_permitted(disposition: PublicationDisposition) -> Bool {
 
 fn publication_request_from_context(context: PublicationContext) -> gunbc.session_auto_publish_ctrl_ingest.PublicationRequest? {
   match context {
-    PublicationContextCtrlUserPublish { request: request } => Present { value: request }
-    PublicationContextScratchProbe => Absent
-    PublicationContextDashboardAutosave => Absent
-    PublicationContextArtifactHealer { repair_target: _ } => Absent
-    PublicationContextUnknown => Absent
+    PublicationContextCtrlUserPublish { request: request } => v2.std.optional.Present { value: request }
+    PublicationContextScratchProbe => v2.std.optional.Absent
+    PublicationContextDashboardAutosave => v2.std.optional.Absent
+    PublicationContextArtifactHealer { repair_target: _ } => v2.std.optional.Absent
+    PublicationContextUnknown => v2.std.optional.Absent
   }
 }
 
@@ -404,8 +404,8 @@ fn remote_head_conjunction_refusals(
   current: ObservedRemoteHead,
 ) -> List<PublicationRefusalCause> {
   match request {
-    Absent => []
-    Present { value: req } =>
+    v2.std.optional.Absent => []
+    v2.std.optional.Present { value: req } =>
       match observed {
         RemoteHeadObservationUnknown => [RemoteHeadObservationUnknownRefused]
         RemoteHeadKnown { head: observed_head } =>
@@ -476,11 +476,11 @@ fn post_write_validation_refusals(
   actual_digest: std.content_hash.Fnv1a64Structural,
 ) -> List<PublicationRefusalCause> {
   match request {
-    Absent => []
-    Present { value: req } =>
+    v2.std.optional.Absent => []
+    v2.std.optional.Present { value: req } =>
       match receipt {
-        Absent => [PostWriteValidationReceiptAbsent]
-        Present { value: validation } =>
+        v2.std.optional.Absent => [PostWriteValidationReceiptAbsent]
+        v2.std.optional.Present { value: validation } =>
           if (validation.candidate_head as String) != (req.produced_head as String) {
             [PostWriteValidationReceiptHeadMismatch]
           } else if validation.declared_write_set_digest != declared_digest {
@@ -503,11 +503,11 @@ fn local_head_validation_refusals(
   current_local_head: std.types.CommitSha?,
 ) -> List<PublicationRefusalCause> {
   match request {
-    Absent => []
-    Present { value: req } =>
+    v2.std.optional.Absent => []
+    v2.std.optional.Present { value: req } =>
       match current_local_head {
-        Absent => [LocalHeadMismatchWithValidatedCandidate]
-        Present { value: local_head } =>
+        v2.std.optional.Absent => [LocalHeadMismatchWithValidatedCandidate]
+        v2.std.optional.Present { value: local_head } =>
           if (local_head as String) != (req.produced_head as String) {
             [LocalHeadMismatchWithValidatedCandidate]
           } else {
@@ -530,17 +530,17 @@ fn remote_publish_conjunction_refusals(
 ) -> List<PublicationRefusalCause> {
   let request = publication_request_from_context(context: attempt.context)
   let declared_digest = match attempt.post_write_validation {
-    Absent => std.content_hash.Fnv1a64Structural { digest: "0000000000000000" }
-    Present { value: receipt } => receipt.declared_write_set_digest
+    v2.std.optional.Absent => std.content_hash.Fnv1a64Structural { digest: "0000000000000000" }
+    v2.std.optional.Present { value: receipt } => receipt.declared_write_set_digest
   }
   let actual_digest = match attempt.post_write_validation {
-    Absent => std.content_hash.Fnv1a64Structural { digest: "0000000000000000" }
-    Present { value: receipt } => receipt.actual_write_set_digest
+    v2.std.optional.Absent => std.content_hash.Fnv1a64Structural { digest: "0000000000000000" }
+    v2.std.optional.Present { value: receipt } => receipt.actual_write_set_digest
   }
   append(
     match request {
-      Absent => [NoExplicitPublicationRequest]
-      Present { value: _ } => []
+      v2.std.optional.Absent => [NoExplicitPublicationRequest]
+      v2.std.optional.Present { value: _ } => []
     },
     items: append(
       remote_head_conjunction_refusals(
@@ -587,8 +587,8 @@ fn admit_remote_publication(attempt: RemotePublishAttempt) -> PublicationDisposi
     PublicationRefuse { cause: cause } => PublicationRefuse { cause: cause }
     PublicationPermit =>
       match remote_publish_conjunction_refusals(attempt: attempt).first() {
-        Absent => PublicationPermit
-        Present { value: cause } => PublicationRefuse { cause: cause }
+        v2.std.optional.Absent => PublicationPermit
+        v2.std.optional.Present { value: cause } => PublicationRefuse { cause: cause }
       }
   }
 }

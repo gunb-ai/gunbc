@@ -109,7 +109,7 @@ test fn w_red_zero_user_count_refused() -> Bool {
       },
     },
   ) {
-    FreeTierFloorRefused { cause: UserCountZero } => true
+    FreeTierFloorRefused { cause: gunbc.econ.free_tier_serving.UserCountZero } => true
     _ => false
   }
 }

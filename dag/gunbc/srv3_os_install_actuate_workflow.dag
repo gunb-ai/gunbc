@@ -17,11 +17,11 @@ data srv3_boot_once_cd_escalation: gunbc.workflow_escalation.WorkflowEscalation 
   destructive: true,
 }
 
-data srv3_boot_once_cd_default_approval: gunbc.workflow_escalation.WorkflowApprovalState = PendingApproval {
+data srv3_boot_once_cd_default_approval: gunbc.workflow_escalation.WorkflowApprovalState = gunbc.workflow_escalation.PendingApproval {
   escalation: srv3_boot_once_cd_escalation,
 }
 
-data srv3_boot_once_cd_operator_granted_approval: gunbc.workflow_escalation.WorkflowApprovalState = ApprovalGranted {
+data srv3_boot_once_cd_operator_granted_approval: gunbc.workflow_escalation.WorkflowApprovalState = gunbc.workflow_escalation.ApprovalGranted {
   escalation_id: srv3_boot_once_cd_escalation.escalation_id,
   granted_by: "operator" as std.types.NonEmptyStr,
 }

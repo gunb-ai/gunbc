@@ -48,7 +48,7 @@ type DiagnosticCauseTally {
   count: Int
 }
 
-fn diagnostic_tally_holds_reason(tally: std.types.List<DiagnosticCauseTally>, reason: String) -> Bool {
+fn diagnostic_tally_holds_reason(tally: std.types.List<DiagnosticCauseTally>, reason: String) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: tally,
     empty: false,
@@ -260,7 +260,7 @@ fn product_artifact_identity(value: String, file_count: Int) -> ArtifactIdentity
   }
 }
 
-fn boundary_is_completed(observation: BoundaryObservation) -> Bool {
+fn boundary_is_completed(observation: BoundaryObservation) -> v2.std.logic.Bool {
   match observation.standing {
     BoundaryCompleted => true
     BoundaryRefused { cause: _ } => false
@@ -268,7 +268,7 @@ fn boundary_is_completed(observation: BoundaryObservation) -> Bool {
   }
 }
 
-fn artifact_identity_carried(produced: ArtifactIdentity, consumed: ArtifactIdentity) -> Bool {
+fn artifact_identity_carried(produced: ArtifactIdentity, consumed: ArtifactIdentity) -> v2.std.logic.Bool {
   match produced {
     ArtifactIdentityAbsent { cause: _ } => false
     ArtifactIdentityKnown { digest: left, file_count: left_files } =>
@@ -316,7 +316,7 @@ fn product_receipt_identity_chain(receipt: ProductReceipt) -> IdentityChainAcc {
   )
 }
 
-fn product_receipt_identity_chain_intact(receipt: ProductReceipt) -> Bool {
+fn product_receipt_identity_chain_intact(receipt: ProductReceipt) -> v2.std.logic.Bool {
   match product_receipt_identity_chain(receipt: receipt) {
     ChainBroken => false
     ChainStart => false
@@ -346,7 +346,7 @@ fn boundary_coverage_step(
   }
 }
 
-fn product_receipt_covers_every_boundary_once(receipt: ProductReceipt) -> Bool {
+fn product_receipt_covers_every_boundary_once(receipt: ProductReceipt) -> v2.std.logic.Bool {
   match v2.std.algebra.fold_list(
     xs: receipt.observations,
     empty: CoverageHolding { next_ordinal: 1 },
@@ -359,7 +359,7 @@ fn product_receipt_covers_every_boundary_once(receipt: ProductReceipt) -> Bool {
   }
 }
 
-fn product_receipt_every_boundary_completed(receipt: ProductReceipt) -> Bool {
+fn product_receipt_every_boundary_completed(receipt: ProductReceipt) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: receipt.observations,
     empty: true,
@@ -370,7 +370,7 @@ fn product_receipt_every_boundary_completed(receipt: ProductReceipt) -> Bool {
 // THE GREEN PREDICATE. Three conjuncts, and the third is the one a
 // per-component board cannot state: every boundary consumed the exact
 // artifact its predecessor produced, inside one transaction.
-fn product_receipt_green(receipt: ProductReceipt) -> Bool {
+fn product_receipt_green(receipt: ProductReceipt) -> v2.std.logic.Bool {
   product_receipt_covers_every_boundary_once(receipt: receipt)
     && product_receipt_every_boundary_completed(receipt: receipt)
     && product_receipt_identity_chain_intact(receipt: receipt)
@@ -441,6 +441,6 @@ fn product_receipt_render(receipt: ProductReceipt) -> String {
   )
 }
 
-fn bool_to_string(b: Bool) -> String {
+fn bool_to_string(b: v2.std.logic.Bool) -> String {
   if b { "true" } else { "false" }
 }

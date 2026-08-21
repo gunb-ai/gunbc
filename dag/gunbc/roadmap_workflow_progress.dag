@@ -42,23 +42,23 @@ data admission_receipt_decode_note: String = "review 44094. This consumer used t
 
 fn receipt_records_admission(receipt: String) -> Bool {
   match dispatch_environment_receipt_decode(receipt: receipt) {
-    ReceiptDecoded { status } =>
+    gunbc.roadmap_dispatch_environment.ReceiptDecoded { status } =>
       match status {
         ReceiptAdmitted => true
-        ReceiptRefused => false
+        gunbc.roadmap_dispatch_environment.ReceiptRefused => false
       }
-    ReceiptUndecodable { reason: _ } => false
+    gunbc.roadmap_dispatch_environment.ReceiptUndecodable { reason: _ } => false
   }
 }
 
 fn admission_receipt_refusal(receipt: String) -> gunbc.roadmap_provider_events.ProviderExecutionState {
   match dispatch_environment_receipt_decode(receipt: receipt) {
-    ReceiptDecoded { status: _ } =>
+    gunbc.roadmap_dispatch_environment.ReceiptDecoded { status: _ } =>
       gunbc.roadmap_provider_events.ProviderEventsRefused {
         activity: "environment admission refused",
         detail: "admission receipt records a refused environment admission; its own reason field carries the cause",
       }
-    ReceiptUndecodable { reason } =>
+    gunbc.roadmap_dispatch_environment.ReceiptUndecodable { reason } =>
       gunbc.roadmap_provider_events.ProviderEventsRefused {
         activity: "admission receipt undecodable",
         detail: reason,

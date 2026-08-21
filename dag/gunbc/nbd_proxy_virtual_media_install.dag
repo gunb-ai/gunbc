@@ -171,7 +171,7 @@ fn actuator_step_realization(step: OsInstallActuatorStep) -> ActuatorStepRealiza
     ActuatorBootOnce { target: t, enabled: e } =>
       ActuatorStepReady {
         intent: gunbc.host_effect.HostEffectIntent {
-          target: BmcController { node: srv3_host },
+          target: gunbc.host_effect.BmcController { node: srv3_host },
           effect: gunbc.host_effect.RedfishAction {
             action: extdeps.bmc.types.SetBootSourceOverride { target: t, enabled: e }
           },
@@ -183,7 +183,7 @@ fn actuator_step_realization(step: OsInstallActuatorStep) -> ActuatorStepRealiza
     ActuatorForceRestart { reset_type: r } =>
       ActuatorStepReady {
         intent: gunbc.host_effect.HostEffectIntent {
-          target: BmcController { node: srv3_host },
+          target: gunbc.host_effect.BmcController { node: srv3_host },
           effect: gunbc.host_effect.RedfishAction {
             action: extdeps.bmc.types.ResetSystem { reset_type: r }
           },

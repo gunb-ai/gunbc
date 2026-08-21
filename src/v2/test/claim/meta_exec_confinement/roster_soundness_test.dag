@@ -11,11 +11,11 @@ data roster_dark_lane_finding: String = "WHY THIS FILE EXISTS. meta_exec_roster_
 
 data roster_emptiness_is_construction_not_validation_note: String = "MEASURED, then designed (DESIGN section 5: construction over validation; section 6: priced in displaced cost). The obvious fix — enroll meta_exec_roster_sound_live per-PR — is not affordable, and saying so is part of the receipt: measured 2026-07-25 on the bucket-A branch, that receipt evaluates COLD in 13470ms over meta_exec_consumer_scan_roots and still 11485ms over dag/gunbc alone, against a 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note) and an enrolled sibling (scanner_planted_meta_exec_leak_detected_holds) costing 2ms. The cold number is the honest one: re-run in the same process behind an already-warmed scan the same receipt reports 1852ms, which is warmth borrowed from whichever witness paid the 13s first and is not a property this row can declare. The cost is intrinsic to layer_import_facts_live over a real tree, so no narrower root rescues it; the live receipt therefore lives in v2.test.long.meta_exec_confinement_clean_tree beside the clean-tree receipt. What CAN run per-PR is stronger than soundness anyway. A stale row is only possible because the roster is a hand-written SECOND representation of a fact the tree already carries (which files import the confined module). At length 0 that second representation is gone and staleness is not merely absent but UNWRITABLE — stale_count is bounded above by roster length, so length 0 proves stale_count 0 with no scan at all. This receipt walls the empty state directly: it is a live read of the actual roster declaration, it costs nothing, and re-introducing the parallel ledger cannot happen quietly — adding any row reds this witness by name in the same PR that adds it, which is precisely the event that went unnoticed before. Shrink-only stops depending on memory. Dissolve-on: if a future row is genuinely justified, it lands together with a live soundness receipt on a real cadence (a falsifier batch, not test/claim/long/'s dark lane) and this emptiness wall relaxes to that receipt — never the reverse order."
 
-test fn meta_exec_roster_shrunk_to_empty_holds() -> Bool {
+test fn meta_exec_roster_shrunk_to_empty_holds() -> v2.std.logic.Bool {
   is_empty(xs: meta_exec_confinement_exception_paths())
 }
 
-test fn meta_exec_roster_emptiness_wall_planted_row_red_holds() -> Bool {
+test fn meta_exec_roster_emptiness_wall_planted_row_red_holds() -> v2.std.logic.Bool {
   is_empty(
     xs: list_append(
       left: meta_exec_confinement_exception_paths(),
@@ -24,7 +24,7 @@ test fn meta_exec_roster_emptiness_wall_planted_row_red_holds() -> Bool {
   ) == false
 }
 
-test fn meta_exec_roster_soundness_planted_stale_red_holds() -> Bool {
+test fn meta_exec_roster_soundness_planted_stale_red_holds() -> v2.std.logic.Bool {
   meta_exec_roster_sound(
     roster: list_append(
       left: meta_exec_confinement_exception_paths(),

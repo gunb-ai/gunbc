@@ -33,7 +33,7 @@ fn complement_family_native_key_for(tree: v2.compiler.inferred_tree.InferredTree
 
 fn complement_family_test_store() -> std.artifact_store.ArtifactStore {
   match std.artifact_store.store_over_provider(provider: complement_family_provider) {
-    StoreReady { store: s } => s
+    std.artifact_store.StoreReady { store: s } => s
     StoreRefusedRetention { provider_id: _, declared: _ } =>
       std.artifact_store.ArtifactStore { budget: std.measure.byte_size(count: 0), next_ordinal: 1, rows: [] }
   }
@@ -81,7 +81,7 @@ test fn emit_on_demand_complement_schedule_refuses_unreadable_budget_holds() -> 
   ) {
     BudgetRefused => true
     PackedWidth { width: _ } => false
-    MaturationReserve { width: _ } => false
+    std.realize_pack.MaturationReserve { width: _ } => false
   }
 }
 

@@ -8,7 +8,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
   }
 }
 
-// Cited upstream: W3C Scalable Vector Graphics (SVG) 2, Recommendation-track. Element names, the
+// Cited upstream: W3C Scalable Vector Graphics (SVG) 2, Recommendation-track. std.markup.Element names, the
 // SVG namespace, and the XML serialization medium live here so a product projection cites this
 // authority rather than minting a second SVG vocabulary. Serialization uses std.markup's generic
 // fragment algebra with an SVG medium; it does not route through HTML, which is a separately

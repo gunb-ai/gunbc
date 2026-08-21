@@ -2,8 +2,7 @@
 // Source module: gunbc.stage0_crate_partition_generated
 
 use self::GeneratedPartitionCrateKind::*;
-use crate::std_types::Bool::*;
-pub use crate::std_types::{Bool, List};
+pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

@@ -24,18 +24,18 @@ fn inferred_facts_subject_node(facts: v2.compiler.inferred_tree.InferredFacts) -
   }
 }
 
-fn inferred_facts_cover_node(facts: v2.compiler.inferred_tree.InferredFacts, node: v2.std.node.Node) -> Bool {
+fn inferred_facts_cover_node(facts: v2.compiler.inferred_tree.InferredFacts, node: v2.std.node.Node) -> v2.std.logic.Bool {
   inferred_facts_subject_node(facts: facts) == node
 }
 
-fn inferred_facts_grounding_derived(facts: v2.compiler.inferred_tree.InferredFacts) -> Bool {
+fn inferred_facts_grounding_derived(facts: v2.compiler.inferred_tree.InferredFacts) -> v2.std.logic.Bool {
   match facts.grounding {
     DerivedGrounding { grounding: _ } => true
     GroundingNotDerived { node: _ } => false
   }
 }
 
-fn inferred_facts_canonical_admitted(facts: v2.compiler.inferred_tree.InferredFacts) -> Bool {
+fn inferred_facts_canonical_admitted(facts: v2.compiler.inferred_tree.InferredFacts) -> v2.std.logic.Bool {
   match facts.grounding {
     DerivedGrounding { grounding: g } => canonical_grounding_admits_infer_facts(grounding: g)
     GroundingNotDerived { node: _ } => false
@@ -86,7 +86,7 @@ fn infer_emit_shape_frontier_inferred_tree(root: v2.std.node.Node) -> v2.compile
     root: root,
     facts: std.types.Map {
       lookup: fn(_key) {
-        Absent
+        v2.std.optional.Absent
       }
     }
   }
@@ -95,12 +95,12 @@ fn infer_emit_shape_frontier_inferred_tree(root: v2.std.node.Node) -> v2.compile
 type InferGatherFoldAcc {
   node: v2.std.node.Node
   entries: List<v2.compiler.inferred_tree.InferredFactsEntry>
-  failed: Bool
+  failed: v2.std.logic.Bool
   pending: v2.std.diagnostic.Diagnostics
-  await_branch_row: Bool
-  await_match_row: Bool
-  await_loop_row: Bool
-  await_transform_row: Bool
+  await_branch_row: v2.std.logic.Bool
+  await_match_row: v2.std.logic.Bool
+  await_loop_row: v2.std.logic.Bool
+  await_transform_row: v2.std.logic.Bool
   children_remaining: Int
 }
 
@@ -239,7 +239,7 @@ fn infer_match_int_scrutinee_bool_literal_scaffold_diagnostic(node: v2.std.node.
   }
 }
 
-fn algebra_ref_is_grounded(algebra: v2.std.node.Node) -> Bool {
+fn algebra_ref_is_grounded(algebra: v2.std.node.Node) -> v2.std.logic.Bool {
   match algebra.kind {
     TypeNode { connective: c } =>
       match c {
@@ -277,7 +277,7 @@ fn algebra_ref_from_grounding(grounding: v2.std.constraints.CanonicalGrounding) 
 
 data canonical_grounding_admission_scope_note: String = "This predicate deliberately does NOT carry an 'evidence != node' conjunct, and the reason is worth recording because that conjunct was tried and withdrawn. As a read-path backstop against hand-built self-groundings it looked free, but it is a PROXY for the property actually at issue — 'was this grounding produced by a derivation?' — and the NodeGrounding carrier already answers that exactly. Proxies are what produced the defect in the first place: algebra_ref_is_grounded is a shape test on the connective, which is precisely why Conj/Disj type-node self-groundings walked through it. The proxy also has real false positives: v2_evaluator's bool fixture uses ONE atom as both the evaluand and the runtime value's primitive_type, so resolved == algebra there is the fixture's coherent encoding of 'this atom denotes Bool', not a fabrication. Refusing it would have meant rewriting a thesis-proof fixture to make a check go green — the inversion DESIGN §5 names explicitly. The wall therefore lives where it is exact: canonical_grounding_from_derived_type refuses self-evidence for every grounding the COMPILER mints, and v2.compiler.inferred_tree.GroundingNotDerived is what an underived node carries. A structurally hand-written CanonicalGrounding remains writable by any module; that residue is stated, not silently covered."
 
-fn canonical_grounding_admits_infer_facts(grounding: v2.std.constraints.CanonicalGrounding) -> Bool {
+fn canonical_grounding_admits_infer_facts(grounding: v2.std.constraints.CanonicalGrounding) -> v2.std.logic.Bool {
   well_formed(n: grounding.node)
     && well_formed(n: grounding.witness.structural.evidence)
     && (grounding.witness.structural.property == ^constraint_property_being_canonical)
@@ -345,7 +345,7 @@ data infer_node_facts_no_derivation_note: String = "infer_node_facts used to rea
 
 fn infer_node_facts(n: v2.std.node.Node, partials: List<v2.std.node.Node>) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredFacts> {
   match v2.std.bounded_lattice_completeness.infer_bounded_lattice_consumer_gate(consumer: n, partials: partials) {
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     Accepted { value: _, diagnostics: cd } =>
       match infer_descent_witness_for_node(n: n) {
         Violates { diagnostic: d } =>
@@ -364,7 +364,7 @@ fn infer_node_facts(n: v2.std.node.Node, partials: List<v2.std.node.Node>) -> v2
                 derived_type: infer_branch_int_binding_type_node(),
                 descent: v2.std.witness.Holds { value: descent_proof }
               )
-            Rejected { diagnostics: _ } =>
+            v2.std.diagnostic.Rejected { diagnostics: _ } =>
               inferred_facts_not_derived(
                 node: n,
                 descent: v2.std.witness.Holds { value: descent_proof }
@@ -377,14 +377,14 @@ fn infer_node_facts(n: v2.std.node.Node, partials: List<v2.std.node.Node>) -> v2
 fn lookup_inferred_facts_in_entries(
   entries: List<v2.compiler.inferred_tree.InferredFactsEntry>,
   key: v2.std.node.Node,
-) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   fold(
     entries,
     init: optional_absent(),
     f: fn(acc, entry) {
       match acc {
-        Present { value: _ } => acc
-        Absent =>
+        v2.std.optional.Present { value: _ } => acc
+        v2.std.optional.Absent =>
           if entry.node == key {
             optional_present(value: entry.facts)
           } else {
@@ -398,7 +398,7 @@ fn lookup_inferred_facts_in_entries(
 fn facts_map_from_entries(entries: List<v2.compiler.inferred_tree.InferredFactsEntry>) -> v2.std.diagnostic.Outcome<Map<v2.std.node.Node, v2.compiler.inferred_tree.InferredFacts>> {
   match fold(entries, init: v2.std.diagnostic.Accepted { value: empty_inferred_facts_entry_list(), diagnostics: v2.std.diagnostic.None }, f: fn(acc, entry) {
     match acc {
-      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       Accepted { value: ok_entries, diagnostics: d } =>
         if inferred_facts_cover_node(facts: entry.facts, node: entry.node) {
           v2.std.diagnostic.Accepted { value: list_snoc_item(xs: ok_entries, item: entry), diagnostics: d }
@@ -411,7 +411,7 @@ fn facts_map_from_entries(entries: List<v2.compiler.inferred_tree.InferredFactsE
         }
     }
   }) {
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     Accepted { value: admitted, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
         value: std.types.Map {
@@ -479,16 +479,16 @@ fn infer_branch_int_binding_type_node() -> v2.std.node.Node {
   }
 }
 
-fn infer_atom_binding_sym(node: v2.std.node.Node) -> Optional<v2.std.node.Symbol> {
+fn infer_atom_binding_sym(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   match node.kind {
-    TypeNode { connective: Atom { identity: sym } } => Present { value: sym }
-    _ => Absent
+    TypeNode { connective: Atom { identity: sym } } => v2.std.optional.Present { value: sym }
+    _ => v2.std.optional.Absent
   }
 }
 
-fn infer_conj_edge_named_type_for_binding(edge: v2.std.node.Edge, binding: v2.std.node.Symbol) -> Optional<v2.std.node.Node> {
+fn infer_conj_edge_named_type_for_binding(edge: v2.std.node.Edge, binding: v2.std.node.Symbol) -> v2.std.optional.Optional<v2.std.node.Node> {
   match edge.label {
-    Named { name: sym } =>
+    v2.std.node.Named { name: sym } =>
       if sym == binding {
         optional_present(value: edge.target)
       } else {
@@ -498,41 +498,41 @@ fn infer_conj_edge_named_type_for_binding(edge: v2.std.node.Edge, binding: v2.st
   }
 }
 
-fn infer_conj_named_type_for_binding(domain: v2.std.node.Node, binding: v2.std.node.Symbol) -> Optional<v2.std.node.Node> {
+fn infer_conj_named_type_for_binding(domain: v2.std.node.Node, binding: v2.std.node.Symbol) -> v2.std.optional.Optional<v2.std.node.Node> {
   match domain.kind {
     TypeNode { connective: Conj } =>
-      fold(domain.children, init: Absent, f: fn(acc, e) {
+      fold(domain.children, init: v2.std.optional.Absent, f: fn(acc, e) {
         match acc {
-          Present { value: _ } => acc
-          Absent => infer_conj_edge_named_type_for_binding(edge: e, binding: binding)
+          v2.std.optional.Present { value: _ } => acc
+          v2.std.optional.Absent => infer_conj_edge_named_type_for_binding(edge: e, binding: binding)
         }
       })
-    _ => Absent
+    _ => v2.std.optional.Absent
   }
 }
 
-fn infer_arrow_domain_type_for_binding(arrow: v2.std.node.Node, binding: v2.std.node.Symbol) -> Optional<v2.std.node.Node> {
+fn infer_arrow_domain_type_for_binding(arrow: v2.std.node.Node, binding: v2.std.node.Symbol) -> v2.std.optional.Optional<v2.std.node.Node> {
   match arrow.kind {
     TypeNode { connective: Arrow } =>
       match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
-        Present { value: domain } =>
+        v2.std.optional.Present { value: domain } =>
           infer_conj_named_type_for_binding(domain: domain, binding: binding)
-        Absent => Absent
+        v2.std.optional.Absent => v2.std.optional.Absent
       }
-    _ => Absent
+    _ => v2.std.optional.Absent
   }
 }
 
 data infer_arrow_domain_binding_heuristic_note: String = "interim: infer_find_arrow_domain_type_in_tree DFS-walks the resolved tree for the first Arrow whose Conj domain names the atom-binding symbol — symbol-name collision across unrelated arrows picks first-visit order, not lexical scope. dissolve-on: namespace-only name resolution consumes containment-tree binding→domain (DESIGN open thread §namespace-only); delete this heuristic walker when SymbolIndex lookup lands."
 
-fn infer_find_arrow_domain_type_in_tree(root: v2.std.node.Node, binding: v2.std.node.Symbol) -> Optional<v2.std.node.Node> {
+fn infer_find_arrow_domain_type_in_tree(root: v2.std.node.Node, binding: v2.std.node.Symbol) -> v2.std.optional.Optional<v2.std.node.Node> {
   match infer_arrow_domain_type_for_binding(arrow: root, binding: binding) {
-    Present { value: ty } => Present { value: ty }
-    Absent =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
+    v2.std.optional.Present { value: ty } => v2.std.optional.Present { value: ty }
+    v2.std.optional.Absent =>
+      fold(root.children, init: v2.std.optional.Absent, f: fn(acc, e) {
         match acc {
-          Present { value: _ } => acc
-          Absent => infer_find_arrow_domain_type_in_tree(root: e.target, binding: binding)
+          v2.std.optional.Present { value: _ } => acc
+          v2.std.optional.Absent => infer_find_arrow_domain_type_in_tree(root: e.target, binding: binding)
         }
       })
   }
@@ -550,14 +550,14 @@ fn infer_branch_operand_resolved_type_in_tree(
       v2.std.witness.Holds { value: bool_node() }
     v2.std.diagnostic.Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
       v2.std.witness.Holds { value: infer_branch_int_binding_type_node() }
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       match infer_atom_binding_sym(node: node) {
-        Present { value: binding } =>
+        v2.std.optional.Present { value: binding } =>
           match infer_find_arrow_domain_type_in_tree(root: tree, binding: binding) {
-            Present { value: domain_ty } => v2.std.witness.Holds { value: domain_ty }
-            Absent => inferred_facts_resolved_type(facts: facts)
+            v2.std.optional.Present { value: domain_ty } => v2.std.witness.Holds { value: domain_ty }
+            v2.std.optional.Absent => inferred_facts_resolved_type(facts: facts)
           }
-        Absent => inferred_facts_resolved_type(facts: facts)
+        v2.std.optional.Absent => inferred_facts_resolved_type(facts: facts)
       }
   }
 }
@@ -579,7 +579,7 @@ fn inferred_facts_from_derived_type(
   )
 }
 
-fn infer_branch_type_atoms_equal(a: v2.std.node.Node, b: v2.std.node.Node) -> Bool {
+fn infer_branch_type_atoms_equal(a: v2.std.node.Node, b: v2.std.node.Node) -> v2.std.logic.Bool {
   match a.kind {
     TypeNode { connective: Atom { identity: id_a } } =>
       match b.kind {
@@ -590,21 +590,21 @@ fn infer_branch_type_atoms_equal(a: v2.std.node.Node, b: v2.std.node.Node) -> Bo
   }
 }
 
-fn infer_branch_type_is_bool(type_node: v2.std.node.Node) -> Bool {
+fn infer_branch_type_is_bool(type_node: v2.std.node.Node) -> v2.std.logic.Bool {
   match type_node.kind {
     TypeNode { connective: Atom { identity: id } } => id == ^bool_node_symbol
     _ => false
   }
 }
 
-fn infer_branch_cond_type_is_bool(cond_target: v2.std.node.Node, cond_facts: v2.compiler.inferred_tree.InferredFacts) -> Bool {
+fn infer_branch_cond_type_is_bool(cond_target: v2.std.node.Node, cond_facts: v2.compiler.inferred_tree.InferredFacts) -> v2.std.logic.Bool {
   match infer_branch_operand_resolved_type(node: cond_target, facts: cond_facts) {
     Holds { value: cond_type } => infer_branch_type_is_bool(type_node: cond_type)
     Violates { diagnostic: _ } => false
   }
 }
 
-fn infer_branch_type_is_int(type_node: v2.std.node.Node) -> Bool {
+fn infer_branch_type_is_int(type_node: v2.std.node.Node) -> v2.std.logic.Bool {
   match type_node.kind {
     TypeNode { connective: Atom { identity: id } } => id == ^dag_binding_type_int
     _ => false
@@ -646,7 +646,7 @@ fn infer_match_bool_arm_body_type(
       }
     v2.std.diagnostic.Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
       infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
   }
 }
@@ -665,14 +665,14 @@ fn infer_match_bool_arm_rows_accept(
     entries: entries,
     scrutinee_type: scrutinee_type
   ) {
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     Accepted { value: first_row, diagnostics: fd } =>
       match infer_match_bool_arm_row(
         arm: second_arm_target,
         entries: entries,
         scrutinee_type: scrutinee_type
       ) {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
         Accepted { value: second_row, diagnostics: sd } =>
           let first_body = first_row.body_type
           let second_body = second_row.body_type
@@ -748,25 +748,25 @@ fn infer_branch_bool_if_else(
     outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
   } else {
     match list_at_optional(xs: positional_targets, index: 0) {
-      Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
-      Present { value: cond_target } =>
+      v2.std.optional.Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
+      v2.std.optional.Present { value: cond_target } =>
         match list_at_optional(xs: positional_targets, index: 1) {
-          Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
-          Present { value: then_target } =>
+          v2.std.optional.Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
+          v2.std.optional.Present { value: then_target } =>
             match list_at_optional(xs: positional_targets, index: 2) {
-              Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
-              Present { value: else_target } =>
+              v2.std.optional.Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
+              v2.std.optional.Present { value: else_target } =>
                 match lookup_inferred_facts_in_entries(entries: entries, key: cond_target) {
-                  Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: cond_target))
-                  Present { value: cond_facts } =>
+                  v2.std.optional.Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: cond_target))
+                  v2.std.optional.Present { value: cond_facts } =>
                     match lookup_inferred_facts_in_entries(entries: entries, key: then_target) {
-                      Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: then_target))
-                      Present { value: then_facts } =>
+                      v2.std.optional.Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: then_target))
+                      v2.std.optional.Present { value: then_facts } =>
                         match lookup_inferred_facts_in_entries(entries: entries, key: else_target) {
-                          Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: else_target))
-                          Present { value: else_facts } =>
+                          v2.std.optional.Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: else_target))
+                          v2.std.optional.Present { value: else_facts } =>
                             match v2.std.bounded_lattice_completeness.infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
-                              Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                              v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
                               Accepted { value: _, diagnostics: cd } =>
                                 if !infer_branch_cond_type_is_bool(
                                   cond_target: cond_target,
@@ -780,7 +780,7 @@ fn infer_branch_bool_if_else(
                                     else_node: else_target,
                                     else_facts: else_facts
                                   ) {
-                                    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                                    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
                                     Accepted { value: unified_type, diagnostics: ud } =>
                                       match infer_descent_witness_for_node(n: node) {
                                         Violates { diagnostic: d } =>
@@ -841,7 +841,7 @@ fn infer_bool_literal_pattern_classify(pattern: v2.std.node.Node) -> InferBoolLi
       InferBoolLiteralPatternFalse
     v2.std.diagnostic.Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
       InferBoolLiteralPatternOther
-    Rejected { diagnostics: _ } => InferBoolLiteralPatternOther
+    v2.std.diagnostic.Rejected { diagnostics: _ } => InferBoolLiteralPatternOther
   }
 }
 
@@ -887,11 +887,11 @@ fn infer_match_bool_arm_row(
   match arm.kind {
     TypeNode { connective: Conj } =>
       match find_named_child(root: arm, name: match_arm_pattern) {
-        Rejected { diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: _ } =>
           outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
         Accepted { value: pat, diagnostics: pd } =>
           match find_named_child(root: arm, name: match_arm_body) {
-            Rejected { diagnostics: _ } =>
+            v2.std.diagnostic.Rejected { diagnostics: _ } =>
               outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
             Accepted { value: body_target, diagnostics: bd } =>
               match infer_bool_literal_pattern_classify(pattern: pat) {
@@ -900,8 +900,8 @@ fn infer_match_bool_arm_row(
                 _ =>
                   let coverage = infer_bool_literal_arm_coverage_from_pattern(pattern: pat)
                   match lookup_inferred_facts_in_entries(entries: entries, key: body_target) {
-                    Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: body_target))
-                    Present { value: body_facts } =>
+                    v2.std.optional.Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: body_target))
+                    v2.std.optional.Present { value: body_facts } =>
                       match infer_match_bool_arm_body_type(
                         body_target: body_target,
                         body_facts: body_facts,
@@ -936,19 +936,19 @@ fn infer_match_bool(
     outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
   } else {
     match list_at_optional(xs: positional_targets, index: 0) {
-      Absent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
-      Present { value: scrutinee_target } =>
+      v2.std.optional.Absent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
+      v2.std.optional.Present { value: scrutinee_target } =>
         match list_at_optional(xs: positional_targets, index: 1) {
-          Absent => outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
-          Present { value: first_arm_target } =>
+          v2.std.optional.Absent => outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
+          v2.std.optional.Present { value: first_arm_target } =>
             match list_at_optional(xs: positional_targets, index: 2) {
-              Absent => outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
-              Present { value: second_arm_target } =>
+              v2.std.optional.Absent => outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
+              v2.std.optional.Present { value: second_arm_target } =>
                 match lookup_inferred_facts_in_entries(entries: entries, key: scrutinee_target) {
-                  Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: scrutinee_target))
-                  Present { value: scrutinee_facts } =>
+                  v2.std.optional.Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: scrutinee_target))
+                  v2.std.optional.Present { value: scrutinee_facts } =>
                     match v2.std.bounded_lattice_completeness.infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
-                      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
                       Accepted { value: _, diagnostics: cd } =>
                         match infer_branch_operand_resolved_type_in_tree(
                           node: scrutinee_target,
@@ -998,8 +998,8 @@ fn infer_loop_iteration_fold_child_targets(node: v2.std.node.Node) -> List<v2.st
 
 fn infer_loop_body_type_at(target: v2.std.node.Node, entries: List<v2.compiler.inferred_tree.InferredFactsEntry>) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match lookup_inferred_facts_in_entries(entries: entries, key: target) {
-    Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: target))
-    Present { value: facts } =>
+    v2.std.optional.Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: target))
+    v2.std.optional.Present { value: facts } =>
       match infer_branch_operand_resolved_type(node: target, facts: facts) {
         Violates { diagnostic: d } => outcome_rejected(d)
         Holds { value: body_type } =>
@@ -1017,17 +1017,17 @@ fn infer_loop_fixpoint_carrier(
   entries: List<v2.compiler.inferred_tree.InferredFactsEntry>,
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match list_at_optional(xs: body_targets, index: 0) {
-    Absent => outcome_rejected(infer_loop_shape_invalid_diagnostic(node: node))
-    Present { value: first_body } =>
+    v2.std.optional.Absent => outcome_rejected(infer_loop_shape_invalid_diagnostic(node: node))
+    v2.std.optional.Present { value: first_body } =>
       bind_outcome(
         o: infer_loop_body_type_at(target: first_body, entries: entries),
         f: fn(carrier) {
           fold(body_targets, init: v2.std.diagnostic.Accepted { value: carrier, diagnostics: v2.std.diagnostic.None }, f: fn(acc, target) {
             match acc {
-              Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+              v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
               Accepted { value: c, diagnostics: _ } =>
                 match infer_loop_body_type_at(target: target, entries: entries) {
-                  Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                  v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
                   Accepted { value: t, diagnostics: _ } =>
                     if infer_branch_type_atoms_equal(a: c, b: t) {
                       acc
@@ -1048,14 +1048,14 @@ fn infer_loop_iteration(
   entries: List<v2.compiler.inferred_tree.InferredFactsEntry>,
 ) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredFacts> {
   match v2.std.bounded_lattice_completeness.infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     Accepted { value: _, diagnostics: cd } =>
       match infer_loop_fixpoint_carrier(
         node: node,
         body_targets: infer_loop_iteration_fold_child_targets(node: node),
         entries: entries
       ) {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
         Accepted { value: carrier, diagnostics: ud } =>
           match infer_descent_witness_for_node(n: node) {
             Violates { diagnostic: d } =>
@@ -1081,7 +1081,7 @@ fn infer_loop_iteration(
 
 data infer_transform_binary_infix_note: String = "First behavior-specific Transform derivation (v2-inferred-tree-completeness): binary infix Int add derives the unified Int type as the expression result — the add_probe body vertical. Operator recognition accepts dag_token_plus pre-resolve and the canonical add operation wire post-resolve (03_resolve.resolve_transform_operator_child). infer_gather_fold_init gates await_transform_row on infer_transform_is_binary_infix_int_add_shape so every other Transform stays v2.compiler.inferred_tree.GroundingNotDerived — refusal is reserved for add-shaped input that is malformed. Discriminating add vertical witness enrolled on FalsifierSubstrateLongLane via gunbc.explicit_witness_admission (SubstrateLongLaneEvalBudget); fast per-PR subtract dispatch control in body_lowering/infer_transform_binary_infix_witness_test.dag. dissolve-on: general operator/operand typing table subsumes this rule."
 
-fn infer_transform_operator_is_int_add(op_node: v2.std.node.Node) -> Bool {
+fn infer_transform_operator_is_int_add(op_node: v2.std.node.Node) -> v2.std.logic.Bool {
   match op_node.kind {
     TypeNode { connective: Atom { identity: id } } =>
       id == ^dag_token_plus
@@ -1097,14 +1097,14 @@ fn infer_transform_operator_is_int_add(op_node: v2.std.node.Node) -> Bool {
   }
 }
 
-fn infer_transform_is_binary_infix_int_add_shape(node: v2.std.node.Node) -> Bool {
+fn infer_transform_is_binary_infix_int_add_shape(node: v2.std.node.Node) -> v2.std.logic.Bool {
   let positional_targets = node_positional_child_targets(node: node)
   if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
     false
   } else {
     match list_at_optional(xs: positional_targets, index: 0) {
-      Absent => false
-      Present { value: op_target } => infer_transform_operator_is_int_add(op_node: op_target)
+      v2.std.optional.Absent => false
+      v2.std.optional.Present { value: op_target } => infer_transform_operator_is_int_add(op_node: op_target)
     }
   }
 }
@@ -1146,26 +1146,26 @@ fn infer_transform_binary_infix(
     outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
   } else {
     match list_at_optional(xs: positional_targets, index: 0) {
-      Absent => outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
-      Present { value: op_target } =>
+      v2.std.optional.Absent => outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
+      v2.std.optional.Present { value: op_target } =>
         match list_at_optional(xs: positional_targets, index: 1) {
-          Absent => outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
-          Present { value: left_target } =>
+          v2.std.optional.Absent => outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
+          v2.std.optional.Present { value: left_target } =>
             match list_at_optional(xs: positional_targets, index: 2) {
-              Absent => outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
-              Present { value: right_target } =>
+              v2.std.optional.Absent => outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
+              v2.std.optional.Present { value: right_target } =>
                 if !infer_transform_operator_is_int_add(op_node: op_target) {
                   outcome_rejected(infer_transform_operator_unsupported_diagnostic(node: node))
                 } else {
                   match lookup_inferred_facts_in_entries(entries: entries, key: left_target) {
-                    Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: left_target))
-                    Present { value: left_facts } =>
+                    v2.std.optional.Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: left_target))
+                    v2.std.optional.Present { value: left_facts } =>
                       match lookup_inferred_facts_in_entries(entries: entries, key: right_target) {
-                        Absent =>
+                        v2.std.optional.Absent =>
                           outcome_rejected(infer_facts_lookup_miss_diagnostic(key: right_target))
-                        Present { value: right_facts } =>
+                        v2.std.optional.Present { value: right_facts } =>
                           match v2.std.bounded_lattice_completeness.infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
-                            Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                            v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
                             Accepted { value: _, diagnostics: cd } =>
                               match infer_unify_transform_operand_types(
                                 left_node: left_target,
@@ -1174,7 +1174,7 @@ fn infer_transform_binary_infix(
                                 right_facts: right_facts,
                                 tree: tree
                               ) {
-                                Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                                v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
                                 Accepted { value: unified_type, diagnostics: ud } =>
                                   if !infer_branch_type_is_int(type_node: unified_type) {
                                     outcome_rejected(
@@ -1214,10 +1214,10 @@ fn infer_transform_binary_infix(
 fn infer_gather_fold_acc_failed(
   node: v2.std.node.Node,
   pending: v2.std.diagnostic.NonEmptyDiagnostics,
-  await_branch_row: Bool,
-  await_match_row: Bool,
-  await_loop_row: Bool,
-  await_transform_row: Bool,
+  await_branch_row: v2.std.logic.Bool,
+  await_match_row: v2.std.logic.Bool,
+  await_loop_row: v2.std.logic.Bool,
+  await_transform_row: v2.std.logic.Bool,
   children_remaining: Int,
 ) -> InferGatherFoldAcc {
   InferGatherFoldAcc {
@@ -1237,10 +1237,10 @@ fn infer_gather_fold_acc_ok(
   node: v2.std.node.Node,
   entries: List<v2.compiler.inferred_tree.InferredFactsEntry>,
   pending: v2.std.diagnostic.Diagnostics,
-  await_branch_row: Bool,
-  await_match_row: Bool,
-  await_loop_row: Bool,
-  await_transform_row: Bool,
+  await_branch_row: v2.std.logic.Bool,
+  await_match_row: v2.std.logic.Bool,
+  await_loop_row: v2.std.logic.Bool,
+  await_transform_row: v2.std.logic.Bool,
   children_remaining: Int,
 ) -> InferGatherFoldAcc {
   InferGatherFoldAcc {
@@ -1290,7 +1290,7 @@ fn infer_gather_branch_row_on_entries(
   partials: List<v2.std.node.Node>,
 ) -> InferGatherFoldAcc {
   match infer_branch_bool_if_else(node: node, partials: partials, entries: entries) {
-    Rejected { diagnostics: r } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
         pending: rejected_with_pending(pending: pending, rejected: r),
@@ -1302,7 +1302,7 @@ fn infer_gather_branch_row_on_entries(
       )
     Accepted { value: facts, diagnostics: d } =>
       match admitted_inferred_facts_entry(node: node, facts: facts) {
-        Rejected { diagnostics: r } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } =>
           infer_gather_fold_acc_failed(
             node: node,
             pending: rejected_with_pending(pending: pending, rejected: r),
@@ -1338,7 +1338,7 @@ fn infer_gather_match_row_on_entries(
   tree: v2.std.node.Node,
 ) -> InferGatherFoldAcc {
   match infer_match_bool(node: node, partials: partials, entries: entries, tree: tree) {
-    Rejected { diagnostics: r } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
         pending: rejected_with_pending(pending: pending, rejected: r),
@@ -1350,7 +1350,7 @@ fn infer_gather_match_row_on_entries(
       )
     Accepted { value: facts, diagnostics: d } =>
       match admitted_inferred_facts_entry(node: node, facts: facts) {
-        Rejected { diagnostics: r } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } =>
           infer_gather_fold_acc_failed(
             node: node,
             pending: rejected_with_pending(pending: pending, rejected: r),
@@ -1385,7 +1385,7 @@ fn infer_gather_loop_row_on_entries(
   partials: List<v2.std.node.Node>,
 ) -> InferGatherFoldAcc {
   match infer_loop_iteration(node: node, partials: partials, entries: entries) {
-    Rejected { diagnostics: r } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
         pending: rejected_with_pending(pending: pending, rejected: r),
@@ -1397,7 +1397,7 @@ fn infer_gather_loop_row_on_entries(
       )
     Accepted { value: facts, diagnostics: d } =>
       match admitted_inferred_facts_entry(node: node, facts: facts) {
-        Rejected { diagnostics: r } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } =>
           infer_gather_fold_acc_failed(
             node: node,
             pending: rejected_with_pending(pending: pending, rejected: r),
@@ -1433,7 +1433,7 @@ fn infer_gather_transform_row_on_entries(
   tree: v2.std.node.Node,
 ) -> InferGatherFoldAcc {
   match infer_transform_binary_infix(node: node, partials: partials, entries: entries, tree: tree) {
-    Rejected { diagnostics: r } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
         pending: rejected_with_pending(pending: pending, rejected: r),
@@ -1445,7 +1445,7 @@ fn infer_gather_transform_row_on_entries(
       )
     Accepted { value: facts, diagnostics: d } =>
       match admitted_inferred_facts_entry(node: node, facts: facts) {
-        Rejected { diagnostics: r } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } =>
           infer_gather_fold_acc_failed(
             node: node,
             pending: rejected_with_pending(pending: pending, rejected: r),
@@ -1477,7 +1477,7 @@ data infer_gather_dispatch_totality_note: String = "This dispatch is TOTAL over 
 
 fn infer_gather_fold_not_derived(n: v2.std.node.Node, partials: List<v2.std.node.Node>) -> InferGatherFoldAcc {
   match infer_node_facts(n: n, partials: partials) {
-    Rejected { diagnostics: r } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: n,
         pending: r,
@@ -1489,7 +1489,7 @@ fn infer_gather_fold_not_derived(n: v2.std.node.Node, partials: List<v2.std.node
       )
     Accepted { value: facts, diagnostics: d } =>
       match admitted_inferred_facts_entry(node: n, facts: facts) {
-        Rejected { diagnostics: r } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } =>
           infer_gather_fold_acc_failed(
             node: n,
             pending: r,
@@ -1550,7 +1550,7 @@ fn infer_gather_fold_init(n: v2.std.node.Node, partials: List<v2.std.node.Node>)
         children_remaining: length(xs: n.children)
       )
     ComputationNode { behavior: Value } => infer_gather_fold_not_derived(n: n, partials: partials)
-    ComputationNode { behavior: Transform } =>
+    ComputationNode { behavior: v2.std.node.Transform } =>
       if infer_transform_is_binary_infix_int_add_shape(node: n) {
         infer_gather_fold_acc_ok(
           node: n,
@@ -1565,7 +1565,7 @@ fn infer_gather_fold_init(n: v2.std.node.Node, partials: List<v2.std.node.Node>)
       } else {
         infer_gather_fold_not_derived(n: n, partials: partials)
       }
-    ComputationNode { behavior: Bind } => infer_gather_fold_not_derived(n: n, partials: partials)
+    ComputationNode { behavior: v2.std.node.Bind } => infer_gather_fold_not_derived(n: n, partials: partials)
     TypeNode { connective: Atom { identity: _ } } => infer_gather_fold_not_derived(n: n, partials: partials)
     TypeNode { connective: Conj } => infer_gather_fold_not_derived(n: n, partials: partials)
     TypeNode { connective: Disj } => infer_gather_fold_not_derived(n: n, partials: partials)
@@ -1587,15 +1587,15 @@ fn infer_gather_failed_non_empty(acc: InferGatherFoldAcc) -> v2.std.diagnostic.N
 
 data infer_literal_subtree_diagnostic_discharge_note: String = "An integer literal's modeled type derives from its canonical representation, including its sole named magnitude subtree. Its derivation discharges only that edge's local type frontier; propagating it past the literal would report v2.compiler.inferred_tree.GroundingNotDerived after Int was derived. Boolean literals are canonical only with no children, so no boolean payload can be discharged. Malformed literals remain v2.compiler.inferred_tree.GroundingNotDerived and retain every child diagnostic."
 
-fn infer_literal_edge_diagnostics_derived(parent: v2.std.node.Node, edge: v2.std.node.Edge) -> Bool {
+fn infer_literal_edge_diagnostics_derived(parent: v2.std.node.Node, edge: v2.std.node.Edge) -> v2.std.logic.Bool {
   match dag_canonical_literal_from_node(node: parent) {
     v2.std.diagnostic.Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
       match edge.label {
-        Named { name: field } => field == ^integer_literal_magnitude_field
+        v2.std.node.Named { name: field } => field == ^integer_literal_magnitude_field
         Positional => false
       }
     v2.std.diagnostic.Accepted { value: DagCanonicalBoolLiteral { value: _ }, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -1685,7 +1685,7 @@ fn infer_gather_fold_algebra(partials: List<v2.std.node.Node>, tree: v2.std.node
   }
 }
 
-fn infer_grounding_admits_infer_facts(grounding: v2.std.constraints.CanonicalGrounding) -> Bool {
+fn infer_grounding_admits_infer_facts(grounding: v2.std.constraints.CanonicalGrounding) -> v2.std.logic.Bool {
   canonical_grounding_admits_infer_facts(grounding: grounding)
 }
 
@@ -1697,10 +1697,10 @@ fn infer_entries_for_tree(tree: v2.compiler.resolve.ResolvedTree) -> v2.std.diag
 }
 fn infer(tree: v2.compiler.resolve.ResolvedTree) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   match infer_entries_for_tree(tree: tree) {
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     Accepted { value: entries, diagnostics: d } =>
       match facts_map_from_entries(entries: entries) {
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
         Accepted { value: facts_map, diagnostics: md } =>
           v2.std.diagnostic.Accepted {
             value: v2.compiler.inferred_tree.InferredTree {

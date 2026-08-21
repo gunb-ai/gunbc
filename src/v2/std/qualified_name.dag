@@ -51,7 +51,7 @@ fn qn_fold_step(acc: QnFoldStatus, edge: v2.std.node.Edge, child: QnFoldStatus) 
         QnFoldError { diag: d } => QnFoldError { diag: d }
         QnFoldDone { qn: child_qn } =>
           match edge.label {
-            Named { name: ename } =>
+            v2.std.node.Named { name: ename } =>
               if ename == ^fold_list_node_head {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: _ } } =>
@@ -170,7 +170,7 @@ fn qualified_name_init(qn: QualifiedName) -> QualifiedName {
   list_init(xs: qn)
 }
 
-fn qualified_name_last_segment(qn: QualifiedName) -> Optional<v2.std.node.Symbol> {
+fn qualified_name_last_segment(qn: QualifiedName) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   match qn {
     Empty => optional_absent()
     Cons { head: h, tail: t } =>

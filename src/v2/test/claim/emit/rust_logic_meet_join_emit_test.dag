@@ -3,39 +3,39 @@ module v2.test.emit.rust_logic_meet_join_emit
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn meet_join_emit_facts_miss(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn meet_join_emit_facts_miss(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
-fn meet_join_emit_tree_for(root: Node) -> v2.compiler.inferred_tree.InferredTree {
+fn meet_join_emit_tree_for(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map { lookup: meet_join_emit_facts_miss }
   }
 }
 
-fn meet_join_emit_source_equals(root: Node, target: v2.std.compilers.target_model.TargetModel, expected: String) -> Bool {
-  match emit(tree: meet_join_emit_tree_for(root: root), target: target) {
+fn meet_join_emit_source_equals(root: v2.std.node.Node, target: v2.std.compilers.target_model.TargetModel, expected: String) -> v2.std.logic.Bool {
+  match v2.compiler.emit.emit(tree: meet_join_emit_tree_for(root: root), target: target) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == expected) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn meet_join_emit_discriminates(
-  root: Node,
+  root: v2.std.node.Node,
   target: v2.std.compilers.target_model.TargetModel,
   expected: String,
   wrong: String
-) -> Bool {
-  match emit(tree: meet_join_emit_tree_for(root: root), target: target) {
+) -> v2.std.logic.Bool {
+  match v2.compiler.emit.emit(tree: meet_join_emit_tree_for(root: root), target: target) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == expected) && (source.carried != wrong) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn rust_logic_meet_emit_holds() -> Bool {
+test fn rust_logic_meet_emit_holds() -> v2.std.logic.Bool {
   meet_join_emit_source_equals(
     root: dag_meet_arrow_with_body_fixture,
     target: rust_logic_meet_target_model_staging(),
@@ -49,7 +49,7 @@ test fn rust_logic_meet_emit_holds() -> Bool {
     )
 }
 
-test fn rust_logic_join_emit_holds() -> Bool {
+test fn rust_logic_join_emit_holds() -> v2.std.logic.Bool {
   meet_join_emit_source_equals(
     root: dag_join_arrow_with_body_fixture,
     target: rust_logic_join_target_model_staging(),

@@ -48,19 +48,19 @@ type SparkServingUserUnitSpec {
 // the directory the server writes and the directory the observer reads cannot drift apart. The
 // reference is split into model and tag by the cited store layout rather than by string surgery
 // here, because how a reference maps to a manifest path is upstream's rule and not ours.
-fn spark_serving_desired_model_manifest_path() -> FilePath {
+fn spark_serving_desired_model_manifest_path() -> std.types.FilePath {
   concat(
     spark_serving_models_root() as String,
     concat("/", ollama_manifest_rel_path(
       model: spark_serving_desired_model_ref.name,
       tag: spark_serving_desired_model_ref.tag,
     )),
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
 // The directory the manifest is published INTO, needed because the publish step must create it
 // before the move and the manifest path is a file inside a per-model, per-registry tree.
-fn spark_serving_desired_model_manifest_dir() -> FilePath {
+fn spark_serving_desired_model_manifest_dir() -> std.types.FilePath {
   concat(
     spark_serving_models_root() as String,
     concat("/", concat(
@@ -73,41 +73,41 @@ fn spark_serving_desired_model_manifest_dir() -> FilePath {
         )),
       )),
     )),
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
 // STAGING PATHS, and they are outside the store on purpose. A fetch that lands directly at the name
 // the store reads publishes a half-written or wrong-hashed file the instant curl creates it, and the
 // observe side answers blob presence by FILENAME -- so a corrupt download would read as installed.
-fn spark_serving_staged_manifest_path() -> FilePath {
-  concat(spark_serving_readiness_scratch_root() as String, "/staged-manifest") as FilePath
+fn spark_serving_staged_manifest_path() -> std.types.FilePath {
+  concat(spark_serving_readiness_scratch_root() as String, "/staged-manifest") as std.types.FilePath
 }
 
-fn spark_serving_staged_blob_path(hex: std.types.NonEmptyStr) -> FilePath {
+fn spark_serving_staged_blob_path(hex: std.types.NonEmptyStr) -> std.types.FilePath {
   concat(
     spark_serving_readiness_scratch_root() as String,
     concat("/staged-blob-", hex as String),
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
 // The checksum files sha256sum --check reads. They live in the readiness scratch beside the staged
 // bytes they vouch for, so a failed run leaves nothing behind in the store.
-fn spark_serving_manifest_checksum_path() -> FilePath {
-  concat(spark_serving_readiness_scratch_root() as String, "/staged-manifest.sha256") as FilePath
+fn spark_serving_manifest_checksum_path() -> std.types.FilePath {
+  concat(spark_serving_readiness_scratch_root() as String, "/staged-manifest.sha256") as std.types.FilePath
 }
 
-fn spark_serving_blob_checksum_path(hex: std.types.NonEmptyStr) -> FilePath {
+fn spark_serving_blob_checksum_path(hex: std.types.NonEmptyStr) -> std.types.FilePath {
   concat(
     spark_serving_readiness_scratch_root() as String,
     concat("/staged-blob-", concat(hex as String, ".sha256")),
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
-fn spark_serving_published_blob_path(hex: std.types.NonEmptyStr) -> FilePath {
+fn spark_serving_published_blob_path(hex: std.types.NonEmptyStr) -> std.types.FilePath {
   concat(
     spark_serving_desired_model_blobs_dir() as String,
     concat("/", ollama_blob_file_name(digest_hex: hex)),
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
 // THE REGISTRY URLS, and the asymmetry between them is upstream's, not ours.
@@ -138,35 +138,35 @@ fn spark_serving_registry_blob_url(hex: std.types.NonEmptyStr) -> String {
   ], "")
 }
 
-fn spark_serving_desired_model_blobs_dir() -> FilePath {
+fn spark_serving_desired_model_blobs_dir() -> std.types.FilePath {
   concat(
     spark_serving_models_root() as String,
     concat("/", ollama_model_store_layout.blobs_dir_rel),
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
 fn spark_serving_user_unit_rel() -> String {
   join([spark_serving_user_unit_dir_rel, spark_serving_unit_name], "/")
 }
 
-fn spark_serving_runtimes_parent() -> FilePath {
+fn spark_serving_runtimes_parent() -> std.types.FilePath {
   concat(
     spark_serving_executor_home as String,
     concat("/", spark_serving_runtimes_parent_rel),
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
-fn spark_serving_runtime_root_for_identity(identity: std.content_hash.Fnv1a64Structural) -> FilePath {
+fn spark_serving_runtime_root_for_identity(identity: std.content_hash.Fnv1a64Structural) -> std.types.FilePath {
   concat(
     spark_serving_executor_home as String,
     concat("/", spark_serving_runtime_root_rel_for_identity(identity: identity)),
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
 // The root the REQUIRED release must occupy. Named separately from the parameterized form so a
 // caller asking "where does the runtime we require live" cannot accidentally pass an observed
 // identity and get an answer about a different tree.
-fn spark_serving_required_runtime_root() -> FilePath {
+fn spark_serving_required_runtime_root() -> std.types.FilePath {
   spark_serving_runtime_root_for_identity(
     identity: ollama_runtime_materialization_identity_for_required_release(),
   )
@@ -181,11 +181,11 @@ fn spark_serving_required_runtime_root() -> FilePath {
 // not be hashed into the artifact, so apply would be choosing a path the plan never saw. Deriving it
 // makes the staged location as reviewable as the published one, and the sequence takes ownership of
 // it by removing it first rather than by making it unguessable.
-fn spark_serving_required_runtime_staging_root() -> FilePath {
+fn spark_serving_required_runtime_staging_root() -> std.types.FilePath {
   concat(
     spark_serving_runtimes_parent() as String,
     concat("/.staging-", ollama_runtime_materialization_identity_for_required_release().digest as String),
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
 // THE ATTEMPT WORKSPACE IS NOT THE STAGING TREE, and merging them was a real defect rather than an
@@ -201,39 +201,39 @@ fn spark_serving_required_runtime_staging_root() -> FilePath {
 // Readiness capture is NOT the install workspace. Pulling a model is a different effect from
 // installing the runtime and must not depend on a directory the install sequence creates and deletes,
 // so the probe response lands under its own root that outlives neither more nor less than the probe.
-fn spark_serving_readiness_scratch_root() -> FilePath {
+fn spark_serving_readiness_scratch_root() -> std.types.FilePath {
   concat(
     spark_serving_runtimes_parent() as String,
     "/.readiness",
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
-fn spark_serving_health_request_body_path() -> FilePath {
+fn spark_serving_health_request_body_path() -> std.types.FilePath {
   concat(
     spark_serving_readiness_scratch_root() as String,
     "/generate-request.json",
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
-fn spark_serving_required_runtime_workspace_root() -> FilePath {
+fn spark_serving_required_runtime_workspace_root() -> std.types.FilePath {
   concat(
     spark_serving_runtimes_parent() as String,
     concat("/.workspace-", ollama_runtime_materialization_identity_for_required_release().digest as String),
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
-fn spark_serving_required_runtime_staged_archive_path() -> FilePath {
+fn spark_serving_required_runtime_staged_archive_path() -> std.types.FilePath {
   concat(
     spark_serving_required_runtime_workspace_root() as String,
     concat("/", ollama_binary_release_asset_name(binary_release: ollama_required_release) as String),
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
-fn spark_serving_required_runtime_checksum_manifest_path() -> FilePath {
+fn spark_serving_required_runtime_checksum_manifest_path() -> std.types.FilePath {
   concat(
     spark_serving_required_runtime_workspace_root() as String,
     "/archive.sha256",
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
 // THE RECEIPT ARRIVES BY THE PUBLISHING RENAME. It is written into staging as the last step before
@@ -242,58 +242,58 @@ fn spark_serving_required_runtime_checksum_manifest_path() -> FilePath {
 // make it a separate step with its own failure, leaving a fully published runtime that every observer
 // reports incomplete. Written into staging, the receipt cannot exist unless the tree naming it was
 // published whole, and it cannot outlive a publish that never happened.
-fn spark_serving_required_runtime_staged_receipt_path() -> FilePath {
+fn spark_serving_required_runtime_staged_receipt_path() -> std.types.FilePath {
   concat(
     spark_serving_required_runtime_staging_root() as String,
     "/.gunbc-materialization-receipt",
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
 // Where the receipt ends up, and therefore where the observer looks for it.
-fn spark_serving_required_runtime_receipt_path() -> FilePath {
+fn spark_serving_required_runtime_receipt_path() -> std.types.FilePath {
   concat(
     spark_serving_required_runtime_root() as String,
     "/.gunbc-materialization-receipt",
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
-fn spark_serving_required_runtime_staged_executable_path() -> FilePath {
+fn spark_serving_required_runtime_staged_executable_path() -> std.types.FilePath {
   concat(
     spark_serving_required_runtime_staging_root() as String,
     concat("/", ollama_required_release.executable_relative_path as String),
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
-fn spark_serving_required_runtime_executable_path() -> FilePath {
+fn spark_serving_required_runtime_executable_path() -> std.types.FilePath {
   concat(
     spark_serving_required_runtime_root() as String,
     concat("/", ollama_required_release.executable_relative_path as String),
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
-fn spark_serving_models_root() -> FilePath {
+fn spark_serving_models_root() -> std.types.FilePath {
   concat(
     spark_serving_executor_home as String,
     concat("/", spark_serving_models_root_rel),
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
 // The unit's parent directory, absolute, derived from the same two authorities the unit path is.
 // It exists as its own function because a realizer that needed it would otherwise reconstruct it by
 // string surgery on the unit path -- a second derivation of one fact, and one that silently breaks
 // if the unit basename ever contains a separator.
-fn spark_serving_user_unit_dir() -> FilePath {
+fn spark_serving_user_unit_dir() -> std.types.FilePath {
   concat(
     spark_serving_executor_home as String,
     concat("/", spark_serving_user_unit_dir_rel),
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
-fn spark_serving_user_unit_path() -> FilePath {
+fn spark_serving_user_unit_path() -> std.types.FilePath {
   concat(
     spark_serving_executor_home as String,
     concat("/", spark_serving_user_unit_rel()),
-  ) as FilePath
+  ) as std.types.FilePath
 }
 
 fn spark_serving_user_unit_spec(bind_host_port: std.types.NonEmptyStr) -> SparkServingUserUnitSpec {

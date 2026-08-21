@@ -19,14 +19,14 @@ fn spine_resolve_service_parse_tree() -> v2.std.node.Node {
 }
 }
 
-test fn spine_resolve_accepts_normalized_tree() -> Bool {
+test fn spine_resolve_accepts_normalized_tree() -> v2.std.logic.Bool {
   match v2.compiler.normalize.normalize(parse_tree: spine_resolve_service_parse_tree()) {
     Accepted { value: normalized, diagnostics: _ } =>
       match v2.compiler.resolve.resolve(tree: normalized, lm: v2.extdeps.languages.dag.dag_language_model_void()) {
         Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -54,13 +54,13 @@ data spine_resolve_reject_module_subject: v2.std.node.Node = v2.std.node.Node {
 // namespace_bindings_augment_from_module_atoms, build_program_namespace
 // self-bound every Atom node anywhere in the tree -- including this
 // reference -- so it resolved without ever consulting canonical_symbols.
-test fn spine_resolve_rejects_noncanonical_root_atom() -> Bool {
+test fn spine_resolve_rejects_noncanonical_root_atom() -> v2.std.logic.Bool {
   match v2.compiler.normalized_tree.admit_normalized_tree(root: spine_resolve_reject_module_subject, diagnostics: v2.std.diagnostic.None) {
     Accepted { value: normalized, diagnostics: _ } =>
       match v2.compiler.resolve.resolve(tree: normalized, lm: v2.extdeps.languages.dag.dag_language_model_surface_empty_prelude()) {
         Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

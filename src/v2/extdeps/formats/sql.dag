@@ -457,8 +457,8 @@ fn sql_serialize_identifier_list(ids: List<SqlIdentifier>) -> String {
 
 fn sql_serialize_primary_key_clause(pk: v2.std.optional.Optional<List<SqlIdentifier>>) -> String {
   match pk {
-    Absent => ""
-    Present { value: cols } =>
+    v2.std.optional.Absent => ""
+    v2.std.optional.Present { value: cols } =>
       concat(
         ", PRIMARY KEY (",
         concat(

@@ -59,7 +59,7 @@ test fn denial_is_typed_located_and_left_biased_under_meet() -> Bool {
   )
   match decision_meet(a: first, b: second) {
     Permit => false
-    Deny { refusal: refusal } =>
+    std.access.Deny { refusal: refusal } =>
       refusal.location.profile == "PublicationAdmissionRequest"
         && refusal.location.object == "public-root"
   }

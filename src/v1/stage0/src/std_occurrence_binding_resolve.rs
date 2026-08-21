@@ -10,26 +10,20 @@ pub use crate::std_occurrence_binding::{
     BindingCandidate, BindingOccurrence, ContainmentPath, OccurrenceBindingResult,
 };
 pub use crate::std_occurrence_identity::occurrence_transport_validate;
-use crate::std_occurrence_identity::OccurrenceCategory::{
-    CallableOccurrence, ConstructorOccurrence, FieldOccurrence, LexicalValueOccurrence,
-    MethodOccurrence, NamespaceSegmentOccurrence, TypeOccurrence,
-};
-use crate::std_occurrence_identity::OccurrenceRole::{DeclarationRole, ReferenceRole};
-use crate::std_occurrence_identity::OccurrenceTransportRefusal::{
-    DuplicateSuppliedCandidateIdentity, MissingAuthoredOccurrenceIdentity,
-    UnknownOccurrenceIdentity, WrongOccurrenceRole,
-};
-use crate::std_occurrence_identity::OccurrenceTransportValidation::{
-    OccurrenceTransportRefused, OccurrenceTransportValidated,
-};
+use crate::std_occurrence_identity::OccurrenceCategory::*;
+use crate::std_occurrence_identity::OccurrenceRole::*;
+use crate::std_occurrence_identity::OccurrenceTransportRefusal::*;
+use crate::std_occurrence_identity::OccurrenceTransportValidation::*;
 pub use crate::std_occurrence_identity::{
     DeclarationOccurrence, OccurrenceCategory, OccurrenceContainmentPath, OccurrenceId,
     OccurrenceRole, OccurrenceTransport, OccurrenceTransportRefusal, OccurrenceTransportValidation,
     ReferenceOccurrence, ValidatedOccurrenceTransport,
 };
-pub use crate::std_types::List;
+pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v2_std_collection::empty_map;
+pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -202,7 +196,6 @@ pub fn occurrence_containment_to_binding_path(
     Rc::new(ContainmentPath {
         ancestors: path.ancestors.clone(),
         terminal: path.terminal.clone(),
-        _phantom: std::marker::PhantomData,
     })
 }
 
@@ -211,7 +204,6 @@ pub fn binding_occurrence_from_reference(
 ) -> Rc<BindingOccurrence<OccurrenceId>> {
     Rc::new(BindingOccurrence {
         containment: occurrence_containment_to_binding_path(reference.containment.clone()),
-        _phantom: std::marker::PhantomData,
     })
 }
 
@@ -220,7 +212,6 @@ pub fn binding_candidate_from_declaration(
 ) -> Rc<BindingCandidate<OccurrenceId>> {
     Rc::new(BindingCandidate {
         containment: occurrence_containment_to_binding_path(declaration.containment.clone()),
-        _phantom: std::marker::PhantomData,
     })
 }
 
@@ -238,7 +229,7 @@ pub fn binding_candidates_from_supplied_declarations(
 ) -> Rc<OccurrenceCandidatePopulationBuild> {
     supplied_candidates.clone().iter().cloned().fold(Rc::new(OccurrenceCandidatePopulationBuild {
     candidates: Rc::new(vec![]),
-    seen_candidate_ids: v1_rt::rc_empty_map::<i64, OccurrenceId>(),
+    seen_candidate_ids: v1_rt::rc_empty_map::<_, _>(),
     refusal: None,
 }), |build: Rc<OccurrenceCandidatePopulationBuild>, candidate_occurrence: OccurrenceId| match build.refusal.clone() {
     Some(_) => build.clone(),

@@ -91,9 +91,9 @@ fn operation_locus_is(
   operation: String
 ) -> Bool {
   match locus {
-    Present { value: at } =>
+    v2.std.optional.Present { value: at } =>
       at.path == path && at.service == service && at.operation == operation
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 

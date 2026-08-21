@@ -34,37 +34,37 @@ data witness_type_point: v2.std.node.Symbol = ^witness_cu_point
 data witness_type_int: v2.std.node.Symbol = ^witness_cu_int
 data witness_fn_use_point: v2.std.node.Symbol = ^witness_cu_use_point
 
-fn witness_type_atom(sym: v2.std.node.Symbol) -> Node {
+fn witness_type_atom(sym: v2.std.node.Symbol) -> v2.std.node.Node {
   node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } }, children: [])
 }
 
-fn witness_struct_field_by_value(sym: v2.std.node.Symbol) -> Node {
+fn witness_struct_field_by_value(sym: v2.std.node.Symbol) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: Named { name: ^member },
+        label: v2.std.node.Named { name: ^member },
         target: v2.test.claim.c_compilation_unit_witness.witness_type_atom(sym: sym),
       }
     ]
   )
 }
 
-fn witness_struct_field_by_pointer(sym: v2.std.node.Symbol) -> Node {
+fn witness_struct_field_by_pointer(sym: v2.std.node.Symbol) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: Named { name: ^next },
+        label: v2.std.node.Named { name: ^next },
         target: node_synthetic(
           kind: v2.std.node.TypeNode { connective: Arrow },
           children: [
             v2.std.node.Edge {
-              label: Named { name: ^domain },
+              label: v2.std.node.Named { name: ^domain },
               target: v2.test.claim.c_compilation_unit_witness.witness_type_atom(sym: sym),
             },
             v2.std.node.Edge {
-              label: Named { name: ^codomain },
+              label: v2.std.node.Named { name: ^codomain },
               target: v2.test.claim.c_compilation_unit_witness.witness_type_atom(sym: v2.test.claim.c_compilation_unit_witness.witness_type_int),
             }
           ]
@@ -74,37 +74,37 @@ fn witness_struct_field_by_pointer(sym: v2.std.node.Symbol) -> Node {
   )
 }
 
-fn witness_point_struct_conj_body() -> Node {
+fn witness_point_struct_conj_body() -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: Named { name: ^x },
+        label: v2.std.node.Named { name: ^x },
         target: v2.test.claim.c_compilation_unit_witness.witness_type_atom(sym: v2.test.claim.c_compilation_unit_witness.witness_type_int),
       }
     ]
   )
 }
 
-fn witness_fn_taking_point_by_value() -> Node {
+fn witness_fn_taking_point_by_value() -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.TypeNode {
       connective: Arrow,
     },
     children: [
       v2.std.node.Edge {
-        label: Named { name: ^domain },
+        label: v2.std.node.Named { name: ^domain },
         target: v2.test.claim.c_compilation_unit_witness.witness_type_atom(sym: v2.test.claim.c_compilation_unit_witness.witness_type_point),
       },
       v2.std.node.Edge {
-        label: Named { name: ^codomain },
+        label: v2.std.node.Named { name: ^codomain },
         target: v2.test.claim.c_compilation_unit_witness.witness_type_atom(sym: v2.test.claim.c_compilation_unit_witness.witness_type_int),
       }
     ]
   )
 }
 
-fn witness_exports_for_c() -> List<Node> {
+fn witness_exports_for_c() -> List<v2.std.node.Node> {
   [v2.test.claim.c_compilation_unit_witness.witness_fn_taking_point_by_value()]
 }
 

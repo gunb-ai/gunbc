@@ -4,29 +4,29 @@ module v2.test.manual.cpp_add_emit_translate
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 data cpp_add_forbidden_authority_source_text: String = "authority_source_text_fallback_forbidden"
 
-data cpp_add_target_profile: Node = v2.std.node.Node {
+data cpp_add_target_profile: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^cpp_add_target_profile_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 data cpp_add_int_primitive_facts: v2.extdeps.languages.cpp.CppIntegerPrimitiveFacts = cpp_signed_integer_facts(
-  spelling: Int,
+  spelling: v2.extdeps.languages.cpp.Int,
   surface_spelling: ^cpp_surface_spelling_int,
   target_profile: cpp_target_profile
 )
 
-data cpp_add_int_inhabitant: Node = cpp_int_inhabitant_node(target_profile: cpp_target_profile)
+data cpp_add_int_inhabitant: v2.std.node.Node = cpp_int_inhabitant_node(target_profile: cpp_target_profile)
 
-data cpp_add_emitted_root: Node = cpp_emitted_add_fn_node(target_profile: cpp_target_profile)
+data cpp_add_emitted_root: v2.std.node.Node = cpp_emitted_add_fn_node(target_profile: cpp_target_profile)
 
-data cpp_add_int_facts_node: Node = cpp_integer_facts_node(facts: cpp_add_int_primitive_facts)
+data cpp_add_int_facts_node: v2.std.node.Node = cpp_integer_facts_node(facts: cpp_add_int_primitive_facts)
 
-data cpp_add_int_scalar_node: Node = cpp_integer_scalar_fact_node(facts: cpp_add_int_primitive_facts)
+data cpp_add_int_scalar_node: v2.std.node.Node = cpp_integer_scalar_fact_node(facts: cpp_add_int_primitive_facts)
 
-data cpp_add_int_width_node: Node = cpp_add_int_primitive_facts.width_fact
+data cpp_add_int_width_node: v2.std.node.Node = cpp_add_int_primitive_facts.width_fact
 
-data cpp_add_int_spelling_node: Node = cpp_signed_integer_spelling_node(spelling: Int)
+data cpp_add_int_spelling_node: v2.std.node.Node = cpp_signed_integer_spelling_node(spelling: v2.extdeps.languages.cpp.Int)
 
 data cpp_add_target_model: v2.std.compilers.target_model.TargetModel = cpp_target_model()
 
@@ -40,7 +40,7 @@ data cpp_add_poisoned_authority_target_model: v2.std.compilers.target_model.Targ
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-data cpp_add_empty_translation_rules_bundle: Node = v2.std.node.Node {
+data cpp_add_empty_translation_rules_bundle: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
@@ -68,14 +68,14 @@ data cpp_add_serialize_reject_receipt: v2.std.diagnostic.Outcome<Medium<String>>
 test fn cpp_add_serialize_reject_receipt_holds() -> Bool {
   match cpp_add_serialize_reject_receipt {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d != v2.std.diagnostic.None
+    v2.std.diagnostic.Rejected { diagnostics: d } => d != v2.std.diagnostic.None
   }
 }
 
 
 fn cpp_add_canonical_grounding(
-  node: Node,
-  algebra: Node
+  node: v2.std.node.Node,
+  algebra: v2.std.node.Node
 ) -> v2.std.constraints.CanonicalGrounding {
   v2.std.constraints.CanonicalGrounding {
     node: node,
@@ -92,7 +92,7 @@ fn cpp_add_canonical_grounding(
   }
 }
 
-fn cpp_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
+fn cpp_add_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == cpp_add_emitted_root {
     v2.std.witness.Holds {
       value: cpp_add_canonical_grounding(
@@ -195,7 +195,7 @@ fn cpp_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.Can
   }
 }
 
-fn cpp_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn cpp_add_inferred_facts_for(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   match cpp_add_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -210,7 +210,7 @@ fn cpp_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.
   }
 }
 
-fn cpp_add_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn cpp_add_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   cpp_add_inferred_facts_for(node: key)
 }
 
@@ -222,7 +222,7 @@ data cpp_add_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler
 }
 
 fn anchor_cpp_add_emit_accepts() -> v2.std.diagnostic.Outcome<Medium<String>> {
-  emit(tree: cpp_add_inferred_tree, target: cpp_add_target_model)
+  v2.compiler.emit.emit(tree: cpp_add_inferred_tree, target: cpp_add_target_model)
 }
 
 fn anchor_cpp_add_compile_inferred_accepts() -> v2.std.diagnostic.Outcome<v2.compiler.compile.CompileOutput> {
@@ -237,7 +237,7 @@ data cpp_add_emit_receipt: v2.std.diagnostic.Outcome<Medium<String>> = anchor_cp
 test fn cpp_add_emit_receipt_holds() -> Bool {
   match cpp_add_emit_receipt {
     Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -246,7 +246,7 @@ data cpp_add_compile_inferred_receipt: v2.std.diagnostic.Outcome<v2.compiler.com
 test fn cpp_add_compile_inferred_receipt_holds() -> Bool {
   match cpp_add_compile_inferred_receipt {
     Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

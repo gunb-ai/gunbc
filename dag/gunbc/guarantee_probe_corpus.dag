@@ -447,8 +447,8 @@ fn resolve_guarantee_probe_row(rows: std.types.List<GuaranteeProbeRow>, wanted: 
     ProbeRowDuplicate { wanted: wanted, matches: count(hits) }
   } else {
     match hits |> first {
-      Present { value: row } => ProbeRowResolved { row: row }
-      Absent => ProbeRowUnknown { wanted: wanted }
+      v2.std.optional.Present { value: row } => ProbeRowResolved { row: row }
+      v2.std.optional.Absent => ProbeRowUnknown { wanted: wanted }
     }
   }
 }
@@ -457,9 +457,9 @@ fn resolve_canonical_probe_row(wanted: gunbc.guarantee_measurement.GuaranteeProb
   resolve_guarantee_probe_row(rows: guarantee_probe_rows(), wanted: wanted)
 }
 
-fn canonical_probe_row_resolution_refuses_duplicate_population() -> std.types.Bool {
+fn canonical_probe_row_resolution_refuses_duplicate_population() -> Bool {
   match active_probe_row(probe: call_mislabel_red_probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       match resolve_guarantee_probe_row(rows: guarantee_probe_rows(), wanted: call_mislabel_red_probe) {
         ProbeRowResolved { row: _ } =>
           match resolve_guarantee_probe_row(
@@ -471,13 +471,13 @@ fn canonical_probe_row_resolution_refuses_duplicate_population() -> std.types.Bo
           }
         _ => false
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
 fn active_probe_row(probe: gunbc.guarantee_measurement.GuaranteeProbeId) -> GuaranteeProbeRow? {
   match resolve_guarantee_probe_row(rows: guarantee_probe_rows(), wanted: probe) {
-    ProbeRowResolved { row: row } => Present { value: row }
+    ProbeRowResolved { row: row } => v2.std.optional.Present { value: row }
     ProbeRowUnknown { wanted: _ } => none
     ProbeRowDuplicate { wanted: _, matches: _ } => none
   }
@@ -485,7 +485,7 @@ fn active_probe_row(probe: gunbc.guarantee_measurement.GuaranteeProbeId) -> Guar
 
 fn v1_compile_probe_row_from_registry(row: GuaranteeProbeRow) -> V1CompileProbeRow? {
   if (row.path as String) == (v1_compile_rust_path_id as String) {
-    Present {
+    v2.std.optional.Present {
       value: V1CompileProbeRow {
         probe: row.probe,
         class: row.class,
@@ -499,7 +499,7 @@ fn v1_compile_probe_row_from_registry(row: GuaranteeProbeRow) -> V1CompileProbeR
 
 fn v2_infer_eval_probe_row_from_registry(row: GuaranteeProbeRow) -> V2InferEvalProbeRow? {
   if (row.path as String) == (v2_infer_eval_path_id as String) {
-    Present {
+    v2.std.optional.Present {
       value: V2InferEvalProbeRow {
         probe: row.probe,
         class: row.class,
@@ -513,15 +513,15 @@ fn v2_infer_eval_probe_row_from_registry(row: GuaranteeProbeRow) -> V2InferEvalP
 
 fn active_v1_compile_probe_row(probe: gunbc.guarantee_measurement.GuaranteeProbeId) -> V1CompileProbeRow? {
   match active_probe_row(probe: probe) {
-    Present { value: row } => v1_compile_probe_row_from_registry(row: row)
-    Absent => none
+    v2.std.optional.Present { value: row } => v1_compile_probe_row_from_registry(row: row)
+    v2.std.optional.Absent => none
   }
 }
 
 fn active_v2_infer_eval_probe_row(probe: gunbc.guarantee_measurement.GuaranteeProbeId) -> V2InferEvalProbeRow? {
   match active_probe_row(probe: probe) {
-    Present { value: row } => v2_infer_eval_probe_row_from_registry(row: row)
-    Absent => none
+    v2.std.optional.Present { value: row } => v2_infer_eval_probe_row_from_registry(row: row)
+    v2.std.optional.Absent => none
   }
 }
 
@@ -539,22 +539,22 @@ fn guarantee_probe_id_strings() -> std.types.List<String> {
 
 type ProbeLexWalk {
   prev: String?
-  ok: std.types.Bool
+  ok: Bool
 }
 
-fn probe_ids_are_lexicographically_ordered(ids: std.types.List<gunbc.guarantee_measurement.GuaranteeProbeId>) -> std.types.Bool {
+fn probe_ids_are_lexicographically_ordered(ids: std.types.List<gunbc.guarantee_measurement.GuaranteeProbeId>) -> Bool {
   let walked = fold(ids, init: ProbeLexWalk { prev: none, ok: true }, f: fn(acc, id) {
     let current = id as String
     if !acc.ok {
       acc
     } else {
       match acc.prev {
-        Absent => ProbeLexWalk { prev: Present { value: current }, ok: true }
-        Present { value: prev } =>
+        v2.std.optional.Absent => ProbeLexWalk { prev: v2.std.optional.Present { value: current }, ok: true }
+        v2.std.optional.Present { value: prev } =>
           if std.string_type.string_is_lexicographically_before(left: prev, right: current) {
-            ProbeLexWalk { prev: Present { value: current }, ok: true }
+            ProbeLexWalk { prev: v2.std.optional.Present { value: current }, ok: true }
           } else {
-            ProbeLexWalk { prev: Present { value: current }, ok: false }
+            ProbeLexWalk { prev: v2.std.optional.Present { value: current }, ok: false }
           }
       }
     }
@@ -591,7 +591,7 @@ fn census_row_count(rows: std.types.List<gunbc.compile_diagnostic_census.Compile
 fn census_blocking_count_for_class(census: gunbc.compile_diagnostic_census.CompileDiagnosticCensus, wanted: String) -> Int? {
   match census {
     CensusObserved { rows: rows } =>
-      Present {
+      v2.std.optional.Present {
         value: gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: gunbc.compile_diagnostic_census.census_blocking_rows(rows: rows), wanted: wanted))
       }
     CensusNotRunnable { cause: _ } => none
@@ -601,12 +601,12 @@ fn census_blocking_count_for_class(census: gunbc.compile_diagnostic_census.Compi
 fn census_any_count_for_class(census: gunbc.compile_diagnostic_census.CompileDiagnosticCensus, wanted: String) -> Int? {
   match census {
     CensusObserved { rows: rows } =>
-      Present { value: gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: rows, wanted: wanted)) }
+      v2.std.optional.Present { value: gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: rows, wanted: wanted)) }
     CensusNotRunnable { cause: _ } => none
   }
 }
 
-fn observation_is_blocking_refusal(o: gunbc.guarantee_measurement.ProbeObservation, wanted: std.types.NonEmptyStr) -> std.types.Bool {
+fn observation_is_blocking_refusal(o: gunbc.guarantee_measurement.ProbeObservation, wanted: std.types.NonEmptyStr) -> Bool {
   gunbc.guarantee_measurement.probe_observation_fold(
     o: o,
     fold: gunbc.guarantee_measurement.ProbeObservationFold {
@@ -619,7 +619,7 @@ fn observation_is_blocking_refusal(o: gunbc.guarantee_measurement.ProbeObservati
   )
 }
 
-fn observation_is_clean(o: gunbc.guarantee_measurement.ProbeObservation) -> std.types.Bool {
+fn observation_is_clean(o: gunbc.guarantee_measurement.ProbeObservation) -> Bool {
   gunbc.guarantee_measurement.probe_observation_fold(
     o: o,
     fold: gunbc.guarantee_measurement.ProbeObservationFold {
@@ -632,21 +632,21 @@ fn observation_is_clean(o: gunbc.guarantee_measurement.ProbeObservation) -> std.
   )
 }
 
-fn probe_expectation_holds(census: gunbc.compile_diagnostic_census.CompileDiagnosticCensus, expectation: ProbeExpectation) -> std.types.Bool {
+fn probe_expectation_holds(census: gunbc.compile_diagnostic_census.CompileDiagnosticCensus, expectation: ProbeExpectation) -> Bool {
   probe_row_observation_holds(
     observation: probe_observation_from_census(census: census),
     expectation: expectation,
   )
 }
 
-fn probe_row_expectation_holds(census: gunbc.compile_diagnostic_census.CompileDiagnosticCensus, row: GuaranteeProbeRow) -> std.types.Bool {
+fn probe_row_expectation_holds(census: gunbc.compile_diagnostic_census.CompileDiagnosticCensus, row: GuaranteeProbeRow) -> Bool {
   probe_row_observation_holds(
     observation: probe_observation_from_census(census: census),
     expectation: row.expectation,
   )
 }
 
-fn observation_is_accepted_counted(o: gunbc.guarantee_measurement.ProbeObservation, wanted: std.types.NonEmptyStr) -> std.types.Bool {
+fn observation_is_accepted_counted(o: gunbc.guarantee_measurement.ProbeObservation, wanted: std.types.NonEmptyStr) -> Bool {
   gunbc.guarantee_measurement.probe_observation_fold(
     o: o,
     fold: gunbc.guarantee_measurement.ProbeObservationFold {
@@ -659,7 +659,7 @@ fn observation_is_accepted_counted(o: gunbc.guarantee_measurement.ProbeObservati
   )
 }
 
-fn probe_row_observation_holds(observation: gunbc.guarantee_measurement.ProbeObservation, expectation: ProbeExpectation) -> std.types.Bool {
+fn probe_row_observation_holds(observation: gunbc.guarantee_measurement.ProbeObservation, expectation: ProbeExpectation) -> Bool {
   probe_expectation_fold(
     e: expectation,
     fold: ProbeExpectationFold {
@@ -670,23 +670,23 @@ fn probe_row_observation_holds(observation: gunbc.guarantee_measurement.ProbeObs
   )
 }
 
-fn probe_row_observation_holds_for_row(observation: gunbc.guarantee_measurement.ProbeObservation, row: GuaranteeProbeRow) -> std.types.Bool {
+fn probe_row_observation_holds_for_row(observation: gunbc.guarantee_measurement.ProbeObservation, row: GuaranteeProbeRow) -> Bool {
   probe_row_observation_holds(observation: observation, expectation: row.expectation)
 }
 
-fn receipt_matches_probe_row(receipt: gunbc.guarantee_measurement.GuaranteeMeasurementReceipt, row: GuaranteeProbeRow) -> std.types.Bool {
+fn receipt_matches_probe_row(receipt: gunbc.guarantee_measurement.GuaranteeMeasurementReceipt, row: GuaranteeProbeRow) -> Bool {
   (receipt.probe as String) == (row.probe as String)
     && (receipt.class as String) == (row.class as String)
     && (receipt.path as String) == (row.path as String)
 }
 
-fn receipt_matches_v1_compile_probe_row(receipt: gunbc.guarantee_measurement.GuaranteeMeasurementReceipt, row: V1CompileProbeRow) -> std.types.Bool {
+fn receipt_matches_v1_compile_probe_row(receipt: gunbc.guarantee_measurement.GuaranteeMeasurementReceipt, row: V1CompileProbeRow) -> Bool {
   (receipt.probe as String) == (row.probe as String)
     && (receipt.class as String) == (row.class as String)
     && (receipt.path as String) == (v1_compile_rust_path_id as String)
 }
 
-fn receipt_matches_v2_infer_eval_probe_row(receipt: gunbc.guarantee_measurement.GuaranteeMeasurementReceipt, row: V2InferEvalProbeRow) -> std.types.Bool {
+fn receipt_matches_v2_infer_eval_probe_row(receipt: gunbc.guarantee_measurement.GuaranteeMeasurementReceipt, row: V2InferEvalProbeRow) -> Bool {
   (receipt.probe as String) == (row.probe as String)
     && (receipt.class as String) == (row.class as String)
     && (receipt.path as String) == (v2_infer_eval_path_id as String)
@@ -709,22 +709,22 @@ fn census_primary_observation(rows: std.types.List<gunbc.compile_diagnostic_cens
   let blocking = gunbc.compile_diagnostic_census.census_blocking_rows(rows: rows)
   if census_row_count(rows: blocking) >= 1 {
     match blocking |> first {
-      Present { value: r } =>
+      v2.std.optional.Present { value: r } =>
         gunbc.guarantee_measurement.RefusedTyped {
           diagnostic_class: r.diagnostic_class,
           count: gunbc.compile_diagnostic_census.census_total_count(
             rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: blocking, wanted: r.diagnostic_class as String),
           ),
         }
-      Absent => gunbc.guarantee_measurement.AcceptedClean
+      v2.std.optional.Absent => gunbc.guarantee_measurement.AcceptedClean
     }
   } else if census_row_count(rows: rows) == 0 {
     gunbc.guarantee_measurement.AcceptedClean
   } else {
     match rows |> first {
-      Present { value: r } =>
+      v2.std.optional.Present { value: r } =>
         gunbc.guarantee_measurement.AcceptedCounted { diagnostic_class: r.diagnostic_class, count: r.count }
-      Absent => gunbc.guarantee_measurement.AcceptedClean
+      v2.std.optional.Absent => gunbc.guarantee_measurement.AcceptedClean
     }
   }
 }
@@ -754,7 +754,7 @@ fn build_v1_compile_receipt(
   }
 }
 
-fn receipt_joins_v1_compile_path(receipt: gunbc.guarantee_measurement.GuaranteeMeasurementReceipt) -> std.types.Bool {
+fn receipt_joins_v1_compile_path(receipt: gunbc.guarantee_measurement.GuaranteeMeasurementReceipt) -> Bool {
   match gunbc.guarantee_measurement.join_receipt_to_path(receipt: receipt, paths: guarantee_probe_paths()) {
     ReceiptJoined { path: p } => (p.id as String) == (v1_compile_rust_path_id as String)
     ReceiptPathUnknown { receipt_path: _ } => false

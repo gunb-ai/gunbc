@@ -25,28 +25,28 @@ fn rect(x0: Int, y0: Int, x1: Int, y1: Int, high: Int) -> std.orthogonal_topolog
     OrthogonalReady { value: l } =>
       match orthogonal_prism3(footprint: l, low: 0, high: high) {
         OrthogonalRefused { cause: _ } => none
-        OrthogonalReady { value: pr } => Present { value: enclosed_space(shell: closed_shell_of_prism(prism: pr)) }
+        OrthogonalReady { value: pr } => v2.std.optional.Present { value: enclosed_space(shell: closed_shell_of_prism(prism: pr)) }
       }
   }
 }
 
 fn placed(name: String, x0: Int, y0: Int, x1: Int, y1: Int, high: Int) -> product.spatial_world.PlacedSpace? {
   match test.claim.spatial_edit_witness.rect(x0: x0, y0: y0, x1: x1, y1: y1, high: high) {
-    Absent => none
-    Present { value: s } => Present { value: product.spatial_world.PlacedSpace { identity: (name as product.placement_supply.RoomIdentity), space: s } }
+    v2.std.optional.Absent => none
+    v2.std.optional.Present { value: s } => v2.std.optional.Present { value: product.spatial_world.PlacedSpace { identity: (name as product.placement_supply.RoomIdentity), space: s } }
   }
 }
 
 fn two_room_world() -> product.spatial_world.World? {
   match test.claim.spatial_edit_witness.placed(name: "kitchen", x0: 0, y0: 0, x1: 3000, y1: 4000, high: 2400) {
-    Absent => none
-    Present { value: k } =>
+    v2.std.optional.Absent => none
+    v2.std.optional.Present { value: k } =>
       match test.claim.spatial_edit_witness.placed(name: "hall", x0: 4000, y0: 0, x1: 6000, y1: 4000, high: 2400) {
-        Absent => none
-        Present { value: h } =>
+        v2.std.optional.Absent => none
+        v2.std.optional.Present { value: h } =>
           match world(rooms: [k, h]) {
             WorldRefused { cause: _ } => none
-            WorldReady { value: w } => Present { value: w }
+            WorldReady { value: w } => v2.std.optional.Present { value: w }
           }
       }
   }
@@ -54,14 +54,14 @@ fn two_room_world() -> product.spatial_world.World? {
 
 fn realized(edits: List<product.spatial_edit.RoomEdit>) -> product.spatial_world.World? {
   match test.claim.spatial_edit_witness.two_room_world() {
-    Absent => none
-    Present { value: base } =>
+    v2.std.optional.Absent => none
+    v2.std.optional.Present { value: base } =>
       match apply_edits(base: base, edits: edits) {
         EditNotCompiled { cause: _ } => none
         EditRealized { result: r } =>
           match r {
             WorldRefused { cause: _ } => none
-            WorldReady { value: w } => Present { value: w }
+            WorldReady { value: w } => v2.std.optional.Present { value: w }
           }
       }
   }
@@ -69,11 +69,11 @@ fn realized(edits: List<product.spatial_edit.RoomEdit>) -> product.spatial_world
 
 fn compile_refusal(edits: List<product.spatial_edit.RoomEdit>) -> product.spatial_edit.EditRefusal? {
   match test.claim.spatial_edit_witness.two_room_world() {
-    Absent => none
-    Present { value: base } =>
+    v2.std.optional.Absent => none
+    v2.std.optional.Present { value: base } =>
       match edits_to_patch(base: base, edits: edits) {
         EditReady { value: _ } => none
-        EditRefused { cause: c } => Present { value: c }
+        EditRefused { cause: c } => v2.std.optional.Present { value: c }
       }
   }
 }
@@ -94,29 +94,29 @@ fn volume_of(w: product.spatial_world.World, name: String) -> Int {
 // through the same mints rather than copied with fields swapped.
 test fn a_move_relocates_a_room_without_changing_its_volume() -> Bool {
   match realized(edits: [product.spatial_edit.MoveRoom { identity: ("kitchen" as product.placement_supply.RoomIdentity), east: 0, north: 5000, up: 0 }]) {
-    Absent => false
-    Present { value: w } => world_room_count(w: w) == 2 && test.claim.spatial_edit_witness.volume_of(w: w, name: "kitchen") == 3000 * 4000 * 2400
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: w } => world_room_count(w: w) == 2 && test.claim.spatial_edit_witness.volume_of(w: w, name: "kitchen") == 3000 * 4000 * 2400
   }
 }
 
 // A ceiling is set, so the new volume follows from the new height and the unchanged footprint.
 test fn raising_a_ceiling_changes_the_volume_by_the_new_height() -> Bool {
   match realized(edits: [product.spatial_edit.SetCeilingHeight { identity: ("kitchen" as product.placement_supply.RoomIdentity), high: 2700 }]) {
-    Absent => false
-    Present { value: w } => test.claim.spatial_edit_witness.volume_of(w: w, name: "kitchen") == 3000 * 4000 * 2700
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: w } => test.claim.spatial_edit_witness.volume_of(w: w, name: "kitchen") == 3000 * 4000 * 2700
   }
 }
 
 test fn adding_and_removing_rooms_lands_through_the_variant() -> Bool {
   match test.claim.spatial_edit_witness.rect(x0: 0, y0: 5000, x1: 2000, y1: 7000, high: 2400) {
-    Absent => false
-    Present { value: study } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: study } =>
       match realized(edits: [
         product.spatial_edit.AddRoom { identity: ("study" as product.placement_supply.RoomIdentity), space: study },
         product.spatial_edit.RemoveRoom { identity: ("hall" as product.placement_supply.RoomIdentity) },
       ]) {
-        Absent => false
-        Present { value: w } => world_room_count(w: w) == 2 && test.claim.spatial_edit_witness.volume_of(w: w, name: "hall") == (0 - 1)
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: w } => world_room_count(w: w) == 2 && test.claim.spatial_edit_witness.volume_of(w: w, name: "hall") == (0 - 1)
       }
   }
 }
@@ -128,8 +128,8 @@ test fn adding_and_removing_rooms_lands_through_the_variant() -> Bool {
 // refusal because the instruction was not the thing that was wrong.
 test fn an_edit_that_would_overlap_two_rooms_is_refused_at_realization() -> Bool {
   match test.claim.spatial_edit_witness.two_room_world() {
-    Absent => false
-    Present { value: base } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: base } =>
       match apply_edits(base: base, edits: [product.spatial_edit.MoveRoom { identity: ("kitchen" as product.placement_supply.RoomIdentity), east: 3500, north: 0, up: 0 }]) {
         EditNotCompiled { cause: _ } => false
         EditRealized { result: r } =>
@@ -159,8 +159,8 @@ test fn two_edits_to_one_room_in_one_batch_refuse() -> Bool {
     product.spatial_edit.MoveRoom { identity: ("kitchen" as product.placement_supply.RoomIdentity), east: 0, north: 5000, up: 0 },
     product.spatial_edit.SetCeilingHeight { identity: ("kitchen" as product.placement_supply.RoomIdentity), high: 2700 },
   ]) {
-    Absent => false
-    Present { value: c } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: c } =>
       match c {
         RoomEditedTwiceInOneBatch { identity: i } => (i as String) == "kitchen"
         _ => false
@@ -172,8 +172,8 @@ test fn two_edits_to_one_room_in_one_batch_refuse() -> Bool {
 // that keeps the refusal above from being a capability gap.
 test fn the_same_two_edits_land_when_they_are_sequenced() -> Bool {
   match realized(edits: [product.spatial_edit.MoveRoom { identity: ("kitchen" as product.placement_supply.RoomIdentity), east: 0, north: 5000, up: 0 }]) {
-    Absent => false
-    Present { value: moved } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: moved } =>
       match apply_edits(base: moved, edits: [product.spatial_edit.SetCeilingHeight { identity: ("kitchen" as product.placement_supply.RoomIdentity), high: 2700 }]) {
         EditNotCompiled { cause: _ } => false
         EditRealized { result: r } =>
@@ -187,8 +187,8 @@ test fn the_same_two_edits_land_when_they_are_sequenced() -> Bool {
 
 test fn editing_a_room_the_base_does_not_have_refuses_at_compile() -> Bool {
   match compile_refusal(edits: [product.spatial_edit.MoveRoom { identity: ("cellar" as product.placement_supply.RoomIdentity), east: 100, north: 0, up: 0 }]) {
-    Absent => false
-    Present { value: c } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: c } =>
       match c {
         EditTargetMissing { identity: i } => (i as String) == "cellar"
         _ => false
@@ -198,11 +198,11 @@ test fn editing_a_room_the_base_does_not_have_refuses_at_compile() -> Bool {
 
 test fn adding_a_room_that_is_already_there_refuses_at_compile() -> Bool {
   match test.claim.spatial_edit_witness.rect(x0: 0, y0: 0, x1: 3000, y1: 4000, high: 2400) {
-    Absent => false
-    Present { value: s } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: s } =>
       match compile_refusal(edits: [product.spatial_edit.AddRoom { identity: ("kitchen" as product.placement_supply.RoomIdentity), space: s }]) {
-        Absent => false
-        Present { value: c } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: c } =>
           match c {
             EditTargetAlreadyPresent { identity: i } => (i as String) == "kitchen"
             _ => false
@@ -216,8 +216,8 @@ test fn adding_a_room_that_is_already_there_refuses_at_compile() -> Bool {
 // that the mints would not have produced.
 test fn a_ceiling_below_the_floor_refuses_at_the_geometry_authority() -> Bool {
   match compile_refusal(edits: [product.spatial_edit.SetCeilingHeight { identity: ("kitchen" as product.placement_supply.RoomIdentity), high: 0 - 100 }]) {
-    Absent => false
-    Present { value: c } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: c } =>
       match c {
         EditGeometryRefused { cause: _ } => true
         _ => false

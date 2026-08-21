@@ -1,9 +1,9 @@
 module v2.std.constraint_satisfaction_predicate
 
 fn constraint_satisfaction_preservation_holds(
-  source_facts: Node,
-  candidate: Node,
-  algebra: Node,
+  source_facts: v2.std.node.Node,
+  candidate: v2.std.node.Node,
+  algebra: v2.std.node.Node,
 ) -> Bool {
   well_formed(n: source_facts)
     && well_formed(n: algebra)

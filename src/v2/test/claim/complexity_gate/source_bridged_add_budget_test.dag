@@ -3,7 +3,7 @@ module v2.test.complexity_gate.source_bridged_add_budget
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn table_fixture_add_cost_lens_holds(body: Node) -> Bool {
+fn table_fixture_add_cost_lens_holds(body: v2.std.node.Node) -> v2.std.logic.Bool {
   match cost_lens(n: body) {
     Holds { value: _ } => true
     _ => false
@@ -11,9 +11,9 @@ fn table_fixture_add_cost_lens_holds(body: Node) -> Bool {
 }
 
 fn table_fixture_add_tightened_budget_fails_dominance(
-  body: Node,
+  body: v2.std.node.Node,
   row: v2.test.complexity_gate.subject_complexity_budget_roster.LensSubjectComplexityBudgetRow
-) -> Bool {
+) -> v2.std.logic.Bool {
   let computed = complexity_lens(n: body)
   !complexity_bound_dominates(
     a: ConstantComplexity,
@@ -25,12 +25,12 @@ fn table_fixture_add_tightened_budget_fails_dominance(
   )
 }
 
-test fn table_fixture_add_budget_claim_holds() -> Bool {
+test fn table_fixture_add_budget_claim_holds() -> v2.std.logic.Bool {
   let row = complexity_budget_row_table_fixture_add
   match lens_subject_arrow_body_for_budget_row(row: row) {
     Accepted { value: body, diagnostics: _ } =>
       table_fixture_add_cost_lens_holds(body: body)
         && table_fixture_add_tightened_budget_fails_dominance(body: body, row: row)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

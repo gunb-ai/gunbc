@@ -4,11 +4,11 @@ module test.claim.access_validation
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn decision_is_permit(d: std.access.AccessDecision) -> Bool {
-  match d { Permit => true  Deny { refusal: _ } => false }
+  match d { Permit => true  std.access.Deny { refusal: _ } => false }
 }
 
 fn decision_is_deny(d: std.access.AccessDecision) -> Bool {
-  match d { Deny { refusal: _ } => true  Permit => false }
+  match d { std.access.Deny { refusal: _ } => true  Permit => false }
 }
 
 type TestAccessContext {}

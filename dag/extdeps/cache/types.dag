@@ -90,7 +90,7 @@ type CacheInterfaceCatalogFacts {
 }
 
 type CatalogCachedArtifactReceipt<T> {
-  artifact: ArtifactIdentity<T>
+  artifact: std.cache_interface.ArtifactIdentity<T>
   backend_key: CatalogBackendCacheKey
   producer: ProducerReceipt<T>
   content_digest: std.content_hash.ContentHash

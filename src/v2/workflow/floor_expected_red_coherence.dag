@@ -96,7 +96,7 @@ fn all_checked_chunk_authored_identities(
   v2.std.algebra.list_reverse(xs: fold(chunks, init: std.algebra.Empty, f: fn(acc, chunk) {
     let resolution = v2.std.decl_facts_skeleton.resolve_decl_fact_by_qualified_name(facts: facts, qn: chunk.qualified_name)
     match v2.std.decl_facts_skeleton.decl_fact_skeleton_for_resolution(resolution: resolution) {
-      Present { value: node } =>
+      v2.std.optional.Present { value: node } =>
         fold(v2.std.decl_facts_skeleton.node_skeleton_authored_non_construction_atom_lexemes(node: node), init: acc, f: fn(inner_acc, identity) {
           if v2.std.algebra.contains(xs: inner_acc, item: identity, eq: fn(a, b) { a == b }) {
             inner_acc
@@ -104,7 +104,7 @@ fn all_checked_chunk_authored_identities(
             std.algebra.Cons { head: identity, tail: inner_acc }
           }
         })
-      Absent => acc
+      v2.std.optional.Absent => acc
     }
   }))
 }
@@ -181,15 +181,15 @@ fn floor_expected_red_chunk_coherence_check(
   let per_chunk_causes = v2.std.algebra.list_reverse(xs: fold(chunks, init: std.algebra.Empty, f: fn(acc, chunk) {
     let resolution = v2.std.decl_facts_skeleton.resolve_decl_fact_by_qualified_name(facts: facts, qn: chunk.qualified_name)
     match v2.std.decl_facts_skeleton.decl_fact_skeleton_for_resolution(resolution: resolution) {
-      Absent =>
+      v2.std.optional.Absent =>
         std.algebra.Cons {
           head: ChunkDeclarationUnresolved { qualified_name: chunk.qualified_name, resolution: resolution },
           tail: acc
         }
-      Present { value: chunk_node } => {
+      v2.std.optional.Present { value: chunk_node } => {
         let identity_causes = chunk_authored_identities_against_roster(node: chunk_node, chunk: chunk, roster: evaluated_roster)
         let link_causes = match v2.std.decl_facts_skeleton.decl_fact_skeleton_for_resolution(resolution: aggregator_resolution) {
-          Present { value: aggregator_node } =>
+          v2.std.optional.Present { value: aggregator_node } =>
             if chunk_short_name_linked(node: aggregator_node, chunk: chunk) {
               std.algebra.Empty
             } else {
@@ -202,7 +202,7 @@ fn floor_expected_red_chunk_coherence_check(
                 tail: std.algebra.Empty
               }
             }
-          Absent => std.algebra.Empty
+          v2.std.optional.Absent => std.algebra.Empty
         }
         v2.std.algebra.list_append(left: identity_causes, right: v2.std.algebra.list_append(left: link_causes, right: acc))
       }

@@ -51,13 +51,13 @@ fn selected_logic_process_spec_for(
               diagnostics: v2.std.diagnostic.None
             }
           }
-          Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+          v2.std.diagnostic.Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
         }
-        Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+        v2.std.diagnostic.Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
       }
-      Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+      v2.std.diagnostic.Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
     }
-    Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+    v2.std.diagnostic.Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 

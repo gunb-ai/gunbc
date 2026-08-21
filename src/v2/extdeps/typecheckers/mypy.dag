@@ -4,8 +4,8 @@ module v2.extdeps.typecheckers.mypy
 type MypyConfig {
   mypy_version: String
   python_version: String
-  strict: Bool
-  show_error_codes: Bool
+  strict: v2.std.logic.Bool
+  show_error_codes: v2.std.logic.Bool
 }
 
 data mypy_profile_l1: MypyConfig = MypyConfig {

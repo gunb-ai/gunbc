@@ -15,8 +15,8 @@ type ComponentJustification
 // Core counts ride std.measure's HardwareThreadCount on BOTH sides of the comparison, because
 // a core count is a hardware thread count and that carrier already exists — extdeps.cpu.types
 // CpuModelCatalogRow.threads is typed with it. An earlier revision typed the requirement as a
-// bare Nat and the provision as a bare Int, which was the parallel representation §3 forbids
-// AND admitted a negative core count that then summed against a Nat minimum. Paths are Nat for
+// bare std.nat.Nat and the provision as a bare Int, which was the parallel representation §3 forbids
+// AND admitted a negative core count that then summed against a std.nat.Nat minimum. Paths are std.nat.Nat for
 // the same reason on the smaller scale: there is no negative number of network paths.
 //
 // WHAT A COMPONENT SUPPLIES, held separately from WHY IT IS HERE. An earlier revision fused

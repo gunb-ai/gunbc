@@ -127,7 +127,7 @@ fn effect_io_eval_facts_for(node: v2.std.node.Node) -> v2.compiler.inferred_tree
   )
 }
 
-fn effect_io_eval_fact_lookup(node: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn effect_io_eval_fact_lookup(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   if node == effect_io_eval_roundtrip_node {
     v2.std.optional.optional_present(value: effect_io_eval_facts_for(node: effect_io_eval_roundtrip_node))
   } else if node == effect_io_eval_locator_literal {
@@ -146,7 +146,7 @@ fn effect_io_eval_tree() -> v2.compiler.inferred_tree.InferredTree {
   }
 }
 
-test fn effect_io_eval_roundtrip_holds() -> Bool {
+test fn effect_io_eval_roundtrip_holds() -> v2.std.logic.Bool {
   match v2.compiler.eval.eval_with_context(
     tree: effect_io_eval_tree(),
     context: effect_io_eval_context_bound(),
@@ -157,13 +157,13 @@ test fn effect_io_eval_roundtrip_holds() -> Bool {
   }
 }
 
-test fn effect_io_eval_unbound_fail_closed_holds() -> Bool {
+test fn effect_io_eval_unbound_fail_closed_holds() -> v2.std.logic.Bool {
   match v2.compiler.eval.eval_with_context(
     tree: effect_io_eval_tree(),
     context: effect_io_eval_context_unbound(),
     inputs: v2.compiler.eval.inputs_root_only(root: effect_io_eval_roundtrip_node)
   ) {
-    Rejected { diagnostics: d } => d.head.reason == ^effect_io_eval_primitive_rejected
+    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^effect_io_eval_primitive_rejected
     Accepted { value: _, diagnostics: _ } => false
   }
 }

@@ -1267,7 +1267,7 @@ test fn witness_git_exact_old_oid_transition_model_preserves_expected_state() ->
         && transition.expected_old == sha1_parent_commit
         && transition.new == sha1_next_commit
         && match git_resolve_direct_ref(repo: repository, name: "refs/heads/main") {
-          RefResolved { oid } => oid == sha1_next_commit
+          extdeps.git.object_store.RefResolved { oid } => oid == sha1_next_commit
           _ => false
         }
     _ => false
@@ -1330,7 +1330,7 @@ test fn witness_git_stale_expected_oid_refuses_without_mutation() -> Bool {
         && observed == sha1_parent_commit
         && repository == repo
         && match git_resolve_direct_ref(repo: repository, name: "refs/heads/main") {
-          RefResolved { oid } => oid == sha1_parent_commit
+          extdeps.git.object_store.RefResolved { oid } => oid == sha1_parent_commit
           _ => false
         }
     _ => false
@@ -1349,7 +1349,7 @@ test fn witness_git_missing_new_object_refuses_without_mutation() -> Bool {
       repository == repo
         && oid == sha1_absent_commit
         && match git_resolve_direct_ref(repo: repository, name: "refs/heads/main") {
-          RefResolved { oid: observed } => observed == sha1_parent_commit
+          extdeps.git.object_store.RefResolved { oid: observed } => observed == sha1_parent_commit
           _ => false
         }
     _ => false

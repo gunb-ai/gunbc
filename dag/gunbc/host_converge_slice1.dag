@@ -1,7 +1,7 @@
 module gunbc.host_converge_slice1
 
 
-data gunbc_host_converge_slice1_scope_disposition: std.disposition.Disposition = Terminal {
+data gunbc_host_converge_slice1_scope_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Host-converge realized knob: per_slot_tasks_max from fleet_converge_policy through typed systemctl show/set-property/list-units and clock_now_probed_at (LocalShell on-host, operator principal briansrls on srv1). MemoryMax/MemoryHigh drop-in authoring and system.control shadow teardown are deploy-time only (gunbc.host_axis_caps at live_deploy apply under ghrunner sudo) — convergence does NOT write /etc/systemd drop-ins, daemon-reload, set-property MemoryMax, or systemctl revert on the operator principal (operator privilege hold 2026-08-13). Ordering invariant (author derived drop-ins before shadow revert) is modeled in host_axis_caps for the deploy path. srv1 TasksMax on probe unit; srv3 multi-unit enumerated via runner_instance_glob. Per-unit outcomes are independent (DESIGN section 5 per-cause refusal / siblings continue). srv2 and other knobs stay on host_converge_realize frontier."
 }
 
@@ -33,7 +33,7 @@ data host_converge_slice1_tasks_knob_name: String = "per_slot_tasks_max"
 // TasksMax (gunbc.runner_slot_allocation gunbc_runner_slot_desired, 16384 — the
 // 2026-06-21 incident REPAIR value; 512 was the diagnosed EAGAIN outage value, per the
 // operator ruling on PR 8045) is the second knob realized on this circuit: same typed
-// systemctl show/set-property transports, same fail-closed order (live read -> Drifted
+// systemctl show/set-property transports, same fail-closed order (live read -> gunbc.host_converge.Drifted
 // verdict -> pre-apply TasksCurrent guard -> apply -> independent read-back ->
 // reapply-noop), a pids-controller count instead of a byte size. The guard refuses when
 // live TasksCurrent meets or exceeds the target cap (>=: equality means zero headroom,
@@ -285,13 +285,13 @@ fn host_converge_slice1_read_tasks_current_raw(unit: std.types.NonEmptyStr) -> S
 
 // Verdict over the live TasksMax read against the knob's desired count. An empty or
 // unparseable wire is the Absent verdict (untyped wire, refused upstream), never Drifted:
-// Drifted is reserved for a real limit that disagrees, because Drifted is the arm that
+// gunbc.host_converge.Drifted is reserved for a real limit that disagrees, because gunbc.host_converge.Drifted is the arm that
 // arms the apply path.
 fn host_converge_slice1_tasks_verdict(limit: extdeps.systemd.SystemdCgroupTaskLimit, knob: gunbc.host_converge.ConvergeKnob) -> gunbc.host_converge.ConvergeVerdict {
   match limit {
     TaskLimitCount { count: n } =>
-      if to_string(n) == knob.desired { VerdictConverged } else { Drifted }
-    TaskLimitUnbounded => Drifted
+      if to_string(n) == knob.desired { VerdictConverged } else { gunbc.host_converge.Drifted }
+    TaskLimitUnbounded => gunbc.host_converge.Drifted
     TaskLimitAbsent => Absent
   }
 }
@@ -401,7 +401,7 @@ fn host_converge_slice1_prove_tasks_reapply_noop(unit: std.types.NonEmptyStr, kn
       Present { value: limit } =>
         match host_converge_slice1_tasks_verdict(limit: limit, knob: knob) {
           VerdictConverged => none
-          Drifted =>
+          gunbc.host_converge.Drifted =>
             Present {
               value: "host_converge_slice1: tasks reapply-noop failed — still drifted after second apply; fail-closed",
             }
@@ -437,7 +437,7 @@ fn host_converge_slice1_converge_unit_tasks(host: product.placement_supply.HostI
                     ),
                   }
               }
-            Drifted =>
+            gunbc.host_converge.Drifted =>
               match host_converge_slice1_tasks_guard(unit: unit, target_value: knob.desired) {
                 HostConvergeSlice1TasksUnsafe { unit: _, current_count: cc, target_count: tc } =>
                   HostConvergeSlice1UnitRefused {
@@ -477,7 +477,7 @@ fn host_converge_slice1_converge_unit_tasks(host: product.placement_supply.HostI
                                       ),
                                     }
                                 }
-                              Drifted =>
+                              gunbc.host_converge.Drifted =>
                                 HostConvergeSlice1UnitRefused { unit: unit, reason: "host_converge_slice1: tasks independent read-back after apply still drifted; fail-closed" }
                               Absent =>
                                 HostConvergeSlice1UnitRefused { unit: unit, reason: "host_converge_slice1: tasks read-back after apply returned Absent verdict; fail-closed" }

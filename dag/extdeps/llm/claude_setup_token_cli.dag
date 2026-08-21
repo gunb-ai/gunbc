@@ -79,14 +79,14 @@ fn setup_token_code_scan(lines: List<String>) -> SetupTokenCodeScan {
 
 fn first_https_url_token(line: String) -> String? {
   let tokens = split(s: line, delimiter: " ")
-  fold(tokens, init: Absent, f: fn(acc, token) {
+  fold(tokens, init: v2.std.optional.Absent, f: fn(acc, token) {
     match acc {
-      Present { value: _ } => acc
-      Absent => {
+      v2.std.optional.Present { value: _ } => acc
+      v2.std.optional.Absent => {
         let trimmed = trim(token)
         match starts_with(s: trimmed, prefix: setup_token_challenge_url_marker) {
-          true => Present { value: trimmed }
-          false => Absent
+          true => v2.std.optional.Present { value: trimmed }
+          false => v2.std.optional.Absent
         }
       }
     }
@@ -101,15 +101,15 @@ fn parse_setup_token_challenge_from_terminal(
     |> filter(l => string_contains(s: l, pattern: setup_token_challenge_url_marker))
     |> first
   match url_hit {
-    Absent => SetupTokenChallengeParseRefused {
+    v2.std.optional.Absent => SetupTokenChallengeParseRefused {
       reason: "no verification uri in setup-token terminal output" as std.types.NonEmptyStr,
     }
-    Present { value: url_line } =>
+    v2.std.optional.Present { value: url_line } =>
       match first_https_url_token(line: url_line) {
-        Absent => SetupTokenChallengeParseRefused {
+        v2.std.optional.Absent => SetupTokenChallengeParseRefused {
           reason: "verification uri line contains no extractable https url token" as std.types.NonEmptyStr,
         }
-        Present { value: url } =>
+        v2.std.optional.Present { value: url } =>
           match setup_token_code_scan(lines: lines) {
             SetupTokenCodeScanSeeking => SetupTokenChallengeParseRefused {
               reason: "verification uri present but user code marker missing" as std.types.NonEmptyStr,
@@ -156,13 +156,13 @@ fn extract_setup_token_candidate(
   prefix: std.types.NonEmptyStr,
 ) -> String? {
   let lines = split(s: pane as String, delimiter: "\n") |> map(l => trim(l))
-  fold(lines, init: Absent, f: fn(found, line) {
+  fold(lines, init: v2.std.optional.Absent, f: fn(found, line) {
     match found {
-      Present { value: _ } => found
-      Absent =>
+      v2.std.optional.Present { value: _ } => found
+      v2.std.optional.Absent =>
         match line_is_setup_token_candidate(line: line, prefix: prefix) {
-          true => Present { value: line }
-          false => Absent
+          true => v2.std.optional.Present { value: line }
+          false => v2.std.optional.Absent
         }
     }
   })

@@ -114,7 +114,7 @@ fn deploy_convergence_observed_side_body() -> std.types.List<std.markdown.Markdo
   ]
 }
 
-data deploy_convergence_observed_side_plan: Plan = Plan {
+data deploy_convergence_observed_side_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "deploy-convergence-observed-side",
   title: "Deploy convergence: the observed side, and why the obvious repair is a regression",
   body: deploy_convergence_observed_side_body(),

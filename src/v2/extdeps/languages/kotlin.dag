@@ -235,7 +235,7 @@ fn kotlin_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntax
 
 data kotlin_source_text: String = "fun add(x: Int, y: Int): Int { return x + y }"
 
-data kotlin_bool_grounding: std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra
+data kotlin_bool_grounding: std.algebra.BooleanAlgebra<v2.std.logic.Bool> = v2.std.logic.bool_boolean_algebra
 
 fn kotlin_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
@@ -781,29 +781,29 @@ fn kotlin_model_core_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabi
 
 fn kotlin_integer_catalog_surface_symbol_step(
   sym: v2.std.node.Symbol,
-  acc: Bool,
+  acc: v2.std.logic.Bool,
   facts: KotlinIntegerPrimitiveFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   acc || sym == facts.surface_spelling
 }
 
 fn kotlin_float_catalog_surface_symbol_step(
   sym: v2.std.node.Symbol,
-  acc: Bool,
+  acc: v2.std.logic.Bool,
   facts: KotlinFloatPrimitiveFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   acc || sym == facts.surface_spelling
 }
 
 fn kotlin_nonnumeric_catalog_surface_symbol_step(
   sym: v2.std.node.Symbol,
-  acc: Bool,
+  acc: v2.std.logic.Bool,
   facts: KotlinNonNumericPrimitiveFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   acc || sym == facts.surface_spelling
 }
 
-fn kotlin_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn kotlin_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: kotlin_integer_facts_catalog,
     empty: false,
@@ -813,7 +813,7 @@ fn kotlin_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn kotlin_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn kotlin_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: kotlin_float_facts_catalog,
     empty: false,
@@ -823,7 +823,7 @@ fn kotlin_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn kotlin_nonnumeric_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn kotlin_nonnumeric_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: kotlin_nonnumeric_facts_catalog,
     empty: false,
@@ -833,7 +833,7 @@ fn kotlin_nonnumeric_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn kotlin_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn kotlin_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   kotlin_integer_catalog_surface_symbol(sym: sym) ||
     kotlin_float_catalog_surface_symbol(sym: sym) ||
     kotlin_nonnumeric_catalog_surface_symbol(sym: sym)
@@ -2429,7 +2429,7 @@ fn kotlin_grammar() -> v2.std.grammar.ParseGrammar {
   v2.std.grammar.ModeledGrammar { root: kotlin_grammar_root() }
 }
 
-fn kotlin_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn kotlin_lex_token_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.compilers.lexing.lex_rule_set_token_class_member(
     rules: kotlin_lex_rules(),
     token_class: sym

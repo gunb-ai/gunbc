@@ -54,7 +54,7 @@ test fn w_effects_on_actor_owned_subjects_never_escalate() -> Bool {
 test fn w_root_owned_subjects_escalate_for_a_named_actor() -> Bool {
   effect_requires_escalation(effect: gunbc.spark.serving_realization.InstallRuntimePackage, actor: automation())
     && effect_requires_escalation(effect: gunbc.spark.serving_realization.GrantContainerRuntimeAccess, actor: automation())
-    && effect_requires_escalation(effect: EnableLingerForOwnAccount, actor: automation())
+    && effect_requires_escalation(effect: gunbc.spark.serving_realization.EnableLingerForOwnAccount, actor: automation())
 }
 
 // THE GRANT TRACKS THE EFFECT POPULATION. A realization declaring fewer escalating effects gets a
@@ -94,7 +94,7 @@ test fn red_control_no_grant_line_carries_shell_or_wildcard() -> Bool {
 // actuation. This is the arm that keeps the grant from quietly including everything a realization
 // does -- the fold must consult escalation, not merely concatenate actuations.
 test fn red_control_non_escalating_effects_contribute_no_grant_line() -> Bool {
-  let actuation = length(match effect_actuation(effect: EnableLingerForOwnAccount, target: target_as(RootPrincipal)) { gunbc.spark.serving_realization.ActuatedByEscalation { commands: c } => c gunbc.spark.serving_realization.ActuatedByOwnerDirectly => std.algebra.Empty })
+  let actuation = length(match effect_actuation(effect: gunbc.spark.serving_realization.EnableLingerForOwnAccount, target: target_as(RootPrincipal)) { gunbc.spark.serving_realization.ActuatedByEscalation { commands: c } => c gunbc.spark.serving_realization.ActuatedByOwnerDirectly => std.algebra.Empty })
   let granted = length(realization_escalated_commands(realization: gunbc.spark.serving_realization.UserUnitRealization, target: target_as(RootPrincipal)))
   actuation > 0 && granted == 0
 }

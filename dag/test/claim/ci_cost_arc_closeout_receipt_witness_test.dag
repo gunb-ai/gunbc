@@ -87,7 +87,7 @@ test fn witness_closed_lanes() -> Bool {
       ClosedNoRepeatedTypecheck {} => true
     }
     && match selection_honesty_settle() {
-      Landed {} => true
+      gunbc.ci_cost_arc_closeout_receipt.Landed {} => true
     }
 }
 

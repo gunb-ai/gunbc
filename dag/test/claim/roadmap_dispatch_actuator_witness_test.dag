@@ -126,8 +126,8 @@ test fn witness_tmux_spawn_argv_threads_claude_argv() -> Bool {
 test fn witness_probe_bridge_ineligible_standing_refuses_actuator_selection() -> Bool {
   let instance = gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance()
   match gunbc.roadmap_dashboard_instance.dashboard_instance_provider_executable(instance: instance) {
-    Absent => false
-    Present { value: executable } =>
+    std.upsert_decision.Absent => false
+    v2.std.optional.Present { value: executable } =>
       match gunbc.dispatch_selection.resolve_dispatch_selection(
         inventory: gunbc.dispatch_selection.ProviderInventory {
           offers: [
@@ -258,8 +258,8 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
         codex_executable: match gunbc.roadmap_dashboard_instance.dashboard_instance_provider_executable(
           instance: gunbc.roadmap_dashboard_instance.srv1_live_dashboard_instance(),
         ) {
-          Present { value: executable } => executable as String
-          Absent => ""
+          v2.std.optional.Present { value: executable } => executable as String
+          std.upsert_decision.Absent => ""
         },
       )
   }
@@ -267,8 +267,8 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
 
 fn lab_instance_command_shape_holds(commands: gunbc.roadmap_dispatch_actuator.DispatchSpawnCommands, lab: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> Bool {
   match gunbc.roadmap_dashboard_instance.dashboard_instance_provider_executable(instance: lab) {
-    Absent => false
-    Present { value: codex_path } => {
+    std.upsert_decision.Absent => false
+    v2.std.optional.Present { value: codex_path } => {
   let codex_executable = codex_path as String
   let git_wire = join(commands.worktree_add.args, separator: "\0")
   let state_wire = join(commands.attempt_state_prepare.args, separator: "\0")
@@ -567,7 +567,7 @@ test fn witness_name_only_observation_not_converged() -> Bool {
     },
   ) {
     UnknownRefused => true
-    Converged => false
+    std.upsert_decision.Converged => false
     _ => false
   }
 }
@@ -593,8 +593,8 @@ test fn witness_foreign_process_fingerprint_is_conflict() -> Bool {
 
 test fn witness_fingerprint_scaffold_marker_present() -> Bool {
   match gunbc.roadmap_dispatch_actuator.dispatch_tmux_process_fingerprint_observation_dissolution_trigger {
-    Scaffold { dissolves_to: _, bind: _ } => false
-    Terminal { reason: r } => string_contains(s: r as String, pattern: "DISSOLVED")
+    std.disposition.Scaffold { dissolves_to: _, bind: _ } => false
+    std.disposition.Terminal { reason: r } => string_contains(s: r as String, pattern: "DISSOLVED")
   }
 }
 

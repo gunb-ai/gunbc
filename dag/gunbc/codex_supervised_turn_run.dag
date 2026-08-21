@@ -20,7 +20,7 @@ fn codex_supervised_worker_turn_apply(
     transport: gunbc.host_effect.LocalShell,
   )
   match r {
-    Converged { evidence: e, applied: _ } =>
+    std.realization_reconcile.Converged { evidence: e, applied: _ } =>
       match e {
         ShellEffectApplied { stdout: stdout, stderr: stderr, exit_code: code } => {
           let wire_capture = gunbc.provider_wire_evidence.retain_provider_wire_capture(

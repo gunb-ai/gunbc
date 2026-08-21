@@ -3,7 +3,7 @@ module v2.test.resolve.qualified_module_projection_resolve
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn qmpr_qn_spine(segments: FreeMonoid<v2.std.node.Symbol>) -> Node {
+fn qmpr_qn_spine(segments: FreeMonoid<v2.std.node.Symbol>) -> v2.std.node.Node {
   fold_list_node(
     xs: segments,
     item_node: fn(sym) {
@@ -20,7 +20,7 @@ data qmpr_provider_qn: FreeMonoid<v2.std.node.Symbol> = qualified_name_from_dott
   dotted: "v2.test.resolve.qualified_module_projection_provider"
 )
 
-data qmpr_provider_root: Node = v2.std.node.Node {
+data qmpr_provider_root: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     dag_named_edge(
@@ -32,7 +32,7 @@ data qmpr_provider_root: Node = v2.std.node.Node {
       target: qmpr_qn_spine(segments: qmpr_provider_qn)
     ),
     v2.std.node.Edge {
-      label: Named { name: ^ProviderType },
+      label: v2.std.node.Named { name: ^ProviderType },
       target: v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^ProviderType } },
         children: [],
@@ -44,7 +44,7 @@ data qmpr_provider_root: Node = v2.std.node.Node {
 }
 
 data qmpr_provider_index: v2.std.symbol_index.SymbolIndex = symbol_index_fill_module_root(
-  index: empty_symbol_index(),
+  index: v2.std.symbol_index.empty_symbol_index(),
   root: qmpr_provider_root
 )
 
@@ -52,7 +52,7 @@ data qmpr_consumer_qn: FreeMonoid<v2.std.node.Symbol> = qualified_name_from_dott
   dotted: "v2.test.resolve.qualified_module_projection_stripped_fixture"
 )
 
-data qmpr_qualified_ref: Node = qmpr_qn_spine(
+data qmpr_qualified_ref: v2.std.node.Node = qmpr_qn_spine(
   segments: qualified_name_from_dotted_string(
     dotted: "v2.test.resolve.qualified_module_projection_provider.ProviderType"
   )
@@ -67,9 +67,9 @@ fn qmpr_namespace(index: v2.std.symbol_index.SymbolIndex) -> v2.compiler.resolve
   }
 }
 
-test fn witness_qualified_name_node_resolves_holds() -> Bool {
+test fn witness_qualified_name_node_resolves_holds() -> v2.std.logic.Bool {
   let namespace = qmpr_namespace(index: qmpr_provider_index)
-  match resolve_node(
+  match v2.compiler.resolve.resolve_node(
     ctx: v2.compiler.resolve.ResolveContext {
       scope: scope_from_namespace(namespace: namespace),
       namespace: namespace,
@@ -81,13 +81,13 @@ test fn witness_qualified_name_node_resolves_holds() -> Bool {
     n: qmpr_qualified_ref
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn witness_qualified_name_node_miss_red_holds() -> Bool {
-  let namespace = qmpr_namespace(index: empty_symbol_index())
-  match resolve_node(
+test fn witness_qualified_name_node_miss_red_holds() -> v2.std.logic.Bool {
+  let namespace = qmpr_namespace(index: v2.std.symbol_index.empty_symbol_index())
+  match v2.compiler.resolve.resolve_node(
     ctx: v2.compiler.resolve.ResolveContext {
       scope: scope_from_namespace(namespace: namespace),
       namespace: namespace,
@@ -99,7 +99,7 @@ test fn witness_qualified_name_node_miss_red_holds() -> Bool {
     n: qmpr_qualified_ref
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 

@@ -141,8 +141,8 @@ fn prepared_floor_identity_map_contains(
   witness: std.realization_schedule.ScheduleWitnessEntry,
 ) -> Bool {
   match map_get(identities, witness) {
-    Absent => false
-    Present { value: _ } => true
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: _ } => true
   }
 }
 
@@ -300,10 +300,10 @@ fn prepared_floor_serve_one(
         index: index,
         witness: entry.witness,
       ) {
-        Absent => PreparedFloorServeStopped {
+        v2.std.optional.Absent => PreparedFloorServeStopped {
           cause: PreparedFloorMissingProbeIdentities { missing: [entry.witness] }
         }
-        Present { value: prepared_probe } => match std.materialization_provider.provider_serve(
+        v2.std.optional.Present { value: prepared_probe } => match std.materialization_provider.provider_serve(
           req: prepared_floor_entry_artifact_request(
             discovery: request.discovery,
             entry: entry,

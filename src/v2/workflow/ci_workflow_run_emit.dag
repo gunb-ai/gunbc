@@ -43,8 +43,8 @@ fn ci_workflow_run(command: String) -> v2.std.orchestration.Run {
   v2.std.orchestration.Run {
     command: command,
     env: Empty,
-    redirect: Absent,
-    capture: Absent
+    redirect: v2.std.optional.Absent,
+    capture: v2.std.optional.Absent
   }
 }
 
@@ -59,7 +59,7 @@ fn ci_workflow_run_emit_pipeline(p: v2.std.orchestration.Pipeline) -> String {
         None => source.carried
         Some { diagnostics: _ } => ci_workflow_run_emit_refused_poison
       }
-    Rejected { diagnostics: _ } => ci_workflow_run_emit_refused_poison
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ci_workflow_run_emit_refused_poison
   }
 }
 

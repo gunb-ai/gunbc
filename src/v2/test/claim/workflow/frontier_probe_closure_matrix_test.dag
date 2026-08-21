@@ -162,7 +162,7 @@ fn fp_matrix_forged_closure_subject() -> v2.compiler.self_host.frontier_probe.Fr
   )
 }
 
-test fn frontier_probe_closure_storage_duplicate_refused_holds() -> Bool {
+test fn frontier_probe_closure_storage_duplicate_refused_holds() -> v2.std.logic.Bool {
   match frontier_probe_receipt_for_subject(
     subject: fp_matrix_duplicate_closure_subject(),
     fixture_module_path: ""
@@ -173,7 +173,7 @@ test fn frontier_probe_closure_storage_duplicate_refused_holds() -> Bool {
   }
 }
 
-test fn frontier_probe_closure_entry_binding_refused_holds() -> Bool {
+test fn frontier_probe_closure_entry_binding_refused_holds() -> v2.std.logic.Bool {
   match frontier_probe_receipt_for_subject(
     subject: fp_matrix_entry_not_in_refs_subject(),
     fixture_module_path: ""
@@ -184,7 +184,7 @@ test fn frontier_probe_closure_entry_binding_refused_holds() -> Bool {
   }
 }
 
-test fn frontier_probe_closure_count_mismatch_refused_holds() -> Bool {
+test fn frontier_probe_closure_count_mismatch_refused_holds() -> v2.std.logic.Bool {
   match frontier_probe_receipt_for_subject(
     subject: fp_matrix_count_mismatch_subject(),
     fixture_module_path: ""
@@ -195,7 +195,7 @@ test fn frontier_probe_closure_count_mismatch_refused_holds() -> Bool {
   }
 }
 
-test fn frontier_probe_closure_refs_digest_mismatch_refused_holds() -> Bool {
+test fn frontier_probe_closure_refs_digest_mismatch_refused_holds() -> v2.std.logic.Bool {
   match frontier_probe_receipt_for_subject(
     subject: fp_matrix_forged_closure_subject(),
     fixture_module_path: ""
@@ -206,7 +206,7 @@ test fn frontier_probe_closure_refs_digest_mismatch_refused_holds() -> Bool {
   }
 }
 
-test fn frontier_probe_coverage_rows_missing_refused_holds() -> Bool {
+test fn frontier_probe_coverage_rows_missing_refused_holds() -> v2.std.logic.Bool {
   match frontier_probe_receipt_for_subject(
     subject: fp_matrix_rows_missing_coverage_subject(),
     fixture_module_path: ""
@@ -220,7 +220,7 @@ test fn frontier_probe_coverage_rows_missing_refused_holds() -> Bool {
   }
 }
 
-test fn frontier_probe_coverage_manifest_absent_refused_holds() -> Bool {
+test fn frontier_probe_coverage_manifest_absent_refused_holds() -> v2.std.logic.Bool {
   match frontier_probe_receipt_for_subject(
     subject: fp_matrix_manifest_absent_subject(),
     fixture_module_path: ""
@@ -234,7 +234,7 @@ test fn frontier_probe_coverage_manifest_absent_refused_holds() -> Bool {
   }
 }
 
-test fn frontier_probe_elided_incomplete_refs_coverage_refused_holds() -> Bool {
+test fn frontier_probe_elided_incomplete_refs_coverage_refused_holds() -> v2.std.logic.Bool {
   match frontier_probe_receipt_for_subject(
     subject: fp_matrix_elided_incomplete_refs_subject(),
     fixture_module_path: ""
@@ -248,7 +248,7 @@ test fn frontier_probe_elided_incomplete_refs_coverage_refused_holds() -> Bool {
   }
 }
 
-test fn frontier_probe_storage_hash_conflict_refused_holds() -> Bool {
+test fn frontier_probe_storage_hash_conflict_refused_holds() -> v2.std.logic.Bool {
   match frontier_probe_receipt_for_subject(
     subject: fp_matrix_storage_hash_conflict_subject(),
     fixture_module_path: ""
@@ -259,7 +259,7 @@ test fn frontier_probe_storage_hash_conflict_refused_holds() -> Bool {
   }
 }
 
-test fn frontier_probe_elided_cap_plus_one_coverage_gate_permitted_holds() -> Bool {
+test fn frontier_probe_elided_cap_plus_one_coverage_gate_permitted_holds() -> v2.std.logic.Bool {
   let refs = fp_matrix_cap_boundary_refs()
   match frontier_probe_coverage_gate(
     coverage: v2.compiler.source_authority.SourceRootManifestElided { read_count: 65, cap: 64 },

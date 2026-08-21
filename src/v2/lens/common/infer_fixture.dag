@@ -1,7 +1,7 @@
 module v2.test.lens_common.infer_fixture
 
 
-fn claim_atom_node(s: v2.std.node.Symbol) -> Node {
+fn claim_atom_node(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     children: [],
@@ -41,8 +41,8 @@ fn claim_inferred_facts_witness(
 }
 
 fn claim_inferred_facts_from_nodes(
-  resolved: Node,
-  algebra: Node,
+  resolved: v2.std.node.Node,
+  algebra: v2.std.node.Node,
   descent: Witness<v2.std.cardinality.TerminationProof>
 ) -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts_witness(
@@ -82,21 +82,21 @@ fn claim_inferred_facts(
   )
 }
 
-fn claim_inferred_facts_map(facts: v2.compiler.inferred_tree.InferredFacts) -> Map<Node, v2.compiler.inferred_tree.InferredFacts> {
+fn claim_inferred_facts_map(facts: v2.compiler.inferred_tree.InferredFacts) -> Map<v2.std.node.Node, v2.compiler.inferred_tree.InferredFacts> {
   std.types.Map {
     lookup: fn(_) {
-      Present { value: facts }
+      v2.std.optional.Present { value: facts }
     }
   }
 }
 
-fn claim_inferred_tree(root: Node, facts: v2.compiler.inferred_tree.InferredFacts) -> v2.compiler.inferred_tree.InferredTree {
+fn claim_inferred_tree(root: v2.std.node.Node, facts: v2.compiler.inferred_tree.InferredFacts) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: claim_inferred_facts_map(facts: facts)
   }
 }
 
-fn claim_inferred_facts_for_tree(tree: v2.compiler.inferred_tree.InferredTree, node: Node) -> Witness<v2.compiler.inferred_tree.InferredFacts> {
+fn claim_inferred_facts_for_tree(tree: v2.compiler.inferred_tree.InferredTree, node: v2.std.node.Node) -> Witness<v2.compiler.inferred_tree.InferredFacts> {
   witness_from_optional(opt: tree.facts.lookup(node), absent: infer_facts_lookup_miss_diagnostic(key: node))
 }

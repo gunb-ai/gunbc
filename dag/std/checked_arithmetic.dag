@@ -3,7 +3,7 @@ module std.checked_arithmetic
 
 // THE FINITE-MACHINE INTEGER BOUNDARY, in one place.
 //
-// std.integer models Int as AbelianGroup<GroupCompletion<Nat>> - the mathematical integers, which
+// std.integer models Int as AbelianGroup<GroupCompletion<std.nat.Nat>> - the mathematical integers, which
 // have no bound. Every realization of that model does: the v1 seed and the emitted Rust both carry
 // an Int as i64. Those are two different statements, and code that says "this operation is total
 // and exact" while running on the second one is asserting the first about the second.

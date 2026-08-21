@@ -14,8 +14,8 @@ type CorpusDependencyViewMeasurementVerdict
   = Completed {
       resolve_wall: std.measure.Millisecond,
       view_build_wall: std.measure.Millisecond,
-      edge_count: Int,
-      decl_count: Int
+      edge_count: v2.std.integer.Int,
+      decl_count: v2.std.integer.Int
     }
   | WallPricedAbort {
       aborted_wall: std.measure.Millisecond
@@ -71,10 +71,10 @@ fn corpus_dependency_views_live() -> List<v2.std.dependency.DependencyView> {
   })
 }
 
-fn corpus_dependency_view_edge_count() -> Int {
+fn corpus_dependency_view_edge_count() -> v2.std.integer.Int {
   length(xs: corpus_dependency_views_live())
 }
 
-fn corpus_dependency_view_decl_count() -> Int {
+fn corpus_dependency_view_decl_count() -> v2.std.integer.Int {
   length(xs: fn_arrow_decl_facts_live())
 }

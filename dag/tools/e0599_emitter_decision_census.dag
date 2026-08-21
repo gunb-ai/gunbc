@@ -32,7 +32,7 @@ type E0599ExternalAuthority {
   impl_site: String,
   impl_bound: String,
   member_site: String,
-  cited_upstream: Optional<extdeps.external_authority.ExternalAuthority>,
+  cited_upstream: v2.std.optional.Optional<extdeps.external_authority.ExternalAuthority>,
 }
 
 type E0599LoweringRow {
@@ -53,7 +53,7 @@ data e0599_im_vector_inherent_impl: E0599ExternalAuthority = E0599ExternalAuthor
   impl_site: "im::vector impl<A: Clone> Vector<A> (src/vector/mod.rs:180)",
   impl_bound: "impl<A: Clone> Vector<A>",
   member_site: "im::vector Vector::is_empty | Vector::iter",
-  cited_upstream: Absent,
+  cited_upstream: v2.std.optional.Absent,
 }
 
 data e0599_im_vector_index_impl: E0599ExternalAuthority = E0599ExternalAuthority {
@@ -62,7 +62,7 @@ data e0599_im_vector_index_impl: E0599ExternalAuthority = E0599ExternalAuthority
   impl_site: "im::vector impl<A: Clone> Index<usize> for Vector<A> (src/vector/mod.rs:1838)",
   impl_bound: "impl<A: Clone> Index<usize> for Vector<A>",
   member_site: "im::vector Index::index",
-  cited_upstream: Absent,
+  cited_upstream: v2.std.optional.Absent,
 }
 
 data e0599_im_vector_clone_impl: E0599ExternalAuthority = E0599ExternalAuthority {
@@ -71,7 +71,7 @@ data e0599_im_vector_clone_impl: E0599ExternalAuthority = E0599ExternalAuthority
   impl_site: "im::vector impl<A: Clone> Clone for Vector<A>",
   impl_bound: "impl<A: Clone> Clone for Vector<A>",
   member_site: "im::vector Clone::clone",
-  cited_upstream: Present { value: im_15_1_0_vector_clone_impl_authority },
+  cited_upstream: v2.std.optional.Present { value: im_15_1_0_vector_clone_impl_authority },
 }
 
 data e0599_rust_clone_trait: E0599ExternalAuthority = E0599ExternalAuthority {
@@ -80,7 +80,7 @@ data e0599_rust_clone_trait: E0599ExternalAuthority = E0599ExternalAuthority {
   impl_site: "core::clone::Clone",
   impl_bound: "trait Clone: Sized",
   member_site: "fn clone(&self) -> Self",
-  cited_upstream: Absent,
+  cited_upstream: v2.std.optional.Absent,
 }
 
 data e0599_lowering_rows: std.types.List<E0599LoweringRow> = [
@@ -178,8 +178,8 @@ fn e0599_receiver_is_deref_wrapped(receiver_expr: String) -> Bool {
 
 fn e0599_receiver_last_segment(receiver_expr: String) -> String {
   match receiver_expr |> split(delimiter: ".") |> last {
-    Present { value: seg } => seg
-    Absent => ""
+    v2.std.optional.Present { value: seg } => seg
+    v2.std.optional.Absent => ""
   }
 }
 
@@ -247,15 +247,15 @@ fn e0599_row_matches_operation(row: E0599LoweringRow, operation: E0599LoweringOp
   e0599_lowering_operation_label(operation: row.operation) == e0599_lowering_operation_label(operation: operation)
 }
 
-fn e0599_row_for_operation(operation: E0599LoweringOperation) -> Optional<E0599LoweringRow> {
+fn e0599_row_for_operation(operation: E0599LoweringOperation) -> v2.std.optional.Optional<E0599LoweringRow> {
   e0599_lowering_rows |> filter(r => e0599_row_matches_operation(row: r, operation: operation)) |> first
 }
 
 fn e0599_cause_for(method: String, receiver_expr: String) -> E0599RequirementCause {
   let operation = e0599_lowering_operation_for(method: method, receiver_expr: receiver_expr)
   match e0599_row_for_operation(operation: operation) {
-    Present { value: row } => row.cause
-    Absent =>
+    v2.std.optional.Present { value: row } => row.cause
+    v2.std.optional.Absent =>
       UnresolvedCause {
         method: method,
         receiver_expr: receiver_expr,
@@ -281,25 +281,25 @@ fn e0599_classification_line(method: String, receiver_expr: String) -> String {
   let operation = e0599_lowering_operation_for(method: method, receiver_expr: receiver_expr)
   let cause = e0599_cause_for(method: method, receiver_expr: receiver_expr)
   let source_construct = match e0599_row_for_operation(operation: operation) {
-    Present { value: row } => row.source_construct
-    Absent => ""
+    v2.std.optional.Present { value: row } => row.source_construct
+    v2.std.optional.Absent => ""
   }
   let ownership_alternative = match e0599_row_for_operation(operation: operation) {
-    Present { value: row } => row.ownership_alternative
-    Absent => ""
+    v2.std.optional.Present { value: row } => row.ownership_alternative
+    v2.std.optional.Absent => ""
   }
   let required_trait = match e0599_row_for_operation(operation: operation) {
-    Present { value: row } => row.required_trait
-    Absent => ""
+    v2.std.optional.Present { value: row } => row.required_trait
+    v2.std.optional.Absent => ""
   }
   let emitter_authority = match e0599_row_for_operation(operation: operation) {
-    Present { value: row } => row.emitter_authority
-    Absent => ""
+    v2.std.optional.Present { value: row } => row.emitter_authority
+    v2.std.optional.Absent => ""
   }
   let external_authority = match e0599_row_for_operation(operation: operation) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       concat(row.authority.crate_name, concat(" ", concat(row.authority.crate_version, concat(" ", row.authority.impl_site))))
-    Absent => ""
+    v2.std.optional.Absent => ""
   }
   concat(
     e0599_lowering_operation_label(operation: operation),
@@ -319,12 +319,12 @@ fn e0599_classify_tuple_line(line: String) -> std.error_primitives.Result<String
     std.error_primitives.Err { value: MalformedCensusLine { line: line, field_count: field_count } }
   } else {
     let method = match parts |> first {
-      Present { value: v } => v
-      Absent => ""
+      v2.std.optional.Present { value: v } => v
+      v2.std.optional.Absent => ""
     }
     let receiver_expr = match parts |> skip(n: 1) |> first {
-      Present { value: v } => v
-      Absent => ""
+      v2.std.optional.Present { value: v } => v
+      v2.std.optional.Absent => ""
     }
     std.error_primitives.Ok { value: e0599_classification_line(method: method, receiver_expr: receiver_expr) }
   }
@@ -413,7 +413,7 @@ fn e0599_write_census_blob(path: String, content: String, label: String) -> std.
   }
   let w = Filesystem.Write(path: path, content: content)
   if w.success {
-    ExitSuccess
+    std.process.ExitSuccess
   } else {
     exit_failure(reason: concat(concat("write failed for ", path), concat(": ", w.error)))
   }

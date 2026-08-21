@@ -283,6 +283,6 @@ fn population_realization_refusals(
   })
 }
 
-fn population_realization_refusal_count(cs: List<PopulationRealizationRefusal>) -> Int {
+fn population_realization_refusal_count(cs: List<PopulationRealizationRefusal>) -> std.integer.Int {
   fold(cs, init: 0, f: fn(acc, _c) { acc + 1 })
 }

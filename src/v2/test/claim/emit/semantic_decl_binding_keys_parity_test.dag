@@ -1,7 +1,7 @@
 module v2.test.emit.semantic_decl_binding_keys_parity
 
 
-fn binding_pair_matches(binding: v2.std.node.Symbol) -> Bool {
+fn binding_pair_matches(binding: v2.std.node.Symbol) -> v2.std.logic.Bool {
   match semantic_decl_emission_from_target(target: rust_target_model()) {
     Accepted { value: emission, diagnostics: _ } =>
       match semantic_decl_profile_binding_spellings(profile: emission.enum_serialize_profile) {
@@ -16,19 +16,19 @@ fn binding_pair_matches(binding: v2.std.node.Symbol) -> Bool {
                 binding: binding
               ) {
                 Accepted { value: live, diagnostics: _ } => decoded == live
-                Rejected { diagnostics: _ } => false
+                v2.std.diagnostic.Rejected { diagnostics: _ } => false
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn all_bool_emit_bindings_match() -> Bool {
+test fn all_bool_emit_bindings_match() -> v2.std.logic.Bool {
   v2.test.emit.semantic_decl_binding_keys_parity.binding_pair_matches(binding: ^rust_decl_derive_enum_copy_binding)
-    && v2.test.emit.semantic_decl_binding_keys_parity.binding_pair_matches(binding: ^Bool)
+    && v2.test.emit.semantic_decl_binding_keys_parity.binding_pair_matches(binding: ^v2.std.logic.Bool)
     && v2.test.emit.semantic_decl_binding_keys_parity.binding_pair_matches(binding: ^True)
     && v2.test.emit.semantic_decl_binding_keys_parity.binding_pair_matches(binding: ^False)
     && v2.test.emit.semantic_decl_binding_keys_parity.binding_pair_matches(binding: ^rust_decl_derive_enum_binding)

@@ -41,7 +41,7 @@ fn kernel_alt_subject_tree() -> v2.compiler.inferred_tree.InferredTree {
 
 fn kernel_test_store() -> std.artifact_store.ArtifactStore {
   match std.artifact_store.store_over_provider(provider: kernel_provider) {
-    StoreReady { store: s } => s
+    std.artifact_store.StoreReady { store: s } => s
     StoreRefusedRetention { provider_id: _, declared: _ } =>
       std.artifact_store.ArtifactStore { budget: std.measure.byte_size(count: 0), next_ordinal: 1, rows: [] }
   }
@@ -125,7 +125,7 @@ test fn emit_on_demand_schedule_refuses_unreadable_budget_holds() -> Bool {
   ) {
     BudgetRefused => true
     PackedWidth { width: _ } => false
-    MaturationReserve { width: _ } => false
+    std.realize_pack.MaturationReserve { width: _ } => false
   }
 }
 
@@ -170,7 +170,7 @@ fn kernel_cached_run_with_source_for_tree(
             && stdout.bytes == v2.compiler.emit_host.emit_host_octets_byte_string(octets: [0, 5, 0, 0, 0])
         _ => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -191,7 +191,7 @@ fn kernel_cached_run_checks_for_tree(
         source: source,
         expect_compile_skipped: expect_compile_skipped
       )
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -210,7 +210,7 @@ fn kernel_cached_cold_then_warm_for_tree(workspace: String, tree: v2.compiler.in
           source: source,
           expect_compile_skipped: true
         )
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

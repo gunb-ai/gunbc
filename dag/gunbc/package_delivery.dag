@@ -1170,11 +1170,11 @@ fn sort_json_members_by_key(members: std.types.List<extdeps.languages.json.emit.
 
 fn canonicalize_json_value(v: extdeps.languages.json.emit.JsonValue) -> extdeps.languages.json.emit.JsonValue? {
   match v {
-    JsonNull => Present { value: extdeps.languages.json.emit.JsonNull }
-    JsonBool { value: b } => Present { value: extdeps.languages.json.emit.JsonBool { value: b } }
-    JsonNumber { lexeme: l } => Present { value: extdeps.languages.json.emit.JsonNumber { lexeme: l } }
-    JsonString { value: s } => Present { value: extdeps.languages.json.emit.JsonString { value: s } }
-    JsonArray { elements } => {
+    extdeps.languages.json.emit.JsonNull => Present { value: extdeps.languages.json.emit.JsonNull }
+    extdeps.languages.json.emit.JsonBool { value: b } => Present { value: extdeps.languages.json.emit.JsonBool { value: b } }
+    extdeps.languages.json.emit.JsonNumber { lexeme: l } => Present { value: extdeps.languages.json.emit.JsonNumber { lexeme: l } }
+    extdeps.languages.json.emit.JsonString { value: s } => Present { value: extdeps.languages.json.emit.JsonString { value: s } }
+    extdeps.languages.json.emit.JsonArray { elements } => {
       let mapped = fold(
         elements,
         init: Present { value: [] as std.types.List<extdeps.languages.json.emit.JsonValue> },
@@ -1192,7 +1192,7 @@ fn canonicalize_json_value(v: extdeps.languages.json.emit.JsonValue) -> extdeps.
         Present { value: els } => Present { value: extdeps.languages.json.emit.JsonArray { elements: els } }
       }
     }
-    JsonObject { members } => {
+    extdeps.languages.json.emit.JsonObject { members } => {
       if json_object_keys_unique(members: members) == false {
         none
       } else {

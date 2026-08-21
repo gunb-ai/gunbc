@@ -14,7 +14,7 @@ fn ci_cargo_eagain_retry_core(command: String) -> String {
         None => source.carried
         Some { diagnostics: _ } => ci_retry_emit_refused_poison
       }
-    Rejected { diagnostics: _ } => ci_retry_emit_refused_poison
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ci_retry_emit_refused_poison
   }
 }
 

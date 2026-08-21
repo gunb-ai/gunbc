@@ -1,7 +1,7 @@
 module v2.extdeps.languages.bash_build
 
 
-fn bash_build_word_kinded(kind: v2.std.node.Symbol, value: String) -> Node {
+fn bash_build_word_kinded(kind: v2.std.node.Symbol, value: String) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -26,15 +26,15 @@ fn bash_build_word_kinded(kind: v2.std.node.Symbol, value: String) -> Node {
   }
 }
 
-fn bash_build_word_lit(text: String) -> Node {
+fn bash_build_word_lit(text: String) -> v2.std.node.Node {
   bash_build_word_kinded(kind: ^bash_fold_word_kind_lit, value: text)
 }
 
-fn bash_build_word_var(name: String) -> Node {
+fn bash_build_word_var(name: String) -> v2.std.node.Node {
   bash_build_word_kinded(kind: ^bash_fold_word_kind_var, value: name)
 }
 
-fn bash_build_word_compound(kind: v2.std.node.Symbol, payload: Node) -> Node {
+fn bash_build_word_compound(kind: v2.std.node.Symbol, payload: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -52,15 +52,15 @@ fn bash_build_word_compound(kind: v2.std.node.Symbol, payload: Node) -> Node {
   }
 }
 
-fn bash_build_word_concat(parts: Node) -> Node {
+fn bash_build_word_concat(parts: v2.std.node.Node) -> v2.std.node.Node {
   bash_build_word_compound(kind: ^bash_fold_word_kind_concat, payload: parts)
 }
 
-fn bash_build_word_cmdsubst(body: Node) -> Node {
+fn bash_build_word_cmdsubst(body: v2.std.node.Node) -> v2.std.node.Node {
   bash_build_word_compound(kind: ^bash_fold_word_kind_cmdsubst, payload: body)
 }
 
-fn bash_build_stmt_tag(binding: v2.std.node.Symbol) -> Node {
+fn bash_build_stmt_tag(binding: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: binding } },
     children: [],
@@ -68,7 +68,7 @@ fn bash_build_stmt_tag(binding: v2.std.node.Symbol) -> Node {
   }
 }
 
-fn bash_build_command_words_single(word: Node) -> Node {
+fn bash_build_command_words_single(word: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -78,7 +78,7 @@ fn bash_build_command_words_single(word: Node) -> Node {
   }
 }
 
-fn bash_build_command_words_pair(left: Node, right: Node) -> Node {
+fn bash_build_command_words_pair(left: v2.std.node.Node, right: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -89,7 +89,7 @@ fn bash_build_command_words_pair(left: Node, right: Node) -> Node {
   }
 }
 
-fn bash_build_command(words: Node) -> Node {
+fn bash_build_command(words: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -105,11 +105,11 @@ fn bash_build_command(words: Node) -> Node {
 
 fn bash_build_command_words_from_lits_suffix(
   lits: List<String>,
-  accumulated: Node,
+  accumulated: v2.std.node.Node,
   index: Int
-) -> Node {
+) -> v2.std.node.Node {
   match list_at_optional(xs: lits, index: index) {
-    Present { value: lit } =>
+    v2.std.optional.Present { value: lit } =>
       bash_build_command_words_from_lits_suffix(
         lits: lits,
         accumulated: bash_build_command_words_pair(
@@ -122,7 +122,7 @@ fn bash_build_command_words_from_lits_suffix(
   }
 }
 
-fn bash_build_command_from_lits(lits: List<String>) -> Node {
+fn bash_build_command_from_lits(lits: List<String>) -> v2.std.node.Node {
   match list_head(xs: lits) {
     HeadFound { value: first } =>
       bash_build_command(
@@ -139,7 +139,7 @@ fn bash_build_command_from_lits(lits: List<String>) -> Node {
   }
 }
 
-fn bash_build_command_lit_var(lit: String, var_name: String) -> Node {
+fn bash_build_command_lit_var(lit: String, var_name: String) -> v2.std.node.Node {
   bash_build_command(
     words: bash_build_command_words_pair(
       left: bash_build_command_words_single(word: bash_build_word_lit(text: lit)),
@@ -148,7 +148,7 @@ fn bash_build_command_lit_var(lit: String, var_name: String) -> Node {
   )
 }
 
-fn bash_build_exit(code: String) -> Node {
+fn bash_build_exit(code: String) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -169,7 +169,7 @@ fn bash_build_exit(code: String) -> Node {
   }
 }
 
-fn bash_build_assign(name: String, value: Node) -> Node {
+fn bash_build_assign(name: String, value: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -191,15 +191,15 @@ fn bash_build_assign(name: String, value: Node) -> Node {
   }
 }
 
-fn bash_build_assign_lit(name: String, text: String) -> Node {
+fn bash_build_assign_lit(name: String, text: String) -> v2.std.node.Node {
   bash_build_assign(name: name, value: bash_build_word_lit(text: text))
 }
 
-fn bash_build_assign_var(name: String, var_name: String) -> Node {
+fn bash_build_assign_var(name: String, var_name: String) -> v2.std.node.Node {
   bash_build_assign(name: name, value: bash_build_word_var(name: var_name))
 }
 
-fn bash_build_binary_stmt(binding: v2.std.node.Symbol, left: Node, right: Node) -> Node {
+fn bash_build_binary_stmt(binding: v2.std.node.Symbol, left: v2.std.node.Node, right: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -211,7 +211,7 @@ fn bash_build_binary_stmt(binding: v2.std.node.Symbol, left: Node, right: Node) 
   }
 }
 
-fn bash_build_and_then(left: Node, right: Node) -> Node {
+fn bash_build_and_then(left: v2.std.node.Node, right: v2.std.node.Node) -> v2.std.node.Node {
   bash_build_binary_stmt(
     binding: ^bash_production_fold_and_then,
     left: left,
@@ -219,7 +219,7 @@ fn bash_build_and_then(left: Node, right: Node) -> Node {
   )
 }
 
-fn bash_build_or_else(left: Node, right: Node) -> Node {
+fn bash_build_or_else(left: v2.std.node.Node, right: v2.std.node.Node) -> v2.std.node.Node {
   bash_build_binary_stmt(
     binding: ^bash_production_fold_or_else,
     left: left,
@@ -227,7 +227,7 @@ fn bash_build_or_else(left: Node, right: Node) -> Node {
   )
 }
 
-fn bash_build_pipe(left: Node, right: Node) -> Node {
+fn bash_build_pipe(left: v2.std.node.Node, right: v2.std.node.Node) -> v2.std.node.Node {
   bash_build_binary_stmt(
     binding: ^bash_production_fold_pipe,
     left: left,
@@ -235,7 +235,7 @@ fn bash_build_pipe(left: Node, right: Node) -> Node {
   )
 }
 
-fn bash_build_stmt_list_single(stmt: Node) -> Node {
+fn bash_build_stmt_list_single(stmt: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -245,7 +245,7 @@ fn bash_build_stmt_list_single(stmt: Node) -> Node {
   }
 }
 
-fn bash_build_stmt_list_pair(left: Node, right: Node) -> Node {
+fn bash_build_stmt_list_pair(left: v2.std.node.Node, right: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -256,7 +256,7 @@ fn bash_build_stmt_list_pair(left: Node, right: Node) -> Node {
   }
 }
 
-fn bash_build_subshell(body: Node) -> Node {
+fn bash_build_subshell(body: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -270,7 +270,7 @@ fn bash_build_subshell(body: Node) -> Node {
   }
 }
 
-fn bash_build_if(cond: Node, body: Node) -> Node {
+fn bash_build_if(cond: v2.std.node.Node, body: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -285,7 +285,7 @@ fn bash_build_if(cond: Node, body: Node) -> Node {
   }
 }
 
-fn bash_build_with_redir(inner: Node, redir: v2.std.node.Symbol) -> Node {
+fn bash_build_with_redir(inner: v2.std.node.Node, redir: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -300,7 +300,7 @@ fn bash_build_with_redir(inner: Node, redir: v2.std.node.Symbol) -> Node {
   }
 }
 
-fn bash_build_with_redir_to_file(inner: Node, path: Node) -> Node {
+fn bash_build_with_redir_to_file(inner: v2.std.node.Node, path: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -319,7 +319,7 @@ fn bash_build_with_redir_to_file(inner: Node, path: Node) -> Node {
   }
 }
 
-fn bash_build_negation(inner: Node) -> Node {
+fn bash_build_negation(inner: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -334,12 +334,12 @@ fn bash_build_negation(inner: Node) -> Node {
 }
 
 fn bash_build_word_list_from_nodes_suffix(
-  words: List<Node>,
-  accumulated: Node,
+  words: List<v2.std.node.Node>,
+  accumulated: v2.std.node.Node,
   index: Int
-) -> Node {
+) -> v2.std.node.Node {
   match list_at_optional(xs: words, index: index) {
-    Present { value: word } =>
+    v2.std.optional.Present { value: word } =>
       bash_build_word_list_from_nodes_suffix(
         words: words,
         accumulated: bash_build_command_words_pair(left: accumulated, right: word),
@@ -349,7 +349,7 @@ fn bash_build_word_list_from_nodes_suffix(
   }
 }
 
-fn bash_build_word_list_from_nodes(words: List<Node>) -> Node {
+fn bash_build_word_list_from_nodes(words: List<v2.std.node.Node>) -> v2.std.node.Node {
   match list_head(xs: words) {
     HeadFound { value: first } =>
       bash_build_word_list_from_nodes_suffix(
@@ -364,19 +364,19 @@ fn bash_build_word_list_from_nodes(words: List<Node>) -> Node {
   }
 }
 
-fn bash_build_word_concat_parts(parts: List<Node>) -> Node {
+fn bash_build_word_concat_parts(parts: List<v2.std.node.Node>) -> v2.std.node.Node {
   bash_build_word_concat(parts: bash_build_word_list_from_nodes(words: parts))
 }
 
-fn bash_build_command_words_from_nodes(words: List<Node>) -> Node {
+fn bash_build_command_words_from_nodes(words: List<v2.std.node.Node>) -> v2.std.node.Node {
   bash_build_word_list_from_nodes(words: words)
 }
 
-fn bash_build_command_with_words(words: List<Node>) -> Node {
+fn bash_build_command_with_words(words: List<v2.std.node.Node>) -> v2.std.node.Node {
   bash_build_command(words: bash_build_command_words_from_nodes(words: words))
 }
 
-fn bash_build_test_bracket(words: List<Node>) -> Node {
+fn bash_build_test_bracket(words: List<v2.std.node.Node>) -> v2.std.node.Node {
   bash_build_command_with_words(
     words: concat(
       [bash_build_word_lit(text: "[")],
@@ -386,12 +386,12 @@ fn bash_build_test_bracket(words: List<Node>) -> Node {
 }
 
 fn bash_build_stmt_list_from_nodes_suffix(
-  stmts: List<Node>,
-  accumulated: Node,
+  stmts: List<v2.std.node.Node>,
+  accumulated: v2.std.node.Node,
   index: Int
-) -> Node {
+) -> v2.std.node.Node {
   match list_at_optional(xs: stmts, index: index) {
-    Present { value: stmt } =>
+    v2.std.optional.Present { value: stmt } =>
       bash_build_stmt_list_from_nodes_suffix(
         stmts: stmts,
         accumulated: bash_build_stmt_list_pair(left: accumulated, right: stmt),
@@ -401,7 +401,7 @@ fn bash_build_stmt_list_from_nodes_suffix(
   }
 }
 
-fn bash_build_stmt_list_from_nodes(stmts: List<Node>) -> Node {
+fn bash_build_stmt_list_from_nodes(stmts: List<v2.std.node.Node>) -> v2.std.node.Node {
   match list_head(xs: stmts) {
     HeadFound { value: first } =>
       bash_build_stmt_list_from_nodes_suffix(
@@ -423,21 +423,21 @@ fn bash_build_stmt_list_from_nodes(stmts: List<Node>) -> Node {
   }
 }
 
-fn bash_build_command_from_word_nodes(words: List<Node>) -> Node {
+fn bash_build_command_from_word_nodes(words: List<v2.std.node.Node>) -> v2.std.node.Node {
   bash_build_command_with_words(words: words)
 }
 
-fn bash_build_if_from_stmts(cond: Node, then_stmts: List<Node>) -> Node {
+fn bash_build_if_from_stmts(cond: v2.std.node.Node, then_stmts: List<v2.std.node.Node>) -> v2.std.node.Node {
   bash_build_if(
     cond: cond,
     body: bash_build_stmt_list_from_nodes(stmts: then_stmts)
   )
 }
 
-fn bash_build_subshell_from_stmts(stmts: List<Node>) -> Node {
+fn bash_build_subshell_from_stmts(stmts: List<v2.std.node.Node>) -> v2.std.node.Node {
   bash_build_subshell(body: bash_build_stmt_list_from_nodes(stmts: stmts))
 }
 
-fn bash_build_word_concat_from_nodes(parts: List<Node>) -> Node {
+fn bash_build_word_concat_from_nodes(parts: List<v2.std.node.Node>) -> v2.std.node.Node {
   bash_build_word_concat_parts(parts: parts)
 }

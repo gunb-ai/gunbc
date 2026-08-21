@@ -105,7 +105,7 @@ fn quad_admission() -> v2.compiler.name_resolve.Admission {
 
 test fn quad_namespace_only_resolve_accepts_holds() -> Bool {
   match quad_roots() {
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: admitted, diagnostics: _ } =>
     match resolve_with_admission_policy(
       lm: dag_language_model(),
@@ -116,14 +116,14 @@ test fn quad_namespace_only_resolve_accepts_holds() -> Bool {
       policy: NamespaceOnlyY
     ) {
       Accepted { value: _, diagnostics: _ } => true
-      Rejected { diagnostics: _ } => false
+      v2.std.diagnostic.Rejected { diagnostics: _ } => false
     }
   }
 }
 
 test fn quad_import_scoped_admission_reds_ambiguous_export_holds() -> Bool {
   match quad_roots() {
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: admitted, diagnostics: _ } =>
     match resolve_with_admission_policy(
       lm: dag_language_model(),
@@ -134,7 +134,7 @@ test fn quad_import_scoped_admission_reds_ambiguous_export_holds() -> Bool {
       policy: ImportScoped
     ) {
       Accepted { value: _, diagnostics: _ } => false
-      Rejected { diagnostics: d } => d.head.reason == ^resolve_ambiguous_export
+      v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^resolve_ambiguous_export
     }
   }
 }

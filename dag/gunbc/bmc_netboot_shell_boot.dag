@@ -37,8 +37,8 @@ fn bmc_netboot_shell_boot_commands(plan: gunbc.bmc_netboot_serve.BmcNetbootServe
   [
     extdeps.firmware.uefi_shell.Ifconfig { action: extdeps.firmware.uefi_shell.IfconfigSetDhcp { interface: plan.boot_interface } },
     extdeps.firmware.uefi_shell.Ping { host: plan.bmc_host },
-    Tftp { interface: plan.boot_interface, server: plan.bmc_host, remote_file: "vmlinuz", local_file: shell_boot_local_kernel },
-    Tftp { interface: plan.boot_interface, server: plan.bmc_host, remote_file: "initrd", local_file: shell_boot_local_initrd },
+    extdeps.firmware.uefi_shell.Tftp { interface: plan.boot_interface, server: plan.bmc_host, remote_file: "vmlinuz", local_file: shell_boot_local_kernel },
+    extdeps.firmware.uefi_shell.Tftp { interface: plan.boot_interface, server: plan.bmc_host, remote_file: "initrd", local_file: shell_boot_local_initrd },
     extdeps.firmware.uefi_shell.ExecuteEfi { path: shell_boot_local_kernel, cmdline: shell_boot_kernel_cmdline(plan: plan) },
   ]
 }

@@ -5,15 +5,15 @@ use self::OciContentDigest::*;
 pub use crate::extdeps_external_authority::{
     ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
 };
-use crate::extdeps_uri::UriScheme::Https;
+use crate::extdeps_uri::UriScheme::*;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_content_hash::{sha256_hex_digest, sha512_hex_digest};
 pub use crate::std_content_hash::{Sha256Digest, Sha512Digest};
-use crate::std_decl_ref::DeclField::WholeDeclaration;
+use crate::std_decl_ref::DeclField::*;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
-pub use crate::std_types::NonEmptyStr;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -23,10 +23,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+        uri: Uri {
         scheme: UriScheme::Https,
         locator: "github.com/opencontainers/image-spec/blob/main/descriptor.md".to_string(),
-    }),
+    },
     })
             };
         }
@@ -37,14 +37,14 @@ pub fn extdeps_model_scope() -> Rc<ExternalModelScope> {
     thread_local! {
             static CACHED: Rc<ExternalModelScope> = {
                 Rc::new(ExternalModelScope {
-        subject: Rc::new(ExternalSubjectRef {
-        declaration: Rc::new(DeclarationRef {
+        subject: ExternalSubjectRef {
+        declaration: DeclarationRef {
         module_path: "extdeps.container.oci.digest".to_string(),
         decl_name: "OciContentDigest".to_string(),
         field: Rc::new(DeclField::WholeDeclaration),
-    }),
-    }),
-        first_citation: extdeps_external_authority_anchor(),
+    },
+    },
+        first_citation: crate::extdeps_container_oci_digest::extdeps_external_authority_anchor(),
         further_citations: Rc::new(vec![]),
     })
             };
@@ -171,9 +171,9 @@ pub fn oci_other_digest_encoded(value: String) -> bool {
     oci_encoded_digest_syntax_valid(value.clone(), 0)
 }
 
-pub type OciOtherDigestAlgorithm = String;
+pub type OciOtherDigestAlgorithm = crate::v2_std_text::String;
 
-pub type OciOtherDigestEncoded = String;
+pub type OciOtherDigestEncoded = crate::v2_std_text::String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OciOtherDigestBody {
@@ -199,8 +199,12 @@ pub fn oci_content_digest_wire_algorithm(d: Rc<OciContentDigest>) -> String {
 
 pub fn oci_content_digest_encoded_hex(d: Rc<OciContentDigest>) -> String {
     match (*d.clone()).clone() {
-        OciContentDigest::OciSha256Digest(digest) => digest.hex.clone(),
-        OciContentDigest::OciSha512Digest(digest) => digest.hex.clone(),
+        OciContentDigest::OciSha256Digest(digest) => {
+            panic!("unsupported cast from Sha256DigestHex to String")
+        }
+        OciContentDigest::OciSha512Digest(digest) => {
+            panic!("unsupported cast from Sha512DigestHex to String")
+        }
         OciContentDigest::OciOtherDigest(body) => body.encoded.clone(),
     }
 }

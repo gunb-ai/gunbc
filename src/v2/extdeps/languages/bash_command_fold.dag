@@ -657,7 +657,7 @@ fn bash_fold_serialize_source_witness(
               occurrence_id: v2.std.node.SyntheticOccurrence
             }
           }
-        Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
+        v2.std.diagnostic.Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
       }
     Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }

@@ -64,7 +64,7 @@ fn compose_compile_clean_shard_verdicts_as_reduce(
       v: compose_compile_clean_shard_verdicts(verdicts: verdicts)
     )
   } else {
-    Unknown { missing: "compile-clean-shard:empty" }
+    std.reducible.Unknown { missing: "compile-clean-shard:empty" }
   }
 }
 

@@ -309,6 +309,6 @@ data utf8_decode_bytes_host_realization_marker: std.disposition.Disposition = st
   }
 }
 
-data base64_group_fill_carrier_debt_marker: std.disposition.Disposition = Terminal {
+data base64_group_fill_carrier_debt_marker: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Base64EncodeBuf = EncEmpty|EncOne|EncTwo and Base64DecodeBuf = DecEmpty|DecOne|DecTwo|DecThree: the hand-rolled Int count accumulator debt is paid; closed sums are declared and all arms are covered by execution in base64_rfc4648_witness_test.dag"
 }

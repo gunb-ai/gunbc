@@ -25,7 +25,7 @@ fn roundtrip_core_node() -> std.markup.Fragment {
 test fn witness_roundtrip_core() -> Bool {
   match extdeps.languages.html.ingest_html_source(src: extdeps.languages.html.serialize_html_source(node: roundtrip_core_node())) {
     IngestedNode { node } => node == roundtrip_core_node()
-    IngestRejected { reason: _ } => false
+    extdeps.languages.html.IngestRejected { reason: _ } => false
   }
 }
 
@@ -52,7 +52,7 @@ test fn witness_roundtrip_under_perturbed_rows() -> Bool {
   let sp = perturbed_spellings()
   match extdeps.languages.html.ingest_html_source_with(src: extdeps.languages.html.serialize_html_source_with(node: perturbed_node(), sp: sp), sp: sp) {
     IngestedNode { node } => node == perturbed_node()
-    IngestRejected { reason: _ } => false
+    extdeps.languages.html.IngestRejected { reason: _ } => false
   }
 }
 
@@ -68,7 +68,7 @@ test fn witness_ingest_reads_attr_assign_row() -> Bool {
   let emitted_perturbed = extdeps.languages.html.serialize_html_source_with(node: attr_node(), sp: perturbed_spellings())
   match extdeps.languages.html.ingest_html_source(src: emitted_perturbed) {
     IngestedNode { node } => !(node == attr_node())
-    IngestRejected { reason: _ } => false
+    extdeps.languages.html.IngestRejected { reason: _ } => false
   }
 }
 
@@ -88,7 +88,7 @@ test fn witness_frontier_unsafe_href_rejected() -> Bool {
     children: [std.markup.FragmentText { content: "x" }],
   })
   match extdeps.languages.html.ingest_html_source(src: serialized) {
-    IngestRejected { reason: _ } => true
+    extdeps.languages.html.IngestRejected { reason: _ } => true
     IngestedNode { node: _ } => false
   }
 }
@@ -107,7 +107,7 @@ fn adjacent_text_node() -> std.markup.Fragment {
 test fn witness_frontier_not_roundtripped() -> Bool {
   match extdeps.languages.html.ingest_html_source(src: extdeps.languages.html.serialize_html_source(node: adjacent_text_node())) {
     IngestedNode { node } => !(node == adjacent_text_node())
-    IngestRejected { reason: _ } => false
+    extdeps.languages.html.IngestRejected { reason: _ } => false
   }
 }
 

@@ -158,7 +158,7 @@ fn effect_io_host_dispatch_write(
             env: write_envelope,
             locator: locator
           ) {
-            Deny { refusal: refusal } =>
+            std.access.Deny { refusal: refusal } =>
               outcome_rejected(d: effect_io_host_write_outside_grant_diagnostic())
             Permit =>
               match host_ctx {
@@ -233,12 +233,12 @@ data effect_io_host_file_context: EffectIoHostFileContext = EffectIoHostFileCont
 
 data effect_io_host_http_context: EffectIoHostHttpContext = EffectIoHostHttpContext {
   authority: v2.std.network.UriAuthority {
-    userinfo: Absent,
+    userinfo: v2.std.optional.Absent,
     host: v2.std.network.UriHost {
       spelling: "effect-io.local",
       grammar: rfc3986_host_abnf
     },
-    port: Absent
+    port: v2.std.optional.Absent
   }
 }
 
@@ -283,7 +283,7 @@ fn effect_io_host_runtime(
 fn effect_io_host_runtime_hermetic(backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend) -> V4EffectIoHostRuntime {
   effect_io_host_runtime(
     backend: backend,
-    mode: Hermetic,
+    mode: std.execution_mode.Hermetic,
     fixture: effect_io_pure_empty_fixture_store(backend: backend)
   )
 }

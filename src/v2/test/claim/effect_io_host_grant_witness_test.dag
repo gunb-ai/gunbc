@@ -18,14 +18,14 @@ data mismatched_backend_locator: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoR
 fn is_refused(a: std.access.AccessDecision) -> Bool {
   match a {
     Permit => false
-    Deny { refusal: refusal } => true
+    std.access.Deny { refusal: refusal } => true
   }
 }
 
 fn is_admitted(a: std.access.AccessDecision) -> Bool {
   match a {
     Permit => true
-    Deny { refusal: refusal } => false
+    std.access.Deny { refusal: refusal } => false
   }
 }
 
@@ -43,7 +43,7 @@ test fn effect_io_host_locator_position_uses_hash_identity_holds() -> Bool {
 test fn effect_io_host_hermetic_write_outside_grant_holds() -> Bool {
   v2.test.claim.effect_io_host_grant_witness.is_refused(
     a: effect_io_host_write_admissible(
-      env: effect_io_host_envelope(mode: Hermetic, backend: HttpResourceBackend),
+      env: effect_io_host_envelope(mode: std.execution_mode.Hermetic, backend: HttpResourceBackend),
       locator: sample_locator
     )
   )
@@ -60,10 +60,10 @@ test fn effect_io_host_wet_write_admitted_holds() -> Bool {
 
 test fn effect_io_host_hermetic_refusal_is_located() -> Bool {
   match effect_io_host_write_admissible(
-    env: effect_io_host_envelope(mode: Hermetic, backend: HttpResourceBackend),
+    env: effect_io_host_envelope(mode: std.execution_mode.Hermetic, backend: HttpResourceBackend),
     locator: sample_locator
   ) {
-    Deny { refusal: refusal } =>
+    std.access.Deny { refusal: refusal } =>
       refusal.location.profile == "EffectRequest"
         && refusal.location.subject == effect_io_host_frame.name
         && refusal.location.action == "write"

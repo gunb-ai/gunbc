@@ -2,22 +2,22 @@ module v2.test.complexity_gate.subject_complexity_budget_roster
 
 
 type LensSubjectComplexityBudgetRow {
-  subject_producer: fn() -> Outcome<Node>
-  declared_budget: fn(Node) -> ComplexityBound
+  subject_producer: fn() -> Outcome<v2.std.node.Node>
+  declared_budget: fn(v2.std.node.Node) -> ComplexityBound
 }
 
 fn complexity_declared_budget_for_row(
   row: LensSubjectComplexityBudgetRow,
-  body: Node
+  body: v2.std.node.Node
 ) -> v2.lens.complexity.ComplexityBound {
   row.declared_budget(body: body)
 }
 
-fn complexity_declared_budget_constant(_body: Node) -> v2.lens.complexity.ComplexityBound {
+fn complexity_declared_budget_constant(_body: v2.std.node.Node) -> v2.lens.complexity.ComplexityBound {
   ConstantComplexity
 }
 
-fn complexity_declared_budget_loop_linear(body: Node) -> v2.lens.complexity.ComplexityBound {
+fn complexity_declared_budget_loop_linear(body: v2.std.node.Node) -> v2.lens.complexity.ComplexityBound {
   match loop_bound_witness_for_node(n: body) {
     Holds { value: bound } =>
       linear_complexity(

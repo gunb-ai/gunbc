@@ -15,7 +15,7 @@ type SectionRef
 
 type LensEnforcement<Output, Budget, Projected> {
   project: fn(Output) -> Projected
-  violates: fn(Output, Budget) -> Bool
+  violates: fn(Output, Budget) -> v2.std.logic.Bool
 }
 
 type EnforceableLens<Output, Budget, Projected> {
@@ -109,7 +109,7 @@ fn advisory_report_diagnostic(report: v2.std.report.Report) -> v2.std.diagnostic
 fn find_child_by_name(root: v2.std.node.Node, name: v2.std.node.Symbol) -> Outcome<v2.std.node.Node> {
   match find_named_child(root: root, name: name) {
     Accepted { value: child, diagnostics: d } => v2.std.diagnostic.Accepted { value: child, diagnostics: d }
-    Rejected { diagnostics: diags } =>
+    v2.std.diagnostic.Rejected { diagnostics: diags } =>
       if diags.head.reason == ^named_child_ambiguous {
         outcome_rejected(d: path_ambiguous_diagnostic(at: root))
       } else {
@@ -144,7 +144,7 @@ fn replace_edge_target(e: v2.std.node.Edge, replacement: v2.std.node.Node) -> v2
 type PathSplit {
   init: List<v2.std.node.Symbol>
   last: v2.std.node.Symbol
-  first: Bool
+  first: v2.std.logic.Bool
 }
 
 fn split_path_steps(root: v2.std.node.Node, steps: List<v2.std.node.Symbol>) -> Outcome<PathSplit> {
@@ -179,7 +179,7 @@ fn rebuild_node_with_child(root: v2.std.node.Node, name: v2.std.node.Symbol, chi
         init: std.algebra.Empty,
         f: fn(current_acc, edge) {
           match edge.label {
-            Named { name: edge_name } =>
+            v2.std.node.Named { name: edge_name } =>
               let next_edge = match edge_name == name {
                 true => replace_edge_target(e: edge, replacement: child)
                 false => edge
@@ -320,7 +320,7 @@ fn lens_enforcement_violated<Output, Budget, Projected>(
   enforcement: LensEnforcement<Output, Budget, Projected>,
   output: Output,
   budget: Budget
-) -> Bool {
+) -> v2.std.logic.Bool {
   enforcement.violates(output: output, declared: budget)
 }
 
@@ -387,7 +387,7 @@ fn apply_lens_enforce<Output, Budget, Projected>(
 }
 
 type ReportDiagnosticsFold {
-  started: Bool
+  started: v2.std.logic.Bool
   acc: v2.std.diagnostic.NonEmptyDiagnostics
 }
 

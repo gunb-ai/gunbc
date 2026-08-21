@@ -792,7 +792,7 @@ fn openbmc_sensor_integer_projection(content: String) -> OpenBmcSensorValueResul
     output_encoding: extdeps.tools.jq.JqRawOutput,
     exit_policy: extdeps.tools.jq.JqProgramExit,
   }) {
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       OpenBmcSensorValueRefused { reason: "sensor value projection could not be lowered to a jq invocation" }
     Accepted { value: plan, diagnostics: _ } => {
       let observed = extdeps.tools.jq.jq_execute_admitted_plan(plan: plan)

@@ -60,7 +60,7 @@ fn metric_frame_refusal(op: std.affine_space.SpatialOperationIdentity, frame: st
 }
 
 // Dot product of two DISPLACEMENTS is an AREA with a meaningful sign - millimetre times millimetre
-// is millimetre squared. Returning a bare Int erased that dimension at the first operation, and an
+// is millimetre squared. Returning a bare std.integer.Int erased that dimension at the first operation, and an
 // erased dimension is how a plausible-looking wrong quantity travels. Sign is retained because a
 // negative dot product means the displacements point away from each other.
 fn dot3(registry: std.spatial_frame.SpatialFrameRegistry, a: std.affine_space.Vector3, b: std.affine_space.Vector3) -> std.affine_space.SpatialResult<std.measure.SignedSquareMillimeter> {
@@ -161,7 +161,7 @@ fn area_vector3_from_checked(frame: std.coordinate_frame.CoordinateFrameIdentity
 // and the answer was whatever the realization did about it.
 //
 // Nonnegativity is still by construction - a sum of squares - which is why the crossing into the
-// Nat-backed area carrier is a magnitude read rather than a clamp.
+// std.nat.Nat-backed area carrier is a magnitude read rather than a clamp.
 fn norm_squared3(registry: std.spatial_frame.SpatialFrameRegistry, v: std.affine_space.Vector3) -> std.affine_space.SpatialResult<std.measure.SquareMillimeter> {
   if !frame_is_millimetre(registry: registry, identity: v.frame) {
     std.affine_space.SpatialFrameRefused { refusal: metric_frame_refusal(op: OpNormSquared3, frame: v.frame) }
@@ -219,7 +219,7 @@ fn norm3(registry: std.spatial_frame.SpatialFrameRegistry, v: std.affine_space.V
   }
 }
 
-fn axis_count(value: Int) -> std.nat.Nat {
+fn axis_count(value: std.integer.Int) -> std.nat.Nat {
   if value == 0 { 0 } else { 1 }
 }
 
@@ -277,7 +277,7 @@ type Axis3
   | Axis3Y
   | Axis3Z
 
-fn axis3_index(a: Axis3) -> Int {
+fn axis3_index(a: Axis3) -> std.integer.Int {
   match a {
     Axis3X => 0
     Axis3Y => 1

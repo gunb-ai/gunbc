@@ -1,7 +1,7 @@
 module v2.extdeps.coercion_widening
 
 
-fn coercion_widening_unknown_value_set_node() -> Node {
+fn coercion_widening_unknown_value_set_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^coercion_widening_unknown_value_set } },
     children: [],
@@ -9,19 +9,19 @@ fn coercion_widening_unknown_value_set_node() -> Node {
 }
 }
 
-fn coercion_widening_rust_integer_value_set_from_inhabitant(inhabitant: Node) -> Node {
+fn coercion_widening_rust_integer_value_set_from_inhabitant(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   match find_named_child(root: inhabitant, name: ^rust_inhabitant_field_facts) {
     Accepted { value: facts, diagnostics: None } =>
       match find_named_child(root: facts, name: ^rust_facts_field_range) {
         Accepted { value: range, diagnostics: None } =>
           integer_interval_value_set_node(interval: range)
-        Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
+        v2.std.diagnostic.Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
       }
-    Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
+    v2.std.diagnostic.Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
   }
 }
 
-fn coercion_widening_python_integer_value_set_from_inhabitant(inhabitant: Node) -> Node {
+fn coercion_widening_python_integer_value_set_from_inhabitant(inhabitant: v2.std.node.Node) -> v2.std.node.Node {
   match find_named_child(root: inhabitant, name: ^python_inhabitant_field_facts) {
     Accepted { value: facts, diagnostics: None } =>
       match find_named_child(root: facts, name: ^python_facts_field_encoding) {
@@ -36,9 +36,9 @@ fn coercion_widening_python_integer_value_set_from_inhabitant(inhabitant: Node) 
           } else {
             coercion_widening_unknown_value_set_node()
           }
-        Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
+        v2.std.diagnostic.Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
       }
-    Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
+    v2.std.diagnostic.Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
   }
 }
 
@@ -73,7 +73,7 @@ fn python_int_rust_i32_refinement_narrowing_predicate() -> v2.std.find_witness.P
 fn coercion_fold_rust_i32_to_python_int_widening(
   source: v2.std.constraints.CanonicalGrounding,
   candidates: v2.std.coercion.CoercionCandidateSet,
-  priority: Node,
+  priority: v2.std.node.Node,
 ) -> v2.std.diagnostic.Outcome<v2.std.coercion.CoercionResult> {
   coercion_fold_refinement_widening(
     source: source,
@@ -86,7 +86,7 @@ fn coercion_fold_rust_i32_to_python_int_widening(
 fn coercion_fold_python_int_to_rust_i32_narrowing(
   source: v2.std.constraints.CanonicalGrounding,
   candidates: v2.std.coercion.CoercionCandidateSet,
-  priority: Node,
+  priority: v2.std.node.Node,
 ) -> v2.std.diagnostic.Outcome<v2.std.coercion.CoercionResult> {
   coercion_fold_refinement_widening(
     source: source,

@@ -73,9 +73,9 @@ type UriPort {
 }
 
 type UriAuthority {
-  userinfo: Optional<UriUserInfo>,
+  userinfo: v2.std.optional.Optional<UriUserInfo>,
   host: UriHost,
-  port: Optional<UriPort>,
+  port: v2.std.optional.Optional<UriPort>,
 }
 
 type UriPath {
@@ -102,8 +102,8 @@ type UriFragment {
 type Url {
   scheme: UriScheme,
   hier_part: UriHierPart,
-  query: Optional<UriQuery>,
-  fragment: Optional<UriFragment>,
+  query: v2.std.optional.Optional<UriQuery>,
+  fragment: v2.std.optional.Optional<UriFragment>,
 }
 
 type UriRelativePart
@@ -114,8 +114,8 @@ type UriRelativePart
 
 type UriRelativeReference {
   relative_part: UriRelativePart,
-  query: Optional<UriQuery>,
-  fragment: Optional<UriFragment>,
+  query: v2.std.optional.Optional<UriQuery>,
+  fragment: v2.std.optional.Optional<UriFragment>,
 }
 
 type UriReference

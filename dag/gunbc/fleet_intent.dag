@@ -79,14 +79,14 @@ fn memory_devices_from_population(pop: extdeps.memory.types.HostMemoryPopulation
 
 type MeasurementConfidence
   = SingleSample
-  | Range { low: Float, high: Float }
-  | DistributionSummary { mean: Float, variance: Float }
+  | Range { low: std.float.Float, high: std.float.Float }
+  | DistributionSummary { mean: std.float.Float, variance: std.float.Float }
 
 type PerformanceReceipt {
   provider: ProviderIdentity
   work_shape: WorkUnitId
   cost: std.realization_schedule.CostAccount<std.measure.Nano>
-  cpu_seconds: Float?
+  cpu_seconds: std.float.Float?
   sample_count: Int
   measurement_context: ExecutionSurface
   confidence: MeasurementConfidence

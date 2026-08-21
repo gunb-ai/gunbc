@@ -12,14 +12,14 @@ data gunbc_prefix_without_separator_root: String = "/tmp/gunbcsomethingelse"
 fn is_refused(a: std.access.AccessDecision) -> Bool {
   match a {
     Permit => false
-    Deny { refusal: refusal } => true
+    std.access.Deny { refusal: refusal } => true
   }
 }
 
 fn is_admitted(a: std.access.AccessDecision) -> Bool {
   match a {
     Permit => true
-    Deny { refusal: refusal } => false
+    std.access.Deny { refusal: refusal } => false
   }
 }
 
@@ -43,7 +43,7 @@ test fn artifact_store_scratch_grant_refuses_gunbc_prefix_without_separator_hold
 
 test fn artifact_store_scratch_grant_refusal_is_located() -> Bool {
   match artifact_store_scratch_write_admissible(store_root: repo_tree_root) {
-    Deny { refusal: refusal } =>
+    std.access.Deny { refusal: refusal } =>
       refusal.location.profile == "EffectRequest"
         && refusal.location.subject == artifact_store_scratch_frame.name
         && refusal.location.action == "write"

@@ -225,7 +225,7 @@ func fleet_host_key_scan_wet() -> std.process.ProcessExit
   let body = join(map(fleet_reach_probe_targets, h => scan_host_key_lines(host: h)), "")
   let w = Filesystem.Write(path: fleet_host_key_scan_receipt_path, content: body)
   if w.success {
-    ExitSuccess
+    std.process.ExitSuccess
   } else {
     std.process.exit_failure(reason: concat("fleet_host_key_scan: receipt publication failed — ", w.error))
   }
@@ -290,7 +290,7 @@ func fleet_host_key_enroll_apply() -> String
       )
       match applied {
         std.process.ExitFailure { code: _, reason: why } => join(["enroll outcome=refused cause=", why, "\n"], "")
-        ExitSuccess =>
+        std.process.ExitSuccess =>
           join(map(fleet_host_key_enrollments, k => {
             let f = gunbc.command_runner.run_shell_command_capture(
               command: extdeps.exec.command.ArgvCommand { argv: ["ssh-keygen", "-F", k.endpoint, "-f", staged] },
@@ -318,7 +318,7 @@ func fleet_host_key_enroll_wet() -> std.process.ProcessExit
     if string_contains(s: receipt, pattern: "outcome=refused") {
       std.process.exit_failure(reason: concat("fleet_host_key_enroll: apply refused — ", receipt))
     } else {
-      ExitSuccess
+      std.process.ExitSuccess
     }
   } else {
     std.process.exit_failure(reason: concat("fleet_host_key_enroll: receipt publication failed — ", wr.error))
@@ -393,7 +393,7 @@ func fleet_authorized_key_self_enroll_wet() -> std.process.ProcessExit
     if string_contains(s: outcome, pattern: "refused") || string_contains(s: outcome, pattern: "ABSENT-after-apply") {
       std.process.exit_failure(reason: concat("fleet_authorized_key_self_enroll: ", body))
     } else {
-      ExitSuccess
+      std.process.ExitSuccess
     }
   } else {
     std.process.exit_failure(reason: concat("fleet_authorized_key_self_enroll: receipt publication failed — ", wr.error))

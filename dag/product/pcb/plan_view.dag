@@ -29,10 +29,10 @@ data legend_type_size: std.measure.Micrometer = micrometer(count: 3000)
 data legend_design_drop: std.measure.Micrometer = micrometer(count: 2400)
 
 type OutlineExtent {
-  x0: Int
-  y0: Int
-  x1: Int
-  y1: Int
+  x0: std.integer.Int
+  y0: std.integer.Int
+  x1: std.integer.Int
+  y1: std.integer.Int
 }
 
 type PcbSceneRefusal
@@ -49,7 +49,7 @@ type PcbPlanViewScene sole_constructor {
 }
 
 type AttachmentLabelAcc {
-  index: Int
+  index: std.integer.Int
   fragments: List<std.markup.Fragment>
 }
 
@@ -115,7 +115,7 @@ fn body_render_style(s: product.pcb.world.PcbBodyLayoutStanding) -> BodyRenderSt
   }
 }
 
-fn established_body_fragments(identity: std.types.NonEmptyStr, origin_x: Int, origin_y: Int, width: Int, height: Int, source: std.decl_ref.DeclarationRef?, style: BodyRenderStyle) -> List<std.markup.Fragment> {
+fn established_body_fragments(identity: std.types.NonEmptyStr, origin_x: std.integer.Int, origin_y: std.integer.Int, width: std.integer.Int, height: std.integer.Int, source: std.decl_ref.DeclarationRef?, style: BodyRenderStyle) -> List<std.markup.Fragment> {
   let body = [
     svg_rect(
       x: origin_x, y: origin_y, width: width, height: height,
@@ -144,7 +144,7 @@ fn obligation_class(tag: String) -> String {
   concat("pcb-component-", tag)
 }
 
-fn obligation_marker_fragments(identity: std.types.NonEmptyStr, origin_x: Int, origin_y: Int, cause_label: String, tag: String) -> List<std.markup.Fragment> {
+fn obligation_marker_fragments(identity: std.types.NonEmptyStr, origin_x: std.integer.Int, origin_y: std.integer.Int, cause_label: String, tag: String) -> List<std.markup.Fragment> {
   [
     svg_text(
       x: origin_x,
@@ -218,7 +218,7 @@ fn legend_fragments(c: product.pcb.scene.PcbSceneLegend) -> List<std.markup.Frag
   ]
 }
 
-fn element_fragments(e: product.pcb.scene.PcbSceneElement, attachment_index: Int, body_layout: product.pcb.world.PcbBodyLayoutStanding) -> List<std.markup.Fragment> {
+fn element_fragments(e: product.pcb.scene.PcbSceneElement, attachment_index: std.integer.Int, body_layout: product.pcb.world.PcbBodyLayoutStanding) -> List<std.markup.Fragment> {
   match e {
     SceneBoardOutline { outline: o } => [board_outline_fragment(o: o)]
     SceneLegend { counts: c } => legend_fragments(c: c)
@@ -295,7 +295,7 @@ fn fragment_text_labels(frag: std.markup.Fragment) -> List<std.types.NonEmptyStr
         [c as std.types.NonEmptyStr]
       }
     RawNode { content: _ } => []
-    Element { tag: _, attributes: _, children: kids } =>
+    std.markup.Element { tag: _, attributes: _, children: kids } =>
       fold(kids, init: [], f: fn(acc, k) {
         concat(acc, fragment_text_labels(frag: k))
       })

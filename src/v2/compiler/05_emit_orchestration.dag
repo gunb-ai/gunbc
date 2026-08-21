@@ -2,11 +2,11 @@ module v2.compiler.emit_orchestration
 
 
 
-fn orch_emit_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn orch_emit_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
-data orch_emit_unsupported_step_anchor: Node = v2.std.node.Node {
+data orch_emit_unsupported_step_anchor: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^orch_emit_unsupported_step } },
   children: [],
   occurrence_id: SyntheticOccurrence
@@ -15,7 +15,7 @@ data orch_emit_unsupported_step_anchor: Node = v2.std.node.Node {
 fn orch_emit_registry_emitted_root(
   medium: v2.std.orchestration_emit.OrchestrationEmitMedium,
   construct_tag: v2.std.node.Symbol
-) -> v2.std.diagnostic.Outcome<Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   bind_outcome(
     o: target_bundle_child(
       target: medium.authority,
@@ -46,7 +46,7 @@ fn orch_emit_from_registry(
   )
 }
 
-fn orch_emit_node_spelling(emitted_root: Node, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<String> {
+fn orch_emit_node_spelling(emitted_root: v2.std.node.Node, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<String> {
   bind_outcome(
     o: v2.compiler.emit.emit(
       tree: v2.compiler.inferred_tree.InferredTree {
@@ -209,19 +209,19 @@ fn orch_emit_run_spelling(r: v2.std.orchestration.Run, medium: v2.std.orchestrat
     o: orch_emit_run_core(r: r, medium: medium),
     f: fn(core) {
       match r.redirect {
-        Absent =>
+        v2.std.optional.Absent =>
           match r.capture {
-            Absent => outcome_accepted(core)
-            Present { value: cap } =>
+            v2.std.optional.Absent => outcome_accepted(core)
+            v2.std.optional.Present { value: cap } =>
               orch_emit_apply_capture(stmt: core, capture: cap, medium: medium)
           }
-        Present { value: redir } =>
+        v2.std.optional.Present { value: redir } =>
           bind_outcome(
             o: orch_emit_run_with_redir(stmt: core, redir: redir),
             f: fn(with_redir) {
               match r.capture {
-                Absent => outcome_accepted(with_redir)
-                Present { value: cap } =>
+                v2.std.optional.Absent => outcome_accepted(with_redir)
+                v2.std.optional.Present { value: cap } =>
                   orch_emit_apply_capture(stmt: with_redir, capture: cap, medium: medium)
               }
             }
@@ -322,7 +322,7 @@ fn orch_emit_predicate(p: v2.std.orchestration.Predicate, medium: v2.std.orchest
           )
         }
       )
-    Not { inner: inner } =>
+    v2.std.orchestration.Not { inner: inner } =>
       bind_outcome(
         o: orch_emit_predicate(p: inner, medium: medium),
         f: fn(spelling) {
@@ -332,7 +332,7 @@ fn orch_emit_predicate(p: v2.std.orchestration.Predicate, medium: v2.std.orchest
           )
         }
       )
-    And { lhs: lhs, rhs: rhs } =>
+    v2.std.orchestration.And { lhs: lhs, rhs: rhs } =>
       bind_outcome(
         o: orch_emit_predicate(p: lhs, medium: medium),
         f: fn(left) {
@@ -347,7 +347,7 @@ fn orch_emit_predicate(p: v2.std.orchestration.Predicate, medium: v2.std.orchest
           )
         }
       )
-    Or { lhs: lhs, rhs: rhs } =>
+    v2.std.orchestration.Or { lhs: lhs, rhs: rhs } =>
       bind_outcome(
         o: orch_emit_predicate(p: lhs, medium: medium),
         f: fn(left) {
@@ -447,13 +447,13 @@ fn orch_emit_procedure(
 
 data orch_if_block_form_note: String = "bash_stmt_if_(else_)_tokens (bash_orch_if.dag / bash.dag) spell their then/else bodies with no newline tokens, so a body is inherently a single line. orch_emit_pipeline newline-joins every step of a multi-step then_/else_ Pipeline (orch_seq2) before this fn binds .carried into the row; a >1-step body glued into the single-line row is bash-valid (newline is an ordinary statement separator inside a then/else arm — verified, not a carriage bug) but byte-diverges from a block-formatted expectation. Multi-statement then_/else_ arms are legitimate orchestration intent (if-ladders), so the fix is a second, block-spelled row (bash_stmt_if_block_tokens / bash_stmt_if_else_block_tokens) selected when either arm needs it — never a refusal of the legitimate shape. Single- and zero-step arms keep the original inline row byte-for-byte (orch_pipeline_needs_block_body is false), so every existing consumer's emitted bytes are unchanged."
 
-fn orch_pipeline_needs_block_body(then_: v2.std.orchestration.Pipeline, else_: Optional<v2.std.orchestration.Pipeline>) -> Bool {
+fn orch_pipeline_needs_block_body(then_: v2.std.orchestration.Pipeline, else_: v2.std.optional.Optional<v2.std.orchestration.Pipeline>) -> Bool {
   if length(xs: then_.steps) > 1 {
     true
   } else {
     match else_ {
-      Absent => false
-      Present { value: else_pipeline } => length(xs: else_pipeline.steps) > 1
+      v2.std.optional.Absent => false
+      v2.std.optional.Present { value: else_pipeline } => length(xs: else_pipeline.steps) > 1
     }
   }
 }
@@ -471,7 +471,7 @@ fn orch_if_arm_body_or_noop(carried: String) -> String {
 fn orch_emit_if_step(
   cond: v2.std.orchestration.Predicate,
   then_: v2.std.orchestration.Pipeline,
-  else_: Optional<v2.std.orchestration.Pipeline>,
+  else_: v2.std.optional.Optional<v2.std.orchestration.Pipeline>,
   medium: v2.std.orchestration_emit.OrchestrationEmitMedium
 ) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   let block_body = orch_pipeline_needs_block_body(then_: then_, else_: else_)
@@ -483,7 +483,7 @@ fn orch_emit_if_step(
         f: fn(then_medium) {
           let then_body = orch_if_arm_body_or_noop(carried: then_medium.carried)
           match else_ {
-            Absent =>
+            v2.std.optional.Absent =>
               bind_outcome(
                 o: if block_body {
                   medium.realize_if_block(cond_spelling, then_body)
@@ -498,7 +498,7 @@ fn orch_emit_if_step(
                   )
                 }
               )
-            Present { value: else_pipeline } =>
+            v2.std.optional.Present { value: else_pipeline } =>
               bind_outcome(
                 o: orch_emit_pipeline(p: else_pipeline, medium: medium),
                 f: fn(else_medium) {
@@ -621,17 +621,17 @@ fn orch_emit_step(s: v2.std.orchestration.PipelineStep, medium: v2.std.orchestra
         )
       }
     Exit { status: st } => orch_emit_exit_step(status: st)
-    If { cond: c, then_: t, else_: e } =>
+    v2.std.orchestration.If { cond: c, then_: t, else_: e } =>
       orch_emit_if_step(cond: c, then_: t, else_: e, medium: medium)
     For { binder: _, over: _, body: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_step_for_unsupported))
-    While { cond: c, body: b } =>
+    v2.std.orchestration.While { cond: c, body: b } =>
       orch_emit_while_step(cond: c, body: b, medium: medium)
     Retry { body: b, escalations: e, on_exhausted: x } =>
       orch_emit_retry(body: b, escalations: e, on_exhausted: x, medium: medium)
-    Let { name: n, value: v } =>
+    v2.std.orchestration.Let { name: n, value: v } =>
       orch_emit_let_step(name: n, value: v, medium: medium)
-    Call { callee: c, args: a } =>
+    v2.std.orchestration.Call { callee: c, args: a } =>
       orch_emit_call_step(callee: c, args: a, medium: medium)
   }
 }
@@ -660,17 +660,17 @@ fn orch_retry_step_run(s: v2.std.orchestration.PipelineStep) -> v2.std.diagnosti
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
     Exit { status: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
-    If { cond: _, then_: _, else_: _ } =>
+    v2.std.orchestration.If { cond: _, then_: _, else_: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
     For { binder: _, over: _, body: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
-    While { cond: _, body: _ } =>
+    v2.std.orchestration.While { cond: _, body: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
     Retry { body: _, escalations: _, on_exhausted: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
-    Let { name: _, value: _ } =>
+    v2.std.orchestration.Let { name: _, value: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
-    Call { callee: _, args: _ } =>
+    v2.std.orchestration.Call { callee: _, args: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
   }
 }
@@ -699,20 +699,20 @@ fn orch_retry_body_command(body: v2.std.orchestration.Pipeline) -> v2.std.diagno
 fn orch_emit_retry_run(
   command: String,
   env: FreeMonoid<v2.std.orchestration.EnvBinding>,
-  redirect: Optional<v2.std.orchestration.RedirectSpec>,
-  capture: Optional<v2.std.orchestration.CaptureSpec>,
+  redirect: v2.std.optional.Optional<v2.std.orchestration.RedirectSpec>,
+  capture: v2.std.optional.Optional<v2.std.orchestration.CaptureSpec>,
   medium: v2.std.orchestration_emit.OrchestrationEmitMedium
 ) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   match redirect {
-    Present { value: _ } =>
+    v2.std.optional.Present { value: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_redirect_present))
-    Absent =>
+    v2.std.optional.Absent =>
       match capture {
-        Present { value: _ } =>
+        v2.std.optional.Present { value: _ } =>
           outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_capture_present))
-        Absent =>
+        v2.std.optional.Absent =>
           orch_emit_run(
-            r: v2.std.orchestration.Run { command: command, env: env, redirect: Absent, capture: Absent },
+            r: v2.std.orchestration.Run { command: command, env: env, redirect: v2.std.optional.Absent, capture: v2.std.optional.Absent },
             medium: medium
           )
       }
@@ -721,8 +721,8 @@ fn orch_emit_retry_run(
 
 fn orch_emit_retry_2level(
   command: String,
-  redirect: Optional<v2.std.orchestration.RedirectSpec>,
-  capture: Optional<v2.std.orchestration.CaptureSpec>,
+  redirect: v2.std.optional.Optional<v2.std.orchestration.RedirectSpec>,
+  capture: v2.std.optional.Optional<v2.std.orchestration.CaptureSpec>,
   pattern1: String,
   pattern2: String,
   warn1: String,
@@ -783,8 +783,8 @@ fn orch_emit_retry_2level(
 
 fn orch_emit_retry_1level(
   command: String,
-  redirect: Optional<v2.std.orchestration.RedirectSpec>,
-  capture: Optional<v2.std.orchestration.CaptureSpec>,
+  redirect: v2.std.optional.Optional<v2.std.orchestration.RedirectSpec>,
+  capture: v2.std.optional.Optional<v2.std.orchestration.CaptureSpec>,
   level: v2.std.orchestration.EscalationLevel,
   exhausted: String,
   medium: v2.std.orchestration_emit.OrchestrationEmitMedium
@@ -838,8 +838,8 @@ data orch_emit_retry_multilevel_unsupported_note: String = "Three-or-more escala
 
 fn orch_emit_retry_multilevel(
   command: String,
-  redirect: Optional<v2.std.orchestration.RedirectSpec>,
-  capture: Optional<v2.std.orchestration.CaptureSpec>,
+  redirect: v2.std.optional.Optional<v2.std.orchestration.RedirectSpec>,
+  capture: v2.std.optional.Optional<v2.std.orchestration.CaptureSpec>,
   level1: v2.std.orchestration.EscalationLevel,
   rest: List<v2.std.orchestration.EscalationLevel>,
   exhausted: String,
@@ -850,8 +850,8 @@ fn orch_emit_retry_multilevel(
 
 fn orch_emit_retry_levels(
   command: String,
-  redirect: Optional<v2.std.orchestration.RedirectSpec>,
-  capture: Optional<v2.std.orchestration.CaptureSpec>,
+  redirect: v2.std.optional.Optional<v2.std.orchestration.RedirectSpec>,
+  capture: v2.std.optional.Optional<v2.std.orchestration.CaptureSpec>,
   level1: v2.std.orchestration.EscalationLevel,
   level2: v2.std.orchestration.EscalationLevel,
   exhausted: String,
@@ -893,8 +893,8 @@ fn orch_emit_retry_levels(
 
 fn orch_emit_retry_dispatch(
   command: String,
-  redirect: Optional<v2.std.orchestration.RedirectSpec>,
-  capture: Optional<v2.std.orchestration.CaptureSpec>,
+  redirect: v2.std.optional.Optional<v2.std.orchestration.RedirectSpec>,
+  capture: v2.std.optional.Optional<v2.std.orchestration.CaptureSpec>,
   escalations: FreeMonoid<v2.std.orchestration.EscalationLevel>,
   exhausted: String,
   medium: v2.std.orchestration_emit.OrchestrationEmitMedium
@@ -988,7 +988,7 @@ fn orch_emit_retry(
             }
           )
       }
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }

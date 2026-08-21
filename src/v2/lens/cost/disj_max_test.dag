@@ -4,8 +4,8 @@ module v2.test.lens_cost.disj_max
 // (base_cost_for_connective), and every alternative-composition rule that could be wrong here
 // agrees on a zero first operand: taking the max and keeping the first child both yield the
 // second child, so a Disj whose cheap arm is a bare Atom cannot distinguish max from
-// first-child-wins. Wrapping it in a Transform makes the cheap arm cost unit — still strictly
-// dominated by the Cardinality arm, so this witness's claim is unchanged — while a rule that
+// first-child-wins. Wrapping it in a v2.std.node.Transform makes the cheap arm cost unit — still strictly
+// dominated by the v2.std.node.Cardinality arm, so this witness's claim is unchanged — while a rule that
 // keeps the first alternative now answers unit instead of linear (verified by mutation,
 // gunbc#8505).
 data disj_max_cheap_body: v2.std.node.Node = v2.std.node.Node {
@@ -56,7 +56,7 @@ data disj_max_input: v2.std.node.Node = v2.std.node.Node {
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn disj_max_claim_holds() -> Bool {
+test fn disj_max_claim_holds() -> v2.std.logic.Bool {
   match v2.lens.cost.cost_lens(n: disj_max_input) {
     Holds { value: actual } =>
       actual == v2.lens.cost.LinearCost { variable: v2.lens.cost.SizeVariable { source: disj_max_expensive_body } }

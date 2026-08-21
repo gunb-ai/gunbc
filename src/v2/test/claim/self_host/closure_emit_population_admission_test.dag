@@ -10,7 +10,7 @@ module v2.test.self_host.closure_emit_population_admission
 //
 // Three of the six refusal arms are NOT exercised here, named rather than left
 // for a reader to discover by counting: population_digest_mismatch,
-// source_read_failed, and ingest_row_shortfall. Each needs a SourceRef whose
+// source_read_failed, and ingest_row_shortfall. Each needs a v2.compiler.source_authority.SourceRef whose
 // content hash and read outcome are controlled, which the committed stub
 // cannot supply.
 //
@@ -61,21 +61,21 @@ data admission_probe_partial_population_receipt: v2.compiler.source_authority.So
     coverage: v2.compiler.source_authority.SourceRootCoverageComplete
   }
 
-test fn closure_emit_admission_refuses_empty_population_holds() -> Bool {
+test fn closure_emit_admission_refuses_empty_population_holds() -> v2.std.logic.Bool {
   admission_reason_lexeme_or_admitted(
     refs: std.algebra.Empty,
     receipt: admission_probe_empty_receipt
   ) == "closure_emit_driver_empty_population"
 }
 
-test fn closure_emit_admission_refuses_incomplete_coverage_holds() -> Bool {
+test fn closure_emit_admission_refuses_incomplete_coverage_holds() -> v2.std.logic.Bool {
   admission_reason_lexeme_or_admitted(
     refs: std.algebra.Empty,
     receipt: admission_probe_incomplete_coverage_receipt
   ) == "closure_emit_driver_coverage_incomplete"
 }
 
-test fn closure_emit_admission_refuses_partial_population_holds() -> Bool {
+test fn closure_emit_admission_refuses_partial_population_holds() -> v2.std.logic.Bool {
   admission_reason_lexeme_or_admitted(
     refs: std.algebra.Empty,
     receipt: admission_probe_partial_population_receipt
@@ -86,7 +86,7 @@ test fn closure_emit_admission_refuses_partial_population_holds() -> Bool {
 // program and reporting Accepted. When a real manifest overlay lands this
 // witness flips, and it must be re-pointed at the stub rather than deleted,
 // because the stub state stays reachable.
-test fn closure_emit_admission_refuses_committed_manifest_stub_holds() -> Bool {
+test fn closure_emit_admission_refuses_committed_manifest_stub_holds() -> v2.std.logic.Bool {
   admission_reason_lexeme_or_admitted(
     refs: v2.test.workflow.host_source_root_ingest_manifest.host_source_root_closure_refs,
     receipt: v2.test.workflow.host_source_root_ingest_manifest.host_source_root_ingest_coverage_receipt

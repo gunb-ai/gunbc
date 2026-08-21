@@ -13,28 +13,28 @@ fn probe_artifact() -> tools.build_step.BuildArtifact {
   }
 }
 
-fn probe_stmts() -> List<Node> {
+fn probe_stmts() -> List<v2.std.node.Node> {
   tools.build_step.emit_verifications(produces: [probe_artifact()])
 }
 
-fn witness_stmt_is_if(s: Node) -> Bool {
+fn witness_stmt_is_if(s: v2.std.node.Node) -> Bool {
   match list_at_optional(xs: node_positional_child_targets(node: s), index: 0) {
-    Present { value: tag } =>
+    v2.std.optional.Present { value: tag } =>
       match tag.kind {
         TypeNode { connective: Atom { identity: binding } } =>
           binding == ^bash_production_fold_if
         _ => false
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
-fn stmt_text(s: Node) -> Bool {
+fn stmt_text(s: v2.std.node.Node) -> Bool {
   match bash_fold_serialize_node(stmt: s) {
     Accepted { value: text, diagnostics: _ } =>
       string_contains(s: text, pattern: "-x")
         && !string_contains(s: text, pattern: "-newer")
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -55,7 +55,7 @@ test fn witness_serialized_conjuncts_and_teeth() -> Bool {
         && !string_contains(s: script, pattern: "-newer")
         && string_contains(s: script, pattern: "/target/release/probe_bin")
         && string_contains(s: script, pattern: "exit 1")
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

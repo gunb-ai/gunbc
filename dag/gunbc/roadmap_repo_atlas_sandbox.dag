@@ -245,7 +245,7 @@ fn atlas_standing_text(standing: v2.lens.module_impact_query.ImpactStanding) -> 
   match standing {
     ExactForGraphSubject => "exact for the graph subject"
     ProvisionalForObservedPool => "provisional — relative to the observed pool"
-    Incomplete { causes: causes } =>
+    v2.lens.module_impact_query.Incomplete { causes: causes } =>
       concat("incomplete — ", concat(to_string(causes.length()), " cause(s) recorded"))
     PoolIndependentProjectionUnavailable { trigger: _ } =>
       "pool-independent projection unavailable"
@@ -289,7 +289,7 @@ fn atlas_changes_readout(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot
               txt(concat("unprojected changes — ", concat(to_string(unprojected.length()),
                 " path(s) carry a change this snapshot cannot place"))),
             ]),
-            Element { tag: "ul", attributes: [ gunbc.roadmap_repo_atlas_sandbox.sattr(name: "class", value: "atlas-unprojected-list") ],
+            std.markup.Element { tag: "ul", attributes: [ gunbc.roadmap_repo_atlas_sandbox.sattr(name: "class", value: "atlas-unprojected-list") ],
               children: map(unprojected, u => el("li", [ txt(atlas_unprojected_text(change: u)) ])) },
           ]) ]
       })
@@ -406,8 +406,8 @@ fn repo_atlas_observed_subject(observation: gunbc.repo_atlas_projection.AtlasCha
     AtlasComparisonUnavailable { cause: _ } => AtlasSubjectUnobserved
     AtlasComparisonObserved { comparison: comparison, diff: _ } =>
       match git_sha1_object_id(hex: comparison.head) {
-        Present { value: id } => gunbc.repo_atlas_projection.AtlasSubjectRevision { revision: id }
-        Absent => AtlasSubjectUnobserved
+        v2.std.optional.Present { value: id } => gunbc.repo_atlas_projection.AtlasSubjectRevision { revision: id }
+        v2.std.optional.Absent => AtlasSubjectUnobserved
       }
   }
 }
@@ -529,8 +529,8 @@ fn repo_atlas_document(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) 
     attributes: [ attr(name: "lang", value: "en") ],
     children: [
       el("head", [
-        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8") ], children: [] },
-        Element {
+        std.markup.Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8") ], children: [] },
+        std.markup.Element {
           tag: "meta",
           attributes: [
             attr(name: "name", value: "viewport"),

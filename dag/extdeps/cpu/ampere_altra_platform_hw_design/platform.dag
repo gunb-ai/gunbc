@@ -47,7 +47,7 @@ type DimmsPerChannelTopology
   = OneDimmPerChannel
   | TwoDimmsPerChannel
 
-fn dimms_per_channel_count(topology: DimmsPerChannelTopology) -> Int {
+fn dimms_per_channel_count(topology: DimmsPerChannelTopology) -> std.integer.Int {
   match topology {
     OneDimmPerChannel => 1
     TwoDimmsPerChannel => 2
@@ -55,15 +55,15 @@ fn dimms_per_channel_count(topology: DimmsPerChannelTopology) -> Int {
 }
 
 // Derived from the package authority's channel count, never a second literal.
-fn dimm_slots_per_socket(topology: DimmsPerChannelTopology) -> Int {
+fn dimm_slots_per_socket(topology: DimmsPerChannelTopology) -> std.integer.Int {
   altra_ddr4_channel_count * dimms_per_channel_count(topology: topology)
 }
 
-fn altra_platform_max_dimm_slots_per_socket() -> Int {
+fn altra_platform_max_dimm_slots_per_socket() -> std.integer.Int {
   dimm_slots_per_socket(topology: TwoDimmsPerChannel)
 }
 
-fn altra_platform_package_dimm_ceiling() -> Int {
+fn altra_platform_package_dimm_ceiling() -> std.integer.Int {
   altra_max_dimms_per_socket
 }
 
@@ -86,27 +86,27 @@ fn one_dimm_per_channel_populated_slot() -> DimmSlotPosition {
 // two Ampere documents disagreeing surfaces as a failing join.
 type RootComplexType = RootComplexTypeA | RootComplexTypeB
 
-data altra_root_complex_lane_width: Int = 16
+data altra_root_complex_lane_width: std.integer.Int = 16
 
-data altra_type_a_root_complex_count: Int = 4
+data altra_type_a_root_complex_count: std.integer.Int = 4
 
-data altra_type_b_root_complex_count: Int = 4
+data altra_type_b_root_complex_count: std.integer.Int = 4
 
-data altra_pcie_controller_count: Int = 48
+data altra_pcie_controller_count: std.integer.Int = 48
 
-fn altra_root_complex_count() -> Int {
+fn altra_root_complex_count() -> std.integer.Int {
   altra_type_a_root_complex_count + altra_type_b_root_complex_count
 }
 
-fn altra_derived_lane_total() -> Int {
+fn altra_derived_lane_total() -> std.integer.Int {
   altra_root_complex_count() * altra_root_complex_lane_width
 }
 
-fn altra_declared_lane_total() -> Int {
+fn altra_declared_lane_total() -> std.integer.Int {
   altra_pcie_gen4_lane_count
 }
 
-fn root_complex_count_of_type(kind: RootComplexType) -> Int {
+fn root_complex_count_of_type(kind: RootComplexType) -> std.integer.Int {
   match kind {
     RootComplexTypeA => altra_type_a_root_complex_count
     RootComplexTypeB => altra_type_b_root_complex_count
@@ -132,7 +132,7 @@ type TypeALaneGrouping
   | TypeAOneX8AndTwoX4
   | TypeAFourX4
 
-fn type_a_grouping_lane_total(grouping: TypeALaneGrouping) -> Int {
+fn type_a_grouping_lane_total(grouping: TypeALaneGrouping) -> std.integer.Int {
   match grouping {
     TypeAOneX16 => 16
     TypeATwoX8 => 8 + 8
@@ -147,24 +147,24 @@ type TypeBHalfGrouping
   = TypeBOneX8
   | TypeBTwoX4
 
-data altra_type_b_half_lane_width: Int = 8
+data altra_type_b_half_lane_width: std.integer.Int = 8
 
-fn type_b_half_grouping_lane_total(grouping: TypeBHalfGrouping) -> Int {
+fn type_b_half_grouping_lane_total(grouping: TypeBHalfGrouping) -> std.integer.Int {
   match grouping {
     TypeBOneX8 => 8
     TypeBTwoX4 => 4 + 4
   }
 }
 
-data altra_ccix_x16_links_per_socket: Int = 2
+data altra_ccix_x16_links_per_socket: std.integer.Int = 2
 
-data altra_pcie_only_lane_count: Int = 96
+data altra_pcie_only_lane_count: std.integer.Int = 96
 
 data altra_ccix_link_framing_note: String = "TWO STATEMENTS IN ONE DOCUMENT, CARRIED AS THEY STAND. Section 2.3.1 says Altra provides 128 PCIe Gen4 lanes with 48 controllers to support 96 lanes of PCIe and up to 2 x16 Cache Coherent Interconnect for Accelerators links. The overview, section 1.4, instead lists 4 CCIX links beside 192 lanes in 2P configuration. The two are NOT reconciled here and no third number is derived from them: the section 2.3.1 figures are per socket at a stated split, the overview bullets are family-level and their grain is not stated, and inventing a reconciliation would be the fabricated-plausible-output failure DESIGN section 5 forbids. Consumers take the per-socket rows; a grain the document itself states is the only thing that retires this note."
 
-data altra_overview_ccix_link_count: Int = 4
+data altra_overview_ccix_link_count: std.integer.Int = 4
 
-data altra_overview_two_socket_lane_count: Int = 192
+data altra_overview_two_socket_lane_count: std.integer.Int = 192
 
 // DUAL-SOCKET INTERCONNECT (section 2.1, running text): a dual-socket
 // implementation uses TWO x16 CCIX ports. The signalling rate printed inside
@@ -172,9 +172,9 @@ data altra_overview_two_socket_lane_count: Int = 192
 // running-text boundary this module holds while the proprietary-marking
 // question is open, and a rate is exactly the kind of number that boundary is
 // drawn around.
-data altra_two_socket_ccix_lane_width: Int = 16
+data altra_two_socket_ccix_lane_width: std.integer.Int = 16
 
-data altra_two_socket_ccix_port_count: Int = 2
+data altra_two_socket_ccix_port_count: std.integer.Int = 2
 
 // REFERENCE CLOCKS (section 2.3.2). Two defined refclk inputs, both 100 MHz
 // PCIe-compliant differential HCSL inputs. REFCLK_SRNS 'is always needed and
@@ -198,7 +198,7 @@ fn refclk_always_required(input: AltraRefclkInput) -> Bool {
 // absence of per-controller PERST is a structural constraint on any board built
 // to this document rather than an omission a designer may assume away.
 type AltraPcieResetScheme
-  = CpldDecodedPerst { gpio_output_max: Int }
+  = CpldDecodedPerst { gpio_output_max: std.integer.Int }
 
 data altra_pcie_reset_scheme: AltraPcieResetScheme = CpldDecodedPerst {
   gpio_output_max: 6,
@@ -294,20 +294,20 @@ data altra_pad_pitch_dx: std.measure.Micrometer = micrometer(count: 870)
 
 data altra_pad_pitch_dy: std.measure.Micrometer = micrometer(count: 500)
 
-data altra_pad_count: Int = 4926
+data altra_pad_count: std.integer.Int = 4926
 
-data altra_pad_column_count: Int = 84
+data altra_pad_column_count: std.integer.Int = 84
 
-data altra_pad_row_count: Int = 126
+data altra_pad_row_count: std.integer.Int = 126
 
 // The pad population this document states, joined against the package
 // authority's socket row, so the platform specification and the datasheet
 // disagreeing surfaces as a failing join instead of two literals drifting.
-fn altra_platform_declared_pad_count() -> Int {
+fn altra_platform_declared_pad_count() -> std.integer.Int {
   altra_pad_count
 }
 
-fn altra_package_declared_contact_count() -> Int {
+fn altra_package_declared_contact_count() -> std.integer.Int {
   altra_declared_contact_count()
 }
 
@@ -318,7 +318,7 @@ fn altra_package_declared_contact_count() -> Int {
 // depopulated ball region is a second, independent reason positions are empty.
 // The document separates neither effect in text, so this module reports only
 // that the grid exceeds the population and refuses to attribute the difference.
-fn altra_pad_grid_position_count() -> Int {
+fn altra_pad_grid_position_count() -> std.integer.Int {
   altra_pad_column_count * altra_pad_row_count
 }
 

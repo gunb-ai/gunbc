@@ -54,7 +54,7 @@ type BuildOutcome
 // is the truncation, and agreeing runs against differing sizes is the moved goalpost.
 type BehavioralCorpus {
   identity: String
-  expected_cases: Int
+  expected_cases: v2.std.integer.Int
 }
 
 // Every receipt names the generation it is ABOUT. Admission joins on that subject,
@@ -66,7 +66,7 @@ type BehavioralEquivalenceReceipt {
   subject: v2.compiler.self_host.generation.GenerationIdentity
   oracle: v2.compiler.self_host.generation.GenerationIdentity
   corpus: BehavioralCorpus
-  cases_compared: Int
+  cases_compared: v2.std.integer.Int
   outcome: v2.compiler.self_host.promotion_admission.ObservedVerdict<EquivalenceOutcome>
 }
 
@@ -123,7 +123,7 @@ type SelfHostCandidate {
 // realization handler rather than a fact about which generation was under test.
 type BehavioralComparisonObservation {
   corpus: BehavioralCorpus
-  cases_compared: Int
+  cases_compared: v2.std.integer.Int
   build: v2.compiler.self_host.promotion_admission.ObservedVerdict<BuildOutcome>
   equivalence: v2.compiler.self_host.promotion_admission.ObservedVerdict<EquivalenceOutcome>
   fault: v2.compiler.self_host.promotion_admission.ObservedVerdict<FaultOutcome>
@@ -175,10 +175,10 @@ type PromotionRefusalCause
   | OracleNotDeclaredSeed { receipt: v2.std.node.Symbol }
   | SuccessorNotProducedByCandidate
   | CorpusMismatchAcrossReceipts { receipt: v2.std.node.Symbol }
-  | CorpusPopulationMismatch { receipt: v2.std.node.Symbol, expected: Int, compared: Int }
+  | CorpusPopulationMismatch { receipt: v2.std.node.Symbol, expected: v2.std.integer.Int, compared: v2.std.integer.Int }
 
 type PromotionOutcome
-  = Promoted { successor: v2.compiler.self_host.generation.SuccessorGeneration, cases_compared: Int }
+  = Promoted { successor: v2.compiler.self_host.generation.SuccessorGeneration, cases_compared: v2.std.integer.Int }
   | PromotionRefused { causes: List<PromotionRefusalCause> }
 
 fn stale_causes_for(
@@ -364,7 +364,7 @@ fn artifact_causes(
 // ran "the logic truth table" while disagreeing about how many cases that is, and the
 // per-receipt population join would then hold against three different bars — each run
 // self-consistent, the bundle incoherent.
-fn behavioral_corpus_agrees(left: BehavioralCorpus, right: BehavioralCorpus) -> Bool {
+fn behavioral_corpus_agrees(left: BehavioralCorpus, right: BehavioralCorpus) -> v2.std.logic.Bool {
   left.identity == right.identity && left.expected_cases == right.expected_cases
 }
 
@@ -489,7 +489,7 @@ fn admit_promotion(c: SelfHostCandidate) -> PromotionOutcome {
   }
 }
 
-fn promotion_refusal_carries(o: PromotionOutcome, cause: v2.std.node.Symbol) -> Bool {
+fn promotion_refusal_carries(o: PromotionOutcome, cause: v2.std.node.Symbol) -> v2.std.logic.Bool {
   match o {
     Promoted { successor: _, cases_compared: _ } => false
     PromotionRefused { causes: cs } =>

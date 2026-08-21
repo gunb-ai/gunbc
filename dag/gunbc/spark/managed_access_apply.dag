@@ -296,7 +296,7 @@ fn fleet_authorized_key_line() -> String {
 data spark_apply_receipt_path: String = "target/spark-managed-access-apply-receipt.txt"
 
 // THE PROCESS EXIT REPORTS THE APPLY, not the receipt write. An earlier revision returned
-// ExitSuccess whenever the receipt file was written, which is a fail-open of the worst kind because
+// std.process.ExitSuccess whenever the receipt file was written, which is a fail-open of the worst kind because
 // it is invisible from the outside: it HAPPENED in this session, when the first apply attempt was
 // refused at all five effects by the portable-word wall and the process still exited 0. A caller
 // scheduling this -- a timer, a CI step, a convergence loop -- would have recorded a successful
@@ -402,7 +402,7 @@ func spark_managed_access_apply_wet(attempt_raw: String, host: String) -> std.pr
             exit_failure(reason: join(["spark apply receipt write failed: ", w.error], ""))
           } else {
             if spark_apply_converged(report: report) {
-              ExitSuccess
+              std.process.ExitSuccess
             } else {
               match spark_apply_first_refusal(report: report) {
                 Present { value: why } =>

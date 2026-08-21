@@ -3,7 +3,7 @@ module v2.test.claim.body_lowering.infer_transform_binary_infix_witness_helpers
 
 data infer_transform_binary_infix_witness_helpers_note: String = "Shared helpers for Transform binary-infix derivation witnesses. add_probe normalize→resolve→infer exceeds per-PR 5s fast-lane eval budget — discriminating add vertical enrolled on FalsifierSubstrateLongLane (long/infer_transform_binary_infix_witness_test.dag + gunbc.explicit_witness_admission). Fast per-PR subtract frontier control in body_lowering/infer_transform_binary_infix_witness_test.dag."
 
-fn infer_transform_subtract_fixture() -> Node {
+fn infer_transform_subtract_fixture() -> v2.std.node.Node {
   lower_binary_infix(
     left: dag_int_literal_fixture_one(),
     operator: node_synthetic(
@@ -14,36 +14,36 @@ fn infer_transform_subtract_fixture() -> Node {
   )
 }
 
-fn infer_transform_witness_resolved_add_arrow() -> v2.std.optional.Optional<Node> {
+fn infer_transform_witness_resolved_add_arrow() -> v2.std.optional.Optional<v2.std.node.Node> {
   match wave1_gate1_normalized_add_module() {
-    Absent => Absent
-    Present { value: tree } =>
+    v2.std.optional.Absent => v2.std.optional.Absent
+    v2.std.optional.Present { value: tree } =>
       match v2.compiler.resolve.resolve(tree: tree, lm: dag_language_model()) {
         Accepted { value: resolved, diagnostics: _ } =>
           wave1_gate1_find_arrow_in_module(root: resolved)
-        Rejected { diagnostics: _ } => Absent
+        v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
       }
   }
 }
 
-fn infer_transform_witness_add_body(arrow: Node) -> v2.std.optional.Optional<Node> {
+fn infer_transform_witness_add_body(arrow: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
       match body.kind {
-        ComputationNode { behavior: Transform } => Present { value: body }
-        _ => Absent
+        ComputationNode { behavior: v2.std.node.Transform } => v2.std.optional.Present { value: body }
+        _ => v2.std.optional.Absent
       }
-    Rejected { diagnostics: _ } => Absent
+    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
   }
 }
 
-fn infer_transform_add_vertical_discriminating_holds() -> Bool {
+fn infer_transform_add_vertical_discriminating_holds() -> v2.std.logic.Bool {
   match infer_transform_witness_resolved_add_arrow() {
-    Absent => false
-    Present { value: arrow } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: arrow } =>
       match infer_transform_witness_add_body(arrow: arrow) {
-        Absent => false
-        Present { value: body } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: body } =>
           match infer(tree: arrow) {
             Accepted { value: tree, diagnostics: _ } =>
               match inferred_facts_witness_for_node(tree: tree, node: body) {
@@ -56,7 +56,7 @@ fn infer_transform_add_vertical_discriminating_holds() -> Bool {
                     }
                 Violates { diagnostic: _ } => false
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
       }
   }

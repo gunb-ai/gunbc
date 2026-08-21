@@ -1,7 +1,7 @@
 module tools.proactive_verification_ledger_transport
 
 
-fn run_family_ledger_row(row: gunbc.proactive_verification_ledger.FamilyVerificationLedgerRow) -> Bool {
+fn run_family_ledger_row(row: gunbc.proactive_verification_ledger.FamilyVerificationLedgerRow) -> v2.std.logic.Bool {
   match row.execution {
     ClaimWitness { entry: e, function: f } =>
       run_gunbc_claims(
@@ -14,7 +14,7 @@ fn run_family_ledger_row(row: gunbc.proactive_verification_ledger.FamilyVerifica
   }
 }
 
-fn run_executable_ledger_rows() -> Bool {
+fn run_executable_ledger_rows() -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: ledger_executable_family_rows(),
     empty: true,

@@ -40,14 +40,14 @@ fn self_host_fixture_source_models_unready() -> v2.compiler.self_host.SourceMode
   }
 }
 
-fn stage_emission_leaf() -> Node {
+fn stage_emission_leaf() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^stage_emission_fixture_leaf } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
-fn stage_reference_emitted() -> Node {
+fn stage_reference_emitted() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -58,7 +58,7 @@ fn stage_reference_emitted() -> Node {
     occurrence_id: SyntheticOccurrence
   }
 }
-fn stage_candidate_equal_emitted() -> Node {
+fn stage_candidate_equal_emitted() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -70,7 +70,7 @@ fn stage_candidate_equal_emitted() -> Node {
   }
 }
 
-fn stage_candidate_perturbed_emitted() -> Node {
+fn stage_candidate_perturbed_emitted() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -81,7 +81,7 @@ fn stage_candidate_perturbed_emitted() -> Node {
   }
 }
 
-test fn self_host_fixed_point_digests_match_on_equal() -> Bool {
+test fn self_host_fixed_point_digests_match_on_equal() -> v2.std.logic.Bool {
   self_host_fixed_point_digests_match(
     stage1_node: stage_reference_emitted(),
     stage2_node: stage_candidate_equal_emitted(),
@@ -89,7 +89,7 @@ test fn self_host_fixed_point_digests_match_on_equal() -> Bool {
   )
 }
 
-test fn self_host_fixpoint_equal_carries_emitted_bytes_authority() -> Bool {
+test fn self_host_fixpoint_equal_carries_emitted_bytes_authority() -> v2.std.logic.Bool {
   let models = self_host_fixture_source_models_at_fixpoint()
   self_host_fixpoint_equal(
     stage1: self_host_stage_emission(
@@ -103,7 +103,7 @@ test fn self_host_fixpoint_equal_carries_emitted_bytes_authority() -> Bool {
   ).over == regen_staleness_authority
 }
 
-test fn self_host_snake_closes_on_equal_stages() -> Bool {
+test fn self_host_snake_closes_on_equal_stages() -> v2.std.logic.Bool {
   let models = self_host_fixture_source_models_at_fixpoint()
   self_host_snake_closes(
     stage1: self_host_stage_emission(
@@ -117,7 +117,7 @@ test fn self_host_snake_closes_on_equal_stages() -> Bool {
   )
 }
 
-test fn self_host_snake_closes_fails_on_perturbed_regen_source() -> Bool {
+test fn self_host_snake_closes_fails_on_perturbed_regen_source() -> v2.std.logic.Bool {
   self_host_snake_closes(
     stage1: self_host_stage_emission(
       node: stage_reference_emitted(),
@@ -130,7 +130,7 @@ test fn self_host_snake_closes_fails_on_perturbed_regen_source() -> Bool {
   ) == false
 }
 
-test fn fixed_point_scaffold_holds_on_equal() -> Bool {
+test fn fixed_point_scaffold_holds_on_equal() -> v2.std.logic.Bool {
   match fixed_point_scaffold(
     stage1_node: stage_reference_emitted(),
     stage2_node: stage_candidate_equal_emitted(),
@@ -141,7 +141,7 @@ test fn fixed_point_scaffold_holds_on_equal() -> Bool {
   }
 }
 
-test fn fixed_point_scaffold_violates_on_perturbed_regen_source() -> Bool {
+test fn fixed_point_scaffold_violates_on_perturbed_regen_source() -> v2.std.logic.Bool {
   match fixed_point_scaffold(
     stage1_node: stage_reference_emitted(),
     stage2_node: stage_reference_emitted(),
@@ -152,7 +152,7 @@ test fn fixed_point_scaffold_violates_on_perturbed_regen_source() -> Bool {
   }
 }
 
-test fn self_host_fixpoint_witness_holds_on_equal_stages() -> Bool {
+test fn self_host_fixpoint_witness_holds_on_equal_stages() -> v2.std.logic.Bool {
   let models = self_host_fixture_source_models_at_fixpoint()
   match self_host_fixpoint_witness(
     stage1: self_host_stage_emission(
@@ -169,7 +169,7 @@ test fn self_host_fixpoint_witness_holds_on_equal_stages() -> Bool {
   }
 }
 
-test fn self_host_fixpoint_witness_violates_on_perturbed_regen_source() -> Bool {
+test fn self_host_fixpoint_witness_violates_on_perturbed_regen_source() -> v2.std.logic.Bool {
   let models = self_host_fixture_source_models_perturbed_regen()
   match self_host_fixpoint_witness(
     stage1: self_host_stage_emission(
@@ -186,7 +186,7 @@ test fn self_host_fixpoint_witness_violates_on_perturbed_regen_source() -> Bool 
   }
 }
 
-test fn self_host_fixed_point_digests_diverge_on_perturbed_regen_source() -> Bool {
+test fn self_host_fixed_point_digests_diverge_on_perturbed_regen_source() -> v2.std.logic.Bool {
   self_host_fixed_point_digests_match(
     stage1_node: stage_reference_emitted(),
     stage2_node: stage_reference_emitted(),
@@ -194,7 +194,7 @@ test fn self_host_fixed_point_digests_diverge_on_perturbed_regen_source() -> Boo
   ) == false
 }
 
-test fn self_host_bytes_digest_source_perturb_teeth_holds() -> Bool {
+test fn self_host_bytes_digest_source_perturb_teeth_holds() -> v2.std.logic.Bool {
   let at_fixpoint = self_host_fixture_source_models_at_fixpoint()
   let perturbed = self_host_fixture_source_models_perturbed_regen()
   canonical_emitted_bytes_digest(source: at_fixpoint.stage2_regen_emitted_source) !=
@@ -217,7 +217,7 @@ test fn self_host_bytes_digest_source_perturb_teeth_holds() -> Bool {
     }
 }
 
-test fn stage_emission_equality_holds_on_equal() -> Bool {
+test fn stage_emission_equality_holds_on_equal() -> v2.std.logic.Bool {
   match stage_emission_equality(
     emitted_candidate: stage_candidate_equal_emitted(),
     reference_stage1: stage_reference_emitted()
@@ -227,7 +227,7 @@ test fn stage_emission_equality_holds_on_equal() -> Bool {
   }
 }
 
-test fn stage_emission_equality_violates_on_perturbed() -> Bool {
+test fn stage_emission_equality_violates_on_perturbed() -> v2.std.logic.Bool {
   match stage_emission_equality(
     emitted_candidate: stage_candidate_perturbed_emitted(),
     reference_stage1: stage_reference_emitted()
@@ -237,35 +237,35 @@ test fn stage_emission_equality_violates_on_perturbed() -> Bool {
   }
 }
 
-test fn self_host_fixed_point_fails_closed_until_regen_byte_pair() -> Bool {
+test fn self_host_fixed_point_fails_closed_until_regen_byte_pair() -> v2.std.logic.Bool {
   match self_host_fixed_point_validate(
     stage1_candidate: stage_emission_leaf(),
     source_models: self_host_fixture_source_models_unready(),
     reference_stage1: stage_emission_leaf()
   ) {
-    Rejected { diagnostics: d } => d.head.reason == ^self_host_runner_not_realized
+    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^self_host_runner_not_realized
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-test fn self_host_fixed_point_validate_accepts_matching_regen_bytes() -> Bool {
+test fn self_host_fixed_point_validate_accepts_matching_regen_bytes() -> v2.std.logic.Bool {
   match self_host_fixed_point_validate(
     stage1_candidate: stage_candidate_equal_emitted(),
     source_models: self_host_fixture_source_models_at_fixpoint(),
     reference_stage1: stage_reference_emitted()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn self_host_fixed_point_validate_rejects_perturbed_regen_bytes() -> Bool {
+test fn self_host_fixed_point_validate_rejects_perturbed_regen_bytes() -> v2.std.logic.Bool {
   match self_host_fixed_point_validate(
     stage1_candidate: stage_candidate_equal_emitted(),
     source_models: self_host_fixture_source_models_perturbed_regen(),
     reference_stage1: stage_reference_emitted()
   ) {
-    Rejected { diagnostics: d } => d.head.reason == ^self_host_fixpoint_digest_mismatch
+    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^self_host_fixpoint_digest_mismatch
     Accepted { value: _, diagnostics: _ } => false
   }
 }

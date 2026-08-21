@@ -54,11 +54,11 @@ fn pijul_compatibility_bind(
         channels: repository.state.channels,
         name: target,
       ) {
-        Absent =>
+        v2.std.optional.Absent =>
           PijulCompatibilityBindingRefused {
             cause: PijulCompatibilityTargetMissing { target: target },
           }
-        Present { value: channel } =>
+        v2.std.optional.Present { value: channel } =>
           match pijul_assess_read_back(
             expected: projection,
             observation: read_back,

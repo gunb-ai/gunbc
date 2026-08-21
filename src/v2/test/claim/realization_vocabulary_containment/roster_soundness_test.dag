@@ -60,13 +60,13 @@ data ts0_frozen_census_facts_missing_build_step: List<v2.std.layer.LayerImportFa
   }
 ]
 
-test fn realization_vocab_roster_soundness_census_complete_holds() -> Bool {
+test fn realization_vocab_roster_soundness_census_complete_holds() -> v2.std.logic.Bool {
   realization_vocab_roster_sound(
     live_leak_edges: realization_vocab_live_leak_edges_from_facts(facts: ts0_frozen_census_facts)
   )
 }
 
-test fn realization_vocab_roster_soundness_planted_stale_red_holds() -> Bool {
+test fn realization_vocab_roster_soundness_planted_stale_red_holds() -> v2.std.logic.Bool {
   realization_vocab_roster_sound(
     live_leak_edges: realization_vocab_live_leak_edges_from_facts(
       facts: ts0_frozen_census_facts_missing_build_step
@@ -74,11 +74,11 @@ test fn realization_vocab_roster_soundness_planted_stale_red_holds() -> Bool {
   ) == false
 }
 
-test fn realization_vocab_grandfathered_edge_roster_keys_are_distinct_holds() -> Bool {
+test fn realization_vocab_grandfathered_edge_roster_keys_are_distinct_holds() -> v2.std.logic.Bool {
   realization_vocab_grandfathered_edge_roster_well_formed()
 }
 
-test fn realization_vocab_grandfathered_edge_keys_distinct_red_on_planted_duplicate_holds() -> Bool {
+test fn realization_vocab_grandfathered_edge_keys_distinct_red_on_planted_duplicate_holds() -> v2.std.logic.Bool {
   let planted = [
     "dag/gunbc/roadmap_component.dag -> extdeps.languages.typescript.program",
     "dag/tools/build_step.dag -> v2.extdeps.languages.bash_build",

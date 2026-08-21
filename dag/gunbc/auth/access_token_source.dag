@@ -38,12 +38,12 @@ fn gcloud_access_ensure_classification(
     match gcloud_stderr_auth_deficit(stderr: stderr) {
       Present { value: _ } =>
         std.upsert_decision.UpsertClassification {
-          verdict: Absent,
+          verdict: std.upsert_decision.Absent,
           decision: std.upsert_decision.Apply {
             plan: gunbc.auth.access_token_source.GoogleCloudInteractiveAuthenticationRequired {},
           },
         }
-      Absent =>
+      std.upsert_decision.Absent =>
         std.upsert_decision.UpsertClassification {
           verdict: UnknownRefused,
           decision: std.upsert_decision.Refuse {
@@ -62,9 +62,9 @@ fn gcloud_access_token_resolution(
   match gcloud_access_ensure_classification(success: success, stderr: stderr) {
     UpsertClassification { verdict: _, decision: Noop } =>
       AccessTokenReady { token: token }
-    UpsertClassification { verdict: _, decision: Apply { plan: plan } } =>
+    UpsertClassification { verdict: _, decision: std.upsert_decision.Apply { plan: plan } } =>
       AccessTokenUpsertRequired { plan: plan }
-    UpsertClassification { verdict: _, decision: Refuse { reason: reason } } =>
+    UpsertClassification { verdict: _, decision: std.upsert_decision.Refuse { reason: reason } } =>
       AccessTokenEnsureRefused { reason: reason }
   }
 }

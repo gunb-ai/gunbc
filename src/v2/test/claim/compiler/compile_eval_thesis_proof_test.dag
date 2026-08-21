@@ -10,7 +10,7 @@ fn compile_eval_thesis_termination_proof() -> v2.std.cardinality.TerminationProo
   }
 }
 
-fn compile_eval_thesis_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn compile_eval_thesis_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   if key == v2_eval_bool_literal_pin {
     optional_present(value: claim_inferred_facts_from_nodes(
         resolved: v2_eval_bool_literal_pin,
@@ -28,7 +28,7 @@ fn compile_eval_thesis_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_
   }
 }
 
-fn compile_eval_thesis_inferred(root: Node) -> v2.compiler.inferred_tree.InferredTree {
+fn compile_eval_thesis_inferred(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map {
@@ -37,14 +37,14 @@ fn compile_eval_thesis_inferred(root: Node) -> v2.compiler.inferred_tree.Inferre
   }
 }
 
-fn compile_eval_thesis_expected_bool_node() -> Node {
+fn compile_eval_thesis_expected_bool_node() -> v2.std.node.Node {
   match runtime_value_node_projection(value: v2_eval_bool_true_primitive()) {
     RuntimeValueNodeProjected { node: n } => n
     RuntimeValueNodeUnrepresentable => v2_eval_bool_literal_pin
   }
 }
 
-fn compile_eval_thesis_medium_matches_expected(medium: extdeps.communication.medium.Medium<Node>) -> Bool {
+fn compile_eval_thesis_medium_matches_expected(medium: extdeps.communication.medium.Medium<v2.std.node.Node>) -> Bool {
   match medium.fidelity {
     Lossless => medium.carried == compile_eval_thesis_expected_bool_node()
     Lossy => false
@@ -58,7 +58,7 @@ test fn compile_eval_bool_reaches_node_value_holds() -> Bool {
   ) {
     Accepted { value: EvalResult { value: actual }, diagnostics: _ } =>
       compile_eval_thesis_medium_matches_expected(medium: actual)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -69,7 +69,7 @@ test fn compile_eval_bool_via_compile_entry_refuses_underived_holds() -> Bool {
     source: v2_eval_bool_literal_pin,
     mode: v2.compiler.compile.Eval { runtime: v2_eval_bool_literal_pin }
   ) {
-    Rejected { diagnostics: d } => d.head.reason == ^infer_grounding_not_derived
+    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^infer_grounding_not_derived
     Accepted { value: _, diagnostics: _ } => false
   }
 }
@@ -79,7 +79,7 @@ test fn compile_eval_unit_unrepresentable_red_holds() -> Bool {
     inferred: compile_eval_thesis_inferred(root: v2_eval_unit_literal_pin),
     mode: v2.compiler.compile.Eval { runtime: v2_eval_unit_literal_pin }
   ) {
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       d.head.reason == ^eval_rejected_runtime_value_node_unrepresentable
     Accepted { value: _, diagnostics: _ } => false
   }

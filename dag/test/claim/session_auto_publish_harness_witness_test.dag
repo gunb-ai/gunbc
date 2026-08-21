@@ -22,16 +22,16 @@ test fn local_autosave_advances_local_checkpoint_only() -> Bool {
     local_commit: head_b,
   )
   match local_checkpoint_commit(state: state) {
-    Present { value: commit } => commit == head_b
-    Absent => false
+    v2.std.optional.Present { value: commit } => commit == head_b
+    v2.std.optional.Absent => false
   }
     && match remote_branch_head(state: state) {
-      Present { value: head } => head == head_a
-      Absent => false
+      v2.std.optional.Present { value: head } => head == head_a
+      v2.std.optional.Absent => false
     }
     && match worker_notification_head(state: state) {
-      Present { value: head } => head == head_a
-      Absent => false
+      v2.std.optional.Present { value: head } => head == head_a
+      v2.std.optional.Absent => false
     }
 }
 
@@ -44,16 +44,16 @@ test fn explicit_publish_push_advances_remote_branch_only() -> Bool {
     remote_head: head_b,
   )
   match local_checkpoint_commit(state: state) {
-    Present { value: commit } => commit == head_a
-    Absent => false
+    v2.std.optional.Present { value: commit } => commit == head_a
+    v2.std.optional.Absent => false
   }
     && match remote_branch_head(state: state) {
-      Present { value: head } => head == head_b
-      Absent => false
+      v2.std.optional.Present { value: head } => head == head_b
+      v2.std.optional.Absent => false
     }
     && match worker_notification_head(state: state) {
-      Absent => true
-      Present { value: _ } => false
+      v2.std.optional.Absent => true
+      v2.std.optional.Present { value: _ } => false
     }
 }
 
@@ -67,12 +67,12 @@ test fn user_intent_stamps_remote_branch_and_worker() -> Bool {
     at: stamp_two,
   )
   match remote_branch_head(state: state) {
-    Present { value: head } => head == head_b
-    Absent => false
+    v2.std.optional.Present { value: head } => head == head_b
+    v2.std.optional.Absent => false
   }
     && match worker_notification_head(state: state) {
-      Present { value: head } => head == head_b
-      Absent => false
+      v2.std.optional.Present { value: head } => head == head_b
+      v2.std.optional.Absent => false
     }
     && match state.worker {
       WorkerNotificationStamped { notified_head: _, notified_at: at } => at == stamp_two
@@ -91,12 +91,12 @@ test fn drift_reminder_advances_worker_notification_only() -> Bool {
     at: stamp_two,
   )
   match remote_branch_head(state: state) {
-    Present { value: head } => head == head_a
-    Absent => false
+    v2.std.optional.Present { value: head } => head == head_a
+    v2.std.optional.Absent => false
   }
     && match worker_notification_head(state: state) {
-      Present { value: head } => head == head_c
-      Absent => false
+      v2.std.optional.Present { value: head } => head == head_c
+      v2.std.optional.Absent => false
     }
     && match state.worker {
       WorkerNotificationStamped { notified_head: _, notified_at: at } => at == stamp_two
@@ -145,13 +145,13 @@ test fn conflated_baseline_differs_from_worker_when_remote_advanced_without_noti
     remote_head: head_b,
   )
   match worker_notification_baseline(state: state) {
-    Present { value: worker } =>
+    v2.std.optional.Present { value: worker } =>
       match conflated_checkpoint_baseline(state: state) {
-        Present { value: conflated } =>
+        v2.std.optional.Present { value: conflated } =>
           worker == head_a && conflated == head_b && worker != conflated
-        Absent => false
+        v2.std.optional.Absent => false
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
@@ -160,13 +160,13 @@ test fn drift_diff_start_uses_worker_not_conflated_baseline() -> Bool {
   resolve_drift_diff_start(
     notified_baseline: notified,
     current_head: head_c,
-    merge_base_with_origin: Present { value: head_main },
+    merge_base_with_origin: v2.std.optional.Present { value: head_main },
     baseline_is_ancestor_of_merge_base: true,
   ) == head_main
     && resolve_drift_diff_start(
       notified_baseline: notified,
       current_head: head_c,
-      merge_base_with_origin: Absent,
+      merge_base_with_origin: v2.std.optional.Absent,
       baseline_is_ancestor_of_merge_base: false,
     ) == notified
 }
@@ -181,18 +181,18 @@ test fn red_conflated_baseline_would_start_drift_at_remote_head() -> Bool {
     remote_head: head_b,
   )
   match worker_notification_baseline(state: state) {
-    Present { value: worker } =>
+    v2.std.optional.Present { value: worker } =>
       match conflated_checkpoint_baseline(state: state) {
-        Present { value: conflated } =>
+        v2.std.optional.Present { value: conflated } =>
           resolve_drift_diff_start(
             notified_baseline: worker,
             current_head: head_c,
-            merge_base_with_origin: Absent,
+            merge_base_with_origin: v2.std.optional.Absent,
             baseline_is_ancestor_of_merge_base: false,
           ) != conflated
-        Absent => false
+        v2.std.optional.Absent => false
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
@@ -343,17 +343,17 @@ fn clean_publish_attempt(head: std.types.CommitSha, paths: List<String>) -> gunb
     operation: RemotePushBranch,
     observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head },
     current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head },
-    current_local_head: Present { value: head },
+    current_local_head: v2.std.optional.Present { value: head },
     index_cleanliness: IndexClean,
     unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
     conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
     declared_write_paths: paths,
     actual_write_paths: paths,
-    post_write_validation: Present {
+    post_write_validation: v2.std.optional.Present {
       value: validation_receipt_for_head(head: head, digest: digest),
     },
     peer_authorship: PeerAuthoredByPublisher,
-    equivalent_pre_push: Absent,
+    equivalent_pre_push: v2.std.optional.Absent,
   }
 }
 
@@ -376,13 +376,13 @@ test fn fixture_uncompilable_tree_refuses_before_remote_write() -> Bool {
       operation: RemotePushBranch,
       observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
-      current_local_head: Present { value: head_a },
+      current_local_head: v2.std.optional.Present { value: head_a },
       index_cleanliness: IndexClean,
       unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
-      post_write_validation: Present {
+      post_write_validation: v2.std.optional.Present {
         value: gunbc.session_auto_publish.PostWriteValidationReceipt {
           candidate_head: head_a,
           declared_write_set_digest: write_digest_a,
@@ -394,7 +394,7 @@ test fn fixture_uncompilable_tree_refuses_before_remote_write() -> Bool {
         },
       },
       peer_authorship: PeerAuthoredByPublisher,
-      equivalent_pre_push: Absent,
+      equivalent_pre_push: v2.std.optional.Absent,
     },
   ) {
     PublicationRefuse { cause: PostWriteValidationRejectedRefused } => true
@@ -410,17 +410,17 @@ test fn fixture_conflict_markers_refuse_before_remote_write() -> Bool {
       operation: RemotePushBranch,
       observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
-      current_local_head: Present { value: head_a },
+      current_local_head: v2.std.optional.Present { value: head_a },
       index_cleanliness: IndexClean,
       unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 39 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
-      post_write_validation: Present {
+      post_write_validation: v2.std.optional.Present {
         value: validation_receipt_for_head(head: head_a, digest: write_digest_a),
       },
       peer_authorship: PeerAuthoredByPublisher,
-      equivalent_pre_push: Absent,
+      equivalent_pre_push: v2.std.optional.Absent,
     },
   ) {
     PublicationRefuse { cause: ConflictMarkersPresent { count: 39 } } => true
@@ -436,17 +436,17 @@ test fn fixture_write_outside_declared_set_refuses_before_remote_write() -> Bool
       operation: RemotePushBranch,
       observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
-      current_local_head: Present { value: head_a },
+      current_local_head: v2.std.optional.Present { value: head_a },
       index_cleanliness: IndexClean,
       unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       actual_write_paths: ["scratch/spike_probe.dag"],
-      post_write_validation: Present {
+      post_write_validation: v2.std.optional.Present {
         value: validation_receipt_for_head(head: head_a, digest: write_digest_a),
       },
       peer_authorship: PeerAuthoredByPublisher,
-      equivalent_pre_push: Absent,
+      equivalent_pre_push: v2.std.optional.Absent,
     },
   ) {
     PublicationRefuse { cause: WriteOutsideDeclaredSet { path: path } } =>
@@ -463,17 +463,17 @@ test fn fixture_peer_commit_not_authored_by_publisher_refuses() -> Bool {
       operation: RemotePushBranch,
       observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
-      current_local_head: Present { value: head_a },
+      current_local_head: v2.std.optional.Present { value: head_a },
       index_cleanliness: IndexClean,
       unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
-      post_write_validation: Present {
+      post_write_validation: v2.std.optional.Present {
         value: validation_receipt_for_head(head: head_a, digest: write_digest_a),
       },
       peer_authorship: PeerNotAuthoredByPublisher,
-      equivalent_pre_push: Absent,
+      equivalent_pre_push: v2.std.optional.Absent,
     },
   ) {
     PublicationRefuse { cause: PeerCommitNotAuthoredByPublisherRefused } => true
@@ -489,17 +489,17 @@ test fn fixture_remote_head_moved_refuses_before_remote_write() -> Bool {
       operation: RemotePushBranch,
       observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_b },
-      current_local_head: Present { value: head_a },
+      current_local_head: v2.std.optional.Present { value: head_a },
       index_cleanliness: IndexClean,
       unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
-      post_write_validation: Present {
+      post_write_validation: v2.std.optional.Present {
         value: validation_receipt_for_head(head: head_a, digest: write_digest_a),
       },
       peer_authorship: PeerAuthoredByPublisher,
-      equivalent_pre_push: Absent,
+      equivalent_pre_push: v2.std.optional.Absent,
     },
   ) {
     PublicationRefuse { cause: RemoteHeadMovedSinceObservation } => true
@@ -514,17 +514,17 @@ test fn fixture_no_explicit_request_refuses_before_remote_write() -> Bool {
       operation: RemotePushBranch,
       observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
-      current_local_head: Present { value: head_a },
+      current_local_head: v2.std.optional.Present { value: head_a },
       index_cleanliness: IndexClean,
       unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
-      post_write_validation: Present {
+      post_write_validation: v2.std.optional.Present {
         value: validation_receipt_for_head(head: head_a, digest: write_digest_a),
       },
       peer_authorship: PeerAuthoredByPublisher,
-      equivalent_pre_push: Absent,
+      equivalent_pre_push: v2.std.optional.Absent,
     },
   ) {
     PublicationRefuse { cause: ScratchProbeRemotePublicationForbidden } => true
@@ -540,13 +540,13 @@ test fn red_unevaluable_validation_status_refuses_not_passes() -> Bool {
       operation: RemotePushBranch,
       observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
-      current_local_head: Present { value: head_a },
+      current_local_head: v2.std.optional.Present { value: head_a },
       index_cleanliness: IndexClean,
       unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
-      post_write_validation: Present {
+      post_write_validation: v2.std.optional.Present {
         value: gunbc.session_auto_publish.PostWriteValidationReceipt {
           candidate_head: head_a,
           declared_write_set_digest: write_digest_a,
@@ -558,7 +558,7 @@ test fn red_unevaluable_validation_status_refuses_not_passes() -> Bool {
         },
       },
       peer_authorship: PeerAuthoredByPublisher,
-      equivalent_pre_push: Absent,
+      equivalent_pre_push: v2.std.optional.Absent,
     },
   ) {
     PublicationRefuse { cause: PostWriteValidationUnknownRefused } => true
@@ -574,17 +574,17 @@ test fn red_transferable_green_evidence_refuses_when_receipt_head_differs_from_r
       operation: RemotePushBranch,
       observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
-      current_local_head: Present { value: head_a },
+      current_local_head: v2.std.optional.Present { value: head_a },
       index_cleanliness: IndexClean,
       unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
-      post_write_validation: Present {
+      post_write_validation: v2.std.optional.Present {
         value: validation_receipt_for_head(head: head_b, digest: write_digest_a),
       },
       peer_authorship: PeerAuthoredByPublisher,
-      equivalent_pre_push: Absent,
+      equivalent_pre_push: v2.std.optional.Absent,
     },
   ) {
     PublicationRefuse { cause: PostWriteValidationReceiptHeadMismatch } => true
@@ -600,17 +600,17 @@ test fn dirty_index_refuses_before_remote_write() -> Bool {
       operation: RemotePushBranch,
       observed_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
       current_remote_head: gunbc.session_auto_publish.RemoteHeadKnown { head: head_a },
-      current_local_head: Present { value: head_a },
+      current_local_head: v2.std.optional.Present { value: head_a },
       index_cleanliness: IndexDirty,
       unmerged_stage_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       conflict_marker_count: gunbc.session_auto_publish.CountKnown { count: 0 },
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
-      post_write_validation: Present {
+      post_write_validation: v2.std.optional.Present {
         value: validation_receipt_for_head(head: head_a, digest: write_digest_a),
       },
       peer_authorship: PeerAuthoredByPublisher,
-      equivalent_pre_push: Absent,
+      equivalent_pre_push: v2.std.optional.Absent,
     },
   ) {
     PublicationRefuse { cause: IndexDirtyRefused } => true

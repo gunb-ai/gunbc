@@ -6,7 +6,7 @@ data effect_child: v2.std.node.Node = v2.test.lens_common.infer_fixture.claim_at
 data effect_root: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^effect_root_symbol } },
   children: [
-    v2.std.node.Edge { label: Named { name: ^effect_edge_symbol }, target: effect_child }
+    v2.std.node.Edge { label: v2.std.node.Named { name: ^effect_edge_symbol }, target: effect_child }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -49,7 +49,7 @@ data effect_depends_on_claim: LensEffectClaim = LensEffectClaim {
   actual: v2.lens.effect.effect_witness(tree: effect_claim_tree(), dependencies: [effect_dependency])
 }
 
-fn effect_depends_on_claim_holds() -> Bool {
+fn effect_depends_on_claim_holds() -> v2.std.logic.Bool {
   match effect_depends_on_claim.actual {
     Violates { diagnostic: _ } =>
       v2.lens.effect.effect_fact_eq(
@@ -63,14 +63,14 @@ fn effect_depends_on_claim_holds() -> Bool {
   }
 }
 
-data effect_depends_on_claim_passes: Bool = effect_depends_on_claim_holds()
+data effect_depends_on_claim_passes: v2.std.logic.Bool = effect_depends_on_claim_holds()
 
 fn lens_effect_marker_node(marker: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: Value },
     children: [
       v2.std.node.Edge {
-        label: Named { name: marker },
+        label: v2.std.node.Named { name: marker },
         target: effect_root
       }
     ],

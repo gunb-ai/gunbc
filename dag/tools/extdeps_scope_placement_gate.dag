@@ -56,8 +56,8 @@ data manifest_remove_only_exit_note: String = "THE one verdict surface over Mani
 
 fn manifest_remove_only_exit(observation: gunbc.extdeps_scope_frontier.ManifestLineObservation) -> std.process.ProcessExit {
   match observation {
-    ManifestUntouched => ExitSuccess
-    ManifestIntroduced => ExitSuccess
+    ManifestUntouched => std.process.ExitSuccess
+    ManifestIntroduced => std.process.ExitSuccess
     ManifestLinesAdded { rows: rows } => exit_failure(
       reason: concat(
         "extdeps scope placement gate: this change ADDS row(s) to the frozen legacy manifest, which is remove-only — a migrated or new module can never (re-)enter the legacy population: ",
@@ -109,7 +109,7 @@ fn scope_placement_membership_verdict(observation: gunbc.extdeps_scope_frontier.
           )
         )
       } else {
-        ExitSuccess
+        std.process.ExitSuccess
       }
     }
   }
@@ -128,7 +128,7 @@ fn scope_placement_freeze_verdict(observation: gunbc.extdeps_scope_frontier.Diff
         content: filesystem_read(path: legacy_extdeps_scope_frontier_manifest_path).content
       )
       if manifest_freeze_holds(manifest: manifest, observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: added }) {
-        ExitSuccess
+        std.process.ExitSuccess
       } else {
         exit_failure(
           reason: "extdeps scope placement gate: a frozen-manifest row names a file added after legacy_manifest_freeze_sha — the manifest is remove-only and a new module cannot be smuggled into the legacy population"
@@ -158,7 +158,7 @@ fn language_module_home_verdict(observation: gunbc.extdeps_scope_frontier.DiffAd
           )
         )
       } else {
-        ExitSuccess
+        std.process.ExitSuccess
       }
     }
   }
@@ -171,15 +171,15 @@ fn scope_placement_gate_verdict(
   let membership = scope_placement_membership_verdict(observation: change_observation)
   match membership {
     ExitFailure { code: _, reason: _ } => membership
-    ExitSuccess => {
+    std.process.ExitSuccess => {
       let freeze = scope_placement_freeze_verdict(observation: freeze_observation)
       match freeze {
         ExitFailure { code: _, reason: _ } => freeze
-        ExitSuccess => {
+        std.process.ExitSuccess => {
           let homing = language_module_home_verdict(observation: change_observation)
           match homing {
             ExitFailure { code: _, reason: _ } => homing
-            ExitSuccess => manifest_remove_only_verdict()
+            std.process.ExitSuccess => manifest_remove_only_verdict()
           }
         }
       }
@@ -198,7 +198,7 @@ data scope_placement_failure_receipt_note: String = "The loudness half (gunbc#76
 
 fn scope_placement_failure_reason(exit: std.process.ProcessExit) -> String {
   match exit {
-    ExitSuccess => ""
+    std.process.ExitSuccess => ""
     ExitFailure { code: _, reason: reason } => reason
   }
 }

@@ -1041,7 +1041,7 @@ fn node_type_deps(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.N
 
 fn infer_literal_node(lit: std.syntax.LiteralValue) -> v1.std.core.Node {
   match lit {
-    LitStr { value: _ } => v1.std.core.string_type
+    std.syntax.LitStr { value: _ } => v1.std.core.string_type
     LitInt { value: _ } => v1.std.core.int_type
     LitFloat { value: _ } => v1.std.core.float_type
     LitBool { value: _ } => v1.std.core.bool_type

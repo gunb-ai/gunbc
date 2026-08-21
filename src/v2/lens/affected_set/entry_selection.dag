@@ -12,16 +12,16 @@ data entry_file_touched_grain_interim: std.disposition.Disposition = std.disposi
 
 data entry_file_touched_grain_interim_note: String = "DECLARED #6335 PARTIAL UNWIND (operator fork (c), 2026-07-10): the CI floor's entry_file_touched channel no longer consumes entry_affected_by_dependency_view — it is regrounded on the module-graph import-closure relation (v2.lens.module_graph.entry_affected_by_touched_paths; host realization entry_file_touched_via_import_closure in cli_run.rs, certified against this lens by the module-grain receipt harness on real merged diffs). Receipts for the unwind: (1) the Rust wrapper's substrate-not-whole-tree arm silently returned touched=true for EVERY row whenever any entry file was touched — an absorbing fallback that labeled itself fail-closed (probe 2026-07-10: substrate_is_whole_tree=FALSE -> touched=true, would_skip=false with empty frontier and no fn edits, on a pristine main clone with an empty real diff); (2) this module's edit loci are decl.OUTPUT nodes, so a touched file's test fns put the shared Bool node in the locus set and file_paths_for_frontier_nodes (decl.output == node) marks every Bool-returning module affected — decl identity conflated with output type. The fn-arrow DependencyView machinery here STAYS as the decl-level candidate for this channel's grain only: compile-clean scoping regrounded onto the same module-graph import-closure authority 2026-07-16 (channel 2 of this fork — see tools.dag_compile_clean_scope compile_clean_scope_import_closure_reground_note), so no live channel consumes entry_affected_by_dependency_view today. Dissolve-on: the namespace-only resolution terminal step (import grammar deleted; deps derived from container.member references) — the closure query is edge-source-agnostic and survives, and the file-grain-vs-decl-grain choice for entry_file_touched RE-DECIDES then, with the decl-level path viable only once edit loci are decl-identity nodes, never output types."
 
-fn string_eq(a: String, b: String) -> Bool {
+fn string_eq(a: String, b: String) -> v2.std.logic.Bool {
   a == b
 }
 
-fn decl_belongs_to_module(decl: v2.std.fn_index.FnArrowDecl, module: String) -> Bool {
+fn decl_belongs_to_module(decl: v2.std.fn_index.FnArrowDecl, module: String) -> v2.std.logic.Bool {
   starts_with(s: decl.qualified_name, prefix: concat(module, "."))
     || (decl.qualified_name == module)
 }
 
-fn module_path_for_decl(decl: v2.std.fn_index.FnArrowDecl, modules: List<v2.lens.module_graph.ModuleDeclarationFact>) -> Optional<String> {
+fn module_path_for_decl(decl: v2.std.fn_index.FnArrowDecl, modules: List<v2.lens.module_graph.ModuleDeclarationFact>) -> v2.std.optional.Optional<String> {
   let best_module = fold(modules, init: "", f: fn(best, fact) {
     if v2.lens.affected_set.entry_selection.decl_belongs_to_module(decl: decl, module: fact.module) {
       if best == "" {
@@ -49,7 +49,7 @@ fn module_path_for_decl(decl: v2.std.fn_index.FnArrowDecl, modules: List<v2.lens
   }
 }
 
-fn path_excluded_by_substrings(path: String, exclude_substrings: List<String>) -> Bool {
+fn path_excluded_by_substrings(path: String, exclude_substrings: List<String>) -> v2.std.logic.Bool {
   any(xs: exclude_substrings, predicate: fn(sub) { string_contains(s: path, pattern: sub) })
 }
 
@@ -76,7 +76,7 @@ fn modules_matching_touched_path(
 fn edit_locus_nodes_for_module(
   module: String,
   decls: List<v2.std.fn_index.FnArrowDecl>
-) -> List<Node> {
+) -> List<v2.std.node.Node> {
   fold(decls, init: [], f: fn(acc, decl) {
     if v2.lens.affected_set.entry_selection.decl_belongs_to_module(decl: decl, module: module) {
       list_snoc_item(xs: acc, item: decl.output)
@@ -90,7 +90,7 @@ fn edit_locus_nodes_for_touched_path(
   pool_roots: List<String>,
   touched_path: String,
   exclude_substrings: List<String>
-) -> List<Node> {
+) -> List<v2.std.node.Node> {
   let decls = fn_arrow_decl_facts_live()
   fold(
     modules_matching_touched_path(
@@ -115,7 +115,7 @@ fn edit_locus_nodes_for_touched_path(
   )
 }
 
-fn merge_frontier_nodes(acc: List<Node>, more: List<Node>) -> List<Node> {
+fn merge_frontier_nodes(acc: List<v2.std.node.Node>, more: List<v2.std.node.Node>) -> List<v2.std.node.Node> {
   fold(more, init: acc, f: fn(nodes, node) {
     if contains(xs: nodes, item: node, eq: fn(left, right) { left == right }) {
       nodes
@@ -127,8 +127,8 @@ fn merge_frontier_nodes(acc: List<Node>, more: List<Node>) -> List<Node> {
 
 fn affected_frontier_for_edit_loci(
   dependencies: List<v2.std.dependency.DependencyView>,
-  edit_loci: List<Node>
-) -> List<Node> {
+  edit_loci: List<v2.std.node.Node>
+) -> List<v2.std.node.Node> {
   fold(edit_loci, init: [], f: fn(frontier, locus) {
     merge_frontier_nodes(
       acc: frontier,
@@ -138,7 +138,7 @@ fn affected_frontier_for_edit_loci(
 }
 
 fn file_paths_for_frontier_nodes(
-  frontier: List<Node>,
+  frontier: List<v2.std.node.Node>,
   pool_roots: List<String>,
   exclude_substrings: List<String>
 ) -> List<String> {
@@ -148,7 +148,7 @@ fn file_paths_for_frontier_nodes(
     fold(decls, init: paths, f: fn(acc, decl) {
       if decl.output == node {
         match module_path_for_decl(decl: decl, modules: modules) {
-          Present { value: path } =>
+          v2.std.optional.Present { value: path } =>
             if path_excluded_by_substrings(path: path, exclude_substrings: exclude_substrings) {
               acc
             } else if contains(xs: acc, item: path, eq: v2.lens.affected_set.entry_selection.string_eq) {
@@ -156,7 +156,7 @@ fn file_paths_for_frontier_nodes(
             } else {
               list_snoc_item(xs: acc, item: path)
             }
-          Absent => acc
+          v2.std.optional.Absent => acc
         }
       } else {
         acc
@@ -195,7 +195,7 @@ fn affected_file_paths_for_touched_paths(
 fn entry_path_in_affected_file_paths(
   entry_path: String,
   affected_paths: List<String>
-) -> Bool {
+) -> v2.std.logic.Bool {
   any(xs: affected_paths, predicate: fn(path) {
     path_matches_touched(closure_path: path, touched_path: entry_path)
   })
@@ -206,7 +206,7 @@ fn entry_affected_by_dependency_view_excluding(
   pool_roots: List<String>,
   touched_paths: List<String>,
   exclude_substrings: List<String>
-) -> Bool {
+) -> v2.std.logic.Bool {
   if path_excluded_by_substrings(path: entry_path, exclude_substrings: exclude_substrings) {
     false
   } else if corpus_dependency_view_per_pr_substrate_ready() {
@@ -227,7 +227,7 @@ fn entry_affected_by_dependency_view(
   entry_path: String,
   pool_roots: List<String>,
   touched_paths: List<String>
-) -> Bool {
+) -> v2.std.logic.Bool {
   entry_affected_by_dependency_view_excluding(
     entry_path: entry_path,
     pool_roots: pool_roots,

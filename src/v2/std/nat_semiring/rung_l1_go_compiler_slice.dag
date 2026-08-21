@@ -5,7 +5,7 @@ data go_l1_nat_semiring_rung2_l1_host_gate: String = "UNREALIZED — no host gat
 
 data go_l1_nat_semiring_rung2_l1_receipt_schema: String = "go_l1_compiler_slice_receipt_v1 — schema name only; no emitter is bound while go_l1_nat_semiring_rung2_l1_host_gate is UNREALIZED."
 
-fn l1_go_receipt_atom(sym: v2.std.node.Symbol) -> Node {
+fn l1_go_receipt_atom(sym: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
     children: [],
@@ -13,13 +13,13 @@ fn l1_go_receipt_atom(sym: v2.std.node.Symbol) -> Node {
 }
 }
 
-data phase1_l1_go_compiler_slice_subject_slice_binding: Node = l1_go_receipt_atom(sym: ^go_l1_nat_semiring_rung2)
+data phase1_l1_go_compiler_slice_subject_slice_binding: v2.std.node.Node = l1_go_receipt_atom(sym: ^go_l1_nat_semiring_rung2)
 
-data phase1_nat_semiring_l1_go_compiler_slice_subject: Node = v2.std.node.Node {
+data phase1_nat_semiring_l1_go_compiler_slice_subject: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
-      label: Named { name: ^l1_go_receipt_slice_edge },
+      label: v2.std.node.Named { name: ^l1_go_receipt_slice_edge },
       target: phase1_l1_go_compiler_slice_subject_slice_binding
     }
   ],

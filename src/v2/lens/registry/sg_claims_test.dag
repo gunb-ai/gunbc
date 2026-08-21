@@ -34,7 +34,7 @@ data lens_registry_v0_required_ids: List<v2.lens.registry.LensIdV0> = [
   FnFamily,
   v2.lens.registry.Grounding,
   HostLanguageTransportScript,
-  IdenticalVariantPayload,
+  v2.lens.registry.IdenticalVariantPayload,
   InertCarrier,
   IntentLinearity,
   v2.lens.registry.InterfaceSummary,
@@ -62,11 +62,11 @@ data lens_registry_v0_required_ids: List<v2.lens.registry.LensIdV0> = [
   v2.lens.registry.WitnessCostLocality
 ]
 
-test fn lens_registry_required_ids_resolve_holds() -> Bool {
+test fn lens_registry_required_ids_resolve_holds() -> v2.std.logic.Bool {
   lens_registry_ids_resolve(lens_ids: lens_registry_v0_required_ids)
 }
 
-test fn lens_registry_singleton_row_counts_holds() -> Bool {
+test fn lens_registry_singleton_row_counts_holds() -> v2.std.logic.Bool {
   lens_registry_row_count(lens_id: ComplexityDerivedKernel) == 1
     && lens_registry_bound_row_count(lens_id: ComplexityDerivedKernel) == 1
     && lens_registry_row_count(lens_id: ComplexityOptimality) == 1

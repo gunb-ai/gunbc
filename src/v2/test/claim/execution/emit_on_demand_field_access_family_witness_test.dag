@@ -34,7 +34,7 @@ fn field_access_family_alt_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer
 
 fn field_access_family_test_store() -> std.artifact_store.ArtifactStore {
   match std.artifact_store.store_over_provider(provider: field_access_family_provider) {
-    StoreReady { store: s } => s
+    std.artifact_store.StoreReady { store: s } => s
     StoreRefusedRetention { provider_id: _, declared: _ } =>
       std.artifact_store.ArtifactStore { budget: std.measure.byte_size(count: 0), next_ordinal: 1, rows: [] }
   }
@@ -57,7 +57,7 @@ test fn emit_on_demand_field_access_grain_keys_differ_holds() -> Bool {
         grain: std.emit_on_demand.NativeArtifact
       )
       (source == native) == false
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -72,7 +72,7 @@ test fn emit_on_demand_field_access_materialize_recompute_on_miss_holds() -> Boo
         EmitOnDemandMiss => std.emit_on_demand.materialization_for_lookup(lookup: lookup) == std.realization.Recompute
         EmitOnDemandHit { receipt: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -91,9 +91,9 @@ test fn emit_on_demand_field_access_schedule_refuses_unreadable_budget_holds() -
       ) {
         BudgetRefused => true
         PackedWidth { width: _ } => false
-        MaturationReserve { width: _ } => false
+        std.realize_pack.MaturationReserve { width: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -128,7 +128,7 @@ fn field_access_family_cached_run_with_source(
             && stdout.bytes == emit_host_octets_byte_string(octets: [0, expected_octet, 0, 0, 0])
         _ => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -140,7 +140,7 @@ fn field_access_cached_agreement_pass(workspace: String, tree: v2.compiler.infer
   emit_field_eval_verdict_is_pass(
     run: run_test_claim_from_source_emit_vs_eval_cached(
       subject: emit_field_eval_subject(tree: tree),
-      source_outcome: emit(tree: tree, target: rust_field_access_target_model_staging()),
+      source_outcome: v2.compiler.emit.emit(tree: tree, target: rust_field_access_target_model_staging()),
       target: rust_field_access_target_model_staging(),
       workspace_dir: workspace,
       run_args: emit_host_no_run_args()
@@ -152,7 +152,7 @@ fn field_access_cached_wrong_fixture_mismatch(workspace: String, tree: v2.compil
   emit_field_eval_verdict_is_semantic_mismatch(
     run: run_test_claim_from_source_emit_vs_eval_cached(
       subject: emit_field_eval_wrong_fixture_subject(tree: tree),
-      source_outcome: emit(tree: tree, target: rust_field_access_target_model_staging()),
+      source_outcome: v2.compiler.emit.emit(tree: tree, target: rust_field_access_target_model_staging()),
       target: rust_field_access_target_model_staging(),
       workspace_dir: workspace,
       run_args: emit_host_no_run_args()
@@ -166,7 +166,7 @@ fn field_access_family_cached_run_checks(
   expect_compile_skipped: Bool,
   expected_octet: Int
 ) -> Bool {
-  match emit(tree: tree, target: rust_field_access_target_model_staging()) {
+  match v2.compiler.emit.emit(tree: tree, target: rust_field_access_target_model_staging()) {
     Accepted { value: source, diagnostics: _ } =>
       field_access_family_cached_run_with_source(
         workspace: workspace,
@@ -175,7 +175,7 @@ fn field_access_family_cached_run_checks(
         expect_compile_skipped: expect_compile_skipped,
         expected_octet: expected_octet
       )
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -184,7 +184,7 @@ fn field_access_family_cached_cold_then_warm(
   tree: v2.compiler.inferred_tree.InferredTree,
   expected_octet: Int
 ) -> Bool {
-  match emit(tree: tree, target: rust_field_access_target_model_staging()) {
+  match v2.compiler.emit.emit(tree: tree, target: rust_field_access_target_model_staging()) {
     Accepted { value: source, diagnostics: _ } =>
       field_access_family_cached_run_with_source(
         workspace: workspace,
@@ -200,7 +200,7 @@ fn field_access_family_cached_cold_then_warm(
           expect_compile_skipped: true,
           expected_octet: expected_octet
         )
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -210,9 +210,9 @@ test fn emit_on_demand_field_access_closure_keys_differ_for_distinct_trees_holds
       match field_access_family_alt_tree() {
         Accepted { value: alt, diagnostics: _ } =>
           (field_access_family_native_key_for(tree: primary) == field_access_family_native_key_for(tree: alt)) == false
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -259,9 +259,9 @@ test fn emit_on_demand_field_access_native_one_build_holds() -> Bool {
               expect_compile_skipped: false,
               expected_octet: 9
             )
-          Rejected { diagnostics: _ } => false
+          v2.std.diagnostic.Rejected { diagnostics: _ } => false
         }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -282,7 +282,7 @@ test fn emit_on_demand_field_access_materialize_share_on_hit_holds() -> Bool {
         },
         did_not_fit: (a, b) => false
       )
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

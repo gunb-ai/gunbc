@@ -16,7 +16,7 @@ fn op_grounding_test_lex() -> v2.std.compilers.lexing.LexRules {
   }
 }
 
-fn op_grounding_test_bundle() -> Node {
+fn op_grounding_test_bundle() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [],
@@ -36,14 +36,14 @@ fn op_grounding_test_model() -> v2.std.compilers.target_model.TargetModel {
   }
 }
 
-fn op_grounding_realization_row(operation: v2.std.compilers.target_model.CanonicalOperation, token: v2.std.node.Symbol) -> Node {
+fn op_grounding_realization_row(operation: v2.std.compilers.target_model.CanonicalOperation, token: v2.std.node.Symbol) -> v2.std.node.Node {
   target_operator_realization_node(
     operation: operation,
     shape: v2.std.compilers.target_model.InfixToken { token: token }
   )
 }
 
-fn op_grounding_catalog() -> Node {
+fn op_grounding_catalog() -> v2.std.node.Node {
   target_operator_realizations_catalog_node(
     rows: [
       op_grounding_realization_row(operation: canonical_operation_op_sub(), token: ^op_grounding_token_minus),
@@ -53,7 +53,7 @@ fn op_grounding_catalog() -> Node {
   )
 }
 
-fn op_grounding_catalog_sub_mistoken() -> Node {
+fn op_grounding_catalog_sub_mistoken() -> v2.std.node.Node {
   target_operator_realizations_catalog_node(
     rows: [
       op_grounding_realization_row(operation: canonical_operation_op_sub(), token: ^op_grounding_token_plus)
@@ -61,7 +61,7 @@ fn op_grounding_catalog_sub_mistoken() -> Node {
   )
 }
 
-fn op_grounding_catalog_sub_only() -> Node {
+fn op_grounding_catalog_sub_only() -> v2.std.node.Node {
   target_operator_realizations_catalog_node(
     rows: [
       op_grounding_realization_row(operation: canonical_operation_op_sub(), token: ^op_grounding_token_minus)
@@ -79,7 +79,7 @@ fn op_grounding_binary_expr(operation: v2.std.compilers.target_model.CanonicalOp
   )
 }
 
-fn op_grounding_emit(operation: v2.std.compilers.target_model.CanonicalOperation, catalog: Node) -> v2.std.diagnostic.Outcome<String> {
+fn op_grounding_emit(operation: v2.std.compilers.target_model.CanonicalOperation, catalog: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
   bind_outcome(
     o: target_value_expression_primitive_apply_to_concrete_tokens(
       expr: op_grounding_binary_expr(operation: operation),
@@ -100,49 +100,49 @@ fn op_grounding_emit(operation: v2.std.compilers.target_model.CanonicalOperation
   )
 }
 
-test fn op_grounding_emits_subtraction() -> Bool {
+test fn op_grounding_emits_subtraction() -> v2.std.logic.Bool {
   match op_grounding_emit(operation: canonical_operation_op_sub(), catalog: op_grounding_catalog()) {
     Accepted { value: s, diagnostics: _ } => s == "x - y"
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn op_grounding_emits_less_than() -> Bool {
+test fn op_grounding_emits_less_than() -> v2.std.logic.Bool {
   match op_grounding_emit(operation: canonical_operation_op_lt(), catalog: op_grounding_catalog()) {
     Accepted { value: s, diagnostics: _ } => s == "x < y"
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn op_grounding_emits_equality() -> Bool {
+test fn op_grounding_emits_equality() -> v2.std.logic.Bool {
   match op_grounding_emit(operation: canonical_operation_op_eq(), catalog: op_grounding_catalog()) {
     Accepted { value: s, diagnostics: _ } => s == "x == y"
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn op_grounding_wrong_token_discriminates() -> Bool {
+test fn op_grounding_wrong_token_discriminates() -> v2.std.logic.Bool {
   match op_grounding_emit(operation: canonical_operation_op_sub(), catalog: op_grounding_catalog_sub_mistoken()) {
     Accepted { value: s, diagnostics: _ } => (s == "x + y") && (s != "x - y")
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn op_grounding_catalog_miss_rejects() -> Bool {
+test fn op_grounding_catalog_miss_rejects() -> v2.std.logic.Bool {
   match op_grounding_emit(operation: canonical_operation_op_lt(), catalog: op_grounding_catalog_sub_only()) {
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-fn op_grounding_wire_roundtrips(operation: v2.std.compilers.target_model.CanonicalOperation) -> Bool {
+fn op_grounding_wire_roundtrips(operation: v2.std.compilers.target_model.CanonicalOperation) -> v2.std.logic.Bool {
   canonical_operation_wire_matches_operation(
     wire: target_model_canonical_operation_wire_node(operation: operation),
     operation: operation
   )
 }
 
-test fn op_grounding_wire_roundtrips_all() -> Bool {
+test fn op_grounding_wire_roundtrips_all() -> v2.std.logic.Bool {
   op_grounding_wire_roundtrips(operation: canonical_operation_op_add()) &&
     op_grounding_wire_roundtrips(operation: canonical_operation_op_sub()) &&
     op_grounding_wire_roundtrips(operation: canonical_operation_op_mul()) &&
@@ -159,36 +159,36 @@ test fn op_grounding_wire_roundtrips_all() -> Bool {
     op_grounding_wire_roundtrips(operation: canonical_operation_op_ne())
 }
 
-fn op_grounding_wire_rejects(produced: v2.std.compilers.target_model.CanonicalOperation, probed: v2.std.compilers.target_model.CanonicalOperation) -> Bool {
+fn op_grounding_wire_rejects(produced: v2.std.compilers.target_model.CanonicalOperation, probed: v2.std.compilers.target_model.CanonicalOperation) -> v2.std.logic.Bool {
   canonical_operation_wire_matches_operation(
     wire: target_model_canonical_operation_wire_node(operation: produced),
     operation: probed
   )
 }
 
-test fn op_grounding_wire_discriminates() -> Bool {
+test fn op_grounding_wire_discriminates() -> v2.std.logic.Bool {
   !op_grounding_wire_rejects(produced: canonical_operation_op_sub(), probed: canonical_operation_op_add()) &&
     !op_grounding_wire_rejects(produced: canonical_operation_op_lt(), probed: canonical_operation_op_gt()) &&
     !op_grounding_wire_rejects(produced: canonical_operation_op_le(), probed: canonical_operation_op_ge()) &&
     !op_grounding_wire_rejects(produced: canonical_operation_op_eq(), probed: canonical_operation_op_ne())
 }
 
-fn op_grounding_ordering_eq(a: std.algebra.Ordering, b: std.algebra.Ordering) -> Bool {
+fn op_grounding_ordering_eq(a: std.algebra.Ordering, b: std.algebra.Ordering) -> v2.std.logic.Bool {
   discriminant(v: a) == discriminant(v: b)
 }
 
-fn op_grounding_ordering_list_eq(left: List<std.algebra.Ordering>, right: List<std.algebra.Ordering>) -> Bool {
+fn op_grounding_ordering_list_eq(left: List<std.algebra.Ordering>, right: List<std.algebra.Ordering>) -> v2.std.logic.Bool {
   zip_eq(a: left, b: right, eq: fn(x, y) { op_grounding_ordering_eq(a: x, b: y) })
 }
 
-test fn op_grounding_ordering_predicate_accepts_units() -> Bool {
+test fn op_grounding_ordering_predicate_accepts_units() -> v2.std.logic.Bool {
   op_grounding_ordering_list_eq(left: ordering_predicate_accepts(predicate: IsLess), right: [Less]) &&
     op_grounding_ordering_list_eq(left: ordering_predicate_accepts(predicate: IsLessOrEqual), right: [Less, Equal]) &&
     op_grounding_ordering_list_eq(left: ordering_predicate_accepts(predicate: IsGreater), right: [Greater]) &&
     op_grounding_ordering_list_eq(left: ordering_predicate_accepts(predicate: IsGreaterOrEqual), right: [Equal, Greater])
 }
 
-test fn op_grounding_equality_predicate_accepts_units() -> Bool {
+test fn op_grounding_equality_predicate_accepts_units() -> v2.std.logic.Bool {
   (equality_predicate_accepts(predicate: IsEqual) == true) &&
     (equality_predicate_accepts(predicate: IsNotEqual) == false)
 }

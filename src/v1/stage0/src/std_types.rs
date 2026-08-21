@@ -11,14 +11,15 @@ pub use crate::std_algebra::{algebra_type_param_names, kernel_algebra_profile};
 pub use crate::std_algebra::{FreeMonoid, PartialFunction, PointwisePower};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
+pub fn kernel_type_set() -> HashMap<String, bool> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, bool>> = {
+        static CACHED: HashMap<String, bool> = {
             let mut __m = HashMap::new();
             __m.insert("String".to_string(), true);
             __m.insert("Int".to_string(), true);
@@ -31,7 +32,7 @@ pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+    CACHED.with(|c: &HashMap<String, bool>| c.clone())
 }
 
 pub fn is_kernel_type(name: String) -> bool {
@@ -41,9 +42,9 @@ pub fn is_kernel_type(name: String) -> bool {
     }
 }
 
-pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
+pub fn container_type_arity() -> HashMap<String, i64> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, i64>> = {
+        static CACHED: HashMap<String, i64> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), 1);
             __m.insert("std.types.List".to_string(), 1);
@@ -56,7 +57,7 @@ pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, i64>>| c.clone())
+    CACHED.with(|c: &HashMap<String, i64>| c.clone())
 }
 
 pub fn is_container_type(name: String) -> bool {
@@ -122,25 +123,25 @@ pub fn container_param_name(kind_name: String, index: i64) -> Option<String> {
     }
 }
 
-pub fn ordered_element_collections() -> Rc<HashMap<String, bool>> {
+pub fn ordered_element_collections() -> HashMap<String, bool> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, bool>> = {
+        static CACHED: HashMap<String, bool> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), true);
             __m.insert("std.types.List".to_string(), true);
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+    CACHED.with(|c: &HashMap<String, bool>| c.clone())
 }
 
 pub fn is_ordered_element_collection(name: String) -> bool {
     v1_rt::map_contains_key(&ordered_element_collections(), name.clone())
 }
 
-pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
+pub fn container_template_algebra_rows() -> HashMap<String, String> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
+        static CACHED: HashMap<String, String> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), "FreeMonoid".to_string());
             __m.insert("std.types.List".to_string(), "FreeMonoid".to_string());
@@ -152,26 +153,26 @@ pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
             __m.insert("std.types.Map".to_string(), "PartialFunction".to_string());
             __m.insert("map".to_string(), "PartialFunction".to_string());
             __m.insert("FreeMonoid".to_string(), "FreeMonoid".to_string());
-            __m.insert("std.algebra.FreeMonoid".to_string(), "FreeMonoid".to_string());
             __m.insert("free_monoid".to_string(), "FreeMonoid".to_string());
             __m.insert("BooleanAlgebra".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("std.algebra.BooleanAlgebra".to_string(), "BooleanAlgebra".to_string());
             __m.insert("boolean_algebra".to_string(), "BooleanAlgebra".to_string());
             __m.insert("PartialFunction".to_string(), "PartialFunction".to_string());
-            __m.insert("std.algebra.PartialFunction".to_string(), "PartialFunction".to_string());
             __m.insert("partial_function".to_string(), "PartialFunction".to_string());
             __m.insert("PointwisePower".to_string(), "PointwisePower".to_string());
-            __m.insert("std.algebra.PointwisePower".to_string(), "PointwisePower".to_string());
             __m.insert("pointwise_power".to_string(), "PointwisePower".to_string());
+            __m.insert("std.algebra.FreeMonoid".to_string(), "FreeMonoid".to_string());
+            __m.insert("std.algebra.BooleanAlgebra".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("std.algebra.PointwisePower".to_string(), "PointwisePower".to_string());
+            __m.insert("std.algebra.PartialFunction".to_string(), "PartialFunction".to_string());
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
+    CACHED.with(|c: &HashMap<String, String>| c.clone())
 }
 
-pub fn container_template_alias_rows() -> Rc<HashMap<String, String>> {
+pub fn container_template_alias_rows() -> HashMap<String, String> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
+        static CACHED: HashMap<String, String> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), "FreeMonoid".to_string());
             __m.insert("std.types.List".to_string(), "FreeMonoid".to_string());
@@ -185,7 +186,7 @@ pub fn container_template_alias_rows() -> Rc<HashMap<String, String>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
+    CACHED.with(|c: &HashMap<String, String>| c.clone())
 }
 
 pub fn container_template_algebra(name: String) -> Option<String> {
@@ -208,8 +209,8 @@ pub fn canonical_container_names() -> Rc<Vec<String>> {
         "Set".to_string(),
         "std.types.Set".to_string(),
         "Witness".to_string(),
-        "v2.std.witness.Witness".to_string(),
         "std.algebra.FreeMonoid".to_string(),
+        "v2.std.witness.Witness".to_string(),
         "std.algebra.BooleanAlgebra".to_string(),
         "std.algebra.PartialFunction".to_string(),
     ])
@@ -249,38 +250,65 @@ pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
     items.clone().iter().fold(0, |acc: i64, _: _| (acc + 1))
 }
 
-pub type CommitSha = String;
+pub type CommitSha = crate::v2_std_text::String;
 
-pub type Sha256 = String;
+pub fn commit_sha_text_holds_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The located syntax wall for an EXTERNALLY SUPPLIED Git head: lowercase 40-hex. It lives here, beside CommitSha, because that is the one authority every Git-head consumer already names — it was previously homed in std.realization_schedule as scoped_witness_exact_head_text_holds, where a receipt family that has since been deleted happened to be its first caller, and a second consumer (v2.compiler.self_host.frontier_probe_survey) was already importing it across that seam. CommitSha is presently an unvalidated String alias, so this predicate is a validating CHECK a caller must remember to run, not a construction wall. Dissolve-on: std.types.CommitSha gains one validating constructor; callers reach the constructor, the invalid state stops being writable, and this predicate deletes.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn commit_sha_text_holds(head: String) -> bool {
+    ((v1_rt::string_length(&head) == 40) && {
+        let mut __all = true;
+        for cp in Rc::new(head.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+            .iter()
+            .cloned()
+        {
+            if !(((cp.clone() >= 48) && (cp.clone() <= 57))
+                || ((cp.clone() >= 97) && (cp.clone() <= 102)))
+            {
+                __all = false;
+                break;
+            }
+        }
+        __all
+    })
+}
+
+pub type Sha256 = crate::v2_std_text::String;
 
 pub type RetryCount = i64;
 
 pub type HttpStatus = i64;
 
-pub type Email = String;
+pub type Email = crate::v2_std_text::String;
 
 pub type Port = i64;
 
-pub type GistId = String;
+pub type GistId = crate::v2_std_text::String;
 
 pub type Secret = String;
 
 pub type SecretValue = Secret;
 
-pub type SemVer = String;
+pub type SemVer = crate::v2_std_text::String;
 
-pub type NonEmptyStr = String;
+pub type NonEmptyStr = crate::v2_std_text::String;
 
-pub type LanguageId = String;
+pub type LanguageId = crate::v2_std_text::String;
 
-pub type SecretName = String;
+pub type SecretName = crate::v2_std_text::String;
 
-pub type PathSegment = String;
+pub type PathSegment = crate::v2_std_text::String;
 
 pub fn path_segment_safety_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "WHAT MAKES A STRING SAFE TO USE AS ONE PATH SEGMENT — the law, held once, so every branded id that becomes a directory name tests the same thing. The brand alone never carried it: a branded NonEmptyStr accepts \"..\", \"a/b\", and an embedded newline, so a value that typechecked as a segment could still escape its parent directory, alias a sibling, or split a line-oriented file written under that name. The refused set is exactly the characters that change what a concatenated path MEANS — `/` and `\\` introduce a level, `.` and `..` navigate, CR and LF terminate a record in every line-oriented format this repo writes, NUL terminates the string at the syscall boundary. Callers REFUSE on false rather than sanitizing, because a sanitized segment silently denotes something other than what the caller named (§5: a failure arm must refuse, never widen). Percent- or hex-encoding is the reversible alternative and is deliberately not offered until a caller needs a segment it cannot rename.\n\nThis is a PREDICATE, not a constructor, and that is a modeling choice rather than a limitation worked around. A generic `path_segment(raw) -> PathSegment?` would put the branding cast in this module, and each caller would then re-cast the generic segment into its own brand anyway — two casts and two authorities for one law. Holding the law here and letting each branded id (gunbc.merge_admission.walk_attempt_id is the first) construct itself through it keeps one authority for what is hostile and one constructor per brand, which is what §3 asks for. A generic constructor earns its place when a second caller wants a bare PathSegment rather than a brand of its own; none does today.".to_string()
+            "WHAT MAKES A STRING SAFE TO USE AS ONE PATH SEGMENT — the law, held once, so every branded id that becomes a directory name tests the same thing. The brand alone never carried it: a branded NonEmptyStr accepts \"..\", \"a/b\", and an embedded newline, so a value that typechecked as a segment could still escape its parent directory, alias a sibling, or split a line-oriented file written under that name. The refused set is exactly the characters that change what a concatenated path MEANS — `/` and `\\` introduce a level, `.` and `..` navigate, CR and LF terminate a record in every line-oriented format this repo writes, NUL terminates the string at the syscall boundary. Callers REFUSE on false rather than sanitizing, because a sanitized segment silently denotes something other than what the caller named (§5: a failure arm must refuse, never widen). Percent- or hex-encoding is the reversible alternative and is deliberately not offered until a caller needs a segment it cannot rename.\n\nThis is a PREDICATE, not a constructor, and that is a modeling choice rather than a limitation worked around. A generic `path_segment(raw) -> std.types.PathSegment?` would put the branding cast in this module, and each caller would then re-cast the generic segment into its own brand anyway — two casts and two authorities for one law. Holding the law here and letting each branded id (gunbc.merge_admission_subject.walk_attempt_id is the first) construct itself through it keeps one authority for what is hostile and one constructor per brand, which is what §3 asks for. A generic constructor earns its place when a second caller wants a bare PathSegment rather than a brand of its own; none does today.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -296,7 +324,7 @@ pub fn path_segment_is_safe(raw: String) -> bool {
         || v1_rt::string_contains(&raw, "\x00".to_string()))
 }
 
-pub type GlobSegment = String;
+pub type GlobSegment = crate::v2_std_text::String;
 
 pub fn rendered_terminal_text_note() -> String {
     thread_local! {
@@ -307,7 +335,7 @@ pub fn rendered_terminal_text_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub type RenderedTerminalText = String;
+pub type RenderedTerminalText = crate::v2_std_text::String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FilePathParts {
@@ -319,7 +347,7 @@ pub struct GlobPattern {
     pub segments: Rc<Vec<GlobSegment>>,
 }
 
-pub type FilePath = String;
+pub type FilePath = crate::v2_std_text::String;
 
 pub fn file_path_sentinel_scaffold_note() -> String {
     thread_local! {
@@ -337,7 +365,7 @@ pub struct SourceSpan {
     pub end: i64,
 }
 
-pub type Timestamp = String;
+pub type Timestamp = crate::v2_std_text::String;
 
 pub type EpochSecs = i64;
 
@@ -349,33 +377,33 @@ pub type Milliseconds = i64;
 
 pub type Seconds = i64;
 
-pub type LogicalTime = String;
+pub type LogicalTime = crate::v2_std_text::String;
 
-pub type IntentId = String;
+pub type IntentId = crate::v2_std_text::String;
 
-pub type IssueId = String;
+pub type IssueId = crate::v2_std_text::String;
 
-pub type RunKey = String;
+pub type RunKey = crate::v2_std_text::String;
 
-pub type ArtifactId = String;
+pub type ArtifactId = crate::v2_std_text::String;
 
-pub type LeaseToken = String;
+pub type LeaseToken = crate::v2_std_text::String;
 
-pub type WorkerId = String;
+pub type WorkerId = crate::v2_std_text::String;
 
-pub type CommentId = String;
+pub type CommentId = crate::v2_std_text::String;
 
-pub type SignalKey = String;
+pub type SignalKey = crate::v2_std_text::String;
 
-pub type WorkflowProducerId = String;
+pub type WorkflowProducerId = crate::v2_std_text::String;
 
-pub type WorkflowObserverId = String;
+pub type WorkflowObserverId = crate::v2_std_text::String;
 
-pub type WorkflowProverId = String;
+pub type WorkflowProverId = crate::v2_std_text::String;
 
-pub type WorkflowRunId = String;
+pub type WorkflowRunId = crate::v2_std_text::String;
 
-pub type GitRef = String;
+pub type GitRef = crate::v2_std_text::String;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -410,11 +438,11 @@ pub enum FermiDepth {
     Xl,
 }
 
-pub type TextFilePath = String;
+pub type TextFilePath = crate::v2_std_text::String;
 
-pub type BinaryFilePath = String;
+pub type BinaryFilePath = crate::v2_std_text::String;
 
-pub type MimeType = String;
+pub type MimeType = crate::v2_std_text::String;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -456,11 +484,11 @@ pub struct Credential {
     pub expires_in: Option<i64>,
 }
 
-pub type FilesystemHandle = String;
+pub type FilesystemHandle = crate::v2_std_text::String;
 
 pub type NetworkHandle = ();
 
-pub type ToolHandle = String;
+pub type ToolHandle = crate::v2_std_text::String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TransportRequest {

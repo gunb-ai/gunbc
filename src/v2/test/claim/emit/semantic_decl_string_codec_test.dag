@@ -1,13 +1,13 @@
 module v2.test.emit.semantic_decl_string_codec
 
 
-fn round_trip_ok(s: String) -> Bool {
+fn round_trip_ok(s: String) -> v2.std.logic.Bool {
   match semantic_decl_string_from_bundle_node(bundle: semantic_decl_string_to_bundle_node(s: s)) {
     Accepted { value: decoded, diagnostics: _ } => decoded == s
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn derive_copy_spelling_round_trips() -> Bool {
+test fn derive_copy_spelling_round_trips() -> v2.std.logic.Bool {
   round_trip_ok(s: rust_decl_derive_lex_spelling(text: extdeps.languages.rust.emit.rust_enum_derives_copy))
 }

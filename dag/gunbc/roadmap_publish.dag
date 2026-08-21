@@ -500,7 +500,7 @@ fn publication_receipt_outcome_json(outcome: PublicationReceiptOutcome) -> extde
         json_kv(key: "kind", value: json_string(s: "publication-bound")),
         json_kv(key: "pr_number", value: json_int(n: pr_number)),
         json_kv(key: "url", value: json_string(s: url as String)),
-        json_kv(key: "draft", value: json_bool(b: draft)),
+        json_kv(key: "draft", value: extdeps.languages.json.emit.json_bool(b: draft)),
       ])
     ReceiptHeadDiverged { pr_number, pr_head, url } =>
       json_object(members: [
@@ -553,7 +553,7 @@ fn publication_repository_json(repo: extdeps.github.github.Repository) -> extdep
     json_kv(key: "owner", value: json_string(s: repo.owner)),
     json_kv(key: "name", value: json_string(s: repo.name)),
     json_kv(key: "full_name", value: json_string(s: repo.full_name)),
-    json_kv(key: "private", value: json_bool(b: repo.private)),
+    json_kv(key: "private", value: extdeps.languages.json.emit.json_bool(b: repo.private)),
     json_kv(key: "default_branch", value: json_string(s: repo.default_branch)),
   ])
 }
@@ -604,7 +604,7 @@ fn publication_receipt_member(doc: extdeps.languages.json.emit.JsonValue, key: S
       }
     JsonMemberFound { value: v } =>
       match v {
-        JsonString { value: s } => ReceiptMemberRead { value: s }
+        extdeps.languages.json.emit.JsonString { value: s } => ReceiptMemberRead { value: s }
         _ =>
           ReceiptMemberUnreadable {
             reason: join(["publication receipt ", key, " member is not a string"], ""),
@@ -624,7 +624,7 @@ fn publication_receipt_int_member(doc: extdeps.languages.json.emit.JsonValue, ke
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: v } =>
       match v {
-        JsonNumber { lexeme: lx } => parse_int(s: lx as String)
+        extdeps.languages.json.emit.JsonNumber { lexeme: lx } => parse_int(s: lx as String)
         _ => none
       }
     _ => none
@@ -635,7 +635,7 @@ fn publication_receipt_bool_member(doc: extdeps.languages.json.emit.JsonValue, k
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: v } =>
       match v {
-        JsonBool { value: b } => Present { value: b }
+        extdeps.languages.json.emit.JsonBool { value: b } => Present { value: b }
         _ => none
       }
     _ => none
@@ -650,7 +650,7 @@ fn publication_receipt_int_array_member(doc: extdeps.languages.json.emit.JsonVal
       match v {
         JsonArray { elements } => {
           let parsed = map(elements, e => match e {
-            JsonNumber { lexeme: lx } => parse_int(s: lx as String)
+            extdeps.languages.json.emit.JsonNumber { lexeme: lx } => parse_int(s: lx as String)
             _ => none
           })
           let readable = filter(parsed, n => match n {

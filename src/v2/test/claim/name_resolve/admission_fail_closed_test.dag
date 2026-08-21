@@ -1,12 +1,12 @@
 module v2.test.name_resolve.admission_fail_closed
 
 
-test fn resolve_module_not_found_preserves_missing_module_identity() -> Bool {
+test fn resolve_module_not_found_preserves_missing_module_identity() -> v2.std.logic.Bool {
   let missing = fc_qn(seg: ^fc_missing_seg)
   fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
   match subject_module_root_for_name(roots: roots, name: missing) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       match d.head.at {
         Textual { file: module_file, extent: _ } =>
           (d.head.reason == ^resolve_module_not_found)
@@ -17,7 +17,7 @@ test fn resolve_module_not_found_preserves_missing_module_identity() -> Bool {
   })
 }
 
-fn fc_qn_node(seg: v2.std.node.Symbol) -> Node {
+fn fc_qn_node(seg: v2.std.node.Symbol) -> v2.std.node.Node {
   fold_list_node(
     xs: std.algebra.Cons { head: seg, tail: std.algebra.Empty },
     item_node: fn(sym) {
@@ -28,7 +28,7 @@ fn fc_qn_node(seg: v2.std.node.Symbol) -> Node {
   )
 }
 
-fn fc_module_root_export(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol) -> Node {
+fn fc_module_root_export(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -41,7 +41,7 @@ fn fc_module_root_export(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol
         target: fc_qn_node(seg: seg)
       ),
       v2.std.node.Edge {
-        label: Named { name: export_sym },
+        label: v2.std.node.Named { name: export_sym },
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode {
             connective: v2.std.node.Atom { identity: ^dag_c3_surface_sugar_service }
@@ -55,7 +55,7 @@ fn fc_module_root_export(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol
 }
 }
 
-fn fc_module_root(seg: v2.std.node.Symbol) -> Node {
+fn fc_module_root(seg: v2.std.node.Symbol) -> v2.std.node.Node {
   fc_module_root_export(seg: seg, export_sym: ^fc_export_sym)
 }
 
@@ -67,15 +67,15 @@ data fc_admitted_fixture_note: String = "These fixtures pass module roots to val
 
 fn fc_with_roots(
   o: v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>>,
-  f: fn(FreeMonoid<NormalizedTree>) -> Bool
-) -> Bool {
+  f: fn(FreeMonoid<NormalizedTree>) -> v2.std.logic.Bool
+) -> v2.std.logic.Bool {
   match o {
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: roots, diagnostics: _ } => f(roots)
   }
 }
 
-fn fc_admitted(n: Node) -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
+fn fc_admitted(n: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   admit_normalized_tree(root: n, diagnostics: v2.std.diagnostic.None)
 }
 
@@ -93,7 +93,7 @@ fn fc_single_found_root() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.no
   })
 }
 
-fn fc_malformed_subject_root() -> Node {
+fn fc_malformed_subject_root() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -132,7 +132,7 @@ fn fc_initial_admission_state() -> v2.compiler.name_resolve.AdmissionState {
   v2.compiler.name_resolve.AdmissionAccepted { bindings: empty_map(), origins: empty_map() }
 }
 
-test fn admit_import_missing_module_is_rejected() -> Bool {
+test fn admit_import_missing_module_is_rejected() -> v2.std.logic.Bool {
   fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
   match admit_import_entry(
     roots: roots,
@@ -148,7 +148,7 @@ test fn admit_import_missing_module_is_rejected() -> Bool {
   })
 }
 
-test fn resolve_duplicate_module_roots_is_rejected() -> Bool {
+test fn resolve_duplicate_module_roots_is_rejected() -> v2.std.logic.Bool {
   fc_with_roots(o: fc_duplicate_roots(), f: fn(roots) {
   match resolve_with_admission(
     lm: dag_language_model_surface_empty_prelude(),
@@ -161,12 +161,12 @@ test fn resolve_duplicate_module_roots_is_rejected() -> Bool {
     }
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
   })
 }
 
-test fn resolve_subject_name_not_in_roots_is_rejected() -> Bool {
+test fn resolve_subject_name_not_in_roots_is_rejected() -> v2.std.logic.Bool {
   fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
   match resolve_with_admission(
     lm: dag_language_model_surface_empty_prelude(),
@@ -179,40 +179,40 @@ test fn resolve_subject_name_not_in_roots_is_rejected() -> Bool {
     }
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
   })
 }
 
-test fn validate_module_roots_threads_accepted_projection_diagnostics() -> Bool {
+test fn validate_module_roots_threads_accepted_projection_diagnostics() -> v2.std.logic.Bool {
   fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
   match validate_module_roots(roots: roots) {
     Accepted { value: _, diagnostics: d } =>
       diagnostics_eq(a: d, b: v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
   })
 }
 
-test fn validate_module_roots_merges_pending_before_duplicate_reject() -> Bool {
+test fn validate_module_roots_merges_pending_before_duplicate_reject() -> v2.std.logic.Bool {
   fc_with_roots(o: fc_duplicate_roots(), f: fn(roots) {
   match validate_module_roots(roots: roots) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
   })
 }
 
-test fn validate_module_roots_malformed_root_is_rejected() -> Bool {
+test fn validate_module_roots_malformed_root_is_rejected() -> v2.std.logic.Bool {
   fc_with_roots(o: fc_malformed_subject_roots(), f: fn(roots) {
   match validate_module_roots(roots: roots) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
   })
 }
 
-test fn resolve_malformed_subject_root_is_rejected() -> Bool {
+test fn resolve_malformed_subject_root_is_rejected() -> v2.std.logic.Bool {
   fc_with_roots(o: fc_malformed_subject_roots(), f: fn(roots) {
   match resolve_with_admission(
     lm: dag_language_model_surface_empty_prelude(),
@@ -225,12 +225,12 @@ test fn resolve_malformed_subject_root_is_rejected() -> Bool {
     }
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
   })
 }
 
-fn fc_dual_import_subject_root(seg: v2.std.node.Symbol, use_sym: v2.std.node.Symbol, imported_decl: v2.std.node.Symbol) -> Node {
+fn fc_dual_import_subject_root(seg: v2.std.node.Symbol, use_sym: v2.std.node.Symbol, imported_decl: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -243,7 +243,7 @@ fn fc_dual_import_subject_root(seg: v2.std.node.Symbol, use_sym: v2.std.node.Sym
         target: fc_qn_node(seg: seg)
       ),
       v2.std.node.Edge {
-        label: Named { name: use_sym },
+        label: v2.std.node.Named { name: use_sym },
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: imported_decl } },
           children: [],
@@ -269,7 +269,7 @@ fn fc_dual_import_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.no
   })
 }
 
-test fn resolve_dual_imports_do_not_collide_on_header_metadata() -> Bool {
+test fn resolve_dual_imports_do_not_collide_on_header_metadata() -> v2.std.logic.Bool {
   fc_with_roots(o: fc_dual_import_roots(), f: fn(roots) {
   match resolve_with_admission_policy(
     lm: dag_language_model_surface_empty_prelude(),
@@ -291,12 +291,12 @@ test fn resolve_dual_imports_do_not_collide_on_header_metadata() -> Bool {
     policy: ImportScoped
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
   })
 }
 
-test fn resolve_with_admission_threads_validate_diagnostics_on_accept() -> Bool {
+test fn resolve_with_admission_threads_validate_diagnostics_on_accept() -> v2.std.logic.Bool {
   fc_with_roots(o: fc_dual_import_roots(), f: fn(roots) {
   match validate_module_roots(roots: roots) {
     Accepted { value: _, diagnostics: validate_diag } =>
@@ -321,9 +321,9 @@ test fn resolve_with_admission_threads_validate_diagnostics_on_accept() -> Bool 
       ) {
         Accepted { value: _, diagnostics: resolve_diag } =>
           diagnostics_eq(a: resolve_diag, b: validate_diag)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
   })
 }

@@ -1,25 +1,25 @@
 module v2.test.claim.module_resolution_plan_witness
 
 
-data module_fixture_a_node: Node = v2.std.node.Node {
+data module_fixture_a_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^module_fixture_a } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data module_fixture_b_node: Node = v2.std.node.Node {
+data module_fixture_b_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^module_fixture_b } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data module_fixture_c_node: Node = v2.std.node.Node {
+data module_fixture_c_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^module_fixture_c } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data module_fixture_d_node: Node = v2.std.node.Node {
+data module_fixture_d_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^module_fixture_d } },
   children: [],
   occurrence_id: SyntheticOccurrence
@@ -47,7 +47,7 @@ data module_fixture_bindings: List<v2.workflow.module_resolution_plan.ModuleNode
   v2.workflow.module_resolution_plan.ModuleNodeBinding { module: "fixture.d", node: module_fixture_d_node }
 ]
 
-data module_fixture_nodes: List<Node> = [
+data module_fixture_nodes: List<v2.std.node.Node> = [
   module_fixture_a_node,
   module_fixture_b_node,
   module_fixture_c_node,

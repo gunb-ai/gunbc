@@ -14,7 +14,7 @@ fn a_subject() -> std.observation.ObservationSubject {
 fn an_event() -> std.observation.ObservationEvent {
   std.observation.ObservationEvent {
     subject: a_subject(),
-    transition: std.observation.Concluded { outcome: Done },
+    transition: std.observation.Concluded { outcome: std.observation.Done },
     durations: observation_durations_wall(elapsed: nanosecond(count: 1000)),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }

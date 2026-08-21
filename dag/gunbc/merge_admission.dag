@@ -543,14 +543,14 @@ data merge_admission_enforcement_policy: AdmissionPolicy = KeyedReceipt
 
 fn check_conclusion_admits_merge_admission_floor(c: extdeps.github.checks.CheckConclusion) -> Bool {
   match c {
-    Success => true
-    Skipped => false
-    ActionRequired => false
-    Cancelled => false
-    Failure => false
-    Neutral => false
+    extdeps.github.checks.Success => true
+    extdeps.github.checks.Skipped => false
+    extdeps.github.checks.ActionRequired => false
+    extdeps.github.checks.Cancelled => false
+    extdeps.github.checks.Failure => false
+    extdeps.github.checks.Neutral => false
     extdeps.github.checks.Stale => false
-    TimedOut => false
+    extdeps.github.checks.TimedOut => false
   }
 }
 

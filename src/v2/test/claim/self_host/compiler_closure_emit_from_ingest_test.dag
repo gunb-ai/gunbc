@@ -46,11 +46,11 @@ fn gap4_ingest_probe_step(
     Gap4IngestProbeSourceReadFailed => state
     Gap4IngestProbePending =>
       match v2.compiler.tokenize.tokenize(text: read.source.carried, file: read.compilation_unit, rules: lm.lex) {
-        Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           Gap4IngestProbeFound {
             path: read.artifact.file_path,
             reason: d.head.reason,
-            stage: ^tokenize,
+            stage: ^v2.compiler.tokenize.tokenize,
             at: d.head.at,
             remain_class: v2.std.optional.Absent,
             remain_lexeme: v2.std.optional.Absent,
@@ -59,7 +59,7 @@ fn gap4_ingest_probe_step(
           }
         Accepted { value: ts, diagnostics: _ } =>
           match v2.compiler.parse.parse_module(tokens: ts, grammar: lm.grammar) {
-            Rejected { diagnostics: d } =>
+            v2.std.diagnostic.Rejected { diagnostics: d } =>
               gap4_probe_found_from_parse_reject(
                 path: read.artifact.file_path,
                 reason: d.head.reason,
@@ -67,7 +67,7 @@ fn gap4_ingest_probe_step(
               )
             Accepted { value: artifact, diagnostics: _ } =>
               match v2.compiler.normalize.normalize(parse_tree: artifact.tree) {
-                Rejected { diagnostics: d } =>
+                v2.std.diagnostic.Rejected { diagnostics: d } =>
                   Gap4IngestProbeFound {
                     path: read.artifact.file_path,
                     reason: d.head.reason,
@@ -99,11 +99,11 @@ fn gap4_probe_first_ingest_reject() -> Gap4IngestProbeState {
   }
 }
 
-fn list_contains_str(xs: List<String>, target: String) -> Bool {
+fn list_contains_str(xs: List<String>, target: String) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || (x == target) })
 }
 
-test fn self_host_closure_witness_layer_roots_reexports_authority_holds() -> Bool {
+test fn self_host_closure_witness_layer_roots_reexports_authority_holds() -> v2.std.logic.Bool {
   (v2.std.algebra.length(xs: v2.compiler.self_host.closure_witness_layer_roots.self_host_closure_witness_layer_roots) == v2.std.algebra.length(xs: gunbc.ci_layer_roots.witness_layer_roots))
     && v2.std.algebra.fold_list(
       xs: v2.compiler.self_host.closure_witness_layer_roots.self_host_closure_witness_layer_roots,
@@ -116,7 +116,7 @@ test fn self_host_closure_witness_layer_roots_reexports_authority_holds() -> Boo
 
 data closure_receipt_describes_carrier_note: String = "The gate's live assertion after capless closure-ref transport landed. produced_row_count must equal the closure-ref row count the manifest actually carries, and consumers read through those refs with hash verification at consumption time. Inline Lossless source text is no longer emitted; host_source_root_ingest stays Empty while host_source_root_closure_refs carries the full closure. Past manifest_inline_list_max the inline carrier reports SourceRootManifestElided (typed read_count/cap) while the ref population stays complete — overflow must never render as zero rows and an empty ingest."
 
-test fn compiler_closure_ingest_receipt_describes_carrier_holds() -> Bool {
+test fn compiler_closure_ingest_receipt_describes_carrier_holds() -> v2.std.logic.Bool {
   v2.compiler.source_authority.source_root_overflow_never_empty_population_holds(
     receipt: v2.test.workflow.host_source_root_ingest_manifest.host_source_root_ingest_coverage_receipt,
     refs: v2.test.workflow.host_source_root_ingest_manifest.host_source_root_closure_refs
@@ -128,7 +128,7 @@ test fn compiler_closure_ingest_receipt_describes_carrier_holds() -> Bool {
     && (v2.test.workflow.host_source_root_ingest_manifest.host_source_root_ingest_coverage_receipt.ingest_read_count > 0)
 }
 
-test fn compiler_closure_scoped_ingest_module_count_ok_holds() -> Bool {
+test fn compiler_closure_scoped_ingest_module_count_ok_holds() -> v2.std.logic.Bool {
   let receipt = v2.test.workflow.host_source_root_ingest_manifest.host_source_root_ingest_coverage_receipt
   let refs = v2.test.workflow.host_source_root_ingest_manifest.host_source_root_closure_refs
   let n = receipt.ingest_read_count
@@ -143,7 +143,7 @@ test fn compiler_closure_scoped_ingest_module_count_ok_holds() -> Bool {
     }
 }
 
-test fn compiler_closure_ingest_overflow_refuses_never_empty_holds() -> Bool {
+test fn compiler_closure_ingest_overflow_refuses_never_empty_holds() -> v2.std.logic.Bool {
   let receipt = v2.test.workflow.host_source_root_ingest_manifest.host_source_root_ingest_coverage_receipt
   let refs = v2.test.workflow.host_source_root_ingest_manifest.host_source_root_closure_refs
   let n = receipt.ingest_read_count
@@ -161,7 +161,7 @@ test fn compiler_closure_ingest_overflow_refuses_never_empty_holds() -> Bool {
   }
 }
 
-test fn gap4_probe_all_ingest_reads_accept_holds() -> Bool {
+test fn gap4_probe_all_ingest_reads_accept_holds() -> v2.std.logic.Bool {
   match gap4_probe_first_ingest_reject() {
     Gap4IngestProbePending => true
     Gap4IngestProbeSourceReadFailed => false
@@ -182,7 +182,7 @@ test fn gap4_probe_all_ingest_reads_accept_holds() -> Bool {
 // over zero rows fails here. On a real host overlay it requires a POSITIVE
 // read count as well as the identity join, so the equality can no longer be
 // satisfied at zero.
-test fn compiler_closure_scoped_ingest_parses_holds() -> Bool {
+test fn compiler_closure_scoped_ingest_parses_holds() -> v2.std.logic.Bool {
   match v2.compiler.self_host.compiler_closure_emit_driver.closure_emit_population_admission(
     refs: v2.test.workflow.host_source_root_ingest_manifest.host_source_root_closure_refs,
     receipt: v2.test.workflow.host_source_root_ingest_manifest.host_source_root_ingest_coverage_receipt
@@ -202,7 +202,7 @@ test fn compiler_closure_scoped_ingest_parses_holds() -> Bool {
         Accepted { value: roots, diagnostics: _ } =>
           (v2.test.workflow.host_source_root_ingest_manifest.host_source_root_ingest_coverage_receipt.ingest_read_count > 0)
             && (v2.std.algebra.length(xs: roots) == v2.test.workflow.host_source_root_ingest_manifest.host_source_root_ingest_coverage_receipt.ingest_read_count)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
   }
 }

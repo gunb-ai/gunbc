@@ -32,28 +32,28 @@ fn a4_opacity_compile(source: Medium<String>) -> v2.std.diagnostic.Outcome<Mediu
   compile_ingest_staging(source: source, target: a4_opacity_target_model)
 }
 
-fn a4_opacity_rejects(source: Medium<String>) -> Bool {
+fn a4_opacity_rejects(source: Medium<String>) -> v2.std.logic.Bool {
   match a4_opacity_compile(source: source) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-fn a4_opacity_accepts(source: Medium<String>) -> Bool {
+fn a4_opacity_accepts(source: Medium<String>) -> v2.std.logic.Bool {
   match a4_opacity_compile(source: source) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn a4_opacity_charoffset_for_byteoffset_rejects() -> Bool {
+test fn a4_opacity_charoffset_for_byteoffset_rejects() -> v2.std.logic.Bool {
   a4_opacity_rejects(source: a4_opacity_charoffset_for_byteoffset_source)
 }
 
-test fn a4_opacity_byteoffset_for_charoffset_rejects() -> Bool {
+test fn a4_opacity_byteoffset_for_charoffset_rejects() -> v2.std.logic.Bool {
   a4_opacity_rejects(source: a4_opacity_byteoffset_for_charoffset_source)
 }
 
-test fn a4_opacity_same_brand_accepts() -> Bool {
+test fn a4_opacity_same_brand_accepts() -> v2.std.logic.Bool {
   a4_opacity_accepts(source: a4_opacity_same_brand_source)
 }

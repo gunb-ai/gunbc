@@ -56,14 +56,14 @@ data network_target: std.effect_grant.NamespacePosition = std.effect_grant.Names
 fn is_admitted(a: std.access.AccessDecision) -> Bool {
   match a {
     Permit => true
-    Deny { refusal: refusal } => false
+    std.access.Deny { refusal: refusal } => false
   }
 }
 
 fn is_refused(a: std.access.AccessDecision) -> Bool {
   match a {
     Permit => false
-    Deny { refusal: refusal } => true
+    std.access.Deny { refusal: refusal } => true
   }
 }
 
@@ -96,7 +96,7 @@ test fn build_workspace_grant_refuses_network_by_construction() -> Bool {
 
 test fn build_workspace_grant_refusal_is_located() -> Bool {
   match std.effect_grant.admit_effect(env: build_env, verb: std.effect_grant.Write, target: repo_tree_target) {
-    Deny { refusal: refusal } =>
+    std.access.Deny { refusal: refusal } =>
       refusal.location.profile == "EffectRequest"
         && refusal.location.subject == "build"
         && refusal.location.action == "write"

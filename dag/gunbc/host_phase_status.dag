@@ -31,7 +31,7 @@ fn host_phase_verdict_absorbing_fallback_widen_sketch(
 ) -> std.upsert_decision.ObservationVerdict {
   match observation {
     Present { value: v } => v
-    Absent => Converged
+    Absent => std.upsert_decision.Converged
   }
 }
 
@@ -43,7 +43,7 @@ fn host_phase_verdict_gate_accepts(
     Present { value: _ } => true
     Absent =>
       match verdict {
-        Converged => false
+        std.upsert_decision.Converged => false
         std.upsert_decision.Absent => true
         std.upsert_decision.Drifted => true
         Conflict => true
@@ -172,7 +172,7 @@ fn observation_verdict_eq(a: std.upsert_decision.ObservationVerdict, b: std.upse
 
 fn observation_verdict_rank(v: std.upsert_decision.ObservationVerdict) -> Int {
   match v {
-    Converged => 0
+    std.upsert_decision.Converged => 0
     std.upsert_decision.Absent => 1
     std.upsert_decision.Drifted => 2
     Conflict => 3
@@ -250,7 +250,7 @@ fn host_phase_observation_coverage_count(enrollments: List<gunbc.host_assimilati
 
 fn host_phase_cell_is_converged(c: HostPhaseCellStatus) -> Bool {
   match host_phase_cell_verdict(c: c) {
-    Converged => true
+    std.upsert_decision.Converged => true
     std.upsert_decision.Absent => false
     std.upsert_decision.Drifted => false
     Conflict => false

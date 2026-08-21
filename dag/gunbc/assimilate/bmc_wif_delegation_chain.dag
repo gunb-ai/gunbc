@@ -37,7 +37,7 @@ data bmc_wif_canary_grant: gunbc.auth.secret_access_grant.SecretAccessGrant = gu
   role: "roles/secretmanager.secretAccessor",
   consumer: "bmc_token_smoke",
   justification: "prove the WIF chain resolves keylessly against a worthless value before any real secret is bound",
-  signoff: Signed { signed_by: "operator", note: "canary-only, no sensitive value" },
+  signoff: gunbc.auth.secret_access_grant.Signed { signed_by: "operator", note: "canary-only, no sensitive value" },
   provenance: DeclaredInModel
 }
 
@@ -47,7 +47,7 @@ data bmc_srv3_admin_access_grant: gunbc.auth.secret_access_grant.SecretAccessGra
   role: "roles/secretmanager.secretAccessor",
   consumer: "bmc_assimilate_srv3",
   justification: "srv3 BMC admin credential readback for the assimilate/rotate flow",
-  signoff: Unsigned,
+  signoff: gunbc.auth.secret_access_grant.Unsigned,
   provenance: DeclaredInModel
 }
 
@@ -57,7 +57,7 @@ data bmc_srv3_admin_legacy_binding: gunbc.auth.secret_access_grant.SecretAccessG
   role: "roles/secretmanager.secretAccessor",
   consumer: "bmc_bootstrap_provision_srv3",
   justification: "already bound and proven live against gunbai-secrets on 2026-06-24, predates this grant model (docs/runbooks/bmc-assimilator-wif-setup.md); Signed = operator affirms keep, Unsigned = flagged pending an explicit keep-or-retire decision, neither state is applied by this codebase",
-  signoff: Unsigned,
+  signoff: gunbc.auth.secret_access_grant.Unsigned,
   provenance: gunbc.auth.secret_access_grant.AppliedOutOfBand {
     applied_at: "2026-06-24",
     note: "gunbc.assimilate.bmc_bootstrap_provision.bmc_bootstrap_provision_srv3, bmc_secret_iam_bindings()"

@@ -140,7 +140,7 @@ data ecmascript_singleton_facts_catalog: List<EcmascriptSingletonPrimitiveFacts>
   ecmascript_facts_null
 ]
 
-data ecmascript_bool_grounding: std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra
+data ecmascript_bool_grounding: std.algebra.BooleanAlgebra<v2.std.logic.Bool> = v2.std.logic.bool_boolean_algebra
 
 fn ecmascript_inhabitant_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
@@ -228,7 +228,7 @@ fn ecmascript_catalog_surface_symbol_in_rows<T>(
   sym: v2.std.node.Symbol,
   rows: List<T>,
   row_surface_spelling: fn(T) -> v2.std.node.Symbol
-) -> Bool {
+) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: rows,
     empty: false,
@@ -1165,14 +1165,14 @@ fn ecmascript_grammar() -> v2.std.grammar.ParseGrammar {
   v2.std.grammar.ModeledGrammar { root: ecmascript_grammar_root() }
 }
 
-fn ecmascript_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn ecmascript_lex_token_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.compilers.lexing.lex_rule_set_token_class_member(
     rules: ecmascript_lex_rules(),
     token_class: sym
   )
 }
 
-fn ecmascript_number_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn ecmascript_number_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   ecmascript_catalog_surface_symbol_in_rows(
     sym: sym,
     rows: ecmascript_number_facts_catalog,
@@ -1180,7 +1180,7 @@ fn ecmascript_number_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn ecmascript_bigint_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn ecmascript_bigint_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   ecmascript_catalog_surface_symbol_in_rows(
     sym: sym,
     rows: ecmascript_bigint_facts_catalog,
@@ -1188,7 +1188,7 @@ fn ecmascript_bigint_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn ecmascript_boolean_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn ecmascript_boolean_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   ecmascript_catalog_surface_symbol_in_rows(
     sym: sym,
     rows: ecmascript_boolean_facts_catalog,
@@ -1196,7 +1196,7 @@ fn ecmascript_boolean_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn ecmascript_string_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn ecmascript_string_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   ecmascript_catalog_surface_symbol_in_rows(
     sym: sym,
     rows: ecmascript_string_facts_catalog,
@@ -1204,7 +1204,7 @@ fn ecmascript_string_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn ecmascript_symbol_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn ecmascript_symbol_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   ecmascript_catalog_surface_symbol_in_rows(
     sym: sym,
     rows: ecmascript_symbol_facts_catalog,
@@ -1212,7 +1212,7 @@ fn ecmascript_symbol_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn ecmascript_singleton_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn ecmascript_singleton_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   ecmascript_catalog_surface_symbol_in_rows(
     sym: sym,
     rows: ecmascript_singleton_facts_catalog,
@@ -1220,7 +1220,7 @@ fn ecmascript_singleton_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool 
   )
 }
 
-fn ecmascript_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn ecmascript_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   ecmascript_number_catalog_surface_symbol(sym: sym) ||
     ecmascript_bigint_catalog_surface_symbol(sym: sym) ||
     ecmascript_boolean_catalog_surface_symbol(sym: sym) ||

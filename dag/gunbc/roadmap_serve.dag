@@ -483,7 +483,7 @@ fn roadmap_serve_selection_response_for_instance(
       )
     SelectedStatic { route: r } =>
       extdeps.http.server.ServeHttpResponse { status: r.status_on_hit, content_type: r.content_type, body: r.body }
-    MethodNotAllowed { allowed: ms } =>
+    extdeps.http.server.MethodNotAllowed { allowed: ms } =>
       serve_text_response(
         status: 405,
         content_type: extdeps.http.server.text_plain_utf8,

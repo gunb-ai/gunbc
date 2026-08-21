@@ -33,13 +33,13 @@ data substitute_ambiguous_duplicate_name_root: v2.std.node.Node = v2.std.node.No
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn substitute_at_ambiguous_duplicate_name_claim_holds() -> Bool {
+test fn substitute_at_ambiguous_duplicate_name_claim_holds() -> v2.std.logic.Bool {
   match v2.lens.application.substitute_at(
     root: substitute_ambiguous_duplicate_name_root,
     path: v2.std.node.Path { steps: [^substitute_ambiguous_dup_step] },
     replacement: substitute_ambiguous_replacement
   ) {
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }

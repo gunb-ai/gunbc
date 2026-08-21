@@ -57,7 +57,7 @@ test fn w_non_addressable_terminal_always_appends() -> Bool {
 test fn w_refusal_never_repaints_away() -> Bool {
   let refusal = std.observation.ObservationEvent {
     subject: tty_entry_subject(),
-    transition: std.observation.Concluded { outcome: Refused { diagnostic: "FLOOR-BATCH-OVER-BUDGET" as std.types.NonEmptyStr } },
+    transition: std.observation.Concluded { outcome: std.observation.Refused { diagnostic: "FLOOR-BATCH-OVER-BUDGET" as std.types.NonEmptyStr } },
     durations: observation_durations_wall(elapsed: nanosecond(count: 2472000000000)),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }
@@ -70,7 +70,7 @@ test fn w_refusal_never_repaints_away() -> Bool {
 test fn w_same_event_drives_both_surfaces() -> Bool {
   let event = std.observation.ObservationEvent {
     subject: tty_entry_subject(),
-    transition: std.observation.Concluded { outcome: Done },
+    transition: std.observation.Concluded { outcome: std.observation.Done },
     durations: observation_durations_wall(elapsed: nanosecond(count: 230000000)),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }
@@ -85,7 +85,7 @@ test fn w_unavailable_basis_refuses_with_exact_cause() -> Bool {
   let cause = "no signed basis for this subject" as std.types.NonEmptyStr
   let event = std.observation.ObservationEvent {
     subject: tty_entry_subject(),
-    transition: std.observation.Concluded { outcome: Done },
+    transition: std.observation.Concluded { outcome: std.observation.Done },
     durations: observation_durations_wall(elapsed: nanosecond(count: 230000000)),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }
@@ -124,7 +124,7 @@ test fn w_routine_begin_overwrites_on_addressable_tty() -> Bool {
 test fn w_tty_strict_facade_equals_measured_value_projection() -> Bool {
   let event = std.observation.ObservationEvent {
     subject: tty_entry_subject(),
-    transition: std.observation.Concluded { outcome: Done },
+    transition: std.observation.Concluded { outcome: std.observation.Done },
     durations: observation_durations_wall(elapsed: nanosecond(count: 230000000)),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }
@@ -166,7 +166,7 @@ test fn w_nonaddressable_routine_composes_to_plain_append_wire() -> Bool {
 test fn w_addressable_refusal_persists_via_exact_closed_append_wire() -> Bool {
   let event = std.observation.ObservationEvent {
     subject: tty_entry_subject(),
-    transition: std.observation.Concluded { outcome: Refused { diagnostic: "policy" as std.types.NonEmptyStr } },
+    transition: std.observation.Concluded { outcome: std.observation.Refused { diagnostic: "policy" as std.types.NonEmptyStr } },
     durations: observation_durations_wall_unavailable(cause: "clock absent" as std.types.NonEmptyStr),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled" as std.types.NonEmptyStr }
   }

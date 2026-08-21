@@ -1,7 +1,7 @@
 module v2.test.parse.grammar_validation
 
 
-fn validation_bool_atom(b: Bool) -> v2.std.node.Node {
+fn validation_bool_atom(b: v2.std.logic.Bool) -> v2.std.node.Node {
   match b {
     true => v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^validation_bool_true } }, children: [],
  occurrence_id: v2.std.node.SyntheticOccurrence
@@ -12,10 +12,10 @@ fn validation_bool_atom(b: Bool) -> v2.std.node.Node {
   }
 }
 
-fn validation_outcome_accepted(out: v2.std.diagnostic.Outcome<v2.std.grammar.ParseTree>) -> Bool {
+fn validation_outcome_accepted(out: v2.std.diagnostic.Outcome<v2.std.grammar.ParseTree>) -> v2.std.logic.Bool {
   match out {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -132,7 +132,7 @@ data validation_disjoint_choice_root: v2.std.grammar.GrammarRoot = v2.std.gramma
   sync_tokens: v2.std.grammar.grammar_empty_sync_tokens()
 }
 
-fn validation_overlap_choice_validate_accepts_with_residue() -> Bool {
+fn validation_overlap_choice_validate_accepts_with_residue() -> v2.std.logic.Bool {
   let at = v2.std.diagnostic.port_locus(port: ^parse_stage_locus_port)
   match v2.compiler.parse.grammar_validate_for_parse(root: validation_ambiguous_choice_root, at: at) {
     Accepted { value: _, diagnostics: d } =>
@@ -140,7 +140,7 @@ fn validation_overlap_choice_validate_accepts_with_residue() -> Bool {
         Some { diagnostics: residue } => residue.head.reason == ^parse_grammar_choice_overlap_residue
         None => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -160,15 +160,15 @@ data validation_nullable_ambiguous_choice_root: v2.std.grammar.GrammarRoot = v2.
   sync_tokens: v2.std.grammar.grammar_empty_sync_tokens()
 }
 
-fn validation_nullable_ambiguity_validate_rejects() -> Bool {
+fn validation_nullable_ambiguity_validate_rejects() -> v2.std.logic.Bool {
   let at = v2.std.diagnostic.port_locus(port: ^parse_stage_locus_port)
   match v2.compiler.parse.grammar_validate_for_parse(root: validation_nullable_ambiguous_choice_root, at: at) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-fn validation_disjoint_choice_residue_is_none() -> Bool {
+fn validation_disjoint_choice_residue_is_none() -> v2.std.logic.Bool {
   let at = v2.std.diagnostic.port_locus(port: ^parse_stage_locus_port)
   match v2.compiler.parse.grammar_validate_for_parse(root: validation_disjoint_choice_root, at: at) {
     Accepted { value: _, diagnostics: d } =>
@@ -176,26 +176,26 @@ fn validation_disjoint_choice_residue_is_none() -> Bool {
         None => true
         Some { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn validation_disjoint_choice_validate_accepts() -> Bool {
+fn validation_disjoint_choice_validate_accepts() -> v2.std.logic.Bool {
   let at = v2.std.diagnostic.port_locus(port: ^parse_stage_locus_port)
   match v2.compiler.parse.grammar_validate_for_parse(root: validation_disjoint_choice_root, at: at) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn validation_lookup_present_holds_named() -> Bool {
+fn validation_lookup_present_holds_named() -> v2.std.logic.Bool {
   match v2.compiler.parse.grammar_lookup_production(root: validation_two_distinct_root, name: ^validation_other) {
     Holds { value: production } => production.name == ^validation_other
     Violates { diagnostic: _ } => false
   }
 }
 
-fn validation_lookup_missing_violates() -> Bool {
+fn validation_lookup_missing_violates() -> v2.std.logic.Bool {
   match v2.compiler.parse.grammar_lookup_production(root: validation_two_distinct_root, name: ^validation_missing) {
     Violates { diagnostic: _ } => true
     Holds { value: _ } => false
@@ -215,7 +215,7 @@ data validation_two_token_list: List<v2.std.compilers.lexing.Token> = std.algebr
 fn validation_right_recursive_parse_fixture() -> v2.std.diagnostic.Outcome<v2.std.grammar.ParseTree> {
   let at = v2.std.diagnostic.port_locus(port: ^parse_stage_locus_port)
   match v2.compiler.parse.grammar_validate_for_parse(root: validation_right_recursive_root, at: at) {
-    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
     Accepted { value: validated, diagnostics: _ } =>
       v2.compiler.parse.parse_production_tree(
         tokens: validation_two_token_list,
@@ -225,7 +225,7 @@ fn validation_right_recursive_parse_fixture() -> v2.std.diagnostic.Outcome<v2.st
   }
 }
 
-fn validation_empty_sync_found() -> Bool {
+fn validation_empty_sync_found() -> v2.std.logic.Bool {
   match v2.compiler.parse.parse_skip_to_sync(
     tokens: validation_one_token_list,
     sync_tokens: v2.std.grammar.grammar_empty_sync_tokens()
@@ -430,23 +430,23 @@ data validation_indirect_terminating_root: v2.std.grammar.GrammarRoot = v2.std.g
   sync_tokens: grammar_empty_sync_tokens()
 }
 
-test fn validation_direct_left_recursion_is_detected() -> Bool {
+test fn validation_direct_left_recursion_is_detected() -> v2.std.logic.Bool {
   grammar_has_left_recursion(root: validation_left_recursive_root)
 }
 
-test fn validation_right_recursion_is_not_left_recursion() -> Bool {
+test fn validation_right_recursion_is_not_left_recursion() -> v2.std.logic.Bool {
   grammar_has_left_recursion(root: validation_right_recursive_root) == false
 }
 
-test fn validation_indirect_left_recursion_is_detected_RED() -> Bool {
+test fn validation_indirect_left_recursion_is_detected_RED() -> v2.std.logic.Bool {
   grammar_has_left_recursion(root: validation_indirect_left_recursive_root)
 }
 
-test fn validation_indirect_terminating_is_not_left_recursion() -> Bool {
+test fn validation_indirect_terminating_is_not_left_recursion() -> v2.std.logic.Bool {
   grammar_has_left_recursion(root: validation_indirect_terminating_root) == false
 }
 
-test fn validation_two_distinct_productions_are_not_left_recursive() -> Bool {
+test fn validation_two_distinct_productions_are_not_left_recursive() -> v2.std.logic.Bool {
   grammar_has_left_recursion(root: validation_two_distinct_root) == false
 }
 
@@ -498,10 +498,10 @@ data validation_chain_5_root: v2.std.grammar.GrammarRoot = v2.std.grammar.Gramma
   sync_tokens: grammar_empty_sync_tokens()
 }
 
-test fn validation_five_hop_cycle_is_left_recursive() -> Bool {
+test fn validation_five_hop_cycle_is_left_recursive() -> v2.std.logic.Bool {
   grammar_has_left_recursion(root: validation_cycle_5_root)
 }
 
-test fn validation_five_hop_chain_is_not_left_recursive() -> Bool {
+test fn validation_five_hop_chain_is_not_left_recursive() -> v2.std.logic.Bool {
   grammar_has_left_recursion(root: validation_chain_5_root) == false
 }

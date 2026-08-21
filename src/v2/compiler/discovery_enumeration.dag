@@ -2,25 +2,25 @@ module v2.compiler.discovery_enumeration
 
 
 type ResolvedDeclRef {
-  module: String
+  module: std.string_type.String
   name: v2.std.node.Symbol
 }
 
-data unified_claim_arm_bool_witness_claim_module: String = "v2.std.verification"
-data unified_claim_arm_node_corpus_module: String = "v2.std.verification"
+data unified_claim_arm_bool_witness_claim_module: std.string_type.String = "v2.std.verification"
+data unified_claim_arm_node_corpus_module: std.string_type.String = "v2.std.verification"
 
 type OwnedDataDeclInitializer
   = OwnedBoolWitnessClaimInit {
-      witness_entry: String
-      witness_function: String
+      witness_entry: std.string_type.String
+      witness_function: std.string_type.String
     }
   | OwnedNodeCorpusInit
   | OwnedOtherInit { resolved: ResolvedDeclRef }
 
 type OwnedDataDeclRecord {
-  entry: String
-  module: String
-  decl_name: String
+  entry: std.string_type.String
+  module: std.string_type.String
+  decl_name: std.string_type.String
   initializer: OwnedDataDeclInitializer
 }
 

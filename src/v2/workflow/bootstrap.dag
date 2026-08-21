@@ -186,19 +186,19 @@ fn bootstrap_seed_capability_inventory_root() -> v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: Named { name: ^bootstrap_construct_source_language_subset },
+        label: v2.std.node.Named { name: ^bootstrap_construct_source_language_subset },
         target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_source_language_subset)
       },
       v2.std.node.Edge {
-        label: Named { name: ^bootstrap_construct_target_model_subset },
+        label: v2.std.node.Named { name: ^bootstrap_construct_target_model_subset },
         target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_target_model_subset)
       },
       v2.std.node.Edge {
-        label: Named { name: ^bootstrap_construct_runtime_model_subset },
+        label: v2.std.node.Named { name: ^bootstrap_construct_runtime_model_subset },
         target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_runtime_model_subset)
       },
       v2.std.node.Edge {
-        label: Named { name: ^bootstrap_construct_lowering_subset },
+        label: v2.std.node.Named { name: ^bootstrap_construct_lowering_subset },
         target: bootstrap_construct_subset_node(identity: ^bootstrap_construct_lowering_subset)
       }
     ],
@@ -265,7 +265,7 @@ fn bootstrap_target_model_bundle_construct_fold_step(
   child: BootstrapConstructFoldState
 ) -> BootstrapConstructFoldState {
   let facet_constructs = match edge.label {
-    Named { name: label } => bootstrap_target_model_bundle_construct_facet(label: label)
+    v2.std.node.Named { name: label } => bootstrap_target_model_bundle_construct_facet(label: label)
     Positional => []
   }
 
@@ -384,7 +384,7 @@ fn bootstrap_hash_pin_pair_projection_node(pin: v2.std.node.Symbol, digest: v2.s
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: Named { name: ^bootstrap_projection_hash_pin_slot_edge },
+        label: v2.std.node.Named { name: ^bootstrap_projection_hash_pin_slot_edge },
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: pin } },
           children: [],
@@ -392,7 +392,7 @@ fn bootstrap_hash_pin_pair_projection_node(pin: v2.std.node.Symbol, digest: v2.s
 }
       },
       v2.std.node.Edge {
-        label: Named { name: ^bootstrap_projection_hash_digest_slot_edge },
+        label: v2.std.node.Named { name: ^bootstrap_projection_hash_digest_slot_edge },
         target: bootstrap_hash_digest_fixture_atom_node(digest: digest)
       }
     ],
@@ -457,24 +457,24 @@ fn bootstrap_plan_accepted_hash_pins_projectable(plan: BootstrapPlan) -> Bool {
                     Accepted { value: _, diagnostics: _ } =>
                       match bootstrap_hash_pin_projection_node(pin: plan.fixpt.pinned_hash) {
                         Accepted { value: _, diagnostics: _ } => true
-                        Rejected { diagnostics: _ } => false
+                        v2.std.diagnostic.Rejected { diagnostics: _ } => false
                       }
-                    Rejected { diagnostics: _ } => false
+                    v2.std.diagnostic.Rejected { diagnostics: _ } => false
                   }
-                Rejected { diagnostics: _ } => false
+                v2.std.diagnostic.Rejected { diagnostics: _ } => false
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn bootstrap_plan_accepted_hash_pins_projectable_ok() -> Bool {
   match bootstrap_plan {
     Accepted { value: plan, diagnostics: _ } => bootstrap_plan_accepted_hash_pins_projectable(plan: plan)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -485,23 +485,23 @@ fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> v2.st
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: Named { name: ^bootstrap_projection_snapshot_root_edge },
+        label: v2.std.node.Named { name: ^bootstrap_projection_snapshot_root_edge },
         target: inputs.snapshot.root
       },
       v2.std.node.Edge {
-        label: Named { name: ^bootstrap_projection_snapshot_language_model_edge },
+        label: v2.std.node.Named { name: ^bootstrap_projection_snapshot_language_model_edge },
         target: language_model_to_node(lm: inputs.snapshot.language_model)
       },
       v2.std.node.Edge {
-        label: Named { name: ^bootstrap_projection_snapshot_content_hash_edge },
+        label: v2.std.node.Named { name: ^bootstrap_projection_snapshot_content_hash_edge },
         target: bootstrap_projection_snapshot_content_hash_pin_node(pin: inputs.snapshot.content_hash.pin)
       },
       v2.std.node.Edge {
-        label: Named { name: ^bootstrap_projection_target_bundle_edge },
+        label: v2.std.node.Named { name: ^bootstrap_projection_target_bundle_edge },
         target: inputs.target_model.bundle
       },
       v2.std.node.Edge {
-        label: Named { name: ^bootstrap_projection_runtime_identity_edge },
+        label: v2.std.node.Named { name: ^bootstrap_projection_runtime_identity_edge },
         target: bootstrap_projection_runtime_identity_node(runtime: inputs.runtime_model)
       }
     ],
@@ -554,7 +554,7 @@ fn bootstrap_convergence_ladder(plan: v2.std.diagnostic.Outcome<BootstrapPlan>) 
   match plan {
     Accepted { value: bp, diagnostics: _ } =>
       v2.std.witness.Holds { value: ConvergenceLadder { entry_seed: ^v1_pipeline, plan: bp, fixed_point: bp.fixpt } }
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       v2.std.witness.Violates { diagnostic: bs_diagnostic(reason: ^bootstrap_plan_unavailable_for_ladder) }
   }
 }
@@ -697,7 +697,7 @@ fn bootstrap_stage_output(plan: v2.std.diagnostic.Outcome<BootstrapPlan>, s: v2.
   match plan {
     Accepted { value: bp, diagnostics: _ } =>
       (s == bp.seed.produces) || (s == bp.self0.produces) || (s == bp.self1.produces)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -788,5 +788,5 @@ data bootstrap_convergence_ladder_witness: Witness<ConvergenceLadder> = bootstra
 
 data bootstrap_plan_fixpt_witness: Witness<FixptStage1Stage2> = match bootstrap_plan {
   Accepted { value: bp, diagnostics: _ } => bootstrap_fixpt_witness(f: bp.fixpt)
-  Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
+  v2.std.diagnostic.Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
 }

@@ -9,13 +9,13 @@ fn translate_refused_canonical_grounding(d: v2.std.diagnostic.NonEmptyDiagnostic
   d.head.reason == ^infer_grounding_not_derived
 }
 
-data translate_underived_value_specimen: Node = v2.std.node.Node {
+data translate_underived_value_specimen: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.ComputationNode { behavior: Value },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-fn translate_underived_conj_node() -> Node {
+fn translate_underived_conj_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [],
@@ -23,7 +23,7 @@ fn translate_underived_conj_node() -> Node {
   }
 }
 
-fn translate_underived_disj_node() -> Node {
+fn translate_underived_disj_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Disj },
     children: [],
@@ -31,19 +31,19 @@ fn translate_underived_disj_node() -> Node {
   }
 }
 
-fn translate_underived_value_node() -> Node {
+fn translate_underived_value_node() -> v2.std.node.Node {
   translate_underived_value_specimen
 }
 
-fn translate_underived_value_specimen_facts() -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn translate_underived_value_specimen_facts() -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   match infer(tree: translate_underived_value_specimen) {
     Accepted { value: tree, diagnostics: _ } =>
       tree.facts.lookup(translate_underived_value_specimen)
-    Rejected { diagnostics: _ } => optional_absent()
+    v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
-fn translate_mixed_tree_root() -> Node {
+fn translate_mixed_tree_root() -> v2.std.node.Node {
   node_rebuild(
     n: rust_add_emitted_root,
     children: list_snoc_item(
@@ -53,7 +53,7 @@ fn translate_mixed_tree_root() -> Node {
   )
 }
 
-fn translate_mixed_tree_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn translate_mixed_tree_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   if content_hash(n: key) == content_hash(n: translate_underived_value_specimen) {
     translate_underived_value_specimen_facts()
   } else if content_hash(n: key) == content_hash(n: translate_mixed_tree_root()) {
@@ -68,11 +68,11 @@ data translate_mixed_derived_root_underived_child_tree: v2.compiler.inferred_tre
   facts: std.types.Map { lookup: translate_mixed_tree_facts_lookup }
 }
 
-fn translate_absent_parent_underived_child_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn translate_absent_parent_underived_child_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   if content_hash(n: key) == content_hash(n: translate_underived_value_specimen) {
     translate_underived_value_specimen_facts()
   } else {
-    Absent
+    v2.std.optional.Absent
   }
 }
 
@@ -81,7 +81,7 @@ data translate_absent_parent_underived_child_tree: v2.compiler.inferred_tree.Inf
   facts: std.types.Map { lookup: translate_absent_parent_underived_child_facts_lookup }
 }
 
-fn translate_bodyless_emission_root_with_poison_child_root() -> Node {
+fn translate_bodyless_emission_root_with_poison_child_root() -> v2.std.node.Node {
   node_rebuild(
     n: python_emitted_add_fn_node(),
     children: list_snoc_item(
@@ -91,14 +91,14 @@ fn translate_bodyless_emission_root_with_poison_child_root() -> Node {
   )
 }
 
-fn translate_bodyless_emission_root_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn translate_bodyless_emission_root_facts_for(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   match infer(tree: python_emitted_add_fn_node()) {
     Accepted { value: tree, diagnostics: _ } => tree.facts.lookup(node)
-    Rejected { diagnostics: _ } => optional_absent()
+    v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
-fn translate_bodyless_emission_root_with_poison_child_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn translate_bodyless_emission_root_with_poison_child_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   if content_hash(n: key) == content_hash(n: translate_underived_value_specimen) {
     translate_underived_value_specimen_facts()
   } else if content_hash(n: key) == content_hash(n: translate_bodyless_emission_root_with_poison_child_root()) {
@@ -113,7 +113,7 @@ data translate_bodyless_emission_root_with_poison_child_tree: v2.compiler.inferr
   facts: std.types.Map { lookup: translate_bodyless_emission_root_with_poison_child_facts_lookup }
 }
 
-fn translate_bodied_arrow_shortcut_root() -> v2.std.diagnostic.Outcome<Node> {
+fn translate_bodied_arrow_shortcut_root() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   bind_outcome(
     o: v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body(),
     f: fn(arrow) {
@@ -133,11 +133,11 @@ fn translate_bodied_arrow_shortcut_root() -> v2.std.diagnostic.Outcome<Node> {
   )
 }
 
-fn translate_bodied_arrow_shortcut_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn translate_bodied_arrow_shortcut_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   if content_hash(n: key) == content_hash(n: translate_underived_value_specimen) {
     translate_underived_value_specimen_facts()
   } else {
-    Absent
+    v2.std.optional.Absent
   }
 }
 
@@ -155,7 +155,7 @@ fn translate_bodied_arrow_shortcut_underived_descendant_tree() -> v2.std.diagnos
   )
 }
 
-fn translate_projection_absent_fold_bodied_arrow_wrapped_root() -> v2.std.diagnostic.Outcome<Node> {
+fn translate_projection_absent_fold_bodied_arrow_wrapped_root() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   bind_outcome(
     o: translate_bodied_arrow_shortcut_root(),
     f: fn(arrow) {
@@ -186,11 +186,11 @@ fn translate_projection_absent_fold_bodied_arrow_underived_descendant_tree() -> 
   )
 }
 
-fn translate_underived_grammar_match_atom_node() -> Node {
-  rust_inhabitant_atom(id: ^rust_surface_fn_item)
+fn translate_underived_grammar_match_atom_node() -> v2.std.node.Node {
+  v2.extdeps.languages.rust.rust_inhabitant_atom(id: ^rust_surface_fn_item)
 }
 
-fn translate_underived_grammar_match_bundle() -> Node {
+fn translate_underived_grammar_match_bundle() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -204,7 +204,7 @@ fn translate_underived_grammar_match_bundle() -> Node {
       ),
       rust_named_edge(
         name: ^target_model_edge_selection_policy,
-        target: rust_selection_policy_node()
+        target: v2.extdeps.languages.rust.rust_selection_policy_node()
       )
     ],
     occurrence_id: SyntheticOccurrence
@@ -221,19 +221,19 @@ data translate_underived_grammar_match_target: v2.std.compilers.target_model.Tar
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-fn translate_refuses_underived_root_for_target(root: Node, target: v2.std.compilers.target_model.TargetModel) -> Bool {
+fn translate_refuses_underived_root_for_target(root: v2.std.node.Node, target: v2.std.compilers.target_model.TargetModel) -> Bool {
   match infer(tree: root) {
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match translate(tree: tree, target: target) {
-        Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           translate_refused_canonical_grounding(d: d)
         Accepted { value: _, diagnostics: _ } => false
       }
   }
 }
 
-fn translate_refuses_underived_root(root: Node) -> Bool {
+fn translate_refuses_underived_root(root: v2.std.node.Node) -> Bool {
   translate_refuses_underived_root_for_target(root: root, target: rust_target_model())
 }
 
@@ -241,7 +241,7 @@ fn translate_refuses_underived_bodied_arrow() -> Bool {
   match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
     Accepted { value: root, diagnostics: _ } =>
       translate_refuses_underived_root_for_target(root: root, target: go_target_model())
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -250,7 +250,7 @@ fn translate_refuses_mixed_derived_root_underived_child() -> Bool {
     tree: translate_mixed_derived_root_underived_child_tree,
     target: rust_target_model()
   ) {
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       translate_refused_canonical_grounding(d: d)
     Accepted { value: _, diagnostics: _ } => false
   }
@@ -261,7 +261,7 @@ fn translate_refuses_absent_parent_underived_child() -> Bool {
     tree: translate_absent_parent_underived_child_tree,
     target: rust_target_model()
   ) {
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       translate_refused_canonical_grounding(d: d)
     Accepted { value: _, diagnostics: _ } => false
   }
@@ -272,7 +272,7 @@ fn translate_refuses_bodyless_emission_root_with_poison_child() -> Bool {
     tree: translate_bodyless_emission_root_with_poison_child_tree,
     target: python_target_model()
   ) {
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       translate_refused_canonical_grounding(d: d)
     Accepted { value: _, diagnostics: _ } => false
   }
@@ -282,11 +282,11 @@ fn translate_refuses_bodied_arrow_shortcut_underived_descendant() -> Bool {
   match translate_bodied_arrow_shortcut_underived_descendant_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       match translate(tree: tree, target: go_target_model()) {
-        Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           translate_refused_canonical_grounding(d: d)
         Accepted { value: _, diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -294,18 +294,18 @@ fn translate_refuses_projection_absent_fold_bodied_arrow_underived_descendant() 
   match translate_projection_absent_fold_bodied_arrow_underived_descendant_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       match translate(tree: tree, target: go_target_model()) {
-        Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           translate_refused_canonical_grounding(d: d)
         Accepted { value: _, diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn translate_accepts_synthetic_empty_facts_tree() -> Bool {
   match translate(tree: sg2_mode2_inferred_tree, target: sg2_mode2_target()) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -317,26 +317,26 @@ test fn cross_language_compile_refuses_canonical_underived_holds() -> Bool {
         source_model: python_target_model(),
         target_model: ts_target_model()
       ) {
-        Rejected { diagnostics: d } =>
+        v2.std.diagnostic.Rejected { diagnostics: d } =>
           translate_refused_canonical_grounding(d: d)
         Accepted { value: _, diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn translate_accepts_derived_rust_add_tree() -> Bool {
   match translate(tree: v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree, target: rust_target_model()) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn translate_derived_emit_byte_identical_to_before() -> Bool {
-  match emit(tree: v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree, target: rust_target_model()) {
+  match v2.compiler.emit.emit(tree: v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree, target: rust_target_model()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

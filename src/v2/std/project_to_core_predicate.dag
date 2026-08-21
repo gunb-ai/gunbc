@@ -16,7 +16,7 @@ fn project_to_core_init(n: v2.std.node.Node) -> v2.std.node.Node {
 fn project_to_core_step(acc: v2.std.node.Node, edge: v2.std.node.Edge, child: v2.std.node.Node) -> v2.std.node.Node {
   let projected_target = if count(edge.target.children) == 0 { edge.target } else { child }
   match edge.label {
-    Named { name: edge_name } =>
+    v2.std.node.Named { name: edge_name } =>
       if project_to_core_axis_is_surface(name: edge_name) {
         acc
       } else {
@@ -56,7 +56,7 @@ fn project_to_core_has_core_fact_init(_: v2.std.node.Node) -> Bool {
 
 fn project_to_core_has_core_fact_step(acc: Bool, edge: v2.std.node.Edge, child: Bool) -> Bool {
   match edge.label {
-    Named { name: edge_name } =>
+    v2.std.node.Named { name: edge_name } =>
       if project_to_core_axis_is_surface(name: edge_name) {
         acc
       } else {

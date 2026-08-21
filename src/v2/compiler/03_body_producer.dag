@@ -18,7 +18,7 @@ fn attach_arrow_body(arrow: v2.std.node.Node, body: v2.std.node.Node) -> Outcome
           children: list_snoc_item(
             xs: arrow.children,
             item: v2.std.node.Edge {
-              label: Named { name: ^arrow_body_edge },
+              label: v2.std.node.Named { name: ^arrow_body_edge },
               target: body
             }
           )

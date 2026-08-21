@@ -1,7 +1,7 @@
 module v2.lens.structural_similarity
 
 
-fn type_decls_anti_unify(decls: FreeMonoid<Node>) -> Bool {
+fn type_decls_anti_unify(decls: FreeMonoid<v2.std.node.Node>) -> v2.std.logic.Bool {
   chain_collapses(steps: decls, min_len: 2, require_hole: false)
 }
 

@@ -2,13 +2,13 @@ module v2.test.lens_complexity.typescript_type_alias_task
 
 
 type LensComplexityClaim {
-  input: Node
+  input: v2.std.node.Node
   expected_cost: v2.lens.cost.SymbolicCost
   expected_complexity: v2.lens.complexity.ComplexityBound
   falsification: v2.std.diagnostic.Diagnostic
 }
 
-data ts_task_complexity_input: Node = v2.std.node.Node {
+data ts_task_complexity_input: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Cardinality },
   children: [
     v2.std.node.Edge { label: Positional, target: ts_task_type_alias_emitted() }

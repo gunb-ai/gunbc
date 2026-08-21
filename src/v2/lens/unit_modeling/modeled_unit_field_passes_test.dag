@@ -3,27 +3,27 @@ module v2.test.lens_unit_modeling.modeled_unit_field_passes
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data bytesize_carrier_target: Node = v2.std.node.Node {
+data bytesize_carrier_target: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^ByteSize } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data modeled_unit_field_input: Node = v2.std.node.Node {
+data modeled_unit_field_input: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
-      label: Named { name: ^ram_bytes },
+      label: v2.std.node.Named { name: ^ram_bytes },
       target: bytesize_carrier_target
     }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-test fn modeled_unit_field_passes_holds() -> Bool {
+test fn modeled_unit_field_passes_holds() -> v2.std.logic.Bool {
   match unit_modeling_gate(node: modeled_unit_field_input) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

@@ -2,11 +2,8 @@
 // Source module: extdeps.version
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
-use crate::extdeps_uri::UriScheme::Https;
+use crate::extdeps_uri::UriScheme::*;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-pub use crate::std_algebra::Ordering;
-use crate::std_algebra::Ordering::*;
-pub use crate::std_types::NonEmptyStr;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -18,21 +15,21 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+        uri: Uri {
         scheme: UriScheme::Https,
         locator: "en.wikipedia.org/wiki/Software_versioning".to_string(),
-    }),
+    },
     })
             };
         }
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
 }
 
-pub type VersionIdentity = String;
+pub type VersionIdentity = crate::v2_std_text::String;
 
 #[derive(Clone)]
 pub struct VersionScheme {
     pub compare: Rc<dyn Fn(VersionIdentity, VersionIdentity) -> Ordering>,
 }
 
-pub type VersionConstraint = String;
+pub type VersionConstraint = crate::v2_std_text::String;

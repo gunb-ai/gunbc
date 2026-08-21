@@ -1,22 +1,22 @@
 module v2.std.find_witness
 
 type CandidateSet {
-  candidates: List<Node>
+  candidates: List<v2.std.node.Node>
   closedness: v2.std.witness.StructuralPropertyWitness
 }
 type PreservationPredicate {
-  algebra: Node
+  algebra: v2.std.node.Node
   preservation_rule: v2.std.node.Symbol
 }
 type FindWitnessResult {
-  candidate: Node
+  candidate: v2.std.node.Node
   witness: v2.std.witness.StructuralPropertyWitness
   closedness: v2.std.witness.StructuralPropertyWitness
 }
 
 type TargetSelectionPolicy
-  = TargetDeclaredPriority { priority: Node }
-  | UserSelected { selection: Node }
+  = TargetDeclaredPriority { priority: v2.std.node.Node }
+  | UserSelected { selection: v2.std.node.Node }
 
 type MultiplicityPolicy
   = UniqueOnly
@@ -36,28 +36,28 @@ fn realized_preservation_rules() -> List<v2.std.node.Symbol> {
     ^preservation_rule_project_to_core
   ]
 }
-fn find_witness_no_candidate_diagnostic(source_facts: Node) -> v2.std.diagnostic.Diagnostic {
+fn find_witness_no_candidate_diagnostic(source_facts: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^find_witness_reason_no_candidate,
     at: node_locus(node: source_facts),
     correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn find_witness_ambiguous_candidate_diagnostic(source_facts: Node) -> v2.std.diagnostic.Diagnostic {
+fn find_witness_ambiguous_candidate_diagnostic(source_facts: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^find_witness_reason_ambiguous_candidate,
     at: node_locus(node: source_facts),
     correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn find_witness_not_realized_diagnostic(source_facts: Node) -> v2.std.diagnostic.Diagnostic {
+fn find_witness_not_realized_diagnostic(source_facts: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^find_witness_reason_not_realized,
     at: node_locus(node: source_facts),
     correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn find_witness_invalid_witness_diagnostic(source_facts: Node) -> v2.std.diagnostic.Diagnostic {
+fn find_witness_invalid_witness_diagnostic(source_facts: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^find_witness_reason_invalid_witness,
     at: node_locus(node: source_facts),
@@ -68,12 +68,12 @@ fn find_witness_invalid_witness_diagnostic(source_facts: Node) -> v2.std.diagnos
 fn enumeration_candidate_list(
   candidates: CandidateSet,
   predicate: PreservationPredicate
-) -> List<Node> {
+) -> List<v2.std.node.Node> {
   candidates.candidates
 }
 fn preservation_predicate_holds(
-  source_facts: Node,
-  candidate: Node,
+  source_facts: v2.std.node.Node,
+  candidate: v2.std.node.Node,
   predicate: PreservationPredicate
 ) -> Bool {
   if predicate.preservation_rule == ^preservation_rule_constraint_satisfaction {
@@ -106,7 +106,7 @@ fn preservation_predicate_holds(
 }
 
 fn passing_candidate_count(
-  source_facts: Node,
+  source_facts: v2.std.node.Node,
   candidates: CandidateSet,
   predicate: PreservationPredicate
 ) -> Int {
@@ -123,10 +123,10 @@ fn passing_candidate_count(
   })
 }
 fn only_passing_candidate(
-  source_facts: Node,
+  source_facts: v2.std.node.Node,
   candidates: CandidateSet,
   predicate: PreservationPredicate
-) -> v2.std.diagnostic.Outcome<Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match fold(enumeration_candidate_list(candidates: candidates, predicate: predicate), init: NoPassingCandidate, f: fn(acc, candidate) {
     if preservation_predicate_holds(
       source_facts: source_facts,
@@ -151,10 +151,10 @@ fn only_passing_candidate(
   }
 }
 fn selected_candidate_count(
-  source_facts: Node,
+  source_facts: v2.std.node.Node,
   candidates: CandidateSet,
   predicate: PreservationPredicate,
-  selection: Node
+  selection: v2.std.node.Node
 ) -> Int {
   fold(enumeration_candidate_list(candidates: candidates, predicate: predicate), init: 0, f: fn(acc, candidate) {
     if (candidate == selection) && preservation_predicate_holds(
@@ -169,7 +169,7 @@ fn selected_candidate_count(
   })
 }
 fn accepted_witness_result(
-  candidate: Node,
+  candidate: v2.std.node.Node,
   candidates: CandidateSet,
   predicate: PreservationPredicate
 ) -> v2.std.diagnostic.Outcome<FindWitnessResult> {
@@ -186,10 +186,10 @@ fn accepted_witness_result(
   }
 }
 fn resolve_selected_candidate(
-  source_facts: Node,
+  source_facts: v2.std.node.Node,
   candidates: CandidateSet,
   predicate: PreservationPredicate,
-  selection: Node
+  selection: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<FindWitnessResult> {
   match selected_candidate_count(
     source_facts: source_facts,
@@ -207,7 +207,7 @@ fn resolve_selected_candidate(
   }
 }
 fn find_witness(
-  source_facts: Node,
+  source_facts: v2.std.node.Node,
   candidates: CandidateSet,
   predicate: PreservationPredicate,
   multiplicity_policy: MultiplicityPolicy
@@ -224,8 +224,8 @@ fn find_witness(
   }
 }
 fn derivation_predicate_for_rule(
-  source_facts: Node,
-  derivation_algebra: Node,
+  source_facts: v2.std.node.Node,
+  derivation_algebra: v2.std.node.Node,
   rule: v2.std.node.Symbol
 ) -> PreservationPredicate {
   if rule == ^preservation_rule_project_to_core {
@@ -259,10 +259,10 @@ fn find_witness_derivation_rejection_better(
 ) -> v2.std.diagnostic.Outcome<FindWitnessResult> {
   match current {
     Accepted { value: _, diagnostics: _ } => current
-    Rejected { diagnostics: current_diagnostics } =>
+    v2.std.diagnostic.Rejected { diagnostics: current_diagnostics } =>
       match candidate {
         Accepted { value: _, diagnostics: _ } => candidate
-        Rejected { diagnostics: candidate_diagnostics } =>
+        v2.std.diagnostic.Rejected { diagnostics: candidate_diagnostics } =>
           if find_witness_rejection_priority(reason: candidate_diagnostics.head.reason) > find_witness_rejection_priority(reason: current_diagnostics.head.reason) {
             candidate
           } else {
@@ -273,9 +273,9 @@ fn find_witness_derivation_rejection_better(
 }
 
 fn find_witness_derives(
-  source_facts: Node,
+  source_facts: v2.std.node.Node,
   candidates: CandidateSet,
-  derivation_algebra: Node,
+  derivation_algebra: v2.std.node.Node,
   multiplicity_policy: MultiplicityPolicy
 ) -> v2.std.diagnostic.Outcome<FindWitnessResult> {
   fold(
@@ -284,7 +284,7 @@ fn find_witness_derives(
     f: fn(acc, rule) {
 	      match acc {
 	        Accepted { value: _, diagnostics: _ } => acc
-	        Rejected { diagnostics: _ } =>
+	        v2.std.diagnostic.Rejected { diagnostics: _ } =>
 	          match find_witness(
 	            source_facts: source_facts,
 	            candidates: candidates,
@@ -296,7 +296,7 @@ fn find_witness_derives(
 	            multiplicity_policy: multiplicity_policy
 	          ) {
 	            Accepted { value: fw, diagnostics: d } => v2.std.diagnostic.Accepted { value: fw, diagnostics: d }
-	            Rejected { diagnostics: r } =>
+	            v2.std.diagnostic.Rejected { diagnostics: r } =>
 	              find_witness_derivation_rejection_better(
 	                current: acc,
 	                candidate: v2.std.diagnostic.Rejected { diagnostics: r }
@@ -307,7 +307,7 @@ fn find_witness_derives(
   )
 }
 fn find_witness_realized(
-  source_facts: Node,
+  source_facts: v2.std.node.Node,
   candidates: CandidateSet,
   predicate: PreservationPredicate,
   multiplicity_policy: MultiplicityPolicy
@@ -332,7 +332,7 @@ fn find_witness_realized(
         candidates: candidates,
         predicate: predicate
       )
-      Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     }
     _ => match multiplicity_policy {
       UniqueOnly =>
@@ -358,8 +358,8 @@ fn find_witness_realized(
   }
 }
 fn verify_witness(
-  source_facts: Node,
-  candidate: Node,
+  source_facts: v2.std.node.Node,
+  candidate: v2.std.node.Node,
   predicate: PreservationPredicate,
   witness: v2.std.witness.StructuralPropertyWitness
 ) -> v2.std.diagnostic.Outcome<v2.std.witness.StructuralPropertyWitness> {
@@ -375,8 +375,8 @@ fn verify_witness(
   }
 }
 fn verify_witness_realized(
-  source_facts: Node,
-  candidate: Node,
+  source_facts: v2.std.node.Node,
+  candidate: v2.std.node.Node,
   predicate: PreservationPredicate,
   witness: v2.std.witness.StructuralPropertyWitness
 ) -> v2.std.diagnostic.Outcome<v2.std.witness.StructuralPropertyWitness> {

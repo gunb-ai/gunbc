@@ -3,12 +3,12 @@ module gunbc.test.claim.witness_execution_class_test
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn pure_disposition() -> Optional<v2.std.live_tree.LiveTreeDisposition> {
-  Present { value: v2.std.live_tree.SubstrateInputsOnly }
+fn pure_disposition() -> v2.std.optional.Optional<v2.std.live_tree.LiveTreeDisposition> {
+  v2.std.optional.Present { value: v2.std.live_tree.SubstrateInputsOnly }
 }
 
-fn live_disposition() -> Optional<v2.std.live_tree.LiveTreeDisposition> {
-  Present { value: v2.std.live_tree.ReadsLiveTree }
+fn live_disposition() -> v2.std.optional.Optional<v2.std.live_tree.LiveTreeDisposition> {
+  v2.std.optional.Present { value: v2.std.live_tree.ReadsLiveTree }
 }
 
 test fn witness_classifier_precedence_effect_then_interpreter_subject() -> Bool {
@@ -25,7 +25,7 @@ test fn witness_classifier_precedence_effect_then_interpreter_subject() -> Bool 
 
 test fn witness_classifier_live_and_undeclared_both_classify_as_live_observation() -> Bool {
   let declared = classify_witness(disposition: live_disposition(), effect_obligation: false, interpreter_subject: false, carriage: gunbc.witness_execution_class.CarriedInEnrolledBundle { bundle_identity: "09d7d2e53554c783", member: "meet" })
-  let undeclared = classify_witness(disposition: Absent, effect_obligation: false, interpreter_subject: false, carriage: gunbc.witness_execution_class.CarriedInEnrolledBundle { bundle_identity: "09d7d2e53554c783", member: "meet" })
+  let undeclared = classify_witness(disposition: v2.std.optional.Absent, effect_obligation: false, interpreter_subject: false, carriage: gunbc.witness_execution_class.CarriedInEnrolledBundle { bundle_identity: "09d7d2e53554c783", member: "meet" })
   match declared {
     NativeLiveObservation => match undeclared {
       NativeLiveObservation => true
@@ -79,8 +79,8 @@ test fn witness_census_RED_planted_duplicate_identity_refuses_exactly_once() -> 
 
 fn first_declared_axis() -> gunbc.witness_execution_class.ClassificationAxis {
   match declared_class_precedence.first() {
-    Present { value: axis } => axis
-    Absent => CarriageAxis
+    v2.std.optional.Present { value: axis } => axis
+    v2.std.optional.Absent => CarriageAxis
   }
 }
 

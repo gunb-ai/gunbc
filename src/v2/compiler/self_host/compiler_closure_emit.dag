@@ -8,22 +8,22 @@ type CompilerClosureEmitReceipt {
   source: Medium<String>
 }
 
-fn compiler_import_closure_reading(root: Node) -> List<v2.std.dependency.DependencyView> {
+fn compiler_import_closure_reading(root: v2.std.node.Node) -> List<v2.std.dependency.DependencyView> {
   dependency_lens(root: root)
 }
 
-fn compiler_import_closure(root: Node) -> v2.lens.affected_set.AffectedSetClosureAcc {
+fn compiler_import_closure(root: v2.std.node.Node) -> v2.lens.affected_set.AffectedSetClosureAcc {
   affected_set_closure(
     dependencies: compiler_import_closure_reading(root: root),
     edit_locus: root
   )
 }
 
-fn compiler_closure_layer_count(root: Node) -> Int {
+fn compiler_closure_layer_count(root: v2.std.node.Node) -> Int {
   length(xs: topological_layers(graph_node: root))
 }
 
-fn compiler_closure_ready_count(root: Node) -> Int {
+fn compiler_closure_ready_count(root: v2.std.node.Node) -> Int {
   length(xs: ready_set(graph_node: root))
 }
 
@@ -31,21 +31,21 @@ fn compiler_closure_frontier_count(closure: v2.lens.affected_set.AffectedSetClos
   length(xs: closure.frontier)
 }
 
-fn compiler_closure_frontier_subset_of_ready(root: Node, closure: v2.lens.affected_set.AffectedSetClosureAcc) -> Bool {
+fn compiler_closure_frontier_subset_of_ready(root: v2.std.node.Node, closure: v2.lens.affected_set.AffectedSetClosureAcc) -> Bool {
   let ready = ready_set(graph_node: root)
   fold(closure.frontier, init: true, f: fn(ok, node) {
     ok && contains(xs: ready, item: node, eq: fn(left, right) { left == right })
   })
 }
 
-fn compiler_import_closure_is_acyclic(root: Node, closure: v2.lens.affected_set.AffectedSetClosureAcc) -> Bool {
+fn compiler_import_closure_is_acyclic(root: v2.std.node.Node, closure: v2.lens.affected_set.AffectedSetClosureAcc) -> Bool {
   (compiler_closure_layer_count(root: root) > 0)
     && (compiler_closure_frontier_count(closure: closure) > 0)
     && (compiler_closure_frontier_count(closure: closure) <= compiler_closure_ready_count(root: root))
     && compiler_closure_frontier_subset_of_ready(root: root, closure: closure)
 }
 
-fn compiler_closure_cyclic_diagnostic(root: Node) -> v2.std.diagnostic.Diagnostic {
+fn compiler_closure_cyclic_diagnostic(root: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^compiler_import_closure_cyclic,
     at: node_locus(node: root),

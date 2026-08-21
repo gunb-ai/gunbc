@@ -284,7 +284,7 @@ fn raw_text_children_text(children: List<std.markup.Fragment>) -> String {
   fold(children, init: "", f: (acc, c) => match c {
     FragmentText { content: t } => concat(acc, t)
     RawNode { content: t } => concat(acc, t)
-    Element { tag: _, attributes: _, children: _ } => acc
+    std.markup.Element { tag: _, attributes: _, children: _ } => acc
   })
 }
 
@@ -292,7 +292,7 @@ fn raw_text_hazard(node: std.markup.Fragment) -> String {
   match node {
     FragmentText { content: _ } => ""
     RawNode { content: _ } => ""
-    Element { tag: t, attributes: _, children: kids } =>
+    std.markup.Element { tag: t, attributes: _, children: kids } =>
       if tag_in_set(tag: t, tags: html5_raw_text_tags) {
         if string_contains(s: raw_text_children_text(children: kids), pattern: concat("</", t)) {
           join(["raw-text element <", t, "> content contains its own close sequence '</", t, "' — refusing to serialize (corruption otherwise); restructure the content"], "")

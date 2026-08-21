@@ -9,7 +9,7 @@ fn bmc_credentials_rotated_inverse_lossy_reason() -> SecretEpochNotInQuotient {
   bmc_credentials_rotated_inverse_lossy_witness
 }
 
-fn bmc_lifecycle_modeled_fidelity_node() -> Node {
+fn bmc_lifecycle_modeled_fidelity_node() -> v2.std.node.Node {
   dag_grammar_atom(id: ^dag_fidelity_disposition_kind_modeled)
 }
 
@@ -17,11 +17,11 @@ fn bmc_lifecycle_lossy_witness_grounded(_: SecretEpochNotInQuotient) -> v2.std.n
   ^bmc_lifecycle_lossy_secret_epoch_witness
 }
 
-fn bmc_lifecycle_lossy_witness_node(reason: SecretEpochNotInQuotient) -> Node {
+fn bmc_lifecycle_lossy_witness_node(reason: SecretEpochNotInQuotient) -> v2.std.node.Node {
   dag_grammar_atom(id: bmc_lifecycle_lossy_witness_grounded(reason))
 }
 
-fn bmc_lifecycle_lossy_fidelity_node() -> Node {
+fn bmc_lifecycle_lossy_fidelity_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -40,7 +40,7 @@ fn bmc_lifecycle_lossy_fidelity_node() -> Node {
   }
 }
 
-fn bmc_lifecycle_inverse_fidelity_quotient_node() -> Node {
+fn bmc_lifecycle_inverse_fidelity_quotient_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -65,7 +65,7 @@ fn bmc_lifecycle_inverse_fidelity_quotient_node() -> Node {
   }
 }
 
-fn bmc_lifecycle_inverse_fidelity_quotient_credentials_modeled_perturb_node() -> Node {
+fn bmc_lifecycle_inverse_fidelity_quotient_credentials_modeled_perturb_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -90,7 +90,7 @@ fn bmc_lifecycle_inverse_fidelity_quotient_credentials_modeled_perturb_node() ->
   }
 }
 
-fn bmc_lifecycle_inverse_target_model_bundle_with_quotient(quotient: Node) -> Node {
+fn bmc_lifecycle_inverse_target_model_bundle_with_quotient(quotient: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -103,7 +103,7 @@ fn bmc_lifecycle_inverse_target_model_bundle_with_quotient(quotient: Node) -> No
   }
 }
 
-fn bmc_lifecycle_inverse_target_model_bundle() -> Node {
+fn bmc_lifecycle_inverse_target_model_bundle() -> v2.std.node.Node {
   bmc_lifecycle_inverse_target_model_bundle_with_quotient(
     quotient: bmc_lifecycle_inverse_fidelity_quotient_node()
   )

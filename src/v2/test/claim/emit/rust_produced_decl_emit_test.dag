@@ -13,28 +13,28 @@ fn rust_produced_decl_text(fn_name: v2.std.node.Symbol) -> v2.std.diagnostic.Out
       match emit_produced_decl(decl: decl, target: rust_target_model()) {
         Accepted { value: medium, diagnostics: _ } =>
           v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
-fn rust_produced_decl_matches(fn_name: v2.std.node.Symbol, golden: String) -> Bool {
+fn rust_produced_decl_matches(fn_name: v2.std.node.Symbol, golden: String) -> v2.std.logic.Bool {
   match rust_produced_decl_text(fn_name: fn_name) {
     Accepted { value: text, diagnostics: _ } => text == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn rust_produced_decl_emits_named_add() -> Bool {
+test fn rust_produced_decl_emits_named_add() -> v2.std.logic.Bool {
   rust_produced_decl_matches(fn_name: ^rust_binding_fn_add, golden: rust_produced_add_golden)
 }
 
-test fn rust_produced_decl_emits_named_add2() -> Bool {
+test fn rust_produced_decl_emits_named_add2() -> v2.std.logic.Bool {
   rust_produced_decl_matches(fn_name: ^rust_binding_fn_add2, golden: rust_produced_add2_golden)
 }
 
-test fn rust_produced_decl_name_discriminates() -> Bool {
+test fn rust_produced_decl_name_discriminates() -> v2.std.logic.Bool {
   rust_produced_decl_emits_named_add()
     && rust_produced_decl_emits_named_add2()
     && !rust_produced_decl_matches(fn_name: ^rust_binding_fn_add2, golden: rust_produced_add_golden)

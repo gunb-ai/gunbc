@@ -8,7 +8,7 @@ data add_body_ts_emit_operand_swap_source_text: String = "function add(x: number
 data add_body_ts_emit_catalog_minus_source_text: String = "function add(x: number, y: number): number { return x - y; }"
 
 fn add_body_ts_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: Named { name: name }, target: target }
+  v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: target }
 }
 
 fn add_body_ts_add_operator_row_minus() -> v2.std.node.Node {
@@ -115,10 +115,10 @@ fn add_body_ts_canonical_grounding(node: v2.std.node.Node, algebra: v2.std.node.
   }
 }
 
-data add_body_ts_number_inhabitant: Node = ts_inhabitant_number_node()
-data add_body_ts_number_facts_node: Node = ts_number_facts_node(facts: ts_facts_number)
-data add_body_ts_arithmetic_semantics_node: Node = ts_number_arithmetic_semantics_node()
-data add_body_ts_bitwise_semantics_node: Node = ts_number_bitwise_semantics_node()
+data add_body_ts_number_inhabitant: v2.std.node.Node = ts_inhabitant_number_node()
+data add_body_ts_number_facts_node: v2.std.node.Node = ts_number_facts_node(facts: ts_facts_number)
+data add_body_ts_arithmetic_semantics_node: v2.std.node.Node = ts_number_arithmetic_semantics_node()
+data add_body_ts_bitwise_semantics_node: v2.std.node.Node = ts_number_bitwise_semantics_node()
 
 fn add_body_ts_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == dag_add_arrow_with_body_fixture {
@@ -277,7 +277,7 @@ fn add_body_ts_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std
   }
 }
 
-fn add_body_ts_inferred_facts_for(node: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn add_body_ts_inferred_facts_for(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   match add_body_ts_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -292,7 +292,7 @@ fn add_body_ts_inferred_facts_for(node: v2.std.node.Node) -> Optional<v2.compile
   }
 }
 
-fn add_body_ts_facts_lookup(key: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn add_body_ts_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   add_body_ts_inferred_facts_for(node: key)
 }
 
@@ -310,7 +310,7 @@ fn add_body_ts_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler
         value: add_body_ts_inferred_tree_for(root: root),
         diagnostics: d
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -321,7 +321,7 @@ fn add_body_ts_producer_swapped_inferred_tree() -> v2.std.diagnostic.Outcome<v2.
         value: add_body_ts_inferred_tree_for(root: root),
         diagnostics: d
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -329,7 +329,7 @@ fn add_body_ts_emit_from_producer_tree(target: v2.std.compilers.target_model.Tar
   bind_outcome(
     o: add_body_ts_producer_inferred_tree(),
     f: fn(tree) {
-      emit(tree: tree, target: target)
+      v2.compiler.emit.emit(tree: tree, target: target)
     }
   )
 }
@@ -338,44 +338,44 @@ fn add_body_ts_emit_from_producer_swapped_tree(target: v2.std.compilers.target_m
   bind_outcome(
     o: add_body_ts_producer_swapped_inferred_tree(),
     f: fn(tree) {
-      emit(tree: tree, target: target)
+      v2.compiler.emit.emit(tree: tree, target: target)
     }
   )
 }
 
-test fn add_body_ts_emit_add_fn_accepts_holds() -> Bool {
+test fn add_body_ts_emit_add_fn_accepts_holds() -> v2.std.logic.Bool {
   match add_body_ts_emit_from_producer_tree(target: ts_target_model()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == ts_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn add_body_ts_emit_operand_swap_discriminates() -> Bool {
+test fn add_body_ts_emit_operand_swap_discriminates() -> v2.std.logic.Bool {
   match add_body_ts_emit_from_producer_swapped_tree(target: ts_target_model()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == add_body_ts_emit_operand_swap_source_text) &&
       (source.carried != ts_source_text) &&
       (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn add_body_ts_emit_catalog_minus_discriminates() -> Bool {
+test fn add_body_ts_emit_catalog_minus_discriminates() -> v2.std.logic.Bool {
   match add_body_ts_emit_from_producer_tree(target: add_body_ts_target_model_minus_catalog()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == add_body_ts_emit_catalog_minus_source_text) &&
       (source.carried != ts_source_text) &&
       (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn add_body_ts_emit_missing_catalog_rejects() -> Bool {
+test fn add_body_ts_emit_missing_catalog_rejects() -> v2.std.logic.Bool {
   match add_body_ts_emit_from_producer_tree(
     target: add_body_ts_target_model_missing_operator_catalog()
   ) {
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }

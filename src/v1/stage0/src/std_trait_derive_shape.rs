@@ -7,14 +7,15 @@ use self::PairCompletionOperand::*;
 use self::ReprGroundingDeriveElemShape::*;
 use self::ReprGroundingDeriveTrait::*;
 pub use crate::std_algebra::FreeMonoid;
-use crate::std_decl_ref::DeclField::WholeDeclaration;
+use crate::std_decl_ref::DeclField::*;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
-use crate::std_disposition::ConstructionMechanism::SingleAuthority;
-use crate::std_disposition::Disposition::Scaffold;
+use crate::std_disposition::ConstructionMechanism::*;
+use crate::std_disposition::Disposition::*;
 pub use crate::std_disposition::{ConstructionMechanism, Disposition};
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
+pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -808,11 +809,11 @@ pub fn repr_grounding_group_completion_carrier_trigger() -> Rc<Disposition> {
             static CACHED: Rc<Disposition> = {
                 Rc::new(Disposition::Scaffold {
         dissolves_to: ConstructionMechanism::SingleAuthority,
-        bind: Rc::new(DeclarationRef {
+        bind: DeclarationRef {
         module_path: "std.algebra".to_string(),
         decl_name: "Ring".to_string(),
         field: Rc::new(DeclField::WholeDeclaration),
-    }),
+    },
     })
             };
         }

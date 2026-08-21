@@ -309,7 +309,7 @@ data asrock_altrad8ud_bios_3_10_instant_flash_release: extdeps.firmware.types.Fi
     locator: "download.asrock.com/BIOS/Server/ALTRAD8UD-1L2T(3.10)ROM.zip"
   },
   image_bytes: byte_size(count: 5359089),
-  image_digest: Present {
+  image_digest: v2.std.optional.Present {
     value: sha256_digest(
       hex: "4338f8f23c86ca8fe1a27267153739893b3c27d72f6c09c7af8fbfd22347a223",
     ),
@@ -330,14 +330,14 @@ data asrock_altrad8ud_bios_3_10_openbmc_release: extdeps.firmware.types.Firmware
     locator: "download.asrock.com/BIOS/Server/ALTRAD8UD-1L2T(3.10)TAR.zip"
   },
   image_bytes: byte_size(count: 5359341),
-  image_digest: Present {
+  image_digest: v2.std.optional.Present {
     value: sha256_digest(
       hex: "7693421cd665dd674f919856b1d3a46ecdbd80df2626665dcf0376f9cb7b7eb4",
     ),
   },
   release_notes: "1. Updated RC to 0ACRB_021  2. Enhanced system compatibility",
   prerequisite: extdeps.firmware.types.RequiresMinimumTargetFirmware {
-    target: BmcController,
+    target: extdeps.firmware.types.BmcController,
     minimum: firmware_semantic_version(major: 3, minor: 22, patch: 0),
   },
   authority: asrock_altrad8ud_download_authority,
@@ -362,7 +362,7 @@ data asrock_altrad8ud_bios_3_10_obmc_manifest_machine_name: std.types.NonEmptySt
 
 data asrock_altrad8ud_bmc_3_22_00_release: extdeps.firmware.types.FirmwareReleaseRow = extdeps.firmware.types.FirmwareReleaseRow {
   board: AsrockRackAltrad8ud1l2t,
-  target: BmcController,
+  target: extdeps.firmware.types.BmcController,
   version: firmware_semantic_version(major: 3, minor: 22, patch: 0),
   released_on: 1776124800000,
   image_kind: OpenBmcWebUiTar,
@@ -371,7 +371,7 @@ data asrock_altrad8ud_bmc_3_22_00_release: extdeps.firmware.types.FirmwareReleas
     locator: "www.asrockrack.com/general/productdetail.asp?Model=ALTRAD8UD-1L2T"
   },
   image_bytes: byte_size(count: 29056000),
-  image_digest: Absent,
+  image_digest: v2.std.optional.Absent,
   release_notes: "1. A password change is enforced upon the first login to the WebUI  2. Improved BMC web information  3. Enhanced BMC system compatibility",
   prerequisite: NoFirmwarePrerequisite,
   authority: asrock_altrad8ud_download_authority,
@@ -393,7 +393,7 @@ data asrock_altrad8ud_bios_310_push_refused_at_bmc_207: extdeps.firmware.types.F
   board: AsrockRackAltrad8ud1l2t,
   subject: HostBios,
   image_kind: OpenBmcWebUiTar,
-  gating_target: BmcController,
+  gating_target: extdeps.firmware.types.BmcController,
   gating_version: firmware_semantic_version(major: 2, minor: 7, patch: 0),
   outcome: extdeps.firmware.types.PushRefusedByTarget {
     diagnostic: "Invalid ExtendedVersion: primary-all. Please check MANIFEST file!",
@@ -405,7 +405,7 @@ data asrock_altrad8ud_bios_310_push_accepted_at_bmc_322: extdeps.firmware.types.
   board: AsrockRackAltrad8ud1l2t,
   subject: HostBios,
   image_kind: OpenBmcWebUiTar,
-  gating_target: BmcController,
+  gating_target: extdeps.firmware.types.BmcController,
   gating_version: firmware_semantic_version(major: 3, minor: 22, patch: 0),
   outcome: PushAcceptedByTarget,
   observed_at: 1786582800000,

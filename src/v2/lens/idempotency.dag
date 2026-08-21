@@ -17,7 +17,7 @@ fn idempotency_fact(tree: v2.compiler.inferred_tree.InferredTree, dependencies: 
   }
 }
 
-fn idempotency_verdict_unresolved(verdict: v2.lens.common.algebraic_composition.IdempotencyVerdict) -> Bool {
+fn idempotency_verdict_unresolved(verdict: v2.lens.common.algebraic_composition.IdempotencyVerdict) -> v2.std.logic.Bool {
   match verdict {
     RequiresAlgebraWitness => true
     AlgebraicIdempotenceProven { law: law } =>
@@ -28,7 +28,7 @@ fn idempotency_verdict_unresolved(verdict: v2.lens.common.algebraic_composition.
   }
 }
 
-fn idempotency_first_law_violation_diagnostic(fact: IdempotencyFact) -> Optional<v2.std.diagnostic.Diagnostic> {
+fn idempotency_first_law_violation_diagnostic(fact: IdempotencyFact) -> v2.std.optional.Optional<v2.std.diagnostic.Diagnostic> {
   fold(fact.dependencies, init: optional_absent(), f: fn(acc, dep) {
     optional_prefer_first_present(
       left: acc,
@@ -41,7 +41,7 @@ fn idempotency_first_law_violation_diagnostic(fact: IdempotencyFact) -> Optional
   })
 }
 
-fn idempotency_fact_unresolved(fact: IdempotencyFact) -> Bool {
+fn idempotency_fact_unresolved(fact: IdempotencyFact) -> v2.std.logic.Bool {
   fold(fact.dependencies, init: false, f: fn(acc, dep) {
     acc || idempotency_verdict_unresolved(verdict: dep.classification)
   })
@@ -70,7 +70,7 @@ fn idempotency_witness(tree: v2.compiler.inferred_tree.InferredTree, dependencie
   }
 }
 
-fn idempotency_verdict_eq(a: v2.lens.common.algebraic_composition.IdempotencyVerdict, b: v2.lens.common.algebraic_composition.IdempotencyVerdict) -> Bool {
+fn idempotency_verdict_eq(a: v2.lens.common.algebraic_composition.IdempotencyVerdict, b: v2.lens.common.algebraic_composition.IdempotencyVerdict) -> v2.std.logic.Bool {
   match a {
     AlgebraicIdempotenceProven { law: a_law } => match b {
       AlgebraicIdempotenceProven { law: b_law } => a_law == b_law
@@ -86,11 +86,11 @@ fn idempotency_verdict_eq(a: v2.lens.common.algebraic_composition.IdempotencyVer
 fn idempotency_classified_eq(
   a: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.IdempotencyVerdict>,
   b: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.IdempotencyVerdict>
-) -> Bool {
+) -> v2.std.logic.Bool {
   classified_dependency_view_eq(a: a, b: b, classification_eq: idempotency_verdict_eq)
 }
 
-fn idempotency_fact_eq(a: IdempotencyFact, b: IdempotencyFact) -> Bool {
+fn idempotency_fact_eq(a: IdempotencyFact, b: IdempotencyFact) -> v2.std.logic.Bool {
   bag_eq(xs: a.dependencies, ys: b.dependencies, eq: idempotency_classified_eq)
 }
 

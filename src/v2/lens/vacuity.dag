@@ -31,7 +31,7 @@ type VacuityEvidenceRecord {
   transport: v2.std.verification.TestClaimTransportMode
   lhs_provenance: TestClaimOperandProvenance
   rhs_provenance: TestClaimOperandProvenance
-  operands_structurally_equal: Bool
+  operands_structurally_equal: v2.std.logic.Bool
 }
 
 type VacuityEvidence
@@ -42,7 +42,7 @@ type VacuityEvidence
 type VacuityCensusRow {
   label: String
   evidence: VacuityEvidence
-  carries_parallel_authority_debt: Bool
+  carries_parallel_authority_debt: v2.std.logic.Bool
 }
 
 type VacuityAdvisoryCensus {
@@ -51,11 +51,11 @@ type VacuityAdvisoryCensus {
   unknown_count: Int
 }
 
-fn operands_structurally_equal(lhs: v2.std.node.Node, rhs: v2.std.node.Node) -> Bool {
+fn operands_structurally_equal(lhs: v2.std.node.Node, rhs: v2.std.node.Node) -> v2.std.logic.Bool {
   exact_structural_equality_zip_fold(source_facts: lhs, candidate: rhs)
 }
 
-fn vacuity_evidence_eq(a: VacuityEvidence, b: VacuityEvidence) -> Bool {
+fn vacuity_evidence_eq(a: VacuityEvidence, b: VacuityEvidence) -> v2.std.logic.Bool {
   match a {
     ProvenDuplicate =>
       match b {
@@ -92,7 +92,7 @@ fn vacuity_evidence_record_for_binary_claim(
   }
 }
 
-fn operand_provenance_is_independent_oracle(p: TestClaimOperandProvenance) -> Bool {
+fn operand_provenance_is_independent_oracle(p: TestClaimOperandProvenance) -> v2.std.logic.Bool {
   match p {
     BehavioralComputation => true
     RenderingTransform => true
@@ -106,25 +106,25 @@ fn operand_provenance_is_independent_oracle(p: TestClaimOperandProvenance) -> Bo
   }
 }
 
-fn vacuity_same_eval_has_unknown_provenance(record: VacuityEvidenceRecord) -> Bool {
+fn vacuity_same_eval_has_unknown_provenance(record: VacuityEvidenceRecord) -> v2.std.logic.Bool {
   record.lhs_provenance == OperandProvenanceUnknown
     || record.rhs_provenance == OperandProvenanceUnknown
 }
 
-fn vacuity_same_eval_has_independent_oracle(record: VacuityEvidenceRecord) -> Bool {
+fn vacuity_same_eval_has_independent_oracle(record: VacuityEvidenceRecord) -> v2.std.logic.Bool {
   operand_provenance_is_independent_oracle(p: record.lhs_provenance)
     || operand_provenance_is_independent_oracle(p: record.rhs_provenance)
 }
 
-fn vacuity_same_eval_is_readback_literal_oracle(record: VacuityEvidenceRecord) -> Bool {
+fn vacuity_same_eval_is_readback_literal_oracle(record: VacuityEvidenceRecord) -> v2.std.logic.Bool {
   record.lhs_provenance == ReadBack && record.rhs_provenance == LiteralOracle
 }
 
-fn vacuity_same_eval_has_helper_alias(record: VacuityEvidenceRecord) -> Bool {
+fn vacuity_same_eval_has_helper_alias(record: VacuityEvidenceRecord) -> v2.std.logic.Bool {
   record.lhs_provenance == HelperAlias || record.rhs_provenance == HelperAlias
 }
 
-fn vacuity_same_eval_is_literal_pair(record: VacuityEvidenceRecord) -> Bool {
+fn vacuity_same_eval_is_literal_pair(record: VacuityEvidenceRecord) -> v2.std.logic.Bool {
   record.lhs_provenance == LiteralOracle && record.rhs_provenance == LiteralOracle
 }
 
@@ -134,7 +134,7 @@ data vacuity_operand_provenance_live_snapshot_duplicate_partner_predicate_dissol
 
 data vacuity_operand_provenance_live_snapshot_duplicate_partner_predicate_disposition: String = "Bounded interim disposition (review 46930; shape precedented by docs/plans/e0599-implementation-proposal.md §3.0's Owner/Lane/Dissolve-trigger table for predicate/walker dissolution, applied here rather than invented fresh — §3 single authority). Owner: v2.lens.vacuity — this module owns both operand-provenance subset predicates over TestClaimOperandProvenance (operand_provenance_is_independent_oracle, carrying vacuity_operand_provenance_independent_oracle_predicate_dissolution_note, and this one); neither is a general-purpose substrate walker reused elsewhere, so ownership does not spread beyond this file. Lane: the vacuity-lens item-5 consumer-witness lane (PR #7620 and its direct follow-ons) — not a separate lane, because dissolution rides the same containment-tree-projection work this file's other ceiling notes already depend on (vacuity_bool_witness_body_lowering_ceiling_note, vacuity_bool_witness_fn_decl_collection_ceiling_note), all citing DESIGN.md's 'general body producer' open thread as the one authority, per §3. Dissolve trigger: identical to the note above — provenance read from the containment-tree projection with live-snapshot-duplicate membership construction-side (illegal states unrepresentable), or a single canonical accessor over TestClaimOperandProvenance answering both this predicate and the independent-oracle predicate, replacing both call sites at once. Until the trigger fires this predicate is a wall-after-grounding (DESIGN.md §5), not a permanent ratchet: its membership is decidable today (a closed 4-arm match over a closed coproduct) and its only debt is the missing single authority, not undecidability."
 
-fn vacuity_operand_provenance_is_live_snapshot_duplicate_partner(p: TestClaimOperandProvenance) -> Bool {
+fn vacuity_operand_provenance_is_live_snapshot_duplicate_partner(p: TestClaimOperandProvenance) -> v2.std.logic.Bool {
   match p {
     LiteralOracle => true
     LiveSurfaceSnapshot => true
@@ -143,7 +143,7 @@ fn vacuity_operand_provenance_is_live_snapshot_duplicate_partner(p: TestClaimOpe
   }
 }
 
-fn vacuity_same_eval_is_live_snapshot_duplicate(record: VacuityEvidenceRecord) -> Bool {
+fn vacuity_same_eval_is_live_snapshot_duplicate(record: VacuityEvidenceRecord) -> v2.std.logic.Bool {
   (record.lhs_provenance == LiveSurfaceSnapshot
       && vacuity_operand_provenance_is_live_snapshot_duplicate_partner(p: record.rhs_provenance))
     || (record.rhs_provenance == LiveSurfaceSnapshot
@@ -268,11 +268,11 @@ data vacuity_bool_witness_fn_decl_collection_ceiling_note: String = "THIRD, BROA
 
 fn vacuity_witness_ingest_source_text(source_text: String, file: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   let lm = dag_language_model()
-  match tokenize(text: source_text, file: file, rules: lm.lex) {
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+  match v2.compiler.tokenize.tokenize(text: source_text, file: file, rules: lm.lex) {
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     Accepted { value: ts, diagnostics: _ } =>
-      match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+      match v2.compiler.parse.parse_module(tokens: ts, grammar: lm.grammar) {
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: artifact, diagnostics: _ } =>
           normalize(parse_tree: artifact.tree)
       }
@@ -292,24 +292,24 @@ fn vacuity_collect_fn_decls(root: v2.std.node.Node, acc: List<v2.std.node.Node>)
 
 fn vacuity_fn_decl_name_optional(fn_decl: v2.std.node.Node) -> v2.std.node.Symbol? {
   match body_lower_unwrap_captured(shell: fn_decl) {
-    Absent => optional_absent()
-    Present { value: captured } =>
+    v2.std.optional.Absent => optional_absent()
+    v2.std.optional.Present { value: captured } =>
       body_lower_fn_decl_ident_from_captured(captured: captured)
   }
 }
 
-fn vacuity_fn_decl_named(fn_decl: v2.std.node.Node, name: v2.std.node.Symbol) -> Bool {
+fn vacuity_fn_decl_named(fn_decl: v2.std.node.Node, name: v2.std.node.Symbol) -> v2.std.logic.Bool {
   match vacuity_fn_decl_name_optional(fn_decl: fn_decl) {
-    Absent => false
-    Present { value: sym } => sym == name
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: sym } => sym == name
   }
 }
 
 fn vacuity_find_fn_decl_by_name(decls: List<v2.std.node.Node>, name: v2.std.node.Symbol) -> v2.std.node.Node? {
   fold(decls, init: optional_absent(), f: fn(acc, decl) {
     match acc {
-      Present { value: _ } => acc
-      Absent =>
+      v2.std.optional.Present { value: _ } => acc
+      v2.std.optional.Absent =>
         if vacuity_fn_decl_named(fn_decl: decl, name: name) {
           optional_present(value: decl)
         } else {
@@ -333,21 +333,21 @@ fn vacuity_stmt_seq_from_body(body: v2.std.node.Node) -> v2.std.node.Node? {
   }
 }
 
-fn vacuity_stmt_seq_is_single_statement(stmt_seq: v2.std.node.Node) -> Bool {
+fn vacuity_stmt_seq_is_single_statement(stmt_seq: v2.std.node.Node) -> v2.std.logic.Bool {
   if is_empty_conj_root(n: stmt_seq) {
     false
   } else {
     match sugar_sequence_pair_optional(node: stmt_seq) {
-      Absent => false
-      Present { value: pair } => is_empty_conj_root(n: pair.right)
+      v2.std.optional.Absent => false
+      v2.std.optional.Present { value: pair } => is_empty_conj_root(n: pair.right)
     }
   }
 }
 
 fn vacuity_transform_operator_symbol_optional(transform: v2.std.node.Node) -> v2.std.node.Symbol? {
   match list_at_optional(xs: node_positional_child_targets(node: transform), index: 0) {
-    Absent => optional_absent()
-    Present { value: op_node } =>
+    v2.std.optional.Absent => optional_absent()
+    v2.std.optional.Present { value: op_node } =>
       match op_node.kind {
         TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
         _ => optional_absent()
@@ -355,28 +355,28 @@ fn vacuity_transform_operator_symbol_optional(transform: v2.std.node.Node) -> v2
   }
 }
 
-fn vacuity_transform_is_equality(transform: v2.std.node.Node) -> Bool {
+fn vacuity_transform_is_equality(transform: v2.std.node.Node) -> v2.std.logic.Bool {
   match vacuity_transform_operator_symbol_optional(transform: transform) {
-    Absent => false
-    Present { value: id } => id == ^dag_token_eq_eq
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: id } => id == ^dag_token_eq_eq
   }
 }
 
 fn vacuity_operand_provenance_from_node(node: v2.std.node.Node) -> TestClaimOperandProvenance {
   match dag_canonical_literal_from_node(node: node) {
     Accepted { value: _, diagnostics: _ } => LiteralOracle
-    Rejected { diagnostics: _ } => OperandProvenanceUnknown
+    v2.std.diagnostic.Rejected { diagnostics: _ } => OperandProvenanceUnknown
   }
 }
 
 fn vacuity_bool_witness_body_evidence(transform: v2.std.node.Node) -> VacuityEvidence {
   if vacuity_transform_is_equality(transform: transform) {
     match list_at_optional(xs: node_positional_child_targets(node: transform), index: 1) {
-      Absent => Unknown
-      Present { value: lhs } =>
+      v2.std.optional.Absent => Unknown
+      v2.std.optional.Present { value: lhs } =>
         match list_at_optional(xs: node_positional_child_targets(node: transform), index: 2) {
-          Absent => Unknown
-          Present { value: rhs } =>
+          v2.std.optional.Absent => Unknown
+          v2.std.optional.Present { value: rhs } =>
             classify_vacuity_same_eval_record(
               record: VacuityEvidenceRecord {
                 subject: EqualityOperands,
@@ -395,15 +395,15 @@ fn vacuity_bool_witness_body_evidence(transform: v2.std.node.Node) -> VacuityEvi
 
 fn vacuity_bool_witness_fn_body_evidence(fn_decl: v2.std.node.Node) -> VacuityEvidence {
   match vacuity_fn_body_from_decl(fn_decl: fn_decl) {
-    Absent => Unknown
-    Present { value: body } =>
+    v2.std.optional.Absent => Unknown
+    v2.std.optional.Present { value: body } =>
       match vacuity_stmt_seq_from_body(body: body) {
-        Absent => Unknown
-        Present { value: stmt_seq } =>
+        v2.std.optional.Absent => Unknown
+        v2.std.optional.Present { value: stmt_seq } =>
           if vacuity_stmt_seq_is_single_statement(stmt_seq: stmt_seq) {
             match body_lower_try_infix_transform(node: stmt_seq) {
-              Absent => Unknown
-              Present { value: transform } =>
+              v2.std.optional.Absent => Unknown
+              v2.std.optional.Present { value: transform } =>
                 vacuity_bool_witness_body_evidence(transform: transform)
             }
           } else {
@@ -419,14 +419,14 @@ fn vacuity_bool_witness_evidence(witness: v2.std.verification.BoolWitness) -> Va
     source_text: source_text,
     file: vacuity_bool_witness_file_anchor
   ) {
-    Rejected { diagnostics: _ } => Unknown
+    v2.std.diagnostic.Rejected { diagnostics: _ } => Unknown
     Accepted { value: module_root, diagnostics: _ } =>
       match vacuity_find_fn_decl_by_name(
         decls: vacuity_collect_fn_decls(root: module_root.root, acc: std.algebra.Empty),
         name: witness.function
       ) {
-        Absent => Unknown
-        Present { value: fn_decl } => vacuity_bool_witness_fn_body_evidence(fn_decl: fn_decl)
+        v2.std.optional.Absent => Unknown
+        v2.std.optional.Present { value: fn_decl } => vacuity_bool_witness_fn_body_evidence(fn_decl: fn_decl)
       }
   }
 }
@@ -453,7 +453,7 @@ fn classify_unified_test_claim_vacuity(
 fn vacuity_carries_parallel_authority_debt(
   lhs_provenance: TestClaimOperandProvenance,
   rhs_provenance: TestClaimOperandProvenance
-) -> Bool {
+) -> v2.std.logic.Bool {
   lhs_provenance == IndependentTranscription
     && rhs_provenance == IndependentTranscription
 }
@@ -461,7 +461,7 @@ fn vacuity_carries_parallel_authority_debt(
 fn vacuity_census_row(
   label: String,
   evidence: VacuityEvidence,
-  carries_parallel_authority_debt: Bool
+  carries_parallel_authority_debt: v2.std.logic.Bool
 ) -> VacuityCensusRow {
   VacuityCensusRow {
     label: label,
@@ -494,7 +494,7 @@ fn vacuity_advisory_census_total(census: VacuityAdvisoryCensus) -> Int {
 fn vacuity_advisory_census_matches_row_count(
   rows: List<VacuityCensusRow>,
   census: VacuityAdvisoryCensus
-) -> Bool {
+) -> v2.std.logic.Bool {
   vacuity_advisory_census_total(census: census) == length(xs: rows)
 }
 

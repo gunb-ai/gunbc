@@ -3,7 +3,7 @@ module test.claim.ice40_configuration_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn count_of(xs: List<extdeps.programmable_logic.ice40.configuration.ConfigurationTiming>) -> Int {
+fn count_of(xs: List<extdeps.programmable_logic.ice40.configuration.ConfigurationTiming>) -> std.integer.Int {
   fold(xs, init: 0, f: fn(acc, _t) { acc + 1 })
 }
 
@@ -47,7 +47,7 @@ test fn w_the_pulse_width_is_a_minimum_and_says_so() -> Bool {
 }
 
 // THE QUANTITY IS TYPED, so a duration and a frequency are not the same thing wearing different
-// prose. An earlier revision carried an Int beside a unit string, which made 200 nanoseconds and
+// prose. An earlier revision carried an std.integer.Int beside a unit string, which made 200 nanoseconds and
 // 200 megahertz one type; this asserts each row lands on the arm its kind requires, and that a
 // cycle count is a cardinality rather than a duration - the table names no clock, so how long
 // forty-nine cycles take is not a fact this document states.

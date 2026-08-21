@@ -362,7 +362,7 @@ pub fn model_core_bool_fact_lookup(
 pub fn model_core_bool_spec_facts(facts: Rc<BoolPrimitiveFacts>) -> Rc<HashMap<String, Rc<Node>>> {
     PartialFunction {
         lookup: |axis| match (*model_core_bool_fact_lookup(facts.clone(), axis.clone())).clone() {
-            Witness::Holds { value: v, .. } => Some(v.clone()),
+            Witness::Holds { value: v, .. } => Optional::Present { value: v.clone() },
             Witness::Violates { diagnostic: _, .. } => None,
         },
     }

@@ -336,24 +336,24 @@ fn missing_operator_choice_axes(
   choices: ClaudeEnrollmentOperatorChoices,
 ) -> List<std.types.NonEmptyStr> {
   let host_axis = match choices.enrollment_host {
-    Present { value: _ } => claude_enrollment_empty_non_empty_str_list
-    Absent => ["enrollment_host" as std.types.NonEmptyStr]
+    v2.std.optional.Present { value: _ } => claude_enrollment_empty_non_empty_str_list
+    v2.std.optional.Absent => ["enrollment_host" as std.types.NonEmptyStr]
   }
   let run_as_axis = match choices.run_as_principal {
-    Present { value: _ } => host_axis
-    Absent => append(host_axis, ["run_as_principal" as std.types.NonEmptyStr])
+    v2.std.optional.Present { value: _ } => host_axis
+    v2.std.optional.Absent => append(host_axis, ["run_as_principal" as std.types.NonEmptyStr])
   }
   let project_axis = match choices.gcp_project {
-    Present { value: _ } => run_as_axis
-    Absent => append(run_as_axis, ["gcp_project" as std.types.NonEmptyStr])
+    v2.std.optional.Present { value: _ } => run_as_axis
+    v2.std.optional.Absent => append(run_as_axis, ["gcp_project" as std.types.NonEmptyStr])
   }
   let secret_axis = match choices.secret_id_or_create_authorization {
-    Present { value: _ } => project_axis
-    Absent => append(project_axis, ["secret_id_or_create_authorization" as std.types.NonEmptyStr])
+    v2.std.optional.Present { value: _ } => project_axis
+    v2.std.optional.Absent => append(project_axis, ["secret_id_or_create_authorization" as std.types.NonEmptyStr])
   }
   match choices.account_label {
-    Present { value: _ } => secret_axis
-    Absent => append(secret_axis, ["account_label" as std.types.NonEmptyStr])
+    v2.std.optional.Present { value: _ } => secret_axis
+    v2.std.optional.Absent => append(secret_axis, ["account_label" as std.types.NonEmptyStr])
   }
 }
 
@@ -367,33 +367,33 @@ fn admit_enrollment_placement(
     EnrollmentPlacementRefusedUnbound { missing_axes: missing }
   } else {
     let account_label = match choices.account_label {
-      Present { value: label } => label
-      Absent => "unreachable" as std.types.NonEmptyStr
+      v2.std.optional.Present { value: label } => label
+      v2.std.optional.Absent => "unreachable" as std.types.NonEmptyStr
     }
     EnrollmentPlacementAdmitted {
       placement: ClaudeEnrollmentPlacement {
         host: EnrollmentHostSpecified {
           hostname: match choices.enrollment_host {
-            Present { value: host } => host
-            Absent => "unreachable" as std.types.NonEmptyStr
+            v2.std.optional.Present { value: host } => host
+            v2.std.optional.Absent => "unreachable" as std.types.NonEmptyStr
           },
         },
         run_as: EnrollmentUnixPrincipalSpecified {
           principal: match choices.run_as_principal {
-            Present { value: principal } => principal
-            Absent => "unreachable" as std.types.NonEmptyStr
+            v2.std.optional.Present { value: principal } => principal
+            v2.std.optional.Absent => "unreachable" as std.types.NonEmptyStr
           },
         },
         enrollment_root: claude_enrollment_root_for_account(account_label: account_label),
         account_label: account_label,
         secret_target: EnrollmentSecretTargetSpecified {
           project: match choices.gcp_project {
-            Present { value: project } => project
-            Absent => "unreachable" as std.types.NonEmptyStr
+            v2.std.optional.Present { value: project } => project
+            v2.std.optional.Absent => "unreachable" as std.types.NonEmptyStr
           },
           secret: match choices.secret_id_or_create_authorization {
-            Present { value: secret } => secret
-            Absent => "unreachable" as std.types.NonEmptyStr
+            v2.std.optional.Present { value: secret } => secret
+            v2.std.optional.Absent => "unreachable" as std.types.NonEmptyStr
           },
         },
         writer: EnrollmentPrincipalPopulationDeploymentModelGap {
@@ -487,11 +487,11 @@ fn admit_ambient_oauth_home_write_back(
   observation: ClaudeAmbientOAuthArtifactObservationPair?,
 ) -> ClaudeAmbientOAuthHomeWriteBackAdmission {
   match observation {
-    Absent =>
+    v2.std.optional.Absent =>
       AmbientOAuthWriteBackRefusedMissingObservation {
         reason: "ambient OAuth home artifact must be observed before and after admitted runtime use before any write-back" as std.types.NonEmptyStr,
       }
-    Present { value: pair } =>
+    v2.std.optional.Present { value: pair } =>
       if ambient_oauth_artifact_digest_eq(a: pair.before_use, b: pair.after_use) {
         AmbientOAuthWriteBackRefusedUnchanged { digest: pair.after_use }
       } else {
@@ -565,23 +565,23 @@ fn admit_enrollment_writer_lease(
   incumbent_epoch: Int?,
 ) -> ClaudeEnrollmentWriterLeaseAdmission {
   match incumbent_holder {
-    Present { value: incumbent } =>
+    v2.std.optional.Present { value: incumbent } =>
       if incumbent == holder {
         EnrollmentLeaseGranted { holder: holder, epoch: holder_epoch }
       } else {
         EnrollmentLeaseRefusedConcurrent {
           incumbent_holder: incumbent as std.types.NonEmptyStr,
           incumbent_binding_version: match incumbent_version {
-            Present { value: v } => v
-            Absent => "unknown" as std.types.NonEmptyStr
+            v2.std.optional.Present { value: v } => v
+            v2.std.optional.Absent => "unknown" as std.types.NonEmptyStr
           },
           incumbent_epoch: match incumbent_epoch {
-            Present { value: e } => e
-            Absent => 0
+            v2.std.optional.Present { value: e } => e
+            v2.std.optional.Absent => 0
           },
         }
       }
-    Absent => EnrollmentLeaseGranted { holder: holder, epoch: holder_epoch }
+    v2.std.optional.Absent => EnrollmentLeaseGranted { holder: holder, epoch: holder_epoch }
   }
 }
 
@@ -618,7 +618,7 @@ fn admit_enrollment_writer_lease_against_binding(
       holder: holder,
       holder_epoch: holder_epoch,
       incumbent_holder: incumbent_holder,
-      incumbent_version: Present { value: incumbent_version },
+      incumbent_version: v2.std.optional.Present { value: incumbent_version },
       incumbent_epoch: incumbent_epoch,
     )
   }
@@ -639,8 +639,8 @@ fn admit_setup_token_capture(
         SetupTokenCaptureRefusedNoCandidate
       } else {
         match token {
-          Absent => SetupTokenCaptureRefusedNoCandidate
-          Present { value: candidate } =>
+          v2.std.optional.Absent => SetupTokenCaptureRefusedNoCandidate
+          v2.std.optional.Present { value: candidate } =>
             if !starts_with(s: candidate, prefix: measured.token_prefix as String) {
               SetupTokenCaptureRefusedMalformedPrefix
             } else if !setup_token_candidate_length_ok(

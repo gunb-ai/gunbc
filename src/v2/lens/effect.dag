@@ -20,14 +20,14 @@ fn effect_fact(tree: v2.compiler.inferred_tree.InferredTree, dependencies: List<
   }
 }
 
-fn effect_usage_facts_witness(tree: v2.compiler.inferred_tree.InferredTree, source: Node) -> Witness<v2.compiler.inferred_tree.InferredFacts> {
+fn effect_usage_facts_witness(tree: v2.compiler.inferred_tree.InferredTree, source: v2.std.node.Node) -> Witness<v2.compiler.inferred_tree.InferredFacts> {
   witness_from_optional(opt: tree.facts.lookup(source), absent: infer_facts_lookup_miss_diagnostic(key: source))
 }
 
 fn effect_first_upstream_diagnostic(
   tree: v2.compiler.inferred_tree.InferredTree,
   fact: EffectFact
-) -> Optional<v2.std.diagnostic.Diagnostic> {
+) -> v2.std.optional.Optional<v2.std.diagnostic.Diagnostic> {
   fold(fact.dependencies, init: optional_absent(), f: fn(acc, dep) {
     optional_prefer_first_present(
       left: acc,
@@ -39,7 +39,7 @@ fn effect_first_upstream_diagnostic(
   })
 }
 
-fn effect_signature_deferred_unresolved(fact: EffectFact) -> Bool {
+fn effect_signature_deferred_unresolved(fact: EffectFact) -> v2.std.logic.Bool {
   non_empty(xs: fact.dependencies)
 }
 
@@ -66,18 +66,18 @@ fn effect_witness(tree: v2.compiler.inferred_tree.InferredTree, dependencies: Li
   }
 }
 
-fn effect_classification_eq(a: v2.lens.common.algebraic_composition.EffectClassification, b: v2.lens.common.algebraic_composition.EffectClassification) -> Bool {
+fn effect_classification_eq(a: v2.lens.common.algebraic_composition.EffectClassification, b: v2.lens.common.algebraic_composition.EffectClassification) -> v2.std.logic.Bool {
   true
 }
 
 fn effect_classified_eq(
   a: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.EffectClassification>,
   b: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.EffectClassification>
-) -> Bool {
+) -> v2.std.logic.Bool {
   classified_dependency_view_eq(a: a, b: b, classification_eq: effect_classification_eq)
 }
 
-fn effect_fact_eq(a: EffectFact, b: EffectFact) -> Bool {
+fn effect_fact_eq(a: EffectFact, b: EffectFact) -> v2.std.logic.Bool {
   bag_eq(xs: a.dependencies, ys: b.dependencies, eq: effect_classified_eq)
 }
 

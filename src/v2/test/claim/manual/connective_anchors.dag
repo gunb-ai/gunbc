@@ -1,13 +1,13 @@
 module v2.test.manual.connective_anchors
 
 
-data stub_empty_conj: Node = v2.std.node.Node {
+data stub_empty_conj: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data stub_arrow_pair: Node = v2.std.node.Node {
+data stub_arrow_pair: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Arrow },
   children: [
     v2.std.node.Edge { label: Positional, target: stub_empty_conj },
@@ -16,55 +16,55 @@ data stub_arrow_pair: Node = v2.std.node.Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data stub_empty_disj: Node = v2.std.node.Node {
+data stub_empty_disj: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Disj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data stub_empty_cardinality: Node = v2.std.node.Node {
+data stub_empty_cardinality: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Cardinality },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data stub_empty_instantiation: Node = v2.std.node.Node {
+data stub_empty_instantiation: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Instantiation },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data stub_empty_arrow: Node = v2.std.node.Node {
+data stub_empty_arrow: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Arrow },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data stub_empty_transform: Node = v2.std.node.Node {
-  kind: v2.std.node.ComputationNode { behavior: Transform },
+data stub_empty_transform: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data stub_empty_branch: Node = v2.std.node.Node {
+data stub_empty_branch: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.ComputationNode { behavior: Branch },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data stub_empty_loop: Node = v2.std.node.Node {
+data stub_empty_loop: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.ComputationNode { behavior: Loop },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data stub_bind_zero_children: Node = v2.std.node.Node {
-  kind: v2.std.node.ComputationNode { behavior: Bind },
+data stub_bind_zero_children: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.ComputationNode { behavior: v2.std.node.Bind },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-fn arity_rejection_claim(label: String, input: Node, anchor: v2.std.verification.ManualAnchorKey) -> v2.std.verification.TestClaim {
+fn arity_rejection_claim(label: String, input: v2.std.node.Node, anchor: v2.std.verification.ManualAnchorKey) -> v2.std.verification.TestClaim {
   v2.std.verification.DiagnosticClaim {
     label: label,
     anchor: manual_claim_anchor(anchor: anchor),

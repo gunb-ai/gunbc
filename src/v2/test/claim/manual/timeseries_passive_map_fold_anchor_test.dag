@@ -50,7 +50,7 @@ data timeseries_anchor_signal: v2.std.timeseries_signal.TimeSeriesSignal = std.a
   tail: std.algebra.Empty
 }
 
-test fn timeseries_anchor_resistor_map_holds() -> Bool {
+test fn timeseries_anchor_resistor_map_holds() -> v2.std.logic.Bool {
   let mapped = resistor_map_voltage(
     element: timeseries_anchor_resistor,
     current: timeseries_anchor_current,
@@ -58,7 +58,7 @@ test fn timeseries_anchor_resistor_map_holds() -> Bool {
   voltage_count(mapped.difference.microvolts) == 2000
 }
 
-test fn timeseries_signed_magnitude_resistor_map_holds() -> Bool {
+test fn timeseries_signed_magnitude_resistor_map_holds() -> v2.std.logic.Bool {
   let mapped = resistor_map_voltage(
     element: v2.std.timeseries_signal.ResistorMap {
       kind: MapStep
@@ -74,7 +74,7 @@ data timeseries_signed_cap_initial_positive: v2.std.timeseries_signal.CapacitorS
   charge_microcoulombs: charge_micro(1000)
 }
 
-test fn timeseries_signed_magnitude_capacitor_fold_holds() -> Bool {
+test fn timeseries_signed_magnitude_capacitor_fold_holds() -> v2.std.logic.Bool {
   match capacitor_fold_step(
     element: timeseries_anchor_capacitor,
     state: timeseries_signed_cap_initial_positive,
@@ -84,11 +84,11 @@ test fn timeseries_signed_magnitude_capacitor_fold_holds() -> Bool {
     Accepted { value: stepped, diagnostics: _ } =>
       charge_micro_count(stepped.charge_microcoulombs) == -1000
         && voltage_count(stepped.voltage.microvolts) == -500
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn timeseries_anchor_capacitor_fold_holds() -> Bool {
+test fn timeseries_anchor_capacitor_fold_holds() -> v2.std.logic.Bool {
   match capacitor_fold_step(
     element: timeseries_anchor_capacitor,
     state: timeseries_anchor_cap_initial,
@@ -98,7 +98,7 @@ test fn timeseries_anchor_capacitor_fold_holds() -> Bool {
     Accepted { value: stepped, diagnostics: _ } =>
       charge_micro_count(stepped.charge_microcoulombs) == 2000
         && voltage_count(stepped.voltage.microvolts) == 1000
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -115,7 +115,7 @@ data timeseries_anchor_current_pair: List<v2.std.timeseries_signal.StepCurrent> 
   tail: std.algebra.Cons { head: timeseries_anchor_current_high, tail: std.algebra.Empty }
 }
 
-test fn timeseries_anchor_capacitor_fold_chronological_holds() -> Bool {
+test fn timeseries_anchor_capacitor_fold_chronological_holds() -> v2.std.logic.Bool {
   match fold_capacitor_transient(
     element: timeseries_anchor_capacitor,
     initial: timeseries_anchor_cap_initial,
@@ -124,7 +124,7 @@ test fn timeseries_anchor_capacitor_fold_chronological_holds() -> Bool {
   ) {
     Accepted { value: stepped, diagnostics: _ } =>
       voltage_count(stepped.voltage.microvolts) == 3000
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -133,7 +133,7 @@ data timeseries_anchor_cap_zero_rating: v2.std.timeseries_signal.CapacitorFold =
   rating: v2.std.timeseries_signal.CapacitorRating { microfarads: capacitance_micro(0) }
 }
 
-test fn timeseries_anchor_capacitor_zero_rating_rejects() -> Bool {
+test fn timeseries_anchor_capacitor_zero_rating_rejects() -> v2.std.logic.Bool {
   match capacitor_fold_step(
     element: timeseries_anchor_cap_zero_rating,
     state: timeseries_anchor_cap_initial,
@@ -141,11 +141,11 @@ test fn timeseries_anchor_capacitor_zero_rating_rejects() -> Bool {
     dt: timeseries_anchor_dt,
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-test fn timeseries_anchor_inductor_fold_holds() -> Bool {
+test fn timeseries_anchor_inductor_fold_holds() -> v2.std.logic.Bool {
   match inductor_fold_step(
     element: timeseries_anchor_inductor,
     state: timeseries_anchor_ind_initial,
@@ -155,7 +155,7 @@ test fn timeseries_anchor_inductor_fold_holds() -> Bool {
     Accepted { value: stepped, diagnostics: _ } =>
       flux_micro_count(stepped.flux_microwebers) == 4000
         && current_count(stepped.current.microamperes) == 2000
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

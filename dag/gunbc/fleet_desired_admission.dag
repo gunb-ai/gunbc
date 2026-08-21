@@ -165,7 +165,7 @@ fn fleet_desired_action_from_decision(
 // its dissolution binding and says nothing about permission — the operator verdict is an external
 // fact bound to the current head, and unmarked debt is not a way to defer it (it is marked debt's
 // violation plus concealment). Declaring the population is what makes the verdict decidable.
-data fleet_desired_authorized_action_shell_scaffold: Disposition = Scaffold {
+data fleet_desired_authorized_action_shell_scaffold: Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "gunbc.fleet_desired_admission",
@@ -297,7 +297,7 @@ func admit_fleet_desired_from_floor_event_wet() -> ProcessExit {
                 content: fleet_desired_authorized_action_script(action: action) as String,
               )
               if wrote.success {
-                ExitSuccess
+                std.process.ExitSuccess
               } else {
                 exit_failure(
                   reason: join([

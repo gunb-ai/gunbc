@@ -43,7 +43,7 @@ data emission_qualification_eq_note: String = "Canonical equality surface for Em
 fn emission_qualification_eq(
   left: EmissionQualification,
   right: EmissionQualification
-) -> Bool {
+) -> v2.std.logic.Bool {
   match left {
     SourceProduced =>
       match right {
@@ -79,7 +79,7 @@ fn emission_qualification_eq(
 fn emission_qualifications_list_contains(
   xs: List<EmissionQualification>,
   wanted: EmissionQualification
-) -> Bool {
+) -> v2.std.logic.Bool {
   any(
     xs: xs,
     predicate: fn(q) { emission_qualification_eq(left: q, right: wanted) }
@@ -100,7 +100,7 @@ type BehavioralProbeBinding
   = BehavioralProbeUnbound
   | BehavioralProbeBound { entry: String, function: String }
 
-fn behavioral_probe_binding_eq(left: BehavioralProbeBinding, right: BehavioralProbeBinding) -> Bool {
+fn behavioral_probe_binding_eq(left: BehavioralProbeBinding, right: BehavioralProbeBinding) -> v2.std.logic.Bool {
   match left {
     BehavioralProbeUnbound => match right {
       BehavioralProbeUnbound => true
@@ -153,21 +153,21 @@ data v2_interpreted_emitter_closure: RealizedEmitterClosure = RealizedEmitterClo
 fn realized_closure_contains_module(
   closure: RealizedEmitterClosure,
   module: String
-) -> Bool {
+) -> v2.std.logic.Bool {
   any(
     xs: closure.emitter_module_paths,
     predicate: fn(path) { path == module }
   )
 }
 
-fn seed_emit_rust_reachable(closure: RealizedEmitterClosure) -> Bool {
+fn seed_emit_rust_reachable(closure: RealizedEmitterClosure) -> v2.std.logic.Bool {
   realized_closure_contains_module(
     closure: closure,
     module: v1_seed_emit_rust_qualified_module
   )
 }
 
-fn v2_interpreted_emitter_closure_seed_free_holds() -> Bool {
+fn v2_interpreted_emitter_closure_seed_free_holds() -> v2.std.logic.Bool {
   !seed_emit_rust_reachable(closure: v2_interpreted_emitter_closure)
 }
 
@@ -253,7 +253,7 @@ fn behavioral_probe_qualification_admission(
   }
 }
 
-fn producer_receipt_admits_cargo_green_advance(receipt: ProducerEmissionReceipt) -> Bool {
+fn producer_receipt_admits_cargo_green_advance(receipt: ProducerEmissionReceipt) -> v2.std.logic.Bool {
   emission_qualifications_list_contains(
     xs: receipt.qualifications,
     wanted: SourceProduced
@@ -270,7 +270,7 @@ fn producer_receipt_admits_cargo_green_advance(receipt: ProducerEmissionReceipt)
 
 fn producer_receipt_admits_behavioral_equivalent_advance(
   receipt: ProducerEmissionReceipt
-) -> Bool {
+) -> v2.std.logic.Bool {
   match behavioral_probe_qualification_admission(
     probe: receipt.behavioral_probe,
     qualifications: behavioral_equivalent_with_cargo_qualifications
@@ -294,8 +294,8 @@ fn producer_receipt_admits_behavioral_equivalent_advance(
 
 fn advance_producer_emission_receipt_cargo_green(
   prior: ProducerEmissionReceipt,
-  cargo_green: Bool
-) -> Optional<ProducerEmissionReceipt> {
+  cargo_green: v2.std.logic.Bool
+) -> v2.std.optional.Optional<ProducerEmissionReceipt> {
   if !cargo_green
     || !producer_receipt_admits_cargo_green_advance(receipt: prior) {
     optional_absent()
@@ -313,8 +313,8 @@ fn advance_producer_emission_receipt_cargo_green(
 
 fn advance_producer_emission_receipt_behavioral_equivalent(
   prior: ProducerEmissionReceipt,
-  behavioral_equivalent: Bool
-) -> Optional<ProducerEmissionReceipt> {
+  behavioral_equivalent: v2.std.logic.Bool
+) -> v2.std.optional.Optional<ProducerEmissionReceipt> {
   if !behavioral_equivalent
     || !producer_receipt_admits_behavioral_equivalent_advance(receipt: prior) {
     optional_absent()
@@ -344,7 +344,7 @@ fn mint_producer_emission_receipt(
   build_result: EmissionBuildResult,
   behavioral_probe: BehavioralProbeBinding,
   realized_closure: RealizedEmitterClosure
-) -> Optional<ProducerEmissionReceipt> {
+) -> v2.std.optional.Optional<ProducerEmissionReceipt> {
   match behavioral_probe_qualification_admission(
     probe: behavioral_probe,
     qualifications: qualifications
@@ -379,7 +379,7 @@ fn mint_producer_emission_receipt(
 }
 
 
-fn emitter_producer_eq(left: EmitterProducer, right: EmitterProducer) -> Bool {
+fn emitter_producer_eq(left: EmitterProducer, right: EmitterProducer) -> v2.std.logic.Bool {
   match left {
     V1SeedEmitter =>
       match right {
@@ -403,7 +403,7 @@ fn emitter_producer_eq(left: EmitterProducer, right: EmitterProducer) -> Bool {
   }
 }
 
-fn emission_build_result_eq(left: EmissionBuildResult, right: EmissionBuildResult) -> Bool {
+fn emission_build_result_eq(left: EmissionBuildResult, right: EmissionBuildResult) -> v2.std.logic.Bool {
   match left {
     BuildGreen =>
       match right {
@@ -421,7 +421,7 @@ fn emission_build_result_eq(left: EmissionBuildResult, right: EmissionBuildResul
 fn qualifications_list_eq(
   left: List<EmissionQualification>,
   right: List<EmissionQualification>
-) -> Bool {
+) -> v2.std.logic.Bool {
   if length(xs: left) != length(xs: right) {
     false
   } else {
@@ -440,7 +440,7 @@ fn qualifications_list_eq(
   }
 }
 
-fn realized_closure_eq(left: RealizedEmitterClosure, right: RealizedEmitterClosure) -> Bool {
+fn realized_closure_eq(left: RealizedEmitterClosure, right: RealizedEmitterClosure) -> v2.std.logic.Bool {
   if length(xs: left.emitter_module_paths) != length(xs: right.emitter_module_paths) {
     false
   } else {
@@ -457,7 +457,7 @@ fn realized_closure_eq(left: RealizedEmitterClosure, right: RealizedEmitterClosu
   }
 }
 
-fn producer_emission_receipt_eq(left: ProducerEmissionReceipt, right: ProducerEmissionReceipt) -> Bool {
+fn producer_emission_receipt_eq(left: ProducerEmissionReceipt, right: ProducerEmissionReceipt) -> v2.std.logic.Bool {
   (left.module_path == right.module_path)
     && (left.module_source_digest == right.module_source_digest)
     && (left.emitter_source_digest == right.emitter_source_digest)
@@ -502,7 +502,7 @@ fn fabricated_v2_interpreted_producer_receipt(module_path: String) -> ProducerEm
 
 fn mint_v2_interpreted_receipt_with_seed_closure_refuses(
   module_path: String
-) -> Bool {
+) -> v2.std.logic.Bool {
   match mint_producer_emission_receipt(
     module_path: module_path,
     producer: V2EmitterInterpreted,
@@ -511,7 +511,7 @@ fn mint_v2_interpreted_receipt_with_seed_closure_refuses(
     behavioral_probe: BehavioralProbeBound { entry: "fabricated", function: "fabricated" },
     realized_closure: cssl_harness_realized_closure
   ) {
-    Absent => true
-    Present { value: _ } => false
+    v2.std.optional.Absent => true
+    v2.std.optional.Present { value: _ } => false
   }
 }

@@ -4,36 +4,36 @@ module v2.test.claim.body_lowering.arrow_body_form_witness
 // ArrowBodyForm contract witnesses: classification matrix, structural admission,
 // eval-entry population, eval dispatch through call, and RED mirrors that delete
 // one classifier arm each. Per-PR value oracle: arrow_body_form_eval_value_vertical_holds
-// (fixture + resolve path; no tokenize→parse→normalize module crossing). Batched
+// (fixture + v2.compiler.resolve.resolve path; no tokenize→parse→normalize module crossing). Batched
 // ingested-module value rows live in stern-wren-884's atom_body_discriminator receipt
 // (#8248) — extended here only after that PR merges to main.
 
-fn arrow_body_form_fixture_atom(identity: v2.std.node.Symbol) -> Node {
+fn arrow_body_form_fixture_atom(identity: v2.std.node.Symbol) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: []
   )
 }
 
-fn arrow_body_form_fixture_arrow_with_body(body: Node) -> Node {
+fn arrow_body_form_fixture_arrow_with_body(body: v2.std.node.Node) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
       v2.std.node.Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_domain) },
       v2.std.node.Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_return) },
       v2.std.node.Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_return) },
-      v2.std.node.Edge { label: Named { name: ^arrow_body_edge }, target: body }
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^arrow_body_edge }, target: body }
     ]
   )
 }
 
-fn arrow_body_form_id_arrow_fixture() -> Node {
+fn arrow_body_form_id_arrow_fixture() -> v2.std.node.Node {
   dag_arrow_with_body_node(
     domain: node_synthetic(
       kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         v2.std.node.Edge {
-          label: Named { name: ^dag_binding_param_x },
+          label: v2.std.node.Named { name: ^dag_binding_param_x },
           target: dag_type_atom_node(identity: dag_int_type_binding())
         }
       ]
@@ -46,7 +46,7 @@ fn arrow_body_form_id_arrow_fixture() -> Node {
   )
 }
 
-fn arrow_body_form_zero_arrow_fixture() -> Optional<Node> {
+fn arrow_body_form_zero_arrow_fixture() -> v2.std.optional.Optional<v2.std.node.Node> {
   match dag_int_literal_node_from_lexeme(lexeme: "0", occurrence_id: SyntheticOccurrence) {
     Accepted { value: zero_lit, diagnostics: _ } =>
       optional_present(
@@ -56,14 +56,14 @@ fn arrow_body_form_zero_arrow_fixture() -> Optional<Node> {
           body: zero_lit
         )
       )
-    Rejected { diagnostics: _ } => Absent
+    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
   }
 }
 
-// The add-arrow fixture reaches `resolve` through the admission door, never as a raw
-// `Node`. `resolve` declares `tree: NormalizedTree`, and BL-1 sealed that carrier so the
+// The add-arrow fixture reaches `v2.compiler.resolve.resolve` through the admission door, never as a raw
+// `v2.std.node.Node`. `v2.compiler.resolve.resolve` declares `tree: NormalizedTree`, and BL-1 sealed that carrier so the
 // only way in is `admit_normalized_tree`; a fixture that reached past it would plant the
-// wrapper-payload conflation this witness population exists to keep out. The `Rejected`
+// wrapper-payload conflation this witness population exists to keep out. The `v2.std.diagnostic.Rejected`
 // arm FAILS the witness rather than skipping it — an unadmittable fixture is a defect in
 // the fixture, not a reason to report green.
 fn abf_admitted_add_arrow_tree() -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
@@ -73,10 +73,10 @@ fn abf_admitted_add_arrow_tree() -> v2.std.diagnostic.Outcome<v2.compiler.normal
 test fn arrow_body_form_eval_value_vertical_holds() -> Bool {
   let lm = dag_language_model()
   match arrow_body_form_zero_arrow_fixture() {
-    Absent => false
-    Present { value: zero_arrow } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: zero_arrow } =>
       match abf_admitted_add_arrow_tree() {
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
         Accepted { value: admitted_tree, diagnostics: _ } =>
           match v2.compiler.resolve.resolve(tree: admitted_tree, lm: lm) {
             Accepted { value: add_arrow, diagnostics: _ } =>
@@ -92,7 +92,7 @@ test fn arrow_body_form_eval_value_vertical_holds() -> Bool {
                   right_lex: "3",
                   expected: 5
                 )
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
       }
   }
@@ -113,7 +113,7 @@ test fn arrow_body_form_classify_record_construct_holds() -> Bool {
       kind: v2.std.node.TypeNode { connective: Conj },
       children: [
         v2.std.node.Edge {
-          label: Named { name: ^arrow_body_form_record_field },
+          label: v2.std.node.Named { name: ^arrow_body_form_record_field },
           target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_record_value)
         }
       ]
@@ -128,7 +128,7 @@ test fn arrow_body_form_classify_computation_transform_holds() -> Bool {
   match classify_arrow_body_form(
     target: node_synthetic(kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform }, children: [])
   ) {
-    ComputationBody { behavior: Transform } => true
+    ComputationBody { behavior: v2.std.node.Transform } => true
     _ => false
   }
 }
@@ -212,7 +212,7 @@ test fn arrow_body_form_transform_admits_eval_entry_holds() -> Bool {
 
 test fn arrow_body_form_dispatch_behaviors_admit_eval_entry_holds() -> Bool {
   arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: Branch })
-    && arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: Bind })
+    && arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: v2.std.node.Bind })
     && arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: Loop })
 }
 
@@ -235,22 +235,22 @@ test fn arrow_body_form_value_body_refused_eval_entry_holds() -> Bool {
 
 test fn arrow_body_form_atom_body_admits_eval_through_call_holds() -> Bool {
   match arrow_body_form_eval_int_literal_optional(lexeme: "7") {
-    Present { value: arg } =>
+    v2.std.optional.Present { value: arg } =>
       arrow_body_form_eval_call_does_not_reject_unsupported_callee(
         call: arrow_body_form_eval_unary_call_node(
           callee: arrow_body_form_id_arrow_fixture(),
           arg: arg
         )
       )
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
 test fn arrow_body_form_transform_body_admits_eval_through_call_holds() -> Bool {
   match arrow_body_form_eval_int_literal_optional(lexeme: "2") {
-    Present { value: left } =>
+    v2.std.optional.Present { value: left } =>
       match arrow_body_form_eval_int_literal_optional(lexeme: "3") {
-        Present { value: right } =>
+        v2.std.optional.Present { value: right } =>
           arrow_body_form_eval_call_does_not_reject_unsupported_callee(
             call: arrow_body_form_eval_binary_call_node(
               callee: dag_add_arrow_with_body_node(),
@@ -258,21 +258,21 @@ test fn arrow_body_form_transform_body_admits_eval_through_call_holds() -> Bool 
               right: right
             )
           )
-        Absent => false
+        v2.std.optional.Absent => false
       }
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
 test fn arrow_body_form_match_body_refused_eval_entry_holds() -> Bool {
   match arrow_body_form_eval_int_literal_optional(lexeme: "1") {
-    Present { value: arg } =>
+    v2.std.optional.Present { value: arg } =>
       !arrow_body_form_eval_call_does_not_reject_unsupported_callee(
         call: arrow_body_form_eval_unary_call_node(
           callee: dag_match_arrow_with_body_node(),
           arg: arg
         )
       )
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }

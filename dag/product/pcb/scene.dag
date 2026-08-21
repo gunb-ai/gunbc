@@ -12,14 +12,14 @@ module product.pcb.scene
 // represented only by an exact emitted label: a longer label that merely contains it as a prefix
 // is not a representation.
 type PcbSceneLegend {
-  established: Int
-  missing_document: Int
-  commercial_access: Int
-  legal_carriage: Int
-  unselected_part: Int
-  drawing_must_be_read: Int
-  named_attachment_part_unresolved: Int
-  functional_obligation: Int
+  established: std.integer.Int
+  missing_document: std.integer.Int
+  commercial_access: std.integer.Int
+  legal_carriage: std.integer.Int
+  unselected_part: std.integer.Int
+  drawing_must_be_read: std.integer.Int
+  named_attachment_part_unresolved: std.integer.Int
+  functional_obligation: std.integer.Int
   body_layout: product.pcb.world.PcbBodyLayoutStanding
   design: std.decl_ref.DeclarationRef
   envelope_reads: List<std.decl_ref.DeclarationRef>

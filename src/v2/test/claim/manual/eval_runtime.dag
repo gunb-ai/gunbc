@@ -29,7 +29,7 @@ data eval_two_literal: v2.std.node.Node = v2.std.node.Node {
 }
 
 data eval_add_subgraph_node: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.ComputationNode { behavior: Transform },
+  kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
   children: [
     v2.std.node.Edge { label: Positional, target: eval_two_literal },
     v2.std.node.Edge { label: Positional, target: eval_two_literal }
@@ -198,7 +198,7 @@ fn eval_facts_for_node(node: v2.std.node.Node) -> v2.compiler.inferred_tree.Infe
   )
 }
 
-fn eval_fact_lookup(node: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn eval_fact_lookup(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   if node == eval_two_literal {
     v2.std.optional.optional_present(value: eval_facts_for_node(node: eval_two_literal))
   } else if node == eval_add_subgraph_node {
@@ -242,7 +242,7 @@ data witness_eval_call_primitive_rejects_bad_args: Bool = match eval_call_primit
   args: [],
   _env: eval_empty_environment()
 ) {
-  Rejected { diagnostics: _ } => true
+  v2.std.diagnostic.Rejected { diagnostics: _ } => true
   _ => false
 }
 

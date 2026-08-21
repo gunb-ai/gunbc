@@ -1,41 +1,41 @@
 module v2.test.computation_shapes.loop_linear_bound
 
 
-fn loop_linear_bound_leaf(s: v2.std.node.Symbol) -> Node {
+fn loop_linear_bound_leaf(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
-data loop_linear_bound_body_leaf: Node = loop_linear_bound_leaf(s: ^loop_linear_bound_body_sym)
-data loop_linear_bound_measure_leaf: Node = loop_linear_bound_leaf(s: ^loop_linear_bound_measure_sym)
+data loop_linear_bound_body_leaf: v2.std.node.Node = loop_linear_bound_leaf(s: ^loop_linear_bound_body_sym)
+data loop_linear_bound_measure_leaf: v2.std.node.Node = loop_linear_bound_leaf(s: ^loop_linear_bound_measure_sym)
 
-data loop_linear_bound_body: Node = v2.std.node.Node {
-  kind: v2.std.node.ComputationNode { behavior: Transform },
+data loop_linear_bound_body: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
   children: [
     v2.std.node.Edge { label: Positional, target: loop_linear_bound_body_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data loop_linear_bound_subject: Node = v2.std.node.Node {
+data loop_linear_bound_subject: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.ComputationNode { behavior: Loop },
   children: [
     v2.std.node.Edge { label: Positional, target: loop_linear_bound_body },
-    v2.std.node.Edge { label: Named { name: ^loop_bound_edge }, target: loop_linear_bound_measure_leaf }
+    v2.std.node.Edge { label: v2.std.node.Named { name: ^loop_bound_edge }, target: loop_linear_bound_measure_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-fn loop_linear_bound_pass_node() -> Node {
+fn loop_linear_bound_pass_node() -> v2.std.node.Node {
   loop_linear_bound_leaf(s: ^loop_linear_bound_pass_sym)
 }
 
-fn loop_linear_bound_fail_node() -> Node {
+fn loop_linear_bound_fail_node() -> v2.std.node.Node {
   loop_linear_bound_leaf(s: ^loop_linear_bound_fail_sym)
 }
 
-fn loop_linear_bound_bool_node(ok: Bool) -> Node {
+fn loop_linear_bound_bool_node(ok: Bool) -> v2.std.node.Node {
   if ok { loop_linear_bound_pass_node() } else { loop_linear_bound_fail_node() }
 }
 
@@ -57,16 +57,16 @@ data claim_loop_linear_bound_equals_refl: v2.std.verification.TestClaim = v2.std
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
-data loop_linear_bound_subject_rebuilt: Node = v2.std.node.Node {
+data loop_linear_bound_subject_rebuilt: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.ComputationNode { behavior: Loop },
   children: [
     v2.std.node.Edge { label: Positional, target: loop_linear_bound_body },
-    v2.std.node.Edge { label: Named { name: ^loop_bound_edge }, target: loop_linear_bound_measure_leaf }
+    v2.std.node.Edge { label: v2.std.node.Named { name: ^loop_bound_edge }, target: loop_linear_bound_measure_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data loop_linear_bound_subject_unbounded: Node = v2.std.node.Node {
+data loop_linear_bound_subject_unbounded: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.ComputationNode { behavior: Loop },
   children: [
     v2.std.node.Edge { label: Positional, target: loop_linear_bound_body }

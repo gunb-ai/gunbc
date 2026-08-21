@@ -56,7 +56,7 @@ fn repr_grounding_derive_elem_shape(elem: v2.std.node.Node) -> std.trait_derive_
 fn repr_grounding_derive_trait_satisfied(
   derive_trait: std.trait_derive_shape.ReprGroundingDeriveTrait,
   elem: v2.std.node.Node
-) -> Bool {
+) -> v2.std.logic.Bool {
   std.trait_derive_shape.repr_grounding_derive_shape_has_trait(
     shape: repr_grounding_derive_elem_shape(elem: elem),
     derive_trait: derive_trait
@@ -66,7 +66,7 @@ fn repr_grounding_derive_trait_satisfied(
 fn repr_grounding_derive_completeness_predicate_for_elem(
   required: std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait>,
   elem: v2.std.node.Node
-) -> Bool {
+) -> v2.std.logic.Bool {
   std.trait_derive_shape.repr_grounding_derive_completeness_predicate(
     required: required,
     shape: repr_grounding_derive_elem_shape(elem: elem)
@@ -89,7 +89,7 @@ data repr_grounding_derive_traits_equality_capability: std.types.List<std.trait_
 
 fn repr_grounding_derive_traits_for_capability(
   capability_key: v2.std.node.Symbol
-) -> Optional<std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait>> {
+) -> v2.std.optional.Optional<std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait>> {
   if capability_key == ^target_collection_trait_ord {
     optional_present(value: repr_grounding_derive_traits_ordering_capability)
   } else {
@@ -107,7 +107,7 @@ fn repr_grounding_derive_traits_for_capability(
 
 fn repr_grounding_derive_traits_for_collection_requirement(
   requirement: v2.std.compilers.target_model.TargetCapabilityRequirement
-) -> Optional<std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait>> {
+) -> v2.std.optional.Optional<std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait>> {
   repr_grounding_derive_traits_for_capability(capability_key: requirement.capability_key)
 }
 
@@ -125,12 +125,12 @@ fn trait_derive_completeness_gate(
 fn trait_derive_completeness_gate_for_collection_requirement(
   requirement: v2.std.compilers.target_model.TargetCapabilityRequirement,
   elem: v2.std.node.Node
-) -> Optional<TraitDeriveCompletenessGate> {
+) -> v2.std.optional.Optional<TraitDeriveCompletenessGate> {
   match repr_grounding_derive_traits_for_collection_requirement(requirement: requirement) {
-    Present { value: required } =>
+    v2.std.optional.Present { value: required } =>
       optional_present(
         value: trait_derive_completeness_gate(required: required, elem: elem)
       )
-    Absent => optional_absent()
+    v2.std.optional.Absent => optional_absent()
   }
 }

@@ -125,12 +125,12 @@ data json_exhaustive_match_note: String = "The matches over JsonValue below name
 
 fn json_string_value_or_empty(v: extdeps.languages.json.emit.JsonValue) -> String {
   match v {
-    JsonString { value: sv } => sv
-    JsonNull => ""
-    JsonBool { value: _ } => ""
-    JsonNumber { lexeme: _ } => ""
-    JsonArray { elements: _ } => ""
-    JsonObject { members: _ } => ""
+    extdeps.languages.json.emit.JsonString { value: sv } => sv
+    extdeps.languages.json.emit.JsonNull => ""
+    extdeps.languages.json.emit.JsonBool { value: _ } => ""
+    extdeps.languages.json.emit.JsonNumber { lexeme: _ } => ""
+    extdeps.languages.json.emit.JsonArray { elements: _ } => ""
+    extdeps.languages.json.emit.JsonObject { members: _ } => ""
   }
 }
 
@@ -148,22 +148,22 @@ fn json_object_members_named(members: List<extdeps.languages.json.emit.JsonKeyVa
 
 fn json_object_unique_member(v: extdeps.languages.json.emit.JsonValue, key: String) -> JsonMemberLookup {
   match v {
-    JsonObject { members: ms } => {
+    extdeps.languages.json.emit.JsonObject { members: ms } => {
       let hits = json_object_members_named(members: ms, key: key)
       let n = count(hits)
       if n == 0 {
         JsonMemberAbsent
       } else if n == 1 {
-        JsonMemberFound { value: fold(hits, init: JsonNull, f: (acc, x) => x) }
+        JsonMemberFound { value: fold(hits, init: extdeps.languages.json.emit.JsonNull, f: (acc, x) => x) }
       } else {
         JsonMemberDuplicated { count: n }
       }
     }
-    JsonNull => JsonMemberNotAnObject
-    JsonBool { value: _ } => JsonMemberNotAnObject
-    JsonNumber { lexeme: _ } => JsonMemberNotAnObject
-    JsonString { value: _ } => JsonMemberNotAnObject
-    JsonArray { elements: _ } => JsonMemberNotAnObject
+    extdeps.languages.json.emit.JsonNull => JsonMemberNotAnObject
+    extdeps.languages.json.emit.JsonBool { value: _ } => JsonMemberNotAnObject
+    extdeps.languages.json.emit.JsonNumber { lexeme: _ } => JsonMemberNotAnObject
+    extdeps.languages.json.emit.JsonString { value: _ } => JsonMemberNotAnObject
+    extdeps.languages.json.emit.JsonArray { elements: _ } => JsonMemberNotAnObject
   }
 }
 
@@ -257,7 +257,7 @@ fn parse_json_value_at(s: String, i: Int) -> JsonParse {
     else if c == "\"" { parse_json_string_at(s: s, i: p) }
     else if c == "t" { parse_json_literal_at(s: s, i: p, lit: "true", v: extdeps.languages.json.emit.JsonBool { value: true }) }
     else if c == "f" { parse_json_literal_at(s: s, i: p, lit: "false", v: extdeps.languages.json.emit.JsonBool { value: false }) }
-    else if c == "n" { parse_json_literal_at(s: s, i: p, lit: "null", v: JsonNull) }
+    else if c == "n" { parse_json_literal_at(s: s, i: p, lit: "null", v: extdeps.languages.json.emit.JsonNull) }
     else if c == "-" || is_json_digit_char(c: c) { parse_json_number_at(s: s, i: p) }
     else { JsonParseFail { at: p } }
   }

@@ -4,12 +4,12 @@ module v2.lens.affected_set_examples
 
 data affected_set_example_hash: v2.std.node.Hash = affected_set_example_hash
 
-data affected_set_example_node: Node = v2.std.node.Node {
+data affected_set_example_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
-data affected_set_claim_failure_node: Node = v2.std.node.Node {
+data affected_set_claim_failure_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^affected_set_claim_failure_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
@@ -69,23 +69,23 @@ data expected_affected_set_excluded_proofs: v2.lens.affected_set.ReExecFrontier 
   )
 }
 
-data expected_affected_set_unknown_fail_closed: v2.lens.affected_set.ReExecFrontier = FailClosed {
+data expected_affected_set_unknown_fail_closed: v2.lens.affected_set.ReExecFrontier = v2.lens.affected_set.FailClosed {
   reason: v2.lens.affected_set.ReasonSymbol { reason: ^affected_set_example_reason }
 }
 
-data expected_affected_set_rejected_edit_fail_closed: v2.lens.affected_set.ReExecFrontier = FailClosed {
+data expected_affected_set_rejected_edit_fail_closed: v2.lens.affected_set.ReExecFrontier = v2.lens.affected_set.FailClosed {
   reason: v2.lens.affected_set.ReasonDiagnostics {
     diagnostics: diagnostics_singleton(d: affected_set_example_invalid_edit_diagnostic)
   }
 }
 
-data expected_affected_set_whole_dag_absorbs_later_unknown: v2.lens.affected_set.ReExecFrontier = FailClosed {
+data expected_affected_set_whole_dag_absorbs_later_unknown: v2.lens.affected_set.ReExecFrontier = v2.lens.affected_set.FailClosed {
   reason: v2.lens.affected_set.ReasonDiagnostics {
     diagnostics: diagnostics_singleton(d: affected_set_example_invalid_edit_diagnostic)
   }
 }
 
-fn affected_set_example_boundary_hash_receipt(dag: v2.lens.affected_set.Dag, path: v2.std.node.Path, replacement: Node) -> v2.lens.affected_set.HashReceipt {
+fn affected_set_example_boundary_hash_receipt(dag: v2.lens.affected_set.Dag, path: v2.std.node.Path, replacement: v2.std.node.Node) -> v2.lens.affected_set.HashReceipt {
   HashChanged
 }
 

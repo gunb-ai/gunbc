@@ -7,9 +7,9 @@ data plain_string_specimen: String = "not a disposition"
 
 data bare_construction_mechanism_specimen: std.disposition.ConstructionMechanism = SingleAuthority
 
-data terminal_reason_a_specimen: std.disposition.Disposition = Terminal { reason: "closed by an explicit operator decision; no dissolution ever applies" }
+data terminal_reason_a_specimen: std.disposition.Disposition = std.disposition.Terminal { reason: "closed by an explicit operator decision; no dissolution ever applies" }
 
-data terminal_reason_b_specimen: std.disposition.Disposition = Terminal { reason: "duplicate of an existing concept, retired rather than scaffolded" }
+data terminal_reason_b_specimen: std.disposition.Disposition = std.disposition.Terminal { reason: "duplicate of an existing concept, retired rather than scaffolded" }
 
 data scaffold_single_authority_whole_specimen: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
@@ -77,7 +77,7 @@ data original_for_alias_specimen: std.disposition.Disposition = std.disposition.
 data aliased_disposition_specimen: std.disposition.Disposition = original_for_alias_specimen
 
 fn compute_disposition_specimen_value() -> std.disposition.Disposition {
-  Scaffold {
+  std.disposition.Scaffold {
     dissolves_to: RealizationDispatch,
     bind: std.decl_ref.DeclarationRef {
       module_path: "test.fixture.scaffold_disposition_census.pool.specimens",

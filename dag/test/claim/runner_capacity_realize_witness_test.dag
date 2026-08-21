@@ -13,7 +13,7 @@ test fn apply_seam_plans_two_additions_not_count_refusal() -> Bool {
     PlanReady { hosts: _ } =>
       runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 2
         && runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 2
-    PlanRefused { reason: _ } => false
+    gunbc.runner_capacity_plan.PlanRefused { reason: _ } => false
   }
 }
 
@@ -115,6 +115,6 @@ test fn converged_roster_plans_zero_additions_and_apply_succeeds() -> Bool {
               )
           RunnerCapacityApplyRefused { reason: _ } => false
         }
-    PlanRefused { reason: _ } => false
+    gunbc.runner_capacity_plan.PlanRefused { reason: _ } => false
   }
 }

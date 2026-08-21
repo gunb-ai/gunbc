@@ -1,15 +1,15 @@
 module v2.test.impossible_bug.nested_optional_flatten
 
 
-fn atom_node(s: v2.std.node.Symbol) -> Node {
+fn atom_node(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
-data flattened_optional_input: Node = v2.test.impossible_bug.nested_optional_flatten.atom_node(s: ^flattened_optional_symbol)
+data flattened_optional_input: v2.std.node.Node = v2.test.impossible_bug.nested_optional_flatten.atom_node(s: ^flattened_optional_symbol)
 
-data falsification_nested_optional: Node = v2.std.node.Node {
+data falsification_nested_optional: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Cardinality },
   children: [
     v2.std.node.Edge {
@@ -26,7 +26,7 @@ data falsification_nested_optional: Node = v2.std.node.Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data falsification_optional_double_unwrap: Node = v2.std.node.Node {
+data falsification_optional_double_unwrap: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Cardinality },
   children: [
     v2.std.node.Edge { label: Positional, target: v2.test.impossible_bug.nested_optional_flatten.atom_node(s: ^double_unwrap_symbol) },

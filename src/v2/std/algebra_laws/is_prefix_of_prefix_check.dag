@@ -6,17 +6,17 @@ fn sym_a() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^prefix_
 fn sym_b() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^prefix_sym_b, tail: std.algebra.Empty } }
 fn sym_ab() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^prefix_sym_a, tail: std.algebra.Cons { head: ^prefix_sym_b, tail: std.algebra.Empty } } }
 
-fn prefix_pass_node() -> Node {
+fn prefix_pass_node() -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^prefix_pass_sym } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
-fn prefix_fail_node() -> Node {
+fn prefix_fail_node() -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^prefix_fail_sym } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
-fn prefix_claim_input(ok: Bool) -> Node {
+fn prefix_claim_input(ok: Bool) -> v2.std.node.Node {
   if ok { prefix_pass_node() } else { prefix_fail_node() }
 }
 

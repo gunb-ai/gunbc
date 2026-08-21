@@ -48,7 +48,7 @@ fn observation_crawl_after_block() -> String {
     ci_group_open(title: "witness discovery — batch 3 (602 entries)"),
     ci_render_line(line: ci_event_line(event: std.observation.ObservationEvent {
       subject: crawl_entry(),
-      transition: std.observation.Concluded { outcome: Done },
+      transition: std.observation.Concluded { outcome: std.observation.Done },
       durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: 230))),
       rss: std.observation.MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
     }, basis: test.claim.observation_crawl_replay_test.crawl_basis()), tier: Emoji),

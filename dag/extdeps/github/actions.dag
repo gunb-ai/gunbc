@@ -160,7 +160,7 @@ type ConcurrencySpec
 
       cancel_in_progress: CancelInProgressSpec?
 
-      explicit_single: Unit?
+      explicit_single: std.types.Unit?
     }
 
 type RunnerSpec

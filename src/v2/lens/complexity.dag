@@ -92,7 +92,7 @@ fn unknown_complexity_with_diagnostic(diagnostic: v2.std.diagnostic.Diagnostic) 
 fn complexity_variables_from_cost(cost: v2.lens.cost.SymbolicCost) -> ComplexityVariables {
   match cost {
     ConstantCost { value: _ } => std.algebra.Empty
-    LogCost { variable: v } => [v]
+    v2.lens.cost.LogCost { variable: v } => [v]
     LinearCost { variable: v } => [v]
     PolynomialCost { variable: v, degree: _ } => [v]
     PolyLogCost { variable: v, exponent: _ } => [v]

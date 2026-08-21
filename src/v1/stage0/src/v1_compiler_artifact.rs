@@ -6,10 +6,9 @@ use self::BoundaryKind::*;
 use self::DagInferredRecord::*;
 use self::PartitionRule::*;
 use self::RenderTarget::*;
-pub use crate::std_types::SourceSpan;
+pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v1_std_core::TextFile;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -119,7 +118,7 @@ pub fn default_artifact_plan(
     }))
 }
 
-pub type DagNodeId = String;
+pub type DagNodeId = crate::v2_std_text::String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]

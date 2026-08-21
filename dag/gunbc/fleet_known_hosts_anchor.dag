@@ -611,7 +611,7 @@ fn portable_remote_words_strings(words: PortableRemoteWords) -> std.types.List<S
 // It takes the sealed context and nothing a caller could widen: there is no
 // options parameter to prepend into, so the first-obtained-value hazard has no surface. Every option
 // is derived here from the context -- trust from the anchor, credential from the binding, ambient
-// suppression unconditionally -- and the principal is projected to an explicit User option rather
+// suppression unconditionally -- and the principal is projected to an explicit extdeps.ssh.client_options.User option rather
 // than joined into the destination, so the account being tested is a modeled field rather than text.
 fn shape_fleet_ssh_exec(
   context: FleetSshExecutionContext,

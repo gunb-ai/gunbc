@@ -187,10 +187,10 @@ fn ci_subject_detail_text(subject: std.observation.ObservationSubject) -> String
 
 fn ci_outcome_text(o: std.observation.ObservationOutcome) -> String {
   match o {
-    Done => "done"
-    Refused { diagnostic: d } => concat("refused: ", d)
-    Failed { error: e, output: _ } => concat("failed: ", e)
-    TimedOut { basis: k, budget: b, elapsed: e } =>
+    std.observation.Done => "done"
+    std.observation.Refused { diagnostic: d } => concat("refused: ", d)
+    std.observation.Failed { error: e, output: _ } => concat("failed: ", e)
+    std.observation.TimedOut { basis: k, budget: b, elapsed: e } =>
       concat(
         "timed out after ",
         concat(
@@ -204,7 +204,7 @@ fn ci_outcome_text(o: std.observation.ObservationOutcome) -> String {
           )
         )
       )
-    Skipped { reason: r } => concat("skipped: ", r)
+    std.observation.Skipped { reason: r } => concat("skipped: ", r)
     Final { shown_failures: n } => concat("finished with ", concat(to_string(n), " problems shown"))
   }
 }
@@ -225,7 +225,7 @@ fn ci_event_line_at_attention(event: std.observation.ObservationEvent, attention
   match event.transition {
     Begin =>
       RenderedLine { glyph: presentation.glyph, text: concat("started ", subject), attention: attention }
-    Step { k: k, n: n } =>
+    std.observation.Step { k: k, n: n } =>
       RenderedLine {
         glyph: presentation.glyph,
         text: concat(subject, concat(": ", concat(to_string(k), concat(" of ", to_string(n))))),
@@ -377,7 +377,7 @@ fn ci_run_summary_glyph(summary: FloorRunSummary) -> std.symbols.SymbolId {
   }
 }
 
-// The run summary keeps Refused and Failed apart, because a summary that collapses them undoes at the last line exactly what the outcome sum spends the model establishing. A run that only refused stopped deliberately and its glyph says so; a run carrying any failure is broken, and breakage dominates the summary glyph because it is the stronger claim about the run. Both counts appear in the text either way, so the glyph chooses emphasis and never hides a number.
+// The run summary keeps std.observation.Refused and std.observation.Failed apart, because a summary that collapses them undoes at the last line exactly what the outcome sum spends the model establishing. A run that only refused stopped deliberately and its glyph says so; a run carrying any failure is broken, and breakage dominates the summary glyph because it is the stronger claim about the run. Both counts appear in the text either way, so the glyph chooses emphasis and never hides a number.
 fn ci_run_summary_line(summary: FloorRunSummary) -> RenderedLine {
   let problems = summary.refusals + summary.failures
   RenderedLine {
@@ -530,9 +530,9 @@ fn ci_batch_summary_line(rollup: std.observation.ObservationRollup) -> RenderedL
   }
 }
 
-// The duration crosses as the std.measure carrier, never a bare Nat named `*_nanos`. Wrapping it
+// The duration crosses as the std.measure carrier, never a bare std.nat.Nat named `*_nanos`. Wrapping it
 // immediately inside the body would NOT discharge that — the PARAMETER surface is what a caller can
-// get wrong, and a caller passing milliseconds into a `work_nanos: Nat` would have typechecked. The
+// get wrong, and a caller passing milliseconds into a `work_nanos: std.nat.Nat` would have typechecked. The
 // seed constructs no carrier of its own: it calls `nanosecond(count:)` across the interpreter
 // boundary and passes the result back in, so the constructor stays the single authority (a record
 // built in Rust would have forked it). Same shape as gunbc.floor_component_receipt's surface.

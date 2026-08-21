@@ -40,7 +40,7 @@ fn ks_identities() -> List<String> {
   ["t_cross_module", "t_local"]
 }
 
-test fn witness_sweep_rows_join_planted_roster_exactly_once() -> Bool {
+test fn witness_sweep_rows_join_planted_roster_exactly_once() -> v2.std.logic.Bool {
   let rows = v2.workflow.realization_sweep.sweep_rows_with_identities(ingest: ks_ingest(), admission: ks_admission(), entry: sweep_entry_path, identities: ks_identities())
   v2.workflow.realization_sweep.sweep_rows_join_canonical(rows: rows, entry: sweep_entry_path, identities: ks_identities())
     && v2.std.algebra.fold_list(xs: rows, empty: true, cons: fn(acc, r) {
@@ -48,7 +48,7 @@ test fn witness_sweep_rows_join_planted_roster_exactly_once() -> Bool {
     })
 }
 
-test fn witness_sweep_entry_witness_absent_is_located_refusal_RED() -> Bool {
+test fn witness_sweep_entry_witness_absent_is_located_refusal_RED() -> v2.std.logic.Bool {
   let rows = v2.workflow.realization_sweep.sweep_rows_with_identities(ingest: ks_ingest(), admission: ks_admission(), entry: "src/v2/test/fixture/no_such_entry.dag", identities: ks_identities())
   length(xs: rows) == 1
     && v2.std.algebra.fold_list(xs: rows, empty: true, cons: fn(acc, r) {
@@ -56,7 +56,7 @@ test fn witness_sweep_entry_witness_absent_is_located_refusal_RED() -> Bool {
     })
 }
 
-test fn witness_sweep_receipt_and_histogram_render_every_row() -> Bool {
+test fn witness_sweep_receipt_and_histogram_render_every_row() -> v2.std.logic.Bool {
   let rows = v2.workflow.realization_sweep.sweep_rows_with_identities(ingest: ks_ingest(), admission: ks_admission(), entry: sweep_entry_path, identities: ks_identities())
   let tsv = v2.workflow.realization_sweep.sweep_receipt_tsv(rows: rows)
   let hist = v2.workflow.realization_sweep.sweep_histogram_tsv(rows: rows)
@@ -66,7 +66,7 @@ test fn witness_sweep_receipt_and_histogram_render_every_row() -> Bool {
     })
 }
 
-test fn witness_canonical_identities_join_own_enrolled_roster() -> Bool {
+test fn witness_canonical_identities_join_own_enrolled_roster() -> v2.std.logic.Bool {
   let ids = v2.workflow.realization_sweep.entry_canonical_identities(entry: "dag/test/claim/long/realization_sweep_test.dag")
   let authored = [
     "witness_sweep_rows_join_planted_roster_exactly_once",

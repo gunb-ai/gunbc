@@ -1,35 +1,35 @@
 module v2.test.generated.algebra_law_conformance
 
 
-fn algebra_law_generated_atom(s: v2.std.node.Symbol) -> Node {
+fn algebra_law_generated_atom(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
-fn algebra_law_generated_nat_value(value: v2.std.nat.Nat) -> Node {
+fn algebra_law_generated_nat_value(value: v2.std.nat.Nat) -> v2.std.node.Node {
   match value {
     Zero => algebra_law_generated_atom(s: ^algebra_law_generated_nat_zero_constructor)
     Succ { prev: p } =>
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: Conj },
         children: [
-          v2.std.node.Edge { label: Named { name: ^algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: ^algebra_law_generated_nat_succ_constructor) },
-          v2.std.node.Edge { label: Named { name: ^algebra_law_generated_nat_prev_field }, target: algebra_law_generated_nat_value(value: p) },
+          v2.std.node.Edge { label: v2.std.node.Named { name: ^algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: ^algebra_law_generated_nat_succ_constructor) },
+          v2.std.node.Edge { label: v2.std.node.Named { name: ^algebra_law_generated_nat_prev_field }, target: algebra_law_generated_nat_value(value: p) },
         ],
         occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-fn algebra_law_generated_binary(operation: v2.std.node.Symbol, left: Node, right: Node, result: v2.std.nat.Nat) -> Node {
+fn algebra_law_generated_binary(operation: v2.std.node.Symbol, left: v2.std.node.Node, right: v2.std.node.Node, result: v2.std.nat.Nat) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: operation) },
-      v2.std.node.Edge { label: Named { name: ^algebra_law_generated_left_field }, target: left },
-      v2.std.node.Edge { label: Named { name: ^algebra_law_generated_right_field }, target: right },
-      v2.std.node.Edge { label: Named { name: ^algebra_law_generated_result_field }, target: algebra_law_generated_nat_value(value: result) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: operation) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^algebra_law_generated_left_field }, target: left },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^algebra_law_generated_right_field }, target: right },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^algebra_law_generated_result_field }, target: algebra_law_generated_nat_value(value: result) },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -51,27 +51,27 @@ fn t19_generated_nat_three_value() -> v2.std.nat.Nat {
   v2.std.nat.Succ { prev: t19_generated_nat_two_value() }
 }
 
-fn t19_generated_nat_zero() -> Node {
+fn t19_generated_nat_zero() -> v2.std.node.Node {
   algebra_law_generated_nat_value(value: t19_generated_nat_zero_value())
 }
 
-fn t19_generated_nat_one() -> Node {
+fn t19_generated_nat_one() -> v2.std.node.Node {
   algebra_law_generated_nat_value(value: t19_generated_nat_one_value())
 }
 
-fn t19_generated_nat_two() -> Node {
+fn t19_generated_nat_two() -> v2.std.node.Node {
   algebra_law_generated_nat_value(value: t19_generated_nat_two_value())
 }
 
-fn t19_generated_nat_three() -> Node {
+fn t19_generated_nat_three() -> v2.std.node.Node {
   algebra_law_generated_nat_value(value: t19_generated_nat_three_value())
 }
 
-fn t19_generated_nat_add(left: Node, right: Node, result: v2.std.nat.Nat) -> Node {
+fn t19_generated_nat_add(left: v2.std.node.Node, right: v2.std.node.Node, result: v2.std.nat.Nat) -> v2.std.node.Node {
   algebra_law_generated_binary(operation: ^algebra_law_generated_nat_add_application, left: left, right: right, result: result)
 }
 
-fn t19_generated_nat_mul(left: Node, right: Node, result: v2.std.nat.Nat) -> Node {
+fn t19_generated_nat_mul(left: v2.std.node.Node, right: v2.std.node.Node, result: v2.std.nat.Nat) -> v2.std.node.Node {
   algebra_law_generated_binary(operation: ^algebra_law_generated_nat_mul_application, left: left, right: right, result: result)
 }
 
@@ -137,6 +137,6 @@ fn generated_algebra_law_claim_rows() -> List<Outcome<v2.std.verification.TestCl
   ]
 }
 
-fn generated_algebra_law_sample_count_is_three() -> Bool {
+fn generated_algebra_law_sample_count_is_three() -> v2.std.logic.Bool {
   length(xs: generated_algebra_law_claim_rows()) == 3
 }

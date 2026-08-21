@@ -1,34 +1,34 @@
 module v2.test.impossible_bug.unhandled_diagnostic_paths
 
 
-fn atom_node(s: v2.std.node.Symbol) -> Node {
+fn atom_node(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
-fn safety_subject(op: v2.std.node.Symbol, witness: v2.std.node.Symbol) -> Node {
+fn safety_subject(op: v2.std.node.Symbol, witness: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^operation_field }, target: v2.test.impossible_bug.unhandled_diagnostic_paths.atom_node(s: op) },
-      v2.std.node.Edge { label: Named { name: ^witness_field }, target: v2.test.impossible_bug.unhandled_diagnostic_paths.atom_node(s: witness) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^operation_field }, target: v2.test.impossible_bug.unhandled_diagnostic_paths.atom_node(s: op) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^witness_field }, target: v2.test.impossible_bug.unhandled_diagnostic_paths.atom_node(s: witness) },
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-data total_division_input: Node = safety_subject(op: ^total_division_symbol, witness: ^proven_nonzero_divisor_symbol)
+data total_division_input: v2.std.node.Node = safety_subject(op: ^total_division_symbol, witness: ^proven_nonzero_divisor_symbol)
 
-data checked_index_input: Node = safety_subject(op: ^checked_index_symbol, witness: ^proven_index_in_range_symbol)
+data checked_index_input: v2.std.node.Node = safety_subject(op: ^checked_index_symbol, witness: ^proven_index_in_range_symbol)
 
-data total_unwrap_input: Node = safety_subject(op: ^total_unwrap_symbol, witness: ^proven_optional_present_symbol)
+data total_unwrap_input: v2.std.node.Node = safety_subject(op: ^total_unwrap_symbol, witness: ^proven_optional_present_symbol)
 
-data falsification_division_by_zero_unhandled: Node = safety_subject(op: ^unchecked_division_symbol, witness: ^force_unwrap_symbol)
+data falsification_division_by_zero_unhandled: v2.std.node.Node = safety_subject(op: ^unchecked_division_symbol, witness: ^force_unwrap_symbol)
 
-data falsification_oob_index_unhandled: Node = safety_subject(op: ^unchecked_index_symbol, witness: ^force_unwrap_symbol)
+data falsification_oob_index_unhandled: v2.std.node.Node = safety_subject(op: ^unchecked_index_symbol, witness: ^force_unwrap_symbol)
 
-data falsification_force_unwrap_survives: Node = v2.test.impossible_bug.unhandled_diagnostic_paths.atom_node(s: ^force_unwrap_symbol)
+data falsification_force_unwrap_survives: v2.std.node.Node = v2.test.impossible_bug.unhandled_diagnostic_paths.atom_node(s: ^force_unwrap_symbol)
 
 data claim_division_by_zero_total_or_proven_safe: v2.std.verification.TestClaim = v2.std.verification.CompilesClaim {
   label: "division uses total form when nonzero proof is present",

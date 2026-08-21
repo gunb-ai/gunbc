@@ -11,7 +11,7 @@ data orch_while_locate_golden: String = "d=\"/sys/fs/cgroup$(awk -F: '$1==\"0\"\
 
 data orch_while_assign_cgroup_dir_command: String = "d=\"/sys/fs/cgroup$(awk -F: '$1==\"0\"\{print $3\}' /proc/self/cgroup)\""
 
-data orch_while_path_ref: std.path_intent.PathIntent = PathRef { name: "d" as std.types.NonEmptyStr }
+data orch_while_path_ref: std.path_intent.PathIntent = std.path_intent.PathRef { name: "d" as std.types.NonEmptyStr }
 
 data orch_while_root_path: std.path_intent.PathIntent = std.path_intent.PathLiteral {
   parts: std.types.FilePathParts { segments: ["sys", "fs", "cgroup"] }
@@ -50,7 +50,7 @@ fn orch_while_cond_model_text() -> String {
         None => source.authority_source_text
         Some { diagnostics: _ } => ""
       }
-    Rejected { diagnostics: _ } => ""
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
   }
 }
 
@@ -61,7 +61,7 @@ fn orch_while_body_model_text() -> String {
         None => source.authority_source_text
         Some { diagnostics: _ } => ""
       }
-    Rejected { diagnostics: _ } => ""
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
   }
 }
 
@@ -69,13 +69,13 @@ data orch_while_cond_command: String = orch_while_cond_model_text()
 
 data orch_while_body_command: String = orch_while_body_model_text()
 
-data orch_while_locate_intent: v2.std.orchestration.PipelineStep = While {
+data orch_while_locate_intent: v2.std.orchestration.PipelineStep = v2.std.orchestration.While {
   cond: v2.std.orchestration.ExitZero {
     run: v2.std.orchestration.Run {
       command: orch_while_cond_command,
       env: Empty,
-      redirect: Absent,
-      capture: Absent
+      redirect: v2.std.optional.Absent,
+      capture: v2.std.optional.Absent
     }
   },
   body: v2.std.orchestration.Pipeline {
@@ -84,8 +84,8 @@ data orch_while_locate_intent: v2.std.orchestration.PipelineStep = While {
         run: v2.std.orchestration.Run {
           command: orch_while_body_command,
           env: Empty,
-          redirect: Absent,
-          capture: Absent
+          redirect: v2.std.optional.Absent,
+          capture: v2.std.optional.Absent
         }
       }
     ],
@@ -93,13 +93,13 @@ data orch_while_locate_intent: v2.std.orchestration.PipelineStep = While {
   }
 }
 
-data orch_while_locate_perturbed_intent: v2.std.orchestration.PipelineStep = While {
+data orch_while_locate_perturbed_intent: v2.std.orchestration.PipelineStep = v2.std.orchestration.While {
   cond: v2.std.orchestration.ExitZero {
     run: v2.std.orchestration.Run {
       command: concat(orch_while_cond_command, " # perturbed"),
       env: Empty,
-      redirect: Absent,
-      capture: Absent
+      redirect: v2.std.optional.Absent,
+      capture: v2.std.optional.Absent
     }
   },
   body: v2.std.orchestration.Pipeline {
@@ -108,8 +108,8 @@ data orch_while_locate_perturbed_intent: v2.std.orchestration.PipelineStep = Whi
         run: v2.std.orchestration.Run {
           command: orch_while_body_command,
           env: Empty,
-          redirect: Absent,
-          capture: Absent
+          redirect: v2.std.optional.Absent,
+          capture: v2.std.optional.Absent
         }
       }
     ],
@@ -117,13 +117,13 @@ data orch_while_locate_perturbed_intent: v2.std.orchestration.PipelineStep = Whi
   }
 }
 
-data orch_while_locate_body_perturbed_intent: v2.std.orchestration.PipelineStep = While {
+data orch_while_locate_body_perturbed_intent: v2.std.orchestration.PipelineStep = v2.std.orchestration.While {
   cond: v2.std.orchestration.ExitZero {
     run: v2.std.orchestration.Run {
       command: orch_while_cond_command,
       env: Empty,
-      redirect: Absent,
-      capture: Absent
+      redirect: v2.std.optional.Absent,
+      capture: v2.std.optional.Absent
     }
   },
   body: v2.std.orchestration.Pipeline {
@@ -132,8 +132,8 @@ data orch_while_locate_body_perturbed_intent: v2.std.orchestration.PipelineStep 
         run: v2.std.orchestration.Run {
           command: concat(orch_while_body_command, " # perturbed"),
           env: Empty,
-          redirect: Absent,
-          capture: Absent
+          redirect: v2.std.optional.Absent,
+          capture: v2.std.optional.Absent
         }
       }
     ],
@@ -149,8 +149,8 @@ test fn orch_while_locate_pipeline_matches_golden_holds() -> Bool {
           run: v2.std.orchestration.Run {
             command: orch_while_assign_cgroup_dir_command,
             env: Empty,
-            redirect: Absent,
-            capture: Absent
+            redirect: v2.std.optional.Absent,
+            capture: v2.std.optional.Absent
           }
         },
         orch_while_locate_intent
@@ -161,7 +161,7 @@ test fn orch_while_locate_pipeline_matches_golden_holds() -> Bool {
   ) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == orch_while_locate_golden) && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -173,8 +173,8 @@ test fn orch_while_step_matches_golden_holds() -> Bool {
           run: v2.std.orchestration.Run {
             command: orch_while_assign_cgroup_dir_command,
             env: Empty,
-            redirect: Absent,
-            capture: Absent
+            redirect: v2.std.optional.Absent,
+            capture: v2.std.optional.Absent
           }
         },
         orch_while_locate_intent
@@ -185,7 +185,7 @@ test fn orch_while_step_matches_golden_holds() -> Bool {
   ) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == orch_while_locate_golden) && (dg == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -193,13 +193,13 @@ data orch_while_raw_while_deferred_note: String = "Raw While construction refusa
 
 test fn orch_while_raw_while_perturbation_changes_bytes_holds() -> Bool {
   match orch_emit_step(
-    s: While {
+    s: v2.std.orchestration.While {
       cond: v2.std.orchestration.ExitZero {
         run: v2.std.orchestration.Run {
           command: concat(orch_while_cond_command, " # raw-while"),
           env: Empty,
-          redirect: Absent,
-          capture: Absent
+          redirect: v2.std.optional.Absent,
+          capture: v2.std.optional.Absent
         }
       },
       body: v2.std.orchestration.Pipeline {
@@ -208,8 +208,8 @@ test fn orch_while_raw_while_perturbation_changes_bytes_holds() -> Bool {
             run: v2.std.orchestration.Run {
               command: orch_while_body_command,
               env: Empty,
-              redirect: Absent,
-              capture: Absent
+              redirect: v2.std.optional.Absent,
+              capture: v2.std.optional.Absent
             }
           }
         ],
@@ -220,7 +220,7 @@ test fn orch_while_raw_while_perturbation_changes_bytes_holds() -> Bool {
   ) {
     Accepted { value: source, diagnostics: _ } =>
       source.carried != orch_while_locate_golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -228,29 +228,29 @@ test fn orch_while_path_kind_discriminates_regular_directory_missing_holds() -> 
   let regular = match bash_path_predicate_target_model(
     predicate: std.path_intent.PathEntryKind {
       path: orch_while_memory_peak_path,
-      kind: RegularFile
+      kind: std.filesystem.types.RegularFile
     }
   ) {
     Accepted { value: source, diagnostics: _ } => source.authority_source_text
-    Rejected { diagnostics: _ } => ""
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
   }
   let directory = match bash_path_predicate_target_model(
     predicate: std.path_intent.PathEntryKind {
       path: orch_while_memory_peak_path,
-      kind: Directory
+      kind: std.filesystem.types.Directory
     }
   ) {
     Accepted { value: source, diagnostics: _ } => source.authority_source_text
-    Rejected { diagnostics: _ } => ""
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
   }
   let missing = match bash_path_predicate_target_model(
     predicate: std.path_intent.PathEntryKind {
       path: orch_while_memory_peak_path,
-      kind: Missing
+      kind: std.filesystem.types.Missing
     }
   ) {
     Accepted { value: source, diagnostics: _ } => source.authority_source_text
-    Rejected { diagnostics: _ } => ""
+    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
   }
   (regular == "[ -f \"$d/memory.peak\" ]")
     && (directory == "[ -d \"$d/memory.peak\" ]")

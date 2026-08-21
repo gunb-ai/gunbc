@@ -133,22 +133,22 @@ fn idempotent_operation_generated_run(row: v2.std.diagnostic.Outcome<v2.std.veri
         value: idempotent_operation_run_via_test_claim(claim: claim),
         diagnostics: v2.std.diagnostic.None
       }
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
-fn idempotent_operation_run_non_pass(row: v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>>) -> Bool {
+fn idempotent_operation_run_non_pass(row: v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>>) -> v2.std.logic.Bool {
   match row {
     Accepted { value: run, diagnostics: None } =>
       match run.verdict {
         Pass => false
         SemanticMismatch { actual: _, falsification: _ } => true
-        BuildFailed { actual: _, diagnostic: _ } => true
+        v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => true
         RunFailed { actual: _, diagnostic: _ } => true
         Deferred { actual: _, diagnostic: _ } => true
       }
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
@@ -182,14 +182,14 @@ data generated_label_only_idempotent_skip: v2.std.diagnostic.Outcome<v2.std.veri
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 )
 
-fn generated_label_only_skip_is_rejected() -> Bool {
+fn generated_label_only_skip_is_rejected() -> v2.std.logic.Bool {
   match generated_label_only_idempotent_skip {
-    Rejected { diagnostics: d } => d.head.reason == ^idempotent_operation_tautology_skip
+    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^idempotent_operation_tautology_skip
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-data generated_label_only_skip_pins_rejection: Bool = generated_label_only_skip_is_rejected()
+data generated_label_only_skip_pins_rejection: v2.std.logic.Bool = generated_label_only_skip_is_rejected()
 
 data run_read_idempotent_operation_via_run_test_claim: v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>> = idempotent_operation_generated_run(
   row: generated_read_idempotent_operation_claim
@@ -207,19 +207,19 @@ data run_create_if_absent_idempotent_operation_via_run_test_claim: v2.std.diagno
   row: generated_create_if_absent_idempotent_operation_claim
 )
 
-data witness_read_idempotent_operation_run_non_pass: Bool = idempotent_operation_run_non_pass(
+data witness_read_idempotent_operation_run_non_pass: v2.std.logic.Bool = idempotent_operation_run_non_pass(
   row: run_read_idempotent_operation_via_run_test_claim
 )
 
-data witness_upsert_idempotent_operation_run_non_pass: Bool = idempotent_operation_run_non_pass(
+data witness_upsert_idempotent_operation_run_non_pass: v2.std.logic.Bool = idempotent_operation_run_non_pass(
   row: run_upsert_idempotent_operation_via_run_test_claim
 )
 
-data witness_delete_idempotent_operation_run_non_pass: Bool = idempotent_operation_run_non_pass(
+data witness_delete_idempotent_operation_run_non_pass: v2.std.logic.Bool = idempotent_operation_run_non_pass(
   row: run_delete_idempotent_operation_via_run_test_claim
 )
 
-data witness_create_if_absent_idempotent_operation_run_non_pass: Bool = idempotent_operation_run_non_pass(
+data witness_create_if_absent_idempotent_operation_run_non_pass: v2.std.logic.Bool = idempotent_operation_run_non_pass(
   row: run_create_if_absent_idempotent_operation_via_run_test_claim
 )
 
@@ -232,11 +232,11 @@ fn generated_idempotent_operation_claim_rows() -> std.types.List<v2.std.diagnost
   ]
 }
 
-fn generated_idempotent_operation_sample_count_is_four() -> Bool {
+fn generated_idempotent_operation_sample_count_is_four() -> v2.std.logic.Bool {
   v2.std.algebra.length(xs: generated_idempotent_operation_claim_rows()) == 4
 }
 
-fn generated_idempotent_operation_scheduled_subject_count_is_four() -> Bool {
+fn generated_idempotent_operation_scheduled_subject_count_is_four() -> v2.std.logic.Bool {
   v2.std.algebra.length(xs: v2.lens.testgen.testgen_scheduled_idempotent_operation_subjects()) == 4
 }
 
@@ -249,6 +249,6 @@ fn generated_idempotent_operation_run_rows() -> std.types.List<v2.std.diagnostic
   ]
 }
 
-fn generated_idempotent_operation_run_count_is_four() -> Bool {
+fn generated_idempotent_operation_run_count_is_four() -> v2.std.logic.Bool {
   v2.std.algebra.length(xs: generated_idempotent_operation_run_rows()) == 4
 }

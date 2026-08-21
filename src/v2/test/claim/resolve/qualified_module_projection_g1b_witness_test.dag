@@ -3,7 +3,7 @@ module v2.test.resolve.qualified_module_projection_g1b_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data qmp_g1b_fixture_subject: Node = v2.std.node.Node {
+data qmp_g1b_fixture_subject: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^qmp_g1b_fixture_subject } },
   children: [],
   occurrence_id: SyntheticOccurrence

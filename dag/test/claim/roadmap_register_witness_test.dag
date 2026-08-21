@@ -110,7 +110,7 @@ fn fragment_is_wordmark(c: std.markup.Fragment) -> Bool {
 fn subtree_carries_wordmark(f: std.markup.Fragment) -> Bool {
   fragment_is_wordmark(c: f)
     || (match f {
-      Element { tag: _, attributes: _, children } =>
+      std.markup.Element { tag: _, attributes: _, children } =>
         fold(children, init: false, f: (acc, c) => acc || subtree_carries_wordmark(f: c))
       FragmentText { content: _ } => false
       RawNode { content: _ } => false
@@ -119,7 +119,7 @@ fn subtree_carries_wordmark(f: std.markup.Fragment) -> Bool {
 
 fn header_subtree_carries_wordmark(h: std.markup.Fragment) -> Bool {
   match h {
-    Element { tag, attributes: _, children } =>
+    std.markup.Element { tag, attributes: _, children } =>
       tag == "header"
         && fold(children, init: false, f: (acc, c) => acc || subtree_carries_wordmark(f: c))
     FragmentText { content: _ } => false

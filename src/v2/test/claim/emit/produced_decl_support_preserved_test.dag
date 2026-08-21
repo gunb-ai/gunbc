@@ -9,7 +9,7 @@ fn pdp_marker_token_class() -> v2.std.node.Symbol {
   ^pdp_renderer_executed_marker
 }
 
-fn pdp_render(decl: Node) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold> {
+fn pdp_render(decl: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold> {
   outcome_accepted(
     v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold {
       prefix: [v2.std.compilers.target_model.FixedToken { token_class: pdp_marker_token_class() }],
@@ -40,7 +40,7 @@ fn pdp_target_with(support: v2.std.compilers.target_model.ProducedDeclSupport) -
 
 // Preservation is proven by EXECUTION: the surviving renderer is called and its
 // output inspected. A field comparison is unavailable over function values.
-fn pdp_renderer_executes(target: v2.std.compilers.target_model.TargetModel) -> Bool {
+fn pdp_renderer_executes(target: v2.std.compilers.target_model.TargetModel) -> v2.std.logic.Bool {
   match target.produced_decl_support {
     ProducedDeclUnwired => false
     ProducedDeclWired {
@@ -51,26 +51,26 @@ fn pdp_renderer_executes(target: v2.std.compilers.target_model.TargetModel) -> B
       match render(target_model_type_atom_node(identity: ^pdp_decl)) {
         Accepted { value: scaffold, diagnostics: _ } =>
           match list_at_optional(xs: scaffold.prefix, index: 0) {
-            Present { value: token } =>
+            v2.std.optional.Present { value: token } =>
               match token {
                 FixedToken { token_class: tc } => tc == pdp_marker_token_class()
                 _ => false
               }
-            Absent => false
+            v2.std.optional.Absent => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
   }
 }
 
-fn pdp_after_value_semantics(support: v2.std.compilers.target_model.ProducedDeclSupport) -> Bool {
+fn pdp_after_value_semantics(support: v2.std.compilers.target_model.ProducedDeclSupport) -> v2.std.logic.Bool {
   match target_model_augment_value_semantics_carriers(
     target: pdp_target_with(support: support),
     extra_atoms: [^pdp_extra_atom]
   ) {
     Accepted { value: augmented, diagnostics: _ } =>
       pdp_renderer_executes(target: augmented)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -84,21 +84,21 @@ fn pdp_ownership_row() -> v2.std.compilers.target_model.TargetUseSiteOwnershipRe
   }
 }
 
-fn pdp_after_use_site_ownership(support: v2.std.compilers.target_model.ProducedDeclSupport) -> Bool {
+fn pdp_after_use_site_ownership(support: v2.std.compilers.target_model.ProducedDeclSupport) -> v2.std.logic.Bool {
   match target_model_augment_use_site_ownership_catalog(
     target: pdp_target_with(support: support),
     derived_rows: [pdp_ownership_row()]
   ) {
     Accepted { value: augmented, diagnostics: _ } =>
       pdp_renderer_executes(target: augmented)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 // Positive control: the renderer survives BOTH augmenters and still executes.
 // Negative control: an unwired target stays unwired through the same call, so the
 // positive arm cannot be satisfied by a constant.
-test fn produced_decl_support_survives_augmentation() -> Bool {
+test fn produced_decl_support_survives_augmentation() -> v2.std.logic.Bool {
   pdp_renderer_executes(target: pdp_target_with(support: pdp_wired_support()))
     && pdp_after_value_semantics(support: pdp_wired_support())
     && pdp_after_use_site_ownership(support: pdp_wired_support())

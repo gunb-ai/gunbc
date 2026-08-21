@@ -6,10 +6,11 @@ use self::AnnotationAttachment::*;
 use self::AnnotationAttachmentRefusal::*;
 use self::AnnotationPlacement::*;
 pub use crate::std_occurrence_identity::OccurrenceId;
-use crate::std_types::Bool::*;
-pub use crate::std_types::{Bool, List, SourceSpan};
+pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v2_lens_application::SourceSpan;
+pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -526,11 +527,11 @@ pub fn annotation_attach_step(
                                     open.text.clone(),
                                     v1_rt::concat("\n".to_string(), capture.text.clone()),
                                 ),
-                                origin: Rc::new(SourceSpan {
+                                origin: SourceSpan {
                                     file: open.origin.clone().file.clone(),
                                     start: open.origin.clone().start.clone(),
                                     end: capture.origin.clone().end.clone(),
-                                }),
+                                },
                             })),
                             pending_adjacent: true,
                         }),
@@ -584,11 +585,11 @@ pub fn annotation_attach_resolve(
                                 open.text.clone(),
                                 v1_rt::concat("\n".to_string(), capture.text.clone()),
                             ),
-                            origin: Rc::new(SourceSpan {
+                            origin: SourceSpan {
                                 file: open.origin.clone().file.clone(),
                                 start: open.origin.clone().start.clone(),
                                 end: capture.origin.clone().end.clone(),
-                            }),
+                            },
                         })),
                         pending_adjacent: true,
                     })

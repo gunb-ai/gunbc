@@ -3,14 +3,14 @@ module v2.test.manual.derivable_coercion_nickname_triple
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn task_id_candidate_set(candidates: List<Node>, closedness_evidence: Node) -> v2.std.find_witness.CandidateSet {
+fn task_id_candidate_set(candidates: List<v2.std.node.Node>, closedness_evidence: v2.std.node.Node) -> v2.std.find_witness.CandidateSet {
   v2.std.find_witness.CandidateSet {
     candidates: candidates,
     closedness: derivable_coercion_candidate_closedness(evidence: closedness_evidence)
   }
 }
 
-fn task_id_predicate(source: Node, target: Node, rule: v2.std.node.Symbol) -> v2.std.find_witness.PreservationPredicate {
+fn task_id_predicate(source: v2.std.node.Node, target: v2.std.node.Node, rule: v2.std.node.Symbol) -> v2.std.find_witness.PreservationPredicate {
   if rule == ^preservation_rule_refinement_widening {
     v2.std.find_witness.PreservationPredicate {
       algebra: refinement_widening_predicate_algebra(source: source, candidate: target),
@@ -24,7 +24,7 @@ fn task_id_predicate(source: Node, target: Node, rule: v2.std.node.Symbol) -> v2
   }
 }
 
-fn find_witness_sibling_accepts(source: Node, target: Node, rule: v2.std.node.Symbol) -> Bool {
+fn find_witness_sibling_accepts(source: v2.std.node.Node, target: v2.std.node.Node, rule: v2.std.node.Symbol) -> Bool {
   match find_witness(
     source_facts: source,
     candidates: task_id_candidate_set(
@@ -35,11 +35,11 @@ fn find_witness_sibling_accepts(source: Node, target: Node, rule: v2.std.node.Sy
     multiplicity_policy: UniqueOnly
   ) {
     Accepted { value: fw, diagnostics: _ } => fw.candidate == target
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn find_witness_dispatch_accepts(source: Node, target: Node) -> Bool {
+fn find_witness_dispatch_accepts(source: v2.std.node.Node, target: v2.std.node.Node) -> Bool {
   match find_witness_derives(
     source_facts: source,
     candidates: task_id_candidate_set(
@@ -50,7 +50,7 @@ fn find_witness_dispatch_accepts(source: Node, target: Node) -> Bool {
     multiplicity_policy: UniqueOnly
   ) {
     Accepted { value: fw, diagnostics: _ } => fw.candidate == target
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -101,11 +101,11 @@ data witness_crux_substrate_gap: Bool = !find_witness_dispatch_faithful_for_sibl
 
 data witness_matrix_exact_api_to_api_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_api_inhabitant_node(), rule: ^preservation_rule_exact_structural_equality_zip_fold)
 
-fn derivable_coercion_pass_node() -> Node {
+fn derivable_coercion_pass_node() -> v2.std.node.Node {
   task_id_api_inhabitant_node()
 }
 
-fn derivable_coercion_claim_lhs(ok: Bool) -> Node {
+fn derivable_coercion_claim_lhs(ok: Bool) -> v2.std.node.Node {
   if ok {
     derivable_coercion_pass_node()
   } else {
@@ -144,7 +144,7 @@ test data witness_claim_task_id_surfaces_distinct: Bool = match run_test_claim_a
 ) {
   Pass => true
   SemanticMismatch { actual: _, falsification: _ } => false
-    BuildFailed { actual: _, diagnostic: _ } => false
+    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
@@ -156,7 +156,7 @@ test data witness_claim_crux_substrate_gap: Bool = match run_test_claim_assert(
 ) {
   Pass => true
   SemanticMismatch { actual: _, falsification: _ } => false
-    BuildFailed { actual: _, diagnostic: _ } => false
+    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
@@ -168,7 +168,7 @@ test data witness_claim_matrix_widening_accepts_siblings_and_wrong_core: Bool = 
 ) {
   Pass => true
   SemanticMismatch { actual: _, falsification: _ } => false
-    BuildFailed { actual: _, diagnostic: _ } => false
+    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }

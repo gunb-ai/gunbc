@@ -37,18 +37,18 @@ fn empty_ingest_detail_arm() -> v2.std.node.Symbol {
   }
 }
 
-test fn empty_ingest_refuses_rather_than_reporting_a_missing_module_holds() -> Bool {
+test fn empty_ingest_refuses_rather_than_reporting_a_missing_module_holds() -> v2.std.logic.Bool {
   empty_ingest_receipt().located_reason != ^resolve_module_not_found
 }
 
-test fn empty_ingest_names_the_absent_closure_holds() -> Bool {
+test fn empty_ingest_names_the_absent_closure_holds() -> v2.std.logic.Bool {
   empty_ingest_receipt().located_reason == ^frontier_probe_empty_ingest
 }
 
-test fn empty_ingest_refusal_lands_in_the_population_detail_holds() -> Bool {
+test fn empty_ingest_refusal_lands_in_the_population_detail_holds() -> v2.std.logic.Bool {
   empty_ingest_detail_arm() == ^frontier_probe_empty_ingest
 }
 
-test fn empty_ingest_keeps_the_module_path_it_was_asked_about_holds() -> Bool {
+test fn empty_ingest_keeps_the_module_path_it_was_asked_about_holds() -> v2.std.logic.Bool {
   empty_ingest_receipt().module_path == "src/v2/compiler/03_resolve.dag"
 }

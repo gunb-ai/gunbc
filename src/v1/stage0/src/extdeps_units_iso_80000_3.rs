@@ -5,13 +5,14 @@ use self::Iso80000Part3::*;
 pub use crate::extdeps_external_authority::{
     ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
 };
-use crate::extdeps_uri::UriScheme::Https;
+use crate::extdeps_uri::UriScheme::*;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-use crate::std_decl_ref::DeclField::WholeDeclaration;
+use crate::std_decl_ref::DeclField::*;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
-pub use crate::std_nat::Nat;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v2_std_nat::Nat;
+use crate::v2_std_nat::Nat::*;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -21,10 +22,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+        uri: Uri {
         scheme: UriScheme::Https,
         locator: "www.iso.org/standard/64974.html".to_string(),
-    }),
+    },
     })
             };
         }
@@ -35,10 +36,10 @@ pub fn iso_80000_3_amendment_1_authority() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+        uri: Uri {
         scheme: UriScheme::Https,
         locator: "www.iso.org/standard/87100.html".to_string(),
-    }),
+    },
     })
             };
         }
@@ -66,14 +67,14 @@ pub fn iso_80000_3_model_scope() -> Rc<ExternalModelScope> {
     thread_local! {
             static CACHED: Rc<ExternalModelScope> = {
                 Rc::new(ExternalModelScope {
-        subject: Rc::new(ExternalSubjectRef {
-        declaration: Rc::new(DeclarationRef {
+        subject: ExternalSubjectRef {
+        declaration: DeclarationRef {
         module_path: "extdeps.units.iso_80000_3".to_string(),
         decl_name: "iso_80000_3_standard".to_string(),
         field: Rc::new(DeclField::WholeDeclaration),
-    }),
-    }),
-        first_citation: extdeps_external_authority_anchor(),
+    },
+    },
+        first_citation: crate::extdeps_units_iso_80000_3::extdeps_external_authority_anchor(),
         further_citations: Rc::new(vec![iso_80000_3_amendment_1_authority()]),
     })
             };
@@ -108,31 +109,31 @@ pub fn iso_80000_3_plane_angle_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn degrees_per_turn() -> Nat {
+pub fn degrees_per_turn() -> Rc<Nat> {
     360
 }
 
-pub fn arcminutes_per_degree() -> Nat {
+pub fn arcminutes_per_degree() -> Rc<Nat> {
     60
 }
 
-pub fn arcseconds_per_arcminute() -> Nat {
+pub fn arcseconds_per_arcminute() -> Rc<Nat> {
     60
 }
 
-pub fn arcseconds_per_degree_derived() -> Nat {
+pub fn arcseconds_per_degree_derived() -> Rc<Nat> {
     (arcminutes_per_degree() * arcseconds_per_arcminute())
 }
 
-pub fn arcseconds_per_turn() -> Nat {
+pub fn arcseconds_per_turn() -> Rc<Nat> {
     ((degrees_per_turn() * arcminutes_per_degree()) * arcseconds_per_arcminute())
 }
 
-pub fn square_millimetres_per_square_metre() -> Nat {
+pub fn square_millimetres_per_square_metre() -> Rc<Nat> {
     1000000
 }
 
-pub fn cubic_millimetres_per_cubic_metre() -> Nat {
+pub fn cubic_millimetres_per_cubic_metre() -> Rc<Nat> {
     1000000000
 }
 

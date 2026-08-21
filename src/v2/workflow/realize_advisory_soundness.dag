@@ -6,7 +6,7 @@ data realize_advisory_soundness_note: String = "P4 consumption gate (2026-07-22)
 type AdvisoryObservation {
   entry: String
   subject_function: String
-  derived_bytes_known: Bool
+  derived_bytes_known: v2.std.logic.Bool
   derived_bytes: Int
   observed_peak_bytes: Int
 }
@@ -29,7 +29,7 @@ fn advisory_soundness_for(o: AdvisoryObservation) -> AdvisorySoundness {
   }
 }
 
-fn advisory_observation_is_sound(o: AdvisoryObservation) -> Bool {
+fn advisory_observation_is_sound(o: AdvisoryObservation) -> v2.std.logic.Bool {
   match advisory_soundness_for(o: o) {
     BoundSound { margin_bytes: _ } => true
     BoundUnsound { derived_bytes: _, observed_peak_bytes: _ } => false
@@ -37,7 +37,7 @@ fn advisory_observation_is_sound(o: AdvisoryObservation) -> Bool {
   }
 }
 
-fn advisory_window_all_sound(observations: List<AdvisoryObservation>) -> Bool {
+fn advisory_window_all_sound(observations: List<AdvisoryObservation>) -> v2.std.logic.Bool {
   fold(
     observations,
     init: true,

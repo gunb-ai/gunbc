@@ -2,7 +2,7 @@ module std.affine_space
 
 
 // THE COMPONENT CARRIES NO UNIT, BECAUSE THE FRAME OWNS THE QUANTUM. An earlier revision typed
-// these fields SignedMillimeterComponent — Measure<Length, Milli, Int> — while std.spatial_frame
+// these fields SignedMillimeterComponent — Measure<Length, Milli, std.integer.Int> — while std.spatial_frame
 // let a frame declare that the same counts mean micrometres. That is one coordinate with two unit
 // authorities: the type said Milli, the frame said Micro, and the readers extracted the integer
 // and believed the frame. The code was numerically right and the type was lying, which is the
@@ -10,18 +10,18 @@ module std.affine_space
 // trusts the frame has to know not to.
 //
 // The authority is now one chain: frame identity, then coordinate quantum, then the
-// interpretation of every component in that frame. A component is an Int with a role, and the
+// interpretation of every component in that frame. A component is an std.integer.Int with a role, and the
 // role is "signed displacement or coordinate along an axis" — which is exactly as much as is true
 // of it without knowing its frame.
 type SignedFrameComponent {
-  count: Int
+  count: std.integer.Int
 }
 
-fn signed_frame_component(count: Int) -> SignedFrameComponent {
+fn signed_frame_component(count: std.integer.Int) -> SignedFrameComponent {
   SignedFrameComponent { count: count }
 }
 
-fn signed_frame_component_count(c: SignedFrameComponent) -> Int {
+fn signed_frame_component_count(c: SignedFrameComponent) -> std.integer.Int {
   c.count
 }
 
@@ -94,7 +94,7 @@ type Point2 {
   y: SignedFrameComponent
 }
 
-fn vector3(frame: std.coordinate_frame.CoordinateFrameIdentity, x: Int, y: Int, z: Int) -> Vector3 {
+fn vector3(frame: std.coordinate_frame.CoordinateFrameIdentity, x: std.integer.Int, y: std.integer.Int, z: std.integer.Int) -> Vector3 {
   Vector3 {
     frame: frame,
     x: signed_frame_component(count: x),
@@ -103,7 +103,7 @@ fn vector3(frame: std.coordinate_frame.CoordinateFrameIdentity, x: Int, y: Int, 
   }
 }
 
-fn point3(frame: std.coordinate_frame.CoordinateFrameIdentity, x: Int, y: Int, z: Int) -> Point3 {
+fn point3(frame: std.coordinate_frame.CoordinateFrameIdentity, x: std.integer.Int, y: std.integer.Int, z: std.integer.Int) -> Point3 {
   Point3 {
     frame: frame,
     x: signed_frame_component(count: x),
@@ -112,11 +112,11 @@ fn point3(frame: std.coordinate_frame.CoordinateFrameIdentity, x: Int, y: Int, z
   }
 }
 
-fn vector2(frame: std.coordinate_frame.CoordinateFrameIdentity, x: Int, y: Int) -> Vector2 {
+fn vector2(frame: std.coordinate_frame.CoordinateFrameIdentity, x: std.integer.Int, y: std.integer.Int) -> Vector2 {
   Vector2 { frame: frame, x: signed_frame_component(count: x), y: signed_frame_component(count: y) }
 }
 
-fn point2(frame: std.coordinate_frame.CoordinateFrameIdentity, x: Int, y: Int) -> Point2 {
+fn point2(frame: std.coordinate_frame.CoordinateFrameIdentity, x: std.integer.Int, y: std.integer.Int) -> Point2 {
   Point2 { frame: frame, x: signed_frame_component(count: x), y: signed_frame_component(count: y) }
 }
 
@@ -328,7 +328,7 @@ fn negate_vector3(v: Vector3) -> SpatialResult<Vector3> {
 // Scaling by an integer is exact. Scaling by a ratio is NOT offered: it would need a rounding
 // policy, and inventing one here would put approximation into the affine layer before the
 // numeric seam is decided.
-fn scale_vector3(v: Vector3, factor: Int) -> SpatialResult<Vector3> {
+fn scale_vector3(v: Vector3, factor: std.integer.Int) -> SpatialResult<Vector3> {
   vector3_from_checked(
     frame: v.frame,
     x: checked_int_multiply(a: signed_frame_component_count(c: v.x), b: factor),

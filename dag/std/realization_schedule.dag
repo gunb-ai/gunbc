@@ -5,7 +5,7 @@ type CostBasis
   | Measured
 
 type CostAccount<S> {
-  time: Measure<Time, S, Nat>
+  time: Measure<Time, S, std.nat.Nat>
   space: std.measure.ByteSize
   power: std.measure.Watt
   basis: CostBasis
@@ -20,7 +20,7 @@ fn cost_account_predicted_zero<S>() -> CostAccount<S> {
   }
 }
 
-fn cost_account_measured<S>(time: Measure<Time, S, Nat>) -> CostAccount<S> {
+fn cost_account_measured<S>(time: Measure<Time, S, std.nat.Nat>) -> CostAccount<S> {
   CostAccount {
     time: time
     space: byte_size(count: 0)
@@ -255,7 +255,7 @@ fn runnable_resource_profile_negligible() -> RunnableResourceProfile {
     heavy_whole_tree_resolve: false
     spawns_host_compiler: false
     memory: runnable_memory_negligible()
-    execution_mode: Hermetic
+    execution_mode: std.execution_mode.Hermetic
   }
 }
 

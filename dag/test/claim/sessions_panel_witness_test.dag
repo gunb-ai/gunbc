@@ -23,7 +23,7 @@ fn fixture_live() -> gunbc.roadmap_dispatch_actuator.DispatchLiveSession {
     session_name: "gunbc-dispatch-5-regen-cutover",
     node_id: "5-regen-cutover",
     windows: 1,
-    lease_verdict: Converged,
+    lease_verdict: std.upsert_decision.Converged,
     worker: worker_observation_without_provider_probe(
       instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
     ),
@@ -57,7 +57,7 @@ test fn retained_dead_process_projects_clear_without_erasing_session() -> Bool {
     session_name: "gunbc-dispatch-5-regen-cutover",
     node_id: "5-regen-cutover",
     windows: 1,
-    lease_verdict: Converged,
+    lease_verdict: std.upsert_decision.Converged,
     worker: worker_observation_without_provider_probe_for_process(
       instance: dispatch_provider_instance_for(provider: CodexDispatchProvider),
       process: gunbc.worker_lifecycle.WorkerProcessExited { exit_code: 0, last_command: "env" },

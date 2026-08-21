@@ -3,11 +3,11 @@ module test.claim.ice40_supply_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn admits(r: extdeps.programmable_logic.ice40.supply.RailRequirement, mv: Int) -> Bool {
+fn admits(r: extdeps.programmable_logic.ice40.supply.RailRequirement, mv: std.integer.Int) -> Bool {
   requirement_admits(r: r, v: millivolt(count: mv))
 }
 
-fn mode_admits(m: extdeps.programmable_logic.ice40.supply.Ice40ConfigurationMode, mv: Int) -> Bool {
+fn mode_admits(m: extdeps.programmable_logic.ice40.supply.Ice40ConfigurationMode, mv: std.integer.Int) -> Bool {
   test.claim.ice40_supply_witness.admits(r: nvcm_supply_requirement(m: m), mv: mv)
 }
 

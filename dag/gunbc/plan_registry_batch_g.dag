@@ -1,7 +1,7 @@
 module gunbc.plan_registry_batch_g
 
 
-data batch_g_plans: std.types.List<Plan> = [
+data batch_g_plans: std.types.List<gunbc.plan.Plan> = [
   ci_humming_plan,
   edge_b_rust_dag_provenance_brief_plan,
   resolver_type_name_collision_wall_plan,

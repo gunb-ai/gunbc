@@ -24,7 +24,7 @@ fn probe_subject() -> gunbc.host_realization.HostRealization {
       field: WholeDeclaration
     },
     container_product_build: gunbc.host_realization.RefReducedByPolicy { reported: "150.0.0.0" },
-    runtime_engine: RefResolved {
+    runtime_engine: gunbc.host_realization.RefResolved {
       declaration: std.decl_ref.DeclarationRef {
         module_path: "extdeps.browser.chromium",
         decl_name: "chromium",

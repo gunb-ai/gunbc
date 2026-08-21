@@ -35,7 +35,7 @@ fn ts_task_type_alias_emitted_surplus_conj_slot() -> v2.std.node.Node {
 }
 }
 
-test fn ts_lhs_exact_arrow_emitted_rejects() -> Bool {
+test fn ts_lhs_exact_arrow_emitted_rejects() -> v2.std.logic.Bool {
   match formal_production_for_lhs_exact(
     productions: ts_task_formal_productions(),
     lhs: ^ts_production_type_alias_decl,
@@ -46,7 +46,7 @@ test fn ts_lhs_exact_arrow_emitted_rejects() -> Bool {
   }
 }
 
-test fn ts_task_derive_row_surplus_conj_slot_rejects() -> Bool {
+test fn ts_task_derive_row_surplus_conj_slot_rejects() -> v2.std.logic.Bool {
   match formal_production_for_lhs_exact(
     productions: ts_task_formal_productions(),
     lhs: ^ts_production_type_alias_decl,
@@ -65,7 +65,7 @@ test fn ts_task_derive_row_surplus_conj_slot_rejects() -> Bool {
   }
 }
 
-test fn ts_task_derive_row_round_trip_holds() -> Bool {
+test fn ts_task_derive_row_round_trip_holds() -> v2.std.logic.Bool {
   match ts_task_type_alias_relation_row_witness() {
     Holds { value: fixture_row } =>
       match v2.std.grammar.formal_production_for_lhs_exact(
@@ -89,12 +89,12 @@ test fn ts_task_derive_row_round_trip_holds() -> Bool {
   }
 }
 
-test fn ts_derive_grammar_relation_row_round_trip_holds() -> Bool {
+test fn ts_derive_grammar_relation_row_round_trip_holds() -> v2.std.logic.Bool {
   v2.std.node.content_hash(n: ts_grammar_relation_row_std_node()) ==
     v2.std.node.content_hash(n: ts_grammar_relation_row_node(row: ts_grammar_relation_row()))
 }
 
-test fn ts_pr3_identity_derive_row_round_trip_holds() -> Bool {
+test fn ts_pr3_identity_derive_row_round_trip_holds() -> v2.std.logic.Bool {
   match ts_pr3_identity_relation_row_witness() {
     Holds { value: eager_row } =>
       match v2.extdeps.languages.typescript.ts_eager_grammar_relation_row_witness(lhs: ^ts_production_pr3_typed_fn_decl) {

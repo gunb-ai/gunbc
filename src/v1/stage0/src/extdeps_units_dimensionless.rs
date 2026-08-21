@@ -2,11 +2,12 @@
 // Source module: extdeps.units.dimensionless
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
-use crate::extdeps_uri::UriScheme::Https;
+use crate::extdeps_uri::UriScheme::*;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-pub use crate::std_nat::Nat;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v2_std_nat::Nat;
+use crate::v2_std_nat::Nat::*;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -16,10 +17,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+        uri: Uri {
         scheme: UriScheme::Https,
         locator: "www.iso.org/standard/31887.html".to_string(),
-    }),
+    },
     })
             };
         }
@@ -44,10 +45,10 @@ pub fn percent_unity_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn parts_per_ten_thousand_unity_count() -> Nat {
+pub fn parts_per_ten_thousand_unity_count() -> Rc<Nat> {
     10000
 }
 
-pub fn percent_unity_hundred_count() -> Nat {
+pub fn percent_unity_hundred_count() -> Rc<Nat> {
     100
 }

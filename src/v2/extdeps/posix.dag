@@ -2,65 +2,65 @@ module v2.extdeps.posix
 
 
 type ProcessId {
-  refined: Refined<Int>
+  refined: Refined<v2.std.integer.Int>
 }
 
 type ExitCode {
-  refined: Refined<Int>
+  refined: Refined<v2.std.integer.Int>
 }
 
 type SignalNum {
-  refined: Refined<Int>
+  refined: Refined<v2.std.integer.Int>
 }
-fn process_id_admits(value: Int) -> Bool {
+fn process_id_admits(value: v2.std.integer.Int) -> Bool {
   value > 0
 }
 
-fn exit_code_admits(value: Int) -> Bool {
+fn exit_code_admits(value: v2.std.integer.Int) -> Bool {
   (value >= 0) && (value <= 255)
 }
 
-fn signal_num_admits(value: Int) -> Bool {
+fn signal_num_admits(value: v2.std.integer.Int) -> Bool {
 
   value > 0
 }
 
-data process_id_validation: Validation<Int> = v2.std.refinement.Validation {
+data process_id_validation: Validation<v2.std.integer.Int> = v2.std.refinement.Validation {
   reason: ^process_id_out_of_range,
   admits: process_id_admits
 }
 
-data exit_code_validation: Validation<Int> = v2.std.refinement.Validation {
+data exit_code_validation: Validation<v2.std.integer.Int> = v2.std.refinement.Validation {
   reason: ^exit_code_out_of_range,
   admits: exit_code_admits
 }
 
-data signal_num_validation: Validation<Int> = v2.std.refinement.Validation {
+data signal_num_validation: Validation<v2.std.integer.Int> = v2.std.refinement.Validation {
   reason: ^signal_num_out_of_range,
   admits: signal_num_admits
 }
 
-fn make_process_id(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<ProcessId> {
+fn make_process_id(value: v2.std.integer.Int, at: v2.std.diagnostic.Locus) -> Outcome<ProcessId> {
   match refine(base: value, by: process_id_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
       v2.std.diagnostic.Accepted { value: ProcessId { refined: refined }, diagnostics: diagnostics }
-    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+    v2.std.diagnostic.Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
-fn make_exit_code(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<ExitCode> {
+fn make_exit_code(value: v2.std.integer.Int, at: v2.std.diagnostic.Locus) -> Outcome<ExitCode> {
   match refine(base: value, by: exit_code_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
       v2.std.diagnostic.Accepted { value: ExitCode { refined: refined }, diagnostics: diagnostics }
-    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+    v2.std.diagnostic.Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
-fn make_signal_num(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<SignalNum> {
+fn make_signal_num(value: v2.std.integer.Int, at: v2.std.diagnostic.Locus) -> Outcome<SignalNum> {
   match refine(base: value, by: signal_num_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
       v2.std.diagnostic.Accepted { value: SignalNum { refined: refined }, diagnostics: diagnostics }
-    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+    v2.std.diagnostic.Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 

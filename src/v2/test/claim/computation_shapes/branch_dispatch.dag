@@ -1,15 +1,15 @@
 module v2.test.computation_shapes.branch_dispatch
 
 
-fn branch_dispatch_leaf(s: v2.std.node.Symbol) -> Node {
+fn branch_dispatch_leaf(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
-fn branch_dispatch_arm(s: v2.std.node.Symbol) -> Node {
+fn branch_dispatch_arm(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
     children: [
       v2.std.node.Edge { label: Positional, target: branch_dispatch_leaf(s: s) }
     ],
@@ -17,10 +17,10 @@ fn branch_dispatch_arm(s: v2.std.node.Symbol) -> Node {
 }
 }
 
-data branch_dispatch_arm_then: Node = branch_dispatch_arm(s: ^branch_dispatch_arm_then_sym)
-data branch_dispatch_arm_else: Node = branch_dispatch_arm(s: ^branch_dispatch_arm_else_sym)
+data branch_dispatch_arm_then: v2.std.node.Node = branch_dispatch_arm(s: ^branch_dispatch_arm_then_sym)
+data branch_dispatch_arm_else: v2.std.node.Node = branch_dispatch_arm(s: ^branch_dispatch_arm_else_sym)
 
-data branch_dispatch_subject: Node = v2.std.node.Node {
+data branch_dispatch_subject: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.ComputationNode { behavior: Branch },
   children: [
     v2.std.node.Edge { label: Positional, target: branch_dispatch_arm_then },
@@ -29,15 +29,15 @@ data branch_dispatch_subject: Node = v2.std.node.Node {
   occurrence_id: SyntheticOccurrence
 }
 
-fn branch_dispatch_pass_node() -> Node {
+fn branch_dispatch_pass_node() -> v2.std.node.Node {
   branch_dispatch_leaf(s: ^branch_dispatch_pass_sym)
 }
 
-fn branch_dispatch_fail_node() -> Node {
+fn branch_dispatch_fail_node() -> v2.std.node.Node {
   branch_dispatch_leaf(s: ^branch_dispatch_fail_sym)
 }
 
-fn branch_dispatch_bool_node(ok: Bool) -> Node {
+fn branch_dispatch_bool_node(ok: Bool) -> v2.std.node.Node {
   if ok { branch_dispatch_pass_node() } else { branch_dispatch_fail_node() }
 }
 
@@ -59,7 +59,7 @@ data claim_branch_dispatch_equals_refl: v2.std.verification.TestClaim = v2.std.v
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit }
 }
 
-data branch_dispatch_subject_rebuilt: Node = v2.std.node.Node {
+data branch_dispatch_subject_rebuilt: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.ComputationNode { behavior: Branch },
   children: [
     v2.std.node.Edge { label: Positional, target: branch_dispatch_arm_then },
@@ -68,7 +68,7 @@ data branch_dispatch_subject_rebuilt: Node = v2.std.node.Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data branch_dispatch_subject_arms_swapped: Node = v2.std.node.Node {
+data branch_dispatch_subject_arms_swapped: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.ComputationNode { behavior: Branch },
   children: [
     v2.std.node.Edge { label: Positional, target: branch_dispatch_arm_else },

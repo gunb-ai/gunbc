@@ -32,28 +32,21 @@ use self::Section13PopulationLawRosterVerdict::*;
 use self::StructuralBindingIndexRefusal::*;
 use self::StructuralBindingWalk::*;
 pub use crate::std_algebra::FreeMonoid;
-use crate::std_decl_ref::DeclField::WholeDeclaration;
+pub use crate::std_decl_ref::declaration_ref_eq;
+use crate::std_decl_ref::DeclField::*;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
-pub use crate::std_occurrence_binding::OccurrenceBindingResult;
-use crate::std_occurrence_binding::OccurrenceBindingResult::{
-    OccurrenceAmbiguous, OccurrenceBound, OccurrenceUnbound,
-};
+use crate::std_occurrence_binding::OccurrenceBindingResult::*;
+pub use crate::std_occurrence_binding::{ContainmentPath, OccurrenceBindingResult};
 pub use crate::std_occurrence_binding_resolve::resolve_reference_occurrence_binding;
 pub use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome;
-use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome::{
-    OccurrenceReferenceBindingDecided, OccurrenceReferenceBindingTransportRefused,
-};
-use crate::std_occurrence_identity::OccurrenceCategory::TypeOccurrence;
-use crate::std_occurrence_identity::OccurrenceCategoryClauseEDependencyInducingVerdict::{
-    OccurrenceCategoryClauseEDependencyInducing, OccurrenceCategoryClauseEDependencyNotInducing,
-};
-use crate::std_occurrence_identity::OccurrenceTransportRefusal::UnknownOccurrenceIdentity;
-use crate::std_occurrence_identity::OccurrenceTransportValidation::{
-    OccurrenceTransportRefused, OccurrenceTransportValidated,
-};
+use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome::*;
+use crate::std_occurrence_identity::OccurrenceCategory::*;
+use crate::std_occurrence_identity::OccurrenceCategoryClauseEDependencyInducingVerdict::*;
+use crate::std_occurrence_identity::OccurrenceTransportRefusal::*;
+use crate::std_occurrence_identity::OccurrenceTransportValidation::*;
 pub use crate::std_occurrence_identity::{
     alloc_occurrence_id, authored_token_ordinal_before, authored_token_ordinal_eq,
     occurrence_category_clause_e_dependency_inducing_verdict,
@@ -63,15 +56,15 @@ pub use crate::std_occurrence_identity::{
 pub use crate::std_occurrence_identity::{
     AuthoredTokenOrdinal, DeclarationOccurrence, OccurrenceCategory,
     OccurrenceCategoryClauseEDependencyInducingVerdict, OccurrenceContainmentPath, OccurrenceId,
-    OccurrenceIdAllocResult, OccurrenceIdAllocator, OccurrenceIndex, OccurrenceIndexEntry,
-    OccurrenceProjection, OccurrenceTransport, OccurrenceTransportRefusal,
-    OccurrenceTransportValidation, ReferenceOccurrence, ValidatedOccurrenceTransport,
+    OccurrenceIdAllocator, OccurrenceIndex, OccurrenceIndexEntry, OccurrenceProjection,
+    OccurrenceTransport, OccurrenceTransportRefusal, OccurrenceTransportValidation,
+    ReferenceOccurrence, ValidatedOccurrenceTransport,
 };
-pub use crate::std_roster_frontier::declaration_ref_eq;
-use crate::std_types::Bool::*;
-pub use crate::std_types::{Bool, CommitSha, FilePath, List, NonEmptyStr};
+pub use crate::std_types::{List, Map, NonEmptyStr, Set};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v2_std_collection::empty_map;
+pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -253,7 +246,7 @@ pub fn module_by_occurrence_build(
 ) -> Rc<OccurrenceModulePathIndexBuild> {
     rows.clone().iter().cloned().fold(
         Rc::new(OccurrenceModulePathIndexBuild {
-            module_by_occurrence: v1_rt::rc_empty_map::<i64, String>(),
+            module_by_occurrence: v1_rt::rc_empty_map::<_, _>(),
             refusal: None,
         }),
         |build: Rc<OccurrenceModulePathIndexBuild>, row: Rc<OccurrenceModulePathRow>| {
@@ -349,19 +342,16 @@ pub enum DeclarationExposureGrounding {
 pub fn occurrence_containment_parent_scope(
     ancestors: Rc<Vec<OccurrenceId>>,
 ) -> Option<Rc<OccurrenceContainmentPath>> {
-    {
-        let __fm = v1_rt::reverse(ancestors.clone());
-        if __fm.is_empty() {
-            None
-        } else {
-            let parent_terminal = (*__fm)[0].clone();
-            let parent_ancestors_reversed: Rc<Vec<_>> =
-                Rc::new((*__fm).iter().skip(1).cloned().collect());
-            Some(Rc::new(OccurrenceContainmentPath {
-                ancestors: v1_rt::reverse(parent_ancestors_reversed.clone()),
-                terminal: parent_terminal.clone(),
-            }))
-        }
+    match v1_rt::reverse(ancestors.clone()) {
+        FreeMonoid::Empty => None,
+        FreeMonoid::Cons {
+            head: parent_terminal,
+            tail: parent_ancestors_reversed,
+            ..
+        } => Some(Rc::new(OccurrenceContainmentPath {
+            ancestors: v1_rt::reverse(parent_ancestors_reversed.clone()),
+            terminal: parent_terminal.clone(),
+        })),
     }
 }
 
@@ -486,7 +476,7 @@ pub fn exposure_by_occurrence_build(
 ) -> Rc<DeclarationExposureIndexBuild> {
     rows.clone().iter().cloned().fold(
         Rc::new(DeclarationExposureIndexBuild {
-            exposure_by_occurrence: v1_rt::rc_empty_map::<i64, Rc<DeclarationExposure>>(),
+            exposure_by_occurrence: v1_rt::rc_empty_map::<_, _>(),
             refusal: None,
         }),
         |build: Rc<DeclarationExposureIndexBuild>, row: Rc<DeclarationExposureRow>| {
@@ -569,7 +559,7 @@ pub fn authored_order_by_occurrence_build(
 ) -> Rc<AuthoredOrderIndexBuild> {
     rows.clone().iter().cloned().fold(
         Rc::new(AuthoredOrderIndexBuild {
-            order_by_occurrence: v1_rt::rc_empty_map::<i64, AuthoredTokenOrdinal>(),
+            order_by_occurrence: v1_rt::rc_empty_map::<_, _>(),
             refusal: None,
         }),
         |build: Rc<AuthoredOrderIndexBuild>, row: Rc<AuthoredOrderRow>| {
@@ -1198,7 +1188,7 @@ pub fn direct_module_dependencies_from_providers(
             .cloned()
             .fold(
                 Rc::new(DirectModuleDependencyDedupBuild {
-                    providers_by_consumer: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
+                    providers_by_consumer: v1_rt::rc_empty_map::<_, _>(),
                     edges_first_seen: Rc::new(vec![]),
                 }),
                 |acc: Rc<DirectModuleDependencyDedupBuild>,
@@ -1426,9 +1416,7 @@ pub fn bound_reference_population_from_projections(
                 first_failure: None,
                 more_failures_reversed: Rc::new(vec![]),
             }),
-            |acc: Rc<BoundReferencePopulationBuild>, projection: Rc<ReferenceBindingProjection>| {
-                bound_reference_population_fold_step(acc, projection.clone())
-            },
+            |acc: _, projection: _| bound_reference_population_fold_step(acc, projection.clone()),
         );
         match build.first_failure.clone() {
             None => Rc::new(BoundReferencePopulation::AllReferencesBound {
@@ -1601,7 +1589,7 @@ pub fn module_path_file_index_from_rows(
     {
         let build = rows.clone().iter().cloned().fold(
             Rc::new(ModulePathFileIndexBuild {
-                entries: v1_rt::rc_empty_map::<String, String>(),
+                entries: v1_rt::rc_empty_map::<_, _>(),
                 refusal: None,
             }),
             |acc: Rc<ModulePathFileIndexBuild>, row: Rc<ModulePathFileRow>| {
@@ -1910,8 +1898,7 @@ pub fn provider_files_for_consumer_file(
                 .cloned()
                 .fold(
                     Rc::new(DirectFileDependencyDedupBuild {
-                        providers_by_consumer: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(
-                        ),
+                        providers_by_consumer: v1_rt::rc_empty_map::<_, _>(),
                         edges_first_seen: Rc::new(vec![]),
                     }),
                     |acc: Rc<DirectFileDependencyDedupBuild>,
@@ -1946,7 +1933,7 @@ pub fn direct_file_dependencies_from_provenances(
             .cloned()
             .fold(
                 Rc::new(DirectFileDependencyDedupBuild {
-                    providers_by_consumer: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
+                    providers_by_consumer: v1_rt::rc_empty_map::<_, _>(),
                     edges_first_seen: Rc::new(vec![]),
                 }),
                 |acc: Rc<DirectFileDependencyDedupBuild>,
@@ -2207,7 +2194,7 @@ pub fn occurrence_id_remap_state_with_fresh_map(
 ) -> Rc<OccurrenceIdRemapState> {
     Rc::new(OccurrenceIdRemapState {
         allocator: allocator.clone(),
-        remap: v1_rt::rc_empty_map::<i64, OccurrenceId>(),
+        remap: v1_rt::rc_empty_map::<_, _>(),
     })
 }
 
@@ -2265,7 +2252,7 @@ pub fn remap_containment_path(
                 ancestors: Rc::new(vec![]),
                 state: state.clone(),
             }),
-            |acc: Rc<OccurrenceAncestorRemapBuild>, ancestor: OccurrenceId| {
+            |acc: _, ancestor: OccurrenceId| {
                 let acc = v1_rt::take_owned(acc);
                 {
                     let remapped = remap_occurrence_id(ancestor.clone(), acc.state);
@@ -2283,10 +2270,10 @@ pub fn remap_containment_path(
         let terminal_remapped =
             remap_occurrence_id(path.terminal.clone(), ancestors_build.state.clone());
         Rc::new(OccurrenceContainmentRemapResult {
-            path: Rc::new(OccurrenceContainmentPath {
+            path: OccurrenceContainmentPath {
                 ancestors: v1_rt::reverse(ancestors_build.ancestors.clone()),
                 terminal: terminal_remapped.id.clone(),
-            }),
+            },
             state: terminal_remapped.state.clone(),
         })
     }
@@ -2347,7 +2334,7 @@ pub fn rekey_occurrence_transport(
                         Rc::new(OccurrenceIndexRekeyBuild {
                             entries_reversed: v1_rt::concat(
                                 Rc::new(vec![Rc::new(OccurrenceIndexEntry {
-                                    projection: Rc::new(OccurrenceProjection {
+                                    projection: OccurrenceProjection {
                                         occurrence: remapped_occ.id.clone(),
                                         authored_name: entry
                                             .projection
@@ -2359,7 +2346,7 @@ pub fn rekey_occurrence_transport(
                                             .clone()
                                             .diagnostic_span
                                             .clone(),
-                                    }),
+                                    },
                                     containment: remapped_containment.path.clone(),
                                 })]),
                                 acc.entries_reversed,
@@ -2427,13 +2414,13 @@ pub fn rekey_occurrence_transport(
             },
         );
         Rc::new(OccurrenceTransportRekeyResult {
-            transport: Rc::new(OccurrenceTransport {
-                index: Rc::new(OccurrenceIndex {
+            transport: OccurrenceTransport {
+                index: OccurrenceIndex {
                     entries: v1_rt::reverse(index_build.entries_reversed.clone()),
-                }),
+                },
                 declarations: v1_rt::reverse(declarations_build.declarations_reversed.clone()),
                 references: v1_rt::reverse(references_build.references_reversed.clone()),
-            }),
+            },
             state: references_build.state.clone(),
         })
     }
@@ -2584,12 +2571,12 @@ pub fn merge_occurrence_transports(
     right: Rc<OccurrenceTransport>,
 ) -> Rc<OccurrenceTransport> {
     Rc::new(OccurrenceTransport {
-        index: Rc::new(OccurrenceIndex {
+        index: OccurrenceIndex {
             entries: v1_rt::concat(
                 left.index.clone().entries.clone(),
                 right.index.clone().entries.clone(),
             ),
-        }),
+        },
         declarations: v1_rt::concat(left.declarations.clone(), right.declarations.clone()),
         references: v1_rt::concat(left.references.clone(), right.references.clone()),
     })
@@ -2813,13 +2800,13 @@ pub fn assemble_cross_file_binding_closure(
 }),
 }),
     ModulePathFileIndex::ModulePathFileIndexReady { entries: _, .. } => Rc::new(AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureReady {
-    transport: Rc::new(OccurrenceTransport {
-    index: Rc::new(OccurrenceIndex {
+    transport: OccurrenceTransport {
+    index: OccurrenceIndex {
     entries: v1_rt::reverse(assembled.entries_reversed.clone()),
-}),
+},
     declarations: v1_rt::reverse(assembled.declarations_reversed.clone()),
     references: v1_rt::reverse(assembled.references_reversed.clone()),
-}),
+},
     inputs: Rc::new(OccurrenceBindingCandidateInputs {
     module_paths: v1_rt::reverse(assembled.module_paths_reversed.clone()),
     exposure_rows: v1_rt::reverse(assembled.exposure_rows_reversed.clone()),

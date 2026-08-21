@@ -42,23 +42,23 @@ data altra_memory_channel_width: std.measure.BitWidth = bit_width(count: 72)
 
 // DPC IS CONSUMED AS THE CLOSED TOPOLOGY, not as a bare 2. The platform authority already models
 // this as a coproduct rather than a count, which is the stronger shape: "up to 2 DPC" names an
-// admitted set of arrangements, and an Int lets a 3 be written that no authority admits.
+// admitted set of arrangements, and an std.integer.Int lets a 3 be written that no authority admits.
 data altra_memory_max_dimms_per_channel_topology: extdeps.cpu.ampere_altra_platform_hw_design.platform.DimmsPerChannelTopology = TwoDimmsPerChannel
 
 // Four terabytes, as the datasheet states it for the whole processor rather than per channel.
 data altra_memory_max_capacity: std.measure.ByteSize = byte_size(count: 4398046511104)
 
-// DEVICE ORGANIZATION. Both admitted widths, as BitWidth rather than a bare Int, because the
+// DEVICE ORGANIZATION. Both admitted widths, as BitWidth rather than a bare std.integer.Int, because the
 // datasheet's "x4 and x8" names the device's data width and the corpus already grounds widths on
 // that carrier.
 data altra_admitted_device_widths: List<std.measure.BitWidth> = [bit_width(count: 4), bit_width(count: 8)]
 
 // DENSITY AS ByteSize, WHICH IS THE CORPUS CONVENTION FOR DRAM DIE DENSITY. The datasheet quotes
 // "8 Gb and 16 Gb" -- gigaBITS -- and an earlier revision of this module made the gigabit figure
-// primary as a List<Int> with a derived byte value, on the reasoning that the source unit should
+// primary as a List<std.integer.Int> with a derived byte value, on the reasoning that the source unit should
 // lead. That was wrong for a reason worth recording: extdeps.memory.jedec already carries DRAM
 // die density as ByteSize (JedecDdrGenerationCatalogRow max_monolithic_die_density), so a bare
-// Int gigabit row here was not carrying the source unit faithfully, it was forking the carrier an
+// std.integer.Int gigabit row here was not carrying the source unit faithfully, it was forking the carrier an
 // existing authority had already chosen for this exact quantity.
 //
 // The quoted unit is not lost by this. It is recorded below as the conversion basis, and the
@@ -114,11 +114,11 @@ data altra_udimm_withdrawal: ModuleClassWithdrawal = ModuleClassWithdrawal {
 // authored first. It is a cited vendor fact -- section 2.10's admitted populations and its
 // parenthetical qualifier -- so its home is the authority that cites the datasheet, and the
 // product layer consumes it. An earlier revision of this module authored a SECOND representation
-// of the same contract as two Int lists plus a three-state standing, which is the parallel
+// of the same contract as two std.integer.Int lists plus a three-state standing, which is the parallel
 // authority §3 forbids: two rows free to drift on the next datasheet edit, each with its own
 // witness and no join between them.
 //
-// The coproduct is kept and the Int lists deleted rather than the reverse, because it is the
+// The coproduct is kept and the std.integer.Int lists deleted rather than the reverse, because it is the
 // stronger shape. Three, five and seven active channels are not slow configurations, they are
 // unsupported ones -- and here they are UNREPRESENTABLE rather than classified. That is why the
 // deleted standing needed a NotSupported arm at all: it existed only to carry a state this type
@@ -130,7 +130,7 @@ type ActiveDdrChannelCount
   | SixChannels
   | EightChannels
 
-fn active_channel_count(c: ActiveDdrChannelCount) -> Int {
+fn active_channel_count(c: ActiveDdrChannelCount) -> std.integer.Int {
   match c {
     OneChannel => 1
     TwoChannels => 2

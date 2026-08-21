@@ -21,7 +21,7 @@ data parallel_executor_expected_batches: List<v2.workflow.executor.ExecutorBatch
   parallel_executor_expected_second_batch
 ]
 
-fn parallel_executor_groups_independent_jobs() -> Bool {
+fn parallel_executor_groups_independent_jobs() -> v2.std.logic.Bool {
   match parallel_executor_plan_from_dependencies(
     nodes: v2.test.manual.scheduler_runnable_frontier.scheduler_fixture_nodes,
     dependencies: scheduler_fixture_dependencies,
@@ -33,7 +33,7 @@ fn parallel_executor_groups_independent_jobs() -> Bool {
   }
 }
 
-fn parallel_executor_projects_scheduler_scheduled_nodes() -> Bool {
+fn parallel_executor_projects_scheduler_scheduled_nodes() -> v2.std.logic.Bool {
   match parallel_executor_plan_from_dependencies(
     nodes: v2.test.manual.scheduler_runnable_frontier.scheduler_fixture_nodes,
     dependencies: scheduler_fixture_dependencies,
@@ -50,7 +50,7 @@ fn parallel_executor_projects_scheduler_scheduled_nodes() -> Bool {
   }
 }
 
-fn parallel_executor_keeps_dependent_job_out_of_first_batch() -> Bool {
+fn parallel_executor_keeps_dependent_job_out_of_first_batch() -> v2.std.logic.Bool {
   match parallel_executor_plan_from_dependencies(
     nodes: v2.test.manual.scheduler_runnable_frontier.scheduler_fixture_nodes,
     dependencies: scheduler_fixture_dependencies,
@@ -64,7 +64,7 @@ fn parallel_executor_keeps_dependent_job_out_of_first_batch() -> Bool {
   }
 }
 
-fn parallel_executor_contains_edges_do_not_serialize() -> Bool {
+fn parallel_executor_contains_edges_do_not_serialize() -> v2.std.logic.Bool {
   match parallel_executor_plan_from_dependencies(
     nodes: v2.test.manual.scheduler_runnable_frontier.scheduler_fixture_nodes,
     dependencies: scheduler_fixture_dependencies_with_contains_noise,
@@ -76,7 +76,7 @@ fn parallel_executor_contains_edges_do_not_serialize() -> Bool {
   }
 }
 
-fn parallel_executor_step_plan_exposes_runnable_batch_once() -> Bool {
+fn parallel_executor_step_plan_exposes_runnable_batch_once() -> v2.std.logic.Bool {
   match parallel_executor_step_plan_from_dependencies(
     nodes: v2.test.manual.scheduler_runnable_frontier.scheduler_fixture_nodes,
     dependencies: scheduler_fixture_dependencies,
@@ -95,7 +95,7 @@ fn parallel_executor_step_plan_exposes_runnable_batch_once() -> Bool {
   }
 }
 
-fn parallel_executor_blocks_on_missing_prerequisite() -> Bool {
+fn parallel_executor_blocks_on_missing_prerequisite() -> v2.std.logic.Bool {
   match parallel_executor_plan_from_dependencies(
     nodes: [scheduler_build_node],
     dependencies: scheduler_missing_prerequisite_dependencies,
@@ -113,7 +113,7 @@ fn parallel_executor_blocks_on_missing_prerequisite() -> Bool {
   }
 }
 
-fn parallel_executor_layers_reuse_readiness_frontiers() -> Bool {
+fn parallel_executor_layers_reuse_readiness_frontiers() -> v2.std.logic.Bool {
   let layers = [
     v2.std.dependency.ReadinessLayer { ready: [scheduler_build_node, scheduler_test_node] },
     v2.std.dependency.ReadinessLayer { ready: [scheduler_emit_node] }
@@ -131,21 +131,21 @@ fn parallel_executor_layers_reuse_readiness_frontiers() -> Bool {
   }
 }
 
-data parallel_executor_batches_independent_jobs: Bool = parallel_executor_groups_independent_jobs()
+data parallel_executor_batches_independent_jobs: v2.std.logic.Bool = parallel_executor_groups_independent_jobs()
 
-data parallel_executor_scheduled_nodes_match_scheduler: Bool = parallel_executor_projects_scheduler_scheduled_nodes()
+data parallel_executor_scheduled_nodes_match_scheduler: v2.std.logic.Bool = parallel_executor_projects_scheduler_scheduled_nodes()
 
-data parallel_executor_dependent_waits_for_prior_batch: Bool = parallel_executor_keeps_dependent_job_out_of_first_batch()
+data parallel_executor_dependent_waits_for_prior_batch: v2.std.logic.Bool = parallel_executor_keeps_dependent_job_out_of_first_batch()
 
-data parallel_executor_contains_noise_non_blocking: Bool = parallel_executor_contains_edges_do_not_serialize()
+data parallel_executor_contains_noise_non_blocking: v2.std.logic.Bool = parallel_executor_contains_edges_do_not_serialize()
 
-data parallel_executor_step_runnable_batch_once: Bool = parallel_executor_step_plan_exposes_runnable_batch_once()
+data parallel_executor_step_runnable_batch_once: v2.std.logic.Bool = parallel_executor_step_plan_exposes_runnable_batch_once()
 
-data parallel_executor_missing_prerequisite_blocks: Bool = parallel_executor_blocks_on_missing_prerequisite()
+data parallel_executor_missing_prerequisite_blocks: v2.std.logic.Bool = parallel_executor_blocks_on_missing_prerequisite()
 
-data parallel_executor_layer_projection_reuses_frontiers: Bool = parallel_executor_layers_reuse_readiness_frontiers()
+data parallel_executor_layer_projection_reuses_frontiers: v2.std.logic.Bool = parallel_executor_layers_reuse_readiness_frontiers()
 
-test fn parallel_executor_claims_hold() -> Bool {
+test fn parallel_executor_claims_hold() -> v2.std.logic.Bool {
   parallel_executor_batches_independent_jobs
     && parallel_executor_scheduled_nodes_match_scheduler
     && parallel_executor_dependent_waits_for_prior_batch

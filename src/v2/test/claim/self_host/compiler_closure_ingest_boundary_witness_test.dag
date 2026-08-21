@@ -4,7 +4,7 @@ module v2.test.self_host.compiler_closure_ingest_boundary_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 // Wet boundary witness: 07_target_carriers closure at manifest_inline_list_max (transport-run).
-test fn compiler_closure_ingest_boundary_exact_cap_transport_holds() -> Bool {
+test fn compiler_closure_ingest_boundary_exact_cap_transport_holds() -> v2.std.logic.Bool {
   let receipt = host_source_root_ingest_coverage_receipt
   let refs = host_source_root_closure_refs
   let n = receipt.ingest_read_count

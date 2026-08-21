@@ -35,7 +35,7 @@ data bool_boolean_algebra: BooleanAlgebra<Bool> = std.algebra.BooleanAlgebra {
   bottom: False
 }
 
-fn bool_node() -> Node {
+fn bool_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^bool_node_symbol } },
     children: [],
@@ -43,7 +43,7 @@ fn bool_node() -> Node {
 }
 }
 
-fn bool_fact_atom(id: v2.std.node.Symbol) -> Node {
+fn bool_fact_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
     children: [],
@@ -51,21 +51,21 @@ fn bool_fact_atom(id: v2.std.node.Symbol) -> Node {
 }
 }
 
-fn bool_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: Named { name: name }, target: target }
+fn bool_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: target }
 }
 
-fn bool_width_fact_node(width: BoolWidthFact) -> Node {
+fn bool_width_fact_node(width: BoolWidthFact) -> v2.std.node.Node {
   let _width = width
   bool_fact_atom(id: ^bool_spec_fact_width_one_bit)
 }
 
-fn bool_encoding_fact_node(encoding: BoolEncodingFact) -> Node {
+fn bool_encoding_fact_node(encoding: BoolEncodingFact) -> v2.std.node.Node {
   let _encoding = encoding
   bool_fact_atom(id: ^bool_spec_fact_encoding_classical_two_valued)
 }
 
-fn bool_primitive_facts_node(facts: BoolPrimitiveFacts) -> Node {
+fn bool_primitive_facts_node(facts: BoolPrimitiveFacts) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -82,10 +82,10 @@ fn bool_primitive_facts_node(facts: BoolPrimitiveFacts) -> Node {
 }
 }
 
-fn bool_boolean_algebra_type_node() -> Node {
+fn bool_boolean_algebra_type_node() -> v2.std.node.Node {
   boolean_algebra_type_node(inhabitant: bool_node())
 }
 
-fn bool_boolean_algebra_node() -> Node {
+fn bool_boolean_algebra_node() -> v2.std.node.Node {
   boolean_algebra_node(inhabitant: bool_node())
 }

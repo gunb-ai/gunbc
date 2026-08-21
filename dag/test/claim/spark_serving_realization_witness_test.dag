@@ -20,11 +20,11 @@ fn spark_intent() -> gunbc.spark_serving_realization.SparkServingIntent {
 }
 
 fn present(evidence: String) -> gunbc.spark_serving_realization.CapabilityObservation {
-  CapabilityPresent { evidence: evidence as std.types.NonEmptyStr }
+  gunbc.spark.serving_realization.CapabilityPresent { evidence: evidence as std.types.NonEmptyStr }
 }
 
 fn refused(cause: String) -> gunbc.spark_serving_realization.CapabilityObservation {
-  CapabilityRefused { cause: cause as std.types.NonEmptyStr }
+  gunbc.spark.serving_realization.CapabilityRefused { cause: cause as std.types.NonEmptyStr }
 }
 
 // A host where the least-privileged realization already satisfies the intent.
@@ -229,7 +229,7 @@ test fn w_unobserved_capability_refuses_rather_than_admitting() -> Bool {
     user_unit_manager: present("systemd --user observed"),
     user_lingering: present("lingering enabled"),
     container_runtime: test.claim.spark_serving_realization_witness_test.refused("no container runtime"),
-    accelerator_access: CapabilityUnobserved,
+    accelerator_access: gunbc.spark.serving_realization.CapabilityUnobserved,
     writable_artifact_root: present("artifact root writable"),
     endpoint_bindable: present("endpoint bindable"),
   }

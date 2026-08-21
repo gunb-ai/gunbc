@@ -34,10 +34,10 @@ data fleet_desired_admission_workflow_concurrency_group: String = "gunbc-fleet-d
 
 fn fleet_desired_admission_checkout_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.UsesStep {
-    name: Present { value: "Checkout" },
+    name: v2.std.optional.Present { value: "Checkout" },
     id: none,
     uses: extdeps.github.actions.checkout_action,
-    with: Present {
+    with: v2.std.optional.Present {
       value: [extdeps.languages.yaml.types.kv(key: "fetch-depth", value: extdeps.languages.yaml.types.yaml_string(s: "0"))]
     },
     env: none,
@@ -59,7 +59,7 @@ fn fleet_desired_admission_checkout_step() -> extdeps.github.actions.Step {
 // several consumers (DESIGN section 3).
 fn fleet_desired_admission_build_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.RunStep {
-    name: Present { value: "Build the admission binary" },
+    name: v2.std.optional.Present { value: "Build the admission binary" },
     id: none,
     run: "cargo build --release -p v1-compiler --bin gunbc\n",
     shell: none,
@@ -78,7 +78,7 @@ fn fleet_desired_admission_build_step() -> extdeps.github.actions.Step {
 // a refused admission cannot be actuated by a file a previous run left behind.
 fn fleet_desired_admission_stage_payload_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.RunStep {
-    name: Present { value: "Stage the floor run event payload" },
+    name: v2.std.optional.Present { value: "Stage the floor run event payload" },
     id: none,
     run: join([
       "set -eu\n",
@@ -100,7 +100,7 @@ fn fleet_desired_admission_stage_payload_step() -> extdeps.github.actions.Step {
 // the ref keeps its previous admitted revision and the cause is in the log, located and typed.
 fn fleet_desired_admission_decide_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.RunStep {
-    name: Present { value: "Decide whether the floor admits this revision" },
+    name: v2.std.optional.Present { value: "Decide whether the floor admits this revision" },
     id: none,
     run: join([
       "ROOT=", gunbc.merge_admission_produce.ci_repo_root_shell(), "\n",
@@ -126,9 +126,9 @@ fn fleet_desired_admission_decide_step() -> extdeps.github.actions.Step {
 // treating a missing authorization as permission. Two of the three authorized actions mutate no
 // ref at all -- already-converged and superseded -- and they still render a nonempty script, so
 // `test -s` continues to separate "nothing was written" from "nothing was to be done".
-fn fleet_desired_admission_action_step() -> Step {
+fn fleet_desired_admission_action_step() -> extdeps.github.actions.Step {
   RunStep {
-    name: Present { value: "Execute the authorized fleet-desired advance" },
+    name: v2.std.optional.Present { value: "Execute the authorized fleet-desired advance" },
     id: none,
     run: join([
       "set -eu\n",
@@ -163,17 +163,17 @@ fn fleet_desired_admission_job() -> extdeps.github.actions.Job {
     needs: [],
     env: none,
     outputs: none,
-    if_condition: Present {
+    if_condition: v2.std.optional.Present {
       value: join([
         "github.event.workflow_run.head_branch == '", gunbc.repo_identity.gunbc_default_branch_name, "'",
       ], ""),
     },
-    timeout_minutes: Present { value: 60 },
+    timeout_minutes: v2.std.optional.Present { value: 60 },
     continue_on_error: none,
     concurrency: none,
-    permissions: Present {
+    permissions: v2.std.optional.Present {
       value: extdeps.github.actions.WorkflowPermissions {
-        contents: Present { value: extdeps.github.actions.PermWrite },
+        contents: v2.std.optional.Present { value: extdeps.github.actions.PermWrite },
         pull_requests: none,
         issues: none,
         actions: none,
@@ -331,10 +331,10 @@ data fleet_desired_admission_workflow: extdeps.github.actions.Workflow = extdeps
       branches: [gunbc_default_branch_name],
     }
   ],
-  concurrency: Present {
+  concurrency: v2.std.optional.Present {
     value: ConcurrencyMappingQueueMax {
       group: fleet_desired_admission_workflow_concurrency_group,
-      cancel_in_progress: Present { value: QueueMaxCancelInProgressFalse }
+      cancel_in_progress: v2.std.optional.Present { value: QueueMaxCancelInProgressFalse }
     }
   },
   env: none,

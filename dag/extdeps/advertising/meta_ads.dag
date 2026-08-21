@@ -203,6 +203,6 @@ data meta_ads_media_rate: extdeps.advertising.types.AdPriceDetermination = extde
   mechanism_citation: "developers.facebook.com/docs/marketing-api/bidding",
 }
 
-data meta_ads_minimum_daily_budget_rate: extdeps.advertising.types.AdPriceDetermination = RateUnavailable {
+data meta_ads_minimum_daily_budget_rate: extdeps.advertising.types.AdPriceDetermination = extdeps.advertising.types.RateUnavailable {
   cause: "Meta publishes minimum daily budget figures in the Business Help Center page 'Best Practices for Minimum Budgets' (facebook.com/business/help/203183363050448), but that page is client-rendered and this fetch reads only its title (2026-08-01) -- refused, never filled from memory",
 }

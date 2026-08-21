@@ -150,9 +150,9 @@ test fn witness_runtime_unit_members_holds() -> Bool {
   match stage0_partition_receipt_outcome() {
     Stage0PartitionReceiptOk { units: units } =>
       match partition_unit_by_id(units: units, unit_id: stage0_unit_runtime) {
-        Present { value: unit } =>
+        v2.std.optional.Present { value: unit } =>
           (unit.members |> count) == 1
-        Absent => false
+        v2.std.optional.Absent => false
       }
     Stage0PartitionReceiptResolveRefused { cause: _ } => false
     Stage0PartitionReceiptFoldRefused { cause: _ } => false
@@ -163,9 +163,9 @@ test fn witness_v1_infer_unit_members_holds() -> Bool {
   match stage0_partition_receipt_outcome() {
     Stage0PartitionReceiptOk { units: units } =>
       match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_infer) {
-        Present { value: unit } =>
+        v2.std.optional.Present { value: unit } =>
           (unit.members |> count) == 7
-        Absent => false
+        v2.std.optional.Absent => false
       }
     Stage0PartitionReceiptResolveRefused { cause: _ } => false
     Stage0PartitionReceiptFoldRefused { cause: _ } => false
@@ -176,9 +176,9 @@ test fn witness_v1_artifact_unit_members_holds() -> Bool {
   match stage0_partition_receipt_outcome() {
     Stage0PartitionReceiptOk { units: units } =>
       match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_artifact) {
-        Present { value: unit } =>
+        v2.std.optional.Present { value: unit } =>
           (unit.members |> count) == 2
-        Absent => false
+        v2.std.optional.Absent => false
       }
     Stage0PartitionReceiptResolveRefused { cause: _ } => false
     Stage0PartitionReceiptFoldRefused { cause: _ } => false

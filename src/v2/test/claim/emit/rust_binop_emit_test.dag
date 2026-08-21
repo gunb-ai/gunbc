@@ -9,22 +9,22 @@ data rust_binop_mul_fn_source_text: String = "fn add(x: i32, y: i32) -> i32 { x 
 
 data rust_binop_eq_fn_source_text: String = "fn add(x: i32, y: i32) -> i32 { x == y }"
 
-fn rust_binop_facts_miss(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn rust_binop_facts_miss(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
-fn rust_binop_inferred_tree_for(root: Node) -> v2.compiler.inferred_tree.InferredTree {
+fn rust_binop_inferred_tree_for(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map { lookup: rust_binop_facts_miss }
   }
 }
 
-fn rust_binop_operator_atom(token: v2.std.node.Symbol) -> Node {
+fn rust_binop_operator_atom(token: v2.std.node.Symbol) -> v2.std.node.Node {
   dag_type_atom_node(identity: token)
 }
 
-fn rust_binop_arrow_with_operator(operator_token: v2.std.node.Symbol) -> Node {
+fn rust_binop_arrow_with_operator(operator_token: v2.std.node.Symbol) -> v2.std.node.Node {
   dag_arrow_with_body_node(
     domain: dag_arrow_domain_conj_node(),
     return_type_binding: ^dag_binding_type_int,
@@ -37,7 +37,7 @@ fn rust_binop_arrow_with_operator(operator_token: v2.std.node.Symbol) -> Node {
 }
 
 fn rust_binop_producer_emit(operator_token: v2.std.node.Symbol, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
-  emit(
+  v2.compiler.emit.emit(
     tree: rust_binop_inferred_tree_for(root: rust_binop_arrow_with_operator(operator_token: operator_token)),
     target: target
   )
@@ -53,7 +53,7 @@ fn rust_binop_binary_expr(operation: v2.std.compilers.target_model.CanonicalOper
   )
 }
 
-fn rust_binop_add_only_catalog() -> Node {
+fn rust_binop_add_only_catalog() -> v2.std.node.Node {
   target_operator_realizations_catalog_node(rows: [
     target_operator_realization_node(
       operation: canonical_operation_op_add(),
@@ -62,7 +62,7 @@ fn rust_binop_add_only_catalog() -> Node {
   ])
 }
 
-fn rust_binop_sub_mistoken_catalog() -> Node {
+fn rust_binop_sub_mistoken_catalog() -> v2.std.node.Node {
   target_operator_realizations_catalog_node(rows: [
     target_operator_realization_node(
       operation: canonical_operation_op_sub(),
@@ -71,14 +71,14 @@ fn rust_binop_sub_mistoken_catalog() -> Node {
   ])
 }
 
-fn rust_binop_target_model(catalog: Node) -> v2.std.compilers.target_model.TargetModel {
+fn rust_binop_target_model(catalog: v2.std.node.Node) -> v2.std.compilers.target_model.TargetModel {
   rust_target_model_with_operators_and_lex(
     operator_catalog: catalog,
     lex: rust_fn_add_lex()
   )
 }
 
-fn rust_binop_vep_emit(operation: v2.std.compilers.target_model.CanonicalOperation, catalog: Node) -> v2.std.diagnostic.Outcome<String> {
+fn rust_binop_vep_emit(operation: v2.std.compilers.target_model.CanonicalOperation, catalog: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
   bind_outcome(
     o: target_value_expression_primitive_apply_to_concrete_tokens(
       expr: rust_binop_binary_expr(operation: operation),
@@ -99,39 +99,39 @@ fn rust_binop_vep_emit(operation: v2.std.compilers.target_model.CanonicalOperati
   )
 }
 
-fn rust_binop_vep_emit_accepts(operation: v2.std.compilers.target_model.CanonicalOperation, expected: String) -> Bool {
+fn rust_binop_vep_emit_accepts(operation: v2.std.compilers.target_model.CanonicalOperation, expected: String) -> v2.std.logic.Bool {
   match rust_binop_vep_emit(
     operation: operation,
-    catalog: rust_operator_realizations_catalog_node()
+    catalog: v2.extdeps.languages.rust.rust_operator_realizations_catalog_node()
   ) {
     Accepted { value: s, diagnostics: d } => (s == expected) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn rust_binop_vep_emit_differs_from_add(operation: v2.std.compilers.target_model.CanonicalOperation) -> Bool {
+fn rust_binop_vep_emit_differs_from_add(operation: v2.std.compilers.target_model.CanonicalOperation) -> v2.std.logic.Bool {
   match rust_binop_vep_emit(
     operation: operation,
-    catalog: rust_operator_realizations_catalog_node()
+    catalog: v2.extdeps.languages.rust.rust_operator_realizations_catalog_node()
   ) {
     Accepted { value: s, diagnostics: _ } =>
       (s != "x + y") && rust_binop_vep_emit_accepts(operation: canonical_operation_op_add(), expected: "x + y")
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn rust_binop_producer_emit_accepts(operator_token: v2.std.node.Symbol, expected: String) -> Bool {
+fn rust_binop_producer_emit_accepts(operator_token: v2.std.node.Symbol, expected: String) -> v2.std.logic.Bool {
   match rust_binop_producer_emit(
     operator_token: operator_token,
     target: rust_target_model_staging()
   ) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == expected) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn rust_binop_vep_emit_core_catalog_holds() -> Bool {
+test fn rust_binop_vep_emit_core_catalog_holds() -> v2.std.logic.Bool {
   rust_binop_vep_emit_accepts(operation: canonical_operation_op_add(), expected: "x + y") &&
     rust_binop_vep_emit_accepts(operation: canonical_operation_op_sub(), expected: "x - y") &&
     rust_binop_vep_emit_accepts(operation: canonical_operation_op_mul(), expected: "x * y") &&
@@ -146,7 +146,7 @@ test fn rust_binop_vep_emit_core_catalog_holds() -> Bool {
     rust_binop_vep_emit_accepts(operation: canonical_operation_op_ge(), expected: "x >= y")
 }
 
-test fn rust_binop_vep_emit_discriminates_from_add() -> Bool {
+test fn rust_binop_vep_emit_discriminates_from_add() -> v2.std.logic.Bool {
   rust_binop_vep_emit_differs_from_add(operation: canonical_operation_op_sub()) &&
     rust_binop_vep_emit_differs_from_add(operation: canonical_operation_op_mul()) &&
     rust_binop_vep_emit_differs_from_add(operation: canonical_operation_op_eq()) &&
@@ -154,34 +154,34 @@ test fn rust_binop_vep_emit_discriminates_from_add() -> Bool {
     rust_binop_vep_emit_differs_from_add(operation: canonical_operation_op_and())
 }
 
-test fn rust_binop_vep_emit_wrong_token_discriminates() -> Bool {
+test fn rust_binop_vep_emit_wrong_token_discriminates() -> v2.std.logic.Bool {
   match rust_binop_vep_emit(
     operation: canonical_operation_op_sub(),
     catalog: rust_binop_sub_mistoken_catalog()
   ) {
     Accepted { value: s, diagnostics: _ } => (s == "x + y") && (s != "x - y")
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn rust_binop_vep_emit_missing_catalog_rejects() -> Bool {
+test fn rust_binop_vep_emit_missing_catalog_rejects() -> v2.std.logic.Bool {
   match rust_binop_vep_emit(
     operation: canonical_operation_op_sub(),
     catalog: rust_binop_add_only_catalog()
   ) {
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-test fn rust_binop_producer_emit_sub_holds() -> Bool {
+test fn rust_binop_producer_emit_sub_holds() -> v2.std.logic.Bool {
   rust_binop_producer_emit_accepts(
     operator_token: ^dag_token_minus,
     expected: rust_binop_sub_fn_source_text
   )
 }
 
-test fn rust_binop_producer_emit_sub_discriminates_from_add() -> Bool {
+test fn rust_binop_producer_emit_sub_discriminates_from_add() -> v2.std.logic.Bool {
   rust_binop_producer_emit_accepts(
     operator_token: ^dag_token_minus,
     expected: rust_binop_sub_fn_source_text
@@ -189,14 +189,14 @@ test fn rust_binop_producer_emit_sub_discriminates_from_add() -> Bool {
     (rust_binop_sub_fn_source_text != rust_source_text)
 }
 
-test fn rust_binop_producer_emit_mul_holds() -> Bool {
+test fn rust_binop_producer_emit_mul_holds() -> v2.std.logic.Bool {
   rust_binop_producer_emit_accepts(
     operator_token: ^dag_token_star,
     expected: rust_binop_mul_fn_source_text
   )
 }
 
-test fn rust_binop_producer_emit_eq_holds() -> Bool {
+test fn rust_binop_producer_emit_eq_holds() -> v2.std.logic.Bool {
   rust_binop_producer_emit_accepts(
     operator_token: ^dag_token_eq_eq,
     expected: rust_binop_eq_fn_source_text

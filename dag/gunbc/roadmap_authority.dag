@@ -35,7 +35,7 @@ fn authored(identity: String,
     sizing: gunbc.roadmap_model.Unsized,
     execution: gunbc.roadmap_execution_contract.ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 
@@ -49,7 +49,7 @@ fn derivable(identity: String,
     sizing: gunbc.roadmap_model.Unsized,
     execution: gunbc.roadmap_execution_contract.ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 
@@ -76,7 +76,7 @@ fn derivable_wi(
     },
     execution: gunbc.roadmap_execution_contract.ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 
@@ -102,7 +102,7 @@ fn authored_wi(
     },
     execution: gunbc.roadmap_execution_contract.ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 
@@ -116,7 +116,7 @@ fn ticket_row(identity: String,
     sizing: gunbc.roadmap_model.Unsized,
     execution: gunbc.roadmap_execution_contract.ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 
@@ -142,7 +142,7 @@ fn ticket_wi(
     },
     execution: gunbc.roadmap_execution_contract.ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 
@@ -156,7 +156,7 @@ fn superseded(identity: String,
     sizing: gunbc.roadmap_model.Unsized,
     execution: gunbc.roadmap_execution_contract.ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 
@@ -353,7 +353,7 @@ fn active_sized(
     },
     execution: gunbc.roadmap_execution_contract.ExecutionContractUnspecified,
     owner: owner,
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 
@@ -2658,7 +2658,7 @@ fn closing_contract_task_for(n: gunbc.roadmap_model.RoadmapNode) -> gunbc.roadma
     },
     execution: gunbc.roadmap_execution_contract.ExecutionContractUnspecified,
     owner: n.owner,
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 

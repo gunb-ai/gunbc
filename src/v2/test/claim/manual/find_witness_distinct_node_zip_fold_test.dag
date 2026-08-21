@@ -2,28 +2,28 @@ module v2.test.manual.find_witness_distinct_node_zip_fold
 
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
-fn distinct_source_leaf() -> Node {
+fn distinct_source_leaf() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^distinct_zip_source_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
-fn distinct_target_leaf() -> Node {
+fn distinct_target_leaf() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^distinct_zip_source_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
-fn distinct_wrong_leaf() -> Node {
+fn distinct_wrong_leaf() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^distinct_zip_wrong_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
-fn distinct_source_add_node() -> Node {
+fn distinct_source_add_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -34,7 +34,7 @@ fn distinct_source_add_node() -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-fn distinct_target_add_node() -> Node {
+fn distinct_target_add_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -45,7 +45,7 @@ fn distinct_target_add_node() -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-fn distinct_wrong_arity_node() -> Node {
+fn distinct_wrong_arity_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -55,7 +55,7 @@ fn distinct_wrong_arity_node() -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-fn distinct_wrong_subtree_node() -> Node {
+fn distinct_wrong_subtree_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -66,7 +66,7 @@ fn distinct_wrong_subtree_node() -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-fn distinct_source_nested_node() -> Node {
+fn distinct_source_nested_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -76,7 +76,7 @@ fn distinct_source_nested_node() -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-fn distinct_target_nested_node() -> Node {
+fn distinct_target_nested_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -137,12 +137,12 @@ fn distinct_valid_witness() -> v2.std.witness.StructuralPropertyWitness {
 fn rejected_for_no_candidate(o: v2.std.diagnostic.Outcome<v2.std.find_witness.FindWitnessResult>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_no_candidate
+    v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_no_candidate
   }
 }
 fn quality_is_exact(q: v2.std.coercion.CoercionQuality) -> Bool {
   match q {
-    Exact => true
+    v2.std.coercion.Exact => true
     Identity => false
     Widened => false
   }
@@ -150,7 +150,7 @@ fn quality_is_exact(q: v2.std.coercion.CoercionQuality) -> Bool {
 fn quality_is_identity(q: v2.std.coercion.CoercionQuality) -> Bool {
   match q {
     Identity => true
-    Exact => false
+    v2.std.coercion.Exact => false
     Widened => false
   }
 }
@@ -161,7 +161,7 @@ test data witness_find_witness_distinct_node_accepts: Bool = match find_witness(
   multiplicity_policy: UniqueOnly
 ) {
   Accepted { value: fw, diagnostics: _ } => fw.candidate == distinct_target_add_node()
-  Rejected { diagnostics: _ } => false
+  v2.std.diagnostic.Rejected { diagnostics: _ } => false
 }
 test data witness_verify_witness_distinct_node_accepts: Bool = match verify_witness(
   source_facts: distinct_source_add_node(),
@@ -170,7 +170,7 @@ test data witness_verify_witness_distinct_node_accepts: Bool = match verify_witn
   witness: distinct_valid_witness()
 ) {
   Accepted { value: _, diagnostics: _ } => true
-  Rejected { diagnostics: _ } => false
+  v2.std.diagnostic.Rejected { diagnostics: _ } => false
 }
 test data witness_find_witness_wrong_arity_rejects: Bool = v2.test.manual.find_witness_distinct_node_zip_fold.rejected_for_no_candidate(
   o: find_witness(
@@ -195,7 +195,7 @@ test data witness_find_witness_nested_distinct_node_accepts: Bool = match find_w
   multiplicity_policy: UniqueOnly
 ) {
   Accepted { value: fw, diagnostics: _ } => fw.candidate == distinct_target_nested_node()
-  Rejected { diagnostics: _ } => false
+  v2.std.diagnostic.Rejected { diagnostics: _ } => false
 }
 fn distinct_grounding() -> v2.std.constraints.CanonicalGrounding {
   v2.std.constraints.CanonicalGrounding {
@@ -216,5 +216,5 @@ test data witness_coercion_fold_distinct_node_accepts: Bool = match coercion_fol
 ) {
   Accepted { value: r, diagnostics: _ } =>
     (r.target == distinct_target_add_node()) && (quality_is_exact(q: r.quality) || v2.test.manual.find_witness_distinct_node_zip_fold.quality_is_identity(q: r.quality))
-  Rejected { diagnostics: _ } => false
+  v2.std.diagnostic.Rejected { diagnostics: _ } => false
 }

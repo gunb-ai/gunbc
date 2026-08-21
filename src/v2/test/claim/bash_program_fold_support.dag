@@ -4,7 +4,7 @@ module v2.test.claim.bash_program_fold_support
 data bash_program_fold_support_note: String = "Shared bash fold tag helpers + real-program fixture builders for long/bash_program_real_probes_witness_test (review 43557 orphan fallout). Not a *_test.dag — module-local orphan hygiene would false-red cross-module-only helpers. Dissolve-on: rename remains honest as long as long/ is the consumer."
 
 fn bash_program_fold_tagged(
-  node: Node,
+  node: v2.std.node.Node,
   production_binding: v2.std.node.Symbol,
   rule_name: v2.std.node.Symbol
 ) -> v2.workflow.bash_emit.BashEmitSpecial {
@@ -17,7 +17,7 @@ fn bash_program_fold_tagged(
   }
 }
 
-fn bash_program_fold_tag_command(node: Node) -> v2.workflow.bash_emit.BashEmitSpecial {
+fn bash_program_fold_tag_command(node: v2.std.node.Node) -> v2.workflow.bash_emit.BashEmitSpecial {
   bash_program_fold_tagged(
     node: node,
     production_binding: ^bash_production_fold_command,
@@ -25,7 +25,7 @@ fn bash_program_fold_tag_command(node: Node) -> v2.workflow.bash_emit.BashEmitSp
   )
 }
 
-fn bash_program_fold_tag_assign(node: Node) -> v2.workflow.bash_emit.BashEmitSpecial {
+fn bash_program_fold_tag_assign(node: v2.std.node.Node) -> v2.workflow.bash_emit.BashEmitSpecial {
   bash_program_fold_tagged(
     node: node,
     production_binding: ^bash_production_fold_assign,
@@ -33,7 +33,7 @@ fn bash_program_fold_tag_assign(node: Node) -> v2.workflow.bash_emit.BashEmitSpe
   )
 }
 
-fn bash_program_fold_tag_if(node: Node) -> v2.workflow.bash_emit.BashEmitSpecial {
+fn bash_program_fold_tag_if(node: v2.std.node.Node) -> v2.workflow.bash_emit.BashEmitSpecial {
   bash_program_fold_tagged(
     node: node,
     production_binding: ^bash_production_fold_if,
@@ -41,7 +41,7 @@ fn bash_program_fold_tag_if(node: Node) -> v2.workflow.bash_emit.BashEmitSpecial
   )
 }
 
-fn bash_program_fold_tag_subshell(node: Node) -> v2.workflow.bash_emit.BashEmitSpecial {
+fn bash_program_fold_tag_subshell(node: v2.std.node.Node) -> v2.workflow.bash_emit.BashEmitSpecial {
   bash_program_fold_tagged(
     node: node,
     production_binding: ^bash_production_fold_subshell,
@@ -49,7 +49,7 @@ fn bash_program_fold_tag_subshell(node: Node) -> v2.workflow.bash_emit.BashEmitS
   )
 }
 
-fn bash_program_fold_tag_or_else(node: Node) -> v2.workflow.bash_emit.BashEmitSpecial {
+fn bash_program_fold_tag_or_else(node: v2.std.node.Node) -> v2.workflow.bash_emit.BashEmitSpecial {
   bash_program_fold_tagged(
     node: node,
     production_binding: ^bash_production_fold_or_else,
@@ -57,7 +57,7 @@ fn bash_program_fold_tag_or_else(node: Node) -> v2.workflow.bash_emit.BashEmitSp
   )
 }
 
-fn bash_program_fold_tag_with_redir(node: Node) -> v2.workflow.bash_emit.BashEmitSpecial {
+fn bash_program_fold_tag_with_redir(node: v2.std.node.Node) -> v2.workflow.bash_emit.BashEmitSpecial {
   bash_program_fold_tagged(
     node: node,
     production_binding: ^bash_production_fold_with_redir,
@@ -65,11 +65,11 @@ fn bash_program_fold_tag_with_redir(node: Node) -> v2.workflow.bash_emit.BashEmi
   )
 }
 
-fn bash_program_fold_tag_if_nodes(nodes: List<Node>) -> List<v2.workflow.bash_emit.BashEmitSpecial> {
+fn bash_program_fold_tag_if_nodes(nodes: List<v2.std.node.Node>) -> List<v2.workflow.bash_emit.BashEmitSpecial> {
   list_map(xs: nodes, f: fn(n) { bash_program_fold_tag_if(node: n) })
 }
 
-fn bash_program_fold_test_not_executable_node(path: Node) -> Node {
+fn bash_program_fold_test_not_executable_node(path: v2.std.node.Node) -> v2.std.node.Node {
   bash_build_command_from_word_nodes(words: [
     bash_build_word_lit(text: "["),
     bash_build_word_lit(text: "!"),
@@ -79,7 +79,7 @@ fn bash_program_fold_test_not_executable_node(path: Node) -> Node {
   ])
 }
 
-fn bash_program_fixture_assign_root_node() -> Node {
+fn bash_program_fixture_assign_root_node() -> v2.std.node.Node {
   bash_build_assign(
     name: "ROOT",
     value: bash_build_word_cmdsubst(
@@ -94,7 +94,7 @@ fn bash_program_fixture_assign_root_node() -> Node {
   )
 }
 
-fn bash_program_fixture_build_bin_if_absent(bin_path: Node, root: Node, bin_name: String) -> Node {
+fn bash_program_fixture_build_bin_if_absent(bin_path: v2.std.node.Node, root: v2.std.node.Node, bin_name: String) -> v2.std.node.Node {
   bash_build_if_from_stmts(
     cond: bash_program_fold_test_not_executable_node(path: bin_path),
     then_stmts: [

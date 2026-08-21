@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 test fn witness_active_wire_decodes_to_active() -> Bool {
   match parse_systemd_unit_active_state(raw: "active") {
-    Present { value: Active } => true
+    Present { value: extdeps.systemd.Active } => true
     _ => false
   }
 }

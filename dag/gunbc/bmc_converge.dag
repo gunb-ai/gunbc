@@ -107,7 +107,7 @@ fn bmc_fan_policy_suitability_refusal_reason(
   }
 }
 
-// BMC and Ubuntu convergence share std.upsert_decision for observe/classify/plan and std.realization_reconcile for apply/read-back. Fan-policy reconciliation is three separable questions: apply suitability, post-apply durability qualification, and ordinary convergence after qualification. Apply may proceed without prior durability evidence; Noop requires qualification plus a live canonical digest equal to the admitted digest.
+// BMC and Ubuntu convergence share std.upsert_decision for observe/classify/plan and std.realization_reconcile for apply/read-back. Fan-policy reconciliation is three separable questions: apply suitability, post-apply durability qualification, and ordinary convergence after qualification. std.upsert_decision.Apply may proceed without prior durability evidence; Noop requires qualification plus a live canonical digest equal to the admitted digest.
 fn bmc_firmware_intent_mismatch_reason(
   required: extdeps.bmc.capability.BmcFirmwareTrack,
   observed: extdeps.bmc.capability.BmcFirmwareVersion,
@@ -147,14 +147,14 @@ fn bmc_firmware_classification(
       ) {
         BmcFirmwareIntentSatisfied =>
           std.upsert_decision.UpsertClassification {
-            verdict: Converged,
+            verdict: std.upsert_decision.Converged,
             decision: Noop,
           }
         BmcFirmwareIntentMismatch { required: required, observed: mismatch_observed } =>
           match artifact {
             Absent =>
               std.upsert_decision.UpsertClassification {
-                verdict: Drifted,
+                verdict: std.upsert_decision.Drifted,
                 decision: std.upsert_decision.Refuse {
                   reason: concat(
                     "bmc firmware drift observed, but no exact approved board-compatible image artifact is available: ",
@@ -201,7 +201,7 @@ fn bmc_firmware_classification(
                     match update_service {
                       Absent =>
                         std.upsert_decision.UpsertClassification {
-                          verdict: Drifted,
+                          verdict: std.upsert_decision.Drifted,
                           decision: std.upsert_decision.Refuse {
                             reason: concat(
                               "bmc firmware drift and approved artifact are known, but the current UpdateService surface has not been observed: ",
@@ -217,8 +217,8 @@ fn bmc_firmware_classification(
                           && update_surface.firmware.firmware == observed.firmware
                           && update_surface.active_bmc_image_updateable {
                           std.upsert_decision.UpsertClassification {
-                            verdict: Drifted,
-                            decision: Apply {
+                            verdict: std.upsert_decision.Drifted,
+                            decision: std.upsert_decision.Apply {
                               plan: BmcFirmwareUpdatePlan {
                                 host: host,
                                 observed: observed,
@@ -538,8 +538,8 @@ fn bmc_fan_policy_ordinary_convergence(
   ) {
     BmcFanPolicyDrifted { cause: _ } =>
       std.upsert_decision.UpsertClassification {
-        verdict: Drifted,
-        decision: Apply {
+        verdict: std.upsert_decision.Drifted,
+        decision: std.upsert_decision.Apply {
           plan: BmcFanPolicyApplyPlan {
             host: host,
             observed: observation,
@@ -552,7 +552,7 @@ fn bmc_fan_policy_ordinary_convergence(
       }
     BmcFanPolicyConverged =>
       std.upsert_decision.UpsertClassification {
-        verdict: Converged,
+        verdict: std.upsert_decision.Converged,
         decision: Noop,
       }
   }

@@ -5,14 +5,14 @@ module v2.test.claim.body_lowering_well_formed_wall
 // still reject well_formed. After ArrowBodyForm, bare Atom bodies are valid
 // (DirectAtomBody); UnsupportedArrowBody Disj remains the negative control.
 
-fn well_formed_wall_atom(identity: v2.std.node.Symbol) -> Node {
+fn well_formed_wall_atom(identity: v2.std.node.Symbol) -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: []
   )
 }
 
-fn well_formed_wall_malformed_arrow() -> Node {
+fn well_formed_wall_malformed_arrow() -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -20,14 +20,14 @@ fn well_formed_wall_malformed_arrow() -> Node {
       v2.std.node.Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
       v2.std.node.Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
       v2.std.node.Edge {
-        label: Named { name: ^arrow_body_edge },
+        label: v2.std.node.Named { name: ^arrow_body_edge },
         target: node_synthetic(kind: v2.std.node.TypeNode { connective: Disj }, children: [])
       }
     ]
   )
 }
 
-fn well_formed_wall_atom_body_arrow() -> Node {
+fn well_formed_wall_atom_body_arrow() -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -35,14 +35,14 @@ fn well_formed_wall_atom_body_arrow() -> Node {
       v2.std.node.Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
       v2.std.node.Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
       v2.std.node.Edge {
-        label: Named { name: ^arrow_body_edge },
+        label: v2.std.node.Named { name: ^arrow_body_edge },
         target: well_formed_wall_atom(identity: ^well_formed_wall_bare_body)
       }
     ]
   )
 }
 
-fn well_formed_wall_valid_arrow() -> Node {
+fn well_formed_wall_valid_arrow() -> v2.std.node.Node {
   node_synthetic(
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -50,7 +50,7 @@ fn well_formed_wall_valid_arrow() -> Node {
       v2.std.node.Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
       v2.std.node.Edge { label: Positional, target: well_formed_wall_atom(identity: ^well_formed_wall_return) },
       v2.std.node.Edge {
-        label: Named { name: ^arrow_body_edge },
+        label: v2.std.node.Named { name: ^arrow_body_edge },
         target: node_synthetic(kind: v2.std.node.ComputationNode { behavior: Value }, children: [])
       }
     ]

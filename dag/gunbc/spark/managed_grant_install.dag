@@ -102,11 +102,11 @@ type SparkGrantInstallPlan
 // account's directory and got Permission denied at the far side -- a failure that reads as a broken
 // installer rather than as the wrong account being named. Whose home it is follows from who is doing
 // the writing, which is exactly the fact the transport principal already carries.
-fn spark_grant_staging_path(grant: gunbc.spark.managed_access_bootstrap.SparkManagedGrant, principal: std.types.NonEmptyStr) -> FilePath {
+fn spark_grant_staging_path(grant: gunbc.spark.managed_access_bootstrap.SparkManagedGrant, principal: std.types.NonEmptyStr) -> std.types.FilePath {
   join([
     spark_managed_principal_home(login: principal) as String, "/.gunbc-staged-sudoers-",
     spark_managed_grant_dropin_name(grant: grant) as String,
-  ], "") as FilePath
+  ], "") as std.types.FilePath
 }
 
 fn spark_grant_install_step_identity(grant: gunbc.spark.managed_access_bootstrap.SparkManagedGrant, phase: String) -> std.types.NonEmptyStr {
@@ -654,7 +654,7 @@ func spark_grant_probe_outcome(
       if r.success {
         gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: r.stdout }
       } else {
-        GrantAbsent { detail: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+        gunbc.spark.managed_access_bootstrap.GrantAbsent { detail: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
       }
   }
 }
@@ -694,7 +694,7 @@ func spark_grant_install_ci_wet() -> std.process.ProcessExit
               || spark_grant_install_run_cleanup_completed(run: run) == false {
             exit_failure(reason: body)
           } else {
-            ExitSuccess
+            std.process.ExitSuccess
           }
         }
       }

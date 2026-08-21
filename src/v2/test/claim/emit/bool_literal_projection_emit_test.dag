@@ -12,7 +12,7 @@ data bool_literal_true_lower_golden: String = "true"
 
 data bool_literal_true_upper_golden: String = "TRUE"
 
-fn blp_probe_node() -> Node {
+fn blp_probe_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^blp_emit_probe } },
     children: [],
@@ -106,7 +106,7 @@ fn blp_target() -> v2.std.compilers.target_model.TargetModel {
 fn blp_emit(
   target: v2.std.compilers.target_model.TargetModel,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
-  catalog: Node
+  catalog: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<String> {
   match target_value_expression_to_concrete_tokens(
     expr: blp_bool_literal_expr(),
@@ -120,24 +120,24 @@ fn blp_emit(
       ) {
         Accepted { value: text, diagnostics: _ } =>
           v2.std.diagnostic.Accepted { value: render_target_text(t: text), diagnostics: v2.std.diagnostic.None }
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
-fn blp_emits(bool_form: v2.std.compilers.target_model.TargetBoolLiteralShape, golden: String) -> Bool {
+fn blp_emits(bool_form: v2.std.compilers.target_model.TargetBoolLiteralShape, golden: String) -> v2.std.logic.Bool {
   match blp_emit(
     target: blp_target(),
     projection: blp_projection_with(bool_form: bool_form),
-    catalog: rust_operator_realizations_catalog_node()
+    catalog: v2.extdeps.languages.rust.rust_operator_realizations_catalog_node()
   ) {
     Accepted { value: text, diagnostics: _ } => text == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn bool_spelling_is_derived_from_projection() -> Bool {
+test fn bool_spelling_is_derived_from_projection() -> v2.std.logic.Bool {
   blp_emits(bool_form: blp_lower_bool_form(), golden: bool_literal_true_lower_golden)
     && blp_emits(bool_form: blp_upper_bool_form(), golden: bool_literal_true_upper_golden)
     && !blp_emits(bool_form: blp_lower_bool_form(), golden: bool_literal_true_upper_golden)
@@ -147,24 +147,24 @@ test fn bool_spelling_is_derived_from_projection() -> Bool {
 fn blp_production_emits(
   target: v2.std.compilers.target_model.TargetModel,
   projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
-  catalog: Node
-) -> Bool {
+  catalog: v2.std.node.Node
+) -> v2.std.logic.Bool {
   match blp_emit(target: target, projection: projection, catalog: catalog) {
     Accepted { value: text, diagnostics: d } =>
       (text == bool_literal_true_lower_golden) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn production_rust_bool_literal_declares_rust_spelling() -> Bool {
+test fn production_rust_bool_literal_declares_rust_spelling() -> v2.std.logic.Bool {
   blp_production_emits(
     target: rust_target_model(),
     projection: rust_value_expression_projection(),
-    catalog: rust_operator_realizations_catalog_node()
+    catalog: v2.extdeps.languages.rust.rust_operator_realizations_catalog_node()
   )
 }
 
-test fn production_typescript_bool_literal_declares_ts_spelling() -> Bool {
+test fn production_typescript_bool_literal_declares_ts_spelling() -> v2.std.logic.Bool {
   blp_production_emits(
     target: ts_target_model(),
     projection: ts_value_expression_projection(),
@@ -172,7 +172,7 @@ test fn production_typescript_bool_literal_declares_ts_spelling() -> Bool {
   )
 }
 
-test fn production_c_bool_literal_pins_spelling_while_known_invalid_under_c17() -> Bool {
+test fn production_c_bool_literal_pins_spelling_while_known_invalid_under_c17() -> v2.std.logic.Bool {
   match c_bool_literal_emit_validity_under_declared_standard() {
     KnownInvalidUnderDeclaredStandard {
       standard_edition: CStage0EmitStandardC17,
@@ -185,44 +185,44 @@ test fn production_c_bool_literal_pins_spelling_while_known_invalid_under_c17() 
         catalog: c_operator_realizations_catalog_node()
       )
         && match v2.extdeps.languages.c_bool_literal_emit.c_bool_literal_stdbool_preamble_emit_disposition {
-          Scaffold { dissolves_to: RealizationDispatch, bind: _ } => true
+          std.disposition.Scaffold { dissolves_to: RealizationDispatch, bind: _ } => true
           _ => false
         }
     _ => false
   }
 }
 
-test fn dag_source_bool_form_recognizes_dag_token() -> Bool {
+test fn dag_source_bool_form_recognizes_dag_token() -> v2.std.logic.Bool {
   match target_value_expr_bool_literal_value_from_source_symbol(
     id: ^dag_token_kw_true,
     source_bool_form: blp_dag_source_bool_form()
   ) {
-    Present { value: b } => b
-    Absent => false
+    v2.std.optional.Present { value: b } => b
+    v2.std.optional.Absent => false
   }
 }
 
-test fn dag_token_unrecognized_without_source_projection() -> Bool {
+test fn dag_token_unrecognized_without_source_projection() -> v2.std.logic.Bool {
   match target_value_expr_bool_literal_value_from_source_symbol(
     id: ^dag_token_kw_true,
     source_bool_form: blp_canonical_only_bool_form()
   ) {
-    Present { value: _ } => false
-    Absent => true
+    v2.std.optional.Present { value: _ } => false
+    v2.std.optional.Absent => true
   }
 }
 
-test fn rust_spelling_token_is_not_dag_source_bool_literal() -> Bool {
+test fn rust_spelling_token_is_not_dag_source_bool_literal() -> v2.std.logic.Bool {
   match target_value_expr_bool_literal_value_from_source_symbol(
     id: ^rust_token_kw_true,
     source_bool_form: blp_dag_source_bool_form()
   ) {
-    Present { value: _ } => false
-    Absent => true
+    v2.std.optional.Present { value: _ } => false
+    v2.std.optional.Absent => true
   }
 }
 
-test fn dag_source_atom_projects_to_canonical_bool_literal() -> Bool {
+test fn dag_source_atom_projects_to_canonical_bool_literal() -> v2.std.logic.Bool {
   match target_value_expr_project_pick_literal_atom(
     id: ^dag_token_kw_true,
     source_bool_form: blp_dag_source_bool_form()
@@ -236,6 +236,6 @@ test fn dag_source_atom_projects_to_canonical_bool_literal() -> Bool {
           TargetValueExprBoolLiteral => true
           _ => false
         }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

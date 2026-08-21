@@ -12,11 +12,11 @@ data gate_b: std.content_hash.ContentHash = content_hash_of_value(value: "check-
 data required_gates: List<std.content_hash.ContentHash> = [gate_a, gate_b]
 
 fn passed(gate: std.content_hash.ContentHash) -> gunbc.merge_admission.CoveredGateConclusion {
-  gunbc.merge_admission.CoveredGateConclusion { gate: gate, conclusion: Success }
+  gunbc.merge_admission.CoveredGateConclusion { gate: gate, conclusion: extdeps.github.checks.Success }
 }
 
 fn failed(gate: std.content_hash.ContentHash) -> gunbc.merge_admission.CoveredGateConclusion {
-  gunbc.merge_admission.CoveredGateConclusion { gate: gate, conclusion: Failure }
+  gunbc.merge_admission.CoveredGateConclusion { gate: gate, conclusion: extdeps.github.checks.Failure }
 }
 
 fn admits(coverage: gunbc.merge_admission.CheckCoverage) -> Bool {

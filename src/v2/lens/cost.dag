@@ -108,7 +108,7 @@ fn base_cost_for_connective(c: v2.std.node.Connective, n: v2.std.node.Node) -> S
     Conj => zero_cost()
     Disj => zero_cost()
     Arrow => unit_cost()
-    Cardinality => linear_in_node(n: n)
+    v2.std.node.Cardinality => linear_in_node(n: n)
     Instantiation => unit_cost()
   }
 }
@@ -125,10 +125,10 @@ fn base_cost_for_loop(n: v2.std.node.Node) -> SymbolicCost {
 fn base_cost_for_behavior(b: v2.std.node.Behavior, n: v2.std.node.Node) -> SymbolicCost {
   match b {
     Value => zero_cost()
-    Transform => unit_cost()
+    v2.std.node.Transform => unit_cost()
     Branch => unit_cost()
     Loop => base_cost_for_loop(n: n)
-    Bind => zero_cost()
+    v2.std.node.Bind => zero_cost()
     Match => unit_cost()
   }
 }
@@ -139,7 +139,7 @@ fn cost_mode_for_connective(c: v2.std.node.Connective) -> CostCompositionMode {
     Conj => SequentialCost
     Disj => AlternativeCost
     Arrow => SequentialCost
-    Cardinality => IterativeCost
+    v2.std.node.Cardinality => IterativeCost
     Instantiation => SequentialCost
   }
 }
@@ -147,10 +147,10 @@ fn cost_mode_for_connective(c: v2.std.node.Connective) -> CostCompositionMode {
 fn cost_mode_for_behavior(b: v2.std.node.Behavior) -> CostCompositionMode {
   match b {
     Value => SequentialCost
-    Transform => SequentialCost
+    v2.std.node.Transform => SequentialCost
     Branch => AlternativeCost
     Loop => IterativeCost
-    Bind => SequentialCost
+    v2.std.node.Bind => SequentialCost
     Match => AlternativeCost
   }
 }

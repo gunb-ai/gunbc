@@ -3,12 +3,12 @@ module v2.test.execution.loop_round_trip
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data loop_emitted_root: Node = dag_fixture_emitted_loop_fn
+data loop_emitted_root: v2.std.node.Node = dag_fixture_emitted_loop_fn
 data loop_target_model: v2.std.compilers.target_model.TargetModel = dag_loop_target_model()
 
 fn loop_canonical_grounding(
-  node: Node,
-  algebra: Node
+  node: v2.std.node.Node,
+  algebra: v2.std.node.Node
 ) -> v2.std.constraints.CanonicalGrounding {
   v2.std.constraints.CanonicalGrounding {
     node: node,
@@ -25,7 +25,7 @@ fn loop_canonical_grounding(
   }
 }
 
-fn loop_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
+fn loop_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == dag_fixture_emitted_loop_fn {
     v2.std.witness.Holds {
       value: loop_canonical_grounding(node: node, algebra: node)
@@ -92,11 +92,11 @@ fn loop_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.Canoni
 
 data loop_descent_fabrication_dissolved_note: String = "The former loop_descent_witness_for hand-fabricated Holds { v2.std.cardinality.TerminationProof { strict: ^dag_loop_measure_sym } } for every loop node because the tag-only multiplicity path unconditionally refused loops. Body-lowering Stage 2 (measure_descent_fact_registry, v2.std.cardinality) derives that exact proof from the measure, so the fabrication is deleted and this test consumes the real derivation."
 
-fn loop_descent_witness_for(node: Node) -> Witness<v2.std.cardinality.TerminationProof> {
+fn loop_descent_witness_for(node: v2.std.node.Node) -> Witness<v2.std.cardinality.TerminationProof> {
   termination_proof_witness_for_node(n: node)
 }
 
-fn loop_round_trip_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn loop_round_trip_inferred_facts_for(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   match loop_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -111,7 +111,7 @@ fn loop_round_trip_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferr
   }
 }
 
-fn loop_round_trip_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn loop_round_trip_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   loop_round_trip_inferred_facts_for(node: key)
 }
 
@@ -123,20 +123,20 @@ data loop_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.in
 }
 
 fn loop_emit_accepts() -> v2.std.diagnostic.Outcome<Medium<String>> {
-  emit(tree: loop_inferred_tree, target: loop_target_model)
+  v2.compiler.emit.emit(tree: loop_inferred_tree, target: loop_target_model)
 }
 
 data loop_emit_receipt: v2.std.diagnostic.Outcome<Medium<String>> = loop_emit_accepts()
 
-fn loop_coercion_quality_is_faithful(q: v2.std.coercion.CoercionQuality) -> Bool {
+fn loop_coercion_quality_is_faithful(q: v2.std.coercion.CoercionQuality) -> v2.std.logic.Bool {
   match q {
-    Exact => true
+    v2.std.coercion.Exact => true
     Identity => true
     Widened => false
   }
 }
 
-test fn loop_emit_matches_serialize_holds() -> Bool {
+test fn loop_emit_matches_serialize_holds() -> v2.std.logic.Bool {
   match target_serialize_source_from_model(
     target: loop_target_model,
     emitted: loop_emitted_root
@@ -145,23 +145,23 @@ test fn loop_emit_matches_serialize_holds() -> Bool {
       match loop_emit_receipt {
         Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn loop_grammar_inverse_holds() -> Bool {
+test fn loop_grammar_inverse_holds() -> v2.std.logic.Bool {
   match grammar_inverse_source_validated(
     target: loop_target_model,
     emitted: loop_emitted_root
   ) {
     Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn loop_ingest_via_coerce_matches_canonical() -> Bool {
+test fn loop_ingest_via_coerce_matches_canonical() -> v2.std.logic.Bool {
   match coerce_grounded_node(
     source: loop_emitted_root,
     tree: loop_inferred_tree,
@@ -171,7 +171,7 @@ test fn loop_ingest_via_coerce_matches_canonical() -> Bool {
       (result.target == dag_fixture_emitted_loop_fn)
         && loop_coercion_quality_is_faithful(q: result.quality)
         && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

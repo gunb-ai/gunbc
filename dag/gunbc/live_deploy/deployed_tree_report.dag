@@ -26,7 +26,7 @@ data deployed_tree_report_host: product.placement_supply.HostIdentity = "srv1" a
 // local tree's contents -- any checkout that names the same origin returns the same revision. This is
 // the one place in the deploy path where reading from the ambient working directory is sound, and it
 // is sound for a stated reason rather than by luck.
-data deployed_tree_report_vantage: FilePath = "." as FilePath
+data deployed_tree_report_vantage: std.types.FilePath = "." as std.types.FilePath
 
 fn deployed_tree_standing_line(standing: gunbc.live_deploy.deployed_tree_observation.DeployedTreeStanding) -> String {
   match standing {
@@ -81,7 +81,7 @@ func deployed_tree_report_emit(
   } else if deployed_tree_standing_is_publication_converged(standing: standing) == false {
     exit_failure(reason: text)
   } else {
-    ExitSuccess
+    std.process.ExitSuccess
   }
 }
 

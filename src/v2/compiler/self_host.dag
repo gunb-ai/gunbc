@@ -1,7 +1,7 @@
 module v2.compiler.self_host
 
 
-type CoreNode = Node
+type CoreNode = v2.std.node.Node
 
 type SourceModels {
   stage1_committed_seed_source: extdeps.communication.medium.Medium<String>
@@ -129,7 +129,7 @@ fn self_host_fixpoint_equal(
 fn self_host_snake_closes(
   stage1: SelfHostStageEmission,
   stage2: SelfHostStageEmission
-) -> Bool {
+) -> v2.std.logic.Bool {
   stage1.digest == stage2.digest
 }
 
@@ -151,7 +151,7 @@ fn self_host_fixpoint_witness(
   }
 }
 
-fn source_models_regen_byte_pair_ready(models: SourceModels) -> Bool {
+fn source_models_regen_byte_pair_ready(models: SourceModels) -> v2.std.logic.Bool {
   !string_is_empty(s: models.stage1_committed_seed_source.carried)
     && !string_is_empty(s: models.stage2_regen_emitted_source.carried)
 }
@@ -221,7 +221,7 @@ fn self_host_fixed_point_digests_match(
   stage1_node: CoreNode,
   stage2_node: CoreNode,
   source_models: SourceModels
-) -> Bool {
+) -> v2.std.logic.Bool {
   self_host_snake_closes(
     stage1: self_host_stage_emission(
       node: stage1_node,
@@ -257,7 +257,7 @@ fn stage_emission_equality(
           right: fw.candidate
         }
       }
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.witness.Violates { diagnostic: d.head }
   }
 }

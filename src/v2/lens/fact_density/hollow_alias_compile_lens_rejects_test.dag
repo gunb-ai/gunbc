@@ -19,13 +19,13 @@ fn hollow_alias_cl_tree() -> v2.compiler.inferred_tree.InferredTree {
   )
 }
 
-test fn hollow_alias_compile_lens_rejects_holds() -> Bool {
+test fn hollow_alias_compile_lens_rejects_holds() -> v2.std.logic.Bool {
   match apply_compile_lens(
     lens: fact_density_lens,
     inferred: hollow_alias_cl_tree(),
     mode: CompileLensEnforce
   ) {
-    Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
+    v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
     Accepted { value: _, diagnostics: _ } => false
   }
 }

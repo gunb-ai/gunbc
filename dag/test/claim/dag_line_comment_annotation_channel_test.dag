@@ -36,7 +36,7 @@ fn token_lexemes(source: String) -> List<String> {
 // A refusal renders as REFUSED and never as an empty stream: a fabricated empty would make
 // every stream-equality claim vacuously true on a lex failure, which is the exact shape that
 // let the pre-repair ASCII controls pass by accident.
-fn streams_equal(a: String, b: String) -> Bool {
+fn streams_equal(a: String, b: String) -> v2.std.logic.Bool {
   a == b
 }
 
@@ -52,7 +52,7 @@ fn rendered_token_stream(source: String) -> String {
   }
 }
 
-fn lexemes_contain(xs: List<String>, s: String) -> Bool {
+fn lexemes_contain(xs: List<String>, s: String) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || (x == s) })
 }
 
@@ -68,24 +68,24 @@ data comment_then_decl_source: String = "module annotation_probe\n\n// c\ndata d
 
 data two_comments_source: String = "module annotation_probe\n\n// one\n// two\n"
 
-test fn comment_terminates_at_newline_and_following_decl_survives() -> Bool {
+test fn comment_terminates_at_newline_and_following_decl_survives() -> v2.std.logic.Bool {
   (annotation_count(source: comment_then_decl_source) == 1)
     && lexemes_contain(xs: token_lexemes(source: comment_then_decl_source), s: "dag_token_kw_data")
 }
 
-test fn two_comment_lines_capture_two_annotations() -> Bool {
+test fn two_comment_lines_capture_two_annotations() -> v2.std.logic.Bool {
   annotation_count(source: two_comments_source) == 2
 }
 
-test fn plain_comment_captures_exactly_one_annotation() -> Bool {
+test fn plain_comment_captures_exactly_one_annotation() -> v2.std.logic.Bool {
   annotation_count(source: plain_comment_source) == 1
 }
 
-test fn emdash_payload_captures_exactly_one_annotation() -> Bool {
+test fn emdash_payload_captures_exactly_one_annotation() -> v2.std.logic.Bool {
   annotation_count(source: emdash_comment_source) == 1
 }
 
-test fn backtick_and_at_payload_capture_exactly_one_annotation() -> Bool {
+test fn backtick_and_at_payload_capture_exactly_one_annotation() -> v2.std.logic.Bool {
   annotation_count(source: backtick_at_comment_source) == 1
 }
 
@@ -96,28 +96,28 @@ data changed_program_token_source: String = "module other_probe\n\n"
 // Exact ordered (class, lexeme) equality, not an absence check for one token class: a defect
 // that captured an annotation while ALSO leaking payload words or punctuation into the semantic
 // stream would satisfy a dag_token_slash-absence assertion and fail this one.
-test fn comment_erases_completely_from_the_semantic_stream() -> Bool {
+test fn comment_erases_completely_from_the_semantic_stream() -> v2.std.logic.Bool {
   streams_equal(a: rendered_token_stream(source: plain_comment_source), b: rendered_token_stream(source: comment_free_source))
 }
 
-test fn emdash_comment_erases_completely_from_the_semantic_stream() -> Bool {
+test fn emdash_comment_erases_completely_from_the_semantic_stream() -> v2.std.logic.Bool {
   streams_equal(a: rendered_token_stream(source: emdash_comment_source), b: rendered_token_stream(source: comment_free_source))
 }
 
-test fn backtick_at_comment_erases_completely_from_the_semantic_stream() -> Bool {
+test fn backtick_at_comment_erases_completely_from_the_semantic_stream() -> v2.std.logic.Bool {
   streams_equal(a: rendered_token_stream(source: backtick_at_comment_source), b: rendered_token_stream(source: comment_free_source))
 }
 
 // The discriminator: a constant renderer, or an equality that holds for unrelated reasons,
 // cannot satisfy both this and the three claims above.
-test fn changed_program_token_changes_the_stream_RED() -> Bool {
+test fn changed_program_token_changes_the_stream_RED() -> v2.std.logic.Bool {
   streams_equal(a: rendered_token_stream(source: comment_free_source), b: rendered_token_stream(source: changed_program_token_source)) == false
 }
 
-test fn a_refusal_renders_as_refusal_not_an_empty_stream_RED() -> Bool {
+test fn a_refusal_renders_as_refusal_not_an_empty_stream_RED() -> v2.std.logic.Bool {
   streams_equal(a: rendered_token_stream(source: "module annotation_probe\n\ndata d: String = \"unterminated\n"), b: "REFUSED")
 }
 
-test fn string_content_is_not_captured_as_an_annotation_RED() -> Bool {
+test fn string_content_is_not_captured_as_an_annotation_RED() -> v2.std.logic.Bool {
   annotation_count(source: url_in_string_source) == 0
 }

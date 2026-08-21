@@ -42,7 +42,7 @@ fn roster_registry_nonstandard_count() -> Int {
   roster_registry_nonstandard_count_from(registrations: gunbc.roster_registry.roster_registry)
 }
 
-fn roster_registry_standard_holds() -> Bool {
+fn roster_registry_standard_holds() -> v2.std.logic.Bool {
   roster_registry_nonstandard_count() == 0
 }
 
@@ -54,7 +54,7 @@ fn declaration_refs_from_registration(r: gunbc.roster_registry.RosterRegistratio
   match r.membership {
     ByContainment => [r.roster]
     ByDerivation { predicate: p } => [r.roster, p]
-    DeclaredFrontier { reason: _, dissolution: _ } => [r.roster]
+    gunbc.roster_registry.DeclaredFrontier { reason: _, dissolution: _ } => [r.roster]
   }
 }
 

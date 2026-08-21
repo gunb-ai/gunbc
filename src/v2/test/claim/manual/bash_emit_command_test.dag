@@ -3,11 +3,11 @@ module v2.test.manual.bash_emit_command
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn bash_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn bash_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
-fn bash_arrow_emitted_red_fixture() -> Node {
+fn bash_arrow_emitted_red_fixture() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Arrow },
     children: [
@@ -63,7 +63,7 @@ data bash_emit_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compil
 }
 
 fn anchor_bash_emit_accepts() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
-  emit(tree: bash_emit_inferred_tree, target: bash_target_model())
+  v2.compiler.emit.emit(tree: bash_emit_inferred_tree, target: bash_target_model())
 }
 
 data bash_emit_receipt: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> = anchor_bash_emit_accepts()
@@ -72,11 +72,11 @@ test fn bash_emit_command_accepts_holds() -> Bool {
   match bash_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == bash_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-data bash_empty_bundle: Node = v2.std.node.Node {
+data bash_empty_bundle: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
@@ -103,7 +103,7 @@ data bash_serialize_reject_receipt: v2.std.diagnostic.Outcome<extdeps.communicat
 
 test fn bash_emit_missing_rules_rejects_holds() -> Bool {
   match bash_serialize_reject_receipt {
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
@@ -116,7 +116,7 @@ data bash_bound_words_emit_inferred_tree: v2.compiler.inferred_tree.InferredTree
 }
 
 fn anchor_bash_bound_words_emit() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
-  emit(tree: bash_bound_words_emit_inferred_tree, target: bash_bound_words_target_model())
+  v2.compiler.emit.emit(tree: bash_bound_words_emit_inferred_tree, target: bash_bound_words_target_model())
 }
 
 data bash_bound_words_emit_receipt: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> = anchor_bash_bound_words_emit()
@@ -125,7 +125,7 @@ test fn bash_emit_bound_words_holds() -> Bool {
   match bash_bound_words_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == bash_bound_words_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -137,7 +137,7 @@ data bash_embedded_quote_emit_inferred_tree: v2.compiler.inferred_tree.InferredT
 }
 
 fn anchor_bash_embedded_quote_emit() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
-  emit(tree: bash_embedded_quote_emit_inferred_tree, target: bash_embedded_quote_target_model())
+  v2.compiler.emit.emit(tree: bash_embedded_quote_emit_inferred_tree, target: bash_embedded_quote_target_model())
 }
 
 data bash_embedded_quote_emit_receipt: v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> = anchor_bash_embedded_quote_emit()
@@ -146,7 +146,7 @@ test fn bash_emit_embedded_quote_holds() -> Bool {
   match bash_embedded_quote_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == bash_embedded_quote_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -158,7 +158,7 @@ data bash_source_root_ingest_gate_emit_inferred_tree: v2.compiler.inferred_tree.
 }
 
 fn anchor_bash_source_root_ingest_gate_emit() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
-  emit(
+  v2.compiler.emit.emit(
     tree: bash_source_root_ingest_gate_emit_inferred_tree,
     target: bash_source_root_ingest_gate_target_model()
   )
@@ -170,12 +170,12 @@ test fn bash_emit_source_root_ingest_gate_holds() -> Bool {
   match bash_source_root_ingest_gate_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == bash_source_root_ingest_gate_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
 fn bash_emit_slice4_holds(
-  emitted: Node,
+  emitted: v2.std.node.Node,
   source_text: String,
   target: v2.std.compilers.target_model.TargetModel
 ) -> Bool {
@@ -183,9 +183,9 @@ fn bash_emit_slice4_holds(
     root: emitted,
     facts: std.types.Map { lookup: bash_facts_lookup }
   }
-  match emit(tree: tree, target: target) {
+  match v2.compiler.emit.emit(tree: tree, target: target) {
     Accepted { value: source, diagnostics: d } => (source.carried == source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -286,10 +286,10 @@ fn bash_emit_pipe_brace_grouped_wrong_flat_model_rejects() -> Bool {
     root: bash_pipe_and_or_brace_grouped_emitted,
     facts: std.types.Map { lookup: bash_facts_lookup }
   }
-  match emit(tree: tree, target: bash_pipe_and_or_flat_wrong_target_model()) {
+  match v2.compiler.emit.emit(tree: tree, target: bash_pipe_and_or_flat_wrong_target_model()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried != bash_pipe_and_or_brace_grouped_source_text) && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 

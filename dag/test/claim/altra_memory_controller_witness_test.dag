@@ -84,7 +84,7 @@ test fn w_admitted_densities_respect_the_jedec_monolithic_ceiling() -> Bool {
 // the point: a two-channel population must NOT read as production-qualified. What this witness no
 // longer has to assert is that 3, 5 and 7 are unsupported -- they have no representation in
 // ActiveDdrChannelCount at all, so that claim moved from a runtime check to unwritability, which
-// is why the Int-list classifier this replaced could be deleted rather than re-homed.
+// is why the std.integer.Int-list classifier this replaced could be deleted rather than re-homed.
 test fn w_production_qualification_separates_bringup_from_production() -> Bool {
   channel_count_is_production_qualified(c: EightChannels)
     && channel_count_is_production_qualified(c: SixChannels)

@@ -19,20 +19,20 @@ fn octet_display(octet: Int) -> String {
   }
 }
 
-fn runtime_value_discriminant_octet(value: v2.std.runtime.RuntimeValue) -> Optional<Int> {
+fn runtime_value_discriminant_octet(value: v2.std.runtime.RuntimeValue) -> v2.std.optional.Optional<Int> {
   match value {
     RuntimePrimitive {
       value: RuntimePrimitiveValue { bytes: bytes, primitive_type: _ }
     } =>
       list_at_optional(xs: bytes, index: 1)
-    _ => Absent
+    _ => v2.std.optional.Absent
   }
 }
 
 fn runtime_value_octet_label(value: v2.std.runtime.RuntimeValue) -> String {
   match runtime_value_discriminant_octet(value: value) {
-    Present { value: octet } => octet_display(octet: octet)
-    Absent => "?"
+    v2.std.optional.Present { value: octet } => octet_display(octet: octet)
+    v2.std.optional.Absent => "?"
   }
 }
 
@@ -51,10 +51,10 @@ fn format_native_agreement_divergence(d: NativeAgreementDivergence) -> String {
 
 fn first_native_agreement_divergence(
   divergences: std.algebra.FreeMonoid<NativeAgreementDivergence>
-) -> Optional<NativeAgreementDivergence> {
+) -> v2.std.optional.Optional<NativeAgreementDivergence> {
   match divergences {
-    Empty => Absent
-    Cons { head: d, tail: _ } => Present { value: d }
+    Empty => v2.std.optional.Absent
+    Cons { head: d, tail: _ } => v2.std.optional.Present { value: d }
   }
 }
 
@@ -62,7 +62,7 @@ fn native_agreement_failure_receipt(
   divergences: List<NativeAgreementDivergence>
 ) -> String {
   match first_native_agreement_divergence(divergences: divergences) {
-    Present { value: d } => format_native_agreement_divergence(d: d)
-    Absent => ""
+    v2.std.optional.Present { value: d } => format_native_agreement_divergence(d: d)
+    v2.std.optional.Absent => ""
   }
 }

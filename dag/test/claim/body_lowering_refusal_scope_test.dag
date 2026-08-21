@@ -23,38 +23,38 @@ data batch_subject: gunbc.tools.body_lowering_population_probe.BodyLoweringSubje
 
 data specimen_subject: gunbc.tools.body_lowering_population_probe.BodyLoweringSubject = gunbc.tools.body_lowering_population_probe.BodyLoweringSubject { label: ^vacuity_bare_expression_specimens, realization: UnauthoredSpecimenClass }
 
-test fn census_refusal_does_not_reach_a_non_batch_subject_RED() -> Bool {
+test fn census_refusal_does_not_reach_a_non_batch_subject_RED() -> v2.std.logic.Bool {
   cause_of(s: refusal_standing_of(s: non_batch_subject, cause: ^census_refused_at_world)) == ^not_selected_into_execution_batch
 }
 
-test fn census_refusal_reaches_a_batch_subject() -> Bool {
+test fn census_refusal_reaches_a_batch_subject() -> v2.std.logic.Bool {
   cause_of(s: refusal_standing_of(s: gunbc.test.claim.body_lowering_refusal_scope_test.batch_subject, cause: ^census_refused_at_world)) == ^census_refused_at_world
 }
 
-test fn census_refusal_cause_is_carried_not_fixed() -> Bool {
+test fn census_refusal_cause_is_carried_not_fixed() -> v2.std.logic.Bool {
   cause_of(s: refusal_standing_of(s: gunbc.test.claim.body_lowering_refusal_scope_test.batch_subject, cause: ^census_refused_at_reconciliation)) == ^census_refused_at_reconciliation
 }
 
-test fn specimen_class_keeps_its_own_cause_under_refusal() -> Bool {
+test fn specimen_class_keeps_its_own_cause_under_refusal() -> v2.std.logic.Bool {
   cause_of(s: refusal_standing_of(s: specimen_subject, cause: ^census_refused_at_world)) == ^no_committed_specimen_identity
 }
 
 // An observed stage is not a verdict. These pin the reading a stage licenses, and the RED is the
 // one that matters: NormalizeOther must not read as clean merely because it is no longer retention.
 
-test fn accepted_reads_clean() -> Bool { reading_of_stage(s: NormalizeAccepted) == ObservedClean }
+test fn accepted_reads_clean() -> v2.std.logic.Bool { reading_of_stage(s: NormalizeAccepted) == ObservedClean }
 
-test fn normalize_other_does_not_read_clean_RED() -> Bool { reading_of_stage(s: NormalizeOther) == ObservedRefusedCauseUnclassified }
+test fn normalize_other_does_not_read_clean_RED() -> v2.std.logic.Bool { reading_of_stage(s: NormalizeOther) == ObservedRefusedCauseUnclassified }
 
-test fn retained_reads_as_a_named_cause() -> Bool { reading_of_stage(s: NormalizeRetained) == ObservedRefusedCauseNamed }
+test fn retained_reads_as_a_named_cause() -> v2.std.logic.Bool { reading_of_stage(s: NormalizeRetained) == ObservedRefusedCauseNamed }
 
 // An unmeasured subject has no reading at all. This is the distinction a first draft of
 // reading_of_standing collapsed by mapping unmeasured onto the unclassified-refusal arm.
 
-test fn an_unmeasured_subject_has_no_reading_RED() -> Bool {
+test fn an_unmeasured_subject_has_no_reading_RED() -> v2.std.logic.Bool {
   reading_of_standing(st: gunbc.tools.body_lowering_population_probe.SubjectUnmeasured { cause: ^not_selected_into_execution_batch }) == StandingNotObserved
 }
 
-test fn an_observed_subject_carries_its_reading() -> Bool {
+test fn an_observed_subject_carries_its_reading() -> v2.std.logic.Bool {
   reading_of_standing(st: gunbc.tools.body_lowering_population_probe.SubjectObserved { stage: NormalizeAccepted }) == gunbc.tools.body_lowering_population_probe.StandingObserved { reading: ObservedClean }
 }

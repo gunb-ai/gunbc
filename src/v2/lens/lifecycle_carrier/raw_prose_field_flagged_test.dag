@@ -3,30 +3,30 @@ module v2.test.lens_lifecycle_carrier.raw_prose_field_flagged
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data string_leaf_target: Node = v2.std.node.Node {
+data string_leaf_target: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^String } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data nonempty_str_leaf_target: Node = v2.std.node.Node {
+data nonempty_str_leaf_target: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^NonEmptyStr } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data dissolution_condition_leaf_target: Node = v2.std.node.Node {
+data dissolution_condition_leaf_target: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^DissolutionCondition } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 // RED control: the exact shape this wall exists to make unwritable.
-data raw_dissolve_on_field_input: Node = v2.std.node.Node {
+data raw_dissolve_on_field_input: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
-      label: Named { name: ^dissolve_on },
+      label: v2.std.node.Named { name: ^dissolve_on },
       target: string_leaf_target
     }
   ],
@@ -34,11 +34,11 @@ data raw_dissolve_on_field_input: Node = v2.std.node.Node {
 }
 
 // RED control on the second bare-string spelling, so NonEmptyStr is not a hole.
-data raw_dissolution_trigger_nonempty_input: Node = v2.std.node.Node {
+data raw_dissolution_trigger_nonempty_input: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
-      label: Named { name: ^dissolution_trigger },
+      label: v2.std.node.Named { name: ^dissolution_trigger },
       target: nonempty_str_leaf_target
     }
   ],
@@ -46,11 +46,11 @@ data raw_dissolution_trigger_nonempty_input: Node = v2.std.node.Node {
 }
 
 // Positive control: the migrated shape must pass.
-data typed_dissolution_field_input: Node = v2.std.node.Node {
+data typed_dissolution_field_input: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
-      label: Named { name: ^dissolution },
+      label: v2.std.node.Named { name: ^dissolution },
       target: dissolution_condition_leaf_target
     }
   ],
@@ -60,41 +60,41 @@ data typed_dissolution_field_input: Node = v2.std.node.Node {
 // Discriminating positive control: an ordinary String field that is NOT in the
 // lifecycle name class must pass. Without this, a gate that rejected every
 // String field would satisfy both RED controls above and still be wrong.
-data ordinary_string_field_input: Node = v2.std.node.Node {
+data ordinary_string_field_input: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [
     v2.std.node.Edge {
-      label: Named { name: ^reason },
+      label: v2.std.node.Named { name: ^reason },
       target: string_leaf_target
     }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-test fn raw_dissolve_on_string_field_is_rejected() -> Bool {
+test fn raw_dissolve_on_string_field_is_rejected() -> v2.std.logic.Bool {
   match lifecycle_carrier_gate(node: raw_dissolve_on_field_input) {
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-test fn raw_dissolution_trigger_nonempty_str_field_is_rejected() -> Bool {
+test fn raw_dissolution_trigger_nonempty_str_field_is_rejected() -> v2.std.logic.Bool {
   match lifecycle_carrier_gate(node: raw_dissolution_trigger_nonempty_input) {
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-test fn typed_dissolution_condition_field_is_accepted() -> Bool {
+test fn typed_dissolution_condition_field_is_accepted() -> v2.std.logic.Bool {
   match lifecycle_carrier_gate(node: typed_dissolution_field_input) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn ordinary_string_field_is_accepted() -> Bool {
+test fn ordinary_string_field_is_accepted() -> v2.std.logic.Bool {
   match lifecycle_carrier_gate(node: ordinary_string_field_input) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

@@ -18,13 +18,13 @@ fn module_binding_oracle_ingest_from_manifest() -> v2.compiler.source_authority.
   }
 }
 
-test fn module_binding_host_manifest_is_populated() -> Bool {
+test fn module_binding_host_manifest_is_populated() -> v2.std.logic.Bool {
   host_module_binding_count > 0
 }
 
-test fn module_binding_host_agrees_with_parse_oracle() -> Bool {
+test fn module_binding_host_agrees_with_parse_oracle() -> v2.std.logic.Bool {
   match module_storage_bindings_from_ingest(ingest: module_binding_oracle_ingest_from_manifest()) {
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: oracle, diagnostics: _ } =>
       if length(xs: oracle) == 0 {
         false
@@ -41,13 +41,13 @@ test fn module_binding_host_agrees_with_parse_oracle() -> Bool {
   }
 }
 
-test fn module_binding_host_resolves_a_known_compiler_module() -> Bool {
+test fn module_binding_host_resolves_a_known_compiler_module() -> v2.std.logic.Bool {
   match module_storage_module_for_path(
     index: host_module_bindings,
     file_path: "src/v2/compiler/source_authority.dag"
   ) {
-    Absent => false
-    Present { value: qn } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: qn } =>
       qualified_name_to_dotted_string(qn: qn) == "v2.compiler.source_authority"
   }
 }

@@ -20,13 +20,13 @@ fn measured_infer_eval_harness_source() -> std.types.NonEmptyStr {
 fn infer_wall_harness_revision(probe: gunbc.guarantee_measurement.GuaranteeProbeId) -> gunbc.guarantee_measurement.MeasurementRevision {
   let harness_source = measured_infer_eval_harness_source()
   match gunbc.guarantee_probe_corpus.active_v2_infer_eval_probe_row(probe: probe) {
-    Present { value: row } =>
+    v2.std.optional.Present { value: row } =>
       gunbc.guarantee_probe_corpus.v2_infer_eval_harness_revision(
         probe: probe,
         expectation: row.expectation,
         harness_source: harness_source,
       )
-    Absent =>
+    v2.std.optional.Absent =>
       gunbc.guarantee_probe_corpus.v2_infer_eval_harness_revision(
         probe: probe,
         expectation: gunbc.guarantee_probe_corpus.ExpectAcceptedCounted { diagnostic_class: "infer-harness-row-absent" as std.types.NonEmptyStr },
@@ -35,7 +35,7 @@ fn infer_wall_harness_revision(probe: gunbc.guarantee_measurement.GuaranteeProbe
   }
 }
 
-fn wall_atom(s: v2.std.node.Symbol) -> Node {
+fn wall_atom(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     children: [],
@@ -43,7 +43,7 @@ fn wall_atom(s: v2.std.node.Symbol) -> Node {
   }
 }
 
-fn wall_conj_node() -> Node {
+fn wall_conj_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [],
@@ -51,7 +51,7 @@ fn wall_conj_node() -> Node {
   }
 }
 
-fn wall_disj_node() -> Node {
+fn wall_disj_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Disj },
     children: [],
@@ -59,7 +59,7 @@ fn wall_disj_node() -> Node {
   }
 }
 
-fn wall_value_node() -> Node {
+fn wall_value_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.ComputationNode { behavior: Value },
     children: [],
@@ -67,12 +67,12 @@ fn wall_value_node() -> Node {
   }
 }
 
-fn wall_malformed_bool_with_payload() -> Node {
+fn wall_malformed_bool_with_payload() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_token_kw_true } },
     children: [
       v2.std.node.Edge {
-        label: Named { name: ^wall_malformed_bool_payload_field },
+        label: v2.std.node.Named { name: ^wall_malformed_bool_payload_field },
         target: wall_value_node()
       }
     ],
@@ -80,14 +80,14 @@ fn wall_malformed_bool_with_payload() -> Node {
   }
 }
 
-fn wall_malformed_int_with_extra_payload() -> Node {
+fn wall_malformed_int_with_extra_payload() -> v2.std.node.Node {
   let literal = dag_int_literal_fixture_one()
   v2.std.node.Node {
     kind: literal.kind,
     children: list_snoc_item(
       xs: literal.children,
       item: v2.std.node.Edge {
-        label: Named { name: ^wall_malformed_int_payload_field },
+        label: v2.std.node.Named { name: ^wall_malformed_int_payload_field },
         target: wall_value_node()
       }
     ),
@@ -95,11 +95,11 @@ fn wall_malformed_int_with_extra_payload() -> Node {
   }
 }
 
-fn wall_derived_type_node() -> Node {
+fn wall_derived_type_node() -> v2.std.node.Node {
   wall_atom(s: ^wall_derived_type_marker)
 }
 
-fn wall_self_grounding(node: Node) -> v2.std.constraints.CanonicalGrounding {
+fn wall_self_grounding(node: v2.std.node.Node) -> v2.std.constraints.CanonicalGrounding {
   v2.std.constraints.CanonicalGrounding {
     node: node,
     witness: v2.std.constraints.CanonicalGroundingWitness {
@@ -115,7 +115,7 @@ fn wall_self_grounding(node: Node) -> v2.std.constraints.CanonicalGrounding {
   }
 }
 
-fn wall_derived_grounding(node: Node) -> v2.std.constraints.CanonicalGrounding {
+fn wall_derived_grounding(node: v2.std.node.Node) -> v2.std.constraints.CanonicalGrounding {
   v2.std.constraints.CanonicalGrounding {
     node: node,
     witness: v2.std.constraints.CanonicalGroundingWitness {
@@ -131,20 +131,20 @@ fn wall_derived_grounding(node: Node) -> v2.std.constraints.CanonicalGrounding {
   }
 }
 
-fn wall_grounding_for_node_refused(root: Node) -> Bool {
+fn wall_grounding_for_node_refused(root: v2.std.node.Node) -> Bool {
   match infer(tree: root) {
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match canonical_grounding_for_node(tree: tree, node: root) {
-        Rejected { diagnostics: r } => r.head.reason == ^infer_grounding_not_derived
+        v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^infer_grounding_not_derived
         Accepted { value: _, diagnostics: _ } => false
       }
   }
 }
 
-fn wall_resolved_type_refused(root: Node) -> Bool {
+fn wall_resolved_type_refused(root: v2.std.node.Node) -> Bool {
   match infer(tree: root) {
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match inferred_facts_witness_for_node(tree: tree, node: root) {
         Violates { diagnostic: _ } => false
@@ -157,9 +157,9 @@ fn wall_resolved_type_refused(root: Node) -> Bool {
   }
 }
 
-fn wall_infer_counts_frontier(root: Node) -> Bool {
+fn wall_infer_counts_frontier(root: v2.std.node.Node) -> Bool {
   match infer(tree: root) {
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
       match d {
         Some { diagnostics: nds } => nds.head.reason == ^infer_grounding_not_derived
@@ -173,7 +173,7 @@ test fn wall_construction_authority_refuses_self_evidence() -> Bool {
     node: wall_conj_node(),
     derived_type: wall_conj_node()
   ) {
-    Rejected { diagnostics: r } => r.head.reason == ^grounding_evidence_is_source
+    v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^grounding_evidence_is_source
     Accepted { value: _, diagnostics: _ } => false
   }
 }
@@ -183,7 +183,7 @@ test fn wall_construction_authority_accepts_derived_type() -> Bool {
     node: wall_conj_node(),
     derived_type: wall_derived_type_node()
   ) {
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: g, diagnostics: _ } =>
       (g.node == wall_conj_node())
         && (g.witness.structural.evidence == wall_derived_type_node())
@@ -245,13 +245,13 @@ fn wall_frontier_observation_matches_infer(nes: v2.std.diagnostic.NonEmptyDiagno
 test fn wall_frontier_receipt_joins_corpus_identity() -> Bool {
   let root = wall_value_node()
   match infer(tree: root) {
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
       match d {
         None => false
         Some { diagnostics: nes } =>
           match gunbc.guarantee_probe_corpus.active_v2_infer_eval_probe_row(probe: gunbc.guarantee_probe_corpus.v2_frontier_red_probe) {
-            Present { value: row } =>
+            v2.std.optional.Present { value: row } =>
               wall_resolved_type_refused(root: root)
                 && nes.head.reason == ^infer_grounding_not_derived
                 && gunbc.guarantee_probe_corpus.receipt_matches_v2_infer_eval_probe_row(
@@ -281,7 +281,7 @@ test fn wall_frontier_receipt_joins_corpus_identity() -> Bool {
                   ReceiptPathUnknown { receipt_path: _ } => false
                   ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
                 }
-            Absent => false
+            v2.std.optional.Absent => false
           }
       }
   }
@@ -290,10 +290,10 @@ test fn wall_frontier_receipt_joins_corpus_identity() -> Bool {
 test fn wall_frontier_derived_green_receipt_joins_corpus_identity() -> Bool {
   let root = dag_pick_if_body_fixture
   match infer(tree: root) {
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
       match gunbc.guarantee_probe_corpus.active_v2_infer_eval_probe_row(probe: gunbc.guarantee_probe_corpus.v2_frontier_green_probe) {
-        Present { value: row } =>
+        v2.std.optional.Present { value: row } =>
           d == v2.std.diagnostic.None
             && gunbc.guarantee_probe_corpus.observation_is_clean(o: gunbc.guarantee_probe_corpus.probe_observation_from_accepted_infer_diagnostics(diagnostics: d))
             && gunbc.guarantee_probe_corpus.receipt_matches_v2_infer_eval_probe_row(
@@ -318,7 +318,7 @@ test fn wall_frontier_derived_green_receipt_joins_corpus_identity() -> Bool {
               ReceiptPathUnknown { receipt_path: _ } => false
               ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
             }
-        Absent => false
+        v2.std.optional.Absent => false
       }
   }
 }

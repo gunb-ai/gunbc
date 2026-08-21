@@ -7,7 +7,7 @@ data witness_voltage_zero: v2.std.timeseries_signal.Voltage = voltage(0)
 
 data witness_current_zero: v2.std.timeseries_signal.Current = v2.std.timeseries_signal.current(0)
 
-test fn named_affine_voltage_preserves_ground_reference_holds() -> Bool {
+test fn named_affine_voltage_preserves_ground_reference_holds() -> v2.std.logic.Bool {
   let named = named_affine_voltage(
     reference: GroundReference,
     approx: timeseries_witness_approx_zero
@@ -18,7 +18,7 @@ test fn named_affine_voltage_preserves_ground_reference_holds() -> Bool {
   )
 }
 
-test fn absolute_potential_from_named_preserves_reference_holds() -> Bool {
+test fn absolute_potential_from_named_preserves_reference_holds() -> v2.std.logic.Bool {
   let named = named_affine_voltage(
     reference: GroundReference,
     approx: timeseries_witness_approx_zero
@@ -29,14 +29,14 @@ test fn absolute_potential_from_named_preserves_reference_holds() -> Bool {
   )
 }
 
-test fn potential_difference_of_magnitude_is_structural_identity_holds() -> Bool {
+test fn potential_difference_of_magnitude_is_structural_identity_holds() -> v2.std.logic.Bool {
   match potential_difference_of_magnitude(magnitude: witness_voltage_zero) {
     PotentialDifference { magnitude: m } =>
       voltage_count(v: m) == voltage_count(v: witness_voltage_zero)
   }
 }
 
-test fn branch_current_of_magnitude_is_structural_identity_holds() -> Bool {
+test fn branch_current_of_magnitude_is_structural_identity_holds() -> v2.std.logic.Bool {
   match branch_current_of_magnitude(magnitude: witness_current_zero) {
     BranchCurrent { magnitude: m } =>
       current_count(c: m) == current_count(c: witness_current_zero)

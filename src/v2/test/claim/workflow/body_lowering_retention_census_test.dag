@@ -18,7 +18,7 @@ fn observation(emitted_production: String, node_shape: String) -> v2.workflow.bo
 // several distinct absent producers; if the census collapsed them, a repair
 // to one family would read as the population moving. Two productions at the
 // same node shape must stay two rows.
-test fn two_productions_at_one_node_shape_stay_two_families() -> Bool {
+test fn two_productions_at_one_node_shape_stay_two_families() -> v2.std.logic.Bool {
   let families = retention_family_bump(
     families: retention_family_bump(
       families: Empty,
@@ -32,7 +32,7 @@ test fn two_productions_at_one_node_shape_stay_two_families() -> Bool {
 // The mirror: one production observed repeatedly is ONE family with a count,
 // not N families of one. Without this the partition inflates into a per-
 // observation listing and stops ranking anything.
-test fn one_production_observed_repeatedly_is_one_family_with_a_count() -> Bool {
+test fn one_production_observed_repeatedly_is_one_family_with_a_count() -> v2.std.logic.Bool {
   let families = retention_family_bump(
     families: retention_family_bump(
       families: retention_family_bump(
@@ -49,7 +49,7 @@ test fn one_production_observed_repeatedly_is_one_family_with_a_count() -> Bool 
 // The node shape is part of the key, not decoration. One production identity
 // retained at two different shapes is two different missing producers, and a
 // key that dropped the shape would merge them.
-test fn one_production_at_two_node_shapes_stays_two_families() -> Bool {
+test fn one_production_at_two_node_shapes_stays_two_families() -> v2.std.logic.Bool {
   let families = retention_family_bump(
     families: retention_family_bump(
       families: Empty,
@@ -64,7 +64,7 @@ test fn one_production_at_two_node_shapes_stays_two_families() -> Bool {
 // observation would still look like a well-formed census, so the invariant is
 // asserted rather than assumed: whatever the family count, the observations
 // sum to what went in.
-test fn the_observation_total_is_preserved_across_every_partition() -> Bool {
+test fn the_observation_total_is_preserved_across_every_partition() -> v2.std.logic.Bool {
   let families = retention_family_bump(
     families: retention_family_bump(
       families: retention_family_bump(
@@ -83,7 +83,7 @@ test fn the_observation_total_is_preserved_across_every_partition() -> Bool {
 
 // The key is what a reader acts on, so it must name the production and the
 // shape and not silently drop either half.
-test fn the_family_key_names_both_the_production_and_the_shape() -> Bool {
+test fn the_family_key_names_both_the_production_and_the_shape() -> v2.std.logic.Bool {
   let key = retained_production_key(
     observation: v2.test.claim.workflow.body_lowering_retention_census_test.observation(emitted_production: "dag_surface_field_decl_block", node_shape: "Type/Conj")
   )

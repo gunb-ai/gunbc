@@ -97,16 +97,16 @@ fn fixture_primary(
   identity: gunbc.native_scm_interaction_contract.NativeScmProposalIdentity,
 ) -> gunbc.native_scm_interaction_contract.NativeScmPrimaryOutcome {
   match scenario {
-    TwoIndependentChangesLand => Landed {
+    TwoIndependentChangesLand => gunbc.native_scm_interaction_contract.Landed {
       result_preview: "two independent changes both land on the same accepted target",
     }
-    StaleTargetAutoResync => Landed {
+    StaleTargetAutoResync => gunbc.native_scm_interaction_contract.Landed {
       result_preview: "stale target is replayed against the current target, then lands",
     }
-    DuplicateSubmissionAppliesOnce => Landed {
+    DuplicateSubmissionAppliesOnce => gunbc.native_scm_interaction_contract.Landed {
       result_preview: "duplicate submission reuses the stable proposal identity and applies once",
     }
-    RenameReferenceUniqueMeaning => Landed {
+    RenameReferenceUniqueMeaning => gunbc.native_scm_interaction_contract.Landed {
       result_preview: "rename plus reference resolves to one unique meaning",
     }
     TwoLegitimateMeaningsNeedChoice => gunbc.native_scm_interaction_contract.ChoiceRequired {
@@ -147,19 +147,19 @@ fn fixture_primary(
         },
       },
     }
-    EvidenceGatheredInternally => Landed {
+    EvidenceGatheredInternally => gunbc.native_scm_interaction_contract.Landed {
       result_preview: "support was gathered internally, so the proposal lands without a user question",
     }
-    ToolModelProofDeficitRoutesInternally => InProgress {
+    ToolModelProofDeficitRoutesInternally => gunbc.native_scm_interaction_contract.InProgress {
       progress_preview: "tool, model, and proof work remain internal; the proposal is still progressing",
     }
-    ProjectionFailureRepairsWithoutReinterpretation => Landed {
+    ProjectionFailureRepairsWithoutReinterpretation => gunbc.native_scm_interaction_contract.Landed {
       result_preview: "accepted result remains landed while its compatibility projection is repaired separately",
     }
-    ConventionalScmImportWithoutManualRewrite => Landed {
+    ConventionalScmImportWithoutManualRewrite => gunbc.native_scm_interaction_contract.Landed {
       result_preview: "a conventional SCM import lands as an ordinary import with no manual synchronization rewrite",
     }
-    VisibilityAuthorizedDetails => Landed {
+    VisibilityAuthorizedDetails => gunbc.native_scm_interaction_contract.Landed {
       result_preview: "details stay optional and can be projected only when visibility authorizes them",
     }
   }
@@ -167,39 +167,39 @@ fn fixture_primary(
 
 fn fixture_details(
   scenario: NativeScmScenario,
-) -> Optional<String> {
+) -> v2.std.optional.Optional<String> {
   match scenario {
-    TwoIndependentChangesLand => Present {
+    TwoIndependentChangesLand => v2.std.optional.Present {
       value: "details: both changes are independently grounded and both land",
     }
-    StaleTargetAutoResync => Present {
+    StaleTargetAutoResync => v2.std.optional.Present {
       value: "details: the stale receipt is replayed against the current target before landing",
     }
-    DuplicateSubmissionAppliesOnce => Present {
+    DuplicateSubmissionAppliesOnce => v2.std.optional.Present {
       value: "details: stable proposal identity deduplicates repeated submission",
     }
-    RenameReferenceUniqueMeaning => Present {
+    RenameReferenceUniqueMeaning => v2.std.optional.Present {
       value: "details: rename transport preserves the unique meaning of the reference",
     }
-    TwoLegitimateMeaningsNeedChoice => Present {
+    TwoLegitimateMeaningsNeedChoice => v2.std.optional.Present {
       value: "details: the selected alternative advances to the next reconciliation state",
     }
-    IncompatibleGoalsNeedAuthorizedDecider => Present {
+    IncompatibleGoalsNeedAuthorizedDecider => v2.std.optional.Present {
       value: "details: the authorized decider chooses which incompatible goal to retain",
     }
-    EvidenceGatheredInternally => Present {
+    EvidenceGatheredInternally => v2.std.optional.Present {
       value: "details: obtainable evidence is gathered inside the machine before the user sees a result",
     }
-    ToolModelProofDeficitRoutesInternally => Present {
+    ToolModelProofDeficitRoutesInternally => v2.std.optional.Present {
       value: "details: internal progress stays internal until the machine finishes its own continuation",
     }
-    ProjectionFailureRepairsWithoutReinterpretation => Present {
+    ProjectionFailureRepairsWithoutReinterpretation => v2.std.optional.Present {
       value: "details: compatibility repair updates only the projection, not the semantic result",
     }
-    ConventionalScmImportWithoutManualRewrite => Present {
+    ConventionalScmImportWithoutManualRewrite => v2.std.optional.Present {
       value: "details: import is accepted through its native realization without a manual synchronization rewrite",
     }
-    VisibilityAuthorizedDetails => Present {
+    VisibilityAuthorizedDetails => v2.std.optional.Present {
       value: "details: this text is only available when visibility authorizes it",
     }
   }

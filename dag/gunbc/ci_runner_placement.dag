@@ -109,7 +109,7 @@ fn resolve_session_slice(mode: gunbc.ci_floor_measurement.SessionReservationMode
   }
 }
 
-data gunbc_ci_runner_count_from_budget_disposition: std.disposition.Disposition = Terminal { reason: "DESIGN conservation model: the runner count divides the DECLARED runner_pool_budget by the DECLARED per_runner_memory_cap (gunbc.fleet_host_budget). Soundness is host_allocation_conserves (node_conserves over runner_pool + session_pool + fixed_overhead + headroom <= host RAM); it replaces the old chicken-and-egg RunnerSlotUnenforced gate (which refused to derive a count premised on a cap not yet enforced live). 'Is the cap live on the host' is no longer a plan-soundness question - it is a converge-receipt question. Session pool is the uniform 1 GiB demand class shared with the ctrl session dashboard." }
+data gunbc_ci_runner_count_from_budget_disposition: std.disposition.Disposition = std.disposition.Terminal { reason: "DESIGN conservation model: the runner count divides the DECLARED runner_pool_budget by the DECLARED per_runner_memory_cap (gunbc.fleet_host_budget). Soundness is host_allocation_conserves (node_conserves over runner_pool + session_pool + fixed_overhead + headroom <= host RAM); it replaces the old chicken-and-egg RunnerSlotUnenforced gate (which refused to derive a count premised on a cap not yet enforced live). 'Is the cap live on the host' is no longer a plan-soundness question - it is a converge-receipt question. Session pool is the uniform 1 GiB demand class shared with the ctrl session dashboard." }
 
 fn host_fixed_overhead_bytes(o: gunbc.ci_floor_measurement.HostFixedOverhead) -> std.measure.ByteSize {
   match o {

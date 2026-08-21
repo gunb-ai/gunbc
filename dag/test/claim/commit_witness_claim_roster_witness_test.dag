@@ -8,13 +8,13 @@ data synthetic_stale_fn: String = "this_witness_function_does_not_exist"
 
 data commit_witness_claim_roster_fast_lane_note: String = "PR-time roster detector fast lane (operator brief 2026-07-22, class 3): synthetic stale (entry, check_fn) RED proves the resolvability machinery fires — typed COMMIT_WITNESS_CLAIM_ROSTER_REFUSAL on live defects. Full-corpus roster resolvability receipt moved to dag/test/claim/long/commit_witness_claim_roster_witness_test.dag (~210s eval; exceeds 5s fast-lane budget). Detection-only: never auto-delete enrollments. Dissolve-on: enrollment derived from discovery (module-identity Phase-0 admission invariant)."
 
-fn witness_commit_witness_claim_roster_red_holds() -> Bool {
+fn witness_commit_witness_claim_roster_red_holds() -> v2.std.logic.Bool {
   !commit_witness_claim_pair_resolvable(
     entry: synthetic_stale_entry,
     function: synthetic_stale_fn
   )
 }
 
-test fn commit_witness_claim_roster_red_control_holds() -> Bool {
+test fn commit_witness_claim_roster_red_control_holds() -> v2.std.logic.Bool {
   witness_commit_witness_claim_roster_red_holds()
 }

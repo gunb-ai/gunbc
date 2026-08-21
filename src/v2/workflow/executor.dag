@@ -115,11 +115,11 @@ fn parallel_executor_plan_from_layers(layers: std.types.List<v2.std.dependency.R
   }
 }
 
-fn executor_batch_contains_node(batch: ExecutorBatch, node: v2.std.node.Node) -> Bool {
+fn executor_batch_contains_node(batch: ExecutorBatch, node: v2.std.node.Node) -> v2.std.logic.Bool {
   contains(xs: executor_job_nodes(jobs: batch.jobs), item: node, eq: fn(left, right) { left == right })
 }
 
-fn executor_batches_preserve_frontiers(batches: std.types.List<ExecutorBatch>, layers: std.types.List<v2.std.dependency.ReadinessLayer<v2.std.node.Node>>) -> Bool {
+fn executor_batches_preserve_frontiers(batches: std.types.List<ExecutorBatch>, layers: std.types.List<v2.std.dependency.ReadinessLayer<v2.std.node.Node>>) -> v2.std.logic.Bool {
   fold(layers, init: true, f: fn(ok, layer) {
     ok && contains(
       xs: batches,

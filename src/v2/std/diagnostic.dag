@@ -11,7 +11,7 @@ type LocusAnchor<T> {
 
 type Locus
   = Textual { file: v2.std.node.Symbol, extent: v2.std.diagnostic.Extent }
-  | NodeLocus { anchor: v2.std.diagnostic.LocusAnchor<Node> }
+  | NodeLocus { anchor: v2.std.diagnostic.LocusAnchor<v2.std.node.Node> }
   | PortLocus { anchor: v2.std.diagnostic.LocusAnchor<v2.std.node.Symbol> }
 
 type NoCorrectionReason
@@ -21,7 +21,7 @@ type NoCorrectionReason
   | CorrectionNotModeled
 
 type Correction
-  = Suggested { node: Node }
+  = Suggested { node: v2.std.node.Node }
   | Unavailable { reason: v2.std.diagnostic.NoCorrectionReason }
 type Diagnostic {
   reason: v2.std.node.Symbol
@@ -50,7 +50,7 @@ type StageDiagnosticPolicy {
 fn diagnostics_singleton(d: v2.std.diagnostic.Diagnostic) -> v2.std.diagnostic.NonEmptyDiagnostics {
   NonEmptyDiagnostics { head: d, tail: [] }
 }
-fn node_locus(node: Node) -> v2.std.diagnostic.Locus {
+fn node_locus(node: v2.std.node.Node) -> v2.std.diagnostic.Locus {
   NodeLocus { anchor: v2.std.diagnostic.LocusAnchor { at: node } }
 }
 
@@ -194,7 +194,7 @@ fn diagnostics_eq(a: v2.std.diagnostic.Diagnostics, b: v2.std.diagnostic.Diagnos
     }
   }
 }
-fn outcome_node_eq(a: v2.std.diagnostic.Outcome<Node>, b: v2.std.diagnostic.Outcome<Node>) -> Bool {
+fn outcome_node_eq(a: v2.std.diagnostic.Outcome<v2.std.node.Node>, b: v2.std.diagnostic.Outcome<v2.std.node.Node>) -> Bool {
   match a {
     Accepted { value: av, diagnostics: ad } => match b {
       Accepted { value: bv, diagnostics: bd } => (av == bv) && diagnostics_eq(a: ad, b: bd)

@@ -3,7 +3,7 @@ module v2.test.claim.sql_create_table_fold
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn sql_fold_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn sql_fold_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
@@ -17,13 +17,13 @@ fn sql_fold_fold_serialize(
         root: emitted,
         facts: std.types.Map { lookup: sql_fold_facts_lookup }
       }
-      match emit(tree: tree, target: target) {
+      match v2.compiler.emit.emit(tree: tree, target: target) {
         Accepted { value: source, diagnostics: d } =>
           match d {
             None => v2.std.diagnostic.Accepted { value: source.carried, diagnostics: v2.std.diagnostic.None }
             Some { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
           }
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
@@ -38,15 +38,15 @@ fn sql_fold_fold_serialize_operation(op: v2.extdeps.formats.sql.SqlSchemaOperati
   }
 }
 
-fn sql_fold_fold_matches_oracle(op: v2.extdeps.formats.sql.SqlSchemaOperation) -> Bool {
+fn sql_fold_fold_matches_oracle(op: v2.extdeps.formats.sql.SqlSchemaOperation) -> v2.std.logic.Bool {
   match sql_fold_fold_serialize_operation(op: op) {
     Accepted { value: folded, diagnostics: _ } =>
       match sql_serialize_schema_operation(op: op) {
         Accepted { value: oracle, diagnostics: od } =>
           (folded == oracle) && (od == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -62,7 +62,7 @@ fn sql_fold_pk_operation() -> v2.extdeps.formats.sql.SqlSchemaOperation {
   v2.extdeps.formats.sql.SqlCreateTable { table: sql_fold_tasks_pk_table }
 }
 
-test fn sql_fold_relation_row_single_col_witness_holds() -> Bool {
+test fn sql_fold_relation_row_single_col_witness_holds() -> v2.std.logic.Bool {
   let op = sql_fold_single_col_operation()
   match sql_fold_schema_operation_bundle_witness(op: op) {
     Holds { value: bundle } =>
@@ -77,22 +77,22 @@ test fn sql_fold_relation_row_single_col_witness_holds() -> Bool {
   }
 }
 
-test fn sql_fold_create_table_single_col_holds() -> Bool {
+test fn sql_fold_create_table_single_col_holds() -> v2.std.logic.Bool {
   sql_fold_fold_matches_oracle(op: sql_fold_single_col_operation())
 }
 
-test fn sql_fold_create_table_two_col_holds() -> Bool {
+test fn sql_fold_create_table_two_col_holds() -> v2.std.logic.Bool {
   sql_fold_fold_matches_oracle(op: sql_fold_two_col_operation())
 }
 
-test fn sql_fold_create_table_with_pk_holds() -> Bool {
+test fn sql_fold_create_table_with_pk_holds() -> v2.std.logic.Bool {
   sql_fold_fold_matches_oracle(op: sql_fold_pk_operation())
 }
 
 fn sql_fold_direct_serialize_matches_oracle(
   op: v2.extdeps.formats.sql.SqlSchemaOperation,
   target: v2.std.compilers.target_model.TargetModel
-) -> Bool {
+) -> v2.std.logic.Bool {
   match sql_fold_operation_emitted_witness(op: op) {
     Holds { value: emitted } =>
       match target_serialize_source_from_model(target: target, emitted: emitted) {
@@ -100,15 +100,15 @@ fn sql_fold_direct_serialize_matches_oracle(
           match sql_serialize_schema_operation(op: op) {
             Accepted { value: oracle, diagnostics: od } =>
               (source.carried == oracle) && (d == v2.std.diagnostic.None) && (od == v2.std.diagnostic.None)
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
     Violates { diagnostic: _ } => false
   }
 }
 
-fn sql_fold_direct_serialize_single_col_holds() -> Bool {
+fn sql_fold_direct_serialize_single_col_holds() -> v2.std.logic.Bool {
   let op = sql_fold_single_col_operation()
   match sql_fold_target_model_for_operation_witness(op: op) {
     Holds { value: target } =>
@@ -117,7 +117,7 @@ fn sql_fold_direct_serialize_single_col_holds() -> Bool {
   }
 }
 
-test fn sql_fold_wrong_production_rejects_oracle_holds() -> Bool {
+test fn sql_fold_wrong_production_rejects_oracle_holds() -> v2.std.logic.Bool {
   let op = sql_fold_single_col_operation()
   match sql_fold_schema_operation_bundle_witness(op: op) {
     Holds { value: bundle } =>
@@ -132,7 +132,7 @@ test fn sql_fold_wrong_production_rejects_oracle_holds() -> Bool {
   }
 }
 
-test fn sql_fold_emitted_tree_differs_on_two_col_fixture_holds() -> Bool {
+test fn sql_fold_emitted_tree_differs_on_two_col_fixture_holds() -> v2.std.logic.Bool {
   match sql_fold_operation_emitted_witness(op: sql_fold_single_col_operation()) {
     Holds { value: single } =>
       match sql_fold_operation_emitted_witness(op: sql_fold_two_col_operation()) {
@@ -143,16 +143,16 @@ test fn sql_fold_emitted_tree_differs_on_two_col_fixture_holds() -> Bool {
   }
 }
 
-test fn sql_fold_oracle_rejects_unsupported_drop_table_holds() -> Bool {
+test fn sql_fold_oracle_rejects_unsupported_drop_table_holds() -> v2.std.logic.Bool {
   match sql_serialize_schema_operation(
     op: v2.extdeps.formats.sql.SqlDropTable { table_name: v2.extdeps.formats.sql.SqlRegularIdentifier { name: "t" } }
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-test fn sql_fold_oracle_rejects_parameterized_numeric_type_holds() -> Bool {
+test fn sql_fold_oracle_rejects_parameterized_numeric_type_holds() -> v2.std.logic.Bool {
   match sql_serialize_data_type(
     dt: v2.extdeps.formats.sql.SqlTypeNumeric {
       precision: v2.std.cardinality.NonZeroNat { prev: Zero },
@@ -160,11 +160,11 @@ test fn sql_fold_oracle_rejects_parameterized_numeric_type_holds() -> Bool {
     }
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-test fn sql_fold_two_col_uses_recursive_list_production_holds() -> Bool {
+test fn sql_fold_two_col_uses_recursive_list_production_holds() -> v2.std.logic.Bool {
   match sql_fold_column_list_uses_recursive_list_production_witness(
     cols: sql_fold_tasks_two_col_table.columns
   ) {
@@ -174,7 +174,7 @@ test fn sql_fold_two_col_uses_recursive_list_production_holds() -> Bool {
   }
 }
 
-test fn sql_fold_single_col_uses_leaf_list_production_holds() -> Bool {
+test fn sql_fold_single_col_uses_leaf_list_production_holds() -> v2.std.logic.Bool {
   match sql_fold_column_list_uses_recursive_list_production_witness(
     cols: sql_fold_tasks_single_col_table.columns
   ) {
@@ -184,7 +184,7 @@ test fn sql_fold_single_col_uses_leaf_list_production_holds() -> Bool {
   }
 }
 
-test fn sql_fold_direct_serialize_tier_holds() -> Bool {
+test fn sql_fold_direct_serialize_tier_holds() -> v2.std.logic.Bool {
   sql_fold_stmt_kind_sentinel == from_code_point(cp: 2)
     && sql_fold_direct_serialize_single_col_holds()
 }

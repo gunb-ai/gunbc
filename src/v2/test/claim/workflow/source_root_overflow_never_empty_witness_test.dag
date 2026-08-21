@@ -4,7 +4,7 @@ module v2.test.workflow.source_root_overflow_never_empty_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // RED control: pre-capless elision with produced_row_count 0 and empty refs must refuse.
-test fn source_root_overflow_empty_population_old_defect_refused_holds() -> Bool {
+test fn source_root_overflow_empty_population_old_defect_refused_holds() -> v2.std.logic.Bool {
   let bad_receipt = v2.compiler.source_authority.SourceRootProvenanceCoverageReceipt {
     ingest_read_count: 165,
     produced_row_count: 0,

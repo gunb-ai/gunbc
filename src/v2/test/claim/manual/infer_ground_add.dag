@@ -196,7 +196,7 @@ fn infer_outcome_node_projection(actual: v2.std.diagnostic.Outcome<v2.compiler.i
   match actual {
     Accepted { value: tree, diagnostics: ad } =>
       v2.std.diagnostic.Accepted { value: tree.root, diagnostics: ad }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -218,7 +218,7 @@ fn infer_add_receipt_run(
             } else {
               v2.std.verdict.verdict_fail(actual: actual)
             }
-          Rejected { diagnostics: _ } =>
+          v2.std.diagnostic.Rejected { diagnostics: _ } =>
             if v2.std.diagnostic.outcome_node_eq(
               a: infer_outcome_node_projection(actual: actual),
               b: expected
@@ -228,7 +228,7 @@ fn infer_add_receipt_run(
               v2.std.verdict.verdict_fail(actual: actual)
             }
         }
-      Rejected { diagnostics: _ } => v2.std.verdict.verdict_fail(actual: actual)
+      v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.verdict.verdict_fail(actual: actual)
     }
   }
 }
@@ -246,7 +246,7 @@ fn infer_descent_witness_receipt_run(
         } else {
           v2.std.verdict.verdict_fail(actual: actual)
         }
-      Rejected { diagnostics: _ } => v2.std.verdict.verdict_fail(actual: actual)
+      v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.verdict.verdict_fail(actual: actual)
     }
   }
 }
@@ -259,7 +259,7 @@ fn fixture_add_resolved_tree() -> v2.compiler.resolve.ResolvedTree {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: Named { name: ^fixture_add_name },
+        label: v2.std.node.Named { name: ^fixture_add_name },
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: Arrow },
           children: [

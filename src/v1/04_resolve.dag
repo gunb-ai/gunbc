@@ -599,7 +599,7 @@ fn resolve_optional_node(n: InferredNode?, env: v1.compiler.infer_env.TypeEnv, m
   if n == none { NodeResolveResult { resolved: unit_type, diagnostics: [] } }
   else {
     match n.value {
-      Resolved { node: inner } => v1.compiler.infer_resolve.resolve_node(n: inner, env: env, module_name: module_name)
+      v1.std.core.Resolved { node: inner } => v1.compiler.infer_resolve.resolve_node(n: inner, env: env, module_name: module_name)
       CompilerError { message: msg, span: sp } =>
         NodeResolveResult {
           resolved: make_expr_error_node(kind: SemanticExprError, message: msg, span: sp),
@@ -734,12 +734,12 @@ fn resolve_match_arm(arm: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv, 
 
 fn resolve_string_part(part: v1.std.core.StringPart, env: v1.compiler.infer_env.TypeEnv, module_name: String) -> StringPartResolveResult {
   match part {
-    Text { value: value } =>
+    v1.std.core.Text { value: value } =>
       StringPartResolveResult {
         part: v1.std.core.Text { value: value },
         diagnostics: []
       }
-    Interpolation { expr: expr } =>
+    v1.std.core.Interpolation { expr: expr } =>
       let expr_result = resolve_expr_types(texpr: expr, env: env, module_name: module_name)
       let resolved_expr = expr_result.expr
       let expr_diags = expr_result.diagnostics

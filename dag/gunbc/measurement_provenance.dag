@@ -65,7 +65,7 @@ fn observe<Value>(
   }
 }
 
-fn observation_is_bound<Value>(o: Observation<Value>) -> std.types.Bool {
+fn observation_is_bound<Value>(o: Observation<Value>) -> Bool {
   match o {
     Observed { instrument, subject, value } => true
     InstrumentNotHeld { execution, availability } => false

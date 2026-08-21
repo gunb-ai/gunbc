@@ -6,17 +6,17 @@ fn sym_list_a() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^zi
 fn sym_list_b() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^zip_eq_sym_b, tail: std.algebra.Empty } }
 fn sym_list_ab() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^zip_eq_sym_a, tail: std.algebra.Cons { head: ^zip_eq_sym_b, tail: std.algebra.Empty } } }
 
-fn zip_eq_pass_node() -> Node {
+fn zip_eq_pass_node() -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^zip_eq_pass_sym } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
-fn zip_eq_fail_node() -> Node {
+fn zip_eq_fail_node() -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^zip_eq_fail_sym } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
-fn zip_eq_claim_input(ok: Bool) -> Node {
+fn zip_eq_claim_input(ok: Bool) -> v2.std.node.Node {
   if ok { zip_eq_pass_node() } else { zip_eq_fail_node() }
 }
 

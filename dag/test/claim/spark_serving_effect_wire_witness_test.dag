@@ -10,7 +10,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_t
 // arm answered for all of them. This distinguishes those two worlds by execution: under a binder
 // every call below returns the first non-linger arm's string.
 test fn w_each_serving_effect_wires_to_its_own_name() -> Bool {
-  fleet_converge_spark_serving_effect_wire(effect: EnableLingerForOwnAccount) == "EnableLingerForOwnAccount"
+  fleet_converge_spark_serving_effect_wire(effect: gunbc.spark.serving_realization.EnableLingerForOwnAccount) == "EnableLingerForOwnAccount"
     && fleet_converge_spark_serving_effect_wire(effect: gunbc.spark.serving_realization.WriteSystemUnitFile) == "WriteSystemUnitFile"
     && fleet_converge_spark_serving_effect_wire(effect: gunbc.spark.serving_realization.ReloadSystemManager) == "ReloadSystemManager"
     && fleet_converge_spark_serving_effect_wire(effect: gunbc.spark.serving_realization.EnableSystemUnit) == "EnableSystemUnit"

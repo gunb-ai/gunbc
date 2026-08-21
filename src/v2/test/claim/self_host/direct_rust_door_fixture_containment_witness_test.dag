@@ -5,7 +5,7 @@ data direct_rust_door_fixture_containment_witness_note: String = "wise-ram-22 PR
 
 data direct_rust_door_fixture_containment_lane_tag: String = "direct_rust_door_fixture_containment_hermetic"
 
-test fn fixture_synthetic_mint_is_fixture_source_produced_only() -> Bool {
+test fn fixture_synthetic_mint_is_fixture_source_produced_only() -> v2.std.logic.Bool {
   match mint_synthetic_emitted_artifact_from_fixture_inferred(
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
@@ -14,11 +14,11 @@ test fn fixture_synthetic_mint_is_fixture_source_produced_only() -> Bool {
   ) {
     Accepted { value: artifact, diagnostics: _ } =>
       synthetic_emitted_artifact_has_fixture_source_produced_only(artifact: artifact)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn fixture_cargo_green_advance_is_not_behaviorally_equivalent() -> Bool {
+test fn fixture_cargo_green_advance_is_not_behaviorally_equivalent() -> v2.std.logic.Bool {
   match mint_synthetic_emitted_artifact_from_fixture_inferred(
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
@@ -39,15 +39,15 @@ test fn fixture_cargo_green_advance_is_not_behaviorally_equivalent() -> Bool {
         },
         cargo_green: true
       ) {
-        Present { value: cargo_written } =>
+        v2.std.optional.Present { value: cargo_written } =>
           written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification(
             written: cargo_written
           )
             && !written_synthetic_emitted_artifact_has_fixture_behaviorally_equivalent_qualification(
               written: cargo_written
             )
-        Absent => false
+        v2.std.optional.Absent => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

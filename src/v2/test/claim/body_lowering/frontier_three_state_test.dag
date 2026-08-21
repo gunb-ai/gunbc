@@ -3,7 +3,7 @@ module v2.test.claim.body_lowering.frontier_three_state
 
 data frontier_three_state_note: String = "The frontier observer over the three states its producer can reach. It carried two arms, and the missing one failed OPEN: a Rejected outcome fell to the else branch and reported BodyLoweringLowered — the instrument that measures the body-lowering gap counting failures as successes, so every population read through it undercounted by exactly the refusals. Recognition also read the diagnostic HEAD alone, while retention travels through diagnostics_merge and rejected_with_pending, which put OUTER diagnostics first — so a retained body behind any pending diagnostic was also reported lowered. Both routes are asserted here, and both are the executed RED: on the previous classifier the rejection claim and the behind-a-pending-diagnostic claim return Lowered. The negative controls matter as much: an unrelated diagnostic must NOT manufacture retention, and a clean accept must stay lowered — a classifier that answered retained more often would satisfy the positive claims while destroying the count."
 
-fn probe_shell() -> Node {
+fn probe_shell() -> v2.std.node.Node {
   node_synthetic(kind: v2.std.node.TypeNode { connective: Conj }, children: [])
 }
 
@@ -23,24 +23,24 @@ fn retained_diagnostic() -> v2.std.diagnostic.Diagnostic {
   }
 }
 
-fn rejected_outcome() -> Outcome<Node> {
+fn rejected_outcome() -> Outcome<v2.std.node.Node> {
   v2.std.diagnostic.Rejected {
     diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: v2.test.claim.body_lowering.frontier_three_state.unrelated_diagnostic(), tail: std.algebra.Empty }
   }
 }
 
-fn clean_accept() -> Outcome<Node> {
+fn clean_accept() -> Outcome<v2.std.node.Node> {
   v2.std.diagnostic.Accepted { value: v2.test.claim.body_lowering.frontier_three_state.probe_shell(), diagnostics: v2.std.diagnostic.None }
 }
 
-fn accept_with_unrelated_diagnostic() -> Outcome<Node> {
+fn accept_with_unrelated_diagnostic() -> Outcome<v2.std.node.Node> {
   v2.std.diagnostic.Accepted {
     value: v2.test.claim.body_lowering.frontier_three_state.probe_shell(),
     diagnostics: v2.std.diagnostic.Some { diagnostics: diagnostics_singleton(d: v2.test.claim.body_lowering.frontier_three_state.unrelated_diagnostic()) }
   }
 }
 
-fn retention_behind_a_pending_diagnostic() -> Outcome<Node> {
+fn retention_behind_a_pending_diagnostic() -> Outcome<v2.std.node.Node> {
   v2.std.diagnostic.Accepted {
     value: v2.test.claim.body_lowering.frontier_three_state.probe_shell(),
     diagnostics: v2.std.diagnostic.Some {
@@ -52,7 +52,7 @@ fn retention_behind_a_pending_diagnostic() -> Outcome<Node> {
   }
 }
 
-fn disposition_name(o: Outcome<Node>) -> v2.std.node.Symbol {
+fn disposition_name(o: Outcome<v2.std.node.Node>) -> v2.std.node.Symbol {
   match body_lower_outcome_frontier_disposition(o: o) {
     BodyLoweringLowered => ^disposition_lowered
     BodyLoweringWrapperRetained { reason: _ } => ^disposition_wrapper_retained
@@ -68,26 +68,26 @@ fn rejected_disposition_keeps_its_reason() -> v2.std.node.Symbol {
   }
 }
 
-test fn a_rejection_is_never_reported_as_lowered_holds() -> Bool {
+test fn a_rejection_is_never_reported_as_lowered_holds() -> v2.std.logic.Bool {
   disposition_name(o: rejected_outcome()) == ^disposition_rejected
 }
 
-test fn a_rejection_carries_its_diagnostics_through_holds() -> Bool {
+test fn a_rejection_carries_its_diagnostics_through_holds() -> v2.std.logic.Bool {
   rejected_disposition_keeps_its_reason() == ^frontier_three_state_unrelated_reason
 }
 
-test fn retention_behind_a_pending_diagnostic_is_still_retention_holds() -> Bool {
+test fn retention_behind_a_pending_diagnostic_is_still_retention_holds() -> v2.std.logic.Bool {
   disposition_name(o: retention_behind_a_pending_diagnostic()) == ^disposition_wrapper_retained
 }
 
-test fn the_sole_retention_producer_reads_as_retention_holds() -> Bool {
+test fn the_sole_retention_producer_reads_as_retention_holds() -> v2.std.logic.Bool {
   disposition_name(o: body_lower_wrapper_retained_shell(shell: v2.test.claim.body_lowering.frontier_three_state.probe_shell())) == ^disposition_wrapper_retained
 }
 
-test fn an_unrelated_diagnostic_does_not_manufacture_retention_holds() -> Bool {
+test fn an_unrelated_diagnostic_does_not_manufacture_retention_holds() -> v2.std.logic.Bool {
   disposition_name(o: accept_with_unrelated_diagnostic()) == ^disposition_lowered
 }
 
-test fn a_clean_accept_is_lowered_holds() -> Bool {
+test fn a_clean_accept_is_lowered_holds() -> v2.std.logic.Bool {
   disposition_name(o: clean_accept()) == ^disposition_lowered
 }

@@ -45,7 +45,7 @@ fn a_fixed_point_receipt(ran_at: String, referenced_at: String) -> gunbc.regen_r
 // POSITIVE CONTROL. Without this, the RED below is satisfied by a predicate that returns false
 // unconditionally — which is the failure mode that cost me a broken instrument earlier today, one
 // that printed the right answer while being incapable of printing any other.
-test fn a_fixed_point_receipt_referencing_its_own_tree_is_same_tree() -> std.types.Bool {
+test fn a_fixed_point_receipt_referencing_its_own_tree_is_same_tree() -> Bool {
   gunbc.regen_receipt.prior_reference_is_same_tree(
     receipt: a_fixed_point_receipt(ran_at: same_tree_sha, referenced_at: same_tree_sha)
   )
@@ -55,7 +55,7 @@ test fn a_fixed_point_receipt_referencing_its_own_tree_is_same_tree() -> std.typ
 // stamped with the tree the second pass ran against, carrying evidence measured on another. It is
 // internally consistent and schema-valid, and the ONLY thing that distinguishes it is that the
 // reference names its subject.
-test fn w_RED_a_fixed_point_receipt_referencing_another_tree_is_not_same_tree() -> std.types.Bool {
+test fn w_RED_a_fixed_point_receipt_referencing_another_tree_is_not_same_tree() -> Bool {
   !gunbc.regen_receipt.prior_reference_is_same_tree(
     receipt: a_fixed_point_receipt(ran_at: same_tree_sha, referenced_at: other_tree_sha)
   )
@@ -64,7 +64,7 @@ test fn w_RED_a_fixed_point_receipt_referencing_another_tree_is_not_same_tree() 
 // A FirstGeneration receipt has no prior reference to be wrong about, so the predicate is
 // vacuously true there. Asserted rather than assumed: a predicate that answered false for the
 // variant carrying no reference would refuse every first pass.
-test fn a_first_generation_receipt_has_no_cross_tree_reference() -> std.types.Bool {
+test fn a_first_generation_receipt_has_no_cross_tree_reference() -> Bool {
   gunbc.regen_receipt.prior_reference_is_same_tree(
     receipt: gunbc.regen_receipt.FirstGeneration {
       commit_sha: same_tree_sha,
@@ -80,7 +80,7 @@ test fn a_first_generation_receipt_has_no_cross_tree_reference() -> std.types.Bo
 
 // THE REFUSED VARIANT, AND WHAT THESE TWO WITNESSES CAN AND CANNOT ESTABLISH.
 //
-// The wall itself is the TYPE's shape, not these tests: Refused declares no digest fields and no
+// The wall itself is the TYPE's shape, not these tests: gunbc.regen_receipt.Refused declares no digest fields and no
 // first_generation_equal, so a refusal has nothing to invent and the invalid receipt has no
 // constructor. That is DESIGN 4b structural impossibility and it needs no witness to hold — an
 // attempt to write the fabricated Bool does not typecheck, so there is no runtime state for an
@@ -103,13 +103,13 @@ fn a_refused_receipt() -> gunbc.regen_receipt.RegenReceipt {
 // A refusal carries the one fact it actually measured. Asserted against a DISTINCT literal rather
 // than a Bool, so the witness cannot be satisfied by a constructor that drops the payload and
 // still reports something plausible.
-test fn a_refused_receipt_carries_its_cause() -> std.types.Bool {
+test fn a_refused_receipt_carries_its_cause() -> Bool {
   gunbc.regen_receipt.refusal_reason(receipt: a_refused_receipt()) == "refusal: committed mirror is no longer emitted"
 }
 
 // A refusal has no prior reference to be wrong about, so the predicate is vacuously true — the
 // same argument as the FirstGeneration case above, and asserted for the same reason: a predicate
 // that answered false for a variant carrying no reference would refuse every refused pass.
-test fn a_refused_receipt_has_no_cross_tree_reference() -> std.types.Bool {
+test fn a_refused_receipt_has_no_cross_tree_reference() -> Bool {
   gunbc.regen_receipt.prior_reference_is_same_tree(receipt: a_refused_receipt())
 }

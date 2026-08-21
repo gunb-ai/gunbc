@@ -6,45 +6,38 @@ use self::OverflowReturnValueRule::*;
 use self::Signedness::*;
 pub use crate::std_algebra::{AbelianGroup, GroupCompletion};
 pub use crate::std_induction::int_pow_bounded;
-pub use crate::std_machine_constraints::{Compose, MachineWidth, PointerWidth};
 pub use crate::std_measure::{bit_width, bit_width_count, bits_per_byte};
-pub use crate::std_nat::Nat;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v2_std_integer::Compose;
+pub use crate::v2_std_machine::MachineWidth;
+pub use crate::v2_std_nat::Nat;
+use crate::v2_std_nat::Nat::*;
+pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub type Int8 =
-    crate::std_machine_constraints::Compose<i64, crate::std_machine_constraints::MachineWidth<()>>;
+pub type Int8 = crate::v2_std_integer::Compose<i64, crate::v2_std_machine::MachineWidth<()>>;
 
-pub type Int16 =
-    crate::std_machine_constraints::Compose<i64, crate::std_machine_constraints::MachineWidth<()>>;
+pub type Int16 = crate::v2_std_integer::Compose<i64, crate::v2_std_machine::MachineWidth<()>>;
 
-pub type Int32 =
-    crate::std_machine_constraints::Compose<i64, crate::std_machine_constraints::MachineWidth<()>>;
+pub type Int32 = crate::v2_std_integer::Compose<i64, crate::v2_std_machine::MachineWidth<()>>;
 
-pub type Int64 =
-    crate::std_machine_constraints::Compose<i64, crate::std_machine_constraints::MachineWidth<()>>;
+pub type Int64 = crate::v2_std_integer::Compose<i64, crate::v2_std_machine::MachineWidth<()>>;
 
-pub type Int128 =
-    crate::std_machine_constraints::Compose<i64, crate::std_machine_constraints::MachineWidth<()>>;
+pub type Int128 = crate::v2_std_integer::Compose<i64, crate::v2_std_machine::MachineWidth<()>>;
 
-pub type UInt8 =
-    crate::std_machine_constraints::Compose<UInt, crate::std_machine_constraints::MachineWidth<()>>;
+pub type UInt8 = crate::v2_std_integer::Compose<UInt, crate::v2_std_machine::MachineWidth<()>>;
 
-pub type UInt16 =
-    crate::std_machine_constraints::Compose<UInt, crate::std_machine_constraints::MachineWidth<()>>;
+pub type UInt16 = crate::v2_std_integer::Compose<UInt, crate::v2_std_machine::MachineWidth<()>>;
 
-pub type UInt32 =
-    crate::std_machine_constraints::Compose<UInt, crate::std_machine_constraints::MachineWidth<()>>;
+pub type UInt32 = crate::v2_std_integer::Compose<UInt, crate::v2_std_machine::MachineWidth<()>>;
 
-pub type UInt64 =
-    crate::std_machine_constraints::Compose<UInt, crate::std_machine_constraints::MachineWidth<()>>;
+pub type UInt64 = crate::v2_std_integer::Compose<UInt, crate::v2_std_machine::MachineWidth<()>>;
 
-pub type UInt128 =
-    crate::std_machine_constraints::Compose<UInt, crate::std_machine_constraints::MachineWidth<()>>;
+pub type UInt128 = crate::v2_std_integer::Compose<UInt, crate::v2_std_machine::MachineWidth<()>>;
 
 pub type Int = i64;
 
@@ -94,14 +87,14 @@ pub fn std_integer_std_nat_fork_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub type IntPlatform = crate::std_machine_constraints::Compose<
+pub type IntPlatform = crate::v2_std_integer::Compose<
     i64,
-    crate::std_machine_constraints::MachineWidth<PointerWidth>,
+    crate::v2_std_machine::MachineWidth<crate::v2_std_machine::PointerWidth>,
 >;
 
-pub type UIntPlatform = crate::std_machine_constraints::Compose<
+pub type UIntPlatform = crate::v2_std_integer::Compose<
     UInt,
-    crate::std_machine_constraints::MachineWidth<PointerWidth>,
+    crate::v2_std_machine::MachineWidth<crate::v2_std_machine::PointerWidth>,
 >;
 
 pub type NonNegativeInt = i64;

@@ -24,21 +24,21 @@ test fn srv3_dnsmasq_boot_target_projects_uri_and_bootloader() -> Bool {
 
 test fn rfc4578_client_arch_mapping_is_grounded() -> Bool {
   match dhcp_client_processor_architecture(arch: Aarch64, mode: UefiHttpBoot) {
-    Present { value: a } =>
+    v2.std.optional.Present { value: a } =>
       dhcp_processor_architecture_code(a: a) == 19
         && match a { HttpBootArm64 => true  _ => false }
     Absent => false
   }
     && match dhcp_client_processor_architecture(arch: X86_64, mode: UefiHttpBoot) {
-      Present { value: x } => dhcp_processor_architecture_code(a: x) == 16
+      v2.std.optional.Present { value: x } => dhcp_processor_architecture_code(a: x) == 16
       Absent => false
     }
     && match dhcp_client_processor_architecture(arch: Aarch64, mode: extdeps.provisioning.network_boot.LegacyBiosPxe { tftp_root: extdeps.uri.Uri { scheme: Https, locator: "x" } }) {
-      Present { value: _ } => false
+      v2.std.optional.Present { value: _ } => false
       Absent => true
     }
     && match dhcp_client_processor_architecture(arch: Riscv64, mode: UefiHttpBoot) {
-      Present { value: _ } => false
+      v2.std.optional.Present { value: _ } => false
       Absent => true
     }
 }

@@ -28,7 +28,7 @@ type V4EffectIoPureRuntime {
   handlers: v2.std.runtime.EffectHandlerBinding
 }
 
-fn effect_io_pure_unit_type_node() -> Node {
+fn effect_io_pure_unit_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^effect_io_pure_unit_type } },
     children: [],
@@ -36,7 +36,7 @@ fn effect_io_pure_unit_type_node() -> Node {
   }
 }
 
-fn effect_io_pure_operation_node() -> Node {
+fn effect_io_pure_operation_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^effect_io_pure_operation } },
     children: [],
@@ -44,7 +44,7 @@ fn effect_io_pure_operation_node() -> Node {
   }
 }
 
-fn effect_io_pure_effect_signature_node() -> Node {
+fn effect_io_pure_effect_signature_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^effect_io_pure_effect_signature } },
     children: [],
@@ -65,7 +65,7 @@ fn effect_io_pure_empty_environment() -> v2.std.runtime.EvaluationEnvironment {
   v2.std.runtime.EvaluationEnvironment {
     bindings: std.types.Map {
       lookup: fn(_) {
-        Absent
+        v2.std.optional.Absent
       }
     }
   }
@@ -133,7 +133,7 @@ fn effect_io_pure_write_payload_from_args(args: List<v2.std.runtime.RuntimeValue
 fn effect_io_pure_backends_match(
   left: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend,
   right: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend
-) -> Bool {
+) -> v2.std.logic.Bool {
   match left {
     FileResourceBackend =>
       match right {
@@ -161,9 +161,9 @@ fn effect_io_pure_store_lookup(
     match v2.std.collection.map_get(m: store.entries, key: locator.identity) {
       Accepted { value: opt, diagnostics: None } =>
         match opt {
-          Present { value: payload } =>
+          v2.std.optional.Present { value: payload } =>
             v2.std.diagnostic.Accepted { value: payload, diagnostics: v2.std.diagnostic.None }
-          Absent =>
+          v2.std.optional.Absent =>
             outcome_rejected(
               d: v2.std.diagnostic.Diagnostic {
                 reason: ^effect_io_pure_resource_absent,
@@ -172,7 +172,7 @@ fn effect_io_pure_store_lookup(
               }
             )
         }
-      Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
+      v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
     }
   } else {
     outcome_rejected(
@@ -329,7 +329,7 @@ fn effect_io_pure_read_write_roundtrip(
   backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend,
   payload: v2.std.runtime.RuntimeValue,
   locator_arg: v2.std.runtime.RuntimeValue
-) -> Bool {
+) -> v2.std.logic.Bool {
   match effect_io_pure_locator_from_args(
     backend: backend,
     args: std.algebra.Cons { head: locator_arg, tail: std.algebra.Empty }
@@ -350,7 +350,7 @@ fn effect_io_pure_roundtrip_through_store(
   locator: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator,
   payload: v2.std.runtime.RuntimeValue,
   locator_arg: v2.std.runtime.RuntimeValue
-) -> Bool {
+) -> v2.std.logic.Bool {
   let store0 = effect_io_pure_empty_fixture_store(backend: backend)
   let bundle0 = effect_io_pure_handler_binding(store: store0)
   let write_args = std.algebra.Cons { head: locator_arg, tail: std.algebra.Cons { head: payload, tail: std.algebra.Empty } }

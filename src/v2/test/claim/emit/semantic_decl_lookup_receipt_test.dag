@@ -3,7 +3,7 @@ module v2.test.emit.semantic_decl_lookup_receipt_test
 
 data expected_derive_spelling: String = rust_decl_derive_lex_spelling(text: extdeps.languages.rust.emit.rust_enum_derives_copy)
 
-test fn row_lookup_returns_derive_spelling() -> Bool {
+test fn row_lookup_returns_derive_spelling() -> v2.std.logic.Bool {
   match semantic_decl_emission_from_target(target: rust_target_model()) {
     Accepted { value: emission, diagnostics: _ } =>
       match semantic_decl_binding_spelling_lookup(
@@ -11,13 +11,13 @@ test fn row_lookup_returns_derive_spelling() -> Bool {
         binding: ^rust_decl_derive_enum_copy_binding
       ) {
         Accepted { value: spelling, diagnostics: _ } => spelling == expected_derive_spelling
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn map_lookup_returns_derive_spelling() -> Bool {
+test fn map_lookup_returns_derive_spelling() -> v2.std.logic.Bool {
   match semantic_decl_emission_from_target(target: rust_target_model()) {
     Accepted { value: emission, diagnostics: _ } =>
       match semantic_decl_profile_binding_spellings(profile: emission.enum_serialize_profile) {
@@ -27,20 +27,20 @@ test fn map_lookup_returns_derive_spelling() -> Bool {
             binding: ^rust_decl_derive_enum_copy_binding
           ) {
             Accepted { value: spelling, diagnostics: _ } => spelling == expected_derive_spelling
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn live_map_returns_derive_spelling() -> Bool {
+test fn live_map_returns_derive_spelling() -> v2.std.logic.Bool {
   match bound_spelling_from_map(
     binding_spellings: rust_decl_derive_binding_spellings(),
     binding: ^rust_decl_derive_enum_copy_binding
   ) {
     Accepted { value: spelling, diagnostics: _ } => spelling == expected_derive_spelling
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

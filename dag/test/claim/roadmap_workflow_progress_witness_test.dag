@@ -248,25 +248,25 @@ test fn receipt_decode_separates_refusal_from_undecodable() -> Bool {
     validation_summary: "gunbc run --claim-run",
   })
   match dispatch_environment_receipt_decode(receipt: refused) {
-    ReceiptDecoded { status } =>
+    gunbc.roadmap_dispatch_environment.ReceiptDecoded { status } =>
       match status {
-        ReceiptRefused => true
+        gunbc.roadmap_dispatch_environment.ReceiptRefused => true
         ReceiptAdmitted => false
       }
-    ReceiptUndecodable { reason: _ } => false
+    gunbc.roadmap_dispatch_environment.ReceiptUndecodable { reason: _ } => false
   }
     && match dispatch_environment_receipt_decode(receipt: foreign) {
-      ReceiptDecoded { status: _ } => false
-      ReceiptUndecodable { reason } =>
+      gunbc.roadmap_dispatch_environment.ReceiptDecoded { status: _ } => false
+      gunbc.roadmap_dispatch_environment.ReceiptUndecodable { reason } =>
         string_contains(s: reason, pattern: "known status")
     }
     && match dispatch_environment_receipt_decode(receipt: admitted) {
-      ReceiptDecoded { status } =>
+      gunbc.roadmap_dispatch_environment.ReceiptDecoded { status } =>
         match status {
           ReceiptAdmitted => true
-          ReceiptRefused => false
+          gunbc.roadmap_dispatch_environment.ReceiptRefused => false
         }
-      ReceiptUndecodable { reason: _ } => false
+      gunbc.roadmap_dispatch_environment.ReceiptUndecodable { reason: _ } => false
     }
 }
 
@@ -497,7 +497,7 @@ fn pub_pull(sha: std.types.CommitSha) -> extdeps.github.pulls.PullRequest {
     body: none,
     state: Open,
     html_url: "https://github.com/gunb-ai/gunbc/pull/7552" as std.types.NonEmptyStr,
-    user: extdeps.github.github.GitHubUser { login: "someone", id: 1, type: User },
+    user: extdeps.github.github.GitHubUser { login: "someone", id: 1, type: extdeps.github.github.User },
     head: extdeps.github.pulls.PullRequestRef {
       ref: pub_branch as String,
       sha: sha,

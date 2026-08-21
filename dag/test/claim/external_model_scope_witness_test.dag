@@ -227,7 +227,7 @@ fn exit_reason_of(e: std.process.ProcessExit) -> String {
 }
 
 fn exit_is_success(e: std.process.ProcessExit) -> Bool {
-  match e { ExitSuccess => true  _ => false }
+  match e { std.process.ExitSuccess => true  _ => false }
 }
 
 test fn red_membership_arm_refuses_file_this_change_adds() -> Bool {
@@ -264,7 +264,7 @@ test fn red_freeze_arm_refuses_unreadable_observation() -> Bool {
 }
 
 test fn failure_reason_is_empty_only_on_success() -> Bool {
-  test.claim.external_model_scope_witness.exit_reason_of(e: ExitSuccess) == ""
+  test.claim.external_model_scope_witness.exit_reason_of(e: std.process.ExitSuccess) == ""
     && test.claim.external_model_scope_witness.exit_reason_of(
          e: scope_placement_membership_verdict(
            observation: gunbc.extdeps_scope_frontier.AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
@@ -290,7 +290,7 @@ fn synthetic_manifest_add_diff() -> String {
 
 fn remove_only_exit_is_success(observation: gunbc.extdeps_scope_frontier.ManifestLineObservation) -> Bool {
   match manifest_remove_only_exit(observation: observation) {
-    ExitSuccess => true
+    std.process.ExitSuccess => true
     _ => false
   }
 }

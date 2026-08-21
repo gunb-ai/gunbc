@@ -1,7 +1,7 @@
 module v2.test.claim.wrap_decision_gate_smoke
 
 
-test fn wrap_decision_gate_smoke_bundle_absent_inapplicable() -> Bool {
+test fn wrap_decision_gate_smoke_bundle_absent_inapplicable() -> v2.std.logic.Bool {
   let target = v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: v2.std.node.Node {

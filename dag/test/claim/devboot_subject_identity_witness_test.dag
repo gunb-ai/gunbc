@@ -415,8 +415,8 @@ test fn a_record_built_for_another_subject_is_refused_even_when_bytes_are_availa
             Absent => false
             Present { value: record } =>
               match record_matches_request(record: record, requested: requested) {
-                SubjectMatches => false
-                SubjectDiffers =>
+                gunbc.devboot.outcome.SubjectMatches => false
+                gunbc.devboot.outcome.SubjectDiffers =>
                   !reuse_grants_artifact(
                     decision: reuse_decision(
                       candidate: Present { value: record },

@@ -24,7 +24,7 @@ data deploy_yml_shape: std.types.List<gunbc.workflow_capability_closure.Capabili
 ]
 
 // THE RED. This shape must refuse.
-test fn a_job_consuming_cargo_with_no_provider_refuses() -> std.types.Bool {
+test fn a_job_consuming_cargo_with_no_provider_refuses() -> Bool {
   gunbc.workflow_capability_closure.capability_closure_is_closed(v: gunbc.workflow_capability_closure.workflow_job_capability_closure(steps: deploy_yml_shape)) == false
 }
 
@@ -44,7 +44,7 @@ data witnesses_yml_shape: std.types.List<gunbc.workflow_capability_closure.Capab
   gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: "All witnesses (one prepared subject, one fold)", role: gunbc.workflow_capability_closure.CapabilityNeutral },
 ]
 
-test fn a_job_providing_before_consuming_is_admitted() -> std.types.Bool {
+test fn a_job_providing_before_consuming_is_admitted() -> Bool {
   gunbc.workflow_capability_closure.capability_closure_is_closed(v: gunbc.workflow_capability_closure.workflow_job_capability_closure(steps: witnesses_yml_shape))
 }
 
@@ -64,7 +64,7 @@ data provider_after_consumer_shape: std.types.List<gunbc.workflow_capability_clo
   },
 ]
 
-test fn a_provider_ordered_after_its_consumer_does_not_close() -> std.types.Bool {
+test fn a_provider_ordered_after_its_consumer_does_not_close() -> Bool {
   gunbc.workflow_capability_closure.capability_closure_is_closed(v: gunbc.workflow_capability_closure.workflow_job_capability_closure(steps: provider_after_consumer_shape)) == false
 }
 
@@ -75,6 +75,6 @@ test fn a_provider_ordered_after_its_consumer_does_not_close() -> std.types.Bool
 // If someone reorders the real steps so the build precedes the toolchain, or retags the
 // toolchain step as neutral, this goes red AND emission refuses -- the two halves of the same
 // fact, one observed here and one enforced there.
-test fn the_live_witness_floor_job_closes_its_capabilities() -> std.types.Bool {
+test fn the_live_witness_floor_job_closes_its_capabilities() -> Bool {
   gunbc.witness_floor_workflow.witness_floor_capability_closure_holds()
 }

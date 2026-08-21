@@ -17,7 +17,7 @@ fn ownership_fact(tree: v2.compiler.inferred_tree.InferredTree, dependencies: Li
   }
 }
 
-fn ownership_mode_unresolved(mode: v2.lens.common.algebraic_composition.OwnershipMode) -> Bool {
+fn ownership_mode_unresolved(mode: v2.lens.common.algebraic_composition.OwnershipMode) -> v2.std.logic.Bool {
   match mode {
     RequiresAccessWitness => true
     UnknownOwnership => true
@@ -27,7 +27,7 @@ fn ownership_mode_unresolved(mode: v2.lens.common.algebraic_composition.Ownershi
   }
 }
 
-fn ownership_fact_unresolved(fact: OwnershipFact) -> Bool {
+fn ownership_fact_unresolved(fact: OwnershipFact) -> v2.std.logic.Bool {
   fold(fact.dependencies, init: false, f: fn(acc, dep) {
     acc || ownership_mode_unresolved(mode: dep.classification)
   })
@@ -50,7 +50,7 @@ fn ownership_witness(tree: v2.compiler.inferred_tree.InferredTree, dependencies:
   }
 }
 
-fn ownership_mode_eq(a: v2.lens.common.algebraic_composition.OwnershipMode, b: v2.lens.common.algebraic_composition.OwnershipMode) -> Bool {
+fn ownership_mode_eq(a: v2.lens.common.algebraic_composition.OwnershipMode, b: v2.lens.common.algebraic_composition.OwnershipMode) -> v2.std.logic.Bool {
   match a {
     OwnedContainment => match b {
       OwnedContainment => true
@@ -78,11 +78,11 @@ fn ownership_mode_eq(a: v2.lens.common.algebraic_composition.OwnershipMode, b: v
 fn ownership_classified_eq(
   a: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.OwnershipMode>,
   b: v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.OwnershipMode>
-) -> Bool {
+) -> v2.std.logic.Bool {
   classified_dependency_view_eq(a: a, b: b, classification_eq: ownership_mode_eq)
 }
 
-fn ownership_fact_eq(a: OwnershipFact, b: OwnershipFact) -> Bool {
+fn ownership_fact_eq(a: OwnershipFact, b: OwnershipFact) -> v2.std.logic.Bool {
   bag_eq(xs: a.dependencies, ys: b.dependencies, eq: ownership_classified_eq)
 }
 

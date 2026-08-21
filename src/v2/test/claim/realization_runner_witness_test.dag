@@ -3,13 +3,13 @@ module v2.test.claim.realization_runner_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data runner_test_a_node: Node = v2.std.node.Node {
+data runner_test_a_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^runner_test_a } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data runner_test_b_node: Node = v2.std.node.Node {
+data runner_test_b_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^runner_test_b } },
   children: [],
   occurrence_id: SyntheticOccurrence
@@ -22,7 +22,7 @@ data runner_test_a_to_b: v2.std.dependency.DependencyView = v2.std.dependency.De
   usage_site: runner_test_b_node
 }
 
-data runner_test_nodes: List<Node> = [runner_test_a_node, runner_test_b_node]
+data runner_test_nodes: List<v2.std.node.Node> = [runner_test_a_node, runner_test_b_node]
 
 data runner_test_dependencies: List<v2.std.dependency.DependencyView> = [runner_test_a_to_b]
 

@@ -1,7 +1,7 @@
 module gunbc.session_residency
 
 
-data session_residency_authority_disposition: std.disposition.Disposition = Terminal {
+data session_residency_authority_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Single authority for WHICH FLEET HOSTS RUN INTERACTIVE AGENT SESSIONS. It is a fleet-topology fact — where session containers are placed — and it is the fact that justifies charging a host a sessions reservation out of its RAM budget. Nothing declared it before; consumers inferred it from whatever nearby row happened to correlate."
 }
 

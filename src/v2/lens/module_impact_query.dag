@@ -84,9 +84,9 @@ data impact_no_paths: List<String> = []
 
 data impact_no_import_modules: List<String> = []
 
-data impact_no_module: Optional<v2.lens.module_impact_query.ModuleIdentity> = Absent
+data impact_no_module: v2.std.optional.Optional<v2.lens.module_impact_query.ModuleIdentity> = v2.std.optional.Absent
 
-data impact_no_trigger: Optional<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureTrigger> = Absent
+data impact_no_trigger: v2.std.optional.Optional<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureTrigger> = v2.std.optional.Absent
 
 fn impact_string_eq(a: String, b: String) -> Bool {
   a == b
@@ -141,11 +141,11 @@ fn impact_build_pool_index(nodes: List<v2.lens.module_graph.ModuleDeclarationFac
 fn impact_module_of_path_indexed(
   index: ImpactPoolIndex,
   path: String
-) -> Optional<v2.lens.module_impact_query.ModuleIdentity> {
+) -> v2.std.optional.Optional<v2.lens.module_impact_query.ModuleIdentity> {
   match map_lookup_where_rejected_unreachable(m: index.path_to_module, key: path) {
-    Present { value: module_name } =>
+    v2.std.optional.Present { value: module_name } =>
       optional_present(value: v2.lens.module_impact_query.ModuleIdentity { name: module_name })
-    Absent => impact_no_module
+    v2.std.optional.Absent => impact_no_module
   }
 }
 
@@ -154,8 +154,8 @@ fn impact_pool_declares_module_indexed(
   module_name: String
 ) -> Bool {
   match map_lookup_where_rejected_unreachable(m: index.declared_modules, key: module_name) {
-    Present { value: _ } => true
-    Absent => false
+    v2.std.optional.Present { value: _ } => true
+    v2.std.optional.Absent => false
   }
 }
 
@@ -250,8 +250,8 @@ fn impact_normalize_edge(
   import_index: Map<String, List<String>>
 ) -> ImpactNormalizationAcc {
   match impact_module_of_path_indexed(index: index, path: edge.path) {
-    Absent => acc
-    Present { value: dependent } =>
+    v2.std.optional.Absent => acc
+    v2.std.optional.Present { value: dependent } =>
       if impact_pool_declares_module_indexed(index: index, module_name: edge.target_module) {
         ImpactNormalizationAcc {
           edges: std.algebra.Cons {
@@ -297,8 +297,8 @@ fn impact_imports_for_path(
   path: String
 ) -> List<String> {
   match map_lookup_where_rejected_unreachable(m: import_index, key: path) {
-    Present { value: modules } => modules
-    Absent => impact_no_import_modules
+    v2.std.optional.Present { value: modules } => modules
+    v2.std.optional.Absent => impact_no_import_modules
   }
 }
 
@@ -366,7 +366,7 @@ fn impact_normalize(
 
 fn impact_admission_pool_independence_trigger(
   admissions: List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission>
-) -> Optional<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureTrigger> {
+) -> v2.std.optional.Optional<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureTrigger> {
   fold_list(
     xs: admissions,
     empty: impact_no_trigger,
@@ -408,9 +408,9 @@ fn impact_standing_from_admissions(
   causes: List<ImpactStandingCause>
 ) -> ImpactStanding {
   match impact_admission_pool_independence_trigger(admissions: admissions) {
-    Present { value: trigger } =>
+    v2.std.optional.Present { value: trigger } =>
       PoolIndependentProjectionUnavailable { trigger: trigger }
-    Absent =>
+    v2.std.optional.Absent =>
       if any(xs: causes, predicate: fn(_) { true }) {
         Incomplete { causes: causes }
       } else {
@@ -452,8 +452,8 @@ fn impact_neighbors_of(
   module_id: v2.lens.module_impact_query.ModuleIdentity
 ) -> List<v2.lens.module_impact_query.ModuleIdentity> {
   match map_lookup_where_rejected_unreachable(m: adjacency, key: module_id.name) {
-    Present { value: modules } => modules
-    Absent => impact_no_modules
+    v2.std.optional.Present { value: modules } => modules
+    v2.std.optional.Absent => impact_no_modules
   }
 }
 
@@ -480,8 +480,8 @@ fn impact_adjacency(
 
 fn impact_bfs_seen(state: ImpactBfsState, module_id: v2.lens.module_impact_query.ModuleIdentity) -> Bool {
   match map_lookup_where_rejected_unreachable(m: state.seen, key: module_id.name) {
-    Present { value: _ } => true
-    Absent => false
+    v2.std.optional.Present { value: _ } => true
+    v2.std.optional.Absent => false
   }
 }
 
@@ -513,7 +513,7 @@ fn impact_bfs_walk(
   adjacency: Map<String, List<v2.lens.module_impact_query.ModuleIdentity>>
 ) -> List<v2.lens.module_impact_query.ModuleIdentity> {
   match state.queue |> first {
-    Present { value: module_id } =>
+    v2.std.optional.Present { value: module_id } =>
       impact_bfs_walk(
         state: impact_bfs_absorb_all(
           state: ImpactBfsState {
@@ -525,7 +525,7 @@ fn impact_bfs_walk(
         ),
         adjacency: adjacency
       )
-    Absent => list_reverse(xs: state.reached)
+    v2.std.optional.Absent => list_reverse(xs: state.reached)
   }
 }
 
@@ -576,8 +576,8 @@ fn impact_opposite_direction(direction: ImpactDirection) -> ImpactDirection {
 
 fn impact_module_in_set(set: Map<String, String>, module_id: v2.lens.module_impact_query.ModuleIdentity) -> Bool {
   match map_lookup_where_rejected_unreachable(m: set, key: module_id.name) {
-    Present { value: _ } => true
-    Absent => false
+    v2.std.optional.Present { value: _ } => true
+    v2.std.optional.Absent => false
   }
 }
 
@@ -692,13 +692,13 @@ fn impact_component_admits(
   module_id: v2.lens.module_impact_query.ModuleIdentity
 ) -> Bool {
   match component |> first {
-    Present { value: representative } =>
+    v2.std.optional.Present { value: representative } =>
       impact_mutually_reachable(
         adjacency: adjacency,
         a: representative,
         b: module_id
       )
-    Absent => false
+    v2.std.optional.Absent => false
   }
 }
 
@@ -967,8 +967,8 @@ data module_impact_departed_overlap_note: String = "git diff --name-status repor
 
 fn impact_path_is_departed(departed_set: Map<String, String>, path: String) -> Bool {
   match map_lookup_where_rejected_unreachable(m: departed_set, key: path) {
-    Present { value: _ } => true
-    Absent => false
+    v2.std.optional.Present { value: _ } => true
+    v2.std.optional.Absent => false
   }
 }
 

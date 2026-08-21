@@ -148,7 +148,7 @@ fn scoped_run_final_write_measured(entry_file: std.types.NonEmptyStr, module_pat
 
 fn scoped_run_refused_write_measured(entry_file: std.types.NonEmptyStr, module_path: std.types.NonEmptyStr, function: std.types.NonEmptyStr, diagnostic: std.types.NonEmptyStr, wall: std.measure.Nanosecond, addressable: Bool, emoji: Bool, prior: extdeps.render.terminal.DynamicLineState) -> ScopedRunMeasuredProjection {
   scoped_run_project_measured(
-    event: scoped_run_measured_event(entry_file: entry_file, module_path: module_path, function: function, wall: wall, transition: std.observation.Concluded { outcome: Refused { diagnostic: diagnostic } }),
+    event: scoped_run_measured_event(entry_file: entry_file, module_path: module_path, function: function, wall: wall, transition: std.observation.Concluded { outcome: std.observation.Refused { diagnostic: diagnostic } }),
     addressable: addressable,
     emoji: emoji,
     prior: prior
@@ -157,7 +157,7 @@ fn scoped_run_refused_write_measured(entry_file: std.types.NonEmptyStr, module_p
 
 fn scoped_run_failed_write_measured(entry_file: std.types.NonEmptyStr, module_path: std.types.NonEmptyStr, function: std.types.NonEmptyStr, error: std.types.NonEmptyStr, wall: std.measure.Nanosecond, addressable: Bool, emoji: Bool, prior: extdeps.render.terminal.DynamicLineState) -> ScopedRunMeasuredProjection {
   scoped_run_project_measured(
-    event: scoped_run_measured_event(entry_file: entry_file, module_path: module_path, function: function, wall: wall, transition: std.observation.Concluded { outcome: Failed { error: error, output: "" } }),
+    event: scoped_run_measured_event(entry_file: entry_file, module_path: module_path, function: function, wall: wall, transition: std.observation.Concluded { outcome: std.observation.Failed { error: error, output: "" } }),
     addressable: addressable,
     emoji: emoji,
     prior: prior
@@ -184,7 +184,7 @@ fn scoped_run_final_write(entry_file: std.types.NonEmptyStr, module_path: std.ty
 
 fn scoped_run_refused_write(entry_file: std.types.NonEmptyStr, module_path: std.types.NonEmptyStr, function: std.types.NonEmptyStr, diagnostic: std.types.NonEmptyStr, addressable: Bool, emoji: Bool, prior: extdeps.render.terminal.DynamicLineState) -> ScopedRunWriteProjection {
   scoped_run_project(
-    event: scoped_run_event(entry_file: entry_file, module_path: module_path, function: function, transition: std.observation.Concluded { outcome: Refused { diagnostic: diagnostic } }),
+    event: scoped_run_event(entry_file: entry_file, module_path: module_path, function: function, transition: std.observation.Concluded { outcome: std.observation.Refused { diagnostic: diagnostic } }),
     addressable: addressable,
     emoji: emoji,
     prior: prior
@@ -222,7 +222,7 @@ fn scoped_run_close_before_deferred_write(entry_file: std.types.NonEmptyStr, mod
 
 fn scoped_run_failed_write(entry_file: std.types.NonEmptyStr, module_path: std.types.NonEmptyStr, function: std.types.NonEmptyStr, error: std.types.NonEmptyStr, addressable: Bool, emoji: Bool, prior: extdeps.render.terminal.DynamicLineState) -> ScopedRunWriteProjection {
   scoped_run_project(
-    event: scoped_run_event(entry_file: entry_file, module_path: module_path, function: function, transition: std.observation.Concluded { outcome: Failed { error: error, output: "" } }),
+    event: scoped_run_event(entry_file: entry_file, module_path: module_path, function: function, transition: std.observation.Concluded { outcome: std.observation.Failed { error: error, output: "" } }),
     addressable: addressable,
     emoji: emoji,
     prior: prior
@@ -236,7 +236,7 @@ fn scoped_run_timed_out_write(entry_file: std.types.NonEmptyStr, module_path: st
       module_path: module_path,
       function: function,
       transition: std.observation.Concluded {
-        outcome: TimedOut {
+        outcome: std.observation.TimedOut {
           basis: basis,
           budget: budget,
           elapsed: elapsed
@@ -260,7 +260,7 @@ fn scoped_run_routine_measured_without_basis(
 ) -> ScopedRunWriteProjection {
   let event = std.observation.ObservationEvent {
     subject: scoped_run_subject(entry_file: entry_file, module_path: module_path, function: function),
-    transition: std.observation.Concluded { outcome: Done },
+    transition: std.observation.Concluded { outcome: std.observation.Done },
     durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: elapsed)),
     rss: std.observation.MeasuredUnavailable { cause: "scoped run rss is not sampled" as std.types.NonEmptyStr }
   }
@@ -298,7 +298,7 @@ fn phase_begin_line(phase: std.types.NonEmptyStr, overhead_ms: std.nat.Nat, emoj
 fn phase_concluded_line(phase: std.types.NonEmptyStr, elapsed_ms: std.nat.Nat, overhead_ms: std.nat.Nat, emoji: Bool) -> String {
   let event = std.observation.ObservationEvent {
     subject: seed_phase_subject(phase: phase),
-    transition: std.observation.Concluded { outcome: Done },
+    transition: std.observation.Concluded { outcome: std.observation.Done },
     durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: elapsed_ms))),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled at a phase boundary" as std.types.NonEmptyStr }
   }
@@ -395,7 +395,7 @@ fn typecheck_begin_line(module_path: std.types.NonEmptyStr, overhead_ms: std.nat
 fn typecheck_concluded_line(module_path: std.types.NonEmptyStr, elapsed_ms: std.nat.Nat, overhead_ms: std.nat.Nat, emoji: Bool) -> String {
   let event = std.observation.ObservationEvent {
     subject: seed_typecheck_subject(module_path: module_path),
-    transition: std.observation.Concluded { outcome: Done },
+    transition: std.observation.Concluded { outcome: std.observation.Done },
     durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: elapsed_ms))),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled at a typecheck boundary" as std.types.NonEmptyStr }
   }
@@ -445,7 +445,7 @@ fn shell_effect_begin_line(intent: std.types.NonEmptyStr, overhead_ms: std.nat.N
 fn shell_effect_done_line(intent: std.types.NonEmptyStr, elapsed_ms: std.nat.Nat, overhead_ms: std.nat.Nat, emoji: Bool) -> String {
   let event = std.observation.ObservationEvent {
     subject: seed_shell_subject(intent: intent),
-    transition: std.observation.Concluded { outcome: Done },
+    transition: std.observation.Concluded { outcome: std.observation.Done },
     durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: elapsed_ms))),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled at shell completion" as std.types.NonEmptyStr }
   }
@@ -470,7 +470,7 @@ fn shell_effect_failed_line(
   let event = std.observation.ObservationEvent {
     subject: seed_shell_subject(intent: intent),
     transition: std.observation.Concluded {
-      outcome: Failed { error: error, output: "" }
+      outcome: std.observation.Failed { error: error, output: "" }
     },
     durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: elapsed_ms))),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled at shell completion" as std.types.NonEmptyStr }
@@ -481,6 +481,6 @@ fn shell_effect_failed_line(
   )
 }
 
-data observation_seed_render_disposition: std.disposition.Disposition = Terminal {
+data observation_seed_render_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "The seed to .dag render boundary is Terminal, not a scaffold: a boundary the seed calls across to keep the format single-authority is the mechanism, not an interim stand-in. What dissolves is each raw eprintln the seed replaces with a call here — counted by gunbc.observation_emit_census — and, further out, the seed itself as v2 realizes the witnesses natively; neither changes what this module models, which is that a seed occurrence is an observation event projected by the one renderer."
 }

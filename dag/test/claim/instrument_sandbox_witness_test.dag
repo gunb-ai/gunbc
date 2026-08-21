@@ -113,7 +113,7 @@ fn fixture_view() -> gunbc.roadmap_program_view.V1DeletionProgramView {
         accepted: false,
         contributing_fronts: [NamespacePDeriveFront],
         remaining: fixture_line_remaining(),
-        constraint: Absent,
+        constraint: v2.std.optional.Absent,
       },
     ],
     fronts: [],

@@ -27,7 +27,7 @@ type GenerationAxis
 // ArtifactMaterialized { digest: symbol_identity_digest(sym: ^anything) } typechecked
 // and required no build, no file and no observation. The one axis whose entire
 // purpose is to be filled from built bytes had no construction link to bytes. That is
-// the donor's authored compile_skipped Bool wearing a different field name: an
+// the donor's authored compile_skipped v2.std.logic.Bool wearing a different field name: an
 // asserted fingerprint standing where an observation was owed. Because admission
 // JOINS on this axis, a forged digest does not merely mislabel one generation — it
 // makes every downstream stale-axis check agree when it should refuse.
@@ -130,7 +130,7 @@ type RosterOrderVerdict
 type RosterScanAcc {
   verdict: RosterOrderVerdict
   previous: String
-  started: Bool
+  started: v2.std.logic.Bool
 }
 
 fn roster_scan_step(acc: RosterScanAcc, member: SourceClosureMember) -> RosterScanAcc {
@@ -245,7 +245,7 @@ fn source_closure_axis_digest(roster: SourceClosureRoster) -> SourceClosureAxisO
 // observe either artifact" as "the artifacts agree" — the empty-observation narrow
 // DESIGN names beside the absorbing fallback. Admission refuses an unmaterialized
 // axis separately and by name.
-fn artifact_identity_agrees(left: GeneratedArtifactIdentity, right: GeneratedArtifactIdentity) -> Bool {
+fn artifact_identity_agrees(left: GeneratedArtifactIdentity, right: GeneratedArtifactIdentity) -> v2.std.logic.Bool {
   match left {
     ArtifactMaterialized { digest: l } =>
       match right {
@@ -265,7 +265,7 @@ fn generation_axis_agrees(
   left: GenerationIdentity,
   right: GenerationIdentity,
   axis: GenerationAxis
-) -> Bool {
+) -> v2.std.logic.Bool {
   match axis {
     ProducerCompilerAxis => left.producer_compiler == right.producer_compiler
     SourceClosureAxis => left.source_closure == right.source_closure
@@ -333,7 +333,7 @@ fn generation_axis_stale_diagnostic(axis: GenerationAxis) -> v2.std.diagnostic.D
 fn generation_identity_agrees(
   left: GenerationIdentity,
   right: GenerationIdentity
-) -> Bool {
+) -> v2.std.logic.Bool {
   for_all(
     xs: generation_axes,
     predicate: fn(axis) {

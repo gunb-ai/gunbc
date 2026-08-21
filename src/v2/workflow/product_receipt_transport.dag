@@ -51,7 +51,7 @@ fn product_receipt_stage_args(
   ]
 }
 
-func run_seven_boundary_product_receipt_ready(root: String, entry: String) -> Bool {
+func run_seven_boundary_product_receipt_ready(root: String, entry: String) -> v2.std.logic.Bool {
   let txn = concat(root, product_receipt_txn_rel)
   let manifest_dir = concat(root, product_receipt_manifest_dir_rel)
 

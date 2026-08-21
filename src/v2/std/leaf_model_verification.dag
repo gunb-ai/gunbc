@@ -3,7 +3,7 @@ module v2.std.leaf_model_verification
 
 type LeafModelClaim<M, Subject, Expectation> {
   model: M
-  fact_id: Node
+  fact_id: v2.std.node.Node
   subject: Subject
   expectation: Expectation
   falsification_case: FalsificationCase<Subject, Expectation>
@@ -201,7 +201,7 @@ type LeafModelGoCompileFalsificationCase {
 
 type LeafModelGoCompileFixturePair {
   claim_id: LeafModelClaimId
-  fact_anchor: Node
+  fact_anchor: v2.std.node.Node
   happy: LeafModelGoBuildFixture
   expected_happy_verdict: TargetCompileVerdict
   falsification: LeafModelGoCompileFalsificationCase
@@ -214,7 +214,7 @@ type LeafModelGoRuntimeFalsificationCase {
 
 type LeafModelGoRuntimeFixturePair {
   claim_id: LeafModelClaimId
-  fact_anchor: Node
+  fact_anchor: v2.std.node.Node
   happy: LeafModelGoRunFixture
   expected_happy_verdict: TargetRuntimeExerciseVerdict
   falsification: LeafModelGoRuntimeFalsificationCase

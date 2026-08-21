@@ -1,17 +1,17 @@
 module std.integer
 
 
-type Int8 = Compose<Int, MachineWidth<8>>
-type Int16 = Compose<Int, MachineWidth<16>>
-type Int32 = Compose<Int, MachineWidth<32>>
-type Int64 = Compose<Int, MachineWidth<64>>
-type Int128 = Compose<Int, MachineWidth<128>>
+type Int8 = std.machine_constraints.Compose<Int, std.machine_constraints.MachineWidth<8>>
+type Int16 = std.machine_constraints.Compose<Int, std.machine_constraints.MachineWidth<16>>
+type Int32 = std.machine_constraints.Compose<Int, std.machine_constraints.MachineWidth<32>>
+type Int64 = std.machine_constraints.Compose<Int, std.machine_constraints.MachineWidth<64>>
+type Int128 = std.machine_constraints.Compose<Int, std.machine_constraints.MachineWidth<128>>
 
-type UInt8 = Compose<UInt, MachineWidth<8>>
-type UInt16 = Compose<UInt, MachineWidth<16>>
-type UInt32 = Compose<UInt, MachineWidth<32>>
-type UInt64 = Compose<UInt, MachineWidth<64>>
-type UInt128 = Compose<UInt, MachineWidth<128>>
+type UInt8 = std.machine_constraints.Compose<UInt, std.machine_constraints.MachineWidth<8>>
+type UInt16 = std.machine_constraints.Compose<UInt, std.machine_constraints.MachineWidth<16>>
+type UInt32 = std.machine_constraints.Compose<UInt, std.machine_constraints.MachineWidth<32>>
+type UInt64 = std.machine_constraints.Compose<UInt, std.machine_constraints.MachineWidth<64>>
+type UInt128 = std.machine_constraints.Compose<UInt, std.machine_constraints.MachineWidth<128>>
 
 type Int = std.algebra.AbelianGroup<std.algebra.GroupCompletion<std.nat.Nat>>
 type UInt = std.nat.Nat
@@ -33,8 +33,8 @@ data std_integer_overflow_semantics_note: String = "P3b PR2 overflow authority: 
 
 data std_integer_std_nat_fork_note: String = "PR1 Signedness lift imports std.nat here, co-resolving std.nat with v2.std.nat in whole-tree compile-clean closures. Known two-std-trees fork: std.nat.Nat = CommutativeSemiring<Magnitude> with std.nat.nat_compare versus v2.std.nat.Nat = Zero|Succ with v2.std.nat.nat_compare — not consolidated in this PR. Per nat-grounding-unification-design (census complete 2026-08-01): DESIGN READY; IMPLEMENTATION LARGE/ATOMIC sequenced with integer+float repoint after bounded P3b PR2 overflow on std.integer (#7511 merged first). Dissolve-on: two-std-trees consolidation lands a single Nat authority and retires the parallel compare fns; until then ambiguous bare references must qualify by containment path (namespace-resolution-design section 13). The bound on the deferral: until the wave lands, a bare reference to Nat or nat_compare in a closure containing both authorities is ambiguous by construction and must be qualified — no consumer may assume a bare name resolves, and the two Nat types are not interchangeable at any call site even where the name matches."
 
-type IntPlatform  = Compose<Int,  MachineWidth<PointerWidth>>
-type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>
+type IntPlatform  = std.machine_constraints.Compose<Int,  std.machine_constraints.MachineWidth<std.machine_constraints.PointerWidth>>
+type UIntPlatform = std.machine_constraints.Compose<UInt, std.machine_constraints.MachineWidth<std.machine_constraints.PointerWidth>>
 
 type NonNegativeInt = std.nat.Nat
 type PositiveInt    = std.nat.Nat where gt_zero

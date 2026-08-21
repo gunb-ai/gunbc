@@ -47,7 +47,7 @@ func main() -> std.process.ProcessExit {
     && wb_unsafe_href_rejected_before_serve()
     && browse_root_serves_200()
   {
-    ExitSuccess
+    std.process.ExitSuccess
   } else {
     std.process.ExitFailure {
       code: exit_code_general_error,

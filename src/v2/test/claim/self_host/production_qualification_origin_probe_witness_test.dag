@@ -5,21 +5,21 @@ data production_qualification_origin_probe_witness_note: String = "Production-qu
 
 data production_qualification_origin_probe_fixture_module_reach_note: String = "Genuine module-graph edge into v2.test.claim.self_host.production_qualification_origin_probe_structural_fixture (inert-lens hygiene, DESIGN.md §6): long-lane witnesses reference the live probe only through probe lens helpers, not a compile-time import of the fixture module. This witness imports structural_red_control_mint_site_qualified_name so the test fixture stays reached by a discovered per-PR witness."
 
-test fn witness_structural_fixture_module_reached_by_symbol_reference() -> Bool {
+test fn witness_structural_fixture_module_reached_by_symbol_reference() -> v2.std.logic.Bool {
   string_contains(
     s: v2.test.claim.self_host.production_qualification_origin_probe_structural_fixture.structural_red_control_mint_site_qualified_name,
     pattern: "structural_red_control_mint_site_probe"
   )
 }
 
-test fn witness_planted_fixture_origin_count_matches_oracle() -> Bool {
+test fn witness_planted_fixture_origin_count_matches_oracle() -> v2.std.logic.Bool {
   int_eq(
     a: planted_fixture_origin_mint_site_count(),
     b: production_qualification_planted_fixture_origin_oracle_count
   )
 }
 
-test fn witness_structural_red_control_mint_site_discovered() -> Bool {
+test fn witness_structural_red_control_mint_site_discovered() -> v2.std.logic.Bool {
   any(
     xs: derived_sites_for_decl(
       sites: empty_site_list,
@@ -39,7 +39,7 @@ test fn witness_structural_red_control_mint_site_discovered() -> Bool {
   )
 }
 
-test fn witness_unknown_origin_red_control_refuses_admission() -> Bool {
+test fn witness_unknown_origin_red_control_refuses_admission() -> v2.std.logic.Bool {
   let planted_sites = derived_sites_for_decl(
     sites: empty_site_list,
     decl: unknown_origin_red_control_planted_decl()
@@ -50,7 +50,7 @@ test fn witness_unknown_origin_red_control_refuses_admission() -> Bool {
     )
 }
 
-test fn witness_parameter_borne_fixture_mint_classifies_unknown_origin() -> Bool {
+test fn witness_parameter_borne_fixture_mint_classifies_unknown_origin() -> v2.std.logic.Bool {
   any(
     xs: derived_sites_for_decl(
       sites: empty_site_list,
@@ -65,7 +65,7 @@ test fn witness_parameter_borne_fixture_mint_classifies_unknown_origin() -> Bool
   )
 }
 
-test fn witness_target_without_fixture_tree_classifies_unknown_origin() -> Bool {
+test fn witness_target_without_fixture_tree_classifies_unknown_origin() -> v2.std.logic.Bool {
   any(
     xs: derived_sites_for_decl(
       sites: empty_site_list,
@@ -80,7 +80,7 @@ test fn witness_target_without_fixture_tree_classifies_unknown_origin() -> Bool 
   )
 }
 
-test fn witness_planted_fixture_origin_refuses_production_admission() -> Bool {
+test fn witness_planted_fixture_origin_refuses_production_admission() -> v2.std.logic.Bool {
   !production_qualification_origin_probe_admission_holds_for_decls(
     decls: [structural_red_control_planted_decl()]
   )

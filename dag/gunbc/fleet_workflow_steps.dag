@@ -19,7 +19,7 @@ module gunbc.fleet_workflow_steps
 // does not have.
 
 
-fn ci_checkout_step() -> Step {
+fn ci_checkout_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.UsesStep {
     name: Present { value: "Checkout" },
     id: none,
@@ -268,7 +268,7 @@ fn ci_fleet_key_agent_step() -> extdeps.github.actions.Step {
   }
 }
 
-fn ci_fleet_key_agent_cleanup_step() -> Step {
+fn ci_fleet_key_agent_cleanup_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.RunStep {
     name: Present { value: "Kill the in-run ssh-agent (key never outlives the job)" },
     id: none,

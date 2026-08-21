@@ -28,7 +28,7 @@ data loop_illegal_named_input: v2.std.node.Node = v2.std.node.Node {
   occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn loop_illegal_named_claim_holds() -> Bool {
+test fn loop_illegal_named_claim_holds() -> v2.std.logic.Bool {
   match v2.lens.cost.cost_lens(n: loop_illegal_named_input) {
     Violates { diagnostic: d } => d.reason == ^cardinality_loop_bound_malformed
     _ => false

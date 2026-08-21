@@ -29,10 +29,10 @@ type DependencyView {
 //
 // A dependency is a direction between two things plus what kind of dependence it is, and that shape
 // does not vary with what the two things are. DependencyView above is the COMPILER'S instantiation
-// of it: its subject is Node and it additionally carries usage_site, an AST occurrence that only
+// of it: its subject is v2.std.node.Node and it additionally carries usage_site, an AST occurrence that only
 // means anything when the subject is program structure. Those extra facts are compiler metadata, not
 // part of the relation, which is why the relation is extracted from underneath rather than
-// DependencyView being widened -- widening it would push a Node-shaped carrier onto every consumer
+// DependencyView being widened -- widening it would push a v2.std.node.Node-shaped carrier onto every consumer
 // of a relation whose subject is not program structure at all.
 //
 // WHY THIS IS EXTRACTED RATHER THAN A SECOND GRAPH. Host convergence needs exactly this relation
@@ -52,8 +52,8 @@ type DependencyRelation<Subject> {
   kind: DependencyKind
 }
 
-// The compiler's view IS a relation over Node once its occurrence metadata is set aside. Naming the
-// projection means the scheduler consumes one shape, and the Node case stays a caller of the general
+// The compiler's view IS a relation over v2.std.node.Node once its occurrence metadata is set aside. Naming the
+// projection means the scheduler consumes one shape, and the v2.std.node.Node case stays a caller of the general
 // path rather than a parallel implementation of it.
 fn dependency_view_relation(view: DependencyView) -> DependencyRelation<v2.std.node.Node> {
   DependencyRelation {
@@ -137,8 +137,8 @@ fn classified_usage_site<C>(view: ClassifiedDependencyView<extdeps.languages.c.s
 fn classified_dependency_view_eq<C>(
   a: ClassifiedDependencyView<extdeps.languages.c.subject.C>,
   b: ClassifiedDependencyView<extdeps.languages.c.subject.C>,
-  classification_eq: fn(extdeps.languages.c.subject.C, extdeps.languages.c.subject.C) -> Bool
-) -> Bool {
+  classification_eq: fn(extdeps.languages.c.subject.C, extdeps.languages.c.subject.C) -> v2.std.logic.Bool
+) -> v2.std.logic.Bool {
   (a.dependency == b.dependency) && classification_eq(a.classification, b.classification)
 }
 
@@ -164,7 +164,7 @@ fn classify_named_edge_usage(parent: v2.std.node.Node, sym: v2.std.node.Symbol) 
 
 fn classify_node_edge_usage(parent: v2.std.node.Node, edge: v2.std.node.Edge) -> DependencyKind {
   match edge.label {
-    Named { name: sym } => classify_named_edge_usage(parent: parent, sym: sym)
+    v2.std.node.Named { name: sym } => classify_named_edge_usage(parent: parent, sym: sym)
     v2.std.node.Positional => Contains
   }
 }

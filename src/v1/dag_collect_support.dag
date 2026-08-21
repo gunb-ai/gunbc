@@ -35,7 +35,7 @@ fn json_quote(s: String) -> String {
 fn inferred_fingerprint(value: InferredNode?) -> String {
   match value {
     Absent => "none"
-    Present { value: Resolved { node: _ } } => "Resolved"
+    Present { value: v1.std.core.Resolved { node: _ } } => "Resolved"
     Present { value: TypeVariable { id } } => concat("TypeVariable:", id)
     Present { value: CompilerError { message: m } } => concat("CompilerError:", m)
   }
@@ -104,7 +104,7 @@ fn dag_node_surface_leaf_mix(node: v1.std.core.Node) -> String {
 
 fn literal_value_fingerprint(value: std.syntax.LiteralValue) -> String {
   match value {
-    LitStr { value: v } => concat("LitStr:", v)
+    std.syntax.LitStr { value: v } => concat("LitStr:", v)
     LitInt { value: v } => concat("LitInt:", to_string(value: v))
     LitFloat { value: v } => concat("LitFloat:", v)
     LitBool { value: v } => concat("LitBool:", to_string(value: v))
@@ -114,14 +114,14 @@ fn literal_value_fingerprint(value: std.syntax.LiteralValue) -> String {
 }
 
 // match_pattern is a SubValueField (v1.std.core node_field_roles) carrying the
-// match-arm/field-binding semantics; the pattern's own Node subtrees
+// match-arm/field-binding semantics; the pattern's own v1.std.core.Node subtrees
 // (Bind.declaration, VariantPattern.field_bindings) must be folded in
 // recursively or two arms/bindings differing only by pattern collapse to the
 // same fingerprint.
 fn match_pattern_fingerprint_rec(pattern: MatchPattern?) -> String {
   match pattern {
     Absent => atom_identity_hash("^dag_collect_match_pattern_absent")
-    Present { value: Bind { declaration: d } } =>
+    Present { value: v1.std.core.Bind { declaration: d } } =>
       hash_combine(atom_identity_hash("Bind"), dag_node_surface_fingerprint_rec(node: d))
     Present { value: LitPattern { value: v } } =>
       atom_identity_hash(concat("LitPattern:", literal_value_fingerprint(value: v)))
@@ -131,7 +131,7 @@ fn match_pattern_fingerprint_rec(pattern: MatchPattern?) -> String {
         match pe { Present { value: p } => p  Absent => "" }))
       let field_hashes = fbs |> map(f => dag_node_surface_fingerprint_rec(node: f))
       hash_combine(base, dag_node_seq_hash(digests: field_hashes))
-    Present { value: Wildcard } => atom_identity_hash("Wildcard")
+    Present { value: v1.std.core.Wildcard } => atom_identity_hash("Wildcard")
   }
 }
 

@@ -124,7 +124,7 @@ fn account_with_lease(a: MoneyAccount, lease: MoneyLease) -> MoneyAccount {
 
 fn project_outcome(a: MoneyAccount, outcome: extdeps.accounting.encumbrance.EncumbranceOutcome<std.measure.Currency, std.measure.Micro>) -> MoneyOutcome {
   match outcome {
-    LedgerAdvanced { ledger: l } => AccountAdvanced { account: account_with_ledger(a: a, ledger: l) }
+    extdeps.accounting.encumbrance.LedgerAdvanced { ledger: l } => AccountAdvanced { account: account_with_ledger(a: a, ledger: l) }
     EncumbranceRefused { refusal: r } =>
       MoneyRefused { refusal: LedgerRefused { account: a.account, refusal: r } }
   }

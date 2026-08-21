@@ -14,7 +14,7 @@ data nat_8: v2.std.nat.Nat = v2.std.nat.Succ { prev: nat_7 }
 data nat_9: v2.std.nat.Nat = v2.std.nat.Succ { prev: nat_8 }
 data nat_10: v2.std.nat.Nat = v2.std.nat.Succ { prev: nat_9 }
 
-fn synthetic_leaf(identity: v2.std.node.Symbol) -> Node {
+fn synthetic_leaf(identity: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
@@ -22,8 +22,8 @@ fn synthetic_leaf(identity: v2.std.node.Symbol) -> Node {
   }
 }
 
-data outer_leaf: Node = synthetic_leaf(identity: ^valuation_outer_size_atom)
-data inner_leaf: Node = synthetic_leaf(identity: ^valuation_inner_size_atom)
+data outer_leaf: v2.std.node.Node = synthetic_leaf(identity: ^valuation_outer_size_atom)
+data inner_leaf: v2.std.node.Node = synthetic_leaf(identity: ^valuation_inner_size_atom)
 
 data outer_variable: v2.lens.cost.SizeVariable = v2.lens.cost.SizeVariable { source: outer_leaf }
 data inner_variable: v2.lens.cost.SizeVariable = v2.lens.cost.SizeVariable { source: inner_leaf }
@@ -40,14 +40,14 @@ fn unit_loop_over(variable: v2.lens.cost.SizeVariable) -> v2.lens.cost.expr.Cost
   }
 }
 
-fn is_exact(evaluation: v2.lens.cost.valuation.CostEvaluation, expected: v2.std.nat.Nat) -> Bool {
+fn is_exact(evaluation: v2.lens.cost.valuation.CostEvaluation, expected: v2.std.nat.Nat) -> v2.std.logic.Bool {
   match evaluation {
     ExactCost { value: v } => v == expected
     _ => false
   }
 }
 
-test fn unit_body_over_size_five_evaluates_to_five() -> Bool {
+test fn unit_body_over_size_five_evaluates_to_five() -> v2.std.logic.Bool {
   is_exact(
     evaluation: evaluate_cost_expr(
       expr: unit_loop_over(variable: outer_variable),
@@ -57,7 +57,7 @@ test fn unit_body_over_size_five_evaluates_to_five() -> Bool {
   )
 }
 
-test fn changing_the_bound_size_changes_the_derived_work() -> Bool {
+test fn changing_the_bound_size_changes_the_derived_work() -> v2.std.logic.Bool {
   is_exact(
     evaluation: evaluate_cost_expr(
       expr: unit_loop_over(variable: outer_variable),
@@ -85,7 +85,7 @@ fn binder_dependent_loop() -> v2.lens.cost.expr.CostExpr {
   }
 }
 
-test fn binder_dependent_body_is_summed_not_treated_as_invariant() -> Bool {
+test fn binder_dependent_body_is_summed_not_treated_as_invariant() -> v2.std.logic.Bool {
   is_exact(
     evaluation: evaluate_cost_expr(
       expr: binder_dependent_loop(),
@@ -95,7 +95,7 @@ test fn binder_dependent_body_is_summed_not_treated_as_invariant() -> Bool {
   )
 }
 
-test fn invariant_body_control_does_not_produce_the_summed_answer() -> Bool {
+test fn invariant_body_control_does_not_produce_the_summed_answer() -> v2.std.logic.Bool {
   is_exact(
     evaluation: evaluate_cost_expr(
       expr: v2.lens.cost.expr.CostSum {
@@ -109,7 +109,7 @@ test fn invariant_body_control_does_not_produce_the_summed_answer() -> Bool {
   )
 }
 
-test fn missing_binding_refuses_and_never_becomes_zero() -> Bool {
+test fn missing_binding_refuses_and_never_becomes_zero() -> v2.std.logic.Bool {
   match evaluate_cost_expr(
     expr: unit_loop_over(variable: outer_variable),
     bindings: []
@@ -123,7 +123,7 @@ test fn missing_binding_refuses_and_never_becomes_zero() -> Bool {
   }
 }
 
-test fn duplicate_bindings_refuse() -> Bool {
+test fn duplicate_bindings_refuse() -> v2.std.logic.Bool {
   match evaluate_cost_expr(
     expr: unit_loop_over(variable: outer_variable),
     bindings: [
@@ -140,7 +140,7 @@ test fn duplicate_bindings_refuse() -> Bool {
   }
 }
 
-test fn distinct_bindings_control_does_not_refuse() -> Bool {
+test fn distinct_bindings_control_does_not_refuse() -> v2.std.logic.Bool {
   is_exact(
     evaluation: evaluate_cost_expr(
       expr: unit_loop_over(variable: outer_variable),
@@ -164,7 +164,7 @@ fn shadowing_expr() -> v2.lens.cost.expr.CostExpr {
   }
 }
 
-test fn binder_shadowing_is_scoped_and_removed_on_exit() -> Bool {
+test fn binder_shadowing_is_scoped_and_removed_on_exit() -> v2.std.logic.Bool {
   is_exact(
     evaluation: evaluate_cost_expr(
       expr: shadowing_expr(),
@@ -174,7 +174,7 @@ test fn binder_shadowing_is_scoped_and_removed_on_exit() -> Bool {
   )
 }
 
-test fn shadowing_control_rejects_the_unshadowed_reading() -> Bool {
+test fn shadowing_control_rejects_the_unshadowed_reading() -> v2.std.logic.Bool {
   !is_exact(
     evaluation: evaluate_cost_expr(
       expr: shadowing_expr(),
@@ -184,7 +184,7 @@ test fn shadowing_control_rejects_the_unshadowed_reading() -> Bool {
   )
 }
 
-test fn zero_iterations_produce_exact_zero() -> Bool {
+test fn zero_iterations_produce_exact_zero() -> v2.std.logic.Bool {
   is_exact(
     evaluation: evaluate_cost_expr(
       expr: v2.lens.cost.expr.CostSum {
@@ -204,7 +204,7 @@ data effect_operation: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef
   field: std.decl_ref.WholeDeclaration
 }
 
-test fn cost_effect_refuses_until_an_effect_model_exists() -> Bool {
+test fn cost_effect_refuses_until_an_effect_model_exists() -> v2.std.logic.Bool {
   match evaluate_cost_expr(
     expr: v2.lens.cost.expr.CostEffect { operation: effect_operation },
     bindings: []
@@ -220,7 +220,7 @@ test fn cost_effect_refuses_until_an_effect_model_exists() -> Bool {
 
 data log_cause_separation_note: String = "Four witnesses for one construct, because a logarithm fails in three unrelated ways and an earlier revision of the evaluator reported every non-refusing case as UngroundedLogArgument - ignoring the base entirely, so base 0 read as an ARGUMENT problem and a fully grounded argument was called UNGROUNDED. Each witness pins one cause. The discriminating pair is base-zero against grounded-argument: under the earlier arm both answered the same cause, so either one alone would have passed while the arm was wrong, and only asserting that they differ catches it."
 
-test fn log_base_zero_refuses_as_an_invalid_base() -> Bool {
+test fn log_base_zero_refuses_as_an_invalid_base() -> v2.std.logic.Bool {
   match evaluate_cost_expr(
     expr: v2.lens.cost.expr.CostLog { base: Zero, argument: size_of(variable: outer_variable) },
     bindings: [bind(variable: outer_variable, value: nat_8)]
@@ -238,7 +238,7 @@ test fn log_base_zero_refuses_as_an_invalid_base() -> Bool {
   }
 }
 
-test fn log_base_one_refuses_as_an_invalid_base() -> Bool {
+test fn log_base_one_refuses_as_an_invalid_base() -> v2.std.logic.Bool {
   match evaluate_cost_expr(
     expr: v2.lens.cost.expr.CostLog { base: nat_1, argument: size_of(variable: outer_variable) },
     bindings: [bind(variable: outer_variable, value: nat_8)]
@@ -256,7 +256,7 @@ test fn log_base_one_refuses_as_an_invalid_base() -> Bool {
   }
 }
 
-test fn log_of_a_grounded_argument_names_the_missing_authority_not_the_argument() -> Bool {
+test fn log_of_a_grounded_argument_names_the_missing_authority_not_the_argument() -> v2.std.logic.Bool {
   match evaluate_cost_expr(
     expr: v2.lens.cost.expr.CostLog { base: nat_2, argument: size_of(variable: outer_variable) },
     bindings: [bind(variable: outer_variable, value: nat_8)]
@@ -270,7 +270,7 @@ test fn log_of_a_grounded_argument_names_the_missing_authority_not_the_argument(
   }
 }
 
-test fn log_of_an_unbound_argument_refuses_as_a_missing_binding() -> Bool {
+test fn log_of_an_unbound_argument_refuses_as_a_missing_binding() -> v2.std.logic.Bool {
   match evaluate_cost_expr(
     expr: v2.lens.cost.expr.CostLog { base: nat_2, argument: size_of(variable: outer_variable) },
     bindings: []
@@ -286,7 +286,7 @@ test fn log_of_an_unbound_argument_refuses_as_a_missing_binding() -> Bool {
 
 data refusing_body_cause_count_note: String = "Ten iterations of a body that refuses unconditionally yield ONE cause, not ten. Both halves of that are the subject: ten identical causes would amplify a single deficit tenfold, degrading the countability the accumulate rule exists to protect, and building them costs quadratic time because non_empty_append is linear in its left argument. This witness reds if the settled-disposition skip in evaluate_summation is removed, which is what makes it a regression control rather than a description."
 
-test fn refusing_body_under_a_bound_yields_exactly_one_cause() -> Bool {
+test fn refusing_body_under_a_bound_yields_exactly_one_cause() -> v2.std.logic.Bool {
   match evaluate_cost_expr(
     expr: v2.lens.cost.expr.CostSum {
       binder: inner_variable,
@@ -306,7 +306,7 @@ test fn refusing_body_under_a_bound_yields_exactly_one_cause() -> Bool {
 
 data zero_multiplicity_note: String = "Three discriminators, and the third is what keeps the first two from being a blanket zero. A zero factor means the other factor is executed ZERO times, so its work is zero whatever it is - refusing there would conflate did-no-work with could-not-model, which is the earned-zero distinction one level out. Both operand orders are asserted because multiplication is commutative and an order-sensitive answer is a defect; that exact defect existed in v2.lens.cost symbolic_product, which matched UnknownCost on the left operand before ever inspecting the right, and is fixed with this change. ONE times an unmodelled effect still REFUSES, because that factor is executed."
 
-test fn zero_times_an_unmodelled_effect_is_exactly_zero() -> Bool {
+test fn zero_times_an_unmodelled_effect_is_exactly_zero() -> v2.std.logic.Bool {
   is_exact(
     evaluation: evaluate_cost_expr(
       expr: v2.lens.cost.expr.CostMul {
@@ -319,7 +319,7 @@ test fn zero_times_an_unmodelled_effect_is_exactly_zero() -> Bool {
   )
 }
 
-test fn an_unmodelled_effect_times_zero_is_exactly_zero() -> Bool {
+test fn an_unmodelled_effect_times_zero_is_exactly_zero() -> v2.std.logic.Bool {
   is_exact(
     evaluation: evaluate_cost_expr(
       expr: v2.lens.cost.expr.CostMul {
@@ -332,7 +332,7 @@ test fn an_unmodelled_effect_times_zero_is_exactly_zero() -> Bool {
   )
 }
 
-test fn one_times_an_unmodelled_effect_still_refuses() -> Bool {
+test fn one_times_an_unmodelled_effect_still_refuses() -> v2.std.logic.Bool {
   match evaluate_cost_expr(
     expr: v2.lens.cost.expr.CostMul {
       left: v2.lens.cost.expr.CostConst { value: nat_1 },
@@ -355,28 +355,28 @@ fn unknown_symbolic_cost() -> v2.lens.cost.SymbolicCost {
   normalize_cost_expr_to_symbolic(expr: v2.lens.cost.expr.CostEffect { operation: effect_operation })
 }
 
-test fn symbolic_product_absorbs_zero_from_the_left() -> Bool {
+test fn symbolic_product_absorbs_zero_from_the_left() -> v2.std.logic.Bool {
   match symbolic_product(a: zero_cost(), b: unknown_symbolic_cost()) {
     ConstantCost { value: Zero } => true
     _ => false
   }
 }
 
-test fn symbolic_product_absorbs_zero_from_the_right() -> Bool {
+test fn symbolic_product_absorbs_zero_from_the_right() -> v2.std.logic.Bool {
   match symbolic_product(a: unknown_symbolic_cost(), b: zero_cost()) {
     ConstantCost { value: Zero } => true
     _ => false
   }
 }
 
-test fn symbolic_product_still_returns_unknown_without_a_zero_factor() -> Bool {
+test fn symbolic_product_still_returns_unknown_without_a_zero_factor() -> v2.std.logic.Bool {
   match symbolic_product(a: unknown_symbolic_cost(), b: unit_cost()) {
     UnknownCost { diagnostic: _ } => true
     _ => false
   }
 }
 
-test fn symbolic_product_one_times_unknown_stays_unknown() -> Bool {
+test fn symbolic_product_one_times_unknown_stays_unknown() -> v2.std.logic.Bool {
   match symbolic_product(a: unit_cost(), b: unknown_symbolic_cost()) {
     UnknownCost { diagnostic: _ } => true
     _ => false
@@ -385,7 +385,7 @@ test fn symbolic_product_one_times_unknown_stays_unknown() -> Bool {
 
 data claim_conjunction_totality_note: String = "The conjunction enumerates EVERY other test fn in this file, and that totality is the point rather than a convenience. It is itself a `test fn` rather than a plain helper, which the corpus naming-hygiene walk requires and which is not a formality here: reached only from the claim `data` it would have been unreachable from every `test fn`, i.e. silently de-enrolled - the conjunction added to close a specification-without-execution finding, not executing. An earlier revision listed three of them while the claim label asserted refusal and scoping behaviour the others established, so the claim could have gone green with its own label false - specification-without-execution at the claim seam, caught by review 49620. The rule this file now follows: a claim label may assert only what its conjunction executes, so adding a test fn without adding it here is the defect to watch for."
 
-test fn every_valuation_witness_holds() -> Bool {
+test fn every_valuation_witness_holds() -> v2.std.logic.Bool {
   unit_body_over_size_five_evaluates_to_five()
     && changing_the_bound_size_changes_the_derived_work()
     && binder_dependent_body_is_summed_not_treated_as_invariant()

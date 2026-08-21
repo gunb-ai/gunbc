@@ -15,7 +15,7 @@ fn use_chained() -> Int {
 
 data witness_chained_generic_field: Bool = v2.test.manual.chained_generic_field_access.use_chained() == 9
 
-data chained_generic_field_claim_payload: Node = v2.std.node.Node {
+data chained_generic_field_claim_payload: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence

@@ -10,33 +10,33 @@ fn structured_body_non_behavior_node() -> v2.std.node.Node {
 fn structured_body_pick_branch_body() -> v2.std.node.Node {
   match v2.std.node_query.find_arrow_body_child(root: v2.extdeps.languages.dag.dag_pick_arrow_with_body_fixture) {
     Accepted { value: body, diagnostics: _ } => body
-    Rejected { diagnostics: _ } => structured_body_non_behavior_node()
+    v2.std.diagnostic.Rejected { diagnostics: _ } => structured_body_non_behavior_node()
   }
 }
 
-test fn structured_body_dispatch_accepts_transform_call() -> Bool {
+test fn structured_body_dispatch_accepts_transform_call() -> v2.std.logic.Bool {
   match v2.compiler.body_producer.body_producer_dispatch_structured_body(body: v2.extdeps.languages.dag.dag_add_binary_body_node()) {
     Accepted { value: validated, diagnostics: _ } => validated == v2.extdeps.languages.dag.dag_add_binary_body_node()
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn structured_body_dispatch_accepts_branch() -> Bool {
+test fn structured_body_dispatch_accepts_branch() -> v2.std.logic.Bool {
   let branch = structured_body_pick_branch_body()
   match v2.compiler.body_producer.body_producer_dispatch_structured_body(body: branch) {
     Accepted { value: validated, diagnostics: _ } => validated == branch
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn structured_body_dispatch_rejects_non_behavior() -> Bool {
+test fn structured_body_dispatch_rejects_non_behavior() -> v2.std.logic.Bool {
   match v2.compiler.body_producer.body_producer_dispatch_structured_body(body: structured_body_non_behavior_node()) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
-test fn structured_body_produce_subsumes_add_table() -> Bool {
+test fn structured_body_produce_subsumes_add_table() -> v2.std.logic.Bool {
   match v2.compiler.body_producer.produce_arrow_with_structured_body(
     signature: v2.extdeps.languages.dag.dag_add_arrow_signature_node(),
     structured_body: v2.extdeps.languages.dag.dag_add_binary_body_node()
@@ -44,7 +44,7 @@ test fn structured_body_produce_subsumes_add_table() -> Bool {
     Accepted { value: arrow_with_body, diagnostics: _ } =>
       arrow_with_body == v2.extdeps.languages.dag.dag_add_arrow_with_body_node()
         && v2.std.node.well_formed(n: arrow_with_body)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

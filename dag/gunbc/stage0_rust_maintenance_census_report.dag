@@ -32,7 +32,7 @@ fn is_emit_from_disposition(d: gunbc.stage0_rust_source_lifecycle_scaffold.RustM
     Generated { authority: authority } => false
     EmitFrom { authority: authority } => true
     DeleteWith { roadmap_node: roadmap_node } => false
-    RetainedKernel { reason: reason } => false
+    gunbc.stage0_rust_source_lifecycle_scaffold.RetainedKernel { reason: reason } => false
     HandScaffold { reason: _, dissolution: _ } => false
   }
 }
@@ -42,7 +42,7 @@ fn is_delete_with_disposition(d: gunbc.stage0_rust_source_lifecycle_scaffold.Rus
     Generated { authority: authority } => false
     EmitFrom { authority: authority } => false
     DeleteWith { roadmap_node: roadmap_node } => true
-    RetainedKernel { reason: reason } => false
+    gunbc.stage0_rust_source_lifecycle_scaffold.RetainedKernel { reason: reason } => false
     HandScaffold { reason: _, dissolution: _ } => false
   }
 }
@@ -52,7 +52,7 @@ fn is_retained_kernel_disposition(d: gunbc.stage0_rust_source_lifecycle_scaffold
     Generated { authority: authority } => false
     EmitFrom { authority: authority } => false
     DeleteWith { roadmap_node: roadmap_node } => false
-    RetainedKernel { reason: reason } => true
+    gunbc.stage0_rust_source_lifecycle_scaffold.RetainedKernel { reason: reason } => true
     HandScaffold { reason: _, dissolution: _ } => false
   }
 }
@@ -62,7 +62,7 @@ fn is_hand_scaffold_disposition(d: gunbc.stage0_rust_source_lifecycle_scaffold.R
     Generated { authority: authority } => false
     EmitFrom { authority: authority } => false
     DeleteWith { roadmap_node: roadmap_node } => false
-    RetainedKernel { reason: reason } => false
+    gunbc.stage0_rust_source_lifecycle_scaffold.RetainedKernel { reason: reason } => false
     HandScaffold { reason: _, dissolution: _ } => true
   }
 }

@@ -83,11 +83,11 @@ fn spark_serving_configuration_identity(
 // device pool existed is how a model that cannot fit gets admitted.
 // Both magnitudes were Int, so a NEGATIVE context length and a NEGATIVE memory budget were
 // representable -- states with no meaning that a validator would have to reject after the fact.
-// max_model_len is a cardinal token count (Nat) and the budget is a ByteSize on the std.measure
+// max_model_len is a cardinal token count (std.nat.Nat) and the budget is a ByteSize on the std.measure
 // authority, so neither can be written. Memory is not a bare number: it carries its quantity, and
 // reusing the measure carrier is what lets this budget be compared against the host RAM figures
 // the fleet already models rather than against a same-shaped Int that happens to mean bytes.
-type InferenceCapacityPolicy { max_model_len: Nat  shared_memory_budget_bytes: std.measure.ByteSize }
+type InferenceCapacityPolicy { max_model_len: std.nat.Nat  shared_memory_budget_bytes: std.measure.ByteSize }
 
 type SparkServingRelease {
   runtime: RuntimeArtifactIdentity

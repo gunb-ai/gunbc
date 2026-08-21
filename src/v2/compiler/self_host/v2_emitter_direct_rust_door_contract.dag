@@ -7,9 +7,9 @@ data v2_emitter_direct_rust_door_contract_dissolution_note: String = "DISSOLVES 
 
 data direct_rust_door_execution_receipt_ceiling_note: String = "HONEST CEILING on what the SCHEDULER learns, stated so no roster prose overclaims it. The group value retains every child outcome — which leaf refused, which stage a LeafNotReached names — but the only scheduled root returns Bool, so the executor receipt carries FAIL and nothing else. What is established today: the typed located observation exists and is inspectable by any consumer holding the group. What is NOT established: that the scheduled red receipt itself names the stage. Those are different claims and only the first is true. Dissolve-on: the witness-lifecycle pointwise expectation/evidence work preserves the group observation in the execution receipt; until then a red here is located by re-running the root locally, not by reading the falsifier receipt."
 
-data direct_rust_door_emitted_root: Node = rust_fixture_emitted_add_fn
+data direct_rust_door_emitted_root: v2.std.node.Node = rust_fixture_emitted_add_fn
 
-data direct_rust_door_missing_rules_bundle: Node = v2.std.node.Node {
+data direct_rust_door_missing_rules_bundle: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence,
@@ -50,11 +50,11 @@ fn assess_missing_translation_rule_refuses() -> DirectRustDoorAdmission {
   ) {
     Accepted { value: _, diagnostics: _ } =>
       v2.compiler.self_host.v2_emitter_direct_rust_door_contract.refused(failure: MissingRuleAcceptedDespiteGap)
-    Rejected { diagnostics: r } =>
+    v2.std.diagnostic.Rejected { diagnostics: r } =>
       match translate_diagnostic_reason_from_symbol(sym: r.head.reason) {
-        Present { value: TargetBundleMalformed } => DirectRustDoorEstablished
-        Present { value: _ } => v2.compiler.self_host.v2_emitter_direct_rust_door_contract.refused(failure: MissingRuleWrongDiagnostic)
-        Absent => v2.compiler.self_host.v2_emitter_direct_rust_door_contract.refused(failure: MissingRuleDiagnosticAbsent)
+        v2.std.optional.Present { value: TargetBundleMalformed } => DirectRustDoorEstablished
+        v2.std.optional.Present { value: _ } => v2.compiler.self_host.v2_emitter_direct_rust_door_contract.refused(failure: MissingRuleWrongDiagnostic)
+        v2.std.optional.Absent => v2.compiler.self_host.v2_emitter_direct_rust_door_contract.refused(failure: MissingRuleDiagnosticAbsent)
       }
   }
 }
@@ -116,7 +116,7 @@ type DirectRustDoorArtifactLeafResult
 
 fn direct_rust_door_artifact_assessment(
   artifact: v2.compiler.self_host.candidate_generation.ProvenancedRustArtifact,
-  holds: fn(v2.compiler.self_host.candidate_generation.ProvenancedRustArtifact) -> Bool,
+  holds: fn(v2.compiler.self_host.candidate_generation.ProvenancedRustArtifact) -> v2.std.logic.Bool,
   refusal_cause: v2.std.node.Symbol
 ) -> DirectRustDoorArtifactLeafResult {
   if holds(artifact) {
@@ -254,7 +254,7 @@ fn direct_rust_door_group_leaves(
 
 fn direct_rust_door_production_group_holds(
   group: DirectRustDoorProductionGroup
-) -> Bool {
+) -> v2.std.logic.Bool {
   !(direct_rust_door_group_leaves(group: group)
     |> any(leaf => match leaf {
       LeafEstablished => false

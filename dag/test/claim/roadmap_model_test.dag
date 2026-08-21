@@ -13,7 +13,7 @@ fn edges() -> List<gunbc.roadmap_model.RoadmapEdge> {
 }
 
 fn verdict_is_drifted(v: gunbc.roadmap_status.DriftVerdict) -> Bool {
-  match v { Drifted => true  Clean => false  Underivable => false }
+  match v { gunbc.roadmap_status.Drifted => true  Clean => false  Underivable => false }
 }
 test fn witness_child_has_parent() -> Bool {
   match roadmap_primary_parent(edges: test.claim.roadmap_model.edges(), node: roadmap_model_child_node) {
@@ -56,7 +56,7 @@ fn node_with_carriers(cs: List<gunbc.roadmap_model.Pointer>) -> gunbc.roadmap_mo
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
 }
 
@@ -87,7 +87,7 @@ test fn witness_node_status_drifts() -> Bool {
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
   verdict_is_drifted(v: node_status_drift(rn: rn, committed_box: true, merged: [5491]))
 }
@@ -101,11 +101,11 @@ test fn witness_node_unsigned_box_clean() -> Bool {
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: Unsigned,
+    signoff: gunbc.roadmap_status.Unsigned,
   }
   match node_status_drift(rn: rn, committed_box: false, merged: [5491]) {
     Clean => true
-    Drifted => false
+    gunbc.roadmap_status.Drifted => false
     Underivable => false
   }
 }

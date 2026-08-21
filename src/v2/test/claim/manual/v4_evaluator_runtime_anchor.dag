@@ -38,7 +38,7 @@ data witness_v4_evaluator_semantics_fail_closed: Bool = match v2_eval_call_primi
   args: [],
   env: v2_eval_empty_environment()
 ) {
-  Rejected { diagnostics: _ } => true
+  v2.std.diagnostic.Rejected { diagnostics: _ } => true
   _ => false
 }
 
@@ -46,11 +46,11 @@ data witness_v4_evaluator_transfer_fail_closed: Bool = match v2_eval_transfer(
   control: v2.std.runtime.Suspend { continuation: v2_eval_empty_frame() },
   frame: v2_eval_empty_frame()
 ) {
-  Rejected { diagnostics: _ } => true
+  v2.std.diagnostic.Rejected { diagnostics: _ } => true
   _ => false
 }
 
-fn v2_evaluator_witness_fail_node() -> Node {
+fn v2_evaluator_witness_fail_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^v2_evaluator_witness_fail_atom } },
     children: [],
@@ -58,7 +58,7 @@ fn v2_evaluator_witness_fail_node() -> Node {
 }
 }
 
-fn v2_evaluator_witness_claim_input(ok: Bool) -> Node {
+fn v2_evaluator_witness_claim_input(ok: Bool) -> v2.std.node.Node {
   if ok {
     v2_eval_unit_type_node()
   } else {

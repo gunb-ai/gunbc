@@ -19,7 +19,7 @@ fn tuner_control_rules() -> List<gunbc.design.material.BuildRule> {
         decl(prop: BorderRadius, value: scale_var(t: radius_3)),
         decl(prop: Background, value: role_var(r: SurfaceRole)),
         decl(prop: Color, value: role_var(r: TextRole)),
-        decl(prop: Cursor, value: "pointer"),
+        decl(prop: extdeps.languages.css.properties.Cursor, value: "pointer"),
       ],
     },
     gunbc.design.material.StaticRule {
@@ -38,7 +38,7 @@ fn tuner_control_rules() -> List<gunbc.design.material.BuildRule> {
         decl(prop: BorderRadius, value: scale_var(t: radius_3)),
         decl(prop: Background, value: role_var(r: SurfaceRole)),
         decl(prop: Color, value: role_var(r: TextRole)),
-        decl(prop: Cursor, value: "pointer"),
+        decl(prop: extdeps.languages.css.properties.Cursor, value: "pointer"),
       ],
     },
     gunbc.design.material.StaticRule {
@@ -53,7 +53,7 @@ fn tuner_control_rules() -> List<gunbc.design.material.BuildRule> {
         decl(prop: Display, value: "flex"),
         decl(prop: Gap, value: scale_var(t: space_6)),
         decl(prop: Padding, value: scale_var(t: space_2)),
-        decl(prop: Cursor, value: "pointer"),
+        decl(prop: extdeps.languages.css.properties.Cursor, value: "pointer"),
       ],
     },
     gunbc.design.material.StaticRule {
@@ -230,8 +230,8 @@ fn instrument_tuner_page() -> std.markup.Fragment {
     attributes: [ attr(name: "lang", value: "en") ],
     children: [
       el("head", [
-        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8") ], children: [] },
-        Element {
+        std.markup.Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8") ], children: [] },
+        std.markup.Element {
           tag: "meta",
           attributes: [
             attr(name: "name", value: "viewport"),
@@ -262,7 +262,7 @@ fn instrument_tuner_page() -> std.markup.Fragment {
           LiveViewRefused { causes } => tuner_refusal_page(causes: causes)
           LiveViewDerived { view } => tuner_main(view: view)
         },
-        Element {
+        std.markup.Element {
           tag: "script",
           attributes: [
             attr(name: "src", value: instrument_tuner_asset_path),

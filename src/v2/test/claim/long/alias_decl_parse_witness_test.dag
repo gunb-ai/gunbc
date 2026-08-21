@@ -5,14 +5,14 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data alias_decl_parse_long_note: String = "Alias-decl parse + binding-row witnesses exceed the per-PR 5s fast-lane eval budget (operator 5-second rule 2026-07-12; gunbc.ci_layer_roots long_lane_exclusion_note). Helpers live in v2.test.parse.alias_decl_parse; execution proofs run via long-lane recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/alias_decl_parse_witness_test.dag --functions <csv>."
 
-test fn witness_alias_decl_parse_and_binding_row_holds() -> Bool {
+test fn witness_alias_decl_parse_and_binding_row_holds() -> v2.std.logic.Bool {
   alias_decl_parse_and_binding_row_holds()
 }
 
-test fn witness_alias_decl_keyword_reserved_red_control_holds() -> Bool {
+test fn witness_alias_decl_keyword_reserved_red_control_holds() -> v2.std.logic.Bool {
   alias_decl_keyword_reserved_in_binding_position_red_control_holds()
 }
 
-test fn witness_alias_decl_fill_lexical_lookup_holds() -> Bool {
+test fn witness_alias_decl_fill_lexical_lookup_holds() -> v2.std.logic.Bool {
   alias_decl_fill_lexical_lookup_holds()
 }

@@ -3,26 +3,26 @@ module v2.test.std_model_core.bool_fact_lookup
 
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
-fn bool_lookup_width_ok(vw: Node) -> Bool {
+fn bool_lookup_width_ok(vw: v2.std.node.Node) -> v2.std.logic.Bool {
   content_hash(n: vw) == content_hash(n: bool_width_fact_node(width: bool_primitive_facts.width))
 }
 
-fn bool_lookup_encoding_ok(ve: Node) -> Bool {
+fn bool_lookup_encoding_ok(ve: v2.std.node.Node) -> v2.std.logic.Bool {
   content_hash(n: ve) == content_hash(n: bool_encoding_fact_node(encoding: bool_primitive_facts.encoding))
 }
 
-fn bool_lookup_facts_ok(vw: Node, ve: Node) -> Bool {
+fn bool_lookup_facts_ok(vw: v2.std.node.Node, ve: v2.std.node.Node) -> v2.std.logic.Bool {
   bool_lookup_width_ok(vw: vw) && bool_lookup_encoding_ok(ve: ve)
 }
 
-fn bool_lookup_signed_fails_closed(w: Witness<Node>) -> Bool {
+fn bool_lookup_signed_fails_closed(w: Witness<v2.std.node.Node>) -> v2.std.logic.Bool {
   match w {
     Violates { diagnostic: _ } => true
     Holds { value: _ } => false
   }
 }
 
-test fn witness_model_core_bool_fact_lookup_discriminates() -> Bool {
+test fn witness_model_core_bool_fact_lookup_discriminates() -> v2.std.logic.Bool {
   let w_width = model_core_bool_fact_lookup(
     facts: bool_primitive_facts,
     axis: discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {})

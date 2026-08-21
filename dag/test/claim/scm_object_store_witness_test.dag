@@ -91,7 +91,7 @@ fn canonicalize_tree(n: v2.std.node.Node) -> v2.std.node.Node {
   )
 }
 
-fn structurally_same(left: v2.std.node.Node, right: v2.std.node.Node) -> std.types.Bool {
+fn structurally_same(left: v2.std.node.Node, right: v2.std.node.Node) -> Bool {
   canonicalize_tree(n: left) == canonicalize_tree(n: right)
 }
 
@@ -103,12 +103,12 @@ fn structurally_same(left: v2.std.node.Node, right: v2.std.node.Node) -> std.typ
 type Put {
   store: gunbc.scm.object_store.ObjectStore
   identity: gunbc.scm.object_store.ObjectId
-  collided: std.types.Bool
+  collided: Bool
 }
 
 fn put_node(store: gunbc.scm.object_store.ObjectStore, n: v2.std.node.Node) -> Put {
   match gunbc.scm.object_store.store_node(store: store, n: n) {
-    Stored { store: s, identity: i } => Put { store: s, identity: i, collided: false }
+    gunbc.scm.object_store.Stored { store: s, identity: i } => Put { store: s, identity: i, collided: false }
     LocatorCollision { identity: i, existing: _, incoming: _ } =>
       Put { store: gunbc.scm.object_store.empty_store(), identity: i, collided: true }
   }
@@ -116,7 +116,7 @@ fn put_node(store: gunbc.scm.object_store.ObjectStore, n: v2.std.node.Node) -> P
 
 // The refusal must NAME the absent object, not merely occur. A refusal that is typed but not
 // located leaves the caller to rediscover what was missing, and the PR claims located refusal.
-fn refusal_names(store: gunbc.scm.object_store.ObjectStore, commit: gunbc.scm.checkout.Commit, expected: gunbc.scm.object_store.ObjectId) -> std.types.Bool {
+fn refusal_names(store: gunbc.scm.object_store.ObjectStore, commit: gunbc.scm.checkout.Commit, expected: gunbc.scm.object_store.ObjectId) -> Bool {
   match gunbc.scm.checkout.checkout(store: store, commit: commit) {
     CheckedOut { program: _ } => false
     CheckoutRefused { cause: cause } =>
@@ -130,14 +130,14 @@ fn refusal_names(store: gunbc.scm.object_store.ObjectStore, commit: gunbc.scm.ch
 // the comparison too -- which structurally_same already does for both arguments. What this concedes,
 // honestly, is that named-edge order is not a fact a commit preserves, because it is not a fact the
 // substrate's identity preserves either.
-fn checkout_matches(store: gunbc.scm.object_store.ObjectStore, commit: gunbc.scm.checkout.Commit, expected: v2.std.node.Node) -> std.types.Bool {
+fn checkout_matches(store: gunbc.scm.object_store.ObjectStore, commit: gunbc.scm.checkout.Commit, expected: v2.std.node.Node) -> Bool {
   match gunbc.scm.checkout.checkout(store: store, commit: commit) {
     CheckoutRefused { cause: _ } => false
     CheckedOut { program: got } => structurally_same(left: got, right: expected)
   }
 }
 
-fn checkout_refuses(store: gunbc.scm.object_store.ObjectStore, commit: gunbc.scm.checkout.Commit) -> std.types.Bool {
+fn checkout_refuses(store: gunbc.scm.object_store.ObjectStore, commit: gunbc.scm.checkout.Commit) -> Bool {
   match gunbc.scm.checkout.checkout(store: store, commit: commit) {
     CheckoutRefused { cause: _ } => true
     CheckedOut { program: _ } => false
@@ -157,7 +157,7 @@ fn store_of_root_only(full: gunbc.scm.object_store.ObjectStore, root: gunbc.scm.
 }
 
 // CRITERION 2 -- a commit reconstructs its exact program from its own closure.
-test fn round_trip_reconstructs_the_exact_program() -> std.types.Bool {
+test fn round_trip_reconstructs_the_exact_program() -> Bool {
   let stored = put_node(store: gunbc.scm.object_store.empty_store(), n: program_ab())
   checkout_matches(
     store: stored.store,
@@ -167,7 +167,7 @@ test fn round_trip_reconstructs_the_exact_program() -> std.types.Bool {
 }
 
 // CONTROL for the claim above: checkout_matches must be able to say no.
-test fn round_trip_refuses_a_wrong_expectation() -> std.types.Bool {
+test fn round_trip_refuses_a_wrong_expectation() -> Bool {
   let stored = put_node(store: gunbc.scm.object_store.empty_store(), n: program_ab())
   !checkout_matches(
     store: stored.store,
@@ -177,7 +177,7 @@ test fn round_trip_refuses_a_wrong_expectation() -> std.types.Bool {
 }
 
 // CRITERION 1 -- growing the store cannot change what an existing commit means.
-test fn later_objects_do_not_change_an_existing_commit() -> std.types.Bool {
+test fn later_objects_do_not_change_an_existing_commit() -> Bool {
   let first = put_node(store: gunbc.scm.object_store.empty_store(), n: program_a())
   let grown = put_node(store: first.store, n: program_ab())
   checkout_matches(
@@ -188,7 +188,7 @@ test fn later_objects_do_not_change_an_existing_commit() -> std.types.Bool {
 }
 
 // An incomplete closure refuses rather than substituting, at the entry lookup.
-test fn absent_root_refuses() -> std.types.Bool {
+test fn absent_root_refuses() -> Bool {
   let stored = put_node(store: gunbc.scm.object_store.empty_store(), n: program_ab())
   checkout_refuses(
     store: gunbc.scm.object_store.empty_store(),
@@ -198,7 +198,7 @@ test fn absent_root_refuses() -> std.types.Bool {
 
 // The STRONGER missing-object case: the root IS present and its children are not, so the refusal
 // has to come from the recursive descent, not from a guard on the entry point.
-test fn missing_reachable_child_refuses() -> std.types.Bool {
+test fn missing_reachable_child_refuses() -> Bool {
   let stored = put_node(store: gunbc.scm.object_store.empty_store(), n: program_ab())
   let severed = store_of_root_only(full: stored.store, root: stored.identity)
   checkout_refuses(
@@ -209,7 +209,7 @@ test fn missing_reachable_child_refuses() -> std.types.Bool {
 
 // The severed store's refusal names the CHILD that is gone, not the root it still holds. This is
 // what distinguishes a located refusal from a refusal that merely echoes what was asked for.
-test fn the_refusal_names_the_missing_child_not_the_root() -> std.types.Bool {
+test fn the_refusal_names_the_missing_child_not_the_root() -> Bool {
   let stored = put_node(store: gunbc.scm.object_store.empty_store(), n: program_ab())
   let severed = store_of_root_only(full: stored.store, root: stored.identity)
   let left_child = put_node(store: gunbc.scm.object_store.empty_store(), n: atom_node(identity: ^L))
@@ -222,14 +222,14 @@ test fn the_refusal_names_the_missing_child_not_the_root() -> std.types.Bool {
 
 // CONTROL for the case above: the severed store is not merely empty. If it were, the claim would be
 // a restatement of absent_root_refuses rather than a statement about a missing child.
-test fn severed_store_still_holds_its_root() -> std.types.Bool {
+test fn severed_store_still_holds_its_root() -> Bool {
   let stored = put_node(store: gunbc.scm.object_store.empty_store(), n: program_ab())
   let severed = store_of_root_only(full: stored.store, root: stored.identity)
   gunbc.scm.object_store.store_object_count(store: severed) == 1
 }
 
 // CONTROL for both refusal claims: refusal is not unconditional.
-test fn a_complete_closure_does_not_refuse() -> std.types.Bool {
+test fn a_complete_closure_does_not_refuse() -> Bool {
   let stored = put_node(store: gunbc.scm.object_store.empty_store(), n: program_ab())
   !checkout_refuses(
     store: stored.store,
@@ -266,7 +266,7 @@ fn beta_first() -> v2.std.node.Node {
   )
 }
 
-test fn reordered_named_children_share_one_identity() -> std.types.Bool {
+test fn reordered_named_children_share_one_identity() -> Bool {
   gunbc.scm.object_store.object_id_eq(left: v2.std.node.content_hash(n: alpha_first()), right: v2.std.node.content_hash(n: beta_first()))
 }
 
@@ -274,7 +274,7 @@ test fn reordered_named_children_share_one_identity() -> std.types.Bool {
 // RECORDS rather than counting them is what makes the claim below discriminating -- an object count
 // of one was already true under the defect, because dedup was keyed on identity and the identity
 // was never in question.
-fn same_record(left: gunbc.scm.object_store.ObjectStore, right: gunbc.scm.object_store.ObjectStore, identity: gunbc.scm.object_store.ObjectId) -> std.types.Bool {
+fn same_record(left: gunbc.scm.object_store.ObjectStore, right: gunbc.scm.object_store.ObjectStore, identity: gunbc.scm.object_store.ObjectId) -> Bool {
   match gunbc.scm.object_store.find_object(store: left, identity: identity) {
     Absent => false
     Present { value: l } =>
@@ -288,7 +288,7 @@ fn same_record(left: gunbc.scm.object_store.ObjectStore, right: gunbc.scm.object
 // THE DISCRIMINATING CLAIM. Both insertion histories must yield the SAME stored record, not merely
 // the same number of them. Under the defect this was false: the payload was whichever order arrived
 // first, so the two records differed while every count and every identity agreed.
-test fn both_insertion_orders_produce_the_same_canonical_record() -> std.types.Bool {
+test fn both_insertion_orders_produce_the_same_canonical_record() -> Bool {
   let a_then_b = put_node(store: put_node(store: gunbc.scm.object_store.empty_store(), n: alpha_first()).store, n: beta_first())
   let b_then_a = put_node(store: put_node(store: gunbc.scm.object_store.empty_store(), n: beta_first()).store, n: alpha_first())
   same_record(left: a_then_b.store, right: b_then_a.store, identity: a_then_b.identity)
@@ -296,13 +296,13 @@ test fn both_insertion_orders_produce_the_same_canonical_record() -> std.types.B
 
 // CONTROL: same_record is not vacuously true -- an absent record does not read as equal to a
 // present one.
-test fn the_record_comparison_discriminates() -> std.types.Bool {
+test fn the_record_comparison_discriminates() -> Bool {
   let stored = put_node(store: gunbc.scm.object_store.empty_store(), n: alpha_first())
   !same_record(left: stored.store, right: gunbc.scm.object_store.empty_store(), identity: stored.identity)
 }
 
 // The store holds ONE record for that one identity, whichever order arrived first.
-test fn storing_both_orders_adds_one_object_in_either_write_order() -> std.types.Bool {
+test fn storing_both_orders_adds_one_object_in_either_write_order() -> Bool {
   let a_then_b = put_node(store: put_node(store: gunbc.scm.object_store.empty_store(), n: alpha_first()).store, n: beta_first())
   let b_then_a = put_node(store: put_node(store: gunbc.scm.object_store.empty_store(), n: beta_first()).store, n: alpha_first())
   gunbc.scm.object_store.store_object_count(store: a_then_b.store) == gunbc.scm.object_store.store_object_count(store: put_node(store: gunbc.scm.object_store.empty_store(), n: alpha_first()).store)
@@ -311,7 +311,7 @@ test fn storing_both_orders_adds_one_object_in_either_write_order() -> std.types
 
 // And checking that identity out gives the SAME program regardless of which order was written
 // first. This is the claim the old store failed: it returned whichever order happened to be stored.
-test fn checkout_is_independent_of_which_order_was_written_first() -> std.types.Bool {
+test fn checkout_is_independent_of_which_order_was_written_first() -> Bool {
   let a_then_b = put_node(store: put_node(store: gunbc.scm.object_store.empty_store(), n: alpha_first()).store, n: beta_first())
   let b_then_a = put_node(store: put_node(store: gunbc.scm.object_store.empty_store(), n: beta_first()).store, n: alpha_first())
   match gunbc.scm.checkout.checkout(store: a_then_b.store, commit: gunbc.scm.checkout.commit_of_root(root: a_then_b.identity)) {
@@ -330,13 +330,13 @@ test fn checkout_is_independent_of_which_order_was_written_first() -> std.types.
 // and would therefore report them equal -- correctly, and uselessly for this control. An earlier
 // revision did exactly that and went red, which is the oracle change working as intended: the
 // moment the oracle became canonical, a control phrased in authored terms had to stop using it.
-test fn the_two_orders_are_different_as_authored() -> std.types.Bool {
+test fn the_two_orders_are_different_as_authored() -> Bool {
   alpha_first() != beta_first()
 }
 
 // CRITERION 3, first half -- identical content stores identically no matter how it was built. Both
 // programs are constructed independently, so nothing correlates their nodes.
-test fn independently_built_equal_programs_share_one_identity() -> std.types.Bool {
+test fn independently_built_equal_programs_share_one_identity() -> Bool {
   let one = put_node(store: gunbc.scm.object_store.empty_store(), n: program_ab())
   let two = put_node(store: gunbc.scm.object_store.empty_store(), n: program_ab())
   gunbc.scm.object_store.object_id_eq(left: one.identity, right: two.identity)
@@ -346,7 +346,7 @@ test fn independently_built_equal_programs_share_one_identity() -> std.types.Boo
 // SyntheticOccurrence, equal identities would be consistent with an identity that reads the
 // occurrence id and merely finds it equal. These are the same program under three DIFFERENT
 // occurrence allocations, and all three must land on one object identity.
-test fn identity_survives_reminted_occurrences() -> std.types.Bool {
+test fn identity_survives_reminted_occurrences() -> Bool {
   let synthetic = put_node(store: gunbc.scm.object_store.empty_store(), n: program_ab())
   let minted_low = put_node(store: gunbc.scm.object_store.empty_store(), n: minted_program_ab(base: 10))
   let minted_high = put_node(store: gunbc.scm.object_store.empty_store(), n: minted_program_ab(base: 900))
@@ -356,19 +356,19 @@ test fn identity_survives_reminted_occurrences() -> std.types.Bool {
 
 // CONTROL for the remint claim: the two bases really do allocate different occurrence ids, so the
 // claim above is about insensitivity rather than about two identical inputs.
-test fn reminted_programs_carry_different_occurrences() -> std.types.Bool {
+test fn reminted_programs_carry_different_occurrences() -> Bool {
   minted_program_ab(base: 10).occurrence_id != minted_program_ab(base: 900).occurrence_id
 }
 
 // CONTROL for identity itself: object_id_eq is not degenerate.
-test fn different_programs_get_different_identities() -> std.types.Bool {
+test fn different_programs_get_different_identities() -> Bool {
   let one = put_node(store: gunbc.scm.object_store.empty_store(), n: program_a())
   let two = put_node(store: gunbc.scm.object_store.empty_store(), n: program_ab())
   !gunbc.scm.object_store.object_id_eq(left: one.identity, right: two.identity)
 }
 
 // Storing the same program twice adds nothing: content addressing makes writes idempotent.
-test fn restoring_one_program_adds_no_objects() -> std.types.Bool {
+test fn restoring_one_program_adds_no_objects() -> Bool {
   let one = put_node(store: gunbc.scm.object_store.empty_store(), n: program_ab())
   let twice = put_node(store: one.store, n: program_ab())
   gunbc.scm.object_store.store_object_count(store: one.store) == gunbc.scm.object_store.store_object_count(store: twice.store)
@@ -378,7 +378,7 @@ test fn restoring_one_program_adds_no_objects() -> std.types.Bool {
 // this is the claim that makes that reading legitimate rather than assumed. If a fixture ever did
 // collide, the helper would hand back an empty store and several claims would fail for a reason
 // that has nothing to do with what they name -- so this is asserted, not trusted.
-test fn no_fixture_collides() -> std.types.Bool {
+test fn no_fixture_collides() -> Bool {
   !put_node(store: gunbc.scm.object_store.empty_store(), n: program_ab()).collided
     && !put_node(store: gunbc.scm.object_store.empty_store(), n: alpha_first()).collided
     && !put_node(store: put_node(store: gunbc.scm.object_store.empty_store(), n: alpha_first()).store, n: beta_first()).collided
@@ -392,14 +392,14 @@ fn computation(behavior: v2.std.node.Behavior) -> v2.std.node.Node {
   v2.std.node.node_synthetic(kind: v2.std.node.ComputationNode { behavior: behavior }, children: [])
 }
 
-test fn the_oracle_distinguishes_every_behavior_it_used_to_erase() -> std.types.Bool {
+test fn the_oracle_distinguishes_every_behavior_it_used_to_erase() -> Bool {
   !structurally_same(left: computation(behavior: v2.std.node.Transform), right: computation(behavior: v2.std.node.Branch))
     && !structurally_same(left: computation(behavior: v2.std.node.Value), right: computation(behavior: v2.std.node.Match))
     && !structurally_same(left: computation(behavior: v2.std.node.Loop), right: computation(behavior: v2.std.node.Bind))
     && structurally_same(left: computation(behavior: v2.std.node.Loop), right: computation(behavior: v2.std.node.Loop))
 }
 
-test fn the_oracle_distinguishes_atoms_and_labels() -> std.types.Bool {
+test fn the_oracle_distinguishes_atoms_and_labels() -> Bool {
   !structurally_same(left: atom_node(identity: ^foo), right: atom_node(identity: ^bar))
     && !structurally_same(
          left: v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Conj }, children: [named_edge(name: ^foo, target: atom_node(identity: ^A))]),
@@ -412,7 +412,7 @@ test fn the_oracle_distinguishes_atoms_and_labels() -> std.types.Bool {
 }
 
 // A ComputationNode is not a TypeNode even when both carry no children.
-test fn the_oracle_distinguishes_node_kinds() -> std.types.Bool {
+test fn the_oracle_distinguishes_node_kinds() -> Bool {
   !structurally_same(
     left: computation(behavior: v2.std.node.Value),
     right: v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Conj }, children: []),
@@ -424,7 +424,7 @@ test fn the_oracle_distinguishes_node_kinds() -> std.types.Bool {
 // present when it was not. Every fixture above grafts a root that IS present, which is exactly why
 // this went unnoticed -- so the absent case gets its own claim rather than relying on a path no
 // fixture takes.
-test fn grafting_an_absent_object_refuses() -> std.types.Bool {
+test fn grafting_an_absent_object_refuses() -> Bool {
   let stored = put_node(store: gunbc.scm.object_store.empty_store(), n: program_ab())
   match gunbc.scm.object_store.copy_object(from: gunbc.scm.object_store.empty_store(), to: gunbc.scm.object_store.empty_store(), identity: stored.identity) {
     CopySourceAbsent { identity: identity } => gunbc.scm.object_store.object_id_eq(left: identity, right: stored.identity)
@@ -435,7 +435,7 @@ test fn grafting_an_absent_object_refuses() -> std.types.Bool {
 
 // CONTROL: grafting a PRESENT object does not refuse, so the claim above is about absence rather
 // than about copy_object refusing unconditionally.
-test fn grafting_a_present_object_copies_it() -> std.types.Bool {
+test fn grafting_a_present_object_copies_it() -> Bool {
   let stored = put_node(store: gunbc.scm.object_store.empty_store(), n: program_ab())
   match gunbc.scm.object_store.copy_object(from: stored.store, to: gunbc.scm.object_store.empty_store(), identity: stored.identity) {
     Copied { store: store, identity: _ } => gunbc.scm.object_store.store_contains(store: store, identity: stored.identity)
@@ -448,7 +448,7 @@ test fn grafting_a_present_object_copies_it() -> std.types.Bool {
 // in DESCENDANT occurrence ids (11/12 versus 901/902), which the commit quotient erases. A root-only
 // canonicalization reports them different -- and did, until canonicalize_tree recursed. This is the
 // discriminating input the fixture set never presented while every other claim passed.
-test fn the_oracle_erases_descendant_occurrence_ids() -> std.types.Bool {
+test fn the_oracle_erases_descendant_occurrence_ids() -> Bool {
   structurally_same(left: minted_program_ab(base: 10), right: minted_program_ab(base: 900))
 }
 
@@ -461,13 +461,13 @@ fn nested_under(inner: v2.std.node.Node) -> v2.std.node.Node {
   )
 }
 
-test fn the_oracle_erases_nested_named_edge_order() -> std.types.Bool {
+test fn the_oracle_erases_nested_named_edge_order() -> Bool {
   structurally_same(left: nested_under(inner: alpha_first()), right: nested_under(inner: beta_first()))
 }
 
 // CONTROL: the recursive oracle has not become permissive -- a nested difference that is NOT in the
 // quotient still reads as different.
-test fn the_recursive_oracle_still_distinguishes_nested_content() -> std.types.Bool {
+test fn the_recursive_oracle_still_distinguishes_nested_content() -> Bool {
   !structurally_same(
     left: nested_under(inner: alpha_first()),
     right: nested_under(inner: atom_node(identity: ^A)),
@@ -506,7 +506,7 @@ test fn the_recursive_oracle_still_distinguishes_nested_content() -> std.types.B
 //
 // Within its boundary it is discriminating by execution: reversing the child fold in the STORE path
 // only -- so the two paths genuinely diverge -- turns it red (DIVERGE_PROBE 1, "claim red").
-fn stored_identity_matches_content_hash(n: Node) -> Bool {
+fn stored_identity_matches_content_hash(n: v2.std.node.Node) -> Bool {
   object_id_eq(left: put_node(store: empty_store(), n: n).identity, right: content_hash(n: n))
 }
 

@@ -3,11 +3,11 @@ module v2.test.lens_mutation_adequacy.mutation_adequacy_test
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn node_a() -> Node {
+fn node_a() -> v2.std.node.Node {
   node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^a } }, children: std.algebra.Empty)
 }
 
-fn node_b() -> Node {
+fn node_b() -> v2.std.node.Node {
   node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^b } }, children: std.algebra.Empty)
 }
 
@@ -37,7 +37,7 @@ fn red_claim() -> v2.std.verification.TestClaim {
   }
 }
 
-test fn adequate_when_every_mutation_has_a_discriminating_witness() -> Bool {
+test fn adequate_when_every_mutation_has_a_discriminating_witness() -> v2.std.logic.Bool {
   let coverage = [
     v2.lens.mutation_adequacy.MutationCoverage {
       mutation: v2.lens.mutation_adequacy.StructureMutation { mutated: ^drop_input_edge },
@@ -47,7 +47,7 @@ test fn adequate_when_every_mutation_has_a_discriminating_witness() -> Bool {
   return is_adequate(coverage: coverage)
 }
 
-test fn surviving_mutation_is_inadequate() -> Bool {
+test fn surviving_mutation_is_inadequate() -> v2.std.logic.Bool {
   let coverage = [
     v2.lens.mutation_adequacy.MutationCoverage {
       mutation: v2.lens.mutation_adequacy.StructureMutation { mutated: ^drop_input_edge },

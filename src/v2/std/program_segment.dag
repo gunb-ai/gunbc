@@ -4,7 +4,7 @@ module v2.std.program_segment
 type ProgramSegment
   = WholeProgram
   | SubtreeAtPath { path: v2.std.node.Path }
-  | SubtreeRoot { root: Node }
+  | SubtreeRoot { root: v2.std.node.Node }
 
 type PartitionBoundaryPolicy
   = FailClosedOnFreeRefs
@@ -18,7 +18,7 @@ fn program_segment_subtree_at_path(path: v2.std.node.Path) -> ProgramSegment {
   SubtreeAtPath { path: path }
 }
 
-fn program_segment_subtree_root(root: Node) -> ProgramSegment {
+fn program_segment_subtree_root(root: v2.std.node.Node) -> ProgramSegment {
   SubtreeRoot { root: root }
 }
 

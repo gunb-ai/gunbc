@@ -63,7 +63,7 @@ type MergeDependency {
 // because it shares a container. That is the file model returning through the dependency lens. Here
 // a child-body change never implicates its siblings, and the sibling-preservation claim is the
 // witness that would go red if it ever did.
-fn merge_removal_propagation_classifier() -> v2.std.dependency.DependencyKindClassifier<std.types.Bool> {
+fn merge_removal_propagation_classifier() -> v2.std.dependency.DependencyKindClassifier<Bool> {
   v2.std.dependency.DependencyKindClassifier {
     contains: false,
     binds_to: true,
@@ -83,7 +83,7 @@ fn merge_removal_propagation_classifier() -> v2.std.dependency.DependencyKindCla
   }
 }
 
-fn merge_supported_kind_classifier() -> v2.std.dependency.DependencyKindClassifier<std.types.Bool> {
+fn merge_supported_kind_classifier() -> v2.std.dependency.DependencyKindClassifier<Bool> {
   v2.std.dependency.DependencyKindClassifier {
     contains: true,
     binds_to: true,
@@ -123,11 +123,11 @@ fn merge_kind_name_classifier() -> v2.std.dependency.DependencyKindClassifier<v2
   }
 }
 
-fn kind_propagates_removal(kind: v2.std.dependency.DependencyKind) -> std.types.Bool {
+fn kind_propagates_removal(kind: v2.std.dependency.DependencyKind) -> Bool {
   v2.std.dependency.classify_dependency_kind(classifier: merge_removal_propagation_classifier(), kind: kind)
 }
 
-fn kind_is_supported(kind: v2.std.dependency.DependencyKind) -> std.types.Bool {
+fn kind_is_supported(kind: v2.std.dependency.DependencyKind) -> Bool {
   v2.std.dependency.classify_dependency_kind(classifier: merge_supported_kind_classifier(), kind: kind)
 }
 
@@ -138,7 +138,7 @@ fn kind_name(kind: v2.std.dependency.DependencyKind) -> v2.std.node.Symbol {
 // WHERE A ROLE'S VALUE CAME FROM IS PART OF THE ANSWER, NOT AN IMPLEMENTATION DETAIL. The
 // preservation law -- every role outside the implication frontier holds exactly what the target held
 // -- is only checkable if the result says which roles it preserved. Collapsing this to a bare
-// ObjectId would make "preserved the target object" and "recomputed something that happens to hash
+// gunbc.scm.object_store.ObjectId would make "preserved the target object" and "recomputed something that happens to hash
 // equal" indistinguishable, and the first is the law while the second is a coincidence.
 type RoleValue
   = PreservedFromTarget { object: gunbc.scm.object_store.ObjectId }
@@ -195,13 +195,13 @@ type MergeRefusal
 // decides whether a contest exists at all. So both normalize to the REQUESTED STATE first.
 //
 // THE CONVERSION BELONGS HERE, NOT ABOVE. Normalizing a present binding means storing the node
-// and taking its ObjectId, which can itself collide -- so it is object-store work, and a seam
+// and taking its gunbc.scm.object_store.ObjectId, which can itself collide -- so it is object-store work, and a seam
 // that performed it would either duplicate this module's authority or redo its refusals.
 type DesiredRoleValue
   = DesiredBindingPresent { object: gunbc.scm.object_store.ObjectId }
   | DesiredBindingAbsent
 
-fn desired_role_value_eq(a: DesiredRoleValue, b: DesiredRoleValue) -> std.types.Bool {
+fn desired_role_value_eq(a: DesiredRoleValue, b: DesiredRoleValue) -> Bool {
   match a {
     DesiredBindingAbsent =>
       match b {
@@ -246,7 +246,7 @@ type MergeOutcome
 
 fn edge_label_role(label: v2.std.node.EdgeLabel) -> v2.std.node.Symbol? {
   match label {
-    Named { name: name } => Present { value: name }
+    v2.std.node.Named { name: name } => Present { value: name }
     v2.std.node.Positional => none
   }
 }
@@ -287,7 +287,7 @@ fn role_named(roles: std.types.List<ResolvedRole>, role: v2.std.node.Symbol) -> 
   })
 }
 
-fn role_is_present(roles: std.types.List<ResolvedRole>, role: v2.std.node.Symbol) -> std.types.Bool {
+fn role_is_present(roles: std.types.List<ResolvedRole>, role: v2.std.node.Symbol) -> Bool {
   match role_named(roles: roles, role: role) {
     Absent => false
     Present { value: r } =>
@@ -327,7 +327,7 @@ type MergeApplyAcc {
 // AUTHORED, not against what the role currently holds. Comparing against the current value would
 // make two proposals that both replace a role look like agreement whenever the second happened to
 // restate the first's result, and would make the answer depend on the order they were applied.
-fn already_authored(authored: std.types.List<AuthoredRoleState>, role: v2.std.node.Symbol) -> std.types.Bool {
+fn already_authored(authored: std.types.List<AuthoredRoleState>, role: v2.std.node.Symbol) -> Bool {
   fold(authored, init: false, f: fn(seen, a) {
     if seen { true } else { (a.role as String) == (role as String) }
   })
@@ -343,7 +343,7 @@ fn authored_state(authored: std.types.List<AuthoredRoleState>, role: v2.std.node
   })
 }
 
-fn alternatives_contain(alternatives: std.types.List<DesiredRoleValue>, desired: DesiredRoleValue) -> std.types.Bool {
+fn alternatives_contain(alternatives: std.types.List<DesiredRoleValue>, desired: DesiredRoleValue) -> Bool {
   fold(alternatives, init: false, f: fn(seen, alt) {
     if seen { true } else { desired_role_value_eq(a: alt, b: desired) }
   })
@@ -406,7 +406,7 @@ fn normalize_requirement(store: gunbc.scm.object_store.ObjectStore, req: Require
           NormalizeRefused {
             cause: BindingLocatorCollision { role: role, identity: identity },
           }
-        Stored { store: store, identity: identity } =>
+        gunbc.scm.object_store.Stored { store: store, identity: identity } =>
           Normalized {
             store: store,
             desired: DesiredBindingPresent { object: identity },
@@ -477,7 +477,7 @@ fn apply_requirement(acc: MergeApplyAcc, req: Requirement) -> MergeApplyAcc {
 // so retargeting `k` from `f` to `h` in the same proposal must not leave the old `k -> f` obligation
 // standing. Without this rule the kernel would refuse valid coordinated changes, which is the
 // mirror-image defect of admitting invalid ones and is just as wrong.
-fn role_name_listed(names: std.types.List<v2.std.node.Symbol>, role: v2.std.node.Symbol) -> std.types.Bool {
+fn role_name_listed(names: std.types.List<v2.std.node.Symbol>, role: v2.std.node.Symbol) -> Bool {
   fold(names, init: false, f: fn(seen, n) {
     if seen { true } else { (n as String) == (role as String) }
   })
@@ -669,7 +669,7 @@ fn finish_merge(
               MergeRefused {
                 cause: BindingLocatorCollision { role: ^commit_root, identity: identity },
               }
-            Stored { store: store, identity: identity } =>
+            gunbc.scm.object_store.Stored { store: store, identity: identity } =>
               Merged {
                 store: store,
                 commit: gunbc.scm.checkout.Commit { root: identity },

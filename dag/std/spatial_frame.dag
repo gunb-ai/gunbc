@@ -17,7 +17,7 @@ module std.spatial_frame
 // question about clearance or collision is then asked of a shape that has already collapsed.
 //
 // WHY THE SCALE IS A VALUE HERE AND NOT A TYPE ARGUMENT. Measure carries its scale as a type
-// argument, so Measure<Length, Milli, Int> and Measure<Length, Micro, Int> are the honest static
+// argument, so Measure<Length, Milli, std.integer.Int> and Measure<Length, Micro, std.integer.Int> are the honest static
 // spelling — and making the affine types generic over that argument is exactly the repair this
 // layer already tried and measured as false. std.coordinate_frame records it: the v1 seed's
 // argument-position judge compares nominal HEAD NAMES and discards applied type arguments, which

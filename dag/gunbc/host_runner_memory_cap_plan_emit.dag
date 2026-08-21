@@ -79,7 +79,7 @@ fn project_runner_memory_cap_plan_doc(host: product.placement_supply.HostIdentit
 }
 
 fn expected_runner_memory_cap_apply_sheet(host: product.placement_supply.HostIdentity) -> String {
-  render(doc: project_runner_memory_cap_plan_doc(host: host), proto: runner_memory_cap_plan_protocol)
+  std.layout.render(doc: project_runner_memory_cap_plan_doc(host: host), proto: runner_memory_cap_plan_protocol)
 }
 
 fn runner_memory_cap_plan_emit_claims_nothing(host: product.placement_supply.HostIdentity) -> Bool {

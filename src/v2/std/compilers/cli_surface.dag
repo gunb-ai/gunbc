@@ -208,11 +208,11 @@ fn required_bound_spelling(
   binding: v2.std.node.Symbol
 ) -> v2.std.diagnostic.Outcome<String> {
   match v2.std.collection.map_get(binding_spellings, binding) {
-    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
+    v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
     Accepted { value: found, diagnostics: pending } =>
       match found {
-        Present { value: spelling } => v2.std.diagnostic.Accepted { value: spelling, diagnostics: pending }
-        Absent => v2.std.diagnostic.outcome_rejected(cli_binding_spelling_missing_diagnostic(binding: binding))
+        v2.std.optional.Present { value: spelling } => v2.std.diagnostic.Accepted { value: spelling, diagnostics: pending }
+        v2.std.optional.Absent => v2.std.diagnostic.outcome_rejected(cli_binding_spelling_missing_diagnostic(binding: binding))
       }
   }
 }

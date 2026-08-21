@@ -59,7 +59,7 @@ test fn knob_standing_three_arms_discriminate() -> Bool {
         host: operator_host_srv1 as String,
         applied: 0,
         drifted: 1,
-        verdict: Absent,
+        verdict: gunbc.host_converge.Absent,
         reason: Present { value: gunbc.fleet_converge_cli.KnobFrontier { reason: "witness fixture" } },
       }],
     ) {

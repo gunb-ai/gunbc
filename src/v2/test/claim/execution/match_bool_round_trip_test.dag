@@ -3,12 +3,12 @@ module v2.test.execution.match_bool_round_trip
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data match_bool_emitted_root: Node = dag_fixture_emitted_match_fn
+data match_bool_emitted_root: v2.std.node.Node = dag_fixture_emitted_match_fn
 data match_bool_target_model: v2.std.compilers.target_model.TargetModel = dag_match_target_model()
 
 fn match_bool_canonical_grounding(
-  node: Node,
-  algebra: Node
+  node: v2.std.node.Node,
+  algebra: v2.std.node.Node
 ) -> v2.std.constraints.CanonicalGrounding {
   v2.std.constraints.CanonicalGrounding {
     node: node,
@@ -25,7 +25,7 @@ fn match_bool_canonical_grounding(
   }
 }
 
-fn match_bool_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
+fn match_bool_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == dag_fixture_emitted_match_fn {
     v2.std.witness.Holds {
       value: match_bool_canonical_grounding(node: node, algebra: node)
@@ -82,7 +82,7 @@ fn match_bool_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.
   }
 }
 
-fn match_bool_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn match_bool_inferred_facts_for(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   match match_bool_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -97,7 +97,7 @@ fn match_bool_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tr
   }
 }
 
-fn match_bool_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
+fn match_bool_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   match_bool_inferred_facts_for(node: key)
 }
 
@@ -109,20 +109,20 @@ data match_bool_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compi
 }
 
 fn match_bool_emit_accepts() -> v2.std.diagnostic.Outcome<Medium<String>> {
-  emit(tree: match_bool_inferred_tree, target: match_bool_target_model)
+  v2.compiler.emit.emit(tree: match_bool_inferred_tree, target: match_bool_target_model)
 }
 
 data match_bool_emit_receipt: v2.std.diagnostic.Outcome<Medium<String>> = match_bool_emit_accepts()
 
-fn match_bool_coercion_quality_is_faithful(q: v2.std.coercion.CoercionQuality) -> Bool {
+fn match_bool_coercion_quality_is_faithful(q: v2.std.coercion.CoercionQuality) -> v2.std.logic.Bool {
   match q {
-    Exact => true
+    v2.std.coercion.Exact => true
     Identity => true
     Widened => false
   }
 }
 
-test fn match_bool_emit_matches_serialize_holds() -> Bool {
+test fn match_bool_emit_matches_serialize_holds() -> v2.std.logic.Bool {
   match target_serialize_source_from_model(
     target: match_bool_target_model,
     emitted: match_bool_emitted_root
@@ -131,23 +131,23 @@ test fn match_bool_emit_matches_serialize_holds() -> Bool {
       match match_bool_emit_receipt {
         Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn match_bool_grammar_inverse_holds() -> Bool {
+test fn match_bool_grammar_inverse_holds() -> v2.std.logic.Bool {
   match grammar_inverse_source_validated(
     target: match_bool_target_model,
     emitted: match_bool_emitted_root
   ) {
     Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn match_bool_ingest_via_coerce_matches_canonical() -> Bool {
+test fn match_bool_ingest_via_coerce_matches_canonical() -> v2.std.logic.Bool {
   match coerce_grounded_node(
     source: match_bool_emitted_root,
     tree: match_bool_inferred_tree,
@@ -157,7 +157,7 @@ test fn match_bool_ingest_via_coerce_matches_canonical() -> Bool {
       (result.target == dag_fixture_emitted_match_fn)
         && match_bool_coercion_quality_is_faithful(q: result.quality)
         && (d == v2.std.diagnostic.None)
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

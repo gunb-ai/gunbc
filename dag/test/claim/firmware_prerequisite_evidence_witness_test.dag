@@ -12,7 +12,7 @@ data synthetic_lower_refusal: extdeps.firmware.types.FirmwarePrerequisiteObserva
   board: AsrockRackAltrad8ud1l2t,
   subject: HostBios,
   image_kind: OpenBmcWebUiTar,
-  gating_target: BmcController,
+  gating_target: extdeps.firmware.types.BmcController,
   gating_version: firmware_semantic_version(major: 1, minor: 0, patch: 0),
   outcome: extdeps.firmware.types.PushRefusedByTarget { diagnostic: "authored probe; no such push was executed" },
   observed_at: 1786579200000,
@@ -81,14 +81,14 @@ fn bounds_are_the_executed_pair(
   match verdict_against_declared_minimum(observations: observations) {
     PrerequisiteConsistentUpperBound { highest_refusal: r, lowest_acceptance: a } =>
       match r {
-        Present { value: rv } =>
+        v2.std.optional.Present { value: rv } =>
           match a {
-            Present { value: av } =>
+            v2.std.optional.Present { value: av } =>
               same_firmware_version(a: rv, b: asrock_altrad8ud_bios_310_push_refused_at_bmc_207.gating_version)
                 && same_firmware_version(a: av, b: asrock_altrad8ud_bios_310_push_accepted_at_bmc_322.gating_version)
-            Absent => false
+            v2.std.optional.Absent => false
           }
-        Absent => false
+        v2.std.optional.Absent => false
       }
     _ => false
   }
@@ -124,13 +124,13 @@ test fn an_acceptance_only_history_reports_no_refusal_bound() -> Bool {
   ) {
     PrerequisiteConsistentUpperBound { highest_refusal: r, lowest_acceptance: a } =>
       match r {
-        Absent =>
+        v2.std.optional.Absent =>
           match a {
-            Present { value: av } =>
+            v2.std.optional.Present { value: av } =>
               same_firmware_version(a: av, b: asrock_altrad8ud_bios_310_push_accepted_at_bmc_322.gating_version)
-            Absent => false
+            v2.std.optional.Absent => false
           }
-        Present { value: _ } => false
+        v2.std.optional.Present { value: _ } => false
       }
     _ => false
   }

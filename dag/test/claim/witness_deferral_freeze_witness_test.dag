@@ -241,7 +241,7 @@ data rust_realization_disposition_note: String = "THE REALIZATION IS ACCOUNTED F
 
 test fn witness_deferral_freeze_rust_realization_is_declared_scaffold() -> Bool {
   match gunbc.cli_run_witness_deferral_freeze_scaffold.cli_run_witness_deferral_freeze_scaffold {
-    Scaffold { dissolves_to: _, bind: _ } => true
+    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
     _ => false
   }
 }

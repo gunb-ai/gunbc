@@ -4,7 +4,7 @@ module v2.test.claim.witness_exclusion_reconciliation_test
 
 data witness_exclusion_reconciliation_note: String = "Executable reconciliation for gunbc.ci_layer_roots.witness_exclusion_frontier, which is a PATH POLICY carrier as of 2026-08-03: every row is well-formed (never DiscoverySelection, never QuarantineProbeExpectRed, NoConsumer only for the synthetic admission RED-control path, nonempty reason and dissolve_on), the remaining explicit-roster classifications name files those rosters actually run, and the whole-tree probe policy is exactly concat(discovery, strict-resolve). The known-red arm is GONE from this reconciliation rather than strengthened: exact admission moved to gunbc.explicit_witness_admission, so there is no pattern row left to reconcile against a probe roster and the containment check that stood in for identity has nothing to check. What replaces it is a refusal — witness_exclusion_frontier_carries_no_admission_holds, with a synthetic QuarantineProbeExpectRed row as its RED control. RED controls: a DiscoverySelection row, a bare-nickname row, an unbacked BinWitnessWet row, an unbacked rehomed row, an unbacked substrate-long-lane row, and a quarantine row in the path carrier."
 
-test fn witness_exclusion_frontier_reconciliation_holds() -> Bool {
+test fn witness_exclusion_frontier_reconciliation_holds() -> v2.std.logic.Bool {
   v2.workflow.witness_admission.witness_exclusion_rows_well_formed_holds()
     && v2.workflow.witness_admission.witness_exclusion_explicit_roster_rows_consistent_holds()
     && v2.workflow.witness_admission.witness_exclusion_falsifier_rows_consistent_holds()
@@ -36,14 +36,14 @@ fn synthetic_row(pattern: String) -> gunbc.ci_layer_roots.WitnessExclusionRow {
   }
 }
 
-test fn witness_exclusion_red_control_discovery_selection_row_reds() -> Bool {
+test fn witness_exclusion_red_control_discovery_selection_row_reds() -> v2.std.logic.Bool {
   let verdict = v2.workflow.witness_admission.witness_exclusion_rows_well_formed(
     rows: [synthetic_row(pattern: "synthetic_row.dag")]
   )
   verdict == false
 }
 
-test fn witness_exclusion_red_control_bare_nickname_row_reds() -> Bool {
+test fn witness_exclusion_red_control_bare_nickname_row_reds() -> v2.std.logic.Bool {
   v2.workflow.witness_admission.witness_exclusion_rows_well_formed(
     rows: [
       gunbc.ci_layer_roots.WitnessExclusionRow {
@@ -56,7 +56,7 @@ test fn witness_exclusion_red_control_bare_nickname_row_reds() -> Bool {
   ) == false
 }
 
-test fn witness_exclusion_red_control_unbacked_bin_wet_row_reds() -> Bool {
+test fn witness_exclusion_red_control_unbacked_bin_wet_row_reds() -> v2.std.logic.Bool {
   v2.workflow.witness_admission.witness_exclusion_explicit_roster_rows_consistent(
     rows: [
       gunbc.ci_layer_roots.WitnessExclusionRow {
@@ -72,7 +72,7 @@ test fn witness_exclusion_red_control_unbacked_bin_wet_row_reds() -> Bool {
   ) == false
 }
 
-test fn witness_exclusion_red_control_unbacked_rehomed_row_reds() -> Bool {
+test fn witness_exclusion_red_control_unbacked_rehomed_row_reds() -> v2.std.logic.Bool {
   v2.workflow.witness_admission.witness_exclusion_explicit_roster_rows_consistent(
     rows: [
       gunbc.ci_layer_roots.WitnessExclusionRow {
@@ -88,7 +88,7 @@ test fn witness_exclusion_red_control_unbacked_rehomed_row_reds() -> Bool {
   ) == false
 }
 
-test fn witness_exclusion_red_control_unbacked_substrate_long_lane_row_reds() -> Bool {
+test fn witness_exclusion_red_control_unbacked_substrate_long_lane_row_reds() -> v2.std.logic.Bool {
   v2.workflow.witness_admission.witness_exclusion_explicit_roster_rows_consistent(
     rows: [
       gunbc.ci_layer_roots.WitnessExclusionRow {
@@ -104,11 +104,11 @@ test fn witness_exclusion_red_control_unbacked_substrate_long_lane_row_reds() ->
   ) == false
 }
 
-test fn witness_exclusion_frontier_carries_no_quarantine_row_holds() -> Bool {
+test fn witness_exclusion_frontier_carries_no_quarantine_row_holds() -> v2.std.logic.Bool {
   v2.workflow.witness_admission.witness_exclusion_frontier_carries_no_admission_holds()
 }
 
-test fn witness_exclusion_red_control_quarantine_row_in_path_carrier_reds() -> Bool {
+test fn witness_exclusion_red_control_quarantine_row_in_path_carrier_reds() -> v2.std.logic.Bool {
   v2.workflow.witness_admission.witness_exclusion_rows_well_formed(
     rows: [
       gunbc.ci_layer_roots.WitnessExclusionRow {
@@ -123,17 +123,17 @@ test fn witness_exclusion_red_control_quarantine_row_in_path_carrier_reds() -> B
 
 data falsifier_self_host_wet_dark_lane_unclassified_rows_note: String = "falsifier_self_host_wet_dark_lane_population (gunbc.ci_layer_roots) derives its count from the real witness_exclusion_frontier rather than a hand-typed ordinal, but a derived count is only as trustworthy as the predicate deriving it: a row could phrase its dissolve_on around the same wet lane in a spelling the positive predicate has not learned, silently deflating the count for a reason no one sees (still-bat-561 review, 2026-08-05). The guard is a wider candidate net (witness_exclusion_row_mentions_wet_lane_dark_state) plus an unclassified-residue list: falsifier_self_host_wet_dark_lane_unclassified_rows_empty_holds asserts the PROPERTY that the residue stays empty, never the population's numeric value -- a count copied from the current tree is not an independent oracle (DESIGN.md §5)."
 
-test fn falsifier_self_host_wet_dark_lane_unclassified_rows_empty_holds() -> Bool {
+test fn falsifier_self_host_wet_dark_lane_unclassified_rows_empty_holds() -> v2.std.logic.Bool {
   gunbc.ci_layer_roots.falsifier_self_host_wet_dark_lane_unclassified_rows().length() == 0
 }
 
 data falsifier_self_host_wet_dark_lane_population_matches_waiting_rows_note: String = "review 48422 (cursor/composer-2.5, 2026-08-05): falsifier_self_host_wet_dark_lane_population(), falsifier_self_host_wet_dark_lane_waiting_patterns(), and dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note() had no call sites anywhere in the tree -- the derivation looked finished but nothing on the floor executed it (DESIGN §5 specification-without-execution). These tests are the executing consumers: population_matches_waiting_rows asserts the population is exactly the count of the same waiting-rows list by construction; dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet_holds asserts R1 bijection is on the falsifier template roster when the cadence is active (Lane D enrollment, separate from per-PR bin-witness execution receipts)."
 
-test fn falsifier_self_host_wet_dark_lane_population_matches_waiting_rows_holds() -> Bool {
+test fn falsifier_self_host_wet_dark_lane_population_matches_waiting_rows_holds() -> v2.std.logic.Bool {
   gunbc.ci_layer_roots.falsifier_self_host_wet_dark_lane_population() == gunbc.ci_layer_roots.falsifier_self_host_wet_dark_lane_waiting_rows().length()
 }
 
-test fn dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet_holds() -> Bool {
+test fn dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet_holds() -> v2.std.logic.Bool {
   dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet()
 }
 
@@ -162,7 +162,7 @@ fn dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note() -> Str
   )
 }
 
-test fn dispatch_bijection_real_roster_red_falsifier_self_host_wet_note_names_witness_identity_holds() -> Bool {
+test fn dispatch_bijection_real_roster_red_falsifier_self_host_wet_note_names_witness_identity_holds() -> v2.std.logic.Bool {
   string_contains(
     s: dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note(),
     pattern: "interpreter_dispatch_bijection_real_roster_red_holds"
@@ -180,14 +180,14 @@ fn synthetic_wet_lane_row(dissolution: std.dissolution.DissolutionCondition) -> 
 
 data witness_exclusion_red_control_third_spelling_row_is_unclassified_note: String = "The discriminating RED control: a synthetic row phrasing its trigger around the wet lane in a THIRD spelling -- naming the lane without the cadence-flag identifier, without referential equality to excl_wet_integration_dissolve, and without un-darken(s) -- must be caught by the broad candidate net yet missed by the precise positive predicate, proving the unclassified-residue mechanism can actually distinguish (not merely always return true/empty by construction)."
 
-test fn witness_exclusion_red_control_third_spelling_row_is_unclassified() -> Bool {
+test fn witness_exclusion_red_control_third_spelling_row_is_unclassified() -> v2.std.logic.Bool {
   let row = synthetic_wet_lane_row(dissolution: std.dissolution.unbound_dissolution(description: "falsifier_self_host_wet lane activates for this trigger"))
   gunbc.ci_layer_roots.witness_exclusion_row_mentions_wet_lane_dark_state(row: row)
     && !gunbc.ci_layer_roots.witness_exclusion_row_waits_on_wet_lane_undarken(row: row)
 }
 
 // Positive control on the same synthetic-row path: a row that DOES match one of the positive arms must not be reported as unclassified by the net/positive-predicate pairing.
-test fn witness_exclusion_control_matched_row_is_not_flagged_unclassified() -> Bool {
+test fn witness_exclusion_control_matched_row_is_not_flagged_unclassified() -> v2.std.logic.Bool {
   let row = synthetic_wet_lane_row(dissolution: std.dissolution.unbound_dissolution(description: "falsifier_self_host_wet_cadence_active flips true"))
   gunbc.ci_layer_roots.witness_exclusion_row_mentions_wet_lane_dark_state(row: row)
     && gunbc.ci_layer_roots.witness_exclusion_row_waits_on_wet_lane_undarken(row: row)

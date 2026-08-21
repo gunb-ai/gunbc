@@ -51,7 +51,7 @@ data fleet_converge_spark_durability_step_if: String = "github.event.inputs.mode
 
 data fleet_converge_spark_grants_step_if: String = "github.event.inputs.mode == 'spark_grants'"
 
-fn fleet_converge_plan_upload_step() -> Step {
+fn fleet_converge_plan_upload_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.UsesStep {
     name: Present { value: "Upload fleet converge plan artifact" },
     id: Present { value: "plan_upload" },
@@ -149,7 +149,7 @@ fn fleet_converge_spark_linger_step() -> extdeps.github.actions.Step {
 // THE DURABILITY PROBE, and it takes a target for the same reason the mutating converge does: a
 // reboot with no named host must never fan out across the fleet from an unset variable. The entry
 // refuses that arm itself; passing the input here is what gives it something to refuse.
-fn fleet_converge_spark_reboot_step() -> Step {
+fn fleet_converge_spark_reboot_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.RunStep {
     name: Present { value: "Spark serving reboot (durability probe: the receipt is the converge that follows)" },
     id: Present { value: "spark_reboot" },
@@ -172,7 +172,7 @@ fn fleet_converge_spark_reboot_step() -> Step {
 // whole comparison in ONE process -- boot identity before, reboot, poll until that identity changes,
 // then the same replan and generation probe the converge path uses -- because a before-reading kept
 // between two dispatches is a fact whose staleness nothing checks.
-fn fleet_converge_spark_durability_step() -> Step {
+fn fleet_converge_spark_durability_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.RunStep {
     name: Present { value: "Spark serving durability transaction (boot identity before and after, in one run)" },
     id: Present { value: "spark_durability" },
@@ -190,7 +190,7 @@ fn fleet_converge_spark_durability_step() -> Step {
   }
 }
 
-fn fleet_converge_spark_grants_step() -> Step {
+fn fleet_converge_spark_grants_step() -> extdeps.github.actions.Step {
   RunStep {
     name: Present { value: "Spark managed grant reconcile (materializes its own administrator credential in-run, installs only the grants measured missing at the named target, removes the credential within this same step)" },
     id: Present { value: "spark_grants" },

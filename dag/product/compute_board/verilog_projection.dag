@@ -144,7 +144,7 @@ fn direction_symbol(s: product.compute_board.digital_control.DigitalSignal) -> v
   }
 }
 
-fn expr_node(bindings: std.algebra.FreeMonoid<VerilogBinding>, e: product.compute_board.digital_control.DigitalExpr) -> Node {
+fn expr_node(bindings: std.algebra.FreeMonoid<VerilogBinding>, e: product.compute_board.digital_control.DigitalExpr) -> v2.std.node.Node {
   match e {
     SignalRef { signal: n } =>
       v2.extdeps.languages.verilog.verilog_signal_reference(name: symbol_or_unbound(bindings: bindings, name: n))
@@ -176,7 +176,7 @@ fn symbol_or_unbound(bindings: std.algebra.FreeMonoid<VerilogBinding>, name: pro
   }
 }
 
-fn port_list_node(bindings: std.algebra.FreeMonoid<VerilogBinding>, signals: std.algebra.FreeMonoid<product.compute_board.digital_control.DigitalSignal>) -> Node {
+fn port_list_node(bindings: std.algebra.FreeMonoid<VerilogBinding>, signals: std.algebra.FreeMonoid<product.compute_board.digital_control.DigitalSignal>) -> v2.std.node.Node {
   match signals {
     Empty => v2.extdeps.languages.verilog.verilog_conj(children: [])
     Cons { head: s, tail: rest } =>
@@ -200,7 +200,7 @@ fn port_list_node(bindings: std.algebra.FreeMonoid<VerilogBinding>, signals: std
   }
 }
 
-fn assign_list_node(bindings: std.algebra.FreeMonoid<VerilogBinding>, equations: std.algebra.FreeMonoid<product.compute_board.digital_control.DigitalEquation>) -> Node {
+fn assign_list_node(bindings: std.algebra.FreeMonoid<VerilogBinding>, equations: std.algebra.FreeMonoid<product.compute_board.digital_control.DigitalEquation>) -> v2.std.node.Node {
   match equations {
     Empty => v2.extdeps.languages.verilog.verilog_conj(children: [])
     Cons { head: eq, tail: rest } =>
@@ -224,7 +224,7 @@ fn assign_list_node(bindings: std.algebra.FreeMonoid<VerilogBinding>, equations:
   }
 }
 
-fn intent_module_node(bindings: std.algebra.FreeMonoid<VerilogBinding>, intent: product.compute_board.digital_control.DigitalControlIntent) -> Node {
+fn intent_module_node(bindings: std.algebra.FreeMonoid<VerilogBinding>, intent: product.compute_board.digital_control.DigitalControlIntent) -> v2.std.node.Node {
   v2.extdeps.languages.verilog.verilog_module_declaration(
     name: symbol_or_unbound(bindings: bindings, name: intent.block_name),
     ports: port_list_node(bindings: bindings, signals: intent.signals),

@@ -248,7 +248,7 @@ data swift_nonnumeric_facts_catalog: List<SwiftNonNumericPrimitiveFacts> = [
   swift_facts_void
 ]
 
-data swift_bool_grounding: std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra
+data swift_bool_grounding: std.algebra.BooleanAlgebra<v2.std.logic.Bool> = v2.std.logic.bool_boolean_algebra
 
 fn swift_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
@@ -1512,7 +1512,7 @@ fn swift_grammar() -> v2.std.grammar.ParseGrammar {
   v2.std.grammar.ModeledGrammar { root: swift_grammar_root() }
 }
 
-fn swift_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn swift_lex_token_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.compilers.lexing.lex_rule_set_token_class_member(
     rules: swift_lex_rules(),
     token_class: sym
@@ -1658,29 +1658,29 @@ fn swift_primitive_fact_bundles() -> List<v2.std.model_core.PrimitiveFactBundle>
 
 fn swift_integer_catalog_surface_symbol_step(
   sym: v2.std.node.Symbol,
-  acc: Bool,
+  acc: v2.std.logic.Bool,
   facts: SwiftIntegerPrimitiveFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   acc || sym == facts.surface_spelling
 }
 
 fn swift_float_catalog_surface_symbol_step(
   sym: v2.std.node.Symbol,
-  acc: Bool,
+  acc: v2.std.logic.Bool,
   facts: SwiftFloatPrimitiveFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   acc || sym == facts.surface_spelling
 }
 
 fn swift_nonnumeric_catalog_surface_symbol_step(
   sym: v2.std.node.Symbol,
-  acc: Bool,
+  acc: v2.std.logic.Bool,
   facts: SwiftNonNumericPrimitiveFacts
-) -> Bool {
+) -> v2.std.logic.Bool {
   acc || sym == swift_nonnumeric_surface_spelling(facts: facts)
 }
 
-fn swift_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn swift_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: swift_integer_facts_catalog,
     empty: false,
@@ -1690,7 +1690,7 @@ fn swift_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn swift_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn swift_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: swift_float_facts_catalog,
     empty: false,
@@ -1700,7 +1700,7 @@ fn swift_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn swift_nonnumeric_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn swift_nonnumeric_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(
     xs: swift_nonnumeric_facts_catalog,
     empty: false,
@@ -1710,7 +1710,7 @@ fn swift_nonnumeric_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
   )
 }
 
-fn swift_catalog_surface_symbol(sym: v2.std.node.Symbol) -> Bool {
+fn swift_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   swift_integer_catalog_surface_symbol(sym: sym) ||
     swift_float_catalog_surface_symbol(sym: sym) ||
     swift_nonnumeric_catalog_surface_symbol(sym: sym)

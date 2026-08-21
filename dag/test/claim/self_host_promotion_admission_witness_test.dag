@@ -1,10 +1,10 @@
 module test.claim.self_host_promotion_admission_witness
 
 
-// Test-side projection. The authority carrier deliberately exposes no is_* Bool over
-// PromotionOutcome (review 51217, predicate-dissolution): a witness must return Bool,
+// Test-side projection. The authority carrier deliberately exposes no is_* v2.std.logic.Bool over
+// PromotionOutcome (review 51217, predicate-dissolution): a witness must return v2.std.logic.Bool,
 // so the collapse belongs here, at the assertion boundary, not on the admission API.
-fn pa_admitted(o: v2.compiler.self_host.promotion_admission.PromotionOutcome) -> Bool {
+fn pa_admitted(o: v2.compiler.self_host.promotion_admission.PromotionOutcome) -> v2.std.logic.Bool {
   match o {
     Promoted { successor: _, cases_compared: _ } => true
     PromotionRefused { causes: _ } => false
@@ -13,9 +13,9 @@ fn pa_admitted(o: v2.compiler.self_host.promotion_admission.PromotionOutcome) ->
 
 fn pa_artifact(hex: String) -> v2.compiler.self_host.generation.GeneratedArtifactIdentity {
   match sha512_hex_digest(hex: hex) {
-    Present { value: d } =>
+    v2.std.optional.Present { value: d } =>
       v2.compiler.self_host.generation.ArtifactMaterialized { digest: v2.compiler.self_host.generation.observed_artifact_digest(observed: d) }
-    Absent => v2.compiler.self_host.generation.ArtifactNotMaterialized
+    v2.std.optional.Absent => v2.compiler.self_host.generation.ArtifactNotMaterialized
   }
 }
 
@@ -237,7 +237,7 @@ fn pa_good() -> v2.compiler.self_host.promotion_admission.SelfHostCandidate {
 // on a nonempty corpus with a caught planted fault. Under the superseded byte
 // fixed-point authority this exact candidate would have been REFUSED for the sole
 // reason that its emitted source bytes were not the seed's.
-test fn source_different_but_behaviorally_equivalent_is_promoted() -> Bool {
+test fn source_different_but_behaviorally_equivalent_is_promoted() -> v2.std.logic.Bool {
   pa_admitted(o: v2.compiler.self_host.promotion_admission.admit_promotion(c: pa_good()))
 }
 
@@ -245,7 +245,7 @@ test fn source_different_but_behaviorally_equivalent_is_promoted() -> Bool {
 // UNCHANGED — same producer, same source closure, same target, same toolchain, same
 // build configuration, same artifact — so a byte comparison would report a perfect
 // fixed point. Behavior diverged, so admission refuses. Byte identity buys nothing.
-test fn byte_identical_but_behaviorally_wrong_is_refused() -> Bool {
+test fn byte_identical_but_behaviorally_wrong_is_refused() -> v2.std.logic.Bool {
   let ident = pa_identical_identity()
   let cand = pa_identical_candidate()
   let o = v2.compiler.self_host.promotion_admission.admit_promotion(
@@ -288,7 +288,7 @@ test fn byte_identical_but_behaviorally_wrong_is_refused() -> Bool {
 // A corpus that never proved it could fail admits nothing. Without this arm the
 // equivalence receipt is satisfiable by a corpus that agrees because it cannot
 // disagree.
-test fn uncaught_planted_fault_is_refused() -> Bool {
+test fn uncaught_planted_fault_is_refused() -> v2.std.logic.Bool {
   let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle(
       candidate_build: pa_build(
@@ -333,7 +333,7 @@ test fn uncaught_planted_fault_is_refused() -> Bool {
 // all. That is neither "the fault was caught" nor "the fault escaped", and it must
 // not be silently treated as either. Refusal names the unavailability so the deficit
 // stays countable rather than being absorbed into a green.
-test fn unavailable_fault_observation_is_refused_not_assumed_equivalent() -> Bool {
+test fn unavailable_fault_observation_is_refused_not_assumed_equivalent() -> v2.std.logic.Bool {
   let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle(
       candidate_build: pa_build(
@@ -376,7 +376,7 @@ test fn unavailable_fault_observation_is_refused_not_assumed_equivalent() -> Boo
 }
 
 // Agreement over zero cases is agreement over nothing.
-test fn empty_behavioral_corpus_is_refused() -> Bool {
+test fn empty_behavioral_corpus_is_refused() -> v2.std.logic.Bool {
   let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle(
       candidate_build: pa_build(
@@ -421,7 +421,7 @@ test fn empty_behavioral_corpus_is_refused() -> Bool {
 // A receipt gathered under a DIFFERENT toolchain refuses as stale. This is the axis
 // most likely to drift unnoticed in practice, because nothing about the source
 // changes when the toolchain moves underneath it.
-test fn receipt_from_a_different_toolchain_is_refused_as_stale() -> Bool {
+test fn receipt_from_a_different_toolchain_is_refused_as_stale() -> v2.std.logic.Bool {
   let stale_subject = v2.compiler.self_host.generation.GenerationIdentity {
     producer_compiler: pa_candidate_identity().producer_compiler,
     source_closure: pa_candidate_identity().source_closure,
@@ -471,7 +471,7 @@ test fn receipt_from_a_different_toolchain_is_refused_as_stale() -> Bool {
 // A build that failed is not a build. Stated separately from behavioral divergence
 // because a candidate that does not compile and one that compiles and misbehaves are
 // different states with different remedies.
-test fn failed_successor_build_is_refused() -> Bool {
+test fn failed_successor_build_is_refused() -> v2.std.logic.Bool {
   let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle(
       candidate_build: pa_build(
@@ -514,7 +514,7 @@ test fn failed_successor_build_is_refused() -> Bool {
 // produced ITSELF is refused, because provenance is checked against the producer
 // fixed by construction when the generation was built, not against whatever the
 // receipt asserts.
-test fn candidate_cannot_authorize_its_own_provenance() -> Bool {
+test fn candidate_cannot_authorize_its_own_provenance() -> v2.std.logic.Bool {
   let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle(
       candidate_build: pa_build(
@@ -559,7 +559,7 @@ test fn candidate_cannot_authorize_its_own_provenance() -> Bool {
 // DISCRIMINATING RED for the oracle join (review 51140). A receipt naming the
 // CANDIDATE as its own oracle is refused. Without the join this bundle is admitted:
 // subject matches, behavior "agrees", and the comparison was against itself.
-test fn candidate_as_its_own_oracle_is_refused() -> Bool {
+test fn candidate_as_its_own_oracle_is_refused() -> v2.std.logic.Bool {
   let self_oracle = v2.compiler.self_host.promotion_admission.BehavioralEquivalenceReceipt {
     subject: pa_candidate_identity(),
     oracle: pa_candidate_identity(),
@@ -605,7 +605,7 @@ test fn candidate_as_its_own_oracle_is_refused() -> Bool {
 // (review 51140). The generation-level witness proves two unbuilt artifacts do not
 // AGREE; this proves admission refuses an unbuilt candidate by name, which is the
 // arm that matters when SH-C's artifact axis is not yet fillable.
-test fn unmaterialized_candidate_artifact_is_refused_at_promotion() -> Bool {
+test fn unmaterialized_candidate_artifact_is_refused_at_promotion() -> v2.std.logic.Bool {
   let unbuilt_identity = v2.compiler.self_host.generation.GenerationIdentity {
     producer_compiler: pa_candidate_identity().producer_compiler,
     source_closure: pa_candidate_identity().source_closure,
@@ -665,7 +665,7 @@ test fn unmaterialized_candidate_artifact_is_refused_at_promotion() -> Bool {
 // own produced_by_candidate names a DIFFERENT candidate B. Every receipt joins
 // internally, so without an explicit chain check both halves look valid and the
 // successor inherits admission from a candidate that never produced it.
-test fn spliced_candidate_and_successor_chains_are_refused() -> Bool {
+test fn spliced_candidate_and_successor_chains_are_refused() -> v2.std.logic.Bool {
   let other_candidate = v2.compiler.self_host.generation.CandidateGeneration {
     identity: pa_identity(
       closure_label: "OTHER-candidate-closure",
@@ -723,7 +723,7 @@ test fn spliced_candidate_and_successor_chains_are_refused() -> Bool {
 // DISCRIMINATING RED: the planted fault was proven discriminating over a DIFFERENT
 // corpus than the one equivalence was measured on, so the fault receipt vouches for
 // teeth the equivalence run never had.
-test fn fault_proven_on_a_different_corpus_is_refused() -> Bool {
+test fn fault_proven_on_a_different_corpus_is_refused() -> v2.std.logic.Bool {
   let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle(
       candidate_build: pa_build(
@@ -773,7 +773,7 @@ test fn fault_proven_on_a_different_corpus_is_refused() -> Bool {
 // producer has the SAME identity as the bundled candidate but descends from a
 // DIFFERENT seed. An identity-only chain join admits this; joining the whole declared
 // producer refuses it. Without this control the bypass is unwitnessed.
-test fn same_identity_different_seed_splice_is_refused() -> Bool {
+test fn same_identity_different_seed_splice_is_refused() -> v2.std.logic.Bool {
   let other_seed = v2.compiler.self_host.generation.SeedGeneration {
     identity: pa_identity(
       closure_label: "OTHER-seed-closure",
@@ -836,7 +836,7 @@ test fn same_identity_different_seed_splice_is_refused() -> Bool {
 // compiler produces precisely this — it runs, it agrees on what it reached, and it never
 // reached the rest. Under the label-only join the two receipts agreed and the bundle was
 // admitted; the count sat beside the name proving nothing.
-test fn truncated_successor_run_is_refused() -> Bool {
+test fn truncated_successor_run_is_refused() -> v2.std.logic.Bool {
   let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle(
       candidate_build: pa_build(
@@ -879,7 +879,7 @@ test fn truncated_successor_run_is_refused() -> Bool {
 // corpus it names. Refusing only the truncation would let the bar be raised silently by
 // whatever the runner happened to do, which is the same unjoined-number defect pointing
 // the other way.
-test fn overlong_run_against_its_declared_corpus_is_refused() -> Bool {
+test fn overlong_run_against_its_declared_corpus_is_refused() -> v2.std.logic.Bool {
   let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle(
       candidate_build: pa_build(
@@ -922,7 +922,7 @@ test fn overlong_run_against_its_declared_corpus_is_refused() -> Bool {
 // corpus and each runs exactly the population IT declares, so every per-receipt check
 // passes and the label join passes — yet the two ran different corpora under one name.
 // Joining identity alone admits this; joining the declared size too refuses it.
-test fn same_named_corpus_declaring_two_sizes_is_refused() -> Bool {
+test fn same_named_corpus_declaring_two_sizes_is_refused() -> v2.std.logic.Bool {
   let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle(
       candidate_build: pa_build(
@@ -1024,7 +1024,7 @@ fn pa_bundle_from_observation(
 // The positive control: a fully observed run, projected into receipts, is admitted. It
 // is what makes the two REDs below discriminating rather than a mechanism that refuses
 // everything routed through the seam.
-test fn fully_observed_run_projects_into_an_admitted_promotion() -> Bool {
+test fn fully_observed_run_projects_into_an_admitted_promotion() -> v2.std.logic.Bool {
   pa_admitted(
     o: v2.compiler.self_host.promotion_admission.admit_promotion(
       c: pa_bundle_from_observation(
@@ -1043,7 +1043,7 @@ test fn fully_observed_run_projects_into_an_admitted_promotion() -> Bool {
 // fault was never reported, and the old test read the exit code as proof of teeth. Routed
 // through the seam as the unavailable observation it actually is, admission refuses under
 // its own name instead of inheriting a verdict from an exit status.
-test fn unreported_fault_observation_refuses_through_the_seam() -> Bool {
+test fn unreported_fault_observation_refuses_through_the_seam() -> v2.std.logic.Bool {
   let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle_from_observation(
       o: pa_observation(
@@ -1063,7 +1063,7 @@ test fn unreported_fault_observation_refuses_through_the_seam() -> Bool {
 // DISCRIMINATING RED for the other half: a build that did not happen cannot yield a
 // behavioral verdict, and the observation says so rather than reporting agreement over a
 // comparison that never ran.
-test fn unbuilt_run_refuses_through_the_seam() -> Bool {
+test fn unbuilt_run_refuses_through_the_seam() -> v2.std.logic.Bool {
   let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle_from_observation(
       o: pa_observation(

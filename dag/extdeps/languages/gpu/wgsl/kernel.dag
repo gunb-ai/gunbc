@@ -114,8 +114,8 @@ data wgsl_relu_mul_add_float_kernel_source_grammar_scaffold_marker: std.disposit
 
 fn witness_wgsl_kernel_sources_grammar_scaffold_documented() -> Bool {
   match wgsl_relu_mul_add_int_kernel_source_grammar_scaffold_marker {
-    Scaffold { dissolves_to: _, bind: _ } => match wgsl_relu_mul_add_float_kernel_source_grammar_scaffold_marker {
-      Scaffold { dissolves_to: _, bind: _ } => true
+    std.disposition.Scaffold { dissolves_to: _, bind: _ } => match wgsl_relu_mul_add_float_kernel_source_grammar_scaffold_marker {
+      std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
       Terminal { reason: _ } => false
     }
     Terminal { reason: _ } => false

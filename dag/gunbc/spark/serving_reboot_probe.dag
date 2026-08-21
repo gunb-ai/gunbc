@@ -178,7 +178,7 @@ func spark_serving_reboot_with_context(
       } else if spark_serving_reboot_was_attempted(outcome: outcome) == false {
         exit_failure(reason: body)
       } else {
-        ExitSuccess
+        std.process.ExitSuccess
       }
     }
   }

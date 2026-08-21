@@ -1,17 +1,17 @@
 module v2.test.manual.typescript_grammar_claim
 
-test fn typescript_grammar_validates_fixture() -> Bool {
+test fn typescript_grammar_validates_fixture() -> v2.std.logic.Bool {
   let at = v2.std.diagnostic.port_locus(port: ^parse_stage_locus_port)
   match v2.compiler.parse.grammar_validate_for_parse(root: v2.extdeps.languages.typescript.ts_fn_add_grammar_root(), at: at) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn typescript_grammar_parse_accepted() -> Bool {
+test fn typescript_grammar_parse_accepted() -> v2.std.logic.Bool {
   match typescript_grammar_parse_fixture() {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -22,10 +22,10 @@ fn typescript_grammar_parse_fixture() -> v2.std.diagnostic.Outcome<v2.std.gramma
     file: ^typescript_parse_fixture_file,
     rules: v2.extdeps.languages.typescript.ts_fn_add_lex()
   ) {
-    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
     Accepted { value: stream, diagnostics: _ } =>
       match v2.compiler.parse.grammar_validate_for_parse(root: v2.extdeps.languages.typescript.ts_fn_add_grammar_root(), at: at) {
-        Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+        v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
         Accepted { value: validated, diagnostics: _ } =>
           v2.compiler.parse.parse_production_tree(
             tokens: v2.std.compilers.lexing.token_stream_remaining(stream: stream),

@@ -16,15 +16,15 @@ type AlgebraLawCase { anchor: v2.std.verification.ClaimAnchorKey, subject: Algeb
 
 type LensApplicabilitySubject {
   lens: v2.std.node.Symbol
-  program: Node
+  program: v2.std.node.Node
 }
 
 type BidirectionalRoundtripSubject { language: v2.std.node.Symbol, production: v2.std.node.Symbol }
 
 type FrozenLanguageBehaviorSnapshot {
   language: v2.std.node.Symbol
-  input_node: Node
-  expected_value: Node
+  input_node: v2.std.node.Node
+  expected_value: v2.std.node.Node
 }
 
 type LanguageBehaviorIoMock {
@@ -37,8 +37,8 @@ type LanguageBehaviorEquivalenceSubject {
 }
 
 type RefinementPreservationSubject {
-  refined: Refined<List<Node>>
-  original: List<Node>
+  refined: Refined<List<v2.std.node.Node>>
+  original: List<v2.std.node.Node>
 }
 
 type TestgenConcept
@@ -196,12 +196,12 @@ type CorpusLensReadResult<C> = v2.std.diagnostic.Outcome<C>
 
 type CorpusLensReader<C> {
   lens: v2.std.node.Symbol
-  read: fn(Node) -> CorpusLensReadResult<C>
+  read: fn(v2.std.node.Node) -> CorpusLensReadResult<C>
 }
 
 type CorpusLensObservation<C> {
   entry: CorpusEntry
-  program: Node
+  program: v2.std.node.Node
   output: C
 }
 
@@ -277,12 +277,12 @@ fn lbe_subject_disj_dag_surface() -> LanguageBehaviorEquivalenceSubject {
 
 fn lbe_subject_transform_dag_surface() -> LanguageBehaviorEquivalenceSubject {
   LanguageBehaviorEquivalenceSubject {
-    subject: BehaviorValueSubject { behavior: Transform },
+    subject: BehaviorValueSubject { behavior: v2.std.node.Transform },
     language: ^dag_language_model_surface_id,
   }
 }
 
-fn refine_nonempty_node_list(xs: List<Node>, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<Refined<List<Node>>> {
+fn refine_nonempty_node_list(xs: List<v2.std.node.Node>, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<Refined<List<v2.std.node.Node>>> {
   refine(
     base: xs,
     by: v2.std.refinement.Validation {
@@ -292,7 +292,7 @@ fn refine_nonempty_node_list(xs: List<Node>, at: v2.std.diagnostic.Locus) -> v2.
     at: at
   )
 }
-fn refinement_preservation_list_node(xs: List<Node>) -> Node {
+fn refinement_preservation_list_node(xs: List<v2.std.node.Node>) -> v2.std.node.Node {
   fold_list_right(
     xs: xs,
     empty: v2.std.node.Node {
@@ -304,9 +304,9 @@ fn refinement_preservation_list_node(xs: List<Node>) -> Node {
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^refinement_preservation_list_cons_node } },
         children: [
-          v2.std.node.Edge { label: Named { name: ^refinement_preservation_list_head_edge }, target: h },
+          v2.std.node.Edge { label: v2.std.node.Named { name: ^refinement_preservation_list_head_edge }, target: h },
           v2.std.node.Edge {
-            label: Named { name: ^refinement_preservation_list_tail_edge },
+            label: v2.std.node.Named { name: ^refinement_preservation_list_tail_edge },
             target: tail_node
           }
         ],
@@ -327,7 +327,7 @@ fn refinement_preservation_subject_nonempty_list_base() -> v2.std.diagnostic.Out
         },
         diagnostics: v2.std.diagnostic.None,
       }
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -364,7 +364,7 @@ fn testgen_scheduled_refinement_preservation_generators() -> v2.std.diagnostic.O
         value: [generator],
         diagnostics: d,
       }
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -469,8 +469,8 @@ fn testgen_emit_language_behavior_equivalence_claim(
 fn testgen_emit_algebra_law_claim(
   anchor: v2.std.verification.ManualAnchorKey,
   label: String,
-  lhs: Node,
-  rhs: Node,
+  lhs: v2.std.node.Node,
+  rhs: v2.std.node.Node,
   classification: v2.std.verification.TestClassification
 ) -> v2.std.diagnostic.Outcome<v2.std.verification.TestClaim> {
   if lhs == rhs {
@@ -496,7 +496,7 @@ fn testgen_emit_algebra_law_claim(
           },
           diagnostics: v2.std.diagnostic.None,
         }
-      Rejected { diagnostics: d } =>
+      v2.std.diagnostic.Rejected { diagnostics: d } =>
         v2.std.diagnostic.Rejected { diagnostics: d }
     }
   }
@@ -512,7 +512,7 @@ fn algebra_law_manual_claim_case(anchor: v2.std.verification.ManualAnchorKey) ->
         },
         diagnostics: v2.std.diagnostic.None,
       }
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
@@ -586,36 +586,36 @@ fn algebra_law_subject_for_manual_anchor(anchor: v2.std.verification.ManualAncho
   }
 }
 
-fn algebra_law_subject_atom(s: v2.std.node.Symbol) -> Node {
+fn algebra_law_subject_atom(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
-fn algebra_law_subject_node(subject: AlgebraLawSubject) -> Node {
+fn algebra_law_subject_node(subject: AlgebraLawSubject) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^t19_algebra_law_algebra_field }, target: algebra_law_subject_atom(s: subject.algebra) },
-      v2.std.node.Edge { label: Named { name: ^t19_algebra_law_inhabitant_field }, target: algebra_law_subject_atom(s: subject.inhabitant) },
-      v2.std.node.Edge { label: Named { name: ^t19_algebra_law_law_field }, target: algebra_law_subject_atom(s: subject.law) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^t19_algebra_law_algebra_field }, target: algebra_law_subject_atom(s: subject.algebra) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^t19_algebra_law_inhabitant_field }, target: algebra_law_subject_atom(s: subject.inhabitant) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^t19_algebra_law_law_field }, target: algebra_law_subject_atom(s: subject.law) },
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn algebra_law_claim_term(subject: AlgebraLawSubject, expression: Node) -> Node {
+fn algebra_law_claim_term(subject: AlgebraLawSubject, expression: v2.std.node.Node) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^t19_algebra_law_subject_field }, target: algebra_law_subject_node(subject: subject) },
-      v2.std.node.Edge { label: Named { name: ^t19_algebra_law_expression_field }, target: expression },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^t19_algebra_law_subject_field }, target: algebra_law_subject_node(subject: subject) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^t19_algebra_law_expression_field }, target: expression },
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn witness_validity_symbol_atom_node(s: v2.std.node.Symbol) -> Node {
+fn witness_validity_symbol_atom_node(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } },
     children: [],
@@ -623,13 +623,13 @@ fn witness_validity_symbol_atom_node(s: v2.std.node.Symbol) -> Node {
 }
 }
 
-fn witness_validity_predicate_node(p: v2.std.find_witness.PreservationPredicate) -> Node {
+fn witness_validity_predicate_node(p: v2.std.find_witness.PreservationPredicate) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^witness_validity_field_algebra }, target: p.algebra },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^witness_validity_field_algebra }, target: p.algebra },
       v2.std.node.Edge {
-        label: Named { name: ^witness_validity_field_preservation_rule },
+        label: v2.std.node.Named { name: ^witness_validity_field_preservation_rule },
         target: witness_validity_symbol_atom_node(s: p.preservation_rule)
       }
     ],
@@ -637,21 +637,21 @@ fn witness_validity_predicate_node(p: v2.std.find_witness.PreservationPredicate)
 }
 }
 
-fn witness_validity_witness_node(w: v2.std.witness.StructuralPropertyWitness) -> Node {
+fn witness_validity_witness_node(w: v2.std.witness.StructuralPropertyWitness) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
       v2.std.node.Edge {
-        label: Named { name: ^witness_validity_field_property },
+        label: v2.std.node.Named { name: ^witness_validity_field_property },
         target: witness_validity_symbol_atom_node(s: w.property)
       },
-      v2.std.node.Edge { label: Named { name: ^witness_validity_field_evidence }, target: w.evidence }
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^witness_validity_field_evidence }, target: w.evidence }
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn witness_validity_byte_range_unencodable_diagnostic(at_node: Node) -> v2.std.diagnostic.Diagnostic {
+fn witness_validity_byte_range_unencodable_diagnostic(at_node: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^witness_validity_byte_range_unencodable,
     at: node_locus(node: at_node),
@@ -660,11 +660,11 @@ fn witness_validity_byte_range_unencodable_diagnostic(at_node: Node) -> v2.std.d
 }
 
 fn witness_validity_subject_node(
-  source_facts: Node,
-  candidate: Node,
+  source_facts: v2.std.node.Node,
+  candidate: v2.std.node.Node,
   predicate: v2.std.find_witness.PreservationPredicate,
   witness: v2.std.witness.StructuralPropertyWitness
-) -> v2.std.diagnostic.Outcome<Node> {
+) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   bind_outcome(
     o: witness_validity_outcome_node(
       o: verify_witness(
@@ -679,18 +679,18 @@ fn witness_validity_subject_node(
         value: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: Conj },
           children: [
-            v2.std.node.Edge { label: Named { name: ^witness_validity_field_source_facts }, target: source_facts },
-            v2.std.node.Edge { label: Named { name: ^witness_validity_field_candidate }, target: candidate },
+            v2.std.node.Edge { label: v2.std.node.Named { name: ^witness_validity_field_source_facts }, target: source_facts },
+            v2.std.node.Edge { label: v2.std.node.Named { name: ^witness_validity_field_candidate }, target: candidate },
             v2.std.node.Edge {
-              label: Named { name: ^witness_validity_field_predicate },
+              label: v2.std.node.Named { name: ^witness_validity_field_predicate },
               target: witness_validity_predicate_node(p: predicate)
             },
             v2.std.node.Edge {
-              label: Named { name: ^witness_validity_field_witness },
+              label: v2.std.node.Named { name: ^witness_validity_field_witness },
               target: witness_validity_witness_node(w: witness)
             },
             v2.std.node.Edge {
-              label: Named { name: ^witness_validity_field_oracle_outcome },
+              label: v2.std.node.Named { name: ^witness_validity_field_oracle_outcome },
               target: oracle_outcome
             }
           ],
@@ -702,7 +702,7 @@ fn witness_validity_subject_node(
   )
 }
 
-fn witness_validity_no_correction_reason_node(r: v2.std.diagnostic.NoCorrectionReason) -> Node {
+fn witness_validity_no_correction_reason_node(r: v2.std.diagnostic.NoCorrectionReason) -> v2.std.node.Node {
   match r {
     UserInputBoundary =>
       witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_user)
@@ -715,13 +715,13 @@ fn witness_validity_no_correction_reason_node(r: v2.std.diagnostic.NoCorrectionR
   }
 }
 
-fn witness_validity_correction_node(c: v2.std.diagnostic.Correction) -> Node {
+fn witness_validity_correction_node(c: v2.std.diagnostic.Correction) -> v2.std.node.Node {
   match c {
     Suggested { node: n } =>
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: Conj },
         children: [
-          v2.std.node.Edge { label: Named { name: ^witness_validity_correction_tag_suggested }, target: n }
+          v2.std.node.Edge { label: v2.std.node.Named { name: ^witness_validity_correction_tag_suggested }, target: n }
         ],
         occurrence_id: SyntheticOccurrence
 }
@@ -730,7 +730,7 @@ fn witness_validity_correction_node(c: v2.std.diagnostic.Correction) -> Node {
         kind: v2.std.node.TypeNode { connective: Conj },
         children: [
           v2.std.node.Edge {
-            label: Named { name: ^witness_validity_correction_tag_unavailable },
+            label: v2.std.node.Named { name: ^witness_validity_correction_tag_unavailable },
             target: witness_validity_no_correction_reason_node(r: r)
           }
         ],
@@ -739,7 +739,7 @@ fn witness_validity_correction_node(c: v2.std.diagnostic.Correction) -> Node {
   }
 }
 
-fn witness_validity_extent_node(e: v2.std.diagnostic.Extent) -> v2.std.diagnostic.Outcome<Node> {
+fn witness_validity_extent_node(e: v2.std.diagnostic.Extent) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match e {
     WholeFile =>
       v2.std.diagnostic.Accepted {
@@ -755,7 +755,7 @@ fn witness_validity_extent_node(e: v2.std.diagnostic.Extent) -> v2.std.diagnosti
   }
 }
 
-fn witness_validity_locus_node(l: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<Node> {
+fn witness_validity_locus_node(l: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match l {
     Textual { file: f, extent: e } =>
       bind_outcome(o: witness_validity_extent_node(e: e), f: fn(en) {
@@ -764,16 +764,16 @@ fn witness_validity_locus_node(l: v2.std.diagnostic.Locus) -> v2.std.diagnostic.
             kind: v2.std.node.TypeNode { connective: Conj },
             children: [
               v2.std.node.Edge {
-                label: Named { name: ^witness_validity_locus_tag_textual },
+                label: v2.std.node.Named { name: ^witness_validity_locus_tag_textual },
                 target: v2.std.node.Node {
                   kind: v2.std.node.TypeNode { connective: Conj },
                   children: [
                     v2.std.node.Edge {
-                      label: Named { name: ^witness_validity_locus_textual_file },
+                      label: v2.std.node.Named { name: ^witness_validity_locus_textual_file },
                       target: witness_validity_symbol_atom_node(s: f)
                     },
                     v2.std.node.Edge {
-                      label: Named { name: ^witness_validity_locus_textual_extent },
+                      label: v2.std.node.Named { name: ^witness_validity_locus_textual_extent },
                       target: en
                     }
                   ],
@@ -791,7 +791,7 @@ fn witness_validity_locus_node(l: v2.std.diagnostic.Locus) -> v2.std.diagnostic.
         value: v2.std.node.Node {
           kind: v2.std.node.TypeNode { connective: Conj },
           children: [
-            v2.std.node.Edge { label: Named { name: ^witness_validity_locus_tag_node }, target: a.at }
+            v2.std.node.Edge { label: v2.std.node.Named { name: ^witness_validity_locus_tag_node }, target: a.at }
           ],
           occurrence_id: SyntheticOccurrence
 },
@@ -803,7 +803,7 @@ fn witness_validity_locus_node(l: v2.std.diagnostic.Locus) -> v2.std.diagnostic.
           kind: v2.std.node.TypeNode { connective: Conj },
           children: [
             v2.std.node.Edge {
-              label: Named { name: ^witness_validity_locus_tag_port },
+              label: v2.std.node.Named { name: ^witness_validity_locus_tag_port },
               target: witness_validity_symbol_atom_node(s: a.at)
             }
           ],
@@ -814,22 +814,22 @@ fn witness_validity_locus_node(l: v2.std.diagnostic.Locus) -> v2.std.diagnostic.
   }
 }
 
-fn witness_validity_diagnostic_node(d: v2.std.diagnostic.Diagnostic) -> v2.std.diagnostic.Outcome<Node> {
+fn witness_validity_diagnostic_node(d: v2.std.diagnostic.Diagnostic) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   bind_outcome(o: witness_validity_locus_node(l: d.at), f: fn(at_node) {
     v2.std.diagnostic.Accepted {
       value: v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: Conj },
         children: [
           v2.std.node.Edge {
-            label: Named { name: ^witness_validity_diag_field_reason },
+            label: v2.std.node.Named { name: ^witness_validity_diag_field_reason },
             target: witness_validity_symbol_atom_node(s: d.reason)
           },
           v2.std.node.Edge {
-            label: Named { name: ^witness_validity_diag_field_at },
+            label: v2.std.node.Named { name: ^witness_validity_diag_field_at },
             target: at_node
           },
           v2.std.node.Edge {
-            label: Named { name: ^witness_validity_diag_field_correction },
+            label: v2.std.node.Named { name: ^witness_validity_diag_field_correction },
             target: witness_validity_correction_node(c: d.correction)
           }
         ],
@@ -840,7 +840,7 @@ fn witness_validity_diagnostic_node(d: v2.std.diagnostic.Diagnostic) -> v2.std.d
   })
 }
 
-fn witness_validity_diagnostic_list_node(xs: FreeMonoid<v2.std.diagnostic.Diagnostic>) -> v2.std.diagnostic.Outcome<Node> {
+fn witness_validity_diagnostic_list_node(xs: FreeMonoid<v2.std.diagnostic.Diagnostic>) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   fold_list_right(
     xs: xs,
     empty: v2.std.diagnostic.Accepted {
@@ -854,8 +854,8 @@ fn witness_validity_diagnostic_list_node(xs: FreeMonoid<v2.std.diagnostic.Diagno
             value: v2.std.node.Node {
               kind: v2.std.node.TypeNode { connective: Conj },
               children: [
-                v2.std.node.Edge { label: Named { name: ^witness_validity_list_cons_head }, target: hn },
-                v2.std.node.Edge { label: Named { name: ^witness_validity_list_cons_tail }, target: prev_node }
+                v2.std.node.Edge { label: v2.std.node.Named { name: ^witness_validity_list_cons_head }, target: hn },
+                v2.std.node.Edge { label: v2.std.node.Named { name: ^witness_validity_list_cons_tail }, target: prev_node }
               ],
               occurrence_id: SyntheticOccurrence
 },
@@ -867,7 +867,7 @@ fn witness_validity_diagnostic_list_node(xs: FreeMonoid<v2.std.diagnostic.Diagno
   )
 }
 
-fn witness_validity_non_empty_diagnostics_node(d: v2.std.diagnostic.NonEmptyDiagnostics) -> v2.std.diagnostic.Outcome<Node> {
+fn witness_validity_non_empty_diagnostics_node(d: v2.std.diagnostic.NonEmptyDiagnostics) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   bind_outcome(o: witness_validity_diagnostic_node(d: d.head), f: fn(hn) {
     bind_outcome(o: witness_validity_diagnostic_list_node(xs: d.tail), f: fn(tn) {
       v2.std.diagnostic.Accepted {
@@ -875,11 +875,11 @@ fn witness_validity_non_empty_diagnostics_node(d: v2.std.diagnostic.NonEmptyDiag
           kind: v2.std.node.TypeNode { connective: Conj },
           children: [
             v2.std.node.Edge {
-              label: Named { name: ^witness_validity_diags_field_head },
+              label: v2.std.node.Named { name: ^witness_validity_diags_field_head },
               target: hn
             },
             v2.std.node.Edge {
-              label: Named { name: ^witness_validity_diags_field_tail },
+              label: v2.std.node.Named { name: ^witness_validity_diags_field_tail },
               target: tn
             }
           ],
@@ -891,7 +891,7 @@ fn witness_validity_non_empty_diagnostics_node(d: v2.std.diagnostic.NonEmptyDiag
   })
 }
 
-fn witness_validity_diagnostics_node(ds: v2.std.diagnostic.Diagnostics) -> v2.std.diagnostic.Outcome<Node> {
+fn witness_validity_diagnostics_node(ds: v2.std.diagnostic.Diagnostics) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match ds {
     None =>
       v2.std.diagnostic.Accepted {
@@ -905,7 +905,7 @@ fn witness_validity_diagnostics_node(ds: v2.std.diagnostic.Diagnostics) -> v2.st
             kind: v2.std.node.TypeNode { connective: Conj },
             children: [
               v2.std.node.Edge {
-                label: Named { name: ^witness_validity_diagnostics_tag_some },
+                label: v2.std.node.Named { name: ^witness_validity_diagnostics_tag_some },
                 target: ndn
               }
             ],
@@ -917,7 +917,7 @@ fn witness_validity_diagnostics_node(ds: v2.std.diagnostic.Diagnostics) -> v2.st
   }
 }
 
-fn witness_validity_outcome_node(o: v2.std.diagnostic.Outcome<v2.std.witness.StructuralPropertyWitness>) -> v2.std.diagnostic.Outcome<Node> {
+fn witness_validity_outcome_node(o: v2.std.diagnostic.Outcome<v2.std.witness.StructuralPropertyWitness>) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match o {
     Accepted { value: w, diagnostics: ds } =>
       bind_outcome(o: witness_validity_diagnostics_node(ds: ds), f: fn(dsn) {
@@ -926,16 +926,16 @@ fn witness_validity_outcome_node(o: v2.std.diagnostic.Outcome<v2.std.witness.Str
             kind: v2.std.node.TypeNode { connective: Conj },
             children: [
               v2.std.node.Edge {
-                label: Named { name: ^witness_validity_outcome_holds },
+                label: v2.std.node.Named { name: ^witness_validity_outcome_holds },
                 target: v2.std.node.Node {
                   kind: v2.std.node.TypeNode { connective: Conj },
                   children: [
                     v2.std.node.Edge {
-                      label: Named { name: ^witness_validity_outcome_accepted_value },
+                      label: v2.std.node.Named { name: ^witness_validity_outcome_accepted_value },
                       target: witness_validity_witness_node(w: w)
                     },
                     v2.std.node.Edge {
-                      label: Named { name: ^witness_validity_outcome_accepted_diagnostics },
+                      label: v2.std.node.Named { name: ^witness_validity_outcome_accepted_diagnostics },
                       target: dsn
                     }
                   ],
@@ -948,14 +948,14 @@ fn witness_validity_outcome_node(o: v2.std.diagnostic.Outcome<v2.std.witness.Str
           diagnostics: v2.std.diagnostic.None
         }
       })
-    Rejected { diagnostics: d } =>
+    v2.std.diagnostic.Rejected { diagnostics: d } =>
       bind_outcome(o: witness_validity_non_empty_diagnostics_node(d: d), f: fn(dn) {
         v2.std.diagnostic.Accepted {
           value: v2.std.node.Node {
             kind: v2.std.node.TypeNode { connective: Conj },
             children: [
               v2.std.node.Edge {
-                label: Named { name: ^witness_validity_outcome_violates },
+                label: v2.std.node.Named { name: ^witness_validity_outcome_violates },
                 target: dn
               }
             ],
@@ -969,8 +969,8 @@ fn witness_validity_outcome_node(o: v2.std.diagnostic.Outcome<v2.std.witness.Str
 
 fn testgen_emit_witness_validity_claim(
   label: String,
-  source_facts: Node,
-  candidate: Node,
+  source_facts: v2.std.node.Node,
+  candidate: v2.std.node.Node,
   predicate: v2.std.find_witness.PreservationPredicate,
   witness: v2.std.witness.StructuralPropertyWitness
 ) -> v2.std.diagnostic.Outcome<v2.std.verification.TestClaim> {
@@ -1061,7 +1061,7 @@ fn append_nat_obligation_if_law_matches(
 ) -> v2.std.diagnostic.Outcome<v2.std.nat.NatAlgebraLawObligation> {
   match found {
     Accepted { value: _, diagnostics: None } => found
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       if obligation.law == law {
         v2.std.diagnostic.Accepted { value: obligation, diagnostics: v2.std.diagnostic.None }
       } else {
@@ -1177,7 +1177,7 @@ fn append_nat_algebra_law_schedule_row_if_anchor_matches(
 ) -> v2.std.diagnostic.Outcome<NatAlgebraLawScheduleRow> {
   match found {
     Accepted { value: _, diagnostics: _ } => found
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       bind_outcome(
         o: nat_algebra_law_schedule_row_from_obligation(obligation: obligation),
         f: fn(row) {
@@ -1407,7 +1407,7 @@ fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: v2.std.verification.G
   }
 }
 
-fn coproduct_exhaustiveness_variant_node(omitted_variant: v2.std.node.Symbol) -> Node {
+fn coproduct_exhaustiveness_variant_node(omitted_variant: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode {
       connective: v2.std.node.Atom { identity: omitted_variant }
@@ -1417,14 +1417,14 @@ fn coproduct_exhaustiveness_variant_node(omitted_variant: v2.std.node.Symbol) ->
 }
 }
 
-fn coproduct_exhaustiveness_input(anchor: v2.std.verification.GeneratedAnchorKey) -> Node {
+fn coproduct_exhaustiveness_input(anchor: v2.std.verification.GeneratedAnchorKey) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode {
       connective: v2.std.node.Atom { identity: coproduct_exhaustiveness_anchor_coproduct_type(anchor: anchor) }
     },
     children: [
       v2.std.node.Edge {
-        label: Named { name: ^coproduct_exhaustiveness_omitted_variant_edge },
+        label: v2.std.node.Named { name: ^coproduct_exhaustiveness_omitted_variant_edge },
         target: coproduct_exhaustiveness_variant_node(
           omitted_variant: coproduct_exhaustiveness_anchor_omitted_variant(anchor: anchor)
         )
@@ -1448,7 +1448,7 @@ fn coproduct_exhaustiveness_label(anchor: v2.std.verification.GeneratedAnchorKey
 }
 
 fn coproduct_exhaustiveness_diagnostic(
-  input: Node
+  input: v2.std.node.Node
 ) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^coproduct_exhaustiveness_missing_variant,
@@ -1551,7 +1551,7 @@ fn cross_representation_anchor_native_realization(anchor: v2.std.verification.Ge
   }
 }
 
-fn cross_representation_representation_node(identity: v2.std.node.Symbol) -> Node {
+fn cross_representation_representation_node(identity: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
@@ -1641,7 +1641,7 @@ fn all_generators_carry_provenance(gens: List<Generator<TestgenConcept>>) -> Boo
 fn outcome_generators_carry_provenance(o: v2.std.diagnostic.Outcome<List<Generator<TestgenConcept>>>) -> Bool {
   match o {
     Accepted { value: gens, diagnostics: d } => all_generators_carry_provenance(gens: gens)
-    Rejected { diagnostics: d } => false
+    v2.std.diagnostic.Rejected { diagnostics: d } => false
   }
 }
 
@@ -1686,7 +1686,7 @@ fn testgen_scheduled_generators_outcome() -> v2.std.diagnostic.Outcome<List<Gene
 fn testgen_scheduled_generators_roster_holds() -> Bool {
   match testgen_scheduled_generators_outcome() {
     Accepted { value: gens, diagnostics: _ } => length(xs: gens) > 0
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -1757,7 +1757,7 @@ fn testgen_run_receipt_carries_profile_roster(receipt: TestgenRunReceipt) -> Boo
           profile_ref: receipt.profile_ref
         )
       )
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -1816,7 +1816,7 @@ fn manual_test_claim_for_manual_anchor(key: v2.std.verification.ManualAnchorKey)
             label: refinement_label_nonempty_list_base,
             subject: subject
           )
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
       }
   }
 }
@@ -1863,7 +1863,7 @@ fn testgen_concept_for_manual_claim(claim: v2.std.verification.TestClaim) -> v2.
         }, diagnostics: v2.std.diagnostic.None }
     ManualClaimAnchor { manual_anchor: ManualTcBindZeroChildren } =>
       v2.std.diagnostic.Accepted { value: TypeConstruction {
-          subject: BehaviorValueSubject { behavior: Bind },
+          subject: BehaviorValueSubject { behavior: v2.std.node.Bind },
         }, diagnostics: v2.std.diagnostic.None }
     ManualClaimAnchor { manual_anchor: ManualTcConjEqualsRefl } =>
       v2.std.diagnostic.Accepted { value: TypeConstruction {
@@ -1924,7 +1924,7 @@ fn testgen_concept_for_manual_claim(claim: v2.std.verification.TestClaim) -> v2.
             },
             diagnostics: v2.std.diagnostic.None,
           }
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
       }
     ManualClaimAnchor { manual_anchor: manual_anchor } =>
       match algebra_law_subject_for_manual_anchor(anchor: manual_anchor) {
@@ -1935,7 +1935,7 @@ fn testgen_concept_for_manual_claim(claim: v2.std.verification.TestClaim) -> v2.
             },
             diagnostics: v2.std.diagnostic.None,
           }
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
       }
   }
 }
@@ -1944,10 +1944,10 @@ fn bootstrap_claim_generator_for_manual_anchor(
   key: v2.std.verification.ManualAnchorKey
 ) -> v2.std.diagnostic.Outcome<Generator<TestgenConcept>> {
   match manual_test_claim_for_manual_anchor(key: key) {
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     Accepted { value: claim, diagnostics: d0 } =>
       match testgen_concept_for_manual_claim(claim: claim) {
-        Rejected { diagnostics: r } =>
+        v2.std.diagnostic.Rejected { diagnostics: r } =>
           v2.std.diagnostic.Rejected { diagnostics: rejected_with_pending(pending: d0, rejected: r) }
         Accepted { value: slot, diagnostics: d1 } =>
           v2.std.diagnostic.Accepted {

@@ -18,10 +18,10 @@ fn wf_host_health_select_probes(
 fn wf_host_health_classify_after_temporal(
   agg: v2.std.probe_selector.TemporalAggregator,
   now_ms: Int
-) -> Bool {
+) -> v2.std.logic.Bool {
   temporal_aggregator_drainable(agg: agg, now_ms: now_ms)
 }
 
-fn wf_host_health_probe_result_passed(result: v2.std.probe_selector.ProbeResult) -> Bool {
+fn wf_host_health_probe_result_passed(result: v2.std.probe_selector.ProbeResult) -> v2.std.logic.Bool {
   result.passed
 }

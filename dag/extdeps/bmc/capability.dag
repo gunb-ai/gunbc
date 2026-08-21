@@ -35,13 +35,13 @@ fn bmc_firmware_version_from_wire(wire: String) -> BmcFirmwareVersionParse {
   } else {
     match parse_int(s: fields.first()) {
       Absent => BmcFirmwareVersionRefused { wire: wire }
-      Present { value: major } =>
+      v2.std.optional.Present { value: major } =>
         match parse_int(s: fields.skip(n: 1).first()) {
           Absent => BmcFirmwareVersionRefused { wire: wire }
-          Present { value: minor } =>
+          v2.std.optional.Present { value: minor } =>
             match parse_int(s: fields.skip(n: 2).first()) {
               Absent => BmcFirmwareVersionRefused { wire: wire }
-              Present { value: patch } =>
+              v2.std.optional.Present { value: patch } =>
                 if major < 0 || minor < 0 || patch < 0 {
                   BmcFirmwareVersionRefused { wire: wire }
                 } else {

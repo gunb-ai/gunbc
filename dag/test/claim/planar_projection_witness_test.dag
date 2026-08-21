@@ -11,7 +11,7 @@ fn elsewhere() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_fram
 fn view_of(kind: std.planar_projection.ProjectionKind) -> std.planar_projection.ProjectionView? {
   match named_projection_view(kind: kind, source_frame: test.claim.planar_projection_witness.site(), view_frame: test.claim.planar_projection_witness.page()) {
     ProjectionRefused { cause: _ } => none
-    ProjectionReady { value: v } => Present { value: v }
+    ProjectionReady { value: v } => v2.std.optional.Present { value: v }
   }
 }
 
@@ -20,8 +20,8 @@ fn view_of(kind: std.planar_projection.ProjectionKind) -> std.planar_projection.
 // reads columns rather than only checking that construction succeeded.
 fn column_is(kind: std.planar_projection.ProjectionKind, axis: Int, u: Int, v: Int) -> Bool {
   match test.claim.planar_projection_witness.view_of(kind: kind) {
-    Absent => false
-    Present { value: view } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: view } =>
       axis_image_u(m: view_map(v: view), axis_index: axis) == u
         && axis_image_v(m: view_map(v: view), axis_index: axis) == v
   }
@@ -29,30 +29,30 @@ fn column_is(kind: std.planar_projection.ProjectionKind, axis: Int, u: Int, v: I
 
 fn projected(kind: std.planar_projection.ProjectionKind, x: Int, y: Int, z: Int) -> std.planar_projection.ViewPoint2? {
   match test.claim.planar_projection_witness.view_of(kind: kind) {
-    Absent => none
-    Present { value: view } =>
+    v2.std.optional.Absent => none
+    v2.std.optional.Present { value: view } =>
       match project_point(v: view, p: point3(frame: test.claim.planar_projection_witness.site(), x: x, y: y, z: z)) {
         ProjectionRefused { cause: _ } => none
-        ProjectionReady { value: p } => Present { value: p }
+        ProjectionReady { value: p } => v2.std.optional.Present { value: p }
       }
   }
 }
 
 fn depth_of(kind: std.planar_projection.ProjectionKind, x: Int, y: Int, z: Int) -> Int? {
   match test.claim.planar_projection_witness.view_of(kind: kind) {
-    Absent => none
-    Present { value: view } =>
+    v2.std.optional.Absent => none
+    v2.std.optional.Present { value: view } =>
       match projection_depth(v: view, p: point3(frame: test.claim.planar_projection_witness.site(), x: x, y: y, z: z)) {
         ProjectionRefused { cause: _ } => none
-        ProjectionReady { value: d } => Present { value: d }
+        ProjectionReady { value: d } => v2.std.optional.Present { value: d }
       }
   }
 }
 
 fn at(p: std.planar_projection.ViewPoint2?, u: Int, v: Int) -> Bool {
   match p {
-    Absent => false
-    Present { value: q } => q.u == u && q.v == v && q.view.occurrence == 2
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: q } => q.u == u && q.v == v && q.view.occurrence == 2
   }
 }
 
@@ -73,11 +73,11 @@ test fn a_plan_places_a_point_at_its_own_horizontal_coordinates() -> Bool {
 // downstream while every construction still succeeded.
 test fn a_higher_point_is_nearer_under_a_plan() -> Bool {
   match depth_of(kind: PlanFromAbove, x: 0, y: 0, z: 2400) {
-    Absent => false
-    Present { value: high } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: high } =>
       match depth_of(kind: PlanFromAbove, x: 0, y: 0, z: 0) {
-        Absent => false
-        Present { value: low } => high == (0 - 2400) && low == 0 && high < low
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: low } => high == (0 - 2400) && low == 0 && high < low
       }
   }
 }
@@ -114,14 +114,14 @@ test fn the_dimetric_places_a_point_by_its_derived_columns() -> Bool {
 // decided by the columns rather than by the name of the projection.
 test fn only_the_scale_preserving_views_report_millimetre_page_units() -> Bool {
   match test.claim.planar_projection_witness.view_of(kind: PlanFromAbove) {
-    Absent => false
-    Present { value: plan } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: plan } =>
       match test.claim.planar_projection_witness.view_of(kind: ElevationFromSouth) {
-        Absent => false
-        Present { value: elev } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: elev } =>
           match test.claim.planar_projection_witness.view_of(kind: Dimetric2To1FromAboveEastNorth) {
-            Absent => false
-            Present { value: iso } =>
+            v2.std.optional.Absent => false
+            v2.std.optional.Present { value: iso } =>
               view_units_are_millimetres(m: view_map(v: plan))
                 && view_units_are_millimetres(m: view_map(v: elev))
                 && !view_units_are_millimetres(m: view_map(v: iso))
@@ -132,11 +132,11 @@ test fn only_the_scale_preserving_views_report_millimetre_page_units() -> Bool {
 
 test fn a_plan_page_coordinate_reads_back_as_millimetres() -> Bool {
   match test.claim.planar_projection_witness.view_of(kind: PlanFromAbove) {
-    Absent => false
-    Present { value: plan } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: plan } =>
       match projected(kind: PlanFromAbove, x: 3000, y: 4000, z: 0) {
-        Absent => false
-        Present { value: p } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: p } =>
           match view_point_millimetres(v: plan, p: p) {
             ProjectionRefused { cause: _ } => false
             ProjectionReady { value: mm } =>
@@ -152,11 +152,11 @@ test fn a_plan_page_coordinate_reads_back_as_millimetres() -> Bool {
 // foreshortened.
 test fn an_axonometric_page_coordinate_refuses_to_read_as_millimetres() -> Bool {
   match test.claim.planar_projection_witness.view_of(kind: Dimetric2To1FromAboveEastNorth) {
-    Absent => false
-    Present { value: iso } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: iso } =>
       match projected(kind: Dimetric2To1FromAboveEastNorth, x: 1000, y: 0, z: 0) {
-        Absent => false
-        Present { value: p } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: p } =>
           match view_point_millimetres(v: iso, p: p) {
             ProjectionReady { value: _ } => false
             ProjectionRefused { cause: c } =>
@@ -218,8 +218,8 @@ test fn a_camera_with_no_direction_refuses_before_the_cross_product() -> Bool {
 // second frame-mismatch vocabulary invented here.
 test fn a_point_from_another_frame_has_no_projection() -> Bool {
   match test.claim.planar_projection_witness.view_of(kind: PlanFromAbove) {
-    Absent => false
-    Present { value: plan } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: plan } =>
       match project_point(v: plan, p: point3(frame: elsewhere(), x: 1, y: 2, z: 3)) {
         ProjectionReady { value: _ } => false
         ProjectionRefused { cause: c } =>
@@ -239,8 +239,8 @@ test fn a_point_from_another_frame_has_no_projection() -> Bool {
 // the overflow that actually occurred rather than a coordinate that has silently gone negative.
 test fn a_page_coordinate_that_cannot_be_represented_refuses() -> Bool {
   match test.claim.planar_projection_witness.view_of(kind: Dimetric2To1FromAboveEastNorth) {
-    Absent => false
-    Present { value: iso } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: iso } =>
       match project_point(v: iso, p: point3(frame: test.claim.planar_projection_witness.site(), x: int_inclusive_max(), y: int_inclusive_max(), z: 0)) {
         ProjectionReady { value: _ } => false
         ProjectionRefused { cause: c } =>
@@ -259,8 +259,8 @@ test fn a_page_coordinate_that_cannot_be_represented_refuses() -> Bool {
 // would be a number computed from coordinates that mean something else.
 test fn depth_is_refused_across_frames_too() -> Bool {
   match test.claim.planar_projection_witness.view_of(kind: PlanFromAbove) {
-    Absent => false
-    Present { value: plan } =>
+    v2.std.optional.Absent => false
+    v2.std.optional.Present { value: plan } =>
       match projection_depth(v: plan, p: point3(frame: elsewhere(), x: 1, y: 2, z: 3)) {
         ProjectionReady { value: _ } => false
         ProjectionRefused { cause: _ } => true

@@ -54,7 +54,7 @@ data user_authorization_endpoint: std.types.NonEmptyStr = "https://auth.ebay.com
 
 service ebay.OAuth {
   config {
-    endpoint: production_api_base
+    endpoint: extdeps.ebay.ebay.production_api_base
 
     rate_limit: { requests: 1000, per: minute, scope: oauth }
 

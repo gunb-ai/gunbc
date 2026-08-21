@@ -8,21 +8,15 @@ use self::ShrinkFactor::*;
 use self::SizeBound::*;
 pub use crate::std_algebra::kernel_algebra_profile;
 pub use crate::std_algebra::AlgebraProfile;
-use crate::std_algebra::AlgebraProfile::{
-    ApproximateFieldProfile, BooleanAlgebraCollectionProfile, BooleanAlgebraProfile,
-    FreeMonoidCollectionProfile, FreeMonoidScalarProfile, OrderedRingProfile,
-    PartialFunctionProfile, PointwisePowerCollectionProfile,
-};
+use crate::std_algebra::AlgebraProfile::*;
 pub use crate::std_termination::positive_descent_count;
-use crate::std_termination::DescentEvidence::DescentUnknown;
-use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
-use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
-use crate::std_termination::RankingDimension::*;
-pub use crate::std_termination::{
-    DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension,
-};
+use crate::std_termination::DescentEvidence::*;
+use crate::std_termination::PositiveDescentAmount::*;
+use crate::std_termination::ProportionalDivisor::*;
+pub use crate::std_termination::{DescentEvidence, PositiveDescentAmount, ProportionalDivisor};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v2_std_optional::Optional;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -203,7 +197,7 @@ pub fn constant_bound_value(bound: Rc<SizeBound>) -> Option<i64> {
     match (*bound.clone()).clone() {
         SizeBound::ExplicitCountZero => Some(0),
         SizeBound::ExplicitCountPositive { steps: s, .. } => {
-            Some(positive_descent_count(s.clone()))
+            Some(crate::std_termination::positive_descent_count(s.clone()))
         }
         SizeBound::Forever => Some(forever_iteration_bound()),
         _ => None,
@@ -237,7 +231,10 @@ pub fn type_iteration_dimension(type_name: String) -> Option<IterationDimension>
     if (type_name.clone() == "Node".to_string()) {
         Some(IterationDimension::TreeDescent)
     } else {
-        match v1_rt::map_get(&kernel_algebra_profile(), type_name.clone()) {
+        match v1_rt::map_get(
+            &crate::std_algebra::kernel_algebra_profile(),
+            type_name.clone(),
+        ) {
             Some(p) => algebra_profile_to_dimension(p.clone()),
             None => None,
         }

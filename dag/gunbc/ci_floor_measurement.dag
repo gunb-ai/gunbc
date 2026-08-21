@@ -7,7 +7,7 @@ data gunbc_ci_runner_cgroup_memory_cap: std.measure.ByteSize = gunbc_runner_slot
 
 data gunbc_ci_dashboard_session_container_cap: std.measure.ByteSize = byte_size(33578549248)
 
-data gunbc_ci_cap_split_disposition: std.disposition.Disposition = Terminal {
+data gunbc_ci_cap_split_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "DESIGN §3 de-conflation (PR-A): gunbc_ci_runner_cgroup_memory_cap (declared per-slot MemoryMax from gunbc.runner_slot_allocation) vs gunbc_ci_dashboard_session_container_cap (31.27GiB, dashboard session pool, inter-run). Retired gunbc_ci_host_container_memory_cap nickname that fused both."
 }
 
@@ -15,7 +15,7 @@ data gunbc_ci_runner_slot_memory_max_live: std.measure.ByteSize = gunbc_runner_s
 
 data gunbc_ci_runner_slot_memory_high_live: std.measure.ByteSize = gunbc_runner_slot_desired().memory_high
 
-data gunbc_ci_runner_slot_memory_high_live_source: std.disposition.Disposition = Terminal {
+data gunbc_ci_runner_slot_memory_high_live_source: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Live readback 2026-07-11, four independent floor cgroup post-reads across four diffs and both hosts (runs 29137081535, 29142398465, 29159082043 and the 29112-series wedge, srv1-01/srv1-03/srv2-01/srv2-02): floor_peak_post pinned within 0.65MiB ABOVE exactly 16106127360 with zero oom_kill events - the memory.high reclaim clamp's overshoot signature (allocations cross the line by one burst, forced direct reclaim drags usage back, memory.peak records the overshoot; sub-MiB overshoot = reclaim keeping up = the floor tail running at swap speed). This is the throttle line the 2026-07-11 MemoryHigh-emit ruling declared APPLIED (gunbc.runner_slot_allocation, max-1GiB relation). memory.max is the kill line (loud, attributable); memory.high is the speed line - between them the slot does not fail, it degrades into swap. The run-time memory governor packs to this line by construction: it reads the tightest memory.high as its budget and backs off on the creep signals (PSI, swap growth) that crossing it produces. Values derive from gunbc.runner_slot_allocation single authority (operator ruling 2026-07-14); the four floor_peak_post receipts in gunbc_ci_floor_run_peak_receipts are the measured corroboration, not a second numeric source."
 }
 
@@ -27,7 +27,7 @@ fn gunbc_ci_runner_slot_ram_speed_ceiling() -> std.measure.ByteSize {
   }
 }
 
-data gunbc_ci_runner_slot_memory_max_live_source: std.disposition.Disposition = Terminal {
+data gunbc_ci_runner_slot_memory_max_live_source: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Operator ruling 2026-07-14: gunbc_ci_runner_slot_memory_max_live derives from gunbc.runner_slot_allocation (no duplicate literal). DECLARED ROW is 14GiB MemoryMax / 13GiB MemoryHigh (2026-08-05 allocation ruling). HONEST RESIDUAL (operator observation 2026-08-13, srv1): deploy drop-ins on disk may still read 16GiB/15GiB while system.control set-property residue pins EFFECTIVE caps at 14GiB/13GiB until live_deploy clears it — gunbc.host_axis_caps control_shadow_reconcile + deploy apply (author derived drop-ins then systemctl revert under ghrunner sudo; converge on briansrls does not run this pipeline). This carrier names the DECLARED allocation row, not the kernel-effective cap; floor width sizing must not assume deploy drop-in authority is in force while shadow residue remains. Post-apply throttle-line evidence is the four floor_peak_post receipts (gunbc_ci_floor_run_peak_receipts). Dissolve-on: direct post-apply memory.max readback on a COMPLETED fleet floor lands as a FloorRunCgroupPeakReceipt with memory_max_observed, then the live row can retire in favor of the receipt-fed authority."
 }
 
@@ -76,7 +76,7 @@ data gunbc_ci_floor_run_peak_receipts: List<FloorRunCgroupPeakReceipt> = [
   },
 ]
 
-data gunbc_ci_floor_run_peak_receipt_disposition: std.disposition.Disposition = Terminal {
+data gunbc_ci_floor_run_peak_receipt_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Per-run floor cgroup peak receipts (operator ruling 2026-07-14): typed carrier for floor_peak_post observations from completed fleet floors — the INTER-run whole-run peak at the slot's memory.high throttle line. Four independent readbacks across four diffs and both hosts (runs 29137081535, 29142398465, 29159082043, 29112500694 on srv1-01/srv1-03/srv2-01/srv2-02) pinned within gunbc_ci_floor_run_peak_receipt_overshoot_ceiling (0.65MiB) above gunbc_ci_runner_slot_memory_high_live with zero oom_kill events. floor_outcome != success means the peak is a CENSORED lower bound (DESIGN §5); these wedged runs still prove the throttle-line signature. The executor [measurement] line on a COMPLETED floor is the memory.max readback path that closes the residual in gunbc_ci_runner_slot_memory_max_live_source."
 }
 
@@ -188,9 +188,9 @@ data gunbc_ci_regime2_aggregate_dissolution_marker: std.disposition.Disposition 
 
 
 
-data gunbc_ci_footprint_granularity_disposition: std.disposition.Disposition = Terminal { reason: "DESIGN §3 deliberate two-concerns split, revised 2026-07-12: INTER-run whole-run cgroup peak (gunbc_ci_job_peaks) governs co-residence - how many runs share a host, feeding the conserving budget tree; WITHIN-run parallelism is governed at run time by the memory governor against the slot's own cgroup budget (the former within-run per-shard-peak carrier and its width fold are retired). Different granularity, different scheduling decision, different consumer. Do not re-fuse them into one authority." }
+data gunbc_ci_footprint_granularity_disposition: std.disposition.Disposition = std.disposition.Terminal { reason: "DESIGN §3 deliberate two-concerns split, revised 2026-07-12: INTER-run whole-run cgroup peak (gunbc_ci_job_peaks) governs co-residence - how many runs share a host, feeding the conserving budget tree; WITHIN-run parallelism is governed at run time by the memory governor against the slot's own cgroup budget (the former within-run per-shard-peak carrier and its width fold are retired). Different granularity, different scheduling decision, different consumer. Do not re-fuse them into one authority." }
 
-data gunbc_ci_footprint_bridge_disposition: std.disposition.Disposition = Terminal { reason: "Deferred unification path (acknowledged, not attempted): INTER-run whole-run peak is plausibly governor-width x measured per-worker residency + base, so the INTER-run footprint could eventually derive from within-run measured receipts (the executor's [measurement]/[governor] lines) - the real single authority. Held back deliberately: derive only from measured receipts, never from authored predictions (the retired width-fold constants are the cautionary receipt)." }
+data gunbc_ci_footprint_bridge_disposition: std.disposition.Disposition = std.disposition.Terminal { reason: "Deferred unification path (acknowledged, not attempted): INTER-run whole-run peak is plausibly governor-width x measured per-worker residency + base, so the INTER-run footprint could eventually derive from within-run measured receipts (the executor's [measurement]/[governor] lines) - the real single authority. Held back deliberately: derive only from measured receipts, never from authored predictions (the retired width-fold constants are the cautionary receipt)." }
 
 type HostFixedOverhead
   = HostFixedOverheadMeasured { bytes: std.measure.ByteSize, provenance: std.types.NonEmptyStr }

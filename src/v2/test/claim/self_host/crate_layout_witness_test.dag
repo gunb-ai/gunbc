@@ -9,38 +9,38 @@ The parity witness transition_parity_host_index_agrees_with_hand_rows is deleted
 
 What remains is the part that was never about self-host progress: the committed generated artifact must match the registration rows it is generated from, on basenames, filenames, directories and the rendered pub-mod block."
 
-fn string_list_contains(xs: List<String>, needle: String) -> Bool {
+fn string_list_contains(xs: List<String>, needle: String) -> v2.std.logic.Bool {
   xs |> any(x => x == needle)
 }
 
-fn lists_have_same_members(a: List<String>, b: List<String>) -> Bool {
+fn lists_have_same_members(a: List<String>, b: List<String>) -> v2.std.logic.Bool {
   (length(xs: a) == length(xs: b))
     && fold_list(xs: a, empty: true, cons: fn(ok, x) { ok && v2.test.claim.self_host.crate_layout_witness.string_list_contains(xs: b, needle: x) })
 }
 
-fn witness_generated_pub_mod_block_matches_registrations_holds() -> Bool {
+fn witness_generated_pub_mod_block_matches_registrations_holds() -> v2.std.logic.Bool {
   gunbc.stage0_crate_layout_generated.generated_pub_mod_block == emit_hand_maintained_pub_mod_block()
 }
 
-fn witness_generated_basenames_match_registrations_holds() -> Bool {
+fn witness_generated_basenames_match_registrations_holds() -> v2.std.logic.Bool {
   lists_have_same_members(
     a: gunbc.stage0_crate_layout_generated.generated_pub_mod_basenames,
     b: hand_maintained_pub_mod_basenames()
   )
 }
 
-fn witness_generated_filenames_match_registrations_holds() -> Bool {
+fn witness_generated_filenames_match_registrations_holds() -> v2.std.logic.Bool {
   lists_have_same_members(
     a: gunbc.stage0_crate_layout_generated.generated_stage0_filenames,
     b: hand_maintained_stage0_filenames()
   )
 }
 
-fn witness_generated_dirs_match_registrations_holds() -> Bool {
+fn witness_generated_dirs_match_registrations_holds() -> v2.std.logic.Bool {
   lists_have_same_members(a: gunbc.stage0_crate_layout_generated.generated_stage0_dirs, b: hand_maintained_stage0_dirs())
 }
 
-fn witness_generated_has_no_phantom_registration_holds() -> Bool {
+fn witness_generated_has_no_phantom_registration_holds() -> v2.std.logic.Bool {
   fold_list(
     xs: gunbc.stage0_crate_layout_generated.generated_pub_mod_basenames,
     empty: true,
@@ -50,7 +50,7 @@ fn witness_generated_has_no_phantom_registration_holds() -> Bool {
   )
 }
 
-test fn crate_layout_witnesses() -> Bool {
+test fn crate_layout_witnesses() -> v2.std.logic.Bool {
   witness_generated_pub_mod_block_matches_registrations_holds()
     && witness_generated_basenames_match_registrations_holds()
     && witness_generated_filenames_match_registrations_holds()

@@ -56,7 +56,7 @@ fn assimilation_phase_participations(p: gunbc.host_standup.HostStandupAssimilati
 
 fn host_phase_participations(phase: gunbc.host_standup.HostStandupPhase) -> List<FleetParticipation> {
   match phase {
-    Prefix { phase: p } => prefix_phase_participations(p: p)
+    gunbc.host_standup.Prefix { phase: p } => prefix_phase_participations(p: p)
     Assimilation { phase: p } => assimilation_phase_participations(p: p)
   }
 }

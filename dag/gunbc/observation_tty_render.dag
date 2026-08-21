@@ -3,7 +3,7 @@ module gunbc.observation_tty_render
 
 data observation_tty_render_note: String = "P2 of the progress-and-observation lane: the interactive TTY renderer, a SIBLING projection of the same std.observation carriers the CI renderer projects — not a second model and not the CI renderer's successor. The two differ only where the medium differs. A terminal can be repainted, so routine progress overwrites one line in place and stays quiet; a CI log cannot, so it appends. Everything the two share — the event vocabulary, the density authority, the glyph table, the duration and byte and percent projections, the hold-cause text — is imported from the CI renderer or the model, never re-derived. That sharing is the proof that one event stream drives N renderers (DESIGN section 2); a TTY renderer that re-spelled ci_human_duration would be the fork this lane exists to avoid."
 
-// The three upgrades over the reference implementation studied for this lane, all inherited from the model rather than re-earned here: outcome lines carry durations (ci_event_line already appends them), Refused is distinct from Failed (the outcome sum and the glyph authority keep them apart), and dwell escalation is recursive rather than one-level (observation_escalation_subject walks the whole tree). The reference has none of these; the TTY renderer gets them for free by projecting the same carriers.
+// The three upgrades over the reference implementation studied for this lane, all inherited from the model rather than re-earned here: outcome lines carry durations (ci_event_line already appends them), std.observation.Refused is distinct from std.observation.Failed (the outcome sum and the glyph authority keep them apart), and dwell escalation is recursive rather than one-level (observation_escalation_subject walks the whole tree). The reference has none of these; the TTY renderer gets them for free by projecting the same carriers.
 type PreambleFields {
   run_id: std.types.NonEmptyStr
   trigger: std.types.NonEmptyStr
@@ -141,6 +141,6 @@ fn tty_render_emission(emission: TtyEmission, tier: std.symbols.Tier) -> String 
   ci_render_line(line: emission.line, tier: tier)
 }
 
-data observation_tty_render_disposition: std.disposition.Disposition = Terminal {
+data observation_tty_render_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "The TTY renderer is Terminal — an in-place-repaint projection is what an interactive terminal IS. It is a peer of the CI-log renderer and the later dashboard, all projecting one event stream; none is a scaffold for another. What dissolves is the hand-rolled TTY progress code the P3 census will enumerate, not this projection."
 }

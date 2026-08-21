@@ -6,18 +6,18 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 data roster_one: List<String> = ["KnownEntry"]
 data names_with_unknown: List<String> = ["UnknownEntry"]
 
-test fn inert_carrier_no_unrostered_or_stale() -> Bool {
+test fn inert_carrier_no_unrostered_or_stale() -> v2.std.logic.Bool {
   return inert_carrier_clean_holds()
 }
 
-test fn inert_carrier_universe_is_nonempty() -> Bool {
+test fn inert_carrier_universe_is_nonempty() -> v2.std.logic.Bool {
   return inert_carrier_live_declared_count() > 0
 }
 
-test fn count_not_in_roster_detects_unrostered() -> Bool {
+test fn count_not_in_roster_detects_unrostered() -> v2.std.logic.Bool {
   return count_not_in_roster(names: names_with_unknown, roster: roster_one) == 1
 }
 
-test fn count_stale_roster_detects_stale_entry() -> Bool {
+test fn count_stale_roster_detects_stale_entry() -> v2.std.logic.Bool {
   return count_stale_roster(roster: roster_one, inert_names: empty_inert_carrier_names) == 1
 }

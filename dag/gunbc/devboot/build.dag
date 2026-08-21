@@ -1113,7 +1113,7 @@ fn render_build_outcome(outcome: BuildOutcome) -> String {
 
 fn build_outcome_exit(outcome: BuildOutcome) -> std.process.ProcessExit {
   match outcome {
-    Built { program_subject, artifact, receipt } => ExitSuccess
+    Built { program_subject, artifact, receipt } => std.process.ExitSuccess
     BuildRefused { cause } => exit_failure(reason: build_refusal_sentence(cause: cause))
   }
 }
@@ -1128,7 +1128,7 @@ fn render_serve_report(report: ServeReport) -> String {
 
 fn serve_report_exit(report: ServeReport) -> std.process.ProcessExit {
   match report {
-    ServeProduced { token, sha256 } => ExitSuccess
+    ServeProduced { token, sha256 } => std.process.ExitSuccess
     ServeRefused { token, detail } => exit_failure(reason: detail)
   }
 }

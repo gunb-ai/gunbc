@@ -94,31 +94,31 @@ type AnthropicToolResultBlock
   | AnthropicToolReferenceBlock { tool_name: String }
 
 data structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads: List<std.disposition.Disposition> = [
-  Scaffold {
+  std.disposition.Scaffold {
     dissolves_to: SingleAuthority,
     bind: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicTextBlock", field: std.decl_ref.NamedField { field_name: "cache_control" } }
   },
-  Scaffold {
+  std.disposition.Scaffold {
     dissolves_to: SingleAuthority,
     bind: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicTextBlock", field: std.decl_ref.NamedField { field_name: "citations" } }
   },
-  Scaffold {
+  std.disposition.Scaffold {
     dissolves_to: SingleAuthority,
     bind: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicImageBlock", field: std.decl_ref.NamedField { field_name: "cache_control" } }
   },
-  Scaffold {
+  std.disposition.Scaffold {
     dissolves_to: SingleAuthority,
     bind: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicToolReferenceBlock", field: std.decl_ref.NamedField { field_name: "cache_control" } }
   },
-  Scaffold {
+  std.disposition.Scaffold {
     dissolves_to: SingleAuthority,
     bind: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "CacheControl", field: std.decl_ref.NamedField { field_name: "ttl" } }
   },
-  Scaffold {
+  std.disposition.Scaffold {
     dissolves_to: SingleAuthority,
     bind: std.decl_ref.DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicDocumentBlock", field: WholeDeclaration }
   },
-  Terminal {
+  std.disposition.Terminal {
     reason: "external_spec_watch: AnthropicSearchResultBlock optional fields track upstream Anthropic OpenAPI; no local construction dissolves this, re-justified by advisory if upstream drifts"
   }
 ]

@@ -8,7 +8,7 @@ data closing_contract_note: String = "THE CLOSING CHECK FOR v1-interpreter-primi
 fn planted_row(identity: String, spelling: String, symbol: String) -> gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm {
   gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm {
     arm: gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveArmId { identity: identity },
-    form: FreeCall,
+    form: gunbc.v1_interpreter_primitive_surface.FreeCall,
     authored_spelling: spelling,
     realization_module: "planted",
     dispatch_symbol: symbol,

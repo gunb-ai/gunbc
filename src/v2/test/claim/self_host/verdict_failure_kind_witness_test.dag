@@ -15,11 +15,11 @@ fn sample_rejected_outcome() -> Outcome<String> {
   }
 }
 
-fn witness_semantic_mismatch_discriminates_from_host_failures() -> Bool {
+fn witness_semantic_mismatch_discriminates_from_host_failures() -> v2.std.logic.Bool {
   let rejected = sample_rejected_outcome()
   let semantic = verdict_semantic_mismatch(
     actual: rejected,
-    falsification: Absent
+    falsification: v2.std.optional.Absent
   )
   let build = verdict_build_failed(
     actual: rejected,
@@ -32,12 +32,12 @@ fn witness_semantic_mismatch_discriminates_from_host_failures() -> Bool {
   match semantic {
     SemanticMismatch { actual: _, falsification: _ } => true
     Pass => false
-    BuildFailed { actual: _, diagnostic: _ } => false
+    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
     && match build {
-      BuildFailed { actual: _, diagnostic: _ } => true
+      v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => true
       Pass => false
       SemanticMismatch { actual: _, falsification: _ } => false
       RunFailed { actual: _, diagnostic: _ } => false
@@ -47,11 +47,11 @@ fn witness_semantic_mismatch_discriminates_from_host_failures() -> Bool {
       RunFailed { actual: _, diagnostic: _ } => true
       Pass => false
       SemanticMismatch { actual: _, falsification: _ } => false
-      BuildFailed { actual: _, diagnostic: _ } => false
+      v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
       Deferred { actual: _, diagnostic: _ } => false
     }
 }
 
-test fn verdict_failure_kind_witnesses() -> Bool {
+test fn verdict_failure_kind_witnesses() -> v2.std.logic.Bool {
   witness_semantic_mismatch_discriminates_from_host_failures()
 }

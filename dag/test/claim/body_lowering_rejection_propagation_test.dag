@@ -3,11 +3,11 @@ module gunbc.test.claim.body_lowering_rejection_propagation_test
 
 data body_lowering_rejection_propagation_note: String = "THE DISCRIMINATING CONTROL for the deleted rejection catch. v2.compiler.body_lowering_fold.body_lower_finish_for_normalize used to match EVERY Rejected from body_lower_after_children and return a wrapper-retained Accepted instead, binding the rejection diagnostics to _ and discarding them — so a malformed form, a violated invariant and a genuinely unsupported one all left the seam looking like the same counted frontier state.\n\nThese two claims are the pair that separates them, and they are durable because both are invariants rather than observations of the present frontier: a form the lowering strategies REJECT must leave the seam Rejected carrying its own reason, and an emitted identity with no registered producer must STILL leave it Accepted carrying the retention reason. The first fails on the pre-repair implementation, which returned Accepted; the second fails on any over-correction that deletes the legitimate retention arm along with the catch. Neither claim mentions a specific std module, so neither inverts when the frontier moves.\n\nThe rejecting specimen is a pass-through production (^dag_surface_expr) carrying a production-identity child and NO captured child, which is exactly the shape body_lower_unwrap_pass_through refuses with ^body_lowering_reason_unsupported_form. The retaining specimen carries an identity no producer is registered for, which reaches the final arm of body_lower_production_emitted."
 
-fn atom_node(id: v2.std.node.Symbol) -> Node {
+fn atom_node(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } }, children: [])
 }
 
-fn emitted_shell(id: v2.std.node.Symbol) -> Node {
+fn emitted_shell(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.node_synthetic(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
@@ -29,13 +29,13 @@ fn all_reasons(d: v2.std.diagnostic.NonEmptyDiagnostics) -> List<v2.std.node.Sym
   })
 }
 
-fn reasons_contain(reasons: List<v2.std.node.Symbol>, sym: v2.std.node.Symbol) -> Bool {
+fn reasons_contain(reasons: List<v2.std.node.Symbol>, sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   v2.std.algebra.fold_list(xs: reasons, empty: false, cons: fn(acc, r) {
     acc || (r == sym)
   })
 }
 
-fn finish(id: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<Node> {
+fn finish(id: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   let shell = emitted_shell(id: id)
   v2.compiler.body_lowering_fold.body_lower_finish_for_normalize(
     n: shell,
@@ -70,7 +70,7 @@ fn accepted_reasons(id: v2.std.node.Symbol) -> List<v2.std.node.Symbol> {
 // strategy's own reason and must NOT carry the retention reason. Asserting the absence via
 // accepted_reasons would not establish this, because that helper returns [] for every rejected
 // result — the claim would hold for the wrong reason.
-test fn genuine_rejection_leaves_the_seam_rejected() -> Bool {
+test fn genuine_rejection_leaves_the_seam_rejected() -> v2.std.logic.Bool {
   match finish(id: ^dag_surface_expr) {
     Rejected { diagnostics: d } =>
       gunbc.test.claim.body_lowering_rejection_propagation_test.reasons_contain(reasons: gunbc.test.claim.body_lowering_rejection_propagation_test.all_reasons(d: d), sym: ^body_lowering_reason_unsupported_form)
@@ -79,16 +79,16 @@ test fn genuine_rejection_leaves_the_seam_rejected() -> Bool {
   }
 }
 
-test fn genuine_rejection_lands_on_the_rejected_arm() -> Bool {
+test fn genuine_rejection_lands_on_the_rejected_arm() -> v2.std.logic.Bool {
   rendered_arm(id: ^dag_surface_expr) == "REJECTED"
 }
 
 
-test fn unregistered_producer_lands_on_the_accepted_arm() -> Bool {
+test fn unregistered_producer_lands_on_the_accepted_arm() -> v2.std.logic.Bool {
   rendered_arm(id: ^probe_unregistered_surface_form) == "ACCEPTED"
 }
 
-test fn unregistered_producer_still_retains() -> Bool {
+test fn unregistered_producer_still_retains() -> v2.std.logic.Bool {
   gunbc.test.claim.body_lowering_rejection_propagation_test.reasons_contain(
     reasons: accepted_reasons(id: ^probe_unregistered_surface_form),
     sym: ^body_lowering_reason_wrapper_retained_emitted

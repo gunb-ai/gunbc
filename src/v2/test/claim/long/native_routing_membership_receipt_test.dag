@@ -28,13 +28,13 @@ fn derived_equals_bound(
   row: v2.compiler.self_host.native_routing_frontier.NativeRoutingFrontierRow,
   pool: List<v2.compiler.self_host.native_routing_frontier.NativeRoutingEntryClosure>,
   facts: List<v2.lens.module_graph.ModuleDeclarationFact>
-) -> Bool {
+) -> v2.std.logic.Bool {
   let derived = native_routing_row_membership_derived(row: row, pool: pool, facts: facts)
   (length(xs: derived) == 1)
     && any(xs: derived, predicate: fn(e) { e == row.agreement_entry })
 }
 
-test fn native_routing_derived_membership_equals_bound_entries() -> Bool {
+test fn native_routing_derived_membership_equals_bound_entries() -> v2.std.logic.Bool {
   let facts = native_routing_membership_facts_live(pool_roots: membership_pool_roots)
   let pool = native_routing_pool_closures(
     pool_entries: routing_frontier_agreement_entries_distinct(),
@@ -49,7 +49,7 @@ test fn native_routing_derived_membership_equals_bound_entries() -> Bool {
   )
 }
 
-test fn native_routing_red_control_unreached_subject_is_not_member() -> Bool {
+test fn native_routing_red_control_unreached_subject_is_not_member() -> v2.std.logic.Bool {
   let facts = native_routing_membership_facts_live(pool_roots: membership_pool_roots)
   let pool = native_routing_pool_closures(
     pool_entries: ["src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag"],
@@ -68,7 +68,7 @@ test fn native_routing_red_control_unreached_subject_is_not_member() -> Bool {
   ) == false
 }
 
-test fn native_routing_green_control_bound_entry_reaches_subject() -> Bool {
+test fn native_routing_green_control_bound_entry_reaches_subject() -> v2.std.logic.Bool {
   let facts = native_routing_membership_facts_live(pool_roots: membership_pool_roots)
   let pool = native_routing_pool_closures(
     pool_entries: ["src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag"],

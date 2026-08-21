@@ -1,25 +1,25 @@
 module v2.test.algebra_laws.nat_semiring
 
 
-fn atom_node(s: v2.std.node.Symbol) -> Node {
+fn atom_node(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
-fn algebra_law_subject(algebra: v2.std.node.Symbol, inhabitant: v2.std.node.Symbol, law: v2.std.node.Symbol) -> Node {
+fn algebra_law_subject(algebra: v2.std.node.Symbol, inhabitant: v2.std.node.Symbol, law: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: Named { name: ^algebra_law_subject_algebra_field }, target: v2.test.algebra_laws.nat_semiring.atom_node(s: algebra) },
-      v2.std.node.Edge { label: Named { name: ^algebra_law_subject_inhabitant_field }, target: v2.test.algebra_laws.nat_semiring.atom_node(s: inhabitant) },
-      v2.std.node.Edge { label: Named { name: ^algebra_law_subject_law_field }, target: v2.test.algebra_laws.nat_semiring.atom_node(s: law) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^algebra_law_subject_algebra_field }, target: v2.test.algebra_laws.nat_semiring.atom_node(s: algebra) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^algebra_law_subject_inhabitant_field }, target: v2.test.algebra_laws.nat_semiring.atom_node(s: inhabitant) },
+      v2.std.node.Edge { label: v2.std.node.Named { name: ^algebra_law_subject_law_field }, target: v2.test.algebra_laws.nat_semiring.atom_node(s: law) },
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn nat_add_law(law: v2.std.node.Symbol) -> Node {
+fn nat_add_law(law: v2.std.node.Symbol) -> v2.std.node.Node {
   algebra_law_subject(
     algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
     inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
@@ -27,7 +27,7 @@ fn nat_add_law(law: v2.std.node.Symbol) -> Node {
   )
 }
 
-fn nat_mul_law(law: v2.std.node.Symbol) -> Node {
+fn nat_mul_law(law: v2.std.node.Symbol) -> v2.std.node.Node {
   algebra_law_subject(
     algebra: ^nat_algebra_law_subject_symbol_commutative_semiring,
     inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
@@ -35,16 +35,16 @@ fn nat_mul_law(law: v2.std.node.Symbol) -> Node {
   )
 }
 
-data nat_add_left_identity_input: Node = nat_add_law(law: ^law_nat_add_left_identity)
-data nat_add_right_identity_input: Node = nat_add_law(law: ^law_nat_add_right_identity)
-data nat_add_associativity_input: Node = nat_add_law(law: ^law_nat_add_associativity)
-data nat_mul_left_identity_input: Node = nat_mul_law(law: ^law_nat_mul_left_identity)
-data nat_mul_annihilator_input: Node = nat_mul_law(law: ^law_nat_mul_annihilator)
-data nat_mul_associativity_input: Node = nat_mul_law(law: ^law_nat_mul_associativity)
+data nat_add_left_identity_input: v2.std.node.Node = nat_add_law(law: ^law_nat_add_left_identity)
+data nat_add_right_identity_input: v2.std.node.Node = nat_add_law(law: ^law_nat_add_right_identity)
+data nat_add_associativity_input: v2.std.node.Node = nat_add_law(law: ^law_nat_add_associativity)
+data nat_mul_left_identity_input: v2.std.node.Node = nat_mul_law(law: ^law_nat_mul_left_identity)
+data nat_mul_annihilator_input: v2.std.node.Node = nat_mul_law(law: ^law_nat_mul_annihilator)
+data nat_mul_associativity_input: v2.std.node.Node = nat_mul_law(law: ^law_nat_mul_associativity)
 
-data falsification_nat_add_wrong_identity: Node = nat_add_law(law: ^nat_law_wrong_identity_symbol)
+data falsification_nat_add_wrong_identity: v2.std.node.Node = nat_add_law(law: ^nat_law_wrong_identity_symbol)
 
-fn accepted_claim(label: String, anchor: v2.std.verification.ManualAnchorKey, input: Node) -> v2.std.verification.TestClaim {
+fn accepted_claim(label: String, anchor: v2.std.verification.ManualAnchorKey, input: v2.std.node.Node) -> v2.std.verification.TestClaim {
   v2.std.verification.EqualsClaim { label: label, anchor: manual_claim_anchor(anchor: anchor), lhs: input, rhs: input, classification: v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit  }
   }
 }

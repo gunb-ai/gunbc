@@ -24,8 +24,8 @@ type NativeScmOperationalState
   | NativeScmOperationalRefused { reason: String }
 
 type NativeScmProjection {
-  workspace: Optional<String>
-  target: Optional<String>
+  workspace: v2.std.optional.Optional<String>
+  target: v2.std.optional.Optional<String>
   realizations: List<gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt>
 }
 
@@ -151,7 +151,7 @@ type NativeScmReceipt {
   operational: NativeScmOperationalState
   projections: NativeScmProjection
   primary: NativeScmPrimaryOutcome
-  receipt_details: Optional<String>
+  receipt_details: v2.std.optional.Optional<String>
 }
 
 type NativeScmProjectionRepairOutcome
@@ -231,7 +231,7 @@ fn native_scm_resolve_choice(
           xs: continuation.options.additional_options,
           index: index,
         ) {
-          Present { value } =>
+          v2.std.optional.Present { value } =>
             NativeScmContinuationChoiceMatched {
               selected: NativeScmSelectedContinuationOption {
                 identity: NativeScmContinuationOptionIdentity {
@@ -241,7 +241,7 @@ fn native_scm_resolve_choice(
                 option: value,
               },
             }
-          Absent =>
+          v2.std.optional.Absent =>
             NativeScmContinuationChoiceNotOffered {
               choice: choice,
             }
@@ -315,10 +315,10 @@ fn native_scm_record_repaired_projection(
   }
 }
 
-fn native_scm_inspect_receipt(receipt: NativeScmReceipt, authorized: Bool) -> Optional<String> {
+fn native_scm_inspect_receipt(receipt: NativeScmReceipt, authorized: Bool) -> v2.std.optional.Optional<String> {
   if authorized {
     match receipt.receipt_details {
-      Present { value: details } =>
+      v2.std.optional.Present { value: details } =>
         v2.std.optional.optional_present(
           value: concat(
             "proposal=",
@@ -331,7 +331,7 @@ fn native_scm_inspect_receipt(receipt: NativeScmReceipt, authorized: Bool) -> Op
             ),
           ),
         )
-      Absent => v2.std.optional.optional_absent()
+      v2.std.optional.Absent => v2.std.optional.optional_absent()
     }
   } else {
     v2.std.optional.optional_absent()

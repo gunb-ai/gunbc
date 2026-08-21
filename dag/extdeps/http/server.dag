@@ -97,7 +97,7 @@ data application_json_utf8: extdeps.http.server.MediaType = MediaType { top_leve
 data text_javascript_utf8: extdeps.http.server.MediaType = MediaType { top_level: TopLevelText, subtype: "javascript", parameters: [charset_utf8] }
 data application_octet_stream: extdeps.http.server.MediaType = MediaType { top_level: TopLevelApplication, subtype: "octet-stream", parameters: [] }
 
-// The FORWARD reading of the wire method label into the modeled HttpMethod (RFC 9110 section 9 method names — the same closed set gunbc.node_http_server_emit.emit_http_method_label reads backward). Unknown labels are a typed UnknownMethod, never a defaulted GET (DESIGN 5: refuse, never widen — the Node realization's `req.method || GET` default is exactly the widen this arm does not copy).
+// The FORWARD reading of the wire method label into the modeled std.types.HttpMethod (RFC 9110 section 9 method names — the same closed set gunbc.node_http_server_emit.emit_http_method_label reads backward). Unknown labels are a typed UnknownMethod, never a defaulted GET (DESIGN 5: refuse, never widen — the Node realization's `req.method || GET` default is exactly the widen this arm does not copy).
 type HttpMethodParse
   = KnownMethod { method: std.types.HttpMethod }
   | UnknownMethod { label: String }

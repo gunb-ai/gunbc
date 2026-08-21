@@ -3,7 +3,7 @@ module v2.test.graph_invariant.lens_unit.reach_kernel_test
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn gi_atom(identity: v2.std.node.Symbol) -> Node {
+fn gi_atom(identity: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: identity } },
     children: [],
@@ -11,16 +11,16 @@ fn gi_atom(identity: v2.std.node.Symbol) -> Node {
   }
 }
 
-fn gi_input() -> Node { gi_atom(identity: ^gi_input) }
-fn gi_mid() -> Node { gi_atom(identity: ^gi_mid) }
-fn gi_out() -> Node { gi_atom(identity: ^gi_output) }
-fn gi_dangling() -> Node { gi_atom(identity: ^gi_dangling) }
+fn gi_input() -> v2.std.node.Node { gi_atom(identity: ^gi_input) }
+fn gi_mid() -> v2.std.node.Node { gi_atom(identity: ^gi_mid) }
+fn gi_out() -> v2.std.node.Node { gi_atom(identity: ^gi_output) }
+fn gi_dangling() -> v2.std.node.Node { gi_atom(identity: ^gi_dangling) }
 
-fn gi_edge(source: Node, dependent: Node) -> v2.std.dependency.DependencyView {
+fn gi_edge(source: v2.std.node.Node, dependent: v2.std.node.Node) -> v2.std.dependency.DependencyView {
   v2.std.dependency.DependencyView {
     source: source,
     dependent: dependent,
-    kind: Contains,
+    kind: v2.std.dependency.Contains,
     usage_site: dependent
   }
 }
@@ -32,21 +32,21 @@ fn gi_live_slice() -> List<v2.std.dependency.DependencyView> {
   ]
 }
 
-test fn graph_reaches_live_slice() -> Bool {
+test fn graph_reaches_live_slice() -> v2.std.logic.Bool {
   graph_reaches(dependence: gi_live_slice(), from: gi_out(), to: gi_input())
 }
 
-test fn graph_reaches_dead_target() -> Bool {
+test fn graph_reaches_dead_target() -> v2.std.logic.Bool {
   graph_reaches(dependence: gi_live_slice(), from: gi_out(), to: gi_dangling()) == false
 }
 
-test fn graph_invariant_universe_nonempty_flips_on_empty() -> Bool {
+test fn graph_invariant_universe_nonempty_flips_on_empty() -> v2.std.logic.Bool {
   let inv = v2.lens.common.graph_invariant.GraphReachProjection { edges: gi_live_slice(), roots: [gi_out()] }
   graph_invariant_reaches(projection: inv, target: gi_input())
     && (graph_invariant_reaches(projection: inv, target: gi_dangling()) == false)
 }
 
-test fn graph_reach_add_edge_repair_wires_dead_input() -> Bool {
+test fn graph_reach_add_edge_repair_wires_dead_input() -> v2.std.logic.Bool {
   let repaired = graph_reach_add_edge_repair(root: gi_out(), edge_target: gi_dangling())
   graph_invariant_reaches(
     projection: v2.lens.common.graph_invariant.GraphReachProjection {

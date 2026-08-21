@@ -29,7 +29,7 @@ fn discovered_legacy_behavior_ids() -> List<String> {
   test_migration_legacy_behavior_ids()
 }
 
-fn list_contains_name(xs: List<String>, needle: String) -> Bool {
+fn list_contains_name(xs: List<String>, needle: String) -> v2.std.logic.Bool {
   xs |> any(x => x == needle)
 }
 
@@ -37,19 +37,19 @@ fn count_occurrences(xs: List<String>, needle: String) -> Int {
   xs |> filter(x => x == needle) |> count
 }
 
-fn names_are_duplicate_free(xs: List<String>) -> Bool {
+fn names_are_duplicate_free(xs: List<String>) -> v2.std.logic.Bool {
   xs |> all(x => count_occurrences(xs: xs, needle: x) == 1)
 }
 
 // Every declared retained row names a module that is actually present.
-fn every_retained_row_resolves() -> Bool {
+fn every_retained_row_resolves() -> v2.std.logic.Bool {
   retained_declared_source_files()
     |> all(f => list_contains_name(xs: discovered_rust_test_modules(), needle: f))
 }
 
 // Every discovered module is declared. This is the half that makes a NEW
 // undeclared Rust test file red by construction.
-fn every_discovered_module_is_retained() -> Bool {
+fn every_discovered_module_is_retained() -> v2.std.logic.Bool {
   discovered_rust_test_modules()
     |> all(f => list_contains_name(xs: retained_declared_source_files(), needle: f))
 }
@@ -71,12 +71,12 @@ fn retained_module_identity_prefix(source_file: String) -> String {
   concat(retained_module_path(source_file: source_file), "::")
 }
 
-fn retained_module_has_a_discovered_test(source_file: String) -> Bool {
+fn retained_module_has_a_discovered_test(source_file: String) -> v2.std.logic.Bool {
   discovered_legacy_behavior_ids()
     |> any(id => string_contains(s: id, needle: retained_module_identity_prefix(source_file: source_file)))
 }
 
-fn every_retained_module_has_a_test() -> Bool {
+fn every_retained_module_has_a_test() -> v2.std.logic.Bool {
   retained_declared_source_files()
     |> all(f => retained_module_has_a_discovered_test(source_file: f))
 }
@@ -84,7 +84,7 @@ fn every_retained_module_has_a_test() -> Bool {
 // An empty discovered population must not pass accidentally while rows remain,
 // and an empty roster must not pass while modules remain. Both sides nonzero is
 // the fail-closed floor under the equality above.
-fn retention_populations_are_nonempty() -> Bool {
+fn retention_populations_are_nonempty() -> v2.std.logic.Bool {
   count(retained_declared_source_files()) > 0
     && count(discovered_rust_test_modules()) > 0
     && count(discovered_legacy_behavior_ids()) > 0
@@ -141,7 +141,7 @@ fn retained_module_path(source_file: String) -> String {
 // Split from the live read so the planted controls can exercise the DECISION on
 // fixture content: the tree cannot be perturbed from inside a witness, and a
 // clause only reachable through a live read is a clause no control can refuse.
-fn module_body_has_no_skip_attribute(body: String) -> Bool {
+fn module_body_has_no_skip_attribute(body: String) -> v2.std.logic.Bool {
   !string_contains(s: body, pattern: "#[ignore")
     && !string_contains(s: body, pattern: "#[should_panic")
 }
@@ -155,12 +155,12 @@ fn module_body_has_no_skip_attribute(body: String) -> Bool {
 // available failure signal. A genuinely empty retained module also refuses,
 // which is the conservative direction: an empty module cannot host the test the
 // identity join says it has.
-fn retained_module_has_no_skip_attribute(source_file: String) -> Bool {
+fn retained_module_has_no_skip_attribute(source_file: String) -> v2.std.logic.Bool {
   let body = filesystem_read(path: retained_module_path(source_file: source_file)).content
   string_length(s: body) > 0 && module_body_has_no_skip_attribute(body: body)
 }
 
-fn no_retained_module_is_skipped() -> Bool {
+fn no_retained_module_is_skipped() -> v2.std.logic.Bool {
   retained_declared_source_files()
     |> all(f => retained_module_has_no_skip_attribute(source_file: f))
 }
@@ -169,25 +169,25 @@ fn no_retained_module_is_skipped() -> Bool {
 // test" true. A custom harness or an explicit [[test]] target would introduce a
 // filtering route this wall cannot see, so their ABSENCE is asserted rather
 // than assumed.
-fn manifest_uses_default_harness(manifest: String) -> Bool {
+fn manifest_uses_default_harness(manifest: String) -> v2.std.logic.Bool {
   string_length(s: manifest) > 0
     && !string_contains(s: manifest, pattern: "harness = false")
     && !string_contains(s: manifest, pattern: "harness=false")
     && !string_contains(s: manifest, pattern: "[[test]]")
 }
 
-fn retained_kernel_uses_default_harness() -> Bool {
+fn retained_kernel_uses_default_harness() -> v2.std.logic.Bool {
   manifest_uses_default_harness(
     manifest: filesystem_read(path: retained_kernel_manifest_path).content
   )
 }
 
-fn retained_kernel_execution_check_holds() -> Bool {
+fn retained_kernel_execution_check_holds() -> v2.std.logic.Bool {
   no_retained_module_is_skipped()
     && retained_kernel_uses_default_harness()
 }
 
-fn retained_rust_kernel_wall_holds() -> Bool {
+fn retained_rust_kernel_wall_holds() -> v2.std.logic.Bool {
   retention_populations_are_nonempty()
     && names_are_duplicate_free(xs: retained_declared_source_files())
     && names_are_duplicate_free(xs: discovered_rust_test_modules())
@@ -197,7 +197,7 @@ fn retained_rust_kernel_wall_holds() -> Bool {
     && retained_kernel_execution_check_holds()
 }
 
-fn retained_rust_kernel_wall_holds_live() -> Bool {
+fn retained_rust_kernel_wall_holds_live() -> v2.std.logic.Bool {
   retained_rust_kernel_wall_holds()
 }
 

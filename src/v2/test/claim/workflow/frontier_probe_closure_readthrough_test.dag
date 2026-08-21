@@ -53,7 +53,7 @@ fn fp_readthrough_hash_mismatch_subject() -> v2.compiler.self_host.frontier_prob
   )
 }
 
-test fn frontier_probe_read_failure_detail_refused_holds() -> Bool {
+test fn frontier_probe_read_failure_detail_refused_holds() -> v2.std.logic.Bool {
   match frontier_probe_receipt_for_subject(
     subject: fp_readthrough_read_failure_subject(),
     fixture_module_path: ""
@@ -63,7 +63,7 @@ test fn frontier_probe_read_failure_detail_refused_holds() -> Bool {
   }
 }
 
-test fn frontier_probe_hash_mismatch_detail_carries_observed_holds() -> Bool {
+test fn frontier_probe_hash_mismatch_detail_carries_observed_holds() -> v2.std.logic.Bool {
   match frontier_probe_receipt_for_subject(
     subject: fp_readthrough_hash_mismatch_subject(),
     fixture_module_path: ""
@@ -73,7 +73,7 @@ test fn frontier_probe_hash_mismatch_detail_carries_observed_holds() -> Bool {
   }
 }
 
-test fn frontier_probe_ninety_one_read_compiler_closure_elision_integrates_holds() -> Bool {
+test fn frontier_probe_ninety_one_read_compiler_closure_elision_integrates_holds() -> v2.std.logic.Bool {
   let ingest_count = frontier_probe_elision_boundary_coverage_receipt.ingest_read_count
   if ingest_count <= 64 {
     false

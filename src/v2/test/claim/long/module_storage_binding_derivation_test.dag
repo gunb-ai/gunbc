@@ -10,7 +10,7 @@ data msb_v2_path: String = "src/v2/std/msb_fixture.dag"
 data msb_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.source_authority.DagSourceReadWitness {
   source: extdeps.communication.medium.Medium { carried: "module v2.std.msb_fixture", fidelity: extdeps.communication.medium.Lossless },
   artifact: v2.std.artifact.Artifact {
-    kind: SourceFile,
+    kind: v2.std.artifact.SourceFile,
     id: ^msb_artifact,
     file_path: msb_v2_path
   },
@@ -21,7 +21,7 @@ data msb_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.s
 data msb_other_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.source_authority.DagSourceReadWitness {
   source: extdeps.communication.medium.Medium { carried: "module v2.std.msb_other_fixture", fidelity: extdeps.communication.medium.Lossless },
   artifact: v2.std.artifact.Artifact {
-    kind: SourceFile,
+    kind: v2.std.artifact.SourceFile,
     id: ^msb_other_artifact,
     file_path: "src/v2/std/msb_other_fixture.dag"
   },
@@ -32,7 +32,7 @@ data msb_other_read: v2.compiler.source_authority.DagSourceReadWitness = v2.comp
 data msb_duplicate_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.source_authority.DagSourceReadWitness {
   source: extdeps.communication.medium.Medium { carried: "module v2.std.msb_fixture", fidelity: extdeps.communication.medium.Lossless },
   artifact: v2.std.artifact.Artifact {
-    kind: SourceFile,
+    kind: v2.std.artifact.SourceFile,
     id: ^msb_duplicate_artifact,
     file_path: "src/v2/std/msb_fixture_copy.dag"
   },
@@ -43,7 +43,7 @@ data msb_duplicate_read: v2.compiler.source_authority.DagSourceReadWitness = v2.
 data msb_unparseable_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.source_authority.DagSourceReadWitness {
   source: extdeps.communication.medium.Medium { carried: "this source declares no module at all", fidelity: extdeps.communication.medium.Lossless },
   artifact: v2.std.artifact.Artifact {
-    kind: SourceFile,
+    kind: v2.std.artifact.SourceFile,
     id: ^msb_unparseable_artifact,
     file_path: "src/v2/std/msb_unparseable_fixture.dag"
   },
@@ -60,42 +60,42 @@ data msb_ingest: v2.compiler.source_authority.SourceRootIngest = [msb_read, msb_
 data msb_duplicate_ingest: v2.compiler.source_authority.SourceRootIngest = [msb_read, msb_duplicate_read]
 data msb_unparseable_ingest: v2.compiler.source_authority.SourceRootIngest = [msb_unparseable_read]
 
-test fn module_storage_binding_derived_from_parse_holds() -> Bool {
+test fn module_storage_binding_derived_from_parse_holds() -> v2.std.logic.Bool {
   match module_storage_bindings_from_ingest(ingest: msb_ingest) {
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: index, diagnostics: _ } =>
       match module_storage_module_for_path(index: index, file_path: msb_v2_path) {
-        Absent => false
-        Present { value: qn } =>
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: qn } =>
           qualified_name_to_dotted_string(qn: qn) == "v2.std.msb_fixture"
       }
   }
 }
 
-test fn module_storage_path_projection_holds() -> Bool {
+test fn module_storage_path_projection_holds() -> v2.std.logic.Bool {
   match module_storage_bindings_from_ingest(ingest: msb_ingest) {
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
     Accepted { value: index, diagnostics: _ } =>
       match module_storage_path_for_module(
         index: index,
         module: v2.test.long.module_storage_binding_derivation.msb_fixture_qn
       ) {
-        Absent => false
-        Present { value: p } => p == msb_v2_path
+        v2.std.optional.Absent => false
+        v2.std.optional.Present { value: p } => p == msb_v2_path
       }
   }
 }
 
-test fn module_storage_duplicate_module_refuses() -> Bool {
+test fn module_storage_duplicate_module_refuses() -> v2.std.logic.Bool {
   match module_storage_bindings_from_ingest(ingest: msb_duplicate_ingest) {
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-test fn module_storage_underivable_module_name_refuses() -> Bool {
+test fn module_storage_underivable_module_name_refuses() -> v2.std.logic.Bool {
   match module_storage_bindings_from_ingest(ingest: msb_unparseable_ingest) {
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }

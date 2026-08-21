@@ -246,7 +246,7 @@ data cgroup_locate_spec: std.path_intent.NearestAncestorContaining = std.path_in
   start: std.path_intent.PathRefStart { name: cgroup_walk_var },
   stop_before: test.claim.proc_self_cgroup_witness.cgroup_mount_root,
   relative_entry: std.types.FilePathParts { segments: ["memory.peak"] },
-  expected_kind: RegularFile,
+  expected_kind: std.filesystem.types.RegularFile,
 }
 
 test fn cgroup_locate_assign_preserves_membership_refusals_holds() -> Bool {
@@ -281,7 +281,7 @@ test fn cgroup_locate_body_preserves_ascent_holds() -> Bool {
 
 test fn nearest_ancestor_predicate_uses_regular_file_peak_holds() -> Bool {
   match nearest_ancestor_while_predicate(spec: cgroup_locate_spec) {
-    And { lhs: _, rhs: And { lhs: _, rhs: Not { inner: std.path_intent.PathEntryKind { path: _, kind: RegularFile } } } } => true
+    std.path_intent.And { lhs: _, rhs: std.path_intent.And { lhs: _, rhs: std.path_intent.Not { inner: std.path_intent.PathEntryKind { path: _, kind: std.filesystem.types.RegularFile } } } } => true
     _ => false
   }
 }

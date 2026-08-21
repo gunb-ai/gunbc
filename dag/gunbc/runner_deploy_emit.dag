@@ -147,7 +147,7 @@ fn project_runner_deploy_to_doc() -> std.layout.Doc {
 }
 
 fn expected_runner_deploy_manifest() -> String {
-  render(doc: project_runner_deploy_to_doc(), proto: runner_deploy_protocol)
+  std.layout.render(doc: project_runner_deploy_to_doc(), proto: runner_deploy_protocol)
 }
 
 fn runner_deploy_drifted(committed: String) -> Bool {
@@ -157,9 +157,9 @@ fn runner_deploy_drifted(committed: String) -> Bool {
 fn expected_runner_deploy_manifest_json() -> String {
   match runner_deployment_plan() {
     PlanUnsound { reason: reason } =>
-      render(doc: doc_line_of(text: concat("runner-deploy UNSOUND: ", reason)), proto: runner_deploy_protocol)
+      std.layout.render(doc: doc_line_of(text: concat("runner-deploy UNSOUND: ", reason)), proto: runner_deploy_protocol)
     PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
-      render(
+      std.layout.render(
         doc: doc_concat(parts: map(hosts, h =>
           doc_concat(parts: [
             doc_text(text: "runner-deploy "),

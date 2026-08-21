@@ -125,11 +125,11 @@ fn token_stream_remaining(stream: TokenStream) -> List<v2.std.compilers.lexing.T
   skip(xs: stream.all, n: stream.pos)
 }
 
-fn token_stream_first(stream: TokenStream) -> Optional<v2.std.compilers.lexing.Token> {
+fn token_stream_first(stream: TokenStream) -> v2.std.optional.Optional<v2.std.compilers.lexing.Token> {
   list_at_optional(xs: stream.all, index: stream.pos)
 }
 
-fn token_stream_get(stream: TokenStream, offset: Int) -> Optional<v2.std.compilers.lexing.Token> {
+fn token_stream_get(stream: TokenStream, offset: Int) -> v2.std.optional.Optional<v2.std.compilers.lexing.Token> {
   list_at_optional(xs: stream.all, index: stream.pos + offset)
 }
 
@@ -167,7 +167,7 @@ fn lex_artifact_new(tokens: TokenStream, annotations: List<UnboundSourceAnnotati
   LexArtifact { tokens: tokens, annotations: annotations }
 }
 
-fn lex_rule_token_class_member(rule: LexRule, token_class: v2.std.node.Symbol) -> Bool {
+fn lex_rule_token_class_member(rule: LexRule, token_class: v2.std.node.Symbol) -> v2.std.logic.Bool {
   match rule {
     TokenRule { token_class: c, pattern: _ } => c == token_class
     TriviaRule { pattern: _ } => false
@@ -175,7 +175,7 @@ fn lex_rule_token_class_member(rule: LexRule, token_class: v2.std.node.Symbol) -
   }
 }
 
-fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: v2.std.node.Symbol) -> Bool {
+fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: v2.std.node.Symbol) -> v2.std.logic.Bool {
   fold_list(
     xs: rules.rules,
     empty: false,
@@ -236,11 +236,11 @@ fn fold_lex_pattern<R>(pattern: LexPattern, algebra: LexPatternFold<R>) -> R {
   }
 }
 
-fn lex_empty_node() -> Node {
+fn lex_empty_node() -> v2.std.node.Node {
   v2.std.node_shape.stamp_node_shape_synthetic(shape: v2.std.node_shape.type_shape(connective: v2.std.node.Conj, children: []))
 }
 
-fn lex_void_lex_rules_evidence_node() -> Node {
+fn lex_void_lex_rules_evidence_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^lex_void_lex_rules_evidence } },
     children: [],
@@ -248,7 +248,7 @@ fn lex_void_lex_rules_evidence_node() -> Node {
   }
 }
 
-fn lex_rules_to_node(rules: LexRules) -> Node {
+fn lex_rules_to_node(rules: LexRules) -> v2.std.node.Node {
   match rules {
     VoidLexRules => lex_void_lex_rules_evidence_node()
     ModeledLexRules { root: _ } => lex_empty_node()

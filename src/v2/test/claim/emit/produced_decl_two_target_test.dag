@@ -15,30 +15,30 @@ fn tt_emit(target: v2.std.compilers.target_model.TargetModel, fn_name: v2.std.no
       match emit_produced_decl(decl: decl, target: target) {
         Accepted { value: medium, diagnostics: _ } =>
           v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
-fn tt_emits(target: v2.std.compilers.target_model.TargetModel, fn_name: v2.std.node.Symbol, golden: String) -> Bool {
+fn tt_emits(target: v2.std.compilers.target_model.TargetModel, fn_name: v2.std.node.Symbol, golden: String) -> v2.std.logic.Bool {
   match tt_emit(target: target, fn_name: fn_name) {
     Accepted { value: text, diagnostics: _ } => text == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn tt_refuses(target: v2.std.compilers.target_model.TargetModel, fn_name: v2.std.node.Symbol) -> Bool {
+fn tt_refuses(target: v2.std.compilers.target_model.TargetModel, fn_name: v2.std.node.Symbol) -> v2.std.logic.Bool {
   match tt_emit(target: target, fn_name: fn_name) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    v2.std.diagnostic.Rejected { diagnostics: _ } => true
   }
 }
 
 // Rust renders Rust order and C renders C order through ONE compiler API. The
 // cross-golden arms are the discriminating RED: neither target can produce the
 // other's text, so a seam that had kept order in the compiler would fail here.
-test fn produced_decl_two_targets_render_own_order() -> Bool {
+test fn produced_decl_two_targets_render_own_order() -> v2.std.logic.Bool {
   tt_emits(target: rust_target_model(), fn_name: ^rust_binding_fn_add, golden: two_target_rust_golden)
     && tt_emits(target: c_target_model(), fn_name: ^c_binding_fn_add, golden: two_target_c_golden)
     && !tt_emits(target: c_target_model(), fn_name: ^c_binding_fn_add, golden: two_target_rust_golden)
@@ -47,7 +47,7 @@ test fn produced_decl_two_targets_render_own_order() -> Bool {
 
 // A target that registered no renderer still refuses, typed and located, after the
 // seam moved onto the carrier. Keeps the fail-closed property from regressing.
-test fn produced_decl_unwired_target_still_refuses() -> Bool {
+test fn produced_decl_unwired_target_still_refuses() -> v2.std.logic.Bool {
   tt_refuses(target: cpp_target_model(), fn_name: ^rust_binding_fn_add)
     && tt_emits(target: rust_target_model(), fn_name: ^rust_binding_fn_add, golden: two_target_rust_golden)
 }
@@ -73,11 +73,11 @@ fn tt_module_text(target: v2.std.compilers.target_model.TargetModel, first: v2.s
           match emit_produced_module(decls: [d1, d2], target: target) {
             Accepted { value: medium, diagnostics: _ } =>
               v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
-            Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+            v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
           }
-        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -86,10 +86,10 @@ fn tt_module_matches(
   first: v2.std.node.Symbol,
   second: v2.std.node.Symbol,
   golden: String
-) -> Bool {
+) -> v2.std.logic.Bool {
   match tt_module_text(target: target, first: first, second: second) {
     Accepted { value: text, diagnostics: _ } => text == golden
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
@@ -97,7 +97,7 @@ fn tt_module_matches(
 // declarations and the same target, so only the fold's accumulation ORDER can
 // distinguish them. A fold that dropped, duplicated or reordered a declaration, or
 // that failed to thread the target through, cannot satisfy both arms.
-test fn produced_decl_module_folds_declarations_in_order() -> Bool {
+test fn produced_decl_module_folds_declarations_in_order() -> v2.std.logic.Bool {
   tt_module_matches(
     target: rust_target_model(),
     first: ^rust_binding_fn_add,

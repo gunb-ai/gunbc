@@ -56,6 +56,6 @@ data nominal_distinct_control_compile_receipt: v2.std.diagnostic.Outcome<extdeps
 fn nominal_distinct_control_compiles_ok() -> Bool {
   match nominal_distinct_control_compile_receipt {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }

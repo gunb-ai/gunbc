@@ -55,7 +55,7 @@ test fn w_reserved_identities_derive_from_the_router_binding_roster() -> Bool {
     && router_binding_identity(binding: srv6_router_binding) == operator_host_srv6
 }
 
-// The live state: both units arrived and each holds a Static, Active CR1000A reservation, and each
+// The live state: both units arrived and each holds a Static, extdeps.dhcp.v4.Active CR1000A reservation, and each
 // slot is now ASSIGNED to one of them. This witness pins the assignment as an OperatorAllocation
 // receipt rather than a measurement: it asserts the addresses AND that every binding carries an
 // attributable allocation, so an assignment authored with no named authority reds here. Basis is
@@ -122,7 +122,7 @@ fn synthetic_bound_binding_for(identity_host: std.types.NonEmptyStr, last_octet:
       ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: last_octet),
       lease: extdeps.dhcp.v4.StaticDhcpReservation {
         reservation_label: "synthetic-dgx-spark-fixture" as std.types.NonEmptyStr,
-        status: Active,
+        status: extdeps.dhcp.v4.Active,
       },
     },
     allocation: gunbc.dgx_spark_procurement.OperatorAllocation {
@@ -173,7 +173,7 @@ test fn w_red_admission_without_evidence_refuses() -> Bool {
   match admit_dgx_spark_deployment(
     identity: operator_host_srv5,
     catalog: extdeps.systems.nvidia.nvidia_dgx_spark_4tb_catalog,
-    selection: ObservationMissing { subject: operator_host_srv5 },
+    selection: gunbc.fleet_lifecycle_observation.ObservationMissing { subject: operator_host_srv5 },
     router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
   ) {
     gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused { reason: gunbc.spark.dgx_procurement.DeploymentAdmissionNoEvidence { requested_identity: i } } =>
@@ -392,7 +392,7 @@ test fn w_red_two_attempts_for_one_subject_select_ambiguous() -> Bool {
   ) {
     gunbc.fleet_lifecycle_observation.ObservationAmbiguous { subject: s, candidate_count: n } => s == operator_host_srv5 && n == 2
     gunbc.fleet_lifecycle_observation.ObservationUnique { observation: _ } => false
-    ObservationMissing { subject: _ } => false
+    gunbc.fleet_lifecycle_observation.ObservationMissing { subject: _ } => false
   }
 }
 
@@ -417,7 +417,7 @@ test fn w_red_admission_on_ambiguous_evidence_refuses() -> Bool {
 // The three arms of selection are all reachable and distinct: zero candidates, exactly one, and the attempt-exact disambiguation that resolves the ambiguous case above to a unique pick. Naming the attempt is the ONLY way to narrow it -- list position never is.
 test fn w_selection_is_zero_one_many_and_attempt_disambiguates() -> Bool {
   match select_observation_for_subject(subject: operator_host_srv5, observations: []) {
-    ObservationMissing { subject: s } => s == operator_host_srv5
+    gunbc.fleet_lifecycle_observation.ObservationMissing { subject: s } => s == operator_host_srv5
     gunbc.fleet_lifecycle_observation.ObservationUnique { observation: _ } => false
     gunbc.fleet_lifecycle_observation.ObservationAmbiguous { subject: _, candidate_count: _ } => false
   }
@@ -426,7 +426,7 @@ test fn w_selection_is_zero_one_many_and_attempt_disambiguates() -> Bool {
       observations: [srv5_good_observation()],
     ) {
       gunbc.fleet_lifecycle_observation.ObservationUnique { observation: o } => o.subject == operator_host_srv5
-      ObservationMissing { subject: _ } => false
+      gunbc.fleet_lifecycle_observation.ObservationMissing { subject: _ } => false
       gunbc.fleet_lifecycle_observation.ObservationAmbiguous { subject: _, candidate_count: _ } => false
     }
     && match select_observation_by_attempt(
@@ -435,7 +435,7 @@ test fn w_selection_is_zero_one_many_and_attempt_disambiguates() -> Bool {
       observations: two_conflicting_srv5_observations(),
     ) {
       gunbc.fleet_lifecycle_observation.ObservationUnique { observation: o } => o.envelope.rc == 1
-      ObservationMissing { subject: _ } => false
+      gunbc.fleet_lifecycle_observation.ObservationMissing { subject: _ } => false
       gunbc.fleet_lifecycle_observation.ObservationAmbiguous { subject: _, candidate_count: _ } => false
     }
 }
@@ -444,7 +444,7 @@ test fn w_selection_is_zero_one_many_and_attempt_disambiguates() -> Bool {
 test fn w_red_selection_ignores_envelope_host() -> Bool {
   let o = synthetic_observation(subject_host: "srv6", envelope_host: "srv5", last_octet: 223, attempt_label: "attempt-mislabeled")
   match select_observation_for_subject(subject: operator_host_srv5, observations: [o]) {
-    ObservationMissing { subject: s } => s == operator_host_srv5
+    gunbc.fleet_lifecycle_observation.ObservationMissing { subject: s } => s == operator_host_srv5
     gunbc.fleet_lifecycle_observation.ObservationUnique { observation: _ } => false
     gunbc.fleet_lifecycle_observation.ObservationAmbiguous { subject: _, candidate_count: _ } => false
   }
@@ -673,7 +673,7 @@ fn unobserved_hw_deployment(subject_host: std.types.NonEmptyStr, last_octet: Int
       ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: last_octet),
       lease: extdeps.dhcp.v4.StaticDhcpReservation {
         reservation_label: "synthetic-dgx-spark-fixture" as std.types.NonEmptyStr,
-        status: Active,
+        status: extdeps.dhcp.v4.Active,
       },
     },
     envelope_host_presentation: envelope_host_presentation_evidence(observation: observation),

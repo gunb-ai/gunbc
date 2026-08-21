@@ -2,12 +2,12 @@ module test.claim.dgx_spark_pxe_witness
 
 
 data witness_tftp_root: extdeps.uri.Uri = extdeps.uri.Uri {
-  scheme: Tftp,
+  scheme: extdeps.uri.Tftp,
   locator: "tftp.install.spark.lan",
 }
 
 data witness_http_root: extdeps.uri.Uri = extdeps.uri.Uri {
-  scheme: Http,
+  scheme: extdeps.uri.Http,
   locator: "install.spark.lan",
 }
 

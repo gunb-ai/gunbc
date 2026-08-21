@@ -3,7 +3,7 @@ module v2.test.execution.c_type_decl_emit_host_run
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn ctd_run_probe_node() -> Node {
+fn ctd_run_probe_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^c_type_decl_emit_host_run_probe } },
     children: [],
@@ -15,23 +15,23 @@ fn ctd_run_inputs() -> v2.compiler.eval.Inputs {
   inputs_root_only(root: ctd_run_probe_node())
 }
 
-fn ctd_empty_conj() -> Node {
+fn ctd_empty_conj() -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
 }
 
-fn ctd_atom_type(name: v2.std.node.Symbol) -> Node {
+fn ctd_atom_type(name: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: name } }, children: [], occurrence_id: SyntheticOccurrence }
 }
 
 fn ctd_field_edge(name: v2.std.node.Symbol, type_name: v2.std.node.Symbol) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: Named { name: name }, target: ctd_atom_type(name: type_name) }
+  v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: ctd_atom_type(name: type_name) }
 }
 
 fn ctd_variant_edge(name: v2.std.node.Symbol) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: Named { name: name }, target: ctd_empty_conj() }
+  v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: ctd_empty_conj() }
 }
 
-fn ctd_point_record() -> Node {
+fn ctd_point_record() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [
@@ -42,7 +42,7 @@ fn ctd_point_record() -> Node {
   }
 }
 
-fn ctd_bool_coproduct() -> Node {
+fn ctd_bool_coproduct() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: Disj },
     children: [ ctd_variant_edge(name: ^True), ctd_variant_edge(name: ^False) ],
@@ -53,16 +53,16 @@ fn ctd_bool_coproduct() -> Node {
 fn ctd_emit_decl_source() -> extdeps.communication.medium.Medium<String> {
   match emit_semantic_type_decl(name: ^Point, params: std.algebra.Empty, node: ctd_point_record(), target: c_type_decl_target_model()) {
     Accepted { value: point, diagnostics: _ } =>
-      match emit_semantic_type_decl(name: ^Bool, params: std.algebra.Empty, node: ctd_bool_coproduct(), target: c_type_decl_target_model()) {
+      match emit_semantic_type_decl(name: ^v2.std.logic.Bool, params: std.algebra.Empty, node: ctd_bool_coproduct(), target: c_type_decl_target_model()) {
         Accepted { value: bool_decl, diagnostics: _ } =>
           extdeps.communication.medium.Medium {
             carried: concat(concat(point.carried, bool_decl.carried), "\n"),
             fidelity: extdeps.communication.medium.Lossless
           }
-        Rejected { diagnostics: _ } =>
+        v2.std.diagnostic.Rejected { diagnostics: _ } =>
           extdeps.communication.medium.Medium { carried: "", fidelity: extdeps.communication.medium.Lossless }
       }
-    Rejected { diagnostics: _ } =>
+    v2.std.diagnostic.Rejected { diagnostics: _ } =>
       extdeps.communication.medium.Medium { carried: "", fidelity: extdeps.communication.medium.Lossless }
   }
 }
@@ -71,7 +71,7 @@ fn ctd_expected_stdout_octets() -> List<Int> {
   [0, 5, 0, 0, 0]
 }
 
-test fn c_type_decl_emit_host_green_run_holds() -> Bool {
+test fn c_type_decl_emit_host_green_run_holds() -> v2.std.logic.Bool {
   match run_emit_host(
     target: c_type_decl_target_model(),
     source: ctd_emit_decl_source(),
@@ -83,15 +83,15 @@ test fn c_type_decl_emit_host_green_run_holds() -> Bool {
           match runtime_value_parse(target: c_type_decl_target_model(), stdout: stdout) {
             Accepted { value: _, diagnostics: _ } =>
               stdout.bytes == emit_host_octets_byte_string(octets: ctd_expected_stdout_octets())
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
         _ => false
       }
-    Rejected { diagnostics: _ } => false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-test fn c_type_decl_emit_host_inject_fault_refuses_holds() -> Bool {
+test fn c_type_decl_emit_host_inject_fault_refuses_holds() -> v2.std.logic.Bool {
   match c_type_decl_inject_fault_runtime_row() {
     HostRuntimeRowAbsent => false
     HostRuntimeRowPresent { row: row } =>
@@ -105,13 +105,13 @@ test fn c_type_decl_emit_host_inject_fault_refuses_holds() -> Bool {
           match receipt.logical_run {
             Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
               match runtime_value_parse(target: c_type_decl_target_model(), stdout: stdout) {
-                Rejected { diagnostics: _ } => true
+                v2.std.diagnostic.Rejected { diagnostics: _ } => true
                 Accepted { value: _, diagnostics: _ } =>
                   stdout.bytes != emit_host_octets_byte_string(octets: ctd_expected_stdout_octets())
               }
-            Rejected { diagnostics: _ } => false
+            v2.std.diagnostic.Rejected { diagnostics: _ } => false
           }
-        Rejected { diagnostics: _ } => false
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
   }
 }

@@ -18,7 +18,7 @@ fn overlap_residue_stage_diagnostic(row: v2.std.grammar_choice_ambiguity.Grammar
   )
 }
 
-test fn overlap_evidence_binds_exact_row_not_global_roster() -> Bool {
+test fn overlap_evidence_binds_exact_row_not_global_roster() -> v2.std.logic.Bool {
   let row = sample_overlap_row()
   let detail = frontier_probe_assemble_detail_from_parse_stage(
     d: v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics {
@@ -42,7 +42,7 @@ test fn overlap_evidence_binds_exact_row_not_global_roster() -> Bool {
   }
 }
 
-test fn masked_overlap_tail_preserves_overlap_evidence_and_remaining_chain() -> Bool {
+test fn masked_overlap_tail_preserves_overlap_evidence_and_remaining_chain() -> v2.std.logic.Bool {
   let row = sample_overlap_row()
   let cause = assemble_rejection_cause_from_parse_stage(
     d: v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics {
@@ -76,7 +76,7 @@ test fn masked_overlap_tail_preserves_overlap_evidence_and_remaining_chain() -> 
   }
 }
 
-test fn emit_stage_receipt_has_no_assemble_detail() -> Bool {
+test fn emit_stage_receipt_has_no_assemble_detail() -> v2.std.logic.Bool {
   match frontier_probe_receipt_without_assemble_detail(
     module_path: "src/v2/compiler/example.dag",
     blocker: RealizationGap,
@@ -89,7 +89,7 @@ test fn emit_stage_receipt_has_no_assemble_detail() -> Bool {
   }
 }
 
-test fn assemble_receipt_carries_nonempty_rejection_chain() -> Bool {
+test fn assemble_receipt_carries_nonempty_rejection_chain() -> v2.std.logic.Bool {
   let row = sample_overlap_row()
   let stage = v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics {
     head: overlap_residue_stage_diagnostic(row: row),
@@ -114,7 +114,7 @@ test fn assemble_receipt_carries_nonempty_rejection_chain() -> Bool {
   }
 }
 
-test fn overlap_stage_attaches_evidence_when_diagnostics_stripped() -> Bool {
+test fn overlap_stage_attaches_evidence_when_diagnostics_stripped() -> v2.std.logic.Bool {
   let row = sample_overlap_row()
   let stage = v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics {
     head: overlap_residue_stage_diagnostic(row: row),
@@ -141,7 +141,7 @@ test fn overlap_stage_attaches_evidence_when_diagnostics_stripped() -> Bool {
   }
 }
 
-test fn masked_overlap_located_reason_unmasks_terminal_refusal() -> Bool {
+test fn masked_overlap_located_reason_unmasks_terminal_refusal() -> v2.std.logic.Bool {
   let masked = v2.std.diagnostic.NonEmptyDiagnostics {
     head: v2.std.diagnostic.Diagnostic {
       reason: ^parse_grammar_choice_overlap_residue,
@@ -160,7 +160,7 @@ test fn masked_overlap_located_reason_unmasks_terminal_refusal() -> Bool {
   located == ^body_lowering_reason_wrapper_retained_emitted
 }
 
-test fn overlap_only_chain_keeps_overlap_located_reason() -> Bool {
+test fn overlap_only_chain_keeps_overlap_located_reason() -> v2.std.logic.Bool {
   let overlap_only = v2.std.diagnostic.NonEmptyDiagnostics {
     head: v2.std.diagnostic.Diagnostic {
       reason: ^parse_grammar_choice_overlap_residue,
@@ -173,7 +173,7 @@ test fn overlap_only_chain_keeps_overlap_located_reason() -> Bool {
   located == ^parse_grammar_choice_overlap_residue
 }
 
-test fn masked_resolve_not_found_unmasks_located_reason() -> Bool {
+test fn masked_resolve_not_found_unmasks_located_reason() -> v2.std.logic.Bool {
   let masked = v2.std.diagnostic.NonEmptyDiagnostics {
     head: v2.std.diagnostic.Diagnostic {
       reason: ^parse_grammar_choice_overlap_residue,

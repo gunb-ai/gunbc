@@ -39,7 +39,7 @@ module gunbc.host_reach_identity_probe
 // identity at ONE grain — it does NOT prove the account reached was the account requested.
 // ProbeReachable therefore carries observed_principal (from a second typed argv op,
 // `id -un`) beside observed_short_hostname, and the receipt carries requested_principal.
-// Identity is Converged only when BOTH dimensions agree (see identity_verdict_from_outcome).
+// Identity is std.upsert_decision.Converged only when BOTH dimensions agree (see identity_verdict_from_outcome).
 // Repair #1: ProbeTargetUnobserved is the arm for a target the model refused to contact
 // at all (unobserved principal) — no SSH was attempted, distinct from an auth refusal.
 type ReachProbeOutcome
@@ -112,7 +112,7 @@ data probe_receipt_ledger_transcription_scaffold: std.disposition.Disposition = 
 // run ran the `id -un` second op (repair #2), so the principal is a real remote-process
 // readback, not inferred from the ssh target (the evidence-inflation the operator caught
 // on the prior transcription, which predated id -un, is corrected here). Identity is
-// therefore genuinely Converged on both dimensions for srv1/srv2. srv3/srv4 auth-refuse
+// therefore genuinely std.upsert_decision.Converged on both dimensions for srv1/srv2. srv3/srv4 auth-refuse
 // (gunbc-fleet not created there yet); the Sparks are ProbeTargetUnobserved (repair #1:
 // principal unobserved → no SSH), which is why those rows carry no auth diagnostic.
 data host_reach_identity_probe_receipts: std.types.List<HostReachIdentityProbeReceipt> = [
@@ -209,15 +209,15 @@ fn classify_reach_probe_wire(
 // the outcome stays on the receipt (see the distinctness note above).
 // A host-key mismatch is a CONFLICT only when an enrolled expectation exists to be
 // contradicted (Present — "we know this host's key and the observed one differs").
-// With Absent expectation the wire's 'verification failed' cannot distinguish first
+// With std.upsert_decision.Absent expectation the wire's 'verification failed' cannot distinguish first
 // contact from a changed key, so the honest verdict is Inaccessible — the transport
 // never completed and nothing about the host was verified. Both arms leave the cell
-// NOT converged (operator ruling 2026-08-09: a Mismatch/Absent cell counts as
+// NOT converged (operator ruling 2026-08-09: a Mismatch/std.upsert_decision.Absent cell counts as
 // unobserved-grade, never as satisfied); only the REMEDY differs — enroll the
 // fingerprint registry vs investigate a real contradiction.
 fn reach_verdict_from_outcome(o: ReachProbeOutcome) -> std.upsert_decision.ObservationVerdict {
   match o {
-    ProbeReachable { observed_short_hostname: _, observed_principal: _ } => Converged
+    ProbeReachable { observed_short_hostname: _, observed_principal: _ } => std.upsert_decision.Converged
     ProbeTransportUnavailable { cause: _ } => std.upsert_decision.Inaccessible
     ProbeAuthenticationRefused { cause: _ } => std.upsert_decision.Inaccessible
     ProbeHostKeyUnenrolled { transport_diagnostic: _ } => std.upsert_decision.Inaccessible
@@ -236,7 +236,7 @@ fn observe_reach_secrets_network(host: product.placement_supply.HostIdentity) ->
 // Producer 2 — P0:host-identity-converge. The enrolled slot identity is the desired
 // short hostname (fleet naming convention: the fleet_intent slot label IS the hostname
 // the SetHostnameCas converge drives toward). A reachable probe whose hostname differs
-// is Drifted — real divergence, the thing the converge corrects — while an unreachable
+// is std.upsert_decision.Drifted — real divergence, the thing the converge corrects — while an unreachable
 // or unauthenticated host is Inaccessible (cannot say), and a host-key mismatch is
 // Conflict (the machine answering may not be the enrolled host at all; treating its
 // hostname as an identity observation would launder a wrong-machine read into drift).
@@ -244,17 +244,17 @@ fn host_identity_desired_short_hostname(host: product.placement_supply.HostIdent
   host as String
 }
 
-// Repair #2: identity Converged requires BOTH dimensions — the observed hostname equals
+// Repair #2: identity std.upsert_decision.Converged requires BOTH dimensions — the observed hostname equals
 // the enrolled slot name AND the observed principal (id -un) equals the requested one. A
-// hostname match under a different account is Drifted, not Converged: the machine is the
+// hostname match under a different account is std.upsert_decision.Drifted, not Converged: the machine is the
 // right host but the probe did not reach the account the model asked for.
 fn identity_verdict_from_outcome(host: product.placement_supply.HostIdentity, requested_principal: String, o: ReachProbeOutcome) -> std.upsert_decision.ObservationVerdict {
   match o {
     ProbeReachable { observed_short_hostname: observed, observed_principal: obs_principal } =>
       if observed == host_identity_desired_short_hostname(host: host) && obs_principal == requested_principal {
-        Converged
+        std.upsert_decision.Converged
       } else {
-        Drifted
+        std.upsert_decision.Drifted
       }
     ProbeTransportUnavailable { cause: _ } => std.upsert_decision.Inaccessible
     ProbeAuthenticationRefused { cause: _ } => std.upsert_decision.Inaccessible
@@ -275,7 +275,7 @@ fn observe_host_identity_converge(host: product.placement_supply.HostIdentity) -
 // typed SSH PROBE seam (typed_argv_probe_over_ssh, expect: OutcomeIsData) — a failed leg
 // is DATA classified into its typed arm, never a step failure and never an ExpectSuccess
 // annotation standing where a check was owed (DEVBOOT retraction class). No enrollment
-// registry exists yet, so every mismatch carries expected_fingerprint = Absent honestly.
+// registry exists yet, so every mismatch carries expected_fingerprint = std.upsert_decision.Absent honestly.
 // The receipt is WRITTEN (typed value) and the entry exits success even when hosts are
 // unreachable, because the probe's product is the observation; only a receipt-write
 // failure is a run failure.
@@ -340,7 +340,7 @@ fn probe_host_reach_once(host: String, probed_at: String) -> HostReachIdentityPr
         requested_principal: "",
         outcome: ProbeTargetUnobserved {
           cause: match c {
-            PrincipalUnobserved { note: n } => join(["principal unobserved (no SSH attempted): ", n], "")
+            gunbc.fleet_reach_endpoint.PrincipalUnobserved { note: n } => join(["principal unobserved (no SSH attempted): ", n], "")
             gunbc.fleet_reach_endpoint.EndpointUnobserved { note: n } => join(["endpoint unobserved (no SSH attempted): ", n], "")
           },
         },
@@ -360,7 +360,7 @@ func probe_fleet_reach_wet() -> std.process.ProcessExit {
   }
   let w = Filesystem.Write(path: fleet_reach_probe_receipt_path, content: join([enroll_lines, to_string(run)], ""))
   if w.success {
-    ExitSuccess
+    std.process.ExitSuccess
   } else {
     exit_failure(reason: join(["fleet reach probe receipt write failed: ", w.error], ""))
   }

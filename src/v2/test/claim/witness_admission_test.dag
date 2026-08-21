@@ -9,7 +9,7 @@ data normalize_wet_known_red_admission_note: String = "2026-07-25 review #7199: 
 data synthetic_orphan_entry: String = "dag/test/claim/synthetic_orphan_admission_witness_test.dag"
 data synthetic_orphan_fn: String = "synthetic_orphan_no_consumer_holds"
 
-test fn witness_03_normalize_wet_known_red_consumer_holds() -> Bool {
+test fn witness_03_normalize_wet_known_red_consumer_holds() -> v2.std.logic.Bool {
   match v2.workflow.witness_admission.witness_consumer_cadence_for_row(
     entry: normalize_entry,
     function: normalize_fn,
@@ -20,11 +20,11 @@ test fn witness_03_normalize_wet_known_red_consumer_holds() -> Bool {
   }
 }
 
-test fn witness_03_normalize_wet_known_red_manifest_covers_holds() -> Bool {
+test fn witness_03_normalize_wet_known_red_manifest_covers_holds() -> v2.std.logic.Bool {
   v2.workflow.witness_admission.witness_admission_manifest_covers_row(entry: normalize_entry, function: normalize_fn)
 }
 
-test fn witness_synthetic_orphan_has_no_consumer_holds() -> Bool {
+test fn witness_synthetic_orphan_has_no_consumer_holds() -> v2.std.logic.Bool {
   match v2.workflow.witness_admission.witness_consumer_cadence_for_row(
     entry: synthetic_orphan_entry,
     function: synthetic_orphan_fn,
@@ -35,14 +35,14 @@ test fn witness_synthetic_orphan_has_no_consumer_holds() -> Bool {
   }
 }
 
-test fn witness_synthetic_orphan_admission_red_holds() -> Bool {
+test fn witness_synthetic_orphan_admission_red_holds() -> v2.std.logic.Bool {
   !v2.workflow.witness_admission.witness_has_executing_consumer_for_row(
     entry: synthetic_orphan_entry,
     function: synthetic_orphan_fn
   )
 }
 
-test fn witness_known_red_probe_consumer_holds() -> Bool {
+test fn witness_known_red_probe_consumer_holds() -> v2.std.logic.Bool {
   match v2.workflow.witness_admission.witness_consumer_cadence_for_row(
     entry: "src/v2/test/claim/manual/english_emit_add_test.dag",
     function: "english_emit_add_ingest_round_trip_holds",
@@ -53,18 +53,18 @@ test fn witness_known_red_probe_consumer_holds() -> Bool {
   }
 }
 
-test fn witness_field_access_wet_falsifier_consumer_holds() -> Bool {
+test fn witness_field_access_wet_falsifier_consumer_holds() -> v2.std.logic.Bool {
   match v2.workflow.witness_admission.witness_consumer_cadence_for_row(
     entry: "src/v2/test/claim/execution/emit_on_demand_field_access_family_witness_test.dag",
     function: "emit_on_demand_field_access_grain_keys_differ_holds",
     excluded_from_discovery: true
   ) {
-    OfflineLocalRecipe => true
+    std.witness_admission.OfflineLocalRecipe => true
     _ => false
   }
 }
 
-test fn witness_self_host_logic_falsifier_wet_consumer_holds() -> Bool {
+test fn witness_self_host_logic_falsifier_wet_consumer_holds() -> v2.std.logic.Bool {
   match v2.workflow.witness_admission.witness_consumer_cadence_for_row(
     entry: "dag/test/claim/self_host_logic_behavioral_witness_test.dag",
     function: "self_host_logic_behavioral_receipt_holds",
@@ -75,7 +75,7 @@ test fn witness_self_host_logic_falsifier_wet_consumer_holds() -> Bool {
   }
 }
 
-test fn witness_namespace_import_closure_falsifier_wet_consumer_holds() -> Bool {
+test fn witness_namespace_import_closure_falsifier_wet_consumer_holds() -> v2.std.logic.Bool {
   match v2.workflow.witness_admission.witness_consumer_cadence_for_row(
     entry: "dag/test/claim/namespace_import_closure_witness_test.dag",
     function: "namespace_import_closure_receipt_holds",
@@ -86,7 +86,7 @@ test fn witness_namespace_import_closure_falsifier_wet_consumer_holds() -> Bool 
   }
 }
 
-test fn witness_dispatch_bijection_real_roster_falsifier_wet_consumer_holds() -> Bool {
+test fn witness_dispatch_bijection_real_roster_falsifier_wet_consumer_holds() -> v2.std.logic.Bool {
   match v2.workflow.witness_admission.witness_consumer_cadence_for_row(
     entry: "dag/test/claim/interpreter_dispatch_bijection_real_roster_witness_test.dag",
     function: "interpreter_dispatch_bijection_real_roster_red_holds",
@@ -99,7 +99,7 @@ test fn witness_dispatch_bijection_real_roster_falsifier_wet_consumer_holds() ->
 
 data witness_infer_transform_add_vertical_flip_note: String = "POLARITY FLIPPED, not weakened or deleted (dashboard node adhoc-1eb1a9f9-ad9). Before 611fd02770/#8283 deleted falsifier.yml, this identity's cadence (FalsifierSubstrateLongLane) had a real scheduled route and witness_has_executing_consumer_for_row held. That route no longer exists — falsifier.yml is gone and no replacement executor exists — so witness_execution_standing_for_live_row now derives DeclaredCadenceUnrealized for this exact identity rather than WitnessHasExecutingConsumer. The identity is inside the derived population witness_cadence_has_scheduled_route names as unrealized, not beside it: this test now certifies the honest gap rather than the coverage claim that stopped being true at 611fd02770."
 
-test fn witness_infer_transform_add_vertical_substrate_long_consumer_holds() -> Bool {
+test fn witness_infer_transform_add_vertical_substrate_long_consumer_holds() -> v2.std.logic.Bool {
   match v2.workflow.witness_admission.witness_consumer_cadence_for_row(
     entry: "src/v2/test/claim/long/infer_transform_binary_infix_witness_test.dag",
     function: "infer_transform_add_vertical_witness_holds",
@@ -117,29 +117,29 @@ test fn witness_infer_transform_add_vertical_substrate_long_consumer_holds() -> 
     }
 }
 
-test fn witness_complement_wet_falsifier_consumer_holds() -> Bool {
+test fn witness_complement_wet_falsifier_consumer_holds() -> v2.std.logic.Bool {
   match v2.workflow.witness_admission.witness_consumer_cadence_for_row(
     entry: "src/v2/test/claim/execution/emit_on_demand_complement_family_witness_test.dag",
     function: "emit_on_demand_complement_grain_keys_differ_holds",
     excluded_from_discovery: true
   ) {
-    OfflineLocalRecipe => true
+    std.witness_admission.OfflineLocalRecipe => true
     _ => false
   }
 }
 
-test fn witness_offline_execution_lane_consumer_holds() -> Bool {
+test fn witness_offline_execution_lane_consumer_holds() -> v2.std.logic.Bool {
   match v2.workflow.witness_admission.witness_consumer_cadence_for_row(
     entry: "src/v2/test/claim/execution/synthetic_optin_exec_witness_test.dag",
     function: "synthetic_optin_exec_witness",
     excluded_from_discovery: true
   ) {
-    OfflineLocalRecipe => true
+    std.witness_admission.OfflineLocalRecipe => true
     _ => false
   }
 }
 
-test fn witness_discovery_row_consumer_holds() -> Bool {
+test fn witness_discovery_row_consumer_holds() -> v2.std.logic.Bool {
   match v2.workflow.witness_admission.witness_consumer_cadence_for_row(
     entry: "src/v2/test/claim/long/effect_reach_test.dag",
     function: "effect_reach_path_data_init_derived_host_reading_holds",
@@ -150,7 +150,7 @@ test fn witness_discovery_row_consumer_holds() -> Bool {
   }
 }
 
-test fn witness_bin_wet_live_rust_observation_consumer_holds() -> Bool {
+test fn witness_bin_wet_live_rust_observation_consumer_holds() -> v2.std.logic.Bool {
   match v2.workflow.witness_admission.witness_consumer_cadence_for_row(
     entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag",
     function: "live_rust_observation_matches_actions_subject",
@@ -161,7 +161,7 @@ test fn witness_bin_wet_live_rust_observation_consumer_holds() -> Bool {
   }
 }
 
-test fn witness_substrate_long_lane_consumer_holds() -> Bool {
+test fn witness_substrate_long_lane_consumer_holds() -> v2.std.logic.Bool {
   match witness_consumer_cadence_for_row(
     entry: "dag/test/claim/long/dissolution_census_witness_test.dag",
     function: "census_counters_exhaustively_partition_the_rows",
@@ -172,14 +172,14 @@ test fn witness_substrate_long_lane_consumer_holds() -> Bool {
   }
 }
 
-test fn witness_substrate_long_lane_manifest_covers_holds() -> Bool {
+test fn witness_substrate_long_lane_manifest_covers_holds() -> v2.std.logic.Bool {
   witness_admission_manifest_covers_row(
     entry: "dag/test/claim/long/dissolution_census_witness_test.dag",
     function: "census_counters_exhaustively_partition_the_rows"
   )
 }
 
-test fn witness_explicit_manifest_nonempty_holds() -> Bool {
+test fn witness_explicit_manifest_nonempty_holds() -> v2.std.logic.Bool {
   v2.std.algebra.length(xs: v2.workflow.witness_admission.witness_admission_explicit_consumer_manifest()) > 0
 }
 

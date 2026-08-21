@@ -20,7 +20,7 @@ fn without_suffix(s: String, suffix: String) -> String {
   }
 }
 
-fn failure_receipt_companion(function: String) -> Optional<String> {
+fn failure_receipt_companion(function: String) -> v2.std.optional.Optional<String> {
   if ends_with(s: function, suffix: "_holds") {
     v2.std.optional.optional_present(
       value: concat(gunbc.test_module_hygiene.without_suffix(s: function, suffix: "_holds"), "_failure_receipt")
@@ -34,7 +34,7 @@ fn failure_receipt_companion(function: String) -> Optional<String> {
   }
 }
 
-fn witness_verdict_diagnostic_companion(function: String) -> Optional<String> {
+fn witness_verdict_diagnostic_companion(function: String) -> v2.std.optional.Optional<String> {
   if ends_with(s: function, suffix: "_holds") {
     v2.std.optional.optional_present(
       value: concat(gunbc.test_module_hygiene.without_suffix(s: function, suffix: "_holds"), "_verdict_diagnostic")

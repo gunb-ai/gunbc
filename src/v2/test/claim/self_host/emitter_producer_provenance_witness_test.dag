@@ -7,17 +7,17 @@ TWO CLAIMS SURVIVED THE DELETION and keep their controls, which is why this file
 
 ONE DELETED WITNESS DESERVES ITS OWN SENTENCE because it looked like a real control and was not reachable as one. witness_v2_producer_claim_with_seed_closure_unauthorized_reds fabricated a v2 receipt over a seed closure and asserted the oracle refused to authorize it. Its subject was the authorization fold, which is gone; the underlying claim — that such a receipt is illegitimate — is now enforced one rung higher, at the mint, where the receipt cannot be constructed at all. The refusal it tested still holds; it holds by construction instead of by validation, and the mint control below is what proves it."
 
-test fn witness_seed_emit_rust_poison_structural_refusal_reds() -> Bool {
+test fn witness_seed_emit_rust_poison_structural_refusal_reds() -> v2.std.logic.Bool {
   mint_v2_interpreted_receipt_with_seed_closure_refuses(
     module_path: "src/v2/compiler/03_body_producer.dag"
   )
 }
 
-test fn witness_v2_interpreted_closure_is_seed_free() -> Bool {
+test fn witness_v2_interpreted_closure_is_seed_free() -> v2.std.logic.Bool {
   v2_interpreted_emitter_closure_seed_free_holds()
 }
 
-test fn witness_wet_known_red_entries_is_shared_authority() -> Bool {
+test fn witness_wet_known_red_entries_is_shared_authority() -> v2.std.logic.Bool {
   schedule_witness_entries_structurally_equal(
     left: seed_emitter_behavioral_wet_known_red_entries,
     right: falsifier_self_host_wet_known_red_entries
