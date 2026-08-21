@@ -10605,13 +10605,12 @@ fn run() -> Result<ExitCode, ExitCode> {
                 // is committed. Skipping the fixed point on a regen mismatch would conflate
                 // them and lose a determinism signal exactly when drift makes it interesting.
                 //
-                // DRIFT AND REFUSAL ARE DIFFERENT, though, and the receipt cannot tell them
-                // apart -- a population refusal writes the sentinel `refused:population` into
-                // the same `String` field a real digest occupies. Reading the receipt here would
-                // hand that sentinel to phase three, which would dutifully compare it against a
-                // real pass-two digest and report a determinism failure nobody measured. So the
-                // digest comes from the outcome's typed `FirstGeneration`, where a refusal has
-                // no digest field to read.
+                // DRIFT AND REFUSAL ARE DIFFERENT, and the digest still comes from the
+                // outcome's typed `FirstGeneration` rather than from the receipt. The receipt
+                // can now tell them apart too -- a population refusal writes
+                // `RegenReceipt::Refused`, which has no digest field -- but reading it here
+                // would route an in-process handoff through a file for no reason, and the
+                // typed outcome is the carrier this decision was extracted onto.
                 v1_compiler::cli_run::pass1_digest_for_fixed_point(&outcome).map(str::to_string)
             }
             Err(e) => {

@@ -14,14 +14,49 @@ module test.claim.witness_floor_workflow_consolidation_witness_test
 
 data consolidation_note: String = "The step ladder these replace was four steps: parse, regen, regen-fixed-point, floor. Each was its own process, the ORDER was a YAML list, each precondition was an `if:` naming another step's `outcome`, and the fixed-point step received pass 1's digest by re-reading the receipt FILE the regen process had written — a process boundary standing where a function call belonged, since run_required_regen_fixed_point has taken pass1_digest: Option<String> all along and CI passed None."
 
-// ONE RUN STEP REACHES THE BINARY, and it names the composed mode. The negative half is what
-// makes this discriminating: if any of the three retired invocations reappears as its own step,
-// the ladder has grown back and this reds.
+// NO RETIRED INVOCATION HAS GROWN BACK, and the required mode token is present. That is the
+// whole of what this row proves, and the heading is narrowed to say so: the two positive
+// substring checks are INDEPENDENT, so they do not join. `claim_executor` already appears in the
+// build step as a binary name, so this row would stay green if the run step were replaced by
+// something unrelated that merely contained `--required-ci`. An earlier revision of this comment
+// claimed the row establishes that one run step reaches the binary AND names the composed mode;
+// it does not, and a comment asserting what the code omits is the failure this file exists to
+// prevent one level down (raised in side-chat review, 2026-08-20).
+//
+// The join is proved elsewhere, one authority per proposition, and this row does not restate any
+// of them:
+//   fabric_witness_run_test workflow_step_renders_the_fabric_command_and_does_not_respell_it
+//     -- the exact rendering of floor_run_command reaches the step
+//   fabric_witness_run_test fabric_command_names_the_consolidated_mode
+//     -- the command selects --required-ci and not --required-floor
+//   this row
+//     -- no retired external invocation returned
+//
+// The negative half is what makes THIS row discriminating: if any of the three retired
+// invocations reappears as its own step, the ladder has grown back and this reds.
+//
+// THE CLAUSES WERE COUPLED TO ONE SPELLING OF THE INVOCATION AND ARE NOT ANY MORE. They matched
+// `claim_executor" --required-ci` -- the double quote is the tail of the hand-built
+// "$ROOT/target/release/claim_executor", so every clause silently depended on the argv being
+// spelled that exact way. #8629 renders the step from the fabric's ArgvCommand through
+// shell_command_render, which single-quotes every word per IEEE 1003.1-2017, so the emitted text
+// became 'target/release/claim_executor' '--required-ci' and the positive clause stopped
+// matching. That red was correct and is what brought me here.
+//
+// The repair is not to re-spell the pattern for the new renderer, because the NEGATIVE clauses
+// carried the same coupling and would have failed in the direction that does not announce
+// itself: a `--required-floor` step growing back would be emitted as '--required-floor', which
+// `claim_executor" --required-floor` cannot match, so all three negatives would have gone
+// permanently, vacuously green -- an inert assertion that still reads as coverage. Matching the
+// flag tokens alone is spelling-independent, and strictly stronger as a negative, since it now
+// catches a retired invocation under ANY quoting. Verified against the emitted file: it contains
+// exactly one of these four tokens.
 test fn w_ci_invokes_one_composed_mode_not_a_step_ladder() -> std.types.Bool {
   let yml = gunbc.witness_floor_workflow.expected_witness_floor_yml()
-  string_contains(s: yml, pattern: "claim_executor\" --required-ci")
-    && !string_contains(s: yml, pattern: "claim_executor\" --required-floor")
-    && !string_contains(s: yml, pattern: "claim_executor\" --required-regen")
+  string_contains(s: yml, pattern: "claim_executor")
+    && string_contains(s: yml, pattern: "--required-ci")
+    && !string_contains(s: yml, pattern: "--required-floor")
+    && !string_contains(s: yml, pattern: "--required-regen")
     && !string_contains(s: yml, pattern: "target/release/v1_src_dag_parse")
 }
 

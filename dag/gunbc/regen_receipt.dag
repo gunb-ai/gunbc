@@ -46,9 +46,29 @@ type PriorReceiptRef {
 }
 
 // FIRST GENERATION measures everything it reports. FIXED POINT measures the pass-2 digest and its
-// equality, and references the rest. The commit_sha on each variant is the tree THAT PASS ran
-// against; prior.commit_sha is the tree the referenced evidence came from, and the host refuses
-// when they differ.
+// equality, and references the rest. REFUSED measures nothing at all. The commit_sha on each
+// variant is the tree THAT PASS ran against; prior.commit_sha is the tree the referenced evidence
+// came from, and the host refuses when they differ.
+//
+// THE SAME ARGUMENT, APPLIED ONE CASE FURTHER OUT. The split above made the second pass unable to
+// fabricate the first pass answer. It did not reach the case where the FIRST pass itself never
+// got to ask: a population refusal happens before any content comparison, so there is no digest
+// to have and no equality to answer. Written as FirstGeneration that forced three inventions into
+// a persisted artifact — two digest strings and first_generation_equal. The Bool is the load
+// bearing one, because unlike a sentinel string it is INDISTINGUISHABLE from a real answer: false
+// is exactly what an honest unequal comparison writes.
+//
+// It crossed the process boundary, which is what makes it a carrier defect and not a cosmetic
+// one. The receipt file is the only thing the two invocations share, so the host read the
+// invented false back as a measurement and reported it as the referenced first generation answer.
+// The cross-tree guard cannot catch it: the refusal happened AT this commit, which is precisely
+// the condition that guard admits.
+//
+// Refused therefore has no digest fields and no equality field, so there is nothing to invent —
+// the same structural-impossibility move as the FirstGeneration/FixedPoint split, not a check
+// added beside it. What it carries instead is the one thing a refusal genuinely measured: why it
+// refused. A consumer that wants to know whether the first generation compared can no longer be
+// answered with a fabricated Bool; it gets a variant with no such field and a stated cause.
 type RegenReceipt
   = FirstGeneration {
       commit_sha: String
@@ -66,6 +86,12 @@ type RegenReceipt
       fixed_point_equal: Bool
       prior: PriorReceiptRef
     }
+  | Refused {
+      commit_sha: String
+      authority_digest: String
+      reason: String
+      candidate_artifact: String
+    }
 
 data stage0_regen_candidate_dir_rel: String = "target/stage0-regen-candidate"
 
@@ -81,6 +107,19 @@ data stage0_regen_receipt_artifact_name: String = "stage0-regen-receipt"
 fn prior_reference_is_same_tree(receipt: RegenReceipt) -> Bool {
   match receipt {
     FirstGeneration { commit_sha: _, authority_digest: _, committed_generated_digest: _, candidate_generated_digest: _, first_generation_equal: _, changed_paths: _, candidate_artifact: _ } => true,
-    FixedPoint { commit_sha, authority_digest: _, candidate_generated_digest: _, fixed_point_equal: _, prior } => commit_sha == prior.commit_sha
+    FixedPoint { commit_sha, authority_digest: _, candidate_generated_digest: _, fixed_point_equal: _, prior } => commit_sha == prior.commit_sha,
+    Refused { commit_sha: _, authority_digest: _, reason: _, candidate_artifact: _ } => true
+  }
+}
+
+// The one fact a refusal genuinely measured. Total by returning the empty string for the variants
+// that did not refuse, rather than an optional carrier: the question "why did this refuse" has a
+// well-formed answer of "it did not" for a measured pass, and the variants that measured are
+// distinguishable by their own fields without consulting this.
+fn refusal_reason(receipt: RegenReceipt) -> String {
+  match receipt {
+    FirstGeneration { commit_sha: _, authority_digest: _, committed_generated_digest: _, candidate_generated_digest: _, first_generation_equal: _, changed_paths: _, candidate_artifact: _ } => "",
+    FixedPoint { commit_sha: _, authority_digest: _, candidate_generated_digest: _, fixed_point_equal: _, prior: _ } => "",
+    Refused { commit_sha: _, authority_digest: _, reason, candidate_artifact: _ } => reason
   }
 }

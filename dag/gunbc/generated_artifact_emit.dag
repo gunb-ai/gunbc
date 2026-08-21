@@ -13,6 +13,7 @@ fn artifact_generate(a: gunbc.generated_artifact.GeneratedArtifact) -> ArtifactG
   match a {
     WitnessFloorYamlArtifact => artifact_generated(content: gunbc.witness_floor_workflow.expected_witness_floor_yml())
     FleetConvergeYamlArtifact => artifact_generated(content: gunbc.fleet_converge_workflow.expected_fleet_converge_yml())
+    FleetDesiredAdmissionYamlArtifact => artifact_generated(content: gunbc.fleet_desired_admission_workflow.expected_fleet_desired_yml())
     GitignoreArtifact => artifact_generated(content: gunbc.gitignore_emit.expected_gitignore())
     GitattributesArtifact => match gunbc.gitattributes_emit.expected_gitattributes() {
       GitattributesGenerated { content } => artifact_generated(content: content)
@@ -44,6 +45,7 @@ fn artifact_extra_valid(a: gunbc.generated_artifact.GeneratedArtifact, generated
   match a {
     WitnessFloorYamlArtifact => gunbc.ci_yaml_validate.ci_yml_parses(path: gunbc.generated_artifact.artifact_path(a: a))
     FleetConvergeYamlArtifact => gunbc.ci_yaml_validate.ci_yml_parses(path: gunbc.generated_artifact.artifact_path(a: a))
+    FleetDesiredAdmissionYamlArtifact => gunbc.ci_yaml_validate.ci_yml_parses(path: gunbc.generated_artifact.artifact_path(a: a))
     GitignoreArtifact => true
     GitattributesArtifact => true
     RoadmapArtifact => true
