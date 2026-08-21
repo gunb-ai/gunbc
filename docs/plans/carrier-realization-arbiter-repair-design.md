@@ -278,10 +278,19 @@ crate fails to build, so rustc stops before typechecking most items and never ru
 them. A zero from that log means *"none among what rustc reached, and unchanged between arms"* — it
 does **not** mean the crate has none. That bound is published with the number, not left to a reader.
 
-**Standing rule this adopts, general form: before reporting a class clean, confirm the instrument can
-EMIT that class.** A class the instrument cannot produce looks identical to a class at zero — and
-this section is a worked example of getting that wrong in a design document before any measurement
-was taken.
+**NARROWING, verified first-hand after `bright-dove-741` refuted the general form.** The emitted
+crate carries `#![deny(unreachable_patterns)]` — confirmed in `v1.compiler.stage0_crates`'s emitted
+crate attributes and in the seed's own `lib.rs`. A **denied** lint renders as `error: unreachable
+pattern`, which **does** match the probe's uncoded-suffix grep. So the blindness above is real for
+**warning-form** lints and **not** for denied ones, and `bright-dove-741` holds the positive control
+in band: 6-then-0 across their own defective and shipped runs, on this instrument and entry.
+
+**So the standing rule is narrower than first stated, and this is the corrected form: whether an
+instrument can emit a class is a property of the EMITTED ARTIFACT's lint attributes, answered per
+artifact — not a fixed property of the probe.** The cheap way to answer it is to find a run where
+that class was nonzero; a class no run has ever produced is a class you cannot report clean. The
+log-level warning reading above stays the right mechanism for warning-form classes; the rule around
+it is what changes.
 
 ## Step 3 — Pre-registered acceptance
 
