@@ -1,5 +1,6 @@
 module gunbc.fleet_desired_admission
 
+
 // THIS MODULE IS THE LIVE HALF OF THE ADMISSION GATE, AND IT EXISTS BECAUSE THE GATE HAD
 // NO PRODUCTION CONSUMER. gunbc.fleet_main_revision states the rule in its own header —
 // the desired revision derives from MERGED, FLOOR-GREEN main, never from raw HEAD — and
@@ -242,15 +243,36 @@ fn fleet_desired_authorized_push_cas_request(expected: extdeps.git.publication_t
   }
 }
 
-fn fleet_desired_authorized_push_script(expected: extdeps.git.publication_transport.GitRemoteRefExpectation, to: extdeps.git.object_store.GitObjectId) -> String {
+// The expectation as the RECEIPT says it, which is a different rendering from the one the LEASE
+// needs: git spells "must be absent" as an empty <expect>, and an empty string in a receipt is
+// indistinguishable from a prior that was never printed. So this renders the absent arm as a
+// positive word rather than as nothing, and it matches over the closed sum instead of over the
+// lease's hex-or-empty text — the two renderings answer to the same authority but not to the
+// same reader.
+fn fleet_desired_receipt_expected_phrase(expected: GitRemoteRefExpectation) -> String {
+  match expected {
+    RemoteRefMustBeAbsent => "absent"
+    RemoteRefMustEqual { oid: prior } => git_object_id_wire_hex(oid: prior) as String
+  }
+}
+
+// The receipt names BOTH operands of the compare-and-swap. Naming only the target leaves a run
+// that cannot evidence which prior the push required, and the run holds no other copy of it: the
+// script executes under `set -eu` with no trace, so the lease word is never echoed, and git's own
+// range line reports the transition that HAPPENED rather than the one that was DEMANDED. Those
+// coincide exactly when the CAS held, which is the thing a receipt is supposed to let a reader
+// check rather than assume. Measured before this row: eleven successful admissions whose expected
+// prior appears nowhere in their logs.
+fn fleet_desired_authorized_push_script(expected: GitRemoteRefExpectation, to: GitObjectId) -> String {
   let request = fleet_desired_authorized_push_cas_request(expected: expected, to: to)
-  let to_hex = extdeps.git.object_store.git_object_id_wire_hex(oid: to) as String
+  let to_hex = git_object_id_wire_hex(oid: to) as String
+  let expected_phrase = fleet_desired_receipt_expected_phrase(expected: expected)
   join([
     "set -eu\n",
     "git push ", extdeps.git.publication_transport.git_remote_ref_lease_word(request: request) as String,
     " ", request.remote as String,
-    " ", extdeps.git.publication_transport.git_remote_ref_cas_refspec(request: request) as String, "\n",
-    "echo \"[fleet-desired] admitted ", to_hex, "\"\n",
+    " ", git_remote_ref_cas_refspec(request: request) as String, "\n",
+    "echo \"[fleet-desired] admitted ", to_hex, " expected-prior ", expected_phrase, "\"\n",
   ], "")
 }
 

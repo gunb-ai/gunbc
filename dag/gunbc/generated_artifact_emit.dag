@@ -1,6 +1,7 @@
 
 module gunbc.generated_artifact_emit
 
+
 type ArtifactGenerationOutcome
   = ArtifactGenerated { content: String }
   | ArtifactGenerationRefused { reason: String }
@@ -15,12 +16,15 @@ fn artifact_generate(a: gunbc.generated_artifact.GeneratedArtifact) -> ArtifactG
       gunbc.witness_floor_workflow.WitnessFloorGenerated { content } => artifact_generated(content: content)
       gunbc.witness_floor_workflow.WitnessFloorGenerationRefused => ArtifactGenerationRefused { reason: "witness floor workflow capability closure refused" }
     }
-    gunbc.generated_artifact.FleetConvergeYamlArtifact => artifact_generated(content: gunbc.fleet_converge_workflow.expected_fleet_converge_yml())
-    gunbc.generated_artifact.FleetDesiredAdmissionYamlArtifact => artifact_generated(content: gunbc.fleet_desired_admission_workflow.expected_fleet_desired_yml())
-    gunbc.generated_artifact.GitignoreArtifact => artifact_generated(content: gunbc.gitignore_emit.expected_gitignore())
-    gunbc.generated_artifact.GitattributesArtifact => match gunbc.gitattributes_emit.expected_gitattributes() {
-      gunbc.gitattributes_emit.GitattributesGenerated { content } => artifact_generated(content: content)
-      gunbc.gitattributes_emit.GitattributesGenerationRefused => ArtifactGenerationRefused { reason: "generated projection path population refused" }
+    FleetConvergeYamlArtifact => match expected_fleet_converge_yml() {
+      FleetConvergeYamlGenerated { content } => artifact_generated(content: content)
+      FleetConvergeYamlGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+    FleetDesiredAdmissionYamlArtifact => artifact_generated(content: expected_fleet_desired_yml())
+    GitignoreArtifact => artifact_generated(content: expected_gitignore())
+    GitattributesArtifact => match expected_gitattributes() {
+      GitattributesGenerated { content } => artifact_generated(content: content)
+      GitattributesGenerationRefused => ArtifactGenerationRefused { reason: "generated projection path population refused" }
     }
     gunbc.generated_artifact.RoadmapArtifact => artifact_generated(content: gunbc.roadmap_authority.expected_roadmap_md())
     DesignArtifact => artifact_generated(content: gunbc.design_document.expected_design_md())

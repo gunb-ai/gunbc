@@ -176,6 +176,24 @@ fn product_boundary_label(boundary: ProductBoundary) -> String {
   }
 }
 
+// WHY THE EMITTER-REFUSAL LINE NAMES ITS OWN SCOPE.
+//
+// This line read "emitter rejected the admitted population, diagnostics: N",
+// and every reader of it -- including the probe document this lane published
+// -- took N for the closure's diagnostic count. It is not. Measured across
+// five subjects on 2026-08-21: a 1-module closure and a 4-module closure
+// containing it report identically; two closures sharing three of their four
+// modules report 3 and 10; and a 3-module, a 4-module and a 29-module closure
+// of unrelated content report byte-identical receipts because all three
+// refuse on one shared dependency. The emission stops at a refusing module
+// and reports that module.
+//
+// Stopping there is correct and stays: the line stops at the first defect.
+// What was wrong was a label that let a stopped line be read as a census, so
+// the label now carries the scope. It says only what execution established --
+// one module's, not the closure's -- and deliberately does not name a
+// selection rule, which was never read out of the emitter.
+
 fn boundary_refusal_cause_label(cause: BoundaryRefusalCause) -> String {
   match cause {
     ManifestNotProduced => "manifest not produced"
@@ -190,7 +208,7 @@ fn boundary_refusal_cause_label(cause: BoundaryRefusalCause) -> String {
       concat("the admission authority refused for a reason this receipt does not model: ", reason)
     EmitterRejected { causes: causes } =>
       concat(
-        "emitter rejected the admitted population, diagnostics: ",
+        "emitter refused -- diagnostics below are ONE MODULE'S, not the closure's, count: ",
         concat(
           to_string(diagnostic_tally_total(tally: causes)),
           diagnostic_tally_render(tally: causes)

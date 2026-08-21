@@ -1,5 +1,9 @@
 module gunbc.ci_spec
 
+
+
+
+
 type DiffMode = DiffMergeBase | DiffTwoDot
 
 type FloorBatchStopPolicy = StopBeforeDependents | FullLedger
@@ -419,18 +423,22 @@ fn gunbc_ci_multi_principal_probe_invoke() -> String {
 // written under a durable HOME, and no digest of it is printed. The only stdout is the
 // identity NAME line. The agent socket/pid go to GITHUB_ENV so the probe step's ssh
 // children inherit them; the job's always() cleanup step kills the agent.
-data gunbc_ci_fleet_key_agent_shell_emit_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: std.disposition.SingleAuthority,
-  bind: std.decl_ref.DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "gunbc_ci_fleet_key_agent_script",
-    field: std.decl_ref.WholeDeclaration
-  }
-}
-
-data gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_key_agent_script — concat-built foreign-executor (GitHub Actions run:) shell materializing the fleet automation key from Secret Manager versions/1 into an in-run ssh-agent; DISSOLVES WHEN the typed secret-materialization effect (SecretRef -> in-run agent, SECRET-VERSION-LIFECYCLE-0 machinery) lands on host_effect_apply and the step becomes an emitted typed effect")
-
-// Repairs #3 and #4 (operator scan of #8083, 2026-08-09):
+// THE MARKER'S ORIGINAL TRIGGER WAS UNFALSIFIABLE, AND THIS ROW RECORDS WHY BEFORE
+// DELETING IT (parent-session finding, 2026-08-21). It read "DISSOLVES WHEN the typed
+// secret-materialization effect... lands on host_effect_apply" — but host_effect_apply's
+// HostEffectIntent.target is a NodeControlPlane, and both its arms require a ComputeHost.
+// An ephemeral GitHub Actions runner is not a ComputeHost the fleet models; there was no
+// host_effect_apply arm this step could ever land on, so the condition named could never
+// occur. That is the same defect class as the trigger corrected alongside it this session
+// (gunbc_ci_spark_admin_credential_shell_emit_scaffold, PR #8777) — a marker naming a
+// condition that sounds like progress but is not reachable from where the code actually
+// runs.
+//
+// THE ACTUAL DEBT WAS NEVER ABOUT host_effect_apply: it was a hand-concatenated String
+// where typed orchestration emit belongs (DESIGN section 4c: prose the substrate can see,
+// not program data hidden in a joined literal), the same debt PR #8777 discharged for the
+// spark credential. Repairs #3 and #4 below (operator scan of #8083, 2026-08-09) are
+// preserved verbatim in the Do/Run steps that replace the join:
 // #3 FAILURE-SAFE CLEANUP — a `trap cleanup EXIT` is armed BEFORE the key touches disk,
 //    so any failure in curl/base64/chmod/keygen/agent/add removes the key file and kills
 //    the agent regardless of where set -e aborts. The outer always() step stays as
@@ -441,29 +449,84 @@ data gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger: std.dissolution.Di
 //    the modeled fleet_automation_ssh_key_fingerprint. A wrong secret VERSION is then a
 //    located ProbeCredentialIdentityMismatch that CONTACTS NO HOST, never a downstream
 //    host-auth failure. The comparison is against the repo's single fingerprint authority.
+//
+// UNLIKE THE SPARK CREDENTIAL, THIS STEP DOES NOT COLLAPSE INTO A SINGLE CONSUMER. The
+// agent this step starts is read by five mutually-exclusive mode-gated steps
+// (spark_grants/observe/linger/reboot/durability, all via fleet_multi_principal_probe),
+// selected only at workflow-dispatch runtime by github.event.inputs.mode; plan/apply touch
+// no SSH at all. Folding this script into all five would author the same script five times
+// (DESIGN section 2). What genuinely crosses the step boundary is the AGENT — a background
+// daemon plus its socket path and pid, neither of which is secret material — via
+// SSH_AUTH_SOCK/SSH_AGENT_PID over GITHUB_ENV, exactly as before. The private key file
+// itself already never crossed a step boundary (ssh-add then rm, in that order, before the
+// trap disarms): that was measured directly against this function's body and found
+// correct, not a defect this change is fixing.
+//
+// The Scaffold and DissolutionCondition rows that stood here are deleted rather than
+// corrected-in-place: the typed-orchestration-emit condition they should have named is
+// fulfilled by this same change (gunbc_ci_fleet_key_agent_prelude below, emitted through
+// v2.workflow.gunbc_invoke_step_emit gunbc_invoke_step_emit_pipeline), so a corrected row
+// would be created and discharged in the same diff — ceremony, not a standing obligation.
+fn gunbc_ci_fleet_key_agent_prelude() -> List<PipelineStep> {
+  [
+    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
+    Do { run: ci_retry_body_run(command: "umask 077") },
+    Do { run: ci_retry_body_run(command: "KEY_FILE=\"$RUNNER_TEMP/fleet-automation-key\"") },
+    Do { run: ci_retry_body_run(command: "AGENT_STARTED=0") },
+    Do {
+      run: ci_retry_body_run(
+        command: "cleanup() { rm -f \"$KEY_FILE\"; if [ \"$AGENT_STARTED\" = 1 ] && [ -n \"$\{SSH_AGENT_PID:-}\" ]; then ssh-agent -k >/dev/null 2>&1 || true; fi; }"
+      )
+    },
+    Do { run: ci_retry_body_run(command: "trap cleanup EXIT") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "curl -sSf -H \"Authorization: Bearer $WIF_ACCESS_TOKEN\" \"",
+          fleet_automation_privkey_sm_access_url(),
+          "\" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)[\"payload\"][\"data\"]))' > \"$KEY_FILE\""
+        ], "")
+      )
+    },
+    Do { run: ci_retry_body_run(command: "chmod 600 \"$KEY_FILE\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: join(["EXPECTED_FP=\"", fleet_automation_ssh_key_fingerprint, "\""], "")
+      )
+    },
+    Do {
+      run: ci_retry_body_run(
+        command: "OBSERVED_FP=\"$(ssh-keygen -y -f \"$KEY_FILE\" | ssh-keygen -lf - | awk '\{print $2}')\""
+      )
+    },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "if [ \"$OBSERVED_FP\" != \"$EXPECTED_FP\" ]; then echo \"ProbeCredentialIdentityMismatch: fetched secret ",
+          fleet_automation_privkey_version_segment(),
+          " fingerprint $OBSERVED_FP != modeled $EXPECTED_FP; contacting NO host\" >&2; exit 1; fi"
+        ], "")
+      )
+    },
+    Do { run: ci_retry_body_run(command: "eval \"$(ssh-agent -s)\" >/dev/null") },
+    Do { run: ci_retry_body_run(command: "AGENT_STARTED=1") },
+    Do { run: ci_retry_body_run(command: "ssh-add \"$KEY_FILE\" 2>/dev/null") },
+    Do { run: ci_retry_body_run(command: "rm -f \"$KEY_FILE\"") },
+    Do { run: ci_retry_body_run(command: "trap - EXIT") },
+    Do { run: ci_retry_body_run(command: "echo \"SSH_AUTH_SOCK=$SSH_AUTH_SOCK\" >> \"$GITHUB_ENV\"") },
+    Do { run: ci_retry_body_run(command: "echo \"SSH_AGENT_PID=$SSH_AGENT_PID\" >> \"$GITHUB_ENV\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: "echo \"fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; fingerprint verified against modeled authority; key file wiped)\""
+      )
+    }
+  ]
+}
+
 fn gunbc_ci_fleet_key_agent_script() -> String {
-  join([
-    "# ", std.dissolution.dissolution_description(condition: gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger), "\n",
-    "set -euo pipefail\n",
-    "umask 077\n",
-    "KEY_FILE=\"$RUNNER_TEMP/fleet-automation-key\"\n",
-    "AGENT_STARTED=0\n",
-    "cleanup() { rm -f \"$KEY_FILE\"; if [ \"$AGENT_STARTED\" = 1 ] && [ -n \"$\{SSH_AGENT_PID:-}\" ]; then ssh-agent -k >/dev/null 2>&1 || true; fi; }\n",
-    "trap cleanup EXIT\n",
-    "curl -sSf -H \"Authorization: Bearer $WIF_ACCESS_TOKEN\" \"", gunbc.fleet_ssh_access.fleet_automation_privkey_sm_access_url(), "\" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)[\"payload\"][\"data\"]))' > \"$KEY_FILE\"\n",
-    "chmod 600 \"$KEY_FILE\"\n",
-    "EXPECTED_FP=\"", gunbc.fleet_ssh_access.fleet_automation_ssh_key_fingerprint, "\"\n",
-    "OBSERVED_FP=\"$(ssh-keygen -y -f \"$KEY_FILE\" | ssh-keygen -lf - | awk '\{print $2}')\"\n",
-    "if [ \"$OBSERVED_FP\" != \"$EXPECTED_FP\" ]; then echo \"ProbeCredentialIdentityMismatch: fetched secret ", gunbc.fleet_ssh_access.fleet_automation_privkey_version_segment(), " fingerprint $OBSERVED_FP != modeled $EXPECTED_FP; contacting NO host\" >&2; exit 1; fi\n",
-    "eval \"$(ssh-agent -s)\" >/dev/null\n",
-    "AGENT_STARTED=1\n",
-    "ssh-add \"$KEY_FILE\" 2>/dev/null\n",
-    "rm -f \"$KEY_FILE\"\n",
-    "trap - EXIT\n",
-    "echo \"SSH_AUTH_SOCK=$SSH_AUTH_SOCK\" >> \"$GITHUB_ENV\"\n",
-    "echo \"SSH_AGENT_PID=$SSH_AGENT_PID\" >> \"$GITHUB_ENV\"\n",
-    "echo \"fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; fingerprint verified against modeled authority; key file wiped)\"\n",
-  ], "")
+  gunbc_invoke_step_emit_pipeline(
+    p: Pipeline { steps: gunbc_ci_fleet_key_agent_prelude(), on_failure: FailFast }
+  )
 }
 
 // A3 in-run administrator-credential materialization, the same lifecycle as the fleet key one step

@@ -136,17 +136,24 @@ test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
     && fleet_converge_workflow.jobs[1].needs == ["build"]
 }
 
+fn expected_fleet_converge_yml_content() -> String {
+  match expected_fleet_converge_yml() {
+    FleetConvergeYamlGenerated { content } => content
+    FleetConvergeYamlGenerationRefused { reason: _ } => ""
+  }
+}
+
 test fn fleet_converge_workflow_has_no_heal_revalidation_paste_through() -> Bool {
-  !string_contains(s: expected_fleet_converge_yml(), pattern: "expected_healed_sha")
+  !string_contains(s: expected_fleet_converge_yml_content(), pattern: "expected_healed_sha")
 }
 
 test fn fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal() -> Bool {
   string_contains(
-    s: expected_fleet_converge_yml(),
+    s: expected_fleet_converge_yml_content(),
     pattern: "EXPECTED_HASH: $\{\{ github.event.inputs.plan_artifact_hash \}\}",
   )
     && !string_contains(
-      s: expected_fleet_converge_yml(),
+      s: expected_fleet_converge_yml_content(),
       pattern: "EXPECTED=\"$\{\{ github.event.inputs.plan_artifact_hash \}\}\"",
     )
     && string_contains(s: gunbc_ci_fleet_converge_apply_invoke(), pattern: "$\{EXPECTED_HASH:-\}")

@@ -326,6 +326,15 @@ data fleet_converge_workflow: extdeps.github.actions.Workflow = extdeps.github.a
   jobs: [fleet_converge_build_job(), fleet_converge_job()],
 }
 
-fn expected_fleet_converge_yml() -> String {
-  serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_converge_workflow))
+type FleetConvergeYamlGenerationOutcome
+  = FleetConvergeYamlGenerated { content: String }
+  | FleetConvergeYamlGenerationRefused { reason: String }
+
+fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
+  match checked_job_timeout_minutes(computed: gunbc_ci_fleet_job_backstop_timeout_minutes()) {
+    JobTimeoutExceedsCeiling { minutes: _, ceiling: _ } =>
+      FleetConvergeYamlGenerationRefused { reason: "fleet-converge job backstop timeout exceeds extdeps.github.actions max_job_timeout_minutes — split the job or reduce a tier's per-step budget, do not raise past the platform ceiling (see gunbc_ci_fleet_job_backstop_timeout_note in gunbc.fleet_workflow_steps)" }
+    JobTimeoutWithinCeiling { minutes: _ } =>
+      FleetConvergeYamlGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_converge_workflow)) }
+  }
 }
