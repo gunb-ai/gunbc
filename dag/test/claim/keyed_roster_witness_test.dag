@@ -91,34 +91,34 @@ fn fixture_branch_b_overlap_rows() -> List<std.keyed_row.KeyedRow<String, Fixtur
 }
 
 test fn keyed_roster_two_branch_union_disjoint_keys_admits() -> Bool {
-  match keyed_roster_union(
+  match std.keyed_roster.keyed_roster_union(
     left: fixture_branch_a_rows(),
     right: fixture_branch_b_disjoint_rows(),
     key_eq: test.claim.keyed_roster_witness.fixture_key_eq,
   ) {
     KeyedRosterBuilt { rows: _ } => true
-    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
   }
 }
 
 test fn keyed_roster_two_branch_union_overlap_refuses_red_control() -> Bool {
-  match keyed_roster_union(
+  match std.keyed_roster.keyed_roster_union(
     left: fixture_branch_a_rows(),
     right: fixture_branch_b_overlap_rows(),
     key_eq: test.claim.keyed_roster_witness.fixture_key_eq,
   ) {
     KeyedRosterBuilt { rows: _ } => false
-    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => true
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => true
   }
 }
 
 test fn keyed_roster_two_branch_union_locates_overlap() -> Bool {
-  match keyed_roster_union(
+  match std.keyed_roster.keyed_roster_union(
     left: fixture_branch_a_rows(),
     right: fixture_branch_b_overlap_rows(),
     key_eq: test.claim.keyed_roster_witness.fixture_key_eq,
   ) {
-    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
       k == "dag/gunbc/alpha.dag"
         && f.value.audience == "world"
         && d.value.audience == "repo"
@@ -127,48 +127,48 @@ test fn keyed_roster_two_branch_union_locates_overlap() -> Bool {
 }
 
 test fn keyed_roster_build_admits_unique_paths() -> Bool {
-  match keyed_roster_build(incomings: fixture_rows_unique(), key_eq: test.claim.keyed_roster_witness.fixture_key_eq) {
+  match std.keyed_roster.keyed_roster_build(incomings: fixture_rows_unique(), key_eq: test.claim.keyed_roster_witness.fixture_key_eq) {
     KeyedRosterBuilt { rows: _ } => true
-    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
   }
 }
 
 test fn keyed_roster_build_refuses_duplicate_path_red_control() -> Bool {
-  match keyed_roster_build(incomings: fixture_rows_duplicate_path(), key_eq: test.claim.keyed_roster_witness.fixture_key_eq) {
+  match std.keyed_roster.keyed_roster_build(incomings: fixture_rows_duplicate_path(), key_eq: test.claim.keyed_roster_witness.fixture_key_eq) {
     KeyedRosterBuilt { rows: _ } => false
-    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => true
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => true
   }
 }
 
 test fn keyed_roster_insert_refuses_second_same_path() -> Bool {
   let first = test.claim.keyed_roster_witness.fixture_row(path: "dag/gunbc/x.dag", audience: "repo")
   let second = test.claim.keyed_roster_witness.fixture_row(path: "dag/gunbc/x.dag", audience: "world")
-  match keyed_roster_insert(rows: [first], incoming: second, key_eq: test.claim.keyed_roster_witness.fixture_key_eq) {
+  match std.keyed_roster.keyed_roster_insert(rows: [first], incoming: second, key_eq: test.claim.keyed_roster_witness.fixture_key_eq) {
     KeyedRosterInserted { rows: _ } => false
-    KeyedRosterDuplicateKey { key: _, existing: _, incoming: _ } => true
-    KeyedRosterInvalidRoster { key: _, first: _, duplicate: _ } => false
+    std.keyed_roster.KeyedRosterDuplicateKey { key: _, existing: _, incoming: _ } => true
+    std.keyed_roster.KeyedRosterInvalidRoster { key: _, first: _, duplicate: _ } => false
   }
 }
 
 test fn keyed_roster_insert_admits_distinct_paths() -> Bool {
   let first = test.claim.keyed_roster_witness.fixture_row(path: "dag/gunbc/x.dag", audience: "repo")
   let second = test.claim.keyed_roster_witness.fixture_row(path: "dag/gunbc/y.dag", audience: "world")
-  match keyed_roster_insert(rows: [first], incoming: second, key_eq: test.claim.keyed_roster_witness.fixture_key_eq) {
+  match std.keyed_roster.keyed_roster_insert(rows: [first], incoming: second, key_eq: test.claim.keyed_roster_witness.fixture_key_eq) {
     KeyedRosterInserted { rows: _ } => true
-    KeyedRosterDuplicateKey { key: _, existing: _, incoming: _ } => false
-    KeyedRosterInvalidRoster { key: _, first: _, duplicate: _ } => false
+    std.keyed_roster.KeyedRosterDuplicateKey { key: _, existing: _, incoming: _ } => false
+    std.keyed_roster.KeyedRosterInvalidRoster { key: _, first: _, duplicate: _ } => false
   }
 }
 
 test fn frontier_rows_keyed_build_admits_distinct_decl_fields() -> Bool {
-  match frontier_rows_keyed_roster_build(
+  match std.roster_frontier.frontier_rows_keyed_roster_build(
     rows: [
-      frontier_row_decl(
+      std.roster_frontier.frontier_row_decl(
         ref: decl_ref(module_path: "synthetic.mod", decl_name: "HostConfig"),
         reason: "whole-decl row",
         dissolution: unbound_dissolution(description: "d1"),
       ),
-      frontier_row_decl(
+      std.roster_frontier.frontier_row_decl(
         ref: decl_field_ref(
           module_path: "synthetic.mod",
           decl_name: "HostConfig",
@@ -180,33 +180,33 @@ test fn frontier_rows_keyed_build_admits_distinct_decl_fields() -> Bool {
     ],
   ) {
     KeyedRosterBuilt { rows: _ } => true
-    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
   }
 }
 
 test fn frontier_rows_keyed_build_admits_distinct_paths() -> Bool {
-  match frontier_rows_keyed_roster_build(rows: fixture_frontier_rows_unique()) {
+  match std.roster_frontier.frontier_rows_keyed_roster_build(rows: fixture_frontier_rows_unique()) {
     KeyedRosterBuilt { rows: _ } => true
-    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
   }
 }
 
 test fn frontier_rows_keyed_build_refuses_duplicate_path_red_control() -> Bool {
-  match frontier_rows_keyed_roster_build(rows: fixture_frontier_rows_duplicate_path()) {
+  match std.roster_frontier.frontier_rows_keyed_roster_build(rows: fixture_frontier_rows_duplicate_path()) {
     KeyedRosterBuilt { rows: _ } => false
-    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => true
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => true
   }
 }
 
 test fn frontier_rows_keyed_build_requires_well_formed_and_unique() -> Bool {
-  frontier_rows_well_formed(rows: fixture_frontier_rows_unique())
-    && match frontier_rows_keyed_roster_build(rows: fixture_frontier_rows_unique()) {
+  std.roster_frontier.frontier_rows_well_formed(rows: fixture_frontier_rows_unique())
+    && match std.roster_frontier.frontier_rows_keyed_roster_build(rows: fixture_frontier_rows_unique()) {
       KeyedRosterBuilt { rows: _ } => true
-      KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+      std.keyed_roster.KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
     }
-    && match frontier_rows_keyed_roster_build(rows: fixture_frontier_rows_duplicate_path()) {
+    && match std.roster_frontier.frontier_rows_keyed_roster_build(rows: fixture_frontier_rows_duplicate_path()) {
       KeyedRosterBuilt { rows: _ } => false
-      KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => true
+      std.keyed_roster.KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => true
     }
 }
 
@@ -215,15 +215,15 @@ test fn merge_row_lists_silently_skips_duplicate_contrast_control() -> Bool {
   let right = [test.claim.keyed_roster_witness.fixture_row(path: "dag/gunbc/a.dag", audience: "other")]
   let merged = keyed_merge_row_lists(left: left, right: right, key_eq: test.claim.keyed_roster_witness.fixture_key_eq)
   length(xs: merged) == 2
-    && match keyed_roster_build(incomings: concat(left, right), key_eq: test.claim.keyed_roster_witness.fixture_key_eq) {
+    && match std.keyed_roster.keyed_roster_build(incomings: concat(left, right), key_eq: test.claim.keyed_roster_witness.fixture_key_eq) {
       KeyedRosterBuilt { rows: _ } => false
-      KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => true
+      std.keyed_roster.KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => true
     }
 }
 
 test fn keyed_roster_build_locates_first_duplicate() -> Bool {
-  match keyed_roster_build(incomings: fixture_rows_duplicate_path(), key_eq: test.claim.keyed_roster_witness.fixture_key_eq) {
-    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+  match std.keyed_roster.keyed_roster_build(incomings: fixture_rows_duplicate_path(), key_eq: test.claim.keyed_roster_witness.fixture_key_eq) {
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
       k == "dag/gunbc/publication_grant.dag"
         && f.value.audience == "world"
         && d.value.audience == "repo"
@@ -234,39 +234,39 @@ test fn keyed_roster_build_locates_first_duplicate() -> Bool {
 test fn keyed_roster_insert_locates_duplicate() -> Bool {
   let existing = test.claim.keyed_roster_witness.fixture_row(path: "dag/gunbc/x.dag", audience: "repo")
   let incoming = test.claim.keyed_roster_witness.fixture_row(path: "dag/gunbc/x.dag", audience: "world")
-  match keyed_roster_insert(rows: [existing], incoming: incoming, key_eq: test.claim.keyed_roster_witness.fixture_key_eq) {
-    KeyedRosterDuplicateKey { key: k, existing: e, incoming: i } =>
+  match std.keyed_roster.keyed_roster_insert(rows: [existing], incoming: incoming, key_eq: test.claim.keyed_roster_witness.fixture_key_eq) {
+    std.keyed_roster.KeyedRosterDuplicateKey { key: k, existing: e, incoming: i } =>
       k == "dag/gunbc/x.dag" && e.value.audience == "repo" && i.value.audience == "world"
     KeyedRosterInserted { rows: _ } => false
-    KeyedRosterInvalidRoster { key: _, first: _, duplicate: _ } => false
+    std.keyed_roster.KeyedRosterInvalidRoster { key: _, first: _, duplicate: _ } => false
   }
 }
 
 test fn keyed_roster_insert_refuses_preexisting_duplicate_roster_red_control() -> Bool {
   let incoming = test.claim.keyed_roster_witness.fixture_row(path: "dag/gunbc/new.dag", audience: "repo")
-  match keyed_roster_insert(
+  match std.keyed_roster.keyed_roster_insert(
     rows: fixture_rows_duplicate_path(),
     incoming: incoming,
     key_eq: test.claim.keyed_roster_witness.fixture_key_eq,
   ) {
     KeyedRosterInserted { rows: _ } => false
-    KeyedRosterDuplicateKey { key: _, existing: _, incoming: _ } => false
-    KeyedRosterInvalidRoster { key: _, first: _, duplicate: _ } => true
+    std.keyed_roster.KeyedRosterDuplicateKey { key: _, existing: _, incoming: _ } => false
+    std.keyed_roster.KeyedRosterInvalidRoster { key: _, first: _, duplicate: _ } => true
   }
 }
 
 test fn keyed_roster_insert_locates_preexisting_duplicate_roster() -> Bool {
   let incoming = test.claim.keyed_roster_witness.fixture_row(path: "dag/gunbc/new.dag", audience: "repo")
-  match keyed_roster_insert(
+  match std.keyed_roster.keyed_roster_insert(
     rows: fixture_rows_duplicate_path(),
     incoming: incoming,
     key_eq: test.claim.keyed_roster_witness.fixture_key_eq,
   ) {
-    KeyedRosterInvalidRoster { key: k, first: f, duplicate: d } =>
+    std.keyed_roster.KeyedRosterInvalidRoster { key: k, first: f, duplicate: d } =>
       k == "dag/gunbc/publication_grant.dag"
         && f.value.audience == "world"
         && d.value.audience == "repo"
     KeyedRosterInserted { rows: _ } => false
-    KeyedRosterDuplicateKey { key: _, existing: _, incoming: _ } => false
+    std.keyed_roster.KeyedRosterDuplicateKey { key: _, existing: _, incoming: _ } => false
   }
 }

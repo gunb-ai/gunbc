@@ -234,17 +234,17 @@ fn pin_value_eq<Subject>(a: extdeps.pin.Pin<extdeps.coverage.Subject>, b: extdep
 }
 
 data pin_frontier_rows: std.types.List<std.roster_frontier.FrontierRow> = [
-  frontier_row_decl(
+  std.roster_frontier.frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.pin", decl_name: "PinSelection"),
     reason: "refresh_window_days is a bare PositiveInt count of days rather than a day-typed magnitude",
     dissolution: unbound_dissolution(description: "feature:pin-refresh-window-measure — a calendar-day carrier exists to consume (std.measure stops at Minute: Nanosecond, Microsecond, Millisecond, Second, Minute — there is no Day, and a calendar day is not an SI scale of seconds, so this cannot be satisfied by picking an existing row); then refresh_window_days becomes that carrier and this row deletes. Consume-never-fork"),
   ),
-  frontier_row_decl(
+  std.roster_frontier.frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.pin", decl_name: "pin_refresh_window_positivity_note"),
     reason: "the positivity wall holds at literal sites only; non-literal values at refined positions still compile with a counted advisory",
     dissolution: unbound_dissolution(description: "feature:refinement-evidence-at-non-literal-positions — refinement subtyping / parameter evidence is modeled so a non-literal at a refined position either carries proof or hard-refuses; WhereRefinementUnenforced deferrals for gt_zero/range/non_empty at non-literal sites delete; the pin_refresh_window_positivity_note residue paragraph deletes with this row"),
   ),
-  frontier_row_decl(
+  std.roster_frontier.frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.pin", decl_name: "pin_currency_gap"),
     reason: "TrackedChannel stores no resolution date, so no freshness verdict is derivable and none is reported",
     dissolution: unbound_dissolution(description: "feature:pin-tracked-freshness-evidence — v2.std.datetime gains day arithmetic (it has no day-difference, epoch-day, or days-between fn today, and zero CalendarDate constructors are in use anywhere in the corpus) AND TrackedChannel carries resolved_on: CalendarDate; then pin_currency_gap gains a genuine positive arm derived from stored evidence plus an observed date"),

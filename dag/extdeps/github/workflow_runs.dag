@@ -27,7 +27,7 @@ type WorkflowRunConclusion
   | StartupFailure
 
 data conclusion_authority_consolidation_frontier_rows: List<std.roster_frontier.FrontierRow> = [
-  frontier_row_decl(
+  std.roster_frontier.frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.github.workflow_runs", decl_name: "WorkflowRunConclusion"),
     reason: "WorkflowRunConclusion (workflow runs REST API) and CheckConclusion (checks REST API, extdeps.github.checks) share 7 of 8 variants: WorkflowRunConclusion adds StartupFailure, CheckConclusion adds Stale. These are genuinely different API shapes today",
     dissolution: unbound_dissolution(description: "GitHub API unifies conclusion values across both APIs, or std gains a tagged-union type allowing a shared core with API-specific extensions"),

@@ -96,7 +96,7 @@ fn policy_pilot_resolve_rejects_with_reason(
 test fn namespace_only_policy_disambiguates_at_type_position_holds() -> Bool {
   policy_pilot_resolve_yes(
     policy: NamespaceOnlyY,
-    position: qualified_name_snoc(qn: v2.test.claim.symbol_index.containment.si_module_qn, segment: ^Classical)
+    position: qualified_name_snoc(qn: v2.test.claim.symbol_index.containment.si_module_qn, segment: ^std.logic.Classical)
   )
 }
 
@@ -121,7 +121,7 @@ test fn namespace_only_policy_chain_shadow_ambiguous_refuses_holds() -> Bool {
 test fn namespace_only_policy_variant_alias_shadow_ambiguous_refuses_holds() -> Bool {
   policy_pilot_resolve_rejects_with_reason(
     policy: NamespaceOnlyY,
-    position: qualified_name_snoc(qn: v2.test.claim.symbol_index.containment.si_unique_module_qn, segment: ^Classical),
+    position: qualified_name_snoc(qn: v2.test.claim.symbol_index.containment.si_unique_module_qn, segment: ^std.logic.Classical),
     symbol_index: si_unique_index,
     module_qn: v2.test.claim.symbol_index.containment.si_unique_module_qn,
     identity: ^No,

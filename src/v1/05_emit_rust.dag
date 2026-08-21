@@ -783,9 +783,9 @@ fn render_rust_shared_type_if_needed(type_name: String, rendered: String, shared
 // spelling-for-type substitution this guard exists to stop.)
 //
 // Before Root B the identical defect wore a different surface: `Nat` was
-// `Rc<CommutativeSemiring<Magnitude>>`, the use site rendered the spelling `Nat` (which does not
+// `Rc<CommutativeSemiring<std.magnitude.Magnitude>>`, the use site rendered the spelling `Nat` (which does not
 // begin with "Rc<", so the prefix guard read it as unwrapped) and raised a second layer to
-// `Rc<Rc<CommutativeSemiring<Magnitude>>>`. One position-blind rule, two representations, both
+// `Rc<Rc<CommutativeSemiring<std.magnitude.Magnitude>>>`. One position-blind rule, two representations, both
 // wrong -- so the repair belongs on the carrier's realization, not on either rendering.
 //
 // The verdict comes from the SINGLE existing authority (rust_seed_host_numeric_alias, via the
@@ -8132,7 +8132,7 @@ fn rust_call_arg_fail_closed_unwrap(arg_str: String, arg: v1.std.core.Node, call
 // top-level fn item already coerces to `impl Fn` with no seam to cross), so wrapping it would be
 // pure textual churn with no seam to close -- confirmed by regen: an earlier revision keyed only on
 // the callee's parameter arity and fired on every non-lambda argument corpus-wide (key_eq.clone(),
-// frontier_subject_eq, is_ident_char, ...), rewriting call sites that already compiled and had no
+// std.roster_frontier.frontier_subject_eq, is_ident_char, ...), rewriting call sites that already compiled and had no
 // E0277 seam to close. A literal closure argument (ExprLambda) is also left unwrapped, since it
 // already satisfies the Fn bound directly.
 // idx counts CALL arguments (value params only); info.params mixes generic type

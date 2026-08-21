@@ -2,7 +2,7 @@ module gunbc.census_closure_frontier
 
 
 data census_closure_count_witness_frontier_rows: List<std.roster_frontier.FrontierRow> = [
-  frontier_row_decl(
+  std.roster_frontier.frontier_row_decl(
     ref: decl_ref(
       module_path: "test.claim.annotation_carrier",
       decl_name: "census_closure_frontier_rows_count_matches_hand_count",
@@ -40,5 +40,5 @@ fn census_closure_frontier_row_groups() -> List<List<std.roster_frontier.Frontie
 }
 
 fn census_closure_frontier_rows() -> List<std.roster_frontier.FrontierRow> {
-  concat_frontier_row_groups(groups: census_closure_frontier_row_groups())
+  std.roster_frontier.concat_frontier_row_groups(groups: census_closure_frontier_row_groups())
 }

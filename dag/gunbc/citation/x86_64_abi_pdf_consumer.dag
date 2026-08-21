@@ -1,7 +1,7 @@
 module gunbc.citation.x86_64_abi_pdf_consumer
 
 
-// Product-layer citation consumer for the x86_64 ABI PDF: admission, navigable URI
+// std.constructors.Product-layer citation consumer for the x86_64 ABI PDF: admission, navigable URI
 // projection, pin/citation receipts, and syscall-claim evidence. Upstream document
 // facts (authority, identity, edition, calling convention) live in extdeps.runtime.abi.sysv_amd64.
 

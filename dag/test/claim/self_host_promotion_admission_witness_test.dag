@@ -100,7 +100,7 @@ fn pa_build(
   v2.compiler.self_host.promotion_admission.BuildReceipt { subject: subject, outcome: outcome }
 }
 
-// classical_not over 2 inputs, plus classical_and and classical_or over 4 pairs each:
+// std.logic.classical_not over 2 inputs, plus std.logic.classical_and and std.logic.classical_or over 4 pairs each:
 // 2 + 4 + 4, the population dag/tools/self_host_logic_behavioral_transport actually
 // walks — measured by compiling its driver and reading the count the driver reports,
 // not by counting the loops in the source.

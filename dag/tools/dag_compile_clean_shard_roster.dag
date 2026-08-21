@@ -13,14 +13,14 @@ fn compile_clean_path_key_eq(a: String, b: String) -> Bool {
 
 fn compile_clean_decl_facts_to_keyed_rows(
   decl_facts: List<CompileCleanModuleDeclFact>
-) -> List<KeyedRow<String, CompileCleanModuleDeclFact>> {
+) -> List<std.keyed_row.KeyedRow<String, CompileCleanModuleDeclFact>> {
   map(decl_facts, decl => std.keyed_row.KeyedRow { row_key: decl.path, value: decl })
 }
 
 fn compile_clean_shard_roster_build_from(
   decl_facts: List<CompileCleanModuleDeclFact>
 ) -> std.keyed_roster.KeyedRosterBuild<String, CompileCleanModuleDeclFact> {
-  keyed_roster_build(
+  std.keyed_roster.keyed_roster_build(
     incomings: compile_clean_decl_facts_to_keyed_rows(decl_facts: decl_facts),
     key_eq: compile_clean_path_key_eq,
   )
@@ -58,7 +58,7 @@ fn compile_clean_module_shard_roster_from(
       CompileCleanModuleShardRosterBuilt {
         shards: map(rows, row => compile_clean_module_shard_from_decl(decl: row.value))
       }
-    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
       CompileCleanModuleShardRosterDuplicatePath {
         path: k,
         first: f.value,
@@ -121,7 +121,7 @@ fn witness_roster_nonempty_on_fixture_facts() -> Bool {
 fn witness_roster_build_admits_on_fixture_facts() -> Bool {
   match compile_clean_shard_roster_build_from(decl_facts: compile_clean_shard_roster_mechanism_fixture_facts) {
     KeyedRosterBuilt { rows: _ } => true
-    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
   }
 }
 
@@ -130,7 +130,7 @@ fn witness_roster_build_refuses_synthetic_duplicate_facts() -> Bool {
     decl_facts: compile_clean_shard_roster_mechanism_fixture_duplicate_facts
   ) {
     KeyedRosterBuilt { rows: _ } => false
-    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
       k == "dag/fixture/alpha.dag"
         && f.value.module == "fixture.alpha"
         && d.value.module == "fixture.alpha_reexport"

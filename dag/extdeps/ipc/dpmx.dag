@@ -9,7 +9,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 }
 
 // VERIFIED LIVE 2026-08-11 by fetching the cited locator: the consortium names itself the
-// "IPC-2581 Consortium" and the format "IPC-DPMX (IPC-2581)", "IPC Digital Product Model
+// "IPC-2581 Consortium" and the format "IPC-DPMX (IPC-2581)", "IPC Digital std.constructors.Product Model
 // Exchange", whose stated purpose is quoted verbatim in the subject note below. The fetched
 // page does NOT state a current revision designation, so no revision is recorded here; a
 // revision is a fact this repository does not yet hold, and inventing "Revision C" from

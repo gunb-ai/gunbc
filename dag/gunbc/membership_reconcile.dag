@@ -131,7 +131,7 @@ fn membership_reconcile<M, K>(
   ownership_of: fn(M) -> gunbc.ownership.Ownership?,
 ) -> gunbc.membership_reconcile.MembershipReconcileOutcome<M, K> {
   match membership_plain_roster_build(members: desired, key_of: key_of, key_eq: key_eq) {
-    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
       MembershipReconcileDuplicateKey {
         roster: MembershipDesiredRoster,
         key: k,
@@ -140,7 +140,7 @@ fn membership_reconcile<M, K>(
       }
     KeyedRosterBuilt { rows: desired_rows } =>
       match membership_plain_roster_build(members: observed, key_of: key_of, key_eq: key_eq) {
-        KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+        std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
           MembershipReconcileDuplicateKey {
             roster: MembershipObservedRoster,
             key: k,
@@ -239,7 +239,7 @@ fn membership_reconcile_scoped<M, Relation, Scope, K, State>(
 ) -> gunbc.membership_reconcile.MembershipReconcileScopedOutcome<M, Relation, Scope, K> {
   let relation = resource.key
   match membership_scoped_roster_build(members: desired, relation: relation) {
-    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
       MembershipReconcileDuplicateScopedKey {
         roster: MembershipDesiredRoster,
         key: k,
@@ -248,7 +248,7 @@ fn membership_reconcile_scoped<M, Relation, Scope, K, State>(
       }
     KeyedRosterBuilt { rows: desired_rows } =>
       match membership_scoped_roster_build(members: observed, relation: relation) {
-        KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+        std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
           MembershipReconcileDuplicateScopedKey {
             roster: MembershipObservedRoster,
             key: k,

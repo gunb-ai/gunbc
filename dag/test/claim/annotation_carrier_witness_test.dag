@@ -8,43 +8,43 @@ test fn census_closure_frontier_rows_count_matches_hand_count() -> Bool {
 }
 
 test fn census_closure_frontier_rows_well_formed() -> Bool {
-  frontier_rows_well_formed(rows: census_closure_frontier_rows())
+  std.roster_frontier.frontier_rows_well_formed(rows: census_closure_frontier_rows())
 }
 
 test fn frontier_expiry_fold_partitions_unbound_and_pending() -> Bool {
-  let report = fold_frontier_expiry(
+  let report = std.roster_frontier.fold_frontier_expiry(
     rows: census_closure_frontier_rows(),
     present_decls: [],
   )
   report.unbound_count + report.pending_count == 24
     && report.fired_still_present_count == 0
-    && frontier_expiry_clean(report: report)
+    && std.roster_frontier.frontier_expiry_clean(report: report)
 }
 
 test fn frontier_expiry_fired_row_still_present_reds() -> Bool {
   let mac_trigger = decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address")
-  let base = fold_frontier_expiry(rows: census_closure_frontier_rows(), present_decls: [])
-  let report = fold_frontier_expiry(
+  let base = std.roster_frontier.fold_frontier_expiry(rows: census_closure_frontier_rows(), present_decls: [])
+  let report = std.roster_frontier.fold_frontier_expiry(
     rows: census_closure_frontier_rows(),
     present_decls: [mac_trigger],
   )
   report.fired_still_present_count == 1
     && report.pending_count == base.pending_count - 1
     && report.unbound_count == base.unbound_count
-    && !frontier_expiry_clean(report: report)
+    && !std.roster_frontier.frontier_expiry_clean(report: report)
 }
 
 test fn frontier_expiry_fired_trigger_absent_from_rows_is_clean() -> Bool {
   let absent_trigger = decl_ref(module_path: "extdeps.network.mac", decl_name: "already_deleted_frontier_unit")
-  let base = fold_frontier_expiry(rows: census_closure_frontier_rows(), present_decls: [])
-  let report = fold_frontier_expiry(
+  let base = std.roster_frontier.fold_frontier_expiry(rows: census_closure_frontier_rows(), present_decls: [])
+  let report = std.roster_frontier.fold_frontier_expiry(
     rows: census_closure_frontier_rows(),
     present_decls: [absent_trigger],
   )
   report.fired_still_present_count == 0
     && report.pending_count == base.pending_count
     && report.unbound_count == base.unbound_count
-    && frontier_expiry_clean(report: report)
+    && std.roster_frontier.frontier_expiry_clean(report: report)
 }
 
 test fn unbound_condition_reports_unbound_not_pending() -> Bool {

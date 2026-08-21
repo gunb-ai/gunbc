@@ -941,13 +941,13 @@ data non_fold_residue_frontier: List<std.roster_frontier.FrontierRow> = [
 ]
 
 fn non_fold_residue_frontier_units() -> List<String> {
-  frontier_units(rows: non_fold_residue_frontier)
+  std.roster_frontier.frontier_units(rows: non_fold_residue_frontier)
 }
 
-fn non_fold_residue_frontier_construct() -> KeyedRosterBuild<FrontierSubject, FrontierRow> {
-  frontier_rows_keyed_roster_build(rows: non_fold_residue_frontier)
+fn non_fold_residue_frontier_construct() -> std.keyed_roster.KeyedRosterBuild<std.roster_frontier.FrontierSubject, std.roster_frontier.FrontierRow> {
+  std.roster_frontier.frontier_rows_keyed_roster_build(rows: non_fold_residue_frontier)
 }
 
 fn non_fold_residue_frontier_well_formed() -> Bool {
-  frontier_rows_well_formed(rows: non_fold_residue_frontier)
+  std.roster_frontier.frontier_rows_well_formed(rows: non_fold_residue_frontier)
 }

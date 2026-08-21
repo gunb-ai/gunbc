@@ -2,7 +2,7 @@ module std.nat
 
 
 // A natural number is a CARRIER, not an operations table. The prior declaration
-// -- Nat = CommutativeSemiring<Magnitude> -- said a natural number IS a record of
+// -- Nat = CommutativeSemiring<std.magnitude.Magnitude> -- said a natural number IS a record of
 // {add, zero, mul, one}, naming the STRUCTURE where the carrier belonged. Its own
 // module contradicted it: nat_compare and nat_max order two Nats with `<` and `>`,
 // which no operations-record admits. The import era never made a consumer check

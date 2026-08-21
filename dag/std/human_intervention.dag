@@ -59,7 +59,7 @@ fn human_intervention_frequency_eq(a: HumanInterventionFrequency, b: HumanInterv
 // DERIVED. No burden carries a stored count; a stored one is a second representation of
 // the list beside it and goes stale the moment an intervention is added (DESIGN §2/§3).
 // The result is an Int rather than std.nat.Nat because Nat at this layer is the algebraic
-// CommutativeSemiring<Magnitude> alias with no counting surface, and list_length — the one
+// CommutativeSemiring<std.magnitude.Magnitude> alias with no counting surface, and list_length — the one
 // authority for "how many elements" — answers in Int; minting a second cardinal here to
 // satisfy a name would be exactly the re-invention the decomposition test forbids.
 fn human_intervention_count_at(

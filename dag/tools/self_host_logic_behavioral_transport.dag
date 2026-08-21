@@ -17,7 +17,7 @@ data slb_receipt_pass_marker: String = "SELF_HOST_LOGIC_BEHAVIORAL_RECEIPT: PASS
 
 data slb_receipt_fail_marker: String = "SELF_HOST_LOGIC_BEHAVIORAL_RECEIPT: FAIL"
 
-// classical_not over 2 inputs, plus classical_and and classical_or over 4 input pairs
+// std.logic.classical_not over 2 inputs, plus std.logic.classical_and and std.logic.classical_or over 4 input pairs
 // each: 2 + 4 + 4. This is the DECLARED population; the driver reports the count it
 // actually walked, and slb_cases_marker joins the two. Before that join the driver could
 // compare any subset and still print PASS, because PASS reported agreement over whatever

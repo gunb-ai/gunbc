@@ -2,11 +2,11 @@ module gunbc.dissolution_census
 
 
 fn dissolution_census_report() -> std.roster_frontier.FrontierExpiryReport {
-  fold_frontier_expiry(rows: census_closure_frontier_rows(), present_decls: [])
+  std.roster_frontier.fold_frontier_expiry(rows: census_closure_frontier_rows(), present_decls: [])
 }
 
 fn dissolution_census_report_against(present_decls: List<std.decl_ref.DeclarationRef>) -> std.roster_frontier.FrontierExpiryReport {
-  fold_frontier_expiry(rows: census_closure_frontier_rows(), present_decls: present_decls)
+  std.roster_frontier.fold_frontier_expiry(rows: census_closure_frontier_rows(), present_decls: present_decls)
 }
 
 fn dissolution_census_unbound_count() -> Int {
@@ -27,8 +27,8 @@ fn dissolution_census_total() -> Int {
 }
 
 fn dissolution_census_holds() -> Bool {
-  frontier_rows_well_formed(rows: census_closure_frontier_rows())
-    && frontier_expiry_clean(report: dissolution_census_report())
+  std.roster_frontier.frontier_rows_well_formed(rows: census_closure_frontier_rows())
+    && std.roster_frontier.frontier_expiry_clean(report: dissolution_census_report())
 }
 
 fn frontier_rows_bound_count(rows: List<std.roster_frontier.FrontierRow>) -> Int {

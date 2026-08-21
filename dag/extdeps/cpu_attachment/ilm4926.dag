@@ -197,7 +197,7 @@ type PartNumberCandidate {
 // the only source was a forum line joining them with an ampersand and two readings disagreed
 // about which named the socket and which the loading mechanism.
 //
-// The Lotes catalogue page settles it: ARM P/N AZIF0222 has Product Overview
+// The Lotes catalogue page settles it: ARM P/N AZIF0222 has std.constructors.Product Overview
 // "SKT 4926 ILM & BP, Top-mount, HF" and Component Type "CPU Socket ILM & BP". So SKT 4926 ILM is
 // the vendor's PRODUCT NAME for AZIF0222, not a second part number -- the forum was giving one
 // part's name and number, and the ampersand joined a name to a number rather than two parts.

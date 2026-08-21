@@ -141,7 +141,7 @@ fn keyed_roster_insert<K, V>(
         duplicate: evidence.duplicate,
       }
     Absent =>
-      match keyed_row_find(rows: rows, wanted_key: incoming.row_key, key_eq: key_eq) {
+      match std.keyed_row.keyed_row_find(rows: rows, wanted_key: incoming.row_key, key_eq: key_eq) {
         Present { value: existing } =>
           KeyedRosterDuplicateKey {
             key: incoming.row_key,
@@ -159,7 +159,7 @@ fn keyed_roster_insert_into_unique<K, V>(
   incoming: std.keyed_row.KeyedRow<K, V>,
   key_eq: fn(K, K) -> Bool,
 ) -> KeyedRosterInsert<K, V> {
-  match keyed_row_find(rows: rows, wanted_key: incoming.row_key, key_eq: key_eq) {
+  match std.keyed_row.keyed_row_find(rows: rows, wanted_key: incoming.row_key, key_eq: key_eq) {
     Present { value: existing } =>
       KeyedRosterDuplicateKey {
         key: incoming.row_key,

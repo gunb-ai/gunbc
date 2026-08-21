@@ -14,7 +14,7 @@ fn nonempty_lines(text: String) -> List<String> {
 
 fn duplicated_entry_paths(paths: List<String>) -> List<String> {
   fold(paths, init: [], f: fn(acc, p) {
-    if (path_occurrence_count(paths: paths, target: p) > 1) && !tools.dag_compile_clean_shard_roster.list_contains_path(xs: acc, target: p) {
+    if (std.keyed_roster.path_occurrence_count(paths: paths, target: p) > 1) && !tools.dag_compile_clean_shard_roster.list_contains_path(xs: acc, target: p) {
       concat(acc, [p])
     } else {
       acc

@@ -11,9 +11,9 @@ module test.claim.class_b_trim_wire_projection_specimen
 // had no discriminating evidence and would have read the same whether the class was live or dead.
 //
 // THE SUBJECT. Filesystem.Read declares `content: String from "content"` — the extdeps contract
-// names String. The class claims the wire projection mints a FaithfulFreeMonoid/Coproduct carrier
+// names String. The class claims the wire projection mints a FaithfulFreeMonoid/std.constructors.Coproduct carrier
 // instead, so a ReceiverSelf algebra template (trim) does not attach and the METHOD form refuses
-// with `method trim not found on Coproduct(FreeMonoid)`, even though a free call coerces fine.
+// with `method trim not found on std.constructors.Coproduct(FreeMonoid)`, even though a free call coerces fine.
 //
 // THE DISCRIMINATOR IS THE PAIR, NOT EITHER ARM. wire_field_method_form is the subject;
 // wire_field_free_call is the control that holds the pool and the value constant and varies only

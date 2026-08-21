@@ -22,35 +22,35 @@ fn fixture_row(label: String, payload: String) -> std.keyed_row.KeyedRow<String,
   std.keyed_row.KeyedRow { row_key: label, value: fixture_val(payload: payload) }
 }
 
-fn fixture_rows_a() -> List<KeyedRow<String, test.claim.keyed_delta_fold_witness.FixtureVal>> {
+fn fixture_rows_a() -> List<std.keyed_row.KeyedRow<String, test.claim.keyed_delta_fold_witness.FixtureVal>> {
   [
     test.claim.keyed_delta_fold_witness.fixture_row(label: "alpha", payload: "one"),
     test.claim.keyed_delta_fold_witness.fixture_row(label: "beta", payload: "two"),
   ]
 }
 
-fn fixture_rows_b() -> List<KeyedRow<String, test.claim.keyed_delta_fold_witness.FixtureVal>> {
+fn fixture_rows_b() -> List<std.keyed_row.KeyedRow<String, test.claim.keyed_delta_fold_witness.FixtureVal>> {
   [
     test.claim.keyed_delta_fold_witness.fixture_row(label: "alpha", payload: "one"),
     test.claim.keyed_delta_fold_witness.fixture_row(label: "beta", payload: "three"),
   ]
 }
 
-fn fixture_rows_reordered_b() -> List<KeyedRow<String, test.claim.keyed_delta_fold_witness.FixtureVal>> {
+fn fixture_rows_reordered_b() -> List<std.keyed_row.KeyedRow<String, test.claim.keyed_delta_fold_witness.FixtureVal>> {
   [
     test.claim.keyed_delta_fold_witness.fixture_row(label: "beta", payload: "three"),
     test.claim.keyed_delta_fold_witness.fixture_row(label: "alpha", payload: "one"),
   ]
 }
 
-fn fixture_rows_added() -> List<KeyedRow<String, test.claim.keyed_delta_fold_witness.FixtureVal>> {
+fn fixture_rows_added() -> List<std.keyed_row.KeyedRow<String, test.claim.keyed_delta_fold_witness.FixtureVal>> {
   concat(
     fixture_rows_a(),
     [test.claim.keyed_delta_fold_witness.fixture_row(label: "gamma", payload: "new")]
   )
 }
 
-fn fixture_rows_removed() -> List<KeyedRow<String, test.claim.keyed_delta_fold_witness.FixtureVal>> {
+fn fixture_rows_removed() -> List<std.keyed_row.KeyedRow<String, test.claim.keyed_delta_fold_witness.FixtureVal>> {
   [test.claim.keyed_delta_fold_witness.fixture_row(label: "alpha", payload: "one")]
 }
 

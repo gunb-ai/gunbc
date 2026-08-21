@@ -12,7 +12,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 data hetzner_dedicated_pricing_provenance_note: String = "Monthly prices excl. VAT live-fetched 2026-07-21 from Hetzner price-adjustment doc GE-D9256 (anchor above, Limited offerings table). Hardware specs cross-checked against robot.hetzner.com/order (same date). EUR only — no currency conversion."
 
 data cpu_description_string_leaf_frontier_rows: List<std.roster_frontier.FrontierRow> = [
-  frontier_row_decl(
+  std.roster_frontier.frontier_row_decl(
     ref: decl_field_ref(
       module_path: "extdeps.pricing.hetzner_dedicated",
       decl_name: "HetznerDedicatedServerPriceRow",

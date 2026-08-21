@@ -195,7 +195,7 @@ fn rust_seed_host_numeric_alias(name: String, decl_file: String) -> String? {
 // Its two E0277 buckets that superficially match are BOTH the wrong root: T7/T5a (8 sites,
 // Fnv1a64Structural/OccurrenceId Hash/Eq) is the map-key lane above, already closed by #8739/#8736,
 // not this one; T5b (35 sites, 42.7% of E0277, the largest bucket) looks like the derive-narrowing
-// shape but its dominant specimen (CommutativeSemiring<Magnitude>, sec18.1) carries a literal
+// shape but its dominant specimen (CommutativeSemiring<std.magnitude.Magnitude>, sec18.1) carries a literal
 // Rc<dyn Fn> field ON THE DECLARATION -- genuinely non-derivable, not an alias miss. Next step for
 // whoever picks this lane up: count the population first (a small probe mirroring
 // map_key_alias_hop_witness_test.dag's construction, but against the fn-field enum-derive path),

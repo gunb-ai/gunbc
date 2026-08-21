@@ -40,7 +40,7 @@ module gunbc.spark.managed_grant_install
 //
 // RUNG, MEASURED RATHER THAN ASSUMED: this does NOT reach structural impossibility, and the reason
 // is a checker behaviour rather than a modeling choice. Swapping the two phase FIELDS is refused --
-// `expected Product(StageGrantFile), got Product(CleanupGrantStaging)`, located, nothing executed.
+// `expected std.constructors.Product(StageGrantFile), got std.constructors.Product(CleanupGrantStaging)`, located, nothing executed.
 // But REWRAPPING is not: constructing StageGrantFile { write: <List<String>> } typechecks and runs,
 // even though `write` is declared TypedRemoteFileWrite, a sole_constructor product of path and
 // content. Measured 2026-08-20 by mutation, against a witness that forces the field through

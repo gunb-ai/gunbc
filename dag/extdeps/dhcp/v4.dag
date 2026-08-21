@@ -12,7 +12,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 type MacAddress = std.types.NonEmptyStr where brand("MacAddress")
 
 data mac_address_anemic_brand_frontier_rows: List<std.roster_frontier.FrontierRow> = [
-  frontier_row_decl(
+  std.roster_frontier.frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.dhcp.v4", decl_name: "MacAddress"),
     reason: "MacAddress is a branded NonEmptyStr hiding six grounded octets; deep-decompose to structured MAC carrier (e.g. MacAddress { octets: [UInt8; 6] }) at parse boundary",
     dissolution: bound_dissolution(ref: decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address")),

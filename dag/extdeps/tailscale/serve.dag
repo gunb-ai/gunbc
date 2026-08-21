@@ -2,7 +2,7 @@ module extdeps.tailscale.serve
 
 
 
-// Phantom relation brand (std.key_relation key_relation_brand_type_tag_note): keeps this relation distinct from other TailscaleServeEndpoint x ScopedKey rows that share carriers — orthogonal to scope correctness (see the // block above tailscale_serve_route_key_relation).
+// std.constructors.Phantom relation brand (std.key_relation key_relation_brand_type_tag_note): keeps this relation distinct from other TailscaleServeEndpoint x ScopedKey rows that share carriers — orthogonal to scope correctness (see the // block above tailscale_serve_route_key_relation).
 type TailscaleServeRouteKeyRelation
 
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {

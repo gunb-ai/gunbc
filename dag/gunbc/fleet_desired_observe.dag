@@ -47,7 +47,7 @@ data fleet_desired_observe_repository_path_note: String = "The repository whose 
 // MERGE-BASE-DERIVED RELATION.
 //
 // The decidable half is a pure fold in gunbc.fleet_main_revision, and only this function may feed
-// it observed facts. Product code must not author an exit_code, a base hex and a stderr and call
+// it observed facts. std.constructors.Product code must not author an exit_code, a base hex and a stderr and call
 // that fold as though those had been observed -- the fold stays public because the POLICY has to
 // be witnessable hermetically (git.Inspect.MergeBase carries no mock_response, so any witness
 // reaching it refuses under the hermetic envelope), but authoring its inputs outside an actual

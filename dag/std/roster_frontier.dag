@@ -56,12 +56,12 @@ fn frontier_subject_key(subject: FrontierSubject) -> String {
   }
 }
 
-fn frontier_rows_to_keyed_rows(rows: List<FrontierRow>) -> List<KeyedRow<FrontierSubject, FrontierRow>> {
+fn frontier_rows_to_keyed_rows(rows: List<FrontierRow>) -> List<std.keyed_row.KeyedRow<FrontierSubject, FrontierRow>> {
   map(rows, row => std.keyed_row.KeyedRow { row_key: row.subject, value: row })
 }
 
-fn frontier_rows_keyed_roster_build(rows: List<FrontierRow>) -> KeyedRosterBuild<FrontierSubject, FrontierRow> {
-  keyed_roster_build(
+fn frontier_rows_keyed_roster_build(rows: List<FrontierRow>) -> std.keyed_roster.KeyedRosterBuild<FrontierSubject, FrontierRow> {
+  std.keyed_roster.keyed_roster_build(
     incomings: frontier_rows_to_keyed_rows(rows: rows),
     key_eq: frontier_subject_eq,
   )

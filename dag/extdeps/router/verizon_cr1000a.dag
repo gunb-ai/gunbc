@@ -59,7 +59,7 @@ type Cr1000aBroadbandIpv6Snapshot {
 }
 
 data cr1000a_dhcp_lease_transport_frontier_rows: List<std.roster_frontier.FrontierRow> = [
-  frontier_row_decl(
+  std.roster_frontier.frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.router.verizon_cr1000a", decl_name: "Cr1000aDhcpLeaseTable"),
     reason: "Cr1000aDhcpLeaseTable has cited semantic shape only; read transport for /cgi/cgi_dhcp*.js addCfg projection is not yet bound as a handler",
     dissolution: unbound_dissolution(description: "extdeps/router/verizon_cr1000a_rest.dag or shell handler lands with a live read witness"),
@@ -67,7 +67,7 @@ data cr1000a_dhcp_lease_transport_frontier_rows: List<std.roster_frontier.Fronti
 ]
 
 data cr1000a_host_name_raw_parse_frontier_rows: List<std.roster_frontier.FrontierRow> = [
-  frontier_row_decl(
+  std.roster_frontier.frontier_row_decl(
     ref: decl_field_ref(
       module_path: "extdeps.router.verizon_cr1000a",
       decl_name: "Cr1000aIpv4AddressDistributionRow",
@@ -79,7 +79,7 @@ data cr1000a_host_name_raw_parse_frontier_rows: List<std.roster_frontier.Frontie
 ]
 
 data cr1000a_delegated_prefix_length_scalar_frontier_rows: List<std.roster_frontier.FrontierRow> = [
-  frontier_row_decl(
+  std.roster_frontier.frontier_row_decl(
     ref: decl_field_ref(
       module_path: "extdeps.router.verizon_cr1000a",
       decl_name: "Cr1000aBroadbandIpv6Snapshot",
@@ -91,7 +91,7 @@ data cr1000a_delegated_prefix_length_scalar_frontier_rows: List<std.roster_front
 ]
 
 data cr1000a_expires_in_ui_text_frontier_rows: List<std.roster_frontier.FrontierRow> = [
-  frontier_row_decl(
+  std.roster_frontier.frontier_row_decl(
     ref: decl_field_ref(
       module_path: "extdeps.router.verizon_cr1000a",
       decl_name: "Cr1000aIpv4AddressDistributionRow",
