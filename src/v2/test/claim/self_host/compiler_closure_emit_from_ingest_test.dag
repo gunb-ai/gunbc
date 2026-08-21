@@ -11,13 +11,21 @@ import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRootIngestBuildOk,
   SourceRootIngestBuildReadFailed,
+  SourceRootCoverageComplete,
+  SourceRootManifestAbsent,
   SourceRootManifestElided,
+  SourceRootRowsMissing,
   SourceRootProvenanceCoverageReceipt,
   manifest_inline_list_max,
   source_root_closure_ref_transport_complete,
   source_root_coverage_is_complete,
   source_root_ingest_build_from_source_refs,
   source_root_overflow_never_empty_population_holds
+}
+import v2.compiler.self_host.compiler_closure_emit_driver {
+  ClosureEmitPopulationAdmitted,
+  ClosureEmitPopulationRefused,
+  closure_emit_population_admission
 }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
@@ -211,16 +219,37 @@ test fn gap4_probe_all_ingest_reads_accept_holds() -> Bool {
   }
 }
 
+// The equality this used to assert alone is VACUOUS on the committed stub:
+// with ingest_read_count 0 and no refs, length(roots) == 0 holds without
+// parsing anything. It is closed here by routing through the admission
+// decision and asserting the TYPED COVERAGE ARM in the refused case, rather
+// than by adding a second hand-authored expected count.
+//
+// Both states are now non-vacuous. On the stub it asserts coverage is exactly
+// SourceRootManifestAbsent, so a stub that started claiming complete coverage
+// over zero rows fails here. On a real host overlay it requires a POSITIVE
+// read count as well as the identity join, so the equality can no longer be
+// satisfied at zero.
 test fn compiler_closure_scoped_ingest_parses_holds() -> Bool {
-  match source_root_ingest_build_from_source_refs(refs: host_source_root_closure_refs) {
-    SourceRootIngestBuildReadFailed { result: _ } => false
-    SourceRootIngestBuildOk { ingest: ingest } =>
+  match closure_emit_population_admission(
+    refs: host_source_root_closure_refs,
+    receipt: host_source_root_ingest_coverage_receipt
+  ) {
+    ClosureEmitPopulationRefused { reason: _ } =>
+      match host_source_root_ingest_coverage_receipt.coverage {
+        SourceRootManifestAbsent => true
+        SourceRootCoverageComplete => false
+        SourceRootManifestElided { read_count: _, cap: _ } => false
+        SourceRootRowsMissing { read_count: _, produced_row_count: _ } => false
+      }
+    ClosureEmitPopulationAdmitted { ingest: ingest } =>
       match module_roots_from_source_root_ingest(
         ingest: ingest,
         lm: dag_language_model()
       ) {
         Accepted { value: roots, diagnostics: _ } =>
-          length(xs: roots) == host_source_root_ingest_coverage_receipt.ingest_read_count
+          (host_source_root_ingest_coverage_receipt.ingest_read_count > 0)
+            && (length(xs: roots) == host_source_root_ingest_coverage_receipt.ingest_read_count)
         Rejected { diagnostics: _ } => false
       }
   }
