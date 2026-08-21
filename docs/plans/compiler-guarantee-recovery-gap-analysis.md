@@ -1526,7 +1526,7 @@ than argued.
    `sole_constructor` carrier and found it forgeable, so "structurally unreached" is no longer the
    standing verdict on that target. Emitted-target realization is carried independently there, not here. That pass's own trace showed a recorded fixture decodes first into
    untyped `serde_json::Value` — but stopped there; it did not follow what the v1 interpreter
-   does with that untyped value next. It converts it into a *typed* runtime `Value` itself,
+   does with that untyped value next. It converts it into a runtime `Value` itself — NOMINALLY TAGGED, not semantically admitted; an earlier revision wrote "*typed*" here, which contradicts this same item's umbrella a few lines above,
    in `src/v1/stage0/src/recorded_fixture.rs` `value_from_fixture_json`, which nobody had
    audited. The lesson generalizes: "decodes to untyped JSON, therefore inert" is not a
    sound inference once a second, typed reconstruction step exists downstream.
