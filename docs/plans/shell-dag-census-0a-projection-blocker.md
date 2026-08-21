@@ -160,7 +160,7 @@ no route.
 **Remedy:** a corpus-grain producer whose denominator is an enumerated file set, not an import
 closure.
 
-## 3. The worked proof — `gunbc.spark_managed_access_apply`
+## 3. The worked proof — `gunbc.spark.managed_access_apply`
 
 The brief names four script producers reaching a host through `stdin_payload` behind
 `sudo -S sh -s`, and requires that a correct detector find them **without being told their

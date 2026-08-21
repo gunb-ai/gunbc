@@ -1,0 +1,457 @@
+module test.claim.live_deploy.deployed_tree_observation_witness
+
+import std.types { String, NonEmptyStr, List, Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.git
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq }
+import gunbc.fleet_known_hosts_anchor { portable_remote_words }
+import gunbc.live_deploy.deployed_tree_observation {
+  deployed_tree_revision_argv,
+  deployed_tree_status_argv,
+  deployed_tree_read_tree_argv,
+  deployed_tree_ignored_argv,
+  DeployedTreeContentState,
+  DeployedScopeMatchesCommit,
+  DeployedScopeDiverged,
+  DeployedTreeContentReading,
+  ContentRead,
+  ContentUnreadable,
+  deployed_tree_content_reading,
+  DeployedTreeObservation,
+  DeployedTreeObserved,
+  DeployedTreeUnobservable,
+  TreeLegNotAttempted,
+  TreeCommandFailed,
+  TreeRevisionUndecodable,
+  TreeStatusUnreadable,
+  deployed_tree_unobservable_text,
+  DeployedTreeStanding,
+  DeployedTreeConverged,
+  DeployedTreeRevisionDrifted,
+  DeployedTreeModifiedAtRevision,
+  DeployedTreeStandingUnobserved,
+  deployed_tree_standing,
+  deployed_tree_standing_is_converged,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn probe_repo() -> NonEmptyStr {
+  "/opt/gunbc" as NonEmptyStr
+}
+
+// The argv builders read only `locus.repo`, so a witness can exercise them through a locus whose
+// transport is never used. Nothing here reaches a host.
+fn probe_revision_words() -> List<String> {
+  ["git", "-C", probe_repo() as String, "rev-parse", "HEAD"]
+}
+
+data probe_index_path: String = "/tmp/gunbc-deployed-tree-index-probe-attempt"
+
+fn probe_status_words() -> List<String> {
+  [
+    "env", "GIT_INDEX_FILE=/tmp/gunbc-deployed-tree-index-probe-attempt",
+    "git", "-C", probe_repo() as String, "--no-optional-locks",
+    "status", "--porcelain=v1", "-z", "--untracked-files=all",
+  ]
+}
+
+fn probe_ignored_words() -> List<String> {
+  [
+    "env", "GIT_INDEX_FILE=/tmp/gunbc-deployed-tree-index-probe-attempt",
+    "git", "-C", probe_repo() as String,
+    "ls-files", "--others", "--ignored", "--exclude-standard", "-z",
+  ]
+}
+
+fn probe_read_tree_words() -> List<String> {
+  [
+    "env", "GIT_INDEX_FILE=/tmp/gunbc-deployed-tree-index-probe-attempt",
+    "git", "-C", probe_repo() as String, "read-tree", "--no-sparse-checkout",
+    "8a472fff9e9000600e33cc3559ecfad4ba55e3a3",
+  ]
+}
+
+// DRIVEN THROUGH THE REAL WALL, not asserted about the strings. `portable_remote_words` is the
+// admission every one of these words must survive to cross an ssh boundary, so a witness that
+// checked the characters itself would pass on an argv the transport goes on to refuse.
+test fn witness_revision_argv_is_admitted_by_the_portability_wall() -> Bool {
+  match portable_remote_words(raws: probe_revision_words()) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn witness_status_argv_is_admitted_by_the_portability_wall() -> Bool {
+  match portable_remote_words(raws: probe_status_words()) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// THE DISCRIMINATING CONTROL FOR THE WALL ITSELF. If `portable_remote_words` admitted everything,
+// both witnesses above would be vacuous -- so one word that MUST be refused is asserted refused. A
+// pipe is the exact character that rules out the digest pipeline this instrument replaced.
+test fn witness_the_portability_wall_refuses_a_pipeline() -> Bool {
+  match portable_remote_words(raws: ["git", "status", "|", "sha256sum"]) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// The flag is the whole reason the instrument reads tracked modifications rather than host noise,
+// and asserting the built argv contains it is what goes red if someone "simplifies" it away.
+// THE COMPARISON MUST RUN AGAINST THE TEMP INDEX, NOT THE HOST'S. Asserted by requiring the env
+// binding to be present, because without it `status` silently falls back to the deployed repo's own
+// index -- which is the artifact the whole construction exists to avoid consulting, and the fallback
+// produces a plausible answer rather than an error.
+test fn witness_the_comparison_is_bound_to_the_materialized_index() -> Bool {
+  any(deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path),
+      w => w == join(["GIT_INDEX_FILE=", probe_index_path], ""))
+    && any(deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path), w => w == "env")
+    && any(deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path), w => w == "status")
+}
+
+// `--no-optional-locks` IS LOAD-BEARING: plain `git status` WRITES the index back, measured by md5.
+// Without the flag an observation mutates the host it claims to be reading -- and it would still
+// answer correctly, so nothing downstream would notice. This witness is the only thing standing
+// between that flag and a later reader who removes it as noise.
+test fn witness_the_observation_cannot_write_the_hosts_index() -> Bool {
+  any(deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path),
+      w => w == "--no-optional-locks")
+}
+
+// The materialization must name the revision it loads and bind the index it writes.
+//
+// TWO OF THE THREE ASSERTIONS ARE ABOUT WORDS THAT MUST NOT BE THERE, AND BOTH ABSENCES ARE SILENT
+// FAILURES IF LOST. `--index-output` is NOT a substitute for the env binding: it redirects where
+// entries are written but still LOCKS the real index, so a host carrying a `.git/index.lock` -- the
+// normal case on srv1, where a worktree registration lands per dispatch -- would refuse outright. It
+// is asserted ABSENT so the cheaper-looking flag cannot be reintroduced by someone tidying the argv.
+// And without `--no-sparse-checkout`, sparse configuration can set skip-worktree bits in the temporary
+// index, so a MISSING tracked path reads as intentionally absent rather than as drift -- a false clean
+// on exactly the failure this observation exists to catch.
+test fn witness_the_index_is_materialized_from_the_revision_into_a_named_file() -> Bool {
+  let argv = deployed_tree_read_tree_argv(
+    repo: probe_repo(),
+    revision_hex: "8a472fff9e9000600e33cc3559ecfad4ba55e3a3",
+    index_path: probe_index_path,
+  )
+  argv == probe_read_tree_words()
+    && any(argv, w => w == "read-tree")
+    && any(argv, w => w == join(["GIT_INDEX_FILE=", probe_index_path], ""))
+    && !any(argv, w => w == join(["--index-output=", probe_index_path], ""))
+    && any(argv, w => w == "--no-sparse-checkout")
+}
+
+// The temp index must be named for the ATTEMPT, so two concurrent observations cannot collide on one
+// file -- a collision would have one run reading an index the other is writing.
+test fn witness_the_temp_index_is_named_for_the_attempt() -> Bool {
+  string_contains(s: probe_index_path, pattern: "probe-attempt")
+}
+
+test fn witness_revision_argv_asks_for_head_in_the_deployed_repo() -> Bool {
+  deployed_tree_revision_argv(repo: probe_repo()) == probe_revision_words()
+}
+
+test fn witness_status_argv_targets_the_deployed_repo() -> Bool {
+  deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path) == probe_status_words()
+}
+
+test fn witness_read_tree_argv_is_admitted_by_the_portability_wall() -> Bool {
+  match portable_remote_words(raws: probe_read_tree_words()) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// THE READING IS DRIVEN WITH THE BYTES GIT ACTUALLY EMITS -- NUL-separated porcelain v1 fields and a
+// NUL-separated ignored path list -- rather than with a pre-digested sentence, so a change to the
+// scanner reds these rather than passing on a shape nothing produces.
+fn nul() -> String {
+  from_code_point(0)
+}
+
+fn nul_join(fields: List<String>) -> String {
+  fold(fields, init: "", f: (acc, f) => join([acc, f, nul()], ""))
+}
+
+test fn witness_an_empty_status_and_no_ignored_paths_read_as_matching_the_commit() -> Bool {
+  match deployed_tree_content_reading(entries_nul: "", ignored_nul: "") {
+    ContentUnreadable { detail: _ } => false
+    ContentRead { state: s } =>
+      match s {
+        DeployedScopeMatchesCommit => true
+        DeployedScopeDiverged { changed_paths: _ } => false
+      }
+  }
+}
+
+test fn witness_a_modified_tracked_path_reads_as_diverged_and_carries_what_was_seen() -> Bool {
+  match deployed_tree_content_reading(
+    entries_nul: nul_join([" M dag/gunbc/ci_spec.dag"]),
+    ignored_nul: "",
+  ) {
+    ContentUnreadable { detail: _ } => false
+    ContentRead { state: s } =>
+      match s {
+        DeployedScopeMatchesCommit => false
+        DeployedScopeDiverged { changed_paths: body } => body as String == "dag/gunbc/ci_spec.dag"
+      }
+  }
+}
+
+// A DELETED TRACKED PATH IS A DIVERGENCE, not a clean tree. It is exactly how a tracked file under an
+// excluded prefix would present on a host: rsync never ships it, so the worktree lacks a path HEAD
+// names, and status lists it like any other difference.
+test fn witness_a_deleted_tracked_path_reads_as_diverged() -> Bool {
+  match deployed_tree_content_reading(entries_nul: nul_join([" D dag/gunbc/ci_spec.dag"]), ignored_nul: "") {
+    ContentUnreadable { detail: _ } => false
+    ContentRead { state: s } =>
+      match s {
+        DeployedScopeMatchesCommit => false
+        DeployedScopeDiverged { changed_paths: _ } => true
+      }
+  }
+}
+
+// THE THREE WITNESSES THIS MODULE PREVIOUSLY COULD NOT HAVE PASSED. An earlier revision read
+// `--untracked-files=no` and never read ignored paths at all, so an untracked or ignored `.dag` source
+// inside the deployed scope reported CONVERGED -- and the sync ships exactly those bytes.
+test fn witness_an_untracked_deployed_path_is_not_converged() -> Bool {
+  match deployed_tree_content_reading(entries_nul: nul_join(["?? dag/gunbc/stowaway.dag"]), ignored_nul: "") {
+    ContentUnreadable { detail: _ } => false
+    ContentRead { state: s } =>
+      match s {
+        DeployedScopeMatchesCommit => false
+        DeployedScopeDiverged { changed_paths: body } => body as String == "dag/gunbc/stowaway.dag"
+      }
+  }
+}
+
+test fn witness_an_ignored_deployed_path_is_not_converged() -> Bool {
+  match deployed_tree_content_reading(entries_nul: "", ignored_nul: nul_join([".env"])) {
+    ContentUnreadable { detail: _ } => false
+    ContentRead { state: s } =>
+      match s {
+        DeployedScopeMatchesCommit => false
+        DeployedScopeDiverged { changed_paths: body } => body as String == ".env"
+      }
+  }
+}
+
+// THE DISCRIMINATING CONTROL, without which the two witnesses above are satisfied by a scanner that
+// simply calls every non-empty reading diverged. `target/` is outside the deployed scope by the same
+// `path_is_deployed` authority the source side projects through, so an untracked build artifact there
+// must NOT hold the deployment back -- and it is present on every real host.
+test fn witness_an_untracked_path_outside_the_deployed_scope_stays_converged() -> Bool {
+  match deployed_tree_content_reading(
+    entries_nul: nul_join(["?? target/release/gunbc"]),
+    ignored_nul: nul_join(["target/debug/x"]),
+  ) {
+    ContentUnreadable { detail: _ } => false
+    ContentRead { state: s } =>
+      match s {
+        DeployedScopeMatchesCommit => true
+        DeployedScopeDiverged { changed_paths: _ } => false
+      }
+  }
+}
+
+// AN UNPARSEABLE READING REFUSES RATHER THAN ANSWERING CLEAN -- the empty-observation narrow, which is
+// worse than the widen because a narrow is silently uncovered.
+test fn witness_a_malformed_status_field_refuses_rather_than_reading_clean() -> Bool {
+  match deployed_tree_content_reading(entries_nul: nul_join(["xy"]), ignored_nul: "") {
+    ContentRead { state: _ } => false
+    ContentUnreadable { detail: _ } => true
+  }
+}
+
+test fn witness_a_truncated_rename_record_refuses_rather_than_reading_clean() -> Bool {
+  match deployed_tree_content_reading(entries_nul: nul_join(["R  dag/b.dag"]), ignored_nul: "") {
+    ContentRead { state: _ } => false
+    ContentUnreadable { detail: _ } => true
+  }
+}
+
+// THE IGNORED LEG IS A SEPARATE ARGV AND IT IS PORTABLE. If it were not, the whole reading would
+// refuse at the wall rather than at the host, and the two ignored-path witnesses above would be
+// asserting about a command that can never be sent.
+test fn witness_the_ignored_leg_argv_is_portable_and_names_the_temp_index() -> Bool {
+  deployed_tree_ignored_argv(repo: probe_repo(), index_path: probe_index_path) == probe_ignored_words()
+    && match portable_remote_words(raws: probe_ignored_words()) {
+      Present { value: _ } => true
+      Absent => false
+    }
+}
+
+fn oid_a() -> GitObjectId? {
+  git_object_id_from_untagged_hex(hex: "8a472fff9e9000600e33cc3559ecfad4ba55e3a3")
+}
+
+fn oid_b() -> GitObjectId? {
+  git_object_id_from_untagged_hex(hex: "1111111111111111111111111111111111111111")
+}
+
+// The two hexes must actually decode and must actually differ, or every standing witness below is
+// asserting about Absent and passes for the wrong reason.
+test fn witness_the_two_probe_revisions_decode_and_differ() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } =>
+      match oid_b() {
+        Absent => false
+        Present { value: b } => !git_object_id_eq(left: a, right: b)
+      }
+  }
+}
+
+fn standing_for(desired: GitObjectId, obs: DeployedTreeObservation) -> DeployedTreeStanding {
+  deployed_tree_standing(desired: desired, observation: obs)
+}
+
+test fn witness_matching_revision_and_clean_tree_is_the_only_converged_arm() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } =>
+      deployed_tree_standing_is_converged(
+        standing: standing_for(
+          desired: a,
+          obs: DeployedTreeObserved { revision: a, content: DeployedScopeMatchesCommit },
+        ),
+      )
+  }
+}
+
+// THE ARM THE REVISION-ONLY STANDING CANNOT EXPRESS. Same commit, edited tracked files: not
+// converged, and not drifted either.
+test fn witness_right_revision_with_modifications_is_not_converged_and_not_drifted() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } =>
+      match standing_for(
+        desired: a,
+        obs: DeployedTreeObserved {
+          revision: a,
+          content: DeployedScopeDiverged { changed_paths: "dag/gunbc/ci_spec.dag" as NonEmptyStr },
+        },
+      ) {
+        DeployedTreeModifiedAtRevision { revision: _, changed_paths: body } =>
+          body as String == "dag/gunbc/ci_spec.dag"
+        DeployedTreeConverged { revision: _ } => false
+        DeployedTreeRevisionDrifted { desired: _, local: _ } => false
+        DeployedTreeStandingUnobserved { cause: _ } => false
+      }
+  }
+}
+
+test fn witness_a_different_revision_reports_drift_carrying_both_sides() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } =>
+      match oid_b() {
+        Absent => false
+        Present { value: b } =>
+          match standing_for(
+            desired: a,
+            obs: DeployedTreeObserved { revision: b, content: DeployedScopeMatchesCommit },
+          ) {
+            DeployedTreeRevisionDrifted { desired: d, local: l } =>
+              git_object_id_eq(left: d, right: a) && git_object_id_eq(left: l, right: b)
+            DeployedTreeConverged { revision: _ } => false
+            DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
+            DeployedTreeStandingUnobserved { cause: _ } => false
+          }
+      }
+  }
+}
+
+// DRIFT DOMINATES: a tree on the wrong commit AND modified reports drift, because the modification
+// state is a fact about a revision nobody asked for.
+test fn witness_drift_dominates_modification() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } =>
+      match oid_b() {
+        Absent => false
+        Present { value: b } =>
+          match standing_for(
+            desired: a,
+            obs: DeployedTreeObserved {
+              revision: b,
+              content: DeployedScopeDiverged { changed_paths: "x" as NonEmptyStr },
+            },
+          ) {
+            DeployedTreeRevisionDrifted { desired: _, local: _ } => true
+            DeployedTreeConverged { revision: _ } => false
+            DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
+            DeployedTreeStandingUnobserved { cause: _ } => false
+          }
+      }
+  }
+}
+
+// UNOBSERVED IS NEVER SATISFIED. Could-not-look rendered as nothing-is-wrong is the empty-observation
+// narrow, and it is the arm most likely to be quietly admitted by a caller re-deriving good-enough.
+test fn witness_unobservable_is_not_converged_and_keeps_its_cause() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } =>
+      match standing_for(desired: a, obs: DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "revision", reason: "ssh refused" } }) {
+        DeployedTreeStandingUnobserved { cause: c } =>
+          match c {
+            TreeLegNotAttempted { leg: _, reason: why } => why == "ssh refused"
+            TreeCommandFailed { leg: _, exit_code: _, stderr: _ } => false
+            TreeRevisionUndecodable { text: _ } => false
+            TreeStatusUnreadable { detail: _ } => false
+          }
+            && !deployed_tree_standing_is_converged(
+              standing: standing_for(desired: a, obs: DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "revision", reason: "ssh refused" } }),
+            )
+        DeployedTreeConverged { revision: _ } => false
+        DeployedTreeRevisionDrifted { desired: _, local: _ } => false
+        DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
+      }
+  }
+}
+
+// THE SPLIT THAT WAS PREVIOUSLY PROSE. A leg that never ran and a leg that ran and failed are
+// different situations with different remedies -- fix the credential versus fix the host -- and a
+// consumer must be able to tell them apart WITHOUT reading a sentence. Asserted by matching the
+// arms, so this stays green only while the distinction is structural.
+test fn witness_never_attempted_and_ran_and_failed_are_different_arms() -> Bool {
+  match TreeLegNotAttempted { leg: "revision", reason: "no credential" } {
+    TreeLegNotAttempted { leg: _, reason: _ } =>
+      match TreeCommandFailed { leg: "revision", exit_code: 128, stderr: "not a git repository" } {
+        TreeCommandFailed { leg: _, exit_code: code, stderr: _ } => code == 128
+        TreeLegNotAttempted { leg: _, reason: _ } => false
+        TreeRevisionUndecodable { text: _ } => false
+        TreeStatusUnreadable { detail: _ } => false
+      }
+    TreeCommandFailed { leg: _, exit_code: _, stderr: _ } => false
+    TreeRevisionUndecodable { text: _ } => false
+    TreeStatusUnreadable { detail: _ } => false
+  }
+}
+
+// THE STDERR IS CARRIED UNINTERPRETED, and this witness is what keeps it that way: the remedy text
+// must survive into the rendering rather than being classified into an arm the exit status cannot
+// justify. git exits 128 for a missing repository, an unreadable .git, AND a repository with no
+// commits, so the model must not claim to know which.
+test fn witness_the_failure_rendering_carries_the_hosts_own_words() -> Bool {
+  let text = deployed_tree_unobservable_text(
+    cause: TreeCommandFailed { leg: "revision", exit_code: 128, stderr: "fatal: not a git repository" },
+  )
+  string_contains(s: text, pattern: "fatal: not a git repository")
+    && string_contains(s: text, pattern: "128")
+    && string_contains(s: text, pattern: "ran and failed")
+}
+
+test fn witness_a_never_attempted_leg_does_not_read_as_a_host_failure() -> Bool {
+  let text = deployed_tree_unobservable_text(
+    cause: TreeLegNotAttempted { leg: "revision", reason: "no credential" },
+  )
+  string_contains(s: text, pattern: "never attempted")
+    && string_contains(s: text, pattern: "no credential")
+    && !string_contains(s: text, pattern: "ran and failed")
+}
