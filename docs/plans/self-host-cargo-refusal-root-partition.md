@@ -2571,3 +2571,57 @@ Full receipt, with the board reproduced beside its denominator, the block-vs-sit
 and the controls: [`docs/probes/e0308_partition_2026-08-21.md`](../probes/e0308_partition_2026-08-21.md).
 Per-site TSV:
 [`docs/probes/e0308_partition_2026-08-21/sites_classified.tsv`](../probes/e0308_partition_2026-08-21/sites_classified.tsv).
+
+### 20.1 What has changed since §20 was written (same lane, 2026-08-21, later the same day)
+
+§20 is a dated partition and §9.1 governs it: nothing here is current unless it names today's
+measurement. Four of its rows have been overtaken within hours of landing, and this subsection
+records that rather than leaving the table to be read as live. **The site counts are not restated
+or re-measured — only the dispositions changed.**
+
+**T7/T5a is no longer "blocked, subtract it".** §20 routed those 8 sites away from staffing because
+`v1.trait_derive_emit` `map_key_alias_hop_gap_note` recorded the alias-hop fix as NOT LANDED and
+blocked on a realization binding keyed on `DeclarationRef`. **gunbc#8736 has since landed that
+identity** — "thread declaration identity to the type renderer so the derive walk can follow an
+alias exactly as far as the emitter renders it structurally (19 of 56, two consumers)". The
+instruction to subtract those sites was correct when written and is now stale; whether the note's
+own dissolution condition is fully met is unmeasured and is the next thing to check before staffing
+or re-subtracting them.
+
+**Root A's Ord half is closed, and by the mechanism the fork note names rather than the one this
+lane first proposed.** gunbc#8749 grounds the supplemental bound on `im::OrdSet` (aliased
+`as BTreeSet`) rather than `std::collections::BTreeSet`, routes per derive impl — `Debug`/`PartialEq`
+leave the derive list as hand-written impls, `Serialize`/`Deserialize` carry a `serde(bound(..))`
+override — and leaves `AudienceSet<P>`'s own header **bare**. Its first pass cited the std authority
+and left 16 real `P: Ord` sites open under rustc; that was caught by `curated_cargo_probe_one.sh`
+and not by `gunbc compile` clean, which is §5's "a typecheck and a grep are not consumers" measured
+rather than quoted.
+
+**The two residuals §20 filed were one generalization, not two roots — and one of them was a
+heuristic.** `adhoc-a9f61ade-340` (fn-signature) and `adhoc-1e0dee2d-68f` (well-formedness
+propagation) were filed as separate lanes on the belief they were separate mechanisms. They are two
+halves of one bound-trait generalization. The fn-signature lane's first implementation inferred the
+bound by recognizing `set_union` **call sites by name** — a heuristic standing where a structural
+fact was available (§4) — and was withdrawn by its own author once the item-level bound made the
+structural route available: a fn naming an Ord-bounded declared type earns the bound by naming it.
+Checked three ways independently: exactly two generic `set_union` call sites exist in the corpus,
+both naming `AudienceSet<P>` at value-param position, so no specimen requires the walker.
+
+**A header-level bound is not the general form of a per-derive one, and this lane authorized that
+error before it was caught.** Generalizing the item-header `Clone` fixpoint to `Ord` looks like the
+§2 horizontal move — one trait-parameterized axis instead of two engines — and it is, *as engine
+shape*. But what it emits is a bound on the type declaration, which for `Ord` would revert #8749's
+deliberate bare-header decision and force `P: Ord` on every consumer naming `AudienceSet<P>`
+(four request types use `P` Ord-free today). The fork note's own discriminating control states the
+test in one line — **bound the derive, not the type** — and the header route fails it. The correction
+is recorded here because the reasoning that produced it is attractive and will recur: optimizing the
+shape of a mechanism is not the same as checking what it emits.
+
+**Method, carried because it cost real cycles twice.** (1) A `.dag` edit is INERT until regen writes
+the stage0 mirrors and `gunbc` is rebuilt from them; a before/after that skips it compares two
+binaries running the old logic and produces byte-identical logs that read as "no regression".
+(2) `curated_cargo_probe_one.sh` previously reused an existing binary regardless of tree, so a
+base→head loop silently measured the base compiler — fixed in gunbc#8763 by keying both binaries on
+`git rev-parse HEAD`. (3) Report error blocks, distinct sites and grep mentions as three separate
+grains; a mention count includes rustc's `note:` and backtrace lines and is not comparable to a block
+count.
