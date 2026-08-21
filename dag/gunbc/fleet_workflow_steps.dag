@@ -52,6 +52,20 @@ import gunbc.ci_spec {
 import gunbc.fleet_host_key_enrollment { probe_identity_secret_access_requirement }
 import std.types { List, String, Int }
 
+import gunbc.roadmap_execution_contract {
+  CargoCapability,
+  RustcCapability,
+  RustfmtCapability,
+  RustupCapability,
+}
+import gunbc.workflow_capability_closure {
+  CapabilityAnnotatedStep,
+  StepCapabilityRole,
+  capability_neutral,
+  provides_only,
+  consumes_only,
+}
+
 fn ci_checkout_step() -> Step {
   UsesStep {
     name: Present { value: "Checkout" },
@@ -67,58 +81,158 @@ fn ci_checkout_step() -> Step {
   }
 }
 
+// THE PRELUDE'S ORDERING CONSTRAINTS, WRITTEN DOWN INSTEAD OF ASSERTED IN AN ERROR STRING.
+//
+// Two of these steps consume a capability an earlier one installs, and until now that fact lived
+// only inside a diagnostic: the native-cache step's own script says "rustc -V failed AFTER
+// setup-rust-toolchain". The dependency was real, load-bearing, and invisible to everything except
+// a human reading the error text it would print if it broke.
+//
+// One list, two projections. ci_prelude_steps_with_checkout returns the Steps GitHub sees;
+// ci_prelude_annotations_with_checkout returns the capability roles the closure reads. Both derive
+// from these rows, so they cannot drift -- a second hand-maintained roles list beside the step list
+// would be the fork the closure exists to close, reintroduced as its own fix.
+type FleetPreludeBoundStep {
+  step: Step
+  role: StepCapabilityRole
+  step_name: String
+}
+
+fn ci_prelude_bound_steps_with_checkout(
+  checkout: Step,
+  exact_head_preflight: List<Step>,
+) -> List<FleetPreludeBoundStep> {
+  concat(
+    [
+      FleetPreludeBoundStep {
+        step: checkout,
+        role: capability_neutral,
+        step_name: "Checkout",
+      },
+    ],
+    concat(
+      list_map(
+        xs: exact_head_preflight,
+        f: fn(st) {
+          FleetPreludeBoundStep {
+            step: st,
+            role: capability_neutral,
+            step_name: "Exact-head preflight",
+          }
+        },
+      ),
+      [
+        FleetPreludeBoundStep {
+          step: ci_isolate_toolchain_step(),
+          role: capability_neutral,
+          step_name: "Isolate toolchain dirs",
+        },
+        FleetPreludeBoundStep {
+          step: ci_setup_rust_step(),
+          role: provides_only(
+            capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability],
+          ),
+          step_name: "Setup Rust",
+        },
+        FleetPreludeBoundStep {
+          step: ci_native_cache_root_step(),
+          role: consumes_only(capabilities: [RustcCapability]),
+          step_name: "Derive native-cache root",
+        },
+        FleetPreludeBoundStep {
+          step: ci_pin_rustup_default_step(),
+          role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
+          step_name: "Pin rustup default",
+        },
+        FleetPreludeBoundStep {
+          step: ci_cache_cargo_step(),
+          role: capability_neutral,
+          step_name: "Cache Cargo",
+        },
+      ],
+    ),
+  )
+}
+
+fn ci_prelude_annotations_with_checkout(
+  checkout: Step,
+  exact_head_preflight: List<Step>,
+) -> List<CapabilityAnnotatedStep> {
+  list_map(
+    xs: ci_prelude_bound_steps_with_checkout(
+      checkout: checkout,
+      exact_head_preflight: exact_head_preflight,
+    ),
+    f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+  )
+}
+
+fn ci_prelude_annotations() -> List<CapabilityAnnotatedStep> {
+  ci_prelude_annotations_with_checkout(checkout: ci_checkout_step(), exact_head_preflight: [])
+}
+
+fn ci_setup_rust_step() -> Step {
+  UsesStep {
+    name: Present { value: "Setup Rust" },
+    id: none,
+    uses: setup_rust_action,
+    with: Present {
+      value: [
+        kv(key: "components", value: yaml_string(s: "rustfmt")),
+        kv(key: "cache", value: yaml_bool(b: false)),
+        kv(key: "rustflags", value: yaml_string(s: ""))
+      ]
+    },
+    env: Present {
+      value: [kv(key: "HOME", value: yaml_string(s: ci_setup_rust_home()))]
+    },
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn ci_pin_rustup_default_step() -> Step {
+  RunStep {
+    name: Present { value: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)" },
+    id: none,
+    run: ci_pin_rustup_default_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn ci_cache_cargo_step() -> Step {
+  UsesStep {
+    name: Present { value: "Cache Cargo" },
+    id: none,
+    uses: cache_action,
+    with: Present {
+      value: [
+        kv(key: "path", value: yaml_string(s: ci_cache_path())),
+        kv(key: "key", value: yaml_string(s: ci_cache_key())),
+        kv(key: "restore-keys", value: yaml_string(s: ci_cache_restore_keys()))
+      ]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 fn ci_prelude_steps_with_checkout(checkout: Step, exact_head_preflight: List<Step>) -> List<Step> {
-  [
-    checkout,
-  ] |> concat(exact_head_preflight) |> concat([
-    ci_isolate_toolchain_step(),
-    UsesStep {
-      name: Present { value: "Setup Rust" },
-      id: none,
-      uses: setup_rust_action,
-      with: Present {
-        value: [
-          kv(key: "components", value: yaml_string(s: "rustfmt")),
-          kv(key: "cache", value: yaml_bool(b: false)),
-          kv(key: "rustflags", value: yaml_string(s: ""))
-        ]
-      },
-      env: Present {
-        value: [kv(key: "HOME", value: yaml_string(s: ci_setup_rust_home()))]
-      },
-      if_condition: none,
-      continue_on_error: none,
-      timeout_minutes: none
-    },
-    ci_native_cache_root_step(),
-    RunStep {
-      name: Present { value: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)" },
-      id: none,
-      run: ci_pin_rustup_default_script(),
-      shell: none,
-      env: none,
-      working_directory: none,
-      if_condition: none,
-      continue_on_error: none,
-      timeout_minutes: none
-    },
-    UsesStep {
-      name: Present { value: "Cache Cargo" },
-      id: none,
-      uses: cache_action,
-      with: Present {
-        value: [
-          kv(key: "path", value: yaml_string(s: ci_cache_path())),
-          kv(key: "key", value: yaml_string(s: ci_cache_key())),
-          kv(key: "restore-keys", value: yaml_string(s: ci_cache_restore_keys()))
-        ]
-      },
-      env: none,
-      if_condition: none,
-      continue_on_error: none,
-      timeout_minutes: none
-    }
-  ])
+  list_map(
+    xs: ci_prelude_bound_steps_with_checkout(
+      checkout: checkout,
+      exact_head_preflight: exact_head_preflight,
+    ),
+    f: fn(b) { b.step },
+  )
 }
 
 fn ci_prelude_steps() -> List<Step> {
