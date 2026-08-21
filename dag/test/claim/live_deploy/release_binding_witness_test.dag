@@ -1,6 +1,7 @@
 module test.claim.live_deploy.release_binding_witness
 
 import std.types { String, NonEmptyStr, Bool, CommitSha }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex }
 import extdeps.git
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
@@ -28,7 +29,7 @@ import gunbc.live_deploy.release_binding {
   release_binding_line,
 }
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data hex_a: String = "8a472fff9e9000600e33cc3559ecfad4ba55e3a3"
 data hex_b: String = "1111111111111111111111111111111111111111"

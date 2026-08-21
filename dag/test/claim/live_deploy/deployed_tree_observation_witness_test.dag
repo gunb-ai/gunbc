@@ -1,6 +1,7 @@
 module test.claim.live_deploy.deployed_tree_observation_witness
 
 import std.types { String, NonEmptyStr, List, Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.git
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
@@ -27,7 +28,7 @@ import gunbc.live_deploy.deployed_tree_observation {
   deployed_tree_standing_is_converged,
 }
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn probe_repo() -> NonEmptyStr {
   "/opt/gunbc" as NonEmptyStr

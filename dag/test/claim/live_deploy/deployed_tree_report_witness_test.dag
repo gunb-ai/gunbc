@@ -1,6 +1,7 @@
 module test.claim.live_deploy.deployed_tree_report_witness
 
 import std.types { String, NonEmptyStr, Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.git
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import gunbc.live_deploy.deployed_tree_observation {
@@ -17,7 +18,7 @@ import gunbc.live_deploy.deployed_tree_report {
   deployed_tree_standing_is_publication_converged,
 }
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn oid_a() -> GitObjectId? {
   git_object_id_from_untagged_hex(hex: "8a472fff9e9000600e33cc3559ecfad4ba55e3a3")
