@@ -4619,6 +4619,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::CallNamedArgOnFunctionValue { .. } => "CallNamedArgOnFunctionValue",
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::SourceAnnotationRefused { .. } => "SourceAnnotationRefused",
+        CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -4679,6 +4680,10 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
                 }
             }
         }
+        // The NAME is the full spelling, not its container leaf: the burn-down this
+        // histogram feeds is a list of spellings to declare a row for, and every
+        // refusal of one leaf would otherwise aggregate into a single row.
+        CompilerDiagnostic::ContainerSpellingUnrecognized { name, .. } => name.clone(),
     };
     (class.to_string(), name)
 }

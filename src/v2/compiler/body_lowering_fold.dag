@@ -4,8 +4,12 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 
 import std.algebra { Cons, Empty }
 import v2.compiler.fold_lowering {
+  FoldCallLowered,
+  FoldCallNotAFold,
+  FoldCallStepFormUnresolved,
+  FoldCallStepShapeInvalid,
   fold_call_head_symbol,
-  fold_call_to_loop,
+  fold_call_lowering,
   fold_family_head
 }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
@@ -757,24 +761,49 @@ fn body_lower_try_fold_loop_search(node: Node) -> Outcome<Optional<Node>> {
       fold(node.children, init: outcome_accepted(value: optional_absent()), f: fn(acc, e) {
         match acc {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          Accepted { value: found, diagnostics: _ } =>
+          Accepted { value: found, diagnostics: carried } =>
             match found {
               Present { value: _ } => acc
-              Absent => body_lower_try_fold_loop(node: e.target)
+              Absent =>
+                match body_lower_try_fold_loop(node: e.target) {
+                  Rejected { diagnostics: r } =>
+                    Rejected { diagnostics: rejected_with_pending(pending: carried, rejected: r) }
+                  Accepted { value: next, diagnostics: nd } =>
+                    outcome_with_diagnostics(
+                      value: next,
+                      diagnostics: diagnostics_merge(outer: carried, inner: nd)
+                    )
+                }
             }
         }
       })
   }
 }
 
+// FoldCallStepFormUnresolved is a COUNTED FRONTIER STATE HERE, not a refusal,
+// and this is the one place in the corpus that reads it that way. The stage
+// cannot resolve the callee (see fold_call_lowering's note), so it cannot know
+// whether a fold-family call with no fn literal is malformed or merely carries
+// its step by name. It therefore reports "no loop produced" with the typed,
+// located diagnostic attached rather than refusing on a judgement it has not
+// earned -- and produces no Loop, exactly as the refusal did. A retained shell
+// that is genuinely broken still meets normalize's recursive well_formed gate,
+// which #6520 established as the sole structural wall and which is untouched.
+// FoldCallStepShapeInvalid stays a refusal: there the fn literal is in hand.
 fn body_lower_try_fold_loop(node: Node) -> Outcome<Optional<Node>> {
   match fold_call_head_symbol(fold_call: node) {
     Present { value: head } =>
       if fold_family_head(sym: head) {
-        match fold_call_to_loop(fold_call: node) {
-          Accepted { value: loop_node, diagnostics: _ } =>
+        match fold_call_lowering(fold_call: node) {
+          FoldCallLowered { seam_loop: loop_node } =>
             outcome_accepted(value: optional_present(value: loop_node))
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          FoldCallStepFormUnresolved { diagnostic: d } =>
+            outcome_with_diagnostics(
+              value: optional_absent(),
+              diagnostics: Some { diagnostics: diagnostics_singleton(d: d) }
+            )
+          FoldCallNotAFold { diagnostic: d } => outcome_rejected(d: d)
+          FoldCallStepShapeInvalid { diagnostic: d } => outcome_rejected(d: d)
         }
       } else {
         body_lower_try_fold_loop_search(node: node)
@@ -3827,10 +3856,20 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
                   match body_lower_try_fold_loop(node: captured) {
                     Rejected { diagnostics: _ } =>
                       body_lower_try_operand_or_reject(shell: shell, captured: captured)
-                    Accepted { value: fold_result, diagnostics: _ } =>
+                    Accepted { value: fold_result, diagnostics: fd } =>
                       match fold_result {
-                        Present { value: loop_node } => outcome_accepted(value: loop_node)
-                        Absent => body_lower_try_operand_or_reject(shell: shell, captured: captured)
+                        Present { value: loop_node } =>
+                          outcome_with_diagnostics(value: loop_node, diagnostics: fd)
+                        Absent =>
+                          match body_lower_try_operand_or_reject(shell: shell, captured: captured) {
+                            Rejected { diagnostics: r } =>
+                              Rejected { diagnostics: rejected_with_pending(pending: fd, rejected: r) }
+                            Accepted { value: v, diagnostics: od } =>
+                              outcome_with_diagnostics(
+                                value: v,
+                                diagnostics: diagnostics_merge(outer: fd, inner: od)
+                              )
+                          }
                       }
                   }
               }
@@ -3886,10 +3925,20 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
                   match body_lower_try_fold_loop(node: captured) {
                     Rejected { diagnostics: _ } =>
                       body_lower_try_operand_or_reject(shell: shell, captured: captured)
-                    Accepted { value: fold_result, diagnostics: _ } =>
+                    Accepted { value: fold_result, diagnostics: fd } =>
                       match fold_result {
-                        Present { value: loop_node } => outcome_accepted(value: loop_node)
-                        Absent => body_lower_try_operand_or_reject(shell: shell, captured: captured)
+                        Present { value: loop_node } =>
+                          outcome_with_diagnostics(value: loop_node, diagnostics: fd)
+                        Absent =>
+                          match body_lower_try_operand_or_reject(shell: shell, captured: captured) {
+                            Rejected { diagnostics: r } =>
+                              Rejected { diagnostics: rejected_with_pending(pending: fd, rejected: r) }
+                            Accepted { value: v, diagnostics: od } =>
+                              outcome_with_diagnostics(
+                                value: v,
+                                diagnostics: diagnostics_merge(outer: fd, inner: od)
+                              )
+                          }
                       }
                   }
               }
