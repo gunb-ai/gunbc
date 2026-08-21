@@ -28,6 +28,8 @@ import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.fabric_witness_run { floor_run_command }
+import extdeps.exec.command { shell_command_render }
 import std.types { List, String, Int }
 
 // THE ONLY CI EMISSION THIS REPOSITORY HAS.
@@ -78,6 +80,13 @@ import std.types { List, String, Int }
 // they do not change what the drift gate covers.
 
 data witness_floor_workflow_job_id: String = "witnesses"
+
+// The workflow's own name, hoisted to a declaration because a second consumer now joins on
+// it. gunbc.fleet_desired_admission refuses a workflow_run payload whose workflow_name is
+// not the required floor's; spelling "witnesses" a second time there would fork the name
+// (DESIGN §3) and the fork would fail open, not loud — a renamed workflow would leave the
+// admission comparing against a name nothing produces, refusing every candidate forever.
+data witness_floor_workflow_name: String = "witnesses"
 
 // CANCELLATION IS A PER-EVENT FACT, AND THE GROUP CARRIES HALF OF IT. Operator ruling
 // 2026-08-17: every push to main must finish; only pull-request runs may be superseded.
@@ -219,18 +228,6 @@ fn witness_floor_build_step() -> Step {
   }
 }
 
-// The source-root flags are FOLDED from gunbc.ci_layer_roots witness_layer_roots, never spelled
-// here. That authority is what the compile-clean closure and the divergence census already read,
-// so a literal list in this emitter would be a second representation of it (DESIGN §3) -- and the
-// rung drop is invisible exactly while the bytes still agree, because the copy typechecks and
-// looks finished. It went in as a literal on the first authoring of this file and is corrected
-// here; the class was named by tidy-gull-813 on a sibling lane, same day, from its own migration.
-fn witness_floor_source_root_flags() -> String {
-  fold(witness_layer_roots, init: "", f: fn(acc, root) {
-    concat(acc, concat(" --source-root \"$ROOT/", concat(root, "\"")))
-  })
-}
-
 // ONE INVOCATION OF OUR OWN BINARY. Everything the run decides -- which witnesses exist, what
 // identity each has, which frame it needs, and whether the roster is admissible at all -- is
 // decided in .dag by v2.workflow.required_floor. This step passes the source roots and
@@ -257,12 +254,41 @@ fn witness_floor_source_root_flags() -> String {
 // and the second call stays, because re-emitting and comparing digests is exactly what the
 // fixed point measures. What is removed is process startup, the receipt round-trip, and the
 // job-level orchestration.
+//
+// THE FLOOR STEP'S COMMAND IS NOT BUILT HERE. It is `gunbc.fabric_witness_run`
+// `floor_run_command`, the same ArgvCommand the fabric authorizes, rendered for this transport
+// by `extdeps.exec.command` `shell_command_render`. An earlier revision built the invocation a
+// SECOND time -- its own binary path, its own --required-floor, its own --source-root spelling,
+// folded over the same witness_layer_roots -- and #8576 then pinned the two together with a
+// witness asserting they agreed on source roots. That was validation standing where
+// construction was available (DESIGN §5): it stayed green while the binary path, the flag
+// spelling or the argument ORDER drifted, because agreeing on the roots is not agreeing on the
+// command.
+//
+// WHY THE PATHS ARE RELATIVE AND cd DOES THE WORK. shell_command_render single-quotes every
+// word, citing IEEE 1003.1-2017 §2.2.2 -- correct for an argv and fatal for a word carrying a
+// shell variable, since '$ROOT/dag' does not expand. So $ROOT is not IN the argv: the script cds
+// to the root first and the argv stays genuinely an argv, which is what lets a modeled renderer
+// quote it at all. The v1-parse step already establishes `cd "$ROOT"` here. Same binary, same
+// flags, same roots, resolved against the same directory.
+//
+// witness_floor_source_root_flags IS DELETED HERE, and this clause previously said the
+// opposite. It read that the helper survives because the two regen scripts below build
+// --required-regen and --required-regen-fixed-point as separate commands, so it still had
+// real consumers and its dissolution was someone else's. That was true when written and
+// #8647 falsified it: the consolidation folded all four phases into one --required-ci
+// process, deleting both regen scripts, so at the moment this branch merged main the helper
+// had exactly one consumer left -- the floor script -- and rendering that from
+// floor_run_command removes it. The deferred dissolution did not need a separate carrier
+// after all; it completed as a side effect of two changes meeting. Recorded rather than
+// silently dropped, because a paragraph that once justified keeping something is evidence a
+// reader will reuse, and the justification expired before the thing did.
 fn witness_floor_run_script() -> String {
   concat(
     concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
     concat(
-      "\"$ROOT/target/release/claim_executor\" --required-ci",
-      concat(witness_floor_source_root_flags(), "\n")
+      "cd \"$ROOT\"\n",
+      concat(shell_command_render(command: floor_run_command()), "\n")
     )
   )
 }
@@ -427,7 +453,7 @@ fn witness_floor_job() -> Job {
 }
 
 data witness_floor_workflow: Workflow = {
-  name: "witnesses",
+  name: witness_floor_workflow_name,
   on: [
     WorkflowDispatch { inputs: [] },
     Push { branches: [gunbc_default_branch_name], paths: [] },
