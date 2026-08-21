@@ -138,7 +138,7 @@ fn deploy_raw(command: String) -> PipelineStep {
   Do {
     run: Run {
       command: command,
-      env: [],
+      env: Empty,
       redirect: Absent,
       capture: Absent
     }
@@ -208,7 +208,7 @@ fn ensure_apt_package_step(pkg: NonEmptyStr, privileged: Bool) -> PipelineStep {
     cond: Not { inner: ExitZero {
       run: Run {
         command: dpkg_status_command(package: pkg),
-        env: [],
+        env: Empty,
         redirect: Present { value: DiscardAll },
         capture: Absent
       }
