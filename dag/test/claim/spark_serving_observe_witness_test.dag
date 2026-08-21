@@ -852,13 +852,71 @@ test fn a_leg_that_never_ran_is_a_refusal_and_not_an_absent_account() -> Bool {
 
 // TOTALITY on a malformed row: a truncated passwd record must not crash the observation, because a
 // probe that returns garbage is an observation too. Short fields read empty rather than throwing.
-test fn a_truncated_passwd_row_decodes_without_crashing() -> Bool {
+// THIS TEST USED TO ASSERT THE DEFECT. Its earlier form matched a truncated row into
+// ManagedAccountObserved and checked that uid and shell came back as the EMPTY STRING out of
+// NonEmptyStr fields -- so a test written to prove the decoder was robust was in fact the thing
+// pinning a laundered carrier in place, and it is what let the defect reach review. Review 54471
+// caught it. The test now asserts the distinction the decoder is supposed to make.
+test fn a_truncated_passwd_row_is_refused_not_observed() -> Bool {
   match spark_serving_account_observation_from_probes(
     passwd_probe: account_probe(exit_code: 0, success: true, stdout: "onlylogin"),
     key_probe: account_probe(exit_code: 0, success: true, stdout: "-rw------- 1 x y 96 Aug 10 19:51 /p"),
   ) {
-    ManagedAccountObserved { login: l, uid: u, gid: _, shell: sh, authorized_keys_mode: _, authorized_keys_owner: _ } =>
-      (l as String) == "onlylogin" && (u as String) == "" && (sh as String) == ""
+    ManagedAccountRowMalformed { detail: d } => string_contains(s: d as String, pattern: "onlylogin")
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING HALF. A truncated row must NOT be distinguishable-in-principle-only: the pair
+// below differ by exactly one thing -- whether the passwd row has its seven fields -- and they must
+// land in different variants. Asserting only the malformed case would pass on a decoder that
+// refused everything.
+test fn a_well_formed_passwd_row_still_observes() -> Bool {
+  match spark_serving_account_observation_from_probes(
+    passwd_probe: account_probe(
+      exit_code: 0, success: true,
+      stdout: "gunbc-automation:x:1001:1001::/home/gunbc-automation:/bin/bash",
+    ),
+    key_probe: account_probe(exit_code: 0, success: true, stdout: "-rw------- 1 x y 96 Aug 10 19:51 /p"),
+  ) {
+    ManagedAccountObserved { login: l, uid: u, gid: g, shell: sh, authorized_keys_mode: m, authorized_keys_owner: o } =>
+      (l as String) == "gunbc-automation" && (u as String) == "1001"
+        && (g as String) == "1001" && (sh as String) == "/bin/bash"
+        && (m as String) == "-rw-------" && (o as String) == "x"
+    _ => false
+  }
+}
+
+// AN EMPTY COLUMN IS AS UNUSABLE AS A MISSING ONE, and this is the test that says so. The row below
+// has all seven fields; the shell is simply blank. It must refuse, or the empty string reaches a
+// NonEmptyStr again by a different route than the one just closed.
+test fn an_empty_passwd_column_is_refused_like_a_missing_one() -> Bool {
+  match spark_serving_account_observation_from_probes(
+    passwd_probe: account_probe(
+      exit_code: 0, success: true,
+      stdout: "gunbc-automation:x:1001:1001::/home/gunbc-automation:",
+    ),
+    key_probe: account_probe(exit_code: 0, success: true, stdout: "-rw------- 1 x y 96 Aug 10 19:51 /p"),
+  ) {
+    ManagedAccountRowMalformed { detail: d } => string_contains(s: d as String, pattern: "gunbc-automation")
+    _ => false
+  }
+}
+
+// UNDECODABLE `ls -ld` OUTPUT IS A KEY FILE WE COULD NOT READ, not a malformed account. The passwd
+// facts survive; only the mode and owner are missing. This asserts the decoder routes it to the arm
+// whose remedy actually matches.
+test fn undecodable_key_file_output_keeps_the_account_and_reports_unread() -> Bool {
+  match spark_serving_account_observation_from_probes(
+    passwd_probe: account_probe(
+      exit_code: 0, success: true,
+      stdout: "gunbc-automation:x:1001:1001::/home/gunbc-automation:/bin/bash",
+    ),
+    key_probe: account_probe(exit_code: 0, success: true, stdout: "-rw-------"),
+  ) {
+    ManagedAccountKeyFileUnread { login: l, uid: u, gid: _, shell: _, cause: c } =>
+      (l as String) == "gunbc-automation" && (u as String) == "1001"
+        && string_contains(s: c as String, pattern: "does not decode")
     _ => false
   }
 }

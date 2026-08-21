@@ -280,6 +280,7 @@ type SparkManagedAccountObservation
       cause: NonEmptyStr,
     }
   | ManagedAccountAbsent { detail: NonEmptyStr }
+  | ManagedAccountRowMalformed { detail: NonEmptyStr }
   | ManagedAccountProbeRefused { cause: NonEmptyStr }
 
 // THE KEY-FILE ARM IS SEPARATE FROM THE ACCOUNT ARM ON PURPOSE. An account that exists with an
@@ -295,10 +296,78 @@ fn spark_serving_nonempty_fields(row: List<String>) -> List<String> {
   })
 }
 
-fn spark_serving_account_field(row: List<String>, index: Int) -> String {
+// THIS FUNCTION USED TO RETURN "" FOR A MISSING INDEX, and the empty string was then cast into a
+// NonEmptyStr field. Two things were wrong with that and only one of them is about types. The
+// carrier's whole purpose is that an empty value is unrepresentable, so laundering one through
+// `as NonEmptyStr` inverts the rung it exists to hold -- and downstream, a truncated getent row and
+// a well-formed one both arrived as ManagedAccountObserved with no way to tell them apart. That is
+// the fabricated-plausible-output failure DESIGN section 5 forbids, sitting inside a decoder I wrote
+// specifically to be honest about partial states. I then wrote a test asserting the empty value was
+// fine, which is how it survived to review.
+//
+// A missing OR empty field is now Absent, and the caller must dispose of it. Empty is folded in with
+// missing deliberately: for the four fields this reads, an empty column is exactly as unusable as a
+// column that is not there, and giving them separate states would be a distinction with no
+// difference in remedy.
+fn spark_serving_account_field(row: List<String>, index: Int) -> String? {
   match row.skip(n: index).first() {
-    Absent => ""
-    Present { value: v } => v
+    Absent => none
+    Present { value: v } => if v == "" { none } else { Present { value: v } }
+  }
+}
+
+// THE PROVEN ROW. Decoding lands here or it does not land at all, so every consumer downstream takes
+// four fields that are non-empty BY CONSTRUCTION rather than four that were checked somewhere. The
+// nesting is confined to this one function, which is the price of making the malformed state
+// unrepresentable instead of detectable.
+type SparkPasswdRow {
+  login: NonEmptyStr
+  uid: NonEmptyStr
+  gid: NonEmptyStr
+  shell: NonEmptyStr
+}
+
+fn spark_serving_passwd_row(fields: List<String>) -> SparkPasswdRow? {
+  match spark_serving_account_field(row: fields, index: 0) {
+    Absent => none
+    Present { value: login } => match spark_serving_account_field(row: fields, index: 2) {
+      Absent => none
+      Present { value: uid } => match spark_serving_account_field(row: fields, index: 3) {
+        Absent => none
+        Present { value: gid } => match spark_serving_account_field(row: fields, index: 6) {
+          Absent => none
+          Present { value: shell } => Present {
+            value: SparkPasswdRow {
+              login: login as NonEmptyStr,
+              uid: uid as NonEmptyStr,
+              gid: gid as NonEmptyStr,
+              shell: shell as NonEmptyStr,
+            },
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE KEY-FILE FACTS get the same treatment, but their malformed case does NOT need a new variant:
+// `ls -ld` output that will not decode is a key file we could not read, which is precisely what
+// ManagedAccountKeyFileUnread already says. Minting a second variant for it would be the state-space
+// split with no remedy difference that the passwd case genuinely does have.
+type SparkKeyFileFacts {
+  mode: NonEmptyStr
+  owner: NonEmptyStr
+}
+
+fn spark_serving_key_file_facts(fields: List<String>) -> SparkKeyFileFacts? {
+  match spark_serving_account_field(row: fields, index: 0) {
+    Absent => none
+    Present { value: mode } => match spark_serving_account_field(row: fields, index: 2) {
+      Absent => none
+      Present { value: owner } => Present {
+        value: SparkKeyFileFacts { mode: mode as NonEmptyStr, owner: owner as NonEmptyStr },
+      }
+    }
   }
 }
 
@@ -317,36 +386,47 @@ fn spark_serving_account_observation_from_probes(
           ], "") as NonEmptyStr,
         }
       } else {
-        let fields = split(trim(s: pw.stdout), ":")
-        let login = spark_serving_account_field(row: fields, index: 0)
-        let uid = spark_serving_account_field(row: fields, index: 2)
-        let gid = spark_serving_account_field(row: fields, index: 3)
-        let shell = spark_serving_account_field(row: fields, index: 6)
-        match key_probe {
+        match spark_serving_passwd_row(fields: split(trim(s: pw.stdout), ":")) {
           Absent =>
-            ManagedAccountKeyFileUnread {
-              login: login as NonEmptyStr, uid: uid as NonEmptyStr,
-              gid: gid as NonEmptyStr, shell: shell as NonEmptyStr,
-              cause: "the authorized_keys probe leg did not run" as NonEmptyStr,
+            ManagedAccountRowMalformed {
+              detail: join([
+                "getent passwd returned a row that does not decode: ", trim(s: pw.stdout),
+              ], "") as NonEmptyStr,
             }
-          Present { value: k } =>
-            if k.success == false {
+          Present { value: row } => match key_probe {
+            Absent =>
               ManagedAccountKeyFileUnread {
-                login: login as NonEmptyStr, uid: uid as NonEmptyStr,
-                gid: gid as NonEmptyStr, shell: shell as NonEmptyStr,
-                cause: join([
-                  "stat exit=", to_string(k.exit_code), " stderr=", trim(s: k.stderr),
-                ], "") as NonEmptyStr,
+                login: row.login, uid: row.uid, gid: row.gid, shell: row.shell,
+                cause: "the authorized_keys probe leg did not run" as NonEmptyStr,
               }
-            } else {
-              let stat_fields = spark_serving_nonempty_fields(row: split(trim(s: k.stdout), " "))
-              ManagedAccountObserved {
-                login: login as NonEmptyStr, uid: uid as NonEmptyStr,
-                gid: gid as NonEmptyStr, shell: shell as NonEmptyStr,
-                authorized_keys_mode: spark_serving_account_field(row: stat_fields, index: 0) as NonEmptyStr,
-                authorized_keys_owner: spark_serving_account_field(row: stat_fields, index: 2) as NonEmptyStr,
+            Present { value: k } =>
+              if k.success == false {
+                ManagedAccountKeyFileUnread {
+                  login: row.login, uid: row.uid, gid: row.gid, shell: row.shell,
+                  cause: join([
+                    "ls -ld exit=", to_string(k.exit_code), " stderr=", trim(s: k.stderr),
+                  ], "") as NonEmptyStr,
+                }
+              } else {
+                match spark_serving_key_file_facts(
+                  fields: spark_serving_nonempty_fields(row: split(trim(s: k.stdout), " ")),
+                ) {
+                  Absent =>
+                    ManagedAccountKeyFileUnread {
+                      login: row.login, uid: row.uid, gid: row.gid, shell: row.shell,
+                      cause: join([
+                        "ls -ld output does not decode: ", trim(s: k.stdout),
+                      ], "") as NonEmptyStr,
+                    }
+                  Present { value: kf } =>
+                    ManagedAccountObserved {
+                      login: row.login, uid: row.uid, gid: row.gid, shell: row.shell,
+                      authorized_keys_mode: kf.mode,
+                      authorized_keys_owner: kf.owner,
+                    }
+                }
               }
-            }
+          }
         }
       }
   }
@@ -368,6 +448,8 @@ fn spark_serving_account_line(host: HostIdentity, account: SparkManagedAccountOb
       ], "")
     ManagedAccountAbsent { detail: d } =>
       join(["account host=", host as String, " state=absent detail=", d as String, "\n"], "")
+    ManagedAccountRowMalformed { detail: d } =>
+      join(["account host=", host as String, " state=row-malformed detail=", d as String, "\n"], "")
     ManagedAccountProbeRefused { cause: c } =>
       join(["account host=", host as String, " state=probe-refused cause=", c as String, "\n"], "")
   }
