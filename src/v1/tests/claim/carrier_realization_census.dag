@@ -411,3 +411,91 @@ fn census_run_smoke() -> ProcessExit {
     exit_failure(reason: "smoke receipt write failed")
   }
 }
+
+// THE CROSS-MODULE DISCRIMINATOR (smart-ram-730's parent traced this; the test is theirs).
+// String is a POOR probe for the roster, because is_host_text_carrier_type short-circuits
+// on the spelling before any roster consultation, so the roster's behaviour is masked.
+// Hash is not short-circuited, so it isolates the roster alone.
+//
+// decl_file_declares_structurally matches contains(decl_file, m) against
+// structural_declaration_modules_for("Hash") == ["src/v2/std/node.dag"]. With decl_file
+// carrying the REFERENCING file, the three cases separate:
+//
+//   Hash referenced INSIDE src/v2/std/node.dag -> decl_file = node.dag -> IN roster
+//     -> refuses -> structural. Correct, but BY LUCK.
+//   Hash referenced from v2.compiler.self_host -> decl_file = self_host.dag -> NOT in
+//     roster -> no refusal -> answers from the checkpoint row -> host Hash. WRONG, and
+//     it is the exact case the roster exists to catch.
+//
+// So the prediction is a SPLIT ON ONE NAME: Hash rows inside v2.std.node land on one
+// outcome and Hash rows in v2.compiler.self_host on the other. A split confirms the
+// roster is live only within its declaring module and inert across module boundaries; no
+// split refutes the trace. Either way this is decided WITHOUT settling the identity key
+// first, which is what makes it worth running now.
+data census_cross_module_subject_paths: List<String> = [
+  "dag/extdeps/communication/medium.dag",
+  "dag/extdeps/external_authority.dag",
+  "dag/extdeps/filesystem/filesystem_io.dag",
+  "dag/extdeps/units/dimensionless.dag",
+  "dag/extdeps/units/iec_80000_13.dag",
+  "dag/extdeps/units/iso8601.dag",
+  "dag/extdeps/units/iso_80000_3.dag",
+  "dag/extdeps/uri.dag",
+  "dag/std/algebra.dag",
+  "dag/std/bit.dag",
+  "dag/std/checked_arithmetic.dag",
+  "dag/std/computation.dag",
+  "dag/std/constructors.dag",
+  "dag/std/content_hash.dag",
+  "dag/std/currency.dag",
+  "dag/std/decl_ref.dag",
+  "dag/std/dissolution.dag",
+  "dag/std/error_primitives.dag",
+  "dag/std/induction.dag",
+  "dag/std/integer.dag",
+  "dag/std/keyed_roster.dag",
+  "dag/std/keyed_row.dag",
+  "dag/std/machine_constraints.dag",
+  "dag/std/magnitude.dag",
+  "dag/std/measure.dag",
+  "dag/std/nat.dag",
+  "dag/std/primitives.dag",
+  "dag/std/roster_frontier.dag",
+  "dag/std/termination.dag",
+  "dag/std/types.dag",
+  "dag/std/unicode/types.dag",
+  "src/v2/compiler/self_host.dag",
+  "src/v2/std/algebra.dag",
+  "src/v2/std/collection.dag",
+  "src/v2/std/constraint_satisfaction_predicate.dag",
+  "src/v2/std/diagnostic.dag",
+  "src/v2/std/exact_structural_equality_zip_fold_predicate.dag",
+  "src/v2/std/find_witness.dag",
+  "src/v2/std/integer.dag",
+  "src/v2/std/integer_value_set.dag",
+  "src/v2/std/logic.dag",
+  "src/v2/std/machine.dag",
+  "src/v2/std/model_core.dag",
+  "src/v2/std/nat.dag",
+  "src/v2/std/node.dag",
+  "src/v2/std/node_query.dag",
+  "src/v2/std/optional.dag",
+  "src/v2/std/passing_candidate_fold.dag",
+  "src/v2/std/project_to_core_predicate.dag",
+  "src/v2/std/refinement_widening_predicate.dag",
+  "src/v2/std/text.dag",
+  "src/v2/std/witness.dag"
+]
+
+data census_cross_module_receipt_path: String = "target/carrier_realization_cross_module.tsv"
+
+fn census_run_cross_module() -> ProcessExit {
+  if Filesystem.Write(
+    path: census_cross_module_receipt_path,
+    content: census_receipt_for_paths(paths: census_cross_module_subject_paths)
+  ).success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "cross-module receipt write failed")
+  }
+}
