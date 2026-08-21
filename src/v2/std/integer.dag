@@ -1021,12 +1021,12 @@ fn integer_string_to_decimal_digits_step(
   s: String,
   acc: std.algebra.FreeMonoid<DecimalDigit>
 ) -> Optional<std.algebra.FreeMonoid<DecimalDigit>> {
-  match string_head(s: s) {
+  match v2.std.text.string_head(s: s) {
     CharAbsent => optional_present(value: acc)
     CharFound { value: c } =>
       match integer_char_code_to_decimal_digit_optional(c: c) {
         Present { value: d } =>
-          match string_tail(s: s) {
+          match v2.std.text.string_tail(s: s) {
             TailFound { tail: rest } =>
               integer_string_to_decimal_digits_step(
                 s: rest,

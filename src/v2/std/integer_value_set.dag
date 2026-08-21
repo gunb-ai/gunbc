@@ -84,7 +84,7 @@ fn integer_value_set_from_node(value_set: v2.std.node.Node) -> v2.std.diagnostic
           if count(value_set.children) == 2 {
             match find_named_child(root: value_set, name: ^integer_value_set_field_interval) {
               Accepted { value: interval, diagnostics: None } =>
-                if integer_interval_spec_node_contains(container: interval, contained: interval) {
+                if v2.std.integer.integer_interval_spec_node_contains(container: interval, contained: interval) {
                   v2.std.diagnostic.Accepted { value: IntegerValueSetInterval { interval: interval }, diagnostics: v2.std.diagnostic.None }
                 } else {
                   v2.std.diagnostic.Rejected {
@@ -132,7 +132,7 @@ fn integer_value_set_contains_decoded(container: IntegerValueSet, contained: Int
       match contained {
         IntegerValueSetUnbounded => false
         IntegerValueSetInterval { interval: contained_interval } =>
-          integer_interval_spec_node_contains(
+          v2.std.integer.integer_interval_spec_node_contains(
             container: container_interval,
             contained: contained_interval
           )

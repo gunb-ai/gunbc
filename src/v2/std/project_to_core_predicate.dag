@@ -2,11 +2,11 @@ module v2.std.project_to_core_predicate
 
 
 fn project_to_core_axis_is_core(name: v2.std.node.Symbol) -> Bool {
-  model_core_primitive_fact_axis_is_core(axis: name)
+  v2.std.model_core.model_core_primitive_fact_axis_is_core(axis: name)
 }
 
 fn project_to_core_axis_is_surface(name: v2.std.node.Symbol) -> Bool {
-  model_core_primitive_fact_axis_is_surface(axis: name)
+  v2.std.model_core.model_core_primitive_fact_axis_is_surface(axis: name)
 }
 
 fn project_to_core_init(n: v2.std.node.Node) -> v2.std.node.Node {

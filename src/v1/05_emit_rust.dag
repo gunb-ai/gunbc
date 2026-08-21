@@ -10014,8 +10014,9 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: v1.std.core.Node, m
   if mock_props |> count > 0 {
     let first_mock = mock_props |> first
     match first_mock {
-      Present { value: mp } => {
-        let mock_json = v1.compiler.emit.emit_data_value_json(value: v1.std.core.field_init_node_value(n: mp), source_indices: source_indices)
+      Present { value: mp } => match v1.compiler.emit.emit_data_value_json(value: v1.std.core.field_init_node_value(n: mp), source_indices: source_indices) {
+        Refused { reason: r } => concat(log_line, "\ncompile_error!(\"", v1.compiler.emit_core_support.escape_string_literal_body(s: r), "\");")
+        Emitted { json: mock_json } => {
         let is_multi_field_conj = inferred.connective == v1.std.core.Conj && inferred.children |> count > 1
         if is_multi_field_conj {
           let children = inferred.children
@@ -10076,6 +10077,7 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: v1.std.core.Node, m
           concat(log_line, "\n",
             "let mock_value: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n",
             "Ok(serde_json::from_value(mock_value)?)")
+        }
         }
       }
       Absent => concat(log_line, "\ncompile_error!(\"mock property list was non-empty but first() returned None\")")
@@ -10971,9 +10973,11 @@ fn emit_data_def_body(type_node: v1.std.core.Node, value: v1.std.core.Node, regi
       _ => "            compile_error!(\"BoundedLattice data must be a record\")"
     }
   } else if v1.compiler.emit.has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) {
-    let json_str = v1.compiler.emit.emit_data_value_json(value: value, source_indices: scope.type_env.source_indices)
-    concat("            serde_json::from_value(serde_json::json!(", json_str, "))\n",
-      "                .expect(\"valid data definition\")")
+    match v1.compiler.emit.emit_data_value_json(value: value, source_indices: scope.type_env.source_indices) {
+      Refused { reason: r } => concat("            compile_error!(\"", v1.compiler.emit_core_support.escape_string_literal_body(s: r), "\")")
+      Emitted { json: json_str } => concat("            serde_json::from_value(serde_json::json!(", json_str, "))\n",
+        "                .expect(\"valid data definition\")")
+    }
   } else {
     let is_map = v1.compiler.infer_types.node_is_keyed_collection(n: type_node, source_indices: scope.type_env.source_indices)
     if is_map {
