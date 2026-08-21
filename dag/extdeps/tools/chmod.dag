@@ -22,6 +22,14 @@ data chmod_binary_path: NonEmptyStr = "/bin/chmod"
 // of "make it executable" -- one preserves the other bits and one silently decides them. POSIX
 // specifies both forms; this module offers the one whose meaning is additive, because that is what
 // an ensure means.
+fn chmod_add_executable_args(path: String) -> List<String> {
+  ["+x", path]
+}
+
+// The full argv is DERIVED from the binary path and the argument tail rather than spelled beside
+// them, so a caller that needs the two halves separately -- a transport whose shape splits
+// bin_path from args -- reaches the same authority as one that needs the whole vector, and the
+// mode flag has exactly one home.
 fn chmod_add_executable_argv(path: String) -> List<String> {
-  [chmod_binary_path as String, "+x", path]
+  concat([chmod_binary_path as String], chmod_add_executable_args(path: path))
 }
