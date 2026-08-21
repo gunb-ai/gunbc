@@ -1,0 +1,168 @@
+module test.claim.spark_serving_boot_provenance_witness
+
+import std.types { Bool, String, NonEmptyStr, Int }
+import std.measure { microsecond, microsecond_count }
+import extdeps.ssh.session { SshSessionExecResult }
+import gunbc.fleet_known_hosts_anchor { portable_remote_words }
+import gunbc.spark.serving_boot_provenance {
+  spark_serving_active_enter_probe_argv,
+  spark_serving_uptime_probe_argv,
+  spark_serving_classify_boot_provenance,
+  spark_serving_boot_provenance_establishes_durability,
+  spark_serving_boot_provenance_wire,
+  spark_serving_boot_start_window,
+  UnitStartedByManagerAtBoot,
+  UnitStartedAfterBoot,
+  UnitNotActiveAtAll,
+  BootProvenanceUnobserved,
+}
+
+fn ok(out: String) -> SshSessionExecResult {
+  SshSessionExecResult { exit_code: 0, success: true, stdout: out, stderr: "" }
+}
+
+fn bad(err: String) -> SshSessionExecResult {
+  SshSessionExecResult { exit_code: 1, success: false, stdout: "", stderr: err }
+}
+
+fn uptime(secs: String) -> SshSessionExecResult {
+  ok(out: join([secs, ".41 90000.00\n"], ""))
+}
+
+// A unit that entered active 4.2 seconds into a boot that has lasted three days was brought up by
+// the manager during startup. This is the arm that establishes durability, and it is the ONLY one.
+test fn a_unit_active_early_in_the_boot_was_started_by_the_manager() -> Bool {
+  match spark_serving_classify_boot_provenance(
+    active_enter: ok(out: "4200000\n"),
+    uptime: uptime(secs: "259200"),
+  ) {
+    UnitStartedByManagerAtBoot { active_enter_monotonic: e, uptime: u } =>
+      microsecond_count(e) == 4200000 && microsecond_count(u) == 259200000000
+    UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitNotActiveAtAll => false
+    BootProvenanceUnobserved { cause: _ } => false
+  }
+}
+
+// THE DISCRIMINATING NEGATIVE, and it is the whole reason the module exists. A unit started by hand
+// two hours into the boot is RUNNING and would satisfy any is-active check -- and it will not be
+// there after the next power cycle. Without this arm the observation would report every live unit as
+// durable, which is exactly the confusion `enable --now` created.
+test fn a_unit_started_hours_into_the_boot_does_not_establish_durability() -> Bool {
+  match spark_serving_classify_boot_provenance(
+    active_enter: ok(out: "7200000000"),
+    uptime: uptime(secs: "259200"),
+  ) {
+    UnitStartedAfterBoot { active_enter_monotonic: e, uptime: _ } => microsecond_count(e) == 7200000000
+    UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitNotActiveAtAll => false
+    BootProvenanceUnobserved { cause: _ } => false
+  }
+}
+
+// Exactly one arm answers true, asserted across all four so a future arm cannot be added silently
+// into the passing side.
+test fn only_the_boot_started_arm_establishes_durability() -> Bool {
+  spark_serving_boot_provenance_establishes_durability(
+    p: UnitStartedByManagerAtBoot { active_enter_monotonic: microsecond(count: 1), uptime: microsecond(count: 2) },
+  )
+    && !spark_serving_boot_provenance_establishes_durability(
+         p: UnitStartedAfterBoot { active_enter_monotonic: microsecond(count: 1), uptime: microsecond(count: 2) },
+       )
+    && !spark_serving_boot_provenance_establishes_durability(p: UnitNotActiveAtAll)
+    && !spark_serving_boot_provenance_establishes_durability(
+         p: BootProvenanceUnobserved { cause: "leg refused" as NonEmptyStr },
+       )
+}
+
+// systemd reports 0 for a unit that has never entered active. That is a real observation of an
+// inactive unit, not a failure to observe, and conflating the two would report a probe that worked
+// as a probe that did not.
+test fn a_zero_timestamp_is_an_inactive_unit_not_an_unobserved_one() -> Bool {
+  match spark_serving_classify_boot_provenance(active_enter: ok(out: "0\n"), uptime: uptime(secs: "100")) {
+    UnitNotActiveAtAll => true
+    BootProvenanceUnobserved { cause: _ } => false
+    UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
+  }
+}
+
+// A failed probe is UNOBSERVED and never a verdict about the unit. Reporting a manager we could not
+// reach as "not started at boot" would manufacture a durability failure out of a transport problem.
+test fn a_failed_probe_is_unobserved_and_not_a_durability_verdict() -> Bool {
+  match spark_serving_classify_boot_provenance(
+    active_enter: bad(err: "Failed to connect to bus"),
+    uptime: uptime(secs: "100"),
+  ) {
+    BootProvenanceUnobserved { cause: c } => string_contains(c as String, "Failed to connect to bus")
+    UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitNotActiveAtAll => false
+  }
+}
+
+// The second leg refuses on its own behalf: an unreadable /proc/uptime is unobserved, not a unit
+// fact. Both legs owe their own answer.
+test fn an_unreadable_uptime_refuses_rather_than_deciding() -> Bool {
+  match spark_serving_classify_boot_provenance(
+    active_enter: ok(out: "4200000"),
+    uptime: bad(err: "cat: /proc/uptime: Permission denied"),
+  ) {
+    BootProvenanceUnobserved { cause: c } => string_contains(c as String, "Permission denied")
+    UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitNotActiveAtAll => false
+  }
+}
+
+// The boundary is the declared window and not a value fitted to a host: one microsecond either side
+// of it decides differently, which is what makes the constant load-bearing rather than decorative.
+test fn the_boot_window_is_the_boundary_that_decides() -> Bool {
+  match spark_serving_classify_boot_provenance(
+    active_enter: ok(out: to_string(microsecond_count(spark_serving_boot_start_window()))),
+    uptime: uptime(secs: "100"),
+  ) {
+    UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } =>
+      match spark_serving_classify_boot_provenance(
+        active_enter: ok(out: to_string(microsecond_count(spark_serving_boot_start_window()) + 1)),
+        uptime: uptime(secs: "100"),
+      ) {
+        UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => true
+        UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
+        UnitNotActiveAtAll => false
+        BootProvenanceUnobserved { cause: _ } => false
+      }
+    UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitNotActiveAtAll => false
+    BootProvenanceUnobserved { cause: _ } => false
+  }
+}
+
+// BOTH LEGS ARE READS AND NEITHER NEEDS PRIVILEGE, which is the property that lets durability be
+// observed instead of caused. They are also portable under the far-side re-parse, without which the
+// transport would refuse them exactly as it refused the reboot.
+test fn both_probes_are_portable_unprivileged_reads() -> Bool {
+  match portable_remote_words(raws: spark_serving_active_enter_probe_argv()) {
+    Absent => false
+    Present { value: _ } =>
+      match portable_remote_words(raws: spark_serving_uptime_probe_argv()) {
+        Absent => false
+        Present { value: _ } =>
+          !any(spark_serving_active_enter_probe_argv(), w => w == "sudo")
+            && !any(spark_serving_uptime_probe_argv(), w => w == "sudo")
+      }
+  }
+}
+
+// The wire distinguishes the two live cases in words, because "the unit is up" reads the same in
+// both and the difference is the entire finding.
+test fn the_wire_separates_came_up_with_this_boot_from_started_later() -> Bool {
+  string_contains(
+    spark_serving_boot_provenance_wire(p: UnitStartedByManagerAtBoot { active_enter_monotonic: microsecond(count: 1), uptime: microsecond(count: 2) }),
+    "came up WITH this boot",
+  )
+    && string_contains(
+         spark_serving_boot_provenance_wire(p: UnitStartedAfterBoot { active_enter_monotonic: microsecond(count: 1), uptime: microsecond(count: 2) }),
+         "did NOT come up with this boot",
+       )
+}

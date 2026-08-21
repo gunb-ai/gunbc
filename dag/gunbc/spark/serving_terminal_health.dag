@@ -1,0 +1,312 @@
+module gunbc.spark.serving_terminal_health
+
+import std.types { String, List, Bool, NonEmptyStr }
+import std.algebra { trim }
+import std.measure { Second, second, second_count }
+import gunbc.spark.serving_readback_parse {
+  SparkServingReadbackField,
+  SparkServingReadbackAbsent,
+  SparkServingReadbackPresent,
+  SparkServingReadbackRefused,
+  spark_serving_parse_version_json,
+  spark_serving_parse_generate_member,
+  spark_serving_parse_generate_done,
+}
+import extdeps.ollama.api { OllamaModelRef, ollama_model_ref_wire, ApiGenerate }
+import extdeps.ollama.binary_release {
+  ollama_required_release,
+  ollama_reported_version_matches_release,
+}
+import gunbc.spark.serving_desired {
+  spark_serving_desired_model_ref,
+  spark_serving_local_api_version_url,
+  spark_serving_local_endpoint_url,
+}
+import gunbc.spark.serving_install_paths { spark_serving_health_request_body_path }
+
+// RESOURCES CONVERGED IS NOT SERVING. Membership reconciliation answers "is every declared member in
+// its desired state" -- runtime materialized, model store complete, unit written, enabled, lingering.
+// A host can satisfy every one of those and still answer nothing: the process can be up and wedged,
+// the accelerator can be claimed by another process, the model can be present on disk and fail to
+// load, the port can be bound by a listener that never completes a request.
+//
+// Reporting such a host as converged is not a small overstatement. It is the counter this whole lane
+// exists to move reading true for a host that cannot serve a token, which is worse than reading false
+// -- a false negative gets investigated, a false positive gets built on. So terminal health is a
+// SEPARATE verdict over a SEPARATE observation, and the two facts are joined rather than fused.
+type SparkServingTerminalHealth
+  = ServingConverged {
+      reported_version: NonEmptyStr
+      served_model: NonEmptyStr
+    }
+  | ResourcesConvergedButServingUnhealthy { defect: SparkServingHealthDefect }
+  | ServingHealthUnobserved { cause: NonEmptyStr }
+
+// EACH DEFECT IS ITS OWN ARM because each has a different remedy, and a single "unhealthy" would
+// make them one operator question. A version disagreement means the wrong runtime is on PATH or the
+// unit points at a stale root; a model that will not load means the store is present but unusable;
+// an incomplete generation means the model loaded and the request did not finish. Those are three
+// different mornings.
+type SparkServingHealthDefect
+  = HealthVersionDisagrees { observed: NonEmptyStr }
+  | HealthVersionUndecodable { detail: NonEmptyStr }
+  | HealthGenerationUndecodable { detail: NonEmptyStr }
+  | HealthGenerationIncomplete
+  | HealthGenerationWrongModel { observed: NonEmptyStr }
+  | HealthGenerationUnexpectedText { observed: NonEmptyStr }
+
+// THE PROBE ASKS FOR ONE EXACT WORD. A health check that accepts any non-empty completion is
+// satisfied by a model emitting whitespace, an error string, or a refusal -- all of which are
+// "a response". Pinning the expected text makes the check discriminating: the model has to have
+// loaded, run, and produced the token asked for.
+//
+// It is deliberately trivial to produce. This is a liveness probe, not an evaluation: a prompt whose
+// answer is hard would make the health verdict depend on model quality, so a correctly serving host
+// could report unhealthy for being bad at arithmetic.
+// PROVISIONAL UNTIL MEASURED AGAINST A REAL HOST, and said here rather than found on srv6.
+//
+// The comparison is exact after trimming whitespace, which is what makes it discriminating -- but a
+// model is free to answer "Pong." or "pong!" and be working perfectly. That would report a healthy
+// host as unhealthy: a false negative at the gate the convergence counter reads.
+//
+// It is deliberately left exact rather than pre-emptively fuzzed. Loosening it now would mean
+// guessing which deviations to forgive, and every forgiven shape is one a broken host can also
+// produce -- `string_contains` on "pong" is satisfied by "I cannot say pong". The defect arm carries
+// the OBSERVED text, so the first real run reports exactly what the model said, and this constant is
+// then set from that observation instead of from an assumption about how a model phrases things.
+data spark_serving_health_expected_response: NonEmptyStr = "pong" as NonEmptyStr
+
+data spark_serving_health_prompt: NonEmptyStr = "Reply with exactly one word: pong" as NonEmptyStr
+
+// THE REQUEST TRAVELS AS FILE BYTES, NOT AS ARGV. A JSON body carries quotes, braces and spaces, and
+// every remote leg re-parses argv on the far side -- which is why `portable_remote_words` refuses
+// those characters rather than quoting them. Writing the body as a frozen file and passing `--data
+// @path` keeps every word inside the portable allowlist, so the probe needs no shell and no escaping
+// rules that would have to be right on a host nobody is watching.
+//
+// `stream:false` is load-bearing. A streaming response is a sequence of JSON objects, so `done` would
+// have to be read from the last one and a truncated stream would decode as a complete object that
+// simply had not finished -- the exact confusion `HealthGenerationIncomplete` exists to name.
+// KNOWN GAP, NAMED RATHER THAN DISCOVERED ON A HOST. The body file is written by the
+// MaterializeModelArtifact sequence, and that effect fires only when the model slot drifts. So a host that
+// is already converged -- in particular one converged by code that predates this file -- has no body
+// on disk, the generate probe fails, and health reports `ServingHealthUnobserved` until some effect
+// re-runs. That is the honest reading of the evidence rather than a wrong verdict, which is why this
+// is a gap and not a defect.
+//
+// It does not bite the case in front of us: the counter is at zero, so the first convergence of
+// either Spark runs the pull and writes the body. The terminal fix is that this file is part of the
+// DESIRED STATE of a serving host and belongs in the member population, where reconcile would ensure
+// it the way it ensures the unit -- rather than riding along with whichever effect happens to run.
+fn spark_serving_health_request_body() -> String {
+  join([
+    "\{\"model\":\"", ollama_model_ref_wire(ref: spark_serving_desired_model_ref),
+    "\",\"prompt\":\"", spark_serving_health_prompt as String,
+    "\",\"stream\":false\}",
+  ], "")
+}
+
+// THE TWO PROBE ARGVS. Both stay inside the portable allowlist by construction: the endpoint URL is
+// built from the cited endpoint model, and the request body is referenced by path rather than
+// inlined. `--max-time` bounds the generation so a wedged server fails the probe at a known deadline
+// instead of hanging the convergence that called it.
+fn spark_serving_health_generate_timeout() -> Second {
+  second(count: 120)
+}
+
+fn spark_serving_health_generate_timeout_word() -> String {
+  to_string(second_count(spark_serving_health_generate_timeout()))
+}
+
+fn spark_serving_health_version_timeout() -> Second {
+  second(count: 10)
+}
+
+fn spark_serving_health_version_timeout_word() -> String {
+  to_string(second_count(spark_serving_health_version_timeout()))
+}
+
+fn spark_serving_health_version_probe_argv() -> List<String> {
+  [
+    "curl", "-fsS",
+    "--max-time", spark_serving_health_version_timeout_word(),
+    spark_serving_local_api_version_url(),
+  ]
+}
+
+fn spark_serving_health_generate_probe_argv() -> List<String> {
+  [
+    "curl", "-fsS",
+    "--max-time", spark_serving_health_generate_timeout_word(),
+    "-X", "POST",
+    "-H", "Content-Type:application/json",
+    "--data", join(["@", spark_serving_health_request_body_path() as String], ""),
+    spark_serving_local_endpoint_url(endpoint: ApiGenerate),
+  ]
+}
+
+// ── Decoding the two captured responses ─────────────────────────────────────────────────────────
+
+// A CAPTURE THAT IS NOT THERE IS NOT A VERDICT. Absent stdout means the probe did not run or did not
+// answer, and that is `ServingHealthUnobserved` -- never healthy (nothing was seen) and never
+// unhealthy (nothing was refuted). Collapsing an unobserved probe into either direction is the
+// empty-observation narrow: the run reports a verdict it never earned.
+fn spark_serving_health_from_captures(
+  version_stdout: String,
+  generate_stdout: String,
+) -> SparkServingTerminalHealth {
+  if trim(s: version_stdout) == "" {
+    ServingHealthUnobserved {
+      cause: "version probe produced no output: the endpoint was not reached, so neither health nor sickness was observed" as NonEmptyStr,
+    }
+  } else if trim(s: generate_stdout) == "" {
+    ServingHealthUnobserved {
+      cause: "generation probe produced no output: the endpoint answered its version but served nothing, so completion was not observed" as NonEmptyStr,
+    }
+  } else {
+    match spark_serving_parse_version_json(stdout: version_stdout) {
+      SparkServingReadbackAbsent =>
+        ResourcesConvergedButServingUnhealthy {
+          defect: HealthVersionUndecodable { detail: "version member absent" as NonEmptyStr },
+        }
+      SparkServingReadbackRefused { cause: c } =>
+        ResourcesConvergedButServingUnhealthy {
+          defect: HealthVersionUndecodable { detail: c },
+        }
+      SparkServingReadbackPresent { value: reported } =>
+        if !ollama_reported_version_matches_release(version: reported, rel: ollama_required_release) {
+          ResourcesConvergedButServingUnhealthy {
+            defect: HealthVersionDisagrees { observed: reported as NonEmptyStr },
+          }
+        } else {
+          spark_serving_health_from_generation(
+            reported_version: reported as NonEmptyStr,
+            generate_stdout: generate_stdout,
+          )
+        }
+    }
+  }
+}
+
+// THE THREE GENERATION FACTS ARE CHECKED SEPARATELY, and all three are required.
+//
+// `done` is the one most easily skipped and the one that matters most: a streaming or truncated
+// response carries text without having finished, so text alone proves the model started rather than
+// that it served. The model field catches a host serving a DIFFERENT model than the one planned --
+// which is exactly what a stale unit or a moved tag produces, and which every text-only check
+// accepts. And the response is compared to the expected word rather than merely being non-empty.
+fn spark_serving_health_from_generation(
+  reported_version: NonEmptyStr,
+  generate_stdout: String,
+) -> SparkServingTerminalHealth {
+  match spark_serving_parse_generate_done(stdout: generate_stdout) {
+    SparkServingReadbackAbsent =>
+      ResourcesConvergedButServingUnhealthy {
+        defect: HealthGenerationUndecodable { detail: "done member absent" as NonEmptyStr },
+      }
+    SparkServingReadbackRefused { cause: c } =>
+      ResourcesConvergedButServingUnhealthy {
+        defect: HealthGenerationUndecodable { detail: c },
+      }
+    SparkServingReadbackPresent { value: done_word } =>
+      if done_word != "true" {
+        ResourcesConvergedButServingUnhealthy { defect: HealthGenerationIncomplete }
+      } else {
+        spark_serving_health_from_completed_generation(
+          reported_version: reported_version,
+          generate_stdout: generate_stdout,
+        )
+      }
+  }
+}
+
+fn spark_serving_health_from_completed_generation(
+  reported_version: NonEmptyStr,
+  generate_stdout: String,
+) -> SparkServingTerminalHealth {
+  match spark_serving_parse_generate_member(stdout: generate_stdout, member: "model") {
+    SparkServingReadbackAbsent =>
+      ResourcesConvergedButServingUnhealthy {
+        defect: HealthGenerationUndecodable { detail: "model member absent" as NonEmptyStr },
+      }
+    SparkServingReadbackRefused { cause: c } =>
+      ResourcesConvergedButServingUnhealthy {
+        defect: HealthGenerationUndecodable { detail: c },
+      }
+    SparkServingReadbackPresent { value: served_model } =>
+      if served_model != ollama_model_ref_wire(ref: spark_serving_desired_model_ref) {
+        ResourcesConvergedButServingUnhealthy {
+          defect: HealthGenerationWrongModel { observed: served_model as NonEmptyStr },
+        }
+      } else {
+        spark_serving_health_from_served_model(
+          reported_version: reported_version,
+          served_model: served_model as NonEmptyStr,
+          generate_stdout: generate_stdout,
+        )
+      }
+  }
+}
+
+fn spark_serving_health_from_served_model(
+  reported_version: NonEmptyStr,
+  served_model: NonEmptyStr,
+  generate_stdout: String,
+) -> SparkServingTerminalHealth {
+  match spark_serving_parse_generate_member(stdout: generate_stdout, member: "response") {
+    SparkServingReadbackAbsent =>
+      ResourcesConvergedButServingUnhealthy {
+        defect: HealthGenerationUndecodable { detail: "response member absent" as NonEmptyStr },
+      }
+    SparkServingReadbackRefused { cause: c } =>
+      ResourcesConvergedButServingUnhealthy {
+        defect: HealthGenerationUndecodable { detail: c },
+      }
+    SparkServingReadbackPresent { value: text } =>
+      if trim(s: text) != (spark_serving_health_expected_response as String) {
+        ResourcesConvergedButServingUnhealthy {
+          defect: HealthGenerationUnexpectedText { observed: text as NonEmptyStr },
+        }
+      } else {
+        ServingConverged {
+          reported_version: reported_version,
+          served_model: served_model,
+        }
+      }
+  }
+}
+
+fn spark_serving_health_is_converged(health: SparkServingTerminalHealth) -> Bool {
+  match health {
+    ServingConverged { reported_version: _, served_model: _ } => true
+    ResourcesConvergedButServingUnhealthy { defect: _ } => false
+    ServingHealthUnobserved { cause: _ } => false
+  }
+}
+
+fn spark_serving_health_wire(health: SparkServingTerminalHealth) -> String {
+  match health {
+    ServingConverged { reported_version: v, served_model: m } =>
+      join(["serving-converged version=", v as String, " model=", m as String], "")
+    ResourcesConvergedButServingUnhealthy { defect: d } =>
+      join(["resources-converged-but-serving-unhealthy ", spark_serving_health_defect_wire(defect: d)], "")
+    ServingHealthUnobserved { cause: c } =>
+      join(["serving-health-unobserved ", c as String], "")
+  }
+}
+
+fn spark_serving_health_defect_wire(defect: SparkServingHealthDefect) -> String {
+  match defect {
+    HealthVersionDisagrees { observed: o } =>
+      join(["version-disagrees observed=", o as String], "")
+    HealthVersionUndecodable { detail: d } =>
+      join(["version-undecodable ", d as String], "")
+    HealthGenerationUndecodable { detail: d } =>
+      join(["generation-undecodable ", d as String], "")
+    HealthGenerationIncomplete => "generation-incomplete done-not-true"
+    HealthGenerationWrongModel { observed: o } =>
+      join(["generation-wrong-model observed=", o as String], "")
+    HealthGenerationUnexpectedText { observed: o } =>
+      join(["generation-unexpected-text observed=", o as String], "")
+  }
+}

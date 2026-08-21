@@ -1,7 +1,7 @@
 module test.claim.spark_serving_realization_witness_test
 
 import std.types { String, Bool, List, NonEmptyStr }
-import gunbc.spark_serving_realization {
+import gunbc.spark.serving_realization {
   SparkServingIntent,
   SparkHostCapabilityObservation,
   SparkServingRealization,

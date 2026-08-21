@@ -677,7 +677,7 @@ Recorded because each one falsified an input the brief had already been written 
 
 3. **A scoped repair was already closed.** The brief's original Class 1 item — the argv representation ambiguity — was closed on main before dispatch, by the same lane that was about to be assigned it. It survives only as a negative control.
 
-4. **Prior art exists with the exact blind spot this census is built to avoid.** `v2.lens.effect_reach` classifies host-effect sinks and carries a `ShellExecRunSink` variant, but `sink_kind_for_callee` selects by name equality against a remembered callee-text list, everything else falling to `UnknownHostEffectSink`. It therefore cannot see `sh -c`, `sh -s` on stdin, or a `sudo -S sh -s` wrapper — the same hole the hand census carried before `gunbc.spark_managed_access_apply` was found. Disposition is **supersede, not extend**: extending it inherits its selection principle.
+4. **Prior art exists with the exact blind spot this census is built to avoid.** `v2.lens.effect_reach` classifies host-effect sinks and carries a `ShellExecRunSink` variant, but `sink_kind_for_callee` selects by name equality against a remembered callee-text list, everything else falling to `UnknownHostEffectSink`. It therefore cannot see `sh -c`, `sh -s` on stdin, or a `sudo -S sh -s` wrapper — the same hole the hand census carried before `gunbc.spark.managed_access_apply` was found. Disposition is **supersede, not extend**: extending it inherits its selection principle.
 
 ## Where the instrument controls came from
 
