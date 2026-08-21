@@ -6,12 +6,6 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { NonEmptyStr, GitRef }
 import extdeps.git { git_remote_ref_parts }
 import extdeps.git.inspect
-import extdeps.git.object_store {
-  GitObjectIdTextDecoded,
-  GitObjectIdTextRefused,
-  git_decode_object_id_text,
-  git_object_id_format,
-}
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import tools.merge_admission_walk { merge_admission_fetch_stall_deadline_seconds }
@@ -36,10 +30,7 @@ import gunbc.merge_admission_subject {
   parse_tested_subject_wire,
   merge_admission_merge_base_ref,
 }
-import gunbc.merge_admission_produce {
-  parse_receipt_wire_v2,
-  shell_stdout_line,
-}
+import gunbc.merge_admission_produce { parse_receipt_wire_v2 }
 
 fn optional_env(name: NonEmptyStr) -> String? {
   let observed = shell.Env.Get(name: name)
@@ -120,27 +111,14 @@ func main() -> ProcessExit {
   if !fetched.success {
     return exit_failure(reason: "merge_admission_current_context: current merge target fetch refused")
   }
-  let observed = git.Inspect.ShowTree(ref: merge_admission_merge_base_ref as GitRef)
-  if !observed.success {
-    return exit_failure(reason: "merge_admission_current_context: current merge target tree observation refused")
-  }
   let observed_commit = git.Inspect.ResolveRefCommit(ref: merge_admission_merge_base_ref as GitRef)
   if !observed_commit.success {
     return exit_failure(reason: "merge_admission_current_context: current merge target commit observation refused")
-  }
-  let target = match git_decode_object_id_text(
-    format: git_object_id_format(oid: receipt.tested_base_tree_hash),
-    text: shell_stdout_line(raw: observed.tree),
-  ) {
-    GitObjectIdTextDecoded { oid: oid } => oid
-    GitObjectIdTextRefused { cause: _ } =>
-      return exit_failure(reason: "merge_admission_current_context: current merge target object id refused")
   }
   let verdict = classify_merge_admission_verdict_v2(
     current_attempt_id: attempt,
     tested_subject: subject,
     receipt: receipt,
-    merge_target_tree_hash: target,
     merge_target_commit_sha: observed_commit.sha,
     current_roster_hash: current_gate_roster_hash,
   )

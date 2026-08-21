@@ -4,10 +4,6 @@ import std.algebra { trim }
 
 import std.types { FilePath, GitRef, NonEmptyStr, String, Bool }
 import extdeps.git.inspect
-import extdeps.git.object_store {
-  GitObjectId,
-  git_object_id_from_untagged_hex,
-}
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.merge_admission_subject {
@@ -76,9 +72,7 @@ fn current_event_name() -> String {
 type TestedSubjectCaptureRefusal
   = CaptureAttemptIdentityAbsent
   | CaptureHeadCommitRefused
-  | CaptureBaseTreeRefused
   | CaptureBaseCommitRefused
-  | CaptureBaseTreeOidUnparseable { observed: String }
   | CaptureAttemptDirClearRefused
   | CaptureAttemptDirCreateRefused
   | CaptureSubjectWriteRefused
@@ -91,9 +85,7 @@ fn tested_subject_capture_refusal_label(cause: TestedSubjectCaptureRefusal) -> S
   match cause {
     CaptureAttemptIdentityAbsent => "attempt-identity-absent"
     CaptureHeadCommitRefused => "head-commit-refused"
-    CaptureBaseTreeRefused => "base-tree-refused"
     CaptureBaseCommitRefused => "base-commit-refused"
-    CaptureBaseTreeOidUnparseable { observed: observed } => concat("base-tree-oid-unparseable observed=", observed)
     CaptureAttemptDirClearRefused => "attempt-dir-clear-refused"
     CaptureAttemptDirCreateRefused => "attempt-dir-create-refused"
     CaptureSubjectWriteRefused => "subject-write-refused"
@@ -113,16 +105,10 @@ func tested_subject_capture() -> TestedSubjectCapture {
         TestedSubjectCaptureRefused { cause: CaptureHeadCommitRefused }
       } else {
         let base_ref = tested_checkout_base_ref(event_name: current_event_name())
-        let base = git.Inspect.ShowTree(ref: base_ref)
         let base_commit = git.Inspect.ResolveRefCommit(ref: base_ref)
-        if !base.success {
-          TestedSubjectCaptureRefused { cause: CaptureBaseTreeRefused }
-        } else if !base_commit.success {
+        if !base_commit.success {
           TestedSubjectCaptureRefused { cause: CaptureBaseCommitRefused }
         } else {
-          match git_object_id_from_untagged_hex(hex: base.tree) {
-            Absent => TestedSubjectCaptureRefused { cause: CaptureBaseTreeOidUnparseable { observed: trim(base.tree) } }
-            Present { value: base_tree } =>
               let root = git.Inspect.Toplevel().path as String
               let attempt_dir = merge_admission_attempt_dir(root: root, attempt_id: attempt_id)
               let cleared = shell.Remove.RecursiveForce(path: attempt_dir as FilePath)
@@ -137,7 +123,6 @@ func tested_subject_capture() -> TestedSubjectCapture {
                     attempt_id: attempt_id,
                     head_sha: head.sha,
                     base_ref: merge_admission_merge_base_ref,
-                    base_tree_hash: base_tree,
                     base_commit_sha: base_commit.sha,
                   }
                   let written = Filesystem.Write(
@@ -151,7 +136,6 @@ func tested_subject_capture() -> TestedSubjectCapture {
                   }
                 }
               }
-          }
         }
       }
   }

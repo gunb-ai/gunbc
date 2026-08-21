@@ -635,11 +635,22 @@ data merge_admission_attempt_scope_note: String = "ATTEMPT SCOPE (ruling 2026-07
 
 data git_object_id_grounding_note: String = "The tested base tree is a GitObjectId, not a ContentHash. DESIGN's own §3 residue records that ContentHash is one brand over two unrelated hash families (structural fnv1a64 fingerprints and cited cryptographic digests) with no modeled discriminant; a Git tree object id is a THIRD domain, and admitting it into the same brand would let a gate-roster structural fingerprint inhabit the tested-tree field and typecheck. extdeps.git.object_store.GitObjectId is the existing single authority and already models the SHA-1/SHA-256 repository-format transition, so this grounds on it rather than minting a GitTreeOid nickname beside it (§3). Equality and the validating textual constructors live THERE, not here: both are generic Git behaviour, and holding them in this consumer was a fork this module briefly carried (review 2026-07-30)."
 
-// tested_base_commit_sha CLOSES A FALSE-ADMIT ARM; see gunbc.merge_admission_subject TestedSubject
+// tested_base_commit_sha REPLACES a tested_base_tree_hash and CLOSES A FALSE-ADMIT ARM; see gunbc.merge_admission_subject TestedSubject
 // for the executed demonstration. In short: a three-way merge reads the MERGE BASE, which ancestry
 // fixes and a tree does not, so head + base TREE cannot determine the merge result. A base that
 // cherry-picks the PR and reverts it returns to the same tree at a different commit, moves the merge
 // base, and changes what the merge produces -- while every comparison here passed.
+//
+// THE TREE OPERAND IS REPLACED, NOT JOINED. A commit determines its tree, so carrying both would be
+// two representations of one fact -- the §3 violation, committed by the change that exists to close
+// a §3-shaped hole. Measured before removing: no live consumer read the V2 tree for anything but its
+// own comparison (its one other use was a format oracle decoding the observed tree FOR that
+// comparison), so the field, a ShowTree observation, and a decode step left together.
+//
+// THE MERGE-TREE IDENTITY CORRECTLY STAYS OUT, with one condition that would reopen it: the merge
+// result is derivable from (head, base commit) only while the merge STRATEGY is fixed. If the
+// strategy ever becomes variable, or a merge is resolved by hand, that derivation breaks and the
+// tested RESULT identity becomes a real fact needing its own operand.
 //
 // THE TYPE KEEPS ITS V2 NAME WHILE THE WIRE TAG GOES TO v3, and the skew is deliberate rather than
 // an oversight. The name marks the receipt GENERATION -- the one that binds attempt and subject,
@@ -651,7 +662,6 @@ type MergeAdmissionReceiptV2 {
   attempt_id: WalkAttemptId
   pr_number: Int?
   tested_head_sha: CommitSha
-  tested_base_tree_hash: GitObjectId
   tested_base_commit_sha: CommitSha
   gate_roster_hash: GateRosterHash
   conclusion: CheckConclusion
@@ -669,7 +679,6 @@ fn classify_merge_admission_verdict_v2(
   current_attempt_id: WalkAttemptId,
   tested_subject: TestedSubject,
   receipt: MergeAdmissionReceiptV2,
-  merge_target_tree_hash: GitObjectId,
   merge_target_commit_sha: CommitSha,
   current_roster_hash: GateRosterHash,
 ) -> MergeAdmissionVerdict {
@@ -679,14 +688,10 @@ fn classify_merge_admission_verdict_v2(
     MergeDeniedWrongAttempt
   } else if !(receipt.tested_head_sha == tested_subject.head_sha) {
     MergeDeniedSubjectMismatch
-  } else if !git_object_id_eq(left: receipt.tested_base_tree_hash, right: tested_subject.base_tree_hash) {
-    MergeDeniedSubjectMismatch
   } else if !(receipt.tested_base_commit_sha == tested_subject.base_commit_sha) {
     MergeDeniedSubjectMismatch
   } else if !check_conclusion_admits_merge_admission_floor(c: receipt.conclusion) {
     MergeDeniedNotSuccess
-  } else if !git_object_id_eq(left: receipt.tested_base_tree_hash, right: merge_target_tree_hash) {
-    MergeDeniedStaleBase
   } else if !(receipt.tested_base_commit_sha == merge_target_commit_sha) {
     MergeDeniedStaleBase
   } else if !content_hash_eq_structural(left: receipt.gate_roster_hash, right: current_roster_hash) {
