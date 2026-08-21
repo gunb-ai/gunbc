@@ -97,4 +97,3 @@ data list_membership_gap_producer_count: Int = 5
 // operation; only the FIRST argument's type can, because that is what distinguishes a collection
 // from a string. The corrected method resolves each first argument to its binding and reads the
 // declared element type, which is what the rows above record.
-data list_membership_gap_method_note: String = "Population found by enumerating every free-function two-argument call spelling this operation, then resolving each first argument to its binding and reading the declared element type. An earlier split by second-argument syntax undercounted by four and is recorded here because the same unsound shortcut is available to anyone re-measuring this class."
