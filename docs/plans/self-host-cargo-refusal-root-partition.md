@@ -1936,6 +1936,16 @@ as a field, and `PartialFunction<String, …>` (a record of closures, §11.18) i
 type. **Adding the derive is impossible here; the requirement has to go.** So T5b is the same shape
 as T3: a modeling decision (do not serialize a value containing closures), not a repair.
 
+**DECIDED 2026-08-21** (session `tidy-dove-648`): "the requirement has to go" is only half true.
+It holds for process-local realization carriers (`CompiledLexRule`, `PartialFunction`, the
+interpreter family) — extend the already-correct `fn_field_derive_traits()` rule through
+coproducts, where it is currently unwired. It does NOT hold for `ProducedDeclSupport`, which sits
+inside `TargetModel` and should stay fully serializable — there the embedded `render` closure is
+redundant dispatch beside an identity (`scaffold_relation_rule_name`) the record already carries,
+and the fix is to remove the closure, not the record's derives. Full decision, per-declaration
+disposition table, and the two handoffs:
+[`t5b-closure-bearing-serde-debug-decision-2026-08-21.md`](t5b-closure-bearing-serde-debug-decision-2026-08-21.md).
+
 **R1 — the Rc wrap decision is INCONSISTENT, not uniformly over- or under-wrapping.**
 
 ```
@@ -2185,6 +2195,22 @@ It matched only `pub field:` lines at struct-body depth and therefore missed **e
 `ValueRuntimeInterpreter { interpreter: Rc<ValueInterpreter> }` is one level deeper. The hypothesis
 was right and the instrument was wrong, which is the same failure as reading a rustc noun at face
 value: a negative result from an unvalidated scan is not evidence of absence.
+
+**The operator question above is answered** (session `tidy-dove-648`, 2026-08-21): not one answer
+for all twelve declarations. `ProducedDeclSupport` takes the third option named above — keep the
+record serializable, make `render` a named resolvable reference dispatched through the
+`scaffold_relation_rule_name` it already carries — because `TargetModel` is real per-language
+configuration, not a runtime-only carrier. The interpreter-family majority (`RuntimeBehaviorInterpreter`
+and its six payload types, `EffectIoEvalBundle`, `CompiledLexRule`, `PartialFunction`) takes the
+first option, which is not new: `fn_field_derive_traits()` already answers it for the direct-field
+struct case, and it is simply unwired for coproducts (`v1_emit_enum_derives` takes no
+`has_fn_fields` parameter) and for enum-transitive reachability (`build_type_summary`'s enum branch
+hardcodes `field_type_map: empty_map()` in `04_emit_info.dag`, so `type_summary_reaches_fn` cannot
+see through a variant payload the way it already sees through a struct field). `InterpretationStructureWitness`
+and the four remaining `target_model.rs` sites hold no function field of their own and are treated
+as collateral of the above, not independent decisions, pending re-measurement.
+[`t5b-closure-bearing-serde-debug-decision-2026-08-21.md`](t5b-closure-bearing-serde-debug-decision-2026-08-21.md)
+has the full per-declaration table and the two repair handoffs.
 
 ## 16. The finding above the findings: a site count measures where the compiler pointed
 
@@ -2504,3 +2530,44 @@ control, and the classifier's known-positive RESIDUE arm):
 [`docs/probes/e0277_root_partition_2026-08-21.md`](../probes/e0277_root_partition_2026-08-21.md).
 Per-site TSV:
 [`docs/probes/e0277_partition_2026-08-21/sites_classified.tsv`](../probes/e0277_partition_2026-08-21/sites_classified.tsv).
+
+## 21. E0308 re-derived on current main — mechanism grain at M=1 (`smart-otter-254`, 2026-08-21)
+
+**Dispatched question:** re-derive E0308's expected/found categories against the **live 199**
+(39% of 03_ingest's coded board, no owner) instead of inheriting §19's M=11 partition or the older
+204/275 boards. **Answer:** at `2a2bd0ad59…`, 03_ingest carries **199 E0308 blocks / 235 distinct
+(file, line, col, expected, found) sites** in **15 categories**, 7 unclassified (3.0%), and **four
+of the categories do not exist in §19 or §11.3**.
+
+| root | sites | % | note |
+|---|---:|---:|---|
+| B3 — modeled `Nat` vs native integer | 49 | 20.9% | 28 are an integer *literal* at a `Rc<Nat>` parameter |
+| T2 — text carrier vs `String` | 34 | 14.5% | value `String`, declaration `Rc<im::Vector<_>>` |
+| R1 — bare↔`Rc` wrap | 33 | 14.0% | **11 of them at type-argument depth**, not the outer position |
+| T3 — collection carrier fork | 25 | 10.6% | |
+| **RT-builtin** — host-builtin signature interception | 20 | 8.5% | **NEW**: callee resolves to `src/v1_rt.rs`; E0308 face of the bare-name interception root |
+| D — alias arity | 13 | 5.5% | all in `v2_lens_coverage.rs` |
+| **ARG-ORDER** — call argument order | 11 | 4.7% | **NEW**: rustc `reorder these arguments`, five `eval_*_node` callees |
+| R2 / W / A-clone / B2 / R5 / C / DIAG | 9/8/6/6/6/4/4 | | **A-clone is Root A surfacing under E0308**, missed by an E0277-only view |
+| RESIDUE | 7 | 3.0% | printed, fail-closed |
+
+**Three things a session planning E0308 work should take from this and not from §19.**
+
+1. **§19's largest root has zero sites on this subject.** T7 (`Fnv1a64Structural` ↔ `String`,
+   99 sites / 24.3% at M=11) does not appear at M=1 on 03_ingest. Per §15.1/§16 **no delta is
+   claimed** — different subject and different M — but a plan that opens with T7 because §19 ranked
+   it first will find nothing to do in this closure.
+2. **Two mechanisms are not carrier forks at all.** ARG-ORDER (11) is the emitter reordering a
+   call against its callee's declaration — the failure DESIGN.md §4b names in its rung-honesty
+   clause, now measured with five named callees in `v2_compiler_eval.rs`. RT-builtin (20) is a
+   *resolution* defect: the call is routed to a host builtin sharing a spelling with the corpus
+   declaration, so its `String`-typed signature is the "expected" side. Neither dissolves under any
+   Rc-wrap or repr work.
+3. **The tail is in files.** `v2_compiler_tokenize.rs` carries 68 of 235 sites (28.9%) across two
+   roots that are one seam (Nat and text realized natively at the value, modeled at the
+   declaration). 47 files hold the rest.
+
+Full receipt, with the board reproduced beside its denominator, the block-vs-site instrument split,
+and the controls: [`docs/probes/e0308_partition_2026-08-21.md`](../probes/e0308_partition_2026-08-21.md).
+Per-site TSV:
+[`docs/probes/e0308_partition_2026-08-21/sites_classified.tsv`](../probes/e0308_partition_2026-08-21/sites_classified.tsv).

@@ -18,24 +18,6 @@ pub struct TypeCheckpoint {
     pub literal_suffix: Option<String>,
 }
 
-pub fn type_realization_decision_authority_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The corpus-side half of the two-authority shape v1.compiler.emit_rust checkpoint_table_bypasses_identity_note names as this class's terminal shape: TypeCheckpoint (above) is cited to the target LANGUAGE reference and states how a spelling renders; TypeRealizationDecision is the gunbc-corpus fact answering which of a named declaration's possible renderings actually applies at a given reference, keyed on declaration identity rather than on the bare spelling alone. Unrealized is not merely 'no row' -- it is the DERIVED conclusion that the emitter must render the declaration's own structure because no checkpoint governs THIS declaration (a same-spelling sibling elsewhere may still be Realized). Refused is reserved for a reference whose declaration identity the caller could not supply -- never a guess standing in for Unrealized, because a silently-assumed Unrealized is exactly the false negative this decision exists to keep out of the render path (DESIGN section 5). Named Unrealized rather than the more obvious Structural because gunbc.ci_failure_class already declares a fielded Structural { reason: String } -- this corpus resolves an unqualified variant name globally (imports do not bind it), so a second, differently-shaped Structural here would have been a live collision reaching every bare use of ci_failure_class.Structural corpus-wide, not merely a naming clash local to this module (caught by smart-ram-730 review, adhoc-2ea6fb98-a3f, 2026-08-21, against #8739's own CI run).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn type_realization_decision_identity_precondition_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "This decision's identity key (v1.compiler.coercion type_realization_decision: dag_name, decl_file) is sound ONLY while v2.compiler.source_authority module_storage_binding_authority_note's file<->module binding stays 1:1 -- that note is the sole owner of this scope and explicitly names many-to-many (fragment identity/order, several-modules-one-file) as a NAMED DEFERRAL until a consumer prices it (DESIGN section 6), never a silent assumption. This decision is now that deferral's precondition, and it is a dependency this type cannot enforce on its own: if many-to-many lands, decl_file stops discriminating declarations, and BOTH Unrealized and Realized remain reachable and syntactically valid on an input that no longer identifies one declaration -- Refused covers decl_file == \"\" (identity ABSENT), not identity AMBIGUOUS, so a many-to-many regression here would not refuse, it would answer confidently and wrongly. Whoever prices many-to-many in source_authority MUST revisit this decision before landing it; this note is the grep hit that makes that coupling visible instead of invisible (smart-ram-730, adhoc-2ea6fb98-a3f review, 2026-08-21).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum TypeRealizationDecision {

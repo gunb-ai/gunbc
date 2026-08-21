@@ -13,7 +13,34 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data git_inspect_service_note: String = "Read-only repository-root, revision, and tree inspection operations are de-fused from the broad git.Core service so consumers pay only the upstream facts they inspect. Toplevel, HeadCommit, and ShowTree move here with their existing shapes; MergeBase and ListTreePathsAtRevision extend this same inspection authority for revision-addressed Rust-source observation. No second Git inspection surface remains in extdeps.git."
 
-// WorkingTreeStatus pins every flag Git's own manual says a script must pin. `--porcelain=v1` because the
+// `--no-optional-locks` IS WHAT MAKES `readonly` TRUE, AND ITS ABSENCE MADE THIS DECLARATION FALSE.
+// Measured: running this operation's own argv without the flag against a repository CHANGES the index
+// file (md5 before/after differ), because `git status` refreshes the index and writes cached stat
+// information back. With the flag the index is byte-identical, and the reported entries are unchanged
+// -- so the flag costs nothing and buys the property the operation already claimed. A `readonly`
+// declaration that does not hold is worse than a missing one, because extdeps is the layer whose whole
+// job is to model what upstream actually does, and every consumer downstream reasons from it as a fact.
+//
+// The sentence below said this operation pinned every flag the manual says a script must pin. It did
+// not, and that is why the omission survived: the claim of completeness was the thing that stopped
+// anyone rechecking. Corrected in place rather than appended to, so the false version does not stand
+// beside the true one.
+//
+// THIS FLAG CANNOT BE WITNESSED, AND THAT IS THE SAME FUSION §3 NAMES. It lives inside a `transport
+// shell` literal, and a literal in a service block cannot be called by a test -- which is exactly the
+// defect `ssh.Session.ExecPortableWords` was built to correct, where one site required host-key
+// verification and another disabled it, spelled as indistinguishable strings with no test able to name
+// the disagreement. So nothing stops a later reader deleting this flag as noise; the protection is this
+// paragraph and the measurement in it, which is strictly weaker than a witness and is recorded as such.
+// It climbs when the argv is lifted out of the literal into a callable authority, the same lift the
+// deployed-tree observation performs for its own words.
+//
+// STILL OPEN, NAMED RATHER THAN LEFT TO BE REDISCOVERED: `input {}` means this operation cannot name a
+// repository at all, so it observes whatever directory the process happens to be standing in. That is
+// the ambient-context class, one notch below an operation that at least takes a path, and closing it
+// changes every call site -- a separate repair from this one.
+//
+// WorkingTreeStatus pins the flags Git's own manual says a script must pin. `--porcelain=v1` because the
 // manual states plain `--porcelain` may change and that a version should be given for scripting, so the
 // version is named rather than implied. `-z` because paths may contain spaces, quotes, or newlines and the
 // non-NUL form C-quotes them, which would make every consumer reimplement Git's quoting rules to recover a
@@ -74,7 +101,7 @@ service git.Inspect {
       stderr: String from "stderr"
     }
     readonly
-    transport shell { argv: ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"] }
+    transport shell { argv: ["git", "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"] }
     exit {
       0 => Unit
       128 => String "Not a git repository"

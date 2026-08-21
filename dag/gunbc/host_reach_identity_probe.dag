@@ -9,7 +9,7 @@ import gunbc.typed_argv_exec {
   TypedArgvExecConverged,
   TypedArgvExecRefused,
 }
-import gunbc.clock_read { clock_now_probed_at }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_reach_endpoint {
   fleet_probe_endpoint_for,
   fleet_reach_probe_targets,
@@ -391,8 +391,8 @@ func probe_fleet_reach_wet() -> ProcessExit {
   let enroll_lines = fleet_host_key_enroll_apply()
   let now = clock_now_probed_at()
   let run = FleetReachProbeRun {
-    probed_at: now as String,
-    receipts: map(fleet_reach_probe_targets, h => probe_host_reach_once(host: h, probed_at: now as String)),
+    probed_at: probed_at_word(reading: now) as String,
+    receipts: map(fleet_reach_probe_targets, h => probe_host_reach_once(host: h, probed_at: probed_at_word(reading: now) as String)),
   }
   let w = Filesystem.Write(path: fleet_reach_probe_receipt_path, content: join([enroll_lines, to_string(run)], ""))
   if w.success {

@@ -133,9 +133,9 @@ type PartialFunction<K, V> {
   get: fn(K) -> V?
   insert: fn(K, V) -> PartialFunction<K, V>
   merge: fn(PartialFunction<K, V>) -> PartialFunction<K, V>
-  keys: fn() -> FreeMonoid<K>
-  values: fn() -> FreeMonoid<V>
-  has: fn(K) -> Bool
+  map_keys: fn() -> FreeMonoid<K>
+  map_values: fn() -> FreeMonoid<V>
+  map_has: fn(K) -> Bool
   contains_key: fn(K) -> Bool
   size: fn() -> Int
 }
@@ -351,12 +351,9 @@ fn partial_function_templates() -> List<AlgebraFieldTemplate> {
     { name: "lookup", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "map_insert", param_types: [ReceiverSelf, ReceiverKey, ReceiverValue], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "map_merge", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
-    { name: "has", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "map_has", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "map_contains_key", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
-    { name: "keys", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverKey }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "map_keys", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverKey }, size_effect: none, cost_shape: none, callback_element_position: none },
-    { name: "values", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "map_values", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "with", param_types: [ReceiverSelf, ReceiverKey, ReceiverValue], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "contains", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },

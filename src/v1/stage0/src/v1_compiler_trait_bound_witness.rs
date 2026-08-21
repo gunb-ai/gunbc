@@ -222,6 +222,31 @@ pub fn v1_call_forwarding_clone_bound_wrapper_param_names(
     }
 }
 
+pub fn v1_equality_bound_param_name(
+    left_type_name: String,
+    right_type_name: String,
+    generic_param_names: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    if ((left_type_name.clone() == "".to_string()) || (right_type_name.clone() == "".to_string())) {
+        Rc::new(vec![])
+    } else {
+        if ((left_type_name.clone() == right_type_name.clone()) && {
+            let mut __found = false;
+            for g in generic_param_names.clone().iter().cloned() {
+                if (g.clone() == left_type_name.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }) {
+            Rc::new(vec![left_type_name.clone()])
+        } else {
+            Rc::new(vec![])
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BoundedToDirectTopLevelMatchBody;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -1,0 +1,158 @@
+module gunbc.live_deploy.deployed_tree_report
+
+import std.types { String, NonEmptyStr, List, Bool, FilePath }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.git
+import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet_ssh_locus {
+  prepare_fleet_ssh_agent_context,
+  FleetSshContextPreparation,
+  FleetSshContextReady,
+  FleetSshContextRefused,
+  fleet_locus_ssh_target,
+}
+import gunbc.host_layout { srv1_gunbc_repo_root }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_desired_observe {
+  observe_fleet_desired_revision,
+  converge_target_revision,
+  FleetDesiredRevision,
+}
+import gunbc.live_deploy.deployed_tree_observation {
+  deployed_tree_locus,
+  observe_deployed_tree,
+  deployed_tree_standing,
+  deployed_tree_unobservable_text,
+  DeployedTreeStanding,
+  DeployedTreeConverged,
+  DeployedTreeRevisionDrifted,
+  DeployedTreeModifiedAtRevision,
+  DeployedTreeStandingUnobserved,
+}
+
+// READ-ONLY, ON PURPOSE AND FOR A REASON THAT IS NOT CAUTION. A tree-only publication is BLOCKED: it
+// moves the deployed HEAD to the admitted revision and thereby flips `roadmap_belt_actuate`
+// `belt_revision_admission` from refusing to admitting while the installed binary is still the old
+// one, so the belt's next tick dispatches a mixed realization that was never admitted as a release.
+// That is recorded in docs/plans/deploy-convergence-observed-side.md, and until the quiescence
+// ordering is settled this entry OBSERVES and never actuates.
+//
+// It exists now rather than after that ruling because the alternative is worse than waiting: a
+// standing with no production consumer is exactly the shape that let the spark durability verdict sit
+// complete and inert while its counter could not move. Observation is the half that is unblocked, and
+// it is the half that makes the drift visible at all -- today NOTHING reads a remote host's deployed
+// tree, because `fleet_revision_standing` is a local-only read by the declared transport of
+// `git.Core.RevParseInRepo`.
+data deployed_tree_report_attempt_raw: String = "deployed-tree-report-ci"
+
+// THE DEPLOYED HOST AND ITS REPO ROOT COME FROM host_layout, WHICH IS THE ONE AUTHORITY FOR THEM.
+// srv1_gunbc_repo_root is simultaneously the tree `gunbc serve` loads and the repo the belt runs
+// `git worktree add` from, which is precisely why its publication state is worth observing.
+data deployed_tree_report_host: HostIdentity = "srv1" as HostIdentity
+
+// THE VANTAGE FOR THE DESIRED READ IS NOT THE SUBJECT OF IT. `observe_fleet_desired_revision` runs
+// `git ls-remote origin refs/fleet/desired`, so the answer is a fact about ORIGIN and not about the
+// local tree's contents -- any checkout that names the same origin returns the same revision. This is
+// the one place in the deploy path where reading from the ambient working directory is sound, and it
+// is sound for a stated reason rather than by luck.
+data deployed_tree_report_vantage: FilePath = "." as FilePath
+
+fn deployed_tree_standing_line(standing: DeployedTreeStanding) -> String {
+  match standing {
+    DeployedTreeConverged { revision: r } =>
+      join(["deployed-tree host=", deployed_tree_report_host as String,
+            " CONVERGED revision=", git_object_id_wire_hex(oid: r) as String,
+            " -- the deployed tree is the admitted revision and every path in the deployed scope realizes it"], "")
+    DeployedTreeRevisionDrifted { desired: d, local: l } =>
+      join(["deployed-tree host=", deployed_tree_report_host as String,
+            " REVISION-DRIFTED desired=", git_object_id_wire_hex(oid: d) as String,
+            " local=", git_object_id_wire_hex(oid: l) as String,
+            " -- both sides named because a catch-up needs the prior"], "")
+    DeployedTreeModifiedAtRevision { revision: r, changed_paths: body } =>
+      join(["deployed-tree host=", deployed_tree_report_host as String,
+            " MODIFIED-AT-REVISION revision=", git_object_id_wire_hex(oid: r) as String,
+            " -- the revision agrees and the bytes do not; git status reports: ", body as String], "")
+    DeployedTreeStandingUnobserved { cause: c } =>
+      join(["deployed-tree host=", deployed_tree_report_host as String,
+            " UNOBSERVED -- ", deployed_tree_unobservable_text(cause: c)], "")
+  }
+}
+
+// UNOBSERVED EXITS NONZERO ALONGSIDE THE DRIFTED ARMS. Could-not-look is not nothing-is-wrong, and an
+// observation entry that exited zero on its own blindness would be the empty-observation narrow in the
+// one place guaranteed to be read as a green.
+fn deployed_tree_standing_is_publication_converged(standing: DeployedTreeStanding) -> Bool {
+  match standing {
+    DeployedTreeConverged { revision: _ } => true
+    DeployedTreeRevisionDrifted { desired: _, local: _ } => false
+    DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
+    DeployedTreeStandingUnobserved { cause: _ } => false
+  }
+}
+
+data deployed_tree_report_receipt_path: String = "target/deployed-tree-standing-receipt.txt"
+
+// THE RECEIPT IS WRITTEN ON EVERY ARM, INCLUDING THE ONES THAT EXIT NONZERO. A report that only
+// persists its good news leaves the failing run with nothing to read afterwards, which is the state
+// that makes a red look like an infrastructure flake instead of a finding.
+func deployed_tree_report_emit(
+  context_receipt: String,
+  standing: DeployedTreeStanding,
+) -> ProcessExit {
+  let text = join([
+    "deployed_tree_report_ci_wet\n",
+    context_receipt,
+    deployed_tree_standing_line(standing: standing), "\n",
+  ], "")
+  let w = Filesystem.Write(path: deployed_tree_report_receipt_path, content: text)
+  if w.success == false {
+    exit_failure(reason: join(["deployed tree receipt write failed: ", w.error], ""))
+  } else if deployed_tree_standing_is_publication_converged(standing: standing) == false {
+    exit_failure(reason: text)
+  } else {
+    ExitSuccess
+  }
+}
+
+func deployed_tree_report_for_context(
+  context: FleetSshExecutionContext,
+  context_receipt: String,
+) -> ProcessExit
+  uses net: Network
+{
+  match converge_target_revision(
+    observed: observe_fleet_desired_revision(repo: deployed_tree_report_vantage),
+  ) {
+    Absent =>
+      exit_failure(
+        reason: "deployed tree report: origin advertises no admitted fleet revision, so there is nothing to compare a host against",
+      )
+    Present { value: desired } => {
+      let locus = deployed_tree_locus(
+        context: context,
+        target: fleet_locus_ssh_target(host: deployed_tree_report_host),
+        repo: srv1_gunbc_repo_root as String as NonEmptyStr,
+      )
+      deployed_tree_report_emit(
+        context_receipt: context_receipt,
+        standing: deployed_tree_standing(
+          desired: desired,
+          observation: observe_deployed_tree(locus: locus),
+        ),
+      )
+    }
+  }
+}
+
+func deployed_tree_report_ci_wet() -> ProcessExit
+  uses net: Network
+{
+  match prepare_fleet_ssh_agent_context(attempt_raw: deployed_tree_report_attempt_raw) {
+    FleetSshContextRefused { cause: c } =>
+      exit_failure(reason: join(["deployed tree report refused before any ssh leg: ", c], ""))
+    FleetSshContextReady { context: context, receipt: receipt } =>
+      deployed_tree_report_for_context(context: context, context_receipt: receipt)
+  }
+}

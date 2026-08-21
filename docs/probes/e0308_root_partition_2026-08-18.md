@@ -6,6 +6,13 @@ Supersedes the July gate-1 E0308 bucket shares in
 for **ownership and sizing** — those buckets mixed E0308 with stale DIAGNOSTICS/WITNESS
 percentages; this receipt is E0308-only at site grain.
 
+**RE-DERIVED, not superseded (2026-08-21):** `smart-otter-254` re-derived the categories from live
+pairs on `03_ingest` at `2a2bd0ad59…` — 15 categories, four of which are absent here, and **T7 (the
+largest root below) has zero sites on that subject**. That run is M=1 and this one is M=11, so
+neither board is a delta on the other; read
+[`e0308_partition_2026-08-21.md`](e0308_partition_2026-08-21.md) before planning against the shares
+below.
+
 ## Method
 
 | field | value |

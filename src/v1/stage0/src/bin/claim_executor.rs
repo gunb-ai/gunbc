@@ -1790,6 +1790,37 @@ const MERGE_ADMISSION_REFRESH_REFUSAL_WIRE: &str = "target/merge-admission-refre
 /// toplevel resolution falls back to the bare relpath — the pre-anchor behavior — because
 /// the wire read is itself a diagnostic path: degrading its precision is acceptable,
 /// swallowing the stage failure it decorates is not.
+/// Run one zero- or one-argument wet `func` from a `.dag` entry and read its `Bool`.
+///
+/// The merge-admission producers are host-effect `func`s: they read git, write attempt-scoped
+/// wires, and return whether they succeeded. This is the same resolve/context/run shape the
+/// native-bundle selector uses; it is factored out here because two phases need it and because a
+/// non-`Bool` return must be a REFUSAL rather than a coerced `false` -- a producer that returned
+/// the wrong shape has not written the wire either, and reporting that as an ordinary `false`
+/// would lose the distinction between "declined" and "did not run".
+fn run_merge_admission_producer(
+    source_roots: &[String],
+    entry: &str,
+    function: &str,
+    args: &[(Option<String>, Value)],
+) -> Result<bool, String> {
+    let (graph, indices) = resolve_entry_graph(source_roots, entry)
+        .map_err(|e| format!("{entry} resolve refused: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+    let outcome = if args.is_empty() {
+        run_in_context(&ctx, function, false)
+    } else {
+        run_in_context_with_args(&ctx, function, args, false)
+    };
+    match outcome.map_err(|e| format!("{function} refused: {e}"))? {
+        Value::Bool(b) => Ok(b),
+        other => Err(format!("{function} returned non-bool {other:?}")),
+    }
+}
+
+const MERGE_ADMISSION_CAPTURE_ENTRY: &str = "dag/tools/merge_admission_capture.dag";
+const MERGE_ADMISSION_WALK_ENTRY: &str = "dag/tools/merge_admission_walk.dag";
+
 fn merge_admission_wire_read(relpath: &str) -> std::io::Result<String> {
     let toplevel = std::process::Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
@@ -10564,6 +10595,57 @@ fn run() -> Result<ExitCode, ExitCode> {
         let mut phase_failures: Vec<String> = Vec::new();
         let mut ran: Vec<&'static str> = Vec::new();
 
+        // PHASE 0 — capture the TESTED SUBJECT, before anything is tested.
+        //
+        // WHY IT IS FIRST AND NOT BESIDE THE FLOOR. The subject is what this run is ABOUT: the
+        // head it checked out and the base tree it composed against. It has to be recorded before
+        // any phase runs, because after they run the only thing left is the receipt's own claim
+        // about what it tested, and a receipt that both states and certifies its subject can
+        // restate it (gunbc.merge_admission merge_admission_subject_binding_note: three bindings
+        // are required BEFORE any freshness question).
+        //
+        // AN ABSENT ATTEMPT IDENTITY IS A SKIP, NOT A FAILURE, AND THE ARM IS UNREACHABLE ON CI.
+        // The identity derives from GITHUB_RUN_ID + GITHUB_RUN_ATTEMPT + GITHUB_JOB, which GitHub
+        // always sets; off CI there is no merge attempt to admit and therefore no subject, which
+        // is the phase-5 NoSubject shape rather than the phase-3 shape. Every OTHER refusal cause
+        // -- head unreadable, base tree unreadable, unparseable oid, attempt dir, write -- is a
+        // real failure to record a subject that exists, and fails the phase. The cause is read
+        // from the modeled refusal wire, so the classification is the producer's, not a guess.
+        let mut merge_admission_subject_captured = false;
+        eprintln!("required-ci: phase merge-admission-capture (tested subject, before any phase)");
+        match run_merge_admission_producer(
+            &source_roots,
+            MERGE_ADMISSION_CAPTURE_ENTRY,
+            "capture_tested_subject",
+            &[],
+        ) {
+            Ok(true) => {
+                merge_admission_subject_captured = true;
+                eprintln!("required-ci: merge-admission-capture OK tested subject recorded");
+            }
+            Ok(false) => {
+                let cause = match merge_admission_wire_read(MERGE_ADMISSION_CAPTURE_REFUSAL_WIRE) {
+                    Ok(text) => text.trim().to_string(),
+                    Err(e) => format!("cause wire unreadable: {e}"),
+                };
+                if cause.contains("attempt-identity-absent") {
+                    eprintln!(
+                        "required-ci: phase merge-admission-capture SKIPPED — no walk-attempt \
+                         identity, so this run is not a merge attempt and has no subject to \
+                         record. Not a pass over a captured subject: the subject is absent"
+                    );
+                } else {
+                    eprintln!("required-ci: merge-admission-capture FAIL {cause}");
+                    phase_failures.push(format!("merge-admission-capture ({cause})"));
+                }
+            }
+            Err(e) => {
+                eprintln!("required-ci: merge-admission-capture refused: {e}");
+                phase_failures.push(format!("merge-admission-capture refused: {e}"));
+            }
+        }
+        ran.push("merge-admission-capture");
+
         // PHASE 1 — src/v1 .dag parse sweep. Independent of everything below it.
         eprintln!("required-ci: phase parse (src/v1 .dag)");
         match v1_compiler::cli_run::run_v1_src_dag_parse(&v1_compiler::cli_run::workspace_root()) {
@@ -10702,6 +10784,39 @@ fn run() -> Result<ExitCode, ExitCode> {
         // main the merge base is the head — there is no pull request to check, and never was.
         // Counting that as a failure would red every main push over a check that has no subject;
         // reporting it as a pass is the vacuous arm review 54102 caught. So it is neither.
+        //
+        // AND THE COVERAGE CONSEQUENCE, WHICH IS NOT OPTIONAL READING: a phase whose subject is a
+        // DIFF can never be exercised by the branch it protects. Its coverage is entirely
+        // PR-side, by construction. So NO main run, green or otherwise, is evidence about this
+        // phase -- comparing a PR's red against main's green compares a run against a SKIP -- and
+        // a defect that reds every PR touching one class of authority can sit indefinitely while
+        // main stays green. That is not hypothetical: it is how the wet-actuator selection defect
+        // (gunbc#8704, excluded at selection since) survived. Measured on main run 32475483128 at
+        // 7d3fec269a4, where this arm printed and nothing else ran.
+        //
+        // NEXT-RUNG TRIGGER, named rather than built: a push to main has no PR diff, but it does
+        // have the PUSH RANGE, which is a real subject. Giving this phase that subject on main is
+        // what would end the PR-only coverage; until someone does it, the sentence above stands
+        // and a green main must not be read as evidence for anything here.
+        //
+        // THE SHAPE THAT WORK TAKES, so it is not re-invented and, more importantly, so it is not
+        // built as a substitute:
+        //
+        //     ChangeSubject = PullRequestDiff { base, head }
+        //                   | PushRange       { before, after }
+        //                   | NoSubject
+        //
+        // `PushRange` is a DIFFERENT subject, not a stand-in for a PR diff, and the coproduct is
+        // what keeps WHICH change relation was measured visible in the result instead of two
+        // relations collapsing into one word `diff`. The downstream predicate can be shared; the
+        // upstream distinction may not be.
+        //
+        // AND THE ARM THAT MUST NOT MOVE IS `NoSubject`. The missing work is a real push-range
+        // subject; it is not making this arm return something. A phase that always has an answer
+        // has a deficit frequency of zero by construction -- the absorbing fallback wearing the
+        // fix's clothes. So: PHASE INVOKED, SUBJECT ABSENT, TYPED `NoSubject` RETURNED is not
+        // SUBJECT EVALUATED AND AGREED, and no counter above or below may let the first be read
+        // as the second.
         eprintln!("required-ci: phase receipt (changed authorities vs their mirrors)");
         match behavioral_receipt_plan(&source_roots) {
             Ok(ReceiptPlanOutcome::Ran { agreed: true }) => {
@@ -10742,6 +10857,50 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
         }
         ran.push("floor");
+
+        // PHASE 7 — mint the floor receipt, carrying the conclusion this run actually reached.
+        //
+        // THE CONCLUSION IS THE MEASUREMENT, NOT A CONSTANT. tools.merge_admission_walk
+        // stamp_tested_floor writes `Success` literally; that was true only under the WalkPlan's
+        // ordering law ("stamp is reachable only after the whole ordinary floor and its
+        // finalization passed"), and the floor cut deleted the WalkPlan while leaving the
+        // constant. Calling it from here would certify Success over a red run -- a fabricated
+        // plausible output aimed at the one consumer that must never be lied to. So this calls
+        // stamp_tested_floor_for_exit_code with the real phase tally: a receipt exists for every
+        // attempt, and it says what happened.
+        //
+        // NO SUBJECT MEANS NO RECEIPT, and that is fail-closed rather than a gap: the merge gate
+        // refuses on a missing wire (tools.merge_admission_current_context "floor-receipt wire
+        // missing"), so declining to stamp cannot admit anything.
+        if merge_admission_subject_captured {
+            let exit_code = i64::from(!phase_failures.is_empty());
+            eprintln!(
+                "required-ci: phase merge-admission-stamp (receipt, conclusion from this run)"
+            );
+            match run_merge_admission_producer(
+                &source_roots,
+                MERGE_ADMISSION_WALK_ENTRY,
+                "stamp_tested_floor_for_exit_code",
+                &[(Some("exit_code".to_string()), Value::Int(exit_code))],
+            ) {
+                Ok(true) => eprintln!(
+                    "required-ci: merge-admission-stamp OK receipt minted conclusion={}",
+                    if exit_code == 0 { "success" } else { "failure" }
+                ),
+                Ok(false) => eprintln!(
+                    "required-ci: merge-admission-stamp declined — the producer did not write a \
+                     receipt. The merge gate refuses on a missing receipt, so nothing is admitted \
+                     by this; it is reported, not absorbed"
+                ),
+                Err(e) => eprintln!("required-ci: merge-admission-stamp refused: {e}"),
+            }
+            ran.push("merge-admission-stamp");
+        } else {
+            eprintln!(
+                "required-ci: phase merge-admission-stamp SKIPPED — no tested subject was \
+                 captured, so there is nothing to certify"
+            );
+        }
 
         eprintln!(
             "required-ci: phases_run={} failed={}",
@@ -18330,6 +18489,18 @@ enum ReceiptExclusion {
     /// skipped, because a changed authority that maps to nothing must be visible.
     NoEmittedMirror { module_path: String },
 
+    /// The authority declares NO functions at all, so it has no behaviour that could diverge.
+    ///
+    /// SEPARATE FROM `NoFunctionHasACorpus` BECAUSE THEY ARE DIFFERENT STATES WITH DIFFERENT
+    /// REMEDIES, and the arm that used to carry both said something false about this one. A
+    /// module with twenty functions none of whose corpora this fragment can derive is a DEFICIT
+    /// in the derivation -- it ranks, it names the types responsible, and closing them makes the
+    /// module checkable. A module with zero functions is not a deficit at all: there is nothing
+    /// to derive and never will be, so reporting it as `none of its 0 declared functions yields
+    /// a call` sends a reader to fix a derivation that has no subject, and inflates the
+    /// non-derivability population with rows no work can remove.
+    NoFunctionDeclared { module_path: String },
+
     /// NOT ONE FUNCTION in this authority yields a call, so there is no corpus to compare -- and
     /// the arm carries EVERY declared function with the cause that stopped it, because the
     /// deficit lives at the function and a module-level "nothing derived" cannot be acted on.
@@ -19246,6 +19417,77 @@ fn function_grain_coverage(plan: &ModuleCorpusPlan) -> FunctionGrainCoverage {
     FunctionGrainCoverage { covered, uncovered }
 }
 
+/// THE PLAN-GRAIN HALF OF THE ONE SELECTION CRITERION: is there a subject to compare?
+///
+/// `Ok(None)` selects. `Ok(Some(_))` excludes, typed and counted. `Err(_)` refuses, because the
+/// third state is the reader's own blindness and it is not a property of the authority.
+///
+/// The three answers used to be two, and the missing distinction is the whole point. `zero
+/// functions covered` was one arm covering three different states -- an authority with no
+/// functions at all, an authority whose functions all defeat derivation, and a parse this
+/// fragment failed to read -- with one message that was false about two of them. That is the
+/// state-space conflation DESIGN.md names: one value standing for several states whose remedies
+/// differ. Splitting it costs nothing and makes each population rankable on its own terms.
+fn plan_grain_selection(
+    plan: &ModuleCorpusPlan,
+    coverage: FunctionGrainCoverage,
+) -> Result<Option<ReceiptExclusion>, String> {
+    // THE READER'S OWN BLINDNESS IS NOT A PROPERTY OF THE AUTHORITY. The `fn ` line count and the
+    // parsed signature count are two readers of one fact, and the pair is carried precisely so a
+    // disagreement is visible. When the parser sees none of the functions the source declares,
+    // `zero covered` is IGNORANCE rather than the fact that nothing is derivable, and excluding
+    // on it would publish a reader deficit as a fact about the module.
+    if plan.parsed_signatures == 0 && plan.declared_fn_lines > 0 {
+        return Err(format!(
+            "behavioral-receipt: {} declares {} `fn ` line(s) and the parser produced no \
+             signature at all. The two readers disagree, so this selection cannot say whether \
+             the module has no derivable function or whether this fragment simply failed to read \
+             it -- and those have opposite remedies. Refusing rather than excluding: an exclusion \
+             here would publish the reader's blindness as a fact about the authority",
+            plan.module_path, plan.declared_fn_lines
+        ));
+    }
+    if plan.parsed_signatures == 0 {
+        return Ok(Some(ReceiptExclusion::NoFunctionDeclared {
+            module_path: plan.module_path.clone(),
+        }));
+    }
+    if coverage.covered.is_empty() {
+        return Ok(Some(ReceiptExclusion::NoFunctionHasACorpus {
+            module_path: plan.module_path.clone(),
+            uncovered: coverage.uncovered,
+        }));
+    }
+    Ok(None)
+}
+
+/// Does a plan-grain exclusion SURVIVE what the generated-artifact population says about the
+/// mirror? `None` means it does not -- the module is selected after all.
+///
+/// PURE, AND SEPARATED FROM THE ASK FOR ONE REASON: the divergence it decides has an EMPTY
+/// POPULATION today, so nothing in the live corpus executes the branch that matters. An empty
+/// population is not a safe place to leave a behaviour undecided -- the first real member would
+/// settle it by accident, and whoever met it would be debugging a difference nobody had written
+/// down. Pulling the decision out of the loop lets a planted control state the intent and execute
+/// it permanently (DESIGN.md 4b(4): the evidence stays enrolled, it does not retire when the
+/// production population catches up).
+fn exclusion_survives_generated_artifact_population(
+    exclusion: ReceiptExclusion,
+    body: &GeneratedArtifactPathBody,
+) -> Option<ReceiptExclusion> {
+    match body {
+        // A POSITIVE ANSWER: this path is a module mirror, not a generated artifact. Only here is
+        // "no function yields a call" the whole story, so only here is the exclusion a fact.
+        GeneratedArtifactPathBody::NotGenerated => Some(exclusion),
+        // Produced OR Refused: either way the path belongs to the generated-artifact population,
+        // whose subject is BYTES rather than behaviour -- and for that subject a declared function
+        // is not required, because the identity check calls nothing. The differential loop is
+        // where that population's answer is reported (identity, drift, or a generator refusal);
+        // deciding it here would be a second adjudicator of one question.
+        GeneratedArtifactPathBody::Produced(_) | GeneratedArtifactPathBody::Refused(_) => None,
+    }
+}
+
 /// A plan CARRYING AT LEAST ONE CALL. There is no other way to build one.
 ///
 /// The differential used to check this itself -- `if total == 0 { Refused }` -- which is
@@ -19503,8 +19745,17 @@ fn plan_module_corpus(
 /// The verdict for one candidate module. Three arms, and the third is not a soft pass.
 #[derive(Debug, Clone, PartialEq)]
 enum ReceiptVerdict {
-    /// Both builds ran the derived corpus and every call agreed.
-    Equivalent { calls: usize },
+    /// Both builds ran the derived corpus and every call THAT COULD BE COMPARED agreed.
+    ///
+    /// `nondeterministic_calls` is carried on this arm rather than printed beside it because a
+    /// green with an excluded population is a DIFFERENT claim from a green over everything, and
+    /// separating the two would let the weaker one be read as the stronger. Zero is the ordinary
+    /// case and reads as the full claim.
+    Equivalent {
+        calls: usize,
+        nondeterministic_calls: usize,
+        nondeterministic_functions: Vec<String>,
+    },
     /// Both builds ran and at least one call disagreed. The first difference is carried because
     /// a count alone cannot be acted on.
     Divergent {
@@ -19516,6 +19767,17 @@ enum ReceiptVerdict {
     /// is the empty-observation narrow. A corpus with nothing in it is NOT among these any more --
     /// it never reaches the differential, because `AdmittedPlan` cannot carry it.
     Refused { reason: String },
+    /// EVERY derived call in this module renders unstably, so no comparison exists to take.
+    ///
+    /// Not `Equivalent` (nothing was compared) and not `Divergent` (nothing disagreed about the
+    /// program). Not `Refused` either: a refusal in this fragment means the measurement could not
+    /// be attempted, whereas this one WAS attempted and produced a well-defined result -- the
+    /// subject is unaskable, and the fix lives in emission rather than in this gate or in the
+    /// diff under test.
+    NondeterministicRendering {
+        unstable_calls: usize,
+        functions: Vec<String>,
+    },
 }
 
 /// Generate the driver: one `println!` per call in the derived corpus.
@@ -19543,6 +19805,57 @@ fn generate_receipt_driver(module_alias: &str, plan: &ModuleCorpusPlan) -> Strin
     }
     out.push_str("}\n");
     out
+}
+
+/// One driver's output, plus WHICH of its lines are not a function of the program alone.
+///
+/// A line is `unstable` when two executions of the SAME binary printed different text for it.
+/// That is proof, not inference: the code, the inputs and the build are identical across the two
+/// runs, so anything that differs came from somewhere other than the program's meaning. In this
+/// corpus the somewhere is `HashMap`/`HashSet` iteration order reaching `{:?}`, whose seed is
+/// randomized per process -- measured at 20 distinct transcripts over 20 executions of one
+/// unchanged binary for `std.algebra::kernel_algebra_profile_value`.
+///
+/// WHY THIS IS MEASURED RATHER THAN DECIDED FROM THE TYPE. Order-dependent rendering is a
+/// property of the value's TRANSITIVE shape: a record CONTAINING a map renders nondeterministically
+/// while its own return type says `Record`. Any check keying on the outermost constructor
+/// under-refuses by construction, and it under-refuses SILENTLY -- the missed call lands in
+/// `Divergent`, indistinguishable from a real divergence. Running the binary twice keys on the
+/// property itself, so there is no type walk to keep in sync with the corpus.
+///
+/// THE RESIDUE, STATED: two randomized renderings can coincide, so a subject that happened to
+/// agree twice is not caught. That makes every count derived from this a FLOOR, and the floor is
+/// printed as such rather than left in this comment. It is a residue that SHRINKS with more
+/// executions, unlike a structural blind spot, but this is not an argument for adding runs
+/// speculatively -- one extra run is what the evidence to date justifies.
+#[derive(Debug, Clone, PartialEq)]
+struct DriverTranscript {
+    lines: Vec<String>,
+    /// Indices into `lines` that differed between the two executions.
+    unstable: std::collections::BTreeSet<usize>,
+}
+
+impl DriverTranscript {
+    fn of(first: Vec<String>, second: Vec<String>) -> Self {
+        // A length difference between two runs of one binary is itself instability, and it is
+        // not attributable to any single index -- so every line of the longer run is marked
+        // rather than none. Silently comparing the common prefix would hide it.
+        let unstable = if first.len() != second.len() {
+            (0..first.len().max(second.len())).collect()
+        } else {
+            first
+                .iter()
+                .zip(second.iter())
+                .enumerate()
+                .filter(|(_, (a, b))| a != b)
+                .map(|(i, _)| i)
+                .collect()
+        };
+        Self {
+            lines: first,
+            unstable,
+        }
+    }
 }
 
 /// Build the crate as it currently stands, compile the driver against it, and return the
@@ -19585,7 +19898,7 @@ fn run_receipt_driver(
     krate: &ReceiptCrate,
     driver_src: &str,
     label: &str,
-) -> Result<Vec<String>, String> {
+) -> Result<DriverTranscript, String> {
     let drv_dir = workspace.join("target/behavioral-receipt");
     fs::create_dir_all(&drv_dir).map_err(|e| format!("create {}: {e}", drv_dir.display()))?;
     let src_path = drv_dir.join(format!("driver_{label}.rs"));
@@ -19636,7 +19949,22 @@ fn run_receipt_driver(
                 .join(" | ")
         ));
     }
-    let run = Command::new(&bin_path)
+    // TWICE, AND THE SECOND RUN IS THE POINT. The two are executions of the SAME BINARY -- the
+    // cargo build and the rustc compile above are already paid, so this costs milliseconds and
+    // not a rebuild. Two executions of one unchanged binary that disagree PROVE the disagreeing
+    // call renders nondeterministically, which is the only way to learn that fact: it is a
+    // property of the value's rendering, not of its type, so nothing before the run can know it.
+    let first = run_driver_binary(workspace, &bin_path, label)?;
+    let second = run_driver_binary(workspace, &bin_path, label)?;
+    Ok(DriverTranscript::of(first, second))
+}
+
+fn run_driver_binary(
+    workspace: &std::path::Path,
+    bin_path: &std::path::Path,
+    label: &str,
+) -> Result<Vec<String>, String> {
+    let run = Command::new(bin_path)
         .current_dir(workspace)
         .output()
         .map_err(|e| format!("spawn driver ({label}): {e}"))?;
@@ -19754,25 +20082,183 @@ fn behavioral_differential(
         Err(e) => return ReceiptVerdict::Refused { reason: e },
     };
 
-    if seed.len() != candidate.len() {
+    if seed.lines.len() != candidate.lines.len() {
         return ReceiptVerdict::Divergent {
-            calls: seed.len(),
+            calls: seed.lines.len(),
             first_difference: format!(
                 "transcript lengths differ: seed {} lines, candidate {} lines",
-                seed.len(),
-                candidate.len()
+                seed.lines.len(),
+                candidate.lines.len()
             ),
         };
     }
-    for (a, b) in seed.iter().zip(candidate.iter()) {
+    // THE UNION, NOT THE SEED'S SET ALONE. Each side is its own binary and each was measured
+    // independently, so a call can render unstably in one and (by coincidence, on that pair of
+    // runs) stably in the other. Comparing a line either side proved unstable would score a
+    // coin flip as a behavioural difference, which is the fabricated-difference failure this
+    // whole change exists to remove.
+    let unstable: std::collections::BTreeSet<usize> =
+        seed.unstable.union(&candidate.unstable).copied().collect();
+    let excluded = nondeterministic_call_functions(admitted, &unstable);
+
+    let compared: Vec<(usize, (&String, &String))> = seed
+        .lines
+        .iter()
+        .zip(candidate.lines.iter())
+        .enumerate()
+        .filter(|(i, _)| !unstable.contains(i))
+        .collect();
+
+    // Nothing left to compare is NOT equivalence, and it is not a divergence either: it is a
+    // module whose every derived call renders unstably, so this fragment cannot ask it anything
+    // honestly. Reported as its own verdict rather than folded into either, because the action
+    // it calls for -- make emission deterministic -- is neither "fix the diff" nor "nothing to do".
+    if compared.is_empty() {
+        return ReceiptVerdict::NondeterministicRendering {
+            unstable_calls: unstable.len(),
+            functions: excluded,
+        };
+    }
+    for (_, (a, b)) in &compared {
         if a != b {
             return ReceiptVerdict::Divergent {
-                calls: seed.len(),
+                calls: compared.len(),
                 first_difference: format!("seed: {a}  |  candidate: {b}"),
             };
         }
     }
-    ReceiptVerdict::Equivalent { calls: seed.len() }
+    ReceiptVerdict::Equivalent {
+        calls: compared.len(),
+        nondeterministic_calls: unstable.len(),
+        nondeterministic_functions: excluded,
+    }
+}
+
+/// Which declared functions own the calls at `unstable`.
+///
+/// The driver prints one line per call in exactly the order `AdmittedPlan` enumerates them, so
+/// the mapping is positional and derived from the same iteration that produced the transcript --
+/// not a second traversal that could disagree with it. Names, because a COUNT of excluded calls
+/// cannot be acted on and a name can: it is the function whose return value to make deterministic.
+fn nondeterministic_call_functions(
+    admitted: &AdmittedPlan<'_>,
+    unstable: &std::collections::BTreeSet<usize>,
+) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    let mut index = 0usize;
+    for (name, _domain, tuples) in &admitted.plan.derivable {
+        for _ in tuples {
+            if unstable.contains(&index) && !names.iter().any(|n| n == name) {
+                names.push(name.clone());
+            }
+            index += 1;
+        }
+    }
+    names
+}
+
+/// What the generated-artifact population says about one repo-relative path.
+///
+/// Three states because the honest answers are three. `NotGenerated` is a POSITIVE answer -- this
+/// path is not in the generated-artifact population at all -- and is what routes a caller to the
+/// mirror-emit population. Folding it into `Refused` would tell a caller that generation FAILED
+/// for an ordinary mirror, which is false and differently actionable.
+enum GeneratedArtifactPathBody {
+    Produced(String),
+    Refused(String),
+    NotGenerated,
+}
+
+/// Ask the already-resolved generated-artifact authority for the body it generates at a path.
+///
+/// THIS IS NOT A SECOND PRODUCER. The `.dag` side is a projection over the same three authorities
+/// `main_wet` uses -- the committed-artifact roster, `artifact_path`, and the single
+/// `artifact_generate` dispatch -- asked by path instead of by artifact. Reaching past it to a
+/// per-artifact emitter would have been the forked dispatch DESIGN §3 forbids.
+///
+/// COST SHAPE, and it is why this takes a CONTEXT rather than `source_roots`. The first draft
+/// resolved `generated_artifact_emit`'s whole closure inside the per-module loop, making the unit
+/// of computation the corpus while the unit of fact was one path -- DESIGN §6's cost-shape defect,
+/// where the rule is that a proven one is fixed regardless of the realized n. The caller resolves
+/// once; each path is then one interpreter call against that context.
+/// The generated-artifact authority's evaluation context, resolved AT MOST ONCE per run and
+/// shared by every caller that needs it.
+///
+/// One cell rather than one resolve per asking site: selection asks it for a module that yields
+/// no call, and the differential loop asks it for every selected module. Two resolves of one
+/// closure would be two producers of the same context and would pay the corpus-sized cost twice.
+fn generated_artifact_ctx<'a>(
+    source_roots: &[String],
+    cell: &'a mut Option<v1_compiler::v1_interpreter::InterpContext>,
+) -> Result<&'a v1_compiler::v1_interpreter::InterpContext, String> {
+    if cell.is_none() {
+        let entry = "dag/gunbc/generated_artifact_emit.dag";
+        let (graph, indices) =
+            v1_compiler::cli_run::resolve_entry_graph_shared(source_roots, entry)
+                .map_err(|e| format!("resolve {entry}: {e}"))?;
+        *cell = Some(v1_compiler::cli_run::make_eval_context(
+            &graph,
+            indices,
+            // HERMETIC, not Wet. The projection is pure -- it folds a roster and returns a String
+            // -- so a host effect reached during it would mean a generator is doing something
+            // this gate must not perform on its behalf. Hermetic refuses there instead of
+            // carrying it out.
+            v1_compiler::v1_interpreter::ExecutionMode::Hermetic,
+        ));
+    }
+    Ok(cell.as_ref().expect("the context was just installed"))
+}
+
+fn generated_artifact_body_for_path(
+    ctx: &v1_compiler::v1_interpreter::InterpContext,
+    repo_rel_path: &str,
+) -> Result<GeneratedArtifactPathBody, String> {
+    use v1_compiler::v1_interpreter::Value;
+    let out = v1_compiler::v1_interpreter::run_in_context_with_args(
+        ctx,
+        "generated_artifact_body_for_path",
+        &[(
+            Some("path".to_string()),
+            Value::Str(repo_rel_path.to_string().into()),
+        )],
+        false,
+    )
+    .map_err(|e| format!("generated_artifact_body_for_path({repo_rel_path}): {e:?}"))?;
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &out
+    else {
+        // No default arm: a shape this code does not understand is ignorance, and guessing
+        // NotGenerated here would silently route a real generated artifact to the mirror emit
+        // and refuse it there for the wrong reason.
+        return Err(format!(
+            "generated_artifact_body_for_path({repo_rel_path}) returned a non-variant value"
+        ));
+    };
+    if ctx.sym_eq(*variant_name, "GeneratedArtifactPathNotGenerated") {
+        return Ok(GeneratedArtifactPathBody::NotGenerated);
+    }
+    if ctx.sym_eq(*variant_name, "GeneratedArtifactPathBodyProduced") {
+        return match ctx.field(fields, "content") {
+            Some(Value::Str(c)) => Ok(GeneratedArtifactPathBody::Produced(c.to_string())),
+            _ => Err(format!(
+                "GeneratedArtifactPathBodyProduced for {repo_rel_path} carried no String content"
+            )),
+        };
+    }
+    if ctx.sym_eq(*variant_name, "GeneratedArtifactPathBodyRefused") {
+        return match ctx.field(fields, "reason") {
+            Some(Value::Str(r)) => Ok(GeneratedArtifactPathBody::Refused(r.to_string())),
+            _ => Err(format!(
+                "GeneratedArtifactPathBodyRefused for {repo_rel_path} carried no String reason"
+            )),
+        };
+    }
+    Err(format!(
+        "generated_artifact_body_for_path({repo_rel_path}) returned an unknown variant"
+    ))
 }
 
 /// Map an authority module path to the emitted mirror that declares it as its authority.
@@ -20310,8 +20796,28 @@ fn behavioral_receipt_selftest(source_roots: &[String]) -> Result<bool, String> 
         let verdict =
             behavioral_differential(&workspace, &krate, &seed_path, &candidate, &admitted, alias);
         match (&verdict, expect_equivalent) {
-            (ReceiptVerdict::Equivalent { calls }, true) => {
-                eprintln!("receipt-selftest: arm {arm} EQUIVALENT over {calls} derived calls — as required");
+            (
+                ReceiptVerdict::Equivalent {
+                    calls,
+                    nondeterministic_calls,
+                    ..
+                },
+                true,
+            ) => {
+                // FALSE-POSITIVE CONTROL for the two-run instability probe, and it is the reason
+                // this arm now reads a second field. The fixture's corpus is deterministic, so
+                // the probe must find NOTHING unstable in it. Without this, a probe that marked
+                // every line unstable would still print EQUIVALENT here -- over an empty compared
+                // set it would not even reach this arm, but over a partially-marked one it would,
+                // and the arm would pass while the gate had quietly stopped comparing anything.
+                if *nondeterministic_calls != 0 {
+                    eprintln!(
+                        "receipt-selftest: arm {arm} EQUIVALENT but the instability probe marked {nondeterministic_calls} call(s) unstable in a DETERMINISTIC fixture — the probe is producing false positives, so its exclusions cannot be trusted"
+                    );
+                    ok = false;
+                } else {
+                    eprintln!("receipt-selftest: arm {arm} EQUIVALENT over {calls} derived calls — as required");
+                }
             }
             (
                 ReceiptVerdict::Divergent {
@@ -20471,6 +20977,12 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
 
     let mut exclusions: Vec<ReceiptExclusion> = Vec::new();
     let mut plans: Vec<(String, ModuleCorpusPlan, String)> = Vec::new();
+    // BUILT ON FIRST DEMAND, not before the loop. Only a module that yields no call needs to ask
+    // the generated-artifact population during selection, which is a small population and often
+    // an empty one; resolving its closure unconditionally would put a corpus-sized resolve on
+    // every run of a per-change gate -- the cost shape DESIGN §6 names, where the unit of
+    // computation is the corpus and the unit of fact is one path.
+    let mut generated_ctx_cell: Option<v1_compiler::v1_interpreter::InterpContext> = None;
     // BOTH GRAINS, ACCUMULATED ACROSS EVERY CHANGED AUTHORITY -- including the excluded ones,
     // which is the point: a function that yields no call is uncovered whether or not its module
     // had a sibling that saved it from exclusion.
@@ -20506,17 +21018,37 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
                 );
                 // ADMISSION IS DECIDED HERE, AT FUNCTION GRAIN, and it is decided from a fact the
                 // source already carries -- no build, no emit, no differential is spent on a
-                // module that cannot produce a call.
+                // module that cannot produce a call. The decision itself is a PURE function, so
+                // both of its exclusion arms and its refusal can be executed against hand-built
+                // states rather than only against whatever the live corpus happens to hold.
                 let coverage = function_grain_coverage(&plan);
                 declared_functions += coverage.covered.len() + coverage.uncovered.len();
                 covered_functions += coverage.covered.len();
-                if coverage.covered.is_empty() {
-                    exclusions.push(ReceiptExclusion::NoFunctionHasACorpus {
-                        module_path,
-                        uncovered: coverage.uncovered,
-                    });
-                } else {
-                    plans.push((mirror, plan, alias))
+                match plan_grain_selection(&plan, coverage)? {
+                    None => plans.push((mirror, plan, alias)),
+                    Some(exclusion) => {
+                        // A ZERO-CALL MODULE IS NOT AUTOMATICALLY A SUBJECTLESS ONE, and getting
+                        // this wrong is how an exclusion becomes the thing it was meant to
+                        // prevent. #8753 established the fact by measurement: for a mirror in the
+                        // GENERATED-ARTIFACT population the subject is the artifact's BYTES, not
+                        // its behaviour, and that population's only drift observer anywhere is the
+                        // identity check inside the differential loop. Excluding here on `no
+                        // function yields a call` would delete that observer for exactly the
+                        // artifacts that have no functions to call -- silently, and while printing
+                        // a line that says the module has nothing to compare.
+                        //
+                        // So the population is ASKED, and it is asked with the same projection
+                        // the loop asks (`generated_artifact_body_for_path`), not with a second
+                        // roster. `NotGenerated` is a positive answer -- this path is a module
+                        // mirror -- and only then is the exclusion a fact.
+                        let repo_rel = format!("src/v1/stage0/src/{mirror}");
+                        let ctx = generated_artifact_ctx(source_roots, &mut generated_ctx_cell)?;
+                        let body = generated_artifact_body_for_path(ctx, &repo_rel)?;
+                        match exclusion_survives_generated_artifact_population(exclusion, &body) {
+                            Some(exclusion) => exclusions.push(exclusion),
+                            None => plans.push((mirror, plan, alias)),
+                        }
+                    }
                 }
             }
         }
@@ -20527,8 +21059,27 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
     // count alone reads as what happened but hides how much of the corpus was in scope at all.
     // The gap between the two sentences is the thing worth seeing, and a reader given one number
     // infers the other one wrongly.
+    //
+    // EXCLUSIONS ARE COUNTED PER ARM, not as one total. A total says how many changed authorities
+    // reached no verdict; only the split says WHY, and the arms rank differently: a
+    // non-derivability row is work someone can do, an outside-the-population row is a fact no
+    // work removes. Collapsing them is how a population that cannot shrink gets read as debt that
+    // simply has not been paid.
+    let mut excluded_no_mirror = 0usize;
+    let mut excluded_no_function_declared = 0usize;
+    let mut excluded_no_corpus = 0usize;
+    for e in &exclusions {
+        match e {
+            ReceiptExclusion::NoEmittedMirror { .. } => excluded_no_mirror += 1,
+            ReceiptExclusion::NoFunctionDeclared { .. } => excluded_no_function_declared += 1,
+            ReceiptExclusion::NoFunctionHasACorpus { .. } => excluded_no_corpus += 1,
+        }
+    }
     eprintln!(
-        "behavioral-receipt: GRAIN module: changed_authorities={} selected={} excluded={} | \
+        "behavioral-receipt: GRAIN module: changed_authorities={} selected={} excluded={} \
+         (no-emitted-mirror={excluded_no_mirror} \
+         no-function-declared={excluded_no_function_declared} \
+         no-function-has-a-corpus={excluded_no_corpus}) | \
          function: declared={declared_functions} covered={covered_functions} uncovered={}",
         changed.len(),
         plans.len(),
@@ -20542,6 +21093,13 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
                  generated population names it as its authority, under either header \
                  convention (the index refuses outright if any generated file is \
                  unindexable, so this is a fact about the corpus and not a lookup miss)"
+            ),
+            ReceiptExclusion::NoFunctionDeclared { module_path } => eprintln!(
+                "behavioral-receipt: excluded {module_path} — the authority declares no \
+                 functions, so it carries no behaviour that could diverge and there is nothing \
+                 for a differential to compare. NOT a derivation deficit: it contributes no \
+                 uncovered function to the FUNCTION-GRAIN line, because there is no function to \
+                 cover"
             ),
             ReceiptExclusion::NoFunctionHasACorpus {
                 module_path,
@@ -20609,8 +21167,8 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
     if plans.is_empty() {
         eprintln!(
             "behavioral-receipt: no changed authority module reached the differential — every one \
-             was excluded above, either for having no emitted mirror or for yielding no call from \
-             any of its declared functions. Nothing to compare, so this run costs nothing. That \
+             was excluded above, each under one of the three typed arms counted on the \
+             module-grain line. Nothing to compare, so this run costs nothing. That \
              is a real pass over an EMPTY selection, stated rather than printed as a bare PASS, \
              and the FUNCTION-GRAIN counts above say how much surface that silence covers"
         );
@@ -20663,16 +21221,123 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
     // is the SAME partition the admission was decided from. Recomputing it from the plan
     // afterwards would be a second producer of one fact, and the one that gets reported is the
     // one that never gated anything.
+    // ONE RESOLVE for the whole run -- see `generated_artifact_body_for_path`'s cost-shape note.
+    // The cell may already hold it: selection asks the same authority when a module yields no
+    // call, and asking it twice would resolve one closure twice.
+    let generated_ctx = generated_artifact_ctx(source_roots, &mut generated_ctx_cell)?;
     let mut denominators: Vec<String> = Vec::new();
+    let mut nondeterministic_calls_total = 0usize;
+    let mut nondeterministic_modules = 0usize;
     for (mirror, plan, alias) in &plans {
-        let Some(candidate_source) = emitted.get(mirror) else {
-            eprintln!(
-                "behavioral-receipt: {} REFUSED — the emit produced no {mirror}, so there is no \
-                 candidate to compare. Not equivalence: a missing candidate is ignorance",
-                plan.module_path
-            );
-            all_equivalent = false;
-            continue;
+        // WHICH POPULATION OWNS THIS MIRROR, decided before anything is fetched.
+        //
+        // Two generators write into `src/v1/stage0/src`: the v1 compiler emits module mirrors,
+        // and gunbc's artifact emitters write a handful of generated files whose headers say so.
+        // This fragment used to ask only the first and refuse when it came back empty, which made
+        // the SECOND population permanently unaskable -- any change to the interpreter dispatch
+        // roster or the stage0 crate layout redded this phase with "a missing candidate is
+        // ignorance", correct as written and with no reachable green.
+        //
+        // The population is asked FIRST and answers positively. This is deliberately not a
+        // fallback from the mirror-emit miss: a fallback would make absence in one producer mean
+        // presence in the other, so a genuinely unknown path would silently be regenerated from
+        // nothing instead of refused. Here each population answers for what it owns, and a path
+        // in neither still refuses.
+        let repo_rel = format!("src/v1/stage0/src/{mirror}");
+        let generated = match generated_artifact_body_for_path(&generated_ctx, &repo_rel) {
+            Ok(g) => g,
+            Err(e) => {
+                eprintln!(
+                    "behavioral-receipt: {} REFUSED — could not ask the generated-artifact \
+                     population about {repo_rel}: {e}. Not equivalence: an unanswered question \
+                     is ignorance",
+                    plan.module_path
+                );
+                all_equivalent = false;
+                continue;
+            }
+        };
+        let owned_candidate: Option<String> = match generated {
+            GeneratedArtifactPathBody::Produced(content) => Some(content),
+            GeneratedArtifactPathBody::Refused(reason) => {
+                eprintln!(
+                    "behavioral-receipt: {} REFUSED — {repo_rel} is a generated artifact and its \
+                     generator refused: {reason}",
+                    plan.module_path
+                );
+                all_equivalent = false;
+                continue;
+            }
+            GeneratedArtifactPathBody::NotGenerated => None,
+        };
+        // A GENERATED ARTIFACT IS CHECKED BY IDENTITY, NOT BY CALLING IT -- and this is the
+        // correct check for it, not a weaker stand-in for the differential.
+        //
+        // MEASURED, after the first draft of this change got it wrong. Producing the candidate
+        // was necessary and not sufficient: with the candidate in hand the differential went one
+        // step further and refused again, because it compiles a driver that CALLS the authority's
+        // declared functions against the mirror --
+        //
+        //   the driver did not compile against the mirror: error[E0425]: cannot find function
+        //   `v1_interpreter_arm_shape_derivability` in module v1_compiler::v1_interpreter_dispatch_generated
+        //
+        // -- and `v1_interpreter_dispatch_generated.rs` exposes enums and `lookup_*` fns. It is a
+        // file DERIVED FROM the authority's data, not a Rust projection of the authority's
+        // functions, so those functions are not there and never will be. The differential's
+        // precondition (the mirror answers the same calls the authority declares) simply does not
+        // hold for this population.
+        //
+        // For a generated artifact the whole content IS the product, so byte identity between a
+        // freshly generated candidate and the committed file is the complete statement of
+        // correctness -- which is exactly the drift check that has had no owner since the
+        // generated-artifact drift gates were dropped in the floor cut.
+        let candidate_source: &String = match owned_candidate.as_ref() {
+            Some(candidate) => {
+                let committed_path = workspace.join(&repo_rel);
+                match fs::read_to_string(&committed_path) {
+                    Err(e) => {
+                        eprintln!(
+                            "behavioral-receipt: {} REFUSED — {repo_rel} is a generated artifact \
+                             but its committed bytes could not be read ({e}), so identity cannot \
+                             be established",
+                            plan.module_path
+                        );
+                        all_equivalent = false;
+                    }
+                    Ok(committed_bytes) if committed_bytes == *candidate => {
+                        eprintln!(
+                            "behavioral-receipt: {} ARTIFACT-IDENTICAL — {repo_rel} regenerates \
+                             byte-for-byte from its authority. This is identity, not behavioural \
+                             equivalence: the artifact exposes no function this fragment could \
+                             call, so its bytes are the whole claim",
+                            plan.module_path
+                        );
+                    }
+                    Ok(_) => {
+                        eprintln!(
+                            "behavioral-receipt: {} ARTIFACT-DRIFT — {repo_rel} does not match \
+                             what its authority generates. Regenerate it (main_wet on \
+                             dag/tools/generated_artifact_gate.dag) and commit the result",
+                            plan.module_path
+                        );
+                        all_equivalent = false;
+                    }
+                }
+                continue;
+            }
+            None => match emitted.get(mirror) {
+                Some(c) => c,
+                None => {
+                    eprintln!(
+                        "behavioral-receipt: {} REFUSED — {mirror} is in neither population: the \
+                         v1 emit produced no mirror for it and it is not a committed generated \
+                         artifact. Not equivalence: a missing candidate is ignorance",
+                        plan.module_path
+                    );
+                    all_equivalent = false;
+                    continue;
+                }
+            },
         };
         // Infallible in fact -- selection only pushed plans that admitted -- but derived here
         // rather than asserted, so the differential's precondition is carried by the value it
@@ -20708,10 +21373,43 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
             &admitted,
             alias,
         ) {
-            ReceiptVerdict::Equivalent { calls } => eprintln!(
-                "behavioral-receipt: {} EQUIVALENT over {calls} derived calls",
-                plan.module_path
-            ),
+            ReceiptVerdict::Equivalent {
+                calls,
+                nondeterministic_calls,
+                nondeterministic_functions,
+            } => {
+                if nondeterministic_calls == 0 {
+                    eprintln!(
+                        "behavioral-receipt: {} EQUIVALENT over {calls} derived calls",
+                        plan.module_path
+                    );
+                } else {
+                    eprintln!(
+                        "behavioral-receipt: {} EQUIVALENT over {calls} derived calls, with \
+                         {nondeterministic_calls} EXCLUDED as nondeterministically rendered — \
+                         {}. Those calls were NOT compared, so this green does not cover them",
+                        plan.module_path,
+                        nondeterministic_functions.join(", ")
+                    );
+                    nondeterministic_calls_total += nondeterministic_calls;
+                    nondeterministic_modules += 1;
+                }
+            }
+            ReceiptVerdict::NondeterministicRendering {
+                unstable_calls,
+                functions,
+            } => {
+                eprintln!(
+                    "behavioral-receipt: {} NONDETERMINISTIC-RENDERING — all {unstable_calls} \
+                     derived call(s) render unstably, so nothing could be compared: {}. This is \
+                     a property of what the mirror RETURNS, not a defect in this diff, and it is \
+                     not scored as a divergence",
+                    plan.module_path,
+                    functions.join(", ")
+                );
+                nondeterministic_calls_total += unstable_calls;
+                nondeterministic_modules += 1;
+            }
             ReceiptVerdict::Divergent {
                 calls,
                 first_difference,
@@ -20737,9 +21435,83 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
     for line in &denominators {
         eprintln!("{line}");
     }
+    // EVERY RUN, INCLUDING ZERO -- a counter that appears only when nonzero teaches a reader that
+    // its absence means "not measured", and the two then look alike in a log tail.
+    //
+    // THE FLOOR IS IN THE LINE, NOT IN A NOTE BESIDE IT. The line outlives the note: someone will
+    // trend this number, watch it sit at N, and conclude the class is nearly closed. It is a floor
+    // because the probe proves instability by DISAGREEMENT between two runs, and two randomized
+    // renderings can coincide -- an uncaught call is scored as an ordinary comparison and, if it
+    // then differs across the seed/candidate pair, inflates the DIVERGENT count instead.
+    //
+    // DISSOLUTION: this goes to zero when emission is deterministic (a `BTreeMap` container
+    // template rather than `HashMap`), NOT when the probe gets better at spotting the residue.
+    // A shrinking count from a sharper probe would be the metric improving while the defect stays.
+    eprintln!(
+        "behavioral-receipt: nondeterministic_rendering={nondeterministic_calls_total} call(s) \
+         across {nondeterministic_modules} module(s) — FLOOR, not a total: instability is proved \
+         by two runs disagreeing, so a call whose randomized rendering happened to agree twice is \
+         not counted here and is compared as if it were deterministic. Not failures; each is a \
+         subject this fragment cannot ask about until emission is deterministic"
+    );
     Ok(ReceiptPlanOutcome::Ran {
         agreed: all_equivalent,
     })
+}
+
+#[cfg(test)]
+mod driver_transcript_tests {
+    use super::*;
+
+    fn lines(xs: &[&str]) -> Vec<String> {
+        xs.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// The property the exclusion rests on: two runs of ONE binary that disagree at an index
+    /// prove that index is not a function of the program alone.
+    #[test]
+    fn a_line_that_differs_between_two_runs_is_unstable() {
+        let t = DriverTranscript::of(
+            lines(&["stable() = 1", "m() = {a, b}", "also_stable() = 2"]),
+            lines(&["stable() = 1", "m() = {b, a}", "also_stable() = 2"]),
+        );
+        assert_eq!(t.unstable, [1].into_iter().collect());
+        // The transcript itself is the FIRST run, unchanged -- the probe observes, it does not
+        // rewrite what gets compared.
+        assert_eq!(
+            t.lines,
+            lines(&["stable() = 1", "m() = {a, b}", "also_stable() = 2"])
+        );
+    }
+
+    /// THE FALSE-POSITIVE CONTROL, at unit grain. A deterministic corpus must yield NOTHING
+    /// unstable, or every module would silently stop being compared while still printing a green.
+    #[test]
+    fn two_identical_runs_mark_nothing_unstable() {
+        let t = DriverTranscript::of(
+            lines(&["a() = 1", "b() = 2"]),
+            lines(&["a() = 1", "b() = 2"]),
+        );
+        assert!(t.unstable.is_empty());
+    }
+
+    /// A length difference is instability that belongs to no single index. Marking every line is
+    /// the fail-closed reading; comparing the common prefix would silently compare a shifted pair.
+    #[test]
+    fn a_length_difference_marks_every_line() {
+        let t = DriverTranscript::of(lines(&["a() = 1"]), lines(&["a() = 1", "b() = 2"]));
+        assert_eq!(t.unstable, [0, 1].into_iter().collect());
+    }
+
+    /// THE RESIDUE, ASSERTED SO IT IS NOT MISTAKEN FOR A CLOSED CLASS. Two randomized renderings
+    /// can coincide; when they do, the probe cannot see it and the call is compared as if it were
+    /// deterministic. This test PINS that limitation rather than hiding it -- if someone later
+    /// makes the probe complete, this test fails and forces the FLOOR wording to be revisited.
+    #[test]
+    fn a_nondeterministic_call_that_agreed_twice_is_not_caught() {
+        let t = DriverTranscript::of(lines(&["m() = {a, b}"]), lines(&["m() = {a, b}"]));
+        assert!(t.unstable.is_empty());
+    }
 }
 
 #[cfg(test)]
@@ -20773,6 +21545,141 @@ mod function_grain_admission_tests {
         RefusalCause::UnboundedString {
             ty: "String".to_string(),
         }
+    }
+
+    /// BOTH ARMS OF THE ONE DEFECT, IN ONE TEST, and it goes green only when BOTH are closed.
+    ///
+    /// The specimen is gunbc#8704, which tripped both in a single run:
+    /// `v2.compiler.self_host.stage0_crate_layout` (a wet-actuator mirror the emit never writes)
+    /// and `gunbc.stage0_crate_layout_generated` (zero declared functions). A fix closing one
+    /// half leaves a live red reachable by the very change that motivated it, so the assertions
+    /// are stated together rather than in two tests that could be satisfied separately.
+    #[test]
+    fn a_zero_function_authority_is_excluded_as_such_and_not_as_a_derivation_deficit() {
+        let mut p = plan(vec![], vec![]);
+        p.declared_fn_lines = 0;
+        p.parsed_signatures = 0;
+        let coverage = function_grain_coverage(&p);
+        match plan_grain_selection(&p, coverage).expect("a module with no functions is a fact") {
+            Some(ReceiptExclusion::NoFunctionDeclared { module_path }) => {
+                assert_eq!(module_path, "test.module")
+            }
+            other => panic!(
+                "an authority declaring no function has no behaviour that could diverge, so it \
+                 must be excluded AS SUCH -- reporting it as `none of its 0 declared functions \
+                 yields a call` sends a reader to close a derivation with no subject: {other:?}"
+            ),
+        }
+    }
+
+    /// THE PLANTED CONTROL FOR AN EMPTY POPULATION, and it is planted precisely BECAUSE the
+    /// population is empty. No authority in the corpus today declares zero functions AND owns a
+    /// generated artifact, so nothing live exercises this branch -- which means main and this
+    /// branch disagree about it with no measurement in either direction, and the first real member
+    /// would decide the verdict by accident. This test is the statement of intent, executing:
+    ///
+    ///   such a module is SELECTED, not excluded, because its subject is the artifact's BYTES.
+    ///
+    /// The identity check in the differential loop calls no function, so "declares no function"
+    /// says nothing about whether it can be checked -- and that check is the only drift observer
+    /// those artifacts have had since the floor cut removed the generated-artifact drift gates
+    /// (DESIGN.md names them first in what the cut left unguarded). Excluding here would delete
+    /// it. Per DESIGN.md 4b(4) this control stays enrolled once the population is non-empty; it is
+    /// the evidence that the higher rung is real, not scaffolding for its absence.
+    #[test]
+    fn a_zero_function_authority_owning_a_generated_artifact_is_selected_not_excluded() {
+        let excluded = ReceiptExclusion::NoFunctionDeclared {
+            module_path: "test.module".to_string(),
+        };
+        let survives = exclusion_survives_generated_artifact_population(
+            excluded,
+            &GeneratedArtifactPathBody::Produced("generated bytes".to_string()),
+        );
+        assert!(
+            survives.is_none(),
+            "an artifact-owning authority has a subject -- its bytes -- and excluding it would \
+             delete the only drift observer those artifacts have"
+        );
+    }
+
+    /// The same for a generator that REFUSED: the path still belongs to the artifact population,
+    /// and the loop is where that refusal is reported. Swallowing it here would turn a generator
+    /// failure into a quiet exclusion -- a refusal downgraded to a skip.
+    #[test]
+    fn a_generator_refusal_does_not_become_an_exclusion() {
+        let excluded = ReceiptExclusion::NoFunctionHasACorpus {
+            module_path: "test.module".to_string(),
+            uncovered: vec![("alpha".to_string(), unbounded())],
+        };
+        assert!(exclusion_survives_generated_artifact_population(
+            excluded,
+            &GeneratedArtifactPathBody::Refused("generator said no".to_string()),
+        )
+        .is_none());
+    }
+
+    /// THE OTHER SIDE OF THE SAME CONTROL, without which the two above could be satisfied by never
+    /// excluding anything: an ordinary module mirror answers `NotGenerated`, and there the
+    /// exclusion IS the fact and must survive.
+    #[test]
+    fn an_ordinary_mirror_keeps_its_exclusion() {
+        let excluded = ReceiptExclusion::NoFunctionDeclared {
+            module_path: "test.module".to_string(),
+        };
+        match exclusion_survives_generated_artifact_population(
+            excluded,
+            &GeneratedArtifactPathBody::NotGenerated,
+        ) {
+            Some(ReceiptExclusion::NoFunctionDeclared { module_path }) => {
+                assert_eq!(module_path, "test.module")
+            }
+            other => panic!("a module mirror with no function has no subject at all: {other:?}"),
+        }
+    }
+
+    /// THE FALSE-POSITIVE CONTROL for the arm above, read beside it: a module that DOES declare
+    /// functions, none of them derivable, must still land on the derivation-deficit arm. Without
+    /// this, a fix could satisfy the test above by sending every uncovered module to the new arm
+    /// and the deficit population would silently go to zero.
+    #[test]
+    fn a_module_whose_functions_all_refuse_stays_a_derivation_deficit() {
+        let p = plan(vec![], vec![("alpha", unbounded())]);
+        let coverage = function_grain_coverage(&p);
+        match plan_grain_selection(&p, coverage).expect("non-derivability is a fact, not ignorance")
+        {
+            Some(ReceiptExclusion::NoFunctionHasACorpus { uncovered, .. }) => {
+                assert_eq!(uncovered.len(), 1)
+            }
+            other => panic!("a declared-but-underivable function is a rankable deficit: {other:?}"),
+        }
+    }
+
+    /// A module with one derivable function is SELECTED -- the arm that must not be swallowed by
+    /// either exclusion above.
+    #[test]
+    fn a_module_with_a_derivable_function_is_selected() {
+        let p = plan(vec![("alpha", 2)], vec![("beta", unbounded())]);
+        let coverage = function_grain_coverage(&p);
+        assert!(plan_grain_selection(&p, coverage)
+            .expect("a derivable function is a subject")
+            .is_none());
+    }
+
+    /// THE READER-BLINDNESS ARM. `fn ` lines declared and no signature parsed is a disagreement
+    /// between two readers of one fact; answering it with an exclusion would publish this
+    /// fragment's own failure as a property of the authority, so it refuses.
+    #[test]
+    fn a_parse_that_sees_none_of_the_declared_functions_refuses_rather_than_excluding() {
+        let mut p = plan(vec![], vec![]);
+        p.declared_fn_lines = 7;
+        p.parsed_signatures = 0;
+        let coverage = function_grain_coverage(&p);
+        let refusal = plan_grain_selection(&p, coverage)
+            .expect_err("two readers disagreeing is ignorance, not a fact about the module");
+        assert!(
+            refusal.contains("readers disagree") && refusal.contains("test.module"),
+            "the refusal must name what it refused and why: {refusal}"
+        );
     }
 
     /// THE DISCRIMINATING RED for the whole change. A module whose every declared function refuses

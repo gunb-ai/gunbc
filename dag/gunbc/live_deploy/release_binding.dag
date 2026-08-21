@@ -1,0 +1,118 @@
+module gunbc.live_deploy.release_binding
+
+import std.types { String, NonEmptyStr, Bool, CommitSha }
+import extdeps.git
+import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
+import gunbc.running_release_identity {
+  RunningReleaseIdentity,
+  RunningReleaseIdentified,
+  RunningReleaseUnidentified,
+}
+import gunbc.live_deploy.deployed_tree_observation {
+  DeployedTreeObservation,
+  DeployedTreeObserved,
+  DeployedTreeUnobservable,
+  deployed_tree_unobservable_text,
+}
+
+// THE SUBJECT IS THE BINDING, NOT EITHER IDENTITY. A deploy installs two artifacts that move
+// independently -- the source tree and the serve binary -- and the belt then runs the installed
+// binary against that tree. So the operationally dangerous state is not "the binary is old" or "the
+// tree is new" but the PAIR: binary B interpreting tree T when B was never built from T.
+//
+// WHY NOTHING TODAY SEES IT. Readiness compares the process-reported revision against
+// `candidate.revision`, and both derive from the same admitted value, so they agree BY CONSTRUCTION
+// whatever the deployed tree contains -- it verifies the announcement, not the thing announced. The
+// belt gate reads repository revision alone and no executable identity enters it. Each check is
+// correct about its own axis and neither is about the binding, which is why a mixed release passes
+// both.
+//
+// THIS FOLD IS ORTHOGONAL TO `deployed_tree_standing`, DELIBERATELY, and folding them into one
+// dominance chain would erase a real state. The standing asks "is the deployed tree the ADMITTED
+// revision"; this asks "is the running process the tree it is interpreting". A process bound to a
+// drifted tree is COHERENTLY SERVING THE WRONG RELEASE -- a different situation from a mixed
+// realization, with a different remedy (publish and restart, versus restart alone), and a single
+// coprobe that reported one verdict would have to pick one of them to lose.
+// WHAT THIS BINDING DOES NOT ESTABLISH, AND THE MEASUREMENT THAT SETTLES IT. The process revision is
+// NOT read from the executable's bytes -- it is a LAUNCH ARGUMENT. The emitted systemd unit's ExecStart
+// carries `--release-revision <sha>` (verifiable in the unit-emission oracle's frozen expectation), so
+// the running process announces whatever the unit told it to announce.
+//
+// The consequence is exact and it bounds the claim. BEFORE a restart, an old process is still running
+// with the OLD unit's argument, so it announces L against a tree at D and this fold correctly answers
+// ReleaseMixed -- which is the transition that motivated this module. AFTER a restart, an old
+// EXECUTABLE relaunched under the NEW unit announces D, and this fold answers ReleaseBoundToTree while
+// the binary bytes are still the old ones. So the binding is a transition guard across the publication
+// window, NOT proof that the executable is the one admitted for that tree.
+//
+// An earlier revision of this record claimed the observable pair "already closes" the mixed-release
+// transition without that qualifier. It does not; it closes the pre-restart half. Corrected here rather
+// than left for a reader to discover from the unit file, because a carrier that overstates what it
+// proves is worse than one that proves less -- the overstatement is what stops anyone rechecking.
+//
+// RUNG: mitigatable, and it is honestly named. The next observable fact is already produced and not yet
+// consumed here -- `RunningReleaseObservation` carries a surface_bundle_identity beside the revision,
+// and that identity IS derived from what the process actually built rather than from an argument, so
+// requiring it alongside the revision raises the claim without inventing a field. Exact executable
+// provenance stays a declared future refinement, dependent on something observing the binary's bytes.
+type DeployedReleaseBinding
+  = ReleaseBoundToTree { revision: GitObjectId }
+  | ReleaseMixed { tree_revision: GitObjectId, process_revision: CommitSha }
+  | ReleaseBindingUnobserved { cause: String }
+
+// COMPARED AGAINST THE TREE'S OBSERVED REVISION, NEVER AGAINST THE ADMITTED ONE. Substituting the
+// admitted revision here would reproduce exactly the vacuity this module exists to close: both sides
+// would descend from one value and agree without consulting the host at all.
+fn deployed_release_binding(
+  observation: DeployedTreeObservation,
+  identity: RunningReleaseIdentity,
+) -> DeployedReleaseBinding {
+  match observation {
+    DeployedTreeUnobservable { cause: c } =>
+      ReleaseBindingUnobserved {
+        cause: join([
+          "the deployed tree was not observed, so no binding is decidable: ",
+          deployed_tree_unobservable_text(cause: c),
+        ], ""),
+      }
+    DeployedTreeObserved { revision: tree_revision, content: _ } =>
+      match identity {
+        RunningReleaseUnidentified { cause: _ } =>
+          ReleaseBindingUnobserved {
+            cause: "the running process did not state a readable release identity, so no binding is decidable",
+          }
+        RunningReleaseIdentified { observation: obs } =>
+          if (obs.revision as String) == (git_object_id_wire_hex(oid: tree_revision) as String) {
+            ReleaseBoundToTree { revision: tree_revision }
+          } else {
+            ReleaseMixed { tree_revision: tree_revision, process_revision: obs.revision }
+          }
+      }
+  }
+}
+
+// ONE PREDICATE FOR THE ONLY QUESTION AN ACTUATOR MAY ASK. Unobserved is NOT bound: a binding that
+// could not be decided is not a binding that holds, and admitting on it would be the
+// empty-observation narrow at the exact seam a dispatch consults before it spawns.
+fn release_binding_holds(binding: DeployedReleaseBinding) -> Bool {
+  match binding {
+    ReleaseBoundToTree { revision: _ } => true
+    ReleaseMixed { tree_revision: _, process_revision: _ } => false
+    ReleaseBindingUnobserved { cause: _ } => false
+  }
+}
+
+fn release_binding_line(binding: DeployedReleaseBinding) -> String {
+  match binding {
+    ReleaseBoundToTree { revision: r } =>
+      join(["release-binding BOUND revision=", git_object_id_wire_hex(oid: r) as String,
+            " -- the running process states the revision the deployed tree is on"], "")
+    ReleaseMixed { tree_revision: t, process_revision: p } =>
+      join(["release-binding MIXED tree=", git_object_id_wire_hex(oid: t) as String,
+            " process=", p as String,
+            " -- the process is interpreting a tree it was not built from; both sides named because",
+            " the remedy depends on which one is ahead"], "")
+    ReleaseBindingUnobserved { cause: c } =>
+      join(["release-binding UNOBSERVED -- ", c], "")
+  }
+}
