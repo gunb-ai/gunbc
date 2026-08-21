@@ -1,7 +1,7 @@
 module gunbc.fleet_main_revision
 
 import std.types { String, NonEmptyStr, Bool, Int }
-import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_object_id_from_untagged_hex }
+import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import extdeps.git.publication_transport {
   GitRemoteRefExpectation,
   RemoteRefMustBeAbsent,
@@ -341,6 +341,52 @@ fn fleet_desired_admitted_expectation<E, M>(
     FleetDesiredAlreadyConverged { accepted: _ } => none
     FleetDesiredSupersededNoOp { accepted: _, current: _ } => none
     FleetDesiredAdvanceRefused { cause: _ } => none
+  }
+}
+
+// The typed refusal rendered for a human-facing receipt. Rendering lives beside the cause set so a
+// new arm cannot be added without this fold refusing to compile. Consumers that ROUTE still match
+// the variants; this is the line an operator reads, never a substitute for the typed cause.
+fn fleet_desired_advance_refusal_message(cause: FleetDesiredAdvanceRefusal) -> String {
+  match cause {
+    AdvanceExpectationUnavailable { cause: why } =>
+      match why {
+        FleetDesiredRefUndecodable { advertised: line } =>
+          concat("the desired ref exists but its advertisement is not a decodable object id, so it must not be written over: ", line)
+        FleetDesiredRefUnobserved { cause: c } =>
+          concat("the desired ref could not be observed, so no expectation licenses a write: ", c)
+      }
+    AdvanceHistoriesUnrelated { current: cur, accepted: acc } =>
+      join([
+        "neither revision is an ancestor of the other (current ",
+        git_object_id_wire_hex(oid: cur) as String,
+        ", accepted ", git_object_id_wire_hex(oid: acc) as String,
+        ") -- advancing would move the ref sideways onto a disjoint history",
+      ], "")
+    AdvanceRelationUnobservable { current: cur, accepted: acc, cause: c } =>
+      join([
+        "the ancestry of ", git_object_id_wire_hex(oid: cur) as String,
+        " and ", git_object_id_wire_hex(oid: acc) as String,
+        " could not be established, and an unknown direction is never read as forward: ", c,
+      ], "")
+    AdvanceRelationIsAboutAnotherPair {
+      relation_current: rc,
+      relation_accepted: ra,
+      actual_current: ac,
+      actual_accepted: aa,
+    } =>
+      join([
+        "the ancestry evidence compares ", git_object_id_wire_hex(oid: rc) as String,
+        " with ", git_object_id_wire_hex(oid: ra) as String,
+        " but the decision is about ", git_object_id_wire_hex(oid: ac) as String,
+        " and ", git_object_id_wire_hex(oid: aa) as String,
+      ], "")
+    InitialFleetDesiredCreationNotAuthorized { accepted: acc } =>
+      join([
+        "origin advertises no such ref. An absent ref DOES license a first creation, but this path is authorized to ADVANCE an existing ref and not to bring the authority into existence; creating it at ",
+        git_object_id_wire_hex(oid: acc) as String,
+        " is a separate admission with its own authorization",
+      ], "")
   }
 }
 

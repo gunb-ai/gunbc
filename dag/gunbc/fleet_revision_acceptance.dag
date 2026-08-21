@@ -1,7 +1,7 @@
 module gunbc.fleet_revision_acceptance
 
 import std.types { String, NonEmptyStr, Bool }
-import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq, git_object_id_wire_hex }
 import extdeps.github.workflow_runs { WorkflowRunConclusion, Success }
 import extdeps.github.workflow_run_event { WorkflowRunEvent }
 import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, artifact_path }
@@ -255,6 +255,45 @@ fn observe_default_branch_revision<M>(event: WorkflowRunEvent, evidence: M) -> D
         }
       }
     }
+  }
+}
+
+// THE TYPED REFUSALS RENDERED FOR A HUMAN-FACING RECEIPT. Rendering lives beside each cause set so
+// a new refusal arm cannot be added without these folds refusing to compile -- the message set and
+// the cause set stay one authority. Consumers that ROUTE still match the variants; these are for
+// the line an operator reads, never a substitute for the typed cause.
+fn required_ci_refusal_message(cause: RequiredCiRefusal) -> String {
+  match cause {
+    CiWorkflowNotTheRequiredFloor { observed_path: p, required_path: q } =>
+      join(["the run belongs to workflow ", p, ", not the required floor (", q, ")"], "")
+    CiRepositoryNotThisRepository { observed: o, required: r } =>
+      join(["the run belongs to repository ", o, ", not ", r], "")
+    CiHeadRepositoryNotThisRepository { observed: o, required: r } =>
+      join(["the run's head repository is ", o, ", not ", r, " -- a fork's run never admits a fleet revision"], "")
+    CiActivityNotCompleted { observed: o } =>
+      concat("the workflow_run activity is not completed: ", o)
+    CiConclusionNotSuccess { observed: _ } =>
+      "the required floor did not conclude Success, so the revision is unproven and the desired ref never advances onto it"
+    CiHeadShaUndecodable { observed: raw } =>
+      concat("the run's head_sha is not a decodable object id: ", raw)
+  }
+}
+
+fn default_branch_refusal_message(cause: DefaultBranchRefusal) -> String {
+  match cause {
+    BranchIsNotTheDefaultBranch { observed: o, required: r } =>
+      join(["the run is on branch ", o, ", not ", r, " -- only the default branch admits a fleet revision"], "")
+    BranchEventIsNotAPush { observed: o } =>
+      join([
+        "the run originated from ", o,
+        ", not a push -- a pull-request run proves the floor passed on its tree and proves nothing about the default branch",
+      ], "")
+    BranchRepositoryNotThisRepository { observed: o, required: r } =>
+      join(["the run belongs to repository ", o, ", not ", r], "")
+    BranchHeadRepositoryNotThisRepository { observed: o, required: r } =>
+      join(["the run's head repository is ", o, ", not ", r], "")
+    BranchHeadShaUndecodable { observed: raw } =>
+      concat("the run's head_sha is not a decodable object id: ", raw)
   }
 }
 

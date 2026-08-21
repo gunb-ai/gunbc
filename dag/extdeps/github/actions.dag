@@ -83,7 +83,7 @@ type WorkflowTrigger
   | Schedule { cron: CronSchedule }
   | WorkflowDispatch { inputs: List<DispatchInput> }
   | WorkflowCall { inputs: List<DispatchInput> }
-  | WorkflowRunCompleted { workflows: List<String> }
+  | WorkflowRunCompleted { workflows: List<String>, branches: List<String> }
   | MergeGroup
 
 type PullRequestActivity

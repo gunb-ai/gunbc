@@ -17,7 +17,7 @@ import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.witness_floor_workflow { witness_floor_workflow_name, witness_floor_toolchain_step }
 import gunbc.fleet_desired_admission {
   fleet_desired_admission_event_payload_path,
-  fleet_desired_admission_authorized_push_path,
+  fleet_desired_admission_authorized_action_path,
 }
 import v2.std.optional { Present }
 import std.types { String }
@@ -34,7 +34,8 @@ import std.types { String }
 //
 // WHAT THIS REPLACES. deploy.yml previously ended with a step that stamped $GITHUB_SHA onto
 // refs/fleet/desired on every push to main, consulting nothing. The modeled gate
-// (admit_fleet_desired_advance) existed the whole time with its witness test as its only caller.
+// (gunbc.fleet_main_revision decide_fleet_desired_advance) existed the whole time with its witness
+// test as its only caller.
 // That is not a missing feature, it is a wall standing beside an actuator that walked around it,
 // and the blast radius reaches further than the ref: gunbc.roadmap_belt_actuate gates worker
 // dispatch on revision standing, so a desired ref that always equals whatever last landed makes
@@ -104,7 +105,7 @@ fn fleet_desired_admission_stage_payload_step() -> Step {
       "set -eu\n",
       "ROOT=", ci_repo_root_shell(), "\n",
       "mkdir -p \"$ROOT/target\"\n",
-      "rm -f \"$ROOT/", fleet_desired_admission_authorized_push_path, "\"\n",
+      "rm -f \"$ROOT/", fleet_desired_admission_authorized_action_path, "\"\n",
       "cp \"$", github_event_path_env, "\" \"$ROOT/", fleet_desired_admission_event_payload_path, "\"\n",
     ], ""),
     shell: none,
@@ -137,22 +138,24 @@ fn fleet_desired_admission_decide_step() -> Step {
   }
 }
 
-// THE ACTUATION CARRIES NO DECISION. It executes the push the model authorized and nothing
+// THE ACTUATION CARRIES NO DECISION. It executes the action the model authorized and nothing
 // else -- no ref name, no candidate revision, no expected prior appears in this shell, because
 // all three are operands of the admission and are rendered into the authorized script by the
 // decision that produced them. A shell that cannot name a revision cannot push an unadmitted
 // one. The test -s is not a second gate but a refusal to run an absent or empty authorization:
 // if the previous step somehow exited zero without writing one, this stops rather than
-// treating a missing authorization as permission.
-fn fleet_desired_admission_push_step() -> Step {
+// treating a missing authorization as permission. Two of the three authorized actions mutate no
+// ref at all -- already-converged and superseded -- and they still render a nonempty script, so
+// `test -s` continues to separate "nothing was written" from "nothing was to be done".
+fn fleet_desired_admission_action_step() -> Step {
   RunStep {
     name: Present { value: "Execute the authorized fleet-desired advance" },
     id: none,
     run: join([
       "set -eu\n",
       "ROOT=", ci_repo_root_shell(), "\n",
-      "test -s \"$ROOT/", fleet_desired_admission_authorized_push_path, "\"\n",
-      "sh \"$ROOT/", fleet_desired_admission_authorized_push_path, "\"\n",
+      "test -s \"$ROOT/", fleet_desired_admission_authorized_action_path, "\"\n",
+      "sh \"$ROOT/", fleet_desired_admission_authorized_action_path, "\"\n",
     ], ""),
     shell: none,
     env: none,
@@ -176,7 +179,7 @@ fn fleet_desired_admission_job() -> Job {
       fleet_desired_admission_build_step(),
       fleet_desired_admission_stage_payload_step(),
       fleet_desired_admission_decide_step(),
-      fleet_desired_admission_push_step()
+      fleet_desired_admission_action_step()
     ],
     needs: [],
     env: none,
@@ -220,6 +223,34 @@ fn fleet_desired_admission_job() -> Job {
 // admitting each intermediate one in turn would be slower convergence for no gain. Reaching for
 // QueueMax would buy the in-order queue this comment used to claim and then have to justify why the
 // fleet wants to walk through revisions it has already passed.
+//
+// THAT ARGUMENT WAS SOUND AND ITS PREMISE WAS FALSE, WHICH IS WHY THE TRIGGER NOW CARRIES A BRANCH
+// FILTER. It assumed every entry in the group is an admission, so that an evicted pending entry is
+// always a superseded one. It was not: the trigger named no branches, so EVERY branch's floor
+// completion created a run that entered this one constant group and only then skipped on the
+// job-level condition. A pull request's floor completing could therefore evict a pending admission
+// for a green main revision and do nothing in its place -- no advance, no refusal, no diagnostic,
+// and a `cancelled` run indistinguishable from ordinary noise. Found by nimble-fox-671 against
+// origin/main; the observed tally over 131 runs was 77 skipped, 45 cancelled, 6 failure, 3 success,
+// which is consistent with the drop being routine rather than rare.
+//
+// This is the absorbing fallback's mirror -- the empty-observation narrow -- reached through the
+// platform rather than through a failure arm: a lost pending admission renders as "nothing to do"
+// when the truth is "something was dropped before it could decide".
+//
+// THE ROOT FIX IS AT THE TRIGGER GRAIN, NOT THE CONCURRENCY GRAIN. Filtering here stops the
+// irrelevant event creating a run at all, so nothing irrelevant ever enters the group and the
+// paragraph above becomes true as written -- an evicted pending entry really is a superseded
+// admission. Widening the queue instead (ConcurrencyMappingQueueMax) would have stopped the
+// eviction while leaving up to a hundred no-op entries queued ahead of a real admission on a
+// single-concurrency runner: the drop traded for a stall, with the irrelevant events still
+// arriving. The filter also removes the dispatch cost swift-badger-524 raised (32 no-op runs in
+// thirty minutes) as a consequence rather than as separate work.
+//
+// THE JOB-LEVEL CONDITION AND THE IN-MODEL TRUST CHECKS STAY. The filter is defence in depth, not
+// a replacement: it is a platform-side fact this repository cannot verify from inside a run, and
+// extdeps.github.workflow_run_event workflow_run_event_conclusion_required_note argues exactly
+// this -- the reader re-checks what a widened trigger would otherwise smuggle past it.
 //
 // DECLARED GAP -- SEARCH KEY: FleetDesiredAdvanceForwardOnly
 // WHAT ORDERING DOES NOT COVER: THE DESIRED REF CAN MOVE BACKWARD, AND THIS IS ORDINARY RATHER
@@ -271,7 +302,10 @@ fn fleet_desired_admission_job() -> Job {
 data fleet_desired_admission_workflow: Workflow = Workflow {
   name: "fleet-desired",
   on: [
-    WorkflowRunCompleted { workflows: [witness_floor_workflow_name] }
+    WorkflowRunCompleted {
+      workflows: [witness_floor_workflow_name],
+      branches: [gunbc_default_branch_name],
+    }
   ],
   concurrency: Present {
     value: ConcurrencyMappingQueueNotMax {
