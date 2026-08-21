@@ -1,0 +1,120 @@
+module gunbc.generic_binder_field_projection_deficit
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref {
+  CitableThroughDeclIndex,
+  CitationIndexCoverage,
+  DeclarationRef,
+  OutsideDeclIndexTestWitnessModule,
+  citation_is_outside_index,
+  decl_ref
+}
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// A V2 INFERENCE DEFICIT, MEASURED BY EXECUTION, WITH ITS LOCATED POPULATION.
+//
+// INVALID STATE: a binder introduced by destructuring a GENERIC coproduct --
+// `Present { value: l }` of `Optional<Node>`, `Accepted { value: l }` of
+// `Outcome<Node>` -- does not carry a resolved element type at the point a FIELD
+// is projected off it. `l.children` fails with `error type cascade` located at
+// the projection's own offset. The SAME binder used in ARGUMENT position resolves
+// correctly and the call typechecks: four claims in the located module pass doing
+// exactly that, in the same file, against the same producers.
+//
+// HOW IT WAS FOUND: gunbc#8818, on the first execution the fold-lowering
+// end-to-end witnesses had ever had. It is recorded here rather than left in that
+// PR's prose because two live sites now carry a shape this deficit dictates, and a
+// shape dictated by a deficit that nothing names is indistinguishable from a shape
+// someone preferred.
+//
+// HARM: the author's remedy is to move the projection into a function whose
+// parameter is concretely typed, which is what both sites do. That is sound and it
+// costs a named indirection per site. The real harm is not the indirection -- it is
+// that the failure is attributed to the PROJECTION rather than to the binder whose
+// type was never resolved, so the class presents as unrelated one-off type noise in
+// whichever file hits it, exactly as gunbc.list_membership_operation_gap records
+// for its own class. That is why this carrier states the attribution, not just the
+// symptom.
+//
+// RUNG FOUND AT: mitigatable. The failure is loud, typed and located -- it refuses
+// rather than accepting a wrong projection -- so nothing silently goes wrong; what
+// is unavailable is writing the direct form at all.
+//
+// CEILING: structurally impossible, and the reason is that membership is decidable.
+// The element type is present in the scrutinee's type at the match; nothing about
+// resolving it at the binder is undecidable or external. This is a decidable class
+// whose authority already exists, so it is neither a wall-after-grounding nor a
+// ratchet -- it is unbuilt.
+//
+// NEXT-RUNG TRIGGER: v2 inference resolving a generic coproduct's type argument
+// into the arm binder, so that a field projection off that binder is checked
+// against the instantiated type. This carrier's dissolution is stated below and its
+// located sites are the population that dissolves with it.
+//
+// WHAT THIS CARRIER DOES NOT ASSERT: it does not propose the repair's shape, and it
+// does not claim the two sites below are the whole population. They are the sites
+// this measurement located. A census over the corpus would be a different piece of
+// work and reading two located sites as a total is the failure
+// gunbc.list_membership_operation_gap's own header records for its first attempt.
+
+type GenericBinderProjectionSite {
+  site: DeclarationRef
+  index_coverage: CitationIndexCoverage
+  scrutinee_type: NonEmptyStr
+  projected_field: NonEmptyStr
+}
+
+data generic_binder_field_projection_sites: List<GenericBinderProjectionSite> = [
+  GenericBinderProjectionSite {
+    site: decl_ref(
+      module_path: "v2.test.claim.fold_lowering",
+      decl_name: "lowered_loop_binds_carrier_binder"
+    ),
+    index_coverage: OutsideDeclIndexTestWitnessModule,
+    scrutinee_type: "Optional<Node>",
+    projected_field: "children"
+  },
+  GenericBinderProjectionSite {
+    site: decl_ref(
+      module_path: "v2.test.claim.fold_lowering",
+      decl_name: "duplicate_carrier_edge_is_malformed"
+    ),
+    index_coverage: OutsideDeclIndexTestWitnessModule,
+    scrutinee_type: "Optional<Node>",
+    projected_field: "children"
+  }
+]
+
+fn generic_binder_field_projection_dissolution() -> DissolutionCondition {
+  unbound_dissolution(
+    description: "v2 inference resolves a generic coproduct's type argument into the arm binder, so a field projection off that binder checks against the instantiated type. At that point the carrier_binder_of / with_duplicate_carrier_edge helpers in v2.test.claim.fold_lowering fold back into their match arms, the annotation that names this deficit deletes with them, and this module deletes with the sites."
+  )
+}
+
+fn generic_binder_field_projection_site_is_located(s: GenericBinderProjectionSite) -> Bool {
+  !(s.site.module_path == "") && !(s.site.decl_name == "") && !(s.projected_field == "")
+}
+
+fn generic_binder_field_projection_sites_all_located_in(
+  sites: List<GenericBinderProjectionSite>
+) -> Bool {
+  fold(sites, init: true, f: fn(ok, s) { ok && generic_binder_field_projection_site_is_located(s: s) })
+}
+
+fn generic_binder_field_projection_sites_all_located() -> Bool {
+  generic_binder_field_projection_sites_all_located_in(sites: generic_binder_field_projection_sites)
+}
+
+fn generic_binder_field_projection_site_refs_in(
+  sites: List<GenericBinderProjectionSite>
+) -> List<DeclarationRef> {
+  fold(sites, init: [], f: fn(acc, s) { concat(acc, [s.site]) })
+}
+
+fn generic_binder_field_projection_outside_index_sites() -> List<GenericBinderProjectionSite> {
+  filter(generic_binder_field_projection_sites, s => citation_is_outside_index(coverage: s.index_coverage))
+}
+
+fn generic_binder_field_projection_outside_index_count() -> Int {
+  length(xs: generic_binder_field_projection_outside_index_sites())
+}

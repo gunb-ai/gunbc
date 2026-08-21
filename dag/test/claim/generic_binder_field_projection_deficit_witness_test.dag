@@ -1,0 +1,50 @@
+module test.claim.generic_binder_field_projection_deficit_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.decl_ref { CitableThroughDeclIndex, OutsideDeclIndexTestWitnessModule, decl_ref }
+import gunbc.generic_binder_field_projection_deficit {
+  GenericBinderProjectionSite,
+  generic_binder_field_projection_outside_index_count,
+  generic_binder_field_projection_sites,
+  generic_binder_field_projection_sites_all_located,
+  generic_binder_field_projection_sites_all_located_in
+}
+
+// A CONTROLLED FIXTURE, NOT A COUNT AGAINST THE TREE. The positive claim runs the
+// located-ness fold over the real roster; the red control runs the SAME fold over a
+// row this file authors to be unlocated, so the fold is shown to discriminate
+// rather than to be satisfiable by anything. No claim here asserts the roster's
+// size against a literal -- a number copied from the current tree is a snapshot,
+// not an oracle (DESIGN.md §5).
+
+data unlocated_probe_row: GenericBinderProjectionSite = GenericBinderProjectionSite {
+  site: decl_ref(module_path: "probe.module", decl_name: "probe_decl"),
+  index_coverage: CitableThroughDeclIndex,
+  scrutinee_type: "Optional<Node>",
+  projected_field: ""
+}
+
+data located_probe_row: GenericBinderProjectionSite = GenericBinderProjectionSite {
+  site: decl_ref(module_path: "probe.module", decl_name: "probe_decl"),
+  index_coverage: CitableThroughDeclIndex,
+  scrutinee_type: "Optional<Node>",
+  projected_field: "children"
+}
+
+test fn deficit_sites_are_all_located() -> Bool {
+  generic_binder_field_projection_sites_all_located()
+}
+
+test fn unlocated_row_is_refused_by_the_same_fold() -> Bool {
+  !generic_binder_field_projection_sites_all_located_in(sites: [unlocated_probe_row])
+}
+
+test fn located_probe_row_passes_the_same_fold() -> Bool {
+  generic_binder_field_projection_sites_all_located_in(sites: [located_probe_row])
+}
+
+test fn one_unlocated_row_reds_a_roster_that_is_otherwise_located() -> Bool {
+  !generic_binder_field_projection_sites_all_located_in(
+    sites: [located_probe_row, unlocated_probe_row]
+  )
+}
