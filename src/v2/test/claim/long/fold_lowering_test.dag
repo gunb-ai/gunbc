@@ -294,3 +294,34 @@ test fn non_fold_call_is_not_a_fold_disposition() -> Bool {
       }
   }
 }
+
+fn probe_idents() -> List<Symbol> {
+  fold_snippet_identities()
+}
+
+fn probe_locate_found() -> Bool {
+  match ingest_and_locate(source_text: fold_snippet, file: ^fold_probe_file) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+fn probe_ingest_root_children_count() -> Int {
+  match ingest(source_text: fold_snippet, file: ^fold_probe_file) {
+    Absent => 0
+    Present { value: t } => list_length(items: t.children)
+  }
+}
+
+fn probe_lowering_name() -> String {
+  match lowering_of(source_text: fold_snippet, file: ^fold_probe_file) {
+    Absent => "ingest-or-locate-absent"
+    Present { value: l } =>
+      match l {
+        FoldCallLowered { seam_loop: _ } => "lowered"
+        FoldCallStepFormUnresolved { diagnostic: _ } => "step-form-unresolved"
+        FoldCallStepShapeInvalid { diagnostic: _ } => "step-shape-invalid"
+        FoldCallNotAFold { diagnostic: _ } => "not-a-fold"
+      }
+  }
+}
