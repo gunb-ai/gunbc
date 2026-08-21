@@ -164,6 +164,31 @@ fn fleet_desired_floor_green(conclusion: WorkflowRunConclusion) -> Bool {
 // not read, which is the empty-observation narrow with the fleet as the blast radius. The
 // ref exists, so refusing costs nothing real; if a genuine first admission is ever needed
 // it arrives as a distinguished observation, not as this arm guessing.
+// THE TWO ARMS THE OBSERVATION SPLIT MADE EXPRESSIBLE, AND BOTH REFUSE. fleet_desired_admission_decide
+// matched FleetDesiredRevision with two variants when the type had two; #8701 split it into four,
+// and this file and that split landed independently, each green alone. The combination did not
+// resolve -- a semantic merge conflict no textual merge could see -- which is the fail-closed
+// census doing its job: the deletion of a variant's implicit coverage surfaced exactly the consumer
+// that had to answer for it.
+//
+// The answers follow this function's own stated policy rather than inventing one. It already
+// declines to create the ref from an unobserved prior, reasoning that a first admission must arrive
+// as a distinguished observation and not as an arm guessing.
+//
+// FleetDesiredAbsent IS that distinguished observation, and its refusal is deliberately NOT a
+// policy against creation -- fleet_main_revision says outright that an absent ref is where a create
+// belongs, and its expectation seam already maps Absent to RemoteRefMustBeAbsent. The limit is
+// executional and local to this module: AdmissionAdvanceAuthorized carries a NON-optional prior,
+// and fleet_desired_authorized_push_script spells only --force-with-lease=<ref>:<prior-hex>, which
+// has no operand for "expect this ref to be absent". Reusing the advance path would name a prior
+// nobody observed -- an unconditional write wearing a compare-and-swap, which overwrites silently
+// if the absence reading were ever wrong. So the cause says what this module cannot yet EXECUTE
+// rather than what policy forbids, because that is the sentence whoever picks up the create reads
+// first, and the two readings send them to different work. (Wording per nimble-fox-671, the
+// module's owner, who reached the same refusal independently.)
+//
+// FleetDesiredUndecodable refuses on stronger grounds: the ref EXISTS holding something unreadable,
+// so a write would destroy it, and the remedy is to read the bytes rather than to retry.
 fn fleet_desired_admission_decide(event: WorkflowRunEvent, observed: FleetDesiredRevision) -> FleetDesiredAdmissionOutcome {
   match fleet_desired_admission_event_trusted(event: event) {
     Present { value: refusal } => AdmissionRefused { cause: refusal }
@@ -176,29 +201,6 @@ fn fleet_desired_admission_decide(event: WorkflowRunEvent, observed: FleetDesire
               why,
             ], ""),
           }
-        // THE TWO ARMS THE OBSERVATION SPLIT MADE EXPRESSIBLE, AND BOTH REFUSE. This match named
-        // two variants when FleetDesiredRevision had two; #8701 split it into four and this file
-        // and that split landed independently, each green alone. The combination did not resolve
-        // -- a semantic merge conflict no textual merge could see -- which is the fail-closed
-        // census doing its job: the deletion of a variant's implicit coverage surfaced exactly
-        // the consumer that had to answer for it.
-        //
-        // The answers follow this function's own stated policy rather than inventing one. It
-        // already declines to create the ref from an unobserved prior, on the reasoning that a
-        // first admission must arrive as a distinguished observation and not as an arm guessing.
-        // FleetDesiredAbsent IS that distinguished observation, and the refusal is deliberately
-        // NOT a policy against creation -- fleet_main_revision says outright that an absent ref is
-        // where a create belongs, and its expectation seam already maps Absent to
-        // RemoteRefMustBeAbsent. The limit is executional and local to this module: its outcome
-        // carries a non-optional prior and its push renderer spells only
-        // --force-with-lease=<ref>:<prior-hex>, which has no operand for "expect this ref to be
-        // absent". Reusing the advance path would name a prior nobody observed -- an unconditional
-        // write wearing a compare-and-swap, which overwrites silently if the absence reading was
-        // ever wrong. So the cause says what this module cannot yet EXECUTE, not what policy
-        // forbids, because that is the sentence whoever picks up the create will read first.
-        // (Wording per nimble-fox-671, the module owner, who reached the same refusal independently.) Undecodable refuses on stronger grounds: the ref EXISTS
-        // holding something unreadable, so a write would destroy it, and the remedy is to read
-        // the bytes rather than to retry.
         FleetDesiredAbsent =>
           AdmissionRefused {
             cause: join([
