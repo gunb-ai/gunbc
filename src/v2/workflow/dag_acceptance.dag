@@ -26,7 +26,12 @@ import v2.compiler.staged_front_end {
 import v2.std.algebra { list_snoc_item }
 import v2.std.collection { List }
 import v2.std.compilers.target_model { TargetModel }
-import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
+import v2.std.diagnostic { Accepted, Diagnostics, None, NonEmptyDiagnostics, Rejected, Some }
+import v2.std.leaf_model_verification {
+  TargetCompileAccepted,
+  TargetCompileRejected,
+  TargetCompileVerdict
+}
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, node_subtree_count }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -79,25 +84,25 @@ type TargetCompileClaim {
 }
 
 type DagStageObligation
-  = TokenizeObligation
-  | ParseObligation
-  | NormalizeObligation
-  | ResolveObligation
-  | InferObligation
-  | EvalObligation { claim: EvalClaim }
-  | TranslateObligation { claim: TranslationClaim }
-  | TargetCompileObligation { claim: TargetCompileClaim }
+  = TokenizeStage
+  | ParseStage
+  | NormalizeStage
+  | ResolveStage
+  | InferStage
+  | EvalStage { claim: EvalClaim }
+  | TranslateStage { claim: TranslationClaim }
+  | TargetCompileStage { claim: TargetCompileClaim }
 
 fn obligation_prerequisites(obligation: DagStageObligation) -> List<DagStageObligation> {
   match obligation {
-    TokenizeObligation => []
-    ParseObligation => [TokenizeObligation]
-    NormalizeObligation => [ParseObligation]
-    ResolveObligation => [NormalizeObligation]
-    InferObligation => [ResolveObligation]
-    EvalObligation { claim: _ } => [InferObligation]
-    TranslateObligation { claim: _ } => [InferObligation]
-    TargetCompileObligation { claim: c } => [TranslateObligation { claim: c.translation }]
+    TokenizeStage => []
+    ParseStage => [TokenizeStage]
+    NormalizeStage => [ParseStage]
+    ResolveStage => [NormalizeStage]
+    InferStage => [ResolveStage]
+    EvalStage { claim: _ } => [InferStage]
+    TranslateStage { claim: _ } => [InferStage]
+    TargetCompileStage { claim: c } => [TranslateStage { claim: c.translation }]
   }
 }
 
@@ -109,19 +114,19 @@ fn translation_claim_eq(a: TranslationClaim, b: TranslationClaim) -> Bool {
 
 fn obligation_eq(a: DagStageObligation, b: DagStageObligation) -> Bool {
   match a {
-    EvalObligation { claim: ca } =>
+    EvalStage { claim: ca } =>
       match b {
-        EvalObligation { claim: cb } => ca.identity == cb.identity
+        EvalStage { claim: cb } => ca.identity == cb.identity
         _ => false
       }
-    TranslateObligation { claim: ca } =>
+    TranslateStage { claim: ca } =>
       match b {
-        TranslateObligation { claim: cb } => translation_claim_eq(a: ca, b: cb)
+        TranslateStage { claim: cb } => translation_claim_eq(a: ca, b: cb)
         _ => false
       }
-    TargetCompileObligation { claim: ca } =>
+    TargetCompileStage { claim: ca } =>
       match b {
-        TargetCompileObligation { claim: cb } =>
+        TargetCompileStage { claim: cb } =>
           (ca.toolchain_identity == cb.toolchain_identity)
             && translation_claim_eq(a: ca.translation, b: cb.translation)
         _ => false
@@ -132,14 +137,14 @@ fn obligation_eq(a: DagStageObligation, b: DagStageObligation) -> Bool {
 
 fn obligation_label(obligation: DagStageObligation) -> Symbol {
   match obligation {
-    TokenizeObligation => ^obligation_tokenize
-    ParseObligation => ^obligation_parse
-    NormalizeObligation => ^obligation_normalize
-    ResolveObligation => ^obligation_resolve
-    InferObligation => ^obligation_infer
-    EvalObligation { claim: c } => c.identity
-    TranslateObligation { claim: c } => c.target_identity
-    TargetCompileObligation { claim: c } => c.toolchain_identity
+    TokenizeStage => ^obligation_tokenize
+    ParseStage => ^obligation_parse
+    NormalizeStage => ^obligation_normalize
+    ResolveStage => ^obligation_resolve
+    InferStage => ^obligation_infer
+    EvalStage { claim: c } => c.identity
+    TranslateStage { claim: c } => c.target_identity
+    TargetCompileStage { claim: c } => c.toolchain_identity
   }
 }
 
@@ -173,13 +178,12 @@ type DagAcceptanceContract {
 }
 
 type TargetCompileObservation
-  = TargetCompileAccepted
-  | TargetCompileDiagnosed { marker: String, stderr_length: Int }
+  = TargetCompileDecided { verdict: TargetCompileVerdict }
   | TargetCompileFailedUnparsed { exit_code: Int, stderr_length: Int }
   | TargetCompilerUnavailable { cause: String }
   | TargetCompileInvocationRefused { cause: String }
 
-data target_compile_observation_note: String = "FIVE OBSERVATIONS, THREE SUBJECTS, AND THE THIRD IS THE ONE THAT GETS LOST. The Diagnosed arm carries the MARKER that was matched in the toolchain output and the length of that output, not a diagnostic COUNT: nothing at this seam splits target-compiler output into diagnostics, and a count nobody computed would be a fabricated measurement sitting inside the evidence this harness exists to make trustworthy. Next-rung trigger: a modeled reader of the target toolchain diagnostic stream, at which point the arm carries real per-diagnostic rows. Accepted and Diagnosed are facts about the CANDIDATE. Unavailable (no toolchain) and InvocationRefused (the call itself refused) are facts about US, and neither may ever read as 'the target compiler said no' — asserting a verdict over a refusing call is the fabricated-plausible-output failure at the host boundary. FailedUnparsed — the toolchain ran, failed, and produced nothing we could parse — is neither: it is IGNORANCE, and rendering ignorance as rejection is the widen DESIGN section 5 forbids. It gets its own execution arm and its own count so its frequency is observable and can rank for fixing."
+data target_compile_observation_note: String = "THE CANDIDATE-FACING HALF IS NOT MINTED HERE. Whether a target toolchain accepted or rejected a compilation is already modeled: v2.std.leaf_model_verification TargetCompileVerdict, with its accepted arm and its rejected arm carrying a diagnostic code. This observation REUSES it and adds only what a live invocation can be that a modeled expectation cannot — the floor caught the first cut of this file minting a second TargetCompileAccepted beside that authority, which is the section-3 nicknaming violation exactly, and it broke every existing consumer of the real one.\n\nSO: FOUR ARMS, THREE SUBJECTS. Decided is a fact about the CANDIDATE and defers to the existing verdict authority. Unavailable (no toolchain) and InvocationRefused (the call itself refused) are facts about US, and neither may ever read as the toolchain having said no — asserting a verdict over a refusing call is the fabricated-plausible-output failure at the host boundary. FailedUnparsed — the toolchain ran, failed, and produced nothing we could read — is neither: it is IGNORANCE, and rendering ignorance as rejection is the widen DESIGN section 5 forbids, so it gets its own execution arm and its own count."
 
 type TargetCompileExecutor {
   compile_target_source: fn(String) -> TargetCompileObservation
@@ -216,14 +220,21 @@ type StageUndecidedCause
 
 type StageExecution
   = StagePassed { obligation: DagStageObligation, receipt: StageReceipt }
+  | StagePassedWithFrontier {
+      obligation: DagStageObligation,
+      receipt: StageReceipt,
+      diagnostics: NonEmptyDiagnostics
+    }
   | StageRejected { obligation: DagStageObligation, refusal: StageRefusal }
   | StageNotRun { obligation: DagStageObligation, reason: StageNotRunReason }
   | StageUndecided { obligation: DagStageObligation, cause: StageUndecidedCause }
 
-data stage_execution_arity_note: String = "FOUR ARMS, NOT THREE. Passed, Rejected and NotRun cannot express 'the stage executed and the result is unknowable', which is exactly what an unparseable target-toolchain failure is. Folding it into Rejected would inflate rejection counts with our own ignorance; folding it into NotRun would claim work we did pay for never happened. Undecided is counted, and it drives the verdict to Incomplete rather than to Rejected."
+data stage_execution_frontier_note: String = "ACCEPTED CLEAN AND ACCEPTED-WITH-DIAGNOSTICS ARE DIFFERENT ARMS, and this is the difference between an oracle and a blindfold. A stage can return Accepted while carrying typed, located diagnostics — DESIGN names that state FrontierAccepted and calls it distinct from silent below-floor AND from a refusal, with live specimens in the compiler today. If this receipt folded it into an ordinary pass, every metric built on the harness would count a frontier candidate as clean, and the deficit frequency would be zero by construction. A separate CONSTRUCTOR rather than an optional field is deliberate: a consumer matching StagePassed cannot silently absorb the advisory case, because the advisory case is not a StagePassed."
+
+data stage_execution_arity_note: String = "FIVE ARMS, AND THE LAST TWO ARE THE ONES THAT USUALLY GO MISSING. Passed, Rejected and NotRun cannot express 'the stage executed and the result is unknowable', which is exactly what an unparseable target-toolchain failure is. Folding it into Rejected would inflate rejection counts with our own ignorance; folding it into NotRun would claim work we did pay for never happened. Undecided is counted, and it drives the verdict to Incomplete rather than to Rejected."
 
 type DagAcceptanceVerdict
-  = AcceptanceContractSatisfied
+  = AcceptanceContractSatisfied { frontier_stages: List<Symbol> }
   | AcceptanceContractRejected { first_rejection: Symbol, further_rejections: List<Symbol> }
   | AcceptanceContractIncomplete { first_unfinished: Symbol, further_unfinished: List<Symbol> }
 
@@ -284,9 +295,9 @@ fn effective_obligations(contract: DagAcceptanceContract) -> List<DagStageObliga
 
 fn obligation_front_end_depth(obligation: DagStageObligation) -> Int {
   match obligation {
-    TokenizeObligation => 1
-    ParseObligation => 2
-    NormalizeObligation => 3
+    TokenizeStage => 1
+    ParseStage => 2
+    NormalizeStage => 3
     _ => 4
   }
 }
@@ -342,20 +353,21 @@ type AcceptanceRunState {
 
 fn front_end_stage_obligation(stage: FrontEndStage) -> DagStageObligation {
   match stage {
-    FrontEndTokenize => TokenizeObligation
-    FrontEndParse => ParseObligation
-    FrontEndNormalize => NormalizeObligation
-    FrontEndResolve => ResolveObligation
+    FrontEndTokenize => TokenizeStage
+    FrontEndParse => ParseStage
+    FrontEndNormalize => NormalizeStage
+    FrontEndResolve => ResolveStage
   }
 }
 
 fn front_end_step_row(step: FrontEndStageStep) -> StageExecution {
   match step {
-    FrontEndStagePassed { stage: s, receipt: r, diagnostics: _ } =>
-      StagePassed {
+    FrontEndStagePassed { stage: s, receipt: r, diagnostics: d } =>
+      passed_row(
         obligation: front_end_stage_obligation(stage: s),
-        receipt: FrontEndReceiptRow { stage: s, receipt: r }
-      }
+        receipt: FrontEndReceiptRow { stage: s, receipt: r },
+        diagnostics: d
+      )
     FrontEndStageRejected { stage: s, diagnostics: d } =>
       StageRejected {
         obligation: front_end_stage_obligation(stage: s),
@@ -464,9 +476,22 @@ fn front_end_run_resolved(run: FrontEndRun) -> Optional<Node> {
   }
 }
 
+fn passed_row(
+  obligation: DagStageObligation,
+  receipt: StageReceipt,
+  diagnostics: Diagnostics
+) -> StageExecution {
+  match diagnostics {
+    None => StagePassed { obligation: obligation, receipt: receipt }
+    Some { diagnostics: d } =>
+      StagePassedWithFrontier { obligation: obligation, receipt: receipt, diagnostics: d }
+  }
+}
+
 fn row_obligation(row: StageExecution) -> DagStageObligation {
   match row {
     StagePassed { obligation: o, receipt: _ } => o
+    StagePassedWithFrontier { obligation: o, receipt: _, diagnostics: _ } => o
     StageRejected { obligation: o, refusal: _ } => o
     StageNotRun { obligation: o, reason: _ } => o
     StageUndecided { obligation: o, cause: _ } => o
@@ -476,6 +501,7 @@ fn row_obligation(row: StageExecution) -> DagStageObligation {
 fn row_passed(row: StageExecution) -> Bool {
   match row {
     StagePassed { obligation: _, receipt: _ } => true
+    StagePassedWithFrontier { obligation: _, receipt: _, diagnostics: _ } => true
     StageRejected { obligation: _, refusal: _ } => false
     StageNotRun { obligation: _, reason: _ } => false
     StageUndecided { obligation: _, cause: _ } => false
@@ -550,7 +576,7 @@ fn infer_execution(state: AcceptanceRunState) -> AcceptanceRunState {
       state_with_row(
         state: state,
         row: StageNotRun {
-          obligation: InferObligation,
+          obligation: InferStage,
           reason: ExecutorUnavailable { cause: "resolve passed but the staged front end carried no resolved module" }
         }
       )
@@ -560,18 +586,19 @@ fn infer_execution(state: AcceptanceRunState) -> AcceptanceRunState {
           state_with_row(
             state: state,
             row: StageRejected {
-              obligation: InferObligation,
+              obligation: InferStage,
               refusal: StageDiagnosticRefusal { diagnostics: d }
             }
           )
-        Accepted { value: inferred, diagnostics: _ } =>
+        Accepted { value: inferred, diagnostics: d } =>
           state_with_inferred(
             state: state_with_row(
               state: state,
-              row: StagePassed {
-                obligation: InferObligation,
-                receipt: InferReceiptRow { node_count: node_subtree_count(n: inferred.root) }
-              }
+              row: passed_row(
+                obligation: InferStage,
+                receipt: InferReceiptRow { node_count: node_subtree_count(n: inferred.root) },
+                diagnostics: d
+              )
             ),
             inferred: inferred
           )
@@ -615,22 +642,28 @@ fn state_with_ledger(state: AcceptanceRunState, ledger: VerifierBudgetLedger) ->
   }
 }
 
-fn eval_expectation_row(claim: EvalClaim, observed_node_count: Int) -> StageExecution {
+fn eval_expectation_row(
+  claim: EvalClaim,
+  observed_node_count: Int,
+  diagnostics: Diagnostics
+) -> StageExecution {
   match claim.expectation {
     EvaluatesWithoutRefusal =>
-      StagePassed {
-        obligation: EvalObligation { claim: claim },
-        receipt: EvalReceiptRow { claim: claim, result_node_count: observed_node_count }
-      }
+      passed_row(
+        obligation: EvalStage { claim: claim },
+        receipt: EvalReceiptRow { claim: claim, result_node_count: observed_node_count },
+        diagnostics: diagnostics
+      )
     EvaluatesToNodeCount { expected: expected } =>
       if expected == observed_node_count {
-        StagePassed {
-          obligation: EvalObligation { claim: claim },
-          receipt: EvalReceiptRow { claim: claim, result_node_count: observed_node_count }
-        }
+        passed_row(
+          obligation: EvalStage { claim: claim },
+          receipt: EvalReceiptRow { claim: claim, result_node_count: observed_node_count },
+          diagnostics: diagnostics
+        )
       } else {
         StageRejected {
-          obligation: EvalObligation { claim: claim },
+          obligation: EvalStage { claim: claim },
           refusal: EvalExpectationUnmet {
             claim: claim,
             observed_node_count: observed_node_count,
@@ -649,7 +682,7 @@ fn eval_execution(state: AcceptanceRunState, claim: EvalClaim) -> AcceptanceRunS
       state_with_row(
         state: state,
         row: StageNotRun {
-          obligation: EvalObligation { claim: claim },
+          obligation: EvalStage { claim: claim },
           reason: ExecutorUnavailable { cause: "no candidate cpu-time observer exists at this seam" }
         }
       )
@@ -659,7 +692,7 @@ fn eval_execution(state: AcceptanceRunState, claim: EvalClaim) -> AcceptanceRunS
           state_with_row(
             state: state,
             row: StageNotRun {
-              obligation: EvalObligation { claim: claim },
+              obligation: EvalStage { claim: claim },
               reason: ExecutorUnavailable { cause: "infer passed but no inferred tree was carried" }
             }
           )
@@ -669,24 +702,35 @@ fn eval_execution(state: AcceptanceRunState, claim: EvalClaim) -> AcceptanceRunS
               state_with_row(
                 state: state,
                 row: StageRejected {
-                  obligation: EvalObligation { claim: claim },
+                  obligation: EvalStage { claim: claim },
                   refusal: StageDiagnosticRefusal { diagnostics: d }
                 }
               )
-            Accepted { value: compiled, diagnostics: _ } =>
-              state_with_row(state: state, row: eval_output_row(claim: claim, output: compiled))
+            Accepted { value: compiled, diagnostics: d } =>
+              state_with_row(
+                state: state,
+                row: eval_output_row(claim: claim, output: compiled, diagnostics: d)
+              )
           }
       }
   }
 }
 
-fn eval_output_row(claim: EvalClaim, output: CompileOutput) -> StageExecution {
+fn eval_output_row(
+  claim: EvalClaim,
+  output: CompileOutput,
+  diagnostics: Diagnostics
+) -> StageExecution {
   match output {
     EvalResult { value: m } =>
-      eval_expectation_row(claim: claim, observed_node_count: node_subtree_count(n: m.carried))
+      eval_expectation_row(
+        claim: claim,
+        observed_node_count: node_subtree_count(n: m.carried),
+        diagnostics: diagnostics
+      )
     TranslateResult { source: _ } =>
       StageNotRun {
-        obligation: EvalObligation { claim: claim },
+        obligation: EvalStage { claim: claim },
         reason: ExecutorUnavailable { cause: "eval mode returned a translation output" }
       }
   }
@@ -698,7 +742,7 @@ fn translate_execution(state: AcceptanceRunState, claim: TranslationClaim) -> Ac
       state_with_row(
         state: state,
         row: StageNotRun {
-          obligation: TranslateObligation { claim: claim },
+          obligation: TranslateStage { claim: claim },
           reason: ExecutorUnavailable { cause: "infer passed but no inferred tree was carried" }
         }
       )
@@ -708,12 +752,12 @@ fn translate_execution(state: AcceptanceRunState, claim: TranslationClaim) -> Ac
           state_with_row(
             state: state,
             row: StageRejected {
-              obligation: TranslateObligation { claim: claim },
+              obligation: TranslateStage { claim: claim },
               refusal: StageDiagnosticRefusal { diagnostics: d }
             }
           )
-        Accepted { value: compiled, diagnostics: _ } =>
-          translate_output_state(state: state, claim: claim, output: compiled)
+        Accepted { value: compiled, diagnostics: d } =>
+          translate_output_state(state: state, claim: claim, output: compiled, diagnostics: d)
       }
   }
 }
@@ -721,7 +765,8 @@ fn translate_execution(state: AcceptanceRunState, claim: TranslationClaim) -> Ac
 fn translate_output_state(
   state: AcceptanceRunState,
   claim: TranslationClaim,
-  output: CompileOutput
+  output: CompileOutput,
+  diagnostics: Diagnostics
 ) -> AcceptanceRunState {
   match output {
     TranslateResult { source: m } =>
@@ -730,16 +775,17 @@ fn translate_output_state(
           state: state,
           row: TranslationOutputRow { claim: claim, emitted: m.carried }
         ),
-        row: StagePassed {
-          obligation: TranslateObligation { claim: claim },
-          receipt: TranslateReceiptRow { claim: claim, emitted_length: string_length(s: m.carried) }
-        }
+        row: passed_row(
+          obligation: TranslateStage { claim: claim },
+          receipt: TranslateReceiptRow { claim: claim, emitted_length: string_length(s: m.carried) },
+          diagnostics: diagnostics
+        )
       )
     EvalResult { value: _ } =>
       state_with_row(
         state: state,
         row: StageNotRun {
-          obligation: TranslateObligation { claim: claim },
+          obligation: TranslateStage { claim: claim },
           reason: ExecutorUnavailable { cause: "translate mode returned an eval output" }
         }
       )
@@ -751,32 +797,43 @@ fn target_compile_row(
   observation: TargetCompileObservation
 ) -> StageExecution {
   match observation {
-        TargetCompileAccepted =>
-          StagePassed {
-            obligation: TargetCompileObligation { claim: claim },
-            receipt: TargetCompileReceiptRow { claim: claim }
-          }
-        TargetCompileDiagnosed { marker: _, stderr_length: _ } =>
-          StageRejected {
-            obligation: TargetCompileObligation { claim: claim },
-            refusal: TargetCompileRefusal { claim: claim, observation: observation }
-          }
+        TargetCompileDecided { verdict: verdict } =>
+          target_compile_decided_row(claim: claim, verdict: verdict, observation: observation)
         TargetCompileFailedUnparsed { exit_code: code, stderr_length: len } =>
           StageUndecided {
-            obligation: TargetCompileObligation { claim: claim },
+            obligation: TargetCompileStage { claim: claim },
             cause: TargetCompileFailureUnparsed { exit_code: code, stderr_length: len }
           }
         TargetCompilerUnavailable { cause: cause } =>
           StageNotRun {
-            obligation: TargetCompileObligation { claim: claim },
+            obligation: TargetCompileStage { claim: claim },
             reason: ExecutorUnavailable { cause: cause }
           }
         TargetCompileInvocationRefused { cause: cause } =>
           StageNotRun {
-            obligation: TargetCompileObligation { claim: claim },
+            obligation: TargetCompileStage { claim: claim },
             reason: ExecutorUnavailable { cause: cause }
           }
       }
+}
+
+fn target_compile_decided_row(
+  claim: TargetCompileClaim,
+  verdict: TargetCompileVerdict,
+  observation: TargetCompileObservation
+) -> StageExecution {
+  match verdict {
+    TargetCompileAccepted =>
+      StagePassed {
+        obligation: TargetCompileStage { claim: claim },
+        receipt: TargetCompileReceiptRow { claim: claim }
+      }
+    TargetCompileRejected { diagnostic_code: _ } =>
+      StageRejected {
+        obligation: TargetCompileStage { claim: claim },
+        refusal: TargetCompileRefusal { claim: claim, observation: observation }
+      }
+  }
 }
 
 fn target_compile_execution(
@@ -789,7 +846,7 @@ fn target_compile_execution(
       state_with_row(
         state: state,
         row: StageNotRun {
-          obligation: TargetCompileObligation { claim: claim },
+          obligation: TargetCompileStage { claim: claim },
           reason: ExecutorUnavailable { cause: "no emitted target source was recorded for the declared translation" }
         }
       )
@@ -853,10 +910,10 @@ fn execute_obligation(
   obligation: DagStageObligation
 ) -> AcceptanceRunState {
   match obligation {
-    InferObligation => infer_execution(state: state)
-    EvalObligation { claim: c } => eval_execution(state: state, claim: c)
-    TranslateObligation { claim: c } => translate_execution(state: state, claim: c)
-    TargetCompileObligation { claim: c } => target_compile_execution(state: state, env: env, claim: c)
+    InferStage => infer_execution(state: state)
+    EvalStage { claim: c } => eval_execution(state: state, claim: c)
+    TranslateStage { claim: c } => translate_execution(state: state, claim: c)
+    TargetCompileStage { claim: c } => target_compile_execution(state: state, env: env, claim: c)
     _ =>
       state_with_row(
         state: state,
@@ -888,10 +945,10 @@ fn attempt_obligation(
 
 fn is_front_end_obligation(obligation: DagStageObligation) -> Bool {
   match obligation {
-    TokenizeObligation => true
-    ParseObligation => true
-    NormalizeObligation => true
-    ResolveObligation => true
+    TokenizeStage => true
+    ParseStage => true
+    NormalizeStage => true
+    ResolveStage => true
     _ => false
   }
 }
@@ -945,7 +1002,7 @@ fn budget_refused_rows(
 }
 
 fn unrequired_fixed_rows(effective: List<DagStageObligation>) -> List<StageExecution> {
-  fold([InferObligation], init: no_rows(), f: fn(acc, o) {
+  fold([InferStage], init: no_rows(), f: fn(acc, o) {
     if obligation_member(xs: effective, obligation: o) {
       acc
     } else {
@@ -1041,6 +1098,14 @@ fn row_unfinished_label(row: StageExecution) -> Optional<Symbol> {
   }
 }
 
+fn row_frontier_label(row: StageExecution) -> Optional<Symbol> {
+  match row {
+    StagePassedWithFrontier { obligation: o, receipt: _, diagnostics: _ } =>
+      optional_present(value: obligation_label(obligation: o))
+    _ => optional_absent()
+  }
+}
+
 fn collect_labels(
   rows: List<StageExecution>,
   select: fn(StageExecution) -> Optional<Symbol>
@@ -1105,7 +1170,10 @@ fn acceptance_verdict(receipt: DagAcceptanceReceipt) -> DagAcceptanceVerdict {
     Absent =>
       match labels_verdict_incomplete(labels: collect_labels(rows: receipt.rows, select: row_unfinished_label)) {
         Present { value: v } => v
-        Absent => AcceptanceContractSatisfied
+        Absent =>
+          AcceptanceContractSatisfied {
+            frontier_stages: collect_labels(rows: receipt.rows, select: row_frontier_label)
+          }
       }
   }
 }

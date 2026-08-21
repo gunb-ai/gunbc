@@ -3,9 +3,9 @@ module v2.test.claim.dag_acceptance_rustc_wet
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import v2.std.leaf_model_verification { TargetCompileAccepted, TargetCompileRejected }
 import v2.workflow.dag_acceptance {
-  TargetCompileAccepted,
-  TargetCompileDiagnosed,
+  TargetCompileDecided,
   TargetCompileFailedUnparsed,
   TargetCompileInvocationRefused,
   TargetCompileObservation,
@@ -22,8 +22,11 @@ data invalid_rust_source: String = "pub fn add(x: i32, y: i32) -> i32 { x + true
 
 fn observation_label(observation: TargetCompileObservation) -> Symbol {
   match observation {
-    TargetCompileAccepted => ^observed_accepted
-    TargetCompileDiagnosed { marker: _, stderr_length: _ } => ^observed_diagnosed
+    TargetCompileDecided { verdict: verdict } =>
+      match verdict {
+        TargetCompileAccepted => ^observed_accepted
+        TargetCompileRejected { diagnostic_code: _ } => ^observed_diagnosed
+      }
     TargetCompileFailedUnparsed { exit_code: _, stderr_length: _ } => ^observed_failed_unparsed
     TargetCompilerUnavailable { cause: _ } => ^observed_unavailable
     TargetCompileInvocationRefused { cause: _ } => ^observed_invocation_refused
