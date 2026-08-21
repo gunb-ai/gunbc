@@ -461,7 +461,7 @@ data gunbc_ci_srv1_tasks_observation_function: String = "observe_srv1_tasks_prea
 // on a floor-green main push (needs: [ci] IS the floor-green admission — this job exists
 // only downstream of the required check succeeding in the same run), advance
 // refs/fleet/desired to the merged revision by CAS: --force-with-lease names the exact
-// observed prior (gunbc.fleet_main_revision admit_fleet_desired_advance's from side), so
+// observed prior (gunbc.fleet_main_revision decide_fleet_desired_advance's from side), so
 // a race with a concurrent advance refuses rather than overwriting; ref creation is the
 // from=none arm. Hosts follow the ref; no host is contacted here.
 
@@ -915,7 +915,7 @@ fn gunbc_ci_authorized_key_enroll_invoke() -> String {
 //
 // The CAS half was correct. The ADMISSION half did not exist: gunbc.fleet_main_revision requires the
 // desired revision to derive from merged, FLOOR-GREEN main and models that gate as
-// admit_fleet_desired_advance, and this script never called it -- so the gate's only caller was its
+// decide_fleet_desired_advance, and this script never called it -- so the gate's only caller was its
 // own witness test while the unproven path ran on every push to main. That is exactly the raw-HEAD
 // advance the authority names as its prevented class, and it reached further than the ref:
 // gunbc.roadmap_belt_actuate gates worker dispatch on revision standing, so a desired ref equal to

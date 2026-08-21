@@ -1,12 +1,29 @@
 module gunbc.fleet_main_revision
 
-import std.types { String, NonEmptyStr, Bool }
-import extdeps.git.object_store { GitObjectId }
+import std.types { String, NonEmptyStr, Bool, Int }
+import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import extdeps.git.inspect {
+  MergeBaseOutcome,
+  MergeBaseReported,
+  NoCommonAncestor,
+  MergeBaseRefused,
+  merge_base_outcome,
+}
 import extdeps.git.publication_transport {
   GitRemoteRefExpectation,
   RemoteRefMustBeAbsent,
   RemoteRefMustEqual,
 }
+import gunbc.live_deploy.revision {
+  DeployRevisionRelation,
+  revision_relation_from_ancestry_facts,
+  SameRevision,
+  DeployedIsAncestor,
+  CandidateIsAncestor,
+  UnrelatedHistories,
+  RelationUnverifiable,
+}
+import gunbc.fleet_revision_acceptance { AcceptedFleetRevision }
 
 // fleet-main-revision-authority (arc item 3, operator directive 2026-08-08): the fleet's
 // desired revision derives from MERGED, FLOOR-GREEN main — never from a CLI argument, a
@@ -96,26 +113,437 @@ fn fleet_desired_advance_expectation(observed: FleetDesiredRevision) -> FleetDes
   }
 }
 
-// The admission gate: the ref advances ONLY when the candidate revision's floor is
-// green. The advance is a compare-and-swap naming the expected prior (git update-ref
-// <ref> <new> <old> — the MemberChanged `from` side, per the reconcile spine's CAS
-// ruling), so a concurrent admission refuses instead of silently overwriting. A prior
-// of none is the first admission (ref creation).
-type FleetDesiredAdvance
-  = AdvanceAdmitted { from: GitObjectId?, to: GitObjectId }
-  | AdvanceRefused { cause: String }
+// THE ADMISSION GATE. A LEASE MAKES THE WRITE ATOMIC; IT DOES NOT MAKE IT MONOTONE.
+//
+// This is the correction that shapes the whole decision below, because it is the thing most
+// easily assumed. A compare-and-swap naming the observed prior refuses a CONCURRENT modification
+// -- someone else moved the ref while we were deciding -- and it says NOTHING about direction. A
+// perfectly valid lease against a correctly observed prior will move the ref BACKWARDS to an
+// older revision without complaint, and every check upstream of it will have passed: the
+// revision was proven, the floor was green, the observation was real, the lease matched. Nothing
+// in the CAS is capable of noticing. Forward-only motion is a SEPARATE property and it needs its
+// own evidence, which is what the relation observation supplies.
+//
+// WHAT THE INPUTS USED TO BE, AND WHY NONE OF THEM SURVIVES:
+//
+//   candidate: GitObjectId  -- a target nameable independently of any evidence about it, so a
+//                              caller could present proof about revision A and advance onto B.
+//   floor_green: Bool       -- unfalsifiable at the call site. It asserts that SOME floor was
+//                              green and binds that greenness to no revision at all.
+//   current: GitObjectId?   -- `none` meant both "no such ref, create it" and "could not observe
+//                              it", and the arm took the SAME action for both, so a transport
+//                              failure actuated a ref CREATION.
+//
+// All three are replaced by carriers that cannot express the bad state rather than by checks
+// that detect it. AcceptedFleetRevision is constructible only from two exact positive facts
+// about ONE revision, so there is no candidate left beside it to substitute and no Bool standing
+// in for "which revision was proven". FleetDesiredExpectationDecision has already refused the
+// observations that license nothing.
+//
+// THE RELATION IS SUBJECT-BOUND, AND THE BINDING IS CHECKED RATHER THAN TRUSTED. A bare
+// `DeployedIsAncestor` is not evidence: it does not say WHICH TWO revisions were compared, so a
+// relation computed for some other pair would satisfy a decision about this one. The observation
+// therefore carries both endpoints, and this function refuses when they are not the exact pair
+// under decision. Without that check the subject-binding would be a naming convention rather
+// than a wall -- which is the same distinction between a carrier that says a thing and a carrier
+// that enforces it that the rest of this file exists to make.
 
-fn admit_fleet_desired_advance(
-  candidate: GitObjectId,
-  floor_green: Bool,
-  current: GitObjectId?,
-) -> FleetDesiredAdvance {
-  if floor_green {
-    AdvanceAdmitted { from: current, to: candidate }
+// ONE SUBJECT-BOUND RECORD, AND EXACTLY ONE WAY TO SAY "UNVERIFIABLE".
+//
+// This was a two-variant coproduct -- Observed carrying a DeployRevisionRelation, and Refused
+// carrying a cause -- and that was a duplicate representation of one fact, because
+// DeployRevisionRelation ALREADY has RelationUnverifiable { cause }. The proof that no distinction
+// existed is that the decision mapped both to the same refusal: an Observed-carrying-Unverifiable
+// and a Refused were indistinguishable downstream, so the outer variant was carrying nothing.
+//
+// A record removes the choice. Every observation names exactly one pair and exactly one relation
+// result, every failure to establish direction is RelationUnverifiable, and the subject-binding
+// check has one shape to inspect rather than two. Remedies that later need separating belong
+// inside a typed cause for RelationUnverifiable -- one authority, refined -- not in a second outer
+// refusal path beside it.
+type FleetRevisionRelationObservation {
+  current: GitObjectId
+  accepted: GitObjectId
+  relation: DeployRevisionRelation
+}
+
+// THE ANCESTRY OBSERVATION, SPLIT SO THE DECIDABLE HALF IS ACTUALLY TESTABLE.
+//
+// This fold is PURE: it takes the wire facts a merge-base probe returns and produces the
+// subject-bound relation. The effect that obtains those facts lives at the workflow edge, and the
+// split is not tidiness -- git.Inspect.MergeBase carries no mock_response, so ANY witness that
+// reaches it refuses under the hermetic floor envelope rather than running. Folding the decision
+// into the effect would therefore make the entire ancestry policy unwitnessable, and the tree has
+// already paid for that lesson once (stage0_rust_host_observation_live_witness_test records a
+// single unmocked operation taking down a 105-row batch). Here the policy is hermetic and total,
+// and only the reading of two commits is not.
+//
+// EXIT 1 AND EXIT 128 ARE THE WHOLE REASON THIS TAKES AN EXIT CODE. `git merge-base` exits 1 when
+// the pair genuinely shares no merge base -- unrelated histories, a FACT about the pair -- and 128
+// when a ref is invalid or this is not a repository, which is a failure to look. Both are
+// `exit_success = false`. A consumer holding only that Bool must either refuse both, discarding a
+// real answer, or admit both, which reads an unreadable repository as proof that two revisions are
+// unrelated and then refuses an advance that should have been admitted. The distinction was always
+// declared on the operation and was simply never surfaced.
+//
+// A MERGE BASE THAT IS NEITHER ENDPOINT MEANS THE HISTORIES DIVERGED, and it folds to
+// UnrelatedHistories to match the semantics the existing probe fold already assigns that variant
+// (gunbc.live_deploy.revision deploy_revision_relation_from_probes: neither-is-ancestor yields
+// UnrelatedHistories). Reusing that vocabulary rather than minting a Diverged variant keeps one
+// authority for "how do these two revisions relate"; the name is the deploy lane's, and it means
+// neither-is-an-ancestor rather than share-no-history.
+fn fleet_revision_relation_from_merge_base(
+  current: GitObjectId,
+  accepted: GitObjectId,
+  exit_code: Int,
+  base_hex: String,
+  stderr: String,
+) -> FleetRevisionRelationObservation {
+  FleetRevisionRelationObservation {
+    current: current,
+    accepted: accepted,
+    relation: merge_base_relation(
+      current: current,
+      accepted: accepted,
+      exit_code: exit_code,
+      base_hex: base_hex,
+      stderr: stderr,
+    ),
+  }
+}
+
+// THE EXIT CODES ARE NOT MATCHED HERE. They are git's fact and extdeps.git.inspect owns them
+// beside the exit table that declares them; this module receives an already-classified
+// MergeBaseOutcome and decides only what that outcome means for a fleet advance. The two local
+// `merge_base_exit_*: Int` rows that used to sit here were an undeclared sum -- a second
+// representation of the operation's own exit table, comparable against any other operation's codes
+// without complaint from anything (raised in review 54373).
+//
+// A DECLARED CONFLATION SURVIVES THIS CHANGE, AND IT IS NOW VISIBLE AT ONE LINE INSTEAD OF NONE.
+// NoCommonAncestor (git looked; these histories never met) and a reported base that is neither
+// endpoint (they diverged from a shared past) both fold to UnrelatedHistories, because that is the
+// vocabulary gunbc.live_deploy.revision owns and its variant means neither-is-an-ancestor. The two
+// states are genuinely different and have opposite remedies: a divergence is a force-push or a
+// rebase and the shared base is the thing an operator reasons from, while no common ancestor at all
+// means the configured revision came from somewhere else entirely -- a wrong remote, a wrong
+// repository -- which no amount of history reading will reconcile. The refusal message on that
+// variant currently asserts "share no ancestry", which is FALSE for the divergent case and that is
+// the overwhelmingly common one.
+//
+// It is left folded rather than split unilaterally because DeployRevisionRelation is the deploy
+// lane's type and a split changes every consumer of it. The distinction is DECIDABLE and the
+// evidence is now in hand rather than discarded upstream -- NoCommonAncestor arrives as its own
+// variant. Next-rung trigger: the deploy lane splitting UnrelatedHistories into a diverged arm
+// carrying the shared base and an unrelated arm carrying none; this call site consumes the split
+// the day it lands, with no new evidence required. Raised to that owner separately.
+fn merge_base_relation(
+  current: GitObjectId,
+  accepted: GitObjectId,
+  exit_code: Int,
+  base_hex: String,
+  stderr: String,
+) -> DeployRevisionRelation {
+  if git_object_id_eq(left: current, right: accepted) {
+    SameRevision
   } else {
-    AdvanceRefused {
-      cause: "fleet_main_revision: candidate revision's floor is not green; the desired ref never advances onto an unproven revision (raw-HEAD simultaneous fleet-bricking is the prevented class)",
+    match merge_base_outcome(exit_code: exit_code, stdout: base_hex, stderr: stderr) {
+      NoCommonAncestor => UnrelatedHistories
+      MergeBaseReported { base_hex: hex } =>
+        match git_object_id_from_untagged_hex(hex: hex) {
+          Present { value: base } =>
+            relation_from_merge_base_oid(current: current, accepted: accepted, base: base)
+          none =>
+            RelationUnverifiable {
+              cause: concat("git merge-base succeeded but its output is not a decodable object id: ", hex),
+            }
+        }
+      MergeBaseRefused { exit_code: _, stderr: why } =>
+        RelationUnverifiable {
+          cause: concat("git merge-base could not answer for this pair: ", why),
+        }
     }
+  }
+}
+
+// One merge base decides both directions -- a commit is an ancestor of another exactly when it IS
+// their merge base -- so no second probe is needed. The three-way ANSWER is not decided here: the
+// merge-base facts are projected into the shared classification in gunbc.live_deploy.revision, so
+// this module owns an evidence shape and not a policy. Reusing only the five variant names would
+// have left two places computing one decision, agreeing today and free to drift apart tomorrow.
+fn relation_from_merge_base_oid(
+  current: GitObjectId,
+  accepted: GitObjectId,
+  base: GitObjectId,
+) -> DeployRevisionRelation {
+  revision_relation_from_ancestry_facts(
+    same: git_object_id_eq(left: current, right: accepted),
+    deployed_is_ancestor_of_candidate: git_object_id_eq(left: base, right: current),
+    candidate_is_ancestor_of_deployed: git_object_id_eq(left: base, right: accepted),
+  )
+}
+
+type FleetDesiredAdvanceRefusal
+  = AdvanceExpectationUnavailable { cause: FleetDesiredExpectationRefusal }
+  | AdvanceHistoriesUnrelated { current: GitObjectId, accepted: GitObjectId }
+  | AdvanceRelationUnobservable { current: GitObjectId, accepted: GitObjectId, cause: NonEmptyStr }
+  | InitialFleetDesiredCreationNotAuthorized { accepted: GitObjectId }
+  | AdvanceRelationIsAboutAnotherPair {
+      relation_current: GitObjectId,
+      relation_accepted: GitObjectId,
+      actual_current: GitObjectId,
+      actual_accepted: GitObjectId,
+    }
+
+// THE INPUT IS A SUM SO THAT IRRELEVANT EVIDENCE CANNOT BE SUPPLIED, LET ALONE FABRICATED.
+//
+// The decision took (accepted, expectation, relation) unconditionally, and only ONE of the three
+// expectation outcomes raises an ancestry question at all: a refused expectation has no current
+// revision to compare, and an absent ref has none either. The tell that this was wrong came from
+// the fixtures -- the create witness had to construct a same-revision relation purely to satisfy a
+// parameter the create arm ignores, and so did both refusal-remedy rows. A fixture that must
+// invent a fact to call a function is reporting that the signature admits states the domain does
+// not have, and a production caller would have had to invent the same one.
+//
+// This is the same construction move that removed GitObjectId? from the prior: the impossible
+// pairing is ABSENT FROM THE INPUT SPACE rather than rejected after construction.
+type FleetDesiredAdvanceInput<E, M>
+  = FleetDesiredExpectationRefusedInput {
+      accepted: AcceptedFleetRevision<E, M>,
+      cause: FleetDesiredExpectationRefusal,
+    }
+  | FleetDesiredRefAbsentInput { accepted: AcceptedFleetRevision<E, M> }
+  | FleetDesiredObservedCurrentInput {
+      accepted: AcceptedFleetRevision<E, M>,
+      current: GitObjectId,
+      relation: FleetRevisionRelationObservation,
+    }
+
+// FOUR TERMINAL STATES, AND TWO OF THEM ARE SUCCESSES THAT WRITE NOTHING.
+//
+// AlreadyConverged and SupersededNoOp are not failures and must not be rendered as operational
+// red. A late result for an older revision arriving after a newer one has already been admitted is
+// the NORMAL consequence of runs finishing out of order; the desired state is already correct and
+// more advanced, so the work is done. Reporting it as a failure trains an operator to ignore the
+// channel, which is how a real refusal later goes unread.
+//
+// THERE IS NO CREATE-ADMITTED ARM, AND ITS ABSENCE IS DELIBERATE RATHER THAN AN OVERSIGHT. An
+// earlier revision of this type had one, reached whenever the ref was observed absent. That
+// conflated two different propositions: RemoteRefMustBeAbsent is a COMPARE-AND-SWAP PRECONDITION
+// -- it proves the ref is not there -- and it says nothing about whether THIS path is authorized
+// to bring the fleet's root authority into existence. Absence is a state; creation is a
+// capability. Inferring the second from the first is how a workflow that was only ever authorized
+// to ADVANCE an existing ref silently acquires the power to mint one.
+//
+// The live path (gunbc.fleet_desired_admission) refuses first creation today, deliberately, so
+// admitting a create here would also have widened live policy under the label "consumer port".
+// When first creation is authorized it arrives as its own positive carrier and only the
+// CONJUNCTION -- ref observed absent AND creation authorized -- may admit; the arm returns then,
+// with a producer, rather than sitting here now with none.
+//
+// NO `to:` FIELD SITS BESIDE accepted.revision. A second writable name for the target would
+// immediately recreate the substitution this cut removed.
+type FleetDesiredAdvanceDecision<E, M>
+  = FleetDesiredAdvanceAdmitted {
+      accepted: AcceptedFleetRevision<E, M>,
+      expected_prior: GitObjectId,
+    }
+  | FleetDesiredAlreadyConverged { accepted: AcceptedFleetRevision<E, M> }
+  | FleetDesiredSupersededNoOp {
+      accepted: AcceptedFleetRevision<E, M>,
+      current: GitObjectId,
+    }
+  | FleetDesiredAdvanceRefused { cause: FleetDesiredAdvanceRefusal }
+
+// The lease an admitted advance implies. Derived rather than stored, so the arm and its lease
+// cannot drift apart: there is exactly one way to get an expectation out of a decision, and only
+// the advance arm has one.
+fn fleet_desired_admitted_expectation<E, M>(
+  decision: FleetDesiredAdvanceDecision<E, M>,
+) -> GitRemoteRefExpectation? {
+  match decision {
+    FleetDesiredAdvanceAdmitted { accepted: _, expected_prior: prior } =>
+      Present { value: RemoteRefMustEqual { oid: prior } }
+    FleetDesiredAlreadyConverged { accepted: _ } => none
+    FleetDesiredSupersededNoOp { accepted: _, current: _ } => none
+    FleetDesiredAdvanceRefused { cause: _ } => none
+  }
+}
+
+// The typed refusal rendered for a human-facing receipt. Rendering lives beside the cause set so a
+// new arm cannot be added without this fold refusing to compile. Consumers that ROUTE still match
+// the variants; this is the line an operator reads, never a substitute for the typed cause.
+//
+// THE UNRELATED ARM SAYS ONLY WHAT ITS CARRIER ESTABLISHES. It used to read "sideways onto a
+// DISJOINT history", which is false for the case that actually produces it most of the time: two
+// revisions that diverged from a shared ancestor are not disjoint, they have a common past and a
+// merge base an operator can name. The carrier behind this arm is the quotient "neither is an
+// ancestor of the other", and that is now exactly what the sentence claims. A receipt asserting
+// more topology than the observation carries is the same fabrication as a fabricated value; it is
+// worse here than in a field, because a human reads THIS line and reaches for the wrong remedy --
+// disjoint says wrong repository, divergent says force-push. When the deploy lane splits the
+// variant this arm can say which, and until then it does not guess.
+fn fleet_desired_advance_refusal_message(cause: FleetDesiredAdvanceRefusal) -> String {
+  match cause {
+    AdvanceExpectationUnavailable { cause: why } =>
+      match why {
+        FleetDesiredRefUndecodable { advertised: line } =>
+          concat("the desired ref exists but its advertisement is not a decodable object id, so it must not be written over: ", line)
+        FleetDesiredRefUnobserved { cause: c } =>
+          concat("the desired ref could not be observed, so no expectation licenses a write: ", c)
+      }
+    AdvanceHistoriesUnrelated { current: cur, accepted: acc } =>
+      join([
+        "neither revision is an ancestor of the other (current ",
+        git_object_id_wire_hex(oid: cur) as String,
+        ", accepted ", git_object_id_wire_hex(oid: acc) as String,
+        ") -- advancing would move the ref sideways",
+      ], "")
+    AdvanceRelationUnobservable { current: cur, accepted: acc, cause: c } =>
+      join([
+        "the ancestry of ", git_object_id_wire_hex(oid: cur) as String,
+        " and ", git_object_id_wire_hex(oid: acc) as String,
+        " could not be established, and an unknown direction is never read as forward: ", c,
+      ], "")
+    InitialFleetDesiredCreationNotAuthorized { accepted: acc } =>
+      join([
+        "origin advertises no such ref. An absent ref is a STATE and creation is a CAPABILITY: this path is authorized to ADVANCE an existing ref, not to mint the fleet root. Creating it at ",
+        git_object_id_wire_hex(oid: acc) as String,
+        " needs a positive mint authority, which no observation of absence can supply",
+      ], "")
+    AdvanceRelationIsAboutAnotherPair {
+      relation_current: rc,
+      relation_accepted: ra,
+      actual_current: ac,
+      actual_accepted: aa,
+    } =>
+      join([
+        "the ancestry evidence compares ", git_object_id_wire_hex(oid: rc) as String,
+        " with ", git_object_id_wire_hex(oid: ra) as String,
+        " but the decision is about ", git_object_id_wire_hex(oid: ac) as String,
+        " and ", git_object_id_wire_hex(oid: aa) as String,
+      ], "")
+  }
+}
+
+// AN ABSENT REF DOES NOT AUTHORIZE CREATION, AND THIS GATE RETRACTS gunbc#8746's AUTHORIZATION
+// RATHER THAN FAILING TO PORT IT. Declared, because retracting a landed capability silently is
+// exactly what §4b(3) forbids.
+//
+// THE POLICY: absence is a STATE; creation is a CAPABILITY. Observing that origin advertises no
+// refs/fleet/desired establishes that nothing is there -- it establishes nothing about who may
+// mint the fleet root. Authorizing creation from "absence was observed AND this revision is
+// floor-green" makes the ref self-healing in the one case where it must not be: DELETE the ref,
+// and the next green main push silently recreates it at whatever happened to land, with no human
+// decision anywhere in the loop. That erases the distinction between "the fleet has never been
+// initialized" and "someone removed the baseline", which have opposite remedies.
+//
+// So the admitted decision carries `expected_prior: GitObjectId` and NOT a
+// GitRemoteRefExpectation. That is deliberate and is the stronger form: with the narrower
+// carrier, an authorized creation has no spelling in this module at all, rather than being a
+// representable state some later arm must remember to refuse.
+//
+// THE HISTORY, because I got this wrong in both directions within one day and the record should
+// not read as though the current shape was obvious. This refusal was authored at 07:47 as one of
+// three deliberate structural corrections, under the title "creation is not implied by absence".
+// gunbc#8746 landed the opposite policy on main at 12:14 -- four and a half hours LATER -- so
+// merging main into this branch was a genuine POLICY DIVERGENCE, not a lost port. At 14:00 I
+// then "restored" creation here, describing my own considered position as an accidental
+// capability regression that a clean merge had silently reverted. That was wrong on the facts:
+// nothing was silently reverted, a policy was reversed, and calling a reversal a repair is how a
+// decision gets unmade without anyone deciding.
+//
+// WHAT WOULD MAKE CREATION ADMISSIBLE, stated so this is a bounded retraction and not a
+// permanent no: a positive MINT-AUTHORITY carrier -- some fact that says THIS revision may
+// establish the fleet root, authored by whoever is entitled to say so, rather than inferred from
+// the ref's absence. When that carrier exists, the absent arm consumes it and this refusal
+// dissolves. Until then the refusal is the honest answer, and a red witness demanding creation
+// is answered by deleting the demand, never by re-adding the authorization.
+//
+// Raised by nimble-fox-671 relaying side-chat adjudication of both heads, who named the trap
+// precisely: a red witness whose correct fix is DELETION looks exactly like one whose correct fix
+// is RESTORATION, and only the policy tells them apart.
+fn decide_fleet_desired_advance<E, M>(
+  input: FleetDesiredAdvanceInput<E, M>,
+) -> FleetDesiredAdvanceDecision<E, M> {
+  match input {
+    FleetDesiredExpectationRefusedInput { accepted: _, cause: c } =>
+      FleetDesiredAdvanceRefused { cause: AdvanceExpectationUnavailable { cause: c } }
+    FleetDesiredRefAbsentInput { accepted: a } =>
+      FleetDesiredAdvanceRefused {
+        cause: InitialFleetDesiredCreationNotAuthorized { accepted: a.revision },
+      }
+    FleetDesiredObservedCurrentInput { accepted: a, current: cur, relation: rel } =>
+      decide_against_observed_current(accepted: a, current: cur, relation: rel)
+  }
+}
+
+// The subject-binding check reads as the precondition it is. A bare relation is not evidence: it
+// does not say WHICH TWO revisions were compared, so a relation computed for another pair would
+// satisfy a decision about this one. The observation carries both endpoints and this refuses when
+// they are not the exact pair under decision -- without that check the binding would be a naming
+// convention rather than a wall.
+fn decide_against_observed_current<E, M>(
+  accepted: AcceptedFleetRevision<E, M>,
+  current: GitObjectId,
+  relation: FleetRevisionRelationObservation,
+) -> FleetDesiredAdvanceDecision<E, M> {
+  if relation_is_about(
+    relation_current: relation.current,
+    relation_accepted: relation.accepted,
+    actual_current: current,
+    actual_accepted: accepted.revision,
+  ) {
+    classify_admitted_relation(accepted: accepted, current: current, rel: relation.relation)
+  } else {
+    FleetDesiredAdvanceRefused {
+      cause: AdvanceRelationIsAboutAnotherPair {
+        relation_current: relation.current,
+        relation_accepted: relation.accepted,
+        actual_current: current,
+        actual_accepted: accepted.revision,
+      },
+    }
+  }
+}
+
+fn relation_is_about(
+  relation_current: GitObjectId,
+  relation_accepted: GitObjectId,
+  actual_current: GitObjectId,
+  actual_accepted: GitObjectId,
+) -> Bool {
+  git_object_id_eq(left: relation_current, right: actual_current)
+    && git_object_id_eq(left: relation_accepted, right: actual_accepted)
+}
+
+// The relation vocabulary is reused from gunbc.live_deploy.revision rather than re-coined: the
+// question "how do these two revisions relate" is one concept, and a second five-variant enum
+// beside it would be the nickname. Its variant names carry the deploy lane's roles, so the mapping
+// is stated once here: `deployed` is the CURRENT desired ref, `candidate` is the newly ACCEPTED
+// revision.
+fn classify_admitted_relation<E, M>(
+  accepted: AcceptedFleetRevision<E, M>,
+  current: GitObjectId,
+  rel: DeployRevisionRelation,
+) -> FleetDesiredAdvanceDecision<E, M> {
+  match rel {
+    SameRevision => FleetDesiredAlreadyConverged { accepted: accepted }
+    DeployedIsAncestor =>
+      FleetDesiredAdvanceAdmitted { accepted: accepted, expected_prior: current }
+    CandidateIsAncestor =>
+      FleetDesiredSupersededNoOp { accepted: accepted, current: current }
+    UnrelatedHistories =>
+      FleetDesiredAdvanceRefused {
+        cause: AdvanceHistoriesUnrelated { current: current, accepted: accepted.revision },
+      }
+    RelationUnverifiable { cause: c } =>
+      FleetDesiredAdvanceRefused {
+        cause: AdvanceRelationUnobservable {
+          current: current,
+          accepted: accepted.revision,
+          cause: c,
+        },
+      }
   }
 }
 

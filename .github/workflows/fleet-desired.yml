@@ -2,9 +2,12 @@ name: fleet-desired
 on:
   workflow_run:
     workflows: [witnesses]
+    branches: [main]
     types: [completed]
 concurrency:
+  queue: max
   group: gunbc-fleet-desired-admission
+  cancel-in-progress: false
 jobs:
   admit:
     runs-on: [self-hosted, linux, arm64, srv1]
@@ -29,7 +32,7 @@ jobs:
           set -eu
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           mkdir -p "$ROOT/target"
-          rm -f "$ROOT/target/fleet-desired-authorized-push.sh"
+          rm -f "$ROOT/target/fleet-desired-authorized-action.sh"
           cp "$GITHUB_EVENT_PATH" "$ROOT/target/fleet-desired-admission-event.json"
       - name: Decide whether the floor admits this revision
         run: |
@@ -39,5 +42,5 @@ jobs:
         run: |
           set -eu
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          test -s "$ROOT/target/fleet-desired-authorized-push.sh"
-          sh "$ROOT/target/fleet-desired-authorized-push.sh"
+          test -s "$ROOT/target/fleet-desired-authorized-action.sh"
+          sh "$ROOT/target/fleet-desired-authorized-action.sh"

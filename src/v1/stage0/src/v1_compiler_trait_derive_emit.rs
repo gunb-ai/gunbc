@@ -40,6 +40,7 @@ use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_coercion::{decl_identity_file, lookup_checkpoint};
 pub use crate::v1_compiler_emit::{emit_ident, to_pascal};
 pub use crate::v1_compiler_emit_core_support::{is_type_alias_item, unique_strings};
+pub use crate::v1_compiler_emit_rust::item_generic_param_names;
 pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type, resolved_type};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -1880,6 +1881,259 @@ pub fn v1_set_enum_partial_eq_impl(
     }
 }
 
+pub fn trait_derive_emit_ord_propagation_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "ROOT A, Ord half, TRANSITIVE CASE (E0277 root-partition adhoc-a407cd3d-840, PR #8770, corrected 2026-08-21 after parent-session review found the well-formedness-header approach it started from would re-open trait_derive_emit_set_ord_supplemental_note's own deliberate scoping): std.authorization_profile PublicationContext<C, P> { audience: AudienceSet<P>, context: C } does not itself carry a direct Set<P> field -- it names AudienceSet<P>, a declared coproduct whose OWN field is Set<P>. The requirement is real (AudienceSet<P>'s hand-written Debug/PartialEq impls above are literally P: Ord, so a PublicationContext<C, P> Debug/PartialEq impl calling .field(\"audience\", &self.audience) needs the same P: Ord to typecheck) but it propagates through one field's declared-type reference rather than sitting on this item's own field directly. The routing decision this note records: the propagated requirement stays in per-derive-impl vocabulary exactly like the direct case -- PublicationContext's own header/declaration and its #[derive(...)] trait list membership are UNCHANGED, never a second Clone-shaped item-header fixpoint (v1_bound_seed_for_item / v1_bounded_type_params, drafted then discarded in this PR's own predecessor commit, would have put P: Ord on every item header reachable from a Set-affected declared type, re-opening exactly the over-bounding trait_derive_emit_set_ord_supplemental_note already rejected for the direct case). v1_item_ord_propagated_param_names computes, for a consuming item's own generic params, whether that param is passed positionally into a field naming a declared type (looked up via type_decl_items) whose OWN generic slot at that position is itself Set-affected (v1_item_own_set_affected_param_names) -- one hop, matching the one hop this corpus actually exercises (PublicationContext -> AudienceSet); no phantom-slot skipping is needed because the FreeMonoid/Clone well-formedness fixpoint's phantom carve-out answers a different question (does an unused param still need a bound at all) that does not arise here. A propagated param routes through the same v1_set_* hand-written-impl / serde-bound-attr machinery as a direct Set<P> field (v1_set_filter_hand_written, v1_set_unroutable_row_refusal, v1_set_serde_bound_attr_for_traits, rust_btree_set_supplemental_generic_bound_rows) -- no duplicate rows, no duplicate routing table. Scoped to the struct path (v1_emit_struct_from_capability_table) because PublicationContext is a struct; the enum path's direct-field case (v1_emit_enum_derives / v1_emit_enum_supplemental_impls) is untouched. Dissolution: same as trait_derive_emit_set_ord_supplemental_note (v2 emitter subsumption at this grain).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn v1_item_own_set_affected_param_names(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    v1_set_element_params(
+        item_generic_param_names(item.clone(), source_indices.clone()),
+        v1_item_field_type_exprs(item.clone(), source_indices.clone()),
+        source_indices.clone(),
+    )
+}
+
+pub fn v1_ord_propagated_zip_loop(
+    param_name: String,
+    decl_params: Rc<Vec<Rc<Node>>>,
+    type_args: Rc<Vec<Rc<Node>>>,
+    decl_set_affected_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match decl_params.clone().first().cloned() {
+            None => false,
+            Some(decl_param) => match type_args.clone().first().cloned() {
+                None => false,
+                Some(type_arg) => {
+                    let slot_name =
+                        generic_param_name_at(decl_param.clone(), source_indices.clone());
+                    let here = if {
+                        let mut __found = false;
+                        for n in decl_set_affected_names.clone().iter().cloned() {
+                            if (n.clone() == slot_name.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    } {
+                        v1_type_expr_is_bare_param(
+                            param_name.clone(),
+                            type_arg.clone(),
+                            source_indices.clone(),
+                        )
+                    } else {
+                        false
+                    };
+                    (here.clone()
+                        || v1_ord_propagated_zip_loop(
+                            param_name.clone(),
+                            Rc::new(
+                                decl_params
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            Rc::new(
+                                type_args
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            decl_set_affected_names.clone(),
+                            source_indices.clone(),
+                        ))
+                }
+            },
+        }
+    })
+}
+
+pub fn v1_field_type_expr_ord_propagated_for_param(
+    param_name: String,
+    type_expr: Rc<Node>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let decl_name = authored_name_at(source_indices.clone(), type_expr.clone());
+        match v1_rt::map_get(&type_decl_items, decl_name.clone()) {
+            None => false,
+            Some(decl) => v1_ord_propagated_zip_loop(
+                param_name.clone(),
+                decl.params.clone(),
+                type_expr.children.clone(),
+                v1_item_own_set_affected_param_names(decl.clone(), source_indices.clone()),
+                source_indices.clone(),
+            ),
+        }
+    }
+}
+
+pub fn v1_item_ord_propagated_param_names(
+    generic_param_names: Rc<Vec<String>>,
+    field_type_exprs: Rc<Vec<Rc<Node>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in generic_param_names.clone().iter().cloned() {
+            if {
+                let mut __found = false;
+                for te in field_type_exprs.clone().iter().cloned() {
+                    if v1_field_type_expr_ord_propagated_for_param(
+                        p.clone(),
+                        te.clone(),
+                        type_decl_items.clone(),
+                        source_indices.clone(),
+                    ) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                __result.push(p);
+            }
+        }
+        __result
+    })
+}
+
+pub fn v1_set_struct_debug_impl(
+    name: String,
+    generic_param_names: Rc<Vec<String>>,
+    set_params: Rc<Vec<String>>,
+    children: Rc<Vec<Rc<Node>>>,
+    field_type_exprs: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let tp = v1_set_impl_type_params(
+            generic_param_names.clone(),
+            set_params.clone(),
+            field_type_exprs.clone(),
+            "std::fmt::Debug".to_string(),
+            ReprGroundingDeriveTrait::ReprDeriveDebug,
+            source_indices.clone(),
+        );
+        let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
+        let field_calls = Rc::new({
+            let mut __result = Vec::new();
+            for f in children.clone().iter().cloned() {
+                __result.push({
+                    let ident = emit_ident(
+                        authored_name_at(source_indices.clone(), f.clone()),
+                        RenderTarget::Rust,
+                    );
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(".field(\"".to_string(), ident.clone()),
+                                "\", &self.".to_string(),
+                            ),
+                            ident.clone(),
+                        ),
+                        ")".to_string(),
+                    )
+                });
+            }
+            __result
+        });
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("impl".to_string(), tp.clone()), " std::fmt::Debug for ".to_string()), name.clone()), args.clone()), " {\n".to_string()), "    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n".to_string()), "        f.debug_struct(\"".to_string()), name.clone()), "\")".to_string()), field_calls.clone().join(&"".to_string())), ".finish()\n".to_string()), "    }\n".to_string()), "}".to_string())
+    }
+}
+
+pub fn v1_set_struct_partial_eq_impl(
+    name: String,
+    generic_param_names: Rc<Vec<String>>,
+    set_params: Rc<Vec<String>>,
+    children: Rc<Vec<Rc<Node>>>,
+    field_type_exprs: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let tp = v1_set_impl_type_params(
+            generic_param_names.clone(),
+            set_params.clone(),
+            field_type_exprs.clone(),
+            "PartialEq".to_string(),
+            ReprGroundingDeriveTrait::ReprDerivePartialEq,
+            source_indices.clone(),
+        );
+        let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
+        let comparisons = Rc::new({
+            let mut __result = Vec::new();
+            for f in children.clone().iter().cloned() {
+                __result.push({
+                    let ident = emit_ident(
+                        authored_name_at(source_indices.clone(), f.clone()),
+                        RenderTarget::Rust,
+                    );
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat("self.".to_string(), ident.clone()),
+                            " == other.".to_string(),
+                        ),
+                        ident.clone(),
+                    )
+                });
+            }
+            __result
+        });
+        let body = if ((comparisons.clone().len() as i64) == 0) {
+            "true".to_string()
+        } else {
+            comparisons.clone().join(&" && ".to_string())
+        };
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat("impl".to_string(), tp.clone()),
+                                                " PartialEq for ".to_string(),
+                                            ),
+                                            name.clone(),
+                                        ),
+                                        args.clone(),
+                                    ),
+                                    " {\n".to_string(),
+                                ),
+                                "    fn eq(&self, other: &Self) -> bool {\n".to_string(),
+                            ),
+                            "        ".to_string(),
+                        ),
+                        body.clone(),
+                    ),
+                    "\n".to_string(),
+                ),
+                "    }\n".to_string(),
+            ),
+            "}".to_string(),
+        )
+    }
+}
+
 pub fn v1_emit_struct_derives(
     name: String,
     children: Rc<Vec<Rc<Node>>>,
@@ -3552,6 +3806,7 @@ pub fn v1_emit_struct_from_capability_table(
     generic_param_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     carrier_param_needs_clone: bool,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
 ) -> Rc<StructCapabilityEmit> {
     {
         let field_type_exprs = Rc::new({
@@ -3626,29 +3881,101 @@ pub fn v1_emit_struct_from_capability_table(
             }
         } else {
             {
-                let derive_attr = v1_emit_struct_derives(
-                    name.clone(),
-                    children.clone(),
-                    shared_types.clone(),
-                    has_fn_fields.clone(),
-                    map_key_required.clone(),
-                    source_indices.clone(),
-                );
-                let impl_bodies =
-                    if (repr_grounding_group_completion_carrier(module_path.clone(), name.clone())
-                        && repr_grounding_derive_completeness_predicate(
+                let ord_propagated_params = if (((has_fn_fields.clone()
+                    || map_key_required.clone())
+                    || rust_symbol_wrapped_ord_carrier_shape_eligible(
+                        children.clone(),
+                        source_indices.clone(),
+                    ))
+                    || repr_grounding_group_completion_carrier(module_path.clone(), name.clone()))
+                {
+                    Rc::new(vec![])
+                } else {
+                    v1_item_ord_propagated_param_names(
+                        generic_param_names.clone(),
+                        field_type_exprs.clone(),
+                        type_decl_items.clone(),
+                        source_indices.clone(),
+                    )
+                };
+                if ((ord_propagated_params.clone().len() as i64) > 0) {
+                    {
+                        let base = if v1_rt::set_contains(&shared_types, name.clone()) {
+                            record_derive_traits_heap()
+                        } else {
+                            record_derive_traits_copy()
+                        };
+                        let set_row_refusal = v1_set_unroutable_row_refusal();
+                        let derived_traits = v1_set_filter_hand_written(base.clone());
+                        let derive_attr = v1_rt::concat(
+                            v1_rt::concat(
+                                set_row_refusal.clone(),
+                                rust_trait_derive_attr_from_traits(derived_traits.clone()),
+                            ),
+                            v1_set_serde_bound_attr_for_traits(
+                                base.clone(),
+                                generic_param_names.clone(),
+                                ord_propagated_params.clone(),
+                            ),
+                        );
+                        let impl_bodies = v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "\n\n".to_string(),
+                                    v1_set_struct_debug_impl(
+                                        name.clone(),
+                                        generic_param_names.clone(),
+                                        ord_propagated_params.clone(),
+                                        children.clone(),
+                                        field_type_exprs.clone(),
+                                        source_indices.clone(),
+                                    ),
+                                ),
+                                "\n\n".to_string(),
+                            ),
+                            v1_set_struct_partial_eq_impl(
+                                name.clone(),
+                                generic_param_names.clone(),
+                                ord_propagated_params.clone(),
+                                children.clone(),
+                                field_type_exprs.clone(),
+                                source_indices.clone(),
+                            ),
+                        );
+                        Rc::new(StructCapabilityEmit {
+                            derive_attr: derive_attr.clone(),
+                            impl_bodies: impl_bodies.clone(),
+                        })
+                    }
+                } else {
+                    {
+                        let derive_attr = v1_emit_struct_derives(
+                            name.clone(),
+                            children.clone(),
+                            shared_types.clone(),
+                            has_fn_fields.clone(),
+                            map_key_required.clone(),
+                            source_indices.clone(),
+                        );
+                        let impl_bodies = if (repr_grounding_group_completion_carrier(
+                            module_path.clone(),
+                            name.clone(),
+                        ) && repr_grounding_derive_completeness_predicate(
                             kernel_int_arithmetic_traits(),
                             ReprGroundingDeriveElemShape::ReprDeriveElemKernelInt,
-                        ))
-                    {
-                        rust_supplemental_impls_group_completion(carrier_param_needs_clone.clone())
-                    } else {
-                        "".to_string()
-                    };
-                Rc::new(StructCapabilityEmit {
-                    derive_attr: derive_attr.clone(),
-                    impl_bodies: impl_bodies.clone(),
-                })
+                        )) {
+                            rust_supplemental_impls_group_completion(
+                                carrier_param_needs_clone.clone(),
+                            )
+                        } else {
+                            "".to_string()
+                        };
+                        Rc::new(StructCapabilityEmit {
+                            derive_attr: derive_attr.clone(),
+                            impl_bodies: impl_bodies.clone(),
+                        })
+                    }
+                }
             }
         }
     }
