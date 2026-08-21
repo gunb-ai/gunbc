@@ -33,9 +33,10 @@ pub use crate::std_trait_derive_shape::{ReprGroundingDeriveElemShape, ReprGround
 pub use crate::std_types::{container_template_algebra, is_container_type};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
+pub use crate::v1_compiler_coercion::{decl_identity_file, lookup_checkpoint};
 pub use crate::v1_compiler_emit::{emit_ident, to_pascal};
-pub use crate::v1_compiler_emit_core_support::unique_strings;
-pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type};
+pub use crate::v1_compiler_emit_core_support::{is_type_alias_item, unique_strings};
+pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type, resolved_type};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Connective::NoConnective;
@@ -305,7 +306,7 @@ pub fn v1_map_key_round_add(
 pub fn map_key_alias_hop_gap_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "MEASURED GAP, ATTEMPTED AND REVERTED -- the propagation edge is real, and a correct fix needs an authority this module cannot reach. Map-key requirement propagation walks a required type's FIELD type expressions, and a type ALIAS has no fields: it is a bare leaf item whose right-hand side hangs off the item's own inference rather than off a child. So `type Hash = Fnv1a64Structural` in v2.std.node terminates the walk, Fnv1a64Structural is emitted with PartialEq but without Eq or std::hash::Hash, and `Map<Hash, RuntimeValue>` in v2.extdeps.runtimes.v2_effect_io_pure fails to compile at four sites. MEASURED, not reasoned: emitting the v2.compiler.05_eval closure with the Hash checkpoint row retired gives exactly those four E0277 sites, and adding the alias arm removes all four and adds none. THE EDGE WAS ALWAYS MISSING; it became observable only when the bare-name checkpoint stopped realizing Hash as a String alias, because until then the key type carried Rust's own derives and the hop was never asked for -- the defect's own output had been standing in for the traversal. WHY THE OBVIOUS FIX IS WRONG, proven by execution rather than argued: following every alias right-hand side makes `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` reach map-key positions, and both carry Rc<dyn Fn> fields, so the fold refuses them -- two stage0 files diverge. That refusal is a FALSE POSITIVE, and its shape is this lane's own subject: the derive analysis reasons about a type's DECLARED structure while the emitter renders its REALIZED one. Int and Nat realize as i64, which already carries Eq and Hash, so AbelianGroup never appears at the key position at all; Hash has no realization and therefore renders structurally, which is exactly why its hop is owed. So the rule is not `follow aliases` but `follow an alias precisely as far as the emitter renders it structurally`, and the authority that answers that is a realization binding keyed on DeclarationRef, WHICH DOES NOT EXIST YET -- an earlier revision of this note cited gunbc.rust_realization rust_realization_target_for as though it did, and those modules were removed from this branch as consumer-less authority (review 53510), so the citation is corrected rather than left pointing at a symbol the tree does not carry. This module has names, not declaration identity. NOT LANDED FOR THAT REASON. A structural proxy was available and deliberately refused: the two specimens differ in that Hash aliases a bare record while Int and Nat alias an APPLIED template, and keying on that would separate the measured cases while tracing a property nobody claims is the real one -- the same substitution this note exists to name. DISSOLVE-ON: declaration identity reaching the type renderer and this analysis, which is the same threading the identity-keyed lookup_checkpoint cut is blocked on; when it lands, the alias arm and the four sites go together.".to_string()
+            "LANDED. The gap this note originally recorded (see git history for the full pre-landing account) was that map-key requirement propagation walks a required type's FIELD type expressions, and a type ALIAS has no fields -- it is a bare leaf item whose right-hand side hangs off the item's own inference rather than off a child -- so `type Hash = Fnv1a64Structural` in v2.std.node terminated the walk, Fnv1a64Structural was emitted with PartialEq but without Eq or std::hash::Hash, and `Map<Hash, RuntimeValue>` in v2.extdeps.runtimes.v2_effect_io_pure failed to compile at four sites. The DISSOLVE-ON trigger named at the time -- declaration identity reaching the type renderer, the same threading the identity-keyed lookup_checkpoint cut (T7, #8537) was blocked on -- landed as v1.compiler.coercion lookup_checkpoint/decl_identity_file, so the fix reuses that authority rather than inventing the DeclarationRef binding the earlier attempt lacked (DESIGN section 2/3, single authority). v1_item_alias_hop_type_exprs (below v1_item_field_type_exprs) follows a bare-leaf alias item's resolved right-hand side into the walk ONLY when lookup_checkpoint(target: Rust, dag_name, decl_file) returns Absent for the alias's own (dag_name, decl_file) -- i.e. only when the emitter has no native realization and renders the alias structurally. `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` both have Rust checkpoint rows (realize as i64), so lookup_checkpoint returns Present and the alias arm contributes nothing for them -- the previously measured false positive (AbelianGroup/CommutativeSemiring reaching map-key position via Rc<dyn Fn> fields) does not recur, because the gate is keyed on realization rather than on bare-alias shape. Folded into the single shared v1_item_field_type_exprs (see v1_item_field_type_exprs_alias_hop_note) rather than a map-key-only variant, since is_bare_leaf_item forces params.count == 0 on every alias item, so no alias ever enters the generic-only clone-bound fixpoints that are this function's other callers.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -324,22 +325,30 @@ pub fn v1_map_key_propagate_round(
                 acc.clone()
             } else {
                 match v1_rt::map_get(&type_decl_items, type_name.clone()) {
-                    Some(item) => v1_item_field_type_exprs(item.clone()).iter().cloned().fold(
-                        acc.clone(),
-                        |inner: Rc<MapKeyRequirementRound>, te: Rc<Node>| {
-                            v1_type_expr_head_names(te.clone(), source_indices.clone())
-                                .iter()
-                                .cloned()
-                                .fold(inner, |deep: Rc<MapKeyRequirementRound>, head: String| {
-                                    if map_has_declared_type(type_decl_items.clone(), head.clone())
-                                    {
-                                        v1_map_key_round_add(deep.clone(), head.clone())
-                                    } else {
-                                        deep.clone()
-                                    }
-                                })
-                        },
-                    ),
+                    Some(item) => v1_item_field_type_exprs(item.clone(), source_indices.clone())
+                        .iter()
+                        .cloned()
+                        .fold(
+                            acc.clone(),
+                            |inner: Rc<MapKeyRequirementRound>, te: Rc<Node>| {
+                                v1_type_expr_head_names(te.clone(), source_indices.clone())
+                                    .iter()
+                                    .cloned()
+                                    .fold(
+                                        inner,
+                                        |deep: Rc<MapKeyRequirementRound>, head: String| {
+                                            if map_has_declared_type(
+                                                type_decl_items.clone(),
+                                                head.clone(),
+                                            ) {
+                                                v1_map_key_round_add(deep.clone(), head.clone())
+                                            } else {
+                                                deep.clone()
+                                            }
+                                        },
+                                    )
+                            },
+                        ),
                     None => acc.clone(),
                 }
             }
@@ -2309,7 +2318,37 @@ pub fn v1_type_expr_wf_needs_clone_param(
     })
 }
 
-pub fn v1_item_field_type_exprs(item: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+pub fn v1_item_field_type_exprs_alias_hop_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Threads declaration identity into the field-type-expression walk so a type ALIAS's right-hand side is followed exactly as far as the emitter renders it structurally, per map_key_alias_hop_gap_note's DISSOLVE-ON: the alias arm below fires only when the alias's own (dag_name, decl_file) resolves to no Rust checkpoint (lookup_checkpoint == Absent), meaning the emitter has no native realization for it and renders its declared structure. `type Hash = Fnv1a64Structural` in v2.std.node has no checkpoint row, so its RHS is the walk's one field type expression and the map-key fixpoint reaches Fnv1a64Structural. `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` DO have checkpoint rows (they realize as i64), so lookup_checkpoint returns Present and the arm below contributes nothing for them -- the measured false positive (AbelianGroup/CommutativeSemiring at map-key position) that sank the earlier attempt never recurs, because the gate is keyed on realization, not on 'is this a bare alias'. Safe to fold into the single shared v1_item_field_type_exprs rather than a map-key-only variant: is_bare_leaf_item requires params.count == 0, so no alias item is ever a member of v1_generic_declared_type_names (params > 0), and every OTHER caller of this function (the clone-bound wf/impl fixpoints) is seeded exclusively from that generic-only population -- the alias arm is therefore dead code on every path except the map-key propagation this note exists for, and reusing one function keeps the field-type-expression authority single (DESIGN section 2/3) instead of forking a second copy that could drift.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn v1_item_alias_hop_type_exprs(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<Node>>> {
+    if is_type_alias_item(item.clone(), source_indices.clone()) {
+        {
+            let dag_name = authored_name_at(source_indices.clone(), item.clone());
+            let decl_file = decl_identity_file(item.clone());
+            match lookup_checkpoint(RenderTarget::Rust, dag_name.clone(), decl_file.clone()) {
+                Some(_) => Rc::new(vec![]),
+                None => Rc::new(vec![resolved_type(item.clone())]),
+            }
+        }
+    } else {
+        Rc::new(vec![])
+    }
+}
+
+pub fn v1_item_field_type_exprs(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<Node>>> {
     if is_coproduct_type(item.clone()) {
         Rc::new({
             let mut __result = Vec::new();
@@ -2329,13 +2368,17 @@ pub fn v1_item_field_type_exprs(item: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
             __result
         })
     } else {
-        Rc::new({
-            let mut __result = Vec::new();
-            for f in item.children.clone().iter().cloned() {
-                __result.push(child_type_node(f.clone()));
-            }
-            __result
-        })
+        if ((item.children.clone().len() as i64) > 0) {
+            Rc::new({
+                let mut __result = Vec::new();
+                for f in item.children.clone().iter().cloned() {
+                    __result.push(child_type_node(f.clone()));
+                }
+                __result
+            })
+        } else {
+            v1_item_alias_hop_type_exprs(item.clone(), source_indices.clone())
+        }
     }
 }
 
@@ -2348,7 +2391,10 @@ pub fn v1_item_param_wf_needs_clone(
 ) -> bool {
     {
         let mut __found = false;
-        for te in v1_item_field_type_exprs(item.clone()).iter().cloned() {
+        for te in v1_item_field_type_exprs(item.clone(), source_indices.clone())
+            .iter()
+            .cloned()
+        {
             if v1_type_expr_wf_needs_clone_param(
                 param_name.clone(),
                 te.clone(),
@@ -2404,9 +2450,10 @@ pub fn v1_item_clone_undecided_head(
     {
         let item_generic_params =
             v1_item_generic_param_name_set(item.clone(), source_indices.clone());
-        v1_item_field_type_exprs(item.clone()).iter().cloned().fold(
-            "".to_string(),
-            |acc: String, te: Rc<Node>| {
+        v1_item_field_type_exprs(item.clone(), source_indices.clone())
+            .iter()
+            .cloned()
+            .fold("".to_string(), |acc: String, te: Rc<Node>| {
                 if (acc.clone() != "".to_string()) {
                     acc.clone()
                 } else {
@@ -2417,8 +2464,7 @@ pub fn v1_item_clone_undecided_head(
                         item_generic_params.clone(),
                     )
                 }
-            },
-        )
+            })
     }
 }
 
@@ -2489,7 +2535,7 @@ pub fn v1_clone_bound_seed_for_item(
         round
     } else {
         {
-            let field_type_exprs = v1_item_field_type_exprs(item.clone());
+            let field_type_exprs = v1_item_field_type_exprs(item.clone(), source_indices.clone());
             item.params.clone().iter().cloned().fold(
                 round,
                 |acc: Rc<CloneBoundRound>, p: Rc<Node>| {
@@ -2621,7 +2667,7 @@ pub fn v1_clone_impl_seed_for_item(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<CloneBoundRound> {
     {
-        let field_type_exprs = v1_item_field_type_exprs(item.clone());
+        let field_type_exprs = v1_item_field_type_exprs(item.clone(), source_indices.clone());
         item.params.clone().iter().cloned().fold(
             round.clone(),
             |acc: Rc<CloneBoundRound>, p: Rc<Node>| {

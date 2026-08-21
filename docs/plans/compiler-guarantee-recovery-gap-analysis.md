@@ -2260,6 +2260,71 @@ enforces end to end.
    store). In both arms, `exit_code=0` on the tampered/bypass cases is the finding; a nonzero
    exit or a typed refusal diagnostic would refute it.
 
+21. **A NULLARY coproduct variant inhabits any declared type at a construction position, while
+   its PAYLOAD-BEARING sibling is correctly refused.** CONFIRMED BY EXECUTION 2026-08-21, with a
+   positive control and a discriminating control, on the source→`.dag`-acceptance path. This is
+   the ordinary compiler safety floor (§4) — values inhabiting declared types — and it is a
+   *partial* hole in a wall that demonstrably exists and fires, not a missing wall.
+
+   Found from a fabric witness (`gunbc#8733`) that passed a bare `DeployRevisionRelation` into
+   `gunbc.fleet_main_revision` `FleetDesiredObservedCurrentInput.relation`, which is declared
+   `FleetRevisionRelationObservation` (a record). It compiled, and failed only at run time.
+
+   THE FOUR-ARM MATRIX, one binary, one source revision, one closure. Each arm is a single
+   module differing only in the marked expression:
+
+   | arm | construction at the record-declared position | result |
+   |---|---|---|
+   | B | nullary variant — `relation: SameRevision` | **`0 blocking error(s)`** — ACCEPTED |
+   | C | payload variant — `relation: RelationUnverifiable { cause: … }` | **REFUSED**, located |
+   | D | nullary variant as a *direct call argument* — `takes_observation(x: SameRevision)` | **`0 blocking error(s)`** — ACCEPTED |
+   | CTL | same literal, misspelled field name — `relationX: SameRevision` | **REFUSED**, located |
+
+   Arm C's diagnostic is exactly the one arm B is owed, which is what makes this a located hole
+   rather than an absent capability: `type mismatch: expected
+   'Product(FleetRevisionRelationObservation)', got 'Coproduct(DeployRevisionRelation)'`.
+
+   WHY BOTH CONTROLS ARE LOAD-BEARING. Arm C proves the type check at that position exists and
+   reaches this pair of types. CTL proves the record literal is being examined at all — field
+   completeness refuses there — so arm B's silence is not a skipped expression, a skipped
+   module, or a harness artifact. Without CTL, "the literal is never checked" would be an equally
+   good explanation and the finding would mislocate the defect. Arm D separates the seam: the
+   miss is not specific to a nested field initializer, since a direct call argument accepts it
+   too.
+
+   RUNG, per path. source→`.dag` acceptance: **gap** — the invalid state is accepted.
+   source→interpretation: the interpreter refuses loudly and typed —
+   `NoSuchField { type_name: "DeployRevisionRelation", field: "current" }` — so this is NOT
+   silent wrongness and NOT below the absolute floor; it is below the *ordinary compiler*
+   baseline. The Rust-emission path is UNMEASURED and is a separate row when someone measures
+   it; a runtime `NoSuchField` in the interpreter says nothing about what emitted Rust does.
+
+   WHAT THIS CONTRADICTS, stated because the claim is on the record: #8262 claimed a compile-time
+   refusal subset covering structured record and coproduct-variant literal mismatches at
+   direct-call arguments and record-field positions. Arm C is inside that subset and holds. Arm
+   B and arm D are inside its stated scope and do not. The claim is therefore too strong by the
+   nullary case rather than wrong in kind — a rung-honesty correction, not a retraction.
+
+   WORKING HYPOTHESIS, NOT ESTABLISHED: the structured-mismatch wall recognizes record-literal
+   expressions and payload-bearing variant applications, and a nullary variant reaches the
+   position through a different expression path (a bare name/identifier) that never arrives at
+   that wall. The matrix is consistent with it and does not prove it; the fix search should start
+   by asking which expression forms reach the check, not by widening the check.
+
+   NEXT TRIGGER: a located compile-time refusal for arm B and arm D, with all four arms enrolled
+   as permanent controls — B and D as expecting-red that flip to permanent regression controls
+   when the wall lands, C and CTL as the positive controls proving the wall stayed reachable.
+   Per §4b(4) the controls do not retire when the class climbs.
+
+   REPRODUCTION. Copy `dag/` and `src/v2` to a directory UNDER the workspace root (the compiler
+   refuses a `--source-root` outside it), add one module importing
+   `gunbc.fleet_main_revision { FleetRevisionRelationObservation, DeployRevisionRelation,
+   SameRevision, RelationUnverifiable }`, and compile each arm with
+   `gunbc compile --output-dir <out> --source-root <copy>/dag --source-root <copy>/v2 --entry
+   <the arm>`. `0 blocking error(s)` on arms B and D is the finding; a located `type mismatch`
+   on either would refute it.
+
+
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
 **(2026-07-31 restructure.)** The canonical dependency order now lives in the roadmap
