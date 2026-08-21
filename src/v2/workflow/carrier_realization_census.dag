@@ -9,6 +9,7 @@ import v1.compiler.resolve { ModuleGraph, ResolvedModule }
 import v1.std.core { Node, NewlineIndex, authored_name_at, module_items, param_node_type_expr }
 import std.coercion { TypeRealizationDecision, Realized, Unrealized, Refused }
 import std.types { List, String, Map }
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 // The step-1 shadow census: for every type-reference occurrence the v1 emitter would
 // render, compute BOTH the legacy short-circuit answer and the strict identity
@@ -150,4 +151,88 @@ fn census_rows(sources: List<SourceFile>) -> List<CarrierDecisionRow> {
     Present { value: g } =>
       g.modules |> fold(init: no_rows(), f: (acc, m) => concat(acc, module_rows(m: m, si: si)))
   }
+}
+
+// ---------------------------------------------------------------------------
+// Subject sources. FAIL-CLOSED: one unreadable path refuses the whole census.
+//
+// A census over a PARTIAL closure silently under-counts, and an under-count here is
+// indistinguishable from a clean result -- the empty-observation narrow DESIGN section 5
+// names, where an observation that could not see what changed is rendered as "nothing is
+// affected". Skipping the file would zero this deficit's frequency by construction. So the
+// arm refuses and names the path rather than widening or narrowing.
+// ---------------------------------------------------------------------------
+
+type CensusSources
+  = SourcesRead { sources: List<SourceFile> }
+  | SourceReadRefused { path: String }
+
+fn census_sources_step(acc: CensusSources, path: String) -> CensusSources {
+  match acc {
+    SourceReadRefused { path: p } => SourceReadRefused { path: p }
+    SourcesRead { sources: so_far } => {
+      let read_out = Filesystem.Read(path: path)
+      if !read_out.success {
+        SourceReadRefused { path: path }
+      } else {
+        SourcesRead { sources: concat(so_far, [SourceFile { path: path, content: read_out.content }]) }
+      }
+    }
+  }
+}
+
+fn census_sources_from_paths(paths: List<String>) -> CensusSources {
+  paths |> fold(init: SourcesRead { sources: [] }, f: (acc, p) => census_sources_step(acc: acc, path: p))
+}
+
+// ---------------------------------------------------------------------------
+// Receipt. The cross-tab is the artifact, so the row carries the raw fields the
+// verdict was computed from -- a classifier that folds its discriminating input into
+// its label destroys later re-adjudication, which is the instrument lesson this lane
+// paid for once already.
+// ---------------------------------------------------------------------------
+
+fn outcome_label(o: CensusOutcome) -> String {
+  match o {
+    Agrees => "Agrees"
+    DivergesWithExactIdentity => "DivergesWithExactIdentity"
+    IdentityUnavailable => "IdentityUnavailable"
+  }
+}
+
+fn census_tsv_header() -> String {
+  "module_file\tenclosing_decl\tposition_kind\tauthored_name\tdecl_file\tlegacy_base\tauthority_base\toutcome"
+}
+
+fn census_row_tsv(r: CarrierDecisionRow) -> String {
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(
+    r.module_file, "\t"), r.enclosing_decl), "\t"), r.position_kind), "\t"), r.authored_name), "\t"),
+    r.decl_file), "\t"), r.legacy_base), "\t"), r.authority_base), "\t"), outcome_label(o: r.outcome))
+}
+
+fn census_tsv(rows: List<CarrierDecisionRow>) -> String {
+  rows |> fold(init: census_tsv_header(), f: (acc, r) => concat(concat(acc, "\n"), census_row_tsv(r: r)))
+}
+
+fn census_receipt_for_paths(paths: List<String>) -> String {
+  match census_sources_from_paths(paths: paths) {
+    SourceReadRefused { path: p } => concat("REFUSED\tsource_read_failed\t", p)
+    SourcesRead { sources: srcs } => census_tsv(rows: census_rows(sources: srcs))
+  }
+}
+
+// First end-to-end subject: a small, self-contained closure that genuinely exercises the
+// carrier -- dag/std/string_type.dag declares `type String = FreeMonoid<Char>`, which is the
+// exact declaration the structural roster enrolls and the exact one the short-circuit
+// short-circuits past. This is a MECHANISM proof, not the calibration subject: the
+// calibration control runs against the 03_ingest closure and its 25 arm-A sites, and no
+// divergence count from this entry may be published as the census result.
+data census_smoke_subject_paths: List<String> = [
+  "dag/std/algebra.dag",
+  "dag/std/types.dag",
+  "dag/std/string_type.dag"
+]
+
+fn census_smoke_receipt() -> String {
+  census_receipt_for_paths(paths: census_smoke_subject_paths)
 }
