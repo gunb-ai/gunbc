@@ -94,7 +94,6 @@ type EmitGraphInfo {
   clone_bounded_type_params: Map<String, Set<String>>
   map_key_required_type_names: Set<String>
   clone_impl_required_type_params: Map<String, Set<String>>
-  ord_bounded_type_params: Map<String, Set<String>>
 
 
   fn_generic_param_names: List<String>
@@ -107,8 +106,6 @@ type EmitInfoBuildState {
   type_decl_items: Map<String, Node>
   fn_decl_items: Map<String, Node>
 }
-
-data empty_emit_graph_info_ord_fallback_note: String = "Conservatism: render paths without EmitGraphInfo pass empty_emit_graph_info(); bare-ref BTreeSet Ord eligibility fails closed (lookup_emit_type_decl -> Absent) and surfaces compile_error! at probe time — nine call sites inherit this, loud not silent widen."
 
 fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
@@ -128,7 +125,6 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     clone_bounded_type_params: empty_map(),
     map_key_required_type_names: empty_set(),
     clone_impl_required_type_params: empty_map(),
-    ord_bounded_type_params: empty_map(),
 
     fn_generic_param_names: [],
     fn_type_env: empty_type_env(),
@@ -154,7 +150,6 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
     clone_bounded_type_params: emit_info.clone_bounded_type_params,
     map_key_required_type_names: emit_info.map_key_required_type_names,
     clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
-    ord_bounded_type_params: emit_info.ord_bounded_type_params,
     fn_generic_param_names: generic_param_names,
     fn_type_env: env,
     fn_return_type: emit_info.fn_return_type
@@ -179,7 +174,6 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> 
     clone_bounded_type_params: emit_info.clone_bounded_type_params,
     map_key_required_type_names: emit_info.map_key_required_type_names,
     clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
-    ord_bounded_type_params: emit_info.ord_bounded_type_params,
     fn_generic_param_names: emit_info.fn_generic_param_names,
     fn_type_env: emit_info.fn_type_env,
     fn_return_type: fn_return_type

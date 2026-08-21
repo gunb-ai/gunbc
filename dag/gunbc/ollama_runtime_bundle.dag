@@ -1,6 +1,6 @@
 module gunbc.ollama_runtime_bundle
 
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr, String, List, Bool, Int }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import extdeps.ollama.binary_release {
   OllamaBinaryRelease,
@@ -10,29 +10,63 @@ import extdeps.ollama.binary_release {
   ollama_reported_version_matches_release,
   ollama_binary_release_for_observed_asset_digest,
 }
+import extdeps.archive.format { ArchiveCompressionCodec, Gzip, Zstd }
 
-data ollama_runtime_bundle_note: String = "Release-bundled Ollama runtime closure identity at ollama_required_release (extdeps.ollama.binary_release). Produces the RuntimeArtifactIdentity.closure_digest consumed by gunbc.spark_serving_release. Materialization binds through gunbc.package_delivery per #8225 — this module derives identity only; it does not install."
+data ollama_runtime_bundle_note: String = "Release-bundled Ollama runtime closure identity at ollama_required_release (extdeps.ollama.binary_release). Produces the RuntimeArtifactIdentity.closure_digest consumed by gunbc.spark.serving_release. Materialization binds through gunbc.package_delivery per #8225 — this module derives identity only; it does not install."
 
-fn ollama_runtime_closure_seed(rel: OllamaBinaryRelease) -> NonEmptyStr {
+// THE CODEC, NOT THE DISTRIBUTION SUFFIX. The suffix is a filename convention -- `.tgz` and
+// `.tar.gz` are one codec spelled two ways and unpack identically -- so hashing it would split one
+// materialization into two identities. What determines the materialized tree is how the bytes are
+// decompressed, which is the codec.
+fn ollama_runtime_archive_codec_key(codec: ArchiveCompressionCodec) -> String {
+  match codec {
+    Gzip => "gzip"
+    Zstd => "zstd"
+  }
+}
+
+// THE NAME OVERSTATED WHAT THIS PROVES, and the name was the whole problem.
+//
+// It was `closure_digest`, which reads as "an identity for the extracted runtime tree". It is not:
+// it hashes version, architecture, variant and the ARCHIVE digest. Nothing here has ever seen an
+// extracted file. Comparing this against an executable digest observed on a host would manufacture
+// drift out of a domain mismatch -- the same class as folding enablement into a content identity,
+// one layer over, and the reason a corrupted extraction under a correct root is NOT runtime drift.
+//
+// Renamed to what it is: a MATERIALIZATION identity -- the identity of the inputs that determine
+// what materializing this release must produce. It is knowable from admitted upstream bytes plus an
+// admitted recipe without claiming the tree exists anywhere.
+//
+// Two inputs the release already carried are now in it, because both DETERMINE the materialized
+// result and neither was hashed: archive_format decides how the bytes are unpacked, and
+// executable_relative_path decides where the binary lands inside the root. Two releases differing
+// only in either would have produced one identity while materializing to different trees.
+//
+// STILL NOT IN IT, named so the gap is not mistaken for closed: a structured extraction recipe.
+// `archive_layout_note` is prose and stays prose -- it is not load-bearing here, and promoting an
+// unparsed sentence into an identity would be worse than leaving it out.
+fn ollama_runtime_materialization_seed(rel: OllamaBinaryRelease) -> NonEmptyStr {
   join([
-    "ollama-runtime-closure|version=", rel.version as String,
+    "ollama-runtime-materialization|version=", rel.version as String,
     "|arch=", ollama_linux_arch_key(architecture: rel.architecture),
     "|variant=", ollama_linux_asset_variant_closure_key(variant: rel.variant),
+    "|codec=", ollama_runtime_archive_codec_key(codec: rel.archive_format.codec),
+    "|exe=", rel.executable_relative_path as String,
     "|digest=", rel.digest.hex as String,
   ], "") as NonEmptyStr
 }
 
-fn ollama_runtime_closure_digest(rel: OllamaBinaryRelease) -> Fnv1a64Structural {
-  content_hash_atom(value: ollama_runtime_closure_seed(rel: rel))
+fn ollama_runtime_materialization_identity(rel: OllamaBinaryRelease) -> Fnv1a64Structural {
+  content_hash_atom(value: ollama_runtime_materialization_seed(rel: rel))
 }
 
-fn ollama_runtime_closure_digest_for_required_release() -> Fnv1a64Structural {
-  ollama_runtime_closure_digest(rel: ollama_required_release)
+fn ollama_runtime_materialization_identity_for_required_release() -> Fnv1a64Structural {
+  ollama_runtime_materialization_identity(rel: ollama_required_release)
 }
 
 data ollama_runtime_observation_identity_note: String = "Maps observed /api/version plus the cited release-asset digest (from install-provenance receipt readback, never desired-state re-derivation) to exactly one catalog row. Version wire alone is ambiguous across generic-cuda and jetpack builds at v0.32.9 — never collapse to ollama_required_release without the asset digest."
 
-fn ollama_runtime_closure_digest_for_observed_release(
+fn ollama_runtime_materialization_identity_for_observed_release(
   version: String,
   asset_digest_hex: String,
 ) -> Fnv1a64Structural? {
@@ -40,9 +74,290 @@ fn ollama_runtime_closure_digest_for_observed_release(
     Absent => none
     Present { value: rel } =>
       if ollama_reported_version_matches_release(version: version, rel: rel) {
-        Present { value: ollama_runtime_closure_digest(rel: rel) }
+        Present { value: ollama_runtime_materialization_identity(rel: rel) }
       } else {
         none
       }
+  }
+}
+
+// WHAT A RUNTIME OBSERVATION CAN HONESTLY SAY.
+//
+// A CORRECT PATH NAME IS NOT PROOF OF A CORRECT RUNTIME. The root is content-addressed by the
+// materialization identity, so its NAME is derivable from the release alone -- which means a
+// directory bearing the right name proves only that something once decided to create it. Whether
+// the executable is there, and whether it is the one the identity names, are separate facts.
+//
+// `Incomplete` is therefore its own arm and not a variant of the other two, which is the whole
+// point of the carrier. Folding it into `Absent` would say nothing is installed when a partial tree
+// is sitting there, and the remedy differs -- materialize versus repair. Folding it into
+// `ObservationRefused` would be worse: the corruption was SUCCESSFULLY OBSERVED, and calling a
+// established fact an inability to establish it is the collapse this lane keeps finding one layer
+// down each time. Refusal is reserved for genuinely not knowing -- an unreadable root, a denied
+// permission, a probe that never answered.
+//
+// Note what is NOT here: nothing about a running process. `/api/version` reports what a live server
+// exposes, which is a fact about a process rather than about an installation, and a runtime can be
+// perfectly materialized while nothing is running. Keeping that out is what lets a host mid-install
+// be observed at all -- the property whose absence made every partial state unhealable.
+// THE COMPLETION RECEIPT IS A DEFECT AXIS OF ITS OWN, and its absence was a fail-open.
+//
+// The install sequence writes .gunbc-materialization-receipt LAST, so its presence is what
+// establishes that every earlier step ran -- download, digest admission, extraction, entrypoint
+// check, publication. A witness already asserts it is written last. But the OBSERVATION did not read
+// it: Complete was derived from directory-exists plus executable-exists plus the executable bit, and
+// it then carried the DESIRED identity. So any executable at that path -- a half-extracted tree, a
+// wrong build, a stub someone dropped there -- reported Complete and converged the member.
+//
+// That is the same shape as a model manifest vouching for blobs it does not contain, closed for the
+// model store and left open here. Existence of an entrypoint is not evidence that the closure it
+// belongs to was installed; the receipt is, because it is the one artifact whose write is ordered
+// after everything the observation cannot see.
+//
+// This does not make Complete unforgeable -- the constructor is still public, per the note below --
+// but it stops the PRODUCER from minting one on evidence that never established it.
+type RuntimeMaterializationDefect
+  = RuntimeRootPresentButEmpty
+  | RuntimeExecutableMissing { expected_relative_path: NonEmptyStr }
+  | RuntimeExecutableNotExecutable { expected_relative_path: NonEmptyStr }
+  | RuntimeMaterializationReceiptMissing
+  | RuntimeMaterializationReceiptIdentityMismatch { observed: NonEmptyStr }
+
+// WHAT THIS CARRIER DOES NOT YET DO, named so it is not mistaken for closed.
+//
+// `RuntimeMaterializationComplete` is a PUBLIC CONSTRUCTOR. Any caller can author one carrying any
+// identity, so nothing here makes "complete" a fact EARNED BY EVIDENCE rather than a claim asserted
+// by whoever assembles the value. The arms are honest about what they mean; they are not yet sealed
+// against being written without the observation behind them.
+//
+// That is deliberate rather than overlooked: the filesystem probe that would supply the evidence
+// does not exist yet, so a seal now would have nothing to admit through and would be a wall around
+// an empty room. The obligation is that `Complete` becomes reachable ONLY from a probe result --
+// the same shape as an admission whose sole mint is bound to the fold that establishes it -- and it
+// lands with the probe, not before.
+//
+// Until then this carrier is a vocabulary with correct distinctions, not a guarantee. Stated at the
+// rung it occupies, because a carrier named for a guarantee it does not hold is the inflation that
+// stops a class ever ranking for repair.
+type RuntimeMaterializationObservation
+  = RuntimeMaterializationAbsent
+  | RuntimeMaterializationIncomplete {
+      identity: Fnv1a64Structural
+      first_defect: RuntimeMaterializationDefect
+      further_defects: List<RuntimeMaterializationDefect>
+    }
+  | RuntimeMaterializationComplete { identity: Fnv1a64Structural }
+  | RuntimeMaterializationObservationRefused { cause: NonEmptyStr }
+
+// An incomplete materialization carries at least one defect BY CONSTRUCTION. "Incomplete with
+// nothing wrong" is not a state, and an empty defect list would report exactly that while reading
+// as a real observation -- the same head-plus-tail move the frozen operation rows use.
+fn runtime_materialization_defects(
+  observation: RuntimeMaterializationObservation,
+) -> List<RuntimeMaterializationDefect> {
+  match observation {
+    RuntimeMaterializationIncomplete { identity: _, first_defect: d, further_defects: rest } =>
+      concat([d], rest)
+    RuntimeMaterializationAbsent => []
+    RuntimeMaterializationComplete { identity: _ } => []
+    RuntimeMaterializationObservationRefused { cause: _ } => []
+  }
+}
+
+fn runtime_materialization_defect_label(defect: RuntimeMaterializationDefect) -> String {
+  match defect {
+    RuntimeRootPresentButEmpty => "root-present-but-empty"
+    RuntimeExecutableMissing { expected_relative_path: p } =>
+      join(["executable-missing:", p as String], "")
+    RuntimeExecutableNotExecutable { expected_relative_path: p } =>
+      join(["executable-not-executable:", p as String], "")
+    RuntimeMaterializationReceiptMissing => "materialization-receipt-missing"
+    RuntimeMaterializationReceiptIdentityMismatch { observed: o } =>
+      join(["materialization-receipt-identity-mismatch:", o as String], "")
+  }
+}
+
+// AN INCOMPLETE MATERIALIZATION IS A PRESENT MEMBER CARRYING A DIFFERENT VALUE, NOT AN ABSENT ONE.
+//
+// The previous projection answered `none` for both absent and incomplete, which reconstructed the
+// distinction in the type and then erased it one function later -- before reconcile ever saw it. The
+// cost is not cosmetic: absence yields `MemberAdded` and a difference yields `MemberChanged`, and a
+// partially-extracted root reported as absent selects a fresh materialization rather than a repair,
+// with no `from` value for the repair to be safe about. That is the same collapse the linger member
+// already avoids by carrying a distinct disabled-state digest rather than dropping the member.
+//
+// So incomplete projects a state value DERIVED FROM THE DEFECTS. It is deliberately not the desired
+// identity -- an incomplete tree must never compare equal to a complete one -- and deliberately not a
+// constant, so that a root which loses its executable and a root which merely lost the executable bit
+// are two different observed values rather than one indistinguishable "broken".
+//
+// Absent still projects no member, because nothing is at the address. Refusal also projects no
+// member, but its consumer must refuse on the completeness bit rather than read the absence as a
+// fact -- `runtime_materialization_was_observed` is what separates the two, and dropping it would be
+// the empty-observation narrow.
+fn runtime_materialization_state_digest(
+  observation: RuntimeMaterializationObservation,
+) -> NonEmptyStr? {
+  match observation {
+    RuntimeMaterializationComplete { identity: id } =>
+      Present { value: id.digest as NonEmptyStr }
+    RuntimeMaterializationIncomplete { identity: id, first_defect: d, further_defects: rest } =>
+      Present {
+        value: content_hash_atom(
+          value: join([
+            "ollama-runtime-materialization-incomplete|identity=", id.digest as String,
+            "|defects=",
+            fold(
+              concat([d], rest),
+              init: "",
+              f: fn(acc, defect) {
+                join([acc, ",", runtime_materialization_defect_label(defect: defect)], "")
+              },
+            ),
+          ], "") as NonEmptyStr,
+        ).digest as NonEmptyStr,
+      }
+    RuntimeMaterializationAbsent => none
+    RuntimeMaterializationObservationRefused { cause: _ } => none
+  }
+}
+
+fn runtime_materialization_was_observed(observation: RuntimeMaterializationObservation) -> Bool {
+  match observation {
+    RuntimeMaterializationComplete { identity: _ } => true
+    RuntimeMaterializationIncomplete { identity: _, first_defect: _, further_defects: _ } => true
+    RuntimeMaterializationAbsent => true
+    RuntimeMaterializationObservationRefused { cause: _ } => false
+  }
+}
+
+// WHAT A MODEL STORE OBSERVATION CAN HONESTLY SAY.
+//
+// The same four-way shape the runtime materialization uses, for the same reasons -- but the
+// incomplete arm here is the one that actually bites, because a model pull is long and interruptible
+// and the store's two addressing schemes fail apart.
+//
+// A MANIFEST IS NOT A MODEL. The manifest is addressed by reference and lists the blobs; the blobs
+// carry the weights. An interrupted pull leaves the manifest written and some blobs missing, which
+// is a store that LOOKS installed to any check that stops at the manifest and cannot serve a single
+// token. So `ModelStoreComplete` requires the manifest AND the closure of blobs it names, and
+// `ModelStoreIncomplete` carries which blobs are missing rather than a bare "not ready".
+//
+// Naming the missing blobs is not diagnostics for its own sake: it is what lets a repair fetch what
+// is absent instead of re-pulling a multi-gigabyte model to recover one truncated layer.
+//
+// A BLOB WHOSE BYTES DO NOT MATCH ITS NAME IS ITS OWN STATE. `ModelStoreCorrupt` is not Absent --
+// the file is there and a listing finds it -- and not a refusal, because the observation succeeded
+// and the answer is known. It could be folded into Incomplete and reconcile would behave the same,
+// but the operator question differs: a missing blob was never fetched, a corrupt one was fetched and
+// damaged, and the second says something about the host that the first does not.
+// THE COUNT IS A CARDINAL, AND ITS NAME SAYS SO. This field was `blob_closure_size` until a review
+// caught the ambiguity: "size" reads as a magnitude in bytes, and a reader who assumed that would have
+// been wrong about the one thing the field asserts. Its producer is `length(required)` -- the number of
+// blobs in the closure -- so it is a discrete count and stays a bare `Int` rather than acquiring a
+// `std.measure` unit. Renamed rather than annotated, because the fix for a name that suggests the wrong
+// magnitude is the right name, not a sentence beside the wrong one.
+type ModelStoreObservation
+  = ModelStoreAbsent
+  | ModelStoreIncomplete {
+      manifest_identity: NonEmptyStr
+      first_missing_blob: NonEmptyStr
+      further_missing_blobs: List<NonEmptyStr>
+    }
+  | ModelStoreComplete {
+      manifest_identity: NonEmptyStr
+      blob_closure_count: Int
+    }
+  | ModelStoreCorrupt {
+      manifest_identity: NonEmptyStr
+      first_corrupt_blob: NonEmptyStr
+    }
+  | ModelStoreObservationRefused { cause: NonEmptyStr }
+
+// Incomplete carries at least one missing blob BY CONSTRUCTION. "Incomplete with nothing missing" is
+// not a state, and an empty list would report exactly that while reading as a real observation.
+fn model_store_missing_blobs(observation: ModelStoreObservation) -> List<NonEmptyStr> {
+  match observation {
+    ModelStoreIncomplete {
+      manifest_identity: _,
+      first_missing_blob: b,
+      further_missing_blobs: rest,
+    } => concat([b], rest)
+    ModelStoreAbsent => []
+    ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => []
+    ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => []
+    ModelStoreObservationRefused { cause: _ } => []
+  }
+}
+
+// THE NO-REPULL LAW, stated as a projection rather than enforced by a check at the call site.
+//
+// Only a complete store contributes an observed member, and only a member's absence or difference
+// makes reconcile plan a pull. So an exact manifest with a complete blob closure yields the desired
+// value, the member compares equal, no MemberAction is produced, no MaterializeModelArtifact is selected,
+// and nothing contacts upstream -- by construction of the projection, not by a guard someone must
+// remember to write.
+//
+// Incomplete projects a DIFFERING value derived from what is missing, so reconcile plans a repair as
+// MemberChanged rather than MemberAdded. Absent projects nothing, so a bare host plans the pull.
+// Refusal projects nothing either, and its consumer must refuse on the completeness bit rather than
+// read the absence as a fact.
+// A COMPLETE STORE'S STATE IS ITS MANIFEST IDENTITY, PASSED THROUGH UNCHANGED.
+//
+// It used to re-hash the identity with content_hash_atom together with the blob count. That
+// produced an fnv1a64 structural digest, while the desired model member carries a Sha256 identity
+// off an ollama model digest, so observed and desired could never be equal strings and the slot
+// reconciled as drift on every run -- a pull planned forever against a host that already held the
+// model. Reading a sha256 off the host was necessary but not sufficient; anything that re-digests
+// it on the way out re-opens the same gap one level up.
+//
+// The blob count is deliberately NOT folded in. "Complete" already means the closure the manifest
+// names is satisfied, so the count is derivable from the manifest rather than an independent
+// degree of freedom -- and including it would make two hosts holding the identical model disagree
+// if one of them also had an unrelated blob, which is not a difference in this member's state.
+fn model_store_state_digest(observation: ModelStoreObservation) -> NonEmptyStr? {
+  match observation {
+    ModelStoreComplete { manifest_identity: id, blob_closure_count: _ } => Present { value: id }
+    ModelStoreCorrupt { manifest_identity: id, first_corrupt_blob: b } =>
+      Present {
+        value: content_hash_atom(
+          value: join([
+            "ollama-model-store-corrupt|manifest=", id as String,
+            "|corrupt=", b as String,
+          ], "") as NonEmptyStr,
+        ).digest as NonEmptyStr,
+      }
+    ModelStoreIncomplete {
+      manifest_identity: id,
+      first_missing_blob: b,
+      further_missing_blobs: rest,
+    } =>
+      Present {
+        value: content_hash_atom(
+          value: join([
+            "ollama-model-store-incomplete|manifest=", id as String,
+            "|missing=",
+            fold(concat([b], rest), init: "", f: fn(acc, blob) {
+              join([acc, ",", blob as String], "")
+            }),
+          ], "") as NonEmptyStr,
+        ).digest as NonEmptyStr,
+      }
+    ModelStoreAbsent => none
+    ModelStoreObservationRefused { cause: _ } => none
+  }
+}
+
+fn model_store_was_observed(observation: ModelStoreObservation) -> Bool {
+  match observation {
+    ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => true
+    ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => true
+    ModelStoreIncomplete {
+      manifest_identity: _,
+      first_missing_blob: _,
+      further_missing_blobs: _,
+    } => true
+    ModelStoreAbsent => true
+    ModelStoreObservationRefused { cause: _ } => false
   }
 }

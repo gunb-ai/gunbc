@@ -4,7 +4,7 @@
 use self::V1FreeMonoidSupplementalRoute::*;
 pub use crate::extdeps_languages_rust_derive_contracts::RustVecSupplementalGenericBoundRow;
 pub use crate::extdeps_languages_rust_derive_contracts::{
-    rust_ordset_supplemental_generic_bound_rows,
+    rust_btree_set_supplemental_generic_bound_rows,
     rust_vec_freemonoid_supplemental_generic_bound_rows,
 };
 pub use crate::extdeps_languages_rust_emit::{
@@ -22,7 +22,7 @@ use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape::{
     ReprDeriveElemSymbolWrappedOrdCarrier, ReprDeriveElemUnknown,
 };
 use crate::std_trait_derive_shape::ReprGroundingDeriveTrait::{
-    ReprDeriveClone, ReprDeriveDebug, ReprDeriveDeserialize, ReprDeriveOrd, ReprDerivePartialEq,
+    ReprDeriveClone, ReprDeriveDebug, ReprDeriveDeserialize, ReprDerivePartialEq,
     ReprDeriveSerialize,
 };
 pub use crate::std_trait_derive_shape::{
@@ -36,9 +36,11 @@ pub use crate::std_trait_derive_shape::{ReprGroundingDeriveElemShape, ReprGround
 pub use crate::std_types::{container_template_algebra, is_container_type};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
+pub use crate::v1_compiler_coercion::{decl_identity_file, lookup_checkpoint};
 pub use crate::v1_compiler_emit::{emit_ident, to_pascal};
-pub use crate::v1_compiler_emit_core_support::unique_strings;
-pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type};
+pub use crate::v1_compiler_emit_core_support::{is_type_alias_item, unique_strings};
+pub use crate::v1_compiler_emit_rust::item_generic_param_names;
+pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type, resolved_type};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Connective::NoConnective;
@@ -73,7 +75,7 @@ pub fn trait_derive_emit_item_clone_bound_rule_note() -> String {
 pub fn trait_derive_emit_item_clone_bound_wf_propagation_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "SECOND, INDEPENDENT trigger for an item-level Clone bound, distinct from the derive/lowering trigger above and NOT a widening of it: WELL-FORMEDNESS PROPAGATION. Naming a declared generic type G<A..> at all requires satisfying G's own declared bounds, so if G's i-th parameter already carries `: Clone` and the i-th argument's Clone impl requires P: Clone, then the item declaring that field is ill-formed without P: Clone -- rustc E0277 at the field, before any derive is considered. This applies to STRUCTS AND ENUMS alike, because it is a property of naming the type, not of deriving Clone for it; the rule note above correctly scopes the DERIVE trigger to structs (derive emits per-impl bounds) and that scoping is unchanged here. The two axes are grounded differently and can disagree: im::Vector<A> carries NO declaration bound (checked against im-15.1.0 vector::Vector), so a container field is a derive-trigger fact only, while Boxed<T: Clone> is a well-formedness fact that propagates through Nested<T> { boxed: Boxed<T> } and List<Boxed<T>> alike. The requirement is a LEAST FIXPOINT over the declared-type graph (v1_clone_bounded_type_params), not a one-field-shape-deep read: each round derives every declared generic type's bounded parameters from the current approximation and stops when a round adds nothing, so a chain Boxed -> Nested -> TwoHop propagates all the way and a recursive type (Cyclic<T> { self_ref: Cyclic<T>? }) saturates instead of diverging. The derive trigger SEEDS the fixpoint (v1_bound_seed_for_item, structs only, reusing v1_item_type_param_needs_bound_struct verbatim rather than restating it) and then propagates, because Boxed<T: Clone> earns its bound from the derive trigger and Nested<T> { boxed: Boxed<T> } inherits it from well-formedness. Two sub-predicates, deliberately separate because they answer different questions about the same type expression: v1_type_expr_clone_impl_needs_param asks whether `tau: Clone` requires P: Clone (every derive(Clone) type and every container bounds all of its parameters, so this reduces to `P occurs in tau`), while v1_type_expr_wf_needs_clone_param asks whether NAMING tau requires it (only the argument positions the fixpoint has already bounded count). The undecidable residue is answered by its own total function rather than fused into either Bool: a type application whose head is neither a container nor a declared type in the closure has no readable parameter list, so v1_type_expr_clone_undecided_head names it and the emit site refuses with compile_error!. It is NOT silently treated as `no bound needed` and NOT widened to `bound everything` -- widening would zero the deficit's frequency by construction (DESIGN section 5, absorbing fallback). Dead in corpus as of this landing; kept as the fail-closed arm.".to_string()
+            "SECOND, INDEPENDENT trigger for an item-level Clone bound, distinct from the derive/lowering trigger above and NOT a widening of it: WELL-FORMEDNESS PROPAGATION. Naming a declared generic type G<A..> at all requires satisfying G's own declared bounds, so if G's i-th parameter already carries `: Clone` and the i-th argument's Clone impl requires P: Clone, then the item declaring that field is ill-formed without P: Clone -- rustc E0277 at the field, before any derive is considered. This applies to STRUCTS AND ENUMS alike, because it is a property of naming the type, not of deriving Clone for it; the rule note above correctly scopes the DERIVE trigger to structs (derive emits per-impl bounds) and that scoping is unchanged here. The two axes are grounded differently and can disagree: im::Vector<A> carries NO declaration bound (checked against im-15.1.0 vector::Vector), so a container field is a derive-trigger fact only, while Boxed<T: Clone> is a well-formedness fact that propagates through Nested<T> { boxed: Boxed<T> } and List<Boxed<T>> alike. The requirement is a LEAST FIXPOINT over the declared-type graph (v1_clone_bounded_type_params), not a one-field-shape-deep read: each round derives every declared generic type's bounded parameters from the current approximation and stops when a round adds nothing, so a chain Boxed -> Nested -> TwoHop propagates all the way and a recursive type (Cyclic<T> { self_ref: Cyclic<T>? }) saturates instead of diverging. The derive trigger SEEDS the fixpoint (v1_clone_bound_seed_for_item, structs only, reusing v1_item_type_param_needs_clone_bound_struct verbatim rather than restating it) and then propagates, because Boxed<T: Clone> earns its bound from the derive trigger and Nested<T> { boxed: Boxed<T> } inherits it from well-formedness. Two sub-predicates, deliberately separate because they answer different questions about the same type expression: v1_type_expr_clone_impl_needs_param asks whether `tau: Clone` requires P: Clone (every derive(Clone) type and every container bounds all of its parameters, so this reduces to `P occurs in tau`), while v1_type_expr_wf_needs_clone_param asks whether NAMING tau requires it (only the argument positions the fixpoint has already bounded count). The undecidable residue is answered by its own total function rather than fused into either Bool: a type application whose head is neither a container nor a declared type in the closure has no readable parameter list, so v1_type_expr_clone_undecided_head names it and the emit site refuses with compile_error!. It is NOT silently treated as `no bound needed` and NOT widened to `bound everything` -- widening would zero the deficit's frequency by construction (DESIGN section 5, absorbing fallback). Dead in corpus as of this landing; kept as the fail-closed arm.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -308,7 +310,16 @@ pub fn v1_map_key_round_add(
 pub fn map_key_alias_hop_gap_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "MEASURED GAP, ATTEMPTED AND REVERTED -- the propagation edge is real, and a correct fix needs an authority this module cannot reach. Map-key requirement propagation walks a required type's FIELD type expressions, and a type ALIAS has no fields: it is a bare leaf item whose right-hand side hangs off the item's own inference rather than off a child. So `type Hash = Fnv1a64Structural` in v2.std.node terminates the walk, Fnv1a64Structural is emitted with PartialEq but without Eq or std::hash::Hash, and `Map<Hash, RuntimeValue>` in v2.extdeps.runtimes.v2_effect_io_pure fails to compile at four sites. MEASURED, not reasoned: emitting the v2.compiler.05_eval closure with the Hash checkpoint row retired gives exactly those four E0277 sites, and adding the alias arm removes all four and adds none. THE EDGE WAS ALWAYS MISSING; it became observable only when the bare-name checkpoint stopped realizing Hash as a String alias, because until then the key type carried Rust's own derives and the hop was never asked for -- the defect's own output had been standing in for the traversal. WHY THE OBVIOUS FIX IS WRONG, proven by execution rather than argued: following every alias right-hand side makes `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` reach map-key positions, and both carry Rc<dyn Fn> fields, so the fold refuses them -- two stage0 files diverge. That refusal is a FALSE POSITIVE, and its shape is this lane's own subject: the derive analysis reasons about a type's DECLARED structure while the emitter renders its REALIZED one. Int and Nat realize as i64, which already carries Eq and Hash, so AbelianGroup never appears at the key position at all; Hash has no realization and therefore renders structurally, which is exactly why its hop is owed. So the rule is not `follow aliases` but `follow an alias precisely as far as the emitter renders it structurally`, and the authority that answers that is a realization binding keyed on DeclarationRef, WHICH DOES NOT EXIST YET -- an earlier revision of this note cited gunbc.rust_realization rust_realization_target_for as though it did, and those modules were removed from this branch as consumer-less authority (review 53510), so the citation is corrected rather than left pointing at a symbol the tree does not carry. This module has names, not declaration identity. NOT LANDED FOR THAT REASON. A structural proxy was available and deliberately refused: the two specimens differ in that Hash aliases a bare record while Int and Nat alias an APPLIED template, and keying on that would separate the measured cases while tracing a property nobody claims is the real one -- the same substitution this note exists to name. DISSOLVE-ON: declaration identity reaching the type renderer and this analysis, which is the same threading the identity-keyed lookup_checkpoint cut is blocked on; when it lands, the alias arm and the four sites go together.".to_string()
+            "LANDED. The gap this note originally recorded (see git history for the full pre-landing account) was that map-key requirement propagation walks a required type's FIELD type expressions, and a type ALIAS has no fields -- it is a bare leaf item whose right-hand side hangs off the item's own inference rather than off a child -- so `type Hash = Fnv1a64Structural` in v2.std.node terminated the walk, Fnv1a64Structural was emitted with PartialEq but without Eq or std::hash::Hash, and `Map<Hash, RuntimeValue>` in v2.extdeps.runtimes.v2_effect_io_pure failed to compile at four sites. The DISSOLVE-ON trigger named at the time -- declaration identity reaching the type renderer, the same threading the identity-keyed lookup_checkpoint cut (T7, #8537) was blocked on -- landed as v1.compiler.coercion lookup_checkpoint/decl_identity_file, so the fix reuses that authority rather than inventing the DeclarationRef binding the earlier attempt lacked (DESIGN section 2/3, single authority). v1_item_alias_hop_type_exprs (below v1_item_field_type_exprs) follows a bare-leaf alias item's resolved right-hand side into the walk ONLY when lookup_checkpoint(target: Rust, dag_name, decl_file) returns Absent for the alias's own (dag_name, decl_file) -- i.e. only when the emitter has no native realization and renders the alias structurally. `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` both have Rust checkpoint rows (realize as i64), so lookup_checkpoint returns Present and the alias arm contributes nothing for them -- the previously measured false positive (AbelianGroup/CommutativeSemiring reaching map-key position via Rc<dyn Fn> fields) does not recur, because the gate is keyed on realization rather than on bare-alias shape. Folded into the single shared v1_item_field_type_exprs (see v1_item_field_type_exprs_alias_hop_note) rather than a map-key-only variant, since is_bare_leaf_item forces params.count == 0 on every alias item, so no alias ever enters the generic-only clone-bound fixpoints that are this function's other callers.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn map_key_alias_hop_reconciliation_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "RECONCILED (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, merging gunbc#8736 into this branch's own review-54323-finding-3 work): this branch independently developed a map-key-only alias-hop arm (v1_map_key_propagate_alias, gated on is_type_alias_item in v1_map_key_propagate_round) that called v1.compiler.coercion type_realization_decision directly, concurrently with gunbc#8736 landing the fold-in above on main. DROPPED IN FAVOR OF THE LANDED VERSION, not run alongside it: this branch's own v1.compiler.coercion lookup_checkpoint was separately refactored in the same review cycle into a thin derivation of type_realization_decision for every decl_file != \"\" caller (coercion.dag's own note beside lookup_checkpoint records this), so v1_item_alias_hop_type_exprs's call to lookup_checkpoint already answers from type_realization_decision as the underlying authority -- a second, map-key-only function asking the same decision through a different name would be exactly the forked second copy DESIGN section 2/3 forbids and v1_item_field_type_exprs_alias_hop_note's own reasoning (below) already argues against. The two implementations are not merely similar, they are behaviorally identical for every case this fold-in covers: lookup_checkpoint(target, dag_name, decl_file) for decl_file != \"\" maps Realized -> Present, Unrealized -> Absent, Refused -> Absent, so the guard 'lookup_checkpoint == Absent' used above is the same predicate as 'type_realization_decision answers Unrealized or Refused' this branch's dropped arm matched separately. coercion.dag's DECLARED RESIDUE note, written before this reconciliation, named this arm as a caller required to use type_realization_decision directly; that requirement is satisfied indirectly, through lookup_checkpoint, and is corrected there rather than left standing.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -327,22 +338,30 @@ pub fn v1_map_key_propagate_round(
                 acc.clone()
             } else {
                 match v1_rt::map_get(&type_decl_items, type_name.clone()) {
-                    Some(item) => v1_item_field_type_exprs(item.clone()).iter().cloned().fold(
-                        acc.clone(),
-                        |inner: Rc<MapKeyRequirementRound>, te: Rc<Node>| {
-                            v1_type_expr_head_names(te.clone(), source_indices.clone())
-                                .iter()
-                                .cloned()
-                                .fold(inner, |deep: Rc<MapKeyRequirementRound>, head: String| {
-                                    if map_has_declared_type(type_decl_items.clone(), head.clone())
-                                    {
-                                        v1_map_key_round_add(deep.clone(), head.clone())
-                                    } else {
-                                        deep.clone()
-                                    }
-                                })
-                        },
-                    ),
+                    Some(item) => v1_item_field_type_exprs(item.clone(), source_indices.clone())
+                        .iter()
+                        .cloned()
+                        .fold(
+                            acc.clone(),
+                            |inner: Rc<MapKeyRequirementRound>, te: Rc<Node>| {
+                                v1_type_expr_head_names(te.clone(), source_indices.clone())
+                                    .iter()
+                                    .cloned()
+                                    .fold(
+                                        inner,
+                                        |deep: Rc<MapKeyRequirementRound>, head: String| {
+                                            if map_has_declared_type(
+                                                type_decl_items.clone(),
+                                                head.clone(),
+                                            ) {
+                                                v1_map_key_round_add(deep.clone(), head.clone())
+                                            } else {
+                                                deep.clone()
+                                            }
+                                        },
+                                    )
+                            },
+                        ),
                     None => acc.clone(),
                 }
             }
@@ -791,6 +810,297 @@ pub fn v1_freemonoid_serde_bound_attr(
     }
 }
 
+pub fn trait_derive_emit_set_ord_supplemental_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "ROOT A, Ord half (E0277 root-partition adhoc-a407cd3d-840): std.authorization_profile AudienceSet's EnumeratedAudience { members: Set<P> } realizes Set<P> as im::OrdSet<P>, aliased `as BTreeSet` in every emitted use statement -- NOT std::collections::BTreeSet, corrected 2026-08-21 after a first pass of this lane cited the std/serde-for-std authorities and left 16 of the true P: Ord sites open under rustc (docs/probes/curated_cargo_probe_one.sh, not gunbc-compile-clean, is what caught it -- DESIGN section 5's 'a typecheck and a grep are not consumers'). Verified against the vendored im-15.1.0 source: OrdSet's own Debug and PartialEq impls (src/ord/set.rs#937, #844) are each conditional on P: Ord alone; its Serialize and Deserialize impls (src/ser.rs#134, #125) are each conditional on BOTH P: Ord and P: Clone; Clone itself is unconditional (set.rs#830, no row). The FreeMonoid apparatus above is a Clone-shaped fork (three Clone-only triggers named in trait_derive_emit_item_clone_bound_contract_fork_note) that structurally cannot emit P: Ord, so this lane consumes the dag-rooted single authority extdeps.languages.rust.derive_contracts rust_btree_set_supplemental_generic_bound_rows (NEVER a literal trait list in this module, same discipline as the FreeMonoid rows) rather than adding a second Clone-shaped item-header fixpoint: the item header and the #[derive(...)] trait list membership are UNCHANGED (P: Ord never unions onto AudienceSet<P>'s own declaration), but per-trait ROUTING now mirrors the FreeMonoid split exactly, reusing v1_freemonoid_row_route rather than a second copy of the same two-way split: Debug and PartialEq leave the derive list and are realized as hand-written impls whose headers union the trait's own structural requirement with the row's per-derive_trait Ord requirement ONLY (never Clone -- the discriminating control this lane names explicitly: a type whose Debug impl needs Ord but whose construction does not need Clone -- correct output bounds the DERIVE, not the type, and NOT every row's required trait unioned together, which would over-bound Debug/PartialEq with Clone they do not need); Serialize and Deserialize stay derived with a combined #[serde(bound(serialize = .., deserialize = ..))] override naming every item generic param, Set-affected params carrying Ord + Clone in both clauses (mirroring v1_freemonoid_serde_bound_attr, not a deserialize-only attribute). A row this realization cannot route, or a Set-affected param whose trait list omits a routed trait, REFUSES via compile_error (typed, located), never skips. Scoped to the enum derive path (v1_emit_enum_derives / v1_emit_enum_supplemental_impls) because that is AudienceSet's actual shape and the only exercised Set<P> generic field in the corpus (verified: the sole generic Set<P> field in dag/std/authorization_profile.dag); no struct in the corpus carries a generic Set<P> field today, so struct-side wiring would be speculative. Dissolution: same as trait_derive_emit_item_clone_bound_contract_fork_dissolve_on (v2 emitter subsumption at this grain).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn v1_set_element_params(
+    generic_param_names: Rc<Vec<String>>,
+    field_type_exprs: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in generic_param_names.clone().iter().cloned() {
+            if {
+                let mut __found = false;
+                for te in field_type_exprs.clone().iter().cloned() {
+                    if ((authored_name_at(source_indices.clone(), te.clone()) == "Set".to_string())
+                        && {
+                            let mut __found = false;
+                            for c in te.children.clone().iter().cloned() {
+                                if v1_type_expr_contains_param_name(
+                                    p.clone(),
+                                    c.clone(),
+                                    source_indices.clone(),
+                                ) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        })
+                    {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                __result.push(p);
+            }
+        }
+        __result
+    })
+}
+
+pub fn v1_set_unroutable_row_refusal() -> String {
+    {
+        let unroutable = Rc::new({
+            let mut __result = Vec::new();
+            for row in rust_btree_set_supplemental_generic_bound_rows()
+                .iter()
+                .cloned()
+            {
+                if match v1_freemonoid_row_route(row.clone()) {
+                    Some(_) => false,
+                    None => true,
+                } {
+                    __result.push(row);
+                }
+            }
+            __result
+        });
+        if ((unroutable.clone().len() as i64) == 0) {
+            "".to_string()
+        } else {
+            v1_trait_derive_refuse("trait_derive_emit: a rust_btree_set_supplemental_generic_bound_rows row names a derive trait this realization cannot route (neither hand-written impl nor serde bound attr) — extend v1_freemonoid_row_route rather than skipping the row".to_string())
+        }
+    }
+}
+
+pub fn v1_set_hand_written_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for row in Rc::new({
+            let mut __result = Vec::new();
+            for row in rust_btree_set_supplemental_generic_bound_rows()
+                .iter()
+                .cloned()
+            {
+                if match v1_freemonoid_row_route(row.clone()) {
+                    Some(V1FreeMonoidSupplementalRoute::FreeMonoidHandWrittenImpl) => true,
+                    _ => false,
+                } {
+                    __result.push(row);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.push(row.derive_trait.clone());
+        }
+        __result
+    })
+}
+
+pub fn v1_set_filter_hand_written(
+    traits: Rc<Vec<ReprGroundingDeriveTrait>>,
+) -> Rc<Vec<ReprGroundingDeriveTrait>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for t in traits.clone().iter().cloned() {
+            if !{
+                let mut __found = false;
+                for h in v1_set_hand_written_traits().iter().cloned() {
+                    if (h.clone() == t.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                __result.push(t);
+            }
+        }
+        __result
+    })
+}
+
+pub fn v1_set_required_traits_for(
+    derive_trait: ReprGroundingDeriveTrait,
+) -> Rc<Vec<ReprGroundingDeriveTrait>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for row in Rc::new({
+            let mut __result = Vec::new();
+            for row in rust_btree_set_supplemental_generic_bound_rows()
+                .iter()
+                .cloned()
+            {
+                if (row.derive_trait.clone() == derive_trait.clone()) {
+                    __result.push(row);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.push(row.required.clone());
+        }
+        __result
+    })
+}
+
+pub fn v1_set_supplemental_bound_spelling_for(derive_trait: ReprGroundingDeriveTrait) -> String {
+    unique_strings(Rc::new({
+        let mut __result = Vec::new();
+        for t in v1_set_required_traits_for(derive_trait.clone())
+            .iter()
+            .cloned()
+        {
+            __result.push(rust_trait_derive_spelling(t.clone()));
+        }
+        __result
+    }))
+    .join(&" + ".to_string())
+}
+
+pub fn v1_set_serde_bound_attr(
+    generic_param_names: Rc<Vec<String>>,
+    set_params: Rc<Vec<String>>,
+) -> String {
+    {
+        let ser_supplement =
+            v1_set_supplemental_bound_spelling_for(ReprGroundingDeriveTrait::ReprDeriveSerialize);
+        let de_supplement =
+            v1_set_supplemental_bound_spelling_for(ReprGroundingDeriveTrait::ReprDeriveDeserialize);
+        let ser_entries = Rc::new({
+            let mut __result = Vec::new();
+            for p in generic_param_names.clone().iter().cloned() {
+                __result.push({
+                    let pascal = to_pascal(p.clone());
+                    if {
+                        let mut __found = false;
+                        for f in set_params.clone().iter().cloned() {
+                            if (f.clone() == p.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    } {
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(pascal.clone(), ": ".to_string()),
+                                ser_supplement.clone(),
+                            ),
+                            " + serde::Serialize".to_string(),
+                        )
+                    } else {
+                        v1_rt::concat(pascal.clone(), ": serde::Serialize".to_string())
+                    }
+                });
+            }
+            __result
+        });
+        let de_entries = Rc::new({
+            let mut __result = Vec::new();
+            for p in generic_param_names.clone().iter().cloned() {
+                __result.push({
+                    let pascal = to_pascal(p.clone());
+                    if {
+                        let mut __found = false;
+                        for f in set_params.clone().iter().cloned() {
+                            if (f.clone() == p.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    } {
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(pascal.clone(), ": ".to_string()),
+                                de_supplement.clone(),
+                            ),
+                            " + serde::Deserialize<'de>".to_string(),
+                        )
+                    } else {
+                        v1_rt::concat(pascal.clone(), ": serde::Deserialize<'de>".to_string())
+                    }
+                });
+            }
+            __result
+        });
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "#[serde(bound(serialize = \"".to_string(),
+                        ser_entries.clone().join(&", ".to_string()),
+                    ),
+                    "\", deserialize = \"".to_string(),
+                ),
+                de_entries.clone().join(&", ".to_string()),
+            ),
+            "\"))]".to_string(),
+        )
+    }
+}
+
+pub fn v1_set_serde_bound_attr_for_traits(
+    traits: Rc<Vec<ReprGroundingDeriveTrait>>,
+    generic_param_names: Rc<Vec<String>>,
+    set_params: Rc<Vec<String>>,
+) -> String {
+    if ((set_params.clone().len() as i64) == 0) {
+        "".to_string()
+    } else {
+        {
+            let refusal = v1_set_unroutable_row_refusal();
+            if (refusal.clone() != "".to_string()) {
+                refusal.clone()
+            } else {
+                if !({
+                    let mut __found = false;
+                    for t in traits.clone().iter().cloned() {
+                        if (t.clone() == ReprGroundingDeriveTrait::ReprDeriveSerialize) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } && {
+                    let mut __found = false;
+                    for t in traits.clone().iter().cloned() {
+                        if (t.clone() == ReprGroundingDeriveTrait::ReprDeriveDeserialize) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                }) {
+                    v1_trait_derive_refuse("trait_derive_emit: a Set<P> field requires P: Ord + Clone for Serialize/Deserialize but the derive trait list for this coproduct elem shape omits one of them — supplemental bound cannot attach".to_string())
+                } else {
+                    v1_rt::concat(
+                        "\n".to_string(),
+                        v1_set_serde_bound_attr(generic_param_names.clone(), set_params.clone()),
+                    )
+                }
+            }
+        }
+    }
+}
+
 pub fn v1_freemonoid_struct_debug_impl(
     name: String,
     generic_param_names: Rc<Vec<String>>,
@@ -1176,6 +1486,591 @@ pub fn v1_freemonoid_enum_partial_eq_impl(
     }
 }
 
+pub fn v1_set_impl_type_params(
+    generic_param_names: Rc<Vec<String>>,
+    set_params: Rc<Vec<String>>,
+    field_type_exprs: Rc<Vec<Rc<Node>>>,
+    structural_spelling: String,
+    derive_trait: ReprGroundingDeriveTrait,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if ((generic_param_names.clone().len() as i64) == 0) {
+        "".to_string()
+    } else {
+        {
+            let entries = Rc::new({
+                let mut __result = Vec::new();
+                for p in generic_param_names.clone().iter().cloned() {
+                    __result.push({
+                        let pascal = to_pascal(p.clone());
+                        let supplemental = if {
+                            let mut __found = false;
+                            for f in set_params.clone().iter().cloned() {
+                                if (f.clone() == p.clone()) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        } {
+                            Rc::new(vec![v1_set_supplemental_bound_spelling_for(
+                                derive_trait.clone(),
+                            )])
+                        } else {
+                            Rc::new(vec![])
+                        };
+                        let structural = if v1_freemonoid_param_in_fields(
+                            p.clone(),
+                            field_type_exprs.clone(),
+                            source_indices.clone(),
+                        ) {
+                            Rc::new(vec![structural_spelling.clone()])
+                        } else {
+                            Rc::new(vec![])
+                        };
+                        let parts = v1_rt::concat(supplemental.clone(), structural.clone());
+                        if ((parts.clone().len() as i64) == 0) {
+                            pascal.clone()
+                        } else {
+                            v1_rt::concat(
+                                v1_rt::concat(pascal.clone(), ": ".to_string()),
+                                parts.clone().join(&" + ".to_string()),
+                            )
+                        }
+                    });
+                }
+                __result
+            });
+            v1_rt::concat(
+                v1_rt::concat("<".to_string(), entries.clone().join(&", ".to_string())),
+                ">".to_string(),
+            )
+        }
+    }
+}
+
+pub fn v1_set_enum_debug_impl(
+    name: String,
+    generic_param_names: Rc<Vec<String>>,
+    set_params: Rc<Vec<String>>,
+    children: Rc<Vec<Rc<Node>>>,
+    field_type_exprs: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let tp = v1_set_impl_type_params(
+            generic_param_names.clone(),
+            set_params.clone(),
+            field_type_exprs.clone(),
+            "std::fmt::Debug".to_string(),
+            ReprGroundingDeriveTrait::ReprDeriveDebug,
+            source_indices.clone(),
+        );
+        let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
+        let arms = Rc::new({
+            let mut __result = Vec::new();
+            for variant in children.clone().iter().cloned() {
+                __result.push({
+                    let vname =
+                        to_pascal(authored_name_at(source_indices.clone(), variant.clone()));
+                    if ((variant.children.clone().len() as i64) == 0) {
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat("            Self::".to_string(), vname.clone()),
+                                    " => f.write_str(\"".to_string(),
+                                ),
+                                vname.clone(),
+                            ),
+                            "\"),".to_string(),
+                        )
+                    } else {
+                        {
+                            let fields = Rc::new({
+                                let mut __result = Vec::new();
+                                for f in variant.children.clone().iter().cloned() {
+                                    __result.push(emit_ident(
+                                        authored_name_at(source_indices.clone(), f.clone()),
+                                        RenderTarget::Rust,
+                                    ));
+                                }
+                                __result
+                            });
+                            let bindings = fields.clone().join(&", ".to_string());
+                            let field_calls = Rc::new({
+                                let mut __result = Vec::new();
+                                for fi in fields.clone().iter().cloned() {
+                                    __result.push(v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(".field(\"".to_string(), fi.clone()),
+                                                "\", ".to_string(),
+                                            ),
+                                            fi.clone(),
+                                        ),
+                                        ")".to_string(),
+                                    ));
+                                }
+                                __result
+                            })
+                            .join(&"".to_string());
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            "            Self::".to_string(),
+                                                            vname.clone(),
+                                                        ),
+                                                        " { ".to_string(),
+                                                    ),
+                                                    bindings.clone(),
+                                                ),
+                                                " } => f.debug_struct(\"".to_string(),
+                                            ),
+                                            vname.clone(),
+                                        ),
+                                        "\")".to_string(),
+                                    ),
+                                    field_calls.clone(),
+                                ),
+                                ".finish(),".to_string(),
+                            )
+                        }
+                    }
+                });
+            }
+            __result
+        });
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("impl".to_string(), tp.clone()), " std::fmt::Debug for ".to_string()), name.clone()), args.clone()), " {\n".to_string()), "    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n".to_string()), "        match self {\n".to_string()), arms.clone().join(&"\n".to_string())), "\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "}".to_string())
+    }
+}
+
+pub fn v1_set_enum_partial_eq_impl(
+    name: String,
+    generic_param_names: Rc<Vec<String>>,
+    set_params: Rc<Vec<String>>,
+    children: Rc<Vec<Rc<Node>>>,
+    field_type_exprs: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let tp = v1_set_impl_type_params(
+            generic_param_names.clone(),
+            set_params.clone(),
+            field_type_exprs.clone(),
+            "PartialEq".to_string(),
+            ReprGroundingDeriveTrait::ReprDerivePartialEq,
+            source_indices.clone(),
+        );
+        let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
+        let arms = Rc::new({
+            let mut __result = Vec::new();
+            for variant in children.clone().iter().cloned() {
+                __result.push({
+                    let vname =
+                        to_pascal(authored_name_at(source_indices.clone(), variant.clone()));
+                    if ((variant.children.clone().len() as i64) == 0) {
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat("            (Self::".to_string(), vname.clone()),
+                                    ", Self::".to_string(),
+                                ),
+                                vname.clone(),
+                            ),
+                            ") => true,".to_string(),
+                        )
+                    } else {
+                        {
+                            let fields = Rc::new({
+                                let mut __result = Vec::new();
+                                for f in variant.children.clone().iter().cloned() {
+                                    __result.push(emit_ident(
+                                        authored_name_at(source_indices.clone(), f.clone()),
+                                        RenderTarget::Rust,
+                                    ));
+                                }
+                                __result
+                            });
+                            let a_bindings = Rc::new({
+                                let mut __result = Vec::new();
+                                for fi in fields.clone().iter().cloned() {
+                                    __result.push(v1_rt::concat(
+                                        v1_rt::concat(fi.clone(), ": a_".to_string()),
+                                        fi.clone(),
+                                    ));
+                                }
+                                __result
+                            })
+                            .join(&", ".to_string());
+                            let b_bindings = Rc::new({
+                                let mut __result = Vec::new();
+                                for fi in fields.clone().iter().cloned() {
+                                    __result.push(v1_rt::concat(
+                                        v1_rt::concat(fi.clone(), ": b_".to_string()),
+                                        fi.clone(),
+                                    ));
+                                }
+                                __result
+                            })
+                            .join(&", ".to_string());
+                            let comparisons = Rc::new({
+                                let mut __result = Vec::new();
+                                for fi in fields.clone().iter().cloned() {
+                                    __result.push(v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat("a_".to_string(), fi.clone()),
+                                            " == b_".to_string(),
+                                        ),
+                                        fi.clone(),
+                                    ));
+                                }
+                                __result
+                            })
+                            .join(&" && ".to_string());
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            v1_rt::concat(
+                                                                v1_rt::concat(
+                                                                    "            (Self::"
+                                                                        .to_string(),
+                                                                    vname.clone(),
+                                                                ),
+                                                                " { ".to_string(),
+                                                            ),
+                                                            a_bindings.clone(),
+                                                        ),
+                                                        " }, Self::".to_string(),
+                                                    ),
+                                                    vname.clone(),
+                                                ),
+                                                " { ".to_string(),
+                                            ),
+                                            b_bindings.clone(),
+                                        ),
+                                        " }) => ".to_string(),
+                                    ),
+                                    comparisons.clone(),
+                                ),
+                                ",".to_string(),
+                            )
+                        }
+                    }
+                });
+            }
+            __result
+        });
+        let catchall = if ((children.clone().len() as i64) > 1) {
+            "\n            _ => false,".to_string()
+        } else {
+            "".to_string()
+        };
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            "impl".to_string(),
+                                                            tp.clone(),
+                                                        ),
+                                                        " PartialEq for ".to_string(),
+                                                    ),
+                                                    name.clone(),
+                                                ),
+                                                args.clone(),
+                                            ),
+                                            " {\n".to_string(),
+                                        ),
+                                        "    fn eq(&self, other: &Self) -> bool {\n".to_string(),
+                                    ),
+                                    "        match (self, other) {\n".to_string(),
+                                ),
+                                arms.clone().join(&"\n".to_string()),
+                            ),
+                            catchall.clone(),
+                        ),
+                        "\n".to_string(),
+                    ),
+                    "        }\n".to_string(),
+                ),
+                "    }\n".to_string(),
+            ),
+            "}".to_string(),
+        )
+    }
+}
+
+pub fn trait_derive_emit_ord_propagation_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "ROOT A, Ord half, TRANSITIVE CASE (E0277 root-partition adhoc-a407cd3d-840, PR #8770, corrected 2026-08-21 after parent-session review found the well-formedness-header approach it started from would re-open trait_derive_emit_set_ord_supplemental_note's own deliberate scoping): std.authorization_profile PublicationContext<C, P> { audience: AudienceSet<P>, context: C } does not itself carry a direct Set<P> field -- it names AudienceSet<P>, a declared coproduct whose OWN field is Set<P>. The requirement is real (AudienceSet<P>'s hand-written Debug/PartialEq impls above are literally P: Ord, so a PublicationContext<C, P> Debug/PartialEq impl calling .field(\"audience\", &self.audience) needs the same P: Ord to typecheck) but it propagates through one field's declared-type reference rather than sitting on this item's own field directly. The routing decision this note records: the propagated requirement stays in per-derive-impl vocabulary exactly like the direct case -- PublicationContext's own header/declaration and its #[derive(...)] trait list membership are UNCHANGED, never a second Clone-shaped item-header fixpoint (v1_bound_seed_for_item / v1_bounded_type_params, drafted then discarded in this PR's own predecessor commit, would have put P: Ord on every item header reachable from a Set-affected declared type, re-opening exactly the over-bounding trait_derive_emit_set_ord_supplemental_note already rejected for the direct case). v1_item_ord_propagated_param_names computes, for a consuming item's own generic params, whether that param is passed positionally into a field naming a declared type (looked up via type_decl_items) whose OWN generic slot at that position is itself Set-affected (v1_item_own_set_affected_param_names) -- one hop, matching the one hop this corpus actually exercises (PublicationContext -> AudienceSet); no phantom-slot skipping is needed because the FreeMonoid/Clone well-formedness fixpoint's phantom carve-out answers a different question (does an unused param still need a bound at all) that does not arise here. A propagated param routes through the same v1_set_* hand-written-impl / serde-bound-attr machinery as a direct Set<P> field (v1_set_filter_hand_written, v1_set_unroutable_row_refusal, v1_set_serde_bound_attr_for_traits, rust_btree_set_supplemental_generic_bound_rows) -- no duplicate rows, no duplicate routing table. Scoped to the struct path (v1_emit_struct_from_capability_table) because PublicationContext is a struct; the enum path's direct-field case (v1_emit_enum_derives / v1_emit_enum_supplemental_impls) is untouched. Dissolution: same as trait_derive_emit_set_ord_supplemental_note (v2 emitter subsumption at this grain).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn v1_item_own_set_affected_param_names(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    v1_set_element_params(
+        item_generic_param_names(item.clone(), source_indices.clone()),
+        v1_item_field_type_exprs(item.clone(), source_indices.clone()),
+        source_indices.clone(),
+    )
+}
+
+pub fn v1_ord_propagated_zip_loop(
+    param_name: String,
+    decl_params: Rc<Vec<Rc<Node>>>,
+    type_args: Rc<Vec<Rc<Node>>>,
+    decl_set_affected_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match decl_params.clone().first().cloned() {
+            None => false,
+            Some(decl_param) => match type_args.clone().first().cloned() {
+                None => false,
+                Some(type_arg) => {
+                    let slot_name =
+                        generic_param_name_at(decl_param.clone(), source_indices.clone());
+                    let here = if {
+                        let mut __found = false;
+                        for n in decl_set_affected_names.clone().iter().cloned() {
+                            if (n.clone() == slot_name.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    } {
+                        v1_type_expr_is_bare_param(
+                            param_name.clone(),
+                            type_arg.clone(),
+                            source_indices.clone(),
+                        )
+                    } else {
+                        false
+                    };
+                    (here.clone()
+                        || v1_ord_propagated_zip_loop(
+                            param_name.clone(),
+                            Rc::new(
+                                decl_params
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            Rc::new(
+                                type_args
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            decl_set_affected_names.clone(),
+                            source_indices.clone(),
+                        ))
+                }
+            },
+        }
+    })
+}
+
+pub fn v1_field_type_expr_ord_propagated_for_param(
+    param_name: String,
+    type_expr: Rc<Node>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let decl_name = authored_name_at(source_indices.clone(), type_expr.clone());
+        match v1_rt::map_get(&type_decl_items, decl_name.clone()) {
+            None => false,
+            Some(decl) => v1_ord_propagated_zip_loop(
+                param_name.clone(),
+                decl.params.clone(),
+                type_expr.children.clone(),
+                v1_item_own_set_affected_param_names(decl.clone(), source_indices.clone()),
+                source_indices.clone(),
+            ),
+        }
+    }
+}
+
+pub fn v1_item_ord_propagated_param_names(
+    generic_param_names: Rc<Vec<String>>,
+    field_type_exprs: Rc<Vec<Rc<Node>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in generic_param_names.clone().iter().cloned() {
+            if {
+                let mut __found = false;
+                for te in field_type_exprs.clone().iter().cloned() {
+                    if v1_field_type_expr_ord_propagated_for_param(
+                        p.clone(),
+                        te.clone(),
+                        type_decl_items.clone(),
+                        source_indices.clone(),
+                    ) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                __result.push(p);
+            }
+        }
+        __result
+    })
+}
+
+pub fn v1_set_struct_debug_impl(
+    name: String,
+    generic_param_names: Rc<Vec<String>>,
+    set_params: Rc<Vec<String>>,
+    children: Rc<Vec<Rc<Node>>>,
+    field_type_exprs: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let tp = v1_set_impl_type_params(
+            generic_param_names.clone(),
+            set_params.clone(),
+            field_type_exprs.clone(),
+            "std::fmt::Debug".to_string(),
+            ReprGroundingDeriveTrait::ReprDeriveDebug,
+            source_indices.clone(),
+        );
+        let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
+        let field_calls = Rc::new({
+            let mut __result = Vec::new();
+            for f in children.clone().iter().cloned() {
+                __result.push({
+                    let ident = emit_ident(
+                        authored_name_at(source_indices.clone(), f.clone()),
+                        RenderTarget::Rust,
+                    );
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(".field(\"".to_string(), ident.clone()),
+                                "\", &self.".to_string(),
+                            ),
+                            ident.clone(),
+                        ),
+                        ")".to_string(),
+                    )
+                });
+            }
+            __result
+        });
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("impl".to_string(), tp.clone()), " std::fmt::Debug for ".to_string()), name.clone()), args.clone()), " {\n".to_string()), "    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n".to_string()), "        f.debug_struct(\"".to_string()), name.clone()), "\")".to_string()), field_calls.clone().join(&"".to_string())), ".finish()\n".to_string()), "    }\n".to_string()), "}".to_string())
+    }
+}
+
+pub fn v1_set_struct_partial_eq_impl(
+    name: String,
+    generic_param_names: Rc<Vec<String>>,
+    set_params: Rc<Vec<String>>,
+    children: Rc<Vec<Rc<Node>>>,
+    field_type_exprs: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let tp = v1_set_impl_type_params(
+            generic_param_names.clone(),
+            set_params.clone(),
+            field_type_exprs.clone(),
+            "PartialEq".to_string(),
+            ReprGroundingDeriveTrait::ReprDerivePartialEq,
+            source_indices.clone(),
+        );
+        let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
+        let comparisons = Rc::new({
+            let mut __result = Vec::new();
+            for f in children.clone().iter().cloned() {
+                __result.push({
+                    let ident = emit_ident(
+                        authored_name_at(source_indices.clone(), f.clone()),
+                        RenderTarget::Rust,
+                    );
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat("self.".to_string(), ident.clone()),
+                            " == other.".to_string(),
+                        ),
+                        ident.clone(),
+                    )
+                });
+            }
+            __result
+        });
+        let body = if ((comparisons.clone().len() as i64) == 0) {
+            "true".to_string()
+        } else {
+            comparisons.clone().join(&" && ".to_string())
+        };
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat("impl".to_string(), tp.clone()),
+                                                " PartialEq for ".to_string(),
+                                            ),
+                                            name.clone(),
+                                        ),
+                                        args.clone(),
+                                    ),
+                                    " {\n".to_string(),
+                                ),
+                                "    fn eq(&self, other: &Self) -> bool {\n".to_string(),
+                            ),
+                            "        ".to_string(),
+                        ),
+                        body.clone(),
+                    ),
+                    "\n".to_string(),
+                ),
+                "    }\n".to_string(),
+            ),
+            "}".to_string(),
+        )
+    }
+}
+
 pub fn v1_emit_struct_derives(
     name: String,
     children: Rc<Vec<Rc<Node>>>,
@@ -1265,6 +2160,15 @@ pub fn v1_emit_enum_derives(
                 v1_freemonoid_serde_bound_attr(generic_param_names.clone(), fm_params.clone()),
             );
         }
+        let set_params = if map_key_required.clone() {
+            Rc::new(vec![])
+        } else {
+            v1_set_element_params(
+                generic_param_names.clone(),
+                v1_enum_variant_field_type_exprs(children.clone()),
+                source_indices.clone(),
+            )
+        };
         let shape = v1_repr_grounding_derive_elem_shape_from_coproduct_children(
             children.clone(),
             source_indices.clone(),
@@ -1277,13 +2181,35 @@ pub fn v1_emit_enum_derives(
             payload_coproduct_derive_traits(),
             map_key_required.clone(),
         );
+        let set_row_refusal = if ((set_params.clone().len() as i64) > 0) {
+            v1_set_unroutable_row_refusal()
+        } else {
+            "".to_string()
+        };
         match shape.clone() {
             ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy => {
                 if repr_grounding_derive_completeness_predicate(
                     nullary_traits.clone(),
                     shape.clone(),
                 ) {
-                    rust_trait_derive_attr_from_traits(nullary_traits.clone())
+                    {
+                        let derived_traits = if ((set_params.clone().len() as i64) > 0) {
+                            v1_set_filter_hand_written(nullary_traits.clone())
+                        } else {
+                            nullary_traits.clone()
+                        };
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                set_row_refusal.clone(),
+                                rust_trait_derive_attr_from_traits(derived_traits.clone()),
+                            ),
+                            v1_set_serde_bound_attr_for_traits(
+                                nullary_traits.clone(),
+                                generic_param_names.clone(),
+                                set_params.clone(),
+                            ),
+                        )
+                    }
                 } else {
                     v1_trait_derive_refuse(
                         "trait_derive_emit: nullary coproduct derive completeness refused"
@@ -1296,7 +2222,24 @@ pub fn v1_emit_enum_derives(
                     payload_traits.clone(),
                     shape.clone(),
                 ) {
-                    rust_trait_derive_attr_from_traits(payload_traits.clone())
+                    {
+                        let derived_traits = if ((set_params.clone().len() as i64) > 0) {
+                            v1_set_filter_hand_written(payload_traits.clone())
+                        } else {
+                            payload_traits.clone()
+                        };
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                set_row_refusal.clone(),
+                                rust_trait_derive_attr_from_traits(derived_traits.clone()),
+                            ),
+                            v1_set_serde_bound_attr_for_traits(
+                                payload_traits.clone(),
+                                generic_param_names.clone(),
+                                set_params.clone(),
+                            ),
+                        )
+                    }
                 } else {
                     v1_trait_derive_refuse(
                         "trait_derive_emit: payload coproduct derive completeness refused"
@@ -1931,88 +2874,48 @@ pub fn v1_generic_params_needing_clone_bound(
     }
 }
 
-pub fn v1_item_header_bound_trigger_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "ONE TRIGGER PREDICATE, PARAMETERIZED BY TRAIT AND ROUTE, replacing what were once two Clone-only functions plus a hand-forked Ord pair (trait_derive_emit_item_clone_bound_contract_fork_note documents why the forked pair was rejected; this is the generalization the parent design chose instead). `broad_container_trigger` and `include_bare_param_trigger` are v1-local REALIZATION-ROUTING knowledge (like v1_freemonoid_row_route's HandWrittenImpl-vs-SerdeBoundAttr split), not upstream facts, so they stay Bool parameters here rather than cited rows: Clone's broad any-container trigger is a pre-existing structural over-approximation (im::Vector/im::HashMap/im::OrdSet/Witness ALL require Clone, so 'any container names the param' has always been an exact proxy for Clone, unchanged by this generalization) and Clone's own derive(Clone) computes its bound over EVERY field including bare ones (include_bare_param_trigger: true). Ord is never derived automatically for any type in this emitter (ord_bounded_type_params_note), so it has no bare-field derive-trigger analogue (include_bare_param_trigger: false) and, unlike Clone, only ONE structural container (Set, realizing to im::OrdSet) actually requires it -- so its container check must ask the cited data rather than assume every container does (broad_container_trigger: false), routing through v1_container_requires_narrow_bound to extdeps.languages.rust.derive_contracts's cited rows per DESIGN.md S3's cite-the-fact-not-a-literal discipline.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn v1_container_requires_narrow_bound(
-    container_name: String,
-    bound_trait: ReprGroundingDeriveTrait,
-) -> bool {
-    if (container_name.clone() == "Set".to_string()) {
-        {
-            let mut __found = false;
-            for r in rust_ordset_supplemental_generic_bound_rows()
-                .iter()
-                .cloned()
-            {
-                if (r.required.clone() == bound_trait.clone()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        }
-    } else {
-        false
-    }
-}
-
-pub fn v1_field_type_expr_needs_bound_for_param_narrow(
+pub fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
     param_name: String,
     type_expr: Rc<Node>,
-    bound_trait: ReprGroundingDeriveTrait,
-    include_bare_param_trigger: bool,
-    broad_container_trigger: bool,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let name = authored_name_at(source_indices.clone(), type_expr.clone());
-        let bare_hit = (((include_bare_param_trigger.clone()
-            && (name.clone() == param_name.clone()))
+        if (((name.clone() == param_name.clone())
             && (type_expr.connective.clone() == Connective::NoConnective))
-            && ((type_expr.children.clone().len() as i64) == 0));
-        let container_matches = if broad_container_trigger.clone() {
-            is_container_type(name.clone())
+            && ((type_expr.children.clone().len() as i64) == 0))
+        {
+            true
         } else {
-            v1_container_requires_narrow_bound(name.clone(), bound_trait.clone())
-        };
-        let container_hit = (container_matches.clone() && {
-            let mut __found = false;
-            for c in type_expr.children.clone().iter().cloned() {
-                if (authored_name_at(source_indices.clone(), c.clone()) == param_name.clone()) {
-                    __found = true;
-                    break;
+            if (is_container_type(name.clone()) && {
+                let mut __found = false;
+                for c in type_expr.children.clone().iter().cloned() {
+                    if (authored_name_at(source_indices.clone(), c.clone()) == param_name.clone()) {
+                        __found = true;
+                        break;
+                    }
                 }
+                __found
+            }) {
+                true
+            } else {
+                false
             }
-            __found
-        });
-        (bare_hit.clone() || container_hit.clone())
+        }
     }
 }
 
-pub fn v1_item_type_param_needs_bound_struct(
+pub fn v1_item_type_param_needs_clone_bound_struct(
     param_name: String,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
-    bound_trait: ReprGroundingDeriveTrait,
-    include_bare_param_trigger: bool,
-    broad_container_trigger: bool,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
         for te in field_type_exprs.clone().iter().cloned() {
-            if v1_field_type_expr_needs_bound_for_param_narrow(
+            if v1_field_type_expr_needs_clone_bound_for_param_narrow(
                 param_name.clone(),
                 te.clone(),
-                bound_trait.clone(),
-                include_bare_param_trigger.clone(),
-                broad_container_trigger.clone(),
                 source_indices.clone(),
             ) {
                 __found = true;
@@ -2352,7 +3255,37 @@ pub fn v1_type_expr_wf_needs_clone_param(
     })
 }
 
-pub fn v1_item_field_type_exprs(item: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+pub fn v1_item_field_type_exprs_alias_hop_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Threads declaration identity into the field-type-expression walk so a type ALIAS's right-hand side is followed exactly as far as the emitter renders it structurally, per map_key_alias_hop_gap_note's DISSOLVE-ON: the alias arm below fires only when the alias's own (dag_name, decl_file) resolves to no Rust checkpoint (lookup_checkpoint == Absent), meaning the emitter has no native realization for it and renders its declared structure. `type Hash = Fnv1a64Structural` in v2.std.node has no checkpoint row, so its RHS is the walk's one field type expression and the map-key fixpoint reaches Fnv1a64Structural. `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` DO have checkpoint rows (they realize as i64), so lookup_checkpoint returns Present and the arm below contributes nothing for them -- the measured false positive (AbelianGroup/CommutativeSemiring at map-key position) that sank the earlier attempt never recurs, because the gate is keyed on realization, not on 'is this a bare alias'. Safe to fold into the single shared v1_item_field_type_exprs rather than a map-key-only variant: is_bare_leaf_item requires params.count == 0, so no alias item is ever a member of v1_generic_declared_type_names (params > 0), and every OTHER caller of this function (the clone-bound wf/impl fixpoints) is seeded exclusively from that generic-only population -- the alias arm is therefore dead code on every path except the map-key propagation this note exists for, and reusing one function keeps the field-type-expression authority single (DESIGN section 2/3) instead of forking a second copy that could drift.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn v1_item_alias_hop_type_exprs(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<Node>>> {
+    if is_type_alias_item(item.clone(), source_indices.clone()) {
+        {
+            let dag_name = authored_name_at(source_indices.clone(), item.clone());
+            let decl_file = decl_identity_file(item.clone());
+            match lookup_checkpoint(RenderTarget::Rust, dag_name.clone(), decl_file.clone()) {
+                Some(_) => Rc::new(vec![]),
+                None => Rc::new(vec![resolved_type(item.clone())]),
+            }
+        }
+    } else {
+        Rc::new(vec![])
+    }
+}
+
+pub fn v1_item_field_type_exprs(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<Node>>> {
     if is_coproduct_type(item.clone()) {
         Rc::new({
             let mut __result = Vec::new();
@@ -2372,13 +3305,17 @@ pub fn v1_item_field_type_exprs(item: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
             __result
         })
     } else {
-        Rc::new({
-            let mut __result = Vec::new();
-            for f in item.children.clone().iter().cloned() {
-                __result.push(child_type_node(f.clone()));
-            }
-            __result
-        })
+        if ((item.children.clone().len() as i64) > 0) {
+            Rc::new({
+                let mut __result = Vec::new();
+                for f in item.children.clone().iter().cloned() {
+                    __result.push(child_type_node(f.clone()));
+                }
+                __result
+            })
+        } else {
+            v1_item_alias_hop_type_exprs(item.clone(), source_indices.clone())
+        }
     }
 }
 
@@ -2391,7 +3328,10 @@ pub fn v1_item_param_wf_needs_clone(
 ) -> bool {
     {
         let mut __found = false;
-        for te in v1_item_field_type_exprs(item.clone()).iter().cloned() {
+        for te in v1_item_field_type_exprs(item.clone(), source_indices.clone())
+            .iter()
+            .cloned()
+        {
             if v1_type_expr_wf_needs_clone_param(
                 param_name.clone(),
                 te.clone(),
@@ -2447,9 +3387,10 @@ pub fn v1_item_clone_undecided_head(
     {
         let item_generic_params =
             v1_item_generic_param_name_set(item.clone(), source_indices.clone());
-        v1_item_field_type_exprs(item.clone()).iter().cloned().fold(
-            "".to_string(),
-            |acc: String, te: Rc<Node>| {
+        v1_item_field_type_exprs(item.clone(), source_indices.clone())
+            .iter()
+            .cloned()
+            .fold("".to_string(), |acc: String, te: Rc<Node>| {
                 if (acc.clone() != "".to_string()) {
                     acc.clone()
                 } else {
@@ -2460,8 +3401,7 @@ pub fn v1_item_clone_undecided_head(
                         item_generic_params.clone(),
                     )
                 }
-            },
-        )
+            })
     }
 }
 
@@ -2522,40 +3462,24 @@ pub fn v1_clone_bound_round_for_item(
     )
 }
 
-pub fn v1_bound_seed_for_item_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "ONE TRAIT-PARAMETERIZED SEED, replacing v1_clone_bound_seed_for_item / v1_clone_impl_seed_for_item / the WIP's separate v1_ord_bound_seed_for_item — they differed only in `skip_coproducts` (does derive supply this type's own per-impl bound, per clone_impl_required_type_params_note) and in which narrow-trigger parameters they fed v1_item_type_param_needs_bound_struct (v1_item_header_bound_trigger_note). Clone's two existing maps are still two calls of this one seed (skip_coproducts: true for the WF/declaration map, false for the impl-required map) — they remain two RECORDS because the underlying question (does naming vs. cloning require the bound) genuinely differs per clone_impl_required_type_params_note; only the seed body was duplicated, and that duplication is what this generalizes.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn v1_bound_seed_for_item(
+pub fn v1_clone_bound_seed_for_item(
     round: Rc<CloneBoundRound>,
     type_name: String,
     item: Rc<Node>,
-    bound_trait: ReprGroundingDeriveTrait,
-    skip_coproducts: bool,
-    include_bare_param_trigger: bool,
-    broad_container_trigger: bool,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<CloneBoundRound> {
-    if (skip_coproducts.clone() && is_coproduct_type(item.clone())) {
+    if is_coproduct_type(item.clone()) {
         round
     } else {
         {
-            let field_type_exprs = v1_item_field_type_exprs(item.clone());
+            let field_type_exprs = v1_item_field_type_exprs(item.clone(), source_indices.clone());
             item.params.clone().iter().cloned().fold(
                 round,
                 |acc: Rc<CloneBoundRound>, p: Rc<Node>| {
                     let param_name = generic_param_name_at(p.clone(), source_indices.clone());
-                    if v1_item_type_param_needs_bound_struct(
+                    if v1_item_type_param_needs_clone_bound_struct(
                         param_name.clone(),
                         field_type_exprs.clone(),
-                        bound_trait.clone(),
-                        include_bare_param_trigger.clone(),
-                        broad_container_trigger.clone(),
                         source_indices.clone(),
                     ) {
                         v1_clone_bound_round_add(acc.clone(), type_name.clone(), param_name.clone())
@@ -2630,12 +3554,8 @@ pub fn v1_generic_declared_type_names(
     })
 }
 
-pub fn v1_bounded_type_params(
+pub fn v1_clone_bounded_type_params(
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    bound_trait: ReprGroundingDeriveTrait,
-    skip_coproducts: bool,
-    include_bare_param_trigger: bool,
-    broad_container_trigger: bool,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
     {
@@ -2649,14 +3569,10 @@ pub fn v1_bounded_type_params(
                 &type_decl_items,
                 type_name.clone(),
             ) {
-                Some(item) => v1_bound_seed_for_item(
+                Some(item) => v1_clone_bound_seed_for_item(
                     acc.clone(),
                     type_name.clone(),
                     item.clone(),
-                    bound_trait.clone(),
-                    skip_coproducts.clone(),
-                    include_bare_param_trigger.clone(),
-                    broad_container_trigger.clone(),
                     source_indices.clone(),
                 ),
                 None => acc.clone(),
@@ -2672,20 +3588,6 @@ pub fn v1_bounded_type_params(
     }
 }
 
-pub fn v1_clone_bounded_type_params(
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
-    v1_bounded_type_params(
-        type_decl_items.clone(),
-        ReprGroundingDeriveTrait::ReprDeriveClone,
-        true,
-        true,
-        true,
-        source_indices.clone(),
-    )
-}
-
 pub fn clone_impl_required_type_params_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -2695,41 +3597,64 @@ pub fn clone_impl_required_type_params_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn v1_clone_impl_seed_for_item(
+    round: Rc<CloneBoundRound>,
+    type_name: String,
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<CloneBoundRound> {
+    {
+        let field_type_exprs = v1_item_field_type_exprs(item.clone(), source_indices.clone());
+        item.params.clone().iter().cloned().fold(
+            round.clone(),
+            |acc: Rc<CloneBoundRound>, p: Rc<Node>| {
+                let param_name = generic_param_name_at(p.clone(), source_indices.clone());
+                if v1_item_type_param_needs_clone_bound_struct(
+                    param_name.clone(),
+                    field_type_exprs.clone(),
+                    source_indices.clone(),
+                ) {
+                    v1_clone_bound_round_add(acc.clone(), type_name.clone(), param_name.clone())
+                } else {
+                    acc.clone()
+                }
+            },
+        )
+    }
+}
+
 pub fn v1_clone_impl_required_type_params(
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
-    v1_bounded_type_params(
-        type_decl_items.clone(),
-        ReprGroundingDeriveTrait::ReprDeriveClone,
-        false,
-        true,
-        true,
-        source_indices.clone(),
-    )
-}
-
-pub fn ord_bounded_type_params_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "ORD'S ANALOGUE OF THE CLONE WELL-FORMEDNESS FIXPOINT ABOVE, WITH ONE FEWER RECORD AND ONE FEWER SKIP, NOW SHARING v1_bound_seed_for_item / v1_bounded_type_params RATHER THAN FORKING THEM (v1_bound_seed_for_item_note; the earlier WIP's separate v1_ord_bound_seed_for_item / v1_ord_bounded_type_params were the rejected fork, per trait_derive_emit_item_clone_bound_contract_fork_note and parent-session review). Set<P> realizes as Rc<im::OrdSet<P>> (aliased BTreeSet), and OrdSet's own trait impls (the ones this module's #[derive(Debug, ..)] on the OUTER carrier reaches into) require P: Ord -- exactly the way im::Vector<A> demands A: Clone, but through a narrower door: only Set, not every container, realizes to an Ord-requiring collection (List/Map-value/Witness do not; v1_container_requires_narrow_bound answers this from extdeps.languages.rust.derive_contracts rust_ordset_supplemental_generic_bound_rows, never a literal container-name-to-trait fact hardcoded here).\n\nWHY ONE SEED CALL, NOT TWO MAPS. Clone needs a WF map (skip_coproducts: true, derive supplies the enum's own per-impl bound) and a separate impl-required map (skip_coproducts: false, for consumers that clone the enum) because #[derive(Clone)] computes the enum's bound itself. NOTHING here derives Ord for the type -- this module never emits #[derive(..Ord..)] on a struct or enum, so the ONLY place P: Ord can come from is the type's own header, for BOTH struct and enum shapes alike. There is no derive-vs-declaration split to make, so the Ord call passes skip_coproducts: false (mirrors the Clone impl-required call's shape, not the Clone WF call's), and the single resulting map is both the header-printing source and the propagation seed.\n\nWHY THE SEED IS Set-NARROW, NOT is_container_type-BROAD. Clone's call passes broad_container_trigger: true because im::Vector<T>/im::HashMap<K,V>/im::OrdSet<T> et al. all require Clone. Only im::OrdSet<T> requires Ord, so Ord's call passes broad_container_trigger: false, routing v1_field_type_expr_needs_bound_for_param_narrow's container check through the cited rows instead -- widening to is_container_type would fabricate an Ord requirement on List<P>/Map<K,V> fields that carry none. Ord's call also passes include_bare_param_trigger: false: unlike Clone, no derive computes Ord unconditionally over every field, so a bare `P` field alone never justifies the bound.\n\nPROPAGATION REUSES v1_clone_bound_fixpoint_loop UNCHANGED. The loop and its supporting well-formedness predicates (v1_item_param_wf_needs_clone, v1_type_expr_wf_needs_clone_param, v1_declared_arg_positions_need_clone_param, v1_type_expr_clone_impl_needs_param) are parameterized entirely by the `bounds` map argument -- despite the Clone-specific names, nothing in that call chain reads a Clone-specific global, so feeding an Ord-seeded map through them correctly discovers that naming a declared Ord-bounded type (e.g. AudienceSet<P>) in another type's field (PublicationContext<C, P>'s outer P) is equally ill-formed without the bound. This is the SAME well-formedness fact this file already documents for Clone (trait_derive_emit_item_clone_bound_wf_propagation_note) applied to a different seeded trait; it does not warrant a forked propagation engine.".to_string()
-        };
+    {
+        let generic_type_names = v1_generic_declared_type_names(type_decl_items.clone());
+        let seeded = generic_type_names.clone().iter().cloned().fold(
+            Rc::new(CloneBoundRound {
+                bounds: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
+                added: 0,
+            }),
+            |acc: Rc<CloneBoundRound>, type_name: String| match v1_rt::map_get(
+                &type_decl_items,
+                type_name.clone(),
+            ) {
+                Some(item) => v1_clone_impl_seed_for_item(
+                    acc.clone(),
+                    type_name.clone(),
+                    item.clone(),
+                    source_indices.clone(),
+                ),
+                None => acc.clone(),
+            },
+        );
+        v1_clone_bound_fixpoint_loop(
+            generic_type_names.clone(),
+            type_decl_items.clone(),
+            seeded.bounds.clone(),
+            ((generic_type_names.clone().len() as i64) + 1),
+            source_indices.clone(),
+        )
     }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn v1_ord_bounded_type_params(
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
-    v1_bounded_type_params(
-        type_decl_items.clone(),
-        ReprGroundingDeriveTrait::ReprDeriveOrd,
-        false,
-        false,
-        false,
-        source_indices.clone(),
-    )
 }
 
 pub fn v1_item_clone_bounded_param_names(
@@ -2751,23 +3676,9 @@ pub fn v1_item_clone_bounded_param_names(
     }
 }
 
-pub fn v1_emit_type_params_with_clone_bounds(
+pub fn v1_emit_type_params_with_bounds(
     params: Rc<Vec<Rc<Node>>>,
-    clone_param_names: Rc<Vec<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    v1_emit_type_params_with_clone_and_ord_bounds(
-        params.clone(),
-        clone_param_names.clone(),
-        Rc::new(vec![]),
-        source_indices.clone(),
-    )
-}
-
-pub fn v1_emit_type_params_with_clone_and_ord_bounds(
-    params: Rc<Vec<Rc<Node>>>,
-    clone_param_names: Rc<Vec<String>>,
-    ord_param_names: Rc<Vec<String>>,
+    bounds_by_param: Rc<HashMap<String, Rc<Vec<String>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if ((params.clone().len() as i64) == 0) {
@@ -2780,38 +3691,18 @@ pub fn v1_emit_type_params_with_clone_and_ord_bounds(
                     __result.push({
                         let pname = generic_param_name_at(p.clone(), source_indices.clone());
                         let pascal = to_pascal(pname.clone());
-                        let needs_clone = {
-                            let mut __found = false;
-                            for c in clone_param_names.clone().iter().cloned() {
-                                if (c.clone() == pname.clone()) {
-                                    __found = true;
-                                    break;
-                                }
-                            }
-                            __found
-                        };
-                        let needs_ord = {
-                            let mut __found = false;
-                            for o in ord_param_names.clone().iter().cloned() {
-                                if (o.clone() == pname.clone()) {
-                                    __found = true;
-                                    break;
-                                }
-                            }
-                            __found
-                        };
-                        if (needs_clone.clone() && needs_ord.clone()) {
-                            v1_rt::concat(pascal.clone(), ": Clone + Ord".to_string())
-                        } else {
-                            if needs_clone.clone() {
-                                v1_rt::concat(pascal.clone(), ": Clone".to_string())
-                            } else {
-                                if needs_ord.clone() {
-                                    v1_rt::concat(pascal.clone(), ": Ord".to_string())
-                                } else {
+                        match v1_rt::map_get(&bounds_by_param, pname.clone()) {
+                            Some(traits) => {
+                                if ((traits.clone().len() as i64) == 0) {
                                     pascal.clone()
+                                } else {
+                                    v1_rt::concat(
+                                        v1_rt::concat(pascal.clone(), ": ".to_string()),
+                                        traits.clone().join(&" + ".to_string()),
+                                    )
                                 }
                             }
+                            None => pascal.clone(),
                         }
                     });
                 }
@@ -2825,6 +3716,23 @@ pub fn v1_emit_type_params_with_clone_and_ord_bounds(
     }
 }
 
+pub fn v1_emit_type_params_with_clone_bounds(
+    params: Rc<Vec<Rc<Node>>>,
+    clone_param_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    v1_emit_type_params_with_bounds(
+        params.clone(),
+        clone_param_names.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+            |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| {
+                v1_rt::rc_map_insert(m, n.clone(), Rc::new(vec!["Clone".to_string()]))
+            },
+        ),
+        source_indices.clone(),
+    )
+}
+
 pub fn v1_emit_struct_from_capability_table(
     module_path: String,
     name: String,
@@ -2835,6 +3743,7 @@ pub fn v1_emit_struct_from_capability_table(
     generic_param_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     carrier_param_needs_clone: bool,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
 ) -> Rc<StructCapabilityEmit> {
     {
         let field_type_exprs = Rc::new({
@@ -2909,29 +3818,101 @@ pub fn v1_emit_struct_from_capability_table(
             }
         } else {
             {
-                let derive_attr = v1_emit_struct_derives(
-                    name.clone(),
-                    children.clone(),
-                    shared_types.clone(),
-                    has_fn_fields.clone(),
-                    map_key_required.clone(),
-                    source_indices.clone(),
-                );
-                let impl_bodies =
-                    if (repr_grounding_group_completion_carrier(module_path.clone(), name.clone())
-                        && repr_grounding_derive_completeness_predicate(
+                let ord_propagated_params = if (((has_fn_fields.clone()
+                    || map_key_required.clone())
+                    || rust_symbol_wrapped_ord_carrier_shape_eligible(
+                        children.clone(),
+                        source_indices.clone(),
+                    ))
+                    || repr_grounding_group_completion_carrier(module_path.clone(), name.clone()))
+                {
+                    Rc::new(vec![])
+                } else {
+                    v1_item_ord_propagated_param_names(
+                        generic_param_names.clone(),
+                        field_type_exprs.clone(),
+                        type_decl_items.clone(),
+                        source_indices.clone(),
+                    )
+                };
+                if ((ord_propagated_params.clone().len() as i64) > 0) {
+                    {
+                        let base = if v1_rt::set_contains(&shared_types, name.clone()) {
+                            record_derive_traits_heap()
+                        } else {
+                            record_derive_traits_copy()
+                        };
+                        let set_row_refusal = v1_set_unroutable_row_refusal();
+                        let derived_traits = v1_set_filter_hand_written(base.clone());
+                        let derive_attr = v1_rt::concat(
+                            v1_rt::concat(
+                                set_row_refusal.clone(),
+                                rust_trait_derive_attr_from_traits(derived_traits.clone()),
+                            ),
+                            v1_set_serde_bound_attr_for_traits(
+                                base.clone(),
+                                generic_param_names.clone(),
+                                ord_propagated_params.clone(),
+                            ),
+                        );
+                        let impl_bodies = v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "\n\n".to_string(),
+                                    v1_set_struct_debug_impl(
+                                        name.clone(),
+                                        generic_param_names.clone(),
+                                        ord_propagated_params.clone(),
+                                        children.clone(),
+                                        field_type_exprs.clone(),
+                                        source_indices.clone(),
+                                    ),
+                                ),
+                                "\n\n".to_string(),
+                            ),
+                            v1_set_struct_partial_eq_impl(
+                                name.clone(),
+                                generic_param_names.clone(),
+                                ord_propagated_params.clone(),
+                                children.clone(),
+                                field_type_exprs.clone(),
+                                source_indices.clone(),
+                            ),
+                        );
+                        Rc::new(StructCapabilityEmit {
+                            derive_attr: derive_attr.clone(),
+                            impl_bodies: impl_bodies.clone(),
+                        })
+                    }
+                } else {
+                    {
+                        let derive_attr = v1_emit_struct_derives(
+                            name.clone(),
+                            children.clone(),
+                            shared_types.clone(),
+                            has_fn_fields.clone(),
+                            map_key_required.clone(),
+                            source_indices.clone(),
+                        );
+                        let impl_bodies = if (repr_grounding_group_completion_carrier(
+                            module_path.clone(),
+                            name.clone(),
+                        ) && repr_grounding_derive_completeness_predicate(
                             kernel_int_arithmetic_traits(),
                             ReprGroundingDeriveElemShape::ReprDeriveElemKernelInt,
-                        ))
-                    {
-                        rust_supplemental_impls_group_completion(carrier_param_needs_clone.clone())
-                    } else {
-                        "".to_string()
-                    };
-                Rc::new(StructCapabilityEmit {
-                    derive_attr: derive_attr.clone(),
-                    impl_bodies: impl_bodies.clone(),
-                })
+                        )) {
+                            rust_supplemental_impls_group_completion(
+                                carrier_param_needs_clone.clone(),
+                            )
+                        } else {
+                            "".to_string()
+                        };
+                        Rc::new(StructCapabilityEmit {
+                            derive_attr: derive_attr.clone(),
+                            impl_bodies: impl_bodies.clone(),
+                        })
+                    }
+                }
             }
         }
     }
@@ -2971,6 +3952,11 @@ pub fn v1_emit_enum_supplemental_impls(
             field_type_exprs.clone(),
             source_indices.clone(),
         );
+        let set_params = v1_set_element_params(
+            generic_param_names.clone(),
+            field_type_exprs.clone(),
+            source_indices.clone(),
+        );
         if ((fm_params.clone().len() as i64) > 0) {
             v1_rt::concat(
                 v1_rt::concat(
@@ -2997,16 +3983,43 @@ pub fn v1_emit_enum_supplemental_impls(
                 ),
             )
         } else {
-            if (repr_grounding_supplemental_bool_host_bridge_target(
-                module_path.clone(),
-                name.clone(),
-            ) && repr_grounding_derive_completeness_predicate(
-                nullary_coproduct_derive_traits(),
-                ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy,
-            )) {
-                rust_supplemental_impls_bool_coproduct()
+            if ((set_params.clone().len() as i64) > 0) {
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "\n\n".to_string(),
+                            v1_set_enum_debug_impl(
+                                name.clone(),
+                                generic_param_names.clone(),
+                                set_params.clone(),
+                                children.clone(),
+                                field_type_exprs.clone(),
+                                source_indices.clone(),
+                            ),
+                        ),
+                        "\n\n".to_string(),
+                    ),
+                    v1_set_enum_partial_eq_impl(
+                        name.clone(),
+                        generic_param_names.clone(),
+                        set_params.clone(),
+                        children.clone(),
+                        field_type_exprs.clone(),
+                        source_indices.clone(),
+                    ),
+                )
             } else {
-                "".to_string()
+                if (repr_grounding_supplemental_bool_host_bridge_target(
+                    module_path.clone(),
+                    name.clone(),
+                ) && repr_grounding_derive_completeness_predicate(
+                    nullary_coproduct_derive_traits(),
+                    ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy,
+                )) {
+                    rust_supplemental_impls_bool_coproduct()
+                } else {
+                    "".to_string()
+                }
             }
         }
     }

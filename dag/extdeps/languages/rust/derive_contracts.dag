@@ -56,10 +56,38 @@ data im_15_1_0_vector_serialize_impl_authority: ExternalAuthority = ExternalAuth
   }
 }
 
-data rust_1_93_btree_set_trait_implementations_authority: ExternalAuthority = ExternalAuthority {
+data im_15_1_0_ord_set_clone_impl_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "doc.rust-lang.org/1.93.0/std/collections/struct.BTreeSet.html#trait-implementations"
+    locator: "docs.rs/crate/im/15.1.0/source/src/ord/set.rs#830"
+  }
+}
+
+data im_15_1_0_ord_set_debug_impl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.rs/crate/im/15.1.0/source/src/ord/set.rs#937"
+  }
+}
+
+data im_15_1_0_ord_set_partial_eq_impl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.rs/crate/im/15.1.0/source/src/ord/set.rs#844"
+  }
+}
+
+data im_15_1_0_ord_set_serialize_impl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.rs/crate/im/15.1.0/source/src/ser.rs#134"
+  }
+}
+
+data im_15_1_0_ord_set_deserialize_impl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.rs/crate/im/15.1.0/source/src/ser.rs#125"
   }
 }
 
@@ -67,20 +95,6 @@ data rust_1_93_hash_set_trait_implementations_authority: ExternalAuthority = Ext
   uri: Uri {
     scheme: Https
     locator: "doc.rust-lang.org/1.93.0/std/collections/struct.HashSet.html#trait-implementations"
-  }
-}
-
-data serde_1_0_228_btree_set_serialize_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "docs.rs/serde/1.0.228/serde/ser/trait.Serialize.html#impl-Serialize-for-BTreeSet%3CT%3E"
-  }
-}
-
-data serde_1_0_228_btree_set_deserialize_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "docs.rs/serde/1.0.228/serde/trait.Deserialize.html#impl-Deserialize%3C'de%3E-for-BTreeSet%3CT%3E"
   }
 }
 
@@ -129,66 +143,38 @@ data rust_vec_freemonoid_supplemental_generic_bound_rows: List<RustVecSupplement
   },
 ]
 
-data im_15_1_0_ordset_debug_impl_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "docs.rs/crate/im/15.1.0/source/src/ord/set.rs#937"
-  }
-}
+data rust_btree_set_supplemental_generic_bound_rows_note: String = "SINGLE AUTHORITY for the trait -> supplemental-generic-bound facts of the Set/BTreeSet realization -- CORRECTED 2026-08-21: the realized type is NOT std::collections::BTreeSet, it is im-15.1.0's im::OrdSet, aliased `as BTreeSet` in every emitted use statement (src/v1/stage0/src/lib.rs: `use im::\{OrdSet as BTreeSet, Vector as Vec};`), so this row list must cite OrdSet's own impls, not std's. Verified against the vendored im-15.1.0 crate source: `impl<A> Clone for OrdSet<A>` (src/ord/set.rs#830) is unconditional, no row. `impl<A: Ord> PartialEq for OrdSet<A>` (set.rs#844) and `impl<A: Ord + Debug> Debug for OrdSet<A>` (set.rs#937) each require only P: Ord. `impl<A: Ord + Clone + Serialize> Serialize for OrdSet<A>` and `impl<'de, A: Deserialize<'de> + Ord + Clone> Deserialize<'de> for OrdSet<A>` (src/ser.rs#134, #125) each require BOTH P: Ord and P: Clone -- two rows per trait, sharing one upstream authority, merged into one requirement set by v2.extdeps.languages.rust rust_collection_supplemental_generic_bound_contracts_merge_row rather than the earlier single-row-per-derive_trait fold (which would have silently dropped one of the two on insert). This module is dag-rooted so both pools read one authority: the v1 seed emitter (regen pool [src/v1, dag]) consumes these rows in v1.compiler.trait_derive_emit, and v2.extdeps.languages.rust folds them into rust_btree_set_supplemental_generic_bound_contracts -- mirroring rust_vec_freemonoid_supplemental_generic_bound_rows's row-authority split rather than restating the requirement inline a second time."
 
-data im_15_1_0_ordset_partial_eq_impl_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "docs.rs/crate/im/15.1.0/source/src/ord/set.rs#844"
-  }
-}
-
-data im_15_1_0_ordset_serialize_impl_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "docs.rs/crate/im/15.1.0/source/src/ser.rs#134"
-  }
-}
-
-data im_15_1_0_ordset_deserialize_impl_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "docs.rs/crate/im/15.1.0/source/src/ser.rs#125"
-  }
-}
-
-data rust_ordset_supplemental_generic_bound_rows_note: String = "SINGLE AUTHORITY for the trait -> supplemental-generic-bound facts of the Set realization (im-15.1.0 im::OrdSet, aliased BTreeSet at the use-statement -- NOT std::collections::BTreeSet): deriving Debug or PartialEq for an item carrying an im::OrdSet<P> field additionally requires P: Ord, because each of those upstream impls is conditional on A: Ord (cited per row, measured directly against the vendored crate source, not std's BTreeSet -- the six pre-existing stubs above (rust_1_93_btree_set_trait_implementations_authority and its serde siblings) cite the wrong upstream for this realization and are left untouched, out of scope). Serialize and Deserialize are each conditional on A: Ord + A: Clone, so each contributes two rows. Clone itself is deliberately NOT a row: OrdSet's own impl<A> Clone for OrdSet<A> is unconditional, so no supplemental fact exists for it, matching the FreeMonoid list's same omission for the same reason (rust_vec_freemonoid_supplemental_generic_bound_rows_note)."
-
-data rust_ordset_supplemental_generic_bound_rows: List<RustVecSupplementalGenericBoundRow> = [
+data rust_btree_set_supplemental_generic_bound_rows: List<RustVecSupplementalGenericBoundRow> = [
   RustVecSupplementalGenericBoundRow {
     derive_trait: ReprDeriveDebug
     required: ReprDeriveOrd
-    authority: im_15_1_0_ordset_debug_impl_authority
+    authority: im_15_1_0_ord_set_debug_impl_authority
   },
   RustVecSupplementalGenericBoundRow {
     derive_trait: ReprDerivePartialEq
     required: ReprDeriveOrd
-    authority: im_15_1_0_ordset_partial_eq_impl_authority
+    authority: im_15_1_0_ord_set_partial_eq_impl_authority
   },
   RustVecSupplementalGenericBoundRow {
     derive_trait: ReprDeriveSerialize
     required: ReprDeriveOrd
-    authority: im_15_1_0_ordset_serialize_impl_authority
+    authority: im_15_1_0_ord_set_serialize_impl_authority
   },
   RustVecSupplementalGenericBoundRow {
     derive_trait: ReprDeriveSerialize
     required: ReprDeriveClone
-    authority: im_15_1_0_ordset_serialize_impl_authority
+    authority: im_15_1_0_ord_set_serialize_impl_authority
   },
   RustVecSupplementalGenericBoundRow {
     derive_trait: ReprDeriveDeserialize
     required: ReprDeriveOrd
-    authority: im_15_1_0_ordset_deserialize_impl_authority
+    authority: im_15_1_0_ord_set_deserialize_impl_authority
   },
   RustVecSupplementalGenericBoundRow {
     derive_trait: ReprDeriveDeserialize
     required: ReprDeriveClone
-    authority: im_15_1_0_ordset_deserialize_impl_authority
+    authority: im_15_1_0_ord_set_deserialize_impl_authority
   },
 ]
 

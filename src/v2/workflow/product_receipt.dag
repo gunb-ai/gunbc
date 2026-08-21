@@ -1,0 +1,439 @@
+module v2.workflow.product_receipt
+
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_eq_structural
+}
+import std.types { NonEmptyStr }
+import v2.std.algebra { Empty, fold_list, length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+// WHY THIS EXISTS.
+//
+// Every claim this repository makes about the v2 self-host wall is a claim
+// about a COMPONENT measured on its own invocation: a manifest gate green
+// here, an emission board coded there, a cargo error count somewhere else.
+// The composition of those components has never been executed as one
+// transaction, so nothing in the corpus can distinguish "each part works"
+// from "the product builds". The incident that made this P0 is the same
+// shape one layer up: a producer PR green on its own head, a consumer PR
+// green on its own head, and the union red -- no per-part gate can catch
+// that by construction.
+//
+// So this module models ONE receipt over the seven boundaries a product
+// build crosses, and it carries the thing a per-part board cannot: the
+// IDENTITY of the artifact each boundary handed the next. A receipt whose
+// boundaries are individually Completed but whose artifacts do not chain is
+// exactly the independent-green-components problem wearing a receipt's
+// clothes, and it is REFUSED here rather than reported as green.
+
+type ProductBoundary
+  = HostDerivesManifest
+  | ManifestPopulationAdmitted
+  | RefsHashVerified
+  | ClosureCandidateEmitted
+  | SeedLinkedAssembly
+  | AuthorityCargoManifest
+  | CargoBuild
+
+// The refusal vocabulary is CLOSED and it is not a Symbol, deliberately. A
+// Symbol reason renders only through a host builtin, and a receipt whose
+// causes cannot be projected without leaving the graph is a receipt nobody
+// can read; a closed coproduct is total, renderable by match, and makes an
+// unmodeled cause unwritable rather than spellable as free text.
+// A BARE TOTAL CANNOT BE DIFFERENCED. If a later run reports 35 emitter
+// diagnostics where this one reported 40, a total cannot say whether five
+// were repaired or five changed cause -- so the partition is the
+// measurement and the total is a summary of it.
+//
+// The reason is a String rather than a closed coproduct, and that is the
+// honest shape: these are the EMITTER's diagnostic reasons, an open
+// population this module does not own and must not mint a vocabulary for.
+// A tally of observed reasons is an observation; a closed enum here would
+// be a second, incomplete authority over someone else's diagnostics.
+type DiagnosticCauseTally {
+  reason: String
+  count: Int
+}
+
+fn diagnostic_tally_holds_reason(tally: List<DiagnosticCauseTally>, reason: String) -> Bool {
+  fold_list(
+    xs: tally,
+    empty: false,
+    cons: fn(found, row) { found || (row.reason == reason) }
+  )
+}
+
+fn diagnostic_tally_bump(
+  tally: List<DiagnosticCauseTally>,
+  reason: String
+) -> List<DiagnosticCauseTally> {
+  if diagnostic_tally_holds_reason(tally: tally, reason: reason) {
+    fold_list(
+      xs: tally,
+      empty: Empty,
+      cons: fn(acc, row) {
+        list_snoc_item(
+          xs: acc,
+          item: if row.reason == reason {
+            DiagnosticCauseTally { reason: row.reason, count: row.count + 1 }
+          } else {
+            row
+          }
+        )
+      }
+    )
+  } else {
+    list_snoc_item(xs: tally, item: DiagnosticCauseTally { reason: reason, count: 1 })
+  }
+}
+
+fn diagnostic_tally_total(tally: List<DiagnosticCauseTally>) -> Int {
+  fold_list(xs: tally, empty: 0, cons: fn(total, row) { total + row.count })
+}
+
+fn diagnostic_tally_render(tally: List<DiagnosticCauseTally>) -> String {
+  fold_list(
+    xs: tally,
+    empty: "",
+    cons: fn(text, row) {
+      concat(
+        text,
+        concat(
+          "\n    ",
+          concat(to_string(row.count), concat("  ", row.reason))
+        )
+      )
+    }
+  )
+}
+
+type BoundaryRefusalCause
+  = ManifestNotProduced
+  | ManifestOverlayNotResolved
+  | ManifestPopulationEmpty
+  | ManifestCoverageIncomplete
+  | ManifestPopulationPartial
+  | PopulationDigestMismatch
+  | ManifestSourceReadFailed
+  | IngestRowShortfall
+  | AdmissionReasonUnrecognized { reason: String }
+  | EmitterRejected { causes: List<DiagnosticCauseTally> }
+  | EmittedHardRefusalsPresent { count: Int }
+  | AssemblyRefused
+  | CargoManifestWriteFailed
+  | CargoBuildFailed
+
+type BoundaryStanding
+  = BoundaryNotExercised
+  | BoundaryRefused { cause: BoundaryRefusalCause }
+  | BoundaryCompleted
+
+type ArtifactIdentityAbsentCause
+  = BoundaryNotReached
+  | ProducerReportedNoArtifact
+
+// The identity carries a FILE COUNT beside the digest, and that is a field
+// rather than a caveat in a probe document. Two producers can hand the same
+// boundary a candidate for the same subject -- this receipt's chain carries
+// the closure-emit driver's own single-medium emission, while the rustc board
+// everyone quotes measures a many-file candidate from a second producer. The
+// moment a receipt goes green, a reader will difference it against that
+// board. A number without its producer's shape cannot be safely differenced,
+// and the document holding the caveat does not travel with the number.
+type ArtifactIdentity
+  = ArtifactIdentityKnown { digest: Fnv1a64Structural, file_count: Int }
+  | ArtifactIdentityAbsent { cause: ArtifactIdentityAbsentCause }
+
+type BoundaryObservation {
+  boundary: ProductBoundary
+  standing: BoundaryStanding
+  consumed: ArtifactIdentity
+  produced: ArtifactIdentity
+}
+
+// The subject travels WITH the receipt. A boundary standing means nothing
+// without the entry it was measured on, and a reader who has to infer the
+// subject from an absence will infer the wrong one.
+type ProductReceipt {
+  subject: String
+  observations: List<BoundaryObservation>
+}
+
+fn product_boundary_ordinal(boundary: ProductBoundary) -> Int {
+  match boundary {
+    HostDerivesManifest => 1
+    ManifestPopulationAdmitted => 2
+    RefsHashVerified => 3
+    ClosureCandidateEmitted => 4
+    SeedLinkedAssembly => 5
+    AuthorityCargoManifest => 6
+    CargoBuild => 7
+  }
+}
+
+fn product_boundary_label(boundary: ProductBoundary) -> String {
+  match boundary {
+    HostDerivesManifest => "B1 host derives manifest"
+    ManifestPopulationAdmitted => "B2 manifest population admitted"
+    RefsHashVerified => "B3 refs read and hash-verified"
+    ClosureCandidateEmitted => "B4 closure candidate emitted"
+    SeedLinkedAssembly => "B5 seed-linked assembly (no hand shim)"
+    AuthorityCargoManifest => "B6 Cargo.toml from repository authority"
+    CargoBuild => "B7 cargo"
+  }
+}
+
+fn boundary_refusal_cause_label(cause: BoundaryRefusalCause) -> String {
+  match cause {
+    ManifestNotProduced => "manifest not produced"
+    ManifestOverlayNotResolved => "the run resolved the committed stub, not the manifest this transaction produced"
+    ManifestPopulationEmpty => "manifest population empty"
+    ManifestCoverageIncomplete => "manifest coverage incomplete"
+    ManifestPopulationPartial => "manifest population partial"
+    PopulationDigestMismatch => "population digest mismatch"
+    ManifestSourceReadFailed => "source read failed"
+    IngestRowShortfall => "ingest row shortfall"
+    AdmissionReasonUnrecognized { reason: reason } =>
+      concat("the admission authority refused for a reason this receipt does not model: ", reason)
+    EmitterRejected { causes: causes } =>
+      concat(
+        "emitter rejected the admitted population, diagnostics: ",
+        concat(
+          to_string(diagnostic_tally_total(tally: causes)),
+          diagnostic_tally_render(tally: causes)
+        )
+      )
+    EmittedHardRefusalsPresent { count: count } =>
+      concat("emitted hard refusals present: ", to_string(count))
+    AssemblyRefused => "seed-linked assembly refused"
+    CargoManifestWriteFailed => "authority Cargo manifest write failed"
+    CargoBuildFailed => "cargo did not complete with zero errors"
+  }
+}
+
+fn boundary_standing_label(standing: BoundaryStanding) -> String {
+  match standing {
+    BoundaryNotExercised => "NotExercised"
+    BoundaryRefused { cause: cause } =>
+      concat("Refused -- ", boundary_refusal_cause_label(cause: cause))
+    BoundaryCompleted => "Completed"
+  }
+}
+
+fn artifact_identity_label(identity: ArtifactIdentity) -> String {
+  match identity {
+    ArtifactIdentityKnown { digest: digest, file_count: file_count } =>
+      concat(
+        "fnv1a64:",
+        concat(
+          digest.digest,
+          concat(" over ", concat(to_string(file_count), " file(s)"))
+        )
+      )
+    ArtifactIdentityAbsent { cause: cause } =>
+      match cause {
+        BoundaryNotReached => "<boundary not reached>"
+        ProducerReportedNoArtifact => "<producer reported no artifact>"
+      }
+  }
+}
+
+fn product_artifact_identity(value: String, file_count: Int) -> ArtifactIdentity {
+  if value == "" {
+    ArtifactIdentityAbsent { cause: ProducerReportedNoArtifact }
+  } else {
+    ArtifactIdentityKnown {
+      digest: content_hash_atom(value: value as NonEmptyStr),
+      file_count: file_count
+    }
+  }
+}
+
+fn boundary_is_completed(observation: BoundaryObservation) -> Bool {
+  match observation.standing {
+    BoundaryCompleted => true
+    BoundaryRefused { cause: _ } => false
+    BoundaryNotExercised => false
+  }
+}
+
+fn artifact_identity_carried(produced: ArtifactIdentity, consumed: ArtifactIdentity) -> Bool {
+  match produced {
+    ArtifactIdentityAbsent { cause: _ } => false
+    ArtifactIdentityKnown { digest: left, file_count: left_files } =>
+      match consumed {
+        ArtifactIdentityAbsent { cause: _ } => false
+        ArtifactIdentityKnown { digest: right, file_count: right_files } =>
+          content_hash_eq_structural(left: left, right: right)
+            && (left_files == right_files)
+      }
+  }
+}
+
+// The chain is folded, not asserted pairwise at call sites, so a receipt
+// cannot be assembled that reports carriage it never checked. ChainBroken is
+// absorbing on purpose: once one hand-off is unwitnessed the remainder of
+// the chain proves nothing about the artifact the run started from.
+type IdentityChainAcc
+  = ChainStart
+  | ChainHolding { prior_produced: ArtifactIdentity }
+  | ChainBroken
+
+fn identity_chain_step(
+  acc: IdentityChainAcc,
+  observation: BoundaryObservation
+) -> IdentityChainAcc {
+  match acc {
+    ChainBroken => ChainBroken
+    ChainStart => ChainHolding { prior_produced: observation.produced }
+    ChainHolding { prior_produced: prior } =>
+      if artifact_identity_carried(produced: prior, consumed: observation.consumed) {
+        ChainHolding { prior_produced: observation.produced }
+      } else {
+        ChainBroken
+      }
+  }
+}
+
+fn product_receipt_identity_chain(receipt: ProductReceipt) -> IdentityChainAcc {
+  fold_list(
+    xs: receipt.observations,
+    empty: ChainStart,
+    cons: fn(acc, observation) {
+      identity_chain_step(acc: acc, observation: observation)
+    }
+  )
+}
+
+fn product_receipt_identity_chain_intact(receipt: ProductReceipt) -> Bool {
+  match product_receipt_identity_chain(receipt: receipt) {
+    ChainBroken => false
+    ChainStart => false
+    ChainHolding { prior_produced: _ } => true
+  }
+}
+
+// Coverage is checked by ORDINAL POSITION, not by count. Seven observations
+// of one boundary satisfy a count and prove nothing; this refuses unless the
+// receipt walks the seven boundaries once each, in order.
+type BoundaryCoverageAcc
+  = CoverageHolding { next_ordinal: Int }
+  | CoverageBroken
+
+fn boundary_coverage_step(
+  acc: BoundaryCoverageAcc,
+  observation: BoundaryObservation
+) -> BoundaryCoverageAcc {
+  match acc {
+    CoverageBroken => CoverageBroken
+    CoverageHolding { next_ordinal: expected } =>
+      if product_boundary_ordinal(boundary: observation.boundary) == expected {
+        CoverageHolding { next_ordinal: expected + 1 }
+      } else {
+        CoverageBroken
+      }
+  }
+}
+
+fn product_receipt_covers_every_boundary_once(receipt: ProductReceipt) -> Bool {
+  match fold_list(
+    xs: receipt.observations,
+    empty: CoverageHolding { next_ordinal: 1 },
+    cons: fn(acc, observation) {
+      boundary_coverage_step(acc: acc, observation: observation)
+    }
+  ) {
+    CoverageBroken => false
+    CoverageHolding { next_ordinal: next } => next == 8
+  }
+}
+
+fn product_receipt_every_boundary_completed(receipt: ProductReceipt) -> Bool {
+  fold_list(
+    xs: receipt.observations,
+    empty: true,
+    cons: fn(ok, observation) { ok && boundary_is_completed(observation: observation) }
+  )
+}
+
+// THE GREEN PREDICATE. Three conjuncts, and the third is the one a
+// per-component board cannot state: every boundary consumed the exact
+// artifact its predecessor produced, inside one transaction.
+fn product_receipt_green(receipt: ProductReceipt) -> Bool {
+  product_receipt_covers_every_boundary_once(receipt: receipt)
+    && product_receipt_every_boundary_completed(receipt: receipt)
+    && product_receipt_identity_chain_intact(receipt: receipt)
+}
+
+fn boundary_observation_line(observation: BoundaryObservation) -> String {
+  concat(
+    product_boundary_label(boundary: observation.boundary),
+    concat(
+      "\n  standing: ",
+      concat(
+        boundary_standing_label(standing: observation.standing),
+        concat(
+          "\n  consumed: ",
+          concat(
+            artifact_identity_label(identity: observation.consumed),
+            concat(
+              "\n  produced: ",
+              concat(artifact_identity_label(identity: observation.produced), "\n")
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn product_receipt_render(receipt: ProductReceipt) -> String {
+  concat(
+    concat(
+      "v2 compiler product receipt (seven boundaries, one transaction)\nsubject: ",
+      concat(receipt.subject, "\n\n")
+    ),
+    concat(
+      fold_list(
+        xs: receipt.observations,
+        empty: "",
+        cons: fn(text, observation) {
+          concat(text, boundary_observation_line(observation: observation))
+        }
+      ),
+      concat(
+        "\ncovers every boundary once: ",
+        concat(
+          bool_to_string(b: product_receipt_covers_every_boundary_once(receipt: receipt)),
+          concat(
+            "\nevery boundary completed:  ",
+            concat(
+              bool_to_string(b: product_receipt_every_boundary_completed(receipt: receipt)),
+              concat(
+                "\nidentity chain intact:     ",
+                concat(
+                  bool_to_string(b: product_receipt_identity_chain_intact(receipt: receipt)),
+                  concat(
+                    "\nRECEIPT: ",
+                    concat(
+                      if product_receipt_green(receipt: receipt) { "GREEN" } else { "RED" },
+                      "\n"
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn bool_to_string(b: Bool) -> String {
+  if b { "true" } else { "false" }
+}

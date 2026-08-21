@@ -177,7 +177,6 @@ pub struct EmitGraphInfo {
     pub clone_bounded_type_params: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     pub map_key_required_type_names: Rc<BTreeSet<String>>,
     pub clone_impl_required_type_params: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    pub ord_bounded_type_params: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     pub fn_generic_param_names: Rc<Vec<String>>,
     pub fn_type_env: Rc<TypeEnv>,
     pub fn_return_type: Option<Rc<Node>>,
@@ -188,15 +187,6 @@ pub struct EmitInfoBuildState {
     pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     pub type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     pub fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
-}
-
-pub fn empty_emit_graph_info_ord_fallback_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Conservatism: render paths without EmitGraphInfo pass empty_emit_graph_info(); bare-ref BTreeSet Ord eligibility fails closed (lookup_emit_type_decl -> Absent) and surfaces compile_error! at probe time — nine call sites inherit this, loud not silent widen.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
@@ -217,7 +207,6 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         clone_bounded_type_params: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
         map_key_required_type_names: v1_rt::rc_empty_set::<String>(),
         clone_impl_required_type_params: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
-        ord_bounded_type_params: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
         fn_generic_param_names: Rc::new(vec![]),
         fn_type_env: empty_type_env(),
         fn_return_type: None,
@@ -246,7 +235,6 @@ pub fn emit_info_with_fn_type_context(
         clone_bounded_type_params: emit_info.clone_bounded_type_params.clone(),
         map_key_required_type_names: emit_info.map_key_required_type_names.clone(),
         clone_impl_required_type_params: emit_info.clone_impl_required_type_params.clone(),
-        ord_bounded_type_params: emit_info.ord_bounded_type_params.clone(),
         fn_generic_param_names: generic_param_names.clone(),
         fn_type_env: env.clone(),
         fn_return_type: emit_info.fn_return_type.clone(),
@@ -274,7 +262,6 @@ pub fn emit_info_with_fn_return(
         clone_bounded_type_params: emit_info.clone_bounded_type_params.clone(),
         map_key_required_type_names: emit_info.map_key_required_type_names.clone(),
         clone_impl_required_type_params: emit_info.clone_impl_required_type_params.clone(),
-        ord_bounded_type_params: emit_info.ord_bounded_type_params.clone(),
         fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
         fn_type_env: emit_info.fn_type_env.clone(),
         fn_return_type: fn_return_type.clone(),
