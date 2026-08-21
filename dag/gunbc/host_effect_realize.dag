@@ -646,15 +646,16 @@ fn srv3_seeded_install_media_toolchain_privileged_apt_install_is_gated() -> Bool
 // The pre-state probe gets the same three-valued treatment as every other probe here: a
 // pre-state that could not be observed refuses the whole effect rather than defaulting to
 // was_present: false, which would claim an install happened on a host that was never asked.
+// The pre-state probe reaches presence and version through srv3_probe_present_then_version rather
+// than srv3_predicate_all: predicate_all takes a LIST, and a list argument is built eagerly, so
+// passing both probes to it runs the version probe even when presence has already failed. The
+// pre-cut code short-circuited through &&. Same class as the install-in-argument-position
+// regression on srv3_ensure_apt_tool -- read-only rather than privileged, so a cost defect not a
+// safety one, but DESIGN's bare-minimum-cost rule fixes a proven cost shape regardless of n.
 fn realize_seeded_install_media_toolchain_ensure_body(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  // Short-circuited deliberately: srv3_predicate_all takes a LIST, and a list argument is built
-  // eagerly, so passing both probes to it runs the version probe even when presence already
-  // failed. The pre-cut code short-circuited through &&. Same class as the install regression
-  // below -- read-only rather than privileged, so a cost defect not a safety one, but DESIGN's
-  // bare-minimum-cost rule fixes a proven cost shape regardless of the realized n.
   match srv3_probe_present_then_version(tool_name: xorriso_cli_tool.name, transport: transport) {
     Srv3PredicateUnobserved { reason: why } =>
       NotConverged {
@@ -1635,6 +1636,14 @@ fn srv3_actuator_toolchain_realizer_websocat_installs_to_modeled_path_with_names
 // `false` and fell straight through to srv3_privileged_apt_install -- a privileged mutation of a
 // host whose current state was never established. `Srv3PredicateUnobserved` now refuses instead,
 // carrying the reason the probe could not be made.
+// THE INSTALL MUST SIT IN A BRANCH, NEVER IN AN ARGUMENT POSITION.
+//
+// This body once read srv3_version_gate_then(verdict: ..., otherwise: srv3_apt_install_then_reprobe(...)),
+// which reads correctly and is wrong: an argument is evaluated to build the call, so the PRIVILEGED
+// APT INSTALL RAN ON EVERY ENSURE of a present, correctly-versioned tool. The pre-cut code
+// short-circuited through if/else and never had this defect; the regression came from moving the
+// install out of a branch and into a parameter while every type stayed identical. A match arm is a
+// branch, so only the selected arm evaluates.
 fn srv3_ensure_apt_tool(
   tool_name: NonEmptyStr,
   package: NonEmptyStr,
@@ -1647,14 +1656,6 @@ fn srv3_ensure_apt_tool(
       if require_version_probe == false {
         Srv3PredicateHolds
       } else {
-        // THE INSTALL MUST SIT IN A BRANCH, NEVER IN AN ARGUMENT POSITION.
-        //
-        // This was srv3_version_gate_then(verdict: ..., otherwise: srv3_apt_install_then_reprobe(...)),
-        // which reads correctly and is wrong: an argument is evaluated to build the call, so the
-        // PRIVILEGED APT INSTALL RAN ON EVERY ENSURE of a present, correctly-versioned tool. The
-        // pre-cut code short-circuited through if/else and never had this defect; the regression
-        // came from moving the install out of a branch and into a parameter while the types stayed
-        // identical. A match arm is a branch, so only the selected arm evaluates.
         match srv3_apt_tool_version_ok(tool_name: tool_name, transport: transport) {
           Srv3PredicateHolds => Srv3PredicateHolds
           Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
