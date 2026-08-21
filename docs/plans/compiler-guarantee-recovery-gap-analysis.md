@@ -1594,9 +1594,13 @@ than argued.
    here are checked against the real declaration, not read verbatim off the wire. The gap is
    narrower and specifically in field *values*: each field's JSON value is converted with the
    untyped `json_to_value` and assembled into a `Value::Record` with zero validation against
-   that field's declared type's refinement predicate, on every branch, including the branch
-   that skips straight to `json_to_value` when the return type did not resolve and the branch
-   that fills a field with `Null` when the JSON body has no matching key. (Those two fallback
+   that field's declared type's refinement predicate. An earlier revision said "on every branch" — a universal
+   this item never enumerated, and it under-counted: `map_response_to_value_json` has TWO distinct arms that skip
+   straight to `json_to_value`, one when the operation's return type does not resolve to `Resolved` and a second
+   when it resolves but has no children, and the earlier wording named only the first. The arms this item
+   identifies are therefore: the unresolved-return-type skip, the childless-return-type skip, the per-field
+   conversion on the main path, and the `Null` fill when the JSON body has no matching key. Stated as an
+   enumeration rather than a universal, because nothing here establishes that the list is exhaustive. (Those two fallback
    branches are a source-level read only — see "What was NOT executed," below.) **A third,
    separate path exists and is unmeasured by this item:** when the operation's response format
    is `Text` rather than `Json`, `decide_rest_exchange` routes to `map_response_to_value`, not
