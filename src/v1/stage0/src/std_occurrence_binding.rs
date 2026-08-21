@@ -29,7 +29,7 @@ pub fn occurrence_binding_staged_adoption_scaffold_note() -> String {
     deserialize = "N: Clone + serde::Deserialize<'de>"
 ))]
 pub struct ContainmentPath<N: Clone> {
-    pub ancestors: Rc<Vec<N>>,
+    pub ancestors: Rc<FreeMonoid<N>>,
     pub terminal: N,
     pub _phantom: std::marker::PhantomData<N>,
 }
@@ -76,7 +76,7 @@ pub struct OccurrenceBinding<N: Clone> {
 pub struct AmbiguousBindingCandidates<N: Clone> {
     pub first: Rc<BindingCandidate<N>>,
     pub second: Rc<BindingCandidate<N>>,
-    pub rest: Rc<Vec<Rc<BindingCandidate<N>>>>,
+    pub rest: Rc<FreeMonoid<Rc<BindingCandidate<N>>>>,
     pub _phantom: std::marker::PhantomData<N>,
 }
 
@@ -125,7 +125,7 @@ pub enum OccurrenceBindingFoldState<N: Clone> {
     OccurrenceBindingFoldMany {
         first: Rc<BindingCandidate<N>>,
         second: Rc<BindingCandidate<N>>,
-        rest_reversed: Rc<Vec<Rc<BindingCandidate<N>>>>,
+        rest_reversed: Rc<FreeMonoid<Rc<BindingCandidate<N>>>>,
     },
 }
 impl<N: Clone> OccurrenceBindingFoldState<N> {
@@ -193,7 +193,7 @@ impl<N: Clone + PartialEq> PartialEq for OccurrenceBindingFoldState<N> {
 
 pub fn occurrence_binding_from_candidates<N: Clone>(
     occurrence: Rc<BindingOccurrence<N>>,
-    candidates: Rc<Vec<Rc<BindingCandidate<N>>>>,
+    candidates: Rc<FreeMonoid<Rc<BindingCandidate<N>>>>,
 ) -> Rc<OccurrenceBindingResult<N>> {
     {
         let state = candidates.clone().iter().cloned().fold(
