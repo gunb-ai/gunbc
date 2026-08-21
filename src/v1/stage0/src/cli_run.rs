@@ -195,33 +195,55 @@ pub(crate) fn extract_reference_module_paths(
 ) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
-    for raw in content.lines() {
-        let line = match raw.find("//") {
-            Some(i) => &raw[..i],
-            None => raw,
-        };
-        let mut code = String::with_capacity(line.len());
-        let mut in_str = false;
-        let mut prev_backslash = false;
-        for ch in line.chars() {
-            if in_str {
-                if ch == '\\' && !prev_backslash {
-                    prev_backslash = true;
-                    continue;
-                }
-                if ch == '"' && !prev_backslash {
-                    in_str = false;
-                }
-                prev_backslash = false;
+    // STRING STATE IS CONTENT-WIDE, NOT PER-LINE, and that is the whole repair.
+    //
+    // This scanner used to reset `in_str` at every newline, so only the FIRST line of a
+    // multi-line `data note: String = "..."` row was treated as string; every subsequent line
+    // was scanned as code. A `.dag` prose row citing `gunbc.merge_admission_subject` therefore
+    // entered the regen closure as a dependency EDGE, and the transitive pull was not small:
+    // measured on the namespace-cut corpus, the src/v1 closure was 396 modules with per-line
+    // state and 111 with content-wide state -- 56 `gunbc.plans.*` modules were reached solely
+    // through prose. A citation is not an edge (DESIGN 4c: no `Accepted` program can read an
+    // annotation, and a `String` row is data, not a reference), so pulling one is a fail-open
+    // widening of the seed surface, denominated in the corpus rather than in the change.
+    let mut in_str = false;
+    let mut prev_backslash = false;
+    let mut code = String::with_capacity(content.len());
+    let mut it = content.chars().peekable();
+    while let Some(ch) = it.next() {
+        if in_str {
+            if ch == '\\' && !prev_backslash {
+                prev_backslash = true;
                 continue;
             }
-            if ch == '"' {
-                in_str = true;
-                continue;
+            if ch == '"' && !prev_backslash {
+                in_str = false;
             }
-            code.push(ch);
+            prev_backslash = false;
+            // Newlines are preserved so the scan below still sees line structure.
+            if ch == '\n' {
+                code.push('\n');
+            }
+            continue;
         }
-        let chars: Vec<char> = code.chars().collect();
+        if ch == '"' {
+            in_str = true;
+            continue;
+        }
+        if ch == '/' && it.peek() == Some(&'/') {
+            // Line comment: skip to end of line (a `//` inside a string never reaches here).
+            for c in it.by_ref() {
+                if c == '\n' {
+                    code.push('\n');
+                    break;
+                }
+            }
+            continue;
+        }
+        code.push(ch);
+    }
+    for line in code.lines() {
+        let chars: Vec<char> = line.chars().collect();
         let mut i = 0usize;
         while i < chars.len() {
             let c = chars[i];

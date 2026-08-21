@@ -57,7 +57,7 @@ fn key_source_eq(left: KeySource, right: KeySource) -> Bool {
       _ => false
     }
     CompositeKey { fields: fa } => match right {
-      CompositeKey { fields: fb } => string_list_eq(left: fa, right: fb)
+      CompositeKey { fields: fb } => std.realization_schedule.string_list_eq(left: fa, right: fb)
       _ => false
     }
   }
