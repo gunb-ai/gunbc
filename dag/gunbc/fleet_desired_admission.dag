@@ -21,6 +21,9 @@ import extdeps.github.workflow_run_event {
 import gunbc.witness_floor_workflow { witness_floor_workflow_name }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.fleet_main_revision {
+  FleetDesiredAbsent,
+  FleetDesiredUndecodable,
+  fleet_desired_ref_name,
   fleet_desired_ref_name,
   FleetDesiredRevision,
   FleetDesiredAdmitted,
@@ -172,6 +175,36 @@ fn fleet_desired_admission_decide(event: WorkflowRunEvent, observed: FleetDesire
             cause: join([
               "fleet_desired_admission: the admitted prior could not be observed, so no advance is authorized (an unobserved prior is never read as an absent one): ",
               why,
+            ], ""),
+          }
+        // THE TWO ARMS THE OBSERVATION SPLIT MADE EXPRESSIBLE, AND BOTH REFUSE. This match named
+        // two variants when FleetDesiredRevision had two; #8701 split it into four and this file
+        // and that split landed independently, each green alone. The combination did not resolve
+        // -- a semantic merge conflict no textual merge could see -- which is the fail-closed
+        // census doing its job: the deletion of a variant's implicit coverage surfaced exactly
+        // the consumer that had to answer for it.
+        //
+        // The answers follow this function's own stated policy rather than inventing one. It
+        // already declines to create the ref from an unobserved prior, on the reasoning that a
+        // first admission must arrive as a distinguished observation and not as an arm guessing.
+        // FleetDesiredAbsent IS that distinguished observation -- but authorizing creation here
+        // would be a NEW capability landing as a side effect of a compile fix, so it refuses and
+        // says what it would take. Undecodable refuses on stronger grounds: the ref EXISTS
+        // holding something unreadable, so a write would destroy it, and the remedy is to read
+        // the bytes rather than to retry.
+        FleetDesiredAbsent =>
+          AdmissionRefused {
+            cause: join([
+              "fleet_desired_admission: origin advertises no ",
+              fleet_desired_ref_name,
+              " -- this path authorizes an ADVANCE from an observed prior and never a first creation; creating it is a separate admission with its own authorization",
+            ], ""),
+          }
+        FleetDesiredUndecodable { advertised: line } =>
+          AdmissionRefused {
+            cause: join([
+              "fleet_desired_admission: the admitted prior exists but its advertisement is not a decodable object id, so the ref holds something unreadable and must not be written over: ",
+              line,
             ], ""),
           }
         FleetDesiredAdmitted { revision: prior } =>
