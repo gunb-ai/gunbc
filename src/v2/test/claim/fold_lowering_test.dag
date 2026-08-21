@@ -145,11 +145,43 @@ fn lowered_fixture_loop() -> Optional<Node> {
   }
 }
 
+// WHY THESE TWO CLAIMS PROJECT `.children` INSIDE A NODE-TYPED HELPER RATHER
+// THAN OFF THE MATCH BINDER DIRECTLY, which is the shape they were authored in.
+//
+// Measured 2026-08-21, on the first execution these claims have ever had: a
+// binder introduced by destructuring a GENERIC coproduct (`Present { value: l }`
+// of `Optional<Node>`, `Accepted { value: l }` of `Outcome<Node>`) is usable in
+// ARGUMENT position -- four sibling claims in this file pass doing exactly that
+// -- but projecting a field off it (`l.children`) fails with `error type
+// cascade` at the projection's own offset. The element type is not resolved at
+// the point the field is read.
+//
+// That is a v2 inference deficit, not a fact about these claims, and it is
+// REPORTED rather than absorbed: it is named here, at the site whose shape it
+// dictates, and raised to the emission-convergence lane. The helpers below are
+// not a dodge around a refusal -- they are the same projection performed where
+// the type IS concrete, which is a `Node` parameter, and they leave both claims
+// asserting exactly what they asserted before. When the deficit closes, these
+// two helpers dissolve back into the match arms and nothing else changes.
+fn carrier_binder_of(n: Node) -> NamedEdgeTargetLookup {
+  loop_carrier_binder_target(children: n.children)
+}
+
+fn with_duplicate_carrier_edge(n: Node, binder: Node) -> Node {
+  node_rebuild(
+    n: n,
+    children: list_snoc_item(
+      xs: n.children,
+      item: Edge { label: Named { name: ^loop_carrier_edge }, target: binder }
+    )
+  )
+}
+
 test fn lowered_loop_binds_carrier_binder() -> Bool {
   match lowered_fixture_loop() {
     Absent => false
     Present { value: loop } =>
-      match loop_carrier_binder_target(children: loop.children) {
+      match carrier_binder_of(n: loop) {
         Found { target: binder } =>
           match node_atom_identity_optional(node: binder) {
             Present { value: sym } => sym == ^acc
@@ -165,15 +197,9 @@ test fn duplicate_carrier_edge_is_malformed() -> Bool {
   match lowered_fixture_loop() {
     Absent => false
     Present { value: loop } =>
-      match loop_carrier_binder_target(children: loop.children) {
+      match carrier_binder_of(n: loop) {
         Found { target: binder } =>
-          !well_formed(n: node_rebuild(
-            n: loop,
-            children: list_snoc_item(
-              xs: loop.children,
-              item: Edge { label: Named { name: ^loop_carrier_edge }, target: binder }
-            )
-          ))
+          !well_formed(n: with_duplicate_carrier_edge(n: loop, binder: binder))
         Ambiguous => false
         v2.std.node.Absent => false
       }
