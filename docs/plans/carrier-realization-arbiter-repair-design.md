@@ -247,6 +247,24 @@ into several sites, and lines move.
 **Do not land the dual renderer.** It is experimental quarry: leaving both answers in production
 creates the second authority this work exists to delete (DESIGN §3).
 
+### Ledger column requirement: diff the FULL histogram, including `unreachable_pattern`
+
+`smart-ram-730`, from a near-miss in another lane: a repair keyed on the emitted pattern string moved
+its headline board 31 → 32 — noise — while underneath it `unreachable_pattern:6` appeared. **Those
+are errors here, not lints.** Two arms of the same variant emitted different patterns, the first lost
+its guard and shadowed the second into dead code at six sites. The headline moved by one; six arms
+died.
+
+So the A/B/C/D ledger carries the **full sorted diagnostic histogram across all four crates**, not
+only the E-numbers this lane targets, and `unreachable_pattern` is named explicitly as a carried
+class. A realization change is exactly the kind of edit that can make one arm subsume another: if the
+base realization of a carrier changes, two match arms that were distinguishable by their carrier's
+host type may cease to be.
+
+This is the same discipline the ledger already applies to sites — report conversion, not totals — one
+level up: **a repair that trades one class for another at a lower count reads as progress, and a
+repair that kills six arms while the headline moves by one reads as nothing at all.**
+
 ## Step 3 — Pre-registered acceptance
 
 A rising rustc total is neither proof of progress nor proof of failure. The repair is semantically
