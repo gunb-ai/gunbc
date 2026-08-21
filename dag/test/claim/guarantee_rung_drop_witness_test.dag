@@ -1,0 +1,58 @@
+module test.claim.guarantee_rung_drop_witness_test
+
+// A CONTROL DROP THAT DIFFERS FROM THE LIVE ROW IN EVERY DECIDED FIELD. Its purpose is to make
+// the assertions below discriminating: a renderer that ignored its argument, or an off-ladder
+// predicate that answered a constant, would agree with the live row here and be caught.
+data control_rung_drop: gunbc.guarantee_rung_drop.GuaranteeRungDrop = gunbc.guarantee_rung_drop.GuaranteeRungDrop {
+    subject: "control.subject",
+    previous: gunbc.guarantee_rung_drop.MechanicallyPreventable,
+    temporary: gunbc.guarantee_rung_drop.Mitigatable,
+    reason: gunbc.guarantee_rung_drop.DeletedWithoutReplacement,
+    population: ["control.population.one"],
+    restoration_trigger: "control restoration trigger"
+  }
+
+// Local one-liner over the builtin rather than an import: three test files already declare their
+// own `string_contains`, so a fourth would make the bare name ambiguous corpus-wide. This is a
+// witness's incidental helper, not a shared authority, and it is named distinctly for that reason.
+fn contains_text(haystack: String, needle: String) -> std.types.Bool {
+  haystack.contains(needle)
+}
+
+// THE LIVE ROW IS OFF THE LADDER AND THE CONTROL IS NOT. Both directions asserted, because a
+// predicate stuck at true and a predicate stuck at false are different defects and one assertion
+// only sees one of them.
+test fn source_root_ingest_gate_drop_is_off_ladder() -> std.types.Bool {
+  gunbc.guarantee_rung_drop.rung_drop_is_off_ladder(d: tools.ci_gates.source_root_ingest_gate_rung_drop)
+    && !gunbc.guarantee_rung_drop.rung_drop_is_off_ladder(d: control_rung_drop)
+}
+
+// THE RENDERED REFUSAL CARRIES THE ROW'S OWN FIELDS. This is what makes the gate arm a projection
+// of the declaration rather than a second authority restating it: if the row's subject or
+// restoration trigger is edited and the message stops naming them, this reds.
+test fn rung_drop_message_names_subject_and_trigger() -> std.types.Bool {
+  let m = gunbc.guarantee_rung_drop.rung_drop_refusal_message(d: tools.ci_gates.source_root_ingest_gate_rung_drop)
+  contains_text(haystack: m, needle: "v2.workflow.source_root_ingest_gate")
+    && contains_text(haystack: m, needle: "outside the ladder")
+    && contains_text(haystack: m, needle: "lost as a passenger of")
+    && contains_text(haystack: m, needle: "a live workflow reaches")
+}
+
+// THE RENDERER READS ITS ARGUMENT. The control's text must NOT appear in the live row's message
+// and vice versa -- the assertion a constant-returning renderer fails.
+test fn rung_drop_message_discriminates_between_rows() -> std.types.Bool {
+  let live = gunbc.guarantee_rung_drop.rung_drop_refusal_message(d: tools.ci_gates.source_root_ingest_gate_rung_drop)
+  let ctl = gunbc.guarantee_rung_drop.rung_drop_refusal_message(d: control_rung_drop)
+  !contains_text(haystack: live, needle: "control.subject")
+    && !contains_text(haystack: ctl, needle: "v2.workflow.source_root_ingest_gate")
+    && contains_text(haystack: ctl, needle: "deleted without replacement")
+}
+
+// EVERY RUNG HAS A DISTINCT LABEL. A label fold that collapsed two rungs would make a census over
+// rung drops silently wrong, and nothing else in this module would notice.
+test fn guarantee_rung_labels_are_distinct() -> std.types.Bool {
+  let a = gunbc.guarantee_rung_drop.guarantee_rung_label(r: gunbc.guarantee_rung_drop.OutsideTheLadder)
+  let b = gunbc.guarantee_rung_drop.guarantee_rung_label(r: gunbc.guarantee_rung_drop.Mitigatable)
+  let c = gunbc.guarantee_rung_drop.guarantee_rung_label(r: gunbc.guarantee_rung_drop.MechanicallyPreventable)
+  (a != b) && (b != c) && (a != c)
+}
