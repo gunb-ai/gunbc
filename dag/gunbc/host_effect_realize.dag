@@ -2346,40 +2346,98 @@ fn srv3_toolchain_observed(success: Bool, stdout: String) -> ShellExecObserved {
   }
 }
 
+// HOW A TOOL IS ACQUIRED IS A ROW, NOT A CALL SITE. Four hand-written ensures sat here, three
+// calling the apt path and one calling the websocat path, so "which mechanism installs this tool"
+// was expressed only by which function the author happened to call -- and the receipt that reports
+// them was a hand-built concat chain naming each tool twice, once as a literal and once as a
+// variable. Adding a tool meant editing three places and remembering the fourth.
+//
+// require_version_probe lives INSIDE the apt variant rather than beside the acquisition, because
+// the release path has no version probe to require. As a peer field it was a value one variant
+// ignored -- a state the type admitted and the code silently dropped.
+type Srv3ToolAcquisition
+  = AcquireViaAptPackage { package: NonEmptyStr, require_version_probe: Bool }
+  | AcquireViaWebsocatRelease
+
+type Srv3ToolRow {
+  tool_name: NonEmptyStr
+  acquisition: Srv3ToolAcquisition
+}
+
+// THE DISPATCH IS THE ONLY PLACE A MECHANISM IS CHOSEN, and it is total over the acquisition
+// coproduct: a new mechanism is a variant, and this match refuses to compile until it is answered.
+fn srv3_ensure_tool(row: Srv3ToolRow, transport: HostEffectTransport) -> Srv3HostPredicate {
+  match row.acquisition {
+    AcquireViaAptPackage { package: p, require_version_probe: needs_version } =>
+      srv3_ensure_apt_tool(
+        tool_name: row.tool_name,
+        package: p,
+        require_version_probe: needs_version,
+        transport: transport,
+      )
+    AcquireViaWebsocatRelease => srv3_ensure_websocat(transport: transport)
+  }
+}
+
+fn srv3_toolchain_rows() -> List<Srv3ToolRow> {
+  [
+    Srv3ToolRow {
+      tool_name: curl_cli_tool.name,
+      acquisition: AcquireViaAptPackage { package: package_curl, require_version_probe: true },
+    },
+    Srv3ToolRow {
+      tool_name: nbdkit_cli_tool.name,
+      acquisition: AcquireViaAptPackage { package: package_nbdkit, require_version_probe: true },
+    },
+    Srv3ToolRow {
+      tool_name: socat_cli_tool.name,
+      acquisition: AcquireViaAptPackage { package: package_socat, require_version_probe: false },
+    },
+    Srv3ToolRow {
+      tool_name: websocat_cli_tool.name,
+      acquisition: AcquireViaWebsocatRelease,
+    },
+  ]
+}
+
+type Srv3ToolObservation {
+  tool_name: NonEmptyStr
+  verdict: Srv3HostPredicate
+}
+
+// THE RECEIPT IS DERIVED FROM THE SAME ROWS THE ENSURE WALKED, so a tool cannot appear in one and
+// not the other, and its label cannot disagree with its row.
+fn srv3_tool_receipt_entry(observation: Srv3ToolObservation) -> String {
+  concat(
+    concat(observation.tool_name as String, "="),
+    srv3_predicate_label(p: observation.verdict),
+  )
+}
+
+fn srv3_toolchain_receipt(observations: List<Srv3ToolObservation>) -> String {
+  concat(
+    "OsInstallActuatorToolchainReceipt: ",
+    join(list_map(xs: observations, f: fn(o) { srv3_tool_receipt_entry(observation: o) }), " "),
+  )
+}
+
 fn srv3_realize_os_install_actuator_toolchain_ensure_body(
   transport: HostEffectTransport,
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let curl_ok = srv3_ensure_apt_tool(
-    tool_name: curl_cli_tool.name,
-    package: package_curl,
-    require_version_probe: true,
-    transport: transport,
+  let observations = list_map(
+    xs: srv3_toolchain_rows(),
+    f: fn(row) {
+      Srv3ToolObservation {
+        tool_name: row.tool_name,
+        verdict: srv3_ensure_tool(row: row, transport: transport),
+      }
+    },
   )
-  let nbdkit_ok = srv3_ensure_apt_tool(
-    tool_name: nbdkit_cli_tool.name,
-    package: package_nbdkit,
-    require_version_probe: true,
-    transport: transport,
+  let verdict = srv3_summarize_independent_observations(
+    steps: list_map(xs: observations, f: fn(o) { o.verdict }),
   )
-  let socat_ok = srv3_ensure_apt_tool(
-    tool_name: socat_cli_tool.name,
-    package: package_socat,
-    require_version_probe: false,
-    transport: transport,
-  )
-  let websocat_ok = srv3_ensure_websocat(transport: transport)
-  let verdict = srv3_summarize_independent_observations(steps: [curl_ok, nbdkit_ok, socat_ok, websocat_ok])
-  let stdout = concat(
-    concat(
-      concat(
-        concat("OsInstallActuatorToolchainReceipt: curl=", srv3_predicate_label(p: curl_ok)),
-        concat(" nbdkit=", srv3_predicate_label(p: nbdkit_ok)),
-      ),
-      concat(" socat=", srv3_predicate_label(p: socat_ok)),
-    ),
-    concat(" websocat=", srv3_predicate_label(p: websocat_ok)),
-  )
+  let stdout = srv3_toolchain_receipt(observations: observations)
   match verdict {
     Srv3PredicateUnobserved { reason: why } =>
       NotConverged {
