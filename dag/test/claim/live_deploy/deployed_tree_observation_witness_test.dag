@@ -36,7 +36,7 @@ fn probe_revision_words() -> List<String> {
 }
 
 fn probe_status_words() -> List<String> {
-  ["git", "-C", probe_repo() as String, "status", "--porcelain", "--untracked-files=no"]
+  ["git", "-C", probe_repo() as String, "diff", "--name-only", "HEAD"]
 }
 
 // DRIVEN THROUGH THE REAL WALL, not asserted about the strings. `portable_remote_words` is the
@@ -68,9 +68,16 @@ test fn witness_the_portability_wall_refuses_a_pipeline() -> Bool {
 
 // The flag is the whole reason the instrument reads tracked modifications rather than host noise,
 // and asserting the built argv contains it is what goes red if someone "simplifies" it away.
-test fn witness_status_argv_narrows_to_tracked_modifications() -> Bool {
-  any(deployed_tree_status_argv(repo: probe_repo()), w => w == "--untracked-files=no")
-    && any(deployed_tree_status_argv(repo: probe_repo()), w => w == "--porcelain")
+// THE COMMAND MUST NOT BE `status`, asserted as a REFUSAL and not only as a positive, because status
+// is the obvious spelling and reads as equivalent. It is not: the .git whitelist omits the index, so
+// status reports permanent modification on a correctly synced host. A witness checking only for "diff"
+// would stay green if someone added a status leg beside it.
+test fn witness_the_command_compares_worktree_to_head_and_never_consults_status() -> Bool {
+  any(deployed_tree_status_argv(repo: probe_repo()), w => w == "diff")
+    && any(deployed_tree_status_argv(repo: probe_repo()), w => w == "HEAD")
+    && any(deployed_tree_status_argv(repo: probe_repo()), w => w == "--name-only")
+    && !any(deployed_tree_status_argv(repo: probe_repo()), w => w == "status")
+    && !any(deployed_tree_status_argv(repo: probe_repo()), w => w == "--porcelain")
 }
 
 test fn witness_revision_argv_asks_for_head_in_the_deployed_repo() -> Bool {
@@ -84,34 +91,34 @@ test fn witness_status_argv_targets_the_deployed_repo() -> Bool {
 // CLEAN AND MODIFIED ARE DISTINCT ARMS, and whitespace-only output is CLEAN rather than a
 // modification with an empty body -- which is the state a single emptiness-means-clean field would
 // have conflated.
-test fn witness_empty_porcelain_reads_as_matching_the_commit() -> Bool {
-  match deployed_tracked_state_of(porcelain: "") {
+test fn witness_empty_diff_body_reads_as_matching_the_commit() -> Bool {
+  match deployed_tracked_state_of(changed_paths: "") {
     TrackedMatchesCommit => true
-    TrackedModified { porcelain: _ } => false
+    TrackedModified { changed_paths: _ } => false
   }
 }
 
-test fn witness_whitespace_only_porcelain_reads_as_matching_the_commit() -> Bool {
-  match deployed_tracked_state_of(porcelain: "  \n  ") {
+test fn witness_whitespace_only_diff_body_reads_as_matching_the_commit() -> Bool {
+  match deployed_tracked_state_of(changed_paths: "  \n  ") {
     TrackedMatchesCommit => true
-    TrackedModified { porcelain: _ } => false
+    TrackedModified { changed_paths: _ } => false
   }
 }
 
 test fn witness_a_modified_path_reads_as_modified_and_carries_what_was_seen() -> Bool {
-  match deployed_tracked_state_of(porcelain: " M dag/gunbc/ci_spec.dag\n") {
+  match deployed_tracked_state_of(changed_paths: "dag/gunbc/ci_spec.dag\n") {
     TrackedMatchesCommit => false
-    TrackedModified { porcelain: body } => body as String == "M dag/gunbc/ci_spec.dag"
+    TrackedModified { changed_paths: body } => body as String == "dag/gunbc/ci_spec.dag"
   }
 }
 
-// A DELETED TRACKED PATH IS A MODIFICATION, not a clean tree. This is the arm the untracked flag
-// cannot suppress, and it is exactly how a tracked file under an excluded prefix would present on a
-// host: rsync never ships it, so git reports it missing.
+// A DELETED TRACKED PATH IS A MODIFICATION, not a clean tree. It is exactly how a tracked file under
+// an excluded prefix would present on a host: rsync never ships it, so the worktree lacks a path HEAD
+// names, and `git diff HEAD` lists it like any other difference.
 test fn witness_a_deleted_tracked_path_reads_as_modified() -> Bool {
-  match deployed_tracked_state_of(porcelain: " D .claude/settings.json") {
+  match deployed_tracked_state_of(changed_paths: ".claude/settings.json") {
     TrackedMatchesCommit => false
-    TrackedModified { porcelain: _ } => true
+    TrackedModified { changed_paths: _ } => true
   }
 }
 
@@ -163,11 +170,11 @@ test fn witness_right_revision_with_modifications_is_not_converged_and_not_drift
         desired: a,
         obs: DeployedTreeObserved {
           revision: a,
-          tracked: TrackedModified { porcelain: "M dag/gunbc/ci_spec.dag" as NonEmptyStr },
+          tracked: TrackedModified { changed_paths: "dag/gunbc/ci_spec.dag" as NonEmptyStr },
         },
       ) {
-        DeployedTreeModifiedAtRevision { revision: _, porcelain: body } =>
-          body as String == "M dag/gunbc/ci_spec.dag"
+        DeployedTreeModifiedAtRevision { revision: _, changed_paths: body } =>
+          body as String == "dag/gunbc/ci_spec.dag"
         DeployedTreeConverged { revision: _ } => false
         DeployedTreeRevisionDrifted { desired: _, local: _ } => false
         DeployedTreeStandingUnobserved { cause: _ } => false
@@ -189,7 +196,7 @@ test fn witness_a_different_revision_reports_drift_carrying_both_sides() -> Bool
             DeployedTreeRevisionDrifted { desired: d, local: l } =>
               git_object_id_eq(left: d, right: a) && git_object_id_eq(left: l, right: b)
             DeployedTreeConverged { revision: _ } => false
-            DeployedTreeModifiedAtRevision { revision: _, porcelain: _ } => false
+            DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
             DeployedTreeStandingUnobserved { cause: _ } => false
           }
       }
@@ -209,12 +216,12 @@ test fn witness_drift_dominates_modification() -> Bool {
             desired: a,
             obs: DeployedTreeObserved {
               revision: b,
-              tracked: TrackedModified { porcelain: "M x" as NonEmptyStr },
+              tracked: TrackedModified { changed_paths: "x" as NonEmptyStr },
             },
           ) {
             DeployedTreeRevisionDrifted { desired: _, local: _ } => true
             DeployedTreeConverged { revision: _ } => false
-            DeployedTreeModifiedAtRevision { revision: _, porcelain: _ } => false
+            DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
             DeployedTreeStandingUnobserved { cause: _ } => false
           }
       }
@@ -235,7 +242,7 @@ test fn witness_unobservable_is_not_converged_and_keeps_its_cause() -> Bool {
             )
         DeployedTreeConverged { revision: _ } => false
         DeployedTreeRevisionDrifted { desired: _, local: _ } => false
-        DeployedTreeModifiedAtRevision { revision: _, porcelain: _ } => false
+        DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
       }
   }
 }

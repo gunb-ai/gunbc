@@ -71,13 +71,44 @@ fn deployed_tree_revision_argv(repo: NonEmptyStr) -> List<String> {
   ["git", "-C", repo as String, "rev-parse", "HEAD"]
 }
 
-// `--untracked-files=no` NARROWS THE SUBJECT TO TRACKED MODIFICATIONS, and that is the whole claim:
-// are the shipped bytes this commit's bytes. Untracked-but-shipped is a real and different class,
-// and it is already owned and already refused by candidate admission -- so this instrument leaves it
-// alone rather than widening to cover it. Two instruments, disjoint subjects, neither compensating
-// for the other.
+// `git diff --name-only HEAD` AND NOT `git status`, AND THE REASON IS A PROPERTY OF THIS DEPLOY.
+// The .git leg is a WHITELIST sync -- HEAD, objects, packed-refs, refs -- and its own carrier note
+// lists what never crosses: "config, config.worktree, INDEX, hooks, logs". So after a CORRECT sync the
+// deployed repo is in a state git never produces on its own: HEAD and objects at the new revision, the
+// worktree at the new revision, and .git/index still recording whatever the target held before. git
+// status compares HEAD to index to worktree, so with a stale index every path that changed reports
+// modified in BOTH columns, permanently, on a host that is exactly right.
+//
+// MEASURED, not reasoned: a repo at D with its index restored from L reports `MM f.txt` from
+// `status --porcelain --untracked-files=no`, while the same command on the same repo with a correct
+// index reports nothing. `git diff --name-only HEAD` compares worktree CONTENT against HEAD's tree
+// and tolerates the stale index -- empty when the host is right, naming the path when a tracked file
+// is actually wrong, empty again on restore. All three arms were driven.
+//
+// It also dissolves the untracked question rather than managing it with a flag: `git diff HEAD` has no
+// untracked concept, so the subject is exactly "do the tracked bytes equal this commit" and there is no
+// option for a later reader to simplify away. Untracked-but-shipped remains candidate admission's
+// class, which already owns and refuses it.
+//
+// THE MIRROR FAILURE WAS TESTED AND DOES NOT REACH US. git may skip re-hashing when stat data matches
+// the index, and rsync -t preserves mtimes, which would be a false CLEAN -- the silent direction. But
+// git's stat cache records ctime too, and ctime cannot be set by touch or preserved by rsync: a synced
+// file's ctime is the sync time, so the cache never matches and git re-hashes unconditionally. A
+// deliberate same-size, mtime-restored content change was caught. The property that makes the index
+// stale is the same one that blocks the silent failure.
+// ONE PRECONDITION, CLEAN TODAY AND WITH AN ENFORCEABLE HOME. `git diff HEAD` compares worktree
+// content to HEAD's blobs THROUGH gitattributes, so a clean/smudge filter, `text=auto`, `eol=`, or
+// `working-tree-encoding` would make it report clean when the deployed bytes differ from the blob
+// bytes by normalization -- and rsync ships bytes, so that is not the claim wanted. Measured: zero
+// occurrences of text=, eol=, filter= or working-tree-encoding in .gitattributes, which carries only
+// `linguist-language` (presentation) and `merge=generated-artifact` (merge driver, no clean/smudge).
+// So the comparison is raw bytes today. Unlike most preconditions this one has an AUTHORITY rather
+// than only an inspection: .gitattributes is generated from gunbc.gitattributes_emit, so a refusal to
+// emit a normalizing attribute would make the premise unwritable instead of true-by-inspection. That
+// row lands with the publication vertical rather than ahead of it, because reaching the bad state
+// requires someone to author a normalizing row in a generated file, which is not an accident.
 fn deployed_tree_status_argv(repo: NonEmptyStr) -> List<String> {
-  ["git", "-C", repo as String, "status", "--porcelain", "--untracked-files=no"]
+  ["git", "-C", repo as String, "diff", "--name-only", "HEAD"]
 }
 
 // A TRANSPORT REFUSAL IS ITS OWN ARM, NEVER A SYNTHETIC EXIT CODE. Rendering a leg that was never
@@ -104,18 +135,18 @@ type DeployedTreeObservation
   = DeployedTreeObserved { revision: GitObjectId, tracked: DeployedTrackedState }
   | DeployedTreeUnobservable { cause: String }
 
-// MODIFIED CARRIES WHAT WAS SEEN, and it carries it as a NonEmptyStr so that "modified, with nothing
-// to show for it" has no constructor. An empty porcelain body and a clean tree are the same bytes,
-// so a single field with emptiness meaning clean would be the state-space conflation this coproduct
-// exists to prevent -- and the receipt ruling applies here as everywhere: a verdict must name what it
-// observed, not merely that it disagreed.
+// MODIFIED CARRIES THE PATHS IT SAW, as a NonEmptyStr so that "modified, with nothing to show for it"
+// has no constructor. An empty diff body and a clean tree are the same bytes, so a single field with
+// emptiness meaning clean would be the state-space conflation this coproduct exists to prevent -- and
+// the receipt ruling applies here as everywhere: a verdict must name what it observed, not merely that
+// it disagreed.
 type DeployedTrackedState
   = TrackedMatchesCommit
-  | TrackedModified { porcelain: NonEmptyStr }
+  | TrackedModified { changed_paths: NonEmptyStr }
 
-fn deployed_tracked_state_of(porcelain: String) -> DeployedTrackedState {
-  let body = trim(s: porcelain)
-  if body == "" { TrackedMatchesCommit } else { TrackedModified { porcelain: body as NonEmptyStr } }
+fn deployed_tracked_state_of(changed_paths: String) -> DeployedTrackedState {
+  let body = trim(s: changed_paths)
+  if body == "" { TrackedMatchesCommit } else { TrackedModified { changed_paths: body as NonEmptyStr } }
 }
 
 // BOTH READINGS OR NEITHER. The revision read is attempted first and a failure there ends the
@@ -153,7 +184,7 @@ fn observe_deployed_tree(locus: DeployedTreeLocus) -> DeployedTreeObservation {
                 } else {
                   DeployedTreeObserved {
                     revision: oid,
-                    tracked: deployed_tracked_state_of(porcelain: st.stdout),
+                    tracked: deployed_tracked_state_of(changed_paths: st.stdout),
                   }
                 }
             }
@@ -171,7 +202,7 @@ fn observe_deployed_tree(locus: DeployedTreeLocus) -> DeployedTreeObservation {
 type DeployedTreeStanding
   = DeployedTreeConverged { revision: GitObjectId }
   | DeployedTreeRevisionDrifted { desired: GitObjectId, local: GitObjectId }
-  | DeployedTreeModifiedAtRevision { revision: GitObjectId, porcelain: NonEmptyStr }
+  | DeployedTreeModifiedAtRevision { revision: GitObjectId, changed_paths: NonEmptyStr }
   | DeployedTreeStandingUnobserved { cause: String }
 
 // DRIFT DOMINATES MODIFICATION, and the reason is about meaning rather than precedence. The
@@ -197,8 +228,8 @@ fn deployed_tree_standing(
       } else {
         match tracked {
           TrackedMatchesCommit => DeployedTreeConverged { revision: local }
-          TrackedModified { porcelain: body } =>
-            DeployedTreeModifiedAtRevision { revision: local, porcelain: body }
+          TrackedModified { changed_paths: body } =>
+            DeployedTreeModifiedAtRevision { revision: local, changed_paths: body }
         }
       }
   }
@@ -212,7 +243,7 @@ fn deployed_tree_standing_is_converged(standing: DeployedTreeStanding) -> Bool {
   match standing {
     DeployedTreeConverged { revision: _ } => true
     DeployedTreeRevisionDrifted { desired: _, local: _ } => false
-    DeployedTreeModifiedAtRevision { revision: _, porcelain: _ } => false
+    DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
     DeployedTreeStandingUnobserved { cause: _ } => false
   }
 }

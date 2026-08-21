@@ -37,7 +37,7 @@ test fn witness_only_the_converged_arm_is_publication_converged() -> Bool {
           standing: DeployedTreeRevisionDrifted { desired: a, local: a },
         )
         && !deployed_tree_standing_is_publication_converged(
-          standing: DeployedTreeModifiedAtRevision { revision: a, porcelain: "M x" as NonEmptyStr },
+          standing: DeployedTreeModifiedAtRevision { revision: a, changed_paths: "x" as NonEmptyStr },
         )
         && !deployed_tree_standing_is_publication_converged(
           standing: DeployedTreeStandingUnobserved { cause: "ssh refused" },
@@ -75,11 +75,11 @@ test fn witness_the_modified_line_carries_what_git_reported() -> Bool {
       let line = deployed_tree_standing_line(
         standing: DeployedTreeModifiedAtRevision {
           revision: a,
-          porcelain: "M dag/gunbc/ci_spec.dag" as NonEmptyStr,
+          changed_paths: "dag/gunbc/ci_spec.dag" as NonEmptyStr,
         },
       )
       string_contains(s: line, pattern: "MODIFIED-AT-REVISION")
-        && string_contains(s: line, pattern: "M dag/gunbc/ci_spec.dag")
+        && string_contains(s: line, pattern: "dag/gunbc/ci_spec.dag")
         && string_contains(s: line, pattern: git_object_id_wire_hex(oid: a) as String)
     }
   }
@@ -103,7 +103,7 @@ test fn witness_every_arm_renders_a_distinct_label() -> Bool {
       let c = deployed_tree_standing_line(standing: DeployedTreeConverged { revision: a })
       let d = deployed_tree_standing_line(standing: DeployedTreeRevisionDrifted { desired: a, local: a })
       let m = deployed_tree_standing_line(
-        standing: DeployedTreeModifiedAtRevision { revision: a, porcelain: "M x" as NonEmptyStr },
+        standing: DeployedTreeModifiedAtRevision { revision: a, changed_paths: "x" as NonEmptyStr },
       )
       let u = deployed_tree_standing_line(standing: DeployedTreeStandingUnobserved { cause: "why" })
       c != d && c != m && c != u && d != m && d != u && m != u

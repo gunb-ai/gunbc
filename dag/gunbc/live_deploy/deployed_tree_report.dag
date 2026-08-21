@@ -69,7 +69,7 @@ fn deployed_tree_standing_line(standing: DeployedTreeStanding) -> String {
             " REVISION-DRIFTED desired=", git_object_id_wire_hex(oid: d) as String,
             " local=", git_object_id_wire_hex(oid: l) as String,
             " -- both sides named because a catch-up needs the prior"], "")
-    DeployedTreeModifiedAtRevision { revision: r, porcelain: body } =>
+    DeployedTreeModifiedAtRevision { revision: r, changed_paths: body } =>
       join(["deployed-tree host=", deployed_tree_report_host as String,
             " MODIFIED-AT-REVISION revision=", git_object_id_wire_hex(oid: r) as String,
             " -- the revision agrees and the bytes do not; git status reports: ", body as String], "")
@@ -86,7 +86,7 @@ fn deployed_tree_standing_is_publication_converged(standing: DeployedTreeStandin
   match standing {
     DeployedTreeConverged { revision: _ } => true
     DeployedTreeRevisionDrifted { desired: _, local: _ } => false
-    DeployedTreeModifiedAtRevision { revision: _, porcelain: _ } => false
+    DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
     DeployedTreeStandingUnobserved { cause: _ } => false
   }
 }
