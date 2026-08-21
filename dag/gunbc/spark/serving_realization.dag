@@ -657,8 +657,37 @@ data spark_user_unit_identity_contract_refutation_note: String = "A systemd user
 // ollama stops being admissible without a second authenticating component, and that consequence is
 // what this note preserves rather than the choice it records.
 
-data spark_serving_runtime_selection_is_declared_intent_note: String = "Measured on srv5: aarch64, GB10, docker present but not usable by gunbc-automation, egress works, no serving runtime installed. The serving install is a SECOND privileged effect population, not covered by the enable-linger grant. Runtime choice is declared intent, not derivation: ollama has no authentication and cannot satisfy endpoint: AuthenticatedEndpoint without a second authenticating component; vLLM accepts an API key; a NIM container carries NVIDIA's own auth and licensing. Awaiting an operator declaration before any serving effect is derived."
-
+// WHY THE RUNTIME IS A DECLARED INTENT AND NOT A DERIVATION, and what has since been decided.
+//
+// The candidate runtimes differ on what they can satisfy, and the model cannot pick among them by
+// derivation because which runtime serves is a declared intent rather than a fact about the host:
+// ollama serves no authentication and cannot satisfy endpoint: AuthenticatedEndpoint without a
+// second authenticating component; vLLM accepts an API key directly; a NIM container carries
+// NVIDIA's own auth and licensing terms. That constraint is LIVE and is the same subject as the
+// reversal condition above -- if the endpoint intent ever returns to AuthenticatedEndpoint, ollama
+// stops being admissible on its own.
+//
+// The serving install is a SECOND privileged effect population, not covered by the enable-linger
+// grant.
+//
+// THIS PARAGRAPH WAS A `data ...: String` ROW AND IT WAS FALSE IN TWO PLACES, which is why it is
+// rewritten rather than trimmed. It ended "Awaiting an operator declaration before any serving
+// effect is derived", and its measurement half read "no serving runtime installed" as a statement
+// about srv5. Both were true when authored and both were overtaken: the operator declared the
+// runtime, and a read-only observation of both hosts on 2026-08-21 at 19:19 reports srv5 and srv6
+// each unit_outcome=active at runtime_version 0.32.9 serving gpt-oss:20b. So the runtime is
+// installed, the declaration was made, and serving effects are derived and running.
+//
+// The measurement it carried is kept as what it always was -- a reading taken at a moment, on one
+// host, before the install -- rather than deleted or silently updated: srv5 was observed aarch64,
+// GB10, docker present but not usable by gunbc-automation, egress working, no serving runtime
+// installed. Dating it is what stops it being read as a claim about the present, which is exactly
+// how it went wrong.
+//
+// It is an annotation now and not a String declaration for the reason DESIGN 4c gives: the row had
+// no consumer anywhere in the tree and its sole purpose was commentary, which makes it misplaced or
+// dead data. Commentary belongs where the compiler cannot read it. Its sibling on the endpoint
+// decision goes the same way, for the same reason, under its own change.
 
 // ── WHY an effect needs privilege, from which the grant EMERGES ─────────────────────────────────
 
