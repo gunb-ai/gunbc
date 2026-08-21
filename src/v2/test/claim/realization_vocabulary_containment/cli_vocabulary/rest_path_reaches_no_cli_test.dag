@@ -1,0 +1,319 @@
+module v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli
+
+// THE NEGATIVE FALSIFIER FOR THE REST/CLI BOUNDARY.
+//
+// The claim under test is the one the argv lane keeps asserting in prose: a
+// Redfish/REST path constructs no process invocation -- no jq program, no CLI
+// surface, no argv expansion carrier. Prose cannot be contradicted by the tree.
+// This can.
+//
+// WHY THIS IS A FALSIFIER AND NOT A DECORATION. A witness asserting that the REST
+// path constructs a REST carrier restates a type signature: it cannot fail for the
+// reason anyone cares about. The failure this watches for is a CLI carrier
+// APPEARING where none should, so the assertion is over the vocabulary a module
+// reaches, and it reds when a new module in the scanned population reaches CLI
+// construction vocabulary.
+//
+// THE SUBJECT IS NOT AN EMPTY UNIVERSE, which is the usual way a negative claim
+// turns vacuous. The scanned population CONTAINS a module that legitimately reaches
+// this vocabulary -- extdeps.bmc.openbmc_fan_control, which the argv lane routes
+// through jq deliberately -- sitting in the same directory as extdeps.bmc.redfish,
+// which does not. So the scan discriminates WITHIN the population rather than over
+// a population where nothing could have been found, and the RED control below is
+// real corpus data rather than a planted fixture.
+//
+// WHAT EXECUTES AND WHAT DOES NOT. This witness is discovered by the floor and its
+// scan is a live read of the two named directories. It is NOT whole-corpus
+// coverage: a module outside these roots reaching CLI vocabulary is not seen here,
+// and no green from this file may be read as saying otherwise. The whole-corpus
+// half of this lens is enrolled on a cadence that does not currently run, which is
+// a fact about that cadence and not about this witness.
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// The REST/BMC transport population. Both directories, because the boundary claim
+// is about the transport layer as a whole rather than one file.
+data rest_path_scan_roots: List<String> = [
+  "dag/extdeps/bmc",
+  "dag/extdeps/transports"
+]
+
+// THE ONE ADMITTED EDGE, named at exact identity grain. This is not a category or a
+// path prefix: it is one importer reaching one vocabulary module, so a SECOND
+// jq-reaching module anywhere in the scanned roots reds rather than being absorbed
+// by a pattern broad enough to cover it. The admission exists because the fan
+// control path's transport genuinely is a CLI process today; it is the subject of
+// the argv lane, not an exception to the boundary.
+data fan_control_admitted_cli_edges: List<RealizationVocabImportEdge> = [
+  RealizationVocabImportEdge {
+    importer_path: "dag/extdeps/bmc/openbmc_fan_control.dag",
+    vocab_module: "extdeps.tools.jq"
+  }
+]
+
+data no_admitted_cli_edges: List<RealizationVocabImportEdge> = []
+
+// POSITIVE: everything in the REST/BMC transport population except the one admitted
+// edge reaches no CLI construction vocabulary.
+test fn rest_path_reaches_no_cli_construction_vocabulary() -> Bool {
+  vocab_leak_count_live_in(
+    scan_roots: rest_path_scan_roots,
+    vocab: cli_process_vocabulary(),
+    edge_prefixes: [],
+    exempt_edges: fan_control_admitted_cli_edges
+  ) == 0
+}
+
+// RED CONTROL, from live corpus data rather than a fixture: withdraw the admission
+// and the scan must FIND the fan control edge. Without this the positive above is
+// indistinguishable from a scan that reads nothing -- an empty result and a clean
+// result are different states, and only this assertion separates them.
+test fn withdrawing_the_admission_surfaces_the_known_cli_edge() -> Bool {
+  vocab_leak_count_live_in(
+    scan_roots: rest_path_scan_roots,
+    vocab: cli_process_vocabulary(),
+    edge_prefixes: [],
+    exempt_edges: no_admitted_cli_edges
+  ) == 1
+}
+
+// SECOND RED, on the other axis: the scan must not be blind to the vocabulary set
+// itself. The same roots scanned for TARGET-AST vocabulary also report zero, so the
+// two sets are genuinely separate questions over one mechanism rather than one
+// question answered twice.
+test fn rest_path_reaches_no_target_ast_vocabulary() -> Bool {
+  vocab_leak_count_live_in(
+    scan_roots: rest_path_scan_roots,
+    vocab: target_ast_vocabulary(),
+    edge_prefixes: [],
+    exempt_edges: no_admitted_cli_edges
+  ) == 0
+}
+
+// ---------------------------------------------------------------------------
+// WIDENING, ROOT BY ROOT. The boundary above is enforced in two directories and
+// prose everywhere else, which is the whole of its limitation. Each root below is a
+// SEPARATE assertion rather than one widened list, so a failure names the root that
+// broke instead of reporting that something, somewhere, reaches CLI vocabulary.
+// ---------------------------------------------------------------------------
+
+// The paths permitted to reach CLI construction vocabulary because constructing a
+// CLI surface is what they are FOR. This is the lens's existing realization-edge
+// mechanism used as designed: jq's own extdeps module defines the jq CLI surface,
+// so its edge to cli_surface is internal to the vocabulary rather than a leak out of
+// anywhere. Note this is a PATH prefix and the fan control admission is an exact
+// edge -- the difference is deliberate: a definition site is a location whose whole
+// purpose is this vocabulary, while an admission is one consumer that happens to
+// need it and must not silently become two.
+// The third entry was added when shell.Exec.RunArgv landed, and it is worth
+// recording HOW rather than just that it happened: this witness REDDED on the
+// change that introduced the edge. exec.dag is itself a member of
+// cli_process_vocab_modules, so its reach into cli_surface is internal to the
+// vocabulary rather than a leak out of anywhere -- the same footing as jq's
+// module, which also defines a CLI surface for the tool it wraps. A roster entry
+// added because a real scan refused is a different thing from one added in
+// anticipation, and only the first kind has been tested.
+data cli_vocab_definition_edges: List<String> = [
+  "dag/extdeps/tools/jq.dag",
+  "src/v2/std/compilers/cli_surface.dag",
+  "dag/extdeps/shell/exec.dag"
+]
+
+// ---------------------------------------------------------------------------
+// THE GENERAL RULE FOR WIDENING, written down because the next person to add a root
+// will reach for the inherited control and it will pass while proving nothing.
+//
+// RE-ESTABLISH DISCRIMINATION AT THE NEW SCOPE. DO NOT INHERIT IT.
+//
+// A narrow root's RED control proves the scan discriminates over THAT root. Widen the
+// root and it proves nothing about the new subtrees: a nonzero fact count shows the
+// scan read something, not that it descended where the dirty modules live. This was
+// caught here under a green -- dag/extdeps reported clean and would have reported
+// clean had bmc/ never been reached at all.
+//
+// So every root added carries, at its own scope: a withdrawal control with an exact
+// expected count, and a roster-drop control asserting the count RISES. The second is
+// the same question aimed at the roster instead of the scan, and it matters because
+// an edge roster that no fact matches is indistinguishable from a correct one.
+// ---------------------------------------------------------------------------
+
+// ROOT: all of dag/extdeps. Widens past bmc/ and transports/ to every cited
+// upstream module. Lands with exactly one admitted edge -- the fan control jq
+// edge already named above -- and the jq definition site on the edge roster.
+data extdeps_scan_roots: List<String> = [
+  "dag/extdeps"
+]
+
+test fn extdeps_reaches_no_cli_construction_vocabulary() -> Bool {
+  vocab_leak_count_live_in(
+    scan_roots: extdeps_scan_roots,
+    vocab: cli_process_vocabulary(),
+    edge_prefixes: cli_vocab_definition_edges,
+    exempt_edges: fan_control_admitted_cli_edges
+  ) == 0
+}
+
+// ROOT: the compiler substrate. This is the strongest claim in the file and the one
+// with no admissions at all: std, the compiler stages, the lenses and the workflow
+// layer construct no process invocation whatsoever. If any of these ever needs a
+// CLI surface, that is an architectural event and it should red here first.
+data substrate_scan_roots: List<String> = [
+  "src/v2/std",
+  "src/v2/compiler",
+  "src/v2/lens",
+  "src/v2/workflow"
+]
+
+test fn compiler_substrate_reaches_no_cli_construction_vocabulary() -> Bool {
+  vocab_leak_count_live_in(
+    scan_roots: substrate_scan_roots,
+    vocab: cli_process_vocabulary(),
+    edge_prefixes: cli_vocab_definition_edges,
+    exempt_edges: no_admitted_cli_edges
+  ) == 0
+}
+
+// NON-VACUITY, and it is why the two clean results above mean anything. A root the
+// scan never read reports zero leaks exactly as a clean root does. These assert the
+// scans acquired real facts, so a zero is a finding rather than a silence -- the
+// same distinction the withdraw-the-admission control makes for the REST roots,
+// made here for roots that have no known edge to withdraw.
+test fn widened_scans_actually_read_the_tree() -> Bool {
+  (vocab_scan_fact_count_live(scan_roots: extdeps_scan_roots) > 0)
+    && (vocab_scan_fact_count_live(scan_roots: substrate_scan_roots) > 0)
+    && (vocab_scan_fact_count_live(scan_roots: rest_path_scan_roots) > 0)
+}
+
+// DISCRIMINATION FOR THE WIDENED ROOT, not just the narrow one. A nonzero fact
+// count proves the extdeps scan read SOMETHING; it does not prove it descended into
+// bmc/ where the only known edge lives. Withdrawing the admission over the WIDE root
+// must surface that edge exactly as it does over the narrow one -- otherwise
+// "dag/extdeps is clean" could be clean because the subtree containing the one dirty
+// module was never reached.
+test fn withdrawing_the_admission_surfaces_the_edge_under_the_wide_root() -> Bool {
+  vocab_leak_count_live_in(
+    scan_roots: extdeps_scan_roots,
+    vocab: cli_process_vocabulary(),
+    edge_prefixes: cli_vocab_definition_edges,
+    exempt_edges: no_admitted_cli_edges
+  ) == 1
+}
+
+// AND THE EDGE ROSTER ITSELF MUST BE LOAD-BEARING. Drop the jq definition site from
+// the permitted paths and the count must RISE, which is what proves that roster is
+// admitting a real edge rather than naming a path the scan never had a fact for.
+test fn dropping_the_definition_edge_roster_surfaces_more() -> Bool {
+  vocab_leak_count_live_in(
+    scan_roots: extdeps_scan_roots,
+    vocab: cli_process_vocabulary(),
+    edge_prefixes: [],
+    exempt_edges: fan_control_admitted_cli_edges
+  ) > 0
+}
+
+// ---------------------------------------------------------------------------
+// ROOT: dag/gunbc, and the rule the whole boundary reduces to.
+//
+// REALIZATION INFRASTRUCTURE MAY REACH TRANSPORT VOCABULARY; CONSUMERS MAY NOT,
+// EXCEPT BY EXACT NAMED ADMISSION. That is the #8535 boundary in a form that reds.
+// The prose version says CLI-backed handlers are one realization cell; this says
+// which modules ARE that cell and refuses the rest by name.
+//
+// The six modules here reaching extdeps.shell.exec are two different things, and
+// the split is by what the module IS rather than by what it imports.
+// ---------------------------------------------------------------------------
+
+// Realization infrastructure. Reaching transport vocabulary is what these locations
+// are FOR, which is the same reason the jq definition site is path-rostered above --
+// same rule, same shape. retained_shell_script defines the counted bridges and calls
+// transport_script_seal; bash_materialized_transport is the only other
+// admit_callers-sealed caller of that seal; host_effect_realize is the realization
+// core and reaches the vocabulary through retained_srvn.
+data transport_realization_edges: List<String> = [
+  "dag/gunbc/retained_shell_script.dag",
+  "dag/gunbc/bash_materialized_transport.dag",
+  "dag/gunbc/host_effect_realize.dag"
+]
+
+// CONSUMERS HOLDING A TRANSPORT, admitted as exact pairs so that a SEVENTH consumer
+// reds instead of being absorbed by a prefix broad enough to cover it.
+//
+// The reason on each is the finding, not a justification: all three reach the
+// vocabulary through retained_foreign, whose declared dissolves_to is the bash
+// emitter -- the destination for foreign executors and pre-runtime bootstrap -- while
+// all three appear to run inside a present gunbc runtime, which would make their real
+// destination typed effects. So the admission records a bucket that is probably
+// wrong rather than laundering it, and when someone fixes the bucket the admission
+// comes OFF instead of being re-justified.
+//
+// This population was reached twice independently: by a retained_foreign call census
+// (#8535) and by this import-graph scan, which additionally separated out
+// provider_wire_evidence. Two routes landing on one set is why these are named
+// rather than guessed.
+data transport_consumer_admitted_edges: List<RealizationVocabImportEdge> = [
+  RealizationVocabImportEdge {
+    importer_path: "dag/gunbc/package_delivery.dag",
+    vocab_module: "extdeps.shell.exec"
+  },
+  RealizationVocabImportEdge {
+    importer_path: "dag/gunbc/codex_app_server_press.dag",
+    vocab_module: "extdeps.shell.exec"
+  },
+  RealizationVocabImportEdge {
+    importer_path: "dag/gunbc/provider_wire_evidence.dag",
+    vocab_module: "extdeps.shell.exec"
+  }
+]
+
+data gunbc_scan_roots: List<String> = [
+  "dag/gunbc"
+]
+
+test fn gunbc_consumers_reach_transport_vocabulary_only_by_named_admission() -> Bool {
+  vocab_leak_count_live_in(
+    scan_roots: gunbc_scan_roots,
+    vocab: cli_process_vocabulary(),
+    edge_prefixes: transport_realization_edges,
+    exempt_edges: transport_consumer_admitted_edges
+  ) == 0
+}
+
+// DISCRIMINATION AT THIS SCOPE, established here rather than inherited. See the
+// general rule below -- this is the control the rule exists to make mandatory.
+test fn withdrawing_the_consumer_admissions_surfaces_exactly_three() -> Bool {
+  vocab_leak_count_live_in(
+    scan_roots: gunbc_scan_roots,
+    vocab: cli_process_vocabulary(),
+    edge_prefixes: transport_realization_edges,
+    exempt_edges: no_admitted_cli_edges
+  ) == 3
+}
+
+// The realization-edge roster must be load-bearing too: drop it and the count rises
+// past the three consumers, proving those paths carry facts the scan really saw.
+test fn dropping_the_transport_realization_roster_surfaces_more() -> Bool {
+  vocab_leak_count_live_in(
+    scan_roots: gunbc_scan_roots,
+    vocab: cli_process_vocabulary(),
+    edge_prefixes: [],
+    exempt_edges: transport_consumer_admitted_edges
+  ) > 0
+}
+
+// ROOT: dag/test. Path-rostered, and the reason is plain -- these are the witnesses
+// that exercise this vocabulary deliberately, including the ones proving the argv
+// refusal and the jq lowering. A test that could not import the thing it tests would
+// be a test of nothing. Stated as a roster rather than left as an unscanned gap, so
+// the exclusion is visible instead of implied by absence.
+data witness_exercise_edges: List<String> = [
+  "dag/test/"
+]
+
+test fn test_corpus_reaches_cli_vocabulary_only_as_declared_exercise() -> Bool {
+  vocab_leak_count_live_in(
+    scan_roots: ["dag/test"],
+    vocab: cli_process_vocabulary(),
+    edge_prefixes: witness_exercise_edges,
+    exempt_edges: no_admitted_cli_edges
+  ) == 0
+}

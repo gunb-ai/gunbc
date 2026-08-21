@@ -2,8 +2,8 @@ module v2.std.occurrence_id
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import v2.std.node { OccurrenceId }
 import std.occurrence_identity {
+  OccurrenceId,
   OccurrenceIdAllocator,
   OccurrenceIdAllocResult,
   authored_token_ordinal_space_from_allocator,

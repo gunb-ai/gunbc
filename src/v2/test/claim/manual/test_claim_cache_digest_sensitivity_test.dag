@@ -314,29 +314,44 @@ fn tcc_cache_byte_offset_over_ceiling() -> Int {
   tcc_cache_byte_offset_pow_9()
 }
 
-test fn tcc_cache_byte_offset_exact_ceiling_digest_differs_from_over_ceiling() -> Bool {
-  byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_exact_ceiling())) !=
-    byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_over_ceiling()))
-}
-
 fn tcc_cache_byte_offset_same_quotient() -> Int {
   int_add(a: tcc_cache_byte_offset_over_ceiling(), b: tcc_cache_byte_limb_base)
 }
 
-test fn tcc_cache_byte_offset_same_quotient_low_limbs_digest_differs() -> Bool {
+// DEMOTED (retirement candidates, 2026-08-19): the TEN byte-offset rows below assert
+// digest discrimination in the over-ceiling / limb-exhaustion regime, which begins at
+// 256^9 = 2^72 — above i64::MAX. Every pow_9..pow_37 fixture is therefore unrepresentable,
+// so the pairs these rows compare cannot be constructed at all: the regime is unreachable
+// from any representable Int, and the claims cannot be stated with executable fixtures on
+// this realization. The digest algorithm itself does not alias on these pairs (symbolic
+// simulation of the limb arithmetic: all pairs differ) — the defect is in the fixtures,
+// not in the thing they test.
+//
+// COUNT CORRECTED FROM EIGHT TO TEN (gunbc#8505 follow-up). The first two rows here —
+// exact_ceiling_digest_differs_from_over_ceiling and
+// same_quotient_low_limbs_digest_differs — were left as `test fn` when their eight
+// siblings were demoted, and they reach pow_9 through
+// tcc_cache_byte_offset_over_ceiling exactly as the others do. They were demoted by
+// enumeration rather than by the property, so two members of the class were missed.
+//
+// WHY THAT SURVIVED CI AND THEN BROKE main: the earlier description of this regime said
+// `a * b` wraps silently in release mode, and the two rows passed on that behaviour by
+// comparing 0 against 0 — a VACUOUS pass, not a real one. Int multiplication now refuses
+// with a typed located diagnostic (`integer overflow: 4294967296 * 4294967296 does not
+// fit in a 64-bit Int`) instead of wrapping, which is the correct fail-closed behaviour
+// and turned the vacuous pass into an honest failure. main went red at f44a1254 with
+// failed=2, both of them. The rows did not regress; the silence that hid them was
+// removed.
+fn tcc_cache_byte_offset_exact_ceiling_digest_differs_from_over_ceiling() -> Bool {
+  byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_exact_ceiling())) !=
+    byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_over_ceiling()))
+}
+
+fn tcc_cache_byte_offset_same_quotient_low_limbs_digest_differs() -> Bool {
   byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_over_ceiling())) !=
     byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_same_quotient()))
 }
 
-// DEMOTED (retirement candidates, 2026-08-19): the eight byte-offset rows below assert
-// digest discrimination in the over-ceiling / limb-exhaustion regime, which begins at
-// 256^9 = 2^72 — above i64::MAX. The runtime Int is Value::Int(i64) with unchecked
-// release-mode `a * b`, so every pow_9..pow_37 fixture silently wraps to 0 (verified by
-// execution: pow_9 == 0, pow_13 == 0, pow_37 == 0, while pow_2 == 65536), making each
-// pair literally identical inputs (0 vs 0, or 0 vs -0). The digest algorithm itself does
-// not alias on these pairs (symbolic simulation of the limb arithmetic: all pairs
-// differ); the regime is unreachable from any representable Int, so the claims cannot be
-// stated with executable fixtures on this realization.
 fn tcc_cache_byte_offset_sign_over_ceiling_digest_differs() -> Bool {
   byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_over_ceiling())) !=
     byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: 0 - tcc_cache_byte_offset_over_ceiling()))
@@ -400,22 +415,28 @@ fn tcc_stub_call_b(
 fn tcc_interp_stub_allocate_body() -> InterpretationAlgebra {
   InterpretationAlgebra {
     value: ValueInterpreter {
-      allocate_literal: tcc_stub_alloc_a
+      allocate_literal: tcc_stub_alloc_a,
+      identity: ^tcc_stub_alloc_a
     },
     transform: TransformInterpreter {
-      call_primitive: v2_eval_call_primitive
+      call_primitive: v2_eval_call_primitive,
+      identity: ^v2_eval_call_primitive
     },
     branch: BranchInterpreter {
-      choose_branch: v2_eval_choose_branch
+      choose_branch: v2_eval_choose_branch,
+      identity: ^v2_eval_choose_branch
     },
     loop: LoopInterpreter {
-      step_loop: v2_eval_step_loop
+      step_loop: v2_eval_step_loop,
+      identity: ^v2_eval_step_loop
     },
     bind: BindInterpreter {
-      bind_value: v2_eval_bind_value
+      bind_value: v2_eval_bind_value,
+      identity: ^v2_eval_bind_value
     },
     match: MatchInterpreter {
-      choose_arm: runtime_reject_match_arm
+      choose_arm: runtime_reject_match_arm,
+      identity: ^runtime_reject_match_arm
     }
   }
 }
@@ -423,44 +444,50 @@ fn tcc_interp_stub_allocate_body() -> InterpretationAlgebra {
 fn tcc_interp_stub_call_body() -> InterpretationAlgebra {
   InterpretationAlgebra {
     value: ValueInterpreter {
-      allocate_literal: v2_eval_allocate_literal
+      allocate_literal: v2_eval_allocate_literal,
+      identity: ^v2_eval_allocate_literal
     },
     transform: TransformInterpreter {
-      call_primitive: tcc_stub_call_b
+      call_primitive: tcc_stub_call_b,
+      identity: ^tcc_stub_call_b
     },
     branch: BranchInterpreter {
-      choose_branch: v2_eval_choose_branch
+      choose_branch: v2_eval_choose_branch,
+      identity: ^v2_eval_choose_branch
     },
     loop: LoopInterpreter {
-      step_loop: v2_eval_step_loop
+      step_loop: v2_eval_step_loop,
+      identity: ^v2_eval_step_loop
     },
     bind: BindInterpreter {
-      bind_value: v2_eval_bind_value
+      bind_value: v2_eval_bind_value,
+      identity: ^v2_eval_bind_value
     },
     match: MatchInterpreter {
-      choose_arm: runtime_reject_match_arm
+      choose_arm: runtime_reject_match_arm,
+      identity: ^runtime_reject_match_arm
     }
   }
 }
 
 fn tcc_witness_stub_allocate_body() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^tcc_stub_alloc_a_sym,
-    call_primitive: ^v2_eval_call_primitive_sym,
-    choose_branch: ^v2_eval_choose_branch_sym,
-    step_loop: ^v2_eval_step_loop_sym,
-    bind_value: ^v2_eval_bind_value_sym,
+    allocate_literal: ^tcc_stub_alloc_a,
+    call_primitive: ^v2_eval_call_primitive,
+    choose_branch: ^v2_eval_choose_branch,
+    step_loop: ^v2_eval_step_loop,
+    bind_value: ^v2_eval_bind_value,
     choose_arm: ^runtime_reject_match_arm
   }
 }
 
 fn tcc_witness_stub_call_body() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^v2_eval_allocate_literal_sym,
-    call_primitive: ^tcc_stub_call_b_sym,
-    choose_branch: ^v2_eval_choose_branch_sym,
-    step_loop: ^v2_eval_step_loop_sym,
-    bind_value: ^v2_eval_bind_value_sym,
+    allocate_literal: ^v2_eval_allocate_literal,
+    call_primitive: ^tcc_stub_call_b,
+    choose_branch: ^v2_eval_choose_branch,
+    step_loop: ^v2_eval_step_loop,
+    bind_value: ^v2_eval_bind_value,
     choose_arm: ^runtime_reject_match_arm
   }
 }
@@ -501,45 +528,45 @@ fn tcc_stub_choose_arm(
 
 fn tcc_interp_match_default_body() -> InterpretationAlgebra {
   InterpretationAlgebra {
-    value: ValueInterpreter { allocate_literal: v2_eval_allocate_literal },
-    transform: TransformInterpreter { call_primitive: v2_eval_call_primitive },
-    branch: BranchInterpreter { choose_branch: v2_eval_choose_branch },
-    loop: LoopInterpreter { step_loop: v2_eval_step_loop },
-    bind: BindInterpreter { bind_value: v2_eval_bind_value },
-    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
+    value: ValueInterpreter { allocate_literal: v2_eval_allocate_literal, identity: ^v2_eval_allocate_literal },
+    transform: TransformInterpreter { call_primitive: v2_eval_call_primitive, identity: ^v2_eval_call_primitive },
+    branch: BranchInterpreter { choose_branch: v2_eval_choose_branch, identity: ^v2_eval_choose_branch },
+    loop: LoopInterpreter { step_loop: v2_eval_step_loop, identity: ^v2_eval_step_loop },
+    bind: BindInterpreter { bind_value: v2_eval_bind_value, identity: ^v2_eval_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
   }
 }
 
 fn tcc_interp_match_stub_body() -> InterpretationAlgebra {
   InterpretationAlgebra {
-    value: ValueInterpreter { allocate_literal: v2_eval_allocate_literal },
-    transform: TransformInterpreter { call_primitive: v2_eval_call_primitive },
-    branch: BranchInterpreter { choose_branch: v2_eval_choose_branch },
-    loop: LoopInterpreter { step_loop: v2_eval_step_loop },
-    bind: BindInterpreter { bind_value: v2_eval_bind_value },
-    match: MatchInterpreter { choose_arm: tcc_stub_choose_arm }
+    value: ValueInterpreter { allocate_literal: v2_eval_allocate_literal, identity: ^v2_eval_allocate_literal },
+    transform: TransformInterpreter { call_primitive: v2_eval_call_primitive, identity: ^v2_eval_call_primitive },
+    branch: BranchInterpreter { choose_branch: v2_eval_choose_branch, identity: ^v2_eval_choose_branch },
+    loop: LoopInterpreter { step_loop: v2_eval_step_loop, identity: ^v2_eval_step_loop },
+    bind: BindInterpreter { bind_value: v2_eval_bind_value, identity: ^v2_eval_bind_value },
+    match: MatchInterpreter { choose_arm: tcc_stub_choose_arm, identity: ^tcc_stub_choose_arm }
   }
 }
 
 fn tcc_witness_match_default_body() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^v2_eval_allocate_literal_sym,
-    call_primitive: ^v2_eval_call_primitive_sym,
-    choose_branch: ^v2_eval_choose_branch_sym,
-    step_loop: ^v2_eval_step_loop_sym,
-    bind_value: ^v2_eval_bind_value_sym,
+    allocate_literal: ^v2_eval_allocate_literal,
+    call_primitive: ^v2_eval_call_primitive,
+    choose_branch: ^v2_eval_choose_branch,
+    step_loop: ^v2_eval_step_loop,
+    bind_value: ^v2_eval_bind_value,
     choose_arm: ^runtime_reject_match_arm
   }
 }
 
 fn tcc_witness_match_stub_body() -> InterpretationStructureWitness {
   InterpretationStructureWitness {
-    allocate_literal: ^v2_eval_allocate_literal_sym,
-    call_primitive: ^v2_eval_call_primitive_sym,
-    choose_branch: ^v2_eval_choose_branch_sym,
-    step_loop: ^v2_eval_step_loop_sym,
-    bind_value: ^v2_eval_bind_value_sym,
-    choose_arm: ^tcc_stub_choose_arm_sym
+    allocate_literal: ^v2_eval_allocate_literal,
+    call_primitive: ^v2_eval_call_primitive,
+    choose_branch: ^v2_eval_choose_branch,
+    step_loop: ^v2_eval_step_loop,
+    bind_value: ^v2_eval_bind_value,
+    choose_arm: ^tcc_stub_choose_arm
   }
 }
 

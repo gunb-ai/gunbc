@@ -5,6 +5,8 @@ use self::TypeRepr::*;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{dissolution_description, unbound_dissolution};
+pub use crate::std_syntax::BinOp;
+use crate::std_syntax::BinOp::*;
 pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_env::{empty_symbol_index, empty_type_env};
 pub use crate::v1_compiler_infer_types::{
@@ -773,7 +775,10 @@ pub fn build_type_summary(
                         source_indices.clone(),
                     ),
                     field_type_map: v1_rt::rc_empty_map::<String, String>(),
-                    field_import_surface_names: Rc::new(vec![]),
+                    field_import_surface_names: enum_variant_payload_surface_names(
+                        item.children.clone(),
+                        source_indices.clone(),
+                    ),
                     variant_name_set: item.children.clone().iter().cloned().fold(
                         v1_rt::rc_empty_map::<String, bool>(),
                         |acc: Rc<HashMap<String, bool>>, child: Rc<Node>| {
@@ -785,10 +790,58 @@ pub fn build_type_summary(
                         },
                     ),
                     generic_param_names: gpn.clone(),
-                    has_fn_fields: has_fn.clone(),
+                    has_fn_fields: (has_fn.clone()
+                        || enum_variant_payload_has_fn(item.children.clone())),
                 }))
             }
         }
+    }
+}
+
+pub fn enum_variant_payload_surface_names(
+    variants: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    dedupe_nonempty_strings(Rc::new({
+        let mut __result = Vec::new();
+        for v in variants.clone().iter().cloned() {
+            __result.extend(
+                (*{
+                    let built = build_field_type_map(v.children.clone(), source_indices.clone());
+                    built.import_surface_names.clone()
+                })
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    }))
+}
+
+pub fn enum_variant_payload_has_fn(variants: Rc<Vec<Rc<Node>>>) -> bool {
+    {
+        let mut __found = false;
+        for v in variants.clone().iter().cloned() {
+            if {
+                let mut __found = false;
+                for child in v.children.clone().iter().cloned() {
+                    if match child.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: rt, .. }) => {
+                            (rt.connective.clone() == Connective::Arrow)
+                        }
+                        _ => false,
+                    } {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
     }
 }
 
@@ -810,9 +863,12 @@ pub fn type_summary_reaches_fn(
                             let v2 = v1_rt::rc_set_insert(visited.clone(), name.clone());
                             {
                                 let mut __found = false;
-                                for ft in Rc::new(v1_rt::map_values(&s.field_type_map.clone()))
-                                    .iter()
-                                    .cloned()
+                                for ft in v1_rt::concat(
+                                    Rc::new(v1_rt::map_values(&s.field_type_map.clone())),
+                                    s.field_import_surface_names.clone(),
+                                )
+                                .iter()
+                                .cloned()
                                 {
                                     if type_summary_reaches_fn(
                                         ft.clone(),

@@ -12,6 +12,7 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_artifact_hash,
   fleet_converge_observed_baseline_matches,
   fleet_converge_apply_subject_admits,
+  fleet_converge_apply_subject_host_matches,
   fleet_converge_apply_generation_admits,
   fleet_converge_apply_generation_stale,
   fleet_converge_member_set_fingerprint_matches,
@@ -130,7 +131,7 @@ test fn plan_body_names_subject_host_and_generation() -> Bool {
       string_contains(s: artifact.plan_body, pattern: "subject_host:srv1")
         && string_contains(s: artifact.plan_body, pattern: "plan_generation:5")
         && string_contains(s: artifact.plan_body, pattern: "lease_key:fleet-converge-plan:srv1")
-        && artifact.plan_lease.generation == 5
+        && artifact.plan_lease.epoch.generation == 5
         && artifact.observed_baseline_hex != "0000000000000000"
     Absent => false
   }
@@ -309,6 +310,14 @@ test fn locked_apply_script_serializes_generation_under_flock() -> Bool {
     && string_contains(s: script, pattern: "LeaseGenerationStale planned=5")
     && string_contains(s: script, pattern: "LeaseGenerationStale")
     && string_contains(s: script, pattern: fleet_converge_plan_apply_shell_path)
+}
+
+test fn subject_host_matches_same_host() -> Bool {
+  fleet_converge_apply_subject_host_matches(planned_host: witness_host_srv1, observed_host: witness_host_srv1)
+}
+
+test fn subject_host_matches_refuses_cross_host() -> Bool {
+  !fleet_converge_apply_subject_host_matches(planned_host: witness_host_srv1, observed_host: witness_host_srv2)
 }
 
 test fn apply_shell_carries_dissolve_on_marker_not_host_gate() -> Bool {

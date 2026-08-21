@@ -216,7 +216,6 @@ fn stage0_std_core_modules() -> List<String> {
       "std_termination",
       "std_checked_arithmetic",
       "std_induction",
-      "std_iteration",
       "std_graph",
       "extdeps_uri",
       "extdeps_external_authority",

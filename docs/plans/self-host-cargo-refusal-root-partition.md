@@ -263,7 +263,7 @@ Read before starting. These are all paid-for lessons from 2026-08-16.
    (`v2_std_algebra.rs`, `std_measure.rs`, `v2_std_compilers_target_model.rs`) sit in every
    closure. "05_eval's errors" is not a unit of work.
 4. **The emitter is generated.** Authority is `src/v1/05_emit_rust.dag`; `v1_compiler_emit_rust.rs`
-   is its output and is listed in `gunbc.stage0_emit_plan_generated`. Probe the `.rs` for fast
+   is its output, and it is a member of the derived generated population (`gunbc.stage0_rust_source_lifecycle_scaffold` `derived_generated_stage0_repo_paths`) because the crate-layout authority does not claim it. Probe the `.rs` for fast
    feedback if you like, but revert it — real fixes land in the `.dag` and regenerate.
 5. **Measure before/after in your own worktree.** Concurrent fixes to a shared tree make every
    before/after unattributable, which is the failure this whole document exists to prevent.
@@ -1936,6 +1936,16 @@ as a field, and `PartialFunction<String, …>` (a record of closures, §11.18) i
 type. **Adding the derive is impossible here; the requirement has to go.** So T5b is the same shape
 as T3: a modeling decision (do not serialize a value containing closures), not a repair.
 
+**DECIDED 2026-08-21** (session `tidy-dove-648`): "the requirement has to go" is only half true.
+It holds for process-local realization carriers (`CompiledLexRule`, `PartialFunction`, the
+interpreter family) — extend the already-correct `fn_field_derive_traits()` rule through
+coproducts, where it is currently unwired. It does NOT hold for `ProducedDeclSupport`, which sits
+inside `TargetModel` and should stay fully serializable — there the embedded `render` closure is
+redundant dispatch beside an identity (`scaffold_relation_rule_name`) the record already carries,
+and the fix is to remove the closure, not the record's derives. Full decision, per-declaration
+disposition table, and the two handoffs:
+[`t5b-closure-bearing-serde-debug-decision-2026-08-21.md`](t5b-closure-bearing-serde-debug-decision-2026-08-21.md).
+
 **R1 — the Rc wrap decision is INCONSISTENT, not uniformly over- or under-wrapping.**
 
 ```
@@ -2185,6 +2195,22 @@ It matched only `pub field:` lines at struct-body depth and therefore missed **e
 `ValueRuntimeInterpreter { interpreter: Rc<ValueInterpreter> }` is one level deeper. The hypothesis
 was right and the instrument was wrong, which is the same failure as reading a rustc noun at face
 value: a negative result from an unvalidated scan is not evidence of absence.
+
+**The operator question above is answered** (session `tidy-dove-648`, 2026-08-21): not one answer
+for all twelve declarations. `ProducedDeclSupport` takes the third option named above — keep the
+record serializable, make `render` a named resolvable reference dispatched through the
+`scaffold_relation_rule_name` it already carries — because `TargetModel` is real per-language
+configuration, not a runtime-only carrier. The interpreter-family majority (`RuntimeBehaviorInterpreter`
+and its six payload types, `EffectIoEvalBundle`, `CompiledLexRule`, `PartialFunction`) takes the
+first option, which is not new: `fn_field_derive_traits()` already answers it for the direct-field
+struct case, and it is simply unwired for coproducts (`v1_emit_enum_derives` takes no
+`has_fn_fields` parameter) and for enum-transitive reachability (`build_type_summary`'s enum branch
+hardcodes `field_type_map: empty_map()` in `04_emit_info.dag`, so `type_summary_reaches_fn` cannot
+see through a variant payload the way it already sees through a struct field). `InterpretationStructureWitness`
+and the four remaining `target_model.rs` sites hold no function field of their own and are treated
+as collateral of the above, not independent decisions, pending re-measurement.
+[`t5b-closure-bearing-serde-debug-decision-2026-08-21.md`](t5b-closure-bearing-serde-debug-decision-2026-08-21.md)
+has the full per-declaration table and the two repair handoffs.
 
 ## 16. The finding above the findings: a site count measures where the compiler pointed
 
@@ -2452,3 +2478,55 @@ Full receipt:
 Per-site TSV:
 [`docs/probes/e0308_partition_2026-08-18/sites_classified.tsv`](../probes/e0308_partition_2026-08-18/sites_classified.tsv).
 Measurement route and entry set are in the receipt's Method table.
+
+## 20. E0277 root partition — trait × self-type grain (`bright-moth-92`, 2026-08-21)
+
+**Dispatched question:** E0277 is the second-largest emitted-Rust class and had no partition at
+E0277-only grain — §11 sized all codes together, and the July census
+(`e0277_trait_bound_census_2026-07-26.md`) counted occurrences rather than sites. **Answer:** E0277
+is **four mechanisms (five root labels) at 82 distinct sites**, **365** blocks summed over M=6
+(**4.45×** inflation within E0277 alone), **zero unclassified**.
+
+| root | E0277 sites | % of E0277 | disposition |
+|---|---:|---:|---|
+| T5b — serde/Debug demanded over closure-bearing values | 35 | 42.7% | dispatched (was §11.23, unowned) |
+| A — generic parameter bound not emitted (`Clone` 25, **`Ord` 5**) | 30 | 36.6% | Root A lane; the `Ord` 5 dispatched |
+| R3 — `Rc<dyn Fn..>` where an `Fn` bound is expected | 9 | 11.0% | dispatched |
+| T7 — `Hash`/`Eq` on `Fnv1a64Structural` | 7 | 8.5% | blocked in tree, do NOT re-dispatch |
+| T5a — `Eq` on `OccurrenceId` | 1 | 1.2% | same blocker |
+
+**Three findings that change what someone should do next, none of which the by-code view showed.**
+
+1. **The July census's ranking is falsified at site grain.** Its "dominant family" (generic `Clone`)
+   is second at 36.6%; its family 2 self types (`Node`, `EnvironmentBindingKey`) carry **zero**
+   E0277 sites today. No attribution is offered for the move — §16 applies.
+2. **Root A's five `Ord` sites are outside the mechanism's expressible range, not gaps in its
+   coverage.** `std.authorization_profile` `AudienceSet` declares `EnumeratedAudience { members: Set<P> }`;
+   `Set<P>` realizes as `BTreeSet<P>`, which demands `P: Ord` the way `im::Vector<A>` demands
+   `A: Clone`. The entire v1 supplemental-bound apparatus is **`Clone`-only** — a one-trait fixpoint
+   (`v1_clone_bounded_type_params`) with no arm that can emit any other bound. So these are an
+   executed specimen of exactly what `trait_derive_emit_item_clone_bound_contract_fork_note`'s
+   dissolution clause exists for: v2's `target_derive_supplemental_generic_bound_contract` is
+   per-derive-impl and cited, v1's is per-type and Clone-shaped, and the requirement side now has
+   evidence, not just the fork-hygiene side. That note's warning still binds — the wire-through
+   changes the grain, and unioning per-derive requirements onto the declaration reproduces v1's
+   over-constraint under v2's name.
+3. **T7/T5a is characterized AND blocked, in tree, already.** `v1.trait_derive_emit`
+   `map_key_alias_hop_gap_note` names this population, records that the obvious alias-following fix
+   was attempted, measured and reverted (it drags `Int`/`Nat` to map-key positions and diverges two
+   stage0 files), and states its dissolution as a realization binding keyed on `DeclarationRef` —
+   the same threading the identity-keyed `lookup_checkpoint` cut waits on. Anyone sizing an
+   E0277 lane should subtract these 8 rather than staff them.
+
+**Method correction worth carrying, because it cost a full remote build cycle.** A comparison set
+must be **one dispatch**. Three parallel dispatches pinned with `PROBE_EXPECT_BASE_SHA` taken from an
+earlier dispatch's resolved HEAD all died on `SAME_BASE_REFUSE` — `ctrl-build --remote` resolves the
+repo-root HEAD *when the run starts*, and main moved twice inside the window. Capture `HEAD` inside
+the dispatch and export it there; then "one tree" is a property of the run. The pin worked exactly as
+specified: it stopped the line instead of yielding six numbers from three trees.
+
+Full receipt, including the controls (the exact-100 truncation check against a 120-error rustc
+control, and the classifier's known-positive RESIDUE arm):
+[`docs/probes/e0277_root_partition_2026-08-21.md`](../probes/e0277_root_partition_2026-08-21.md).
+Per-site TSV:
+[`docs/probes/e0277_partition_2026-08-21/sites_classified.tsv`](../probes/e0277_partition_2026-08-21/sites_classified.tsv).

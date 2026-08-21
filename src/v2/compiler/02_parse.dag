@@ -49,7 +49,6 @@ import v2.std.node {
   Named,
   Node,
   NodeOccurrenceId,
-  OccurrenceId,
   Symbol,
   TypeNode,
   byte_limb_hash_peano_digest,
@@ -68,7 +67,7 @@ import v2.std.occurrence_id {
   occurrence_id_allocator_advance_to,
   occurrence_id_allocator_initial
 }
-import std.occurrence_identity { OccurrenceIdAllocator }
+import std.occurrence_identity { OccurrenceId, OccurrenceIdAllocator }
 import std.source_annotation {
   AnnotationAttachmentResult,
   AnnotationsAdmitted,

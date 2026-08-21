@@ -1,0 +1,232 @@
+module product.fabric.work
+
+import std.types { NonEmptyStr, List }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
+import std.measure { HardwareThreadCount, hardware_thread_count_value }
+import product.fabric.identity { FabricIdentity, WorkKey }
+
+// Work is WHAT is computed, and it is provider-neutral by construction: no field
+// here can name a repository, a pull request, a branch or a commit, because those
+// are facts about who asked and where to report, which live on Demand.
+
+// No field on Work or WorkContract may carry a provider identifier. This is
+// not a naming preference: it is what makes a second SCM binding a new
+// authority plus a new binding rather than an edit to the core. Two bindings
+// that normalize to the same source manifest, program, runtime closure, effect
+// contract and output contract produce the SAME Work, so one execution serves
+// demands arriving from different providers. They produce DIFFERENT Work when
+// the declared inputs genuinely differ - one testing a pull-request head and
+// another a synthesized merge tree, history or merge base consumed as input,
+// submodule or large-file materialization differing, available effects
+// differing, or provenance itself declared as an input. The decision is made
+// by the declared inputs, never by a global rule that repository always
+// matters or that tree bytes are always sufficient.
+// Source identity is a canonical MANIFEST, not a bare tree digest. It covers
+// path, content digest, file mode where semantically relevant, symlink target,
+// submodule object identity and large-file object identity wherever those are
+// consumed by the contract. A Git tree object id is a valid BINDING-level
+// source identity and may be sufficient for a first Git-based implementation;
+// it is not the universal fabric source type, because a fabric that assumes
+// Git tree semantics has assumed an SCM. The binding produces two separate
+// facts - a source content manifest and a provenance receipt - and Work always
+// consumes the manifest, consuming provenance only where provenance is a
+// declared input.
+type ProgramRef = NonEmptyStr where brand("ProgramRef")
+
+type ArtifactManifestRef = NonEmptyStr where brand("ArtifactManifestRef")
+
+type EffectContractRef = NonEmptyStr where brand("EffectContractRef")
+
+type OutputContractRef = NonEmptyStr where brand("OutputContractRef")
+
+type SourceManifestRef = NonEmptyStr where brand("SourceManifestRef")
+
+// Resumability is a property of what a step DECLARES, never of the fabric. A step
+// whose effects are undeclared cannot be resumed by any mechanism, so the tier is
+// carried on the contract and the fabric refuses to claim checkpointing it cannot
+// honor.
+
+// Three tiers, ordered by what the step declares rather than by how it is
+// implemented. ReceiptSatisfiable: inputs declared and outputs are content-
+// addressed artifacts, so an accepted receipt whose outputs remain
+// materializable lets the step be skipped entirely. IdempotentUnderKey: the
+// step has external effects but re-running under the same idempotency key is
+// safe, so it is never skippable by content yet is safely repeatable.
+// OpaqueEffects: effects are undeclared, so the step is not resumable at all
+// and its only sound treatment is rerun from a clean boundary. An arbitrary
+// shell step in a foreign CI workflow is OpaqueEffects unless its contract
+// says otherwise, and that is the honest degradation: the fabric runs it and
+// declines to promise resume, rather than inventing a checkpoint where no
+// state was captured. A long compiler invocation is ONE step at
+// ReceiptSatisfiable grain - twenty minutes into it there is no accepted
+// receipt, so interruption reruns it; a mutable build directory or a compiler
+// cache is a materialization provider that may accelerate the rerun, never
+// proof the step completed.
+type ResumabilityTier
+  = ReceiptSatisfiable
+  | IdempotentUnderKey { idempotency_key: ContentHash }
+  | OpaqueEffects { reason: NonEmptyStr }
+
+type WorkStep {
+  step_id: NonEmptyStr
+  resumability: ResumabilityTier
+}
+
+type WorkContract {
+  program: ProgramRef
+  steps: List<WorkStep>
+  source: SourceManifestRef
+  inputs: ArtifactManifestRef
+  runtime_closure: ArtifactManifestRef
+  effect_contract: EffectContractRef
+  output_contract: OutputContractRef
+}
+
+// Scheduling facts that do not change the promised answer live BESIDE the
+// contract, never inside it, so that revising a resource estimate cannot mint a
+// new semantic Work.
+
+// Capability and trust-domain references are declared HERE, on the
+// requirement side, and imported by supply rather than redeclared there.
+// Fungibility - selection's first and load-bearing step - compares a Work's
+// requirements against an Offer's capabilities, so the two sides of that
+// comparison are two readings of one fact. Typing them separately would make
+// the comparison need a coercion, and a coercion between two spellings of one
+// concept is where the divergence starts.
+
+type CapabilityManifestRef = NonEmptyStr where brand("CapabilityManifestRef")
+
+type TrustDomainRef = NonEmptyStr where brand("TrustDomainRef")
+
+// Shape and HardRequirements moved here when product.compute_fabric was deleted at
+// the root. They are the only load-bearing content that module had: what a WorkSpec
+// requires and what an Offer offers is a work-side fact, and shape_material below
+// already destructures the axis deliberately, so the axis wall lives beside the
+// carrier rather than one module away. The rest of that module -- Fabric, Program,
+// ComputeNeed, Opportunity, Connection, connect -- had no decision consumer and was
+// deleted rather than moved.
+
+type HardRequirements { threads: HardwareThreadCount }
+
+type Shape { hard: HardRequirements }
+
+type ExecutionRequirements {
+  shape: Shape
+  capabilities: CapabilityManifestRef
+  trust_domain: TrustDomainRef
+}
+
+type Work<P> {
+  id: FabricIdentity<P, WorkKey>
+  contract: WorkContract
+  requirements: ExecutionRequirements
+}
+
+// The key is DERIVED here rather than accepted from a caller, and that is the
+// difference between a claim and a mechanism. Before this function existed the
+// comment below already said the key derives from the semantic contract, but
+// nothing computed it: a Work took an arbitrary branded key beside an arbitrary
+// contract, so one contract could carry two keys, two contracts could carry one
+// key, and a binding could let a provider fact influence the key with the core
+// unable to notice. The witness that was supposed to prove neutrality authored
+// one constant and placed it in both demands, so it would have passed against a
+// key that ignored every input.
+//
+// Every field of the contract and of the requirements feeds the digest, and
+// nothing else can: the function takes no other argument, so excluding
+// scheduling facts is a property of its signature rather than of an author's
+// discipline. Requirements are included because a Work that needs a different
+// architecture or trust domain does not promise the same answer.
+
+fn work_identity_material(contract: WorkContract, requirements: ExecutionRequirements) -> NonEmptyStr {
+  concat(
+    contract.program, "\u{1f}",
+    work_steps_material(steps: contract.steps), "\u{1f}",
+    contract.source, "\u{1f}",
+    contract.inputs, "\u{1f}",
+    contract.runtime_closure, "\u{1f}",
+    contract.effect_contract, "\u{1f}",
+    contract.output_contract, "\u{1f}",
+    requirements.capabilities, "\u{1f}",
+    requirements.trust_domain, "\u{1f}",
+    shape_material(shape: requirements.shape)
+  )
+}
+
+// The shape feeds the digest, and leaving it out was a real divergence rather
+// than an omission of a decorative field. Two works needing different thread
+// counts would have derived the SAME key while carrying different shapes --
+// and fungibility in product.fabric.supply compares shape, so deduplication
+// identity and matching constraints would have disagreed about whether two
+// things were the same work. A machine that cannot run one of them is not an
+// interchangeable executor for both.
+//
+// It is rendered through the cited accessor rather than by reaching into the
+// record, so a shape that grows an axis fails to compile here instead of
+// silently dropping the new axis out of the identity.
+
+fn shape_material(shape: Shape) -> NonEmptyStr {
+  concat(
+    "threads:",
+    to_string(hardware_thread_count_value(t: shape.hard.threads))
+  )
+}
+
+fn work_step_material(step: WorkStep) -> NonEmptyStr {
+  concat(step.step_id, "\u{1e}", resumability_material(tier: step.resumability))
+}
+
+fn resumability_material(tier: ResumabilityTier) -> NonEmptyStr {
+  match tier {
+    ReceiptSatisfiable => "receipt-satisfiable"
+    IdempotentUnderKey { idempotency_key: k } =>
+      concat("idempotent-under-key:", serialize_content_hash(hash: k))
+    OpaqueEffects { reason: _ } => "opaque-effects"
+  }
+}
+
+fn work_steps_material(steps: List<WorkStep>) -> NonEmptyStr {
+  fold(
+    steps,
+    init: "steps",
+    f: (acc, step) => concat(acc, "\u{1d}", work_step_material(step: step))
+  )
+}
+
+fn derive_work_key(contract: WorkContract, requirements: ExecutionRequirements) -> WorkKey {
+  serialize_content_hash(
+    hash: content_hash_of_value(
+      value: work_identity_material(contract: contract, requirements: requirements)
+    )
+  )
+}
+
+// The public constructor. A Work cannot be built with a key someone chose,
+// because this is the only place a key comes from.
+
+fn work_for<P>(principal: P, contract: WorkContract, requirements: ExecutionRequirements) -> Work<P> {
+  Work {
+    id: FabricIdentity {
+      principal: principal,
+      key: derive_work_key(contract: contract, requirements: requirements),
+    },
+    contract: contract,
+    requirements: requirements,
+  }
+}
+
+// The work key is derived from the semantic contract alone. Excluded, each for
+// the same reason - it changes how work is scheduled or attempted, never what
+// answer the work promises: priority, queue position, chosen host, cache
+// presence, attempt number, resource prediction, monetary quote, budget
+// account, reservation price. Including any of them forks one computation into
+// many identities and destroys the deduplication the key exists to provide.
+// Conversely a property that can change the ANSWER - toolchain, architecture,
+// available effects - belongs in the runtime closure or effect contract and
+// therefore DOES participate. The test is not whether a fact is important; it
+// is whether two runs differing only in that fact could legitimately produce
+// different output.
+fn work_contract_source(contract: WorkContract) -> SourceManifestRef {
+  contract.source
+}
+

@@ -109,7 +109,6 @@ fn not_a_lifecycle_carrier_rows() -> List<LifecycleResidueRow> {
 // row names its successor so the extraction is checkable, not asserted.
 fn narrative_only_rows() -> List<LifecycleResidueRow> {
   [
-    residue_row(module_path: "gunbc.live_deploy.spec", decl_name: "blue_green_retirement_stateful_root_scaffold_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to blue_green_retirement_stateful_root_scaffold_dissolve_on"),
     residue_row(module_path: "test.claim.long.reference_closure_equivalence", decl_name: "conformance_import_envelope_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to conformance_import_envelope_dissolve_on"),
     residue_row(module_path: "v2.lens.cost.copied_port_citations", decl_name: "copied_port_citation_frontier_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to copied_port_citation_frontier_dissolve_on"),
     residue_row(module_path: "v2.lens.enforcement.lens_module_gate", decl_name: "lens_module_gate_surface_table_dissolution_note", class: NarrativeOnly, rationale: "rationale only; its lifecycle condition was extracted to lens_module_gate_surface_table_dissolve_on"),

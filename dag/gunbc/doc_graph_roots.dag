@@ -127,6 +127,27 @@ data mock_corpus_prefilter_control_note: String = "LIVE CONTROL FOR THE MOCK-COR
 data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "fabric-ci-replacement",
+    primary_work: DeclarationRef { module_path: "gunbc.witness_floor_workflow", decl_name: "witness_floor_job", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "extdeps.github.checks", decl_name: "CheckRun", field: WholeDeclaration },
+      DeclarationRef { module_path: "product.fabric.execution", decl_name: "ExecutionGrant", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.ci_runner_target", decl_name: "CiRunnerTarget", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the cutover lands: the fabric issues the grant that runs the required floor, the check verdict is reported through the modeled Checks surface, and .github/workflows/witnesses.yml is deleted along with the emitter that produced it -- at which point this document describes a shipped system rather than a planned one and the row deletes with it. Registered at subject grain: the four systems bound here are the ones whose movement would make this document's purpose false. witness_floor_job is the thing being replaced and is bound deliberately, so that if it is renamed or restructured before the cutover this document reds rather than silently describing a job that no longer exists.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "fabric-recut-program",
+    primary_work: DeclarationRef { module_path: "std.temporal_effect", decl_name: "HeldLease", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.computation_identity", decl_name: "ComputationIdentity", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.ci_fleet", decl_name: "ComputeOffer", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the fabric carriers consume the canonical lease, computation-identity and market authorities, and the old ComputeNeed/Opportunity/ComputeOffer vocabulary is migrated rather than coexisting; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "floor-expected-red-shrink-monotonicity-design",
     primary_work: DeclarationRef { module_path: "v2.workflow.floor_expected_red", decl_name: "floor_expected_red_roster", field: WholeDeclaration },
     additional_works: [
@@ -1106,7 +1127,7 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     home: PlanDoc,
     slug: "generated-file-conflict-policy",
     primary_work: DeclarationRef { module_path: "gunbc.generated_artifact", decl_name: "committed_generated_artifacts", field: WholeDeclaration },
-    additional_works: [DeclarationRef { module_path: "tools.generated_artifact_gate", decl_name: "run_generated_artifact_drift_gate", field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.commit_workflow", decl_name: "commit_gate_roster", field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.stage0_emit_plan_generated", decl_name: "generated_stage0_files", field: WholeDeclaration }, DeclarationRef { module_path: "std.keyed_roster", decl_name: "keyed_roster_build", field: WholeDeclaration }],
+    additional_works: [DeclarationRef { module_path: "tools.generated_artifact_gate", decl_name: "run_generated_artifact_drift_gate", field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.commit_workflow", decl_name: "commit_gate_roster", field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.stage0_rust_source_lifecycle_scaffold", decl_name: "derived_generated_stage0_repo_paths", field: WholeDeclaration }, DeclarationRef { module_path: "std.keyed_roster", decl_name: "keyed_roster_build", field: WholeDeclaration }],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "all four charter lanes are landed AND bound: commit-writer admission consumed at every writer transport (the heal arm and the dashboard autocommit daemon), the .gitattributes + repo-local git-config projections live with read-back, stage0 membership derived with its host-supply scaffold dissolved or re-triggered, and the keyed-roster construction wall enrolled per-PR. Then the surviving policy rows migrate to DESIGN or a registered gunbc.plan.Plan row and this bind deletes with the doc.") },
   },
   HandAuthoredDocBind {

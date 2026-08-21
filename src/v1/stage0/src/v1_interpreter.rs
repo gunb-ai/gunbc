@@ -117,6 +117,14 @@ impl SymbolInterner {
             .unwrap_or("<invalid-symbol>")
     }
 
+    // Read-only counterpart to `intern`: looks up a string already interned
+    // without requiring a mutable borrow. Used where a caller may be
+    // reentered while an immutable borrow of this interner is held elsewhere
+    // on the stack (see `free_monoid_ctx_syms`).
+    pub fn get(&self, s: &str) -> Option<Symbol> {
+        self.index.get(s).map(|&id| Symbol(id))
+    }
+
     fn heap_bytes(&self) -> u64 {
         let mut bytes = (self.strings.len() * std::mem::size_of::<String>()) as u64;
         for s in &self.strings {
@@ -1064,6 +1072,43 @@ pub enum InterpError {
         callee: String,
         detail: String,
     },
+    /// A HOST EFFECT THAT THE HERMETIC ROUTE HAS NO ARM FOR — a fact about which EXECUTION
+    /// ROUTE the caller must supply, never a fact about the caller's verdict.
+    ///
+    /// It is its own variant for the reason `TimedOut`/`HostToolUnresolved` are their own
+    /// variants at the witness boundary: this is a route fact, and a route fact recovered by
+    /// substring-matching prose is one fact in two representations whose second copy is
+    /// re-derived from the first (DESIGN §2/§3). Before this variant the three refusal sites
+    /// below all produced `TypeError { msg: "hermetic mode: …" }`, so every consumer that
+    /// wanted to tell "this witness ASSERTED false" from "this witness was never given a route
+    /// that could run it" had to either match on the sentence or conflate them. The required
+    /// floor conflated them by not executing the population at all.
+    ///
+    /// `ground` carries WHY the hermetic route has no arm, because the remedies differ: an
+    /// unpublished mock case is closed by publishing the case, a missing `mock_response` by
+    /// authoring one, and a filesystem REMOVAL by a wet route, since removal has no mock arm
+    /// at all. Collapsing them into one sentence is the state-space conflation DESIGN's
+    /// recurring-failure list names.
+    HermeticHostEffectRefused {
+        operation: String,
+        ground: HermeticEffectGround,
+    },
+}
+
+/// WHY THE HERMETIC ROUTE HAS NO ARM FOR ONE OPERATION. Closed, and each arm names a
+/// different remedy — see `InterpError::HermeticHostEffectRefused`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HermeticEffectGround {
+    /// The service is corpus-governed and no published mock case names this operation.
+    /// `published_cases` carries the cases that DO exist for the service, so the refusal
+    /// states its own remedy rather than sending the reader to look for it.
+    UnpublishedMockCase { published_cases: Vec<String> },
+    /// The operation node carries no `mock_response` property, so the hermetic arm would
+    /// have to fabricate a Unit — the fabricated-plausible-output failure DESIGN §5 forbids.
+    NoMockResponse,
+    /// A filesystem REMOVAL. Distinct from the two above because there is no mock arm to
+    /// author: the operation's whole content is the effect, so only a wet route can run it.
+    FilesystemRemoval,
 }
 
 impl fmt::Display for InterpError {
@@ -1173,6 +1218,24 @@ impl fmt::Display for InterpError {
                 name,
                 probed.join(", ")
             ),
+            InterpError::HermeticHostEffectRefused { operation, ground } => match ground {
+                HermeticEffectGround::UnpublishedMockCase { published_cases } => write!(
+                    f,
+                    "hermetic mode: operation {operation} is not a published mock case for its \
+                     corpus-governed service \u{2014} refusing to realize (published cases: \
+                     {published_cases:?})"
+                ),
+                HermeticEffectGround::NoMockResponse => write!(
+                    f,
+                    "hermetic mode: no mock_response for operation {operation} \u{2014} refusing \
+                     to fabricate Unit"
+                ),
+                HermeticEffectGround::FilesystemRemoval => write!(
+                    f,
+                    "hermetic mode: {operation} refuses filesystem removal (no mock arm; the \
+                     operation's whole content is the effect, so only a wet route can run it)"
+                ),
+            },
             InterpError::HostToolRelativePathAmbiguous { name } => write!(
                 f,
                 "host tool relative path ambiguous at cwd-dependent boundary: {:?}",
@@ -1405,8 +1468,15 @@ fn try_cross_claim_pure_memo(
     // fold. These two name arms exist only because that lifetime gap does; a third arm is
     // evidence the generic memo has not landed, not a reason to grow the list.
     if func_name == "prepare_grammar" && args.len() == 1 {
-        let mut hash_memo = ctx.eval_recompute_hash_memo.borrow_mut();
-        let key = eval_recompute_arg_key(&mut hash_memo, &args[0].1)?;
+        // The interner/hash-memo borrows must not outlive this block: they are
+        // immutable/local borrows of `ctx`, and `value_from_portable_ctx` below
+        // interns symbols into `ctx` (a `borrow_mut()`) while reconstructing the
+        // stored value — holding `interner` across that call double-borrows.
+        let key = {
+            let mut hash_memo = ctx.eval_recompute_hash_memo.borrow_mut();
+            let interner = ctx.symbols.borrow();
+            eval_recompute_arg_key(&mut hash_memo, &interner, &args[0].1)?
+        };
         let content_hash = match key {
             EvalRecomputeArgKey::ContentHash(h) => h,
             _ => return None,
@@ -1427,8 +1497,15 @@ fn store_cross_claim_pure_memo(
     result: &Value,
 ) {
     if func_name == "prepare_grammar" && args.len() == 1 {
-        let mut hash_memo = ctx.eval_recompute_hash_memo.borrow_mut();
-        if let Some(key) = eval_recompute_arg_key(&mut hash_memo, &args[0].1) {
+        // See the matching comment in `try_cross_claim_pure_memo`: the interner
+        // borrow must be dropped before `portable_value_from_ctx` below, which
+        // itself may borrow `ctx.symbols` while resolving/interning.
+        let key = {
+            let mut hash_memo = ctx.eval_recompute_hash_memo.borrow_mut();
+            let interner = ctx.symbols.borrow();
+            eval_recompute_arg_key(&mut hash_memo, &interner, &args[0].1)
+        };
+        if let Some(key) = key {
             if let EvalRecomputeArgKey::ContentHash(h) = key {
                 if let Some(portable) = portable_value_from_ctx(ctx, result) {
                     keep_cross_claim_fn(fn_node);
@@ -1451,7 +1528,7 @@ mod cross_claim_memo_tests {
 
     use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
-    use crate::v1_std_core::{make_expr_node, make_span, ExprData};
+    use crate::v1_std_core::{make_expr_node, no_span, ExprData};
 
     use super::{
         list_value, store_cross_claim_pure_memo, try_cross_claim_pure_memo, ExecutionMode,
@@ -1497,7 +1574,7 @@ mod cross_claim_memo_tests {
             Rc::new(ExprData::NoExprData),
             Rc::new(im_vec![]),
             None,
-            make_span(0, 0),
+            no_span(),
         );
 
         // A non-empty List argument routes through `EvalRecomputeArgKey::ContentHash`
@@ -1534,6 +1611,255 @@ mod cross_claim_memo_tests {
             }
             other => panic!("expected Variant, got {other:?}"),
         }
+    }
+
+    // Regression for the SECOND half of gunbc#8505's follow-up (dashboard
+    // adhoc-e78c4260-d3a): the test above proves the STORED VALUE survives a fresh
+    // consuming interner (PortableValue). It says nothing about the memo KEY, which
+    // was still built by `eval_recompute_arg_key`/`eval_recompute_value_hash` mixing
+    // raw interner-local `Symbol` ordinals (`type_name.0`, `variant_name.0`) rather
+    // than the resolved symbol TEXT. Ordinals are assigned in per-context encounter
+    // order, so two semantically distinct arguments from two independently-interned
+    // contexts can be assigned the IDENTICAL ordinal pattern for DIFFERENT strings,
+    // aliasing one memo entry onto an unrelated logical call -- silent wrongness one
+    // level up from the bug PortableValue fixed. This test would have passed
+    // (wrongly, by returning ctx_a's stored result) under the pre-fix ordinal-keyed
+    // code: "TypeFoo" is ctx_a's first NON-well-known interned symbol and "TypeBar" is
+    // ctx_c's first NON-well-known interned symbol -- both land at the SAME ordinal
+    // (the well-known free-monoid symbols are pre-interned identically in every fresh
+    // context, so they don't disturb the collision), so the old `UnitVariant(u32,
+    // u32)` key was identical for two different types.
+    #[test]
+    fn cross_claim_memo_key_is_content_addressed_not_ordinal_addressed() {
+        let ctx_a = fresh_ctx();
+        let type_a = ctx_a.sym("TypeFoo"); // ctx_a's first non-well-known symbol
+        let variant_a = ctx_a.sym("VariantX"); // ctx_a's second non-well-known symbol
+
+        let ctx_c = fresh_ctx();
+        let type_c = ctx_c.sym("TypeBar"); // same ordinal as type_a -- collides
+        let variant_c = ctx_c.sym("VariantY"); // same ordinal as variant_a -- collides
+
+        let fn_node = make_expr_node(
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+        );
+
+        let args_a = [(
+            None,
+            Value::Variant {
+                type_name: type_a,
+                variant_name: variant_a,
+                fields: Rc::new(vec![]),
+            },
+        )];
+        let result_a = Value::Str(Rc::from("result-for-TypeFoo"));
+        store_cross_claim_pure_memo(&ctx_a, &fn_node, "prepare_grammar", &args_a, &result_a);
+
+        let args_c = [(
+            None,
+            Value::Variant {
+                type_name: type_c,
+                variant_name: variant_c,
+                fields: Rc::new(vec![]),
+            },
+        )];
+        // A genuinely different argument (TypeBar/VariantY, not TypeFoo/VariantX)
+        // must NOT hit the entry stored for ctx_a's argument, even though both
+        // interners assigned the identical ordinal pattern (0, 1) to their symbols.
+        let loaded = try_cross_claim_pure_memo(&ctx_c, &fn_node, "prepare_grammar", &args_c);
+        assert!(
+            loaded.is_none(),
+            "ordinal-collision aliased TypeBar/VariantY onto TypeFoo/VariantX's memo entry"
+        );
+    }
+
+    // Same defect class, exercised through the Record/Fields-frame path
+    // (`eval_recompute_frame_integrate`'s per-field mixing) rather than the
+    // `UnitVariant` fast path above: a FIELD name ordinal collision must not alias
+    // two records of the same type but different field identity.
+    #[test]
+    fn cross_claim_memo_key_distinguishes_field_names_across_ordinal_collisions() {
+        let ctx_a = fresh_ctx();
+        let type_a = ctx_a.sym("Wrapper"); // ctx_a's first non-well-known symbol
+        let field_a = ctx_a.sym("alpha"); // ctx_a's second non-well-known symbol
+
+        let ctx_c = fresh_ctx();
+        let type_c = ctx_c.sym("Wrapper"); // same ordinal as type_a, same string
+        let field_c = ctx_c.sym("beta"); // same ordinal as field_a, DIFFERENT string
+
+        let fn_node = make_expr_node(
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+        );
+
+        let args_a = [(
+            None,
+            Value::Record {
+                type_name: type_a,
+                fields: Rc::new(vec![(field_a, Value::Int(1))]),
+            },
+        )];
+        let result_a = Value::Str(Rc::from("result-for-alpha"));
+        store_cross_claim_pure_memo(&ctx_a, &fn_node, "prepare_grammar", &args_a, &result_a);
+
+        let args_c = [(
+            None,
+            Value::Record {
+                type_name: type_c,
+                fields: Rc::new(vec![(field_c, Value::Int(1))]),
+            },
+        )];
+        let loaded = try_cross_claim_pure_memo(&ctx_c, &fn_node, "prepare_grammar", &args_c);
+        assert!(
+            loaded.is_none(),
+            "field-name ordinal collision (alpha vs beta at the same ordinal) aliased across contexts"
+        );
+    }
+
+    // Regression for the `RefCell already borrowed` panic surfaced by CI on
+    // gunbc#8565 (dashboard adhoc-e78c4260-d3a): `eval_recompute_value_hash` hashes a
+    // `Value::Map` arg by hashing each `CanonKey`, and `CanonKey::hash` calls
+    // `value_hash`, which for a String/List/Variant key calls `free_monoid_to_vec`.
+    // `free_monoid_to_vec` used to intern its well-known Cons/Empty/head/tail
+    // symbols via `ctx.sym()` (a MUTABLE borrow of `ctx.symbols`), while the memo-key
+    // computation above it holds an IMMUTABLE `ctx.symbols.borrow()` for the whole
+    // traversal -- a same-thread `RefCell` double-borrow that panics rather than
+    // erroring. This requires `active_ctx()` to resolve to the SAME ctx whose
+    // `symbols` is borrowed, so the call is wrapped in `with_active_context` (as
+    // production evaluation always is) rather than left ambient-free.
+    #[test]
+    fn cross_claim_memo_key_hashes_a_map_arg_with_string_keys_without_panicking() {
+        let ctx = fresh_ctx();
+        let fn_node = make_expr_node(
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+        );
+        let result = Value::Str(Rc::from("ok"));
+
+        super::with_active_context(&ctx, || {
+            let mut entries: HashMap<super::CanonKey, Value> = HashMap::new();
+            let key =
+                super::CanonKey::new(Value::Str(Rc::from("a"))).expect("Str is a valid map key");
+            entries.insert(key, Value::Int(1));
+            let args = [(None, super::map_value(entries))];
+
+            store_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &args, &result);
+            let loaded = try_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &args)
+                .expect("cross-claim memo hit for the same fn identity + content hash");
+            match loaded {
+                Value::Str(s) => assert_eq!(s.as_ref(), "ok"),
+                other => panic!("expected Str, got {other:?}"),
+            }
+        });
+    }
+
+    // Regression for the follow-up concern on 975f2b166d (dashboard warm-boar-256):
+    // `free_monoid_ctx_syms`'s read-only fallback (taken above when the interner is
+    // already borrowed) must actually FIND a real Cons/Empty-encoded value's symbols,
+    // not merely avoid panicking. If pre-interning at context construction were
+    // missing or wrong, a genuine free-monoid `Value::Variant` reached under a held
+    // borrow would silently fall through `value_hash`'s generic Variant arm instead
+    // of its free-monoid-aware one (DESIGN §5's empty-observation narrow: a lookup
+    // miss caused by contention reported the same as "not a list"). This constructs
+    // an actual Cons(1, Cons(2, Empty)) chain as a `Value::Map` key -- so hashing it
+    // is reached from inside `eval_recompute_key`'s held interner borrow -- and
+    // proves the memo round-trips, which only holds if the Cons/head/tail symbols
+    // were correctly resolved rather than silently missed.
+    #[test]
+    fn cross_claim_memo_key_hashes_a_map_arg_with_a_free_monoid_list_key_under_held_borrow() {
+        let ctx = fresh_ctx();
+        let fn_node = make_expr_node(
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+        );
+        let result = Value::Str(Rc::from("ok"));
+
+        super::with_active_context(&ctx, || {
+            let list_type = ctx.sym("List");
+            let empty = Value::Variant {
+                type_name: list_type,
+                variant_name: ctx.sym("Empty"),
+                fields: Rc::new(vec![]),
+            };
+            let cons_inner = Value::Variant {
+                type_name: list_type,
+                variant_name: ctx.sym("Cons"),
+                fields: Rc::new(vec![
+                    (ctx.sym("head"), Value::Int(2)),
+                    (ctx.sym("tail"), empty),
+                ]),
+            };
+            let cons_outer = Value::Variant {
+                type_name: list_type,
+                variant_name: ctx.sym("Cons"),
+                fields: Rc::new(vec![
+                    (ctx.sym("head"), Value::Int(1)),
+                    (ctx.sym("tail"), cons_inner),
+                ]),
+            };
+
+            let mut entries: HashMap<super::CanonKey, Value> = HashMap::new();
+            let key = super::CanonKey::new(cons_outer).expect("Variant is a valid map key");
+            entries.insert(key, Value::Int(1));
+            let args = [(None, super::map_value(entries))];
+
+            store_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &args, &result);
+            let loaded = try_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &args)
+                .expect("cross-claim memo hit for the same fn identity + content hash");
+            match loaded {
+                Value::Str(s) => assert_eq!(s.as_ref(), "ok"),
+                other => panic!("expected Str, got {other:?}"),
+            }
+        });
+    }
+
+    // Sharper version of the test above: calls `free_monoid_to_vec` directly while
+    // an immutable `ctx.symbols` borrow is held on the stack (exactly the shape
+    // `eval_recompute_key`/`eval_recompute_value_hash` create), and asserts the
+    // FLATTENED CONTENT is correct -- not just that nothing panicked. A silent
+    // narrow (the read-only fallback missing a symbol and reporting `None`, or a
+    // stale offset assumption) would make this return `None` or a wrong vec, not
+    // panic, so a not-panicking assertion alone would not have caught it.
+    #[test]
+    fn free_monoid_to_vec_resolves_well_known_syms_under_a_held_immutable_borrow() {
+        let ctx = fresh_ctx();
+        // Decoy vocabulary interned before the free-monoid symbols come up again, so
+        // a wrong assumption about a fixed well-known ordinal would not accidentally
+        // still work.
+        let _ = ctx.sym("decoy_one");
+        let _ = ctx.sym("decoy_two");
+
+        let list_type = ctx.sym("List");
+        let empty = Value::Variant {
+            type_name: list_type,
+            variant_name: ctx.sym("Empty"),
+            fields: Rc::new(vec![]),
+        };
+        let cons = Value::Variant {
+            type_name: list_type,
+            variant_name: ctx.sym("Cons"),
+            fields: Rc::new(vec![
+                (ctx.sym("head"), Value::Int(7)),
+                (ctx.sym("tail"), empty),
+            ]),
+        };
+
+        super::with_active_context(&ctx, || {
+            // Held for the whole call -- forces free_monoid_ctx_syms's read-only
+            // fallback rather than its mutable intern path.
+            let _interner_guard = ctx.symbols.borrow();
+            let items = super::free_monoid_to_vec(&cons)
+                .expect("Cons/Empty chain must resolve under a held immutable interner borrow");
+            assert_eq!(items, vec![Value::Int(7)]);
+        });
     }
 }
 
@@ -1583,7 +1909,11 @@ enum EvalRecomputeArgKey {
     Int(i64),
     FloatBits(u64),
     StrHash(u64),
-    UnitVariant(u32, u32),
+    // Content hashes of the resolved symbol TEXT, not raw interner ordinals — see
+    // eval_recompute_str_hash callers below; ordinals are only stable within one
+    // SymbolInterner and this key must compare equal across independently-interned
+    // InterpContexts (gunbc#8505 follow-up: the cross-claim prepare_grammar memo).
+    UnitVariant(u64, u64),
     EmptyList,
     // Recursive content hash of a composite value (Record/Variant/List/Map/
     // Set/Fn/Unit), memoized per allocation with Weak-liveness validation so
@@ -2414,7 +2744,13 @@ impl InterpContext {
             effect_dispatch_count: std::cell::Cell::new(0),
             eval_recompute_hash_memo: std::cell::RefCell::new(EvalRecomputeHashMemo::default()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
-            symbols: RefCell::new(SymbolInterner::default()),
+            symbols: RefCell::new({
+                let mut interner = SymbolInterner::default();
+                for s in FREE_MONOID_WELL_KNOWN_SYMS {
+                    interner.intern(s);
+                }
+                interner
+            }),
             published_mock_keys: RefCell::new(None),
             whole_tree_published_keys,
             governed_services: RefCell::new(None),
@@ -3855,6 +4191,131 @@ fn eval_unaryop(op: &UnaryOpKind, val: Value) -> InterpResult<Value> {
 }
 
 #[cfg(test)]
+mod argv_representation_ambiguity_tests {
+    //! THE RED FOR THE ARGV AMBIGUITY REFUSAL.
+    //!
+    //! It is a unit-level construction rather than an executed process, and that is forced rather
+    //! than chosen: in hermetic mode `eval_mock_response` replays an operation's RESULT off its
+    //! declaration and never touches argv, so NO argv is constructed in the mode CI runs. There is
+    //! no execution to assert against, and a witness that waited for one would assert nothing.
+    //!
+    //! What discriminates: both cases below carry the SAME two strings and the SAME declared
+    //! meaning. Only the runtime representation differs. The native list expands to two argv words;
+    //! the monoid-encoded form used to collapse to the single word "mainHEAD" and now refuses.
+    //! Delete the refusal and `monoid_encoded_string_sequence_refuses` fails with one argv word.
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+
+    use super::{
+        list_value, push_shell_argv_tokens, with_active_ctx, ExecutionMode, InterpContext,
+        InterpError, Value,
+    };
+
+    fn fresh_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    /// `Cons { head, tail }` over `Empty` — the representation a fold produces.
+    fn monoid_of(ctx: &InterpContext, items: &[&str]) -> Value {
+        let mut cur = Value::Variant {
+            type_name: ctx.sym("FreeMonoid"),
+            variant_name: ctx.sym("Empty"),
+            fields: Rc::new(Vec::new()),
+        };
+        for s in items.iter().rev() {
+            cur = Value::Variant {
+                type_name: ctx.sym("FreeMonoid"),
+                variant_name: ctx.sym("Cons"),
+                fields: Rc::new(vec![
+                    (ctx.sym("head"), Value::Str(Rc::from(*s))),
+                    (ctx.sym("tail"), cur),
+                ]),
+            };
+        }
+        cur
+    }
+
+    #[test]
+    fn native_list_of_two_strings_expands_to_two_argv_words() {
+        let ctx = fresh_ctx();
+        with_active_ctx(&ctx, || {
+            let mut argv = Vec::new();
+            push_shell_argv_tokens(
+                &mut argv,
+                list_value(vec![
+                    Value::Str(Rc::from("main")),
+                    Value::Str(Rc::from("HEAD")),
+                ]),
+            )
+            .expect("a native list is unambiguous and must expand");
+            assert_eq!(argv, vec!["main".to_string(), "HEAD".to_string()]);
+        });
+    }
+
+    #[test]
+    fn monoid_encoded_string_sequence_refuses() {
+        let ctx = fresh_ctx();
+        with_active_ctx(&ctx, || {
+            let mut argv = Vec::new();
+            let result = push_shell_argv_tokens(&mut argv, monoid_of(&ctx, &["main", "HEAD"]));
+            match result {
+                Err(InterpError::TypeError { msg }) => {
+                    assert!(
+                        msg.contains("ambiguous"),
+                        "the refusal must name the ambiguity, got: {msg}"
+                    );
+                }
+                // The pre-refusal behaviour: one concatenated word. Named explicitly so the
+                // regression is legible rather than appearing as a bare count mismatch.
+                Ok(()) => panic!(
+                    "expected a refusal; the ambiguity was resolved silently into argv {argv:?} \
+                     (pre-fix this was the single word \"mainHEAD\")"
+                ),
+                Err(other) => panic!("expected a TypeError naming the ambiguity, got {other:?}"),
+            }
+        });
+    }
+
+    #[test]
+    fn codepoint_monoid_still_decodes_to_one_word() {
+        let ctx = fresh_ctx();
+        with_active_ctx(&ctx, || {
+            // An Int-element monoid is a code-point sequence: unambiguous under one reading only,
+            // so it must keep decoding. This is the control that keeps the refusal from widening
+            // into every modeled string.
+            let mut cur = Value::Variant {
+                type_name: ctx.sym("FreeMonoid"),
+                variant_name: ctx.sym("Empty"),
+                fields: Rc::new(Vec::new()),
+            };
+            for c in "hi".chars().rev() {
+                cur = Value::Variant {
+                    type_name: ctx.sym("FreeMonoid"),
+                    variant_name: ctx.sym("Cons"),
+                    fields: Rc::new(vec![
+                        (ctx.sym("head"), Value::Int(c as i64)),
+                        (ctx.sym("tail"), cur),
+                    ]),
+                };
+            }
+            let mut argv = Vec::new();
+            push_shell_argv_tokens(&mut argv, cur).expect("a codepoint monoid is a host string");
+            assert_eq!(argv, vec!["hi".to_string()]);
+        });
+    }
+}
+
+#[cfg(test)]
 mod eval_int_binop_overflow_tests {
     use super::{eval_int_binop, InterpError, Value};
     use crate::std_syntax::BinOp;
@@ -5209,9 +5670,17 @@ enum EvalRecomputeFrameKind {
     },
     Fields {
         rc: Rc<Vec<(Symbol, Value)>>,
-        type_sym: u32,
-        variant_sym: u32,
+        // Content hashes of the resolved symbol TEXT (type/variant name and, per
+        // field, the field name) — never the raw interner ordinal. The cross-claim
+        // prepare_grammar memo (gunbc#8505) is a thread_local outliving any single
+        // InterpContext, so a key built from ordinals is a function of interning
+        // ORDER, not of the value's content, and two structurally-identical-shaped
+        // but semantically-different grammars from different contexts could
+        // silently alias onto the same memo entry.
+        type_sym_hash: u64,
+        variant_sym_hash: u64,
         is_variant: bool,
+        field_name_hashes: Vec<u64>,
     },
     Map {
         rc: Rc<HamtMap<CanonKey, Value>>,
@@ -5239,9 +5708,10 @@ fn eval_recompute_frame_integrate(f: &mut EvalRecomputeFrame, child_h: u64) {
         EvalRecomputeFrameKind::List { .. } => {
             f.h = eval_recompute_mix(f.h, child_h);
         }
-        EvalRecomputeFrameKind::Fields { rc, .. } => {
-            let sym = (rc[f.idx].0).0;
-            let mixed = eval_recompute_mix(f.h, u64::from(sym));
+        EvalRecomputeFrameKind::Fields {
+            field_name_hashes, ..
+        } => {
+            let mixed = eval_recompute_mix(f.h, field_name_hashes[f.idx]);
             f.h = eval_recompute_mix(mixed, child_h);
         }
         EvalRecomputeFrameKind::Map { key_hashes, .. } => {
@@ -5265,9 +5735,10 @@ fn eval_recompute_frame_finalize(memo: &mut EvalRecomputeHashMemo, f: EvalRecomp
         }
         EvalRecomputeFrameKind::Fields {
             rc,
-            type_sym,
-            variant_sym,
+            type_sym_hash,
+            variant_sym_hash,
             is_variant,
+            ..
         } => {
             // The fields-content hash is memoized independently of the owning
             // type/variant symbols (a fields Rc could in principle be shared
@@ -5280,13 +5751,13 @@ fn eval_recompute_frame_finalize(memo: &mut EvalRecomputeHashMemo, f: EvalRecomp
             if is_variant {
                 eval_recompute_mix(
                     eval_recompute_mix(
-                        eval_recompute_mix(0xA5A5_0080, u64::from(type_sym)),
-                        u64::from(variant_sym),
+                        eval_recompute_mix(0xA5A5_0080, type_sym_hash),
+                        variant_sym_hash,
                     ),
                     h,
                 )
             } else {
-                eval_recompute_mix(eval_recompute_mix(0xA5A5_0070, u64::from(type_sym)), h)
+                eval_recompute_mix(eval_recompute_mix(0xA5A5_0070, type_sym_hash), h)
             }
         }
         EvalRecomputeFrameKind::Map { rc, .. } => {
@@ -5306,7 +5777,11 @@ enum EvalRecomputeStep {
     Bail,
 }
 
-fn eval_recompute_value_hash(memo: &mut EvalRecomputeHashMemo, root: &Value) -> Option<u64> {
+fn eval_recompute_value_hash(
+    memo: &mut EvalRecomputeHashMemo,
+    interner: &SymbolInterner,
+    root: &Value,
+) -> Option<u64> {
     let mut frames: Vec<EvalRecomputeFrame> = Vec::new();
     let mut cursor: Value = root.clone();
     loop {
@@ -5361,18 +5836,24 @@ fn eval_recompute_value_hash(memo: &mut EvalRecomputeHashMemo, root: &Value) -> 
                 }
                 Value::Record { type_name, fields } => {
                     let ptr = Rc::as_ptr(fields) as usize;
+                    let type_sym_hash = eval_recompute_str_hash(interner.resolve(*type_name));
                     match memo.get(&ptr) {
                         Some((w, h)) if w.alive() => EvalRecomputeStep::Have(eval_recompute_mix(
-                            eval_recompute_mix(0xA5A5_0070, u64::from(type_name.0)),
+                            eval_recompute_mix(0xA5A5_0070, type_sym_hash),
                             *h,
                         )),
                         _ => {
+                            let field_name_hashes = fields
+                                .iter()
+                                .map(|(s, _)| eval_recompute_str_hash(interner.resolve(*s)))
+                                .collect();
                             frames.push(EvalRecomputeFrame {
                                 kind: EvalRecomputeFrameKind::Fields {
                                     rc: fields.clone(),
-                                    type_sym: type_name.0,
-                                    variant_sym: 0,
+                                    type_sym_hash,
+                                    variant_sym_hash: 0,
                                     is_variant: false,
+                                    field_name_hashes,
                                 },
                                 idx: 0,
                                 h: 0xA5A5_00F0,
@@ -5387,21 +5868,28 @@ fn eval_recompute_value_hash(memo: &mut EvalRecomputeHashMemo, root: &Value) -> 
                     fields,
                 } => {
                     let ptr = Rc::as_ptr(fields) as usize;
+                    let type_sym_hash = eval_recompute_str_hash(interner.resolve(*type_name));
+                    let variant_sym_hash = eval_recompute_str_hash(interner.resolve(*variant_name));
                     match memo.get(&ptr) {
                         Some((w, h)) if w.alive() => EvalRecomputeStep::Have(eval_recompute_mix(
                             eval_recompute_mix(
-                                eval_recompute_mix(0xA5A5_0080, u64::from(type_name.0)),
-                                u64::from(variant_name.0),
+                                eval_recompute_mix(0xA5A5_0080, type_sym_hash),
+                                variant_sym_hash,
                             ),
                             *h,
                         )),
                         _ => {
+                            let field_name_hashes = fields
+                                .iter()
+                                .map(|(s, _)| eval_recompute_str_hash(interner.resolve(*s)))
+                                .collect();
                             frames.push(EvalRecomputeFrame {
                                 kind: EvalRecomputeFrameKind::Fields {
                                     rc: fields.clone(),
-                                    type_sym: type_name.0,
-                                    variant_sym: variant_name.0,
+                                    type_sym_hash,
+                                    variant_sym_hash,
                                     is_variant: true,
+                                    field_name_hashes,
                                 },
                                 idx: 0,
                                 h: 0xA5A5_00F0,
@@ -5476,6 +5964,7 @@ fn eval_recompute_value_hash(memo: &mut EvalRecomputeHashMemo, root: &Value) -> 
 
 fn eval_recompute_arg_key(
     memo: &mut EvalRecomputeHashMemo,
+    interner: &SymbolInterner,
     v: &Value,
 ) -> Option<EvalRecomputeArgKey> {
     match v {
@@ -5489,11 +5978,13 @@ fn eval_recompute_arg_key(
             variant_name,
             fields,
         } if fields.is_empty() => Some(EvalRecomputeArgKey::UnitVariant(
-            type_name.0,
-            variant_name.0,
+            eval_recompute_str_hash(interner.resolve(*type_name)),
+            eval_recompute_str_hash(interner.resolve(*variant_name)),
         )),
         Value::List(xs) if xs.is_empty() => Some(EvalRecomputeArgKey::EmptyList),
-        other => eval_recompute_value_hash(memo, other).map(EvalRecomputeArgKey::ContentHash),
+        other => {
+            eval_recompute_value_hash(memo, interner, other).map(EvalRecomputeArgKey::ContentHash)
+        }
     }
 }
 
@@ -5503,9 +5994,10 @@ fn eval_recompute_key(
     args: &[(Option<String>, Value)],
 ) -> Option<EvalRecomputeKey> {
     let mut memo = ctx.eval_recompute_hash_memo.borrow_mut();
+    let interner = ctx.symbols.borrow();
     let mut keys = Vec::with_capacity(args.len());
     for (_, v) in args {
-        keys.push(eval_recompute_arg_key(&mut memo, v)?);
+        keys.push(eval_recompute_arg_key(&mut memo, &interner, v)?);
     }
     Some(EvalRecomputeKey {
         fn_ptr: Rc::as_ptr(fn_node) as usize,
@@ -6401,6 +6893,20 @@ fn cast_expr_inferred_type_name_uncached(ctx: &InterpContext, expr: Rc<Node>) ->
 
 /// Runtime identity casts mirror `validate_cast`'s `source_name == target_name` arm,
 /// plus String-valued casts to types whose alias chain grounds on `String`.
+///
+/// node://adhoc-897a90b6-a9c item 1: this used to also treat an EMPTY resolved kernel as
+/// grounds for identity -- i.e. answered "the cast target's alias chain could not be resolved
+/// at all" with a value, rather than falling through to `eval_cast`'s existing typed
+/// `TypeError` arm for an unrecognized target name (DESIGN §5, ⊥-as-ignorance rendered as an
+/// answer). Measured by execution (an unconditional counter plus a discriminating
+/// positive/negative-control unit test proving the counter itself was correctly wired, then a
+/// real run of 1507 requested witnesses across every `*cast*`/`*refinement*`-named file in
+/// `dag/test/claim` plus a sixth-sample of the rest): zero hits, `kernel_calls=19` real
+/// resolutions observed. The arm is reachable in principle only when the target AST node is
+/// itself a `CompilerError` node (malformed, missing-child cast target) -- a shape that can
+/// only arise from a resolve-time defect elsewhere, and resolve already refuses before such a
+/// node can reach eval on any real program. Clean deletion per that measurement; the
+/// fallthrough below now answers instead.
 fn cast_identity_result(
     val: &Value,
     ctx: &InterpContext,
@@ -6413,11 +6919,81 @@ fn cast_identity_result(
     }
     if let Value::Str(s) = val {
         let kernel = cast_target_underlying_kernel(ctx, target_node);
-        if kernel.is_empty() || kernel == "String" {
+        if kernel == "String" {
             return Some(Value::Str(s.clone()));
         }
     }
     None
+}
+
+#[cfg(test)]
+mod cast_identity_empty_kernel_tests {
+    //! Regression control for node://adhoc-897a90b6-a9c item 1: a cast target whose alias
+    //! chain cannot be resolved at all (an empty kernel) must NOT be answered with silent Str
+    //! identity. Proves the deletion above by construction: a malformed target node -- exactly
+    //! the shape `expr_child_at`'s fallback produces for a cast missing its target child --
+    //! makes `cast_identity_result` return `None`, so `eval_cast` falls through to its typed
+    //! `TypeError` arm instead of fabricating an answer.
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_std_core::{make_expr_error_node, no_span, ExprErrorKind};
+
+    use super::{cast_identity_result, ExecutionMode, InterpContext, Value};
+
+    fn fresh_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    #[test]
+    fn malformed_cast_target_no_longer_returns_silent_identity() {
+        let ctx = fresh_ctx();
+        // Exactly the node `expr_child_at`/`make_expr_error_node` produce for a cast whose
+        // target child is missing: name "", inferred CompilerError (not Resolved) — the only
+        // shape `cast_target_seed_name_uncached` returns "" for, i.e. an empty kernel.
+        let malformed_target = make_expr_error_node(
+            ExprErrorKind::InternalExprError,
+            "malformed node: missing cast target".to_string(),
+            no_span(),
+        );
+        let val = Value::Str(Rc::from("payload"));
+        let result = cast_identity_result(&val, &ctx, "", malformed_target, "");
+        assert_eq!(
+            result, None,
+            "an unresolvable cast target must fall through to eval_cast's typed TypeError arm, \
+             not return silent Str identity"
+        );
+    }
+
+    #[test]
+    fn well_formed_string_kernel_cast_still_returns_identity() {
+        let ctx = fresh_ctx();
+        // A target node whose own name IS "String" resolves the seed directly (no alias walk
+        // needed), so the kernel is non-empty and lands on the `kernel == "String"` arm. This
+        // is the negative control: it proves the deletion above did not also remove the
+        // legitimate String-kernel identity case.
+        let string_target = make_expr_error_node(
+            ExprErrorKind::InternalExprError,
+            "unused".to_string(),
+            no_span(),
+        );
+        let string_target = Rc::new(crate::v1_std_core::Node {
+            name: "String".to_string(),
+            ..(*string_target).clone()
+        });
+        let val = Value::Str(Rc::from("payload"));
+        let result = cast_identity_result(&val, &ctx, "", string_target, "");
+        assert_eq!(result, Some(Value::Str(Rc::from("payload"))));
+    }
 }
 
 fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
@@ -7373,12 +7949,11 @@ fn eval_service_call(
                 })
                 .collect();
             cases.sort();
-            return Err(InterpError::TypeError {
-                msg: format!(
-                    "hermetic mode: operation {key} is not a published mock case for \
-                     corpus-governed service {service_name} — refusing to realize \
-                     (published cases: {cases:?})"
-                ),
+            return Err(InterpError::HermeticHostEffectRefused {
+                operation: key.clone(),
+                ground: HermeticEffectGround::UnpublishedMockCase {
+                    published_cases: cases.into_iter().cloned().collect(),
+                },
             });
         }
 
@@ -7740,7 +8315,61 @@ fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()
             }
             Ok(())
         }
+        // THE AMBIGUITY IS REFUSED HERE, NOT RESOLVED — and the two readings really are both
+        // well-formed, which is why no ordering of the old arms could have been correct.
+        //
+        // A free monoid whose elements are `Str` satisfies BOTH readings at once:
+        // `value_as_host_string` folds it into one concatenated word (its `Value::Str(s) =>
+        // out.push_str(&s)` arm), and `free_monoid_to_vec` splices it into N words. The value
+        // records no choice between them, so the previous code silently took the first — meaning
+        // one declared `List<String>` produced ONE argv word when it arrived monoid-encoded and N
+        // words when it arrived as a native list. Same type, same declaration, opposite arity,
+        // decided by a representation the author never selected.
+        //
+        // The measured specimen: `extdeps.git.git` `git_diff_range_argv` returns `[base, head]` on
+        // its TwoDot arm, spliced into `git diff -U0 <range>`. Monoid-encoded, that reaches the
+        // process as `mainHEAD` — and the failure is not that git errors. On any pair whose
+        // concatenation names a real object it produces a successful diff of the WRONG RANGE,
+        // which is fabricated plausible output rather than a crash (DESIGN §5).
+        //
+        // So this is a state-space conflation, not a missing wall: "one argument whose text is the
+        // concatenation" and "N arguments" are different states with different remedies, and a
+        // position that cannot tell them apart must refuse rather than pick.
+        //
+        // WHAT DELIBERATELY DOES NOT CHANGE:
+        //   * Int-element monoids stay char-decoded into one word. A code-point sequence is a
+        //     genuine host string under one reading only, so nothing is ambiguous there.
+        //   * A native `Value::List` keeps its N-word expansion (arm above) — it states the list
+        //     reading structurally.
+        //   * `ProcessArgvExpansion` stays authoritative (arm at the top) — it states the role.
+        //   * `value_as_host_string` itself is UNTOUCHED. `value_to_host_string` wraps it for
+        //     general use, and narrowing a shared helper to fix one caller is precisely the forked
+        //     -logic trap this lane exists to remove. The discrimination belongs to the argv
+        //     position, so it lives here.
+        //
+        // An EMPTY monoid is treated as the empty string, preserving existing behaviour. Stated
+        // rather than left implicit: it is the one input where the two readings differ in arity
+        // (one empty word vs no words) and this arm still picks. It is called out as a deliberate
+        // narrow choice with no observed consumer, not an oversight.
         Value::Variant { .. } => {
+            if let Some(items) = free_monoid_to_vec(&val) {
+                let has_str_element = items.iter().any(|i| matches!(i, Value::Str(_)));
+                if has_str_element {
+                    return Err(InterpError::TypeError {
+                        msg: format!(
+                            "argv position {}: a modeled sequence of {} string element(s) is \
+                             ambiguous here — it reads BOTH as one argument whose text is their \
+                             concatenation AND as {} separate arguments, and the value records no \
+                             choice. Refusing rather than picking. Say which is meant: wrap the \
+                             surface in ProcessArgvExpansion for the argument-list reading, or \
+                             join the parts explicitly for the single-word reading",
+                            argv.len(),
+                            items.len(),
+                            items.len()
+                        ),
+                    });
+                }
+            }
             if let Some(s) = value_as_host_string(&val) {
                 argv.push(s);
                 Ok(())
@@ -7801,30 +8430,59 @@ pub enum ArgvRefusalCause {
     BindingMalformed(String),
 }
 
-fn argv_expr_kind_label(node: &Rc<Node>) -> &'static str {
-    match node.expr_data.as_ref() {
-        ExprData::NoExprData => "no-expr",
-        ExprData::ExprLiteral { .. } => "literal",
-        ExprData::ExprError { .. } => "error",
-        ExprData::ExprVar { .. } => "var",
-        ExprData::ExprFieldAccess { .. } => "field-access",
-        ExprData::ExprCall { .. } => "call",
-        ExprData::ExprMethodCall { .. } => "method-call",
-        ExprData::ExprMatch => "match",
-        ExprData::ExprIf => "if",
-        ExprData::ExprLet => "let",
-        ExprData::ExprRecordLit { .. } => "record-literal",
-        ExprData::ExprListLit => "list-literal",
-        ExprData::ExprBinOp { .. } => "binop",
-        ExprData::ExprUnaryOp { .. } => "unary-op",
-        ExprData::ExprLambda => "lambda",
-        ExprData::ExprStringInterp => "string-interpolation",
-        ExprData::ExprBlock => "block",
-        ExprData::ExprCast => "cast",
-        ExprData::ExprForEach => "for-each",
-        ExprData::ExprIndex => "index",
-        ExprData::ExprSlice => "slice",
-        ExprData::ExprReturn => "return",
+/// The AUTHORED name of an `ExprData` form, TOTAL over the closed `.dag` vocabulary
+/// (`v1.core` `ExprData`), and the single such authority in the seed.
+///
+/// It exists so a projection that has no rule for a form can REFUSE BY NAME instead of
+/// substituting a plausible value, and the name it refuses with is the one the `.dag`
+/// declaration uses -- not a second spelling of the same vocabulary. This function replaced
+/// `argv_expr_kind_label`, which returned hyphenated nicknames (`call`, `record-literal`)
+/// for the same members: a refusal naming `call` cannot be grepped back to `ExprCall`, and
+/// two spellings of one closed vocabulary is the DESIGN section 3 nickname at the
+/// diagnostic layer.
+///
+/// The match carries NO catch-all on purpose: a form added to the `.dag` coproduct must
+/// break this compile, which is what keeps the seed's knowledge of the vocabulary equal to
+/// the substrate's rather than merely older than it.
+pub(crate) fn expr_data_form_name(expr_data: &ExprData) -> &'static str {
+    match expr_data {
+        ExprData::NoExprData => "NoExprData",
+        ExprData::ExprLiteral { .. } => "ExprLiteral",
+        ExprData::ExprError { .. } => "ExprError",
+        ExprData::ExprVar { .. } => "ExprVar",
+        ExprData::ExprFieldAccess { .. } => "ExprFieldAccess",
+        ExprData::ExprCall { .. } => "ExprCall",
+        ExprData::ExprMethodCall { .. } => "ExprMethodCall",
+        ExprData::ExprMatch => "ExprMatch",
+        ExprData::ExprIf => "ExprIf",
+        ExprData::ExprLet => "ExprLet",
+        ExprData::ExprRecordLit { .. } => "ExprRecordLit",
+        ExprData::ExprListLit => "ExprListLit",
+        ExprData::ExprBinOp { .. } => "ExprBinOp",
+        ExprData::ExprUnaryOp { .. } => "ExprUnaryOp",
+        ExprData::ExprLambda => "ExprLambda",
+        ExprData::ExprStringInterp => "ExprStringInterp",
+        ExprData::ExprBlock => "ExprBlock",
+        ExprData::ExprCast => "ExprCast",
+        ExprData::ExprForEach => "ExprForEach",
+        ExprData::ExprIndex => "ExprIndex",
+        ExprData::ExprSlice => "ExprSlice",
+        ExprData::ExprReturn => "ExprReturn",
+    }
+}
+
+/// The authored name of a `LiteralValue` form, TOTAL over the closed `.dag` vocabulary
+/// (`std.syntax` `LiteralValue`). Same construction and same reason as
+/// `expr_data_form_name`: no catch-all, so a new literal form stops the compile here.
+pub(crate) fn literal_value_form_name(value: &crate::std_syntax::LiteralValue) -> &'static str {
+    use crate::std_syntax::LiteralValue;
+    match value {
+        LiteralValue::LitStr { .. } => "LitStr",
+        LiteralValue::LitInt { .. } => "LitInt",
+        LiteralValue::LitFloat { .. } => "LitFloat",
+        LiteralValue::LitBool { .. } => "LitBool",
+        LiteralValue::LitNull => "LitNull",
+        LiteralValue::LitSymbol { .. } => "LitSymbol",
     }
 }
 
@@ -7974,7 +8632,8 @@ fn bind_argv_expr(
         ExprData::ExprLiteral { value } => match value.as_ref() {
             LiteralValue::LitStr { value } => Ok(str_value(value.clone())),
             other => Err(ArgvRefusalCause::ArgvExpressionUnsupported(format!(
-                "argv element literal is {other:?}, expected a string literal"
+                "argv element literal is `{}`, expected a string literal",
+                literal_value_form_name(other)
             ))),
         },
         ExprData::ExprVar { .. } => {
@@ -8006,7 +8665,7 @@ fn bind_argv_expr(
         }
         _ => Err(ArgvRefusalCause::ArgvExpressionUnsupported(format!(
             "argv element is a {} expression; materialization binds declared inputs, it does not evaluate expressions",
-            argv_expr_kind_label(node)
+            expr_data_form_name(node.expr_data.as_ref())
         ))),
     }
 }
@@ -8040,7 +8699,7 @@ pub fn materialize_operation_argv(
     if !executable_is_literal {
         return Err(ArgvRefusalCause::ExecutablePositionNotLiteral(format!(
             "argv[0] is a {} expression; the executable must be a literal in the declaration",
-            argv_expr_kind_label(executable)
+            expr_data_form_name(executable.expr_data.as_ref())
         )));
     }
 
@@ -10796,10 +11455,9 @@ fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<V
         }
     }
     let op_name = authored_name_at(ctx.si(), op_node.clone());
-    Err(InterpError::TypeError {
-        msg: format!(
-            "hermetic mode: no mock_response for operation {op_name} — refusing to fabricate Unit"
-        ),
+    Err(InterpError::HermeticHostEffectRefused {
+        operation: op_name.to_string(),
+        ground: HermeticEffectGround::NoMockResponse,
     })
 }
 
@@ -11098,10 +11756,9 @@ fn eval_emit_host_native_cache_evict_builtin(
     ctx.effect_dispatch_count
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
     if ctx.execution_mode.is_hermetic() {
-        return Err(InterpError::TypeError {
-            msg: "hermetic mode: emit_host_native_cache_evict refuses filesystem removal \
-                  (no mock arm; run wet)"
-                .to_string(),
+        return Err(InterpError::HermeticHostEffectRefused {
+            operation: "emit_host_native_cache_evict".to_string(),
+            ground: HermeticEffectGround::FilesystemRemoval,
         });
     }
     let workspace_dir =
@@ -13950,7 +14607,7 @@ fn memo_verify_enabled() -> bool {
     })
 }
 
-fn eval_profile_enabled() -> bool {
+pub fn eval_profile_enabled() -> bool {
     PROFILE_FLAG.with(|c| match c.get() {
         Some(b) => b,
         None => {
@@ -14138,19 +14795,57 @@ mod native_len_tests {
     }
 }
 
+// The well-known free-monoid encoding symbols. Pre-interned at context construction
+// (`over_scope_indexes`) so a lookup for any of them can never miss -- see
+// `free_monoid_ctx_syms` for why a miss must not be possible, only detected.
+const FREE_MONOID_WELL_KNOWN_SYMS: [&str; 4] = ["Empty", "Cons", "head", "tail"];
+
 #[track_caller]
+// `free_monoid_to_vec` reaches for the ambient `active_ctx()` to resolve the
+// well-known Cons/Empty/head/tail symbols. It is called (transitively, via
+// `value_hash`/`CanonKey::hash`, for a Map key that is itself a free-monoid
+// value) from `eval_recompute_value_hash` while that computation holds an
+// immutable `ctx.symbols.borrow()` for its own symbol resolution -- so the
+// mutable `ctx.sym()` intern below would double-borrow and panic. The fallback
+// below takes a read-only lookup instead, which requires the four symbols to
+// already be interned. That is NOT "a free-monoid value must already carry
+// them" (true of the value being inspected, but no help if IT is what's about
+// to be constructed, or if lookup races an unrelated borrow) -- it is
+// guaranteed unconditionally by pre-interning them at context construction, so
+// a `.get()` miss here is a genuine invariant violation, not "not a list".
+// Reporting a miss as `None` would be DESIGN §5's empty-observation narrow:
+// treating "could not resolve, contention or a broken invariant" the same as
+// "genuinely absent" (⊥-as-ignorance conflated with ⊥-as-answer). So this
+// panics rather than silently misreporting a Cons/Empty value as not one.
+fn free_monoid_ctx_syms(ctx: &InterpContext) -> Option<(Symbol, Symbol, Symbol, Symbol)> {
+    if let Ok(mut symbols) = ctx.symbols.try_borrow_mut() {
+        return Some((
+            symbols.intern("Empty"),
+            symbols.intern("Cons"),
+            symbols.intern("head"),
+            symbols.intern("tail"),
+        ));
+    }
+    let symbols = ctx
+        .symbols
+        .try_borrow()
+        .expect("free_monoid_ctx_syms: read-only fallback taken only when the mutable borrow failed, so an immutable one must succeed");
+    let get = |name: &str| {
+        symbols.get(name).unwrap_or_else(|| {
+            panic!(
+                "free_monoid_ctx_syms: '{name}' missing from interner -- \
+                 FREE_MONOID_WELL_KNOWN_SYMS pre-interning invariant violated"
+            )
+        })
+    };
+    Some((get("Empty"), get("Cons"), get("head"), get("tail")))
+}
+
 pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
     let site = std::panic::Location::caller();
     let mut out = Vec::new();
     let mut cur = val.clone();
-    let monoid_syms = active_ctx().map(|ctx| {
-        (
-            ctx.sym("Empty"),
-            ctx.sym("Cons"),
-            ctx.sym("head"),
-            ctx.sym("tail"),
-        )
-    });
+    let monoid_syms = active_ctx().and_then(free_monoid_ctx_syms);
     loop {
         match &cur {
             Value::List(items) => {
@@ -15021,7 +15716,7 @@ mod map_shell_outputs_optional_stream_tests {
     use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_std_core::{
-        make_field_init_node, make_field_node, make_span, make_text_part_node, Cardinality,
+        make_field_init_node, make_field_node, make_text_part_node, no_span, Cardinality,
         Connective, ExprData, InferredNode, Node,
     };
 
@@ -15083,7 +15778,7 @@ mod map_shell_outputs_optional_stream_tests {
 
     fn map_optional_stream_field(exit_code: i32, from_key: &str) -> Value {
         let ctx = map_shell_outputs_test_context();
-        let span = make_span(0, 0);
+        let span = no_span();
         let str_type = bare_type_node("String", span.clone());
         let mut field = make_field_node(
             from_key.to_string(),
@@ -15515,7 +16210,7 @@ mod argv_arg_limit_test {
 
     use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
-    use crate::v1_std_core::{make_span, make_text_part_node, shell_transport_node, Node};
+    use crate::v1_std_core::{make_text_part_node, no_span, shell_transport_node, Node};
 
     use super::{
         argv_arg_limit_refusal, dispatch_shell, Env, ExecutionMode, ExpectedOutcome, InterpContext,
@@ -15534,7 +16229,7 @@ mod argv_arg_limit_test {
 
     /// `shell.Exec.Check`-shaped argv: `sh -c "<command>"` as three literal tokens.
     fn shell_check_style_transport(command: &str) -> Rc<Node> {
-        let span = make_span(0, 0);
+        let span = no_span();
         shell_transport_node(
             Rc::new(im_vec![
                 make_text_part_node("sh".to_string(), span.clone()),

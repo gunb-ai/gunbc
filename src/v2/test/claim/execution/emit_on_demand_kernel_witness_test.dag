@@ -66,7 +66,7 @@ import v2.std.algebra { any }
 import v2.std.diagnostic { Accepted, Rejected, Outcome }
 import v2.std.runtime { RuntimeValue, EvaluationEnvironment }
 import v2.std.host_run { HostLogicalRun }
-import v2.std.node { Node }
+import v2.std.node { Node, Symbol }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -197,10 +197,13 @@ test fn emit_on_demand_schedule_refuses_unreadable_budget_holds() -> Bool {
   }
 }
 
-fn kernel_add_subject(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>) -> TestClaimEvalSubject<Node> {
+fn kernel_add_subject(
+  call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>,
+  call_primitive_identity: Symbol
+) -> TestClaimEvalSubject<Node> {
   eval_test_claim_subject(
     claim: emit_eval_claim(rhs_result_node: eval_add_subgraph_node),
-    context: emit_eval_context(call_primitive: call_primitive),
+    context: emit_eval_context(call_primitive: call_primitive, call_primitive_identity: call_primitive_identity),
     tree: emit_eval_subject_tree(),
     evaluator_pin: ^emit_eval_evaluator_pin
   )
@@ -283,7 +286,10 @@ fn kernel_cached_cold_then_warm_for_tree(workspace: String, tree: InferredTree) 
 fn kernel_cached_agreement_pass(workspace: String) -> Bool {
   emit_eval_verdict_is_pass(
     run: run_test_claim_from_source_emit_vs_eval_cached(
-      subject: kernel_add_subject(call_primitive: emit_eval_call_primitive_five),
+      subject: kernel_add_subject(
+        call_primitive: emit_eval_call_primitive_five,
+        call_primitive_identity: ^emit_eval_call_primitive_five
+      ),
       source_outcome: emit(tree: emit_eval_subject_tree(), target: rust_target_model_staging()),
       target: rust_target_model_staging(),
       workspace_dir: workspace,
@@ -295,7 +301,10 @@ fn kernel_cached_agreement_pass(workspace: String) -> Bool {
 fn kernel_cached_wrong_oracle_mismatch(workspace: String) -> Bool {
   emit_eval_verdict_is_semantic_mismatch(
     run: run_test_claim_from_source_emit_vs_eval_cached(
-      subject: kernel_add_subject(call_primitive: emit_eval_call_primitive_six),
+      subject: kernel_add_subject(
+        call_primitive: emit_eval_call_primitive_six,
+        call_primitive_identity: ^emit_eval_call_primitive_six
+      ),
       source_outcome: emit(tree: emit_eval_subject_tree(), target: rust_target_model_staging()),
       target: rust_target_model_staging(),
       workspace_dir: workspace,

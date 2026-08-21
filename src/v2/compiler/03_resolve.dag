@@ -73,7 +73,6 @@ import v2.std.node {
   Node,
   NodeFold,
   NodeOccurrenceId,
-  OccurrenceId,
   Positional,
   Symbol,
   Transform,
@@ -82,6 +81,7 @@ import v2.std.node {
   node_with_occurrence_id,
   well_formed
 }
+import std.occurrence_identity { OccurrenceId }
 
 type ResolvedTree = Node
 
@@ -191,14 +191,7 @@ fn namespace_bindings_augment_from_module_atoms(
   root: Node,
   bindings: Map<Symbol, Symbol>
 ) -> Map<Symbol, Symbol> {
-  harvest_direct_atom_binding(
-    root: root,
-    acc: harvest_conj_named_bindings(root: root, acc: bindings)
-  )
-}
-
-fn add_module_named_exports(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
-  harvest_conj_named_bindings(root: root, acc: acc)
+  harvest_conj_named_bindings(root: root, acc: bindings)
 }
 
 fn add_arrow_domain_named_params(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
@@ -238,9 +231,9 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
 
 fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace {
   Namespace {
-    bindings: harvest_direct_atom_binding(
+    bindings: namespace_bindings_augment_from_module_atoms(
       root: tree.root,
-      acc: add_module_named_exports(root: tree.root, acc: empty_map())
+      bindings: empty_map()
     ),
     canonical_symbols: dag_language_model_canonical_symbols(lm: lm),
     symbol_index: empty_symbol_index(),
