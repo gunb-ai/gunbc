@@ -1,0 +1,193 @@
+module test.claim.fleet_revision_relation_wet_matrix
+
+import std.types { Bool, String }
+import extdeps.git.object_store { GitObjectId, git_sha1_object_id, git_object_id_eq }
+import gunbc.live_deploy.revision {
+  DeployRevisionRelation,
+  SameRevision,
+  DeployedIsAncestor,
+  CandidateIsAncestor,
+  UnrelatedHistories,
+  RelationUnverifiable,
+}
+import gunbc.fleet_main_revision { FleetRevisionRelationObservation }
+import gunbc.fleet_desired_observe { observe_fleet_revision_relation_in }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THIS FILE DOES NOT RUN IN THE REQUIRED FLOOR TODAY, AND THAT IS STATED FIRST BECAUSE THE
+// OPPOSITE IS THE NATURAL ASSUMPTION FOR A GREEN WITNESS FILE. It is a wet/replay class: every
+// dispatching row reaches git.Inspect.MergeBase, which publishes no mock_response, so under the
+// hermetic envelope the run REFUSES by construction rather than skipping. Its exclusion row and
+// substantiated reason live in gunbc.ci_layer_roots; the local recipe is beside them.
+//
+// WHY IT CANNOT SIMPLY BE ENROLLED, established by reading the carrier rather than assumed: the
+// replay binding that WOULD carry recorded observations into a hermetic run is
+// v2.std.witness_evaluation `WitnessEvaluationFrame`, and its fixture list is `rest_fixtures:
+// List<RestExchangeFixture>` -- REST-shaped. Its own note says filesystem and environment replay
+// bindings are meant to extend that carrier later. There is no shell-transport fixture carrier, so
+// a recorded git observation has no way into a floor run; the external `--fixture-store` that this
+// file's recipe uses is a claim_batch flag and claim_executor has no equivalent. NEXT-RUNG
+// TRIGGER: a shell/service fixture arm on WitnessEvaluationFrame, at which point these rows enroll
+// unchanged and the exclusion row deletes. Until then the coverage question for this composition
+// answers NO, and the receipt is local.
+//
+// THE EFFECTFUL OBSERVER, EXERCISED END TO END AGAINST A CONTROLLED REPOSITORY.
+//
+// What was already proven before this file: the pure fold, by authored exit codes; and
+// git.Inspect.MergeBase itself, by record/replay. What was NOT proven is the composition between
+// them -- observe_fleet_revision_relation_in -> MergeBase -> fleet_revision_relation_from_merge_base
+// -- which is where a wrong operand order, a dropped trim, or a mis-decoded stdout would live. A
+// fold fed authored inputs cannot catch any of those, because authoring the inputs is precisely the
+// step under test.
+//
+// THE FIXTURE GRAPH, built by docs recipe with fixed identities and timestamps so the object ids
+// are reproducible (they participate in the operation input hash, so a machine-dependent id would
+// make the recorded fixtures unportable):
+//
+//         B  main
+//        /
+//   A ──┤   base-a
+//        \
+//         C  sibling
+//
+//   D  orphan -- an independent root, no common ancestor with anything above
+//
+// EVERY COMMIT CARRIES A REF ON PURPOSE. C was originally created on a detached HEAD, which left it
+// unreachable; merge-base still answered because the object had not been collected yet. A fixture
+// whose correctness depends on gc not having run is not a fixture, so each of the four commits is
+// named by a branch.
+//
+// THE SEVEN CASES COVER EVERY EXIT THE OPERATION DECLARES AND EVERY RELATION THE FOLD PRODUCES.
+// Three exit-0 shapes (base is current / base is accepted / base is neither), the exit-1 answer,
+// and two distinct routes to exit 128 -- a valid-looking object that is absent, and a path that is
+// not a repository. The last one matters because it is the case that would silently become
+// "unrelated" if a consumer read a Bool instead of the exit code.
+
+data fixture_repository_path: String = "target/test-fixtures/fleet-revision-relation"
+
+data non_repository_path: String = "target/test-fixtures/not-a-repository"
+
+data revision_a_hex: String = "3728e5635c811256194971bcaed367914a6040e6"
+
+data revision_b_hex: String = "3ad80d79bd1f64a7f75e121d7323aed053a81f0b"
+
+data revision_c_hex: String = "d0d3a7f6e323428bd771a32b1a19554481e1ae7c"
+
+data revision_d_hex: String = "8286843fce4511d0157573ba33b48ba46e48958a"
+
+// A well-formed object id that the fixture repository does not contain. It must be DECODABLE, or
+// the probe would never be dispatched and the case would prove nothing about exit 128.
+data revision_absent_hex: String = "1111111111111111111111111111111111111111"
+
+fn rev(hex: String) -> GitObjectId? { git_sha1_object_id(hex: hex) }
+
+fn relation_in(repository_path: String, current_hex: String, accepted_hex: String) -> DeployRevisionRelation? {
+  match rev(hex: current_hex) {
+    Present { value: cur } =>
+      match rev(hex: accepted_hex) {
+        Present { value: acc } =>
+          match observe_fleet_revision_relation_in(
+            repository_path: repository_path,
+            current: cur,
+            accepted: acc,
+          ) {
+            FleetRevisionRelationObservation { current: c, accepted: a, relation: rel } =>
+              if git_object_id_eq(left: c, right: cur) && git_object_id_eq(left: a, right: acc) {
+                Present { value: rel }
+              } else {
+                none
+              }
+          }
+        none => none
+      }
+    none => none
+  }
+}
+
+fn is_same(r: DeployRevisionRelation?) -> Bool {
+  match r { Present { value: SameRevision } => true  _ => false }
+}
+
+fn is_deployed_ancestor(r: DeployRevisionRelation?) -> Bool {
+  match r { Present { value: DeployedIsAncestor } => true  _ => false }
+}
+
+fn is_candidate_ancestor(r: DeployRevisionRelation?) -> Bool {
+  match r { Present { value: CandidateIsAncestor } => true  _ => false }
+}
+
+fn is_unrelated(r: DeployRevisionRelation?) -> Bool {
+  match r { Present { value: UnrelatedHistories } => true  _ => false }
+}
+
+fn is_unverifiable(r: DeployRevisionRelation?) -> Bool {
+  match r {
+    Present { value: RelationUnverifiable { cause: _ } } => true
+    _ => false
+  }
+}
+
+// CASE 1 -- IDENTICAL REVISIONS SHORT-CIRCUIT BEFORE ANY DISPATCH. This is also the fixture-store
+// control that must pass with an EMPTY store: if it ever needs a recorded fixture, the equality
+// check has stopped happening before the probe and every no-op admission has started paying a
+// subprocess.
+test fn identical_revisions_are_converged_without_dispatching_a_probe() -> Bool {
+  is_same(r: relation_in(repository_path: fixture_repository_path, current_hex: revision_b_hex, accepted_hex: revision_b_hex))
+}
+
+// CASE 1b -- THE SHORT-CIRCUIT DOES NOT DEPEND ON THE REPOSITORY EXISTING. Same inputs, a path that
+// is not a repository. Still converged, because git was never asked.
+test fn identical_revisions_converge_even_when_the_path_is_not_a_repository() -> Bool {
+  is_same(r: relation_in(repository_path: non_repository_path, current_hex: revision_b_hex, accepted_hex: revision_b_hex))
+}
+
+// CASE 2 -- THE ORDINARY FORWARD ADVANCE. A is an ancestor of B, so the merge base IS the current
+// revision.
+test fn an_ancestor_current_is_a_forward_advance() -> Bool {
+  is_deployed_ancestor(r: relation_in(repository_path: fixture_repository_path, current_hex: revision_a_hex, accepted_hex: revision_b_hex))
+}
+
+// CASE 3 -- SUPERSEDED. The merge base IS the accepted revision, so the fleet already carries
+// something newer and this run must do nothing and exit zero.
+test fn an_ancestor_accepted_is_superseded() -> Bool {
+  is_candidate_ancestor(r: relation_in(repository_path: fixture_repository_path, current_hex: revision_b_hex, accepted_hex: revision_a_hex))
+}
+
+// CASE 4 -- DIVERGED, WITH A SHARED ANCESTOR. Exit 0 and a real merge base (A), which is NEITHER
+// endpoint. This is the case whose receipt used to claim a disjoint history.
+test fn siblings_sharing_an_ancestor_are_neither_ancestor_of_the_other() -> Bool {
+  is_unrelated(r: relation_in(repository_path: fixture_repository_path, current_hex: revision_b_hex, accepted_hex: revision_c_hex))
+}
+
+// CASE 5 -- NO COMMON ANCESTOR AT ALL. Exit 1, which is an ANSWER: git looked and there is none.
+// It folds to the same refusal as case 4 today, and the two are deliberately distinguishable
+// upstream at MergeBaseOutcome.
+test fn an_orphan_root_has_no_common_ancestor() -> Bool {
+  is_unrelated(r: relation_in(repository_path: fixture_repository_path, current_hex: revision_b_hex, accepted_hex: revision_d_hex))
+}
+
+// CASE 6 -- A DECODABLE OBJECT ID THE REPOSITORY DOES NOT HOLD. Exit 128. The distinction from
+// case 5 is the whole point: "there is no merge base" and "I could not look" must not collapse,
+// because one refuses a real divergence and the other refuses an unreadable repository.
+test fn an_absent_object_is_unverifiable_not_unrelated() -> Bool {
+  is_unverifiable(r: relation_in(repository_path: fixture_repository_path, current_hex: revision_b_hex, accepted_hex: revision_absent_hex))
+}
+
+// CASE 7 -- A PATH THAT IS NOT A REPOSITORY, with two revisions that ARE genuinely related in the
+// real fixture. Exit 128 again, by a different route. If this ever answered a relation, the
+// observation would be reading some other repository -- exactly the ambiguity that naming the
+// repository on the operation removed.
+test fn a_non_repository_path_is_unverifiable_rather_than_answering() -> Bool {
+  is_unverifiable(r: relation_in(repository_path: non_repository_path, current_hex: revision_b_hex, accepted_hex: revision_c_hex))
+}
+
+// THE DISCRIMINATING PAIR ACROSS CASES 5 AND 6, asserted as one row so it cannot be half-satisfied.
+// Both refuse; they must refuse DIFFERENTLY. A consumer reading the operation's `success: Bool`
+// instead of its exit code cannot tell these apart at all, which is the live residual recorded on
+// MergeBaseOutcome.
+test fn no_merge_base_and_could_not_look_stay_distinguishable() -> Bool {
+  is_unrelated(r: relation_in(repository_path: fixture_repository_path, current_hex: revision_b_hex, accepted_hex: revision_d_hex))
+    && is_unverifiable(r: relation_in(repository_path: fixture_repository_path, current_hex: revision_b_hex, accepted_hex: revision_absent_hex))
+}

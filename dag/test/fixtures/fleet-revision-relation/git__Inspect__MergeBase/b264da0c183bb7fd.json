@@ -1,0 +1,50 @@
+{
+  "operation": "git.Inspect.MergeBase",
+  "input_hash": "b264da0c183bb7fd",
+  "inputs": [
+    {
+      "name": "repository_path",
+      "value": {
+        "__tag": "Str",
+        "value": "target/test-fixtures/fleet-revision-relation"
+      }
+    },
+    {
+      "name": "left",
+      "value": {
+        "__tag": "Str",
+        "value": "3ad80d79bd1f64a7f75e121d7323aed053a81f0b"
+      }
+    },
+    {
+      "name": "right",
+      "value": {
+        "__tag": "Str",
+        "value": "3728e5635c811256194971bcaed367914a6040e6"
+      }
+    }
+  ],
+  "response": {
+    "__tag": "Record",
+    "__type": "MergeBase",
+    "fields": {
+      "exit_code": {
+        "__tag": "Int",
+        "value": 0
+      },
+      "sha": {
+        "__tag": "Str",
+        "value": "3728e5635c811256194971bcaed367914a6040e6"
+      },
+      "stderr": {
+        "__tag": "Str",
+        "value": ""
+      },
+      "success": {
+        "__tag": "Bool",
+        "value": true
+      }
+    }
+  },
+  "recorded_at": 1787332539
+}

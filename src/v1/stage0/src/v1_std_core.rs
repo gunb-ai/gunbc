@@ -5,6 +5,7 @@ use self::CallSemantics::*;
 use self::Cardinality::*;
 use self::CompilerDiagnostic::*;
 use self::Connective::*;
+use self::ContainerSpellingVerdict::*;
 use self::ExprData::*;
 use self::ExprErrorKind::*;
 use self::FieldAccessStyle::*;
@@ -487,6 +488,11 @@ pub enum CompilerDiagnostic {
         type_name: String,
         span: Rc<SourceSpan>,
     },
+    OptionalCastNotEliminated {
+        source_type: String,
+        target_type: String,
+        span: Rc<SourceSpan>,
+    },
     BareNoneNotAdmittedByFieldType {
         field: String,
         type_name: String,
@@ -544,6 +550,11 @@ pub enum CompilerDiagnostic {
     },
     OccurrenceTransportViolation {
         refusal: Rc<OccurrenceTransportRefusal>,
+    },
+    ContainerSpellingUnrecognized {
+        name: String,
+        container_leaf: String,
+        span: Rc<SourceSpan>,
     },
 }
 
@@ -634,6 +645,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::OwnershipViolation { span: s, .. } => s.clone(),
         CompilerDiagnostic::VariantCollision { span: s, .. } => s.clone(),
         CompilerDiagnostic::SoleConstructorViolation { span: s, .. } => s.clone(),
+        CompilerDiagnostic::OptionalCastNotEliminated { span: s, .. } => s.clone(),
         CompilerDiagnostic::BareNoneNotAdmittedByFieldType { span: s, .. } => s.clone(),
         CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => {
             annotation_attachment_refusal_origin(r.clone())
@@ -652,6 +664,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
             Some(span) => span.clone(),
             None => no_span(),
         },
+        CompilerDiagnostic::ContainerSpellingUnrecognized { span: s, .. } => s.clone(),
     }
 }
 
@@ -681,6 +694,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::OwnershipViolation { binding: b, fn_name: f, consumers: c, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ownership: binding '".to_string(), b.clone()), "' in '".to_string()), f.clone()), "' has ".to_string()), (c.clone()).to_string()), " consumers".to_string()),
     CompilerDiagnostic::VariantCollision { variant: v, enum1: e1, enum2: e2, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("variant '".to_string(), v.clone()), "' appears in both '".to_string()), e1.clone()), "' and '".to_string()), e2.clone()), "'".to_string()),
     CompilerDiagnostic::SoleConstructorViolation { type_name: t, .. } => v1_rt::concat(v1_rt::concat("sole_constructor type '".to_string(), t.clone()), "' cannot be constructed outside its defining module".to_string()),
+    CompilerDiagnostic::OptionalCastNotEliminated { source_type: st, target_type: tt, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("cannot cast optional '".to_string(), st.clone()), "' to '".to_string()), tt.clone()), "': a cast does not eliminate the absence, it re-types the wrapper — match on Present/Absent first".to_string()),
     CompilerDiagnostic::BareNoneNotAdmittedByFieldType { field: f, type_name: t, declared_type: dt, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("bare 'None' cannot inhabit field '".to_string(), f.clone()), "' of '".to_string()), t.clone()), "': declared type '".to_string()), dt.clone()), "' carries no absence — it is not optional and declares no 'None' variant".to_string()),
     CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => annotation_attachment_refusal_message(r.clone()),
     CompilerDiagnostic::ConstructorCallAdmissionRefused { constructor_module_path: cm, constructor_decl_name: cn, caller_module_path: caller_m, caller_decl_name: caller_n, permitted_callers: permitted, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("constructor call admission refused: '".to_string(), cm.clone()), ".".to_string()), cn.clone()), "' refuses call from '".to_string()), caller_m.clone()), ".".to_string()), caller_n.clone()), "' — permitted callers: [".to_string()), permitted.clone().join(&", ".to_string())), "]".to_string()),
@@ -692,6 +706,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::CallPositionalDeficit { callee: c, parameter: p, supplied: s, required: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': missing required argument '".to_string()), p.clone()), "' (".to_string()), (s.clone()).to_string()), " of ".to_string()), (r.clone()).to_string()), " required argument(s) supplied)".to_string()),
     CompilerDiagnostic::CallNamedArgOnFunctionValue { callee: c, argument: a, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling function value '".to_string(), c.clone()), "': named argument '".to_string()), a.clone()), "' is not supported — use positional arguments".to_string()),
     CompilerDiagnostic::OccurrenceTransportViolation { refusal: refusal, .. } => occurrence_transport_refusal_diagnostic_message(refusal.clone()),
+    CompilerDiagnostic::ContainerSpellingUnrecognized { name: n, container_leaf: leaf, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unrecognized container spelling '".to_string(), n.clone()), "': its last segment '".to_string()), leaf.clone()), "' names a container, but no arity is declared for '".to_string()), n.clone()), "' in std.types container_type_arity — declare the row or spell the container by a declared name".to_string()),
 }
 }
 
@@ -4148,6 +4163,67 @@ pub fn qualified_last_segment(name: String) -> String {
     match module_path_segments(name.clone()).last().cloned() {
         Some(s) => s.clone(),
         None => name.clone(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ContainerSpellingVerdict {
+    ContainerSpellingDeclared { arity: i64 },
+    NotAContainerSpelling,
+    ContainerSpellingUnknown { container_leaf: String },
+}
+
+pub fn known_container_leaf(name: String) -> Option<String> {
+    {
+        let leaf = qualified_last_segment(name.clone());
+        match container_expected_arity(leaf.clone()) {
+            Some(_) => Some(leaf.clone()),
+            None => None,
+        }
+    }
+}
+
+pub fn container_spelling_verdict(name: String) -> Rc<ContainerSpellingVerdict> {
+    match container_expected_arity(name.clone()) {
+        Some(arity) => Rc::new(ContainerSpellingVerdict::ContainerSpellingDeclared {
+            arity: arity.clone(),
+        }),
+        None => match known_container_leaf(name.clone()) {
+            Some(leaf) => Rc::new(ContainerSpellingVerdict::ContainerSpellingUnknown {
+                container_leaf: leaf.clone(),
+            }),
+            None => Rc::new(ContainerSpellingVerdict::NotAContainerSpelling),
+        },
+    }
+}
+
+pub fn type_node_name_is_authored(
+    node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match node.ident_span.clone() {
+        Some(span) => match v1_rt::map_get(&source_indices, span.file.clone()) {
+            Some(_) => true,
+            None => false,
+        },
+        None => false,
+    }
+}
+
+pub fn authored_container_spelling_verdict(
+    node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<ContainerSpellingVerdict> {
+    if type_node_name_is_authored(node.clone(), source_indices.clone()) {
+        container_spelling_verdict(authored_name_at(source_indices.clone(), node.clone()))
+    } else {
+        match container_expected_arity(authored_name_at(source_indices.clone(), node.clone())) {
+            Some(arity) => Rc::new(ContainerSpellingVerdict::ContainerSpellingDeclared {
+                arity: arity.clone(),
+            }),
+            None => Rc::new(ContainerSpellingVerdict::NotAContainerSpelling),
+        }
     }
 }
 

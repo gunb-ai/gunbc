@@ -147,6 +147,23 @@ fn linux_proc_mount_unescape(field: String) -> String {
   )
 }
 
+// THE ELIMINATION `first()` OWES. `first` answers `NonEmptyStr?` because a list may be empty, and
+// the six sites below reached the value with `as String`, which does NOT eliminate the absence -- it
+// re-types the wrapper, so a short row would have rendered `Present { value: /dev/sda }` (or the bare
+// word `Absent`) INTO the parsed mount row. The compiler now refuses that cast outright
+// (`OptionalCastNotEliminated`), and this is the elimination it demands. The Absent arm is the empty
+// string on purpose rather than a fresh refusal variant: every consumer of a field already refuses on
+// it -- source/target/mount_type through `LinuxProcMountEmptyRequiredField`, the two numeric fields
+// through `parse_int` returning Absent -- so absence routes into a refusal that already exists
+// instead of minting a second one beside it. It is unreachable in any case: the caller has already
+// refused a row whose field count is not six.
+fn linux_proc_mount_field(fields: List<NonEmptyStr>, index: Int) -> String {
+  match fields.skip(n: index).first() {
+    Present { value: field } => field as String
+    Absent => ""
+  }
+}
+
 fn linux_proc_mount_row_from_line(line: String) -> LinuxProcMountLineParse {
   let fields = linux_nonempty_whitespace_tokens(raw: line)
   if fields.length() != 6 {
@@ -154,43 +171,45 @@ fn linux_proc_mount_row_from_line(line: String) -> LinuxProcMountLineParse {
       cause: LinuxProcMountWrongFieldCount { count: fields.length() },
     }
   } else {
-    let source = linux_proc_mount_unescape(field: fields.first() as String)
+    let source = linux_proc_mount_unescape(
+      field: linux_proc_mount_field(fields: fields, index: 0),
+    )
     let target = linux_proc_mount_unescape(
-      field: fields.skip(n: 1).first() as String,
+      field: linux_proc_mount_field(fields: fields, index: 1),
     )
     let mount_type = linux_proc_mount_unescape(
-      field: fields.skip(n: 2).first() as String,
+      field: linux_proc_mount_field(fields: fields, index: 2),
     )
-    let raw_options = fields.skip(n: 3).first() as String
+    let raw_options = linux_proc_mount_field(fields: fields, index: 3)
     if source == "" || target == "" || mount_type == "" {
       LinuxProcMountLineRefused { cause: LinuxProcMountEmptyRequiredField }
     } else {
-      match parse_int(s: fields.skip(n: 4).first() as String) {
+      match parse_int(s: linux_proc_mount_field(fields: fields, index: 4)) {
         Absent =>
           LinuxProcMountLineRefused {
             cause: LinuxProcMountInvalidDumpFrequency {
-              wire: fields.skip(n: 4).first() as String,
+              wire: linux_proc_mount_field(fields: fields, index: 4),
             },
           }
         Present { value: dump_frequency } =>
-          match parse_int(s: fields.skip(n: 5).first() as String) {
+          match parse_int(s: linux_proc_mount_field(fields: fields, index: 5)) {
             Absent =>
               LinuxProcMountLineRefused {
                 cause: LinuxProcMountInvalidFsckPass {
-                  wire: fields.skip(n: 5).first() as String,
+                  wire: linux_proc_mount_field(fields: fields, index: 5),
                 },
               }
             Present { value: fsck_pass } =>
               if dump_frequency < 0 {
                 LinuxProcMountLineRefused {
                   cause: LinuxProcMountInvalidDumpFrequency {
-                    wire: fields.skip(n: 4).first() as String,
+                    wire: linux_proc_mount_field(fields: fields, index: 4),
                   },
                 }
               } else if fsck_pass < 0 {
                 LinuxProcMountLineRefused {
                   cause: LinuxProcMountInvalidFsckPass {
-                    wire: fields.skip(n: 5).first() as String,
+                    wire: linux_proc_mount_field(fields: fields, index: 5),
                   },
                 }
               } else {

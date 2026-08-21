@@ -50,11 +50,36 @@ import std.realization_reconcile {
   ReadObserved, Grounds, DoesNotGround,
   reconcile_grounded
 }
-import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.algebra { fold_list, list_snoc_item, list_append }
 import extdeps.shell
 import extdeps.shell { posix_command_v_check_argv, shell_test_is_executable_argv }
 import extdeps.shell.exec
-import extdeps.tools.id { id_uid_argv, id_gid_argv }
+import extdeps.tools.id { id_uid_argv, id_gid_argv, id_binary_path }
+import extdeps.tools.mkdir { mkdir_parents_argv }
+import extdeps.tools.chown { chown_argv }
+import extdeps.tools.chmod { chmod_add_executable_argv }
+import extdeps.tools.stat { stat_owner_user_argv, stat_owner_group_argv }
+import extdeps.posix.path_ownership {
+  PathOwnershipObservation,
+  PathOwnerObserved,
+  PathOwnerUnobserved,
+  PathOwnershipDecision,
+  OwnershipAlreadySatisfied,
+  OwnershipMutationRequired,
+  OwnershipDecisionRefused,
+  PathOwnershipEnsureOutcome,
+  PathAlreadyOwned,
+  PathOwnershipConvergedAfterAttempt,
+  ChownAttemptObservation,
+  ChownNotDispatched,
+  ChownReportedSuccess,
+  ChownReportedFailure,
+  PathOwnershipEnsureRefused,
+  path_ownership_decision,
+  path_ownership_verdict,
+}
+import extdeps.posix.identity { PosixOwnerSpec, posix_user_id_from_text, posix_group_id_from_text }
+import extdeps.sudo.elevation { sudo_elevate, sudo_binary_path }
 import gunbc.retained_shell_script {
   RetainedShellScript,
   retained_shell_script_to_transport,
@@ -634,8 +659,9 @@ fn srv3_seeded_install_media_toolchain_receipt_line(outcome: NonEmptyStr) -> Str
 }
 
 fn srv3_seeded_install_media_toolchain_privileged_apt_install_is_gated() -> Bool {
-  let args = srv3_actuator_toolchain_privileged_apt_install_args(package: package_xorriso)
-  args == ["-n", apt_get_binary_path as String, "install", "-y", package_xorriso as String]
+  let elevated = sudo_elevate(command: srv3_actuator_toolchain_apt_install_command(package: package_xorriso))
+  elevated.bin_path == sudo_binary_path as String &&
+    elevated.args == ["-n", apt_get_binary_path as String, "install", "-y", package_xorriso as String]
 }
 
 // THE RECEIPT NAMES WHICH ARM THE ACTUATOR TOOK, so the probe that decides it must run BEFORE
@@ -1341,13 +1367,11 @@ fn srv3_observed_token_from_typed_argv(outcome: TypedArgvExecOutcome) -> Srv3Obs
 
 data srv3_nonroot_workdir_unobservable_reason: String = "typed_argv_exec over ssh/fleet_ssh carries a bare argv with no working-directory channel, so a non-root workdir cannot be honoured and the probe is not run"
 
+// Same cost shape, same fix as extdeps.sudo.elevation: one append rather than a snoc per element.
 fn srv3_argv_with_bin(bin_path: String, args: List<String>) -> List<String> {
-  fold_list(xs: args, empty: [bin_path], cons: fn(acc, a) { list_snoc_item(xs: acc, item: a) })
+  list_append(left: [bin_path], right: args)
 }
 
-fn srv3_actuator_toolchain_chown_args(owner: String, path: String) -> List<String> {
-  ["-n", "/usr/bin/chown", owner, path]
-}
 
 data srv3_transport_witness_bin_nonroot_workdir_note: String = "typed_argv_exec_over_\{ssh,fleet_ssh} carries a bare argv with no shell to `cd` first, so a non-root workdir has no typed form to hand it. Every in-tree caller passes workdir: \"/\" (checked at review time), so this arm is unreachable dead debt today -- named rather than folded into the workdir == \"/\" condition so a non-root workdir renders as a located refusal instead of an indistinguishable-from-measured `false` (DESIGN §5, fabricated negative). DISSOLVES WHEN a typed remote cd/chdir primitive lands and this reroutes to it, or when workdir is dropped from the signature because no caller ever varies it."
 
@@ -1356,7 +1380,15 @@ fn srv3_transport_witness_bin_success(
   workdir: String,
   bin_path: String,
   args: List<String>,
-) -> Srv3HostPredicate {
+) -> Srv3HostPredicate
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_elevated_witness_bin_success"),
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_apt_tool_version_ok"),
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_run_tool_by_name"),
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "websocat_stage_download"),
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_transport_argv_success"),
+  ]
+{
   match transport {
     LocalShell =>
       if gunbc.WitnessBin.Run(workdir: workdir, bin_path: bin_path, args: args).success {
@@ -1514,92 +1546,355 @@ fn srv3_apt_tool_version_ok(tool_name: NonEmptyStr, transport: HostEffectTranspo
   }
 }
 
-fn srv3_chown_directory_to_current_user(path: String, transport: HostEffectTransport) -> Srv3HostPredicate {
+// ONE TRANSPORT-AWARE SINGLE-TOKEN READ, given a full argv. srv3_tool_bin_path and the `id`
+// probes each had their own transport match over the same four arms; the stat probes this cut adds
+// would have made a third. The argv is the parameter because that is exactly what differs --
+// everything else about "run this readonly command and take its one line of output" is identical.
+fn srv3_transport_token(argv: List<String>, transport: HostEffectTransport) -> Srv3ObservedToken {
   match transport {
-    LocalShell => {
-      let uid = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/usr/bin/id", args: ["-u"])
-      let gid = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/usr/bin/id", args: ["-g"])
-      if uid.success && gid.success {
-        let owner = concat(uid.stdout, concat(":", gid.stdout))
-        if gunbc.WitnessBin.Run(
-          workdir: "/",
-          bin_path: "/usr/bin/sudo",
-          args: srv3_actuator_toolchain_chown_args(owner: owner, path: path),
-        ).success {
-          Srv3PredicateHolds
-        } else {
-          Srv3PredicateFails
-        }
-      } else {
-        Srv3PredicateFails
-      }
-    }
-    SshShell { ssh_host: h } => {
-      let uid = srv3_observed_token_from_typed_argv(outcome: typed_argv_exec_over_ssh(host: h, argv: id_uid_argv()))
-      let gid = srv3_observed_token_from_typed_argv(outcome: typed_argv_exec_over_ssh(host: h, argv: id_gid_argv()))
-      srv3_chown_with_observed_owner(uid: uid, gid: gid, path: path, transport: transport)
-    }
-    FleetSsh { target: t, context: c } => {
-      let uid = srv3_observed_token_from_typed_argv(
-        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: id_uid_argv()),
+    LocalShell => srv3_local_token_from_argv(argv: argv)
+    SshShell { ssh_host: h } =>
+      srv3_observed_token_from_typed_argv(outcome: typed_argv_exec_over_ssh(host: h, argv: argv))
+    FleetSsh { target: t, context: c } =>
+      srv3_observed_token_from_typed_argv(
+        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
       )
-      let gid = srv3_observed_token_from_typed_argv(
-        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: id_gid_argv()),
-      )
-      srv3_chown_with_observed_owner(uid: uid, gid: gid, path: path, transport: transport)
-    }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      Srv3PredicateUnobserved {
-        reason: "EmitArtifactThenThinRun transport has no arm that can read uid/gid or chown",
+      Srv3TokenUnobserved {
+        reason: "EmitArtifactThenThinRun transport has no arm that can read a command's output",
       }
   }
 }
 
-// REMAINING ANEMIA, NAMED RATHER THAN LEFT SILENT: `owner` is still a String composed as
-// uid + ":" + gid, and the chown binary is still the literal "/usr/bin/sudo". Both are the
-// String-as-anemic-modeling class this program exists to dissolve; neither is what this cut is
-// about, and grounding them belongs with the cited-coreutils interface work rather than here.
-// What this function does now is refuse when the owner could not be OBSERVED, instead of
-// chowning to a fabricated owner or reporting a plain false.
-fn srv3_chown_with_observed_owner(
-  uid: Srv3ObservedToken,
-  gid: Srv3ObservedToken,
+// The local witness-bin surface takes a binary and its tail separately, so the argv is split here
+// rather than at every caller. An empty argv names no binary and is refused rather than run.
+fn srv3_local_token_from_argv(argv: List<String>) -> Srv3ObservedToken {
+  match argv {
+    Empty =>
+      Srv3TokenUnobserved { reason: "srv3 token read: an empty argv names no binary to run" }
+    Cons { head: bin, tail: rest } => {
+      let r = gunbc.WitnessBin.Run(workdir: "/", bin_path: bin, args: rest)
+      srv3_token_from_run(success: r.success, stdout: r.stdout)
+    }
+  }
+}
+
+// EMPTY STDOUT IS ABSENT, NOT AN OBSERVATION OF "". A probe that exits zero having printed nothing
+// has not answered the question it was asked, and the caller must decide what that means rather
+// than receive an empty token that compares unequal to everything.
+//
+// LOCAL READS GO THROUGH THE SAME TRIM THE SSH ARMS USE. The local chown arm previously consumed
+// `.stdout` raw, so a trailing newline -- which `id` emits and every other arm trims -- was
+// concatenated straight into a privileged chown argument.
+fn srv3_token_from_run(success: Bool, stdout: String) -> Srv3ObservedToken {
+  if success {
+    let out = trim(s: stdout)
+    if out == "" { Srv3TokenAbsent } else { Srv3TokenObserved { value: out } }
+  } else {
+    Srv3TokenAbsent
+  }
+}
+
+// THE GID PROBE SITS INSIDE THE UID ARM, not beside it in a second `let`. Both are readonly, so
+// the harm is small, but the shape is the one that produced this file's two worst defects: an
+// effectful call outside the branch that decides whether it should happen runs anyway, and nothing
+// in the signature says so.
+fn srv3_effective_owner(transport: HostEffectTransport) -> Srv3EffectiveOwner {
+  match srv3_transport_token(argv: id_uid_argv_absolute(), transport: transport) {
+    Srv3TokenUnobserved { reason: why } => Srv3EffectiveOwnerUnobserved { reason: why }
+    Srv3TokenAbsent =>
+      Srv3EffectiveOwnerUnobserved { reason: "srv3 owner: `id -u` produced no output" }
+    Srv3TokenObserved { value: uid_text } =>
+      match srv3_transport_token(argv: id_gid_argv_absolute(), transport: transport) {
+        Srv3TokenUnobserved { reason: why } => Srv3EffectiveOwnerUnobserved { reason: why }
+        Srv3TokenAbsent =>
+          Srv3EffectiveOwnerUnobserved { reason: "srv3 owner: `id -g` produced no output" }
+        Srv3TokenObserved { value: gid_text } =>
+          srv3_owner_from_texts(uid_text: uid_text, gid_text: gid_text)
+      }
+  }
+}
+
+// The absolute-path spellings. extdeps.tools.id's bare argv rows resolve through PATH, which is
+// right for a remote shell; the local witness-bin surface takes a binary path, and a sudoers rule
+// matches on one, so both spellings are real and neither is the other's nickname.
+fn id_uid_argv_absolute() -> List<String> {
+  [id_binary_path as String, "-u"]
+}
+
+fn id_gid_argv_absolute() -> List<String> {
+  [id_binary_path as String, "-g"]
+}
+
+type Srv3EffectiveOwner
+  = Srv3EffectiveOwnerObserved { owner: PosixOwnerSpec }
+  | Srv3EffectiveOwnerUnobserved { reason: String }
+
+// AN UNDECODABLE ID REFUSES; IT IS NOT CHOWNED TO. `id` printed SOMETHING and it is not a POSIX
+// id, which is a different state from "id printed nothing" and from "id was never run" -- and the
+// remedy differs: unparseable output means the probe's assumption about the host is wrong, and
+// retrying will produce the same text.
+fn srv3_owner_from_texts(uid_text: String, gid_text: String) -> Srv3EffectiveOwner {
+  match posix_user_id_from_text(text: uid_text) {
+    Absent =>
+      Srv3EffectiveOwnerUnobserved {
+        reason: concat("srv3 owner: `id -u` output is not a POSIX user id: ", uid_text),
+      }
+    Present { value: user } =>
+      match posix_group_id_from_text(text: gid_text) {
+        Absent =>
+          Srv3EffectiveOwnerUnobserved {
+            reason: concat("srv3 owner: `id -g` output is not a POSIX group id: ", gid_text),
+          }
+        Present { value: group } =>
+          Srv3EffectiveOwnerObserved {
+            owner: PosixOwnerSpec { user: user, group: group },
+          }
+      }
+  }
+}
+
+// THE PATH'S CURRENT OWNER, read independently of anything this process did to it.
+fn srv3_observe_path_owner(path: String, transport: HostEffectTransport) -> PathOwnershipObservation {
+  match srv3_transport_token(argv: stat_owner_user_argv(path: path), transport: transport) {
+    Srv3TokenUnobserved { reason: why } => PathOwnerUnobserved { reason: why }
+    Srv3TokenAbsent =>
+      PathOwnerUnobserved {
+        reason: concat("srv3 owner: `stat -c %u` produced no output for ", path),
+      }
+    Srv3TokenObserved { value: uid_text } =>
+      match srv3_transport_token(argv: stat_owner_group_argv(path: path), transport: transport) {
+        Srv3TokenUnobserved { reason: why } => PathOwnerUnobserved { reason: why }
+        Srv3TokenAbsent =>
+          PathOwnerUnobserved {
+            reason: concat("srv3 owner: `stat -c %g` produced no output for ", path),
+          }
+        Srv3TokenObserved { value: gid_text } =>
+          srv3_path_owner_from_texts(uid_text: uid_text, gid_text: gid_text, path: path)
+      }
+  }
+}
+
+fn srv3_path_owner_from_texts(
+  uid_text: String,
+  gid_text: String,
+  path: String,
+) -> PathOwnershipObservation {
+  match srv3_owner_from_texts(uid_text: uid_text, gid_text: gid_text) {
+    Srv3EffectiveOwnerUnobserved { reason: why } =>
+      PathOwnerUnobserved { reason: concat(concat("srv3 owner of ", path), concat(": ", why)) }
+    Srv3EffectiveOwnerObserved { owner: o } => PathOwnerObserved { owner: o }
+  }
+}
+
+// OWNERSHIP IS ENSURED BY READBACK, NOT BY EXIT STATUS -- and this is the stage where that
+// distinction was previously absent. The predecessor ran an elevated chown and returned
+// Holds/Fails from the process result, so "the chown exited zero" and "the directory is owned by
+// us" were the same claim. They are not: a chown that followed a symlink, or that raced a replaced
+// path, or that ran under a sudoers rule permitting the binary but not the target, can exit zero
+// having converged nothing.
+//
+// The chown's own result is deliberately not consulted for the verdict. It cannot be: the verdict
+// comes from path_ownership_verdict, which takes the readback and the desired owner and has
+// nowhere to put a process result. A failed chown surfaces as the readback disagreeing.
+fn srv3_ensure_directory_owned_by_current_user(
   path: String,
   transport: HostEffectTransport,
 ) -> Srv3HostPredicate {
-  match uid {
-    Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
-    Srv3TokenAbsent => Srv3PredicateFails
-    Srv3TokenObserved { value: uid_value } =>
-      match gid {
-        Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
-        Srv3TokenAbsent => Srv3PredicateFails
-        Srv3TokenObserved { value: gid_value } =>
-          srv3_transport_witness_bin_success(
-            transport: transport,
-            workdir: "/",
-            bin_path: "/usr/bin/sudo",
-            args: srv3_actuator_toolchain_chown_args(
-              owner: concat(uid_value, concat(":", gid_value)),
-              path: path,
-            ),
-          )
-      }
+  match srv3_effective_owner(transport: transport) {
+    Srv3EffectiveOwnerUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+    Srv3EffectiveOwnerObserved { owner: desired } =>
+      srv3_converge_path_owner(
+        desired: desired,
+        decision: path_ownership_decision(
+          desired: desired,
+          observed: srv3_observe_path_owner(path: path, transport: transport),
+        ),
+        path: path,
+        transport: transport,
+      )
   }
 }
 
-fn srv3_privileged_apt_install(package: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
-  srv3_transport_witness_bin_success(
+// THE ALREADY-SATISFIED ARM PERFORMS NO PRIVILEGED INVOCATION AT ALL, which on a converge that has
+// already run is every invocation this stage would have made.
+fn srv3_converge_path_owner(
+  desired: PosixOwnerSpec,
+  decision: PathOwnershipDecision,
+  path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match decision {
+    OwnershipDecisionRefused { reason: why } => Srv3PredicateUnobserved { reason: why }
+    OwnershipAlreadySatisfied { owner: _ } => Srv3PredicateHolds
+    OwnershipMutationRequired { current: _, desired: target } =>
+      srv3_chown_then_read_back(desired: target, path: path, transport: transport)
+  }
+}
+
+// THE MUTATION IS SEQUENCED BY A `let` INSIDE THIS ARM, NOT BY ARGUMENT POSITION. An earlier
+// revision passed the chown as an argument and defended it in a comment as "deliberately
+// load-bearing eagerness". That reinstates exactly the footgun this sequence of cuts exists to
+// remove: implicit evaluation order is not a sequencing authority, and the fact that eagerness
+// happened to be what I wanted this time does not make it one -- the next reader cannot tell a
+// deliberate one from the accident that put a privileged apt install in an argument (side-chat
+// review of #8760).
+fn srv3_chown_then_read_back(
+  desired: PosixOwnerSpec,
+  path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  let attempt = srv3_chown_attempt(
+    outcome: srv3_elevated_witness_bin_success(
+      transport: transport,
+      command: chown_argv(owner: desired, path: path),
+    ),
+  )
+  srv3_readback_after_attempt(
+    desired: desired,
+    attempt: attempt,
+    path: path,
     transport: transport,
-    workdir: "/",
-    bin_path: "/usr/bin/sudo",
-    args: srv3_actuator_toolchain_privileged_apt_install_args(package: package),
   )
 }
 
-fn srv3_actuator_toolchain_privileged_apt_install_args(package: NonEmptyStr) -> List<String> {
+fn srv3_chown_attempt(outcome: Srv3HostPredicate) -> ChownAttemptObservation {
+  match outcome {
+    Srv3PredicateHolds => ChownReportedSuccess
+    Srv3PredicateFails => ChownReportedFailure
+    Srv3PredicateUnobserved { reason: why } => ChownNotDispatched { cause: why }
+  }
+}
+
+// A CHOWN THAT WAS NEVER DISPATCHED SKIPS THE READBACK. Not as an optimization: a readback there
+// would describe a host nobody touched, and reporting its answer as the result of an ensure that
+// never ran is the fabrication in miniature. Both DISPATCHED arms read back, and identically --
+// a reported failure is no more evidence about the filesystem than a reported success.
+fn srv3_readback_after_attempt(
+  desired: PosixOwnerSpec,
+  attempt: ChownAttemptObservation,
+  path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match attempt {
+    ChownNotDispatched { cause: why } => Srv3PredicateUnobserved { reason: why }
+    ChownReportedSuccess =>
+      srv3_path_owner_readback(desired: desired, attempt: attempt, path: path, transport: transport)
+    ChownReportedFailure =>
+      srv3_path_owner_readback(desired: desired, attempt: attempt, path: path, transport: transport)
+  }
+}
+
+fn srv3_path_owner_readback(
+  desired: PosixOwnerSpec,
+  attempt: ChownAttemptObservation,
+  path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  srv3_predicate_from_ownership_outcome(
+    outcome: path_ownership_verdict(
+      desired: desired,
+      attempt: attempt,
+      readback: srv3_observe_path_owner(path: path, transport: transport),
+    ),
+  )
+}
+
+fn srv3_predicate_from_ownership_outcome(outcome: PathOwnershipEnsureOutcome) -> Srv3HostPredicate {
+  match outcome {
+    PathAlreadyOwned { owner: _ } => Srv3PredicateHolds
+    PathOwnershipConvergedAfterAttempt { owner: _, attempt: _ } => Srv3PredicateHolds
+    PathOwnershipEnsureRefused { reason: why } => Srv3PredicateUnobserved { reason: why }
+  }
+}
+
+// EVERY PRIVILEGED LEAF IN THIS FILE GOES THROUGH HERE, so sudo's calling convention is stated
+// once. Four call sites each carried `bin_path: "/usr/bin/sudo"` beside an args list beginning
+// with a bare "-n"; the binary and the flag are facts about sudo, not about chown, mkdir or
+// apt-get, and extdeps.sudo.elevation is where they belong.
+// THE EXECUTION SURFACE IS SEALED TO ITS NAMED CALLERS, and the seal's REACH IS MEASURED RATHER
+// THAN ASSERTED, because the obvious reading of `admit_callers` overstates what it does.
+//
+// WHAT IS CLOSED, confirmed by execution: no OTHER MODULE can run an argv on a transport, elevated
+// or not. A foreign caller refuses at resolve with a diagnostic naming the permitted set --
+// "constructor call admission refused: 'gunbc.host_effect_realize.srv3_elevated_witness_bin_success'
+// refuses call from 'test.claim.srv3_seal_probe.a_foreign_module_may_not_run_a_privileged_argv' --
+// permitted callers: [...]". That is the property this cut is for: a caller outside this module can
+// name a semantic operation (ensure this tool, ensure this owner) and cannot name the machinery
+// that executes it.
+//
+// WHAT IS NOT CLOSED, and this is the part a reader would get wrong: the wall does NOT confine
+// SAME-MODULE callers. A probe function added to this very module, absent from the admitted list,
+// calling srv3_elevated_witness_bin_success with ["/bin/rm", "-rf", "/"], typechecked and resolved
+// with no diagnostic at all. Both halves were measured on the same build; reporting only the
+// refusal would be the rung inflation DESIGN section 4b names as worse than sitting low.
+//
+// So the rung is MECHANICALLY PREVENTABLE at the module boundary and NOTHING at all within it. The
+// admitted lists below are therefore two facts at once: an enforced wall against foreign callers,
+// and a declaration of intent for in-module ones that no mechanism currently checks. NEXT-RUNG
+// TRIGGER: admission checked per caller rather than per module. Until that lands, an in-module
+// caller added to either of these functions is caught by review or by nothing.
+//
+// The lists were derived by walking the module rather than by reading the call sites: my first
+// hand-read attributed two calls to the wrong enclosing function and invented a fifth caller that
+// does not exist. Nothing would have caught that -- an in-module list the compiler does not check
+// is a list nothing verifies, which is the second reason the next-rung trigger matters.
+// THE ARGV-SHAPED SIBLING. Every extdeps tool row returns a complete argv, and the witness-bin
+// surface takes a binary and its tail separately, so each caller was splitting the argv back apart
+// by hand at the call site -- or, more often, not building one at all and passing a literal binary
+// beside a literal args list. This splits it once.
+fn srv3_transport_argv_success(
+  transport: HostEffectTransport,
+  argv: List<String>,
+) -> Srv3HostPredicate
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "websocat_stage_ensure_executable_mode"),
+  ]
+{
+  match argv {
+    Empty =>
+      Srv3PredicateUnobserved { reason: "srv3 exec: an empty argv names no binary to run" }
+    Cons { head: bin, tail: rest } =>
+      srv3_transport_witness_bin_success(
+        transport: transport,
+        workdir: "/",
+        bin_path: bin,
+        args: rest,
+      )
+  }
+}
+
+fn srv3_elevated_witness_bin_success(
+  transport: HostEffectTransport,
+  command: List<String>,
+) -> Srv3HostPredicate
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_privileged_apt_install"),
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_chown_then_read_back"),
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "websocat_stage_ensure_directory"),
+  ]
+{
+  let elevated = sudo_elevate(command: command)
+  srv3_transport_witness_bin_success(
+    transport: transport,
+    workdir: "/",
+    bin_path: elevated.bin_path,
+    args: elevated.args,
+  )
+}
+
+fn srv3_privileged_apt_install(package: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
+  srv3_elevated_witness_bin_success(
+    transport: transport,
+    command: srv3_actuator_toolchain_apt_install_command(package: package),
+  )
+}
+
+// THE COMMAND, NOT THE ELEVATED INVOCATION. This is the argv apt-get would take unprivileged;
+// elevation is applied to it rather than spelled inside it, so "which flag makes sudo
+// non-interactive" is not a fact this function has an opinion about.
+fn srv3_actuator_toolchain_apt_install_command(package: NonEmptyStr) -> List<String> {
   [
-    "-n",
     apt_get_binary_path as String,
     "install",
     "-y",
@@ -1615,8 +1910,9 @@ fn srv3_actuator_toolchain_websocat_release_download_url() -> String {
 }
 
 fn srv3_actuator_toolchain_realizer_apt_install_is_privileged_gated() -> Bool {
-  let args = srv3_actuator_toolchain_privileged_apt_install_args(package: package_curl)
-  args == ["-n", apt_get_binary_path as String, "install", "-y", package_curl as String]
+  let elevated = sudo_elevate(command: srv3_actuator_toolchain_apt_install_command(package: package_curl))
+  elevated.bin_path == sudo_binary_path as String &&
+    elevated.args == ["-n", apt_get_binary_path as String, "install", "-y", package_curl as String]
 }
 
 fn srv3_actuator_toolchain_realizer_websocat_uses_github_release_not_apt() -> Bool {
@@ -1868,10 +2164,40 @@ fn websocat_trace_labels(walk: WebsocatWalk) -> List<String> {
 // or list position -- those were the two shapes that made the previous body run mutations it had
 // no business running.
 //
-// The nesting is deliberate and is not a fold: each stage needs a different effect and some need
-// values the previous stage produced (the resolved curl path), so a uniform step function would
-// have to carry a union of every stage's inputs. The sequencing decision is still folded -- that
-// is websocat_after, which this driver and the trace witness both consume.
+// The chain is not a fold: each stage needs a different effect and some need values the previous
+// stage produced (the resolved curl path), so a uniform step function would have to carry a union
+// of every stage's inputs. The sequencing decision IS folded -- that is websocat_after, which this
+// driver and the trace witness both consume.
+// THE DRIVER DEPENDS ON THE STAGE websocat_after NAMED, rather than assuming it. This closes a
+// real fork that the first cut left open and the first mutation could not see: every driver site
+// matched `WebsocatContinue { next: _ }` and then ran the stage it expected, so websocat_after was
+// the sole authority for STOP-OR-CONTINUE while the stage EDGE was hardcoded a second time in the
+// driver. Rewriting an edge -- EnsureDirectory continuing to Download instead of EnsureOwnership --
+// would have reddened the trace, which follows `next`, while production carried on in its original
+// order. Two authorities agreeing today is not one authority (raised in side-chat review).
+//
+// Comparison goes through websocat_stage_label because that fold is already the total, exhaustive
+// projection of the stage type; adding a second equality over the same coproduct would be the fork
+// this function exists to remove.
+fn websocat_edge_admits(actual: WebsocatStage, expected: WebsocatStage) -> Bool {
+  websocat_stage_label(stage: actual) == websocat_stage_label(stage: expected)
+}
+
+// A DISAGREEMENT REFUSES; IT DOES NOT PROCEED AND IT DOES NOT GUESS. The driver cannot honour a
+// transition it does not implement, and running the stage it happens to have code for would be the
+// absorbing fallback -- carrying on because carrying on is available.
+fn websocat_edge_disagreement(actual: WebsocatStage, expected: WebsocatStage) -> Srv3HostPredicate {
+  Srv3PredicateUnobserved {
+    reason: join([
+      "srv3 websocat: the sequence authority named stage ",
+      websocat_stage_label(stage: actual),
+      " but this driver site implements ",
+      websocat_stage_label(stage: expected),
+      " -- the walk and the driver disagree about the stage order, so no host was touched",
+    ], ""),
+  }
+}
+
 fn srv3_ensure_websocat(transport: HostEffectTransport) -> Srv3HostPredicate {
   let install_path = websocat_install_path as String
   match websocat_after(
@@ -1880,12 +2206,62 @@ fn srv3_ensure_websocat(transport: HostEffectTransport) -> Srv3HostPredicate {
   ) {
     WebsocatAlreadySatisfied => Srv3PredicateHolds
     WebsocatStop { verdict: v } => v
-    WebsocatContinue { next: _ } =>
-      match srv3_tool_bin_path(tool_name: curl_cli_tool.name, transport: transport) {
-        Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
-        Srv3TokenAbsent => Srv3PredicateFails
-        Srv3TokenObserved { value: curl_path } =>
-          srv3_websocat_install_from(
+    WebsocatContinue { next: n } =>
+      match websocat_edge_admits(actual: n, expected: ResolveCurl) {
+        false => websocat_edge_disagreement(actual: n, expected: ResolveCurl)
+        true =>
+          match srv3_tool_bin_path(tool_name: curl_cli_tool.name, transport: transport) {
+            Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+            Srv3TokenAbsent => Srv3PredicateFails
+            Srv3TokenObserved { value: curl_path } =>
+              srv3_websocat_install_from(
+                curl_path: curl_path,
+                install_path: install_path,
+                transport: transport,
+              )
+          }
+      }
+  }
+}
+
+// ONE FUNCTION PER STAGE, rather than one function nesting five matches. The nesting was not a
+// style problem: at depth five, adding the edge check to each site pushed the effect bodies far
+// enough right that the thing being guarded stopped being visible beside its guard. Each stage now
+// runs its own effect, consults the sequence authority, checks that the authority named the stage
+// this chain implements next, and calls it. The stage order therefore appears exactly once as data
+// (in websocat_after) and once as a call graph that refuses when the two disagree.
+fn srv3_websocat_install_from(
+  curl_path: String,
+  install_path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  websocat_stage_ensure_directory(
+    curl_path: curl_path,
+    install_path: install_path,
+    transport: transport,
+  )
+}
+
+fn websocat_stage_ensure_directory(
+  curl_path: String,
+  install_path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  let bin_dir = gunbc_bin_dir as String
+  match websocat_after(
+    stage: EnsureDirectory,
+    outcome: srv3_elevated_witness_bin_success(
+      transport: transport,
+      command: mkdir_parents_argv(path: bin_dir),
+    ),
+  ) {
+    WebsocatAlreadySatisfied => Srv3PredicateHolds
+    WebsocatStop { verdict: v } => v
+    WebsocatContinue { next: n } =>
+      match websocat_edge_admits(actual: n, expected: EnsureOwnership) {
+        false => websocat_edge_disagreement(actual: n, expected: EnsureOwnership)
+        true =>
+          websocat_stage_ensure_ownership(
             curl_path: curl_path,
             install_path: install_path,
             transport: transport,
@@ -1894,68 +2270,89 @@ fn srv3_ensure_websocat(transport: HostEffectTransport) -> Srv3HostPredicate {
   }
 }
 
-fn srv3_websocat_install_from(
+fn websocat_stage_ensure_ownership(
   curl_path: String,
   install_path: String,
   transport: HostEffectTransport,
 ) -> Srv3HostPredicate {
-  let bin_dir = gunbc_bin_dir as String
   match websocat_after(
-    stage: EnsureDirectory,
-    outcome: srv3_transport_witness_bin_success(
+    stage: EnsureOwnership,
+    outcome: srv3_ensure_directory_owned_by_current_user(
+      path: gunbc_bin_dir as String,
       transport: transport,
-      workdir: "/",
-      bin_path: "/usr/bin/sudo",
-      args: ["mkdir", "-p", bin_dir],
     ),
   ) {
     WebsocatAlreadySatisfied => Srv3PredicateHolds
     WebsocatStop { verdict: v } => v
-    WebsocatContinue { next: _ } =>
-      match websocat_after(
-        stage: EnsureOwnership,
-        outcome: srv3_chown_directory_to_current_user(path: bin_dir, transport: transport),
-      ) {
-        WebsocatAlreadySatisfied => Srv3PredicateHolds
-        WebsocatStop { verdict: v } => v
-        WebsocatContinue { next: _ } =>
-          match websocat_after(
-            stage: Download,
-            outcome: srv3_transport_witness_bin_success(
+    WebsocatContinue { next: n } =>
+      match websocat_edge_admits(actual: n, expected: Download) {
+        false => websocat_edge_disagreement(actual: n, expected: Download)
+        true =>
+          websocat_stage_download(
+            curl_path: curl_path,
+            install_path: install_path,
+            transport: transport,
+          )
+      }
+  }
+}
+
+fn websocat_stage_download(
+  curl_path: String,
+  install_path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match websocat_after(
+    stage: Download,
+    outcome: srv3_transport_witness_bin_success(
+      transport: transport,
+      workdir: "/",
+      bin_path: curl_path,
+      args: [
+        "-fsSL",
+        srv3_actuator_toolchain_websocat_release_download_url(),
+        "-o",
+        install_path,
+      ],
+    ),
+  ) {
+    WebsocatAlreadySatisfied => Srv3PredicateHolds
+    WebsocatStop { verdict: v } => v
+    WebsocatContinue { next: n } =>
+      match websocat_edge_admits(actual: n, expected: EnsureExecutableMode) {
+        false => websocat_edge_disagreement(actual: n, expected: EnsureExecutableMode)
+        true =>
+          websocat_stage_ensure_executable_mode(
+            install_path: install_path,
+            transport: transport,
+          )
+      }
+  }
+}
+
+fn websocat_stage_ensure_executable_mode(
+  install_path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match websocat_after(
+    stage: EnsureExecutableMode,
+    outcome: srv3_transport_argv_success(
+      transport: transport,
+      argv: chmod_add_executable_argv(path: install_path),
+    ),
+  ) {
+    WebsocatAlreadySatisfied => Srv3PredicateHolds
+    WebsocatStop { verdict: v } => v
+    WebsocatContinue { next: n } =>
+      match websocat_edge_admits(actual: n, expected: Readback) {
+        false => websocat_edge_disagreement(actual: n, expected: Readback)
+        true =>
+          websocat_after_readback(
+            outcome: srv3_transport_test_executable(
+              path: install_path,
               transport: transport,
-              workdir: "/",
-              bin_path: curl_path,
-              args: [
-                "-fsSL",
-                srv3_actuator_toolchain_websocat_release_download_url(),
-                "-o",
-                install_path,
-              ],
             ),
-          ) {
-            WebsocatAlreadySatisfied => Srv3PredicateHolds
-            WebsocatStop { verdict: v } => v
-            WebsocatContinue { next: _ } =>
-              match websocat_after(
-                stage: EnsureExecutableMode,
-                outcome: srv3_transport_witness_bin_success(
-                  transport: transport,
-                  workdir: "/",
-                  bin_path: "/bin/chmod",
-                  args: ["+x", install_path],
-                ),
-              ) {
-                WebsocatAlreadySatisfied => Srv3PredicateHolds
-                WebsocatStop { verdict: v } => v
-                WebsocatContinue { next: _ } =>
-                  websocat_after_readback(
-                    outcome: srv3_transport_test_executable(
-                      path: install_path,
-                      transport: transport,
-                    ),
-                  )
-              }
-          }
+          )
       }
   }
 }
@@ -1967,7 +2364,7 @@ fn websocat_after_readback(outcome: Srv3HostPredicate) -> Srv3HostPredicate {
   match websocat_after(stage: Readback, outcome: outcome) {
     WebsocatAlreadySatisfied => Srv3PredicateHolds
     WebsocatStop { verdict: v } => v
-    WebsocatContinue { next: _ } => Srv3PredicateFails
+    WebsocatContinue { next: n } => websocat_edge_disagreement(actual: n, expected: Readback)
   }
 }
 
@@ -2015,40 +2412,98 @@ fn srv3_toolchain_observed(success: Bool, stdout: String) -> ShellExecObserved {
   }
 }
 
+// HOW A TOOL IS ACQUIRED IS A ROW, NOT A CALL SITE. Four hand-written ensures sat here, three
+// calling the apt path and one calling the websocat path, so "which mechanism installs this tool"
+// was expressed only by which function the author happened to call -- and the receipt that reports
+// them was a hand-built concat chain naming each tool twice, once as a literal and once as a
+// variable. Adding a tool meant editing three places and remembering the fourth.
+//
+// require_version_probe lives INSIDE the apt variant rather than beside the acquisition, because
+// the release path has no version probe to require. As a peer field it was a value one variant
+// ignored -- a state the type admitted and the code silently dropped.
+type Srv3ToolAcquisition
+  = AcquireViaAptPackage { package: NonEmptyStr, require_version_probe: Bool }
+  | AcquireViaWebsocatRelease
+
+type Srv3ToolRow {
+  tool_name: NonEmptyStr
+  acquisition: Srv3ToolAcquisition
+}
+
+// THE DISPATCH IS THE ONLY PLACE A MECHANISM IS CHOSEN, and it is total over the acquisition
+// coproduct: a new mechanism is a variant, and this match refuses to compile until it is answered.
+fn srv3_ensure_tool(row: Srv3ToolRow, transport: HostEffectTransport) -> Srv3HostPredicate {
+  match row.acquisition {
+    AcquireViaAptPackage { package: p, require_version_probe: needs_version } =>
+      srv3_ensure_apt_tool(
+        tool_name: row.tool_name,
+        package: p,
+        require_version_probe: needs_version,
+        transport: transport,
+      )
+    AcquireViaWebsocatRelease => srv3_ensure_websocat(transport: transport)
+  }
+}
+
+fn srv3_toolchain_rows() -> List<Srv3ToolRow> {
+  [
+    Srv3ToolRow {
+      tool_name: curl_cli_tool.name,
+      acquisition: AcquireViaAptPackage { package: package_curl, require_version_probe: true },
+    },
+    Srv3ToolRow {
+      tool_name: nbdkit_cli_tool.name,
+      acquisition: AcquireViaAptPackage { package: package_nbdkit, require_version_probe: true },
+    },
+    Srv3ToolRow {
+      tool_name: socat_cli_tool.name,
+      acquisition: AcquireViaAptPackage { package: package_socat, require_version_probe: false },
+    },
+    Srv3ToolRow {
+      tool_name: websocat_cli_tool.name,
+      acquisition: AcquireViaWebsocatRelease,
+    },
+  ]
+}
+
+type Srv3ToolObservation {
+  tool_name: NonEmptyStr
+  verdict: Srv3HostPredicate
+}
+
+// THE RECEIPT IS DERIVED FROM THE SAME ROWS THE ENSURE WALKED, so a tool cannot appear in one and
+// not the other, and its label cannot disagree with its row.
+fn srv3_tool_receipt_entry(observation: Srv3ToolObservation) -> String {
+  concat(
+    concat(observation.tool_name as String, "="),
+    srv3_predicate_label(p: observation.verdict),
+  )
+}
+
+fn srv3_toolchain_receipt(observations: List<Srv3ToolObservation>) -> String {
+  concat(
+    "OsInstallActuatorToolchainReceipt: ",
+    join(list_map(xs: observations, f: fn(o) { srv3_tool_receipt_entry(observation: o) }), " "),
+  )
+}
+
 fn srv3_realize_os_install_actuator_toolchain_ensure_body(
   transport: HostEffectTransport,
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let curl_ok = srv3_ensure_apt_tool(
-    tool_name: curl_cli_tool.name,
-    package: package_curl,
-    require_version_probe: true,
-    transport: transport,
+  let observations = list_map(
+    xs: srv3_toolchain_rows(),
+    f: fn(row) {
+      Srv3ToolObservation {
+        tool_name: row.tool_name,
+        verdict: srv3_ensure_tool(row: row, transport: transport),
+      }
+    },
   )
-  let nbdkit_ok = srv3_ensure_apt_tool(
-    tool_name: nbdkit_cli_tool.name,
-    package: package_nbdkit,
-    require_version_probe: true,
-    transport: transport,
+  let verdict = srv3_summarize_independent_observations(
+    steps: list_map(xs: observations, f: fn(o) { o.verdict }),
   )
-  let socat_ok = srv3_ensure_apt_tool(
-    tool_name: socat_cli_tool.name,
-    package: package_socat,
-    require_version_probe: false,
-    transport: transport,
-  )
-  let websocat_ok = srv3_ensure_websocat(transport: transport)
-  let verdict = srv3_summarize_independent_observations(steps: [curl_ok, nbdkit_ok, socat_ok, websocat_ok])
-  let stdout = concat(
-    concat(
-      concat(
-        concat("OsInstallActuatorToolchainReceipt: curl=", srv3_predicate_label(p: curl_ok)),
-        concat(" nbdkit=", srv3_predicate_label(p: nbdkit_ok)),
-      ),
-      concat(" socat=", srv3_predicate_label(p: socat_ok)),
-    ),
-    concat(" websocat=", srv3_predicate_label(p: websocat_ok)),
-  )
+  let stdout = srv3_toolchain_receipt(observations: observations)
   match verdict {
     Srv3PredicateUnobserved { reason: why } =>
       NotConverged {

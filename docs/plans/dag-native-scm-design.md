@@ -283,18 +283,50 @@ Without capture, nothing can tell from two file endpoints which proposal, deleti
 the author intended, and claiming otherwise reconstructs patch inference under new vocabulary. So
 the first slice merges **explicitly authored proposals**, and says so.
 
-Three operations. No base, no ancestor, no parent, no branch pointer, no working copy, no patch:
+Three operations. No base, no ancestor, no parent, no branch pointer, no working copy, no patch.
+**This is the shipped signature, corrected 2026-08-21 against `dag/gunbc/scm/merge.dag` as merged in
+#8719** — the draft below it specified a two-proposal call and a `ChoiceRequired` arm, neither of
+which exists, and a stale authority describing an operation nobody can invoke is the premise
+contamination DESIGN documents against its own CI paragraph:
 
 ```
-merge(store, first, second) -> Merged { store, commit } | ChoiceRequired | CouldNotLand
+merge(store, target, target_dependencies, proposals)
+  -> Merged { store, commit, roles }
+   | MergeRolesContested { role, alternatives }
+   | MergeRefused { cause }
 accept(store, commit, authority, contract) -> appended; never changes the commit
 checkout(store, commit) -> CheckedOut { program } | CheckoutRefused { cause }
 ```
 
-A proposal is a set of `name -> object` requirements, meaning *the resulting program must contain
-this exact value at this named binding*. Distinct bindings combine by construction; the same exact
-object required twice deduplicates; two different objects at one binding produce `ChoiceRequired`
-carrying both candidates — never latest-wins, first-wins, or branch-priority-wins.
+**Why the signature grew a target and lost a proposal count** (operator direction, 2026-08-20). The
+two-proposal form had nothing to preserve *from*, so the only thing it could do with two proposals
+was union their bindings — which is neither the literal closed-scope reading nor a dependency model,
+and which ships a program referencing a deleted node when one proposal adds `k` depending on `f`
+while the other deletes `f`. The target supplies every fact outside the implication frontier, and
+**silence means preserve it**. Proposals became a list because a contest is a property of the whole
+population rather than of a pair.
+
+**Why the outcome arms are named for less than they conclude.** `MergeRefused` rather than
+`CouldNotLand`: the engine cannot establish terminality, since an unsupported dependency kind may be
+unmodelled implementation and a missing target root may be an incomplete fetch.
+`MergeRolesContested` rather than `ChoiceRequired`: that distinct alternatives exist is what this
+layer establishes; that a *user* must choose requires proving they survive the admitted equivalence
+quotient, that the candidate population is closed, and that no further machine work resolves them —
+none of which lives here. **`MergeRolesContested` is complete over the proposal population supplied
+to that call and proves nothing about global candidate-space closure.** That boundary is currently
+held by this paragraph and by the type name, not structurally; the landing seam is where it becomes
+structural.
+
+A proposal is a set of authored requirements — `RequireBinding { role, value }` or
+`RequireBindingAbsent { role }` — meaning *the resulting program must contain this exact value at
+this named binding*, or *must not bind this role at all*. Absence is authored rather than implied,
+because silence already means preserve: a delete expressed by omission would read as "leave it
+alone", the exact inversion of the request. Both sides normalize to a requested state
+(`DesiredRoleValue`) before any contest is decided, so identical authorings are **agreement**, not a
+question with identical alternatives. Distinct bindings combine by construction; two different
+requested states at one binding produce `MergeRolesContested` carrying **every** distinct
+alternative — accumulated over the whole population so arrival order cannot decide which evidence
+survives, and never latest-wins, first-wins, or branch-priority-wins.
 
 `checkout` follows exact object links from the commit root and consults **nothing else** — not
 names, branches, proposals, acceptances, or the live store beyond the identities it was given.
@@ -332,27 +364,61 @@ combination without identity.
 **Dogfood disposition:** a small controlled subject first. Making this repository's concurrent edits
 the first consumer would fuse a model proof with unrelated frontend and performance work.
 
+**Direction after `NATIVE-COMMIT-0`, operator ruling 2026-08-21: a CLI vertical before the depth
+recursion**, which reverses the "headline win is the next slice" ordering stated above. The reason is
+DESIGN §5's specification-without-execution trap rather than a change of view about which slice is
+more valuable. Nothing has ever *consumed* this kernel: the 15 claims in
+`test.claim.scm_merge_witness` are assertions **about** it, authored alongside it, and a witness
+suite is not a consumer. A CLI is the first artifact that uses the store, checkout, identity and
+merge together under conditions nobody authored to make them pass.
+
+The ordering is safe because **depth changes how `merge` combines, not how `add` authors**. A user
+adds a module either way; whether merge recurses into it is orthogonal, so the command surface built
+now survives the recursion landing later.
+
+The known cost, stated so it is designed for rather than discovered: a CLI makes the
+top-level-binding limitation *user-visible*, since the first thing anyone tries is editing two
+functions in one module — which today asks a question instead of combining. That refusal must say
+exactly that, in those terms, rather than reading as a defect.
+
 ## 8. Scenario corpus (retained)
 
 No merge kernel should be built without these. Each is a RED unless marked otherwise.
 
-**Structural merge**
+**Structural merge — with measured coverage as of 2026-08-21 (#8719 merged).** The corpus opens "no
+merge kernel should be built without these", and a kernel was built, so the honest thing is to state
+which of them it actually answers rather than leave the reader to assume. **4 of 13 are covered.**
+The `witness` column names the claim in `test.claim.scm_merge_witness`; the `blocked on` column says
+what would close each gap, because "uncovered" collapses three different situations — a gap the
+current grain could close today, a gap that needs the sub-node recursion, and a gap that needs
+vocabulary the model does not yet have at all.
 
-| scenario | required result |
-|---|---|
-| target changes an untouched named node | preserved, no conflict |
-| proposal edits one named child, target edits another | both preserved |
-| proposal deletes a subtree, target edits a descendant | conflict |
-| concurrent same-name add, same kind, different children | conflict |
-| one side changes node kind, other edits a child | conflict |
-| both sides produce an identical kind-changed subtree | clean |
-| unchanged-body rename | unique relocation candidate |
-| rename versus edit under the old name | conflict; the edit is not lost |
-| two sides move one subtree to different parents | conflict, never duplicated |
-| duplicate named siblings in any input | input refusal |
-| two different positional appends | conflict or explicit order choice |
-| distinct positional ordinals edited without shape change | both preserved |
-| only one side changed a node | **preserved — the §6 asymmetry regression control** |
+| scenario | required result | covered | witness / blocked on |
+|---|---|---|---|
+| target changes an untouched named node | preserved, no conflict | **yes** | `an_independent_sibling_is_preserved_exactly`, `an_empty_proposal_set_preserves_the_target` — preserved at *identity* grain, so it is object reuse rather than a recomputed equal |
+| proposal edits one named child, target edits another | both preserved | no | **sub-node recursion.** This is the headline win; the kernel is top-level-binding keyed and cannot express it |
+| proposal deletes a subtree, target edits a descendant | conflict | no | **sub-node recursion.** `dependent_add_and_delete_refuses` is the role-grain analogue — delete `f` while `k` requires it — and is *not* this scenario |
+| concurrent same-name add, same kind, different children | conflict | **yes** | `two_distinct_requests_for_one_role_are_contested` — different children give a different content hash, hence a distinct `DesiredRoleValue` |
+| one side changes node kind, other edits a child | conflict | no | **sub-node recursion** |
+| both sides produce an identical kind-changed subtree | clean | **yes**, degenerately | `the_same_request_authored_twice_is_not_a_contest` — identical results agree at top-level grain; the sub-node path is untested |
+| unchanged-body rename | unique relocation candidate | no | **no rename vocabulary.** Neither `Requirement` nor the outcome can express relocation |
+| rename versus edit under the old name | conflict; the edit is not lost | no | **no rename vocabulary** |
+| two sides move one subtree to different parents | conflict, never duplicated | no | **no move vocabulary** |
+| duplicate named siblings in any input | input refusal | no | **closable at the current grain.** Measured 2026-08-21: nothing in `gunbc.scm.*` or `v2.std.node` refuses a node carrying two children with one name. The nearest live behaviour is content-hash canonicalization *sorting* named edges, which orders duplicates rather than refusing them. This is the one structural gap that needs no new grain and no new vocabulary |
+| two different positional appends | conflict or explicit order choice | no | **positional merge**, an explicit §7 non-goal for this slice |
+| distinct positional ordinals edited without shape change | both preserved | no | **positional merge** |
+| only one side changed a node | **preserved — the §6 asymmetry regression control** | **yes** | `an_independent_sibling_is_preserved_exactly` |
+
+**What the partition says about the next slice.** Four gaps are one job — the sub-node recursion of
+§4's named-edge rule. Three are a second job needing rename/move vocabulary the model does not have.
+Two are the positional-merge non-goal. **One — duplicate named siblings — is closable now**, and it
+is the only structural scenario that neither waits on depth nor on new vocabulary, which makes it
+the cheapest real coverage available.
+
+**Coverage claims about this table must be measured, not recalled.** The number above was produced
+by joining the 15 claims in `test.claim.scm_merge_witness` against these rows one at a time. An
+earlier estimate from reading was "roughly five", which was close enough to feel safe and wrong
+enough to have mis-scoped the next slice.
 
 **Admission and capture**
 
