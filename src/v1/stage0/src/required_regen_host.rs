@@ -214,46 +214,45 @@ pub fn run_required_regen(
     let sources = super::regen_input_sources(&workspace)?;
     let authority_digest = authority_digest_from_sources(&sources)?;
 
-    let emitted = compile_stage0(&workspace)?;
-
-    let committed_basenames = committed_generated_basenames(&stage0_src)?;
-    if emitted.is_empty() {
-        return regen_refusal_outcome(
-            &workspace,
-            candidate_dir_rel,
-            receipt_rel,
-            commit_sha,
-            authority_digest,
-            "refusal: emit produced zero files".to_string(),
-        );
-    }
-    let emitted_basenames = generated_basenames_from_emit(&emitted);
-    let population_err = validate_compared_populations(&committed_basenames, &emitted_basenames);
-    if let Some(reason) = population_err {
-        return regen_refusal_outcome(
-            &workspace,
-            candidate_dir_rel,
-            receipt_rel,
-            commit_sha,
-            authority_digest,
-            reason,
-        );
-    }
-
-    let sync = compare_generated_surfaces(&stage0_src, &emitted, &committed_basenames)?;
-    // verify_hand_maintained writes scratch normalize files into candidate_dir; on a clean
-    // tree nothing has created that directory yet (write_emitted_tree does so later), so it
-    // must exist before this call.
-    fs::create_dir_all(&candidate_dir)
-        .map_err(|e| format!("create {}: {e}", candidate_dir.display()))?;
-    let hand = verify_hand_maintained(&emitted, &stage0_src, &candidate_dir)?;
-
-    let committed_digest =
-        tree_digest_for_basenames(&stage0_src, &committed_basenames, "committed")?;
-    let candidate_digest = tree_digest_from_map(&emitted, &committed_basenames)?;
-
-    let first_generation_equal = sync.matches && hand.unverifiable.is_empty();
-    let changed_paths = sync.drifted_paths.clone();
+    // PRODUCTION, THEN ADJUDICATION -- and the order is the whole repair.
+    //
+    // Every refusal below used to return BEFORE the candidate tree was written, so the run that
+    // refuses was exactly the run that destroyed the artifact needed to close it. The population
+    // arm is not a hypothetical: adding a module to the v1 seed closure emits a mirror the
+    // committed tree does not have, which is `emitted_not_committed` by construction on that
+    // module's first commit, and the author's only route to the file they are being told to
+    // commit is this tree.
+    //
+    // THIS IS WHY THE SHARED MEASUREMENT IS SPLIT IN TWO rather than called whole. The extraction
+    // main landed is right -- one producer of the drift fact, shared by the drift gate, the
+    // behavioural receipt and this path -- but it fused emit with adjudication, and a fused
+    // measurement can only refuse before anything is written. `emit_generated_surface` and
+    // `adjudicate_generated_surface` are the two halves; `measure_generated_surface` is still
+    // their composition and still the single entry for every caller that wants the whole answer,
+    // so nothing gained a second producer. This path is the one caller that needs to act BETWEEN
+    // them.
+    //
+    // Writing first is not a relaxation. The gate refuses exactly the same populations it refused
+    // before, with the same typed causes; what changes is that the emitter's product survives the
+    // refusal, because it is emit's output and not a reward for agreeing with the committed tree.
+    // Authority for the ordering: `v2.workflow.required_regen` `required_regen_run`, whose verdict
+    // arms cannot be spelled without the tree they judged.
+    let (emitted, emitted_basenames) = match emit_generated_surface(&workspace)? {
+        // EMIT PRODUCED NOTHING IS NOT A VERDICT ABOUT A TREE. Writing a receipt here would name a
+        // `candidate_artifact` no pass had written, which is the impersonation the receipt split
+        // above exists to end, one field over. `CandidateTreeUnproduced` in
+        // `v2.workflow.required_regen` is the modeled arm and it carries no tree; the host
+        // spelling of an outcome with no tree and no verdict is a refusal of the run itself.
+        GeneratedSurfaceEmit::EmitRefused { reason } => {
+            return Err(format!(
+                "{reason} — no candidate tree produced, nothing to compare"
+            ));
+        }
+        GeneratedSurfaceEmit::Emitted {
+            emitted,
+            emitted_basenames,
+        } => (emitted, emitted_basenames),
+    };
 
     if candidate_dir.exists() {
         fs::remove_dir_all(&candidate_dir)
@@ -262,7 +261,39 @@ pub fn run_required_regen(
     let fresh_src = candidate_dir.join("src");
     write_emitted_tree(&fresh_src, &emitted)?;
     copy_hand_maintained_support(&stage0_src, &fresh_src)?;
-    verify_candidate_tree(&fresh_src, &committed_basenames)?;
+    // Verified against what EMIT produced, not against what is committed. Those two populations
+    // are equal on a clean tree and differ in precisely the case this ordering exists to serve, so
+    // checking the committed population here would re-impose the refusal one line after the write
+    // and fail the producer on the run that needs it. The invariant a producer owes is that its
+    // own product landed whole.
+    verify_candidate_tree(&fresh_src, &emitted_basenames)?;
+
+    let (committed_basenames, sync) =
+        match adjudicate_generated_surface(&stage0_src, &emitted, &emitted_basenames)? {
+            GeneratedSurfaceAdjudicated::Refused { reason } => {
+                return regen_refusal_outcome(
+                    &workspace,
+                    candidate_dir_rel,
+                    receipt_rel,
+                    commit_sha,
+                    authority_digest,
+                    format!(
+                        "{reason} — the produced candidate tree is at {}",
+                        fresh_src.display()
+                    ),
+                );
+            }
+            GeneratedSurfaceAdjudicated::Measured { committed, sync } => (committed, sync),
+        };
+
+    let hand = verify_hand_maintained(&emitted, &stage0_src, &candidate_dir)?;
+
+    let committed_digest =
+        tree_digest_for_basenames(&stage0_src, &committed_basenames, "committed")?;
+    let candidate_digest = tree_digest_from_map(&emitted, &committed_basenames)?;
+
+    let first_generation_equal = sync.matches && hand.unverifiable.is_empty();
+    let changed_paths = sync.drifted_paths.clone();
 
     // Every field here was measured by THIS pass against THIS tree. The old shape also carried
     // `fixed_point_equal: false`, which was not a measurement at all -- the first pass never asks
@@ -429,6 +460,169 @@ pub fn run_required_regen_fixed_point(
     })
 }
 
+/// The emit-and-compare sequence, performed ONCE and in ONE place.
+///
+/// This exists because an earlier revision of this file had two producers of a single fact —
+/// which mirrors drifted. `measure_generated_drift` re-typed the same five calls that
+/// `run_required_regen` performs, and nothing kept the copies in step. The receipt is on the
+/// record: #8618 repaired a defect INSIDE `compare_generated_surfaces` (the committed side was
+/// being normalized, so the comparison was `normalize(normalize(x))` against `normalize(x)` — a
+/// false-positive drift with no reachable green). A repair landing in one of two copies of this
+/// sequence leaves the other answering the old way, and the copies agreeing on the day they are
+/// written is exactly what makes the duplication easy to leave in place.
+///
+/// The two callers genuinely differ, but they differ in their FAILURE POLICY, not in the
+/// measurement: `run_required_regen` routes a refusal to `regen_refusal_outcome`, which writes a
+/// receipt and returns `Ok` carrying failures, while the drift gate wants `Err`. So the refusal
+/// is returned as a value and each caller applies its own policy — one `match` at the call site
+/// rather than a second copy of the five calls above it.
+enum GeneratedSurfaceMeasured {
+    /// The comparison was taken. `emitted` and `committed` are returned because the regen path
+    /// needs them for the candidate tree and its digests, and recomputing them would mean running
+    /// the whole emit twice.
+    Measured {
+        emitted: HashMap<String, String>,
+        committed: Vec<String>,
+        /// Returned rather than recomputed by the caller: it is part of THIS measurement, and a
+        /// caller deriving it again would be a second producer of the same fact one level down.
+        emitted_basenames: Vec<String>,
+        sync: SyncReport,
+    },
+    /// The comparison could NOT be taken. This is ignorance, never "no drift" — see the refusal
+    /// note on `measure_generated_drift`.
+    Refused { reason: String },
+}
+
+/// What the emitter PRODUCED, before anything has been compared to it.
+///
+/// The half of the measurement that exists on its own because one caller must act between the two:
+/// `run_required_regen` writes the candidate tree here, so that a later adjudication refusal
+/// leaves the author holding the mirror it tells them to commit instead of destroying it.
+enum GeneratedSurfaceEmit {
+    Emitted {
+        emitted: HashMap<String, String>,
+        emitted_basenames: Vec<String>,
+    },
+    /// Emit itself produced nothing. Distinct from a comparison that could not be taken: there is
+    /// no candidate to have an opinion about, rather than an opinion that could not be formed.
+    EmitRefused { reason: String },
+}
+
+/// The verdict half: what the committed tree says about a candidate that already exists.
+enum GeneratedSurfaceAdjudicated {
+    Measured {
+        committed: Vec<String>,
+        sync: SyncReport,
+    },
+    /// Ignorance, never "no drift" -- same refusal semantics as `GeneratedSurfaceMeasured`.
+    Refused { reason: String },
+}
+
+fn emit_generated_surface(workspace: &Path) -> Result<GeneratedSurfaceEmit, String> {
+    let emitted = compile_stage0(workspace)?;
+    if emitted.is_empty() {
+        return Ok(GeneratedSurfaceEmit::EmitRefused {
+            reason: "refusal: emit produced zero files".to_string(),
+        });
+    }
+    let emitted_basenames = generated_basenames_from_emit(&emitted);
+    Ok(GeneratedSurfaceEmit::Emitted {
+        emitted,
+        emitted_basenames,
+    })
+}
+
+fn adjudicate_generated_surface(
+    stage0_src: &Path,
+    emitted: &HashMap<String, String>,
+    emitted_basenames: &[String],
+) -> Result<GeneratedSurfaceAdjudicated, String> {
+    let committed = committed_generated_basenames(stage0_src)?;
+    if let Some(reason) = validate_compared_populations(&committed, emitted_basenames) {
+        return Ok(GeneratedSurfaceAdjudicated::Refused { reason });
+    }
+    let sync = compare_generated_surfaces(stage0_src, emitted, &committed)?;
+    Ok(GeneratedSurfaceAdjudicated::Measured { committed, sync })
+}
+
+/// THE COMPOSITION, and still the single entry for every caller that wants the whole answer.
+///
+/// Splitting the two halves above did not create a second producer of anything: emit happens in
+/// exactly one place, adjudication in exactly one place, and this function is their sequence. The
+/// drift gate and the behavioural receipt call it unchanged; only the regen path, which has to
+/// write the candidate BETWEEN them, reaches for the halves.
+fn measure_generated_surface(
+    workspace: &Path,
+    stage0_src: &Path,
+) -> Result<GeneratedSurfaceMeasured, String> {
+    let (emitted, emitted_basenames) = match emit_generated_surface(workspace)? {
+        GeneratedSurfaceEmit::EmitRefused { reason } => {
+            return Ok(GeneratedSurfaceMeasured::Refused { reason })
+        }
+        GeneratedSurfaceEmit::Emitted {
+            emitted,
+            emitted_basenames,
+        } => (emitted, emitted_basenames),
+    };
+    match adjudicate_generated_surface(stage0_src, &emitted, &emitted_basenames)? {
+        GeneratedSurfaceAdjudicated::Refused { reason } => {
+            Ok(GeneratedSurfaceMeasured::Refused { reason })
+        }
+        GeneratedSurfaceAdjudicated::Measured { committed, sync } => {
+            Ok(GeneratedSurfaceMeasured::Measured {
+                emitted,
+                committed,
+                emitted_basenames,
+                sync,
+            })
+        }
+    }
+}
+
+/// The emitted generated surface, keyed by basename.
+///
+/// Routed through the SAME `measure_generated_surface` the drift gate and the regen path use, so
+/// the bytes a behavioural receipt compiles are the bytes the drift gate compared. A second emit
+/// here would be a second producer of the candidate itself -- the one fact a receipt absolutely
+/// cannot afford to have two of.
+pub fn emitted_generated_sources() -> Result<HashMap<String, String>, String> {
+    let workspace = workspace_root();
+    let stage0_src = workspace.join("src/v1/stage0/src");
+    let emitted = match measure_generated_surface(&workspace, &stage0_src)? {
+        GeneratedSurfaceMeasured::Refused { reason } => return Err(reason),
+        GeneratedSurfaceMeasured::Measured { emitted, .. } => emitted,
+    };
+    // KEYED BY BASENAME, and the conversion happens HERE rather than at the call site.
+    //
+    // Emit keys carry a `src/` prefix; everything that joins against a committed mirror keys on
+    // `file_name()`. `generated_basenames_from_emit` already carries the warning that comparing
+    // the two key spaces "made every file mismatch in both directions" -- and a caller of this
+    // function walked straight into it anyway, looking up `std_pareto.rs` in a map keyed by emit
+    // path and getting nothing. It refused rather than reporting equivalence, which is the design
+    // working, but the refusal was about the key space rather than about the candidate.
+    //
+    // Returning the raw map invites that mistake from every future caller. Doing the derivation
+    // once, through the same `emit_path_basename` the population census uses, removes it.
+    let mut out: HashMap<String, String> = HashMap::new();
+    for (path, content) in emitted {
+        if !path.ends_with(".rs") || is_hand_maintained_path(&path) {
+            continue;
+        }
+        let base = emit_path_basename(&path).to_string();
+        // A collision would silently drop one candidate and compare the wrong bytes. The flat
+        // generated surface makes basenames unique, so a duplicate means that assumption has
+        // stopped holding, and a receipt built on a stale assumption is worse than no receipt.
+        if let Some(prior) = out.insert(base.clone(), content) {
+            let _ = prior;
+            return Err(format!(
+                "refusal: two emitted paths share the basename {base}; the generated surface \
+                 is no longer flat and a basename join would compare the wrong candidate"
+            ));
+        }
+    }
+    Ok(out)
+}
+
 struct SyncReport {
     matches: bool,
     drifted_paths: Vec<String>,
@@ -529,14 +723,34 @@ fn validate_compared_populations(committed: &[String], emitted: &[String]) -> Op
             committed_not_emitted.push(name.clone());
         }
     }
-    if !emitted_not_committed.is_empty() || !committed_not_emitted.is_empty() {
-        return Some(format!(
-            "refusal: surface population mismatch — emitted_not_committed={:?} committed_not_emitted={:?}",
-            emitted_not_committed,
-            committed_not_emitted
+    // TWO OPPOSITE STATES, TWO REFUSALS, TWO REMEDIES -- this refused on their union, so a module
+    // being introduced was indistinguishable from the emitter having LOST a surface. Authority for
+    // the split: `v2.workflow.required_regen` `MirrorMissingForEmittedSurface` and
+    // `CommittedMirrorNoLongerEmitted`.
+    //
+    // NEITHER IS ADMITTED, and the first one is where that matters. "An author introduced a module"
+    // and "the emitter invented a surface nobody authored" produce the SAME population, and the
+    // second is what this check exists to catch, so no arm computed from the populations can tell
+    // them apart -- admitting the first would be this same conflation pointing the other way. The
+    // refusal therefore names the fork and leaves the decision with the author; what changed is
+    // that the install branch is now actionable, because the ordering above wrote the bytes before
+    // this check ran instead of discarding them.
+    let mut reasons = Vec::new();
+    if !emitted_not_committed.is_empty() {
+        reasons.push(format!(
+            "refusal: emitted surface has no committed mirror — {emitted_not_committed:?}; if you introduced these modules, install the produced mirror(s) named below and commit them; if you did not, the emitter produced a surface nobody authored and installing it would launder that"
         ));
     }
-    None
+    if !committed_not_emitted.is_empty() {
+        reasons.push(format!(
+            "refusal: committed mirror is no longer emitted — {committed_not_emitted:?}; the emitter stopped producing these surfaces, so either the authority that emitted them was removed on purpose (delete the committed mirror) or it regressed (restore it) — do NOT install anything for this class"
+        ));
+    }
+    if reasons.is_empty() {
+        None
+    } else {
+        Some(reasons.join(" | "))
+    }
 }
 
 fn verify_candidate_tree(

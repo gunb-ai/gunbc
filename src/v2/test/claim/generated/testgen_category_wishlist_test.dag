@@ -19,7 +19,8 @@ import v2.lens.testgen {
   default_generator_profile,
   generator_provenance,
   lbe_io_mock_conj_dag_surface,
-  lbe_subject_conj_dag_surface
+  lbe_subject_conj_dag_surface,
+  refinement_preservation_subject_nonempty_list_base
 }
 import v2.std.algebra { length }
 import v2.std.collection { List }
@@ -45,53 +46,8 @@ import v2.std.verification {
   generated_claim_anchor,
   manual_claim_anchor
 }
-import v2.std.diagnostic { Accepted, port_locus, Locus, Rejected }
-import v2.std.refinement {
-  Refined,
-  VacuousValidation,
-  vacuous_admits_marker,
-  Validation,
-  refine,
-  refined_vacuous_stub_pack
-}
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.test.manual.connective_anchors { stub_empty_conj }
-
-fn refinement_preservation_stub_locus() -> Locus {
-  port_locus(port: ^refinement_preservation_stub_locus_port)
-}
-
-fn refinement_preservation_stub_admits(xs: List<Node>) -> Bool {
-  true
-}
-
-data refinement_preservation_stub_validation: Validation<List<Node>> = Validation {
-  reason: ^refinement_preservation_stub_invalid,
-  admits: refinement_preservation_stub_admits
-}
-
-data refinement_preservation_stub_vacuous_validation: VacuousValidation<List<Node>> = VacuousValidation {
-  reason: ^refinement_preservation_stub_invalid,
-  vacuous: vacuous_admits_marker
-}
-
-fn refinement_preservation_stub_generator_refined_terminal() -> Refined<List<Node>> {
-  refined_vacuous_stub_pack(
-    base: [stub_empty_conj],
-    by: refinement_preservation_stub_vacuous_validation,
-    at: refinement_preservation_stub_locus()
-  )
-}
-
-fn refinement_preservation_stub_generator_refined() -> Refined<List<Node>> {
-  match refine(
-    base: [stub_empty_conj],
-    by: refinement_preservation_stub_validation,
-    at: refinement_preservation_stub_locus()
-  ) {
-    Accepted { value: refined, diagnostics: _ } => refined
-    Rejected { diagnostics: _ } => refinement_preservation_stub_generator_refined_terminal()
-  }
-}
 
 type TestgenOracleBasis
   = StructuralConstructionWitness
@@ -103,118 +59,140 @@ type TestgenOracleBasis
   | RefinementProjectionWitness
 
 type TestgenWishlistRow {
-  generator: Generator<TestgenConcept>
+  generator: Outcome<Generator<TestgenConcept>>
   oracle: TestgenOracleBasis
   dispatch_key: Symbol
 }
-fn wishlist_type_construction_generator() -> Generator<TestgenConcept> {
-  Generator {
-    kind: TestClaimCompilesClaimVariant,
-    classification: TestClassification { tier: Tier1, layer: Unit },
-    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-    slot: TypeConstruction {
-      subject: ConnectiveKernel { connective: Conj },
-    },
-    provenance: generator_provenance(id: ^wishlist_gen_id_type_construction),
-    profile_metadata: default_generator_profile(),
-  }
-}
-
-fn dispatched_algebra_law_generator() -> Generator<TestgenConcept> {
-  Generator {
-    kind: TestClaimEqualsClaimVariant,
-    classification: TestClassification { tier: Tier1, layer: Unit },
-    anchor: manual_claim_anchor(anchor: ManualNatAddAssociativity),
-    slot: AlgebraLaw {
-      subject: AlgebraLawSubject {
-        algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
-        inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
-        law: ^law_nat_add_associativity,
+fn wishlist_type_construction_generator() -> Outcome<Generator<TestgenConcept>> {
+  Accepted {
+    value: Generator {
+      kind: TestClaimCompilesClaimVariant,
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+      slot: TypeConstruction {
+        subject: ConnectiveKernel { connective: Conj },
       },
+      provenance: generator_provenance(id: ^wishlist_gen_id_type_construction),
+      profile_metadata: default_generator_profile(),
     },
-    provenance: generator_provenance(id: ^wishlist_gen_id_algebra_law),
-    profile_metadata: default_generator_profile(),
+    diagnostics: None,
   }
 }
 
-fn dispatched_diagnostic_exhaustiveness_generator() -> Generator<TestgenConcept> {
-  Generator {
-    kind: TestClaimDiagnosticClaimVariant,
-    classification: TestClassification { tier: Tier1, layer: Unit },
-    anchor: generated_claim_anchor(
-      anchor: GeneratedCoproductExhaustiveness {
+fn dispatched_algebra_law_generator() -> Outcome<Generator<TestgenConcept>> {
+  Accepted {
+    value: Generator {
+      kind: TestClaimEqualsClaimVariant,
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      anchor: manual_claim_anchor(anchor: ManualNatAddAssociativity),
+      slot: AlgebraLaw {
+        subject: AlgebraLawSubject {
+          algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
+          inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: ^law_nat_add_associativity,
+        },
+      },
+      provenance: generator_provenance(id: ^wishlist_gen_id_algebra_law),
+      profile_metadata: default_generator_profile(),
+    },
+    diagnostics: None,
+  }
+}
+
+fn dispatched_diagnostic_exhaustiveness_generator() -> Outcome<Generator<TestgenConcept>> {
+  Accepted {
+    value: Generator {
+      kind: TestClaimDiagnosticClaimVariant,
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      anchor: generated_claim_anchor(
+        anchor: GeneratedCoproductExhaustiveness {
+          coproduct_type: ^TestClaim,
+          omitted_variant: ^DiagnosticClaim,
+        }
+      ),
+      slot: DiagnosticExhaustiveness {
         coproduct_type: ^TestClaim,
         omitted_variant: ^DiagnosticClaim,
+      },
+      provenance: generator_provenance(id: ^wishlist_gen_id_diagnostic_exhaustiveness),
+      profile_metadata: default_generator_profile(),
+    },
+    diagnostics: None,
+  }
+}
+
+fn wishlist_lens_applicability_generator() -> Outcome<Generator<TestgenConcept>> {
+  Accepted {
+    value: Generator {
+      kind: TestClaimCompilesClaimVariant,
+      classification: TestClassification { tier: Tier2, layer: Integration },
+      anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+      slot: LensApplicability {
+        subject: LensApplicabilitySubject {
+          lens: ^t19_generator_wishlist_lens_structural_resolution,
+          program: stub_empty_conj,
+        },
+      },
+      provenance: generator_provenance(id: ^wishlist_gen_id_lens_applicability),
+      profile_metadata: default_generator_profile(),
+    },
+    diagnostics: None,
+  }
+}
+
+fn wishlist_bidirectional_roundtrip_generator() -> Outcome<Generator<TestgenConcept>> {
+  Accepted {
+    value: Generator {
+      kind: TestClaimRoundTripClaimVariant,
+      classification: TestClassification { tier: Tier3, layer: Integration },
+      anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+      slot: BidirectionalRoundtrip {
+        subject: BidirectionalRoundtripSubject {
+          language: ^dag_language_model_surface_id,
+          production: ^t19_generator_wishlist_dag_surface_production,
+        },
+      },
+      provenance: generator_provenance(id: ^wishlist_gen_id_bidirectional_roundtrip),
+      profile_metadata: default_generator_profile(),
+    },
+    diagnostics: None,
+  }
+}
+
+fn dispatched_language_behavior_equivalence_generator() -> Outcome<Generator<TestgenConcept>> {
+  Accepted {
+    value: Generator {
+      kind: TestClaimCompilesClaimVariant,
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      anchor: manual_claim_anchor(anchor: ManualLbeConjDagSurface),
+      slot: LanguageBehaviorEquivalence {
+        subject: lbe_subject_conj_dag_surface(),
+        mock: lbe_io_mock_conj_dag_surface(),
+      },
+      provenance: generator_provenance(id: ^wishlist_gen_id_language_behavior_equivalence),
+      profile_metadata: default_generator_profile(),
+    },
+    diagnostics: None,
+  }
+}
+
+fn dispatched_refinement_preservation_generator() -> Outcome<Generator<TestgenConcept>> {
+  match refinement_preservation_subject_nonempty_list_base() {
+    Accepted { value: subject, diagnostics: d } =>
+      Accepted {
+        value: Generator {
+          kind: TestClaimEqualsClaimVariant,
+          classification: TestClassification { tier: Tier1, layer: Unit },
+          anchor: manual_claim_anchor(anchor: ManualRefinementNonEmptyListBase),
+          slot: RefinementPreservation {
+            subject: subject,
+          },
+          provenance: generator_provenance(id: ^wishlist_gen_id_refinement_preservation),
+          profile_metadata: default_generator_profile(),
+        },
+        diagnostics: d,
       }
-    ),
-    slot: DiagnosticExhaustiveness {
-      coproduct_type: ^TestClaim,
-      omitted_variant: ^DiagnosticClaim,
-    },
-    provenance: generator_provenance(id: ^wishlist_gen_id_diagnostic_exhaustiveness),
-    profile_metadata: default_generator_profile(),
-  }
-}
-
-fn wishlist_lens_applicability_generator() -> Generator<TestgenConcept> {
-  Generator {
-    kind: TestClaimCompilesClaimVariant,
-    classification: TestClassification { tier: Tier2, layer: Integration },
-    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-    slot: LensApplicability {
-      subject: LensApplicabilitySubject {
-        lens: ^t19_generator_wishlist_lens_structural_resolution,
-        program: stub_empty_conj,
-      },
-    },
-    provenance: generator_provenance(id: ^wishlist_gen_id_lens_applicability),
-    profile_metadata: default_generator_profile(),
-  }
-}
-
-fn wishlist_bidirectional_roundtrip_generator() -> Generator<TestgenConcept> {
-  Generator {
-    kind: TestClaimRoundTripClaimVariant,
-    classification: TestClassification { tier: Tier3, layer: Integration },
-    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-    slot: BidirectionalRoundtrip {
-      subject: BidirectionalRoundtripSubject {
-        language: ^dag_language_model_surface_id,
-        production: ^t19_generator_wishlist_dag_surface_production,
-      },
-    },
-    provenance: generator_provenance(id: ^wishlist_gen_id_bidirectional_roundtrip),
-    profile_metadata: default_generator_profile(),
-  }
-}
-
-fn dispatched_language_behavior_equivalence_generator() -> Generator<TestgenConcept> {
-  Generator {
-    kind: TestClaimCompilesClaimVariant,
-    classification: TestClassification { tier: Tier1, layer: Unit },
-    anchor: manual_claim_anchor(anchor: ManualLbeConjDagSurface),
-    slot: LanguageBehaviorEquivalence {
-      subject: lbe_subject_conj_dag_surface(),
-      mock: lbe_io_mock_conj_dag_surface(),
-    },
-    provenance: generator_provenance(id: ^wishlist_gen_id_language_behavior_equivalence),
-    profile_metadata: default_generator_profile(),
-  }
-}
-
-fn dispatched_refinement_preservation_generator() -> Generator<TestgenConcept> {
-  Generator {
-    kind: TestClaimEqualsClaimVariant,
-    classification: TestClassification { tier: Tier1, layer: Unit },
-    anchor: manual_claim_anchor(anchor: ManualRefinementNonEmptyListBase),
-    slot: RefinementPreservation {
-      subject: RefinementPreservationSubject {
-        refined: refinement_preservation_stub_generator_refined(),
-        original: [stub_empty_conj],
-      },
-    },
-    provenance: generator_provenance(id: ^wishlist_gen_id_refinement_preservation),
-    profile_metadata: default_generator_profile(),
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
