@@ -207,7 +207,7 @@ with `failed=` read and PASS counted against the roster.
 2. **B2 — RESIDUE-UNMENTIONED, non-extdeps (53 of 67).** No citation to repair by
    construction. This is the batch to establish the mechanics on: lowest chance of an
    argument, per the review ruling.
-3. **B3 — RESIDUE-DOC-ONLY (32).** Deletion plus the doc/receipt citation repair in the
+3. **B3 — RESIDUE-DOC-ONLY (28).** Deletion plus the doc/receipt citation repair in the
    same diff.
 4. **B4 — the five `tools/` rows that are NOT on the re-add queue (finding d)**, including
    the superseded `tools.gunbc_ci`. The 15 FROZEN-PENDING-RE-ADD rows are in no batch: they
@@ -218,7 +218,7 @@ with `failed=` read and PASS counted against the roster.
 6. **B6+ — the extdeps islands (finding a, c)**, one island per PR, each gated on whether
    the citation is the deliverable.
 
-PROSE-NAMED (86) does not get a batch until each row's mention has been read; several will
+PROSE-NAMED (81) does not get a batch until each row's mention has been read; several will
 resolve to *missing consumer* and be wired up rather than deleted, which is the directive's
 second arm.
 
