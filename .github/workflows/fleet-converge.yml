@@ -181,7 +181,6 @@ jobs:
       - name: Fleet converge plan (membership_reconcile → artifact)
         id: plan
         run: |
-          # 🟡 dissolve-on: gunbc_ci_fleet_converge_plan_invoke — foreign-executor shell invoking fleet_converge_plan_wet; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet_converge_plan_cli.dag --function fleet_converge_plan_wet
         if: github.event.inputs.mode == 'plan'
@@ -210,13 +209,9 @@ jobs:
       - name: Fleet converge apply (CAS + generated apply.sh)
         id: apply
         run: |
-          # 🟡 dissolve-on: gunbc_ci_fleet_converge_apply_invoke — foreign-executor shell verifying plan hash then invoking fleet_converge_apply_wet; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
           set -euo pipefail
           ACTUAL="$(cat /tmp/fleet-converge-plan/plan_content.hex)"
-          if [ -z "${EXPECTED_HASH:-}" ] || [ "$EXPECTED_HASH" != "$ACTUAL" ]; then
-            echo "::error::PlanArtifactHashMismatch expected=$EXPECTED_HASH actual=$ACTUAL" >&2
-            exit 1
-          fi
+          if [ -z "${EXPECTED_HASH:-}" ] || [ "$EXPECTED_HASH" != "$ACTUAL" ]; then echo "::error::PlanArtifactHashMismatch expected=$EXPECTED_HASH actual=$ACTUAL" >&2; exit 1; fi
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet_converge_plan_cli.dag --function fleet_converge_apply_wet
         env:
@@ -226,7 +221,6 @@ jobs:
       - name: Spark serving linger converge (executor→target FleetSsh typed argv)
         id: spark_linger
         run: |
-          # 🟡 dissolve-on: gunbc_ci_spark_serving_converge_slice_invoke — foreign-executor shell invoking spark_serving_converge_slice_ci_wet (the runner-side entry: in-run ssh-agent, no gcloud, no Secret Manager fetch) with SPARK_CONVERGE_TARGET/SPARK_CONVERGE_EXECUTE env; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark_serving_converge_slice_wet.dag --function spark_serving_converge_slice_ci_wet
           cat "$ROOT/target/spark-serving-converge-slice-wet-receipt.txt"
@@ -238,7 +232,6 @@ jobs:
       - name: "Spark serving observation (read-only: unit state, runtime version, model tags, driver)"
         id: spark_observe
         run: |
-          # 🟡 dissolve-on: gunbc_ci_spark_serving_observe_invoke — foreign-executor shell invoking spark_serving_observe_ci_wet (runner-side, read-only: unit state, ollama version, model tags, driver); DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark_serving_observe.dag --function spark_serving_observe_ci_wet
           cat "$ROOT/target/spark-serving-observe-ci-receipt.txt"
