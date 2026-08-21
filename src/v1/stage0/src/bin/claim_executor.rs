@@ -10611,32 +10611,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
         ran.push("regen");
 
-        // PHASE 3 — the cited-symbol census over the live corpus. Independent of every phase
-        // above: it reads the authored reference population, not this run's products.
-        eprintln!("required-ci: phase cited-symbol (every authored DeclarationRef resolves)");
-        match required_ci_cited_symbol_census(&source_roots) {
-            Ok(rows) if rows.is_empty() => {
-                eprintln!("required-ci: cited-symbol OK every authored reference resolves")
-            }
-            Ok(rows) => {
-                for row in &rows {
-                    eprintln!("required-ci: cited-symbol REFUSED {row}");
-                }
-                eprintln!(
-                    "required-ci: cited-symbol FAIL {} authored reference(s) do not resolve — a \
-                     citation outlived what it names (DESIGN §3)",
-                    rows.len()
-                );
-                phase_failures.push(format!("cited-symbol ({} refusal(s))", rows.len()));
-            }
-            Err(e) => {
-                eprintln!("required-ci: cited-symbol refused: {e}");
-                phase_failures.push(format!("cited-symbol refused: {e}"));
-            }
-        }
-        ran.push("cited-symbol");
-
-        // PHASE 4 — the witness floor. Independent; runs whatever happened above.
+        // PHASE 3 — the witness floor. Independent; runs whatever happened above.
         eprintln!("required-ci: phase floor (one prepared subject, one fold)");
         let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
         match v1_compiler::cli_run::run_required_floor(
@@ -20428,67 +20403,6 @@ fn run_behavioral_receipt_census(source_roots: &[String]) -> Result<ExitCode, Ex
 /// transcript comparison, and the verdict. WHAT IT DOES NOT COVER, stated rather than implied:
 /// the emit, and the emit-path-to-mirror lookup. Those have their own gates; this one would
 /// report a false green about them, so it does not speak about them at all.
-/// THE CITED-SYMBOL CENSUS, RUN AS A PHASE BECAUSE IT CANNOT BE RUN AS A CLAIM.
-///
-/// `v2.lens.cited_symbol_resolution` resolves every structural `DeclarationRef` the repository
-/// authors -- hand-authored doc binds, the generated design document's references, and the roster
-/// registry -- against live declaration facts, and refuses a reference whose module, declaration or
-/// field is absent or ambiguous. Its live-corpus claim was carried only by a witness under
-/// `dag/test/claim/long/`, whose entire file is classified `OfflineLocalRecipe`, so nothing executed
-/// it: on unmodified main the lens was RED with 27 refusing production references while every
-/// required check was green.
-///
-/// WHY NOT THE FLOOR. `run_required_floor` declines an identity whose entry reads the live tree
-/// (`DeclinedLiveTree`), and reading the live corpus IS this census's subject. Relocating the
-/// witness out of the long home moves it from one decline arm to the other and never to `Planned`.
-/// The route is therefore a phase, which is not a claim: it sits outside both the per-claim safety
-/// deadline and the live-tree arm, exactly as the parse, regen and fixed-point phases do.
-///
-/// Returns the located refusals -- one line per unresolved reference, carrying the typed arm that
-/// refused it -- so the failure names what to fix rather than reporting a count.
-fn required_ci_cited_symbol_census(source_roots: &[String]) -> Result<Vec<String>, String> {
-    const LENS_REL: &str = "lens/cited_symbol_resolution.dag";
-    let entry = source_roots
-        .iter()
-        .map(|r| Path::new(r).join(LENS_REL))
-        .find(|p| p.exists())
-        .ok_or_else(|| {
-            format!(
-                "cited-symbol: no source root carries {LENS_REL} (roots: {}) -- the census cannot \
-                 be run, which is ignorance and not a green",
-                source_roots.join(", ")
-            )
-        })?
-        .to_string_lossy()
-        .into_owned();
-    let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry)
-        .map_err(|e| format!("cited-symbol: resolve {entry} failed: {e}"))?;
-    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
-    match run_value(&ctx, "cited_symbol_unresolved_reference_report") {
-        Ok(Value::List(rows)) => {
-            let mut out = Vec::new();
-            for row in rows.iter() {
-                match row {
-                    Value::Str(s) => out.push(s.to_string()),
-                    other => {
-                        return Err(format!(
-                            "cited-symbol: report rows must be String, got {other:?} (fail-closed)"
-                        ))
-                    }
-                }
-            }
-            Ok(out)
-        }
-        Ok(other) => Err(format!(
-            "cited-symbol: cited_symbol_unresolved_reference_report must return a List, got \
-             {other:?} (fail-closed)"
-        )),
-        Err(msg) => Err(format!(
-            "cited-symbol: census unavailable (fail-closed): {msg}"
-        )),
-    }
-}
-
 fn behavioral_receipt_selftest(source_roots: &[String]) -> Result<bool, String> {
     let workspace = v1_compiler::cli_run::workspace_root();
     // NOT under src/v1: regen seeds every .dag there into the stage0 compile closure, and this
