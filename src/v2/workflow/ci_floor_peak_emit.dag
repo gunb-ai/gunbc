@@ -140,7 +140,7 @@ data ci_floor_peak_cgroup_locate_runner_scaffold_comment: String = concat("# ", 
 fn ci_floor_peak_run(command: String) -> Run {
   Run {
     command: command,
-    env: [],
+    env: Empty,
     redirect: Absent,
     capture: Absent
   }
