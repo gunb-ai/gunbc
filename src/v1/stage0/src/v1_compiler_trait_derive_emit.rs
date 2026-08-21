@@ -8,6 +8,8 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_supplemental_impls_bool_coproduct, rust_supplemental_impls_group_completion,
     rust_trait_derive_attr_from_traits, rust_trait_derive_spelling,
 };
+pub use crate::std_coercion::TypeRealizationDecision;
+use crate::std_coercion::TypeRealizationDecision::*;
 pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
@@ -33,9 +35,10 @@ pub use crate::std_trait_derive_shape::{ReprGroundingDeriveElemShape, ReprGround
 pub use crate::std_types::{container_template_algebra, is_container_type};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
+pub use crate::v1_compiler_coercion::{decl_identity_file, type_realization_decision};
 pub use crate::v1_compiler_emit::{emit_ident, to_pascal};
-pub use crate::v1_compiler_emit_core_support::unique_strings;
-pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type};
+pub use crate::v1_compiler_emit_core_support::{is_type_alias_item, unique_strings};
+pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type, resolved_type};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Connective::NoConnective;
@@ -305,10 +308,53 @@ pub fn v1_map_key_round_add(
 pub fn map_key_alias_hop_gap_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "MEASURED GAP, ATTEMPTED AND REVERTED -- the propagation edge is real, and a correct fix needs an authority this module cannot reach. Map-key requirement propagation walks a required type's FIELD type expressions, and a type ALIAS has no fields: it is a bare leaf item whose right-hand side hangs off the item's own inference rather than off a child. So `type Hash = Fnv1a64Structural` in v2.std.node terminates the walk, Fnv1a64Structural is emitted with PartialEq but without Eq or std::hash::Hash, and `Map<Hash, RuntimeValue>` in v2.extdeps.runtimes.v2_effect_io_pure fails to compile at four sites. MEASURED, not reasoned: emitting the v2.compiler.05_eval closure with the Hash checkpoint row retired gives exactly those four E0277 sites, and adding the alias arm removes all four and adds none. THE EDGE WAS ALWAYS MISSING; it became observable only when the bare-name checkpoint stopped realizing Hash as a String alias, because until then the key type carried Rust's own derives and the hop was never asked for -- the defect's own output had been standing in for the traversal. WHY THE OBVIOUS FIX IS WRONG, proven by execution rather than argued: following every alias right-hand side makes `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` reach map-key positions, and both carry Rc<dyn Fn> fields, so the fold refuses them -- two stage0 files diverge. That refusal is a FALSE POSITIVE, and its shape is this lane's own subject: the derive analysis reasons about a type's DECLARED structure while the emitter renders its REALIZED one. Int and Nat realize as i64, which already carries Eq and Hash, so AbelianGroup never appears at the key position at all; Hash has no realization and therefore renders structurally, which is exactly why its hop is owed. So the rule is not `follow aliases` but `follow an alias precisely as far as the emitter renders it structurally`, and the authority that answers that is a realization binding keyed on DeclarationRef, WHICH DOES NOT EXIST YET -- an earlier revision of this note cited gunbc.rust_realization rust_realization_target_for as though it did, and those modules were removed from this branch as consumer-less authority (review 53510), so the citation is corrected rather than left pointing at a symbol the tree does not carry. This module has names, not declaration identity. NOT LANDED FOR THAT REASON. A structural proxy was available and deliberately refused: the two specimens differ in that Hash aliases a bare record while Int and Nat alias an APPLIED template, and keying on that would separate the measured cases while tracing a property nobody claims is the real one -- the same substitution this note exists to name. DISSOLVE-ON: declaration identity reaching the type renderer and this analysis, which is the same threading the identity-keyed lookup_checkpoint cut is blocked on; when it lands, the alias arm and the four sites go together.".to_string()
+            "SUPERSEDED (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, review 54323 finding 3) -- the declaration-identity authority this note said DID NOT EXIST YET is now v1.compiler.coercion type_realization_decision, and v1_map_key_propagate_alias below is the wired consumer, so 'NOT LANDED FOR THAT REASON' below is a historical statement about the state before this landing, not a current one. Retained verbatim for the reasoning that shaped the fix, which the fix itself does not restate: Map-key requirement propagation walks a required type's FIELD type expressions, and a type ALIAS has no fields: it is a bare leaf item whose right-hand side hangs off the item's own inference rather than off a child. So `type Hash = Fnv1a64Structural` in v2.std.node terminates the walk, Fnv1a64Structural is emitted with PartialEq but without Eq or std::hash::Hash, and `Map<Hash, RuntimeValue>` in v2.extdeps.runtimes.v2_effect_io_pure fails to compile at four sites. MEASURED, not reasoned: emitting the v2.compiler.05_eval closure with the Hash checkpoint row retired gives exactly those four E0277 sites, and adding the alias arm removes all four and adds none. THE EDGE WAS ALWAYS MISSING; it became observable only when the bare-name checkpoint stopped realizing Hash as a String alias, because until then the key type carried Rust's own derives and the hop was never asked for -- the defect's own output had been standing in for the traversal. WHY THE OBVIOUS FIX IS WRONG, proven by execution rather than argued: following every alias right-hand side makes `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` reach map-key positions, and both carry Rc<dyn Fn> fields, so the fold refuses them -- two stage0 files diverge. That refusal is a FALSE POSITIVE, and its shape is this lane's own subject: the derive analysis reasons about a type's DECLARED structure while the emitter renders its REALIZED one. Int and Nat realize as i64, which already carries Eq and Hash, so AbelianGroup never appears at the key position at all; Hash has no realization and therefore renders structurally, which is exactly why its hop is owed. So the rule is not `follow aliases` but `follow an alias precisely as far as the emitter renders it structurally`, and the authority that answers that is a realization binding keyed on DeclarationRef, WHICH DOES NOT EXIST YET -- an earlier revision of this note cited gunbc.rust_realization rust_realization_target_for as though it did, and those modules were removed from this branch as consumer-less authority (review 53510), so the citation is corrected rather than left pointing at a symbol the tree does not carry. This module has names, not declaration identity. NOT LANDED FOR THAT REASON. A structural proxy was available and deliberately refused: the two specimens differ in that Hash aliases a bare record while Int and Nat alias an APPLIED template, and keying on that would separate the measured cases while tracing a property nobody claims is the real one -- the same substitution this note exists to name. DISSOLVE-ON: declaration identity reaching the type renderer and this analysis, which is the same threading the identity-keyed lookup_checkpoint cut is blocked on; when it lands, the alias arm and the four sites go together.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
+}
+
+pub fn map_key_alias_hop_landed_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "LANDING (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, review 54323 finding 3): v1_map_key_propagate_round now branches on is_type_alias_item (v1.compiler.emit_core_support) rather than walking v1_item_field_type_exprs unconditionally -- a bare-leaf alias item has no fields to walk, which is exactly the edge map_key_alias_hop_gap_note measured as missing. v1_map_key_propagate_alias asks type_realization_decision(target: Rust, dag_name: <the alias's own name>, decl_file: <the alias item's own decl_identity_file>) the question the gap note names as the missing authority: does THIS declaration render structurally or natively? Unrealized (structural -- e.g. `type Hash = Fnv1a64Structural` in v2.std.node, which has no Rust checkpoint row and is not a numeric native alias) follows the alias's resolved_type into the same head-name walk field propagation already uses, so Hash's requirement reaches Fnv1a64Structural exactly as the gap note's four-site fix demanded. Realized (native -- e.g. `type Int = ...` in dag/std/integer.dag, which answers Realized:i64 via the finding-2 fix landed earlier in this same review cycle) does NOT follow the alias, because the realized host type (i64) already carries Eq + Hash and AbelianGroup/GroupCompletion never reaches the key position at all -- this is precisely the false-positive the gap note proved the naive 'follow every alias' fix would cause (two stage0 files diverging on Rc<dyn Fn> fields), now avoided by construction rather than by not following aliases at all. Refused (identity unknown, decl_file == \"\") does not follow either, consistent with this decision's existing refusal discipline elsewhere: a caller that cannot supply the alias item's own decl_identity_file gets no derived requirement rather than a guessed one, which is a may-miss (loud E0277 at compile, not a silent wrong answer) of the same shape v1_map_key_required_type_names' own module note already discloses for out-of-scan-position keys. Gated on target: Rust because trait_derive_emit is a Rust-emit-only module (imports v1.compiler.artifact { Rust } for exactly this reason already); this fixpoint has no target-generic caller to answer for. DISCRIMINATING WITNESS: test.claim.map_key_alias_hop_witness (dag/test/claim/map_key_alias_hop_witness_test.dag) asserts, by compiling real fixtures through the Rust emitter (compile_dag_rust_emit_check, green by execution per DESIGN section 5), that the alias arm follows a structural bare-leaf alias's target into the derive requirement and does NOT follow a checkpoint-realized alias's target, the same paired-declaration discrimination structural_declaration_gate_note already established for lookup_checkpoint, exercised here for propagation instead of rendering.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn v1_map_key_propagate_alias(
+    acc: Rc<MapKeyRequirementRound>,
+    item: Rc<Node>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<MapKeyRequirementRound> {
+    {
+        let alias_name = authored_name_at(source_indices.clone(), item.clone());
+        let decl_file = decl_identity_file(item.clone());
+        match (*type_realization_decision(
+            RenderTarget::Rust,
+            alias_name.clone(),
+            decl_file.clone(),
+        ))
+        .clone()
+        {
+            TypeRealizationDecision::Unrealized => {
+                v1_type_expr_head_names(resolved_type(item.clone()), source_indices.clone())
+                    .iter()
+                    .cloned()
+                    .fold(acc, |deep: Rc<MapKeyRequirementRound>, head: String| {
+                        if map_has_declared_type(type_decl_items.clone(), head.clone()) {
+                            v1_map_key_round_add(deep.clone(), head.clone())
+                        } else {
+                            deep.clone()
+                        }
+                    })
+            }
+            TypeRealizationDecision::Realized { checkpoint: _, .. } => acc,
+            TypeRealizationDecision::Refused { cause: _, .. } => acc,
+        }
+    }
 }
 
 pub fn v1_map_key_propagate_round(
@@ -324,22 +370,38 @@ pub fn v1_map_key_propagate_round(
                 acc.clone()
             } else {
                 match v1_rt::map_get(&type_decl_items, type_name.clone()) {
-                    Some(item) => v1_item_field_type_exprs(item.clone()).iter().cloned().fold(
-                        acc.clone(),
-                        |inner: Rc<MapKeyRequirementRound>, te: Rc<Node>| {
-                            v1_type_expr_head_names(te.clone(), source_indices.clone())
-                                .iter()
-                                .cloned()
-                                .fold(inner, |deep: Rc<MapKeyRequirementRound>, head: String| {
-                                    if map_has_declared_type(type_decl_items.clone(), head.clone())
-                                    {
-                                        v1_map_key_round_add(deep.clone(), head.clone())
-                                    } else {
-                                        deep.clone()
-                                    }
-                                })
-                        },
-                    ),
+                    Some(item) => {
+                        if is_type_alias_item(item.clone(), source_indices.clone()) {
+                            v1_map_key_propagate_alias(
+                                acc.clone(),
+                                item.clone(),
+                                type_decl_items.clone(),
+                                source_indices.clone(),
+                            )
+                        } else {
+                            v1_item_field_type_exprs(item.clone()).iter().cloned().fold(
+                                acc.clone(),
+                                |inner: Rc<MapKeyRequirementRound>, te: Rc<Node>| {
+                                    v1_type_expr_head_names(te.clone(), source_indices.clone())
+                                        .iter()
+                                        .cloned()
+                                        .fold(
+                                            inner,
+                                            |deep: Rc<MapKeyRequirementRound>, head: String| {
+                                                if map_has_declared_type(
+                                                    type_decl_items.clone(),
+                                                    head.clone(),
+                                                ) {
+                                                    v1_map_key_round_add(deep.clone(), head.clone())
+                                                } else {
+                                                    deep.clone()
+                                                }
+                                            },
+                                        )
+                                },
+                            )
+                        }
+                    }
                     None => acc.clone(),
                 }
             }
