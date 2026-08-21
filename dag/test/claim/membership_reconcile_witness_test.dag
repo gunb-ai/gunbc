@@ -7,24 +7,24 @@ type TMemberAt = String
 
 type TMember { mid: String, ver: String, own: gunbc.ownership.Ownership? }
 
-fn tm_owned(mid: String, ver: String) -> test.claim.membership_reconcile_witness.TMember {
+fn tm_owned(mid: String, ver: String) -> TMember {
   TMember { mid: mid, ver: ver, own: Present { value: gunbc.ownership.Owned } }
 }
 
-fn tm_ensured(mid: String, ver: String) -> test.claim.membership_reconcile_witness.TMember {
+fn tm_ensured(mid: String, ver: String) -> TMember {
   TMember { mid: mid, ver: ver, own: Present { value: gunbc.ownership.Ensured } }
 }
 
-fn tm_unknown(mid: String, ver: String) -> test.claim.membership_reconcile_witness.TMember {
+fn tm_unknown(mid: String, ver: String) -> TMember {
   TMember { mid: mid, ver: ver, own: Absent }
 }
 
-fn t_key(m: test.claim.membership_reconcile_witness.TMember) -> String { m.mid }
+fn t_key(m: TMember) -> String { m.mid }
 fn t_key_eq(a: String, b: String) -> Bool { a == b }
-fn t_val_eq(a: test.claim.membership_reconcile_witness.TMember, b: test.claim.membership_reconcile_witness.TMember) -> Bool { a.ver == b.ver }
-fn t_own(m: test.claim.membership_reconcile_witness.TMember) -> gunbc.ownership.Ownership? { m.own }
+fn t_val_eq(a: TMember, b: TMember) -> Bool { a.ver == b.ver }
+fn t_own(m: TMember) -> gunbc.ownership.Ownership? { m.own }
 
-fn t_reconcile(desired: List<test.claim.membership_reconcile_witness.TMember>, observed: List<test.claim.membership_reconcile_witness.TMember>) -> gunbc.membership_reconcile.MembershipPlan<test.claim.membership_reconcile_witness.TMember, test.claim.membership_reconcile_witness.TMemberAt> {
+fn t_reconcile(desired: List<TMember>, observed: List<TMember>) -> gunbc.membership_reconcile.MembershipPlan<TMember, TMemberAt> {
   gunbc.membership_reconcile.membership_plan_admitting_outcome(
     outcome: gunbc.membership_reconcile.membership_reconcile(
       desired: desired,
@@ -37,11 +37,11 @@ fn t_reconcile(desired: List<test.claim.membership_reconcile_witness.TMember>, o
   )
 }
 
-fn plan_has_add(plan: gunbc.membership_reconcile.MembershipPlan<test.claim.membership_reconcile_witness.TMember, test.claim.membership_reconcile_witness.TMemberAt>, mid: String) -> Bool {
+fn plan_has_add(plan: gunbc.membership_reconcile.MembershipPlan<TMember, TMemberAt>, mid: String) -> Bool {
   any(plan.actions, a => match a { gunbc.membership_reconcile.MemberAdded { at: _, to: m } => m.mid == mid  _ => false })
 }
 
-fn plan_has_change_from_to(plan: gunbc.membership_reconcile.MembershipPlan<test.claim.membership_reconcile_witness.TMember, test.claim.membership_reconcile_witness.TMemberAt>, mid: String, from_ver: String, to_ver: String) -> Bool {
+fn plan_has_change_from_to(plan: gunbc.membership_reconcile.MembershipPlan<TMember, TMemberAt>, mid: String, from_ver: String, to_ver: String) -> Bool {
   any(plan.actions, a =>
     match a {
       MemberChanged { at: _, from: f, to: t } =>
@@ -51,11 +51,11 @@ fn plan_has_change_from_to(plan: gunbc.membership_reconcile.MembershipPlan<test.
   )
 }
 
-fn plan_has_teardown(plan: gunbc.membership_reconcile.MembershipPlan<test.claim.membership_reconcile_witness.TMember, test.claim.membership_reconcile_witness.TMemberAt>, mid: String) -> Bool {
+fn plan_has_teardown(plan: gunbc.membership_reconcile.MembershipPlan<TMember, TMemberAt>, mid: String) -> Bool {
   any(plan.actions, a => match a { gunbc.membership_reconcile.MemberRemoved { at: _, from: m } => m.mid == mid  _ => false })
 }
 
-fn plan_has_refused_not_owned(plan: gunbc.membership_reconcile.MembershipPlan<test.claim.membership_reconcile_witness.TMember, test.claim.membership_reconcile_witness.TMemberAt>, mid: String) -> Bool {
+fn plan_has_refused_not_owned(plan: gunbc.membership_reconcile.MembershipPlan<TMember, TMemberAt>, mid: String) -> Bool {
   any(plan.actions, a =>
     match a {
       MemberRemovalRefused { from: m, cause: c } =>
@@ -65,7 +65,7 @@ fn plan_has_refused_not_owned(plan: gunbc.membership_reconcile.MembershipPlan<te
   )
 }
 
-fn plan_has_refused_unknown(plan: gunbc.membership_reconcile.MembershipPlan<test.claim.membership_reconcile_witness.TMember, test.claim.membership_reconcile_witness.TMemberAt>, mid: String) -> Bool {
+fn plan_has_refused_unknown(plan: gunbc.membership_reconcile.MembershipPlan<TMember, TMemberAt>, mid: String) -> Bool {
   any(plan.actions, a =>
     match a {
       MemberRemovalRefused { from: m, cause: c } =>
@@ -145,7 +145,7 @@ test fn w_r5_owned_only_teardown_synthetic() -> Bool {
     && gunbc.membership_reconcile.membership_refusal_count(plan: plan) == 2
 }
 
-fn effects_has_teardown(es: List<gunbc.membership_reconcile.MemberEffect<test.claim.membership_reconcile_witness.TMember>>, mid: String) -> Bool {
+fn effects_has_teardown(es: List<gunbc.membership_reconcile.MemberEffect<TMember>>, mid: String) -> Bool {
   any(es, e =>
     match e {
       EffectRemove { from: m } => m.mid == mid
@@ -221,15 +221,15 @@ type ScopedWitnessMember { node: String, mid: String, ver: String }
 
 type ScopedWitnessKeyRelation
 
-fn scoped_witness_scope_of(m: test.claim.membership_reconcile_witness.ScopedWitnessMember) -> test.claim.membership_reconcile_witness.ScopedWitnessScope {
+fn scoped_witness_scope_of(m: ScopedWitnessMember) -> ScopedWitnessScope {
   ScopedWitnessScope { node: m.node }
 }
 
-fn scoped_witness_scope_eq(a: test.claim.membership_reconcile_witness.ScopedWitnessScope, b: test.claim.membership_reconcile_witness.ScopedWitnessScope) -> Bool {
+fn scoped_witness_scope_eq(a: ScopedWitnessScope, b: ScopedWitnessScope) -> Bool {
   a.node == b.node
 }
 
-fn scoped_witness_key_of(m: test.claim.membership_reconcile_witness.ScopedWitnessMember) -> String {
+fn scoped_witness_key_of(m: ScopedWitnessMember) -> String {
   m.mid
 }
 
@@ -237,25 +237,25 @@ fn scoped_witness_key_eq(a: String, b: String) -> Bool {
   a == b
 }
 
-fn scoped_witness_val_eq(a: test.claim.membership_reconcile_witness.ScopedWitnessMember, b: test.claim.membership_reconcile_witness.ScopedWitnessMember) -> Bool {
+fn scoped_witness_val_eq(a: ScopedWitnessMember, b: ScopedWitnessMember) -> Bool {
   a.ver == b.ver
 }
 
-fn scoped_witness_own(_: test.claim.membership_reconcile_witness.ScopedWitnessMember) -> gunbc.ownership.Ownership? {
+fn scoped_witness_own(_: ScopedWitnessMember) -> gunbc.ownership.Ownership? {
   Present { value: gunbc.ownership.Owned }
 }
 
-data scoped_witness_key_relation: std.key_relation.KeyRelation<test.claim.membership_reconcile_witness.ScopedWitnessKeyRelation, test.claim.membership_reconcile_witness.ScopedWitnessMember, test.claim.membership_reconcile_witness.ScopedWitnessScope, String> = std.key_relation.KeyRelation {
+data scoped_witness_key_relation: std.key_relation.KeyRelation<ScopedWitnessKeyRelation, ScopedWitnessMember, ScopedWitnessScope, String> = std.key_relation.KeyRelation {
   scope_of: scoped_witness_scope_of,
   key_of: scoped_witness_key_of,
   scope_eq: scoped_witness_scope_eq,
   key_eq: scoped_witness_key_eq,
 }
 
-fn scoped_witness_state_of(m: test.claim.membership_reconcile_witness.ScopedWitnessMember) -> String { m.ver }
+fn scoped_witness_state_of(m: ScopedWitnessMember) -> String { m.ver }
 fn scoped_witness_state_eq(a: String, b: String) -> Bool { a == b }
 
-data scoped_witness_resource: std.key_relation.KeyedResourceRelation<test.claim.membership_reconcile_witness.ScopedWitnessKeyRelation, test.claim.membership_reconcile_witness.ScopedWitnessMember, test.claim.membership_reconcile_witness.ScopedWitnessScope, String, String> = std.key_relation.KeyedResourceRelation {
+data scoped_witness_resource: std.key_relation.KeyedResourceRelation<ScopedWitnessKeyRelation, ScopedWitnessMember, ScopedWitnessScope, String, String> = std.key_relation.KeyedResourceRelation {
   key: scoped_witness_key_relation,
   state: std.key_relation.StateRelation {
     state_of: scoped_witness_state_of,

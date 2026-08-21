@@ -13,8 +13,8 @@ fn w_principal() -> std.types.NonEmptyStr {
 
 fn w_runtime_member(state: std.types.NonEmptyStr, ownership: gunbc.ownership.Ownership) -> gunbc.spark_serving_membership.SparkServingMember {
   gunbc.spark_serving_membership.spark_serving_member(
-    host: test.claim.spark_serving_membership_witness.w_host(),
-    principal: test.claim.spark_serving_membership_witness.w_principal(),
+    host: w_host(),
+    principal: w_principal(),
     address: gunbc.spark_serving_membership.SparkServingRuntimeRootAddress,
     state_digest: state,
     ownership: ownership,
@@ -23,8 +23,8 @@ fn w_runtime_member(state: std.types.NonEmptyStr, ownership: gunbc.ownership.Own
 
 fn w_unit_member(state: std.types.NonEmptyStr, ownership: gunbc.ownership.Ownership) -> gunbc.spark_serving_membership.SparkServingMember {
   gunbc.spark_serving_membership.spark_serving_member(
-    host: test.claim.spark_serving_membership_witness.w_host(),
-    principal: test.claim.spark_serving_membership_witness.w_principal(),
+    host: w_host(),
+    principal: w_principal(),
     address: gunbc.spark_serving_membership.SparkServingUserUnitAddress,
     state_digest: state,
     ownership: ownership,
@@ -33,8 +33,8 @@ fn w_unit_member(state: std.types.NonEmptyStr, ownership: gunbc.ownership.Owners
 
 fn w_linger_member(state: std.types.NonEmptyStr) -> gunbc.spark_serving_membership.SparkServingMember {
   gunbc.spark_serving_membership.spark_serving_member(
-    host: test.claim.spark_serving_membership_witness.w_host(),
-    principal: test.claim.spark_serving_membership_witness.w_principal(),
+    host: w_host(),
+    principal: w_principal(),
     address: gunbc.spark_serving_membership.SparkServingLingerAddress,
     state_digest: state,
     ownership: gunbc.ownership.Ensured,
@@ -90,7 +90,7 @@ test fn w_spark_serving_desired_release_admits_for_admission_backed_witnesses() 
 test fn w_spark_serving_noop_when_converged() -> Bool {
   match gunbc.spark_serving_desired.spark_serving_desired_release_admission() {
     SparkServingDesiredAdmitted { serving_release: r } =>
-      let occ = gunbc.spark_serving_desired.spark_serving_occurrence(host: test.claim.spark_serving_membership_witness.w_host(), serving_release: r)
+      let occ = gunbc.spark_serving_desired.spark_serving_occurrence(host: w_host(), serving_release: r)
       let desired = gunbc.spark_serving_membership.spark_serving_desired_members(occurrence: occ, serving_release: r)
       let plan = gunbc.spark_serving_membership.spark_serving_membership_reconcile(desired: desired, observed: desired)
       gunbc.spark_serving_membership.spark_serving_membership_noop(plan: plan)
@@ -103,7 +103,7 @@ test fn w_spark_serving_noop_when_converged() -> Bool {
 }
 
 test fn w_spark_serving_noop_when_converged_synthetic_fixture() -> Bool {
-  let m = test.claim.spark_serving_membership_witness.w_runtime_member(state: "v1" as std.types.NonEmptyStr, ownership: gunbc.ownership.Owned)
+  let m = w_runtime_member(state: "v1" as std.types.NonEmptyStr, ownership: gunbc.ownership.Owned)
   let plan = gunbc.spark_serving_membership.spark_serving_membership_reconcile(desired: [m], observed: [m])
   gunbc.spark_serving_membership.spark_serving_membership_noop(plan: plan)
     && match gunbc.spark_serving_membership.spark_serving_membership_effects(plan: plan) {
@@ -116,8 +116,8 @@ test fn w_spark_serving_modified_is_change_not_add() -> Bool {
   let from_unit = gunbc.spark_serving_membership.spark_serving_user_unit_state_digest()
   let to_unit = "unit-drifted" as std.types.NonEmptyStr
   let plan = gunbc.spark_serving_membership.spark_serving_membership_reconcile(
-    desired: [test.claim.spark_serving_membership_witness.w_unit_member(state: to_unit, ownership: gunbc.ownership.Owned)],
-    observed: [test.claim.spark_serving_membership_witness.w_unit_member(state: from_unit, ownership: gunbc.ownership.Owned)],
+    desired: [w_unit_member(state: to_unit, ownership: gunbc.ownership.Owned)],
+    observed: [w_unit_member(state: from_unit, ownership: gunbc.ownership.Owned)],
   )
   plan_has_change_for_address(
     plan: plan,
@@ -132,8 +132,8 @@ test fn w_spark_serving_modified_is_change_not_add() -> Bool {
 
 test fn w_spark_serving_runtime_upgrade_is_change_not_remove_add() -> Bool {
   let plan = gunbc.spark_serving_membership.spark_serving_membership_reconcile(
-    desired: [test.claim.spark_serving_membership_witness.w_runtime_member(state: "ollama-0.33.0" as std.types.NonEmptyStr, ownership: gunbc.ownership.Owned)],
-    observed: [test.claim.spark_serving_membership_witness.w_runtime_member(state: "ollama-0.32.9" as std.types.NonEmptyStr, ownership: gunbc.ownership.Owned)],
+    desired: [w_runtime_member(state: "ollama-0.33.0" as std.types.NonEmptyStr, ownership: gunbc.ownership.Owned)],
+    observed: [w_runtime_member(state: "ollama-0.32.9" as std.types.NonEmptyStr, ownership: gunbc.ownership.Owned)],
   )
   plan_has_change_for_address(
     plan: plan,
@@ -148,7 +148,7 @@ test fn w_spark_serving_runtime_upgrade_is_change_not_remove_add() -> Bool {
 test fn w_spark_serving_added_when_runtime_absent() -> Bool {
   match gunbc.spark_serving_desired.spark_serving_desired_release_admission() {
     SparkServingDesiredAdmitted { serving_release: r } =>
-      let occ = gunbc.spark_serving_desired.spark_serving_occurrence(host: test.claim.spark_serving_membership_witness.w_host(), serving_release: r)
+      let occ = gunbc.spark_serving_desired.spark_serving_occurrence(host: w_host(), serving_release: r)
       let desired = gunbc.spark_serving_membership.spark_serving_desired_members(occurrence: occ, serving_release: r)
       let plan = gunbc.spark_serving_membership.spark_serving_membership_reconcile(desired: desired, observed: [])
       gunbc.membership_reconcile.membership_write_count(plan: plan) == count(desired)
@@ -159,7 +159,7 @@ test fn w_spark_serving_added_when_runtime_absent() -> Bool {
 
 test fn w_spark_serving_added_when_runtime_absent_synthetic_fixture() -> Bool {
   let plan = gunbc.spark_serving_membership.spark_serving_membership_reconcile(
-    desired: [test.claim.spark_serving_membership_witness.w_runtime_member(state: "v1" as std.types.NonEmptyStr, ownership: gunbc.ownership.Owned)],
+    desired: [w_runtime_member(state: "v1" as std.types.NonEmptyStr, ownership: gunbc.ownership.Owned)],
     observed: [],
   )
   plan_has_add_for_address(plan: plan, address: gunbc.spark_serving_membership.SparkServingRuntimeRootAddress)
@@ -167,8 +167,8 @@ test fn w_spark_serving_added_when_runtime_absent_synthetic_fixture() -> Bool {
 
 test fn w_spark_serving_ensured_linger_converges_on_drift() -> Bool {
   let plan = gunbc.spark_serving_membership.spark_serving_membership_reconcile(
-    desired: [test.claim.spark_serving_membership_witness.w_linger_member(state: gunbc.spark_serving_membership.spark_serving_executor_linger_state_digest())],
-    observed: [test.claim.spark_serving_membership_witness.w_linger_member(state: "linger=drifted" as std.types.NonEmptyStr)],
+    desired: [w_linger_member(state: gunbc.spark_serving_membership.spark_serving_executor_linger_state_digest())],
+    observed: [w_linger_member(state: "linger=drifted" as std.types.NonEmptyStr)],
   )
   plan_has_change_for_address(
     plan: plan,
@@ -183,7 +183,7 @@ test fn w_spark_serving_ensured_linger_converges_on_drift() -> Bool {
 test fn w_spark_serving_ensured_linger_removal_refused() -> Bool {
   let plan = gunbc.spark_serving_membership.spark_serving_membership_reconcile(
     desired: [],
-    observed: [test.claim.spark_serving_membership_witness.w_linger_member(state: gunbc.spark_serving_membership.spark_serving_executor_linger_state_digest())],
+    observed: [w_linger_member(state: gunbc.spark_serving_membership.spark_serving_executor_linger_state_digest())],
   )
   plan_has_refused_address(plan: plan, address: gunbc.spark_serving_membership.SparkServingLingerAddress)
     && gunbc.membership_reconcile.membership_removal_count(plan: plan) == 0
@@ -191,8 +191,8 @@ test fn w_spark_serving_ensured_linger_removal_refused() -> Bool {
 }
 
 test fn w_spark_serving_key_is_host_principal_address_not_value() -> Bool {
-  let a = test.claim.spark_serving_membership_witness.w_runtime_member(state: "content-a" as std.types.NonEmptyStr, ownership: gunbc.ownership.Owned)
-  let b = test.claim.spark_serving_membership_witness.w_runtime_member(state: "content-b" as std.types.NonEmptyStr, ownership: gunbc.ownership.Owned)
+  let a = w_runtime_member(state: "content-a" as std.types.NonEmptyStr, ownership: gunbc.ownership.Owned)
+  let b = w_runtime_member(state: "content-b" as std.types.NonEmptyStr, ownership: gunbc.ownership.Owned)
   gunbc.spark_serving_membership.spark_serving_member_key(member: a) == gunbc.spark_serving_membership.spark_serving_member_key(member: b)
     && string_contains(
       s: gunbc.spark_serving_membership.spark_serving_member_key(member: a),
@@ -205,14 +205,14 @@ test fn w_spark_serving_key_differs_when_host_changes() -> Bool {
   let shared = "same-content" as std.types.NonEmptyStr
   let a = gunbc.spark_serving_membership.spark_serving_member(
     host: gunbc.fleet_intent_network.operator_host_srv5,
-    principal: test.claim.spark_serving_membership_witness.w_principal(),
+    principal: w_principal(),
     address: gunbc.spark_serving_membership.SparkServingRuntimeRootAddress,
     state_digest: shared,
     ownership: gunbc.ownership.Owned,
   )
   let b = gunbc.spark_serving_membership.spark_serving_member(
     host: gunbc.fleet_intent_network.operator_host_srv6,
-    principal: test.claim.spark_serving_membership_witness.w_principal(),
+    principal: w_principal(),
     address: gunbc.spark_serving_membership.SparkServingRuntimeRootAddress,
     state_digest: shared,
     ownership: gunbc.ownership.Owned,
@@ -234,8 +234,8 @@ test fn w_spark_serving_unit_write_intent_carries_typed_spec() -> Bool {
 
 test fn w_spark_serving_change_projects_effect_replace() -> Bool {
   let plan = gunbc.spark_serving_membership.spark_serving_membership_reconcile(
-    desired: [test.claim.spark_serving_membership_witness.w_runtime_member(state: "v2" as std.types.NonEmptyStr, ownership: gunbc.ownership.Owned)],
-    observed: [test.claim.spark_serving_membership_witness.w_runtime_member(state: "v1" as std.types.NonEmptyStr, ownership: gunbc.ownership.Owned)],
+    desired: [w_runtime_member(state: "v2" as std.types.NonEmptyStr, ownership: gunbc.ownership.Owned)],
+    observed: [w_runtime_member(state: "v1" as std.types.NonEmptyStr, ownership: gunbc.ownership.Owned)],
   )
   match gunbc.spark_serving_membership.spark_serving_membership_effects(plan: plan) {
     EffectsReady { effects: es } =>
@@ -256,7 +256,7 @@ test fn w_spark_serving_change_projects_effect_replace() -> Bool {
 test fn w_spark_serving_model_slot_address_is_primary() -> Bool {
   match gunbc.spark_serving_desired.spark_serving_desired_release_admission() {
     SparkServingDesiredAdmitted { serving_release: r } =>
-      let occ = gunbc.spark_serving_desired.spark_serving_occurrence(host: test.claim.spark_serving_membership_witness.w_host(), serving_release: r)
+      let occ = gunbc.spark_serving_desired.spark_serving_occurrence(host: w_host(), serving_release: r)
       let desired = gunbc.spark_serving_membership.spark_serving_desired_members(occurrence: occ, serving_release: r)
       any(
         desired,

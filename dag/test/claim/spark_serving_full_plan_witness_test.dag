@@ -48,7 +48,7 @@ fn full_plan_writes(
         p: gunbc.spark_serving_converge_plan.spark_serving_full_membership_plan(
           occurrence: gunbc.spark_serving_desired.spark_serving_occurrence(host: subject_host, serving_release: r),
           serving_release: r,
-          projection: test.claim.spark_serving_full_plan_witness_test.project(obs: obs, unit: unit, linger: linger),
+          projection: project(obs: obs, unit: unit, linger: linger),
         ),
       )
   }
@@ -65,7 +65,7 @@ fn full_plan_refuses(
       match gunbc.spark_serving_converge_plan.spark_serving_full_membership_plan(
         occurrence: gunbc.spark_serving_desired.spark_serving_occurrence(host: subject_host, serving_release: r),
         serving_release: r,
-        projection: test.claim.spark_serving_full_plan_witness_test.project(obs: obs, unit: unit, linger: linger),
+        projection: project(obs: obs, unit: unit, linger: linger),
       ) {
         SparkServingFullMembershipPlanRefused { cause: c } => string_contains(c, "refused")
         SparkServingFullMembershipPlanReady { plan: _, unit_observed: _ } => false
@@ -110,12 +110,12 @@ test fn the_superseded_linger_plan_writes_exactly_one() -> Bool {
 // A bare host observes no runtime, unit or model member. If the projection derived observed state
 // from the desired release, this would be four and the plan would be empty on a bare machine.
 test fn a_bare_host_observes_no_serving_members() -> Bool {
-  observed_count(p: test.claim.spark_serving_full_plan_witness_test.project(obs: gunbc.spark_serving_release.SparkServingAbsent { host: subject_host }, unit: gunbc.spark_serving_observed_members.UserUnitStateAbsent, linger: gunbc.spark_serving_observed_members.LingerObservedDisabled)) == 0
+  observed_count(p: project(obs: gunbc.spark_serving_release.SparkServingAbsent { host: subject_host }, unit: gunbc.spark_serving_observed_members.UserUnitStateAbsent, linger: gunbc.spark_serving_observed_members.LingerObservedDisabled)) == 0
 }
 
 // Linger is observed independently, so it is carried even when serving is absent.
 test fn linger_is_carried_on_a_bare_host_when_it_is_enabled() -> Bool {
-  observed_count(p: test.claim.spark_serving_full_plan_witness_test.project(obs: gunbc.spark_serving_release.SparkServingAbsent { host: subject_host }, unit: gunbc.spark_serving_observed_members.UserUnitStateAbsent, linger: gunbc.spark_serving_observed_members.LingerObservedEnabled)) == 1
+  observed_count(p: project(obs: gunbc.spark_serving_release.SparkServingAbsent { host: subject_host }, unit: gunbc.spark_serving_observed_members.UserUnitStateAbsent, linger: gunbc.spark_serving_observed_members.LingerObservedEnabled)) == 1
 }
 
 // With linger already enabled a bare host needs three writes, not four.
@@ -132,7 +132,7 @@ test fn a_bare_host_with_linger_already_enabled_plans_three() -> Bool {
 // A refused observation may NOT be rendered as an empty observed population: that would plan every
 // member as an addition against a host nobody saw. It refuses, and the plan refuses with it.
 test fn a_refused_observation_refuses_the_projection() -> Bool {
-  match test.claim.spark_serving_full_plan_witness_test.project(
+  match project(
     obs: gunbc.spark_serving_release.SparkServingObservationRefused { host: subject_host, cause: "ssh unreachable" as std.types.NonEmptyStr },
     unit: gunbc.spark_serving_observed_members.UserUnitStateUnobserved,
     linger: gunbc.spark_serving_observed_members.LingerUnobservedState,
@@ -152,7 +152,7 @@ test fn a_refused_observation_refuses_the_plan_rather_than_planning_four_writes(
 
 // The refusal names the host, so a fleet-wide run says WHICH host was not seen.
 test fn the_projection_refusal_names_the_host() -> Bool {
-  match test.claim.spark_serving_full_plan_witness_test.project(
+  match project(
     obs: gunbc.spark_serving_release.SparkServingObservationRefused { host: subject_host, cause: "ssh unreachable" as std.types.NonEmptyStr },
     unit: gunbc.spark_serving_observed_members.UserUnitStateUnobserved,
     linger: gunbc.spark_serving_observed_members.LingerUnobservedState,
@@ -169,19 +169,19 @@ test fn the_projection_refusal_names_the_host() -> Bool {
 // two must remain distinguishable because only one of them supports an empty replan.
 test fn an_unobserved_unit_does_not_support_an_empty_replan() -> Bool {
   !gunbc.spark_serving_observed_members.spark_serving_projection_supports_empty_replan(
-    projection: test.claim.spark_serving_full_plan_witness_test.project(obs: gunbc.spark_serving_release.SparkServingAbsent { host: subject_host }, unit: gunbc.spark_serving_observed_members.UserUnitStateUnobserved, linger: gunbc.spark_serving_observed_members.LingerObservedEnabled),
+    projection: project(obs: gunbc.spark_serving_release.SparkServingAbsent { host: subject_host }, unit: gunbc.spark_serving_observed_members.UserUnitStateUnobserved, linger: gunbc.spark_serving_observed_members.LingerObservedEnabled),
   )
 }
 
 test fn an_observed_absent_unit_does_support_an_empty_replan() -> Bool {
   gunbc.spark_serving_observed_members.spark_serving_projection_supports_empty_replan(
-    projection: test.claim.spark_serving_full_plan_witness_test.project(obs: gunbc.spark_serving_release.SparkServingAbsent { host: subject_host }, unit: gunbc.spark_serving_observed_members.UserUnitStateAbsent, linger: gunbc.spark_serving_observed_members.LingerObservedEnabled),
+    projection: project(obs: gunbc.spark_serving_release.SparkServingAbsent { host: subject_host }, unit: gunbc.spark_serving_observed_members.UserUnitStateAbsent, linger: gunbc.spark_serving_observed_members.LingerObservedEnabled),
   )
 }
 
 test fn a_refused_projection_never_supports_an_empty_replan() -> Bool {
   !gunbc.spark_serving_observed_members.spark_serving_projection_supports_empty_replan(
-    projection: test.claim.spark_serving_full_plan_witness_test.project(
+    projection: project(
       obs: gunbc.spark_serving_release.SparkServingObservationRefused { host: subject_host, cause: "x" as std.types.NonEmptyStr },
       unit: gunbc.spark_serving_observed_members.UserUnitStateUnobserved,
       linger: gunbc.spark_serving_observed_members.LingerUnobservedState,
