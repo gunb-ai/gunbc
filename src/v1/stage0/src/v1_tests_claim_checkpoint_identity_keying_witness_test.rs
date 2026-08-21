@@ -4,8 +4,9 @@
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_coercion::literal_suffix;
-pub use crate::v1_compiler_emit_rust::rust_scalar_checkpoint_grounding_base;
-pub use crate::v1_compiler_emit_rust::rust_scalar_checkpoint_reference_base;
+pub use crate::v1_compiler_emit_rust::{
+    rust_scalar_checkpoint_grounding_base, rust_scalar_checkpoint_reference_base,
+};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
