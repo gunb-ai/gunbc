@@ -247,23 +247,41 @@ into several sites, and lines move.
 **Do not land the dual renderer.** It is experimental quarry: leaving both answers in production
 creates the second authority this work exists to delete (DESIGN §3).
 
-### Ledger column requirement: diff the FULL histogram, including `unreachable_pattern`
+### Ledger requirement: diff the full warning histogram — and the probe's column CANNOT carry it
 
-`smart-ram-730`, from a near-miss in another lane: a repair keyed on the emitted pattern string moved
-its headline board 31 → 32 — noise — while underneath it `unreachable_pattern:6` appeared. **Those
-are errors here, not lints.** Two arms of the same variant emitted different patterns, the first lost
-its guard and shadowed the second into dead code at six sites. The headline moved by one; six arms
-died.
-
-So the A/B/C/D ledger carries the **full sorted diagnostic histogram across all four crates**, not
-only the E-numbers this lane targets, and `unreachable_pattern` is named explicitly as a carried
-class. A realization change is exactly the kind of edit that can make one arm subsume another: if the
-base realization of a carrier changes, two match arms that were distinguishable by their carrier's
+**The requirement, and the near-miss that produced it.** `smart-ram-730`, from another lane: a repair
+keyed on the emitted pattern string moved its board 31 → 32 — noise — while underneath it
+`unreachable_pattern:6` appeared. **Those are errors here, not lints.** Two arms of the same variant
+emitted different patterns, the first lost its guard and shadowed the second into dead code at six
+sites. The headline moved by one; six arms died. A realization change is exactly the edit that can
+make one arm subsume another: if a carrier's base realization changes, arms distinguishable by its
 host type may cease to be.
 
-This is the same discipline the ledger already applies to sites — report conversion, not totals — one
-level up: **a repair that trades one class for another at a lower count reads as progress, and a
-repair that kills six arms while the headline moves by one reads as nothing at all.**
+**An earlier revision of this section said to satisfy that by diffing the probe's histogram column.
+That check cannot work, and the defect is in the instrument, not the diff.** Verified first-hand in
+`docs/probes/curated_cargo_probe_one.sh`: `ERROR_HISTOGRAM` greps `'^error\[E[0-9]+\]'` and
+`HISTOGRAM_SUM` greps `'^error(\[E[0-9]+\])?:'`, over a plain `cargo build --release --lib` with no
+`--message-format=json`. `warning: unreachable pattern` matches **neither**. The class can never
+appear in that column.
+
+**So absence of that row is blindness, not zero.** Reporting the class clean from that column would
+not be a measurement — it would be an instrument that cannot express the class, which is the
+absorbing fallback (DESIGN §5) relocated into the measuring apparatus. (Older readings that *did*
+carry the class legitimately came from a `rustc --message-format=json` instrument, which includes
+lints. Same question, different instrument, different answer.)
+
+**What the A/B/C/D ledger does instead:** read the kept cargo log directly and diff the **full sorted
+`warning:` histogram** across all four crates, in one dispatch covering every arm.
+
+**And it carries the honest bound, because at a refusing baseline nobody can do better:** the emitted
+crate fails to build, so rustc stops before typechecking most items and never runs reachability on
+them. A zero from that log means *"none among what rustc reached, and unchanged between arms"* — it
+does **not** mean the crate has none. That bound is published with the number, not left to a reader.
+
+**Standing rule this adopts, general form: before reporting a class clean, confirm the instrument can
+EMIT that class.** A class the instrument cannot produce looks identical to a class at zero — and
+this section is a worked example of getting that wrong in a design document before any measurement
+was taken.
 
 ## Step 3 — Pre-registered acceptance
 
