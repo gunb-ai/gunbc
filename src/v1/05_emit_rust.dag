@@ -80,8 +80,8 @@ import v1.compiler.trait_derive_emit {
   rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible
 }
 import v1.compiler.trait_bound_witness {
-  v1_rc_match_scrutinee_clone_bound_param_names, v1_union_clone_param_names,
-  v1_call_forwarding_clone_bound_wrapper_param_names,
+  v1_rc_match_scrutinee_clone_bound_param_names, v1_union_bound_param_names,
+  v1_call_forwarding_bound_wrapper_param_names,
   v1_equality_bound_param_name
 }
 
@@ -5992,7 +5992,7 @@ fn v1_fn_body_derived_clone_param_names(params: List<Node>, inferred: Node, body
       }
     _ => []
   }
-  v1_union_clone_param_names(
+  v1_union_bound_param_names(
     base: derived_clone_param_names,
     extra: rc_match_clone_param_names
   )
@@ -6050,7 +6050,7 @@ fn v1_fn_body_equality_bound_param_names(
     _ => []
   }
   body.children |> fold(init: here, f: (acc, child) =>
-    v1_union_clone_param_names(
+    v1_union_bound_param_names(
       base: acc,
       extra: v1_fn_body_equality_bound_param_names(
         body: child,
@@ -6077,6 +6077,51 @@ fn v1_resolved_type_name_or_empty(e: Node, source_indices: Map<String, NewlineIn
   match e.inferred {
     Present { value: Resolved { node: rt } } => authored_name_at(source_indices: source_indices, node: rt)
     _ => ""
+  }
+}
+
+// The (callee declared param, call argument) fold shared by BOTH forwarding derivations below.
+// It is trait-agnostic by construction: the only thing that distinguishes the Clone forwarding from
+// the equality forwarding is WHICH of the callee's own generic params already earned a bound, and
+// that arrives as callee_bound_param_names. Forking this fold per trait would be the second
+// representation DESIGN.md S3 forbids -- the join it performs (callee param name -> call argument,
+// via call_args_by_name) is one fact about a call site, not a fact about Clone.
+fn v1_call_forwarding_forwarded_param_names(
+  call: Node,
+  callee_value_params: List<Node>,
+  callee_generic_param_names: List<String>,
+  callee_bound_param_names: List<String>,
+  wrapper_generic_param_names: List<String>,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  let si = source_indices
+  if (callee_bound_param_names |> count) == 0 {
+    []
+  } else {
+    let arg_by_name = call_args_by_name(call: call, source_indices: si)
+    let forwarded = callee_value_params
+    |> flat_map(cp =>
+      let callee_param_type_name = resolved_type_name(n: cp, source_indices: si)
+      let callee_param_type_arg_names = resolved_type(n: cp).children |> map(c => authored_name_at(source_indices: si, node: c))
+      let arg_type_name = match map_get(arg_by_name, cp.name) {
+        Present { value: arg_node } => resolved_type_name(n: arg_node, source_indices: si)
+        Absent => ""
+      }
+      let arg_type_arg_names = match map_get(arg_by_name, cp.name) {
+        Present { value: arg_node } => resolved_type(n: arg_node).children |> map(c => authored_name_at(source_indices: si, node: c))
+        Absent => []
+      }
+      v1_call_forwarding_bound_wrapper_param_names(
+        callee_param_type_name: callee_param_type_name,
+        callee_param_type_arg_names: callee_param_type_arg_names,
+        callee_generic_param_names: callee_generic_param_names,
+        callee_bound_param_names: callee_bound_param_names,
+        arg_type_name: arg_type_name,
+        arg_type_arg_names: arg_type_arg_names,
+        wrapper_generic_param_names: wrapper_generic_param_names
+      )
+    )
+    v1_union_bound_param_names(base: [], extra: forwarded)
   }
 }
 
@@ -6110,7 +6155,6 @@ fn v1_call_forwarding_clone_bound_param_names(
             Absent => []
             Present { value: callee_body } =>
               let callee_params = callee_item.params
-              let callee_value_params = function_value_params(params: callee_params)
               let callee_type_params = function_type_params(params: callee_params)
               let callee_generic_param_names = callee_type_params |> map(p => generic_param_name_at(n: p, source_indices: si))
               let callee_clone_param_names = v1_fn_body_derived_clone_param_names(
@@ -6121,35 +6165,118 @@ fn v1_call_forwarding_clone_bound_param_names(
                 shared_types: shared_types,
                 source_indices: si
               )
-              if (callee_clone_param_names |> count) == 0 {
-                []
-              } else {
-                let arg_by_name = call_args_by_name(call: call, source_indices: si)
-                let forwarded = callee_value_params
-                |> flat_map(cp =>
-                  let callee_param_type_name = resolved_type_name(n: cp, source_indices: si)
-                  let callee_param_type_arg_names = resolved_type(n: cp).children |> map(c => authored_name_at(source_indices: si, node: c))
-                  let arg_type_name = match map_get(arg_by_name, cp.name) {
-                    Present { value: arg_node } => resolved_type_name(n: arg_node, source_indices: si)
-                    Absent => ""
-                  }
-                  let arg_type_arg_names = match map_get(arg_by_name, cp.name) {
-                    Present { value: arg_node } => resolved_type(n: arg_node).children |> map(c => authored_name_at(source_indices: si, node: c))
-                    Absent => []
-                  }
-                  v1_call_forwarding_clone_bound_wrapper_param_names(
-                    callee_param_type_name: callee_param_type_name,
-                    callee_param_type_arg_names: callee_param_type_arg_names,
-                    callee_generic_param_names: callee_generic_param_names,
-                    callee_clone_param_names: callee_clone_param_names,
-                    arg_type_name: arg_type_name,
-                    arg_type_arg_names: arg_type_arg_names,
-                    wrapper_generic_param_names: generic_param_names
-                  )
-                )
-                v1_union_clone_param_names(base: [], extra: forwarded)
-              }
+              v1_call_forwarding_forwarded_param_names(
+                call: call,
+                callee_value_params: function_value_params(params: callee_params),
+                callee_generic_param_names: callee_generic_param_names,
+                callee_bound_param_names: callee_clone_param_names,
+                wrapper_generic_param_names: generic_param_names,
+                source_indices: si
+              )
           }
+      }
+  }
+}
+
+// The equality half of the same one-hop propagation, and the reason it exists is WELL-FORMEDNESS
+// rather than convenience: once the emitter synthesizes `K: PartialEq` on the fn whose OWN body
+// compares two K values, every caller that instantiates that fn's K with its OWN generic param is
+// obliged by rustc to prove the bound it cannot state, so the seed emits a program that does not
+// typecheck. The specimen is std.trait_derive_shape under gunbc#8605:
+// repr_grounding_derive_shape_has_trait<K> compares `k == capability_key` and earns the bound,
+// repr_grounding_derive_completeness_predicate<K> forwards its own K into that parameter and
+// emitted bare, so regen refused with E0277 on a function whose own body compares nothing.
+//
+// THE WALK IS RECURSIVE WHERE THE CLONE HALF'S IS NOT, and that is a difference in the specimens,
+// not a difference of opinion: the clone specimens are pass-through wrappers whose body IS the
+// call, while the forwarding comparison here sits inside a lambda inside a pipelined all(), which
+// the direct-shape lookup structurally cannot reach. It is the same generous-walk/exact-predicate
+// asymmetry v1_fn_body_equality_bound_param_names is built on -- descending every child can only
+// find more call sites, while precision stays where it belongs, in the type-resolving predicate
+// v1_call_forwarding_bound_wrapper_param_names applies to each (callee param, argument) pair.
+//
+// COST SHAPE (DESIGN.md S6 bare-minimum-cost, not a per-site exception): the walk re-derives the
+// callee's own equality bound at every call site it reaches, so it is charged once per (caller
+// node, callee body). A fn with no type params of its own can never receive a forwarded bound, so
+// that whole product is refused at the door rather than computed and discarded -- which is the
+// overwhelming majority of the corpus's functions.
+//
+// WHY TWO WALKS AND NOT ONE, stated rather than left as an apparent duplication: the shared part
+// -- the per-(callee param, argument) join and its predicate -- IS shared, as
+// v1_call_forwarding_forwarded_param_names above. What differs is only the SCOPE each derivation
+// walks, and pointing the Clone half at this recursive walk is not a refactor: it widens which
+// functions receive a Clone bound across the whole corpus, which is the next-rung trigger
+// BoundedToDirectSingleCallLambdaBody already names and is measured on its own regen, not smuggled
+// in beside an equality fix.
+//
+// ONE HOP, DECLARED. A callee that earns its own bound only by forwarding two hops up is not
+// bounded here in one pass; it is discovered as each intermediate fn is itself re-emitted, exactly
+// as the clone half's note describes, and a specimen needing a fixpoint over the call graph is the
+// next-rung trigger rather than a silent gap.
+fn v1_call_forwarding_equality_bound_param_names(
+  generic_param_names: List<String>,
+  body: Node,
+  fn_decl_items: Map<String, Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  if (generic_param_names |> count) == 0 {
+    return []
+  }
+  let here = match body.expr_data {
+    ExprCall => v1_call_site_equality_forwarded_param_names(
+      call: body,
+      generic_param_names: generic_param_names,
+      fn_decl_items: fn_decl_items,
+      source_indices: source_indices
+    )
+    _ => []
+  }
+  body.children |> fold(init: here, f: (acc, child) =>
+    v1_union_bound_param_names(
+      base: acc,
+      extra: v1_call_forwarding_equality_bound_param_names(
+        generic_param_names: generic_param_names,
+        body: child,
+        fn_decl_items: fn_decl_items,
+        source_indices: source_indices
+      )
+    )
+  )
+}
+
+// One call site: resolve the callee's declaration, re-derive the callee's OWN equality bound with
+// the same derivation emit_fn_def runs on itself (DESIGN.md S2 -- one derivation, two call sites,
+// never a re-implementation), then forward it onto the wrapper's params.
+fn v1_call_site_equality_forwarded_param_names(
+  call: Node,
+  generic_param_names: List<String>,
+  fn_decl_items: Map<String, Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  let si = source_indices
+  let callee_name = expr_call_func_at(texpr: call, source_indices: si)
+  match map_get(fn_decl_items, callee_name) {
+    Absent => []
+    Present { value: callee_item } =>
+      match callee_item.body {
+        Absent => []
+        Present { value: callee_body } =>
+          let callee_params = callee_item.params
+          let callee_type_params = function_type_params(params: callee_params)
+          let callee_generic_param_names = callee_type_params |> map(p => generic_param_name_at(n: p, source_indices: si))
+          let callee_eq_param_names = v1_fn_body_equality_bound_param_names(
+            body: callee_body,
+            generic_param_names: callee_generic_param_names,
+            source_indices: si
+          )
+          v1_call_forwarding_forwarded_param_names(
+            call: call,
+            callee_value_params: function_value_params(params: callee_params),
+            callee_generic_param_names: callee_generic_param_names,
+            callee_bound_param_names: callee_eq_param_names,
+            wrapper_generic_param_names: generic_param_names,
+            source_indices: si
+          )
       }
   }
 }
@@ -6198,7 +6325,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     shared_types: shared_types,
     source_indices: si
   )
-  let derived_clone_param_names_with_rc_match = v1_union_clone_param_names(
+  let derived_clone_param_names_with_rc_match = v1_union_bound_param_names(
     base: self_derived_clone_param_names,
     extra: call_forwarding_clone_param_names
   )
@@ -6210,10 +6337,20 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   } else {
     derived_clone_param_names_with_rc_match
   }
-  let eq_param_names = v1_fn_body_equality_bound_param_names(
+  let self_eq_param_names = v1_fn_body_equality_bound_param_names(
     body: body,
     generic_param_names: generic_param_names,
     source_indices: si
+  )
+  let call_forwarding_eq_param_names = v1_call_forwarding_equality_bound_param_names(
+    generic_param_names: generic_param_names,
+    body: body,
+    fn_decl_items: emit_info.fn_decl_items,
+    source_indices: si
+  )
+  let eq_param_names = v1_union_bound_param_names(
+    base: self_eq_param_names,
+    extra: call_forwarding_eq_param_names
   )
   let bounds_by_param = v1_fn_bounds_by_param(
     clone_param_names: clone_param_names,
