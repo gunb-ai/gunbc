@@ -5375,7 +5375,8 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
         item_name: item_text,
         generic_param_names: item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)),
         emit_info: emit_info
-      )
+      ),
+      type_decl_items: emit_info.type_decl_items
     )
     let type_params = if !has_fn_fields {
       emit_item_type_params_with_clone_bounds(item_name: item_text, params: item.params, emit_info: emit_info, source_indices: env.source_indices)
@@ -5499,7 +5500,8 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
       item_name: name,
       generic_param_names: generic_param_names,
       emit_info: emit_info
-    )
+    ),
+    type_decl_items: emit_info.type_decl_items
   )
   if children |> count == 0 {
     concat(surface.derive_attr, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, ";")

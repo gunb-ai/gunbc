@@ -12870,6 +12870,7 @@ pub fn emit_type_def_from_connective(
                         }),
                         emit_info.clone(),
                     ),
+                    emit_info.type_decl_items.clone(),
                 );
                 let type_params = if !has_fn_fields.clone() {
                     emit_item_type_params_with_clone_bounds(
@@ -13259,6 +13260,7 @@ pub fn emit_struct_from_children(
                 generic_param_names.clone(),
                 emit_info.clone(),
             ),
+            emit_info.type_decl_items.clone(),
         );
         if ((children.clone().len() as i64) == 0) {
             v1_rt::concat(
