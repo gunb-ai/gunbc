@@ -14,6 +14,7 @@
 // src/extdeps_languages_python_emit.rs
 // src/extdeps_languages_python_syntax.rs
 // src/extdeps_languages_python_types.rs
+// src/extdeps_languages_rust_derive_contracts.rs
 // src/extdeps_languages_rust_emit.rs
 // src/extdeps_languages_rust_syntax.rs
 // src/extdeps_languages_rust_types.rs
