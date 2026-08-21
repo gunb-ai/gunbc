@@ -508,8 +508,28 @@ fn main() {
                 // means 'compile src/v1, using dag as a dependency pool').
                 let mut entry_files = Vec::new();
                 if let Some(entry_path) = &entry {
-                    let content = std::fs::read_to_string(entry_path)
-                        .unwrap_or_else(|e| panic!("failed to read entry {:?}: {}", entry_path, e));
+                    // An entry that cannot be read is an external fact observed at a boundary:
+                    // refuse with the path and the cause, never abort. The two errnos are kept
+                    // apart because their remedies are different -- NotFound means the caller
+                    // named a path that is not there (a wrong subject, and the message says so),
+                    // while any other error means the path exists and the read failed, which is
+                    // a permission or IO fault at the same path. Collapsing them sends the
+                    // caller looking in the wrong place.
+                    let content = match std::fs::read_to_string(entry_path) {
+                        Ok(content) => content,
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                            eprintln!(
+                                "gunbc compile: entry file does not exist: {entry_path} \
+                                 (--entry names a path relative to the working directory, \
+                                 not a module path)"
+                            );
+                            std::process::exit(1);
+                        }
+                        Err(e) => {
+                            eprintln!("gunbc compile: cannot read entry {entry_path}: {e}");
+                            std::process::exit(1);
+                        }
+                    };
                     entry_files.push((entry_path.clone(), content));
                 } else {
                     let first_root = std::path::Path::new(&source_roots[0]);
@@ -517,8 +537,19 @@ fn main() {
                         let mut dag_paths = Vec::new();
                         collect_dag_files(first_root, &mut dag_paths);
                         for path in dag_paths {
-                            let content = std::fs::read_to_string(&path)
-                                .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+                            // Same boundary, discovered rather than named: a path the walk
+                            // just produced cannot be NotFound without a race, so this arm
+                            // reports the path and the cause and stops the line.
+                            let content = match std::fs::read_to_string(&path) {
+                                Ok(content) => content,
+                                Err(e) => {
+                                    eprintln!(
+                                        "gunbc compile: cannot read source {}: {e}",
+                                        path.display()
+                                    );
+                                    std::process::exit(1);
+                                }
+                            };
                             entry_files.push((path.to_string_lossy().to_string(), content));
                         }
                     }

@@ -51,7 +51,7 @@ data gcp_token_smoke_echo_acquired_command: String = "echo \"keyless access toke
 fn gcp_token_smoke_run(command: String) -> Run {
   Run {
     command: command,
-    env: [],
+    env: Empty,
     redirect: Absent,
     capture: Absent
   }
