@@ -168,7 +168,7 @@ import extdeps.cache.sccache {
 }
 import extdeps.crypto.hash { Digest }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
-import gunbc.build_cache_unit { render_build_cache_unit }
+import gunbc.build_cache_unit { build_cache_unit_text }
 import gunbc.live_deploy.operations {
   systemctl_daemon_reload_command,
   systemctl_enable_command,
@@ -2169,8 +2169,11 @@ fn build_cache_ensure_daemon_body(instance: BuildCacheInstance, arch_token: NonE
     "_gunbc_stage=\"$(mktemp -d)\"",
     "trap 'rm -rf \"$_gunbc_stage\"' EXIT",
     join(["cat > \"$_gunbc_stage/", instance.intended_unit as String, "\" <<'__GUNBC_SCCACHE_UNIT__'"], ""),
-    join(render_build_cache_unit(instance: instance), "\n"),
-    "__GUNBC_SCCACHE_UNIT__",
+    // The unit text already ends in its terminating newline, so the heredoc terminator is
+    // CONCATENATED onto it rather than joined as a sibling line. Joining would insert a second
+    // separator and deliver a unit carrying a trailing blank line -- a silent one-byte drift in a
+    // file that is compared byte-for-byte against this render when convergence reads it back.
+    concat(build_cache_unit_text(instance: instance), "__GUNBC_SCCACHE_UNIT__"),
     join(["sudo -n install -m 0644 \"$_gunbc_stage/", instance.intended_unit as String, "\" ", build_cache_unit_system_path(instance: instance)], ""),
     systemctl_daemon_reload_command(privileged: true),
     systemctl_enable_command(unit: instance.intended_unit, privileged: true),
