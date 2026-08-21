@@ -2,6 +2,11 @@ module gunbc.fleet_main_revision
 
 import std.types { String, NonEmptyStr, Bool }
 import extdeps.git.object_store { GitObjectId }
+import extdeps.git.publication_transport {
+  GitRemoteRefExpectation,
+  RemoteRefMustBeAbsent,
+  RemoteRefMustEqual,
+}
 
 // fleet-main-revision-authority (arc item 3, operator directive 2026-08-08): the fleet's
 // desired revision derives from MERGED, FLOOR-GREEN main — never from a CLI argument, a
@@ -16,13 +21,60 @@ data fleet_desired_ref_name: String = "refs/fleet/desired"
 // the ref. Unobserved is a typed state with a cause — a host that cannot read the ref
 // holds last-known-good and says so; it never fabricates a target and never treats
 // "could not read" as "nothing desired" (the empty-observation narrow).
+// FOUR OBSERVATIONS, FOUR REMEDIES -- and the split exists because ONE of them licenses a write.
+//
+// This carried two variants: admitted, or "unobserved" with a cause string. That collapsed three
+// situations `ls-remote` genuinely distinguishes, and the collapse is the empty-observation
+// narrow: an origin that advertises NO such ref is an ANSWER about the remote, while a refused
+// transport is the ABSENCE of an answer, and both rendered as FleetDesiredUnobserved. A consumer
+// asking "may I create this ref?" cannot tell them apart, so the only safe reading of the old
+// type was "never create", which is why first creation was not expressible at all.
+//
+//   FleetDesiredAdmitted    the ref is at a decodable oid   -> advance FROM it
+//   FleetDesiredAbsent      origin advertises no such ref   -> create it, and ONLY here
+//   FleetDesiredUndecodable the ref exists and is garbage   -> alarm; never write over it
+//   FleetDesiredUnobserved  no answer at all                -> refuse; claim nothing
+//
+// Undecodable is not folded into Unobserved even though both refuse a write, because their
+// remedies differ: an undecodable advertisement means the ref EXISTS holding something we cannot
+// read, which a retry will not fix and a write would destroy; an unobserved ref means we failed
+// to ask. Merging them would let a corrupt ref be retried forever as if it were a network fault.
+
 type FleetDesiredRevision
   = FleetDesiredAdmitted { revision: GitObjectId }
+  | FleetDesiredAbsent
+  | FleetDesiredUndecodable { advertised: String }
   | FleetDesiredUnobserved { cause: String }
 
 fn fleet_desired_revision_target(d: FleetDesiredRevision) -> GitObjectId? {
   match d {
     FleetDesiredAdmitted { revision: r } => Present { value: r }
+    FleetDesiredAbsent => none
+    FleetDesiredUndecodable { advertised: _ } => none
+    FleetDesiredUnobserved { cause: _ } => none
+  }
+}
+
+// THE OBSERVATION-TO-EXPECTATION SEAM, and the only place an advance learns what it may claim
+// about the remote.
+//
+// A compare-and-swap needs a claim about the CURRENT state of the ref it is moving. Only two
+// observations support one: the ref is at a decodable oid, or origin advertises no such ref.
+// Everything else -- a garbage advertisement, a refused ls-remote -- supports NO claim, and the
+// absent answer here is a refusal to actuate rather than a default.
+//
+// The refusal arms are the load-bearing half. Rendering "I could not read the ref" as
+// RemoteRefMustBeAbsent would turn a network fault into a ref CREATION, and rendering it as
+// RemoteRefMustEqual would need an oid nobody observed. Both are the empty-observation narrow
+// pointed at an actuator, so this function returns nothing at all in those cases and the caller
+// stops. An undecodable advertisement refuses for a stronger reason than ignorance: the ref
+// EXISTS holding something unreadable, and a lease naming any expectation would either fail
+// forever or, if it matched, overwrite a state nobody understood.
+fn fleet_desired_advance_expectation(observed: FleetDesiredRevision) -> GitRemoteRefExpectation? {
+  match observed {
+    FleetDesiredAdmitted { revision: r } => Present { value: RemoteRefMustEqual { oid: r } }
+    FleetDesiredAbsent => Present { value: RemoteRefMustBeAbsent }
+    FleetDesiredUndecodable { advertised: _ } => none
     FleetDesiredUnobserved { cause: _ } => none
   }
 }

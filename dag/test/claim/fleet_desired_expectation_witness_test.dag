@@ -1,0 +1,92 @@
+module test.claim.fleet_desired_expectation_witness
+
+import std.types { Bool, String }
+import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
+import extdeps.git.publication_transport { RemoteRefMustBeAbsent, RemoteRefMustEqual }
+import gunbc.fleet_main_revision {
+  FleetDesiredRevision,
+  FleetDesiredAdmitted,
+  FleetDesiredAbsent,
+  FleetDesiredUndecodable,
+  FleetDesiredUnobserved,
+  fleet_desired_advance_expectation,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ONLY AN OBSERVATION MAY LICENSE A WRITE, AND ONLY TWO OBSERVATIONS DO.
+//
+// A compare-and-swap needs a claim about the ref's current state. "The ref is at X" and "origin
+// advertises no such ref" are claims; "the advertisement is garbage" and "ls-remote refused" are
+// not. The refusal rows below are the load-bearing ones: they are what stops a network fault
+// from rendering as a ref CREATION, which is the empty-observation narrow pointed at an actuator.
+//
+// Before the observer split, every one of these four cases was a single FleetDesiredUnobserved,
+// so the two admitting rows could not have been written at all -- there was nothing to
+// distinguish. That is the defect this file exists to hold closed.
+
+data candidate_hex: String = "3333333333333333333333333333333333333333"
+
+fn candidate() -> GitObjectId? { git_sha1_object_id(hex: candidate_hex) }
+
+fn admits(observed: FleetDesiredRevision) -> Bool {
+  match fleet_desired_advance_expectation(observed: observed) {
+    Present { value: _ } => true
+    none => false
+  }
+}
+
+// Positive control: the fixture decodes. Without it a hex typo makes candidate() none, the
+// admitted-observation row below cannot be built, and its failure would look like a modeling
+// error rather than a broken literal.
+test fn the_fixture_object_id_decodes() -> Bool {
+  match candidate() {
+    Present { value: _ } => true
+    none => false
+  }
+}
+
+// An observed ref licenses an advance FROM the exact oid observed -- not from a remembered or
+// defaulted one. The oid identity is asserted, because an expectation naming the wrong prior is
+// a lease that refuses forever.
+test fn an_observed_ref_leases_the_exact_observed_oid() -> Bool {
+  match candidate() {
+    Present { value: oid } =>
+      match fleet_desired_advance_expectation(observed: FleetDesiredAdmitted { revision: oid }) {
+        Present { value: expectation } =>
+          match expectation {
+            RemoteRefMustEqual { oid: leased } => leased == oid
+            RemoteRefMustBeAbsent => false
+          }
+        none => false
+      }
+    none => false
+  }
+}
+
+// An absent ref is the ONLY observation that licenses creation. This is the claim that was
+// inexpressible before the split.
+test fn an_absent_ref_is_the_only_licence_to_create() -> Bool {
+  match fleet_desired_advance_expectation(observed: FleetDesiredAbsent) {
+    Present { value: expectation } =>
+      match expectation {
+        RemoteRefMustBeAbsent => true
+        RemoteRefMustEqual { oid: _ } => false
+      }
+    none => false
+  }
+}
+
+// THE DISCRIMINATING HALF. A refused transport supports no claim about the remote, so it must
+// yield no expectation at all. If this ever admits, a network fault becomes a ref creation.
+test fn a_refused_transport_licenses_nothing() -> Bool {
+  !admits(observed: FleetDesiredUnobserved { cause: "ls-remote refused: connection reset" })
+}
+
+// An undecodable advertisement refuses for a stronger reason than ignorance: the ref EXISTS
+// holding something unreadable. A lease naming any expectation would either fail forever or,
+// if it matched, overwrite a state nobody understood.
+test fn an_undecodable_advertisement_licenses_nothing() -> Bool {
+  !admits(observed: FleetDesiredUndecodable { advertised: "not-a-sha\trefs/fleet/desired" })
+}
