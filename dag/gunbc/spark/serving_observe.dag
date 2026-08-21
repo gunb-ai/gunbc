@@ -1080,8 +1080,12 @@ fn spark_serving_descriptor_digest(v: JsonValue) -> SparkServingManifestDecode {
 // the digest travels as its hex alone and each side spells it its own way.
 fn spark_serving_digest_hex_from_wire(wire: String) -> NonEmptyStr? {
   let parts = split(wire, ":")
-  if length(parts) == 2 && parts[0] == "sha256" && parts[1] != "" {
-    Present { value: parts[1] as NonEmptyStr }
+  if length(parts) == 2 && parts[0] == "sha256" {
+    match parts[1] {
+      Present { value: hex } =>
+        if hex != "" { Present { value: hex as NonEmptyStr } } else { none }
+      Absent => none
+    }
   } else {
     none
   }

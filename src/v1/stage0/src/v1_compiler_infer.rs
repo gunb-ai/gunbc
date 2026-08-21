@@ -160,8 +160,9 @@ use crate::v1_std_core::CompilerDiagnostic::{
     CallArgumentNameUnknown, CallNamedArgOnFunctionValue, CallPositionalDeficit,
     CallPositionalSurplus, ConstructorCallAdmissionRefused, FieldNotFound,
     FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
-    MethodExistenceUndecided, MethodNotFound, MissingField, ReceiverTypeUnestablished,
-    SoleConstructorViolation, TypeMismatch, UnresolvedType, VariantCollision,
+    MethodExistenceUndecided, MethodNotFound, MissingField, OptionalCastNotEliminated,
+    ReceiverTypeUnestablished, SoleConstructorViolation, TypeMismatch, UnresolvedType,
+    VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -4887,12 +4888,12 @@ pub fn optional_cast_diags(
     match source_inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: src_node, .. }) => {
             let source_name = authored_name_at(source_indices.clone(), src_node.clone());
-            let source_is_optional = (src_node.return_cardinality.clone()
+            let source_is_optional = ((src_node.return_cardinality.clone()
                 == Cardinality::CardOptional)
-                || (source_name.clone() == "Optional".to_string());
+                || (source_name.clone() == "Optional".to_string()));
             let target_is_optional =
-                target_type.return_cardinality.clone() == Cardinality::CardOptional;
-            if (source_is_optional && !target_is_optional) {
+                (target_type.return_cardinality.clone() == Cardinality::CardOptional);
+            if (source_is_optional.clone() && !target_is_optional.clone()) {
                 Rc::new(vec![make_error_node(
                     Rc::new(CompilerDiagnostic::OptionalCastNotEliminated {
                         source_type: v1_rt::concat(source_name.clone(), "?".to_string()),
