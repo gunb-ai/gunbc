@@ -2,9 +2,10 @@ module extdeps.pin
 
 
 
+
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "reproducible-builds.org/docs/definition/"
   }
 }
@@ -32,8 +33,8 @@ type PinSelection
       refresh_window_days: std.integer.PositiveInt
     }
 
-type Pin<Subject> {
-  subject: Subject
+type Pin<extdeps.coverage.Subject> {
+  subject: extdeps.coverage.Subject
   version: extdeps.version.VersionIdentity
   expected_identity: std.content_hash.ContentHash
   selection: extdeps.pin.PinSelection
@@ -41,20 +42,70 @@ type Pin<Subject> {
 
 data subject_projected_pin_note: String = "When a pin subject fully determines cited digest identity for its grain, extdeps.pin.Pin<Subject> would duplicate one fact in independently writable fields — the OciDescriptor failure class and review 44999 on SccacheBinaryArtifact. SubjectProjectedPin carries subject + selection only; identity and version are projected by the instantiation module and supplied at the reconcile bridge — never stored twice (construction, deep-eagle-728 oracle msg_36c1fcf1). admit_subject_projected_pin_integrity and subject_projected_pin_value_eq live HERE as the single admission and value_eq authority for every SubjectProjectedPin instantiation; instantiation modules own projection fns (content_identity, pin_version, key_of) only. P2 membership_reconcile bridges via subject_projected_pin_as_pin(pin, expected_identity, version) — both fields passed explicitly, symmetric with identity projection, so Pin.version Absent is never representable (msg_fac61885 regression fix). Pin<Subject> over subjects that declare ContentHash remain dissolve-on feature:pin-subject-self-identity-lens targets."
 
-type SubjectProjectedPin<Subject> {
-  subject: Subject
+// A MOVING REFERENCE IS NOT A PIN SUBJECT, and this is the carrier for the case Pin<Subject> and
+// SubjectProjectedPin both refuse. Pin supplies an identity the subject lacks and requires an exact
+// VersionIdentity beside it; SubjectProjectedPin applies when the subject itself determines the
+// identity. An upstream TAG is neither: `gpt-oss:20b` carries no version (upstream models it as a
+// tag with no version field, so a VersionIdentity would be locally coined), and it does not determine
+// its content -- one ref has now projected to two manifest identities over time, which is the whole
+// incident this carrier exists to make expressible.
+//
+// So the two facts are separated: the moving REFERENCE is the selection source, and the exact
+// IDENTITY is the selected result. The relation between them is a resolution that happened at a
+// moment, on evidence -- not a property of either end.
+//
+// FIRST_EVIDENCE IS NOT OPTIONAL, which is the construction claim. A resolution with no evidence is
+// an assertion about upstream bytes with nothing behind it, and that is exactly the shape that let an
+// authored literal travel as an "observed" digest. Making the evidence a required field means an
+// evidence-free resolution has no constructor rather than failing a check.
+type TrackedReferenceResolution<v2.lens.grounding_ledger.Reference, Evidence> sole_constructor {
+  reference: v2.lens.grounding_ledger.Reference
+  resolved_identity: std.content_hash.ContentHash
+  resolved_at: std.types.Timestamp
+  first_evidence: Evidence
+  further_evidence: std.types.List<Evidence>
+}
+
+// The only mint. sole_constructor already refuses construction outside this module; this is the
+// surface every instantiation routes through, so the required-evidence argument holds at one place.
+fn tracked_reference_resolution<v2.lens.grounding_ledger.Reference, Evidence>(
+  reference: v2.lens.grounding_ledger.Reference,
+  resolved_identity: std.content_hash.ContentHash,
+  resolved_at: std.types.Timestamp,
+  first_evidence: Evidence,
+  further_evidence: std.types.List<Evidence>,
+) -> TrackedReferenceResolution<v2.lens.grounding_ledger.Reference, Evidence> {
+  TrackedReferenceResolution {
+    reference: reference,
+    resolved_identity: resolved_identity,
+    resolved_at: resolved_at,
+    first_evidence: first_evidence,
+    further_evidence: further_evidence,
+  }
+}
+
+// Every evidence reading in one list, primary first, so a consumer counting confirmations does not
+// have to know that the first one is stored in a different field than the rest.
+fn tracked_reference_resolution_evidence<v2.lens.grounding_ledger.Reference, Evidence>(
+  resolution: TrackedReferenceResolution<v2.lens.grounding_ledger.Reference, Evidence>,
+) -> std.types.List<Evidence> {
+  concat([resolution.first_evidence], resolution.further_evidence)
+}
+
+type SubjectProjectedPin<extdeps.coverage.Subject> {
+  subject: extdeps.coverage.Subject
   selection: extdeps.pin.PinSelection
 }
 
-type SubjectProjectedPinAdmission<Subject>
-  = SubjectProjectedPinIntegrityAdmitted { pin: extdeps.pin.SubjectProjectedPin<Subject> }
-  | SubjectProjectedPinRefused { subject: Subject, cause: extdeps.pin.PinRefusalCause }
+type SubjectProjectedPinAdmission<extdeps.coverage.Subject>
+  = SubjectProjectedPinIntegrityAdmitted { pin: extdeps.pin.SubjectProjectedPin<extdeps.coverage.Subject> }
+  | SubjectProjectedPinRefused { subject: extdeps.coverage.Subject, cause: extdeps.pin.PinRefusalCause }
 
-fn subject_projected_pin_as_pin<Subject>(
-  pin: extdeps.pin.SubjectProjectedPin<Subject>,
+fn subject_projected_pin_as_pin<extdeps.coverage.Subject>(
+  pin: extdeps.pin.SubjectProjectedPin<extdeps.coverage.Subject>,
   expected_identity: std.content_hash.ContentHash,
   version: extdeps.version.VersionIdentity,
-) -> extdeps.pin.Pin<Subject> {
+) -> extdeps.pin.Pin<extdeps.coverage.Subject> {
   Pin {
     subject: pin.subject,
     version: version,
@@ -63,11 +114,11 @@ fn subject_projected_pin_as_pin<Subject>(
   }
 }
 
-fn admit_subject_projected_pin_integrity<Subject>(
-  pin: extdeps.pin.SubjectProjectedPin<Subject>,
+fn admit_subject_projected_pin_integrity<extdeps.coverage.Subject>(
+  pin: extdeps.pin.SubjectProjectedPin<extdeps.coverage.Subject>,
   observed_identity: std.content_hash.ContentHash,
   expected_identity: std.content_hash.ContentHash,
-) -> extdeps.pin.SubjectProjectedPinAdmission<Subject> {
+) -> extdeps.pin.SubjectProjectedPinAdmission<extdeps.coverage.Subject> {
   match pin.selection {
     TrackedChannel { channel: c, refresh_window_days: _ } =>
       SubjectProjectedPinRefused {
@@ -76,9 +127,9 @@ fn admit_subject_projected_pin_integrity<Subject>(
       }
     ExactPin =>
       match compare_content_hash(left: expected_identity, right: observed_identity) {
-        ContentHashEqual =>
+        std.content_hash.ContentHashEqual =>
           SubjectProjectedPinIntegrityAdmitted { pin: pin }
-        ContentHashDifferent =>
+        std.content_hash.ContentHashDifferent =>
           SubjectProjectedPinRefused {
             subject: pin.subject,
             cause: ObservedIdentityMismatch {
@@ -86,7 +137,7 @@ fn admit_subject_projected_pin_integrity<Subject>(
               observed: observed_identity,
             },
           }
-        ContentHashCrossFamilyIncomparable =>
+        std.content_hash.ContentHashCrossFamilyIncomparable =>
           SubjectProjectedPinRefused {
             subject: pin.subject,
             cause: CrossFamilyIdentityIncomparable {
@@ -98,9 +149,9 @@ fn admit_subject_projected_pin_integrity<Subject>(
   }
 }
 
-fn subject_projected_pin_value_eq<Subject>(
-  a: extdeps.pin.SubjectProjectedPin<Subject>,
-  b: extdeps.pin.SubjectProjectedPin<Subject>,
+fn subject_projected_pin_value_eq<extdeps.coverage.Subject>(
+  a: extdeps.pin.SubjectProjectedPin<extdeps.coverage.Subject>,
+  b: extdeps.pin.SubjectProjectedPin<extdeps.coverage.Subject>,
 ) -> Bool {
   (a.subject == b.subject) && (a.selection == b.selection)
 }
@@ -111,7 +162,7 @@ type CurrencyGap
   = AuthoredPinHasNoReviewDate
   | TrackedPinHasNoResolutionDate { channel: std.types.NonEmptyStr }
 
-fn pin_currency_gap<Subject>(pin: extdeps.pin.Pin<Subject>) -> extdeps.pin.CurrencyGap {
+fn pin_currency_gap<extdeps.coverage.Subject>(pin: extdeps.pin.Pin<extdeps.coverage.Subject>) -> extdeps.pin.CurrencyGap {
   match pin.selection {
     ExactPin => AuthoredPinHasNoReviewDate
     TrackedChannel { channel: c, refresh_window_days: _ } =>
@@ -130,16 +181,16 @@ type PinRefusalCause
   | ObservedIdentityMismatch { expected: std.content_hash.ContentHash, observed: std.content_hash.ContentHash }
 
 // PinRefused carries the SUBJECT, not a name string. The first shape carried tool_name: NonEmptyStr, which re-spelled the subject's identity in the refusal and forced every consumer to join back by string equality — the same anemic-leaf defect the dimension note records for ToolPin itself. Carrying the subject means a refusal points AT the row that failed, so a consumer can project whatever identity it actually needs (a CliTool's name, a release's tag) from the modeled value rather than trusting a copied string.
-type PinAdmission<Subject>
-  = PinIntegrityAdmitted { pin: extdeps.pin.Pin<Subject> }
-  | PinRefused { subject: Subject, cause: extdeps.pin.PinRefusalCause }
+type PinAdmission<extdeps.coverage.Subject>
+  = PinIntegrityAdmitted { pin: extdeps.pin.Pin<extdeps.coverage.Subject> }
+  | PinRefused { subject: extdeps.coverage.Subject, cause: extdeps.pin.PinRefusalCause }
 
 data pin_integrity_admission_note: String = "Establishes INTEGRITY ONLY, and is named so it cannot be misread as currency (review 44274). PinIntegrityAdmitted asserts exactly one thing: the observed artifact is the one this pin declares. It asserts NOTHING about whether the declared version is still the right one — that is pin_currency_gap, which is total and always names a gap, so currency can never be silently inherited from an integrity pass. A TrackedChannel pin refuses integrity admission outright (review 44242): its expected_identity was resolved from a moving reference and no record of that resolution is carried, so there is no evidence the stored digest corresponds to any decision anyone made. ExactPin proceeds to the digest comparison, which is the real, decidable check. Both arms refuse rather than widen; neither substitutes a superset, silently re-resolves, nor proceeds on mismatch."
 
-fn admit_pin_integrity<Subject>(
-  pin: extdeps.pin.Pin<Subject>,
+fn admit_pin_integrity<extdeps.coverage.Subject>(
+  pin: extdeps.pin.Pin<extdeps.coverage.Subject>,
   observed_identity: std.content_hash.ContentHash,
-) -> extdeps.pin.PinAdmission<Subject> {
+) -> extdeps.pin.PinAdmission<extdeps.coverage.Subject> {
   match pin.selection {
     TrackedChannel { channel: c, refresh_window_days: _ } =>
       PinRefused {
@@ -148,9 +199,9 @@ fn admit_pin_integrity<Subject>(
       }
     ExactPin =>
       match compare_content_hash(left: pin.expected_identity, right: observed_identity) {
-        ContentHashEqual =>
+        std.content_hash.ContentHashEqual =>
           PinIntegrityAdmitted { pin: pin }
-        ContentHashDifferent =>
+        std.content_hash.ContentHashDifferent =>
           PinRefused {
             subject: pin.subject,
             cause: ObservedIdentityMismatch {
@@ -158,7 +209,7 @@ fn admit_pin_integrity<Subject>(
               observed: observed_identity,
             },
           }
-        ContentHashCrossFamilyIncomparable =>
+        std.content_hash.ContentHashCrossFamilyIncomparable =>
           PinRefused {
             subject: pin.subject,
             cause: CrossFamilyIdentityIncomparable {
@@ -172,17 +223,17 @@ fn admit_pin_integrity<Subject>(
 
 data pin_value_eq_note: String = "The bundle member the reconcile hands to gunbc.membership_reconcile as value_eq, and the reason it does NOT compare the subject. Identity-vs-content split per that spine's authority note: the SUBJECT is the stable identity and therefore the key_of, so a version, digest, or selection change is a Modified hunk and re-upserts — an ensure that reinstalls in place — rather than a Removed plus Added pair that would tear the dependency down and reinstall it. value_eq is therefore presence-plus-content over every field that changes what gets installed or when it is re-resolved: the pinned version, the expected identity, AND the selection policy. Comparing the subject here would be redundant with the key and would make every hunk a no-op. Selection is content, not metadata: flipping ExactPin to TrackedChannel, or widening a refresh window, changes the ensure behaviour with no version or digest movement, so omitting it would emit no hunk for a real drift (review 44329). expected_identity comparison routes through std.content_hash.compare_content_hash (review 45407) — the canonical typed outcome, not a consumer-local coproduct predicate. Selection is compared with the substrate's structural equality on the coproduct rather than a hand-written per-variant predicate — the closed vocabulary already decides it, so a predicate would be a second representation of a decision the substrate makes (review 44341). key_of is NOT declared here: projecting an identity out of a Subject is subject-specific, so it belongs with each instantiation, not on the generic carrier."
 
-fn pin_value_eq<Subject>(a: extdeps.pin.Pin<Subject>, b: extdeps.pin.Pin<Subject>) -> Bool {
+fn pin_value_eq<extdeps.coverage.Subject>(a: extdeps.pin.Pin<extdeps.coverage.Subject>, b: extdeps.pin.Pin<extdeps.coverage.Subject>) -> Bool {
   (a.version == b.version)
     && match compare_content_hash(left: a.expected_identity, right: b.expected_identity) {
-      ContentHashEqual => true
-      ContentHashDifferent => false
-      ContentHashCrossFamilyIncomparable => false
+      std.content_hash.ContentHashEqual => true
+      std.content_hash.ContentHashDifferent => false
+      std.content_hash.ContentHashCrossFamilyIncomparable => false
     }
     && (a.selection == b.selection)
 }
 
-data pin_frontier_rows: List<std.roster_frontier.FrontierRow> = [
+data pin_frontier_rows: std.types.List<std.roster_frontier.FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.pin", decl_name: "PinSelection"),
     reason: "refresh_window_days is a bare PositiveInt count of days rather than a day-typed magnitude",

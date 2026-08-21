@@ -5,13 +5,13 @@ data fleet_automation_sa_email: extdeps.cloud.gcp.gcp.ServiceAccountEmail = "fle
 
 
 data operator_macbook_ssh_key: extdeps.ssh.SshPublicKey = extdeps.ssh.SshPublicKey {
-  algorithm: Ed25519,
+  algorithm: extdeps.ssh.keys.Ed25519,
   material: "AAAAC3NzaC1lZDI1NTE5AAAAIKgumC/OBjsSgM266FLtgKJpF179Aj/MzEZHQH79QRQF",
   comment: "macbook-m4",
 }
 
 data fleet_automation_ssh_key: extdeps.ssh.SshPublicKey = extdeps.ssh.SshPublicKey {
-  algorithm: Ed25519,
+  algorithm: extdeps.ssh.keys.Ed25519,
   material: "AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN",
   comment: "fleet-automation@gunbc",
 }
@@ -33,7 +33,7 @@ data fleet_automation_ssh_privkey_secret: extdeps.cloud.gcp.secret_ref.SecretRef
   project: gunbc.fleet_secrets_config.fleet_secrets_gcp_project,
   secret: "fleet-automation-ssh-key" as std.types.NonEmptyStr,
   version: "1",
-  hash_state: HashPending,
+  hash_state: extdeps.cloud.gcp.secret_ref.HashPending,
 }
 
 // The version path segment ("versions/1") derived from the SecretRef's version field.
@@ -45,15 +45,7 @@ fn fleet_automation_privkey_version_segment() -> String {
 // secret, and version all come from the one authority, so the CI fetch cannot drift from
 // the modeled reference.
 fn fleet_automation_privkey_sm_access_url() -> String {
-  join([
-    "https://secretmanager.googleapis.com/v1/projects/",
-    gunbc.fleet_secrets_config.fleet_secrets_gcp_project as String,
-    "/secrets/",
-    fleet_automation_ssh_privkey_secret.secret as String,
-    "/",
-    fleet_automation_privkey_version_segment(),
-    ":access",
-  ], "")
+  secret_ref_access_url(ref: fleet_automation_ssh_privkey_secret)
 }
 
 type SecretOwner {
@@ -74,15 +66,15 @@ type SshAccessPrincipal {
 }
 
 data operator_ssh_principal: SshAccessPrincipal = SshAccessPrincipal {
-  posix_account: FleetAccountOperator,
+  posix_account: gunbc.fleet_posix_accounts.FleetAccountOperator,
   public_key: operator_macbook_ssh_key,
 }
 
-data fleet_authorized_keys: List<extdeps.ssh.SshPublicKey> = [
+data fleet_authorized_keys: std.types.List<extdeps.ssh.SshPublicKey> = [
   operator_macbook_ssh_key,
   fleet_automation_ssh_key,
 ]
 
-fn fleet_host_authorized_keys() -> List<extdeps.ssh.SshPublicKey> {
+fn fleet_host_authorized_keys() -> std.types.List<extdeps.ssh.SshPublicKey> {
   fleet_authorized_keys
 }

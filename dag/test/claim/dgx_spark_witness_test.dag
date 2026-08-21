@@ -2,7 +2,7 @@ module test.claim.dgx_spark_witness
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // SPARK-0 green-by-execution proof. The RED control (w_red_admission_without_evidence_refuses) is the deliverable per the brief: constructing a DgxSparkDeployment from vendor catalog data plus procurement intent alone, with no FleetLifecycleEnvelope, must REFUSE -- physical binding evidence (a real device_identity.py observation) is absent, and catalog+intent can never substitute for it. w_admission_with_real_evidence_succeeds is the positive control proving the same function admits once that evidence is supplied, so the RED control is proven to be a real discriminator and not a permanently-broken function. w_red_admission_with_wrong_tool_evidence_refuses is a second RED control (review 49032): presence of ANY FleetLifecycleEnvelope is not sufficient -- an envelope from a different tool (spark_updatectl.py, an UpdateControl observation) must also REFUSE, proving the wall discriminates on evidence identity, not mere presence. w_admission_when_envelope_host_disagrees_records_diagnostic_evidence is the SPARK-ALLOC-LAND-0 control: a disagreeing vendor host string must not block admission; it is recorded as diagnostic evidence on the admitted deployment instead. dgx_spark_catalog_row (extdeps.systems.nvidia) has no witness calling it by name but is exercised indirectly: it constructs nvidia_dgx_spark_1tb_catalog and nvidia_dgx_spark_4tb_catalog as data, and multiple witnesses above dereference both, so its body executes on every run of this file.
 test fn w_catalog_row_nests_gpu_from_grounded_authority() -> Bool {
@@ -21,24 +21,24 @@ test fn w_heterogeneous_cpu_core_count_derives_to_twenty() -> Bool {
 }
 
 test fn w_fleet_lifecycle_operation_class_distinguishes_collector_and_controller() -> Bool {
-  match fleet_lifecycle_operation_class(op: DeviceIdentity) {
+  match fleet_lifecycle_operation_class(op: extdeps.systems.nvidia_fleet_lifecycle.DeviceIdentity) {
     Collector => true
     Controller => false
   }
-    && match fleet_lifecycle_operation_class(op: UpdateControl) {
+    && match fleet_lifecycle_operation_class(op: extdeps.systems.nvidia_fleet_lifecycle.UpdateControl) {
       Collector => false
       Controller => true
     }
 }
 
 test fn w_only_the_controller_requires_a_change_window() -> Bool {
-  !fleet_lifecycle_requires_change_window(op: DeviceIdentity)
-    && fleet_lifecycle_requires_change_window(op: UpdateControl)
+  !fleet_lifecycle_requires_change_window(op: extdeps.systems.nvidia_fleet_lifecycle.DeviceIdentity)
+    && fleet_lifecycle_requires_change_window(op: extdeps.systems.nvidia_fleet_lifecycle.UpdateControl)
 }
 
 test fn w_tool_names_match_the_cited_page() -> Bool {
-  fleet_lifecycle_operation_tool_name(op: DeviceIdentity) == "device_identity.py"
-    && fleet_lifecycle_operation_tool_name(op: UpdateControl) == "spark_updatectl.py"
+  fleet_lifecycle_operation_tool_name(op: extdeps.systems.nvidia_fleet_lifecycle.DeviceIdentity) == "device_identity.py"
+    && fleet_lifecycle_operation_tool_name(op: extdeps.systems.nvidia_fleet_lifecycle.UpdateControl) == "spark_updatectl.py"
 }
 
 
@@ -66,25 +66,25 @@ test fn w_slots_are_assigned_by_an_attributable_operator_allocation() -> Bool {
     && spark_a3ee_reservation.ipv4_address == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222)
     && spark_3bd5_reservation.ipv4_address == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 223)
     && match srv5_router_binding {
-      SlotAssigned { identity: _, reservation: r, allocation: a } =>
+      gunbc.spark.dgx_procurement.SlotAssigned { identity: _, reservation: r, allocation: a } =>
         r.ipv4_address == spark_a3ee_reservation.ipv4_address
           && r.mac_address == spark_a3ee_reservation.mac_address
           && a.decided_on == dgx_spark_router_binding_operator_allocation.decided_on
-      SlotUnassigned { identity: _ } => false
+      gunbc.spark.dgx_procurement.SlotUnassigned { identity: _ } => false
     }
     && match srv6_router_binding {
-      SlotAssigned { identity: _, reservation: r, allocation: _ } =>
+      gunbc.spark.dgx_procurement.SlotAssigned { identity: _, reservation: r, allocation: _ } =>
         r.ipv4_address == spark_3bd5_reservation.ipv4_address
           && r.mac_address == spark_3bd5_reservation.mac_address
-      SlotUnassigned { identity: _ } => false
+      gunbc.spark.dgx_procurement.SlotUnassigned { identity: _ } => false
     }
     && fold(
       dgx_spark_router_bindings,
       init: true,
       f: (acc, b) =>
         acc && match b {
-          SlotAssigned { identity: _, reservation: _, allocation: a } => a.decided_by != ""
-          SlotUnassigned { identity: _ } => false
+          gunbc.spark.dgx_procurement.SlotAssigned { identity: _, reservation: _, allocation: a } => a.decided_by != ""
+          gunbc.spark.dgx_procurement.SlotUnassigned { identity: _ } => false
         }
     )
 }
@@ -94,8 +94,8 @@ test fn w_slots_are_assigned_by_an_attributable_operator_allocation() -> Bool {
 // arrived while they sat on the LAN: prose cannot be kept in step with facts by discipline alone.
 test fn w_arrival_standing_derives_from_the_observed_reservation_rows() -> Bool {
   match dgx_spark_arrival_standing() {
-    AllOrderedUnitsObservedOnLan { observed_count: n } => n == 2
-    OrderedUnitsOutstanding { ordered_count: _, observed_count: _ } => false
+    gunbc.spark.dgx_procurement.AllOrderedUnitsObservedOnLan { observed_count: n } => n == 2
+    gunbc.spark.dgx_procurement.OrderedUnitsOutstanding { ordered_count: _, observed_count: _ } => false
   }
 }
 
@@ -163,9 +163,9 @@ test fn w_admission_with_real_evidence_succeeds() -> Bool {
     selection: gunbc.fleet_lifecycle_observation.ObservationUnique { observation: srv5_good_observation() },
     router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
   ) {
-    DgxSparkDeploymentAdmitted { deployment: d } =>
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentAdmitted { deployment: d } =>
       d.identity == operator_host_srv5 && d.observation.subject == operator_host_srv5
-    DgxSparkDeploymentRefused { reason: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused { reason: _ } => false
   }
 }
 
@@ -176,10 +176,10 @@ test fn w_red_admission_without_evidence_refuses() -> Bool {
     selection: ObservationMissing { subject: operator_host_srv5 },
     router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
   ) {
-    DgxSparkDeploymentRefused { reason: DeploymentAdmissionNoEvidence { requested_identity: i } } =>
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused { reason: gunbc.spark.dgx_procurement.DeploymentAdmissionNoEvidence { requested_identity: i } } =>
       i == operator_host_srv5
-    DgxSparkDeploymentRefused { reason: _ } => false
-    DgxSparkDeploymentAdmitted { deployment: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused { reason: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentAdmitted { deployment: _ } => false
   }
 }
 
@@ -210,9 +210,9 @@ test fn w_red_admission_with_wrong_tool_evidence_refuses() -> Bool {
     selection: gunbc.fleet_lifecycle_observation.ObservationUnique { observation: o },
     router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
   ) {
-    DgxSparkDeploymentRefused { reason: DeploymentAdmissionWrongTool { observed_tool: t } } => t == "spark_updatectl.py"
-    DgxSparkDeploymentRefused { reason: _ } => false
-    DgxSparkDeploymentAdmitted { deployment: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused { reason: gunbc.spark.dgx_procurement.DeploymentAdmissionWrongTool { observed_tool: t } } => t == "spark_updatectl.py"
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused { reason: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentAdmitted { deployment: _ } => false
   }
 }
 
@@ -224,11 +224,11 @@ test fn w_red_admission_with_mismatched_dispatch_subject_refuses() -> Bool {
     selection: gunbc.fleet_lifecycle_observation.ObservationUnique { observation: srv5_good_observation() },
     router_binding: synthetic_bound_binding_for(identity_host: "srv6", last_octet: 223),
   ) {
-    DgxSparkDeploymentRefused {
-      reason: DeploymentAdmissionSubjectMismatch { dispatched_subject: s, requested_identity: i }
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused {
+      reason: gunbc.spark.dgx_procurement.DeploymentAdmissionSubjectMismatch { dispatched_subject: s, requested_identity: i }
     } => s == operator_host_srv5 && i == operator_host_srv6
-    DgxSparkDeploymentRefused { reason: _ } => false
-    DgxSparkDeploymentAdmitted { deployment: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused { reason: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentAdmitted { deployment: _ } => false
   }
 }
 
@@ -243,17 +243,17 @@ test fn w_admission_when_envelope_host_disagrees_records_diagnostic_evidence() -
     selection: gunbc.fleet_lifecycle_observation.ObservationUnique { observation: o },
     router_binding: synthetic_bound_binding_for(identity_host: "srv6", last_octet: 223),
   ) {
-    DgxSparkDeploymentAdmitted { deployment: d } =>
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentAdmitted { deployment: d } =>
       d.identity == operator_host_srv6
         && match d.envelope_host_presentation {
-          EnvelopeHostDisagreesWithSubject {
+          gunbc.fleet_lifecycle_observation.EnvelopeHostDisagreesWithSubject {
             subject: s,
             observed_host: h,
             expected_presentation: _,
           } => s == operator_host_srv6 && h == "srv5"
-          EnvelopeHostAgreesWithSubject => false
+          gunbc.fleet_lifecycle_observation.EnvelopeHostAgreesWithSubject => false
         }
-    DgxSparkDeploymentRefused { reason: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused { reason: _ } => false
   }
 }
 
@@ -284,11 +284,11 @@ test fn w_red_admission_with_failed_observation_refuses() -> Bool {
     selection: gunbc.fleet_lifecycle_observation.ObservationUnique { observation: o },
     router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
   ) {
-    DgxSparkDeploymentRefused {
-      reason: DeploymentAdmissionObservationNotOk { observed_status: StatusError, observed_rc: rc }
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused {
+      reason: gunbc.spark.dgx_procurement.DeploymentAdmissionObservationNotOk { observed_status: StatusError, observed_rc: rc }
     } => rc == 1
-    DgxSparkDeploymentRefused { reason: _ } => false
-    DgxSparkDeploymentAdmitted { deployment: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused { reason: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentAdmitted { deployment: _ } => false
   }
 }
 
@@ -301,11 +301,11 @@ test fn w_red_admission_of_unreserved_identity_refuses() -> Bool {
     selection: gunbc.fleet_lifecycle_observation.ObservationUnique { observation: o },
     router_binding: synthetic_bound_binding_for(identity_host: "srv3", last_octet: 221),
   ) {
-    DgxSparkDeploymentRefused {
-      reason: DeploymentAdmissionIdentityNotReserved { requested_identity: i }
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused {
+      reason: gunbc.spark.dgx_procurement.DeploymentAdmissionIdentityNotReserved { requested_identity: i }
     } => i == operator_host_srv3
-    DgxSparkDeploymentRefused { reason: _ } => false
-    DgxSparkDeploymentAdmitted { deployment: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused { reason: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentAdmitted { deployment: _ } => false
   }
 }
 
@@ -317,11 +317,11 @@ test fn w_red_admission_with_pending_router_binding_refuses() -> Bool {
     selection: gunbc.fleet_lifecycle_observation.ObservationUnique { observation: srv5_good_observation() },
     router_binding: gunbc.dgx_spark_procurement.SlotUnassigned { identity: operator_host_srv5 },
   ) {
-    DgxSparkDeploymentRefused {
-      reason: DeploymentAdmissionRouterBindingPending { requested_identity: i }
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused {
+      reason: gunbc.spark.dgx_procurement.DeploymentAdmissionRouterBindingPending { requested_identity: i }
     } => i == operator_host_srv5
-    DgxSparkDeploymentRefused { reason: _ } => false
-    DgxSparkDeploymentAdmitted { deployment: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused { reason: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentAdmitted { deployment: _ } => false
   }
 }
 
@@ -333,11 +333,11 @@ test fn w_red_admission_with_mismatched_router_binding_refuses() -> Bool {
     selection: gunbc.fleet_lifecycle_observation.ObservationUnique { observation: o },
     router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
   ) {
-    DgxSparkDeploymentRefused {
-      reason: DeploymentAdmissionRouterBindingMismatch { binding_identity: b, requested_identity: i }
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused {
+      reason: gunbc.spark.dgx_procurement.DeploymentAdmissionRouterBindingMismatch { binding_identity: b, requested_identity: i }
     } => b == operator_host_srv5 && i == operator_host_srv6
-    DgxSparkDeploymentRefused { reason: _ } => false
-    DgxSparkDeploymentAdmitted { deployment: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused { reason: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentAdmitted { deployment: _ } => false
   }
 }
 
@@ -350,16 +350,16 @@ test fn w_red_admission_from_unreserved_endpoint_refuses() -> Bool {
     selection: gunbc.fleet_lifecycle_observation.ObservationUnique { observation: o },
     router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
   ) {
-    DgxSparkDeploymentRefused {
-      reason: DeploymentAdmissionEndpointBindingMismatch { requested_identity: i }
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused {
+      reason: gunbc.spark.dgx_procurement.DeploymentAdmissionEndpointBindingMismatch { requested_identity: i }
     } => i == operator_host_srv5
-    DgxSparkDeploymentRefused { reason: _ } => false
-    DgxSparkDeploymentAdmitted { deployment: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused { reason: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentAdmitted { deployment: _ } => false
   }
 }
 
 // DEFECT 2 control, the one the old first-wins fold silently passed. Two collector attempts against ONE subject, disagreeing (the second reports failure). Selection must report Ambiguous with the candidate count rather than returning whichever the list ordered first, and the wall must refuse on it. Under the previous shape this input admitted a deployment built from attempt-1 while attempt-2's failure was dropped without a trace.
-fn two_conflicting_srv5_observations() -> List<gunbc.fleet_lifecycle_observation.FleetLifecycleObservation> {
+fn two_conflicting_srv5_observations() -> std.types.List<gunbc.fleet_lifecycle_observation.FleetLifecycleObservation> {
   [
     srv5_good_observation(),
     gunbc.fleet_lifecycle_observation.FleetLifecycleObservation {
@@ -390,8 +390,8 @@ test fn w_red_two_attempts_for_one_subject_select_ambiguous() -> Bool {
     subject: operator_host_srv5,
     observations: two_conflicting_srv5_observations(),
   ) {
-    ObservationAmbiguous { subject: s, candidate_count: n } => s == operator_host_srv5 && n == 2
-    ObservationUnique { observation: _ } => false
+    gunbc.fleet_lifecycle_observation.ObservationAmbiguous { subject: s, candidate_count: n } => s == operator_host_srv5 && n == 2
+    gunbc.fleet_lifecycle_observation.ObservationUnique { observation: _ } => false
     ObservationMissing { subject: _ } => false
   }
 }
@@ -406,11 +406,11 @@ test fn w_red_admission_on_ambiguous_evidence_refuses() -> Bool {
     ),
     router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
   ) {
-    DgxSparkDeploymentRefused {
-      reason: DeploymentAdmissionAmbiguousEvidence { requested_identity: i, candidate_count: n }
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused {
+      reason: gunbc.spark.dgx_procurement.DeploymentAdmissionAmbiguousEvidence { requested_identity: i, candidate_count: n }
     } => i == operator_host_srv5 && n == 2
-    DgxSparkDeploymentRefused { reason: _ } => false
-    DgxSparkDeploymentAdmitted { deployment: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused { reason: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentAdmitted { deployment: _ } => false
   }
 }
 
@@ -418,25 +418,25 @@ test fn w_red_admission_on_ambiguous_evidence_refuses() -> Bool {
 test fn w_selection_is_zero_one_many_and_attempt_disambiguates() -> Bool {
   match select_observation_for_subject(subject: operator_host_srv5, observations: []) {
     ObservationMissing { subject: s } => s == operator_host_srv5
-    ObservationUnique { observation: _ } => false
-    ObservationAmbiguous { subject: _, candidate_count: _ } => false
+    gunbc.fleet_lifecycle_observation.ObservationUnique { observation: _ } => false
+    gunbc.fleet_lifecycle_observation.ObservationAmbiguous { subject: _, candidate_count: _ } => false
   }
     && match select_observation_for_subject(
       subject: operator_host_srv5,
       observations: [srv5_good_observation()],
     ) {
-      ObservationUnique { observation: o } => o.subject == operator_host_srv5
+      gunbc.fleet_lifecycle_observation.ObservationUnique { observation: o } => o.subject == operator_host_srv5
       ObservationMissing { subject: _ } => false
-      ObservationAmbiguous { subject: _, candidate_count: _ } => false
+      gunbc.fleet_lifecycle_observation.ObservationAmbiguous { subject: _, candidate_count: _ } => false
     }
     && match select_observation_by_attempt(
       subject: operator_host_srv5,
       attempt: process_receipt(label: "attempt-2", exit_status: 1),
       observations: two_conflicting_srv5_observations(),
     ) {
-      ObservationUnique { observation: o } => o.envelope.rc == 1
+      gunbc.fleet_lifecycle_observation.ObservationUnique { observation: o } => o.envelope.rc == 1
       ObservationMissing { subject: _ } => false
-      ObservationAmbiguous { subject: _, candidate_count: _ } => false
+      gunbc.fleet_lifecycle_observation.ObservationAmbiguous { subject: _, candidate_count: _ } => false
     }
 }
 
@@ -445,27 +445,27 @@ test fn w_red_selection_ignores_envelope_host() -> Bool {
   let o = synthetic_observation(subject_host: "srv6", envelope_host: "srv5", last_octet: 223, attempt_label: "attempt-mislabeled")
   match select_observation_for_subject(subject: operator_host_srv5, observations: [o]) {
     ObservationMissing { subject: s } => s == operator_host_srv5
-    ObservationUnique { observation: _ } => false
-    ObservationAmbiguous { subject: _, candidate_count: _ } => false
+    gunbc.fleet_lifecycle_observation.ObservationUnique { observation: _ } => false
+    gunbc.fleet_lifecycle_observation.ObservationAmbiguous { subject: _, candidate_count: _ } => false
   }
 }
 
 // Live convergence: the real roster against the real (empty) observation population is Pending with one typed row per unit, and the cause is the absence of evidence -- not an untyped "not ready" and not a silently empty result a consumer could read as converged.
 test fn w_live_procurement_convergence_is_pending_for_both_units() -> Bool {
   match dgx_spark_procurement_convergence() {
-    DgxSparkProcurementPending { pending: p } =>
+    gunbc.spark.dgx_procurement.DgxSparkProcurementPending { pending: p } =>
       count(p) == 2
         && fold(
           p,
           init: true,
           f: (acc, d) =>
             acc && match d {
-              DgxSparkUnitPending { identity: _, reason: DeploymentAdmissionNoEvidence { requested_identity: _ } } => true
-              DgxSparkUnitPending { identity: _, reason: _ } => false
-              DgxSparkUnitDeployed { deployment: _ } => false
+              gunbc.spark.dgx_procurement.DgxSparkUnitPending { identity: _, reason: gunbc.spark.dgx_procurement.DeploymentAdmissionNoEvidence { requested_identity: _ } } => true
+              gunbc.spark.dgx_procurement.DgxSparkUnitPending { identity: _, reason: _ } => false
+              gunbc.spark.dgx_procurement.DgxSparkUnitDeployed { deployment: _ } => false
             }
         )
-    DgxSparkProcurementConverged { deployments: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkProcurementConverged { deployments: _ } => false
   }
 }
 
@@ -480,10 +480,10 @@ test fn w_procurement_converges_when_both_units_are_bound_and_observed() -> Bool
       synthetic_observation(subject_host: "srv6", envelope_host: "srv6", last_octet: 223, attempt_label: "attempt-srv6"),
     ],
   ) {
-    DgxSparkProcurementConverged { deployments: ds } =>
+    gunbc.spark.dgx_procurement.DgxSparkProcurementConverged { deployments: ds } =>
       count(ds) == 2
         && map(ds, d => d.identity) == [operator_host_srv5, operator_host_srv6]
-    DgxSparkProcurementPending { pending: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkProcurementPending { pending: _ } => false
   }
 }
 
@@ -499,22 +499,22 @@ test fn w_red_partial_arrival_does_not_converge() -> Bool {
       synthetic_observation(subject_host: "srv6", envelope_host: "srv6", last_octet: 223, attempt_label: "attempt-srv6"),
     ],
   ) {
-    DgxSparkProcurementPending { pending: p } =>
+    gunbc.spark.dgx_procurement.DgxSparkProcurementPending { pending: p } =>
       count(p) == 1
         && fold(
           p,
           init: false,
           f: (acc, d) =>
             acc || match d {
-              DgxSparkUnitPending {
+              gunbc.spark.dgx_procurement.DgxSparkUnitPending {
                 identity: i,
-                reason: DeploymentAdmissionRouterBindingPending { requested_identity: _ },
+                reason: gunbc.spark.dgx_procurement.DeploymentAdmissionRouterBindingPending { requested_identity: _ },
               } => i == operator_host_srv6
-              DgxSparkUnitPending { identity: _, reason: _ } => false
-              DgxSparkUnitDeployed { deployment: _ } => false
+              gunbc.spark.dgx_procurement.DgxSparkUnitPending { identity: _, reason: _ } => false
+              gunbc.spark.dgx_procurement.DgxSparkUnitDeployed { deployment: _ } => false
             }
         )
-    DgxSparkProcurementConverged { deployments: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkProcurementConverged { deployments: _ } => false
   }
 }
 
@@ -536,11 +536,11 @@ test fn w_red_admission_when_execution_receipt_disagrees_with_reported_rc_refuse
     selection: gunbc.fleet_lifecycle_observation.ObservationUnique { observation: o },
     router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
   ) {
-    DgxSparkDeploymentRefused {
-      reason: DeploymentAdmissionExecutionEvidenceDisagrees { receipt_exit_status: e, reported_rc: r }
-    } => e == 1 && r == 0
-    DgxSparkDeploymentRefused { reason: _ } => false
-    DgxSparkDeploymentAdmitted { deployment: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused {
+      reason: gunbc.spark.dgx_procurement.DeploymentAdmissionExecutionEvidenceDisagrees { receipt: rec, reported_rc: r }
+    } => rec.exit_status == 1 && r == 0
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused { reason: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentAdmitted { deployment: _ } => false
   }
 }
 
@@ -588,14 +588,14 @@ fn pair_outcome_for(
   second_hw: gunbc.fleet_lifecycle_observation.DeviceHardwareIdentity,
 ) -> gunbc.dgx_spark_procurement.DgxSparkPairAdmissionOutcome {
   match deployment_with_hardware(subject_host: "srv5", last_octet: 222, attempt_label: "pair-a", hardware: first_hw) {
-    DgxSparkDeploymentAdmitted { deployment: a } =>
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentAdmitted { deployment: a } =>
       match deployment_with_hardware(subject_host: "srv6", last_octet: 223, attempt_label: "pair-b", hardware: second_hw) {
-        DgxSparkDeploymentAdmitted { deployment: b } =>
+        gunbc.spark.dgx_procurement.DgxSparkDeploymentAdmitted { deployment: b } =>
           admit_dgx_spark_pair_deployments(first: a, second: b)
-        DgxSparkDeploymentRefused { reason: r } =>
+        gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused { reason: r } =>
           gunbc.dgx_spark_procurement.DgxSparkPairRefused { reason: gunbc.dgx_spark_procurement.PairUnitNotAdmitted { identity: operator_host_srv6, reason: r } }
       }
-    DgxSparkDeploymentRefused { reason: r } =>
+    gunbc.spark.dgx_procurement.DgxSparkDeploymentRefused { reason: r } =>
       gunbc.dgx_spark_procurement.DgxSparkPairRefused { reason: gunbc.dgx_spark_procurement.PairUnitNotAdmitted { identity: operator_host_srv5, reason: r } }
   }
 }
@@ -610,9 +610,9 @@ test fn w_pair_admits_when_hardware_identities_are_distinct() -> Bool {
     first_hw: gunbc.fleet_lifecycle_observation.DeviceSerial { serial: serial_a },
     second_hw: gunbc.fleet_lifecycle_observation.DeviceSerial { serial: serial_b },
   ) {
-    DgxSparkPairAdmitted { first: a, second: b } =>
+    gunbc.spark.dgx_procurement.DgxSparkPairAdmitted { first: a, second: b } =>
       a.identity == operator_host_srv5 && b.identity == operator_host_srv6
-    DgxSparkPairRefused { reason: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkPairRefused { reason: _ } => false
   }
 }
 
@@ -622,11 +622,11 @@ test fn w_red_pair_refuses_when_both_observations_share_one_machine() -> Bool {
     first_hw: gunbc.fleet_lifecycle_observation.DeviceSerial { serial: serial_a },
     second_hw: gunbc.fleet_lifecycle_observation.DeviceSerial { serial: serial_a },
   ) {
-    DgxSparkPairRefused {
-      reason: PairHardwareIdentityNotDistinct { first: f, second: s }
+    gunbc.spark.dgx_procurement.DgxSparkPairRefused {
+      reason: gunbc.spark.dgx_procurement.PairHardwareIdentityNotDistinct { first: f, second: s }
     } => f == operator_host_srv5 && s == operator_host_srv6
-    DgxSparkPairRefused { reason: _ } => false
-    DgxSparkPairAdmitted { first: _, second: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkPairRefused { reason: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkPairAdmitted { first: _, second: _ } => false
   }
 }
 
@@ -636,11 +636,11 @@ test fn w_red_pair_refuses_on_incomparable_identity_kinds() -> Bool {
     first_hw: gunbc.fleet_lifecycle_observation.DeviceSerial { serial: serial_a },
     second_hw: gunbc.fleet_lifecycle_observation.DeviceProductUuid { product_uuid: product_uuid_a },
   ) {
-    DgxSparkPairRefused {
-      reason: PairHardwareIdentityIncomparable { first: f, second: s }
+    gunbc.spark.dgx_procurement.DgxSparkPairRefused {
+      reason: gunbc.spark.dgx_procurement.PairHardwareIdentityIncomparable { first: f, second: s }
     } => f == operator_host_srv5 && s == operator_host_srv6
-    DgxSparkPairRefused { reason: _ } => false
-    DgxSparkPairAdmitted { first: _, second: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkPairRefused { reason: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkPairAdmitted { first: _, second: _ } => false
   }
 }
 
@@ -650,10 +650,10 @@ test fn w_red_pair_refuses_when_hardware_identity_is_unobserved() -> Bool {
     first: unobserved_hw_deployment(subject_host: "srv5", last_octet: 222),
     second: unobserved_hw_deployment(subject_host: "srv6", last_octet: 223),
   ) {
-    DgxSparkPairRefused { reason: PairHardwareIdentityUnobserved { identity: i } } =>
+    gunbc.spark.dgx_procurement.DgxSparkPairRefused { reason: gunbc.spark.dgx_procurement.PairHardwareIdentityUnobserved { identity: i } } =>
       i == operator_host_srv5
-    DgxSparkPairRefused { reason: _ } => false
-    DgxSparkPairAdmitted { first: _, second: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkPairRefused { reason: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkPairAdmitted { first: _, second: _ } => false
   }
 }
 
@@ -686,9 +686,9 @@ test fn w_red_pair_refuses_when_subjects_are_not_distinct() -> Bool {
     first: unobserved_hw_deployment(subject_host: "srv5", last_octet: 222),
     second: unobserved_hw_deployment(subject_host: "srv5", last_octet: 222),
   ) {
-    DgxSparkPairRefused { reason: PairSubjectsNotDistinct { identity: i } } => i == operator_host_srv5
-    DgxSparkPairRefused { reason: _ } => false
-    DgxSparkPairAdmitted { first: _, second: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkPairRefused { reason: gunbc.spark.dgx_procurement.PairSubjectsNotDistinct { identity: i } } => i == operator_host_srv5
+    gunbc.spark.dgx_procurement.DgxSparkPairRefused { reason: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkPairAdmitted { first: _, second: _ } => false
   }
 }
 
@@ -698,35 +698,35 @@ test fn w_hardware_identity_comparison_is_three_valued() -> Bool {
     left: gunbc.fleet_lifecycle_observation.DeviceSerial { serial: serial_a },
     right: gunbc.fleet_lifecycle_observation.DeviceSerial { serial: serial_b },
   ) {
-    HardwareIdentitiesDistinct => true
-    HardwareIdentitiesSame => false
-    HardwareIdentitiesIncomparable => false
+    gunbc.fleet_lifecycle_observation.HardwareIdentitiesDistinct => true
+    gunbc.fleet_lifecycle_observation.HardwareIdentitiesSame => false
+    gunbc.fleet_lifecycle_observation.HardwareIdentitiesIncomparable => false
   }
     && match compare_hardware_identity(
       left: gunbc.fleet_lifecycle_observation.DeviceSerial { serial: serial_a },
       right: gunbc.fleet_lifecycle_observation.DeviceSerial { serial: serial_a },
     ) {
-      HardwareIdentitiesSame => true
-      HardwareIdentitiesDistinct => false
-      HardwareIdentitiesIncomparable => false
+      gunbc.fleet_lifecycle_observation.HardwareIdentitiesSame => true
+      gunbc.fleet_lifecycle_observation.HardwareIdentitiesDistinct => false
+      gunbc.fleet_lifecycle_observation.HardwareIdentitiesIncomparable => false
     }
     && match compare_hardware_identity(
       left: gunbc.fleet_lifecycle_observation.DeviceProductUuid { product_uuid: product_uuid_a },
       right: gunbc.fleet_lifecycle_observation.DeviceSerial { serial: serial_a },
     ) {
-      HardwareIdentitiesIncomparable => true
-      HardwareIdentitiesDistinct => false
-      HardwareIdentitiesSame => false
+      gunbc.fleet_lifecycle_observation.HardwareIdentitiesIncomparable => true
+      gunbc.fleet_lifecycle_observation.HardwareIdentitiesDistinct => false
+      gunbc.fleet_lifecycle_observation.HardwareIdentitiesSame => false
     }
 }
 
 // The live pair read: convergence is Pending on missing evidence, so no pair exists, and the refusal carries the UNIT's own typed cause out rather than flattening it to a generic "not converged".
 test fn w_live_pair_admission_refuses_with_the_units_own_cause() -> Bool {
   match admit_dgx_spark_pair(convergence: dgx_spark_procurement_convergence()) {
-    DgxSparkPairRefused {
-      reason: PairUnitNotAdmitted { identity: i, reason: DeploymentAdmissionNoEvidence { requested_identity: _ } }
+    gunbc.spark.dgx_procurement.DgxSparkPairRefused {
+      reason: gunbc.spark.dgx_procurement.PairUnitNotAdmitted { identity: i, reason: gunbc.spark.dgx_procurement.DeploymentAdmissionNoEvidence { requested_identity: _ } }
     } => i == operator_host_srv5
-    DgxSparkPairRefused { reason: _ } => false
-    DgxSparkPairAdmitted { first: _, second: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkPairRefused { reason: _ } => false
+    gunbc.spark.dgx_procurement.DgxSparkPairAdmitted { first: _, second: _ } => false
   }
 }

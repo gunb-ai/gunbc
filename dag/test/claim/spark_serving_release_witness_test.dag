@@ -70,12 +70,12 @@ fn digest_of(spec: gunbc.spark_serving_release.SparkServingRelease) -> String {
 }
 
 test fn release_identity_is_derived_not_authored() -> Bool {
-  digest_of(spec: release_base()) == digest_of(spec: release_base())
-    && digest_of(spec: release_base()) != digest_of(spec: release_other_revision())
+  test.claim.spark_serving_release_witness_test.digest_of(spec: release_base()) == test.claim.spark_serving_release_witness_test.digest_of(spec: release_base())
+    && test.claim.spark_serving_release_witness_test.digest_of(spec: release_base()) != test.claim.spark_serving_release_witness_test.digest_of(spec: release_other_revision())
 }
 
 test fn serving_policy_capacity_does_not_change_release_identity() -> Bool {
-  digest_of(spec: release_base()) == digest_of(spec: release_base())
+  test.claim.spark_serving_release_witness_test.digest_of(spec: release_base()) == test.claim.spark_serving_release_witness_test.digest_of(spec: release_base())
     && policy_base().capacity.max_model_len != policy_other_capacity().capacity.max_model_len
 }
 
@@ -110,18 +110,18 @@ fn occ_srv6_other() -> gunbc.spark_serving_release.SparkServingOccurrence {
 // BOTH prerequisites, and both naming srv5. This list previously carried only the managed-access
 // row, and the reconciler passed anyway -- because it checked only for an explicit absence, so a
 // prerequisite nobody had recorded read as one that held.
-data grounded_prereqs: List<gunbc.spark_serving_release.SparkServingPrerequisite> = [gunbc.spark_serving_release.HostIdentityBindingAdmitted { host: "srv5" }, gunbc.spark_serving_release.ManagedHostAccessGrounded { host: "srv5" }]
+data grounded_prereqs: std.types.List<gunbc.spark_serving_release.SparkServingPrerequisite> = [gunbc.spark_serving_release.HostIdentityBindingAdmitted { host: "srv5" }, gunbc.spark_serving_release.ManagedHostAccessGrounded { host: "srv5" }]
 
-data no_prereqs: List<gunbc.spark_serving_release.SparkServingPrerequisite> = []
+data no_prereqs: std.types.List<gunbc.spark_serving_release.SparkServingPrerequisite> = []
 
 // Both prerequisites grounded, both for the WRONG host.
-data grounded_prereqs_srv6: List<gunbc.spark_serving_release.SparkServingPrerequisite> = [gunbc.spark_serving_release.HostIdentityBindingAdmitted { host: "srv6" }, gunbc.spark_serving_release.ManagedHostAccessGrounded { host: "srv6" }]
+data grounded_prereqs_srv6: std.types.List<gunbc.spark_serving_release.SparkServingPrerequisite> = [gunbc.spark_serving_release.HostIdentityBindingAdmitted { host: "srv6" }, gunbc.spark_serving_release.ManagedHostAccessGrounded { host: "srv6" }]
 
 fn observed_on_srv6() -> gunbc.spark_serving_release.SparkServingObservation {
   gunbc.spark_serving_release.SparkServingObserved { host: "srv6", loaded_release: release_base() }
 }
 
-data absent_prereqs: List<gunbc.spark_serving_release.SparkServingPrerequisite> = [gunbc.spark_serving_release.PrerequisiteAbsent { host: "srv5", requirement: "managed automation principal", cause: "only the human bootstrap account is admitted" }]
+data absent_prereqs: std.types.List<gunbc.spark_serving_release.SparkServingPrerequisite> = [gunbc.spark_serving_release.PrerequisiteAbsent { host: "srv5", requirement: "managed automation principal", cause: "only the human bootstrap account is admitted" }]
 
 fn observed_matching() -> gunbc.spark_serving_release.SparkServingObservation {
   gunbc.spark_serving_release.SparkServingObserved { host: "srv5", loaded_release: release_base() }
@@ -143,12 +143,12 @@ fn observation_refused() -> gunbc.spark_serving_release.SparkServingObservation 
   gunbc.spark_serving_release.SparkServingObservationRefused { host: "srv5", cause: "loaded revision not observable from the unit MainPID" }
 }
 
-fn reconcile_arm(observation: gunbc.spark_serving_release.SparkServingObservation, prereqs: List<gunbc.spark_serving_release.SparkServingPrerequisite>) -> String {
+fn reconcile_arm(observation: gunbc.spark_serving_release.SparkServingObservation, prereqs: std.types.List<gunbc.spark_serving_release.SparkServingPrerequisite>) -> String {
   match reconcile_spark_serving(desired: occ_srv5(), observation: observation, prerequisites: prereqs) {
-    SparkServingAlreadyConverged { converged_release: _ } => "converged"
-    SparkServingInstallRequired { subject: _, desired_release: _ } => "install"
-    SparkServingDeltaRequired { plan_subject: _ } => "delta"
-    SparkServingRefused { first: _, more: _ } => "refused"
+    gunbc.spark.serving_release.SparkServingAlreadyConverged { converged_release: _ } => "converged"
+    gunbc.spark.serving_release.SparkServingInstallRequired { subject: _, desired_release: _ } => "install"
+    gunbc.spark.serving_release.SparkServingDeltaRequired { plan_subject: _ } => "delta"
+    gunbc.spark.serving_release.SparkServingRefused { first: _, more: _ } => "refused"
   }
 }
 
@@ -273,7 +273,7 @@ fn executor_owned_intent() -> gunbc.spark_serving_realization.SparkServingIntent
     lifecycle: SurvivesReboot,
     availability: RestartsOnFailure,
     authority: ManagedConvergenceOwned,
-    service_identity: ExecutorOwnedIdentity,
+    service_identity: gunbc.spark.serving_realization.ExecutorOwnedIdentity,
     endpoint: UnauthenticatedEndpoint,
     observability: IndependentlyObservable,
   }
@@ -284,7 +284,7 @@ fn no_login_intent() -> gunbc.spark_serving_realization.SparkServingIntent {
     lifecycle: SurvivesReboot,
     availability: RestartsOnFailure,
     authority: ManagedConvergenceOwned,
-    service_identity: NoLoginNoSudoIdentity,
+    service_identity: gunbc.spark.serving_realization.NoLoginNoSudoIdentity,
     endpoint: UnauthenticatedEndpoint,
     observability: IndependentlyObservable,
   }
@@ -308,14 +308,14 @@ fn plan_row_under(
 }
 
 fn plan_row_for(observation: gunbc.spark_serving_release.SparkServingObservation, grants: gunbc.spark_serving_realization.ObservedGrantPopulation) -> gunbc.spark_serving_release.SparkServingPlanRow {
-  plan_row_under(intent: executor_owned_intent(), realization: UserUnitRealization, observation: observation, grants: grants)
+  plan_row_under(intent: executor_owned_intent(), realization: gunbc.spark.serving_realization.UserUnitRealization, observation: observation, grants: grants)
 }
 
-fn grants_on(host: product.placement_supply.HostIdentity, principal: String, commands: List<std.types.NonEmptyStr>) -> gunbc.spark_serving_realization.ObservedGrantPopulation {
+fn grants_on(host: product.placement_supply.HostIdentity, principal: String, commands: std.types.List<std.types.NonEmptyStr>) -> gunbc.spark_serving_realization.ObservedGrantPopulation {
   grants_under(host: host, principal: principal, credential: fleet_key_identity, commands: commands)
 }
 
-fn grants_under(host: product.placement_supply.HostIdentity, principal: String, credential: std.content_hash.ContentHash, commands: List<std.types.NonEmptyStr>) -> gunbc.spark_serving_realization.ObservedGrantPopulation {
+fn grants_under(host: product.placement_supply.HostIdentity, principal: String, credential: std.content_hash.ContentHash, commands: std.types.List<std.types.NonEmptyStr>) -> gunbc.spark_serving_realization.ObservedGrantPopulation {
   gunbc.spark_serving_realization.GrantPopulationObserved {
     host: host,
     principal: principal as std.types.NonEmptyStr,
@@ -376,7 +376,7 @@ test fn w_plan_row_applicable_requires_change_and_privilege() -> Bool {
 test fn w_a_user_unit_is_inadmissible_under_a_no_login_identity_intent() -> Bool {
   string_contains(
     s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
-      intent: no_login_intent(), realization: UserUnitRealization,
+      intent: no_login_intent(), realization: gunbc.spark.serving_realization.UserUnitRealization,
       observation: observation_absent(), grants: linger_granted()))),
     pattern: "realization-inadmissible")
 }
@@ -385,16 +385,16 @@ test fn w_a_user_unit_is_inadmissible_under_a_no_login_identity_intent() -> Bool
 // being consulted and the headline claim is once again true of nothing in particular.
 test fn w_the_intent_decides_admissibility_of_the_same_realization() -> Bool {
   plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
-    intent: no_login_intent(), realization: UserUnitRealization,
+    intent: no_login_intent(), realization: gunbc.spark.serving_realization.UserUnitRealization,
     observation: observation_absent(), grants: linger_granted()))) != plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
-    intent: executor_owned_intent(), realization: UserUnitRealization,
+    intent: executor_owned_intent(), realization: gunbc.spark.serving_realization.UserUnitRealization,
     observation: observation_absent(), grants: linger_granted())))
 }
 
 // AN INADMISSIBLE ROW IS NEVER APPLICABLE, whatever its reconciliation and privilege say.
 test fn w_an_inadmissible_realization_is_not_applicable() -> Bool {
   !plan_row_applicable(row: plan_row_under(
-    intent: no_login_intent(), realization: UserUnitRealization,
+    intent: no_login_intent(), realization: gunbc.spark.serving_realization.UserUnitRealization,
     observation: observation_absent(), grants: linger_granted()))
 }
 
@@ -404,7 +404,7 @@ test fn w_an_inadmissible_realization_is_not_applicable() -> Bool {
 test fn w_a_system_unit_under_the_no_login_intent_blocks_on_privilege() -> Bool {
   string_contains(
     s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
-      intent: no_login_intent(), realization: SystemUnitRealization,
+      intent: no_login_intent(), realization: gunbc.spark.serving_realization.SystemUnitRealization,
       observation: observation_absent(), grants: linger_granted()))),
     pattern: "blocked-on-privilege")
 }
@@ -416,7 +416,7 @@ test fn w_a_system_unit_under_the_no_login_intent_blocks_on_privilege() -> Bool 
 test fn w_a_grant_observed_on_another_host_does_not_authorize_this_one() -> Bool {
   string_contains(
     s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
-      intent: executor_owned_intent(), realization: UserUnitRealization,
+      intent: executor_owned_intent(), realization: gunbc.spark.serving_realization.UserUnitRealization,
       observation: observation_absent(),
       grants: grants_on(host: "srv6", principal: "gunbc-automation", commands: [linger_command])))),
     pattern: "evidence-mismatch")
@@ -425,7 +425,7 @@ test fn w_a_grant_observed_on_another_host_does_not_authorize_this_one() -> Bool
 test fn w_a_grant_observed_for_another_principal_does_not_authorize_this_one() -> Bool {
   string_contains(
     s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
-      intent: executor_owned_intent(), realization: UserUnitRealization,
+      intent: executor_owned_intent(), realization: gunbc.spark.serving_realization.UserUnitRealization,
       observation: observation_absent(),
       grants: grants_on(host: "srv5", principal: "root", commands: [linger_command])))),
     pattern: "evidence-mismatch")
@@ -435,10 +435,10 @@ test fn w_a_grant_observed_for_another_principal_does_not_authorize_this_one() -
 // unreachable host -- so they must not report the same thing.
 test fn w_evidence_mismatch_and_unobservability_are_different_answers() -> Bool {
   plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
-    intent: executor_owned_intent(), realization: UserUnitRealization,
+    intent: executor_owned_intent(), realization: gunbc.spark.serving_realization.UserUnitRealization,
     observation: observation_absent(),
     grants: grants_on(host: "srv6", principal: "gunbc-automation", commands: [linger_command])))) != plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
-    intent: executor_owned_intent(), realization: UserUnitRealization,
+    intent: executor_owned_intent(), realization: gunbc.spark.serving_realization.UserUnitRealization,
     observation: observation_absent(),
     grants: gunbc.spark_serving_realization.GrantPopulationUnobserved { host: "srv5", principal: "gunbc-automation" as std.types.NonEmptyStr, cause: "sudo -n -l could not be reached" as std.types.NonEmptyStr })))
 }
@@ -450,7 +450,7 @@ test fn w_evidence_mismatch_and_unobservability_are_different_answers() -> Bool 
 test fn w_a_grant_observed_under_another_credential_does_not_authorize_the_plan() -> Bool {
   string_contains(
     s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
-      intent: executor_owned_intent(), realization: UserUnitRealization,
+      intent: executor_owned_intent(), realization: gunbc.spark.serving_realization.UserUnitRealization,
       observation: observation_absent(),
       grants: grants_under(host: "srv5", principal: "gunbc-automation", credential: other_key_identity, commands: [linger_command])))),
     pattern: "evidence-mismatch")
@@ -460,7 +460,7 @@ test fn w_a_grant_observed_under_another_credential_does_not_authorize_the_plan(
 // refusal above is the credential axis rather than the row being unapprovable for some other reason.
 test fn w_the_same_grant_under_the_expected_credential_is_ready_to_apply() -> Bool {
   plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
-    intent: executor_owned_intent(), realization: UserUnitRealization,
+    intent: executor_owned_intent(), realization: gunbc.spark.serving_realization.UserUnitRealization,
     observation: observation_absent(),
     grants: grants_under(host: "srv5", principal: "gunbc-automation", credential: fleet_key_identity, commands: [linger_command])))) == "ready-to-apply"
 }
@@ -472,7 +472,7 @@ test fn w_the_same_grant_under_the_expected_credential_is_ready_to_apply() -> Bo
 test fn w_an_unobserved_record_for_another_host_is_a_mismatch_not_an_observation_block() -> Bool {
   string_contains(
     s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
-      intent: executor_owned_intent(), realization: UserUnitRealization,
+      intent: executor_owned_intent(), realization: gunbc.spark.serving_realization.UserUnitRealization,
       observation: observation_absent(),
       grants: gunbc.spark_serving_realization.GrantPopulationUnobserved { host: "srv6", principal: "gunbc-automation" as std.types.NonEmptyStr, cause: "sudo -n -l could not be reached" as std.types.NonEmptyStr }))),
     pattern: "evidence-mismatch")
@@ -483,7 +483,7 @@ test fn w_an_unobserved_record_for_another_host_is_a_mismatch_not_an_observation
 test fn w_an_unobserved_record_for_this_host_blocks_on_observation() -> Bool {
   string_contains(
     s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
-      intent: executor_owned_intent(), realization: UserUnitRealization,
+      intent: executor_owned_intent(), realization: gunbc.spark.serving_realization.UserUnitRealization,
       observation: observation_absent(),
       grants: gunbc.spark_serving_realization.GrantPopulationUnobserved { host: "srv5", principal: "gunbc-automation" as std.types.NonEmptyStr, cause: "sudo -n -l could not be reached" as std.types.NonEmptyStr }))),
     pattern: "blocked-on-observation")
@@ -502,10 +502,10 @@ test fn w_a_refusal_taken_on_another_host_does_not_block_this_one() -> Bool {
 
 fn spark_apply_refusal_subject(observation: gunbc.spark_serving_release.SparkServingObservation) -> String {
   match reconcile_spark_serving(desired: occ_srv5(), observation: observation, prerequisites: grounded_prereqs) {
-    SparkServingRefused { first: f, more: _ } => f.subject as String
-    SparkServingAlreadyConverged { converged_release: _ } => "converged"
-    SparkServingInstallRequired { subject: _, desired_release: _ } => "install"
-    SparkServingDeltaRequired { plan_subject: _ } => "delta"
+    gunbc.spark.serving_release.SparkServingRefused { first: f, more: _ } => f.subject as String
+    gunbc.spark.serving_release.SparkServingAlreadyConverged { converged_release: _ } => "converged"
+    gunbc.spark.serving_release.SparkServingInstallRequired { subject: _, desired_release: _ } => "install"
+    gunbc.spark.serving_release.SparkServingDeltaRequired { plan_subject: _ } => "delta"
   }
 }
 

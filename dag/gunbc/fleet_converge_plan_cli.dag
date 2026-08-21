@@ -1,5 +1,6 @@
 module gunbc.fleet_converge_plan_cli
 
+
 data fleet_converge_plan_spark_typed_actions_wire_path: String = "/tmp/fleet-converge-plan/spark_serving_typed_actions.wire"
 
 data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect LeaseEpoch generation in the artifact, and writes the human-readable plan plus apply.sh. plan_content.hex is the Fnv1a64Structural bundle digest of plan.txt + apply.sh + spark_serving_typed_actions.wire (empty wire on non-Spark hosts); on success plan_wet prints plan.txt then that digest for workflow_dispatch plan_artifact_hash. Apply re-observes subject identity and observed-baseline fingerprint in .dag, refuses unless on-disk plan.txt + apply.sh + spark wire match plan_content.hex, then runs fleet_converge_locked_apply_script under flock. Generation store reads refuse corrupt or negative values; a missing store file is generation 0. Subject host is a typed observation (observe_host_short_wet returns std.types.NonEmptyStr?, Absent when the hostname probe did not succeed or returned empty output): both plan and apply refuse outright on Absent rather than folding a failed probe into an empty String, and the SubjectHostMismatch check itself routes through fleet_converge_apply_subject_host_matches on two std.types.NonEmptyStr values (gunbc.fleet_converge_plan) — the same authority fleet_converge_apply_subject_admits uses — never a bare String != that two coincident non-observations (both hosts probed empty) could satisfy by accident."
@@ -21,16 +22,16 @@ func observe_host_short_wet() -> std.types.NonEmptyStr?
 {
   match run_shell_command_capture(
     command: extdeps.exec.command.ArgvCommand { argv: ["hostname", "-s"] },
-    transport: LocalExec,
+    transport: extdeps.exec.command.LocalExec,
   ) {
-    ProcessOutputPresent { text: t } =>
+    extdeps.shell.exec.ProcessOutputPresent { text: t } =>
       if trim(s: t) == "" {
         none
       } else {
         Present { value: trim(s: t) as std.types.NonEmptyStr }
       }
-    ProcessOutputAbsent => none
-    ProcessRefused { exit_code: _, stderr: _ } => none  }
+    extdeps.shell.exec.ProcessOutputAbsent => none
+    extdeps.shell.exec.ProcessRefused { exit_code: _, stderr: _ } => none  }
 }
 
 func observe_generation_store_wet() -> Int?
@@ -47,7 +48,7 @@ func observe_timer_members_wet() -> std.types.List<gunbc.fleet_converge_plan.Tim
   filter(legacy, m =>
     process_outcome_admitted(outcome: run_shell_command_capture(
       command: extdeps.exec.command.ArgvCommand { argv: ["test", "-f", concat("/etc/systemd/system/", m.unit_name as String)] },
-      transport: LocalExec,
+      transport: extdeps.exec.command.LocalExec,
     ))  )
 }
 
@@ -83,6 +84,7 @@ func fleet_converge_plan_wet() -> std.process.ProcessExit
     prior_generation: prior_generation,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
+    observed_spark: [],
   ) {
     Absent =>
       std.process.exit_failure(reason: "fleet_converge_plan: observed baseline is not Fnv1a64Structural — plan refused")
@@ -90,23 +92,23 @@ func fleet_converge_plan_wet() -> std.process.ProcessExit
       match gunbc.fleet_converge_plan.fleet_converge_plan_bundle_digest_hex(
         plan_body: artifact.plan_body,
         apply_shell: artifact.apply_shell,
-        spark_typed_actions_wire: gunbc.fleet_converge_plan.fleet_converge_spark_serving_typed_actions_wire(
-          rows: artifact.spark_serving_typed_actions,
+        spark_typed_actions_wire: fleet_converge_spark_serving_typed_actions_wire(
+          rows: scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions),
         ),
       ) {
         Absent =>
           std.process.exit_failure(reason: "fleet_converge_plan: plan bundle hash is not Fnv1a64Structural — plan refused")
         Present { value: content_hash } => {
           let planned_generation = prior_generation + 1
-          let spark_wire = gunbc.fleet_converge_plan.fleet_converge_spark_serving_typed_actions_wire(
-            rows: artifact.spark_serving_typed_actions,
+          let spark_wire = fleet_converge_spark_serving_typed_actions_wire(
+            rows: scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions),
           )
           let mkdir = gunbc.command_runner.run_shell_commands(
             commands: [extdeps.exec.command.ArgvCommand { argv: ["mkdir", "-p", gunbc.fleet_converge_plan.fleet_converge_plan_artifact_dir] }],
             transport: extdeps.exec.command.LocalExec,
           )
           match mkdir {
-            ExitFailure { code: _, reason: why } =>
+            std.process.ExitFailure { code: _, reason: why } =>
               std.process.exit_failure(reason: concat("fleet_converge_plan: mkdir refused: ", why))
             ExitSuccess => {
               let w_plan = extdeps.filesystem.filesystem_io.Filesystem.Write(path: gunbc.fleet_converge_plan.fleet_converge_plan_body_path, content: artifact.plan_body)
@@ -216,6 +218,7 @@ func fleet_converge_apply_wet() -> std.process.ProcessExit
                 host: observed_host,
                 observed_timers: observed_timers,
                 observed_caps: observed_caps,
+                observed_spark: [],
               ) {
                 std.process.exit_failure(reason: "fleet_converge_apply: SubjectIdentityMismatch — member set drifted since plan")
               } else if !gunbc.fleet_converge_plan.fleet_converge_observed_baseline_matches(
@@ -223,6 +226,7 @@ func fleet_converge_apply_wet() -> std.process.ProcessExit
                 observed_baseline_hex: std.algebra.trim(s: read_base.content),
                 observed_timers: observed_timers,
                 observed_caps: observed_caps,
+                observed_spark: [],
               ) {
                 std.process.exit_failure(reason: "fleet_converge_apply: ObservedBaselineMismatch — host drifted since plan; rerun plan and review")
               } else if !gunbc.fleet_converge_plan.fleet_converge_plan_bundle_matches(

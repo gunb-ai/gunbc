@@ -6,7 +6,7 @@ data cursor_sdk_secure_api_key_note: String = "API key materializes INTO the SDK
 type CursorSdkSecureApiKeyInput
   = CursorSdkSecureApiKeyReady {
       secret_ref: extdeps.cloud.gcp.secret_ref.SecretRef
-      credential: Secret
+      credential: std.types.Secret
       materialization: extdeps.llm.cursor_sdk.CursorSdkApiKeyMaterialization
     }
   | CursorSdkSecureApiKeyInputRefused { reason: std.types.NonEmptyStr }
@@ -16,24 +16,24 @@ fn cursor_sdk_secure_api_key_from_secret_ref(
   token_source: gunbc.auth.access_token_source.AccessTokenSource,
 ) -> CursorSdkSecureApiKeyInput {
   match cursor_sdk_admit_exact_secret_ref_version(ref: secret_ref) {
-    CursorSdkSecretRefVersionRefused { reason } =>
+    gunbc.cursor_sdk_secret_admission.CursorSdkSecretRefVersionRefused { reason } =>
       CursorSdkSecureApiKeyInputRefused { reason: reason }
-    CursorSdkSecretRefVersionAdmitted { secret_ref: admitted_ref } =>
+    gunbc.cursor_sdk_secret_admission.CursorSdkSecretRefVersionAdmitted { secret_ref: admitted_ref } =>
       match fetch_secret_ref_credential(secret_ref: admitted_ref, token_source: token_source) {
-        SecretCredentialFetchRefused { reason } =>
+        gunbc.auth.secret_ref_credential.SecretCredentialFetchRefused { reason } =>
           CursorSdkSecureApiKeyInputRefused { reason: reason }
-        SecretCredentialAccessUpsertRequired { plan: plan } =>
+        gunbc.auth.secret_ref_credential.SecretCredentialAccessUpsertRequired { plan: plan } =>
           CursorSdkSecureApiKeyInputRefused {
             reason: access_token_upsert_required_reason(plan: plan) as std.types.NonEmptyStr,
           }
-        SecretCredentialWireDecodeRefused { identity_cause: identity_cause, payload_cause: payload_cause } =>
+        gunbc.auth.secret_ref_credential.SecretCredentialWireDecodeRefused { identity_cause: identity_cause, payload_cause: payload_cause } =>
           CursorSdkSecureApiKeyInputRefused {
             reason: secret_credential_wire_decode_refusal_reason(
               identity_cause: identity_cause,
               payload_cause: payload_cause,
             ),
           }
-        SecretCredentialReady { credential: credential, resolved_version: _ } => {
+        gunbc.auth.secret_ref_credential.SecretCredentialReady { credential: credential, resolved_version: _ } => {
           let local = extdeps.llm.cursor_sdk.CursorSdkApiKeySecretRef { secret_ref: admitted_ref }
           CursorSdkSecureApiKeyReady {
             secret_ref: admitted_ref,

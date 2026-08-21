@@ -42,6 +42,10 @@ fn denied_exit(verdict: gunbc.merge_admission.MergeAdmissionVerdict) -> std.proc
   )
 }
 
+// The current base COMMIT is observed here alongside the current base tree, from the same fetched
+// ref. Both are read rather than one being derived from the other, because neither determines the
+// other: a tree does not name its commit, and a commit's identity is what carries the ancestry the
+// merge base is computed from -- which is exactly the fact tested_base_commit_sha exists to pin.
 func main() -> std.process.ProcessExit {
   let attempt = match merge_admission_context_walk_attempt_id() {
     Present { value: value } => value
@@ -77,31 +81,23 @@ func main() -> std.process.ProcessExit {
   if !fetched.success {
     return exit_failure(reason: "merge_admission_current_context: current merge target fetch refused")
   }
-  let observed = git.Inspect.ShowTree(ref: merge_admission_merge_base_ref as std.types.GitRef)
-  if !observed.success {
-    return exit_failure(reason: "merge_admission_current_context: current merge target tree observation refused")
-  }
-  let target = match git_decode_object_id_text(
-    format: git_object_id_format(oid: receipt.tested_base_tree_hash),
-    text: shell_stdout_line(raw: observed.tree),
-  ) {
-    GitObjectIdTextDecoded { oid: oid } => oid
-    GitObjectIdTextRefused { cause: _ } =>
-      return exit_failure(reason: "merge_admission_current_context: current merge target object id refused")
+  let observed_commit = git.Inspect.ResolveRefCommit(ref: merge_admission_merge_base_ref as std.types.GitRef)
+  if !observed_commit.success {
+    return exit_failure(reason: "merge_admission_current_context: current merge target commit observation refused")
   }
   let verdict = classify_merge_admission_verdict_v2(
     current_attempt_id: attempt,
     tested_subject: subject,
     receipt: receipt,
-    merge_target_tree_hash: target,
+    merge_target_commit_sha: observed_commit.sha,
     current_roster_hash: current_gate_roster_hash,
   )
   match verdict {
-    MergeAdmitted => ExitSuccess
-    MergeDeniedStaleBase => denied_exit(verdict: verdict)
-    MergeDeniedStaleRoster => denied_exit(verdict: verdict)
-    MergeDeniedNotSuccess => denied_exit(verdict: verdict)
-    MergeDeniedWrongAttempt => denied_exit(verdict: verdict)
-    MergeDeniedSubjectMismatch => denied_exit(verdict: verdict)
+    gunbc.merge_admission.MergeAdmitted => ExitSuccess
+    gunbc.merge_admission.MergeDeniedStaleBase => denied_exit(verdict: verdict)
+    gunbc.merge_admission.MergeDeniedStaleRoster => denied_exit(verdict: verdict)
+    gunbc.merge_admission.MergeDeniedNotSuccess => denied_exit(verdict: verdict)
+    gunbc.merge_admission.MergeDeniedWrongAttempt => denied_exit(verdict: verdict)
+    gunbc.merge_admission.MergeDeniedSubjectMismatch => denied_exit(verdict: verdict)
   }
 }

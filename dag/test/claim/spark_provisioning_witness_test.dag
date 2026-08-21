@@ -1,6 +1,6 @@
 module test.claim.spark_provisioning_witness
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // Controlled fixtures. Every credential ref, environment standing and observation below is
 // authored HERE, in the witness, so each count and verdict is grounded in an input this
@@ -8,7 +8,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 data fixture_project: extdeps.cloud.gcp.gcp.GcpProjectId = "gunbai-secrets"
 
 // A fixture host identity authored HERE rather than imported. This lane needs no fleet
-// identity authority: nothing in gunbc.spark_provisioning binds one, and importing another
+// identity authority: nothing in gunbc.spark.provisioning binds one, and importing another
 // module's private rows to fill a witness would have coupled this branch to whichever lane
 // happens to own those rows this week.
 data fixture_host: product.placement_supply.HostIdentity = "fixture-spark-unit"
@@ -30,7 +30,7 @@ fn fixture_credentials() -> gunbc.spark_bootstrap_credential.SparkProvisioningCr
 fn fixture_pending_credentials() -> gunbc.spark_bootstrap_credential.SparkProvisioningCredentials {
   spark_credentials(
     hotspot: fixture_materialized(name: "fixture-hotspot"),
-    administrator: CredentialMaterializationPending,
+    administrator: gunbc.spark.bootstrap_credential.CredentialMaterializationPending,
   )
 }
 
@@ -86,17 +86,17 @@ fn environment(
 
 fn outcome_tag(o: gunbc.spark_provisioning.SparkProvisioningOutcome) -> String {
   match o {
-    SparkProvisioned { receipt: _ } => "provisioned"
-    SparkProvisioningInterrupted { phase: _, cause: _ } => "interrupted"
-    SparkProvisioningHumanInterventionRequired { intervention: _ } => "human"
-    SparkProvisioningRefused { phase: _, cause: _ } => "refused"
+    gunbc.spark.provisioning.SparkProvisioned { receipt: _ } => "provisioned"
+    gunbc.spark.provisioning.SparkProvisioningInterrupted { phase: _, cause: _ } => "interrupted"
+    gunbc.spark.provisioning.SparkProvisioningHumanInterventionRequired { intervention: _ } => "human"
+    gunbc.spark.provisioning.SparkProvisioningRefused { phase: _, cause: _ } => "refused"
   }
 }
 
 fn classify_tag(progress: gunbc.spark_provisioning.SparkProvisioningProgress) -> String {
   test.claim.spark_provisioning_witness.outcome_tag(o: classify_spark_progress(
     intent: fixture_intent(),
-    phase: PhaseOperatorConfiguration,
+    phase: gunbc.spark.provisioning.PhaseOperatorConfiguration,
     progress: progress
   ))
 }
@@ -104,7 +104,7 @@ fn classify_tag(progress: gunbc.spark_provisioning.SparkProvisioningProgress) ->
 fn sample_intervention() -> std.human_intervention.HumanIntervention {
   spark_intervention(
     identity: "spark-witness-pending-human-step",
-    frequency: DeviceOnce,
+    frequency: std.human_intervention.DeviceOnce,
     subject: "witness fixture",
     instruction: "A step that has not been performed yet. It is not a refusal and it is not a pending transition."
   )
@@ -116,19 +116,19 @@ fn complete_observation() -> gunbc.spark_provisioning.PostSetupObservation {
     lan_reach: gunbc.spark_provisioning.LanReachObserved {
       address: fixture_address()
     },
-    setup_surface: SetupSurfaceCompleted,
-    software: InitialUpdateAppliedDuringSetup,
+    setup_surface: gunbc.spark.provisioning.SetupSurfaceCompleted,
+    software: extdeps.systems.nvidia_dgx_spark_setup.InitialUpdateAppliedDuringSetup,
   }
 }
 
 fn observation_missing_account() -> gunbc.spark_provisioning.PostSetupObservation {
   gunbc.spark_provisioning.PostSetupObservation {
-    account: AccountNotObserved,
+    account: gunbc.spark.provisioning.AccountNotObserved,
     lan_reach: gunbc.spark_provisioning.LanReachObserved {
       address: fixture_address()
     },
-    setup_surface: SetupSurfaceCompleted,
-    software: InitialUpdateAppliedDuringSetup,
+    setup_surface: gunbc.spark.provisioning.SetupSurfaceCompleted,
+    software: extdeps.systems.nvidia_dgx_spark_setup.InitialUpdateAppliedDuringSetup,
   }
 }
 
@@ -138,8 +138,8 @@ fn observation_missing_software() -> gunbc.spark_provisioning.PostSetupObservati
     lan_reach: gunbc.spark_provisioning.LanReachObserved {
       address: fixture_address()
     },
-    setup_surface: SetupSurfaceCompleted,
-    software: InitialUpdateBehaviorUnobserved,
+    setup_surface: gunbc.spark.provisioning.SetupSurfaceCompleted,
+    software: extdeps.systems.nvidia_dgx_spark_setup.InitialUpdateBehaviorUnobserved,
   }
 }
 
@@ -162,9 +162,9 @@ test fn spark_completion_requires_observation_never_intent() -> Bool {
 
 fn update_tag(d: extdeps.systems.nvidia_dgx_spark_setup.InitialUpdateDisposition) -> String {
   match d {
-    InitialUpdateAppliedDuringSetup => "applied"
-    InitialUpdateDeferredToOperator => "deferred"
-    InitialUpdateBehaviorUnobserved => "unobserved"
+    extdeps.systems.nvidia_dgx_spark_setup.InitialUpdateAppliedDuringSetup => "applied"
+    extdeps.systems.nvidia_dgx_spark_setup.InitialUpdateDeferredToOperator => "deferred"
+    extdeps.systems.nvidia_dgx_spark_setup.InitialUpdateBehaviorUnobserved => "unobserved"
   }
 }
 
@@ -174,26 +174,26 @@ fn update_tag(d: extdeps.systems.nvidia_dgx_spark_setup.InitialUpdateDisposition
 test fn spark_receipt_software_comes_from_the_device() -> Bool {
   let outcome = classify_spark_progress(
     intent: fixture_intent(),
-    phase: PhasePostSetupAccess,
+    phase: gunbc.spark.provisioning.PhasePostSetupAccess,
     progress: gunbc.spark_provisioning.ProgressPostSetupObserved { observation: complete_observation() }
   )
   let documented = update_tag(d: dgx_spark_documented_initial_update)
 
   match outcome {
-    SparkProvisioned { receipt: receipt } => {
+    gunbc.spark.provisioning.SparkProvisioned { receipt: receipt } => {
       let observed = update_tag(d: receipt.initial_update)
       observed == "applied" && documented == "unobserved" && observed != documented
     }
-    SparkProvisioningInterrupted { phase: _, cause: _ } => false
-    SparkProvisioningHumanInterventionRequired { intervention: _ } => false
-    SparkProvisioningRefused { phase: _, cause: _ } => false
+    gunbc.spark.provisioning.SparkProvisioningInterrupted { phase: _, cause: _ } => false
+    gunbc.spark.provisioning.SparkProvisioningHumanInterventionRequired { intervention: _ } => false
+    gunbc.spark.provisioning.SparkProvisioningRefused { phase: _, cause: _ } => false
   }
 }
 
 // The four outcome arms stay four.
 test fn spark_outcome_arms_stay_distinct() -> Bool {
   let success = classify_tag(progress: gunbc.spark_provisioning.ProgressPostSetupObserved { observation: complete_observation() })
-  let reboot = classify_tag(progress: ProgressAwaitingDocumentedReboot)
+  let reboot = classify_tag(progress: gunbc.spark.provisioning.ProgressAwaitingDocumentedReboot)
   let prerequisite = classify_tag(progress: gunbc.spark_provisioning.ProgressPrerequisiteNotYetReached { prerequisite: "network join" })
   let human = classify_tag(progress: ProgressAwaitingHuman { intervention: sample_intervention() })
   let rejected = classify_tag(progress: gunbc.spark_provisioning.ProgressDeviceRejectedField { field: "username" })
@@ -211,16 +211,16 @@ test fn spark_outcome_arms_stay_distinct() -> Bool {
 
 fn burden_tag(d: gunbc.spark_provisioning.HumanBurdenDerivation) -> String {
   match d {
-    BurdenDerived { burden: _ } => "derived"
-    BurdenUndecidable { cause: _ } => "undecidable"
+    gunbc.spark.provisioning.BurdenDerived { burden: _ } => "derived"
+    gunbc.spark.provisioning.BurdenUndecidable { cause: _ } => "undecidable"
   }
 }
 
 fn burden_count_at(d: gunbc.spark_provisioning.HumanBurdenDerivation, frequency: std.human_intervention.HumanInterventionFrequency) -> Int {
   match d {
-    BurdenDerived { burden: burden } =>
+    gunbc.spark.provisioning.BurdenDerived { burden: burden } =>
       human_intervention_count_at(burden: burden, frequency: frequency)
-    BurdenUndecidable { cause: _ } => 0 - 1
+    gunbc.spark.provisioning.BurdenUndecidable { cause: _ } => 0 - 1
   }
 }
 
@@ -242,36 +242,36 @@ test fn spark_current_environment_is_undecidable_not_counted() -> Bool {
 // human actions. Absent controller => the manual portal step appears, and it is
 // EveryProvision because a person repeats it for every provision the controller cannot do.
 test fn spark_factory_human_burden_derives_from_controller() -> Bool {
-  let ready = factory_oobe_human_burden(credentials: fixture_credentials(), env: environment(controller: BootstrapControllerReady, pxe: PxePrerequisitesUnknown))
-  let unbound = factory_oobe_human_burden(credentials: fixture_pending_credentials(), env: environment(controller: BootstrapControllerReady, pxe: PxePrerequisitesUnknown))
-  let absent = factory_oobe_human_burden(credentials: fixture_credentials(), env: environment(controller: BootstrapControllerAbsent, pxe: PxePrerequisitesUnknown))
+  let ready = factory_oobe_human_burden(credentials: fixture_credentials(), env: environment(controller: gunbc.spark.provisioning.BootstrapControllerReady, pxe: gunbc.spark.provisioning.PxePrerequisitesUnknown))
+  let unbound = factory_oobe_human_burden(credentials: fixture_pending_credentials(), env: environment(controller: gunbc.spark.provisioning.BootstrapControllerReady, pxe: gunbc.spark.provisioning.PxePrerequisitesUnknown))
+  let absent = factory_oobe_human_burden(credentials: fixture_credentials(), env: environment(controller: gunbc.spark.provisioning.BootstrapControllerAbsent, pxe: gunbc.spark.provisioning.PxePrerequisitesUnknown))
 
-  burden_count_at(d: ready, frequency: EveryProvision) == 0
-    && burden_count_at(d: ready, frequency: DeviceOnce) == 0
-    && burden_count_at(d: ready, frequency: FleetOnce) == 0
-    && burden_count_at(d: unbound, frequency: DeviceOnce) == 1
-    && burden_count_at(d: unbound, frequency: EveryProvision) == 0
-    && burden_count_at(d: absent, frequency: EveryProvision) == 1
+  burden_count_at(d: ready, frequency: std.human_intervention.EveryProvision) == 0
+    && burden_count_at(d: ready, frequency: std.human_intervention.DeviceOnce) == 0
+    && burden_count_at(d: ready, frequency: std.human_intervention.FleetOnce) == 0
+    && burden_count_at(d: unbound, frequency: std.human_intervention.DeviceOnce) == 1
+    && burden_count_at(d: unbound, frequency: std.human_intervention.EveryProvision) == 0
+    && burden_count_at(d: absent, frequency: std.human_intervention.EveryProvision) == 1
 }
 
 // RED control for the derivation: the SAME strategy value produces different burdens under
 // different environments. A burden authored as a property of the strategy could not do
 // this, so the two readings provably disagree.
 test fn spark_burden_is_not_a_property_of_the_strategy_red_control() -> Bool {
-  let ready = factory_oobe_human_burden(credentials: fixture_credentials(), env: environment(controller: BootstrapControllerReady, pxe: PxePrerequisitesUnknown))
-  let absent = factory_oobe_human_burden(credentials: fixture_credentials(), env: environment(controller: BootstrapControllerAbsent, pxe: PxePrerequisitesUnknown))
-  let ready_count = burden_count_at(d: ready, frequency: EveryProvision)
-  let absent_count = burden_count_at(d: absent, frequency: EveryProvision)
+  let ready = factory_oobe_human_burden(credentials: fixture_credentials(), env: environment(controller: gunbc.spark.provisioning.BootstrapControllerReady, pxe: gunbc.spark.provisioning.PxePrerequisitesUnknown))
+  let absent = factory_oobe_human_burden(credentials: fixture_credentials(), env: environment(controller: gunbc.spark.provisioning.BootstrapControllerAbsent, pxe: gunbc.spark.provisioning.PxePrerequisitesUnknown))
+  let ready_count = burden_count_at(d: ready, frequency: std.human_intervention.EveryProvision)
+  let absent_count = burden_count_at(d: absent, frequency: std.human_intervention.EveryProvision)
 
   ready_count != absent_count
 }
 
 fn selection_tag(env: gunbc.spark_provisioning.SparkProvisioningEnvironment) -> String {
   match select_spark_strategy(a: oobe_strategy(), b: pxe_strategy(), env: env, credentials: fixture_credentials()) {
-    StrategySelectionUndecidable { cause: _ } => "undecidable"
-    StrategySelected { strategy: strategy } => match strategy {
-      FactoryOobe { bootstrap: _ } => "oobe"
-      PxeAutoinstall { environment: _, image: _, install_spec: _ } => "pxe"
+    gunbc.spark.provisioning.StrategySelectionUndecidable { cause: _ } => "undecidable"
+    gunbc.spark.provisioning.StrategySelected { strategy: strategy } => match strategy {
+      gunbc.spark.provisioning.FactoryOobe { bootstrap: _ } => "oobe"
+      gunbc.spark.provisioning.PxeAutoinstall { environment: _, image: _, install_spec: _ } => "pxe"
     }
   }
 }
@@ -281,8 +281,8 @@ fn selection_tag(env: gunbc.spark_provisioning.SparkProvisioningEnvironment) -> 
 // controller the manual EveryProvision step makes ready-PXE the cheaper routine lane.
 // Static costs could not produce both answers from the same two strategy values.
 test fn spark_strategy_selection_consumes_the_environment() -> Bool {
-  let favors_oobe = environment(controller: BootstrapControllerReady, pxe: PxePrerequisitesAbsent)
-  let favors_pxe = environment(controller: BootstrapControllerAbsent, pxe: PxePrerequisitesReady)
+  let favors_oobe = environment(controller: gunbc.spark.provisioning.BootstrapControllerReady, pxe: gunbc.spark.provisioning.PxePrerequisitesAbsent)
+  let favors_pxe = environment(controller: gunbc.spark.provisioning.BootstrapControllerAbsent, pxe: gunbc.spark.provisioning.PxePrerequisitesReady)
 
   selection_tag(env: favors_oobe) == "oobe"
     && selection_tag(env: favors_pxe) == "pxe"
@@ -292,12 +292,12 @@ test fn spark_strategy_selection_consumes_the_environment() -> Bool {
 // BreakGlassOnly is never priced as routine: the ready-PXE burden carries exactly one
 // intervention and it is the emergency one, so all three routine counts are zero.
 test fn spark_break_glass_is_not_priced_as_routine() -> Bool {
-  let pxe_ready = pxe_autoinstall_human_burden(env: environment(controller: BootstrapControllerUnknown, pxe: PxePrerequisitesReady))
+  let pxe_ready = pxe_autoinstall_human_burden(env: environment(controller: gunbc.spark.provisioning.BootstrapControllerUnknown, pxe: gunbc.spark.provisioning.PxePrerequisitesReady))
 
-  burden_count_at(d: pxe_ready, frequency: BreakGlassOnly) == 1
-    && burden_count_at(d: pxe_ready, frequency: EveryProvision) == 0
-    && burden_count_at(d: pxe_ready, frequency: DeviceOnce) == 0
-    && burden_count_at(d: pxe_ready, frequency: FleetOnce) == 0
+  burden_count_at(d: pxe_ready, frequency: std.human_intervention.BreakGlassOnly) == 1
+    && burden_count_at(d: pxe_ready, frequency: std.human_intervention.EveryProvision) == 0
+    && burden_count_at(d: pxe_ready, frequency: std.human_intervention.DeviceOnce) == 0
+    && burden_count_at(d: pxe_ready, frequency: std.human_intervention.FleetOnce) == 0
 }
 
 // Credentials are carried refs rather than names rebuilt from a rendered host identity,
@@ -311,7 +311,7 @@ test fn spark_credentials_are_carried_never_derived() -> Bool {
   hotspot == "fixture-hotspot"
     && administrator == "fixture-administrator"
     && hotspot != administrator
-    && credential_secret_name(standing: CredentialMaterializationPending) == "<pending>"
+    && credential_secret_name(standing: gunbc.spark.bootstrap_credential.CredentialMaterializationPending) == "<pending>"
     && intent.host == test.claim.spark_provisioning_witness.fixture_host
     && intent.timezone == "America/New_York"
     && intent.administrator.name == "briansrls"
@@ -326,8 +326,8 @@ test fn spark_credentials_are_carried_never_derived() -> Bool {
 // reference from a credential no producer has materialized.
 fn credential_secret_name(standing: gunbc.spark_bootstrap_credential.SparkCredentialStanding) -> String {
   match standing {
-    CredentialMaterialized { ref: r } => r.secret as String
-    CredentialMaterializationPending => "<pending>"
+    gunbc.spark.bootstrap_credential.CredentialMaterialized { ref: r } => r.secret as String
+    gunbc.spark.bootstrap_credential.CredentialMaterializationPending => "<pending>"
   }
 }
 
@@ -338,20 +338,20 @@ test fn spark_production_credentials_are_pending() -> Bool {
   credential_secret_name(standing: spark_credentials_pending.hotspot_password) == "<pending>"
     && credential_secret_name(standing: spark_credentials_pending.administrator_password) == "<pending>"
     && match spark_credentials_standing(c: spark_credentials_pending) {
-         BootstrapCredentialsMaterialized => false
-         BootstrapCredentialsNotMaterialized => true
+         gunbc.spark.bootstrap_credential.BootstrapCredentialsMaterialized => false
+         gunbc.spark.bootstrap_credential.BootstrapCredentialsNotMaterialized => true
        }
     && match spark_credentials_standing(c: fixture_credentials()) {
-         BootstrapCredentialsMaterialized => true
-         BootstrapCredentialsNotMaterialized => false
+         gunbc.spark.bootstrap_credential.BootstrapCredentialsMaterialized => true
+         gunbc.spark.bootstrap_credential.BootstrapCredentialsNotMaterialized => false
        }
 }
 
 fn strategy_carries_no_second_credential_copy(s: gunbc.spark_provisioning.SparkProvisioningStrategy) -> Bool {
   match s {
-    FactoryOobe { bootstrap: bootstrap } =>
+    gunbc.spark.provisioning.FactoryOobe { bootstrap: bootstrap } =>
       (bootstrap.access_point_identity.ssid as String) == "spark-a3ee"
-    PxeAutoinstall { environment: _, image: _, install_spec: _ } => true
+    gunbc.spark.provisioning.PxeAutoinstall { environment: _, image: _, install_spec: _ } => true
   }
 }
 
@@ -366,8 +366,8 @@ test fn spark_bootstrap_ssids_are_established_aliases() -> Bool {
 
 fn completion_evidence_tag(e: std.human_intervention.InterventionCompletionEvidence) -> String {
   match e {
-    DischargedAt { evidence: _ } => "discharged-at"
-    NoDischargeSiteModeled => "no-discharge-site"
+    std.human_intervention.DischargedAt { evidence: _ } => "discharged-at"
+    std.human_intervention.NoDischargeSiteModeled => "no-discharge-site"
   }
 }
 
@@ -420,9 +420,9 @@ fn sensitive_use() -> gunbc.spark_bootstrap_credential.SensitiveBrowserInputUse 
 
 fn admission_tag(obs: gunbc.spark_bootstrap_credential.SensitiveRunObservation) -> String {
   match admit_sensitive_browser_input(use: sensitive_use(), observation: obs) {
-    SensitiveInputAdmitted { use: _ } => "admitted"
-    SensitiveInputRefused { cause: _, evidence_disposition: d } =>
-      match d { EvidenceBundleDestroyed => "refused-destroyed"  EvidenceBundleRetained => "refused-retained" }
+    gunbc.spark.bootstrap_credential.SensitiveInputAdmitted { use: _ } => "admitted"
+    gunbc.spark.bootstrap_credential.SensitiveInputRefused { cause: _, evidence_disposition: d } =>
+      match d { gunbc.spark.bootstrap_credential.EvidenceBundleDestroyed => "refused-destroyed"  gunbc.spark.bootstrap_credential.EvidenceBundleRetained => "refused-retained" }
   }
 }
 
@@ -440,8 +440,8 @@ test fn spark_sensitive_browser_input_admission() -> Bool {
 test fn spark_cited_setup_surface_holds() -> Bool {
   spark_oobe_covers_intent_subjects()
     && update_tag(d: dgx_spark_documented_initial_update) == "unobserved"
-    && post_setup_route_requires_existing_account(route: PostSetupSsh)
-    && post_setup_route_requires_existing_account(route: PostSetupNvidiaSync)
+    && post_setup_route_requires_existing_account(route: extdeps.systems.nvidia_dgx_spark_setup.PostSetupSsh)
+    && post_setup_route_requires_existing_account(route: extdeps.systems.nvidia_dgx_spark_setup.PostSetupNvidiaSync)
 }
 
 // The PXE parameter tokens are the cited ones, and the three switches are independent.

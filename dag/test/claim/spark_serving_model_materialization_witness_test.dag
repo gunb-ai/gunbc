@@ -1,0 +1,144 @@
+module test.claim.spark_serving_model_materialization_witness
+
+
+fn step_identities() -> std.types.List<String> {
+  match spark_serving_materialize_model_artifact_steps() {
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => []
+    SparkServingInstallRemoteCommandsPresent { steps: sts } => map(sts, st => st.identity as String)
+  }
+}
+
+fn step_argvs() -> std.types.List<std.types.List<String>> {
+  match spark_serving_materialize_model_artifact_steps() {
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => []
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      remote_operations_argv_only(operations: map(sts, st => st.operation))
+  }
+}
+
+type IdentityScan { found: Bool, idx: Int, seen: Int }
+
+// The position of the first step whose identity contains a needle, or -1. Containment rather than
+// equality because the per-blob identities carry the digest hex, and reconstructing them here would
+// test this file's string building instead of the step sequence.
+fn first_index_containing(needle: String) -> Int {
+  let scan = fold(step_identities(), init: test.claim.spark_serving_model_materialization_witness_test.IdentityScan { found: false, idx: 0 - 1, seen: 0 }, f: fn(acc, id) {
+    if acc.found {
+      test.claim.spark_serving_model_materialization_witness_test.IdentityScan { found: true, idx: acc.idx, seen: acc.seen + 1 }
+    } else if string_contains(id, needle) {
+      test.claim.spark_serving_model_materialization_witness_test.IdentityScan { found: true, idx: acc.seen, seen: acc.seen + 1 }
+    } else {
+      test.claim.spark_serving_model_materialization_witness_test.IdentityScan { found: false, idx: 0 - 1, seen: acc.seen + 1 }
+    }
+  })
+  scan.idx
+}
+
+// THE MANIFEST IS FETCHED BY REFERENCE BECAUSE UPSTREAM SERVES NO OTHER FORM, and that is exactly
+// why the very next step verifies it. Measured 2026-08-19: the registry answers 404 on
+// /manifests/sha256:<hex> under every Accept header, so a digest-addressed manifest fetch does not
+// exist to be written. The reference is a locator; the frozen digest is the identity.
+test fn the_manifest_is_fetched_by_reference_and_verified_before_anything_else_runs() -> Bool {
+  let fetch = first_index_containing("fetch-manifest-by-reference")
+  let verify = first_index_containing("verify-manifest-identity")
+  let first_blob = first_index_containing("fetch-blob-")
+  fetch >= 0 && verify > fetch && first_blob > verify
+}
+
+// THE DISCRIMINATING NEGATIVE: the checksum the verification reads names the RESOLVED digest, so a
+// republished tag fails the check rather than being installed. If this ever compared against
+// something the fetch itself produced, the check would be verifying bytes against themselves.
+test fn the_manifest_checksum_names_the_frozen_resolved_digest() -> Bool {
+  string_contains(
+    spark_serving_checksum_line(hex: gpt_oss_20b_manifest_digest_2026_08_19.hex, path: "/p"),
+    gpt_oss_20b_manifest_digest_2026_08_19.hex as String,
+  )
+    && any(step_argvs(), a =>
+         any(a, w => w == "sha256sum") && any(a, w => w == "--check") && any(a, w => w == "--status"))
+}
+
+// EVERY BLOB IS FETCHED BY DIGEST. The blob half of the store IS content-addressed upstream, so
+// nothing here needs a locator: the URL carries the digest and the bytes either hash to it or the
+// step fails.
+test fn every_blob_url_carries_its_own_digest() -> Bool {
+  length(filter(gpt_oss_20b_blob_closure, b =>
+    any(step_argvs(), a => any(a, w => w == spark_serving_registry_blob_url(hex: b.hex)))
+  )) == gpt_oss_20b_blob_closure_count()
+}
+
+// STAGED, VERIFIED, THEN PUBLISHED -- never fetched straight to the store name. The observe side
+// answers blob presence by FILENAME, so a download landing directly at the digest name would read as
+// installed the instant curl created it, whatever it contained.
+test fn no_blob_is_fetched_directly_into_the_store() -> Bool {
+  length(filter(gpt_oss_20b_blob_closure, b =>
+    any(step_argvs(), a =>
+      any(a, w => w == "curl") && any(a, w => w == (spark_serving_published_blob_path(hex: b.hex) as String)))
+  )) == 0
+}
+
+// Each blob owes exactly three steps -- fetch, verify, publish -- so a closure entry cannot be
+// half-handled by a partial edit.
+test fn each_blob_owes_a_fetch_a_checksum_a_verify_and_a_publish() -> Bool {
+  length(filter(gpt_oss_20b_blob_closure, b =>
+    length(filter(step_identities(), id => string_contains(id, b.hex as String))) == 4
+  )) == gpt_oss_20b_blob_closure_count()
+}
+
+// THE MANIFEST IS PUBLISHED LAST, after every blob it names is in place. Publishing it first would
+// create precisely the state the model-store observation exists to catch -- a manifest present with
+// blobs missing, which looks installed and cannot serve.
+test fn the_manifest_is_published_after_every_blob() -> Bool {
+  let publish_manifest = first_index_containing("publish-manifest")
+  publish_manifest >= 0
+    && length(filter(gpt_oss_20b_blob_closure, b =>
+         first_index_containing(concat("publish-blob-", b.hex as String)) < publish_manifest
+         && first_index_containing(concat("publish-blob-", b.hex as String)) >= 0
+       )) == gpt_oss_20b_blob_closure_count()
+}
+
+// The verification refuses rather than warns: `sha256sum -c` exits non-zero on a mismatch and a
+// non-zero step fails the sequence, so bytes that do not hash to the declared digest never reach the
+// store.
+// THE EXPECTED DIGEST TRAVELS AS BYTES, NOT AS SHELL, and this claim is the residue of a refusal
+// that was right. The first version piped an echo into sha256sum through `sh -c`, and the far-side
+// portability wall rejected it -- shell interpolation is not what this fleet sends. No step in the
+// sequence invokes a shell.
+test fn no_step_invokes_a_shell() -> Bool {
+  !any(step_argvs(), a => any(a, w => w == "sh" || w == "bash" || w == "-c"))
+}
+
+// The checksum line is in the two-space GNU coreutils form sha256sum --check parses. A malformed
+// line makes the check exit non-zero, which fails closed rather than passing vacuously -- but it
+// would fail every run, so this states the shape the tool actually reads.
+test fn the_checksum_line_is_in_the_form_sha256sum_reads() -> Bool {
+  spark_serving_checksum_line(hex: "abc" as std.types.NonEmptyStr, path: "/tmp/x") == "abc  /tmp/x\n"
+}
+
+// NOTHING IN THE SEQUENCE RUNS `ollama pull`. That remedy fetched whatever the tag named at
+// execution time, which is what made a digest pin unenforceable and let a republish read as host
+// drift for a week.
+test fn the_materializer_never_shells_out_to_ollama_pull() -> Bool {
+  !any(step_argvs(), a => any(a, w => w == "pull"))
+}
+
+// THE MATERIALIZATION MUST NOT OWN THE PROBE'"'"'S REQUEST BODY, which is the correction to a fix that
+// was itself wrong. Writing the body here made it exist only on a host where the model had just been
+// materialized -- so the moment srv5'"'"'s membership converged and this sequence stopped running, the
+// probe went back to failing on a host that was serving perfectly. A precondition produced by an
+// unrelated write disappears exactly when everything else starts working. The probe places its own
+// body; this sequence must not, or there are two authorities for one file.
+test fn the_materialization_does_not_own_the_probes_request_body() -> Bool {
+  match spark_serving_materialize_model_artifact_steps() {
+    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+    SparkServingInstallRemoteCommandsPresent { steps: steps } =>
+      !any(steps, s => (s.identity as String) == "write-health-request-body")
+  }
+}
+
+// It is written BEFORE anything that could read it, and it names the model the plan selected rather
+// than a literal: a request body naming a different model than the one materialized would probe a
+// model that is not there and report the host sick.
+test fn the_written_body_names_the_desired_model() -> Bool {
+  string_contains(spark_serving_health_request_body(), "gpt-oss:20b")
+    && string_contains(spark_serving_health_request_body(), "\"stream\":false")
+}

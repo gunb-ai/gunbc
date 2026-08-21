@@ -1,5 +1,6 @@
 module gunbc.remote_operation
 
+
 // WHAT A REALIZED EFFECT IS ALLOWED TO BE ON THE FAR SIDE.
 //
 // The Spark install realizer produced `List<List<String>>` -- argv and nothing else. That shape
@@ -22,21 +23,112 @@ module gunbc.remote_operation
 // both SSH execution seams re-check them -- so the property is a fact about those paths, not about
 // this constructor.
 type RemoteOperation
-  = RemoteArgv { argv: List<String> }
+  = RemoteArgv { argv: std.types.List<String> }
   | RemoteFileBytes { write: gunbc.typed_remote_file_write.TypedRemoteFileWrite, mode: gunbc.typed_remote_file_write.RemoteFileMode }
 
-// ONE OUTCOME VOCABULARY FOR BOTH KINDS, because the two executions answer in different types and
-// neither should be forced into the other's shape. Coercing a file convergence into an argv result
-// would require inventing an exit code and a stdout it never had -- a fabricated plausible output at
-// exactly the seam where the sequence decides whether to keep going.
-type RemoteOperationOutcome
-  = RemoteOperationSucceeded { label: String }
-  | RemoteOperationRefused { reason: String }
+// A STEP HAS A NAME, because a receipt has to say WHICH one stopped.
+//
+// The plan froze an ordered list of bare operations, so a mid-sequence halt could be reported only
+// as a reason string and a reader had to count list positions to learn where it happened. Naming the
+// step makes "the digest admission failed" a fact the receipt carries rather than prose it renders.
+type PlannedRemoteStep {
+  identity: std.types.NonEmptyStr
+  operation: RemoteOperation
+}
+
+// EXECUTION EVIDENCE, IN THE TYPE THE EXECUTION ACTUALLY ANSWERED IN.
+//
+// This replaces `RemoteOperationOutcome = Succeeded{label} | Refused{reason}`, which flattened two
+// incomparable kinds of evidence into one word. A `RemoteArgv` answers with an exit code, a stdout
+// and a stderr; a `RemoteFileBytes` answers with a four-step staged convergence whose success arm is
+// established by an independent read-back. Calling both `Succeeded` reported them at one rung when
+// only one of them had earned it -- and the file arm is the one the operator already ruled is NOT
+// convergence until read back, so the flattening pulled the higher-rung evidence DOWN to meet the
+// lower-rung one rather than the reverse.
+//
+// Neither arm means "the resource converged". They mean "this invocation did what it reports".
+// Resource convergence is established later and elsewhere, by the resource's own observer and the
+// empty replan -- which is why a `systemctl enable --now` exiting zero, a `tar` exiting zero and an
+// `ollama pull` exiting zero are all merely permission to run the next step. Exit zero says the
+// invoked program reported completion; it never says the declared resource is now correct.
+type RemoteOperationExecution
+  = RemoteArgvExecution { outcome: gunbc.typed_argv_exec.TypedArgvExecOutcome }
+  | RemoteFileExecution { outcome: gunbc.typed_remote_file_write.TypedRemoteFileConvergence }
+
+// PROGRESSION IS NOT CONVERGENCE, and this predicate is deliberately named for the former. It answers
+// exactly one question -- may the sequence run its next step -- and each arm answers it in its own
+// terms rather than through a shared success word.
+fn remote_execution_permits_continuation(execution: RemoteOperationExecution) -> Bool {
+  match execution {
+    RemoteArgvExecution { outcome: o } =>
+      match o {
+        gunbc.typed_argv_exec.TypedArgvExecRefused { reason: _ } => false
+        gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } => r.success
+      }
+    RemoteFileExecution { outcome: o } =>
+      match o {
+        gunbc.typed_remote_file_write.TypedRemoteFileConvergenceRefused { step: _, reason: _ } => false
+        gunbc.typed_remote_file_write.TypedRemoteFileConverged { path: _, mode: _ } => true
+      }
+  }
+}
+
+// A step that never ran is NOT a step that ran and failed. The old fold reported one outcome for the
+// whole sequence, so every operation after a halt was indistinguishable from one that executed --
+// and "unattempted" and "attempted and refused" have different remedies. The unattempted population
+// needs no failure taxonomy of its own: it is the frozen tail of the plan that was never reached.
+type RemoteStepStanding
+  = RemoteStepCompleted { identity: std.types.NonEmptyStr, execution: RemoteOperationExecution }
+  | RemoteStepFailed { identity: std.types.NonEmptyStr, execution: RemoteOperationExecution }
+  | RemoteStepUnattempted { identity: std.types.NonEmptyStr }
+
+fn remote_step_standing_identity(standing: RemoteStepStanding) -> std.types.NonEmptyStr {
+  match standing {
+    RemoteStepCompleted { identity: id, execution: _ } => id
+    RemoteStepFailed { identity: id, execution: _ } => id
+    RemoteStepUnattempted { identity: id } => id
+  }
+}
+
+fn remote_step_standing_wire(standing: RemoteStepStanding) -> String {
+  match standing {
+    RemoteStepCompleted { identity: id, execution: _ } => join(["completed:", id as String], "")
+    RemoteStepFailed { identity: id, execution: _ } => join(["failed:", id as String], "")
+    RemoteStepUnattempted { identity: id } => join(["unattempted:", id as String], "")
+  }
+}
+
+// The refusal cause, in the vocabulary the execution answered in rather than a re-rendered string.
+// Only the failed arm has one: a completed step has no cause and an unattempted step has no
+// execution to have produced one, and giving either a cause would be inventing a fact.
+fn remote_step_failure_cause(standing: RemoteStepStanding) -> String? {
+  match standing {
+    RemoteStepCompleted { identity: _, execution: _ } => none
+    RemoteStepUnattempted { identity: _ } => none
+    RemoteStepFailed { identity: _, execution: x } =>
+      match x {
+        RemoteArgvExecution { outcome: o } =>
+          match o {
+            gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } => Present { value: why }
+            gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } =>
+              Present {
+                value: join(["argv exit=", to_string(r.exit_code), " stderr=", r.stderr], ""),
+              }
+          }
+        RemoteFileExecution { outcome: o } =>
+          match o {
+            gunbc.typed_remote_file_write.TypedRemoteFileConvergenceRefused { step: st, reason: why } =>
+              Present { value: join(["file-write refused at ", st, ": ", why], "") }
+            gunbc.typed_remote_file_write.TypedRemoteFileConverged { path: _, mode: _ } => none
+          }
+      }
+  }
+}
 
 // A file write has NO single argv on purpose: its realization is four invocations (stage, mode,
 // rename, read-back), so exposing one command for it would be a fiction a reader could mistake for
 // the whole operation.
-fn remote_operation_argv(operation: RemoteOperation) -> List<String>? {
+fn remote_operation_argv(operation: RemoteOperation) -> std.types.List<String>? {
   match operation {
     RemoteArgv { argv: words } => Present { value: words }
     RemoteFileBytes { write: _, mode: _ } => none
@@ -54,11 +146,11 @@ fn remote_operation_label(operation: RemoteOperation) -> String {
 // so a consumer counting ITS length is counting a different population than the one it was handed.
 // Callers wanting "how many operations" ask here; callers genuinely wanting the argv subset ask
 // below and are naming that choice.
-fn remote_operation_count(operations: List<RemoteOperation>) -> Int {
+fn remote_operation_count(operations: std.types.List<RemoteOperation>) -> Int {
   length(operations)
 }
 
-fn remote_operations_argv_only(operations: List<RemoteOperation>) -> List<List<String>> {
+fn remote_operations_argv_only(operations: std.types.List<RemoteOperation>) -> std.types.List<std.types.List<String>> {
   flat_map(operations, o =>
     match remote_operation_argv(operation: o) {
       Present { value: words } => [words]
@@ -67,11 +159,41 @@ fn remote_operations_argv_only(operations: List<RemoteOperation>) -> List<List<S
   )
 }
 
-fn remote_operation_file_write_count(operations: List<RemoteOperation>) -> Int {
+fn remote_operation_file_write_count(operations: std.types.List<RemoteOperation>) -> Int {
   length(flat_map(operations, o =>
     match o {
       RemoteFileBytes { write: _, mode: _ } => [o]
       RemoteArgv { argv: _ } => []
     }
   ))
+}
+
+// THE WIRE THE PLAN BUNDLE HASH COVERS.
+//
+// `remote_operation_label` is for humans and is NOT this: it renders a file write as
+// "write-file <path>", which names the path and says nothing about the bytes -- so a hash over
+// labels would admit an artifact whose unit content had been swapped wholesale.
+//
+// Freezing the operations into the row stopped apply from RE-DERIVING them, which is a different
+// property from the bundle covering them: a frozen value outside the hash is still frozen, and
+// still unverified. This closes the second half. The content enters as its own identity rather
+// than inline, because the wire is a fingerprint input and a multi-kilobyte unit file pasted into
+// it would make every downstream comparison carry the payload for no additional discrimination.
+fn remote_operation_wire(operation: RemoteOperation) -> String {
+  match operation {
+    RemoteArgv { argv: words } => join(["argv[", join(words, "\u{1f}"), "]"], "")
+    RemoteFileBytes { write: w, mode: m } =>
+      join([
+        "file[", w.path as String,
+        " mode=", remote_file_mode_octal(mode: m),
+        " content=", serialize_content_hash(
+          hash: content_hash_of_value(value: join(["unit-content:", w.content], "") as std.types.NonEmptyStr),
+        ) as String,
+        "]",
+      ], "")
+  }
+}
+
+fn remote_operations_wire(operations: std.types.List<RemoteOperation>) -> String {
+  join(map(operations, o => remote_operation_wire(operation: o)), "|")
 }

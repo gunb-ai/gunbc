@@ -2,7 +2,7 @@ module gunbc.fleet_reach_endpoint
 
 
 // Probe-endpoint resolution (bold-eagle-107's projection, offered via witty-raven
-// msg_1c4e0bce; homed HERE — downstream of both gunbc.dgx_spark_procurement and the
+// msg_1c4e0bce; homed HERE — downstream of both gunbc.spark.dgx_procurement and the
 // reach probe — so procurement never imports reach machinery). The srv5/srv6 resolution
 // gap is NOT missing DNS: the addresses are already modeled as cited CR1000A DHCP-lease
 // rows joined to fleet identity by an OperatorAllocation receipt, and nothing publishes
@@ -13,9 +13,9 @@ module gunbc.fleet_reach_endpoint
 // trap aimed at the network).
 fn spark_endpoint_for_binding(binding: gunbc.dgx_spark_procurement.DgxSparkRouterBinding) -> String? {
   match binding {
-    SlotAssigned { identity: _, reservation: r, allocation: _ } =>
+    gunbc.spark.dgx_procurement.SlotAssigned { identity: _, reservation: r, allocation: _ } =>
       Present { value: render_ipv4_address(addr: r.ipv4_address) as String }
-    SlotUnassigned { identity: _ } => none
+    gunbc.spark.dgx_procurement.SlotUnassigned { identity: _ } => none
   }
 }
 
@@ -25,13 +25,13 @@ fn spark_endpoint_for_binding(binding: gunbc.dgx_spark_procurement.DgxSparkRoute
 fn fleet_probe_endpoint_for(host: String) -> String {
   fold(dgx_spark_router_bindings, init: host, f: fn(acc, b) {
     match b {
-      SlotAssigned { identity: i, reservation: r, allocation: _ } =>
+      gunbc.spark.dgx_procurement.SlotAssigned { identity: i, reservation: r, allocation: _ } =>
         if (i as String) == host {
           render_ipv4_address(addr: r.ipv4_address) as String
         } else {
           acc
         }
-      SlotUnassigned { identity: _ } => acc
+      gunbc.spark.dgx_procurement.SlotUnassigned { identity: _ } => acc
     }
   })
 }
@@ -39,7 +39,7 @@ fn fleet_probe_endpoint_for(host: String) -> String {
 // The fleet reach roster — every identity a reach-layer consumer (probe, collector,
 // key scan) walks. Homed HERE (moved from host_reach_identity_probe) so enrollment and
 // probe can both consume it without an import cycle: enrollment -> endpoint <- probe.
-data fleet_reach_probe_targets: List<String> = ["srv1", "srv2", "srv3", "srv4", "srv5", "srv6"]
+data fleet_reach_probe_targets: std.types.List<String> = ["srv1", "srv2", "srv3", "srv4", "srv5", "srv6"]
 
 // Ruling msg_43a8fd77 item 2: the REMOTE PRINCIPAL is an explicit typed fact per host,
 // never the implicit ssh default (local-username inheritance is an absorbing default —
@@ -112,7 +112,7 @@ fn fleet_probe_target_for(host: String) -> FleetProbeTarget {
     PrincipalAllocationPending { allocated: u, note: _ } =>
       ProbeTargetReady { host: host, endpoint: fleet_probe_endpoint_for(host: host), remote_principal: u }
     ProbeUserPending { note: n } =>
-      ProbeTargetRefused { host: host, cause: PrincipalUnobserved { note: n } }
+      ProbeTargetRefused { host: host, cause: gunbc.fleet_reach_endpoint.PrincipalUnobserved { note: n } }
   }
 }
 

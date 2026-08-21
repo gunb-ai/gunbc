@@ -128,7 +128,7 @@ fn known_hosts_anchor_seal(
 type KnownHostsMaterializationOutcome
   = KnownHostsReady { anchor: KnownHostsAnchor, receipt: String }
   | KnownHostsAlreadyConverged { anchor: KnownHostsAnchor, receipt: String }
-  | KnownHostsRefused { first: String, more: List<String> }
+  | KnownHostsRefused { first: String, more: std.types.List<String> }
 
 // CANONICAL, not registry-order. An earlier revision hashed the rows in whatever order the list
 // happened to carry, which made the identity -- and therefore the anchor's filename -- a function of
@@ -140,15 +140,15 @@ type KnownHostsMaterializationOutcome
 // Sorting the rendered lines is the canonicalization rather than sorting the rows, because the LINE
 // is what ssh consumes -- so canonical bytes and canonical identity are the same operation, and the
 // emitted file is order-independent too rather than only its hash.
-fn canonical_known_hosts_lines(rows: List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> List<String> {
+fn canonical_known_hosts_lines(rows: std.types.List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> std.types.List<String> {
   map(rows, k => gunbc.fleet_host_key_enrollment.known_hosts_line(k: k)) |> sort_by(line => line)
 }
 
-fn canonical_known_hosts_fragment(rows: List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> String {
+fn canonical_known_hosts_fragment(rows: std.types.List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> String {
   join(map(canonical_known_hosts_lines(rows: rows), l => concat(l, "\n")), "")
 }
 
-fn canonical_known_hosts_identity(rows: List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> std.content_hash.ContentHash {
+fn canonical_known_hosts_identity(rows: std.types.List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> std.content_hash.ContentHash {
   std.content_hash.content_hash_of_value(value: canonical_known_hosts_fragment(rows: rows) as std.types.NonEmptyStr)
 }
 
@@ -156,7 +156,7 @@ fn canonical_known_hosts_identity(rows: List<gunbc.fleet_host_key_enrollment.Kno
 // line for that endpoint, so two rows naming one endpoint with different keys widen what is trusted
 // while the registry reads as if it pinned one key -- and the digest would happily identify that
 // widened set. Counted at endpoint grain because the endpoint is what ssh matches on.
-fn known_hosts_endpoint_conflict(rows: List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> String? {
+fn known_hosts_endpoint_conflict(rows: std.types.List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> String? {
   let endpoints = map(rows, k => k.endpoint) |> sort_by(e => e)
   fold(endpoints, init: none, f: fn(acc, e) {
     match acc {
@@ -227,7 +227,7 @@ func materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> K
       if back.success {
         let materialized_identity = std.content_hash.content_hash_of_value(value: back.content as std.types.NonEmptyStr)
         match std.content_hash.compare_content_hash(left: registry_identity, right: materialized_identity) {
-          ContentHashEqual => {
+          std.content_hash.ContentHashEqual => {
             let anchor = known_hosts_anchor_seal(
               path: path,
               registry_identity: registry_identity,
@@ -254,7 +254,7 @@ func materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> K
               KnownHostsReady { anchor: anchor, receipt: receipt }
             }
           }
-          ContentHashDifferent => KnownHostsRefused {
+          std.content_hash.ContentHashDifferent => KnownHostsRefused {
             first: join([
               "known-hosts materialization refused: the bytes read back from ", path as String,
               " do not hash-equal the enrollment registry (registry ",
@@ -265,7 +265,7 @@ func materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> K
             ], ""),
             more: [],
           }
-          ContentHashCrossFamilyIncomparable => KnownHostsRefused {
+          std.content_hash.ContentHashCrossFamilyIncomparable => KnownHostsRefused {
             first: "known-hosts materialization refused: registry and materialized identities are in different hash families and are therefore incomparable, so agreement was not established",
             more: [],
           }
@@ -342,7 +342,7 @@ fn fleet_openssh_trust_policy_of(outcome: KnownHostsMaterializationOutcome) -> F
 // Derived, never stored. The anchor path is read off the sealed policy, so the options a leg carries
 // and the file whose content was verified are the same fact rather than two facts a path string
 // relates.
-fn fleet_openssh_trust_options(policy: FleetOpenSshTrustPolicy) -> List<extdeps.ssh.client_options.SshClientOption> {
+fn fleet_openssh_trust_options(policy: FleetOpenSshTrustPolicy) -> std.types.List<extdeps.ssh.client_options.SshClientOption> {
   extdeps.ssh.client_options.openssh_exclusive_known_hosts_trust_options(known_hosts: policy.anchor.path)
 }
 
@@ -396,7 +396,7 @@ fn fleet_ssh_credential_locus_label(binding: FleetSshCredentialBinding) -> Strin
 
 // Derived, never stored beside the locus: the options a leg carries come from the locus that was
 // minted, so a caller cannot pair an agent-held credential with identity-file options or the reverse.
-fn fleet_ssh_credential_options(binding: FleetSshCredentialBinding) -> List<extdeps.ssh.client_options.SshClientOption> {
+fn fleet_ssh_credential_options(binding: FleetSshCredentialBinding) -> std.types.List<extdeps.ssh.client_options.SshClientOption> {
   match binding.locus {
     FleetSshIdentityFileHeld { identity_file: f } =>
       extdeps.ssh.client_options.openssh_exact_credential_options(identity_file: f)
@@ -522,9 +522,31 @@ type PortableRemoteWord sole_constructor {
   value: std.types.NonEmptyStr
 }
 
+// THE ALPHABET, AND THE ONE CHARACTER ADDED TO IT WITH ITS ARGUMENT WRITTEN DOWN.
+//
+// Letters, digits, and `. _ - / @ : =` were the original set. COMMA (44) is added, and the argument
+// is specific rather than convenient: in POSIX sh a comma is an ORDINARY character. It plays no part
+// in word splitting (IFS is space/tab/newline), none in pathname expansion (the glob metacharacters
+// are `*`, `?`, `[`), and none in any expansion form. The one context where a comma is meaningful is
+// BRACE EXPANSION, which is a bash extension and requires `{` and `}` -- neither of which is in this
+// alphabet, and neither of which is being added. So a comma admitted here cannot be interpreted by
+// the far-side shell however that shell is configured; it arrives as a literal character in a word.
+//
+// WHAT FORCED IT, because a widening deserves a cause rather than a preference. `nvidia-smi
+// --query-gpu=driver_version --format=csv,noheader` is upstream's syntax for asking one value
+// without a header, and the comma is inside a single word. The alternative spellings are worse in
+// exactly the way this wall exists to prevent: piping through `tail -n +2` puts a shell pipe on the
+// far side, which is the class already refused. So the choice was between admitting one inert
+// character and routing a real query through a shell -- and the probe had been silently unrunnable
+// for as long as it has existed, refused at the transport with nobody able to see why.
+//
+// WHAT IS NOT WIDENED: every shell metacharacter stays out. `; & | < > ( ) $ \` ' " * ? [ ] { } ~ !`
+// and whitespace are all still refused, and the discriminating witness asserts that a brace-bearing
+// word is still rejected -- so this is one character, argued, not a relaxation of the wall.
 fn portable_remote_word_char_allowed(cp: Int) -> Bool {
   (cp >= 97 && cp <= 122) || (cp >= 65 && cp <= 90) || (cp >= 48 && cp <= 57)
     || cp == 46 || cp == 95 || cp == 45 || cp == 47 || cp == 64 || cp == 58 || cp == 61
+    || cp == 44
 }
 
 fn portable_remote_word_text_ok(text: String, i: Int, len: Int) -> Bool {
@@ -551,10 +573,10 @@ fn portable_remote_word(raw: String) -> PortableRemoteWord? {
 // by passing an empty list to this one.
 type PortableRemoteWords {
   first: PortableRemoteWord
-  more: List<PortableRemoteWord>
+  more: std.types.List<PortableRemoteWord>
 }
 
-fn portable_remote_words(raws: List<String>) -> PortableRemoteWords? {
+fn portable_remote_words(raws: std.types.List<String>) -> PortableRemoteWords? {
   let admitted = fold(raws, init: Present { value: [] }, f: fn(acc, r) {
     match acc {
       Absent => none
@@ -567,16 +589,16 @@ fn portable_remote_words(raws: List<String>) -> PortableRemoteWords? {
   match admitted {
     Absent => none
     Present { value: ws } => match v2.std.algebra.list_head(ws) {
-      HeadAbsent => none
-      HeadFound { value: h } => match v2.std.algebra.list_tail(ws) {
-        TailFound { tail: t } => Present { value: PortableRemoteWords { first: h, more: t } }
-        TailAbsent => Present { value: PortableRemoteWords { first: h, more: [] } }
+      v2.std.algebra.HeadAbsent => none
+      v2.std.algebra.HeadFound { value: h } => match v2.std.algebra.list_tail(ws) {
+        v2.std.algebra.TailFound { tail: t } => Present { value: PortableRemoteWords { first: h, more: t } }
+        v2.std.algebra.TailAbsent => Present { value: PortableRemoteWords { first: h, more: [] } }
       }
     }
   }
 }
 
-fn portable_remote_words_strings(words: PortableRemoteWords) -> List<String> {
+fn portable_remote_words_strings(words: PortableRemoteWords) -> std.types.List<String> {
   concat([words.first.value as String], map(words.more, w => w.value as String))
 }
 
@@ -595,7 +617,7 @@ fn shape_fleet_ssh_exec(
   context: FleetSshExecutionContext,
   target: SshTarget,
   words: PortableRemoteWords,
-) -> List<String> {
+) -> std.types.List<String> {
   let config_suppression = extdeps.ssh.client_options.openssh_suppress_ambient_configuration_options()
   let derived = concat(
     fleet_openssh_trust_options(policy: context.trust),

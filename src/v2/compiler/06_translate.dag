@@ -73,15 +73,15 @@ fn translate_grounding_derived_gate(tree: v2.compiler.inferred_tree.InferredTree
   match v2.compiler.infer.inferred_facts_witness_for_node(tree: tree, node: node) {
     Holds { value: facts } =>
       match facts.grounding {
-        GroundingNotDerived { node: _ } =>
+        v2.compiler.inferred_tree.GroundingNotDerived { node: _ } =>
           match v2.compiler.infer.canonical_grounding_from_inferred_facts(node: node, facts: facts) {
             Accepted { value: _, diagnostics: _ } => v2.std.diagnostic.outcome_accepted(GroundingGatePassed {})
             Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
           }
-        DerivedGrounding { grounding: _ } =>
+        v2.compiler.inferred_tree.DerivedGrounding { grounding: _ } =>
           v2.std.diagnostic.outcome_accepted(GroundingGatePassed {})
       }
-    Violates { diagnostic: _ } =>
+    v2.std.witness.Violates { diagnostic: _ } =>
       v2.std.diagnostic.outcome_accepted(GroundingGatePassed {})
   }
 }
@@ -98,7 +98,7 @@ fn translate_derived_parent_underived_child_gate(
       } else {
         v2.std.diagnostic.outcome_accepted(GroundingGatePassed {})
       }
-    Violates { diagnostic: _ } =>
+    v2.std.witness.Violates { diagnostic: _ } =>
       translate_grounding_derived_gate(tree: tree, node: child)
   }
 }
@@ -204,7 +204,7 @@ fn target_bundle_child_lookup_step(
           } else {
             acc
           }
-        Positional => BundleChildInvalidEdge
+        v2.std.node.Positional => BundleChildInvalidEdge
       }
     BundleChildFound { value: _ } =>
       match e.label {
@@ -214,13 +214,13 @@ fn target_bundle_child_lookup_step(
           } else {
             acc
           }
-        Positional => BundleChildInvalidEdge
+        v2.std.node.Positional => BundleChildInvalidEdge
       }
   }
 }
 fn conj_named_child(parent: v2.std.node.Node, edge_name: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match parent.kind {
-    TypeNode { connective: v2.std.node.Conj } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
       match fold(
         parent.children,
         init: BundleChildMissing,
@@ -255,7 +255,7 @@ fn conj_named_child(parent: v2.std.node.Node, edge_name: v2.std.node.Symbol) -> 
 }
 fn conj_optional_named_child(parent: v2.std.node.Node, edge_name: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.std.node.Node?> {
   match parent.kind {
-    TypeNode { connective: v2.std.node.Conj } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
       match fold(
         parent.children,
         init: BundleChildMissing,
@@ -358,7 +358,7 @@ fn grammar_relation_row_for_emitted(rules: v2.std.node.Node, emitted: v2.std.nod
 
 fn grammar_relation_row_with_bodied_scaffold(rules: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match rules.kind {
-    TypeNode { connective: v2.std.node.Conj } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
       match fold(
         rules.children,
         init: v2.std.diagnostic.Rejected {
@@ -383,7 +383,7 @@ fn grammar_relation_row_with_bodied_scaffold(rules: v2.std.node.Node) -> v2.std.
                       )
                     Rejected { diagnostics: _ } => acc
                   }
-                Positional => acc
+                v2.std.node.Positional => acc
               }
             Rejected { diagnostics: _ } =>
               match e.label {
@@ -396,7 +396,7 @@ fn grammar_relation_row_with_bodied_scaffold(rules: v2.std.node.Node) -> v2.std.
                       v2.std.diagnostic.Accepted { value: e.target, diagnostics: d }
                     Rejected { diagnostics: _ } => acc
                   }
-                Positional => acc
+                v2.std.node.Positional => acc
               }
           }
         }
@@ -444,7 +444,7 @@ fn translate_bodied_arrow_preserve_producer_ir(arrow: v2.std.node.Node) -> v2.st
 }
 fn conj_positional_targets(parent: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.node.Node>> {
   match parent.kind {
-    TypeNode { connective: v2.std.node.Conj } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
       v2.std.diagnostic.Accepted {
         value: v2.std.node_query.node_positional_child_targets(node: parent),
         diagnostics: v2.std.diagnostic.None
@@ -458,7 +458,7 @@ fn conj_positional_targets(parent: v2.std.node.Node) -> v2.std.diagnostic.Outcom
 fn optional_named_child_ignoring_positional(parent: v2.std.node.Node, edge_name: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.std.node.Node?> {
 
   match parent.kind {
-    TypeNode { connective: v2.std.node.Conj } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
       match fold(
         parent.children,
         init: BundleChildMissing,
@@ -474,7 +474,7 @@ fn optional_named_child_ignoring_positional(parent: v2.std.node.Node, edge_name:
                   } else {
                     acc
                   }
-                Positional => acc
+                v2.std.node.Positional => acc
               }
             BundleChildFound { value: _ } =>
               match e.label {
@@ -484,7 +484,7 @@ fn optional_named_child_ignoring_positional(parent: v2.std.node.Node, edge_name:
                   } else {
                     acc
                   }
-                Positional => acc
+                v2.std.node.Positional => acc
               }
           }
         }
@@ -570,7 +570,7 @@ fn serialize_source_tokens_fold_child(serialize_source: v2.std.node.Node) -> v2.
           match e.label {
             Named { name: n } =>
               if n == ^grammar_relation_field_tokens { v2.std.optional.optional_present(value: e.target) } else { acc }
-            Positional => acc
+            v2.std.node.Positional => acc
           }
       }
     }
@@ -582,7 +582,7 @@ fn serialize_source_fold_list_targets(remaining: Int, node: v2.std.node.Node) ->
     v2.std.diagnostic.outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
   } else {
     match node.kind {
-      TypeNode { connective: v2.std.node.Conj } =>
+      v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
         if v2.std.algebra.is_empty(xs: node.children) {
           v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None }
         } else {
@@ -1021,7 +1021,7 @@ fn target_serialize_source_from_model_bounded(
     )
   } else {
     match v2.std.compilers.target_model.target_type_expr_emitted_kind(node: emitted) {
-      TypeExprKindAuthority { value: _ } =>
+      v2.std.compilers.target_model.TypeExprKindAuthority { value: _ } =>
         v2.std.diagnostic.bind_outcome(
           o: v2.std.compilers.target_model.type_expression_projection_from_target(target: target),
           f: fn(projection) {
@@ -1033,14 +1033,14 @@ fn target_serialize_source_from_model_bounded(
             )
           }
         )
-      TypeExprKindNotEmitted =>
+      v2.std.compilers.target_model.TypeExprKindNotEmitted =>
         v2.std.diagnostic.bind_outcome(
           o: grammar_inverse_source_validated(target: target, emitted: emitted),
           f: fn(_) {
             target_serialize_relation_row_from_model_bounded(remaining - 1, target, emitted)
           }
         )
-      TypeExprKindAuthorityInvalid =>
+      v2.compiler.06_translate.TypeExprKindAuthorityInvalid =>
         v2.std.diagnostic.outcome_rejected(
           translate_type_expr_kind_authority_invalid_diagnostic(node: emitted)
         )
@@ -1065,7 +1065,7 @@ fn target_serialize_source_from_model(
 }
 fn target_bundle_child(target: v2.std.compilers.target_model.TargetModel, edge_name: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match target.bundle.kind {
-    TypeNode { connective: v2.std.node.Conj } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
       match fold(
         target.bundle.children,
         init: BundleChildMissing,
@@ -1093,7 +1093,7 @@ fn target_bundle_child(target: v2.std.compilers.target_model.TargetModel, edge_n
 }
 fn target_bundle_optional_child(target: v2.std.compilers.target_model.TargetModel, edge_name: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.std.node.Node?> {
   match target.bundle.kind {
-    TypeNode { connective: v2.std.node.Conj } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
       match fold(
         target.bundle.children,
         init: BundleChildMissing,
@@ -1212,7 +1212,7 @@ fn target_collection_choice_from_node(node: v2.std.node.Node) -> v2.std.diagnost
                       v2.std.diagnostic.bind_outcome(
                         o: v2.std.fold_assembly.node_list_from_node(
                           node: constraints_node,
-                          decode_item: v2.std.compilers.target_model.target_collection_witness_from_node
+                          decode_item: target_capability_requirement_from_node
                         ),
                         f: fn(constraints) {
                           v2.std.diagnostic.bind_outcome(
@@ -1317,16 +1317,32 @@ fn target_collection_realization_from_bundle(
                               v2.std.diagnostic.bind_outcome(
                                 o: target_text_carrier_optional_from_bundle(bundle: bundle),
                                 f: fn(text_carrier) {
-                                  v2.std.diagnostic.Accepted {
-                                    value: v2.std.compilers.target_model.TargetCollectionRealization {
-                                      source_carrier: source_carrier,
-                                      primary: primary,
-                                      alternatives: alternatives,
-                                      fallback_diagnostic: fallback_diagnostic,
-                                      text_carrier: text_carrier
-                                    },
-                                    diagnostics: v2.std.diagnostic.None
-                                  }
+                                  bind_outcome(
+                                    o: conj_named_child(
+                                      parent: bundle,
+                                      edge_name: ^target_collection_row_field_capability_eligibility
+                                    ),
+                                    f: fn(eligibility_node) {
+                                      bind_outcome(
+                                        o: target_capability_eligibility_from_node(
+                                          node: eligibility_node
+                                        ),
+                                        f: fn(capability_eligibility) {
+                                          Accepted {
+                                            value: v2.std.compilers.target_model.TargetCollectionRealization {
+                                              source_carrier: source_carrier,
+                                              primary: primary,
+                                              alternatives: alternatives,
+                                              fallback_diagnostic: fallback_diagnostic,
+                                              text_carrier: text_carrier,
+                                              capability_eligibility: capability_eligibility
+                                            },
+                                            diagnostics: v2.std.diagnostic.None
+                                          }
+                                        }
+                                      )
+                                    }
+                                  )
                                 }
                               )
                             }
@@ -1396,11 +1412,15 @@ fn project_set_collection_type_node(
       v2.std.diagnostic.bind_outcome(
         o: collection_realization_from_target(target: target),
         f: fn(row) {
-          match v2.std.compilers.target_model.target_collection_select_choice(
-            primary: row.primary,
-            alternatives: row.alternatives,
-            elem: elem
-          ) {
+          bind_outcome(
+            o: target_collection_select_choice(
+              eligibility_table: row.capability_eligibility,
+              primary: row.primary,
+              alternatives: row.alternatives,
+              elem: elem
+            ),
+            f: fn(selected) {
+          match selected {
             Present { value: choice } =>
               v2.std.diagnostic.bind_outcome(
                 o: translate_type_expression_project(node: elem, target: target, projection: projection),
@@ -1420,6 +1440,8 @@ fn project_set_collection_type_node(
               )
             Absent => v2.std.diagnostic.outcome_rejected(row.fallback_diagnostic)
           }
+            }
+          )
         }
       )
     Absent =>
@@ -1460,11 +1482,15 @@ fn project_free_monoid_via_vec_choice(
   target: v2.std.compilers.target_model.TargetModel,
   projection: v2.std.compilers.target_model.TargetTypeExpressionProjection
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
-  match v2.std.compilers.target_model.target_collection_select_choice(
-    primary: row.primary,
-    alternatives: row.alternatives,
-    elem: elem
-  ) {
+  bind_outcome(
+    o: target_collection_select_choice(
+      eligibility_table: row.capability_eligibility,
+      primary: row.primary,
+      alternatives: row.alternatives,
+      elem: elem
+    ),
+    f: fn(selected) {
+  match selected {
     Present { value: choice } =>
       v2.std.diagnostic.bind_outcome(
         o: translate_type_expression_project(node: elem, target: target, projection: projection),
@@ -1494,6 +1520,8 @@ fn project_free_monoid_via_vec_choice(
       )
     Absent => v2.std.diagnostic.outcome_rejected(row.fallback_diagnostic)
   }
+    }
+  )
 }
 type TypeExprHeadTail {
   head: v2.std.node.Node
@@ -1535,9 +1563,9 @@ fn list_head_and_tail(xs: std.types.List<v2.std.node.Node>, node: v2.std.node.No
       v2.std.diagnostic.outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
     Present { value: head } =>
       match v2.std.algebra.list_tail(xs: xs) {
-        TailAbsent =>
+        v2.std.algebra.TailAbsent =>
           v2.std.diagnostic.outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-        TailFound { tail: t } =>
+        v2.std.algebra.TailFound { tail: t } =>
           v2.std.diagnostic.Accepted { value: TypeExprHeadTail { head: head, tail: t }, diagnostics: v2.std.diagnostic.None }
       }
   }
@@ -1555,14 +1583,14 @@ fn translate_algebra_finalize(
   projection: v2.std.compilers.target_model.TargetTypeExpressionProjection
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match anchor.kind {
-    TypeNode { connective: connective } =>
+    v2.std.node.TypeNode { connective: connective } =>
       match connective {
-        Atom { identity: _ } =>
+        v2.std.node.Atom { identity: _ } =>
           match acc {
             TypeExprTranslateDone { node: n } => v2.std.diagnostic.outcome_accepted(n)
             _ => v2.std.diagnostic.outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
           }
-        Conj =>
+        v2.std.node.Conj =>
           match acc {
             TypeExprTranslateDone { node: n } => v2.std.diagnostic.outcome_accepted(n)
             TypeExprTranslateSlots { slots: fields } =>
@@ -1575,7 +1603,7 @@ fn translate_algebra_finalize(
               }
             _ => v2.std.diagnostic.outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
           }
-        Disj =>
+        v2.std.node.Disj =>
           match acc {
             TypeExprTranslateDone { node: n } => v2.std.diagnostic.outcome_accepted(n)
             TypeExprTranslateVariants { variants: variants } =>
@@ -1584,7 +1612,7 @@ fn translate_algebra_finalize(
               )
             _ => v2.std.diagnostic.outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
           }
-        Instantiation =>
+        v2.std.node.Instantiation =>
           match acc {
             TypeExprTranslateDone { node: n } => v2.std.diagnostic.outcome_accepted(n)
             TypeExprTranslatePositional { items: projected } =>
@@ -1620,13 +1648,13 @@ fn translate_algebra_finalize(
               )
             _ => v2.std.diagnostic.outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
           }
-        Arrow =>
+        v2.std.node.Arrow =>
           match acc {
             TypeExprTranslateDone { node: n } => v2.std.diagnostic.outcome_accepted(n)
             _ => v2.std.diagnostic.outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
           }
       }
-    ComputationNode { behavior: _ } =>
+    v2.std.node.ComputationNode { behavior: _ } =>
       v2.std.diagnostic.outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
   }
 }
@@ -1670,9 +1698,9 @@ fn translate_algebra(
   v2.std.node.NodeFold {
     init: fn(n) {
       match n.kind {
-        TypeNode { connective: connective } =>
+        v2.std.node.TypeNode { connective: connective } =>
           match connective {
-            Atom { identity: id } =>
+            v2.std.node.Atom { identity: id } =>
               v2.std.diagnostic.Accepted {
                 value: TypeExprTranslateDone {
                   node: v2.std.compilers.target_model.target_type_expr_atom_emitted(
@@ -1682,14 +1710,14 @@ fn translate_algebra(
                 },
                 diagnostics: v2.std.diagnostic.None
               }
-            Conj =>
+            v2.std.node.Conj =>
               v2.std.diagnostic.Accepted { value: TypeExprTranslateSlots { slots: std.algebra.Empty }, diagnostics: v2.std.diagnostic.None }
-            Disj =>
+            v2.std.node.Disj =>
               v2.std.diagnostic.Accepted {
                 value: TypeExprTranslateVariants { variants: std.algebra.Empty },
                 diagnostics: v2.std.diagnostic.None
               }
-            Instantiation =>
+            v2.std.node.Instantiation =>
               v2.std.diagnostic.Accepted {
                 value: TypeExprTranslatePositional { items: std.algebra.Empty },
                 diagnostics: v2.std.diagnostic.None
@@ -1699,7 +1727,7 @@ fn translate_algebra(
                 value: TypeExprTranslatePositional { items: std.algebra.Empty },
                 diagnostics: v2.std.diagnostic.None
               }
-            Arrow =>
+            v2.std.node.Arrow =>
               v2.std.diagnostic.bind_outcome(
                 o: translate_type_expression_arrow_project(
                   node: n,
@@ -1714,7 +1742,7 @@ fn translate_algebra(
                 }
               )
           }
-        ComputationNode { behavior: _ } =>
+        v2.std.node.ComputationNode { behavior: _ } =>
           v2.std.diagnostic.outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: n))
       }
     },
@@ -1764,7 +1792,7 @@ fn translate_algebra(
                         }
                       )
                   }
-                Positional =>
+                v2.std.node.Positional =>
                   v2.std.diagnostic.outcome_rejected(
                     translate_type_expression_shape_missing_diagnostic(node: e.target)
                   )
@@ -1798,7 +1826,7 @@ fn translate_algebra(
                         }
                       )
                   }
-                Positional =>
+                v2.std.node.Positional =>
                   v2.std.diagnostic.outcome_rejected(
                     translate_type_expression_shape_missing_diagnostic(node: e.target)
                   )
@@ -1836,9 +1864,9 @@ fn translate_type_expression_project(
   projection: v2.std.compilers.target_model.TargetTypeExpressionProjection
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match node.kind {
-    ComputationNode { behavior: _ } =>
+    v2.std.node.ComputationNode { behavior: _ } =>
       v2.std.diagnostic.outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-    TypeNode { connective: connective } =>
+    v2.std.node.TypeNode { connective: connective } =>
       v2.std.diagnostic.bind_outcome(
         o: v2.std.compilers.target_model.type_expr_projection_row_closedness_from_target(
           target: target,
@@ -1847,7 +1875,7 @@ fn translate_type_expression_project(
         ),
         f: fn(_) {
           match connective {
-            Atom { identity: _ } =>
+            v2.std.node.Atom { identity: _ } =>
               v2.std.diagnostic.bind_outcome(
                 o: v2.std.node.fold_node(
                   n: node,
@@ -1857,7 +1885,7 @@ fn translate_type_expression_project(
                   translate_algebra_finalize(acc: acc, anchor: node, projection: projection)
                 }
               )
-            Instantiation =>
+            v2.std.node.Instantiation =>
               if v2.std.compilers.target_model.target_collection_type_node_is_free_monoid_carrier(node: node) {
                 project_free_monoid_collection_type_node(
                   node: node,
@@ -1889,7 +1917,7 @@ fn translate_type_expression_project(
                   }
                 )
               }
-            Conj =>
+            v2.std.node.Conj =>
               v2.std.diagnostic.bind_outcome(
                 o: v2.std.node.fold_node(
                   n: node,
@@ -1899,7 +1927,7 @@ fn translate_type_expression_project(
                   translate_algebra_finalize(acc: acc, anchor: node, projection: projection)
                 }
               )
-            Disj =>
+            v2.std.node.Disj =>
               v2.std.diagnostic.bind_outcome(
                 o: v2.std.node.fold_node(
                   n: node,
@@ -1909,7 +1937,7 @@ fn translate_type_expression_project(
                   translate_algebra_finalize(acc: acc, anchor: node, projection: projection)
                 }
               )
-            Arrow =>
+            v2.std.node.Arrow =>
               v2.std.diagnostic.bind_outcome(
                 o: v2.std.node.fold_node(
                   n: node,
@@ -1973,7 +2001,7 @@ fn serialize_type_expr_record_field_label(target: v2.std.compilers.target_model.
           v2.std.diagnostic.outcome_accepted(v2.std.compilers.target_model.text_atom(lexeme: spelling))
         }
       )
-    Positional =>
+    v2.std.node.Positional =>
       v2.std.diagnostic.outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: edge.target))
   }
 }
@@ -2616,9 +2644,9 @@ fn serialize_type_expr_emitted_wire_bounded(
   wire: v2.std.compilers.target_model.TargetTypeExpression
 ) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetText> {
   match wire.kind {
-    TargetTypeExprAtom =>
+    v2.std.compilers.target_model.TargetTypeExprAtom =>
       type_expr_spelling_for_atom(target: target, node: wire.node)
-    TargetTypeExprInstantiation =>
+    v2.std.compilers.target_model.TargetTypeExprInstantiation =>
       serialize_type_expr_generic_apply_bounded(
         remaining: remaining - 1,
         target: target,
@@ -2626,7 +2654,7 @@ fn serialize_type_expr_emitted_wire_bounded(
         form: projection.instantiation_form,
         node: wire.node
       )
-    TargetTypeExprCardinality =>
+    v2.std.compilers.target_model.TargetTypeExprCardinality =>
       serialize_type_expr_generic_apply_bounded(
         remaining: remaining - 1,
         target: target,
@@ -2634,7 +2662,7 @@ fn serialize_type_expr_emitted_wire_bounded(
         form: projection.cardinality_form,
         node: wire.node
       )
-    TargetTypeExprRecord =>
+    v2.std.compilers.target_model.TargetTypeExprRecord =>
       serialize_type_expr_record_bounded(
         remaining: remaining - 1,
         target: target,
@@ -2642,7 +2670,7 @@ fn serialize_type_expr_emitted_wire_bounded(
         form: projection.conj_form,
         node: wire.node
       )
-    TargetTypeExprSum =>
+    v2.std.compilers.target_model.TargetTypeExprSum =>
       serialize_type_expr_sum_bounded(
         remaining: remaining - 1,
         target: target,
@@ -2650,7 +2678,7 @@ fn serialize_type_expr_emitted_wire_bounded(
         form: projection.disj_form,
         node: wire.node
       )
-    TargetTypeExprArrow =>
+    v2.std.compilers.target_model.TargetTypeExprArrow =>
       serialize_type_expr_arrow_bounded(
         remaining: remaining - 1,
         target: target,
@@ -2705,11 +2733,11 @@ fn translate_apply_wrap_gate_to_type_shell(
   target: v2.std.compilers.target_model.TargetModel
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match gate {
-    WrapGateInapplicable => v2.std.diagnostic.outcome_accepted(shell)
-    WrapGateDecided { decision } =>
+    v2.std.compilers.target_model.WrapGateInapplicable => v2.std.diagnostic.outcome_accepted(shell)
+    v2.std.compilers.target_model.WrapGateDecided { decision } =>
       match decision {
-        WrapByValue => v2.std.diagnostic.outcome_accepted(shell)
-        WrapByReference { layer } =>
+        v2.std.compilers.target_model.WrapByValue => v2.std.diagnostic.outcome_accepted(shell)
+        v2.std.compilers.target_model.WrapByReference { layer } =>
           v2.std.diagnostic.bind_outcome(
             o: v2.std.compilers.target_model.type_expression_projection_from_target(target: target),
             f: fn(projection) {
@@ -2738,11 +2766,11 @@ fn translate_apply_wrap_gate_to_value_expression(
   target: v2.std.compilers.target_model.TargetModel
 ) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetValueExpression> {
   match gate {
-    WrapGateInapplicable => v2.std.diagnostic.outcome_accepted(expr)
-    WrapGateDecided { decision } =>
+    v2.std.compilers.target_model.WrapGateInapplicable => v2.std.diagnostic.outcome_accepted(expr)
+    v2.std.compilers.target_model.WrapGateDecided { decision } =>
       match decision {
-        WrapByValue => v2.std.diagnostic.outcome_accepted(expr)
-        WrapByReference { layer } =>
+        v2.std.compilers.target_model.WrapByValue => v2.std.diagnostic.outcome_accepted(expr)
+        v2.std.compilers.target_model.WrapByReference { layer } =>
           v2.std.diagnostic.bind_outcome(
             o: translate_reference_layer_tokens_from_target(target: target),
             f: fn(tokens) {
@@ -2784,7 +2812,7 @@ fn translate_apply_use_site_ownership_to_projected_boundary(
     o: v2.std.compilers.target_model.target_type_expr_emitted_wire_decode(node: projected, projection: projection),
     f: fn(wire) {
       match wire.kind {
-        TargetTypeExprAtom =>
+        v2.std.compilers.target_model.TargetTypeExprAtom =>
           v2.std.diagnostic.bind_outcome(
             o: type_expr_carrier_identity(node: source_for_binding),
             f: fn(binding) {
@@ -2796,7 +2824,7 @@ fn translate_apply_use_site_ownership_to_projected_boundary(
               )
             }
           )
-        TargetTypeExprInstantiation =>
+        v2.std.compilers.target_model.TargetTypeExprInstantiation =>
           translate_apply_use_site_ownership_to_instantiation_boundary(
             projected: projected,
             source_for_binding: source_for_binding,
@@ -2840,7 +2868,7 @@ fn translate_apply_use_site_ownership_to_instantiation_boundary(
                   )
                 }
               ),
-              policy: v2.std.diagnostic.StageDiagnosticPolicy { accumulation: ShortCircuit }
+              policy: v2.std.diagnostic.StageDiagnosticPolicy { accumulation: v2.std.diagnostic.ShortCircuit }
             ),
             f: fn(wrapped_args) {
               v2.std.diagnostic.outcome_accepted(
@@ -2977,8 +3005,8 @@ fn function_boundary_site_to_ownership_use_site(
   boundary_site: v2.std.compilers.target_model.FunctionBoundarySite
 ) -> v2.std.compilers.target_model.TargetOwnershipUseSite {
   match boundary_site {
-    FunctionBoundaryParam => v2.std.compilers.target_model.OwnershipAtFunctionParameter
-    FunctionBoundaryReturn => v2.std.compilers.target_model.OwnershipAtFunctionReturn
+    v2.std.compilers.target_model.FunctionBoundaryParam => v2.std.compilers.target_model.OwnershipAtFunctionParameter
+    v2.std.compilers.target_model.FunctionBoundaryReturn => v2.std.compilers.target_model.OwnershipAtFunctionReturn
   }
 }
 
@@ -3086,7 +3114,7 @@ fn serialize_type_expr_boundary_bounded(
       o: v2.std.compilers.target_model.target_type_expr_emitted_wire_decode(node: emitted, projection: projection),
       f: fn(wire) {
         match wire.kind {
-          TargetTypeExprAtom =>
+          v2.std.compilers.target_model.TargetTypeExprAtom =>
             serialize_type_expr_boundary_atom_bounded(
               remaining: remaining,
               target: target,
@@ -3170,7 +3198,7 @@ fn translate_coerced_type_shell_from_source(
   target: v2.std.compilers.target_model.TargetModel
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match source_carrier.kind {
-    TypeNode { connective: v2.std.node.Instantiation } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Instantiation } =>
       v2.std.diagnostic.bind_outcome(
         o: v2.std.compilers.target_model.type_expression_projection_from_target(target: target),
         f: fn(projection) {
@@ -3195,8 +3223,8 @@ fn translate_coerced_shell(coerced: v2.std.node.Node, target: v2.std.compilers.t
 
 fn translate_use_site_ownership_source_carrier(source: v2.std.node.Node, coerced: v2.std.node.Node) -> v2.std.node.Node {
   match source.kind {
-    TypeNode { connective: _ } => source
-    ComputationNode { behavior: _ } => coerced
+    v2.std.node.TypeNode { connective: _ } => source
+    v2.std.node.ComputationNode { behavior: _ } => coerced
   }
 }
 fn target_atom_realizations_catalog_from_model(
@@ -3240,7 +3268,7 @@ fn translate_target_atom_realization_for_carrier(
 }
 fn translate_shell_attach_value_expression(shell: v2.std.node.Node, value: v2.std.node.Node) -> v2.std.node.Node {
   match shell.kind {
-    TypeNode { connective: v2.std.node.Conj } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
       v2.std.node.node_rebuild(
         n: shell,
         children: v2.std.algebra.list_snoc_item(
@@ -3480,7 +3508,7 @@ fn translate_projection_absent_fold_init(
   target: v2.std.compilers.target_model.TargetModel
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match node.kind {
-    TypeNode { connective: v2.std.node.Arrow } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Arrow } =>
 
       if v2.std.compilers.target_model.target_value_expr_arrow_has_value_expression_body(arrow: node) {
         translate_projection_absent_bodied_arrow_fold_init(tree: tree, node: node)
@@ -3502,7 +3530,7 @@ fn translate_projection_absent_fold_init(
         tree: tree,
         target: target
       )
-    TypeNode { connective: _ } =>
+    v2.std.node.TypeNode { connective: _ } =>
       match coerce_grounded_node(source: node, tree: tree, target: target) {
         Accepted { value: coerced, diagnostics: d } =>
           translate_coerced_with_atom_realization(
@@ -3513,7 +3541,7 @@ fn translate_projection_absent_fold_init(
           )
         Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    ComputationNode { behavior: _ } => translate_computation_fold_init(node: node)
+    v2.std.node.ComputationNode { behavior: _ } => translate_computation_fold_init(node: node)
   }
 }
 
@@ -3569,14 +3597,14 @@ fn translate_node_with_projection(
     o: v2.std.compilers.target_model.type_expression_projection_from_target(target: target),
     f: fn(projection) {
       match node.kind {
-        TypeNode { connective: _ } =>
+        v2.std.node.TypeNode { connective: _ } =>
           translate_type_expression_tree(
             node: node,
             tree: tree,
             target: target,
             projection: projection
           )
-        ComputationNode { behavior: _ } =>
+        v2.std.node.ComputationNode { behavior: _ } =>
           v2.std.diagnostic.bind_outcome(
             o: translate_node_computation(node: node, tree: tree, target: target),
             f: fn(translated) {
@@ -3600,9 +3628,9 @@ fn translate_type_expression_subtree(
   projection: v2.std.compilers.target_model.TargetTypeExpressionProjection
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match node.kind {
-    TypeNode { connective: _ } =>
+    v2.std.node.TypeNode { connective: _ } =>
       translate_type_expression_project(node: node, target: target, projection: projection)
-    ComputationNode { behavior: b } =>
+    v2.std.node.ComputationNode { behavior: b } =>
       v2.std.diagnostic.bind_outcome(
         o: translate_type_expression_children_in_node(node: node, target: target, projection: projection),
         f: fn(children) {
@@ -3696,11 +3724,11 @@ fn translate_import_production_qn_node(import_node: v2.std.node.Node) -> v2.std.
     root: import_node,
     emitted: ^dag_surface_qualified_name
   ) {
-    ParseSubtreeAbsent =>
+    v2.extdeps.languages.dag.ParseSubtreeAbsent =>
       v2.std.diagnostic.outcome_rejected(
         translate_grammar_relation_row_not_found_diagnostic(emitted: import_node)
       )
-    ParseSubtreeFound { captured: qn_capture } =>
+    v2.extdeps.languages.dag.ParseSubtreeFound { captured: qn_capture } =>
       v2.std.diagnostic.bind_outcome(
         o: v2.extdeps.languages.dag.parse_qualified_name_segments_from_capture(qn_capture: qn_capture, root: import_node),
         f: fn(segments) {
@@ -3826,7 +3854,7 @@ fn translate_node(
   match target_bundle_child_optional_type_expr_projection(target: target) {
     Accepted { value: ProjectionPresent, diagnostics: _ } =>
       translate_node_with_projection(node: node, tree: tree, target: target)
-    Accepted { value: ProjectionAbsent, diagnostics: _ } =>
+    Accepted { value: v2.compiler.06_translate.ProjectionAbsent, diagnostics: _ } =>
       translate_node_projection_absent(node: node, tree: tree, target: target)
     Rejected { diagnostics: r } =>
       v2.std.diagnostic.Rejected { diagnostics: r }
@@ -3846,7 +3874,7 @@ fn target_bundle_child_optional_type_expr_projection(
     v2.std.diagnostic.Accepted { value: v2.std.optional.Present { value: _ }, diagnostics: d } =>
       v2.std.diagnostic.Accepted { value: ProjectionPresent, diagnostics: d }
     Accepted { value: v2.std.optional.Absent, diagnostics: d } =>
-      v2.std.diagnostic.Accepted { value: ProjectionAbsent, diagnostics: d }
+      v2.std.diagnostic.Accepted { value: v2.compiler.06_translate.ProjectionAbsent, diagnostics: d }
     Rejected { diagnostics: r } =>
       v2.std.diagnostic.Rejected { diagnostics: r }
   }
@@ -3946,7 +3974,7 @@ fn translate_diagnostic_reason_variants() -> std.types.List<TranslateDiagnosticR
     LexRuleLiteralNotFound,
     BindingSpellingNotFound,
     TypeExpressionShapeMissing,
-    TypeExprKindAuthorityInvalid,
+    v2.compiler.06_translate.TypeExprKindAuthorityInvalid,
     TargetAtomRealizationLookupMiss,
     TargetFunctionSignatureRealizationLookupMiss,
     TargetTypeExprEmittedShapeMalformed
@@ -3968,7 +3996,7 @@ fn translate_diagnostic_reason_symbol(reason: TranslateDiagnosticReason) -> v2.s
     LexRuleLiteralNotFound => ^translate_lex_rule_literal_not_found
     BindingSpellingNotFound => ^translate_binding_spelling_not_found
     TypeExpressionShapeMissing => ^translate_type_expression_shape_missing
-    TypeExprKindAuthorityInvalid => ^translate_type_expr_kind_authority_invalid
+    v2.compiler.06_translate.TypeExprKindAuthorityInvalid => ^translate_type_expr_kind_authority_invalid
     TargetAtomRealizationLookupMiss => ^target_atom_realization_lookup_miss
     TargetFunctionSignatureRealizationLookupMiss => ^target_function_signature_realization_lookup_miss
     TargetTypeExprEmittedShapeMalformed => ^target_type_expr_emitted_shape_malformed

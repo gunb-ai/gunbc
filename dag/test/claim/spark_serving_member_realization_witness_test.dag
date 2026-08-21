@@ -68,16 +68,34 @@ test fn w_member_realization_runtime_change_is_install_owned_closure_only() -> B
     && !gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: effects, needle: gunbc.spark_serving_realization.WriteSystemUnitFile)
 }
 
-test fn w_member_realization_user_unit_change_includes_write_reload_enable() -> Bool {
+// NARROWED TWICE, and the second narrowing is this one's receipt.
+//
+// It first required the CONTENT change to include EnableUserUnit -- the bundled remedy that survived
+// underneath the enablement address split and made a bare host freeze TWO enables for one unit. That
+// half was removed when enablement got its own address.
+//
+// The reload was the SAME defect one address later, and this claim carried it until the registration
+// address landed. `daemon-reload` is not what writing bytes does; it is what makes the manager read
+// them, and that is a distinct resource with its own observation (the manager knows this unit), its
+// own drift, and its own remedy. While the content member owned both, a host whose file was already
+// correct but unregistered had no member that could ask for a reload -- and a host needing only a
+// reload got its file rewritten to obtain one.
+//
+// So the content change now writes and does NOTHING else. Each remedy this claim gave up is asserted
+// at the address that actually owns it: `the_registration_member_owns_the_reload` and the enablement
+// rows in the full-plan witness. The claim did not weaken; it stopped speaking for two other
+// resources.
+test fn w_member_realization_user_unit_content_change_writes_only() -> Bool {
   let effect = gunbc.membership_reconcile.EffectReplace {
-    from: test.claim.spark_serving_member_realization_witness.w_unit_member(state: "unit-v1" as std.types.NonEmptyStr),
-    to: test.claim.spark_serving_member_realization_witness.w_unit_member(state: "unit-v2" as std.types.NonEmptyStr),
+    from: test.claim.spark_serving_member_realization_witness_test.w_unit_member(state: "unit-v1" as std.types.NonEmptyStr),
+    to: test.claim.spark_serving_member_realization_witness_test.w_unit_member(state: "unit-v2" as std.types.NonEmptyStr),
   }
-  let effects = gunbc.spark_serving_member_realization.spark_serving_install_effects_for_member_effect(effect: effect)
-  gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: effects, needle: gunbc.spark_serving_realization.WriteUserUnitFile)
-    && gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: effects, needle: gunbc.spark_serving_realization.ReloadUserManager)
-    && gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: effects, needle: gunbc.spark_serving_realization.EnableUserUnit)
-    && !gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: effects, needle: gunbc.spark_serving_realization.WriteSystemUnitFile)
+  let effects = spark_serving_install_effects_for_member_effect(effect: effect)
+  length(effects) == 1
+    && spark_serving_install_effects_include(effects: effects, needle: gunbc.spark.serving_realization.WriteUserUnitFile)
+    && !spark_serving_install_effects_include(effects: effects, needle: gunbc.spark.serving_realization.ReloadUserManager)
+    && !spark_serving_install_effects_include(effects: effects, needle: gunbc.spark.serving_realization.EnableUserUnit)
+    && !spark_serving_install_effects_include(effects: effects, needle: gunbc.spark.serving_realization.WriteSystemUnitFile)
 }
 
 test fn w_member_realization_model_slot_change_is_pull_model_artifact() -> Bool {
@@ -87,7 +105,7 @@ test fn w_member_realization_model_slot_change_is_pull_model_artifact() -> Bool 
   }
   let effects = gunbc.spark_serving_member_realization.spark_serving_install_effects_for_member_effect(effect: effect)
   length(effects) == 1
-    && gunbc.spark_serving_member_realization.spark_serving_install_effects_include(effects: effects, needle: gunbc.spark_serving_realization.PullModelArtifact)
+    && spark_serving_install_effects_include(effects: effects, needle: gunbc.spark.serving_realization.MaterializeModelArtifact)
 }
 
 test fn w_member_realization_linger_change_is_enable_linger() -> Bool {

@@ -53,7 +53,7 @@ test fn workflow_dispatch_nonempty_inputs_are_realized_not_dropped() -> Bool {
       description: Present { value: "immutable subject" },
       required: false,
       default: none,
-      type: InputString
+      type: extdeps.github.actions.InputString
     }]
   })
   entry.key == "workflow_dispatch" && value_is_expected_input(v: entry.value)
@@ -83,11 +83,14 @@ fn mode_input_has_choice_options(v: extdeps.languages.yaml.types.YamlValue) -> B
                   fold(fields, init: false, f: fn(has_opts, field) {
                     has_opts || (field.key == "options" && match field.value {
                       YamlSequence { elements: opts } =>
-                        length(opts) == 4
+                        length(opts) == 7
                           && any(opts, o => match o { YamlString { value } => value == "plan"  _ => false })
                           && any(opts, o => match o { YamlString { value } => value == "apply"  _ => false })
                           && any(opts, o => match o { YamlString { value } => value == "spark_linger"  _ => false })
                           && any(opts, o => match o { YamlString { value } => value == "spark_observe"  _ => false })
+                          && any(opts, o => match o { YamlString { value } => value == "spark_reboot"  _ => false })
+                          && any(opts, o => match o { YamlString { value } => value == "spark_grants"  _ => false })
+                          && any(opts, o => match o { YamlString { value } => value == "spark_durability"  _ => false })
                       YamlNull => false
                       YamlBool { value: _ } => false
                       YamlInt { lexeme: _ } => false

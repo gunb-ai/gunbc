@@ -12,7 +12,7 @@ module gunbc.fleet_lifecycle_observation
 // subject, and no check downstream could tell.
 //
 // This module is fleet-lifecycle grain, not DGX-Spark grain: any collector dispatched against any
-// fleet subject produces this shape, and gunbc.dgx_spark_procurement is its first consumer rather
+// fleet subject produces this shape, and gunbc.spark.dgx_procurement is its first consumer rather
 // than its owner.
 
 // Which endpoint the collector actually reached. Grounded on the address rather than a name: the address is the fact a router reservation also carries, so a consumer can require that evidence arrived from the endpoint reserved for the subject instead of from whatever answered to a hostname.
@@ -154,15 +154,15 @@ type ObservationSelection
 // One selector body, two entry points. Subject-grain selection is what a convergence read uses; when it reports Ambiguous, naming an exact attempt is the disambiguation, and both route through this same decision so neither can acquire a quieter rule than the other.
 fn select_unique_observation(
   subject: product.placement_supply.HostIdentity,
-  candidates: List<FleetLifecycleObservation>,
+  candidates: std.types.List<FleetLifecycleObservation>,
 ) -> ObservationSelection {
   if count(candidates) == 0 {
-    ObservationMissing { subject: subject }
+    gunbc.fleet_lifecycle_observation.ObservationMissing { subject: subject }
   } else {
     if count(candidates) == 1 {
       fold(
         candidates,
-        init: ObservationMissing { subject: subject },
+        init: gunbc.fleet_lifecycle_observation.ObservationMissing { subject: subject },
         f: (_, o) => ObservationUnique { observation: o },
       )
     } else {
@@ -174,7 +174,7 @@ fn select_unique_observation(
 // Keys on `observation.subject` -- the dispatch-side authority -- never on envelope.host.
 fn select_observation_for_subject(
   subject: product.placement_supply.HostIdentity,
-  observations: List<FleetLifecycleObservation>,
+  observations: std.types.List<FleetLifecycleObservation>,
 ) -> ObservationSelection {
   select_unique_observation(
     subject: subject,
@@ -185,7 +185,7 @@ fn select_observation_for_subject(
 fn select_observation_by_attempt(
   subject: product.placement_supply.HostIdentity,
   attempt: ProcessReceipt,
-  observations: List<FleetLifecycleObservation>,
+  observations: std.types.List<FleetLifecycleObservation>,
 ) -> ObservationSelection {
   select_unique_observation(
     subject: subject,

@@ -1,6 +1,168 @@
 module v1.compiler.emit_rust
 
-fn render_rust_applied_via_emit_info(n: v1.std.core.Node, shared_types: std.types.Set<String>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
+import std.algebra { trim }
+import std.syntax { std.syntax.LiteralValue, BinOp, std.syntax.AlgebraFieldKind }
+import v1.std.core {
+  v2.std.node.Node, InferredNode, extdeps.tools.Resolved, CompilerError, TypeVariable, is_compiler_error,
+  import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr,
+  param_node_default_value, authored_name_at, NewlineIndex, find_child_named, tuple_type_name,
+  qualified_last_segment, expr_var_name_at, expr_call_func_at, field_access_field_at,
+  param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at,
+  field_node_type_expr, generic_param_name_at, ExprData, NoExprData, ExprLiteral, ExprError,
+  ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet,
+  ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
+  ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn, make_expr_node, FieldSummary,
+  StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond, OptionalValue,
+  VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding,
+  MatchBoundBinding, v2.std.runtime.CallSemantics, PlainCallSemantics, LookupCallSemantics, FunctionValueCallSemantics, MethodSemantics,
+  PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, MatchPattern,
+  field_binding_pattern, TextFile, ErrorNode, make_error_node, InternalError,
+  UnlistedImportUse, SourceSpan, resource_use_resource, UnaryOpKind, StringPart, Text,
+  extdeps.github.expressions.Interpolation, transport_base_url, transport_has_auth, transport_auth_token,
+  transport_auth_header_name, transport_headers, transport_env, transport_method,
+  transport_path_template, transport_query, transport_request_body, transport_stdin,
+  transport_response_format, transport_auth_basic, transport_tls_posture, service_config_auth,
+  service_config_auth_input, service_config_auth_source, service_config_endpoint,
+  expr_has_self_call, expr_has_non_tail_self_call, field_access_base, foreach_variable_at,
+  expr_method_name_at, let_binding_name_at, record_lit_type_name_at, arg_name_at, arg_value,
+  arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value,
+  record_lit_named_field_value_optional,
+  find_property, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body,
+  lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes,
+  match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base,
+  index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
+  binop_left, binop_right, no_span, with_required_cardinality, v2.std.node.Connective, v2.std.node.Conj, v2.std.node.Disj,
+  NoConnective, Cardinality, Required, CardOptional, is_rest_transport, is_shell_transport,
+  is_file_transport, empty_intern_table
+}
+
+import v1.compiler.artifact { extdeps.render.surface.RenderTarget, extdeps.languages.rust.subject.Rust }
+import extdeps.languages.rust.emit {
+  rust_trait_derive_attr_from_traits,
+  rt_functions, rt_ref_map_functions, rt_wraps_result, rt_bridge_function_names, rust_container_templates, rust_method_wraps_result, rust_method_templates,
+  rust_serde_rename_all_snake_case, rust_serde_rename_all_screaming_snake_case,
+  extdeps.languages.rust.emit.HigherOrderMethodSpec, rust_higher_order_methods
+}
+import std.trait_derive_shape { phantom_opaque_carrier_derive_traits }
+import extdeps.cargo_version { render_cargo_package_header_prefix }
+import gunbc.stage0_crate_layout_generated { generated_pub_mod_block }
+import gunbc.rust_decl_type_overlay { rust_decl_type_container_overlay_is_admitted }
+import v1.compiler.languages {
+  scaffold_for_target, serialization_for_target,
+  TestConventions, ItemKeywords,
+  test_conventions_for_target, visibility_for_target, KeywordVisibility,
+  sharing_for_target,
+  is_string_like
+}
+import v1.compiler.runtime_rust { rust_runtime_source }
+import v1.compiler.compiler_tests_rust { compiler_tests_source }
+import v1.compiler.closure_stub_v2_std_integer_rust { closure_stub_v2_std_integer_source }
+import v1.compiler.closure_stub_v2_std_text_rust { closure_stub_v2_std_text_source }
+import v1.compiler.coercion {
+  coerce_primitive_type, is_copy, lookup_checkpoint, type_reference_decl_file,
+  rust_seed_host_numeric_alias
+}
+import v1.compiler.trait_derive_emit {
+  v1_emit_enum_derives,
+  v1_emit_struct_from_capability_table, v1_emit_enum_supplemental_impls,
+  v1_generic_params_needing_clone_bound,
+  v1_emit_type_params_with_clone_bounds, v1_emit_type_params_with_bounds,
+  v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head,
+  v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement,
+  v1_clone_impl_required_type_params,
+  v1_trait_derive_refuse,
+  trait_derive_emit_fn_clone_bound_keyed_carrier_module,
+  rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible
+}
+import v1.compiler.trait_bound_witness {
+  v1_rc_match_scrutinee_clone_bound_param_names, v1_union_clone_param_names,
+  v1_call_forwarding_clone_bound_wrapper_param_names,
+  v1_equality_bound_param_name
+}
+
+import std.types { is_container_type, is_kernel_type, container_template_algebra }
+import std.serialization { std.serialization.CoproductWireContract, std.serialization.VariantEncoding, std.serialization.VariantNaming }
+import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index }
+import v1.compiler.infer_types {
+  resolved_type, normalize_access_type_node, for_each_element_type_node,
+  child_type_node, emit_map_has,
+  node_is_keyed_collection, node_is_element_collection, node_is_set_collection, node_is_collection,
+  is_product_type, is_coproduct_type, is_unit_like
+}
+import v1.compiler.infer_method {
+  infer_builtin_call_type
+}
+import v1.compiler.infer_sigs { ResolvedFuncEnv }
+import v1.compiler.infer_items {
+  ResolvedGraph, TypedModule,
+  ItemInfo, v2.std.decl_index.DataItem, v2.std.decl_index.TypeItem, v2.std.decl_index.OtherItem
+}
+import v1.compiler.infer_service {
+  is_typed_service_call_receiver, extract_typed_service_name
+}
+import v1.compiler.infer {
+  InferScope,
+  build_params_scope, extend_scope,
+  build_emit_graph_info,
+  declared_return_type_node,
+  expr_span,
+  resolved_type_name,
+  expand_type_for_field_access,
+  is_where_refinement_type,
+  call_args_by_name
+}
+import v1.compiler.infer_emit_info {
+  EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
+  lookup_emit_type_summary, lookup_emit_type_decl, empty_emit_graph_info,
+  emit_info_with_fn_type_context, emit_info_with_fn_return,
+  is_enum_in_summaries, find_variant_parent, is_known_variant,
+  variant_belongs_to_enum, variant_summary_key,
+  collect_type_node_import_surface_names
+}
+import v1.compiler.resolve { get_exported_names }
+import v1.compiler.infer_resolve { resolve_node, lookup_unit_variant_phantom_type, is_width_nat_type_literal }
+import v1.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs }
+import std.induction { std.induction.SubValueUnknown, std.induction.InductiveField }
+
+import v1.compiler.emit {
+  BlockEmitState, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern,
+  emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type,
+  emit_container, emit_map_type, render_tuple_parts, emit_ident, emit_let_binding,
+  emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr,
+  emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
+  emit_typed_cast_shared, emit_string_literal, emit_simple_expr, escape_rust_interp_text,
+  module_emit_scope, scope_after_expr, lookup_item, has_nested_records_node,
+  emit_data_value_json, EmitterOutcome, Emitted, Refused, is_null_coalesce, has_service_items, typed_named_arg_matches,
+  order_typed_call_args, is_tco_eligible, is_self_recursive, emit_shared_tco_expr,
+  tco_reassign_core, is_tco_identity_passthrough, service_fallback_transport,
+  effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls,
+  service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared,
+  emit_typed_let_shared
+}
+import v1.compiler.languages {
+  wrap_shared_type,
+  sharing_wrap_ctor_for_target,
+  sharing_wrap_ctor_open_for_target,
+  sharing_wrap_ctor_close_for_target,
+  sharing_type_is_wrapped_for_target
+}
+import v1.compiler.emit_core_support {
+  EmitResult, TestProjection,
+  escape_json_string, module_to_filename, make_indent,
+  to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
+  sanitize_service_name, capitalize_first, service_var_name, to_pascal,
+  escape_string_literal_body, unique_strings, to_string, to_string_helper,
+  test_function_name,
+  apply_type_template1, apply_type_template2, apply_type_template3,
+  apply_named_template, language_spec,
+  is_type_alias_return_node, is_service_item,
+  is_type_def_item, is_type_alias_item, is_type_decl_item,
+  is_function_item, is_data_def_item, is_service_def_item,
+  is_resource_def_item, has_mock_prefix, extract_test_projections,
+  is_bare_leaf_item
+}
+
+fn render_rust_applied_via_emit_info(n: v2.std.node.Node, shared_types: std.types.Set<String>, source_indices: std.types.Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   render_rust_applied_type_shared(n: n, generic_param_names: emit_info.fn_generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: emit_info.fn_type_env)
 }
 
@@ -284,29 +446,7 @@ fn rust_ground_opaque_kernel_type_name(name: String) -> String {
 
 data reference_use_lines_representation_invariant_note: String = "Use-lines are derived from RESOLVED REFERENCES for every module, import-bearing or not. Import synthesis was formerly gated on the same closure-provenance flag as primitive realization, with import-bearing modules on one arm receiving an EMPTY list -- which made what a module imports a function of WHICH OTHER SOURCES SHARED ITS CLOSURE rather than of what it actually references. Both halves of that fused flag are deleted: what a module must import is a derivation from its own resolved reference graph, exactly as what a type realizes as is a fact about its own declaration. Once the gate was removed the two former arms called reference_derived_use_lines with byte-identical arguments, so the conditional collapsed to one call -- the branch existed only to serve the distinction being deleted."
 
-data numeric_realization_identity_note: String = "Realization is keyed on the DECLARING MODULE of the type, never on the authored spelling alone. Two declarations may share a spelling -- std.nat.Nat is CommutativeSemiring<Magnitude> and realizes natively, while v2.std.nat.Nat is the Peano coproduct Zero|Succ and must NOT -- so a bare-name rule realizes the wrong one. decl_file is the resolved declaration's ident_span file; the empty string means identity is UNKNOWN at this site, which yields NO realization (render structurally) rather than a guess. This replaces the deleted rust_corpus_repr closure-provenance switch: what a declaration realizes as is a fact about that declaration and its target, never about which other sources happen to share the closure."
-
-data numeric_realization_roster_extension_note: String = "THIS ROSTER IS A LIVE ENUMERATION AND A ROW MAY ONLY BE ADDED FOR A DECLARATION WHOSE NATIVE REALIZATION IS ALREADY TRUE, NEVER TO MAKE A FAILING SITE COMPILE. A module belongs here when the types it declares ARE the host numeric type at the target -- dag/std/nat.dag and dag/std/integer.dag are the two grounded numeric authorities, and the <kernel: prefix covers declarations the seed mints with no source file. Adding a module to silence an E0308 or an E0109 at some call site is the §5 workaround: it converts one site's diagnostic into a corpus-wide realization change, and it does so by editing the roster rather than the fact the roster reports. The tell is that the author cannot say what the added module's type IS at the target without referring to the site that failed. If a site needs a realization this roster does not grant, the question is whether that declaration is genuinely a host numeric -- and if it is not, the fix is at the site or in the checkpoint binding, never here. This enumeration is itself provisional: it exists because there is no corpus-side declaration-to-Rust-type binding yet, and it dissolves into that binding when it lands -- see checkpoint_table_bypasses_identity_note for the two-authority shape."
-
-fn numeric_realization_declaring_modules() -> std.types.List<String> {
-  ["dag/std/nat.dag", "dag/std/integer.dag", "<kernel:"]
-}
-
-fn decl_file_realizes_natively(decl_file: String) -> Bool {
-  if decl_file == "" {
-    false
-  } else {
-    numeric_realization_declaring_modules() |> any(m => contains(decl_file, m))
-  }
-}
-
-fn rust_seed_host_numeric_alias(name: String, decl_file: String) -> String? {
-  if (name == "Nat" || name == "Int") && decl_file_realizes_natively(decl_file: decl_file) {
-    Present { value: "i64" }
-  } else {
-    none
-  }
-}
+data numeric_realization_relocation_note: String = "RELOCATED to v1.compiler.coercion (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, review 54335): numeric_realization_identity_note, numeric_realization_roster_extension_note, numeric_realization_declaring_modules, decl_file_realizes_natively and rust_seed_host_numeric_alias moved there in full, completing the relocation checkpoint_table_bypasses_identity_note's structural_declaration_modules_for precedent already established for the negative-form (structural) half of this same two-authority shape -- this was the positive-form (native) half, still sitting in this module and reached back into by v1.compiler.coercion type_realization_decision, an import cycle DESIGN section 3 forbids (emit_rust already imports FROM coercion; coercion calling back into emit_rust closes the cycle). This module now imports only rust_seed_host_numeric_alias back from v1.compiler.coercion, exactly as it already imports lookup_checkpoint from there -- one direction, no cycle; numeric_realization_declaring_modules and decl_file_realizes_natively have no consumer left in this module, since rust_seed_host_numeric_alias was their only caller here and it moved with them. Agreed with swift-moth-294 (msg_502982ac, 2026-08-21) and sequenced behind gunbc#8716 (merged 2026-08-21T06:19:19Z), which is why the move landed now rather than when first proposed."
 
 data checkpoint_table_bypasses_identity_note: String = "CEILING, STATED BECAUSE THE CODE DELIVERS LESS THAN THE DELETION OF RustCorpusRepr SUGGESTS. lookup_checkpoint is keyed on the BARE dag_name and is consulted BEFORE the identity-keyed arm, so any name carrying a checkpoint row in extdeps/languages/rust/types.dag bypasses declaration keying entirely. Nat carries no row and therefore discriminates correctly -- dag/std/nat.dag realizes natively, src/v2/std/nat.dag refuses. Names WITH a row do not. This is not a regression introduced here: the table was already bare-name keyed and the global corpus mode was hiding the question. It is the honest rung. The class is MECHANICALLY PREVENTABLE rather than structurally impossible, and its executing evidence is v1.tests.claim.checkpoint_identity_keying_witness_test, which asserts the CURRENT bypassing answers on purpose so the gap is counted instead of assumed closed. THAT CITATION WAS FALSE WHEN THIS NOTE FIRST LANDED AND IS REPAIRED RATHER THAN SOFTENED. It named the residue block generated by v1.compiler.compiler_tests_rust ct_groupcompletion_checkpoint_fires_under_faithful_corpus_test, which emits into a module declared `#[cfg(test)] mod compiler_tests;` inside the v1-compiler crate -- while the only test step CI runs is `cargo test -p v1-compiler-tests`, a SEPARATE package consuming v1-compiler as an ordinary dependency, so cfg(test) is never set for it and the block is not compiled, let alone executed. Measured rather than reasoned: that step's binary enumerates 30 tests and none is this one, against a positive control confirming the enumeration is non-empty. So a ceiling disclosure cited evidence that had never run -- DESIGN section 4b(1) rung honesty violated in the compiler's own self-description, which is worse than sitting low because an inflated class never ranks for climbing. The assertions were re-authored as an enrolled .dag witness and now execute (seven rows PASS, including the discriminating row where two declarations share the spelling Nat and answer differently); the superseded generated-Rust block is deleted rather than left standing as a second, silent copy. POPULATION (census by vivid-wren-870, who owns the rows): SEVEN of the table's names are also declared under src/v2 -- Int, Float, Bool, Symbol, Unit, String, Hash; Bytes, Secret and Json are not. That is a LOWER BOUND obtained by grepping line-start `type <name>` declarations under src/v2; it does not find names introduced any other way, and it says NOTHING about how many sites bite in any real closure. Three of the seven are the same shape as Int in that the v2 declaration is a genuinely different STRUCTURE rather than a spelling coincidence -- Int is GroupCompletion<Nat>, String is FreeMonoid<Char>, Bool is a two-variant coproduct. Symbol and Unit are bodyless and may be declared-abstract rather than competing realizations, so their bypass may be harmless. Hash is the one that costs a GUARANTEE rather than merely a representation, and it belongs with the same-shape three rather than apart from them: the row targets v1_rt::Hash, which is `pub type Hash = String` in the seed, against a v2 declaration of Fnv1a64Structural -- a single-field record whose digest field is `String where lower_hex_16`. std.content_hash content_hash_family_constructor_note states the public forgeable record constructors are DELETED and that the where-refinement IS the construction wall, so realizing that type as a bare String alias renders away the carrier the wall is attached to. A name-keyed spelling row can therefore silently drop a §4b construction rung. Established from declarations at both ends (vivid-wren-870, re-read here); NO live site is claimed, because no closure reaching a v2-declared Hash through lookup_checkpoint has been emitted by either of us. NEXT-RUNG TRIGGER -- AND THE OBVIOUS SHAPE IS THE WRONG ONE. An earlier revision of this note named `the checkpoint rows gain a declaring-module column`. vivid-wren-870 refused that shape with an argument this note adopts: a TypeCheckpoint row is cited to the Rust reference and states how RUST spells a type, whereas which dag module declares Int is a gunbc-corpus fact, so a declaring-module column puts corpus data inside an extdeps upstream authority -- a layer inversion, and the same class as a row being asked a question its cited authority cannot answer. The expected terminal shape is TWO authorities rather than one wider one: extdeps keeps Rust type -> spelling, a corpus-side binding says this dag declaration realizes as that Rust type, and lookup_checkpoint keys on the second. That also lets the seven differ from each other, which one column keyed on a single module cannot express. Recorded as a proposal from the rows owner, not as a decision, and unbuilt at the time of writing. When it lands the residue assertions flip to None and the flip is the dissolution signal, not a regression. LANDED FOR HASH (this PR, T7): the second authority is v1.compiler.coercion structural_declaration_modules_for, a corpus-side row roster keyed on the dag_name and enumerating the modules whose declaration of that name is structural rather than native -- \"Hash\" => [\"src/v2/std/node.dag\"] is its one row. lookup_checkpoint (v1.compiler.coercion) now consults it before the bare-name table: when decl_file_declares_structurally holds, lookup_checkpoint refuses (none) rather than answering from the table, and every consumer that already carried a correct identity-arm fallback -- coerce_primitive_type, is_copy, literal_suffix, and the direct callers of lookup_checkpoint itself -- inherits the refusal once decl_file is threaded to the call, which it now is at every production call site across v1.compiler.emit_rust and v1.compiler.emit. table_present_hash_refuses_under_structural_declaration in the witness below is the flip this note predicted; it is no longer residue. LANDED FOR STRING (session merry-lark-67, per smart-ram-730's dispatch): structural_declaration_modules_for gained a second row, \"String\" => [\"src/v2/std/text.dag\", \"dag/std/string_type.dag\"] -- both declare `type String = FreeMonoid<Char>`, the structural free-monoid-over-Char carrier, never a host string, so a reference resolving to either module now refuses the bare-name table's `String`/`.to_string()` spelling instead of silently rendering it. residue_table_present_string_bypasses_identity in the legacy oracle (src/v1/tests/claim/checkpoint_identity_keying_witness_test.dag) is retired for the same reason table_present_hash_refuses_under_structural_declaration closed for Hash, and is replaced there by table_present_string_refuses_under_structural_declaration_text / _string_type rather than repaired back to a passing bypass -- the flip is the dissolution signal, not a regression. LANDED FOR BOOL (session merry-lark-67, corpus-wide histogram from smart-ram-730; corrected same session, commit 127ad848070, per review 54257): structural_declaration_modules_for gained a third row, \"Bool\" => [\"src/v2/std/logic.dag\"] -- the initial enrollment mirrored String's two-row shape onto Bool and also listed dag/std/types.dag, but that module is the ordinary corpus-wide native Bool prelude (imported by 300+ dag/test/claim modules with no bit/width/encoding modeling riding on it), directly analogous to dag/std/integer.dag for Int, which sits in the POSITIVE numeric_realization_declaring_modules roster, never the negative structural one. Only src/v2/std/logic.dag's Bool is genuinely structural, carrying BoolWidthFact/BoolEncodingFact/BooleanAlgebra<Bool> modeling over the two-variant coproduct; a reference resolving to it refuses the bare-name table's `bool`/`false` spelling instead of silently rendering it, while a reference resolving to dag/std/types.dag renders natively as designed. The over-broad row caused required-floor to refuse native bool rendering for 5 unrelated fixtures (e0308_mechanical_trio_test, optional_carrier_signature_test) and caused required-regen to see drift across the self-hosted std_*.rs mirrors; both are the fabricated-plausible-ceiling failure this note elsewhere criticizes, disclosed and repaired here rather than left standing. Bool never had a residue row in the legacy oracle to flip; it lands directly as one CLOSED row, table_present_bool_refuses_under_structural_declaration_logic, alongside table_present_bool_renders_natively_for_the_corpus_prelude confirming dag/std/types.dag's native rendering. KNOWN GAP THIS ROW DOES NOT CLOSE, FOUND WHILE MEASURING IT: emit_typed_item's type-alias arm special-cases `item_text == \"String\"` UNCONDITIONALLY -- rust_string_grounded_type_alias_decl_line emits `pub type String = std::string::String;` at the DECLARATION site regardless of decl_file, never consulting rust_scalar_checkpoint_render_base or this roster at all. So the module that declares `type String = FreeMonoid<Char>` keeps emitting itself as a host-String alias even after this row makes every REFERENCE to it refuse the bare-name table; the declaration and its own references can now disagree in the SAME emitted file. This is not fixed here -- it is a separate emit_rust mechanism, unconditional on decl_file, that this row's PR does not touch -- and is recorded as the next-rung trigger for String's declaration-site emission specifically, distinct from the reference-site gate this note otherwise describes. Int, Float, Symbol remain open -- they have no row in structural_declaration_modules_for -- and are the population the next instance of this class (a name question answered by authored spelling instead of declaration identity) inherits, per the class-level framing this ceiling was folded into. The roster is deliberately a single generic, identity-keyed mechanism with one row rather than a Hash-specific special case, so a future row for Int or String is an addition to this same authority, not a new mechanism. MEASURED CONSEQUENCE AT ARTIFACT GRAIN, added after this note first landed: the bypass is observable in the emitted FILE SET, not only in the emitter's answer. In a two-arm emission of one v2-only closure the file v2_std_integer.rs is present before the cut and ABSENT after it. That module declares exactly one item, the v2-declared structural Int, and its only type-position consumer was a single generated re-export line in std_algebra.rs; with Int reaching the bare-name checkpoint the re-export is no longer generated, nothing references the module, and it is not emitted. Every other hunk in that file is an offset shift from the deleted line -- the Int string literals are unchanged and the i64 count in the file is identical across arms, so nothing became native that was structural. AND THE DROP IS THE MINORITY CASE -- THE WRONG REALIZATION IS EMITTED, NOT AVOIDED. Across eleven emitted closures measured by smart-ibex-716 (corpus a6bceb6903, binaries a6bceb6903 and ad05a2f2d5), the module disappears in only 2; in the other 9 it SURVIVES with its content changed, from pub type Int = GroupCompletion<Rc<Nat>> to pub type Int = i64. So the native realization of the v2-declared Peano-completion type is already present in the emitted artifact. What is absent is only a consumer: the same census found ZERO type-position uses of the v2 Int in any of the eleven -- every qualified occurrence sits on a use line, and the only bare occurrences surviving a use-line exclusion were four string literals inside prose, one of them a parser test fixture. Two false positives were found and discarded on the way to that zero, both by pulling the specimen rather than trusting the count. The residue is therefore NOT a dead re-export being dropped, which was this note's first reading and is corrected here; it is a wrong realization sitting inert with no diagnostic attached, so the day any declaration binds a bare Int in one of those closures it binds i64 silently. THE HAZARD TRIGGER IS THEREFORE A TYPE POSITION APPEARING, not the re-export returning. This is recorded because a module leaving OR silently changing an alias target is the kind of consequence a content-only diff of one closure reads as offset noise: the instruments that name it are a file-set diff and a cross-closure alias-target read, and neither was in this PR's original receipt."
 
@@ -5835,6 +5975,88 @@ fn v1_fn_body_derived_clone_param_names(params: std.types.List<v1.std.core.Node>
   )
 }
 
+// Joins the two derivations onto one per-param trait list so a param earning both renders
+// `K: Clone + PartialEq`. Clone is listed first so the Clone-only case is byte-identical to what
+// the previous single-trait renderer emitted, which is what lets the regen fixed point act as the
+// oracle for "equality changed nothing that did not need changing".
+fn v1_fn_bounds_by_param(
+  clone_param_names: std.types.List<String>,
+  eq_param_names: std.types.List<String>
+) -> std.types.Map<String, std.types.List<String>> {
+  let with_clone = clone_param_names |> fold(init: empty_map(), f: (m, n) => map_insert(m, n, ["Clone"]))
+  eq_param_names |> fold(init: with_clone, f: (m, n) =>
+    match map_get(m, n) {
+      Present { value: traits } => map_insert(m, n, concat(traits, ["PartialEq"]))
+      Absent => map_insert(m, n, ["PartialEq"])
+    }
+  )
+}
+
+// Node-consuming extraction for the equality bound, kept here rather than in
+// v1.compiler.trait_bound_witness for the reason that module's import note gives: the pure core
+// lives there, the Node walk lives at the call site, and reversing that would close an
+// emit_rust -> trait_bound_witness -> emit_rust cycle.
+//
+// This is the RECURSIVE BODY WALKER that BoundedToDirectTopLevelMatchBody and
+// BoundedToDirectSingleCallLambdaBody both name as their next-rung trigger. Unlike those two it
+// declares no depth boundary: the specimen that motivated it puts the earning comparison inside a
+// lambda, inside any(), inside a pipeline, inside the && of another lambda inside another any().
+//
+// The traversal is deliberately GENEROUS and the predicate deliberately EXACT, because the two
+// directions have asymmetric cost. binop_left/binop_right are children 0 and 1, so descending
+// every child reaches every operand; a node the walk somehow misses simply yields no bound, which
+// is the status quo. But a spurious bound tightens the emitted signature and breaks callers, so
+// precision must come from v1_equality_bound_param_name's type resolution, never from the shape of
+// the walk.
+fn v1_fn_body_equality_bound_param_names(
+  body: v2.std.node.Node,
+  generic_param_names: std.types.List<String>,
+  source_indices: std.types.Map<String, NewlineIndex>
+) -> std.types.List<String> {
+  let here = match body.expr_data {
+    ExprBinOp { op: op, algebra_field: _ } =>
+      if is_equality_comparison(op: op) {
+        v1_equality_bound_param_name(
+          left_type_name: v1_resolved_type_name_or_empty(e: binop_left(texpr: body), source_indices: source_indices),
+          right_type_name: v1_resolved_type_name_or_empty(e: binop_right(texpr: body), source_indices: source_indices),
+          generic_param_names: generic_param_names
+        )
+      } else {
+        []
+      }
+    _ => []
+  }
+  body.children |> fold(init: here, f: (acc, child) =>
+    v1_union_clone_param_names(
+      base: acc,
+      extra: v1_fn_body_equality_bound_param_names(
+        body: child,
+        generic_param_names: generic_param_names,
+        source_indices: source_indices
+      )
+    )
+  )
+}
+
+// Matches Eq/Ne bare exactly as is_string_comparison does in this module. The operator is genuinely
+// a spelling, so reading it as one is correct; it is the OPERANDS that must be resolved by type.
+fn is_equality_comparison(op: BinOp) -> Bool {
+  match op {
+    std.syntax.Eq => true
+    Ne => true
+    _ => false
+  }
+}
+
+// Empty string means "no resolved type", which is why v1_equality_bound_param_name refuses on it
+// rather than letting two unresolved operands compare equal and fabricate a bound.
+fn v1_resolved_type_name_or_empty(e: v2.std.node.Node, source_indices: std.types.Map<String, NewlineIndex>) -> String {
+  match e.inferred {
+    Present { value: extdeps.tools.Resolved { node: rt } } => authored_name_at(source_indices: source_indices, node: rt)
+    _ => ""
+  }
+}
+
 fn v1_call_forwarding_clone_bound_param_names(
   generic_param_names: std.types.List<String>,
   body: v1.std.core.Node,
@@ -5965,9 +6187,18 @@ fn emit_fn_def(name: String, params: std.types.List<v1.std.core.Node>, inferred:
   } else {
     derived_clone_param_names_with_rc_match
   }
-  let needs_clone_bound = (clone_param_names |> count) > 0
-  let type_params_str = if needs_clone_bound {
-    v1.compiler.trait_derive_emit.v1_emit_type_params_with_clone_bounds(params: type_params, clone_param_names: clone_param_names, source_indices: si)
+  let eq_param_names = v1_fn_body_equality_bound_param_names(
+    body: body,
+    generic_param_names: generic_param_names,
+    source_indices: si
+  )
+  let bounds_by_param = v1_fn_bounds_by_param(
+    clone_param_names: clone_param_names,
+    eq_param_names: eq_param_names
+  )
+  let needs_bound = (clone_param_names |> count) > 0 || (eq_param_names |> count) > 0
+  let type_params_str = if needs_bound {
+    v1_emit_type_params_with_bounds(params: type_params, bounds_by_param: bounds_by_param, source_indices: si)
   } else {
     emit_type_params(params: type_params, source_indices: si)
   }

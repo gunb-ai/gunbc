@@ -1,0 +1,378 @@
+module gunbc.spark.serving_install_paths
+
+
+data spark_serving_install_paths_note: String = "Owned-runtime layout for UserUnitRealization + InstallOwnedRuntimeClosure on Spark hosts. Executor home is gunbc.spark.serving_runtime_receipt; unit basename is gunbc.spark.serving_unit_identity spark_serving_unit_name. Unit desired state is SparkServingUserUnitSpec (typed fields, not systemd INI syntax); gunbc.spark.serving_membership spark_serving_user_unit_file_write_intent carries path+spec for generic remote file delivery (#8298 consumer on integration branch)."
+
+// THE ROOT IS CONTENT-ADDRESSED BY THE MATERIALIZATION IDENTITY.
+//
+// It was a fixed path -- `.../spark-serving/ollama` -- which made the location of a runtime
+// independent of WHICH runtime it is. Two consequences, and both are the kind that only appear on
+// the second install: upgrading meant mutating a directory in place, so a failed extraction left a
+// tree that is neither the old runtime nor the new one at the only address either could occupy; and
+// a rollback had nowhere to roll back to, because the previous bytes were overwritten rather than
+// merely unreferenced.
+//
+// Deriving the leaf from the materialization identity makes materialization ADDITIVE: a new release
+// lands beside the old one, publication is a rename into a name nothing else claims, and a partially
+// extracted tree is at an address no correct runtime would ever be published to. It also makes the
+// name checkable -- a consumer that knows the release can compute where its root must be, rather
+// than trusting that whatever sits at the fixed path is what was intended.
+//
+// The membership KEY stays the stable logical runtime slot (SparkServingRuntimeRootAddress); this
+// identity is that member's desired VALUE. Fusing the identity into the key would make every upgrade
+// a member removal plus an addition rather than a change, and removal is the one arm that consults
+// ownership.
+data spark_serving_runtimes_parent_rel: String = ".local/share/gunbc/spark-serving/runtimes"
+
+fn spark_serving_runtime_root_rel_for_identity(identity: std.content_hash.Fnv1a64Structural) -> String {
+  join([spark_serving_runtimes_parent_rel, "/", identity.digest as String], "")
+}
+
+data spark_serving_models_root_rel: String = ".local/share/gunbc/spark-serving/models"
+
+data spark_serving_user_unit_dir_rel: String = ".config/systemd/user"
+
+type SparkServingUserUnitSpec {
+  description: std.types.NonEmptyStr
+  after: std.types.NonEmptyStr
+  service_type: std.types.NonEmptyStr
+  bind_host_port: std.types.NonEmptyStr
+  models_root_rel: String
+  runtime_root_rel: String
+  exec_subcommand: std.types.NonEmptyStr
+  restart: std.types.NonEmptyStr
+  wanted_by: std.types.NonEmptyStr
+}
+
+// THE MODEL STORE PATHS, derived from the same models root the unit's OLLAMA_MODELS points at, so
+// the directory the server writes and the directory the observer reads cannot drift apart. The
+// reference is split into model and tag by the cited store layout rather than by string surgery
+// here, because how a reference maps to a manifest path is upstream's rule and not ours.
+fn spark_serving_desired_model_manifest_path() -> FilePath {
+  concat(
+    spark_serving_models_root() as String,
+    concat("/", ollama_manifest_rel_path(
+      model: spark_serving_desired_model_ref.name,
+      tag: spark_serving_desired_model_ref.tag,
+    )),
+  ) as FilePath
+}
+
+// The directory the manifest is published INTO, needed because the publish step must create it
+// before the move and the manifest path is a file inside a per-model, per-registry tree.
+fn spark_serving_desired_model_manifest_dir() -> FilePath {
+  concat(
+    spark_serving_models_root() as String,
+    concat("/", concat(
+      ollama_model_store_layout.manifests_dir_rel,
+      concat("/", concat(
+        ollama_default_registry as String,
+        concat("/", concat(
+          ollama_default_namespace as String,
+          concat("/", spark_serving_desired_model_ref.name as String),
+        )),
+      )),
+    )),
+  ) as FilePath
+}
+
+// STAGING PATHS, and they are outside the store on purpose. A fetch that lands directly at the name
+// the store reads publishes a half-written or wrong-hashed file the instant curl creates it, and the
+// observe side answers blob presence by FILENAME -- so a corrupt download would read as installed.
+fn spark_serving_staged_manifest_path() -> FilePath {
+  concat(spark_serving_readiness_scratch_root() as String, "/staged-manifest") as FilePath
+}
+
+fn spark_serving_staged_blob_path(hex: std.types.NonEmptyStr) -> FilePath {
+  concat(
+    spark_serving_readiness_scratch_root() as String,
+    concat("/staged-blob-", hex as String),
+  ) as FilePath
+}
+
+// The checksum files sha256sum --check reads. They live in the readiness scratch beside the staged
+// bytes they vouch for, so a failed run leaves nothing behind in the store.
+fn spark_serving_manifest_checksum_path() -> FilePath {
+  concat(spark_serving_readiness_scratch_root() as String, "/staged-manifest.sha256") as FilePath
+}
+
+fn spark_serving_blob_checksum_path(hex: std.types.NonEmptyStr) -> FilePath {
+  concat(
+    spark_serving_readiness_scratch_root() as String,
+    concat("/staged-blob-", concat(hex as String, ".sha256")),
+  ) as FilePath
+}
+
+fn spark_serving_published_blob_path(hex: std.types.NonEmptyStr) -> FilePath {
+  concat(
+    spark_serving_desired_model_blobs_dir() as String,
+    concat("/", ollama_blob_file_name(digest_hex: hex)),
+  ) as FilePath
+}
+
+// THE REGISTRY URLS, and the asymmetry between them is upstream's, not ours.
+//
+// The manifest is addressed BY REFERENCE because registry.ollama.ai serves no other form: measured
+// 2026-08-19, GET /v2/library/gpt-oss/manifests/sha256:<hex> answers 404 under every Accept header,
+// so no client version can fetch a manifest by digest from it. The reference is therefore a LOCATOR
+// and never the identity -- the fetch is followed immediately by a digest verification against the
+// frozen resolution, and a republished tag fails that check loudly instead of installing silently.
+//
+// Blobs ARE digest-addressed and the same measurement confirms it (307 to a redirect, 200, bytes
+// hashing to the requested digest), so the blob half needs no such compensation.
+fn spark_serving_registry_manifest_url() -> String {
+  join([
+    "https://", ollama_default_registry as String, "/v2/",
+    ollama_default_namespace as String, "/",
+    spark_serving_desired_model_ref.name as String, "/manifests/",
+    spark_serving_desired_model_ref.tag as String,
+  ], "")
+}
+
+fn spark_serving_registry_blob_url(hex: std.types.NonEmptyStr) -> String {
+  join([
+    "https://", ollama_default_registry as String, "/v2/",
+    ollama_default_namespace as String, "/",
+    spark_serving_desired_model_ref.name as String, "/blobs/sha256:",
+    hex as String,
+  ], "")
+}
+
+fn spark_serving_desired_model_blobs_dir() -> FilePath {
+  concat(
+    spark_serving_models_root() as String,
+    concat("/", ollama_model_store_layout.blobs_dir_rel),
+  ) as FilePath
+}
+
+fn spark_serving_user_unit_rel() -> String {
+  join([spark_serving_user_unit_dir_rel, spark_serving_unit_name], "/")
+}
+
+fn spark_serving_runtimes_parent() -> FilePath {
+  concat(
+    spark_serving_executor_home as String,
+    concat("/", spark_serving_runtimes_parent_rel),
+  ) as FilePath
+}
+
+fn spark_serving_runtime_root_for_identity(identity: std.content_hash.Fnv1a64Structural) -> FilePath {
+  concat(
+    spark_serving_executor_home as String,
+    concat("/", spark_serving_runtime_root_rel_for_identity(identity: identity)),
+  ) as FilePath
+}
+
+// The root the REQUIRED release must occupy. Named separately from the parameterized form so a
+// caller asking "where does the runtime we require live" cannot accidentally pass an observed
+// identity and get an answer about a different tree.
+fn spark_serving_required_runtime_root() -> FilePath {
+  spark_serving_runtime_root_for_identity(
+    identity: ollama_runtime_materialization_identity_for_required_release(),
+  )
+}
+
+// THE STAGING ROOT AND THE RECEIPT, both derived from the same materialization identity the final
+// root is. Staging is a SIBLING of the published root rather than a subdirectory of it: publication
+// is `mv` of the staged tree onto the final name, and `mv` is atomic only within one directory, so a
+// staging path anywhere else would make the publish a copy that can be interrupted half-done.
+//
+// The name is derived rather than random because the plan is FROZEN: a per-attempt random path could
+// not be hashed into the artifact, so apply would be choosing a path the plan never saw. Deriving it
+// makes the staged location as reviewable as the published one, and the sequence takes ownership of
+// it by removing it first rather than by making it unguessable.
+fn spark_serving_required_runtime_staging_root() -> FilePath {
+  concat(
+    spark_serving_runtimes_parent() as String,
+    concat("/.staging-", ollama_runtime_materialization_identity_for_required_release().digest as String),
+  ) as FilePath
+}
+
+// THE ATTEMPT WORKSPACE IS NOT THE STAGING TREE, and merging them was a real defect rather than an
+// untidiness. The archive and its checksum manifest used to be written INSIDE staging, and staging is
+// exactly what `mv -T` publishes -- so every published runtime root carried the ~1.5 GB tarball it was
+// extracted from, plus an `archive.sha256`, sitting beside the binary. A root addressed by
+// materialization identity then contained files that are no part of that identity.
+//
+// The workspace holds what the ATTEMPT needs and the runtime does not: the download and the manifest
+// checked against it. It is removed when the attempt ends, either way. Staging holds only extracted
+// runtime contents and the receipt, so "the published tree is the runtime and nothing else" holds by
+// construction rather than by a cleanup step someone has to remember.
+// Readiness capture is NOT the install workspace. Pulling a model is a different effect from
+// installing the runtime and must not depend on a directory the install sequence creates and deletes,
+// so the probe response lands under its own root that outlives neither more nor less than the probe.
+fn spark_serving_readiness_scratch_root() -> FilePath {
+  concat(
+    spark_serving_runtimes_parent() as String,
+    "/.readiness",
+  ) as FilePath
+}
+
+fn spark_serving_health_request_body_path() -> FilePath {
+  concat(
+    spark_serving_readiness_scratch_root() as String,
+    "/generate-request.json",
+  ) as FilePath
+}
+
+fn spark_serving_required_runtime_workspace_root() -> FilePath {
+  concat(
+    spark_serving_runtimes_parent() as String,
+    concat("/.workspace-", ollama_runtime_materialization_identity_for_required_release().digest as String),
+  ) as FilePath
+}
+
+fn spark_serving_required_runtime_staged_archive_path() -> FilePath {
+  concat(
+    spark_serving_required_runtime_workspace_root() as String,
+    concat("/", ollama_binary_release_asset_name(binary_release: ollama_required_release) as String),
+  ) as FilePath
+}
+
+fn spark_serving_required_runtime_checksum_manifest_path() -> FilePath {
+  concat(
+    spark_serving_required_runtime_workspace_root() as String,
+    "/archive.sha256",
+  ) as FilePath
+}
+
+// THE RECEIPT ARRIVES BY THE PUBLISHING RENAME. It is written into staging as the last step before
+// publication, so it reaches its final path -- the one below, which the observer reads -- as part of
+// the same atomic `mv` that publishes the tree. Writing it into the final root AFTER the publish would
+// make it a separate step with its own failure, leaving a fully published runtime that every observer
+// reports incomplete. Written into staging, the receipt cannot exist unless the tree naming it was
+// published whole, and it cannot outlive a publish that never happened.
+fn spark_serving_required_runtime_staged_receipt_path() -> FilePath {
+  concat(
+    spark_serving_required_runtime_staging_root() as String,
+    "/.gunbc-materialization-receipt",
+  ) as FilePath
+}
+
+// Where the receipt ends up, and therefore where the observer looks for it.
+fn spark_serving_required_runtime_receipt_path() -> FilePath {
+  concat(
+    spark_serving_required_runtime_root() as String,
+    "/.gunbc-materialization-receipt",
+  ) as FilePath
+}
+
+fn spark_serving_required_runtime_staged_executable_path() -> FilePath {
+  concat(
+    spark_serving_required_runtime_staging_root() as String,
+    concat("/", ollama_required_release.executable_relative_path as String),
+  ) as FilePath
+}
+
+fn spark_serving_required_runtime_executable_path() -> FilePath {
+  concat(
+    spark_serving_required_runtime_root() as String,
+    concat("/", ollama_required_release.executable_relative_path as String),
+  ) as FilePath
+}
+
+fn spark_serving_models_root() -> FilePath {
+  concat(
+    spark_serving_executor_home as String,
+    concat("/", spark_serving_models_root_rel),
+  ) as FilePath
+}
+
+// The unit's parent directory, absolute, derived from the same two authorities the unit path is.
+// It exists as its own function because a realizer that needed it would otherwise reconstruct it by
+// string surgery on the unit path -- a second derivation of one fact, and one that silently breaks
+// if the unit basename ever contains a separator.
+fn spark_serving_user_unit_dir() -> FilePath {
+  concat(
+    spark_serving_executor_home as String,
+    concat("/", spark_serving_user_unit_dir_rel),
+  ) as FilePath
+}
+
+fn spark_serving_user_unit_path() -> FilePath {
+  concat(
+    spark_serving_executor_home as String,
+    concat("/", spark_serving_user_unit_rel()),
+  ) as FilePath
+}
+
+fn spark_serving_user_unit_spec(bind_host_port: std.types.NonEmptyStr) -> SparkServingUserUnitSpec {
+  SparkServingUserUnitSpec {
+    description: "gunbc Spark serving (Ollama gpt-oss:20b)" as std.types.NonEmptyStr,
+    after: "network-online.target" as std.types.NonEmptyStr,
+    service_type: "simple" as std.types.NonEmptyStr,
+    bind_host_port: bind_host_port,
+    models_root_rel: spark_serving_models_root_rel,
+    runtime_root_rel: spark_serving_runtime_root_rel_for_identity(
+      identity: ollama_runtime_materialization_identity_for_required_release(),
+    ),
+    exec_subcommand: "serve" as std.types.NonEmptyStr,
+    restart: "on-failure" as std.types.NonEmptyStr,
+    wanted_by: "default.target" as std.types.NonEmptyStr,
+  }
+}
+
+fn spark_serving_user_unit_spec_field_hash(
+  tag: std.types.NonEmptyStr,
+  value: std.types.NonEmptyStr,
+) -> std.content_hash.Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: tag,
+    payload: content_hash_atom(value: value),
+  )
+}
+
+fn spark_serving_user_unit_spec_structural_hash(spec: SparkServingUserUnitSpec) -> std.content_hash.Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: content_hash_combine_structural(
+      left: content_hash_combine_structural(
+        left: spark_serving_user_unit_spec_field_hash(
+          tag: "description" as std.types.NonEmptyStr,
+          value: spec.description,
+        ),
+        right: spark_serving_user_unit_spec_field_hash(
+          tag: "after" as std.types.NonEmptyStr,
+          value: spec.after,
+        ),
+      ),
+      right: content_hash_combine_structural(
+        left: spark_serving_user_unit_spec_field_hash(
+          tag: "service_type" as std.types.NonEmptyStr,
+          value: spec.service_type,
+        ),
+        right: spark_serving_user_unit_spec_field_hash(
+          tag: "bind_host_port" as std.types.NonEmptyStr,
+          value: spec.bind_host_port,
+        ),
+      ),
+    ),
+    right: content_hash_combine_structural(
+      left: content_hash_combine_structural(
+        left: spark_serving_user_unit_spec_field_hash(
+          tag: "models_root_rel" as std.types.NonEmptyStr,
+          value: spec.models_root_rel as std.types.NonEmptyStr,
+        ),
+        right: spark_serving_user_unit_spec_field_hash(
+          tag: "runtime_root_rel" as std.types.NonEmptyStr,
+          value: spec.runtime_root_rel as std.types.NonEmptyStr,
+        ),
+      ),
+      right: content_hash_combine_structural(
+        left: spark_serving_user_unit_spec_field_hash(
+          tag: "exec_subcommand" as std.types.NonEmptyStr,
+          value: spec.exec_subcommand,
+        ),
+        right: content_hash_combine_structural(
+          left: spark_serving_user_unit_spec_field_hash(
+            tag: "restart" as std.types.NonEmptyStr,
+            value: spec.restart,
+          ),
+          right: spark_serving_user_unit_spec_field_hash(
+            tag: "wanted_by" as std.types.NonEmptyStr,
+            value: spec.wanted_by,
+          ),
+        ),
+      ),
+    ),
+  )
+}

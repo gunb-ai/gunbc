@@ -20,15 +20,15 @@ fn target_as(actor: gunbc.spark_serving_realization.SystemPrincipal) -> gunbc.sp
 // realization as root must require no grant at all. A table asserting "WriteSystemUnitFile is
 // privileged" answers this wrongly, because it never mentions who is acting.
 test fn w_the_same_realization_needs_no_grant_when_the_actor_owns_what_it_mutates() -> Bool {
-  let as_root = length(realization_escalated_commands(realization: SystemUnitRealization, target: target_as(RootPrincipal)))
-  let as_automation = length(realization_escalated_commands(realization: SystemUnitRealization, target: target_as(automation())))
+  let as_root = length(realization_escalated_commands(realization: gunbc.spark.serving_realization.SystemUnitRealization, target: target_as(RootPrincipal)))
+  let as_automation = length(realization_escalated_commands(realization: gunbc.spark.serving_realization.SystemUnitRealization, target: target_as(automation())))
   as_root == 0 && as_automation > 0
 }
 
 // THE OWNERSHIP FACT IS WHAT DECIDES IT, asserted directly so the derivation cannot be satisfied by
 // a function that merely varies with the actor for some other reason.
 test fn w_escalation_follows_ownership_of_the_mutated_subject() -> Bool {
-  let e = WriteSystemUnitFile
+  let e = gunbc.spark.serving_realization.WriteSystemUnitFile
   let owner = subject_owner(subject: effect_mutation_subject(effect: e, actor: automation()))
   match owner {
     RootPrincipal =>
@@ -39,21 +39,21 @@ test fn w_escalation_follows_ownership_of_the_mutated_subject() -> Bool {
 }
 
 // AN ACTOR-OWNED SUBJECT NEEDS NOTHING, and this is where the model beats the table on a case the
-// table gets wrong by omission rather than by error: PullModelArtifact writes a store the serving
+// table gets wrong by omission rather than by error: MaterializeModelArtifact writes a store the serving
 // account already owns, and a user unit lives in that account's own registry. Neither belongs in a
 // sudoers file for ANY actor that owns them.
 test fn w_effects_on_actor_owned_subjects_never_escalate() -> Bool {
-  !effect_requires_escalation(effect: PullModelArtifact, actor: automation())
-    && !effect_requires_escalation(effect: WriteUserUnitFile, actor: automation())
-    && !effect_requires_escalation(effect: EnableUserUnit, actor: automation())
-    && !effect_requires_escalation(effect: RunContainerAsOwnUser, actor: automation())
+  !effect_requires_escalation(effect: gunbc.spark.serving_realization.MaterializeModelArtifact, actor: automation())
+    && !effect_requires_escalation(effect: gunbc.spark.serving_realization.WriteUserUnitFile, actor: automation())
+    && !effect_requires_escalation(effect: gunbc.spark.serving_realization.EnableUserUnit, actor: automation())
+    && !effect_requires_escalation(effect: gunbc.spark.serving_realization.RunContainerAsOwnUser, actor: automation())
 }
 
 // ROOT-OWNED SUBJECTS ESCALATE FOR A NAMED ACTOR, the positive control without which the claim above
 // is satisfied by a function that never escalates.
 test fn w_root_owned_subjects_escalate_for_a_named_actor() -> Bool {
-  effect_requires_escalation(effect: InstallRuntimePackage, actor: automation())
-    && effect_requires_escalation(effect: GrantContainerRuntimeAccess, actor: automation())
+  effect_requires_escalation(effect: gunbc.spark.serving_realization.InstallRuntimePackage, actor: automation())
+    && effect_requires_escalation(effect: gunbc.spark.serving_realization.GrantContainerRuntimeAccess, actor: automation())
     && effect_requires_escalation(effect: EnableLingerForOwnAccount, actor: automation())
 }
 
@@ -61,15 +61,15 @@ test fn w_root_owned_subjects_escalate_for_a_named_actor() -> Bool {
 // strictly smaller grant -- the relationship a hardcoded list cannot have, because its size is a
 // property of the author's typing rather than of the model.
 test fn w_a_realization_with_fewer_escalating_effects_gets_a_smaller_grant() -> Bool {
-  let system_grant = length(realization_escalated_commands(realization: SystemUnitRealization, target: target_as(automation())))
-  let container_grant = length(realization_escalated_commands(realization: RootlessContainerRealization, target: target_as(automation())))
+  let system_grant = length(realization_escalated_commands(realization: gunbc.spark.serving_realization.SystemUnitRealization, target: target_as(automation())))
+  let container_grant = length(realization_escalated_commands(realization: gunbc.spark.serving_realization.RootlessContainerRealization, target: target_as(automation())))
   container_grant < system_grant && container_grant > 0
 }
 
 // THE GRANT RENDERS ITS TARGET, not a constant. A grant naming the wrong unit is one sudo would
 // silently never match -- a failure that looks like a permissions problem forever.
 test fn w_grant_renders_the_supplied_target() -> Bool {
-  let lines = realization_sudoers_grant_lines(realization: SystemUnitRealization, target: target_as(automation()))
+  let lines = realization_sudoers_grant_lines(realization: gunbc.spark.serving_realization.SystemUnitRealization, target: target_as(automation()))
   fold(lines, init: false, f: fn(acc, l) {
     acc || string_contains(s: l, pattern: "gunbc-inference.service")
   })
@@ -78,7 +78,7 @@ test fn w_grant_renders_the_supplied_target() -> Bool {
 // RED CONTROL: no grant line may carry a shell metacharacter or wildcard. A sudoers entry is a
 // capability grant, and one loose token converts "may restart this unit" into "may become root".
 test fn red_control_no_grant_line_carries_shell_or_wildcard() -> Bool {
-  let lines = realization_sudoers_grant_lines(realization: SystemUnitRealization, target: target_as(automation()))
+  let lines = realization_sudoers_grant_lines(realization: gunbc.spark.serving_realization.SystemUnitRealization, target: target_as(automation()))
   fold(lines, init: true, f: fn(acc, l) {
     acc
       && !string_contains(s: l, pattern: "*")
@@ -94,8 +94,8 @@ test fn red_control_no_grant_line_carries_shell_or_wildcard() -> Bool {
 // actuation. This is the arm that keeps the grant from quietly including everything a realization
 // does -- the fold must consult escalation, not merely concatenate actuations.
 test fn red_control_non_escalating_effects_contribute_no_grant_line() -> Bool {
-  let actuation = length(match effect_actuation(effect: EnableLingerForOwnAccount, target: target_as(RootPrincipal)) { ActuatedByEscalation { commands: c } => c ActuatedByOwnerDirectly => std.algebra.Empty })
-  let granted = length(realization_escalated_commands(realization: UserUnitRealization, target: target_as(RootPrincipal)))
+  let actuation = length(match effect_actuation(effect: EnableLingerForOwnAccount, target: target_as(RootPrincipal)) { gunbc.spark.serving_realization.ActuatedByEscalation { commands: c } => c gunbc.spark.serving_realization.ActuatedByOwnerDirectly => std.algebra.Empty })
+  let granted = length(realization_escalated_commands(realization: gunbc.spark.serving_realization.UserUnitRealization, target: target_as(RootPrincipal)))
   actuation > 0 && granted == 0
 }
 
@@ -108,7 +108,7 @@ test fn w_user_unit_serving_needs_no_new_privilege_against_the_observed_grant() 
   let target = target_as(gunbc.spark_serving_realization.NamedPrincipal { login: "gunbc-automation" as std.types.NonEmptyStr })
   let observed = automation_grants(commands: ["/usr/bin/loginctl enable-linger gunbc-automation" as std.types.NonEmptyStr])
   applicable_without_administrator(shortfall: escalation_shortfall(
-    realization: UserUnitRealization, subject_host: "srv5", expected_credential: content_hash_of_value(value: "fleet-automation-key" as std.types.NonEmptyStr), target: target, observed: observed))
+    realization: gunbc.spark.serving_realization.UserUnitRealization, subject_host: "srv5", expected_credential: content_hash_of_value(value: "fleet-automation-key" as std.types.NonEmptyStr), target: target, observed: observed))
 }
 
 // THE DISCRIMINATING CONTROL. Same realization, same actor, an observed grant population that does
@@ -117,7 +117,7 @@ test fn w_user_unit_serving_needs_no_new_privilege_against_the_observed_grant() 
 test fn w_the_same_install_is_refused_when_linger_is_not_granted() -> Bool {
   let target = target_as(gunbc.spark_serving_realization.NamedPrincipal { login: "gunbc-automation" as std.types.NonEmptyStr })
   !applicable_without_administrator(shortfall: escalation_shortfall(
-    realization: UserUnitRealization, subject_host: "srv5",
+    realization: gunbc.spark.serving_realization.UserUnitRealization, subject_host: "srv5",
     expected_credential: content_hash_of_value(value: "fleet-automation-key" as std.types.NonEmptyStr), target: target,
     observed: automation_grants(commands: [])))
 }
@@ -127,7 +127,7 @@ test fn w_the_same_install_is_refused_when_linger_is_not_granted() -> Bool {
 test fn w_an_unobserved_grant_population_does_not_authorize_the_install() -> Bool {
   let target = target_as(gunbc.spark_serving_realization.NamedPrincipal { login: "gunbc-automation" as std.types.NonEmptyStr })
   !applicable_without_administrator(shortfall: escalation_shortfall(
-    realization: UserUnitRealization, subject_host: "srv5",
+    realization: gunbc.spark.serving_realization.UserUnitRealization, subject_host: "srv5",
     expected_credential: content_hash_of_value(value: "fleet-automation-key" as std.types.NonEmptyStr), target: target,
     observed: gunbc.spark_serving_realization.GrantPopulationUnobserved { host: "srv5", principal: "gunbc-automation" as std.types.NonEmptyStr, cause: "sudo -n -l could not be reached" as std.types.NonEmptyStr }))
 }
@@ -135,12 +135,12 @@ test fn w_an_unobserved_grant_population_does_not_authorize_the_install() -> Boo
 // THE PACKAGED RUNTIME STILL COSTS ROOT, which is what proves the closure effect changed the
 // derivation rather than the derivation being insensitive to it.
 test fn w_the_packaged_runtime_still_requires_escalation() -> Bool {
-  effect_requires_escalation(effect: InstallRuntimePackage, actor: gunbc.spark_serving_realization.NamedPrincipal { login: "gunbc-automation" as std.types.NonEmptyStr })
-    && !effect_requires_escalation(effect: InstallOwnedRuntimeClosure, actor: gunbc.spark_serving_realization.NamedPrincipal { login: "gunbc-automation" as std.types.NonEmptyStr })
+  effect_requires_escalation(effect: gunbc.spark.serving_realization.InstallRuntimePackage, actor: gunbc.spark_serving_realization.NamedPrincipal { login: "gunbc-automation" as std.types.NonEmptyStr })
+    && !effect_requires_escalation(effect: gunbc.spark.serving_realization.InstallOwnedRuntimeClosure, actor: gunbc.spark_serving_realization.NamedPrincipal { login: "gunbc-automation" as std.types.NonEmptyStr })
 }
 
 
-fn automation_grants(commands: List<std.types.NonEmptyStr>) -> gunbc.spark_serving_realization.ObservedGrantPopulation {
+fn automation_grants(commands: std.types.List<std.types.NonEmptyStr>) -> gunbc.spark_serving_realization.ObservedGrantPopulation {
   gunbc.spark_serving_realization.GrantPopulationObserved {
     host: "srv5",
     principal: "gunbc-automation" as std.types.NonEmptyStr,

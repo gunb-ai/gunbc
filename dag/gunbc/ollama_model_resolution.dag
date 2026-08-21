@@ -1,0 +1,160 @@
+module gunbc.ollama_model_resolution
+
+
+// WHICH BYTES `gpt-oss:20b` NAMED ON A GIVEN DAY, recorded as a resolution rather than assumed as a
+// property of the tag.
+//
+// THE INCIDENT THIS CARRIER ANSWERS. Desired state pinned the manifest digest
+// 49124fc2c62223... under the 2026-08-12 reading, and that was correct then. On 2026-08-19 the
+// registry, srv6's manifest file, and srv6's /api/tags all answered 17052f91a42e97... -- three
+// independent readings agreeing with each other and disagreeing with the pin. Upstream republished
+// the tag. Nothing on srv6 drifted.
+//
+// WHY THE PIN COULD NOT EXPRESS THE REPAIR. The old carrier authored a Sha256Digest literal and
+// handed it to model_artifact_from_observed_digest, a function whose name and authority both say the
+// digest came off an endpoint. It had not. So desired state asserted a provenance it did not have,
+// and the only thing distinguishing a measured identity from a typed-in one was that someone had
+// measured it once and remembered.
+//
+// A RESOLUTION IS THE HONEST SHAPE. It names the reference that was resolved, the identity that
+// resulted, when, and on what evidence -- and its evidence field is required, so the version of this
+// row that merely asserts a digest cannot be written.
+
+// One reading of one authority. The authority is spelled out because the three readings below are
+// not interchangeable: the registry is what SELECTS the bytes, and the two host readings are
+// independent confirmations that srv6 already holds what the registry now serves. Collapsing them
+// into an unlabelled list would lose exactly the distinction that makes the confirmations worth
+// having.
+type OllamaManifestReading sole_constructor {
+  authority: std.types.NonEmptyStr
+  observed_at: std.types.Timestamp
+  observed_identity: std.content_hash.Sha256Digest
+}
+
+fn ollama_manifest_reading(authority: std.types.NonEmptyStr, observed_at: std.types.Timestamp, observed_identity: std.content_hash.Sha256Digest) -> OllamaManifestReading {
+  OllamaManifestReading { authority: authority, observed_at: observed_at, observed_identity: observed_identity }
+}
+
+data gpt_oss_20b_manifest_digest_2026_08_19: std.content_hash.Sha256Digest = std.content_hash.Sha256Digest {
+  hex: "17052f91a42e97930aa6e28a6c6c06a983e6a58dbb00434885a0cf5313e376f7" as std.content_hash.Sha256DigestHex,
+}
+
+// The superseded reading, kept as history rather than as desired state. It is a real past resolution
+// of the same reference, and deleting it would erase the only record that this tag moves at all --
+// which is the fact every future reader of this file needs most.
+data gpt_oss_20b_manifest_digest_2026_08_12: std.content_hash.Sha256Digest = std.content_hash.Sha256Digest {
+  hex: "49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05" as std.content_hash.Sha256DigestHex,
+}
+
+data gpt_oss_20b_registry_reading: OllamaManifestReading = OllamaManifestReading {
+  authority: "registry.ollama.ai/v2/library/gpt-oss/manifests/20b" as std.types.NonEmptyStr,
+  observed_at: "2026-08-19T14:28Z",
+  observed_identity: gpt_oss_20b_manifest_digest_2026_08_19,
+}
+
+data gpt_oss_20b_srv6_manifest_file_reading: OllamaManifestReading = OllamaManifestReading {
+  authority: "srv6 ollama model store manifest file for gpt-oss:20b" as std.types.NonEmptyStr,
+  observed_at: "2026-08-19T14:28Z",
+  observed_identity: gpt_oss_20b_manifest_digest_2026_08_19,
+}
+
+data gpt_oss_20b_srv6_api_tags_reading: OllamaManifestReading = OllamaManifestReading {
+  authority: "srv6 ollama /api/tags digest for gpt-oss:20b" as std.types.NonEmptyStr,
+  observed_at: "2026-08-19T14:28Z",
+  observed_identity: gpt_oss_20b_manifest_digest_2026_08_19,
+}
+
+// The selection. Registry first because it is the authority that decides what the tag names; the two
+// srv6 readings follow as confirmations, and their agreement is why re-pinning to this identity plans
+// zero model action rather than a pull.
+fn gpt_oss_20b_resolution() -> extdeps.pin.TrackedReferenceResolution<extdeps.ollama.api.OllamaModelRef, OllamaManifestReading> {
+  tracked_reference_resolution(
+    reference: ollama_gpt_oss_20b_model_ref,
+    resolved_identity: as_content_hash_cryptographic(digest: gpt_oss_20b_manifest_digest_2026_08_19),
+    resolved_at: "2026-08-19T14:28Z",
+    first_evidence: gpt_oss_20b_registry_reading,
+    further_evidence: [gpt_oss_20b_srv6_manifest_file_reading, gpt_oss_20b_srv6_api_tags_reading],
+  )
+}
+
+// THE BLOB CLOSURE THE RESOLVED MANIFEST NAMES, frozen at resolution time along with the manifest
+// identity itself.
+//
+// WHY IT IS STORED RATHER THAN READ AT EXECUTION. A materializer that fetched the manifest and then
+// decided from its contents which blobs to fetch would be deciding what to install from bytes it had
+// just downloaded -- upstream would be choosing the plan. Freezing the closure here means the plan
+// is fully determined before any network contact, so what actually gets fetched is checkable against
+// this file rather than against whatever the registry answered.
+//
+// FETCHABILITY MEASURED, 2026-08-19, because a frozen closure whose entries cannot be retrieved is a
+// plan that fails at execution rather than at review. Each blob was requested by digest from
+// registry.ollama.ai and the response hashed: the config (489 B), template (7240 B), license
+// (11353 B) and params (18 B) blobs were fetched in full and each hashed EXACTLY to the digest
+// requested. The model layer was not downloaded in full -- it is 13.8 GB and this measurement is not
+// worth that transfer -- but its endpoint answers 200 with content-length 13793422144, which is the
+// size the manifest declares for it to the byte, and a range request against it returns 206. So four
+// of five are verified by content and the fifth by size and reachability, which is stated here
+// rather than rounded up to "verified".
+//
+// EVERY ENTRY IS A DIGEST, and that is the half of the store that IS content-addressed: the registry
+// serves /v2/library/gpt-oss/blobs/sha256:<hex> and the bytes it returns either hash to <hex> or the
+// fetch refused. Measured 2026-08-19: the config blob and four layers, taken from the same manifest
+// body whose sha256 is the resolved identity above.
+type OllamaBlobDigest sole_constructor {
+  hex: std.types.NonEmptyStr
+  media_type: std.types.NonEmptyStr
+}
+
+fn ollama_blob_digest(hex: std.types.NonEmptyStr, media_type: std.types.NonEmptyStr) -> OllamaBlobDigest {
+  OllamaBlobDigest { hex: hex, media_type: media_type }
+}
+
+data gpt_oss_20b_blob_closure: std.types.List<OllamaBlobDigest> = [
+  OllamaBlobDigest {
+    hex: "776beb3adb235076157cfea408b8ea2a2d25eae99d7f5da997f607f6b69fa0fa" as std.types.NonEmptyStr,
+    media_type: "application/vnd.docker.container.image.v1+json" as std.types.NonEmptyStr,
+  },
+  OllamaBlobDigest {
+    hex: "e7b273f9636059a689e3ddcab3716e4f65abe0143ac978e46673ad0e52d09efb" as std.types.NonEmptyStr,
+    media_type: "application/vnd.ollama.image.model" as std.types.NonEmptyStr,
+  },
+  OllamaBlobDigest {
+    hex: "fa6710a93d78da62641e192361344be7a8c0a1c3737f139cf89f20ce1626b99c" as std.types.NonEmptyStr,
+    media_type: "application/vnd.ollama.image.template" as std.types.NonEmptyStr,
+  },
+  OllamaBlobDigest {
+    hex: "f60356777647e927149cbd4c0ec1314a90caba9400ad205ddc4ce47ed001c2d6" as std.types.NonEmptyStr,
+    media_type: "application/vnd.ollama.image.license" as std.types.NonEmptyStr,
+  },
+  OllamaBlobDigest {
+    hex: "d8ba2f9a17b3bbdeb5690efaa409b3fcb0b56296a777c7a69c78aa33bbddf182" as std.types.NonEmptyStr,
+    media_type: "application/vnd.ollama.image.params" as std.types.NonEmptyStr,
+  },
+]
+
+fn gpt_oss_20b_blob_closure_count() -> Int {
+  length(gpt_oss_20b_blob_closure)
+}
+
+fn ollama_manifest_reading_wire(reading: OllamaManifestReading) -> String {
+  join([reading.authority as String, "@", reading.observed_at, "=", reading.observed_identity.hex as String], "")
+}
+
+// The whole resolution as one line, so a receipt can carry WHY an identity is desired rather than
+// only which one. A consumer printing the identity alone reproduces the situation this file exists
+// to end: a digest with no account of where it came from.
+fn gpt_oss_20b_resolution_wire() -> String {
+  join([
+    ollama_model_ref_wire(ref: gpt_oss_20b_resolution().reference),
+    " -> ",
+    serialize_content_hash(hash: gpt_oss_20b_resolution().resolved_identity) as String,
+    " resolved_at=",
+    gpt_oss_20b_resolution().resolved_at,
+    " evidence=",
+    join(map(tracked_reference_resolution_evidence(resolution: gpt_oss_20b_resolution()), r => ollama_manifest_reading_wire(reading: r)), " | "),
+  ], "")
+}
+
+fn gpt_oss_20b_resolution_evidence_count() -> Int {
+  length(tracked_reference_resolution_evidence(resolution: gpt_oss_20b_resolution()))
+}

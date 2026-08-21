@@ -1,0 +1,312 @@
+module gunbc.spark.serving_durability_transaction
+
+
+// THE DURABILITY ORACLE HAD NO CONSUMER, AND THAT IS THE DEFECT THIS MODULE CLOSES.
+//
+// gunbc.spark.serving_durability models the verdict completely -- three conjunctive conditions, four
+// distinguished failure worlds, a full witness roster -- and until this module nothing in any
+// workflow mode ever called spark_serving_durability_verdict. Only witness tests imported it. That
+// is specification-without-execution in its purest form: a correct instrument nobody had wired to a
+// dial, so the reboot-durability counter could not move no matter what the machines did. srv6 in
+// fact rebooted, came back serving, and kept its grant, and the repository had no path by which that
+// could be recorded.
+//
+// WHY ONE RUN AND NOT TWO. The verdict compares a boot identity read BEFORE a reboot against one
+// read AFTER it. Splitting that across two workflow dispatches means the "before" has to be kept
+// somewhere between them, and a stored before-reading is a fact whose staleness nothing checks -- a
+// receipt from last week's boot compares just as well as one from a minute ago, and produces
+// DurabilityProven from two unrelated boots. Holding both readings inside a single execution makes
+// the before-reading unforgeable: it was taken by the same process that issued the reboot, so it
+// cannot be older than the reboot it is being compared across.
+//
+// WHY THE POLL WAITS FOR A DIFFERENT IDENTITY RATHER THAN FOR REACHABILITY. Immediately after
+// `systemctl reboot` returns, the host is still up for a few seconds. A poll that accepted the first
+// successful read would frequently read the OLD boot identity, conclude BootIdentityUnchanged, and
+// report RebootNotEstablished about a machine that was in the middle of rebooting correctly. Waiting
+// for the identity to CHANGE is not a workaround for that race -- it is the fact being measured, so
+// the poll's success condition and the verdict's first conjunct are the same statement.
+//
+// THE BOUND REFUSES, IT DOES NOT WIDEN. If the identity has not changed when the bound is spent, the
+// run reports the reading it actually has and exits nonzero. It does not retry unbounded, does not
+// fall back to a weaker check, and does not treat "I stopped looking" as "it did not reboot" -- the
+// unchanged identity IS what was observed, and RebootNotEstablished is what that observation means.
+
+// A REBOOT MUST BE OBSERVED FROM BOTH SIDES OR NOT ISSUED AT ALL, so a host whose before-identity
+// could not be read is never rebooted. Power-cycling a machine to produce a comparison that is
+// already known to be impossible spends the host's availability on nothing.
+type SparkServingDurabilityTransaction
+  = DurabilityTransactionSettled { verdict: gunbc.spark.serving_durability.SparkServingDurabilityVerdict, detail: String }
+  | DurabilityTransactionRefused { cause: String }
+
+// TEN MINUTES, AT TEN-SECOND CADENCE, and both numbers carry a reason rather than a measurement.
+//
+// A DGX Spark returning from a clean reboot is answering ssh well inside two minutes; the bound is
+// several times that because the cost of a bound that is too tight is a FALSE not-established on a
+// healthy host -- the expensive error, since it sends someone to debug a machine that was fine. The
+// cost of a bound that is too loose is only waiting. The cadence is ten seconds because the poll is
+// one ssh round trip against a host that may be down, and a tighter cadence buys resolution the
+// verdict does not use: nothing here reports HOW LONG the reboot took, only that it happened.
+data spark_serving_reboot_return_bound: std.measure.Second = second(count: 600)
+
+data spark_serving_reboot_return_cadence: std.measure.Second = second(count: 10)
+
+fn spark_serving_reboot_return_max_attempts() -> Int {
+  measure_fit_count_floor(
+    capacity: spark_serving_reboot_return_bound,
+    each: spark_serving_reboot_return_cadence,
+  )
+}
+
+fn spark_serving_reboot_return_bound_is_positive() -> Bool {
+  second_count(s: spark_serving_reboot_return_bound) > 0
+}
+
+fn spark_serving_read_boot_identity(
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  host: product.placement_supply.HostIdentity,
+) -> gunbc.spark.serving_durability.BootIdentityReading {
+  spark_serving_boot_identity_from_probe(
+    probe: spark_serving_probe_leg_via_locus(
+      context: context,
+      host: host,
+      raw_words: spark_serving_boot_id_probe_argv(),
+    ),
+  )
+}
+
+// THE POLL'S SUCCESS CONDITION IS THE FACT, not a proxy for it: it settles on the first reading that
+// is both observable AND different from the one taken before the reboot. An unreadable host is not a
+// failure of the poll -- it is the expected state while the machine is down -- so it continues; a
+// readable host still reporting the old identity has not rebooted YET, so it also continues. Only
+// the bound ends the wait.
+fn spark_serving_poll_for_new_boot_identity(
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  host: product.placement_supply.HostIdentity,
+  before: std.types.NonEmptyStr,
+  attempt: Int,
+) -> gunbc.spark.serving_durability.BootIdentityReading {
+  if attempt >= spark_serving_reboot_return_max_attempts() {
+    gunbc.spark.serving_durability.BootIdentityUnobserved {
+      cause: join([
+        "the boot identity did not change within the declared return bound of ",
+        to_string(second_count(s: spark_serving_reboot_return_bound)),
+        "s at ", to_string(second_count(s: spark_serving_reboot_return_cadence)),
+        "s cadence; last identity still ", before as String,
+      ], "") as std.types.NonEmptyStr,
+    }
+  } else {
+    let paced = sleep_delay_seconds_second_carrier_projection(duration: spark_serving_reboot_return_cadence)
+    if paced == false {
+      gunbc.spark.serving_durability.BootIdentityUnobserved {
+        cause: "the pacing delay between boot-identity probes failed, so the poll cannot state how long it waited" as std.types.NonEmptyStr,
+      }
+    } else {
+      match spark_serving_read_boot_identity(context: context, host: host) {
+        gunbc.spark.serving_durability.BootIdentityUnobserved { cause: _ } =>
+          spark_serving_poll_for_new_boot_identity(
+            context: context,
+            host: host,
+            before: before,
+            attempt: attempt + 1,
+          )
+        gunbc.spark.serving_durability.BootIdentityObserved { boot_id: seen } => {
+          let seen_text = seen as String
+          let before_text = before as String
+          if seen_text == before_text {
+            spark_serving_poll_for_new_boot_identity(
+              context: context,
+              host: host,
+              before: before,
+              attempt: attempt + 1,
+            )
+          } else {
+            gunbc.spark.serving_durability.BootIdentityObserved { boot_id: seen }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn spark_serving_observe_linger_enabled(
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  host: product.placement_supply.HostIdentity,
+) -> Bool {
+  match spark_serving_probe_leg_via_locus(
+    context: context,
+    host: host,
+    raw_words: spark_serving_linger_probe_words(),
+  ) {
+    Absent => false
+    Present { value: r } =>
+      match spark_serving_linger_enabled_from_stdout(stdout: r.stdout) {
+        Absent => false
+        Present { value: e } => e
+      }
+  }
+}
+
+// THE POST-BOOT STATE IS READ WITH THE SAME INSTRUMENTS THE CONVERGE PATH USES, deliberately. The
+// question "is it converged after the reboot" must be answered by the authority that answers "is it
+// converged" everywhere else, or a host could pass here and fail there.
+fn spark_serving_post_reboot_verdict(
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  host: product.placement_supply.HostIdentity,
+  transition: gunbc.spark.serving_durability.RebootTransition,
+) -> SparkServingDurabilityTransaction {
+  let linger_enabled = spark_serving_observe_linger_enabled(context: context, host: host)
+  match spark_serving_replan_rows(context: context, host: host, linger_enabled: linger_enabled) {
+    gunbc.spark.serving_converge_slice_wet.SparkServingReplanRowsRefused { cause: why } =>
+      DurabilityTransactionRefused {
+        cause: join(["post-reboot replan refused, so no pending-action count exists to judge: ", why], ""),
+      }
+    gunbc.spark.serving_converge_slice_wet.SparkServingReplanRowsReady { rows: rows } => {
+      let health = spark_serving_observe_terminal_health(context: context, host: host)
+      DurabilityTransactionSettled {
+        verdict: spark_serving_durability_verdict(
+          host: host,
+          transition: transition,
+          pending_action_count: length(rows),
+          serving_healthy: spark_serving_health_is_converged(health: health),
+          health_cause: spark_serving_health_wire(health: health) as std.types.NonEmptyStr,
+        ),
+        detail: join([
+          "post-reboot pending_actions=", to_string(length(rows)),
+          " ", spark_serving_health_wire(health: health),
+        ], ""),
+      }
+    }
+  }
+}
+
+fn spark_serving_durability_transaction_wire(t: SparkServingDurabilityTransaction) -> String {
+  match t {
+    DurabilityTransactionRefused { cause: c } =>
+      join(["durability-transaction REFUSED ", c], "")
+    DurabilityTransactionSettled { verdict: v, detail: d } =>
+      join([spark_serving_durability_wire(verdict: v), "\n", d], "")
+  }
+}
+
+fn spark_serving_durability_transaction_is_proven(t: SparkServingDurabilityTransaction) -> Bool {
+  match t {
+    DurabilityTransactionRefused { cause: _ } => false
+    DurabilityTransactionSettled { verdict: v, detail: _ } =>
+      spark_serving_durability_is_proven(verdict: v)
+  }
+}
+
+data spark_serving_durability_receipt_path: String = "target/spark-serving-durability-receipt.txt"
+
+data spark_serving_durability_ci_attempt_raw: String = "spark-serving-durability-ci"
+
+func spark_serving_durability_ci_wet() -> std.process.ProcessExit {
+  match prepare_fleet_ssh_agent_context(attempt_raw: spark_serving_durability_ci_attempt_raw) {
+    gunbc.fleet_ssh_locus.FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)
+    FleetSshContextReady { context: context, receipt: context_receipt } =>
+      spark_serving_durability_with_context(context: context, context_receipt: context_receipt)
+  }
+}
+
+// THE TARGET IS NAMED OR NOTHING RUNS, the same rule the reboot probe applies and for the same
+// reason: this entry power-cycles a host, and inheriting the observe path's all-hosts arm would let
+// an unset variable reboot the fleet.
+func spark_serving_durability_with_context(
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  context_receipt: String,
+) -> std.process.ProcessExit {
+  let now = clock_now_probed_at()
+  match spark_converge_target_selection(execute_apply: true) {
+    gunbc.fleet_multi_principal_probe.SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+    gunbc.fleet_multi_principal_probe.SparkConvergeTargetAllObserveOnly =>
+      exit_failure(
+        reason: "spark_serving_durability_ci_wet: SPARK_CONVERGE_TARGET names no host, and a durability transaction reboots its target, so it must never fan out across the fleet from an unset variable",
+      )
+    SparkConvergeTargetSingle { host: only } =>
+      spark_serving_durability_for_host(
+        context: context,
+        context_receipt: context_receipt,
+        host: only,
+        now: probed_at_word(reading: now) as String,
+      )
+  }
+}
+
+func spark_serving_durability_for_host(
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  context_receipt: String,
+  host: product.placement_supply.HostIdentity,
+  now: String,
+) -> std.process.ProcessExit {
+  match spark_serving_read_boot_identity(context: context, host: host) {
+    gunbc.spark.serving_durability.BootIdentityUnobserved { cause: c } =>
+      spark_serving_durability_emit(
+        context_receipt: context_receipt,
+        now: now,
+        body: join([
+          "durability-transaction REFUSED the before-reboot boot identity was not readable, so the host was NOT rebooted: ",
+          c as String,
+        ], ""),
+        proven: false,
+      )
+    gunbc.spark.serving_durability.BootIdentityObserved { boot_id: before } => {
+      let outcome = spark_serving_issue_reboot(context: context, host: host)
+      if spark_serving_reboot_was_attempted(outcome: outcome) == false {
+        spark_serving_durability_emit(
+          context_receipt: context_receipt,
+          now: now,
+          body: join([
+            "durability-transaction REFUSED the reboot was never attempted, so no transition exists: ",
+            spark_serving_reboot_outcome_wire(outcome: outcome),
+          ], ""),
+          proven: false,
+        )
+      } else {
+        let after = spark_serving_poll_for_new_boot_identity(
+          context: context,
+          host: host,
+          before: before,
+          attempt: 0,
+        )
+        let settled = spark_serving_post_reboot_verdict(
+          context: context,
+          host: host,
+          transition: spark_serving_reboot_transition(
+            before: gunbc.spark.serving_durability.BootIdentityObserved { boot_id: before },
+            after: after,
+          ),
+        )
+        spark_serving_durability_emit(
+          context_receipt: context_receipt,
+          now: now,
+          body: join([
+            spark_serving_reboot_outcome_wire(outcome: outcome), "\n",
+            spark_serving_durability_transaction_wire(t: settled),
+          ], ""),
+          proven: spark_serving_durability_transaction_is_proven(t: settled),
+        )
+      }
+    }
+  }
+}
+
+func spark_serving_durability_emit(
+  context_receipt: String,
+  now: String,
+  body: String,
+  proven: Bool,
+) -> std.process.ProcessExit {
+  let text = join([
+    "spark_serving_durability_ci_wet probed_at=", now, "\n",
+    context_receipt,
+    body, "\n",
+  ], "")
+  let w = Filesystem.Write(path: spark_serving_durability_receipt_path, content: text)
+  if w.success == false {
+    exit_failure(reason: join(["durability receipt write failed: ", w.error], ""))
+  } else if proven == false {
+    exit_failure(reason: text)
+  } else {
+    ExitSuccess
+  }
+}

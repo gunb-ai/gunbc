@@ -1,12 +1,13 @@
 module gunbc.fleet_converge_workflow
 
+
 data fleet_converge_workflow_note: String = "Emitted on-demand fleet converge workflow (operator directive 2026-08-13, sleek-heron-218). workflow_dispatch with host=srv1|srv2|srv3|srv4 (executor runner pin) and mode=plan|apply|spark_linger: plan observes the RUNNER host; apply downloads a prior plan artifact; spark_linger runs executor-on-runner → target-on-spark (srv5|srv6) typed argv over FleetSsh via run_typed_argv_transport. Replaces the retired 15-minute ctrl-fleet-converge.timer cadence on every enrolled CI host (timer install route is TimerRetired fleet-wide). Standalone dispatch carries its own build job (release-bins pack/upload) so the converge job never downloads an artifact the current run did not produce."
 
-data fleet_converge_enrolled_host_options: List<String> = ["srv1", "srv2", "srv3", "srv4"]
+data fleet_converge_enrolled_host_options: std.types.List<String> = ["srv1", "srv2", "srv3", "srv4"]
 
-data fleet_converge_spark_target_options: List<String> = ["srv5", "srv6"]
+data fleet_converge_spark_target_options: std.types.List<String> = ["srv5", "srv6"]
 
-data fleet_converge_mode_options: List<String> = ["plan", "apply", "spark_linger", "spark_observe"]
+data fleet_converge_mode_options: std.types.List<String> = ["plan", "apply", "spark_linger", "spark_observe", "spark_reboot", "spark_grants", "spark_durability"]
 
 data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host)) }}"
 
@@ -44,7 +45,13 @@ data fleet_converge_spark_linger_step_if: String = "github.event.inputs.mode == 
 
 data fleet_converge_spark_observe_step_if: String = "github.event.inputs.mode == 'spark_observe'"
 
-fn fleet_converge_plan_upload_step() -> extdeps.github.actions.Step {
+data fleet_converge_spark_reboot_step_if: String = "github.event.inputs.mode == 'spark_reboot'"
+
+data fleet_converge_spark_durability_step_if: String = "github.event.inputs.mode == 'spark_durability'"
+
+data fleet_converge_spark_grants_step_if: String = "github.event.inputs.mode == 'spark_grants'"
+
+fn fleet_converge_plan_upload_step() -> Step {
   extdeps.github.actions.UsesStep {
     name: Present { value: "Upload fleet converge plan artifact" },
     id: Present { value: "plan_upload" },
@@ -135,7 +142,69 @@ fn fleet_converge_spark_linger_step() -> extdeps.github.actions.Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_spark_linger_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
+  }
+}
+
+// THE DURABILITY PROBE, and it takes a target for the same reason the mutating converge does: a
+// reboot with no named host must never fan out across the fleet from an unset variable. The entry
+// refuses that arm itself; passing the input here is what gives it something to refuse.
+fn fleet_converge_spark_reboot_step() -> Step {
+  extdeps.github.actions.RunStep {
+    name: Present { value: "Spark serving reboot (durability probe: the receipt is the converge that follows)" },
+    id: Present { value: "spark_reboot" },
+    run: gunbc_ci_spark_serving_reboot_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_spark_reboot_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
+  }
+}
+
+// THE DURABILITY TRANSACTION, which is a different event from the reboot probe beside it and not a
+// longer version of it. The probe issues a reboot and reports what the far side said; this runs the
+// whole comparison in ONE process -- boot identity before, reboot, poll until that identity changes,
+// then the same replan and generation probe the converge path uses -- because a before-reading kept
+// between two dispatches is a fact whose staleness nothing checks.
+fn fleet_converge_spark_durability_step() -> Step {
+  extdeps.github.actions.RunStep {
+    name: Present { value: "Spark serving durability transaction (boot identity before and after, in one run)" },
+    id: Present { value: "spark_durability" },
+    run: gunbc_ci_spark_serving_durability_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_spark_durability_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_spark_grants_step() -> Step {
+  extdeps.github.actions.RunStep {
+    name: Present { value: "Spark managed grant reconcile (installs only the grants measured missing at the named target)" },
+    id: Present { value: "spark_grants" },
+    run: gunbc_ci_spark_grant_install_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_spark_grants_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
   }
 }
 
@@ -149,13 +218,13 @@ fn fleet_converge_spark_observe_step() -> extdeps.github.actions.Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_spark_observe_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
   }
 }
 
 data fleet_converge_consumer_prelude_note: String = "Plain fetch-depth-0 checkout only — this workflow has no workflow_dispatch expected_healed_sha input (unlike ci.yml heal revalidation). ci_artifact_consumer_prelude_steps paste-through would reference an undeclared input and emit a dormant preflight guard."
 
-fn fleet_converge_consumer_prelude_steps() -> List<extdeps.github.actions.Step> {
+fn fleet_converge_consumer_prelude_steps() -> std.types.List<extdeps.github.actions.Step> {
   [ci_checkout_step()]
 }
 
@@ -172,6 +241,7 @@ fn fleet_converge_job() -> extdeps.github.actions.Job {
           ci_release_bins_unpack_verify_step(),
           ci_fleet_wif_auth_step(),
           ci_fleet_key_agent_step(),
+          ci_spark_admin_credential_step(if_condition: fleet_converge_spark_grants_step_if),
         ]
       ),
       [
@@ -180,7 +250,11 @@ fn fleet_converge_job() -> extdeps.github.actions.Job {
         fleet_converge_plan_download_step(),
         fleet_converge_apply_step(),
         fleet_converge_spark_linger_step(),
+        fleet_converge_spark_grants_step(),
         fleet_converge_spark_observe_step(),
+        fleet_converge_spark_reboot_step(),
+        fleet_converge_spark_durability_step(),
+        ci_spark_admin_credential_cleanup_step(),
         ci_fleet_key_agent_cleanup_step(),
       ]
     ),
@@ -234,14 +308,14 @@ data fleet_converge_workflow: extdeps.github.actions.Workflow = extdeps.github.a
           description: Present { value: "Fnv1a64Structural bundle digest of plan.txt + apply.sh + spark_serving_typed_actions.wire — required for apply (printed by plan step). A plan artifact minted before the typed-actions wire joined the bundle will not match." },
           required: false,
           default: none,
-          type: InputString,
+          type: extdeps.github.actions.InputString,
         },
         extdeps.github.actions.DispatchInput {
           name: "plan_workflow_run_id",
           description: Present { value: "Workflow run id that produced the plan artifact — required for apply" },
           required: false,
           default: none,
-          type: InputString,
+          type: extdeps.github.actions.InputString,
         },
       ]
     }

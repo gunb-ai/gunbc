@@ -1,0 +1,668 @@
+module gunbc.spark.serving_converge_realize
+
+
+data spark_serving_converge_realize_authority_note: String = "Seam 2 realization for Spark serving frozen install_effects. Maps a frozen ServingInstallEffect to a gunbc.remote_operation RemoteOperation — never through effect_actuation shell strings (that module is privilege-derivation only; serving_privilege_derivation_witness_test). Two operation kinds, because a file write is bytes and bytes ride stdin, never argv: argv arms are EnableLingerForOwnAccount [sudo, -n, loginctl, enable-linger, login]; ReloadUserManager [systemctl, --user, daemon-reload]; EnableUserUnit [systemctl, --user, enable, --now, unit] — no interpolation, unit basename from gunbc.spark.serving_unit_identity. The file-bytes arm is WriteUserUnitFile, whose content comes from gunbc.spark.serving_unit_render and whose path is admitted by typed_remote_file_write_seal (containment under the executor home plus far-side portability); its seal refusal is carried through with its own cause. Every remaining effect refuses; a sequence containing one refuses whole."
+
+// A SEQUENCE OF COMMANDS, NOT ONE ARGV. This carrier previously held a single List<String> and
+// the effects fold appended with concat, which concatenated argv WORDS across effects. That is
+// coherent only while exactly one effect is implemented: with two, the linger and daemon-reload
+// argvs fused into one 8-word sudo invocation carrying systemctl as trailing operands, and
+// nothing refused it because every individual word is portable — the words were fine, the arity
+// was nonsense. No validation on List<String> can separate one command from two concatenated
+// ones, so the repair is the type: a command is one argv, and a plan is an ordered list of them.
+// Ordering is load-bearing for these effects (write the unit file, reload the manager, enable the
+// unit), and a fused argv erases it.
+type SparkServingInstallRemoteCommandsVerdict =
+    SparkServingInstallRemoteCommandsPresent { steps: std.types.List<gunbc.remote_operation.PlannedRemoteStep> }
+  | SparkServingInstallRemoteCommandsRefused { reason: String }
+
+// A STEP IS NAMED WHERE IT IS BUILT, because that is the only place its meaning is known. Deriving
+// an identity later from a list position would name it by where it happens to sit, so inserting a
+// step would silently rename every step after it -- and a receipt that says "step 4 failed" is a
+// position, not a fact.
+fn spark_serving_step(identity: std.types.NonEmptyStr, operation: gunbc.remote_operation.RemoteOperation) -> gunbc.remote_operation.PlannedRemoteStep {
+  gunbc.remote_operation.PlannedRemoteStep { identity: identity, operation: operation }
+}
+
+fn spark_serving_admit_portable_remote_argv(
+  identity: std.types.NonEmptyStr,
+  raws: std.types.List<String>,
+) -> SparkServingInstallRemoteCommandsVerdict {
+  match portable_remote_words(raws: raws) {
+    Present { value: words } =>
+      SparkServingInstallRemoteCommandsPresent {
+        steps: [
+          spark_serving_step(
+            identity: identity,
+            operation: gunbc.remote_operation.RemoteArgv { argv: portable_remote_words_strings(words: words) },
+          ),
+        ],
+      }
+    Absent =>
+      SparkServingInstallRemoteCommandsRefused {
+        reason: "spark_serving_converge_realize: remote argv is not portable — refuse rather than shell-interpolate",
+      }
+  }
+}
+
+fn spark_serving_enable_linger_remote_argv(login: std.types.NonEmptyStr) -> SparkServingInstallRemoteCommandsVerdict {
+  spark_serving_admit_portable_remote_argv(
+    identity: "enable-linger" as std.types.NonEmptyStr,
+    raws: ["sudo", "-n", "loginctl", "enable-linger", login as String],
+  )
+}
+
+// USER SCOPE, NO SUDO. These two act on the invoking account's own systemd manager, which is why
+// they carry no sudo and no login argument: the account is established by the ssh session, not
+// named in the argv. Interpolating a login here would be a second, forgeable statement of who is
+// acting. The unit basename comes from gunbc.spark.serving_unit_identity, the same authority the
+// observe probe reads, so the unit enabled and the unit observed cannot drift apart.
+fn spark_serving_reload_user_manager_remote_argv() -> SparkServingInstallRemoteCommandsVerdict {
+  spark_serving_admit_portable_remote_argv(
+    identity: "daemon-reload" as std.types.NonEmptyStr,
+    raws: ["systemctl", "--user", "daemon-reload"],
+  )
+}
+
+// ENABLE, NOT `enable --now`, AND THE `--now` IS WHAT THIS CHANGE REMOVES.
+//
+// The fused form was justified by an ordering argument that was true: MaterializeModelArtifact runs after
+// EnableUserUnit and targets a RUNNING server, so something had to start the unit, and `--now` was
+// the nearest thing to hand. What it cost was the distinction. Enablement is persistence -- whether
+// the unit returns after a reboot -- and activity is whether it is running right now; `--now`
+// applied both remedies under one word, so the enablement member reconciling as converged USUALLY
+// implied a live unit, and usually is not a guarantee. A unit that died after being enabled left
+// every resource member converged with nothing serving, and the only thing that noticed was the
+// generation probe at the very end. That is detection by symptom.
+//
+// The ordering argument survives intact and is now carried by the schedule rather than by an argv
+// flag: the model slot requires UnitActive (a BarrierBefore), the activity address establishes it,
+// and the activity address itself requires UnitKnownToManager. So the pull still runs against a
+// started server -- because the dependency says so, which is checkable, rather than because two
+// remedies were spelled in one command, which was not.
+fn spark_serving_enable_user_unit_remote_argv() -> SparkServingInstallRemoteCommandsVerdict {
+  spark_serving_admit_portable_remote_argv(
+    identity: "enable-user-unit" as std.types.NonEmptyStr,
+    raws: systemctl_user_enable_argv(unit: spark_serving_unit_name as std.types.NonEmptyStr),
+  )
+}
+
+fn spark_serving_start_user_unit_remote_argv() -> SparkServingInstallRemoteCommandsVerdict {
+  spark_serving_admit_portable_remote_argv(
+    identity: "start-user-unit" as std.types.NonEmptyStr,
+    raws: systemctl_user_start_argv(unit: spark_serving_unit_name as std.types.NonEmptyStr),
+  )
+}
+
+// PULLING THE MODEL IS ONE MUTATION, AND THE NO-REPULL LAW IS NOT ENFORCED HERE.
+//
+// There is no "is it already present" check in this step, and its absence is the design rather than
+// an omission. Presence is a question about the model-slot member's OBSERVED state, answered before
+// any effect is selected: a host whose manifest identity matches desired and whose blob closure is
+// complete reconciles as converged, so no MemberAction is emitted, so this operation is never
+// reached. The law is that nothing is planned -- which is a stronger and cheaper guarantee than a
+// guard in front of a pull, because a guard still requires the pull path to run and be trusted to
+// decline, while an unplanned operation cannot contact upstream at all.
+//
+// Putting the check here would also have put it in the wrong place twice over: it would re-derive,
+// at actuation time and from a second source, a fact the observation already established; and it
+// would make the operation's behavior depend on host state read AFTER the plan was frozen, which is
+// exactly what the compare-and-swap baseline exists to prevent.
+//
+// EXIT ZERO PERMITS CONTINUATION, IT DOES NOT ESTABLISH CONVERGENCE. `ollama pull` exiting zero says
+// the command ran without error; whether the store now holds the manifest and its complete blob
+// closure is settled by re-observing the member after apply, never by this step's status.
+//
+// THE EXACT EXECUTABLE, NOT AMBIENT PATH. This invoked a bare `ollama`, which makes the ambient PATH
+// a second unmodeled runtime authority: it resolves to whatever happens to be installed, or to
+// nothing at all on the bare host this whole branch exists to restore -- where the runtime we just
+// materialized is at a content-addressed path precisely so it is NOT on PATH. Naming the planned
+// entrypoint means the pull runs the runtime the plan installed, or fails loudly.
+//
+// The ref is the wire label rather than the digest because that is what the pull interface takes.
+// The digest remains the identity every comparison is made on -- the label names what to fetch, and
+// the observation says what arrived, and conflating those is how a moved tag becomes an undetected
+// substitution.
+// THE PULL WAITED FOR NOTHING, and that is why it is a sequence now.
+//
+// `ollama pull` is an API client: it talks to the serving process rather than doing the work itself.
+// Issued the moment the unit is written it reaches a socket nobody is listening on yet, fails on
+// connection refused, and the whole convergence reports a failed pull for a host that was merely
+// still starting. Retrying the convergence is not a fix -- it makes the outcome depend on how long
+// the last run happened to take.
+//
+// THE WAIT IS BOUNDED, FROZEN, AND NOT A SHELL LOOP. `curl` performs the retry itself, so the bound
+// lives in the plan as reviewable argv rather than in a `while` whose exit condition is invisible to
+// the artifact. `--retry-connrefused` is the load-bearing flag: without it curl treats a refused
+// connection as a hard failure and never retries, which is the exact case being waited on.
+//
+// The bound is a real bound, not a long one: `--retry-max-time` caps the whole retry window, so the
+// step fails loudly at a known deadline instead of hanging. A host that cannot serve within it has a
+// problem a longer wait would only hide.
+//
+// WHY NO `systemctl is-active` STEP, though the readiness ladder names one. It is a point check taken
+// immediately after the unit is started, so it observes `activating` and fails for a host that is
+// converging normally -- and if it were retried to fix that, it would be a second, weaker spelling of
+// the wait below. Reaching the API is the stronger fact: it says the process is up AND serving, which
+// is what the pull actually requires.
+//
+// WHY THE VERSION AGREEMENT IS NOT A STEP HERE. Deciding whether the reported version matches the
+// desired release is a COMPARISON, and `extdeps.ollama.binary_release`
+// `ollama_reported_version_matches_release` is where that comparison lives -- including the detail
+// that the API reports a bare version while the release row carries a `v` prefix. Expressing it as a
+// remote `grep` would fork that authority into a shell literal that cannot express the prefix rule
+// and would match a substring of a longer version.
+//
+// AND THE RESPONSE IS DISCARDED, not captured. An earlier revision of this step wrote it to a file
+// "so the observer can decide it" -- but the observer probes the endpoint itself, live, at the time
+// it forms a verdict. The file was written and never read: an artifact whose only reader was a
+// sentence in this comment. Waiting is this step's whole job, so the body goes to /dev/null and the
+// step's product is the fact that it exited zero.
+// THREE RETRY CONSTANTS WERE DELETED HERE, AND THEY WERE NOT MISTYPED -- THEY WERE DEAD.
+// `spark_serving_api_readiness_retry_attempts`, `..._retry_delay_seconds` and `..._retry_max_seconds`
+// each had exactly ONE reference in the corpus: their own declaration. A review flagged all four of
+// these as durations wrongly stored as String; measuring the references first turned three of them
+// into a different and worse finding, because a `String` row whose only purpose is to sit there is
+// dead data wearing a policy's name -- and retyping it would have preserved it as a better-typed
+// corpse. Waiting is the readiness step's whole job and the step does not retry: it either exits zero
+// or the line stops. If a retry policy is ever wanted, it arrives as a carrier the step CONSUMES.
+//
+// THE SURVIVOR CARRIES A DURATION AND THE ARGV RENDERS IT. The domain fact is "five seconds"; a curl
+// word is its rendering, and storing the rendering AS the fact fused transport into the authority
+// (DESIGN section 3 -- the tell is a policy value that is already argv-shaped). `Second` is
+// `Measure<Time, One, Nat>`, so a caller cannot pass a microsecond count where seconds are meant, and
+// the one place that needs the word asks for the word.
+fn spark_serving_api_readiness_connect_timeout() -> std.measure.Second {
+  second(count: 5)
+}
+
+fn spark_serving_api_readiness_connect_timeout_word() -> String {
+  to_string(second_count(spark_serving_api_readiness_connect_timeout()))
+}
+
+fn spark_serving_materialize_model_artifact_steps() -> SparkServingInstallRemoteCommandsVerdict {
+  spark_serving_concat_step_verdicts(verdicts: concat(
+    concat(
+      [
+        spark_serving_admit_portable_remote_argv(
+          identity: "ensure-readiness-scratch" as std.types.NonEmptyStr,
+          raws: ["mkdir", "-p", spark_serving_readiness_scratch_root() as String],
+        ),
+        spark_serving_admit_portable_remote_argv(
+          identity: "ensure-model-blobs-dir" as std.types.NonEmptyStr,
+          raws: ["mkdir", "-p", spark_serving_desired_model_blobs_dir() as String],
+        ),
+        spark_serving_admit_portable_remote_argv(
+          identity: "fetch-manifest-by-reference" as std.types.NonEmptyStr,
+          raws: [
+            "curl", "-fsSL", "--connect-timeout", spark_serving_api_readiness_connect_timeout_word(),
+            "-o", spark_serving_staged_manifest_path() as String,
+            spark_serving_registry_manifest_url(),
+          ],
+        ),
+        spark_serving_admit_typed_file_step(
+          identity: "declare-manifest-checksum" as std.types.NonEmptyStr,
+          path: spark_serving_manifest_checksum_path(),
+          content: spark_serving_checksum_line(
+            hex: gpt_oss_20b_manifest_digest_2026_08_19.hex,
+            path: spark_serving_staged_manifest_path() as String,
+          ),
+        ),
+        spark_serving_admit_portable_remote_argv(
+          identity: "verify-manifest-identity" as std.types.NonEmptyStr,
+          raws: [
+            "sha256sum", "--check", "--status",
+            spark_serving_manifest_checksum_path() as String,
+          ],
+        ),
+      ],
+      flat_map(gpt_oss_20b_blob_closure, b => spark_serving_materialize_blob_steps(blob: b)),
+    ),
+    [
+      spark_serving_admit_portable_remote_argv(
+        identity: "ensure-manifest-dir" as std.types.NonEmptyStr,
+        raws: ["mkdir", "-p", spark_serving_desired_model_manifest_dir() as String],
+      ),
+      spark_serving_admit_portable_remote_argv(
+        identity: "publish-manifest" as std.types.NonEmptyStr,
+        raws: [
+          "mv", "-f",
+          spark_serving_staged_manifest_path() as String,
+          spark_serving_desired_model_manifest_path() as String,
+        ],
+      ),
+    ],
+  ))
+}
+
+// ONE BLOB, FETCHED BY DIGEST AND VERIFIED BEFORE IT IS PUBLISHED INTO THE STORE.
+//
+// The staging path is deliberately not the final blob path: writing straight into blobs/ and
+// checking afterwards would leave a corrupt file at the name the store reads, and the observe side
+// answers presence by filename. Staged, verified, then moved -- so a blob that exists under its
+// digest name is a blob that hashed to it.
+fn spark_serving_materialize_blob_steps(blob: gunbc.ollama_model_resolution.OllamaBlobDigest) -> std.types.List<SparkServingInstallRemoteCommandsVerdict> {
+  [
+    spark_serving_admit_portable_remote_argv(
+      identity: concat("fetch-blob-", blob.hex as String) as std.types.NonEmptyStr,
+      raws: [
+        "curl", "-fsSL", "--connect-timeout", spark_serving_api_readiness_connect_timeout_word(),
+        "-o", spark_serving_staged_blob_path(hex: blob.hex) as String,
+        spark_serving_registry_blob_url(hex: blob.hex),
+      ],
+    ),
+    spark_serving_admit_typed_file_step(
+      identity: concat("declare-checksum-blob-", blob.hex as String) as std.types.NonEmptyStr,
+      path: spark_serving_blob_checksum_path(hex: blob.hex),
+      content: spark_serving_checksum_line(
+        hex: blob.hex,
+        path: spark_serving_staged_blob_path(hex: blob.hex) as String,
+      ),
+    ),
+    spark_serving_admit_portable_remote_argv(
+      identity: concat("verify-blob-", blob.hex as String) as std.types.NonEmptyStr,
+      raws: [
+        "sha256sum", "--check", "--status",
+        spark_serving_blob_checksum_path(hex: blob.hex) as String,
+      ],
+    ),
+    spark_serving_admit_portable_remote_argv(
+      identity: concat("publish-blob-", blob.hex as String) as std.types.NonEmptyStr,
+      raws: [
+        "mv", "-f",
+        spark_serving_staged_blob_path(hex: blob.hex) as String,
+        spark_serving_published_blob_path(hex: blob.hex) as String,
+      ],
+    ),
+  ]
+}
+
+// THE VERIFICATION IS THE WHOLE POINT, AND IT REFUSES RATHER THAN WARNS.
+//
+// `sha256sum --check --status` exits non-zero on a mismatch, and a non-zero step fails the whole
+// sequence -- so bytes that do not hash to the declared digest never reach the store, and the run
+// stops with a named failing step rather than continuing against a file nobody vouched for.
+//
+// THE EXPECTED DIGEST ARRIVES AS A FILE, NOT AS SHELL. The first version of this piped an echo into
+// sha256sum, and the portability wall refused it: `sh -c` with a pipe is shell interpolation at the
+// far side, which is precisely the class this fleet does not send. That refusal was right and the
+// remedy is not a quieter spelling -- it is that delivering BYTES to a remote path is already a
+// modeled operation (gunbc.typed_remote_file_write, the same one that writes the unit file), so the
+// checksum line travels as content and the verification is a plain portable argv over it.
+fn spark_serving_checksum_line(hex: std.types.NonEmptyStr, path: String) -> String {
+  join([hex as String, "  ", path, "\n"], "")
+}
+
+// NO WILDCARD, and each unimplemented effect refuses under its OWN name (#8323's construction,
+// kept and extended). A wildcard refused correctly but said only that something other than the
+// realized set was asked for, so a thirteenth variant would have been absorbed into that sentence
+// rather than forcing a decision; enumerating makes a new variant non-exhaustive instead. That
+// also retires the non_fold_residue roster row this site briefly carried — there is no wildcard
+// left to roster, and a row for a site that no longer exists counts as STALE, which reds the same
+// two witnesses the row was added to green.
+// WRITING THE UNIT IS BYTES, NOT ARGV, so this produces a `RemoteFileBytes` operation. The bytes come
+// from `gunbc.spark.serving_unit_render` -- the single rendering the observe side also reads -- so a
+// delivered unit and an observed unit are compared against the same value rather than two renderings
+// that can drift.
+//
+// The path is ADMITTED, not trusted: the seal checks containment under the executor home and
+// portability under the far-side re-parse allowlist, and its refusal is carried through with its own
+// cause rather than collapsing into a generic not-implemented.
+//
+// Mode is owner-read-write: a user unit is read by that user's own systemd manager and has no reason
+// to be world-readable.
+//
+// TWO OPERATIONS, ORDERED, because the first consumer is a BARE host. `~/.config/systemd/user` does
+// not exist on a machine that has never run a user unit, and the file convergence opens a staging
+// sibling with `dd` -- it does not create missing parents. Without the mkdir the very first step
+// refuses on exactly the host this effect exists to restore, so realizing the write alone would not
+// have realized the effect.
+//
+// The mkdir is NOT privileged: the directory lives under the executor's own home, so `sudo` would be
+// both unnecessary and a privilege escalation for a write the account can already perform. `-p` makes
+// it idempotent, which matters because this effect re-runs on every converge until the unit member
+// reports converged.
+fn spark_serving_write_user_unit_operation() -> SparkServingInstallRemoteCommandsVerdict {
+  match typed_remote_file_write_seal(
+    path: spark_serving_user_unit_path(),
+    content: spark_serving_desired_user_unit_text(),
+    allowed_scope: gunbc.file_access.FileTreeScope { root_path: spark_serving_executor_home as std.types.NonEmptyStr },
+  ) {
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: why } =>
+      SparkServingInstallRemoteCommandsRefused {
+        reason: join(["spark_serving_converge_realize: WriteUserUnitFile refused — ", why as String], ""),
+      }
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: w } =>
+      match portable_remote_words(
+        raws: ["mkdir", "-p", spark_serving_user_unit_dir() as String],
+      ) {
+        Absent =>
+          SparkServingInstallRemoteCommandsRefused {
+            reason: "spark_serving_converge_realize: WriteUserUnitFile refused — the user unit directory is not portable under the far-side re-parse allowlist",
+          }
+        Present { value: words } =>
+          SparkServingInstallRemoteCommandsPresent {
+            steps: [
+              spark_serving_step(
+                identity: "ensure-user-unit-dir" as std.types.NonEmptyStr,
+                operation: gunbc.remote_operation.RemoteArgv { argv: portable_remote_words_strings(words: words) },
+              ),
+              spark_serving_step(
+                identity: "write-user-unit-file" as std.types.NonEmptyStr,
+                operation: gunbc.remote_operation.RemoteFileBytes { write: w, mode: gunbc.typed_remote_file_write.RemoteFileModeOwnerReadWrite },
+              ),
+            ],
+          }
+      }
+  }
+}
+
+// INSTALLING THE OWNED RUNTIME CLOSURE -- nine steps, each named, each frozen.
+//
+// THE DIGEST IS VERIFIED BY A MANIFEST PLUS `--check`, NOT BY READING STDOUT. `sha256sum <path>`
+// exits zero whenever the file is merely READABLE and puts its answer on stdout, so freezing it as a
+// step would install a check that passes on any downloaded bytes at all. `sha256sum --check --status`
+// is the opposite: it is silent, and its EXIT STATUS is the comparison result. So the expected digest
+// travels as file bytes -- a checksum manifest written by the same typed file-write path the unit
+// file uses -- and the verifying argv names only the manifest.
+//
+// What that buys is that the frozen artifact hash covers the expected digest, the archive path the
+// digest is claimed of, the manifest bytes, the manifest's destination, and the exact verifying argv.
+// An apply cannot substitute a different expectation, because the expectation is in the bundle.
+//
+// THE STAGING TREE IS REMOVED FIRST. This effect re-runs on every converge until the runtime member
+// reports converged, so a previous interrupted attempt's partial tree would otherwise be extracted
+// over -- and `tar` merging into a half-populated directory produces a tree that is neither attempt.
+// The removal is confined to a path derived from the materialization identity under our own runtimes
+// parent; it is not a general delete.
+//
+// NOTHING HERE ESTABLISHES THAT THE RUNTIME IS CORRECT. Every step exiting zero means the invoked
+// program reported completion. `tar` exiting zero is not proof the entrypoint is present, and `mv`
+// exiting zero is not proof the published tree has the intended contents -- which is why the runtime
+// observer reads the published root independently afterwards and the plan must come back empty. The
+// `test -x` step is here to stop the sequence BEFORE publishing a tree that is visibly wrong, not to
+// serve as that proof.
+//
+// THE RECEIPT IS WRITTEN LAST INTO STAGING, and reaches the published root by the same rename that
+// publishes the tree. Its presence is therefore evidence that every prior step completed, and it
+// cannot outlive a failed publish -- nor can a publish succeed and leave the receipt behind, which is
+// what a separate post-publish write would risk.
+//
+// PUBLICATION REMOVES ANY TREE ALREADY AT THE FINAL PATH, and that step is safe for a structural
+// reason rather than a hopeful one: `mv -T` refuses a populated destination, so without the removal a
+// second attempt after any interruption could never republish and "incomplete is repairable" would be
+// false. What makes the removal admissible is that reconcile emits no operation for a member already
+// in the desired state -- so this sequence is unreachable for a host whose runtime observes Complete,
+// and the tree being removed is by construction one nothing is serving from. That precondition is not
+// left to reading: `a_complete_runtime_plans_no_install_steps` fails if reconcile ever emits it.
+fn spark_serving_install_owned_runtime_closure_steps() -> SparkServingInstallRemoteCommandsVerdict {
+  let workspace = spark_serving_required_runtime_workspace_root() as String
+  let staging = spark_serving_required_runtime_staging_root() as String
+  let archive = spark_serving_required_runtime_staged_archive_path() as String
+  let manifest = spark_serving_required_runtime_checksum_manifest_path() as String
+  let staged_exe = spark_serving_required_runtime_staged_executable_path() as String
+  let final_root = spark_serving_required_runtime_root() as String
+  match spark_serving_runtime_checksum_manifest_write() {
+    SparkServingInstallRemoteCommandsRefused { reason: why } =>
+      SparkServingInstallRemoteCommandsRefused { reason: why }
+    SparkServingInstallRemoteCommandsPresent { steps: manifest_steps } =>
+      match spark_serving_runtime_receipt_write() {
+        SparkServingInstallRemoteCommandsRefused { reason: why } =>
+          SparkServingInstallRemoteCommandsRefused { reason: why }
+        SparkServingInstallRemoteCommandsPresent { steps: receipt_steps } =>
+          spark_serving_concat_step_verdicts(verdicts: [
+            spark_serving_admit_portable_remote_argv(
+              identity: "ensure-runtimes-parent" as std.types.NonEmptyStr,
+              raws: ["mkdir", "-p", spark_serving_runtimes_parent() as String],
+            ),
+            spark_serving_admit_portable_remote_argv(
+              identity: "reset-attempt-workspace" as std.types.NonEmptyStr,
+              raws: ["rm", "-rf", workspace],
+            ),
+            spark_serving_admit_portable_remote_argv(
+              identity: "create-attempt-workspace" as std.types.NonEmptyStr,
+              raws: ["mkdir", "-p", workspace],
+            ),
+            spark_serving_admit_portable_remote_argv(
+              identity: "download-archive" as std.types.NonEmptyStr,
+              raws: [
+                "curl", "-fsSL", "-o", archive,
+                ollama_binary_release_download_locator(binary_release: ollama_required_release) as String,
+              ],
+            ),
+            SparkServingInstallRemoteCommandsPresent { steps: manifest_steps },
+            spark_serving_admit_portable_remote_argv(
+              identity: "admit-archive-digest" as std.types.NonEmptyStr,
+              raws: ["sha256sum", "--check", "--status", manifest],
+            ),
+            spark_serving_admit_portable_remote_argv(
+              identity: "reset-staging-tree" as std.types.NonEmptyStr,
+              raws: ["rm", "-rf", staging],
+            ),
+            spark_serving_admit_portable_remote_argv(
+              identity: "create-staging-tree" as std.types.NonEmptyStr,
+              raws: ["mkdir", "-p", staging],
+            ),
+            spark_serving_runtime_extract_argv(archive: archive, staging: staging),
+            spark_serving_admit_portable_remote_argv(
+              identity: "require-staged-entrypoint" as std.types.NonEmptyStr,
+              raws: ["test", "-x", staged_exe],
+            ),
+            SparkServingInstallRemoteCommandsPresent { steps: receipt_steps },
+            spark_serving_admit_portable_remote_argv(
+              identity: "reset-unpublished-runtime-root" as std.types.NonEmptyStr,
+              raws: ["rm", "-rf", final_root],
+            ),
+            spark_serving_admit_portable_remote_argv(
+              identity: "publish-runtime-root" as std.types.NonEmptyStr,
+              raws: ["mv", "-T", staging, final_root],
+            ),
+            spark_serving_admit_portable_remote_argv(
+              identity: "discard-attempt-workspace" as std.types.NonEmptyStr,
+              raws: ["rm", "-rf", workspace],
+            ),
+          ])
+      }
+  }
+}
+
+// THE EXTRACTION FLAG COMES FROM THE CITED CODEC, not from the filename. A distribution suffix is a
+// naming convention -- `.tgz` and `.tar.gz` are one codec spelled two ways -- so selecting the
+// decompressor by suffix would be reading a nickname where the release row already carries the fact.
+fn spark_serving_runtime_extract_argv(
+  archive: String,
+  staging: String,
+) -> SparkServingInstallRemoteCommandsVerdict {
+  match ollama_required_release.archive_format.codec {
+    Zstd =>
+      spark_serving_admit_portable_remote_argv(
+        identity: "extract-archive" as std.types.NonEmptyStr,
+        raws: ["tar", "--zstd", "-xf", archive, "-C", staging],
+      )
+    Gzip =>
+      spark_serving_admit_portable_remote_argv(
+        identity: "extract-archive" as std.types.NonEmptyStr,
+        raws: ["tar", "-xzf", archive, "-C", staging],
+      )
+  }
+}
+
+// The manifest is `<hex><two spaces><path>`, the format `sha256sum --check` parses. Two spaces means
+// binary mode; one space and a star means the same thing to GNU coreutils, and picking one and
+// stating it here is cheaper than discovering the difference on a host.
+fn spark_serving_runtime_checksum_manifest_content() -> String {
+  join([
+    ollama_required_release.digest.hex as String,
+    "  ",
+    spark_serving_required_runtime_staged_archive_path() as String,
+  ], "")
+}
+
+fn spark_serving_runtime_checksum_manifest_write() -> SparkServingInstallRemoteCommandsVerdict {
+  spark_serving_admit_typed_file_step(
+    identity: "write-checksum-manifest" as std.types.NonEmptyStr,
+    path: spark_serving_required_runtime_checksum_manifest_path(),
+    content: spark_serving_runtime_checksum_manifest_content(),
+  )
+}
+
+// The receipt records WHICH materialization this root is, so a later observer can tell a correctly
+// published tree from one that merely occupies the right path name.
+fn spark_serving_runtime_receipt_write() -> SparkServingInstallRemoteCommandsVerdict {
+  spark_serving_admit_typed_file_step(
+    identity: "write-materialization-receipt" as std.types.NonEmptyStr,
+    path: spark_serving_required_runtime_staged_receipt_path(),
+    content: ollama_runtime_materialization_identity_for_required_release().digest as String,
+  )
+}
+
+// One admission path for every frozen file write, so containment and far-side portability are checked
+// the same way for a checksum manifest, a receipt and a unit file.
+fn spark_serving_admit_typed_file_step(
+  identity: std.types.NonEmptyStr,
+  path: FilePath,
+  content: String,
+) -> SparkServingInstallRemoteCommandsVerdict {
+  match typed_remote_file_write_seal(
+    path: path,
+    content: content,
+    allowed_scope: gunbc.file_access.FileTreeScope { root_path: spark_serving_executor_home as std.types.NonEmptyStr },
+  ) {
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: why } =>
+      SparkServingInstallRemoteCommandsRefused {
+        reason: join([
+          "spark_serving_converge_realize: ", identity as String, " refused — ", why as String,
+        ], ""),
+      }
+    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: w } =>
+      SparkServingInstallRemoteCommandsPresent {
+        steps: [
+          spark_serving_step(
+            identity: identity,
+            operation: gunbc.remote_operation.RemoteFileBytes { write: w, mode: gunbc.typed_remote_file_write.RemoteFileModeOwnerReadWrite },
+          ),
+        ],
+      }
+  }
+}
+
+// ONE REFUSAL REFUSES THE WHOLE SEQUENCE. A partially admitted install is not a shorter install: it
+// is an install that would run its prefix and report the effect applied.
+fn spark_serving_concat_step_verdicts(
+  verdicts: std.types.List<SparkServingInstallRemoteCommandsVerdict>,
+) -> SparkServingInstallRemoteCommandsVerdict {
+  fold(verdicts, init: SparkServingInstallRemoteCommandsPresent { steps: [] }, f: fn(acc, v) {
+    match acc {
+      SparkServingInstallRemoteCommandsRefused { reason: _ } => acc
+      SparkServingInstallRemoteCommandsPresent { steps: prior } =>
+        match v {
+          SparkServingInstallRemoteCommandsRefused { reason: why } =>
+            SparkServingInstallRemoteCommandsRefused { reason: why }
+          SparkServingInstallRemoteCommandsPresent { steps: next } =>
+            SparkServingInstallRemoteCommandsPresent { steps: concat(prior, next) }
+        }
+    }
+  })
+}
+
+fn realize_spark_serving_install_effect_command(
+  effect: gunbc.spark.serving_realization.ServingInstallEffect,
+  executor_login: std.types.NonEmptyStr,
+) -> SparkServingInstallRemoteCommandsVerdict {
+  match effect {
+    EnableLingerForOwnAccount =>
+      spark_serving_enable_linger_remote_argv(login: executor_login)
+    gunbc.spark.serving_realization.ReloadUserManager => spark_serving_reload_user_manager_remote_argv()
+    gunbc.spark.serving_realization.EnableUserUnit => spark_serving_enable_user_unit_remote_argv()
+    gunbc.spark.serving_realization.StartUserUnit => spark_serving_start_user_unit_remote_argv()
+    gunbc.spark.serving_realization.WriteSystemUnitFile =>
+      SparkServingInstallRemoteCommandsRefused {
+        reason: "spark_serving_converge_realize: WriteSystemUnitFile is not implemented in the Spark serving slice",
+      }
+    gunbc.spark.serving_realization.ReloadSystemManager =>
+      SparkServingInstallRemoteCommandsRefused {
+        reason: "spark_serving_converge_realize: ReloadSystemManager is not implemented in the Spark serving slice",
+      }
+    gunbc.spark.serving_realization.EnableSystemUnit =>
+      SparkServingInstallRemoteCommandsRefused {
+        reason: "spark_serving_converge_realize: EnableSystemUnit is not implemented in the Spark serving slice",
+      }
+    gunbc.spark.serving_realization.WriteUserUnitFile => spark_serving_write_user_unit_operation()
+    gunbc.spark.serving_realization.InstallRuntimePackage =>
+      SparkServingInstallRemoteCommandsRefused {
+        reason: "spark_serving_converge_realize: InstallRuntimePackage is not implemented in the Spark serving slice",
+      }
+    gunbc.spark.serving_realization.InstallOwnedRuntimeClosure => spark_serving_install_owned_runtime_closure_steps()
+    gunbc.spark.serving_realization.MaterializeModelArtifact => spark_serving_materialize_model_artifact_steps()
+    gunbc.spark.serving_realization.GrantContainerRuntimeAccess =>
+      SparkServingInstallRemoteCommandsRefused {
+        reason: "spark_serving_converge_realize: GrantContainerRuntimeAccess is not implemented in the Spark serving slice",
+      }
+    gunbc.spark.serving_realization.RunContainerAsOwnUser =>
+      SparkServingInstallRemoteCommandsRefused {
+        reason: "spark_serving_converge_realize: RunContainerAsOwnUser is not implemented in the Spark serving slice",
+      }
+  }
+}
+
+// The concat here appends COMMANDS, not words. That is the whole difference from the prior
+// shape: each effect contributes one or more complete argvs, and the list preserves the order
+// the effects were frozen in.
+fn realize_spark_serving_install_effect_commands(
+  effects: std.types.List<gunbc.spark.serving_realization.ServingInstallEffect>,
+  executor_login: std.types.NonEmptyStr,
+) -> SparkServingInstallRemoteCommandsVerdict {
+  fold(
+    effects,
+    init: SparkServingInstallRemoteCommandsPresent { steps: [] },
+    f: fn(acc, effect) {
+      match acc {
+        SparkServingInstallRemoteCommandsRefused { reason: _ } => acc
+        SparkServingInstallRemoteCommandsPresent { steps: prior } =>
+          match realize_spark_serving_install_effect_command(
+            effect: effect,
+            executor_login: executor_login,
+          ) {
+            SparkServingInstallRemoteCommandsRefused { reason: why } =>
+              SparkServingInstallRemoteCommandsRefused { reason: why }
+            SparkServingInstallRemoteCommandsPresent { steps: next } =>
+              SparkServingInstallRemoteCommandsPresent {
+                steps: concat(prior, next),
+              }
+          }
+      }
+    },
+  )
+}
+
+fn spark_serving_install_remote_commands_refused(v: SparkServingInstallRemoteCommandsVerdict) -> Bool {
+  match v {
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => true
+    SparkServingInstallRemoteCommandsPresent { steps: _ } => false
+  }
+}
+
+fn spark_serving_default_executor_login() -> std.types.NonEmptyStr {
+  spark_serving_automation_principal_login()
+}
+
+// Compares ONE command against the single command the linger effect realizes. A caller holding
+// a command sequence must select the command it means; this deliberately refuses a sequence of
+// any length other than one rather than comparing against a flattened join, which is the
+// comparison that would have hidden the fused-argv defect.
+fn spark_serving_enable_linger_argv_matches_expected(argv: std.types.List<String>) -> Bool {
+  match spark_serving_enable_linger_remote_argv(
+    login: spark_serving_default_executor_login(),
+  ) {
+    SparkServingInstallRemoteCommandsPresent { steps: expected } =>
+      if expected.length() == 1 {
+        match remote_operation_argv(operation: expected.first().operation) {
+          Present { value: words } => join(argv, "\0") == join(words, "\0")
+          Absent => false
+        }
+      } else {
+        false
+      }
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+  }
+}

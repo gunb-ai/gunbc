@@ -1,0 +1,113 @@
+module test.claim.spark_managed_grant_reconcile_witness
+
+
+// srv6's actual listing shape, and the reason the reboot leg failed: linger is granted, reboot is
+// not, and nothing computed the difference.
+data srv6_listing_before: String = "Matching Defaults entries for gunbc-automation on srv6:\n    env_reset\n\nUser gunbc-automation may run the following commands on srv6:\n    (root) NOPASSWD: /usr/bin/loginctl enable-linger\n"
+
+data srv6_listing_after: String = "User gunbc-automation may run the following commands on srv6:\n    (root) NOPASSWD: /usr/bin/loginctl enable-linger\n    (root) NOPASSWD: /usr/bin/systemctl reboot\n"
+
+test fn a_listing_naming_only_linger_puts_reboot_in_the_install_set() -> Bool {
+  let missing = spark_managed_grants_to_install(outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_before })
+  missing.length() == 1
+    && any(missing, m => match m {
+         gunbc.spark.managed_access_bootstrap.RebootThisHost => true
+         EnableLingerForOwnAccount => false
+       })
+}
+
+// THE DISCRIMINATING PAIR. The same function over the same shape of input answers differently once
+// the grant is present, which is what makes it a reconcile rather than a constant.
+test fn the_same_listing_with_reboot_added_installs_nothing() -> Bool {
+  spark_managed_grants_to_install(outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_after }).length() == 0
+    && spark_managed_grants_converged(outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_after })
+    && !spark_managed_grants_converged(outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_before })
+}
+
+// Sudo demanding a password IS the answer "none", successfully obtained, so every desired grant is
+// missing and the remedy is to install them.
+test fn a_password_demand_is_an_observation_that_no_grant_is_held() -> Bool {
+  let o = GrantAbsent { detail: "exit=1 stderr=sudo: a password is required" }
+  spark_managed_grants_to_install(outcome: o).length() == spark_managed_grant_population.length()
+    && spark_managed_grants_unobserved(outcome: o).length() == 0
+}
+
+// THE ARM THAT KEEPS IGNORANCE OUT OF THE INSTALL SET, and the reason the standing is three-way. A
+// probe that failed for any other reason must not be read as "no grants held" -- installing sudoers
+// entries on a host we could not measure is actuating on ignorance, and it is the exact shape of the
+// absorbing fallback the repo forbids.
+test fn a_probe_that_failed_for_another_reason_installs_nothing() -> Bool {
+  let o = GrantAbsent { detail: "exit=255 stderr=ssh: connect to host srv6 port 22: No route to host" }
+  spark_managed_grants_to_install(outcome: o).length() == 0
+    && spark_managed_grants_unobserved(outcome: o).length() == spark_managed_grant_population.length()
+    && !spark_managed_grants_converged(outcome: o)
+}
+
+// A refused leg is unobserved for the same reason, on a different channel.
+test fn a_refused_probe_leg_is_unobserved_and_never_converged() -> Bool {
+  let o = gunbc.spark.managed_access_bootstrap.GrantProbeRefused { cause: "non-portable-remote-word" }
+  spark_managed_grants_to_install(outcome: o).length() == 0
+    && !spark_managed_grants_converged(outcome: o)
+}
+
+// AN EMPTY INSTALL LIST IS NOT CONVERGENCE. A fully unobserved host produces one, and reading it as
+// "nothing to do" is the empty-observation narrow: the run would report a host needing no work
+// precisely when it learned nothing about it.
+test fn nothing_to_install_does_not_imply_converged() -> Bool {
+  let unobserved = gunbc.spark.managed_access_bootstrap.GrantProbeRefused { cause: "leg refused" }
+  spark_managed_grants_to_install(outcome: unobserved).length() == 0
+    && !spark_managed_grants_converged(outcome: unobserved)
+    && spark_managed_grants_converged(outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_after })
+}
+
+// THE INSTALLED LINE AND THE ARGV COME FROM ONE ROW, which is the whole point of the carrier: the
+// sudoers entry authorizes exactly the command the actuator runs. Asserting the containment is what
+// makes a drift between them impossible to land silently.
+test fn the_sudoers_line_authorizes_exactly_the_argv_the_actuator_runs() -> Bool {
+  fold(spark_managed_grant_population, init: true, f: fn(acc, g) {
+    let content = spark_managed_grant_sudoers_content(grant: g)
+    let command = spark_managed_grant_sudoers_command(grant: g) as String
+    acc
+      && string_contains(content, "gunbc-automation ALL=(root) NOPASSWD: ")
+      && string_contains(content, command)
+      && any(spark_managed_grant_argv(grant: g).skip(n: 2), w => string_contains(command, w))
+  })
+}
+
+// Narrow on every axis sudoers offers. A wildcard command would make the population decorative,
+// since one entry would then authorize everything the others name.
+test fn no_grant_is_written_as_a_wildcard() -> Bool {
+  fold(spark_managed_grant_population, init: true, f: fn(acc, g) {
+    acc && !string_contains(spark_managed_grant_sudoers_content(grant: g), "ALL\n")
+        && !string_contains(spark_managed_grant_sudoers_content(grant: g), "NOPASSWD: ALL")
+  })
+}
+
+// Distinct files per grant: appending to one file has no idempotent form, so a second reconcile run
+// would differ from the first.
+test fn each_grant_lands_in_its_own_dropin_file() -> Bool {
+  spark_managed_grant_dropin_path(grant: gunbc.spark.managed_access_bootstrap.RebootThisHost) as String
+    != spark_managed_grant_dropin_path(grant: EnableLingerForOwnAccount) as String
+    && string_contains(spark_managed_grant_dropin_path(grant: gunbc.spark.managed_access_bootstrap.RebootThisHost) as String, "/etc/sudoers.d/")
+}
+
+// The report names the gap and its remedy in the same line, because the failure this replaces said
+// only "a password is required" -- naming neither the grant nor where it goes.
+test fn the_report_names_the_missing_grant_and_where_it_goes() -> Bool {
+  let text = spark_managed_grant_report(host: "srv6", outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_before })
+  string_contains(text, "converged=false")
+    && string_contains(text, "standing=not-held")
+    && string_contains(text, "/etc/sudoers.d/gunbc-reboot")
+    && string_contains(text, "standing=held")
+}
+
+test fn a_held_grant_reports_held_rather_than_silence() -> Bool {
+  match spark_managed_grant_standing_from_outcome(
+    grant: EnableLingerForOwnAccount,
+    outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_before },
+  ) {
+    gunbc.spark.managed_grant_reconcile.GrantHeld { grant: _ } => true
+    gunbc.spark.managed_grant_reconcile.GrantNotHeld { grant: _ } => false
+    gunbc.spark.managed_grant_reconcile.GrantStandingUnobserved { grant: _, cause: _ } => false
+  }
+}

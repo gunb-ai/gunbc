@@ -6,7 +6,7 @@ module test.claim.spark_bootstrap_provision_witness
 // one import turned every bare reference into "no such function".
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // Controls over the Spark credential population model. The prior revision of this witness proved
 // least-privilege properties of an IAM binding set that has since been deleted along with the
@@ -23,8 +23,8 @@ fn spark_population_has(host: product.placement_supply.HostIdentity, kind: gunbc
 
 fn spark_allocation_is_pending(a: gunbc.spark_bootstrap_provision.SparkSecretAllocation) -> Bool {
   match a {
-    SparkSecretAllocated { occurrence: _, handle: _ } => false
-    SparkSecretAllocationPending { occurrence: _ } => true
+    gunbc.spark.bootstrap_provision.SparkSecretAllocated { occurrence: _, handle: _ } => false
+    gunbc.spark.bootstrap_provision.SparkSecretAllocationPending { occurrence: _ } => true
   }
 }
 
@@ -33,22 +33,22 @@ fn spark_allocation_is_pending(a: gunbc.spark_bootstrap_provision.SparkSecretAll
 // for a per-device population.
 test fn spark_population_is_four_host_scoped_occurrences() -> Bool {
   spark_credential_population().length() == 4
-    && spark_population_has(host: spark_srv5(), kind: FactoryHotspotCredential)
-    && spark_population_has(host: spark_srv5(), kind: AdministratorCredential)
-    && spark_population_has(host: spark_srv6(), kind: FactoryHotspotCredential)
-    && spark_population_has(host: spark_srv6(), kind: AdministratorCredential)
+    && spark_population_has(host: spark_srv5(), kind: gunbc.spark.bootstrap_provision.FactoryHotspotCredential)
+    && spark_population_has(host: spark_srv5(), kind: gunbc.spark.bootstrap_provision.AdministratorCredential)
+    && spark_population_has(host: spark_srv6(), kind: gunbc.spark.bootstrap_provision.FactoryHotspotCredential)
+    && spark_population_has(host: spark_srv6(), kind: gunbc.spark.bootstrap_provision.AdministratorCredential)
 }
 
 // CONTROL 2: occurrences are distinguished by BOTH axes. A kind-only or host-only identity would
 // still satisfy control 1's count while fusing two real credentials, and fusing them is the exact
 // failure that makes one AddVersion silently become a prior version of another credential.
 test fn spark_occurrence_identity_uses_both_axes() -> Bool {
-  let a = spark_credential_occurrence(host: spark_srv5(), kind: FactoryHotspotCredential)
-  let b = spark_credential_occurrence(host: spark_srv6(), kind: FactoryHotspotCredential)
-  let c = spark_credential_occurrence(host: spark_srv5(), kind: AdministratorCredential)
+  let a = spark_credential_occurrence(host: spark_srv5(), kind: gunbc.spark.bootstrap_provision.FactoryHotspotCredential)
+  let b = spark_credential_occurrence(host: spark_srv6(), kind: gunbc.spark.bootstrap_provision.FactoryHotspotCredential)
+  let c = spark_credential_occurrence(host: spark_srv5(), kind: gunbc.spark.bootstrap_provision.AdministratorCredential)
   !spark_occurrence_eq(a: a, b: b)
     && !spark_occurrence_eq(a: a, b: c)
-    && spark_occurrence_eq(a: a, b: spark_credential_occurrence(host: spark_srv5(), kind: FactoryHotspotCredential))
+    && spark_occurrence_eq(a: a, b: spark_credential_occurrence(host: spark_srv5(), kind: gunbc.spark.bootstrap_provision.FactoryHotspotCredential))
 }
 
 // CONTROL 3: no occurrence carries an allocated external handle. Pending is the honest state while
@@ -65,7 +65,7 @@ test fn spark_allocations_are_all_pending() -> Bool {
 // allocation path.
 fn spark_legacy_is_unbound(c: gunbc.spark_bootstrap_provision.SparkLegacyContainerStanding) -> Bool {
   match c {
-    ObservedLegacyUnbound { handle: h } => h != ""
+    gunbc.spark.bootstrap_provision.ObservedLegacyUnbound { handle: h } => h != ""
   }
 }
 
@@ -85,48 +85,48 @@ test fn spark_legacy_containers_do_not_cover_the_population() -> Bool {
 
 fn spark_allocated_specimen() -> gunbc.spark_bootstrap_provision.SparkSecretAllocation {
   gunbc.spark_bootstrap_provision.SparkSecretAllocated {
-    occurrence: spark_credential_occurrence(host: spark_srv5(), kind: AdministratorCredential),
+    occurrence: spark_credential_occurrence(host: spark_srv5(), kind: gunbc.spark.bootstrap_provision.AdministratorCredential),
     handle: "fixture-allocated-handle"
   }
 }
 
 fn spark_pending_specimen() -> gunbc.spark_bootstrap_provision.SparkSecretAllocation {
-  spark_secret_allocation(occurrence: spark_credential_occurrence(host: spark_srv5(), kind: AdministratorCredential))
+  spark_secret_allocation(occurrence: spark_credential_occurrence(host: spark_srv5(), kind: gunbc.spark.bootstrap_provision.AdministratorCredential))
 }
 
 fn spark_verdict_is_refused(v: gunbc.spark_bootstrap_provision.SparkContainerVerdict) -> Bool {
   match v {
-    SparkContainerRefused { cause: _ } => true
-    SparkContainerCreateRequired => false
-    SparkContainerConverged { handle: _ } => false
-    SparkContainerConflicted { handle: _, cause: _ } => false
+    gunbc.spark.bootstrap_provision.SparkContainerRefused { cause: _ } => true
+    gunbc.spark.bootstrap_provision.SparkContainerCreateRequired => false
+    gunbc.spark.bootstrap_provision.SparkContainerConverged { handle: _ } => false
+    gunbc.spark.bootstrap_provision.SparkContainerConflicted { handle: _, cause: _ } => false
   }
 }
 
 fn spark_verdict_is_conflicted(v: gunbc.spark_bootstrap_provision.SparkContainerVerdict) -> Bool {
   match v {
-    SparkContainerConflicted { handle: _, cause: _ } => true
-    SparkContainerRefused { cause: _ } => false
-    SparkContainerCreateRequired => false
-    SparkContainerConverged { handle: _ } => false
+    gunbc.spark.bootstrap_provision.SparkContainerConflicted { handle: _, cause: _ } => true
+    gunbc.spark.bootstrap_provision.SparkContainerRefused { cause: _ } => false
+    gunbc.spark.bootstrap_provision.SparkContainerCreateRequired => false
+    gunbc.spark.bootstrap_provision.SparkContainerConverged { handle: _ } => false
   }
 }
 
 fn spark_verdict_is_converged(v: gunbc.spark_bootstrap_provision.SparkContainerVerdict) -> Bool {
   match v {
-    SparkContainerConverged { handle: _ } => true
-    SparkContainerConflicted { handle: _, cause: _ } => false
-    SparkContainerRefused { cause: _ } => false
-    SparkContainerCreateRequired => false
+    gunbc.spark.bootstrap_provision.SparkContainerConverged { handle: _ } => true
+    gunbc.spark.bootstrap_provision.SparkContainerConflicted { handle: _, cause: _ } => false
+    gunbc.spark.bootstrap_provision.SparkContainerRefused { cause: _ } => false
+    gunbc.spark.bootstrap_provision.SparkContainerCreateRequired => false
   }
 }
 
 fn spark_verdict_is_create_required(v: gunbc.spark_bootstrap_provision.SparkContainerVerdict) -> Bool {
   match v {
-    SparkContainerCreateRequired => true
-    SparkContainerConverged { handle: _ } => false
-    SparkContainerConflicted { handle: _, cause: _ } => false
-    SparkContainerRefused { cause: _ } => false
+    gunbc.spark.bootstrap_provision.SparkContainerCreateRequired => true
+    gunbc.spark.bootstrap_provision.SparkContainerConverged { handle: _ } => false
+    gunbc.spark.bootstrap_provision.SparkContainerConflicted { handle: _, cause: _ } => false
+    gunbc.spark.bootstrap_provision.SparkContainerRefused { cause: _ } => false
   }
 }
 
@@ -135,14 +135,14 @@ fn spark_verdict_is_create_required(v: gunbc.spark_bootstrap_provision.SparkCont
 test fn spark_unallocated_occurrence_refuses_observation() -> Bool {
   spark_verdict_is_refused(v: classify_spark_container(
     allocation: spark_pending_specimen(),
-    observation: SparkContainerAbsent))
+    observation: gunbc.spark.bootstrap_provision.SparkContainerAbsent))
 }
 
 // CONTROL 9: absent means create; versionless-present means converged. The two ordinary arms.
 test fn spark_absent_creates_and_empty_container_converges() -> Bool {
   spark_verdict_is_create_required(v: classify_spark_container(
     allocation: spark_allocated_specimen(),
-    observation: SparkContainerAbsent))
+    observation: gunbc.spark.bootstrap_provision.SparkContainerAbsent))
     && spark_verdict_is_converged(v: classify_spark_container(
          allocation: spark_allocated_specimen(),
          observation: gunbc.spark_bootstrap_provision.SparkContainerPresent { handle: "fixture-allocated-handle", version_count: 0 }))
@@ -180,7 +180,7 @@ fn spark_bcell(role: String, member: String) -> extdeps.cloud.gcp.iam.GcpIamBind
 // The owned universe is a set of CELLS. This model owns owned-a and owned-b under the accessor
 // role only; it deliberately does NOT own either of them under admin, so an admin binding on a
 // member we otherwise recognise is still someone else's grant.
-fn spark_owned_universe() -> List<extdeps.cloud.gcp.iam.GcpIamBindingCell> {
+fn spark_owned_universe() -> std.types.List<extdeps.cloud.gcp.iam.GcpIamBindingCell> {
   [
     spark_bcell(role: spark_accessor_role(), member: spark_owned_a()),
     spark_bcell(role: spark_accessor_role(), member: spark_owned_b())
@@ -253,9 +253,9 @@ test fn spark_iam_treats_a_condition_as_part_of_identity() -> Bool {
 // with no signal at all.
 test fn spark_iam_write_without_etag_refuses() -> Bool {
   let d = spark_iam_delta(observed: [], desired_owned: [], owned_universe: spark_owned_universe())
-  match admit_spark_iam_write(observed_etag: SparkEtagMissing, delta: d) {
-    SparkIamWriteRefused { cause: _ } => true
-    SparkIamWriteAdmitted { etag: _, delta: _ } => false
+  match admit_spark_iam_write(observed_etag: gunbc.spark.bootstrap_provision.SparkEtagMissing, delta: d) {
+    gunbc.spark.bootstrap_provision.SparkIamWriteRefused { cause: _ } => true
+    gunbc.spark.bootstrap_provision.SparkIamWriteAdmitted { etag: _, delta: _ } => false
   }
 }
 
@@ -263,7 +263,7 @@ test fn spark_iam_write_without_etag_refuses() -> Bool {
 
 fn spark_identity_specimen() -> gunbc.spark_bootstrap_provision.SparkMaterializationIdentity {
   gunbc.spark_bootstrap_provision.SparkMaterializationIdentity {
-    occurrence: spark_credential_occurrence(host: spark_srv5(), kind: AdministratorCredential),
+    occurrence: spark_credential_occurrence(host: spark_srv5(), kind: gunbc.spark.bootstrap_provision.AdministratorCredential),
     payload_identity: "fixture-payload-identity"
   }
 }
@@ -279,28 +279,28 @@ fn spark_receipt_with(readback: gunbc.spark_bootstrap_provision.SparkReadbackVer
 
 fn spark_decision_is_refused(d: gunbc.spark_bootstrap_provision.SparkMaterializationDecision) -> Bool {
   match d {
-    SparkMaterializeRefused { cause: _ } => true
-    SparkMaterializeOnce { identity: _ } => false
-    SparkMaterializeNoop { exact_version: _ } => false
-    SparkMaterializeObserveStore { identity: _ } => false
+    gunbc.spark.bootstrap_provision.SparkMaterializeRefused { cause: _ } => true
+    gunbc.spark.bootstrap_provision.SparkMaterializeOnce { identity: _ } => false
+    gunbc.spark.bootstrap_provision.SparkMaterializeNoop { exact_version: _ } => false
+    gunbc.spark.bootstrap_provision.SparkMaterializeObserveStore { identity: _ } => false
   }
 }
 
 fn spark_decision_is_observe(d: gunbc.spark_bootstrap_provision.SparkMaterializationDecision) -> Bool {
   match d {
-    SparkMaterializeObserveStore { identity: _ } => true
-    SparkMaterializeRefused { cause: _ } => false
-    SparkMaterializeOnce { identity: _ } => false
-    SparkMaterializeNoop { exact_version: _ } => false
+    gunbc.spark.bootstrap_provision.SparkMaterializeObserveStore { identity: _ } => true
+    gunbc.spark.bootstrap_provision.SparkMaterializeRefused { cause: _ } => false
+    gunbc.spark.bootstrap_provision.SparkMaterializeOnce { identity: _ } => false
+    gunbc.spark.bootstrap_provision.SparkMaterializeNoop { exact_version: _ } => false
   }
 }
 
 fn spark_decision_is_noop(d: gunbc.spark_bootstrap_provision.SparkMaterializationDecision) -> Bool {
   match d {
-    SparkMaterializeNoop { exact_version: _ } => true
-    SparkMaterializeObserveStore { identity: _ } => false
-    SparkMaterializeRefused { cause: _ } => false
-    SparkMaterializeOnce { identity: _ } => false
+    gunbc.spark.bootstrap_provision.SparkMaterializeNoop { exact_version: _ } => true
+    gunbc.spark.bootstrap_provision.SparkMaterializeObserveStore { identity: _ } => false
+    gunbc.spark.bootstrap_provision.SparkMaterializeRefused { cause: _ } => false
+    gunbc.spark.bootstrap_provision.SparkMaterializeOnce { identity: _ } => false
   }
 }
 
@@ -336,22 +336,22 @@ test fn spark_version_address_is_not_a_payload_match() -> Bool {
   let admitted = admit_spark_readback_version(version: "7")
   let refused = admit_spark_readback_version(version: "latest")
   let addr_ok = match admitted {
-    SparkVersionAddressAdmitted { version: _ } => true
-    SparkVersionAddressRefused { cause: _ } => false
+    gunbc.spark.bootstrap_provision.SparkVersionAddressAdmitted { version: _ } => true
+    gunbc.spark.bootstrap_provision.SparkVersionAddressRefused { cause: _ } => false
   }
   let latest_refused = match refused {
-    SparkVersionAddressRefused { cause: _ } => true
-    SparkVersionAddressAdmitted { version: _ } => false
+    gunbc.spark.bootstrap_provision.SparkVersionAddressRefused { cause: _ } => true
+    gunbc.spark.bootstrap_provision.SparkVersionAddressAdmitted { version: _ } => false
   }
   let agreeing = match compare_spark_readback(address: admitted, expected_identity: "id-a", observed_identity: "id-a") {
-    SparkReadbackMatched { version: _ } => true
-    SparkReadbackMismatched { version: _ } => false
-    SparkReadbackUnavailable { cause: _ } => false
+    gunbc.spark.bootstrap_provision.SparkReadbackMatched { version: _ } => true
+    gunbc.spark.bootstrap_provision.SparkReadbackMismatched { version: _ } => false
+    gunbc.spark.bootstrap_provision.SparkReadbackUnavailable { cause: _ } => false
   }
   let disagreeing = match compare_spark_readback(address: admitted, expected_identity: "id-a", observed_identity: "id-b") {
-    SparkReadbackMismatched { version: _ } => true
-    SparkReadbackMatched { version: _ } => false
-    SparkReadbackUnavailable { cause: _ } => false
+    gunbc.spark.bootstrap_provision.SparkReadbackMismatched { version: _ } => true
+    gunbc.spark.bootstrap_provision.SparkReadbackMatched { version: _ } => false
+    gunbc.spark.bootstrap_provision.SparkReadbackUnavailable { cause: _ } => false
   }
   addr_ok && latest_refused && agreeing && disagreeing
 }
@@ -367,12 +367,12 @@ test fn spark_receipt_version_must_match_its_readback() -> Bool {
 // constructor let any caller mint the apply decision, which made at-most-once advisory.
 test fn spark_first_write_requires_a_journaled_attempt() -> Bool {
   let journaled = decide_spark_materialization(record: gunbc.spark_bootstrap_provision.SparkAttemptJournaled { identity: spark_identity_specimen() })
-  let unjournaled = decide_spark_materialization(record: SparkAttemptNone)
+  let unjournaled = decide_spark_materialization(record: gunbc.spark.bootstrap_provision.SparkAttemptNone)
   let is_once = match journaled {
-    SparkMaterializeOnce { identity: _ } => true
-    SparkMaterializeNoop { exact_version: _ } => false
-    SparkMaterializeObserveStore { identity: _ } => false
-    SparkMaterializeRefused { cause: _ } => false
+    gunbc.spark.bootstrap_provision.SparkMaterializeOnce { identity: _ } => true
+    gunbc.spark.bootstrap_provision.SparkMaterializeNoop { exact_version: _ } => false
+    gunbc.spark.bootstrap_provision.SparkMaterializeObserveStore { identity: _ } => false
+    gunbc.spark.bootstrap_provision.SparkMaterializeRefused { cause: _ } => false
   }
   is_once && spark_decision_is_refused(d: unjournaled)
 }
@@ -382,17 +382,17 @@ test fn spark_first_write_requires_a_journaled_attempt() -> Bool {
 // kind-specific rather than a blanket ban on generation.
 test fn spark_factory_hotspot_cannot_be_generated() -> Bool {
   let gen = gunbc.spark_bootstrap_provision.GeneratedInRun { recipe: "random-24-char" }
-  let refused = match admit_spark_material_source(kind: FactoryHotspotCredential, source: gen) {
-    SparkSourceRefused { cause: _ } => true
-    SparkSourceAdmitted { source: _ } => false
+  let refused = match admit_spark_material_source(kind: gunbc.spark.bootstrap_provision.FactoryHotspotCredential, source: gen) {
+    gunbc.spark.bootstrap_provision.SparkSourceRefused { cause: _ } => true
+    gunbc.spark.bootstrap_provision.SparkSourceAdmitted { source: _ } => false
   }
-  let admin_ok = match admit_spark_material_source(kind: AdministratorCredential, source: gen) {
-    SparkSourceAdmitted { source: _ } => true
-    SparkSourceRefused { cause: _ } => false
+  let admin_ok = match admit_spark_material_source(kind: gunbc.spark.bootstrap_provision.AdministratorCredential, source: gen) {
+    gunbc.spark.bootstrap_provision.SparkSourceAdmitted { source: _ } => true
+    gunbc.spark.bootstrap_provision.SparkSourceRefused { cause: _ } => false
   }
-  let observed_ok = match admit_spark_material_source(kind: FactoryHotspotCredential, source: gunbc.spark_bootstrap_provision.ObservedFromDevice { note: "read from device label" }) {
-    SparkSourceAdmitted { source: _ } => true
-    SparkSourceRefused { cause: _ } => false
+  let observed_ok = match admit_spark_material_source(kind: gunbc.spark.bootstrap_provision.FactoryHotspotCredential, source: gunbc.spark_bootstrap_provision.ObservedFromDevice { note: "read from device label" }) {
+    gunbc.spark.bootstrap_provision.SparkSourceAdmitted { source: _ } => true
+    gunbc.spark.bootstrap_provision.SparkSourceRefused { cause: _ } => false
   }
   refused && admin_ok && observed_ok
 }
@@ -416,16 +416,16 @@ fn spark_fixture_context() -> gunbc.spark_bootstrap_provision.SparkCloudContext 
     workflow: "fixture-workflow",
     revision: "fixture-rev-0",
     purpose: "witness fixture; no live grant",
-    duration_seconds: 600,
+    duration: second(count: 600),
     max_uses: 1,
-    approval: GrantApprovalNotSought
+    approval: gunbc.spark.bootstrap_provision.GrantApprovalNotSought
   }
 }
 
 fn spark_pair_grant() -> gunbc.spark_bootstrap_provision.SparkCloudGrant {
   gunbc.spark_bootstrap_provision.SparkCloudGrant {
     principal: gunbc.spark_bootstrap_provision.FleetCloudConvergencePrincipal { role: gunbc.spark_bootstrap_provision.FleetCloudConvergence {} },
-    operations: [SmGetSecret, SmGetIamPolicy, SmAddVersion, SmAccessVersion],
+    operations: [gunbc.spark.bootstrap_provision.SmGetSecret, gunbc.spark.bootstrap_provision.SmGetIamPolicy, gunbc.spark.bootstrap_provision.SmAddVersion, gunbc.spark.bootstrap_provision.SmAccessVersion],
     scope: gunbc.spark_bootstrap_provision.SparkCloudScope { resources: [spark_srv5_secret(), spark_srv6_secret()], evolution: gunbc.spark_bootstrap_provision.FrozenAtGrant { frozen_at: spark_fixture_roster() } },
     context: spark_fixture_context()
   }
@@ -434,7 +434,7 @@ fn spark_pair_grant() -> gunbc.spark_bootstrap_provision.SparkCloudGrant {
 fn spark_srv5_only_grant() -> gunbc.spark_bootstrap_provision.SparkCloudGrant {
   gunbc.spark_bootstrap_provision.SparkCloudGrant {
     principal: gunbc.spark_bootstrap_provision.FleetCloudConvergencePrincipal { role: gunbc.spark_bootstrap_provision.FleetCloudConvergence {} },
-    operations: [SmAccessVersion],
+    operations: [gunbc.spark.bootstrap_provision.SmAccessVersion],
     scope: gunbc.spark_bootstrap_provision.SparkCloudScope { resources: [spark_srv5_secret()], evolution: gunbc.spark_bootstrap_provision.FrozenAtGrant { frozen_at: spark_fixture_roster() } },
     context: spark_fixture_context()
   }
@@ -442,7 +442,7 @@ fn spark_srv5_only_grant() -> gunbc.spark_bootstrap_provision.SparkCloudGrant {
 
 fn spark_permits(d: std.access.AccessDecision) -> Bool {
   match d {
-    Permit => true
+    std.access.Permit => true
     Deny { refusal: _ } => false
   }
 }
@@ -461,17 +461,17 @@ fn spark_cell(op: gunbc.spark_bootstrap_provision.SecretManagerOperation, r: std
 
 // CONTROL 20: a grant over srv5 cannot authorize the same operation on srv6.
 test fn spark_grant_over_srv5_does_not_reach_srv6() -> Bool {
-  spark_permits(d: spark_cloud_grant_decision(grant: spark_srv5_only_grant(), cell: spark_cell(op: SmAccessVersion, r: spark_srv5_secret())))
-    && !spark_permits(d: spark_cloud_grant_decision(grant: spark_srv5_only_grant(), cell: spark_cell(op: SmAccessVersion, r: spark_srv6_secret())))
+  spark_permits(d: spark_cloud_grant_decision(grant: spark_srv5_only_grant(), cell: spark_cell(op: gunbc.spark.bootstrap_provision.SmAccessVersion, r: spark_srv5_secret())))
+    && !spark_permits(d: spark_cloud_grant_decision(grant: spark_srv5_only_grant(), cell: spark_cell(op: gunbc.spark.bootstrap_provision.SmAccessVersion, r: spark_srv6_secret())))
 }
 
 // CONTROL 21: one global principal with one exact grant reaches BOTH admitted resources -- fine
 // grain comes from the grant, not from proliferating principals -- and still cannot reach srv7.
 // This is the control that would red if a frozen scope silently tracked namespace membership.
 test fn spark_pair_grant_reaches_both_and_not_a_third() -> Bool {
-  spark_permits(d: spark_cloud_grant_decision(grant: spark_pair_grant(), cell: spark_cell(op: SmAccessVersion, r: spark_srv5_secret())))
-    && spark_permits(d: spark_cloud_grant_decision(grant: spark_pair_grant(), cell: spark_cell(op: SmAccessVersion, r: spark_srv6_secret())))
-    && !spark_permits(d: spark_cloud_grant_decision(grant: spark_pair_grant(), cell: spark_cell(op: SmAccessVersion, r: spark_srv7_secret())))
+  spark_permits(d: spark_cloud_grant_decision(grant: spark_pair_grant(), cell: spark_cell(op: gunbc.spark.bootstrap_provision.SmAccessVersion, r: spark_srv5_secret())))
+    && spark_permits(d: spark_cloud_grant_decision(grant: spark_pair_grant(), cell: spark_cell(op: gunbc.spark.bootstrap_provision.SmAccessVersion, r: spark_srv6_secret())))
+    && !spark_permits(d: spark_cloud_grant_decision(grant: spark_pair_grant(), cell: spark_cell(op: gunbc.spark.bootstrap_provision.SmAccessVersion, r: spark_srv7_secret())))
 }
 
 // CONTROL 22: operations do not imply one another. Reading a version does not authorize writing
@@ -480,18 +480,18 @@ test fn spark_pair_grant_reaches_both_and_not_a_third() -> Bool {
 test fn spark_operations_do_not_imply_one_another() -> Bool {
   let read_only = gunbc.spark_bootstrap_provision.SparkCloudGrant {
     principal: gunbc.spark_bootstrap_provision.FleetCloudConvergencePrincipal { role: gunbc.spark_bootstrap_provision.FleetCloudConvergence {} },
-    operations: [SmAccessVersion],
+    operations: [gunbc.spark.bootstrap_provision.SmAccessVersion],
     scope: gunbc.spark_bootstrap_provision.SparkCloudScope { resources: [spark_srv5_secret()], evolution: gunbc.spark_bootstrap_provision.FrozenAtGrant { frozen_at: spark_fixture_roster() } },
     context: spark_fixture_context()
   }
   let writer = gunbc.spark_bootstrap_provision.SparkCloudGrant {
     principal: gunbc.spark_bootstrap_provision.FleetCloudConvergencePrincipal { role: gunbc.spark_bootstrap_provision.FleetCloudConvergence {} },
-    operations: [SmAddVersion],
+    operations: [gunbc.spark.bootstrap_provision.SmAddVersion],
     scope: gunbc.spark_bootstrap_provision.SparkCloudScope { resources: [spark_srv5_secret()], evolution: gunbc.spark_bootstrap_provision.FrozenAtGrant { frozen_at: spark_fixture_roster() } },
     context: spark_fixture_context()
   }
-  !spark_permits(d: spark_cloud_grant_decision(grant: read_only, cell: spark_cell(op: SmAddVersion, r: spark_srv5_secret())))
-    && !spark_permits(d: spark_cloud_grant_decision(grant: writer, cell: spark_cell(op: SmDestroyVersion, r: spark_srv5_secret())))
+  !spark_permits(d: spark_cloud_grant_decision(grant: read_only, cell: spark_cell(op: gunbc.spark.bootstrap_provision.SmAddVersion, r: spark_srv5_secret())))
+    && !spark_permits(d: spark_cloud_grant_decision(grant: writer, cell: spark_cell(op: gunbc.spark.bootstrap_provision.SmDestroyVersion, r: spark_srv5_secret())))
 }
 
 // CONTROL 23, the honesty control: a REPORTED principal cannot authorize actuation. This is the
@@ -511,7 +511,7 @@ fn spark_reported_principal_fixture() -> gunbc.spark_bootstrap_provision.FleetCl
 // the second time that shape appeared in this module; the invariant is about the Reported arm, so
 // the Reported arm is what it must be given.
 test fn spark_reported_principal_cannot_actuate() -> Bool {
-  let cell = spark_cell(op: SmAccessVersion, r: spark_srv5_secret())
+  let cell = spark_cell(op: gunbc.spark.bootstrap_provision.SmAccessVersion, r: spark_srv5_secret())
   !spark_permits(d: spark_actuation_decision(
         standing: spark_reported_principal_fixture(), grant: spark_pair_grant(), cell: cell))
     && spark_permits(d: spark_actuation_decision(
@@ -524,11 +524,11 @@ test fn spark_reported_principal_cannot_actuate() -> Bool {
 // standing to Exact or Incomplete without an instrument that can support it.
 test fn spark_effective_access_is_only_partially_observed() -> Bool {
   match spark_effective_access_standing() {
-    EffectiveAccessPartiallyObserved { positively_observed: p, requested_but_not_returned: r, overbreadth_unobserved_cause: _ } =>
+    gunbc.spark.bootstrap_provision.EffectiveAccessPartiallyObserved { positively_observed: p, requested_but_not_returned: r, overbreadth_unobserved_cause: _ } =>
       p.length() == 1 && r.length() > 0
-    EffectiveAccessExact { observed_cells: _ } => false
-    EffectiveAccessOverbroad { extra_cells: _ } => false
-    EffectiveAccessUnobserved { cause: _ } => false
+    gunbc.spark.bootstrap_provision.EffectiveAccessExact { observed_cells: _ } => false
+    gunbc.spark.bootstrap_provision.EffectiveAccessOverbroad { extra_cells: _ } => false
+    gunbc.spark.bootstrap_provision.EffectiveAccessUnobserved { cause: _ } => false
   }
 }
 
@@ -536,8 +536,8 @@ test fn spark_effective_access_is_only_partially_observed() -> Bool {
 // working is not evidence about what the credential may reach.
 test fn spark_wif_issuance_is_its_own_observation() -> Bool {
   match spark_wif_issuance_standing() {
-    WifIssuanceObserved { principal: _, workflow: _, revision: _, receipt: _ } => true
-    WifIssuanceUnobserved { cause: _ } => false
+    gunbc.spark.bootstrap_provision.WifIssuanceObserved { principal: _, workflow: _, revision: _, receipt: _ } => true
+    gunbc.spark.bootstrap_provision.WifIssuanceUnobserved { cause: _ } => false
   }
 }
 
@@ -547,7 +547,7 @@ test fn spark_allocated_principal_still_bounded_by_scope() -> Bool {
   !spark_permits(d: spark_actuation_decision(
     standing: spark_allocated_principal(),
     grant: spark_pair_grant(),
-    cell: spark_cell(op: SmAccessVersion, r: spark_srv7_secret())))
+    cell: spark_cell(op: gunbc.spark.bootstrap_provision.SmAccessVersion, r: spark_srv7_secret())))
 }
 
 // CONTROL 27: NO PRINCIPAL CAN BOTH GRANT AND READ. This is the property the two-principal split
@@ -564,12 +564,12 @@ test fn no_spark_principal_can_both_grant_and_read() -> Bool {
 // The data plane reaches payloads and never policy; the control plane reaches policy and never
 // payloads. A revision that collapsed them into one role would red here in both directions.
 test fn spark_principal_roles_partition_payload_from_policy() -> Bool {
-  principal_role_admits_operation(principal: gunbc.spark_bootstrap_provision.FleetCloudConvergencePrincipal { role: gunbc.spark_bootstrap_provision.FleetCloudConvergence {} }, op: SmAccessVersion)
-    && !principal_role_admits_operation(principal: gunbc.spark_bootstrap_provision.FleetCloudConvergencePrincipal { role: gunbc.spark_bootstrap_provision.FleetCloudConvergence {} }, op: SmSetIamPolicy)
-    && !principal_role_admits_operation(principal: gunbc.spark_bootstrap_provision.FleetCloudConvergencePrincipal { role: gunbc.spark_bootstrap_provision.FleetCloudConvergence {} }, op: SmGetIamPolicy)
-    && principal_role_admits_operation(principal: gunbc.spark_bootstrap_provision.FleetCloudGrantAdministratorPrincipal { role: gunbc.spark_bootstrap_provision.FleetCloudGrantAdministrator {} }, op: SmSetIamPolicy)
-    && !principal_role_admits_operation(principal: gunbc.spark_bootstrap_provision.FleetCloudGrantAdministratorPrincipal { role: gunbc.spark_bootstrap_provision.FleetCloudGrantAdministrator {} }, op: SmAccessVersion)
-    && !principal_role_admits_operation(principal: gunbc.spark_bootstrap_provision.FleetCloudGrantAdministratorPrincipal { role: gunbc.spark_bootstrap_provision.FleetCloudGrantAdministrator {} }, op: SmAddVersion)
+  principal_role_admits_operation(principal: gunbc.spark_bootstrap_provision.FleetCloudConvergencePrincipal { role: gunbc.spark_bootstrap_provision.FleetCloudConvergence {} }, op: gunbc.spark.bootstrap_provision.SmAccessVersion)
+    && !principal_role_admits_operation(principal: gunbc.spark_bootstrap_provision.FleetCloudConvergencePrincipal { role: gunbc.spark_bootstrap_provision.FleetCloudConvergence {} }, op: gunbc.spark.bootstrap_provision.SmSetIamPolicy)
+    && !principal_role_admits_operation(principal: gunbc.spark_bootstrap_provision.FleetCloudConvergencePrincipal { role: gunbc.spark_bootstrap_provision.FleetCloudConvergence {} }, op: gunbc.spark.bootstrap_provision.SmGetIamPolicy)
+    && principal_role_admits_operation(principal: gunbc.spark_bootstrap_provision.FleetCloudGrantAdministratorPrincipal { role: gunbc.spark_bootstrap_provision.FleetCloudGrantAdministrator {} }, op: gunbc.spark.bootstrap_provision.SmSetIamPolicy)
+    && !principal_role_admits_operation(principal: gunbc.spark_bootstrap_provision.FleetCloudGrantAdministratorPrincipal { role: gunbc.spark_bootstrap_provision.FleetCloudGrantAdministrator {} }, op: gunbc.spark.bootstrap_provision.SmAccessVersion)
+    && !principal_role_admits_operation(principal: gunbc.spark_bootstrap_provision.FleetCloudGrantAdministratorPrincipal { role: gunbc.spark_bootstrap_provision.FleetCloudGrantAdministrator {} }, op: gunbc.spark.bootstrap_provision.SmAddVersion)
 }
 
 // CONTROL 29: the request projects into the KERNEL's shape rather than being judged locally. If
@@ -578,7 +578,7 @@ test fn spark_principal_roles_partition_payload_from_policy() -> Bool {
 test fn spark_grant_projects_into_the_access_kernel() -> Bool {
   let req = spark_cloud_access_request(
     grant: spark_srv5_only_grant(),
-    cell: spark_cell(op: SmAccessVersion, r: spark_srv5_secret()),
+    cell: spark_cell(op: gunbc.spark.bootstrap_provision.SmAccessVersion, r: spark_srv5_secret()),
     evidence: spark_wif_issuance_standing())
   (req.object as String) == (spark_srv5_secret() as String)
     && req.context.value.max_uses == 1
@@ -590,9 +590,9 @@ test fn spark_grant_projects_into_the_access_kernel() -> Bool {
 // from one silently widened later. This reds if the roster identity is dropped from the arm.
 test fn frozen_scope_names_the_roster_it_was_frozen_at() -> Bool {
   match spark_srv5_only_grant().scope.evolution {
-    FrozenAtGrant { frozen_at: r } =>
+    gunbc.spark.bootstrap_provision.FrozenAtGrant { frozen_at: r } =>
       (r.roster as String) == "spark-fixture-population" && (r.revision as String) == "fixture-rev-0"
-    TracksNamespaceMembership { roster: _ } => false
+    gunbc.spark.bootstrap_provision.TracksNamespaceMembership { roster: _ } => false
   }
 }
 
@@ -604,12 +604,12 @@ test fn frozen_scope_names_the_roster_it_was_frozen_at() -> Bool {
 test fn ceiling_refuses_and_locates_against_the_actual_subject() -> Bool {
   let over_grant = gunbc.spark_bootstrap_provision.SparkCloudGrant {
     principal: gunbc.spark_bootstrap_provision.FleetCloudConvergencePrincipal { role: gunbc.spark_bootstrap_provision.FleetCloudConvergence {} },
-    operations: [SmSetIamPolicy],
+    operations: [gunbc.spark.bootstrap_provision.SmSetIamPolicy],
     scope: gunbc.spark_bootstrap_provision.SparkCloudScope { resources: [spark_srv5_secret()], evolution: gunbc.spark_bootstrap_provision.FrozenAtGrant { frozen_at: spark_fixture_roster() } },
     context: spark_fixture_context()
   }
-  match spark_cloud_grant_decision(grant: over_grant, cell: spark_cell(op: SmSetIamPolicy, r: spark_srv5_secret())) {
-    Permit => false
+  match spark_cloud_grant_decision(grant: over_grant, cell: spark_cell(op: gunbc.spark.bootstrap_provision.SmSetIamPolicy, r: spark_srv5_secret())) {
+    std.access.Permit => false
     Deny { refusal: rf } => rf.location.subject == "FleetCloudConvergence"
   }
 }
@@ -619,12 +619,12 @@ test fn ceiling_refuses_and_locates_against_the_actual_subject() -> Bool {
 test fn refusal_subject_is_derived_not_literal() -> Bool {
   let admin_grant = gunbc.spark_bootstrap_provision.SparkCloudGrant {
     principal: gunbc.spark_bootstrap_provision.FleetCloudGrantAdministratorPrincipal { role: gunbc.spark_bootstrap_provision.FleetCloudGrantAdministrator {} },
-    operations: [SmAccessVersion],
+    operations: [gunbc.spark.bootstrap_provision.SmAccessVersion],
     scope: gunbc.spark_bootstrap_provision.SparkCloudScope { resources: [spark_srv5_secret()], evolution: gunbc.spark_bootstrap_provision.FrozenAtGrant { frozen_at: spark_fixture_roster() } },
     context: spark_fixture_context()
   }
-  match spark_cloud_grant_decision(grant: admin_grant, cell: spark_cell(op: SmAccessVersion, r: spark_srv5_secret())) {
-    Permit => false
+  match spark_cloud_grant_decision(grant: admin_grant, cell: spark_cell(op: gunbc.spark.bootstrap_provision.SmAccessVersion, r: spark_srv5_secret())) {
+    std.access.Permit => false
     Deny { refusal: rf } => rf.location.subject == "FleetCloudGrantAdministrator"
   }
 }
@@ -637,9 +637,9 @@ fn demand_executor() -> gunbc.spark_bootstrap_provision.FleetCloudPrincipalKey {
   gunbc.spark_bootstrap_provision.FleetCloudConvergencePrincipal { role: gunbc.spark_bootstrap_provision.FleetCloudConvergence {} }
 }
 
-fn demand_cells_of(sel: List<gunbc.spark_bootstrap_provision.SelectedSparkEffect>) -> List<gunbc.spark_bootstrap_provision.ExternalAccessDemand> {
+fn demand_cells_of(sel: std.types.List<gunbc.spark_bootstrap_provision.SelectedSparkEffect>) -> std.types.List<gunbc.spark_bootstrap_provision.ExternalAccessDemand> {
   match spark_plan_demand(selected: sel, executor: demand_executor(), context: spark_fixture_context()) {
-    DemandDerived { cells: c } => c
+    gunbc.spark.bootstrap_provision.DemandDerived { cells: c } => c
     DemandIncomplete { step: _, operation: _, cause: _ } => []
   }
 }
@@ -703,7 +703,7 @@ test fn selected_destroy_produces_demand_and_is_refused() -> Bool {
       Present { value: c } =>
         (c.permission as String) == "secretmanager.versions.destroy"
           && match spark_demand_decision(demand: c) {
-            Permit => false
+            std.access.Permit => false
             Deny { refusal: _ } => true
           }
     }
@@ -729,9 +729,9 @@ test fn ceiling_admits_policy_read_only_for_the_administrator() -> Bool {
     context: spark_fixture_context()
   }
   match spark_demand_decision(demand: admin_cell) {
-    Permit =>
+    std.access.Permit =>
       match spark_demand_decision(demand: data_cell) {
-        Permit => false
+        std.access.Permit => false
         Deny { refusal: _ } => true
       }
     Deny { refusal: _ } => false
@@ -768,10 +768,10 @@ test fn active_demand_requires_a_named_consumer() -> Bool {
 // consequences, so user scope is the derived consequence -- not a preference someone recorded.
 test fn observed_srv5_privilege_derives_user_unit_scope() -> Bool {
   match derive_install_scope(observation: srv5_privilege_observation()) {
-    UserUnitScope { host: h, ground: _ } => (h as String) == "srv5"
-    SystemUnitScope { host: _ } => false
-    ContainerScope { host: _ } => false
-    InstallScopeUnobserved { host: _, cause: _ } => false
+    gunbc.spark.bootstrap_provision.UserUnitScope { host: h, ground: _ } => (h as String) == "srv5"
+    gunbc.spark.bootstrap_provision.SystemUnitScope { host: _ } => false
+    gunbc.spark.bootstrap_provision.ContainerScope { host: _ } => false
+    gunbc.spark.bootstrap_provision.InstallScopeUnobserved { host: _, cause: _ } => false
   }
 }
 
@@ -782,10 +782,10 @@ test fn observed_srv5_privilege_derives_user_unit_scope() -> Bool {
 test fn no_privilege_never_derives_system_or_container_scope() -> Bool {
   match derive_install_scope(observation: gunbc.spark_bootstrap_provision.HostPrivilegeObservation {
     host: "srv5", passwordless_sudo: false, container_socket_admits_principal: false }) {
-    SystemUnitScope { host: _ } => false
-    ContainerScope { host: _ } => false
-    UserUnitScope { host: _, ground: _ } => true
-    InstallScopeUnobserved { host: _, cause: _ } => false
+    gunbc.spark.bootstrap_provision.SystemUnitScope { host: _ } => false
+    gunbc.spark.bootstrap_provision.ContainerScope { host: _ } => false
+    gunbc.spark.bootstrap_provision.UserUnitScope { host: _, ground: _ } => true
+    gunbc.spark.bootstrap_provision.InstallScopeUnobserved { host: _, cause: _ } => false
   }
 }
 
@@ -796,15 +796,15 @@ test fn no_privilege_never_derives_system_or_container_scope() -> Bool {
 test fn privilege_actually_selects_the_scope() -> Bool {
   match derive_install_scope(observation: gunbc.spark_bootstrap_provision.HostPrivilegeObservation {
     host: "srvX", passwordless_sudo: true, container_socket_admits_principal: false }) {
-    SystemUnitScope { host: h } => (h as String) == "srvX"
-    ContainerScope { host: _ } => false
-    UserUnitScope { host: _, ground: _ } => false
-    InstallScopeUnobserved { host: _, cause: _ } => false
+    gunbc.spark.bootstrap_provision.SystemUnitScope { host: h } => (h as String) == "srvX"
+    gunbc.spark.bootstrap_provision.ContainerScope { host: _ } => false
+    gunbc.spark.bootstrap_provision.UserUnitScope { host: _, ground: _ } => false
+    gunbc.spark.bootstrap_provision.InstallScopeUnobserved { host: _, cause: _ } => false
   } && match derive_install_scope(observation: gunbc.spark_bootstrap_provision.HostPrivilegeObservation {
     host: "srvY", passwordless_sudo: false, container_socket_admits_principal: true }) {
-    ContainerScope { host: h } => (h as String) == "srvY"
-    SystemUnitScope { host: _ } => false
-    UserUnitScope { host: _, ground: _ } => false
-    InstallScopeUnobserved { host: _, cause: _ } => false
+    gunbc.spark.bootstrap_provision.ContainerScope { host: h } => (h as String) == "srvY"
+    gunbc.spark.bootstrap_provision.SystemUnitScope { host: _ } => false
+    gunbc.spark.bootstrap_provision.UserUnitScope { host: _, ground: _ } => false
+    gunbc.spark.bootstrap_provision.InstallScopeUnobserved { host: _, cause: _ } => false
   }
 }

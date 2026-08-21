@@ -1,0 +1,169 @@
+module gunbc.spark.capability_observation
+
+
+// CAPABILITY OBSERVATION AT PRINCIPAL GRAIN, which is the correction the whole Spark lane turned on.
+//
+// The previous carrier was host-grained -- one record per host with a field per capability -- and
+// that shape permits a specific wrong proof: briansrls can reach the accelerator, therefore the host
+// has accelerator access, therefore the managed executor's accelerator requirement is satisfied.
+// Every step is a true statement about the record and the conclusion is false. An occurrence is
+// (host x principal), so an observation of one principal is silent about another BY CONSTRUCTION,
+// and the carrier has to say so rather than leaving it to whoever reads the field.
+//
+// It matters concretely here because the same key reaches both accounts: a receipt recording only
+// "the fleet key works on srv5" reads as though automation access existed, which is exactly the
+// conclusion I drew earlier in this lane before the credential was bound.
+
+type SparkCapabilitySubject {
+  host: product.placement_supply.HostIdentity
+  principal: std.types.NonEmptyStr
+}
+
+// WHICH CAPABILITY, named once. Kept separate from the serving model's ServingRequirement because
+// these are OBSERVATIONS and those are DEMANDS -- the join between them is the selector's job, and
+// fusing them would make an unobserved capability indistinguishable from an unrequired one.
+type SparkServingCapability
+  = ManagedExecutorReachable
+  | AcceleratorAccessible
+  | UserManagerAvailable
+  | LingerEnabled
+  | ContainerRuntimeUsable
+  | ArtifactRootWritable
+  | EndpointBindable
+  | NoLoginServiceIdentityPresent
+
+fn spark_capability_label(capability: SparkServingCapability) -> String {
+  match capability {
+    ManagedExecutorReachable => "managed-executor-reachable"
+    AcceleratorAccessible => "accelerator-accessible"
+    UserManagerAvailable => "user-manager-available"
+    LingerEnabled => "linger-enabled"
+    ContainerRuntimeUsable => "container-runtime-usable"
+    ArtifactRootWritable => "artifact-root-writable"
+    EndpointBindable => "endpoint-bindable"
+    NoLoginServiceIdentityPresent => "no-login-service-identity-present"
+  }
+}
+
+// ABSENT AND OBSERVATION-REFUSED ARE DIFFERENT FACTS WITH DIFFERENT REMEDIES, and the previous
+// two-armed carrier fused them under one `CapabilityRefused { cause }`. A missing account is
+// Absent -- create it. An SSH transport failure or an undecodable response is ObservationRefused --
+// fix the observation, and DO NOT create anything, because nothing was learned about the account.
+// Fused, a broken transport authorizes account creation on a host that may already have one.
+//
+// Unobserved is the fourth state and is not a weaker Absent: nobody asked. It exists so that a
+// capability nobody probed can never satisfy a requirement, which is what keeps a partial sweep from
+// reading as a complete one.
+type CapabilityObservationOutcome
+  = CapabilityPresent { evidence: std.types.NonEmptyStr }
+  | CapabilityAbsent { evidence: std.types.NonEmptyStr }
+  | CapabilityObservationRefused { first: std.types.NonEmptyStr, more: std.types.List<std.types.NonEmptyStr> }
+  | CapabilityUnobserved
+
+// THE OBSERVATION, carrying how it was obtained rather than only what it found. probe_effect is the
+// load-bearing field: a positive readback is evidence about a subject only if performing the read
+// could not have established the subject, and several probes on this exact lane cannot clear that.
+//
+// SSH LOGIN STARTS A SYSTEMD USER MANAGER via logind. So "a user manager is running" observed
+// through an SSH probe is ProbeMayEstablish -- the transport shares a mechanism with the thing being
+// measured, and the probe may have created what it reports. That is why LingerEnabled is read from
+// the DURABLE Linger property instead: lingering is configuration that survives logout, so reading
+// it is inert, whereas inferring it from a running manager would be measuring the probe's own
+// footprint.
+type SparkCapabilityObservation {
+  subject: SparkCapabilitySubject
+  capability: SparkServingCapability
+  outcome: CapabilityObservationOutcome
+  probe_effect: gunbc.readback_independence.ProbeEffectOnSubject
+  credential_identity: std.content_hash.ContentHash
+}
+
+// THE ADMISSION RULE. A Present outcome counts as evidence ONLY when the probe could not have
+// established the subject. Everything else is downgraded to a refusal that NAMES the reason, rather
+// than being silently accepted or silently dropped -- a downgraded observation must remain visible,
+// because its frequency is the signal that a probe needs redesigning.
+//
+// This is the check that would have caught the user-manager probe if it had been written the obvious
+// way, and it is applied at the carrier rather than left to each probe author to remember.
+fn admitted_capability_outcome(observation: SparkCapabilityObservation) -> CapabilityObservationOutcome {
+  match observation.outcome {
+    gunbc.spark.capability_observation.CapabilityPresent { evidence: e } =>
+      match observation.probe_effect {
+        gunbc.readback_independence.ProbeInert => gunbc.spark.capability_observation.CapabilityPresent { evidence: e }
+        gunbc.readback_independence.ProbeMayEstablish { mechanism: m } => CapabilityObservationRefused {
+          first: join(["a positive readback is not evidence here: performing the probe may have established the subject via ", m as String], "") as std.types.NonEmptyStr,
+          more: [],
+        }
+        gunbc.readback_independence.ProbeAnswersWithoutSubject { mechanism: m } => CapabilityObservationRefused {
+          first: join(["a positive readback is not evidence here: the probe answers positively with no subject present via ", m as String], "") as std.types.NonEmptyStr,
+          more: [],
+        }
+        gunbc.readback_independence.ProbeEffectUnknown { reason: r } => CapabilityObservationRefused {
+          first: join(["a positive readback is not evidence here: the probe's effect on the subject is unclassified -- ", r as String], "") as std.types.NonEmptyStr,
+          more: [],
+        }
+      }
+    CapabilityAbsent { evidence: e } => CapabilityAbsent { evidence: e }
+    CapabilityObservationRefused { first: f, more: m } => CapabilityObservationRefused { first: f, more: m }
+    gunbc.spark.capability_observation.CapabilityUnobserved => gunbc.spark.capability_observation.CapabilityUnobserved
+  }
+}
+
+// AN ABSENCE IS NOT DOWNGRADED, and the asymmetry is deliberate rather than an oversight. The
+// independence criterion asks whether the probe could have made the answer TRUE; a probe that cannot
+// establish a subject can still correctly observe that it is missing. Downgrading absences would
+// discard the very findings this lane needs -- the managed account being absent is what produced the
+// bootstrap plan.
+
+// SELECTION BY EXACT SUBJECT. The join is on (host, principal) so evidence gathered as one account
+// can never satisfy a question about another. Returns Unobserved rather than Absent when no row
+// matches, because "no row" means nobody asked, not that the capability is missing.
+fn observation_for(
+  observations: std.types.List<SparkCapabilityObservation>,
+  host: product.placement_supply.HostIdentity,
+  principal: std.types.NonEmptyStr,
+  capability: SparkServingCapability,
+) -> CapabilityObservationOutcome {
+  fold(observations, init: gunbc.spark.capability_observation.CapabilityUnobserved, f: fn(acc, o) {
+    match acc {
+      gunbc.spark.capability_observation.CapabilityUnobserved =>
+        if (o.subject.host as String) == (host as String)
+          && (o.subject.principal as String) == (principal as String)
+          && spark_capability_label(capability: o.capability) == spark_capability_label(capability: capability) {
+          admitted_capability_outcome(observation: o)
+        } else { acc }
+      gunbc.spark.capability_observation.CapabilityPresent { evidence: _ } => acc
+      CapabilityAbsent { evidence: _ } => acc
+      CapabilityObservationRefused { first: _, more: _ } => acc
+    }
+  })
+}
+
+fn capability_outcome_label(outcome: CapabilityObservationOutcome) -> String {
+  match outcome {
+    gunbc.spark.capability_observation.CapabilityPresent { evidence: e } => join(["present ", e as String], "")
+    CapabilityAbsent { evidence: e } => join(["absent ", e as String], "")
+    CapabilityObservationRefused { first: f, more: _ } => join(["observation-refused ", f as String], "")
+    gunbc.spark.capability_observation.CapabilityUnobserved => "unobserved"
+  }
+}
+
+// The probe classifications for the reads this lane actually performs, stated as data so a probe
+// author picks from a modeled row rather than deciding independently each time.
+data linger_probe_effect: gunbc.readback_independence.ProbeEffectOnSubject = gunbc.readback_independence.ProbeInert
+
+// The one that must NOT be used as evidence, kept as a row precisely so its unsuitability is
+// visible rather than rediscovered: SSH login starts a user manager through logind, so a probe that
+// observes a running manager over SSH may have started it.
+data user_manager_over_ssh_probe_effect: gunbc.readback_independence.ProbeEffectOnSubject = gunbc.readback_independence.ProbeMayEstablish {
+  mechanism: "an SSH login starts a systemd user manager via pam_systemd/logind, so observing a running manager through an SSH probe may have created it" as std.types.NonEmptyStr
+}
+
+data accelerator_inventory_probe_effect: gunbc.readback_independence.ProbeEffectOnSubject = gunbc.readback_independence.ProbeInert
+
+// A write trial and a bind trial are CAPABILITY TRIALS, and they are inert with respect to the
+// capability even though they touch the host: creating and removing a temporary file does not make
+// the artifact root writable, it demonstrates that it already was. The distinction the independence
+// criterion draws is about the SUBJECT, not about whether the probe had any effect at all.
+data writable_root_trial_probe_effect: gunbc.readback_independence.ProbeEffectOnSubject = gunbc.readback_independence.ProbeInert
+data endpoint_bind_trial_probe_effect: gunbc.readback_independence.ProbeEffectOnSubject = gunbc.readback_independence.ProbeInert

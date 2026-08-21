@@ -1,5 +1,6 @@
 module tools.merge_admission_walk
 
+
 data merge_admission_walk_note: String = "The live merge-admission path is a typed pre-walk capture subprocess followed by stamp_tested_floor and refresh_current_target_and_gate as two singleton success stages in ONE shared stage entry. Capture consumes only walk-attempt/tested-subject identity in a claim_batch child whose address space dies before the ordinary floor; importing the downstream classifier and commit-roster closure before discovery made the authored Negligible profile false, and an in-process capture still retained one worker arena after thread join. The WalkPlan carries two ordering laws instead of shell: stamp is reachable only after the whole ordinary floor and its finalization passed, and stage 2 is unreachable until stage 1 passed. The two non-heavy claims route through population_unit_lane to the MAIN THREAD (corrected per review 47528 — an earlier draft said spawned lanes; claim_executor population_unit_lane and its tests are the placement authority); each stage may still resolve the entry independently, and the disk-visible stage-1 receipt is the intentional barrier, not an in-memory memo promise. The stage-2 claim stays composite because fetch MUST precede classification; two sibling claims would have no ordering guarantee."
 
 data merge_admission_checkout_ancestry_note: String = "The tested base is captured from the CHECKOUT'S ancestry, never from the moving target ref. On pull_request and merge_group, GitHub checks out the synthetic merge result: HEAD is the exact tree the floor tests and HEAD^1 is the target-side parent whose tree that result was built on. On push and workflow_dispatch, HEAD itself is the tested target tree. The captured subject persists that object id before substantive floor work. Stamp reads this file and does not re-read HEAD or the target; stage 2 alone fetches the CURRENT target, then compares it with the captured tree. A target advance during the floor therefore produces StaleBase instead of a receipt claiming the new target was tested."
@@ -65,8 +66,8 @@ func stamp_tested_floor_with_conclusion(conclusion: extdeps.github.checks.CheckC
             attempt_id: attempt_id,
             pr_number: none,
             tested_head_sha: subject.head_sha,
-            tested_base_tree_hash: subject.base_tree_hash,
-            gate_roster_hash: gunbc.merge_admission.current_gate_roster_hash,
+            tested_base_commit_sha: subject.base_commit_sha,
+            gate_roster_hash: current_gate_roster_hash,
             conclusion: conclusion,
           }
           extdeps.filesystem.filesystem_io.Filesystem.Write(
@@ -93,7 +94,7 @@ type MergeTargetRefreshRefusal
   | RefreshAttemptIdentityAbsent
   | RefreshTestedSubjectWireMissing
   | RefreshFloorReceiptWireMissing
-  | RefreshTargetTreeObservationRefused { cause: String }
+  | RefreshTargetCommitObservationRefused
   | RefreshVerdictDenied { verdict: String }
 
 type MergeTargetRefresh
@@ -106,7 +107,7 @@ fn merge_target_refresh_refusal_label(cause: MergeTargetRefreshRefusal) -> Strin
     RefreshAttemptIdentityAbsent => "attempt-identity-absent"
     RefreshTestedSubjectWireMissing => "tested-subject-wire-missing"
     RefreshFloorReceiptWireMissing => "floor-receipt-wire-missing"
-    RefreshTargetTreeObservationRefused { cause: cause } => concat("target-tree-observation-refused cause=", cause)
+    RefreshTargetCommitObservationRefused => "target-commit-observation-refused"
     RefreshVerdictDenied { verdict: verdict } => concat("verdict-denied verdict=", verdict)
   }
 }
@@ -153,25 +154,25 @@ func merge_target_refresh() -> MergeTargetRefresh {
             match read_floor_receipt(root: root, attempt_id: attempt_id) {
               Absent => MergeTargetRefreshRefused { cause: RefreshFloorReceiptWireMissing }
               Present { value: receipt } =>
-                match gunbc.merge_admission_produce.observe_merge_target_tree_hash(ref: gunbc.merge_admission_subject.merge_admission_merge_base_ref as std.types.GitRef) {
-                  gunbc.merge_admission_produce.MergeTargetTreeHashRefused { ref: _, cause: cause } =>
-                    MergeTargetRefreshRefused { cause: RefreshTargetTreeObservationRefused { cause: cause } }
-                  gunbc.merge_admission_produce.MergeTargetTreeHashOk { hash: current_tree } =>
-                    let verdict = gunbc.merge_admission.classify_merge_admission_verdict_v2(
-                      current_attempt_id: attempt_id,
-                      tested_subject: subject,
-                      receipt: receipt,
-                      merge_target_tree_hash: current_tree,
-                      current_roster_hash: gunbc.merge_admission.current_gate_roster_hash
-                    )
-                    if gunbc.ci_failure_class.merge_freshness_verdict_is_consumed_to_block() {
-                      match verdict {
-                        gunbc.merge_admission.MergeAdmitted => MergeTargetRefreshed
-                        _ => MergeTargetRefreshRefused { cause: RefreshVerdictDenied { verdict: gunbc.merge_admission.merge_admission_verdict_label(v: verdict) } }
-                      }
-                    } else {
-                      MergeTargetRefreshed
+                let current_commit = git.Inspect.ResolveRefCommit(ref: merge_admission_merge_base_ref as std.types.GitRef)
+                if !current_commit.success {
+                  MergeTargetRefreshRefused { cause: RefreshTargetCommitObservationRefused }
+                } else {
+                  let verdict = classify_merge_admission_verdict_v2(
+                    current_attempt_id: attempt_id,
+                    tested_subject: subject,
+                    receipt: receipt,
+                    merge_target_commit_sha: current_commit.sha,
+                    current_roster_hash: current_gate_roster_hash
+                  )
+                  if merge_freshness_verdict_is_consumed_to_block() {
+                    match verdict {
+                      gunbc.merge_admission.MergeAdmitted => MergeTargetRefreshed
+                      _ => MergeTargetRefreshRefused { cause: RefreshVerdictDenied { verdict: merge_admission_verdict_label(v: verdict) } }
                     }
+                  } else {
+                    MergeTargetRefreshed
+                  }
                 }
             }
         }

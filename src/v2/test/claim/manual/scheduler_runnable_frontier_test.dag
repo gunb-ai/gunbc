@@ -2,78 +2,78 @@ module v2.test.manual.scheduler_runnable_frontier
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data scheduler_build_node: Node = v2.std.node.Node {
+data scheduler_build_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^scheduler_build_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-data scheduler_test_node: Node = v2.std.node.Node {
+data scheduler_test_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^scheduler_test_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-data scheduler_emit_node: Node = v2.std.node.Node {
+data scheduler_emit_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^scheduler_emit_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-data scheduler_missing_source_node: Node = v2.std.node.Node {
+data scheduler_missing_source_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^scheduler_missing_source_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-data scheduler_fixture_graph: Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+data scheduler_fixture_graph: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [
     v2.std.node.Edge { label: Named { name: ^scheduler_build_symbol }, target: scheduler_build_node },
     v2.std.node.Edge { label: Named { name: ^scheduler_test_symbol }, target: scheduler_test_node },
     v2.std.node.Edge { label: Named { name: ^scheduler_emit_symbol }, target: scheduler_emit_node }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
 data scheduler_build_to_emit_dependency: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
   source: scheduler_build_node,
   dependent: scheduler_emit_node,
-  kind: DataDependsOn,
+  kind: v2.std.dependency.DataDependsOn,
   usage_site: scheduler_emit_node
 }
 
 data scheduler_test_to_emit_dependency: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
   source: scheduler_test_node,
   dependent: scheduler_emit_node,
-  kind: DataDependsOn,
+  kind: v2.std.dependency.DataDependsOn,
   usage_site: scheduler_emit_node
 }
 
-data scheduler_fixture_nodes: List<Node> = [
+data scheduler_fixture_nodes: std.types.List<v2.std.node.Node> = [
   scheduler_build_node,
   scheduler_test_node,
   scheduler_emit_node
 ]
 
-data scheduler_fixture_dependencies: List<v2.std.dependency.DependencyView> = [
+data scheduler_fixture_dependencies: std.types.List<v2.std.dependency.DependencyView> = [
   scheduler_build_to_emit_dependency,
   scheduler_test_to_emit_dependency
 ]
 
-data scheduler_fixture_reversed_dependencies: List<v2.std.dependency.DependencyView> = [
+data scheduler_fixture_reversed_dependencies: std.types.List<v2.std.dependency.DependencyView> = [
   v2.std.dependency.DependencyView {
     source: scheduler_emit_node,
     dependent: scheduler_build_node,
-    kind: DataDependsOn,
+    kind: v2.std.dependency.DataDependsOn,
     usage_site: scheduler_build_node
   },
   v2.std.dependency.DependencyView {
     source: scheduler_emit_node,
     dependent: scheduler_test_node,
-    kind: DataDependsOn,
+    kind: v2.std.dependency.DataDependsOn,
     usage_site: scheduler_test_node
   }
 ]
@@ -85,31 +85,31 @@ data scheduler_contains_noise_dependency: v2.std.dependency.DependencyView = v2.
   usage_site: scheduler_build_node
 }
 
-data scheduler_fixture_dependencies_with_contains_noise: List<v2.std.dependency.DependencyView> = [
+data scheduler_fixture_dependencies_with_contains_noise: std.types.List<v2.std.dependency.DependencyView> = [
   scheduler_build_to_emit_dependency,
   scheduler_test_to_emit_dependency,
   scheduler_contains_noise_dependency
 ]
 
-data scheduler_missing_prerequisite_dependencies: List<v2.std.dependency.DependencyView> = [
+data scheduler_missing_prerequisite_dependencies: std.types.List<v2.std.dependency.DependencyView> = [
   v2.std.dependency.DependencyView {
     source: scheduler_emit_node,
     dependent: scheduler_build_node,
-    kind: DataDependsOn,
+    kind: v2.std.dependency.DataDependsOn,
     usage_site: scheduler_build_node
   }
 ]
 
-data scheduler_mixed_runnable_blocked_dependencies: List<v2.std.dependency.DependencyView> = [
+data scheduler_mixed_runnable_blocked_dependencies: std.types.List<v2.std.dependency.DependencyView> = [
   v2.std.dependency.DependencyView {
     source: scheduler_missing_source_node,
     dependent: scheduler_test_node,
-    kind: DataDependsOn,
+    kind: v2.std.dependency.DataDependsOn,
     usage_site: scheduler_test_node
   }
 ]
 
-fn scheduler_initial_frontier() -> v2.workflow.scheduler.RunnableFrontier {
+fn scheduler_initial_frontier() -> v2.workflow.scheduler.RunnableFrontier<v2.std.node.Node> {
   runnable_frontier_from_dependencies(
     nodes: scheduler_fixture_nodes,
     dependencies: scheduler_fixture_dependencies,
@@ -117,7 +117,7 @@ fn scheduler_initial_frontier() -> v2.workflow.scheduler.RunnableFrontier {
   )
 }
 
-fn scheduler_after_independent_frontier() -> v2.workflow.scheduler.RunnableFrontier {
+fn scheduler_after_independent_frontier() -> v2.workflow.scheduler.RunnableFrontier<v2.std.node.Node> {
   runnable_frontier_from_dependencies(
     nodes: scheduler_fixture_nodes,
     dependencies: scheduler_fixture_dependencies,
@@ -125,7 +125,7 @@ fn scheduler_after_independent_frontier() -> v2.workflow.scheduler.RunnableFront
   )
 }
 
-fn scheduler_reversed_initial_frontier() -> v2.workflow.scheduler.RunnableFrontier {
+fn scheduler_reversed_initial_frontier() -> v2.workflow.scheduler.RunnableFrontier<v2.std.node.Node> {
   runnable_frontier_from_dependencies(
     nodes: scheduler_fixture_nodes,
     dependencies: scheduler_fixture_reversed_dependencies,
@@ -133,7 +133,7 @@ fn scheduler_reversed_initial_frontier() -> v2.workflow.scheduler.RunnableFronti
   )
 }
 
-fn scheduler_contains_noise_frontier() -> v2.workflow.scheduler.RunnableFrontier {
+fn scheduler_contains_noise_frontier() -> v2.workflow.scheduler.RunnableFrontier<v2.std.node.Node> {
   runnable_frontier_from_dependencies(
     nodes: scheduler_fixture_nodes,
     dependencies: scheduler_fixture_dependencies_with_contains_noise,
@@ -143,9 +143,9 @@ fn scheduler_contains_noise_frontier() -> v2.workflow.scheduler.RunnableFrontier
 
 fn scheduler_layers_reuse_dependency_fold() -> Bool {
   match scheduler_plan(graph_node: scheduler_fixture_graph) {
-    SchedulerPlanComplete { layers: layers, scheduled: _ } => layers == topological_layers(graph_node: scheduler_fixture_graph)
-    SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
-    SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
+    v2.workflow.scheduler.SchedulerPlanComplete { layers: layers, scheduled: _ } => layers == topological_layers(graph_node: scheduler_fixture_graph)
+    v2.workflow.scheduler.SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
+    v2.workflow.scheduler.SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
   }
 }
 
@@ -175,9 +175,9 @@ fn scheduler_missing_prerequisite_blocks_with_evidence() -> Bool {
     dependencies: scheduler_missing_prerequisite_dependencies,
     scheduled: []
   ) {
-    SchedulerPlanComplete { layers: _, scheduled: _ } => false
-    SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
-    SchedulerPlanBlocked { evidence: SchedulerNoRunnableFrontier {}, scheduled: scheduled, remaining: remaining, layers: layers } => scheduled == [] && remaining == [scheduler_build_node] && layers == []
+    v2.workflow.scheduler.SchedulerPlanComplete { layers: _, scheduled: _ } => false
+    v2.workflow.scheduler.SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
+    v2.workflow.scheduler.SchedulerPlanBlocked { evidence: v2.workflow.scheduler.SchedulerNoRunnableFrontier {}, scheduled: scheduled, remaining: remaining, layers: layers } => scheduled == [] && remaining == [scheduler_build_node] && layers == []
   }
 }
 
@@ -187,9 +187,9 @@ fn scheduler_step_plan_exposes_runnable_state() -> Bool {
     dependencies: scheduler_fixture_dependencies,
     scheduled: []
   ) {
-    SchedulerPlanComplete { layers: _, scheduled: _ } => false
-    SchedulerPlanRunnable { frontier: frontier, scheduled: scheduled, remaining: remaining, layers: layers } => frontier.ready == [scheduler_build_node, scheduler_test_node] && scheduled == [scheduler_build_node, scheduler_test_node] && remaining == [scheduler_emit_node] && layers == [v2.std.dependency.ReadinessLayer { ready: [scheduler_build_node, scheduler_test_node] }]
-    SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
+    v2.workflow.scheduler.SchedulerPlanComplete { layers: _, scheduled: _ } => false
+    v2.workflow.scheduler.SchedulerPlanRunnable { frontier: frontier, scheduled: scheduled, remaining: remaining, layers: layers } => frontier.ready == [scheduler_build_node, scheduler_test_node] && scheduled == [scheduler_build_node, scheduler_test_node] && remaining == [scheduler_emit_node] && layers == [v2.std.dependency.ReadinessLayer { ready: [scheduler_build_node, scheduler_test_node] }]
+    v2.workflow.scheduler.SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
   }
 }
 
@@ -199,9 +199,9 @@ fn scheduler_full_plan_completes_all_work() -> Bool {
     dependencies: scheduler_fixture_dependencies,
     scheduled: []
   ) {
-    SchedulerPlanComplete { layers: layers, scheduled: scheduled } => scheduled == [scheduler_build_node, scheduler_test_node, scheduler_emit_node] && layers == [v2.std.dependency.ReadinessLayer { ready: [scheduler_build_node, scheduler_test_node] }, v2.std.dependency.ReadinessLayer { ready: [scheduler_emit_node] }]
-    SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
-    SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
+    v2.workflow.scheduler.SchedulerPlanComplete { layers: layers, scheduled: scheduled } => scheduled == [scheduler_build_node, scheduler_test_node, scheduler_emit_node] && layers == [v2.std.dependency.ReadinessLayer { ready: [scheduler_build_node, scheduler_test_node] }, v2.std.dependency.ReadinessLayer { ready: [scheduler_emit_node] }]
+    v2.workflow.scheduler.SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
+    v2.workflow.scheduler.SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
   }
 }
 
@@ -211,9 +211,9 @@ fn scheduler_all_scheduled_completes_without_blocking() -> Bool {
     dependencies: scheduler_fixture_dependencies,
     scheduled: scheduler_fixture_nodes
   ) {
-    SchedulerPlanComplete { layers: layers, scheduled: scheduled } => scheduled == scheduler_fixture_nodes && layers == []
-    SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
-    SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
+    v2.workflow.scheduler.SchedulerPlanComplete { layers: layers, scheduled: scheduled } => scheduled == scheduler_fixture_nodes && layers == []
+    v2.workflow.scheduler.SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
+    v2.workflow.scheduler.SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
   }
 }
 
@@ -223,9 +223,9 @@ fn scheduler_mixed_runnable_then_blocked_reports_remaining() -> Bool {
     dependencies: scheduler_mixed_runnable_blocked_dependencies,
     scheduled: []
   ) {
-    SchedulerPlanComplete { layers: _, scheduled: _ } => false
-    SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
-    SchedulerPlanBlocked { evidence: SchedulerNoRunnableFrontier {}, scheduled: scheduled, remaining: remaining, layers: layers } => scheduled == [scheduler_build_node, scheduler_emit_node] && remaining == [scheduler_test_node] && layers == [v2.std.dependency.ReadinessLayer { ready: [scheduler_build_node, scheduler_emit_node] }]
+    v2.workflow.scheduler.SchedulerPlanComplete { layers: _, scheduled: _ } => false
+    v2.workflow.scheduler.SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
+    v2.workflow.scheduler.SchedulerPlanBlocked { evidence: v2.workflow.scheduler.SchedulerNoRunnableFrontier {}, scheduled: scheduled, remaining: remaining, layers: layers } => scheduled == [scheduler_build_node, scheduler_emit_node] && remaining == [scheduler_test_node] && layers == [v2.std.dependency.ReadinessLayer { ready: [scheduler_build_node, scheduler_emit_node] }]
   }
 }
 

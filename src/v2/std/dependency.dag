@@ -25,32 +25,76 @@ type DependencyView {
   usage_site: v2.std.node.Node
 }
 
-type ClassifiedDependencyView<C> {
+// THE PREREQUISITE RELATION, WITH ITS SUBJECT AS A PARAMETER.
+//
+// A dependency is a direction between two things plus what kind of dependence it is, and that shape
+// does not vary with what the two things are. DependencyView above is the COMPILER'S instantiation
+// of it: its subject is Node and it additionally carries usage_site, an AST occurrence that only
+// means anything when the subject is program structure. Those extra facts are compiler metadata, not
+// part of the relation, which is why the relation is extracted from underneath rather than
+// DependencyView being widened -- widening it would push a Node-shaped carrier onto every consumer
+// of a relation whose subject is not program structure at all.
+//
+// WHY THIS IS EXTRACTED RATHER THAN A SECOND GRAPH. Host convergence needs exactly this relation
+// over planned operations: a unit file must exist before the manager can register it, a runtime must
+// be materialized before a service that runs it can start. Answering that with its own graph would
+// fork readiness, cycle detection and layering -- three things that are easy to reimplement and easy
+// to reimplement subtly wrong -- and would leave two authorities answering one question, which is
+// the violation this module exists on the correct side of. The kinds it needs are already in the
+// closed vocabulary above (ResourceDependsOn for an enduring requirement, BarrierBefore for a
+// procedural one), modelled before any consumer existed.
+//
+// The subject carries no equality constraint. Callers supply one, exactly as the membership spine
+// takes key_eq rather than assuming its members are comparable.
+type DependencyRelation<extdeps.coverage.Subject> {
+  prerequisite: extdeps.coverage.Subject
+  dependent: extdeps.coverage.Subject
+  kind: DependencyKind
+}
+
+// The compiler's view IS a relation over Node once its occurrence metadata is set aside. Naming the
+// projection means the scheduler consumes one shape, and the Node case stays a caller of the general
+// path rather than a parallel implementation of it.
+fn dependency_view_relation(view: DependencyView) -> DependencyRelation<v2.std.node.Node> {
+  DependencyRelation {
+    prerequisite: view.source,
+    dependent: view.dependent,
+    kind: view.kind,
+  }
+}
+
+fn dependency_view_relations(views: std.types.List<DependencyView>) -> std.types.List<DependencyRelation<v2.std.node.Node>> {
+  fold(views, init: [], f: fn(acc, v) {
+    list_snoc_item(xs: acc, item: dependency_view_relation(view: v))
+  })
+}
+
+type ClassifiedDependencyView<extdeps.languages.c.subject.C> {
   dependency: DependencyView
-  classification: C
+  classification: extdeps.languages.c.subject.C
 }
 
-type DependencyKindClassifier<C> {
-  contains: C
-  binds_to: C
-  type_depends_on: C
-  data_depends_on: C
-  effect_depends_on: C
-  resource_depends_on: C
-  module_depends_on: C
-  barrier_before: C
-  placement_depends_on: C
-  model_depends_on: C
-  projection_depends_on: C
-  generated_from: C
-  verified_by: C
-  promoted_by: C
-  bootstrap_depends_on: C
+type DependencyKindClassifier<extdeps.languages.c.subject.C> {
+  contains: extdeps.languages.c.subject.C
+  binds_to: extdeps.languages.c.subject.C
+  type_depends_on: extdeps.languages.c.subject.C
+  data_depends_on: extdeps.languages.c.subject.C
+  effect_depends_on: extdeps.languages.c.subject.C
+  resource_depends_on: extdeps.languages.c.subject.C
+  module_depends_on: extdeps.languages.c.subject.C
+  barrier_before: extdeps.languages.c.subject.C
+  placement_depends_on: extdeps.languages.c.subject.C
+  model_depends_on: extdeps.languages.c.subject.C
+  projection_depends_on: extdeps.languages.c.subject.C
+  generated_from: extdeps.languages.c.subject.C
+  verified_by: extdeps.languages.c.subject.C
+  promoted_by: extdeps.languages.c.subject.C
+  bootstrap_depends_on: extdeps.languages.c.subject.C
 }
 
-fn classify_dependency_kind<C>(classifier: DependencyKindClassifier<C>, kind: DependencyKind) -> C {
+fn classify_dependency_kind<extdeps.languages.c.subject.C>(classifier: DependencyKindClassifier<extdeps.languages.c.subject.C>, kind: DependencyKind) -> extdeps.languages.c.subject.C {
   match kind {
-    Contains => classifier.contains
+    v2.std.dependency.Contains => classifier.contains
     BindsTo => classifier.binds_to
     TypeDependsOn => classifier.type_depends_on
     DataDependsOn => classifier.data_depends_on
@@ -68,45 +112,45 @@ fn classify_dependency_kind<C>(classifier: DependencyKindClassifier<C>, kind: De
   }
 }
 
-fn classify_dependency_view<C>(
-  classifier: DependencyKindClassifier<C>,
+fn classify_dependency_view<extdeps.languages.c.subject.C>(
+  classifier: DependencyKindClassifier<extdeps.languages.c.subject.C>,
   view: DependencyView
-) -> ClassifiedDependencyView<C> {
+) -> ClassifiedDependencyView<extdeps.languages.c.subject.C> {
   ClassifiedDependencyView {
     dependency: view,
     classification: classify_dependency_kind(classifier: classifier, kind: view.kind)
   }
 }
 
-fn classified_source<C>(view: ClassifiedDependencyView<C>) -> v2.std.node.Node {
+fn classified_source<extdeps.languages.c.subject.C>(view: ClassifiedDependencyView<extdeps.languages.c.subject.C>) -> v2.std.node.Node {
   view.dependency.source
 }
 
-fn classified_dependent<C>(view: ClassifiedDependencyView<C>) -> v2.std.node.Node {
+fn classified_dependent<extdeps.languages.c.subject.C>(view: ClassifiedDependencyView<extdeps.languages.c.subject.C>) -> v2.std.node.Node {
   view.dependency.dependent
 }
 
-fn classified_usage_site<C>(view: ClassifiedDependencyView<C>) -> v2.std.node.Node {
+fn classified_usage_site<extdeps.languages.c.subject.C>(view: ClassifiedDependencyView<extdeps.languages.c.subject.C>) -> v2.std.node.Node {
   view.dependency.usage_site
 }
 
-fn classified_dependency_view_eq<C>(
-  a: ClassifiedDependencyView<C>,
-  b: ClassifiedDependencyView<C>,
-  classification_eq: fn(C, C) -> Bool
+fn classified_dependency_view_eq<extdeps.languages.c.subject.C>(
+  a: ClassifiedDependencyView<extdeps.languages.c.subject.C>,
+  b: ClassifiedDependencyView<extdeps.languages.c.subject.C>,
+  classification_eq: fn(extdeps.languages.c.subject.C, extdeps.languages.c.subject.C) -> Bool
 ) -> Bool {
   (a.dependency == b.dependency) && classification_eq(a.classification, b.classification)
 }
 
 type DependencyFoldState {
   current: v2.std.node.Node
-  dependencies: List<DependencyView>
+  dependencies: std.types.List<DependencyView>
 }
 
 fn classify_named_edge_usage(parent: v2.std.node.Node, sym: v2.std.node.Symbol) -> DependencyKind {
   if sym == ^dependency_binds_to_edge {
     match parent.kind {
-      ComputationNode { behavior: Bind } => Contains
+      v2.std.node.ComputationNode { behavior: v2.std.node.Bind } => v2.std.dependency.Contains
       _ => BindsTo
     }
   } else if sym == ^dependency_module_import_edge {
@@ -114,14 +158,14 @@ fn classify_named_edge_usage(parent: v2.std.node.Node, sym: v2.std.node.Symbol) 
   } else if sym == ^dependency_bootstrap_depends_edge {
     BootstrapDependsOn
   } else {
-    Contains
+    v2.std.dependency.Contains
   }
 }
 
 fn classify_node_edge_usage(parent: v2.std.node.Node, edge: v2.std.node.Edge) -> DependencyKind {
   match edge.label {
     Named { name: sym } => classify_named_edge_usage(parent: parent, sym: sym)
-    Positional => Contains
+    v2.std.node.Positional => v2.std.dependency.Contains
   }
 }
 
@@ -135,7 +179,7 @@ fn dependency_view_for_edge(parent: v2.std.node.Node, edge: v2.std.node.Edge) ->
   }
 }
 
-fn append_dependency_views(left: List<DependencyView>, right: List<DependencyView>) -> List<DependencyView> {
+fn append_dependency_views(left: std.types.List<DependencyView>, right: std.types.List<DependencyView>) -> std.types.List<DependencyView> {
   list_append(left: left, right: right)
 }
 
@@ -156,18 +200,18 @@ fn dependency_fold_step(acc: DependencyFoldState, edge: v2.std.node.Edge, child_
   }
 }
 
-fn dependency_fold_algebra() -> NodeFold<DependencyFoldState> {
+fn dependency_fold_algebra() -> v2.std.node.NodeFold<DependencyFoldState> {
   v2.std.node.NodeFold {
     init: dependency_fold_init,
     step: dependency_fold_step
   }
 }
 
-fn dependency_fold_dependencies(state: DependencyFoldState) -> List<DependencyView> {
+fn dependency_fold_dependencies(state: DependencyFoldState) -> std.types.List<DependencyView> {
   state.dependencies
 }
 
-fn dependency_lens(root: v2.std.node.Node) -> List<DependencyView> {
+fn dependency_lens(root: v2.std.node.Node) -> std.types.List<DependencyView> {
   dependency_fold_dependencies(
     state: fold_node(
       n: root,
@@ -176,14 +220,18 @@ fn dependency_lens(root: v2.std.node.Node) -> List<DependencyView> {
   )
 }
 
-type ReadinessLayer {
-  ready: List<v2.std.node.Node>
+// A layer is a set of subjects with no prerequisite among them still outstanding, so it is the same
+// shape whatever the subjects are. Parameterized for the same reason the relation above is: the
+// compiler schedules Nodes and host convergence schedules planned operations, and layering is one
+// concept rather than one per subject.
+type ReadinessLayer<extdeps.coverage.Subject> {
+  ready: std.types.List<extdeps.coverage.Subject>
 }
 
 type ReadinessFoldState {
   current: v2.std.node.Node
-  ready: List<v2.std.node.Node>
-  layers: List<ReadinessLayer>
+  ready: std.types.List<v2.std.node.Node>
+  layers: std.types.List<ReadinessLayer<v2.std.node.Node>>
 }
 
 fn readiness_fold_init(n: v2.std.node.Node) -> ReadinessFoldState {
@@ -202,18 +250,18 @@ fn ready_set_fold_step(acc: ReadinessFoldState, _edge: v2.std.node.Edge, child_s
   }
 }
 
-fn ready_set_algebra() -> NodeFold<ReadinessFoldState> {
+fn ready_set_algebra() -> v2.std.node.NodeFold<ReadinessFoldState> {
   v2.std.node.NodeFold {
     init: readiness_fold_init,
     step: ready_set_fold_step
   }
 }
 
-fn readiness_fold_ready(state: ReadinessFoldState) -> List<v2.std.node.Node> {
+fn readiness_fold_ready(state: ReadinessFoldState) -> std.types.List<v2.std.node.Node> {
   state.ready
 }
 
-fn ready_set(graph_node: v2.std.node.Node) -> List<v2.std.node.Node> {
+fn ready_set(graph_node: v2.std.node.Node) -> std.types.List<v2.std.node.Node> {
   readiness_fold_ready(
     state: fold_node(
       n: graph_node,
@@ -222,7 +270,7 @@ fn ready_set(graph_node: v2.std.node.Node) -> List<v2.std.node.Node> {
   )
 }
 
-fn append_nodes(left: List<v2.std.node.Node>, right: List<v2.std.node.Node>) -> List<v2.std.node.Node> {
+fn append_nodes(left: std.types.List<v2.std.node.Node>, right: std.types.List<v2.std.node.Node>) -> std.types.List<v2.std.node.Node> {
   list_append(left: left, right: right)
 }
 
@@ -246,18 +294,18 @@ fn topological_layers_fold_step(acc: ReadinessFoldState, _edge: v2.std.node.Edge
   }
 }
 
-fn topological_layers_algebra() -> NodeFold<ReadinessFoldState> {
+fn topological_layers_algebra() -> v2.std.node.NodeFold<ReadinessFoldState> {
   v2.std.node.NodeFold {
     init: topological_layers_fold_init,
     step: topological_layers_fold_step
   }
 }
 
-fn readiness_fold_layers(state: ReadinessFoldState) -> List<ReadinessLayer> {
+fn readiness_fold_layers(state: ReadinessFoldState) -> std.types.List<ReadinessLayer<v2.std.node.Node>> {
   state.layers
 }
 
-fn topological_layers(graph_node: v2.std.node.Node) -> List<ReadinessLayer> {
+fn topological_layers(graph_node: v2.std.node.Node) -> std.types.List<ReadinessLayer<v2.std.node.Node>> {
   readiness_fold_layers(
     state: fold_node(
       n: graph_node,
@@ -266,6 +314,6 @@ fn topological_layers(graph_node: v2.std.node.Node) -> List<ReadinessLayer> {
   )
 }
 
-fn append_readiness_layers(left: List<ReadinessLayer>, right: List<ReadinessLayer>) -> List<ReadinessLayer> {
+fn append_readiness_layers(left: std.types.List<ReadinessLayer<v2.std.node.Node>>, right: std.types.List<ReadinessLayer<v2.std.node.Node>>) -> std.types.List<ReadinessLayer<v2.std.node.Node>> {
   list_append(left: left, right: right)
 }

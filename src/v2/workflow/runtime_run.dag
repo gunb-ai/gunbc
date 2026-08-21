@@ -2,29 +2,29 @@ module v2.workflow.runtime_run
 
 
 type RuntimeRunReceipt {
-  node: Node
-  result: Outcome<v2.std.runtime.RuntimeValue>
+  node: v2.std.node.Node
+  result: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
 }
 
 type RuntimeRunLog {
-  entries: List<RuntimeRunReceipt>
+  entries: std.types.List<RuntimeRunReceipt>
 }
 
 type RuntimeRunState {
   log: RuntimeRunLog
-  scheduled: List<Node>
+  scheduled: std.types.List<v2.std.node.Node>
 }
 
 type RuntimeRunResult
   = RuntimeRunComplete {
       log: RuntimeRunLog
-      scheduled: List<Node>
+      scheduled: std.types.List<v2.std.node.Node>
     }
   | RuntimeRunBlocked {
       evidence: v2.workflow.scheduler.SchedulerBlockedEvidence
       log: RuntimeRunLog
-      scheduled: List<Node>
-      remaining: List<Node>
+      scheduled: std.types.List<v2.std.node.Node>
+      remaining: std.types.List<v2.std.node.Node>
     }
 
 fn runtime_run_log_empty() -> RuntimeRunLog {
@@ -33,8 +33,8 @@ fn runtime_run_log_empty() -> RuntimeRunLog {
 
 fn runtime_run_append_receipt(
   log: RuntimeRunLog,
-  node: Node,
-  result: Outcome<v2.std.runtime.RuntimeValue>
+  node: v2.std.node.Node,
+  result: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>
 ) -> RuntimeRunLog {
   RuntimeRunLog {
     entries: list_snoc_item(
@@ -46,7 +46,7 @@ fn runtime_run_append_receipt(
 
 fn runtime_run_eval_node(
   state: RuntimeRunState,
-  node: Node,
+  node: v2.std.node.Node,
   tree: v2.compiler.inferred_tree.InferredTree,
   context: v2.compiler.eval.EvalContext
 ) -> RuntimeRunState {
@@ -62,7 +62,7 @@ fn runtime_run_eval_node(
 }
 
 fn runtime_run_step_from_frontier(
-  frontier: v2.workflow.scheduler.RunnableFrontier,
+  frontier: v2.workflow.scheduler.RunnableFrontier<v2.std.node.Node>,
   state: RuntimeRunState,
   tree: v2.compiler.inferred_tree.InferredTree,
   context: v2.compiler.eval.EvalContext
@@ -73,8 +73,8 @@ fn runtime_run_step_from_frontier(
 }
 
 fn runtime_run_step_state(
-  nodes: List<Node>,
-  dependencies: List<v2.std.dependency.DependencyView>,
+  nodes: std.types.List<v2.std.node.Node>,
+  dependencies: std.types.List<v2.std.dependency.DependencyView>,
   tree: v2.compiler.inferred_tree.InferredTree,
   context: v2.compiler.eval.EvalContext,
   state: RuntimeRunState
@@ -97,8 +97,8 @@ fn runtime_run_step_state(
 }
 
 fn runtime_run_result_from_state(
-  nodes: List<Node>,
-  dependencies: List<v2.std.dependency.DependencyView>,
+  nodes: std.types.List<v2.std.node.Node>,
+  dependencies: std.types.List<v2.std.dependency.DependencyView>,
   state: RuntimeRunState
 ) -> RuntimeRunResult {
   let remaining = scheduler_remaining_nodes(nodes: nodes, scheduled: state.scheduled)
@@ -118,8 +118,8 @@ fn runtime_run_result_from_state(
 }
 
 fn runtime_run(
-  nodes: List<Node>,
-  dependencies: List<v2.std.dependency.DependencyView>,
+  nodes: std.types.List<v2.std.node.Node>,
+  dependencies: std.types.List<v2.std.dependency.DependencyView>,
   tree: v2.compiler.inferred_tree.InferredTree,
   context: v2.compiler.eval.EvalContext
 ) -> RuntimeRunResult {

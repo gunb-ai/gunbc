@@ -1,0 +1,50 @@
+module gunbc.spark.serving_runtime_admission
+
+
+data spark_serving_runtime_admission_note: String = "HOST RUNTIME ADMISSION (SPARK-SERVE-BIND-0 driver axis). GB10 requires NVIDIA driver 550 or newer per docs.ollama.com/gpu. Ollama falls back to CPU when the driver is too old rather than refusing install, so admission must observe the host driver and route through ollama_runtime_admission_verdict — unobserved refuses rather than passing."
+
+fn spark_serving_parse_nvidia_driver_version(stdout: String) -> gunbc.spark.serving_readback_parse.SparkServingReadbackField {
+  let trimmed = trim(s: stdout)
+  if trimmed == "" {
+    gunbc.spark.serving_readback_parse.SparkServingReadbackRefused {
+      cause: "nvidia-smi driver_version query returned empty output" as std.types.NonEmptyStr,
+    }
+  } else {
+    match ollama_nvidia_driver_version_from_wire_text(raw: trimmed) {
+      Present { value: driver } =>
+        gunbc.spark.serving_readback_parse.SparkServingReadbackPresent { value: to_string(driver.major) }
+      Absent =>
+        gunbc.spark.serving_readback_parse.SparkServingReadbackRefused {
+          cause: join(["nvidia-smi driver_version output is not parseable: ", trimmed], "") as std.types.NonEmptyStr,
+        }
+    }
+  }
+}
+
+fn spark_serving_observed_nvidia_driver_from_field(
+  field: gunbc.spark.serving_readback_parse.SparkServingReadbackField,
+) -> extdeps.ollama.gpu_support.OllamaNvidiaDriverVersion? {
+  match field {
+    gunbc.spark.serving_readback_parse.SparkServingReadbackPresent { value: v } =>
+      ollama_nvidia_driver_version_from_wire_text(raw: v)
+    gunbc.spark.serving_readback_parse.SparkServingReadbackAbsent => none
+    gunbc.spark.serving_readback_parse.SparkServingReadbackRefused { cause: _ } => none
+  }
+}
+
+fn spark_serving_runtime_admission_refusal_cause(
+  nvidia_driver: gunbc.spark.serving_readback_parse.SparkServingReadbackField,
+) -> std.types.NonEmptyStr? {
+  match ollama_runtime_admission_verdict(
+    binary_release: ollama_required_release,
+    platform: OllamaNvidiaGb10Spark,
+    architecture: OllamaLinuxArm64,
+    model: spark_serving_desired_model_ref,
+    observed_nvidia_driver: spark_serving_observed_nvidia_driver_from_field(field: nvidia_driver),
+  ) {
+    extdeps.ollama.capability.OllamaRuntimeAdmissionApplicable => none
+    extdeps.ollama.capability.OllamaRuntimeAdmissionUnmet { cause: c } => Present { value: c }
+    extdeps.ollama.capability.OllamaRuntimeAdmissionUnobserved { cause: c } => Present { value: c }
+    extdeps.ollama.capability.OllamaRuntimeAdmissionUncatalogued { cause: c } => Present { value: c }
+  }
+}

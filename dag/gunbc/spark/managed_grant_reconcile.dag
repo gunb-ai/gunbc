@@ -1,0 +1,152 @@
+module gunbc.spark.managed_grant_reconcile
+
+
+// THE GAP BETWEEN DESIRED AND HELD PRIVILEGE, which until now nothing computed.
+//
+// The bootstrap plan derives grant installs, but it is only ever REPORTED -- there is no actuator --
+// and it derives them only for a host whose managed account does not exist yet. So a host that was
+// bootstrapped before a grant entered the population is grounded, under-granted, and silent about
+// it: the gap surfaces as a bare `sudo: a password is required` at the moment some effect needs the
+// privilege, which names neither the grant nor the remedy. That is what happened to the reboot leg
+// on srv6, and it is the reason this module exists rather than a second hand-run sudoers edit.
+//
+// The reconcile is per (host, grant) because that is the grain at which the remedy differs. A
+// host-grained "is provisioned" Bool would let one grant's presence answer another grant's question,
+// which is the defect the reach observation record already names about itself one layer up.
+
+type SparkManagedGrantStanding
+  = GrantHeld { grant: gunbc.spark.managed_access_bootstrap.SparkManagedGrant }
+  | GrantNotHeld { grant: gunbc.spark.managed_access_bootstrap.SparkManagedGrant }
+  | GrantStandingUnobserved { grant: gunbc.spark.managed_access_bootstrap.SparkManagedGrant, cause: std.types.NonEmptyStr }
+
+// SUDO'S OWN DIAGNOSTIC IS THE DISCRIMINATOR, not the exit code. `sudo -n -l` exits non-zero both
+// when the account holds no passwordless grant at all and when the probe could not ask -- and those
+// have different remedies, so collapsing them would let an unreachable host read as a host needing
+// grants installed. The password demand is sudo saying, successfully, that the answer is none.
+fn spark_grant_listing_reports_no_passwordless_grant(detail: String) -> Bool {
+  string_contains(detail, "a password is required")
+}
+
+// A grant is HELD when the enumeration names the exact command the grant authorizes. The listing is
+// sudo's own rendering of sudoers, and the command string comes from the same row the installer
+// writes -- so this is a join against one authority, not a guess at a format.
+fn spark_managed_grant_standing_from_outcome(
+  grant: gunbc.spark.managed_access_bootstrap.SparkManagedGrant,
+  outcome: gunbc.spark.managed_access_bootstrap.SparkGrantOutcome,
+) -> SparkManagedGrantStanding {
+  match outcome {
+    gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: l } =>
+      if string_contains(l, spark_managed_grant_sudoers_command(grant: grant) as String) {
+        GrantHeld { grant: grant }
+      } else {
+        GrantNotHeld { grant: grant }
+      }
+    GrantAbsent { detail: d } =>
+      if spark_grant_listing_reports_no_passwordless_grant(detail: d) {
+        GrantNotHeld { grant: grant }
+      } else {
+        GrantStandingUnobserved {
+          grant: grant,
+          cause: join(["sudo -n -l failed for a reason other than the password demand: ", d], "") as std.types.NonEmptyStr,
+        }
+      }
+    gunbc.spark.managed_access_bootstrap.GrantProbeRefused { cause: c } =>
+      GrantStandingUnobserved {
+        grant: grant,
+        cause: join(["the grant probe leg never ran: ", c], "") as std.types.NonEmptyStr,
+      }
+  }
+}
+
+fn spark_managed_grant_standings(outcome: gunbc.spark.managed_access_bootstrap.SparkGrantOutcome) -> std.types.List<SparkManagedGrantStanding> {
+  map(spark_managed_grant_population, g =>
+    spark_managed_grant_standing_from_outcome(grant: g, outcome: outcome))
+}
+
+// THE MISSING SET IS NOT THE COMPLEMENT OF THE HELD SET. An unobserved grant is absent from BOTH,
+// because installing a grant we could not measure would be actuating on ignorance, and reporting it
+// held would be worse. This is the one place the three-way split pays for itself.
+fn spark_managed_grants_to_install(outcome: gunbc.spark.managed_access_bootstrap.SparkGrantOutcome) -> std.types.List<gunbc.spark.managed_access_bootstrap.SparkManagedGrant> {
+  flat_map(spark_managed_grant_standings(outcome: outcome), s =>
+    match s {
+      GrantNotHeld { grant: g } => [g]
+      GrantHeld { grant: _ } => []
+      GrantStandingUnobserved { grant: _, cause: _ } => []
+    })
+}
+
+fn spark_managed_grants_unobserved(outcome: gunbc.spark.managed_access_bootstrap.SparkGrantOutcome) -> std.types.List<gunbc.spark.managed_access_bootstrap.SparkManagedGrant> {
+  flat_map(spark_managed_grant_standings(outcome: outcome), s =>
+    match s {
+      GrantStandingUnobserved { grant: g, cause: _ } => [g]
+      GrantHeld { grant: _ } => []
+      GrantNotHeld { grant: _ } => []
+    })
+}
+
+// A host is grant-converged when every desired grant is HELD -- which an empty install list does not
+// establish on its own, since an entirely unobserved host also produces one. Asking the question of
+// the standings directly is what keeps ignorance out of the affirmative answer.
+fn spark_managed_grants_converged(outcome: gunbc.spark.managed_access_bootstrap.SparkGrantOutcome) -> Bool {
+  fold(spark_managed_grant_standings(outcome: outcome), init: true, f: fn(acc, s) {
+    acc && match s {
+      GrantHeld { grant: _ } => true
+      GrantNotHeld { grant: _ } => false
+      GrantStandingUnobserved { grant: _, cause: _ } => false
+    }
+  })
+}
+
+// ── What gets written ──────────────────────────────────────────────────────────────────────────
+
+// One drop-in file per grant, named for the grant. Per-grant files rather than one appended file
+// because appending has no idempotent form: re-running would duplicate the line, and a reconcile
+// whose second run differs from its first is not a reconcile.
+fn spark_managed_grant_dropin_name(grant: gunbc.spark.managed_access_bootstrap.SparkManagedGrant) -> std.types.NonEmptyStr {
+  match grant {
+    EnableLingerForOwnAccount => "gunbc-enable-linger" as std.types.NonEmptyStr
+    gunbc.spark.managed_access_bootstrap.RebootThisHost => "gunbc-reboot" as std.types.NonEmptyStr
+  }
+}
+
+fn spark_managed_grant_dropin_path(grant: gunbc.spark.managed_access_bootstrap.SparkManagedGrant) -> std.types.NonEmptyStr {
+  join(["/etc/sudoers.d/", spark_managed_grant_dropin_name(grant: grant) as String], "") as std.types.NonEmptyStr
+}
+
+// The sudoers line, narrow on every axis sudoers offers: this account, any host, run as root only,
+// no password, and exactly one command. A wildcard on any of these would widen the grant past what
+// the effect needs, and the population exists precisely so that widening is never the cheap move.
+fn spark_managed_grant_sudoers_content(grant: gunbc.spark.managed_access_bootstrap.SparkManagedGrant) -> String {
+  join([
+    spark_managed_executor_login, " ALL=(root) NOPASSWD: ",
+    spark_managed_grant_sudoers_command(grant: grant) as String, "\n",
+  ], "")
+}
+
+fn spark_managed_grant_standing_wire(standing: SparkManagedGrantStanding) -> String {
+  match standing {
+    GrantHeld { grant: g } =>
+      join(["  grant=", spark_managed_grant_wire(grant: g) as String, " standing=held\n"], "")
+    GrantNotHeld { grant: g } =>
+      join([
+        "  grant=", spark_managed_grant_wire(grant: g) as String,
+        " standing=not-held install=", spark_managed_grant_dropin_path(grant: g) as String, "\n",
+      ], "")
+    GrantStandingUnobserved { grant: g, cause: c } =>
+      join([
+        "  grant=", spark_managed_grant_wire(grant: g) as String,
+        " standing=unobserved cause=", c as String, "\n",
+      ], "")
+  }
+}
+
+fn spark_managed_grant_report(host: product.placement_supply.HostIdentity, outcome: gunbc.spark.managed_access_bootstrap.SparkGrantOutcome) -> String {
+  join(concat(
+    [join([
+      "grant-standing host=", host as String,
+      " converged=", if spark_managed_grants_converged(outcome: outcome) { "true" } else { "false" }, "\n",
+    ], "")],
+    map(spark_managed_grant_standings(outcome: outcome), s =>
+      spark_managed_grant_standing_wire(standing: s)),
+  ), "")
+}

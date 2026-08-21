@@ -1,0 +1,240 @@
+module gunbc.spark.serving_converge_apply
+
+
+data spark_serving_converge_apply_authority_note: String = "Apply reads ONLY the frozen FleetConvergePlanArtifact.spark_serving_typed_actions rows minted at plan time — it MUST NOT re-run membership_reconcile, re-derive install_effects, or re-realize operations from live authorities. Realization happens at PLAN time and its RemoteOperation values are frozen into the row, so the bundle hash covers the exact bytes a file write will deliver; apply executes those operations verbatim. Realization emits an ORDERED SEQUENCE of gunbc.remote_operation RemoteOperation values (never one fused argv); actuation runs them in order, halting at the first failure. Dispatch is per operation kind: RemoteArgv routes through host_effect_realize run_typed_argv_transport (FleetSsh/SshShell typed argv binding — never effect_actuation shell strings), while RemoteFileBytes routes through typed_remote_file_write converge_typed_remote_file (stage, mode, atomic rename, read-back) and REFUSES on any non-FleetSsh transport, because that convergence needs the SshTarget and sealed FleetSshExecutionContext and SshShell carries neither. The two executions answer in different types and KEEP them: RemoteOperationExecution carries TypedArgvExecOutcome on the argv arm and TypedRemoteFileConvergence on the file arm, because an argv exit code and a four-step read-back-verified convergence are not the same evidence and one success word reported them at one rung. Neither arm means the resource converged -- exit zero says the invoked program reported completion, and resource convergence is established only by the resource's own observer and the empty replan. Progression between steps uses remote_execution_permits_continuation, named for progression rather than convergence. Each step carries a PlannedRemoteStep identity assigned where it is built, and the sequence records RemoteStepStanding per step -- completed, failed, or unattempted -- so a halt names which step stopped and which tail was never reached, instead of collapsing to one reason string."
+
+type SparkServingFrozenApplyResult =
+    SparkServingFrozenApplied { remote_steps: std.types.List<gunbc.remote_operation.PlannedRemoteStep>, effect_count: Int }
+  | SparkServingFrozenApplyRefused { reason: String }
+
+type SparkServingFrozenRemoteExecResult =
+    SparkServingFrozenRemoteExecApplied { standings: std.types.List<gunbc.remote_operation.RemoteStepStanding> }
+  | SparkServingFrozenRemoteExecConvergedNoop
+  | SparkServingFrozenRemoteExecRefused { reason: String }
+
+// APPLY EXECUTES THE FROZEN OPERATIONS. It no longer calls the realizer: the plan already did, at
+// plan time, and the result is in the row. That is what makes the bundle hash meaningful for a file
+// write -- the bytes are inside the thing that was hashed, so a plan/apply divergence is no longer
+// possible rather than merely unlikely. Rows carrying effects but no operations refuse, because
+// executing nothing while reporting the effects applied is the fail-open this freeze exists to shut.
+fn spark_serving_apply_reads_frozen_typed_rows(
+  artifact: gunbc.fleet_converge_plan.FleetConvergePlanArtifact,
+  claimed_bundle_hex: String,
+) -> SparkServingFrozenApplyResult {
+  if !fleet_converge_plan_artifact_bundle_admits(artifact: artifact, claimed_hex: claimed_bundle_hex) {
+    SparkServingFrozenApplyRefused {
+      reason: "spark_serving_converge_apply: plan artifact bundle/hash consistency refused — typed rows cannot be smuggled beside an unverified v1 digest",
+    }
+  } else {
+    SparkServingFrozenApplied {
+      remote_steps: flat_map(
+        scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions),
+        r => fleet_converge_spark_serving_row_steps(row: r),
+      ),
+      effect_count: length(flat_map(scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions), r => fleet_converge_spark_serving_row_effects(row: r))),
+    }
+  }
+}
+
+// TAKES THE TRANSPORT, DOES NOT PICK IT. The earlier signature took a context plus a
+// target and assembled FleetSsh itself, which fixed one transport inside a function whose
+// name then had to claim it. That made the operator-workstation credential path the only
+// reachable one, and it is the path spark_credential_access_token_frontier_note says fails
+// at runtime on GHA runner slots — so the CI dispatch mode this lane adds was wired to a
+// route that cannot execute there. The transport is now the caller's decision, and the two
+// callers hold visibly different preconditions: FleetSsh cannot be constructed without a
+// context whose anchor passed a content readback, while SshShell carries no trust facts and
+// relies on the runner job having established them out of band. Fusing them is what let the
+// stronger name stand over the weaker guarantee.
+fn spark_serving_exec_frozen_typed_rows(
+  artifact: gunbc.fleet_converge_plan.FleetConvergePlanArtifact,
+  claimed_bundle_hex: String,
+  transport: gunbc.host_effect.HostEffectTransport,
+) -> SparkServingFrozenRemoteExecResult {
+  match spark_serving_apply_reads_frozen_typed_rows(
+    artifact: artifact,
+    claimed_bundle_hex: claimed_bundle_hex,
+  ) {
+    SparkServingFrozenApplyRefused { reason: why } =>
+      SparkServingFrozenRemoteExecRefused { reason: why }
+    SparkServingFrozenApplied { remote_steps: steps, effect_count: n } =>
+      if n == 0 {
+        SparkServingFrozenRemoteExecConvergedNoop
+      } else if steps.length() == 0 {
+        SparkServingFrozenRemoteExecRefused {
+          reason: "spark_serving_converge_apply: frozen effects realized to zero steps — refusing rather than reporting a noop as applied",
+        }
+      } else {
+        SparkServingFrozenRemoteExecApplied {
+          standings: spark_serving_run_step_sequence(steps: steps, transport: transport),
+        }
+      }
+  }
+}
+
+// EXECUTING ONE OPERATION, DISPATCHED ON WHAT IT IS.
+//
+// An argv runs through the typed-argv transport. A file write does NOT: bytes ride stdin through the
+// staged convergence (stage, mode, atomic rename, read-back), which is four invocations answering in
+// its own type. Coercing that into an argv result would mean inventing an exit code and a stdout it
+// never had -- a fabricated plausible output at the exact seam that decides whether to keep going --
+// so both are mapped into one outcome vocabulary instead.
+//
+// A FILE WRITE REQUIRES AN ANCHORED TRANSPORT, and that is a property of the types rather than a
+// check. `converge_typed_remote_file` needs the SshTarget and the sealed FleetSshExecutionContext;
+// `SshShell` carries neither and asserts no trust facts, so there is nothing to hand it. Refusing
+// there is correct rather than restrictive: delivering a unit file over an unverified route is
+// exactly the posture the credential lane exists to make unreachable.
+func spark_serving_run_operation(
+  operation: gunbc.remote_operation.RemoteOperation,
+  transport: gunbc.host_effect.HostEffectTransport,
+) -> gunbc.remote_operation.RemoteOperationExecution
+  uses net: std.resources.Network
+{
+  match operation {
+    gunbc.remote_operation.RemoteArgv { argv: argv } =>
+      gunbc.remote_operation.RemoteArgvExecution {
+        outcome: run_typed_argv_transport(argv: argv, transport: transport),
+      }
+    gunbc.remote_operation.RemoteFileBytes { write: w, mode: m } =>
+      match transport {
+        gunbc.host_effect.FleetSsh { target: t, context: ctx } =>
+          gunbc.remote_operation.RemoteFileExecution {
+            outcome: converge_typed_remote_file(
+              target: t,
+              context: ctx,
+              admission: gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: w },
+              mode: m,
+            ),
+          }
+        LocalShell =>
+          gunbc.remote_operation.RemoteFileExecution {
+            outcome: gunbc.typed_remote_file_write.TypedRemoteFileConvergenceRefused {
+              step: "transport",
+              reason: "file write requires an anchored FleetSsh transport; LocalShell carries no remote target",
+            },
+          }
+        gunbc.host_effect.SshShell { ssh_host: h } =>
+          gunbc.remote_operation.RemoteFileExecution {
+            outcome: gunbc.typed_remote_file_write.TypedRemoteFileConvergenceRefused {
+              step: "transport",
+              reason: join([
+                "file write requires an anchored FleetSsh transport; SshShell(", h as String,
+                ") carries no verified credential or known-hosts anchor",
+              ], ""),
+            },
+          }
+        gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+          gunbc.remote_operation.RemoteFileExecution {
+            outcome: gunbc.typed_remote_file_write.TypedRemoteFileConvergenceRefused {
+              step: "transport",
+              reason: "file write requires an anchored FleetSsh transport; EmitArtifactThenThinRun is not a live session",
+            },
+          }
+      }
+  }
+}
+
+// ORDERED, HALT ON FIRST FAILURE, AND THE TAIL IS RECORDED RATHER THAN DROPPED.
+//
+// These effects are sequential -- a unit file must exist before the manager reloads, and the manager
+// must have reloaded before the unit enables -- so running the tail after a failed head would actuate
+// against a state the plan never described.
+//
+// What changed is what the halt LEAVES BEHIND. The fold used to collapse to one outcome, so every
+// step after the failure was indistinguishable from one that ran, and every step before it was
+// forgotten. Now each step lands as its own standing and the tail is explicitly `Unattempted`, which
+// is what lets a receipt say "these ran, this one failed, these were never reached" instead of one
+// reason string a reader has to interpret.
+//
+// `halted` is carried rather than re-derived by scanning the accumulated standings for a failure:
+// the scan would have to decide what an empty list means, and "nothing ran yet" and "everything ran
+// and none failed" are different states that a length check cannot separate.
+type SparkServingSequenceAcc {
+  standings: std.types.List<gunbc.remote_operation.RemoteStepStanding>
+  halted: Bool
+}
+
+func spark_serving_sequence_step(
+  acc: SparkServingSequenceAcc,
+  step: gunbc.remote_operation.PlannedRemoteStep,
+  transport: gunbc.host_effect.HostEffectTransport,
+) -> SparkServingSequenceAcc
+  uses net: std.resources.Network
+{
+  if acc.halted {
+    SparkServingSequenceAcc {
+      standings: concat(acc.standings, [gunbc.remote_operation.RemoteStepUnattempted { identity: step.identity }]),
+      halted: true,
+    }
+  } else {
+    let execution = spark_serving_run_operation(operation: step.operation, transport: transport)
+    if remote_execution_permits_continuation(execution: execution) {
+      SparkServingSequenceAcc {
+        standings: concat(acc.standings, [
+          gunbc.remote_operation.RemoteStepCompleted { identity: step.identity, execution: execution },
+        ]),
+        halted: false,
+      }
+    } else {
+      SparkServingSequenceAcc {
+        standings: concat(acc.standings, [
+          gunbc.remote_operation.RemoteStepFailed { identity: step.identity, execution: execution },
+        ]),
+        halted: true,
+      }
+    }
+  }
+}
+
+func spark_serving_run_step_sequence(
+  steps: std.types.List<gunbc.remote_operation.PlannedRemoteStep>,
+  transport: gunbc.host_effect.HostEffectTransport,
+) -> std.types.List<gunbc.remote_operation.RemoteStepStanding>
+  uses net: std.resources.Network
+{
+  fold(
+    steps,
+    init: SparkServingSequenceAcc { standings: [], halted: false },
+    f: fn(acc, st) { spark_serving_sequence_step(acc: acc, step: st, transport: transport) },
+  ).standings
+}
+
+fn spark_serving_step_sequence_failed(standings: std.types.List<gunbc.remote_operation.RemoteStepStanding>) -> Bool {
+  fold(standings, init: false, f: fn(acc, st) {
+    match st {
+      gunbc.remote_operation.RemoteStepFailed { identity: _, execution: _ } => true
+      gunbc.remote_operation.RemoteStepCompleted { identity: _, execution: _ } => acc
+      gunbc.remote_operation.RemoteStepUnattempted { identity: _ } => acc
+    }
+  })
+}
+
+fn spark_serving_step_sequence_wire(standings: std.types.List<gunbc.remote_operation.RemoteStepStanding>) -> String {
+  join(map(standings, st => remote_step_standing_wire(standing: st)), " ")
+}
+
+// THE HALT NAMES ITS CAUSE, NOT ONLY ITS STEP.
+//
+// The sequence wire above says WHICH step stopped the line and which tail was never reached, which
+// is what it was built for. It does not say WHY, and the cause is not missing from the model --
+// RemoteStepFailed carries the execution, and remote_step_failure_cause reads the refusal out of it
+// in the vocabulary the execution answered in. The cause was being discarded at the rendering
+// boundary, one function short of the operator.
+//
+// That is a stopped line whose analysis cannot begin: a four-step read-back convergence can refuse
+// for a seal violation, a mode mismatch, a rename failure, or a read-back byte difference, and
+// `failed:write-user-unit-file` is the same six words for all four. The factory model requires the
+// analysis to precede the restart, so the receipt must carry what the analysis needs.
+fn spark_serving_step_failure_causes_wire(standings: std.types.List<gunbc.remote_operation.RemoteStepStanding>) -> String {
+  join(
+    flat_map(standings, st =>
+      match remote_step_failure_cause(standing: st) {
+        Absent => []
+        Present { value: why } =>
+          [join([remote_step_standing_wire(standing: st), " cause=", why], "")]
+      }
+    ),
+    " ",
+  )
+}

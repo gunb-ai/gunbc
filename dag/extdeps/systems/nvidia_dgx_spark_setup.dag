@@ -6,17 +6,17 @@ module extdeps.systems.nvidia_dgx_spark_setup
 // that one models the HARDWARE the vendor ships and this one models the SETUP SURFACE
 // the vendor exposes; they version independently (a firmware/OOBE revision changes the
 // surface without changing a single hardware row). Nothing here is an operator decision,
-// a fleet fact, or an observation of srv5/srv6 — those live in gunbc.spark_provisioning.
+// a fleet fact, or an observation of srv5/srv6 — those live in gunbc.spark.provisioning.
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.nvidia.com/dgx/dgx-spark/first-boot.html"
   }
 }
 
 data dgx_spark_pxe_boot_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "docs.nvidia.com/dgx/dgx-spark/pxe.html"
   }
 }
@@ -26,7 +26,7 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
     declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.systems.nvidia_dgx_spark_setup",
       decl_name: "dgx_spark_oobe_surface",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
   first_citation: extdeps.systems.nvidia_dgx_spark_setup.extdeps_external_authority_anchor,
@@ -73,7 +73,7 @@ type OobeSetupField
   | OobeWirelessNetwork
   | OobeHostnameAssignment
 
-data dgx_spark_oobe_fields: List<OobeSetupField> = [
+data dgx_spark_oobe_fields: std.types.List<OobeSetupField> = [
   OobeLanguage,
   OobeTimeZone,
   OobeKeyboardLayout,
@@ -93,7 +93,7 @@ data dgx_spark_oobe_fields: List<OobeSetupField> = [
 //
 // Hostname assignment is in the universe and not in the list — a measured absence in the
 // cited page rather than an omission here. It is carried because the page's silence is a
-// fact worth stating, not because anything upstream needs it: gunbc.spark_provisioning
+// fact worth stating, not because anything upstream needs it: gunbc.spark.provisioning
 // models no hostname at all (an OS hostname is presentation and converges later through
 // the ordinary apply path), so this member is the predicate's negative case and nothing
 // more.
@@ -166,7 +166,7 @@ type DgxSparkPxeInstallParameters {
   skip_firmware_update: Bool
 }
 
-fn dgx_spark_pxe_parameter_tokens(params: DgxSparkPxeInstallParameters) -> List<String> {
+fn dgx_spark_pxe_parameter_tokens(params: DgxSparkPxeInstallParameters) -> std.types.List<String> {
   let with_unattended = if params.unattended { ["autoinstall"] } else { [] }
   let with_noui = if params.user_interface_disabled { append(with_unattended, "noui") } else { with_unattended }
   if params.skip_firmware_update { append(with_noui, "usb.skipfw") } else { with_noui }

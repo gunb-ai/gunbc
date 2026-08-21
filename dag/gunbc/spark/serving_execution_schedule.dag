@@ -1,0 +1,419 @@
+module gunbc.spark.serving_execution_schedule
+
+
+// THE ORDER A CONVERGENCE RUNS IN IS DERIVED, NOT AUTHORED.
+//
+// A membership diff answers WHICH resources disagree with the desired state. It says nothing about
+// the order in which the remedies may run, because a set difference has no order -- the sequence the
+// rows happen to arrive in is an artifact of how the two rosters were walked, not a fact about the
+// resources. Executing that sequence as though it were a schedule is a state-space conflation on the
+// plan itself: `these rows must change` and `these rows must change in this order` are different
+// claims, and taking the first for the second is how a manager reload was issued against a unit file
+// that had not been written yet.
+//
+// So the order is derived from resource facts. Each address declares what it REQUIRES to exist
+// before its remedy can run and what its remedy ESTABLISHES; the prerequisite relation between two
+// planned rows is then read off those two lists rather than stated by anyone. That is the §5 move
+// from validation to construction -- there is no authored sequence left to get wrong, and a new
+// address cannot be given a position in the order at all, only facts, from which its position
+// follows.
+data spark_serving_execution_schedule_authority_note: String = "Execution order for a Spark serving convergence is DERIVED from per-address requires/establishes resource facts and scheduled by the one v2.workflow.scheduler kernel bound to SparkServingMemberAt -- never authored, never the membership diff's row order, which is a set difference with no order. A required fact with no provider among the planned rows and no observed establishment REFUSES (SparkServingScheduleMissingProvider); two providers for one fact REFUSE (SparkServingScheduleAmbiguousProvider); a cycle REFUSES through the kernel's own SchedulerPlanBlocked arm rather than through a second cycle check authored here. Apply consumes SparkServingFrozenExecutionSchedule and nothing else: the carrier has one constructor, reachable only through spark_serving_freeze_execution_schedule, so a row list cannot be handed to actuation in the order it was diffed."
+
+// WHAT A RESOURCE IS, AS A FACT ANOTHER RESOURCE CAN DEPEND ON.
+//
+// These are states of the host, not steps. `UnitKnownToManager` is what a manager reload leaves
+// behind; enablement requires it, and requires it whether the reload happened in this run or in a
+// previous one. Naming the state rather than the step is what lets an already-converged prerequisite
+// satisfy a requirement without a row being planned for it.
+type SparkServingResourceFact
+  = RuntimeClosurePresent
+  | UnitFilePresent
+  | UnitKnownToManager
+  | UnitEnabled
+  | UnitActive
+  | ModelPresentInSlot { slot: String }
+  | LingerEnabledForAccount
+
+fn spark_serving_resource_fact_wire(fact: SparkServingResourceFact) -> String {
+  match fact {
+    RuntimeClosurePresent => "runtime-closure-present"
+    UnitFilePresent => "unit-file-present"
+    UnitKnownToManager => "unit-known-to-manager"
+    gunbc.spark.serving_execution_schedule.UnitEnabled => "unit-enabled"
+    UnitActive => "unit-active"
+    ModelPresentInSlot { slot: slot } => join(["model-present:", slot], "")
+    LingerEnabledForAccount => "linger-enabled"
+  }
+}
+
+fn spark_serving_resource_fact_eq(a: SparkServingResourceFact, b: SparkServingResourceFact) -> Bool {
+  spark_serving_resource_fact_wire(fact: a) == spark_serving_resource_fact_wire(fact: b)
+}
+
+// WHAT EACH ADDRESS ESTABLISHES. Exactly one fact per address, which is not a coincidence to be
+// relied on quietly: the address IS the resource, so an address establishing two facts would be two
+// resources sharing one membership key and its drift would be unattributable.
+fn spark_serving_address_establishes(address: gunbc.spark.serving_membership.SparkServingResourceAddress) -> SparkServingResourceFact {
+  match address {
+    gunbc.spark.serving_membership.SparkServingRuntimeRootAddress => RuntimeClosurePresent
+    gunbc.spark.serving_membership.SparkServingUserUnitAddress => UnitFilePresent
+    gunbc.spark.serving_membership.SparkServingUserUnitRegistrationAddress => UnitKnownToManager
+    gunbc.spark.serving_membership.SparkServingUserUnitEnablementAddress => gunbc.spark.serving_execution_schedule.UnitEnabled
+    gunbc.spark.serving_membership.SparkServingUserUnitActivityAddress => UnitActive
+    gunbc.spark.serving_membership.SparkServingModelSlotAddress { slot: slot } => ModelPresentInSlot { slot: slot as String }
+    gunbc.spark.serving_membership.SparkServingLingerAddress => LingerEnabledForAccount
+  }
+}
+
+// WHAT EACH ADDRESS REQUIRES.
+//
+// The unit file names the runtime's executable path, so writing it before the closure exists writes
+// a unit that cannot start. Registration is what makes the manager aware of the file, so it requires
+// the file. Enablement acts on a unit the manager knows, so it requires registration's fact and NOT
+// the file's -- transitivity through the fact graph is what carries the file requirement, and
+// restating it here would be a second representation of one edge.
+//
+// The model pull talks to the serving API, so it requires the unit to be enabled -- this is the same
+// fact `the_frozen_order_enables_the_unit_before_pulling_the_model` asserts, now stated once as a requirement
+// instead of twice as an assertion and an authored position.
+//
+// Linger requires nothing. It is an account property, not a service one, and giving it a spurious
+// prerequisite would serialize a step that can run at any time.
+// A REQUIREMENT CARRIES ITS KIND, because two different things are being said.
+//
+// An ENDURING resource requirement describes valid resource state: a unit's enablement is not
+// meaningful unless the manager knows the unit, whoever established that and whenever. A REALIZATION
+// BARRIER describes one realization's forward procedure: a model store does not universally depend
+// on a running server, but the CLI pull this vertical realizes talks to the serving API and so must
+// follow the step that starts it. Collapsing them would be a state-space conflation, and it has a
+// consequence rather than only a name: enduring requirements reverse under teardown and procedural
+// barriers do not, so a teardown order derived from a fused kind would be wrong in exactly the half
+// that was never a resource fact.
+type SparkServingRequirement {
+  fact: SparkServingResourceFact
+  kind: v2.std.dependency.DependencyKind
+}
+
+fn spark_serving_address_requires(address: gunbc.spark.serving_membership.SparkServingResourceAddress) -> std.types.List<SparkServingRequirement> {
+  match address {
+    gunbc.spark.serving_membership.SparkServingRuntimeRootAddress => []
+    gunbc.spark.serving_membership.SparkServingUserUnitAddress =>
+      [SparkServingRequirement { fact: RuntimeClosurePresent, kind: v2.std.dependency.ResourceDependsOn }]
+    gunbc.spark.serving_membership.SparkServingUserUnitRegistrationAddress =>
+      [SparkServingRequirement { fact: UnitFilePresent, kind: v2.std.dependency.ResourceDependsOn }]
+    gunbc.spark.serving_membership.SparkServingUserUnitEnablementAddress =>
+      [SparkServingRequirement { fact: UnitKnownToManager, kind: v2.std.dependency.ResourceDependsOn }]
+    gunbc.spark.serving_membership.SparkServingUserUnitActivityAddress =>
+      [SparkServingRequirement { fact: UnitKnownToManager, kind: v2.std.dependency.ResourceDependsOn }]
+    gunbc.spark.serving_membership.SparkServingModelSlotAddress { slot: _ } =>
+      [SparkServingRequirement { fact: UnitActive, kind: v2.std.dependency.BarrierBefore }]
+    gunbc.spark.serving_membership.SparkServingLingerAddress => []
+  }
+}
+
+// A PLANNED ROW REDUCED TO WHAT SCHEDULING NEEDS: its reconcile key, which is the subject the
+// scheduler orders, and its address, which is what carries the facts.
+type SparkServingScheduledRow {
+  at: gunbc.spark.serving_membership.SparkServingMemberAt
+  address: gunbc.spark.serving_membership.SparkServingResourceAddress
+}
+
+type SparkServingScheduleRowProjection
+  = SparkServingScheduleRowsProjected { rows: std.types.List<SparkServingScheduledRow> }
+  | SparkServingScheduleRowsRefused { cause: String }
+
+// REMOVAL ORDER IS NOT MODELED, AND THAT IS A REFUSAL RATHER THAN A SILENCE.
+//
+// Teardown runs the prerequisite graph BACKWARD -- a unit must be disabled before its file is
+// removed, not after -- so a removal row scheduled by the construction relation would run in exactly
+// the wrong order. No Spark serving plan produces one today, which is precisely why the arm must
+// refuse instead of being written speculatively: an unexercised reversal is an ordering law with no
+// evidence behind it, and shipping one would put the wrong order under the same frozen carrier that
+// is supposed to make the order trustworthy. The refusal is loud, counted, and names its own gap.
+fn spark_serving_schedule_rows(
+  plan: gunbc.membership_reconcile.MembershipPlan<gunbc.spark.serving_membership.SparkServingMember, gunbc.spark.serving_membership.SparkServingMemberAt>,
+) -> SparkServingScheduleRowProjection {
+  let removals = filter(plan.actions, a =>
+    match a {
+      gunbc.membership_reconcile.MemberAdded { at: _, to: _ } => false
+      gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: _ } => false
+      gunbc.membership_reconcile.MemberRemoved { at: _, from: _ } => true
+      gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => false
+      gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
+    }
+  )
+  if length(removals) > 0 {
+    SparkServingScheduleRowsRefused {
+      cause: join([
+        "spark serving execution schedule refused: ", to_string(length(removals)),
+        " removal row(s) planned, and teardown order (the prerequisite graph run backward) is not modeled",
+      ], ""),
+    }
+  } else {
+    SparkServingScheduleRowsProjected {
+      rows: flat_map(plan.actions, a =>
+        match a {
+          gunbc.membership_reconcile.MemberAdded { at: at, to: to } => [SparkServingScheduledRow { at: at, address: to.address }]
+          gunbc.membership_reconcile.MemberChanged { at: at, from: _, to: to } => [SparkServingScheduledRow { at: at, address: to.address }]
+          gunbc.membership_reconcile.MemberRemoved { at: _, from: _ } => []
+          gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => []
+          gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
+        }
+      ),
+    }
+  }
+}
+
+// FACTS THE HOST ALREADY ESTABLISHES. A desired address with no planned row is a resource the
+// observation found already in its desired state, so its fact holds before this run starts. This is
+// what keeps a partial plan from refusing: enabling a unit in a run that writes no unit file is
+// correct exactly when the file is already there, and that is a fact about the observation rather
+// than a hole in the schedule.
+fn spark_serving_preestablished_facts(
+  desired_addresses: std.types.List<gunbc.spark.serving_membership.SparkServingResourceAddress>,
+  rows: std.types.List<SparkServingScheduledRow>,
+) -> std.types.List<SparkServingResourceFact> {
+  flat_map(desired_addresses, a =>
+    if length(filter(rows, r => spark_serving_resource_address_wire(address: r.address) == spark_serving_resource_address_wire(address: a))) == 0 {
+      [spark_serving_address_establishes(address: a)]
+    } else {
+      []
+    }
+  )
+}
+
+fn spark_serving_fact_providers(
+  rows: std.types.List<SparkServingScheduledRow>,
+  fact: SparkServingResourceFact,
+) -> std.types.List<SparkServingScheduledRow> {
+  filter(rows, r => spark_serving_resource_fact_eq(a: spark_serving_address_establishes(address: r.address), b: fact))
+}
+
+type SparkServingScheduleRelations
+  = SparkServingScheduleRelationsDerived { relations: std.types.List<v2.std.dependency.DependencyRelation<gunbc.spark.serving_membership.SparkServingMemberAt>> }
+  | SparkServingScheduleMissingProvider { dependent: String, fact: String }
+  | SparkServingScheduleAmbiguousProvider { dependent: String, fact: String, provider_count: Int }
+
+// ONE REQUIREMENT, RESOLVED TO AT MOST ONE EDGE.
+//
+// Three outcomes and each is named. A requirement met by a planned row becomes a prerequisite edge.
+// A requirement met by the observation becomes no edge, because there is nothing to wait for. A
+// requirement met by neither is a hole in the plan -- the remedy would run against a host that cannot
+// satisfy it -- and it refuses rather than scheduling the row anyway and letting the failure surface
+// as an opaque non-zero exit at actuation time. Two providers refuse as well: the edge would be
+// genuinely ambiguous, and picking either one is the fabricated plausible output §5 forbids.
+fn spark_serving_requirement_edges(
+  rows: std.types.List<SparkServingScheduledRow>,
+  preestablished: std.types.List<SparkServingResourceFact>,
+  row: SparkServingScheduledRow,
+  requirement: SparkServingRequirement,
+) -> SparkServingScheduleRelations {
+  let fact = requirement.fact
+  let providers = spark_serving_fact_providers(rows: rows, fact: fact)
+  if length(providers) > 1 {
+    SparkServingScheduleAmbiguousProvider {
+      dependent: row.at,
+      fact: spark_serving_resource_fact_wire(fact: fact),
+      provider_count: length(providers),
+    }
+  } else if length(providers) == 1 {
+    SparkServingScheduleRelationsDerived {
+      relations: flat_map(providers, p => [
+        v2.std.dependency.DependencyRelation {
+          prerequisite: p.at,
+          dependent: row.at,
+          kind: requirement.kind,
+        },
+      ]),
+    }
+  } else if length(filter(preestablished, f => spark_serving_resource_fact_eq(a: f, b: fact))) > 0 {
+    SparkServingScheduleRelationsDerived { relations: [] }
+  } else {
+    SparkServingScheduleMissingProvider {
+      dependent: row.at,
+      fact: spark_serving_resource_fact_wire(fact: fact),
+    }
+  }
+}
+
+fn spark_serving_merge_relations(
+  acc: SparkServingScheduleRelations,
+  next: SparkServingScheduleRelations,
+) -> SparkServingScheduleRelations {
+  match acc {
+    SparkServingScheduleMissingProvider { dependent: d, fact: f } =>
+      SparkServingScheduleMissingProvider { dependent: d, fact: f }
+    SparkServingScheduleAmbiguousProvider { dependent: d, fact: f, provider_count: n } =>
+      SparkServingScheduleAmbiguousProvider { dependent: d, fact: f, provider_count: n }
+    SparkServingScheduleRelationsDerived { relations: have } =>
+      match next {
+        SparkServingScheduleMissingProvider { dependent: d, fact: f } =>
+          SparkServingScheduleMissingProvider { dependent: d, fact: f }
+        SparkServingScheduleAmbiguousProvider { dependent: d, fact: f, provider_count: n } =>
+          SparkServingScheduleAmbiguousProvider { dependent: d, fact: f, provider_count: n }
+        SparkServingScheduleRelationsDerived { relations: more } =>
+          SparkServingScheduleRelationsDerived { relations: concat(have, more) }
+      }
+  }
+}
+
+fn spark_serving_schedule_relations(
+  rows: std.types.List<SparkServingScheduledRow>,
+  preestablished: std.types.List<SparkServingResourceFact>,
+) -> SparkServingScheduleRelations {
+  fold(rows, init: SparkServingScheduleRelationsDerived { relations: [] }, f: fn(acc, row) {
+    fold(spark_serving_address_requires(address: row.address), init: acc, f: fn(inner, requirement) {
+      spark_serving_merge_relations(
+        acc: inner,
+        next: spark_serving_requirement_edges(
+          rows: rows,
+          preestablished: preestablished,
+          row: row,
+          requirement: requirement,
+        ),
+      )
+    })
+  })
+}
+
+// THE CARRIER ACTUATION ACCEPTS, AND THE ONLY WAY TO BUILD ONE.
+//
+// `sole_constructor` is what makes this a construction wall rather than a convention. A row list in
+// diff order has the same type as a row list in execution order, so any function taking
+// `List<SparkServingMemberAt>` can be handed the wrong one and no check anywhere would notice --
+// which is exactly what happened. This type cannot be built outside this module, and inside it the
+// only path runs through the scheduler, so an unscheduled sequence is not a thing that can reach
+// actuation and be rejected: it is a thing that cannot be expressed.
+type SparkServingFrozenExecutionSchedule sole_constructor {
+  ordered: std.types.List<gunbc.spark.serving_membership.SparkServingMemberAt>
+}
+
+type SparkServingScheduleVerdict
+  = SparkServingScheduleFrozen { schedule: SparkServingFrozenExecutionSchedule }
+  | SparkServingScheduleRefused { cause: String }
+
+// THE CYCLE ARM IS THE KERNEL'S, NOT A SECOND ONE WRITTEN HERE.
+//
+// `SchedulerPlanComplete` is the only arm that yields a schedule: it is the kernel's statement that
+// every subject was scheduled, which is precisely the acyclicity proof. Runnable and Blocked both
+// mean subjects remain, and remaining subjects under a fixed point means a cycle -- so both refuse,
+// and neither is distinguished by anything authored in this module. Writing a cycle check beside the
+// kernel that already refuses on cycles would be the second representation §3 forbids.
+fn spark_serving_freeze_execution_schedule(
+  plan: gunbc.membership_reconcile.MembershipPlan<gunbc.spark.serving_membership.SparkServingMember, gunbc.spark.serving_membership.SparkServingMemberAt>,
+  desired_addresses: std.types.List<gunbc.spark.serving_membership.SparkServingResourceAddress>,
+) -> SparkServingScheduleVerdict {
+  match spark_serving_schedule_rows(plan: plan) {
+    SparkServingScheduleRowsRefused { cause: why } => SparkServingScheduleRefused { cause: why }
+    SparkServingScheduleRowsProjected { rows: rows } => {
+      let preestablished = spark_serving_preestablished_facts(
+        desired_addresses: desired_addresses,
+        rows: rows,
+      )
+      match spark_serving_schedule_relations(rows: rows, preestablished: preestablished) {
+        SparkServingScheduleMissingProvider { dependent: d, fact: f } =>
+          SparkServingScheduleRefused {
+            cause: join([
+              "spark serving execution schedule refused: row ", d,
+              " requires fact ", f,
+              " which no planned row establishes and the observation did not already establish",
+            ], ""),
+          }
+        SparkServingScheduleAmbiguousProvider { dependent: d, fact: f, provider_count: n } =>
+          SparkServingScheduleRefused {
+            cause: join([
+              "spark serving execution schedule refused: row ", d,
+              " requires fact ", f,
+              " established by ", to_string(n),
+              " planned rows, so the prerequisite edge is ambiguous",
+            ], ""),
+          }
+        SparkServingScheduleRelationsDerived { relations: relations } =>
+          match scheduler_plan_from_relations(
+            subjects: flat_map(rows, r => [r.at]),
+            relations: relations,
+            scheduled: [],
+            eq: spark_serving_schedule_subject_eq,
+          ) {
+            v2.workflow.scheduler.SchedulerPlanComplete { layers: _, scheduled: scheduled } =>
+              SparkServingScheduleFrozen {
+                schedule: SparkServingFrozenExecutionSchedule { ordered: scheduled },
+              }
+            v2.workflow.scheduler.SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: remaining, layers: _ } =>
+              SparkServingScheduleRefused {
+                cause: join([
+                  "spark serving execution schedule refused: ", to_string(length(remaining)),
+                  " row(s) unscheduled at the fixed point — the prerequisite graph is cyclic",
+                ], ""),
+              }
+            v2.workflow.scheduler.SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: remaining, layers: _ } =>
+              SparkServingScheduleRefused {
+                cause: join([
+                  "spark serving execution schedule refused: no runnable frontier with ",
+                  to_string(length(remaining)),
+                  " row(s) remaining — the prerequisite graph is cyclic",
+                ], ""),
+              }
+          }
+      }
+    }
+  }
+}
+
+fn spark_serving_schedule_subject_eq(a: gunbc.spark.serving_membership.SparkServingMemberAt, b: gunbc.spark.serving_membership.SparkServingMemberAt) -> Bool {
+  a == b
+}
+
+fn spark_serving_frozen_schedule_order(
+  schedule: SparkServingFrozenExecutionSchedule,
+) -> std.types.List<gunbc.spark.serving_membership.SparkServingMemberAt> {
+  schedule.ordered
+}
+
+// ROWS THAT CANNOT BE HANDED OVER IN THE WRONG ORDER.
+//
+// Freezing the schedule made the ORDER derivable; it did not make the wrong order unusable. Emission
+// folded the frozen order, so the list apply received was correct -- but a diff-ordered list and a
+// schedule-ordered list are the same type, so the guarantee lived in the producer's current behaviour
+// rather than in anything the consumer could check. That is the same shape as the defect this whole
+// vertical exists to close: a value that is right today because of who built it, not because a wrong
+// one is unrepresentable.
+//
+// ScheduledRows is sole_constructor and its only mint takes a frozen schedule. The caller supplies
+// the rows FOR a subject and cannot supply their order -- the fold walks the schedule, so the order
+// is the scheduler's by construction. A consumer holding a ScheduledRows is holding rows that were
+// ordered by a graph, and there is no other way to have obtained one.
+//
+// It is generic in the row because the artifact carrying it is declared upstream of this module and
+// naming that row type here would close an import cycle. The subject is this vertical's; the row is
+// whatever the plan layer freezes.
+type ScheduledRows<Row> sole_constructor {
+  rows: std.types.List<Row>
+}
+
+fn scheduled_rows_from_frozen_schedule<Row>(
+  schedule: SparkServingFrozenExecutionSchedule,
+  rows_for: fn(gunbc.spark.serving_membership.SparkServingMemberAt) -> std.types.List<Row>,
+) -> ScheduledRows<Row> {
+  ScheduledRows {
+    rows: flat_map(
+      spark_serving_frozen_schedule_order(schedule: schedule),
+      at => rows_for(at),
+    ),
+  }
+}
+
+fn scheduled_rows_list<Row>(scheduled: ScheduledRows<Row>) -> std.types.List<Row> {
+  scheduled.rows
+}
+
+// THE EMPTY ONE, and why it is a mint rather than a hole in the wall.
+//
+// A host with no Spark rows to freeze still needs an artifact, and sole_constructor means the plan
+// layer cannot write one. This supplies it. It is not a bypass: the wall exists to stop rows being
+// handed over in an order nobody derived, and an empty list has no order to get wrong -- there is no
+// sequence it could be the wrong one of. The mint takes no rows for exactly that reason, so it
+// cannot be used to smuggle a populated list past the fold.
+fn scheduled_rows_empty<Row>() -> ScheduledRows<Row> {
+  ScheduledRows { rows: [] }
+}

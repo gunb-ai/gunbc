@@ -13,7 +13,7 @@ fn spark_intent() -> gunbc.spark_serving_realization.SparkServingIntent {
     lifecycle: SurvivesReboot,
     availability: RestartsOnFailure,
     authority: ManagedConvergenceOwned,
-    service_identity: NoLoginNoSudoIdentity,
+    service_identity: gunbc.spark.serving_realization.NoLoginNoSudoIdentity,
     endpoint: UnauthenticatedEndpoint,
     observability: IndependentlyObservable,
   }
@@ -74,14 +74,14 @@ fn selection_label(capabilities: gunbc.spark_serving_realization.SparkHostCapabi
     capabilities: capabilities,
     policy: least_privilege_policy(),
   ) {
-    RealizationSelected { realization: r } =>
+    gunbc.spark.serving_realization.RealizationSelected { realization: r } =>
       match r {
-        UserUnitRealization => "selected:user-unit"
-        SystemUnitRealization => "selected:system-unit"
-        RootlessContainerRealization => "selected:rootless-container"
+        gunbc.spark.serving_realization.UserUnitRealization => "selected:user-unit"
+        gunbc.spark.serving_realization.SystemUnitRealization => "selected:system-unit"
+        gunbc.spark.serving_realization.RootlessContainerRealization => "selected:rootless-container"
       }
-    NoRealizationAdmitted { first: _, more: _ } => "no-realization-admitted"
-    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => "choice-required"
+    gunbc.spark.serving_realization.NoRealizationAdmitted { first: _, more: _ } => "no-realization-admitted"
+    gunbc.spark.serving_realization.RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => "choice-required"
   }
 }
 
@@ -91,14 +91,14 @@ fn selects_user_unit(capabilities: gunbc.spark_serving_realization.SparkHostCapa
     capabilities: capabilities,
     policy: least_privilege_policy(),
   ) {
-    RealizationSelected { realization: r } =>
+    gunbc.spark.serving_realization.RealizationSelected { realization: r } =>
       match r {
-        UserUnitRealization => true
-        SystemUnitRealization => false
-        RootlessContainerRealization => false
+        gunbc.spark.serving_realization.UserUnitRealization => true
+        gunbc.spark.serving_realization.SystemUnitRealization => false
+        gunbc.spark.serving_realization.RootlessContainerRealization => false
       }
-    NoRealizationAdmitted { first: _, more: _ } => false
-    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
+    gunbc.spark.serving_realization.NoRealizationAdmitted { first: _, more: _ } => false
+    gunbc.spark.serving_realization.RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
   }
 }
 
@@ -212,9 +212,9 @@ test fn w_user_unit_refused_when_it_cannot_satisfy_the_lifecycle() -> Bool {
     capabilities: no_lingering,
     policy: least_privilege_policy(),
   ) {
-    NoRealizationAdmitted { first: _, more: _ } => true
-    RealizationSelected { realization: _ } => false
-    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
+    gunbc.spark.serving_realization.NoRealizationAdmitted { first: _, more: _ } => true
+    gunbc.spark.serving_realization.RealizationSelected { realization: _ } => false
+    gunbc.spark.serving_realization.RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
   }
 }
 
@@ -238,9 +238,9 @@ test fn w_unobserved_capability_refuses_rather_than_admitting() -> Bool {
     capabilities: unobserved,
     policy: least_privilege_policy(),
   ) {
-    NoRealizationAdmitted { first: _, more: _ } => true
-    RealizationSelected { realization: _ } => false
-    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
+    gunbc.spark.serving_realization.NoRealizationAdmitted { first: _, more: _ } => true
+    gunbc.spark.serving_realization.RealizationSelected { realization: _ } => false
+    gunbc.spark.serving_realization.RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
   }
 }
 
@@ -264,14 +264,14 @@ test fn w_system_unit_selected_when_it_is_the_only_admitted_mechanism() -> Bool 
     capabilities: system_only,
     policy: least_privilege_policy(),
   ) {
-    RealizationSelected { realization: r } =>
+    gunbc.spark.serving_realization.RealizationSelected { realization: r } =>
       match r {
-        SystemUnitRealization => true
-        UserUnitRealization => false
-        RootlessContainerRealization => false
+        gunbc.spark.serving_realization.SystemUnitRealization => true
+        gunbc.spark.serving_realization.UserUnitRealization => false
+        gunbc.spark.serving_realization.RootlessContainerRealization => false
       }
-    NoRealizationAdmitted { first: _, more: _ } => false
-    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
+    gunbc.spark.serving_realization.NoRealizationAdmitted { first: _, more: _ } => false
+    gunbc.spark.serving_realization.RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
   }
 }
 
@@ -296,9 +296,9 @@ test fn w_no_managed_executor_refuses_under_managed_authority() -> Bool {
     capabilities: human_only,
     policy: least_privilege_policy(),
   ) {
-    NoRealizationAdmitted { first: _, more: _ } => true
-    RealizationSelected { realization: _ } => false
-    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
+    gunbc.spark.serving_realization.NoRealizationAdmitted { first: _, more: _ } => true
+    gunbc.spark.serving_realization.RealizationSelected { realization: _ } => false
+    gunbc.spark.serving_realization.RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
   }
 }
 
@@ -311,14 +311,14 @@ test fn red_control_privilege_does_not_select_the_architecture() -> Bool {
     capabilities: host_container_capable_plus_sudo(),
     policy: least_privilege_policy(),
   ) {
-    RealizationSelected { realization: r } =>
+    gunbc.spark.serving_realization.RealizationSelected { realization: r } =>
       match r {
-        SystemUnitRealization => false
-        UserUnitRealization => true
-        RootlessContainerRealization => true
+        gunbc.spark.serving_realization.SystemUnitRealization => false
+        gunbc.spark.serving_realization.UserUnitRealization => true
+        gunbc.spark.serving_realization.RootlessContainerRealization => true
       }
-    NoRealizationAdmitted { first: _, more: _ } => false
-    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
+    gunbc.spark.serving_realization.NoRealizationAdmitted { first: _, more: _ } => false
+    gunbc.spark.serving_realization.RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
   }
 }
 
@@ -338,14 +338,14 @@ test fn w_user_unit_is_structurally_inadmissible_under_a_separated_service_ident
     capabilities: host_user_unit_capable(),
     policy: least_privilege_policy(),
   ) {
-    RealizationSelected { realization: r } =>
+    gunbc.spark.serving_realization.RealizationSelected { realization: r } =>
       match r {
-        UserUnitRealization => false
-        SystemUnitRealization => true
-        RootlessContainerRealization => true
+        gunbc.spark.serving_realization.UserUnitRealization => false
+        gunbc.spark.serving_realization.SystemUnitRealization => true
+        gunbc.spark.serving_realization.RootlessContainerRealization => true
       }
-    NoRealizationAdmitted { first: _, more: _ } => true
-    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => true
+    gunbc.spark.serving_realization.NoRealizationAdmitted { first: _, more: _ } => true
+    gunbc.spark.serving_realization.RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => true
   }
 }
 
@@ -358,7 +358,7 @@ test fn w_user_unit_is_admissible_when_the_intent_does_not_require_separation() 
     lifecycle: SurvivesReboot,
     availability: RestartsOnFailure,
     authority: ManagedConvergenceOwned,
-    service_identity: ExecutorOwnedIdentity,
+    service_identity: gunbc.spark.serving_realization.ExecutorOwnedIdentity,
     endpoint: UnauthenticatedEndpoint,
     observability: IndependentlyObservable,
   }
@@ -367,14 +367,14 @@ test fn w_user_unit_is_admissible_when_the_intent_does_not_require_separation() 
     capabilities: host_user_unit_capable(),
     policy: least_privilege_policy(),
   ) {
-    RealizationSelected { realization: r } =>
+    gunbc.spark.serving_realization.RealizationSelected { realization: r } =>
       match r {
-        UserUnitRealization => true
-        SystemUnitRealization => false
-        RootlessContainerRealization => false
+        gunbc.spark.serving_realization.UserUnitRealization => true
+        gunbc.spark.serving_realization.SystemUnitRealization => false
+        gunbc.spark.serving_realization.RootlessContainerRealization => false
       }
-    NoRealizationAdmitted { first: _, more: _ } => false
-    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
+    gunbc.spark.serving_realization.NoRealizationAdmitted { first: _, more: _ } => false
+    gunbc.spark.serving_realization.RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
   }
 }
 
@@ -383,14 +383,14 @@ test fn w_user_unit_is_admissible_when_the_intent_does_not_require_separation() 
 // question, this one asks only what the mechanism can deliver, so it is decidable on a host nobody
 // has looked at.
 test fn w_the_identity_refusal_needs_no_host_observation() -> Bool {
-  match identity_contract_refusal(intent: spark_intent(), realization: UserUnitRealization) {
+  match identity_contract_refusal(intent: spark_intent(), realization: gunbc.spark.serving_realization.UserUnitRealization) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
 test fn red_control_system_unit_satisfies_the_identity_contract() -> Bool {
-  match identity_contract_refusal(intent: spark_intent(), realization: SystemUnitRealization) {
+  match identity_contract_refusal(intent: spark_intent(), realization: gunbc.spark.serving_realization.SystemUnitRealization) {
     Absent => true
     Present { value: _ } => false
   }
@@ -403,7 +403,7 @@ test fn red_control_system_unit_satisfies_the_identity_contract() -> Bool {
 // enable unit) plus the package install shared with the user unit. Getting this wrong now requires
 // misstating what an effect does, which a reader can check against the host.
 test fn w_privilege_is_counted_from_effects_not_assigned() -> Bool {
-  realization_privileged_effect_count(realization: SystemUnitRealization) > realization_privileged_effect_count(realization: RootlessContainerRealization) && realization_privileged_effect_count(realization: RootlessContainerRealization) <= realization_privileged_effect_count(realization: UserUnitRealization)
+  realization_privileged_effect_count(realization: gunbc.spark.serving_realization.SystemUnitRealization) > realization_privileged_effect_count(realization: gunbc.spark.serving_realization.RootlessContainerRealization) && realization_privileged_effect_count(realization: gunbc.spark.serving_realization.RootlessContainerRealization) <= realization_privileged_effect_count(realization: gunbc.spark.serving_realization.UserUnitRealization)
 }
 
 // THE INVARIANT THAT SURVIVES THE MECHANISM CHANGE. The sudo-invariance claim above passes under
@@ -411,9 +411,9 @@ test fn w_privilege_is_counted_from_effects_not_assigned() -> Bool {
 // one is specific: the ORDERING must come from the effects, so a realization requiring strictly more
 // privileged effects must never outrank one requiring fewer.
 test fn w_ordering_follows_the_privileged_effect_count() -> Bool {
-  let sys = realization_effect_weight(realization: SystemUnitRealization)
-  let user = realization_effect_weight(realization: UserUnitRealization)
-  let cont = realization_effect_weight(realization: RootlessContainerRealization)
+  let sys = realization_effect_weight(realization: gunbc.spark.serving_realization.SystemUnitRealization)
+  let user = realization_effect_weight(realization: gunbc.spark.serving_realization.UserUnitRealization)
+  let cont = realization_effect_weight(realization: gunbc.spark.serving_realization.RootlessContainerRealization)
   sys > user && sys > cont
 }
 
@@ -421,5 +421,5 @@ test fn w_ordering_follows_the_privileged_effect_count() -> Bool {
 // reading treated user units as inherently unprivileged, which is what made the narrow sudoers grant
 // on the Sparks look like an anomaly rather than a derived requirement.
 test fn red_control_user_unit_is_not_privilege_free() -> Bool {
-  realization_privileged_effect_count(realization: UserUnitRealization) > 0
+  realization_privileged_effect_count(realization: gunbc.spark.serving_realization.UserUnitRealization) > 0
 }

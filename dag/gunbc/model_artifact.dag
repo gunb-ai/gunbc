@@ -55,6 +55,7 @@ fn model_artifact_seal(
   admit_callers: [
     decl_ref(module_path: "gunbc.model_artifact", decl_name: "model_artifact_from_observed_digest"),
     decl_ref(module_path: "gunbc.model_artifact", decl_name: "model_artifact_from_tuning_run"),
+    decl_ref(module_path: "gunbc.model_artifact", decl_name: "model_artifact_from_resolution"),
   ]
   = ModelArtifact { identity: identity, provenance: provenance, serving_label: serving_label }
 
@@ -64,6 +65,29 @@ fn model_artifact_from_observed_digest(publisher: std.types.NonEmptyStr, observe
     identity: ollama_model_content_hash(digest: observed),
     provenance: PulledFromUpstream { publisher: publisher, reference: observed.ref },
     serving_label: ollama_model_ref_wire(ref: observed.ref) as std.types.NonEmptyStr,
+  )
+}
+
+// THE DESIRED-STATE PATH, and the reason it is not model_artifact_from_observed_digest.
+//
+// That function's authority says its digest came off /api/tags or /api/show, and for a LOADED
+// artifact -- one read back from a host at run time -- that is exactly true. Desired state is the
+// other direction: nothing has been observed yet, so a caller authoring a digest literal and passing
+// it through the observed-digest door asserts a provenance it does not have. That is what
+// spark_serving_desired did, and it is why a republished tag read as host drift for a week.
+//
+// A resolution carries its own evidence and cannot be constructed without it (extdeps.pin,
+// TrackedReferenceResolution), so this door is the one desired state can walk through honestly: the
+// identity is the one the resolution recorded, and the reference travels as provenance rather than as
+// identity.
+fn model_artifact_from_resolution<Evidence>(
+  publisher: std.types.NonEmptyStr,
+  resolution: extdeps.pin.TrackedReferenceResolution<extdeps.ollama.api.OllamaModelRef, Evidence>,
+) -> ModelArtifact {
+  model_artifact_seal(
+    identity: resolution.resolved_identity,
+    provenance: PulledFromUpstream { publisher: publisher, reference: resolution.reference },
+    serving_label: ollama_model_ref_wire(ref: resolution.reference) as std.types.NonEmptyStr,
   )
 }
 
@@ -110,9 +134,9 @@ type ModelArtifactAgreement
 
 fn compare_model_artifact(desired: ModelArtifact, loaded: ModelArtifact) -> ModelArtifactAgreement {
   match compare_content_hash(left: desired.identity, right: loaded.identity) {
-    ContentHashEqual => ArtifactIdentical
-    ContentHashDifferent => ArtifactDiffers { desired: desired.identity, loaded: loaded.identity }
-    ContentHashCrossFamilyIncomparable => ArtifactIncomparable {
+    std.content_hash.ContentHashEqual => ArtifactIdentical
+    std.content_hash.ContentHashDifferent => ArtifactDiffers { desired: desired.identity, loaded: loaded.identity }
+    std.content_hash.ContentHashCrossFamilyIncomparable => ArtifactIncomparable {
       cause: "desired and loaded model identities are in different hash families, so agreement was not established" as std.types.NonEmptyStr,
     }
   }
@@ -127,9 +151,9 @@ fn model_label_collision(left: ModelArtifact, right: ModelArtifact) -> Bool {
 
 fn model_artifact_same(left: ModelArtifact, right: ModelArtifact) -> Bool {
   match compare_content_hash(left: left.identity, right: right.identity) {
-    ContentHashEqual => true
-    ContentHashDifferent => false
-    ContentHashCrossFamilyIncomparable => false
+    std.content_hash.ContentHashEqual => true
+    std.content_hash.ContentHashDifferent => false
+    std.content_hash.ContentHashCrossFamilyIncomparable => false
   }
 }
 

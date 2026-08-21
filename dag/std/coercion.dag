@@ -8,6 +8,35 @@ type TypeCheckpoint {
   literal_suffix: String?
 }
 
+// TypeCheckpoint (above) is cited to the target LANGUAGE reference and states how a spelling
+// renders. TypeRealizationDecision is the gunbc-corpus fact answering which of a named
+// declaration's possible renderings actually applies at a given reference, keyed on declaration
+// identity (dag_name, decl_file) rather than bare spelling alone -- the corpus-side half of the
+// two-authority shape v1.compiler.emit_rust checkpoint_table_bypasses_identity_note names as this
+// class's terminal shape. Unrealized is not merely 'no row' -- it is the DERIVED conclusion that
+// the emitter must render the declaration's own structure because no checkpoint governs THIS
+// declaration (a same-spelling sibling elsewhere may still be Realized). Refused is reserved for a
+// reference whose declaration identity the caller could not supply -- never a guess standing in for
+// Unrealized, because a silently-assumed Unrealized is exactly the false negative this decision
+// exists to keep out of the render path (DESIGN section 5). Named Unrealized rather than the more
+// obvious Structural because gunbc.ci_failure_class already declares a fielded
+// Structural { reason: String } resolved as an unqualified global name (imports do not bind it), so
+// a second, differently-shaped Structural here would collide corpus-wide.
+//
+// This decision's identity key is sound ONLY while v2.compiler.source_authority
+// module_storage_binding_authority_note's file<->module binding stays 1:1 -- that note is the sole
+// owner of this scope and names many-to-many (fragment identity/order, several-modules-one-file) as
+// a deferral until a consumer prices it (DESIGN section 6), never a silent assumption. If
+// many-to-many lands, decl_file stops discriminating declarations and BOTH Unrealized and Realized
+// remain reachable on an input that no longer identifies one declaration -- Refused covers
+// decl_file == "" (identity ABSENT), not identity AMBIGUOUS, so a many-to-many regression here would
+// not refuse, it would answer confidently and wrongly. Whoever prices many-to-many in
+// source_authority must revisit this type first.
+type TypeRealizationDecision
+  = Realized { checkpoint: TypeCheckpoint }
+  | Unrealized
+  | Refused { cause: String }
+
 type InhabitantDecl {
   algebra: String
   template: String
@@ -31,12 +60,12 @@ type CastRule {
 
 type CastSyntax {
   template: String
-  cast_rules: List<CastRule>
+  cast_rules: std.types.List<CastRule>
 }
 
 data grounded_primitive_coproduct_cast_note: String = "The Int->Nat and String->FreeMonoid identities are GROUNDED, not hollow casts (operator Ruling 3, 2026-07-15): a Nat IS an Int (numeric tower grounded construction-side #5428, Zero->Int(0)/Succ->Int(k+1), native form == modeled form) and a String IS a FreeMonoid<Char> (std.string_type: type String = FreeMonoid<Char> — strings over an alphabet are the free monoid). They live in their OWN list, NOT in dag_cast_rules, on purpose: dag_can_cast consults BOTH lists so the wall's kernel_value_declared_type_mismatch stops flagging an Int literal where a Nat is expected (and a String where a FreeMonoid is expected); but is_dag_cast_domain_type reads ONLY dag_cast_rules, so grounding a primitive to a coproduct does NOT drag that coproduct into the explicit-`as`-cast validation domain. Folding them into dag_cast_rules would make Nat/String cast-domain types and newly REJECT pre-existing well-typed casts whose reverse rule is absent (`Nat as Int` in bmc_onboard, `Int as String` in srv3/host_effect were skipped before because their far type was not a domain type) — a regression, not the intent. NON-grounded primitive->coproduct straddles stay red by construction: Bool->FreeMonoid (card_intake), String->Doc (live_deploy), String->AuthScheme (auth) are genuine site bugs with no identity."
 
-data dag_cast_rules: List<CastRule> = [
+data dag_cast_rules: std.types.List<CastRule> = [
   { from_type: "Int",   to_type: "Int" },
   { from_type: "Int",   to_type: "Float" },
   { from_type: "Float", to_type: "Int" },
@@ -44,7 +73,7 @@ data dag_cast_rules: List<CastRule> = [
   { from_type: "Bool",  to_type: "Int" },
 ]
 
-data grounded_primitive_coproduct_identities: List<CastRule> = [
+data grounded_primitive_coproduct_identities: std.types.List<CastRule> = [
   { from_type: "Int",    to_type: "Nat" },
   { from_type: "String", to_type: "FreeMonoid" },
 ]

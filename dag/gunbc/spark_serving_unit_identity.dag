@@ -1,5 +1,0 @@
-module gunbc.spark_serving_unit_identity
-
-data spark_serving_unit_identity_note: String = "Fleet-constant systemd user-unit basename for gunbc Spark serving on srv5/srv6. Leaf module — no spark_serving_release/runtime_receipt/desired imports — so release, observe, and install_paths can consume one row without closing the runtime_receipt→readback_parse→desired→release import cycle."
-
-data spark_serving_unit_name: String = "gunbc-spark-serving.service"

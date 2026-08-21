@@ -1,0 +1,97 @@
+module test.claim.spark_serving_durability_transaction_witness
+
+
+data boot_a: String = "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+data boot_b: String = "9a8b7c6d-5e4f-4321-8765-fedcba987654"
+
+fn reading(id: String) -> gunbc.spark.serving_durability.BootIdentityReading {
+  gunbc.spark.serving_durability.BootIdentityObserved { boot_id: id as std.types.NonEmptyStr }
+}
+
+fn proven_verdict() -> gunbc.spark.serving_durability_transaction.SparkServingDurabilityTransaction {
+  gunbc.spark.serving_durability_transaction.DurabilityTransactionSettled {
+    verdict: spark_serving_durability_verdict(
+      host: "srv6",
+      transition: spark_serving_reboot_transition(before: test.claim.spark_serving_durability_transaction_witness_test.reading(id: test.claim.spark_serving_durability_transaction_witness_test.boot_a), after: test.claim.spark_serving_durability_transaction_witness_test.reading(id: test.claim.spark_serving_durability_transaction_witness_test.boot_b)),
+      pending_action_count: 0,
+      serving_healthy: true,
+      health_cause: "served the planned model" as std.types.NonEmptyStr,
+    ),
+    detail: "post-reboot pending_actions=0",
+  }
+}
+
+fn settled_with(pending: Int, healthy: Bool) -> gunbc.spark.serving_durability_transaction.SparkServingDurabilityTransaction {
+  gunbc.spark.serving_durability_transaction.DurabilityTransactionSettled {
+    verdict: spark_serving_durability_verdict(
+      host: "srv6",
+      transition: spark_serving_reboot_transition(before: test.claim.spark_serving_durability_transaction_witness_test.reading(id: test.claim.spark_serving_durability_transaction_witness_test.boot_a), after: test.claim.spark_serving_durability_transaction_witness_test.reading(id: test.claim.spark_serving_durability_transaction_witness_test.boot_b)),
+      pending_action_count: pending,
+      serving_healthy: healthy,
+      health_cause: "the generation did not answer" as std.types.NonEmptyStr,
+    ),
+    detail: "post-reboot",
+  }
+}
+
+// THE BOUND IS SPENT IN WHOLE CADENCES, and this is the arithmetic the poll's refusal quotes back.
+// A bound that did not divide into a positive attempt count would be a poll that refuses before it
+// probes -- which would report every host as not-established without ever looking at one.
+test fn the_return_bound_divides_into_its_cadence_a_positive_number_of_times() -> Bool {
+  spark_serving_reboot_return_bound_is_positive()
+    && spark_serving_reboot_return_max_attempts() > 0
+    && spark_serving_reboot_return_max_attempts()
+       == second_count(s: spark_serving_reboot_return_bound) / second_count(s: spark_serving_reboot_return_cadence)
+}
+
+// THE BOUND IS GENEROUS AGAINST A REAL BOOT, not fitted to one. A DGX Spark answers ssh well inside
+// two minutes of a clean reboot; asserting the bound is at least several times that is a statement
+// about which error the bound is chosen to avoid -- a false not-established on a healthy host --
+// rather than a transcription of any measurement taken from these hosts.
+test fn the_return_bound_is_several_times_a_realistic_boot() -> Bool {
+  second_count(s: spark_serving_reboot_return_bound) >= 300
+    && second_count(s: spark_serving_reboot_return_cadence) > 0
+    && second_count(s: spark_serving_reboot_return_cadence) < second_count(s: spark_serving_reboot_return_bound)
+}
+
+// ONLY THE FULL CONJUNCTION IS PROVEN. Each of the other four verdict worlds must read false through
+// the transaction wrapper too -- a wrapper that widened any of them into success would be exactly
+// the fail-open the durability module's four-way split exists to prevent.
+test fn only_a_fully_converged_serving_host_reads_as_proven() -> Bool {
+  spark_serving_durability_transaction_is_proven(t: proven_verdict())
+    && spark_serving_durability_transaction_is_proven(t: settled_with(pending: 3, healthy: true)) == false
+    && spark_serving_durability_transaction_is_proven(t: settled_with(pending: 0, healthy: false)) == false
+}
+
+// A REFUSAL IS NEVER A PASS, and it is the arm most likely to be reached in practice: an unreadable
+// before-identity, a reboot the far side rejected, a replan that could not be computed.
+test fn a_refused_transaction_is_not_proven_and_names_its_cause() -> Bool {
+  let t = gunbc.spark.serving_durability_transaction.DurabilityTransactionRefused { cause: "the before-reboot boot identity was not readable" }
+  spark_serving_durability_transaction_is_proven(t: t) == false
+    && string_contains(spark_serving_durability_transaction_wire(t: t), "REFUSED")
+    && string_contains(
+         spark_serving_durability_transaction_wire(t: t),
+         "the before-reboot boot identity was not readable",
+       )
+}
+
+// THE RECEIPT CARRIES THE VERDICT, not a summary of it. A reader greps this file, so the durability
+// module's own wire must appear in the transaction's wire rather than being re-phrased here -- two
+// spellings of one verdict is the second authority this whole vertical keeps having to delete.
+test fn the_settled_wire_carries_the_durability_verdict_verbatim() -> Bool {
+  string_contains(spark_serving_durability_transaction_wire(t: proven_verdict()), "PROVEN")
+    && string_contains(spark_serving_durability_transaction_wire(t: proven_verdict()), test.claim.spark_serving_durability_transaction_witness_test.boot_a)
+    && string_contains(spark_serving_durability_transaction_wire(t: proven_verdict()), test.claim.spark_serving_durability_transaction_witness_test.boot_b)
+}
+
+// A NOT-PROVEN VERDICT MUST NOT RENDER THE PROVEN WORD, which is what a reader and any downstream
+// grep keys on.
+test fn an_unconverged_survivor_does_not_render_as_proven() -> Bool {
+  string_contains(spark_serving_durability_transaction_wire(t: settled_with(pending: 3, healthy: true)), "PROVEN")
+    == false
+}
+
+test fn the_receipt_path_is_under_target_and_names_durability() -> Bool {
+  string_contains(spark_serving_durability_receipt_path, "target/")
+    && string_contains(spark_serving_durability_receipt_path, "durability")
+}

@@ -1,0 +1,82 @@
+module extdeps.ollama.model_store
+
+
+// THE ON-DISK MODEL STORE IS UPSTREAM'S LAYOUT, NOT OURS.
+//
+// It is a separate subject from extdeps.ollama.api: that module models the HTTP surface, this one
+// models where the server keeps bytes. Fusing them would make a change to the store layout look like
+// an API change, and the two version independently.
+//
+// It is also NOT a gunbc fact. Which model a deployment serves and where the store root lives are
+// deployment decisions and stay in gunbc; the SHAPE below -- manifests addressed by reference,
+// blobs addressed by digest -- is Ollama's and is cited rather than coined.
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
+    locator: "github.com/ollama/ollama/blob/main/docs/faq.md"
+  }
+}
+
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
+      module_path: "extdeps.ollama.model_store",
+      decl_name: "OllamaModelStoreLayout",
+      field: std.decl_ref.WholeDeclaration
+    }
+  },
+  first_citation: extdeps.ollama.model_store.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// TWO DIRECTORIES, TWO ADDRESSING SCHEMES, AND THAT ASYMMETRY IS THE POINT.
+//
+// A manifest is addressed by REFERENCE -- registry, namespace, model, tag -- which is a moving
+// pointer: `gpt-oss:20b` names different bytes before and after an upstream republish. A blob is
+// addressed by DIGEST, which is not.
+//
+// So a store is complete for a model only when BOTH hold: the manifest for the reference exists,
+// and every blob the manifest names is present. Checking the manifest alone is the common error and
+// it is exactly wrong here, because a pull interrupted midway leaves the manifest written and blobs
+// missing -- the state that looks installed and cannot serve.
+type OllamaModelStoreLayout {
+  manifests_dir_rel: String
+  blobs_dir_rel: String
+}
+
+data ollama_model_store_layout: OllamaModelStoreLayout = OllamaModelStoreLayout {
+  manifests_dir_rel: "manifests",
+  blobs_dir_rel: "blobs",
+}
+
+// The default registry and namespace Ollama assumes when a reference names neither. They are cited
+// constants rather than gunbc choices: a reference written `gpt-oss:20b` resolves under these, and
+// re-deriving them at a consumer would be a second statement of upstream's default.
+data ollama_default_registry: std.types.NonEmptyStr = "registry.ollama.ai" as std.types.NonEmptyStr
+
+data ollama_default_namespace: std.types.NonEmptyStr = "library" as std.types.NonEmptyStr
+
+// A blob file is named for its digest with the algorithm prefix separated by a DASH, not a colon --
+// the wire form `sha256:abc` is not the on-disk form `sha256-abc`. That difference is a filesystem
+// constraint upstream accommodated, and a consumer that reused the wire spelling would look for a
+// file that never exists on any host.
+fn ollama_blob_file_name(digest_hex: std.types.NonEmptyStr) -> String {
+  join(["sha256-", digest_hex as String], "")
+}
+
+fn ollama_manifest_rel_path(model: std.types.NonEmptyStr, tag: std.types.NonEmptyStr) -> String {
+  join([
+    ollama_model_store_layout.manifests_dir_rel, "/",
+    ollama_default_registry as String, "/",
+    ollama_default_namespace as String, "/",
+    model as String, "/",
+    tag as String,
+  ], "")
+}
+
+fn ollama_blob_rel_path(digest_hex: std.types.NonEmptyStr) -> String {
+  join([
+    ollama_model_store_layout.blobs_dir_rel, "/",
+    ollama_blob_file_name(digest_hex: digest_hex),
+  ], "")
+}

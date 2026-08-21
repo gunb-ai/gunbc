@@ -1,7 +1,7 @@
 module v2.compiler.trait_derive_completeness
 
 
-data trait_derive_completeness_note: String = "Gate-1 sub-wall #2 (#7174 narrowed 2026-07-25): v2 Node elem-shape classifier + collection-witness gate over std.trait_derive_shape. v1 emit wires (a) clone bounds on generic params, (b) coproduct-native supplemental impl blocks, and (c) serde/Debug/Ord #[derive] on named structs/enums — arm (b) detail in std.trait_derive_shape.trait_derive_shape_grounding_lane_handoff. Fail-closed: unknown shapes refuse. Dissolve-on: those three v1 emit arms + layer-boundary mock test wire through this module."
+data trait_derive_completeness_note: String = "Gate-1 sub-wall #2 (#7174 narrowed 2026-07-25): v2 Node elem-shape classifier + collection-witness gate over std.trait_derive_shape. v1 emit wires (a) clone bounds on generic params, (b) coproduct-native supplemental impl blocks, and (c) serde/Debug/Ord #[derive] on named structs/enums — arm (b) detail in std.trait_derive_shape.trait_derive_shape_grounding_lane_handoff. Fail-closed: unknown shapes refuse. Dissolve-on: those three v1 emit arms + layer-boundary mock test wire through this module. TWO DECLARED RESIDUES FROM THE B1 CAPABILITY-KEYED CUTOVER (review 53861 on gunbc#8597, both correct, both named here rather than left to be rediscovered). (1) RESIDUAL PER-TARGET AUTHORITY: repr_grounding_derive_traits_for_capability keys on the three Rust capability symbols target_collection_trait_ord/_hash/_eq and answers with Rust derive-trait lists. That is the SAME per-target policy B1 evicted from v2.std.compilers.target_model, now sitting one layer up in v2.compiler rather than in extdeps.languages.rust beside the eligibility rows it belongs with. It is not a second CARRIER (the carrier is TargetCapabilityRequirement, single-authority), but it IS a second per-target ROW SET, so a non-Rust target would still edit this file. NEXT-RUNG TRIGGER: these rows migrate to extdeps.languages.rust alongside rust_collection_capability_eligibility_rows in the ReprGroundingDeriveTrait cutover (B1 PR 2), which subsumes the 16-variant derive coproduct that these lists are typed in; migrating the lists BEFORE that coproduct is keyed would just move ReprGroundingDeriveTrait into extdeps unchanged, so the two are sequenced together deliberately, not deferred by omission. (2) OBLIGATION ON Absent, PINNED BEFORE A CONSUMER EXISTS: trait_derive_completeness_gate_for_collection_requirement returns Optional, where Absent means the capability key has no declared derive-trait row -- an UNKNOWN capability, never a satisfied or an unsatisfied gate. There is no production consumer today (tests only), so this is not live fail-open. When one is wired, Absent MUST route to a typed located refusal; treating it as skip-the-gate, or folding it into TraitDeriveCompletenessSatisfied or TraitDeriveCompletenessIncomplete, would reintroduce exactly the absorbing fallback this cutover removed -- the prior code silently handed an unrecognised capability the equality trait list, and tdc_unknown_capability_refuses_rather_than_defaulting is the discriminating control that goes red if that behaviour returns."
 
 type TraitDeriveCompletenessGate
   = TraitDeriveCompletenessSatisfied
@@ -11,7 +11,7 @@ fn trait_derive_int_kernel_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^int_kernel_type_atom } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
@@ -19,37 +19,37 @@ fn trait_derive_unit_kernel_type_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^unit_kernel_type_atom } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
   }
 }
 
 fn repr_grounding_derive_elem_shape(elem: v2.std.node.Node) -> std.trait_derive_shape.ReprGroundingDeriveElemShape {
   match elem.kind {
-    TypeNode { connective: Disj } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Disj } =>
       if coproduct_all_variants_nullary(edges: elem.children) {
-        ReprDeriveElemNullaryEnumCopy
+        std.trait_derive_shape.ReprDeriveElemNullaryEnumCopy
       } else {
-        ReprDeriveElemPayloadCoproduct
+        std.trait_derive_shape.ReprDeriveElemPayloadCoproduct
       }
-    TypeNode { connective: Atom { identity: id } } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } =>
       if id == ^target_collection_kernel_string || id == ^symbol_kernel_type_atom {
-        ReprDeriveElemKernelString
+        std.trait_derive_shape.ReprDeriveElemKernelString
       } else {
         if id == ^target_collection_kernel_int || id == ^int_kernel_type_atom {
-          ReprDeriveElemKernelInt
+          std.trait_derive_shape.ReprDeriveElemKernelInt
         } else {
           if id == ^target_collection_kernel_bool || id == ^bool_node_symbol {
-            ReprDeriveElemKernelBool
+            std.trait_derive_shape.ReprDeriveElemKernelBool
           } else {
             if id == ^target_collection_kernel_unit || id == ^unit_kernel_type_atom {
-              ReprDeriveElemKernelUnit
+              std.trait_derive_shape.ReprDeriveElemKernelUnit
             } else {
-              ReprDeriveElemUnknown
+              std.trait_derive_shape.ReprDeriveElemUnknown
             }
           }
         }
       }
-    _ => ReprDeriveElemUnknown
+    _ => std.trait_derive_shape.ReprDeriveElemUnknown
   }
 }
 
@@ -64,7 +64,7 @@ fn repr_grounding_derive_trait_satisfied(
 }
 
 fn repr_grounding_derive_completeness_predicate_for_elem(
-  required: List<std.trait_derive_shape.ReprGroundingDeriveTrait>,
+  required: std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait>,
   elem: v2.std.node.Node
 ) -> Bool {
   std.trait_derive_shape.repr_grounding_derive_completeness_predicate(
@@ -73,45 +73,46 @@ fn repr_grounding_derive_completeness_predicate_for_elem(
   )
 }
 
-fn repr_grounding_derive_traits_for_collection_witness(
-  witness: v2.std.compilers.target_model.RequiredTraitWitness
-) -> List<std.trait_derive_shape.ReprGroundingDeriveTrait> {
-  match witness {
-    TargetCollectionWitnessOrd { type_param: _ } =>
-      std.algebra.Cons {
-        head: std.trait_derive_shape.ReprDeriveOrd,
-        tail: std.algebra.Cons {
-          head: std.trait_derive_shape.ReprDerivePartialOrd,
-          tail: std.algebra.Cons {
-            head: std.trait_derive_shape.ReprDeriveEq,
-            tail: std.algebra.Cons {
-              head: std.trait_derive_shape.ReprDerivePartialEq,
-              tail: std.algebra.Cons { head: std.trait_derive_shape.ReprDeriveClone, tail: std.algebra.Empty }
-            }
-          }
-        }
+data repr_grounding_derive_traits_ordering_capability: std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait> = [
+  std.trait_derive_shape.ReprDeriveOrd,
+  std.trait_derive_shape.ReprDerivePartialOrd,
+  std.trait_derive_shape.ReprDeriveEq,
+  std.trait_derive_shape.ReprDerivePartialEq,
+  std.trait_derive_shape.ReprDeriveClone
+]
+
+data repr_grounding_derive_traits_equality_capability: std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait> = [
+  std.trait_derive_shape.ReprDeriveEq,
+  std.trait_derive_shape.ReprDerivePartialEq,
+  std.trait_derive_shape.ReprDeriveClone
+]
+
+fn repr_grounding_derive_traits_for_capability(
+  capability_key: v2.std.node.Symbol
+) -> Optional<std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait>> {
+  if capability_key == ^target_collection_trait_ord {
+    optional_present(value: repr_grounding_derive_traits_ordering_capability)
+  } else {
+    if capability_key == ^target_collection_trait_hash {
+      optional_present(value: repr_grounding_derive_traits_equality_capability)
+    } else {
+      if capability_key == ^target_collection_trait_eq {
+        optional_present(value: repr_grounding_derive_traits_equality_capability)
+      } else {
+        optional_absent()
       }
-    TargetCollectionWitnessHash { type_param: _ } =>
-      std.algebra.Cons {
-        head: std.trait_derive_shape.ReprDeriveEq,
-        tail: std.algebra.Cons {
-          head: std.trait_derive_shape.ReprDerivePartialEq,
-          tail: std.algebra.Cons { head: std.trait_derive_shape.ReprDeriveClone, tail: std.algebra.Empty }
-        }
-      }
-    TargetCollectionWitnessEq { type_param: _ } =>
-      std.algebra.Cons {
-        head: std.trait_derive_shape.ReprDeriveEq,
-        tail: std.algebra.Cons {
-          head: std.trait_derive_shape.ReprDerivePartialEq,
-          tail: std.algebra.Cons { head: std.trait_derive_shape.ReprDeriveClone, tail: std.algebra.Empty }
-        }
-      }
+    }
   }
 }
 
+fn repr_grounding_derive_traits_for_collection_requirement(
+  requirement: v2.std.compilers.target_model.TargetCapabilityRequirement
+) -> Optional<std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait>> {
+  repr_grounding_derive_traits_for_capability(capability_key: requirement.capability_key)
+}
+
 fn trait_derive_completeness_gate(
-  required: List<std.trait_derive_shape.ReprGroundingDeriveTrait>,
+  required: std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait>,
   elem: v2.std.node.Node
 ) -> TraitDeriveCompletenessGate {
   if repr_grounding_derive_completeness_predicate_for_elem(required: required, elem: elem) {
@@ -121,12 +122,15 @@ fn trait_derive_completeness_gate(
   }
 }
 
-fn trait_derive_completeness_gate_for_collection_witness(
-  witness: v2.std.compilers.target_model.RequiredTraitWitness,
+fn trait_derive_completeness_gate_for_collection_requirement(
+  requirement: v2.std.compilers.target_model.TargetCapabilityRequirement,
   elem: v2.std.node.Node
-) -> TraitDeriveCompletenessGate {
-  trait_derive_completeness_gate(
-    required: repr_grounding_derive_traits_for_collection_witness(witness: witness),
-    elem: elem
-  )
+) -> Optional<TraitDeriveCompletenessGate> {
+  match repr_grounding_derive_traits_for_collection_requirement(requirement: requirement) {
+    Present { value: required } =>
+      optional_present(
+        value: trait_derive_completeness_gate(required: required, elem: elem)
+      )
+    Absent => optional_absent()
+  }
 }

@@ -26,9 +26,9 @@ module gunbc.fleet_multi_principal_probe
 // It also replaces work rather than adding any: the deleted spark-canary-probe.yml asked exactly
 // this question in hand-authored shell, against this same principal list, and a hand-written
 // workflow is hand-applying (operator ruling, 2026-08-10).
-data multi_principal_probe_hosts: List<String> = ["srv3", "srv4", "srv5", "srv6"]
+data multi_principal_probe_hosts: std.types.List<String> = ["srv3", "srv4", "srv5", "srv6"]
 
-data multi_principal_probe_principals: List<String> = ["ubuntu", "briansrls", "ghrunner", "root", "gunbc-automation"]
+data multi_principal_probe_principals: std.types.List<String> = ["ubuntu", "briansrls", "ghrunner", "root", "gunbc-automation"]
 
 data fleet_multi_principal_probe_receipt_path: String = "target/fleet-multi-principal-probe-receipt.txt"
 
@@ -37,7 +37,7 @@ data fleet_multi_principal_probe_receipt_path: String = "target/fleet-multi-prin
 // ONE LEG, and every option it carries derived from the sealed context rather than assembled here.
 // The words go through portable_remote_words, so a command this probe cannot transport safely
 // refuses before the leg rather than being quoted into something the remote shell may re-split.
-fn probe_leg(context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext, host: String, principal: String, raw_words: List<String>) -> extdeps.ssh.session.SshSessionExecResult? {
+fn probe_leg(context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext, host: String, principal: String, raw_words: std.types.List<String>) -> extdeps.ssh.session.SshSessionExecResult? {
   match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: raw_words) {
     Absent => none
     Present { value: words } => Present {
@@ -91,13 +91,13 @@ fn multi_principal_host_block(context: gunbc.fleet_known_hosts_anchor.FleetSshEx
 fn multi_principal_reach_line_agent_backed(host: String, principal: String) -> String {
   let target = join([principal, "@", gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for(host: host)], "")
   match gunbc.typed_argv_exec.typed_argv_probe_over_ssh(host: target as std.types.NonEmptyStr, argv: ["hostname"]) {
-    TypedArgvExecConverged { result: r } =>
+    gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } =>
       if r.success {
         join(["reach host=", host, " principal=", principal, " auth=accepted command=executed hostname=", std.algebra.trim(s: r.stdout), "\n"], "")
       } else {
         join(["reach host=", host, " principal=", principal, " auth-or-command=refused stderr=", std.algebra.trim(s: r.stderr), " stdout=", std.algebra.trim(s: r.stdout), "\n"], "")
       }
-    TypedArgvExecRefused { reason: why } =>
+    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } =>
       join(["reach host=", host, " principal=", principal, " probe-refused cause=", why, "\n"], "")
   }
 }
@@ -105,13 +105,13 @@ fn multi_principal_reach_line_agent_backed(host: String, principal: String) -> S
 fn multi_principal_sudo_line_agent_backed(host: String, principal: String) -> String {
   let target = join([principal, "@", gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for(host: host)], "")
   match gunbc.typed_argv_exec.typed_argv_probe_over_ssh(host: target as std.types.NonEmptyStr, argv: ["sudo", "-n", "-l"]) {
-    TypedArgvExecConverged { result: r } =>
+    gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } =>
       if r.success {
         join(["sudo  host=", host, " principal=", principal, " sudo-n-l=listed grants=", std.algebra.trim(s: r.stdout), "\n"], "")
       } else {
         join(["sudo  host=", host, " principal=", principal, " sudo-n-l=refused stderr=", std.algebra.trim(s: r.stderr), "\n"], "")
       }
-    TypedArgvExecRefused { reason: why } =>
+    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } =>
       join(["sudo  host=", host, " principal=", principal, " probe-refused cause=", why, "\n"], "")
   }
 }
@@ -156,7 +156,7 @@ func probe_agent_credential_verification(attempt: gunbc.fleet_known_hosts_anchor
       }
     Present { value: sock } =>
       match gunbc.fleet_ssh_credential_verify.materialize_agent_public_selector(attempt: attempt, key: gunbc.fleet_ssh_access.fleet_automation_ssh_key) {
-        AgentSelectorRefused { cause: cause } => gunbc.fleet_ssh_credential_verify.FleetSshCredentialDerivationRefused { cause: cause }
+        gunbc.fleet_ssh_credential_verify.AgentSelectorRefused { cause: cause } => gunbc.fleet_ssh_credential_verify.FleetSshCredentialDerivationRefused { cause: cause }
         AgentSelectorMaterialized { selector: selector } =>
           gunbc.fleet_ssh_credential_verify.verify_fleet_ssh_agent_credential(
             agent_socket: sock,
@@ -168,11 +168,11 @@ func probe_agent_credential_verification(attempt: gunbc.fleet_known_hosts_anchor
   }
 }
 
-fn agent_backed_probe_success(host: String, principal: String, argv: List<String>) -> Bool {
+fn agent_backed_probe_success(host: String, principal: String, argv: std.types.List<String>) -> Bool {
   let target = join([principal, "@", gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for(host: host)], "")
   match gunbc.typed_argv_exec.typed_argv_probe_over_ssh(host: target as std.types.NonEmptyStr, argv: argv) {
-    TypedArgvExecConverged { result: r } => r.success
-    TypedArgvExecRefused { reason: _ } => false
+    gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } => r.success
+    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: _ } => false
   }
 }
 
@@ -300,7 +300,7 @@ func fleet_multi_principal_probe_wet() -> std.process.ProcessExit {
   let now = gunbc.clock_read.clock_now_probed_at()
   let body = join([
     join([
-      "multi-principal fleet-key probe probed_at=", now as String,
+      "multi-principal fleet-key probe probed_at=", probed_at_word(reading: now) as String,
       " (read-only: hostname + sudo -n -l; in-run ssh-agent from WIF key materialization)\n",
     ], ""),
     join(map(multi_principal_probe_hosts, h => multi_principal_host_block_agent_backed(host: h)), ""),
@@ -328,18 +328,18 @@ func fleet_multi_principal_probe_with_attempt(attempt_raw: String) -> std.proces
       let credential_locus = gunbc.fleet_known_hosts_anchor.fleet_ssh_credential_locus_label(binding: credential)
       let body = match probe_attempt_identity(raw: attempt_raw) {
         Absent =>
-          join(["multi-principal fleet-key probe probed_at=", now as String, " REFUSED before any ssh leg: attempt identity is not a safe path segment\n"], "")
+          join(["multi-principal fleet-key probe probed_at=", probed_at_word(reading: now) as String, " REFUSED before any ssh leg: attempt identity is not a safe path segment\n"], "")
         Present { value: attempt } => {
           let materialization = gunbc.fleet_known_hosts_anchor.materialize_fleet_known_hosts_anchor(attempt: attempt)
           match gunbc.fleet_known_hosts_anchor.fleet_ssh_execution_context_of(outcome: materialization, credential: credential) {
             Absent => join([
-              "multi-principal fleet-key probe probed_at=", now as String,
-              " REFUSED before any ssh leg: ", gunbc.fleet_known_hosts_anchor.known_hosts_materialization_receipt(outcome: materialization), "\n",
+              "multi-principal fleet-key probe probed_at=", probed_at_word(reading: now) as String,
+              " REFUSED before any ssh leg: ", known_hosts_materialization_receipt(outcome: materialization), "\n",
             ], "")
             Present { value: context } => join([
-              join(["multi-principal fleet-key probe probed_at=", now as String, " (read-only: hostname + sudo -n -l)\n"], ""),
-              gunbc.fleet_known_hosts_anchor.known_hosts_materialization_receipt(outcome: materialization),
-              join(["credential ", credential_locus, " public_material_identity=", std.content_hash.serialize_content_hash(hash: gunbc.fleet_known_hosts_anchor.fleet_ssh_credential_identity(binding: credential)) as String, " ambient_config=suppressed\n"], ""),
+              join(["multi-principal fleet-key probe probed_at=", probed_at_word(reading: now) as String, " (read-only: hostname + sudo -n -l)\n"], ""),
+              known_hosts_materialization_receipt(outcome: materialization),
+              join(["credential ", credential_locus, " public_material_identity=", serialize_content_hash(hash: fleet_ssh_credential_identity(binding: credential)) as String, " ambient_config=suppressed\n"], ""),
               join(map(multi_principal_probe_hosts, h => multi_principal_host_block(context: context, host: h)), ""),
             ], "")
           }
@@ -368,21 +368,16 @@ data spark_grant_probe_receipt_path: String = "target/spark-exact-grant-probe-re
 // path, reintroduced here (review 51704). It was worse than the one it copied: the refused-leg arm
 // spells "probe-refused" in lower case, which does not contain "REFUSED", so a leg that never ran
 // exited 0. The receipt is now a PROJECTION of these variants rather than the thing decided upon.
-type SparkGrantOutcome
-  = GrantEnumerated { listing: String }
-  | GrantAbsent { detail: String }
-  | GrantProbeRefused { cause: String }
-
 type SparkGrantRow {
   host: String
   principal: String
-  outcome: SparkGrantOutcome
+  outcome: gunbc.spark.managed_access_bootstrap.SparkGrantOutcome
 }
 
 // Head-plus-tail: a grant probe that observed no host has no constructor, because "every host is
 // clean" and "nothing was asked" must not share a representation.
 type SparkGrantReport
-  = GrantsObserved { first: SparkGrantRow, more: List<SparkGrantRow> }
+  = GrantsObserved { first: SparkGrantRow, more: std.types.List<SparkGrantRow> }
   | GrantProbeNotAttempted { cause: String }
 
 fn spark_exact_grant_row(context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext, host: String, principal: String) -> SparkGrantRow {
@@ -390,10 +385,10 @@ fn spark_exact_grant_row(context: gunbc.fleet_known_hosts_anchor.FleetSshExecuti
     host: host,
     principal: principal,
     outcome: match probe_leg(context: context, host: host, principal: principal, raw_words: ["sudo", "-n", "-l"]) {
-      Absent => GrantProbeRefused { cause: "non-portable-remote-word" }
+      Absent => gunbc.spark.managed_access_bootstrap.GrantProbeRefused { cause: "non-portable-remote-word" }
       Present { value: r } =>
         if r.success {
-          GrantEnumerated { listing: r.stdout }
+          gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: r.stdout }
         } else {
           GrantAbsent { detail: join(["exit=", to_string(r.exit_code), " stderr=", std.algebra.trim(s: r.stderr)], "") }
         }
@@ -413,8 +408,8 @@ fn spark_grant_report_refusal(report: SparkGrantReport) -> String? {
         match acc {
           Present { value: _ } => acc
           Absent => match row.outcome {
-            GrantProbeRefused { cause: c } => Present { value: join(["host=", row.host, " principal=", row.principal, " probe-refused cause=", c], "") }
-            GrantEnumerated { listing: _ } => none
+            gunbc.spark.managed_access_bootstrap.GrantProbeRefused { cause: c } => Present { value: join(["host=", row.host, " principal=", row.principal, " probe-refused cause=", c], "") }
+            gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: _ } => none
             GrantAbsent { detail: _ } => none
           }
         }
@@ -422,11 +417,22 @@ fn spark_grant_report_refusal(report: SparkGrantReport) -> String? {
   }
 }
 
+// THE RECONCILE RIDES THE RECEIPT, because the enumeration alone never answered the question anyone
+// was asking. A reader had to eyeball a sudoers listing against a population held in their head, and
+// when the reboot leg failed on srv6 nobody had done that join -- the gap was visible in this very
+// receipt and unnamed by it.
 fn spark_grant_row_text(row: SparkGrantRow) -> String {
+  join([
+    spark_grant_row_listing_text(row: row),
+    spark_managed_grant_report(host: row.host as product.placement_supply.HostIdentity, outcome: row.outcome),
+  ], "")
+}
+
+fn spark_grant_row_listing_text(row: SparkGrantRow) -> String {
   match row.outcome {
-    GrantEnumerated { listing: l } => join(["grant host=", row.host, " principal=", row.principal, " enumerated:\n", l, "\n"], "")
+    gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: l } => join(["grant host=", row.host, " principal=", row.principal, " enumerated:\n", l, "\n"], "")
     GrantAbsent { detail: d } => join(["grant host=", row.host, " principal=", row.principal, " NO-PASSWORDLESS-GRANT ", d, "\n"], "")
-    GrantProbeRefused { cause: c } => join(["grant host=", row.host, " principal=", row.principal, " probe-refused cause=", c, "\n"], "")
+    gunbc.spark.managed_access_bootstrap.GrantProbeRefused { cause: c } => join(["grant host=", row.host, " principal=", row.principal, " probe-refused cause=", c, "\n"], "")
   }
 }
 
@@ -438,13 +444,15 @@ fn spark_grant_report_text(report: SparkGrantReport) -> String {
 }
 
 fn spark_exact_grant_report(context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext) -> SparkGrantReport {
-  let rows = map(spark_standing_hosts, h =>
-    spark_exact_grant_row(context: context, host: h, principal: "gunbc-automation"))
-  match v2.std.algebra.list_head(rows) {
-    HeadAbsent => GrantProbeNotAttempted { cause: "no standing hosts are declared" }
-    HeadFound { value: f } => match v2.std.algebra.list_tail(rows) {
-      TailAbsent => GrantsObserved { first: f, more: [] }
-      TailFound { tail: t } => GrantsObserved { first: f, more: t }
+  let rows = flat_map(spark_standing_hosts, h => [
+    spark_exact_grant_row(context: context, host: h, principal: "gunbc-automation"),
+    spark_exact_grant_row(context: context, host: h, principal: spark_operator_bootstrap_login),
+  ])
+  match list_head(rows) {
+    v2.std.algebra.HeadAbsent => GrantProbeNotAttempted { cause: "no standing hosts are declared" }
+    v2.std.algebra.HeadFound { value: f } => match v2.std.algebra.list_tail(rows) {
+      v2.std.algebra.TailAbsent => GrantsObserved { first: f, more: [] }
+      v2.std.algebra.TailFound { tail: t } => GrantsObserved { first: f, more: t }
     }
   }
 }
@@ -505,11 +513,11 @@ fn principal_observation(
 
 fn spark_standing_line(standing: gunbc.spark_managed_access_bootstrap.SparkManagedAccessStanding) -> String {
   match standing {
-    ManagedAccessGrounded { occurrence: o } =>
+    gunbc.spark.managed_access_bootstrap.ManagedAccessGrounded { occurrence: o } =>
       join(["standing host=", o.host as String, " managed-access=GROUNDED\n"], "")
-    ManagedAccessBootstrapRequired { host: h, missing: _, bootstrap_transport: _ } =>
+    gunbc.spark.managed_access_bootstrap.ManagedAccessBootstrapRequired { host: h, missing: _, bootstrap_transport: _ } =>
       join(["standing host=", h as String, " managed-access=BOOTSTRAP-REQUIRED (human bootstrap observed, managed executor absent)\n"], "")
-    ManagedAccessUnobserved { host: h } =>
+    gunbc.spark.managed_access_bootstrap.ManagedAccessUnobserved { host: h } =>
       join(["standing host=", h as String, " managed-access=UNOBSERVED (no reachable principal, so no transport to bootstrap through)\n"], "")
   }
 }
@@ -524,9 +532,9 @@ fn spark_authorization_lines(standing: gunbc.spark_managed_access_bootstrap.Spar
       let effects = join(map(gunbc.spark_managed_access_bootstrap.spark_bootstrap_plan_effects(plan: plan), e =>
         join(["  effect ", gunbc.spark_managed_access_bootstrap.spark_bootstrap_effect_label(effect: e), "\n"], "")), "")
       match gunbc.spark_managed_access_bootstrap.authorize_spark_bootstrap(plan: plan) {
-        BootstrapProceedsUnprivileged { plan: _ } =>
+        gunbc.spark.managed_access_bootstrap.BootstrapProceedsUnprivileged { plan: _ } =>
           join(["authorization host=", plan.host as String, " UNPRIVILEGED\n", effects], "")
-        OperatorBootstrapCredentialRequired { host: h, first_privileged: f, more_privileged: m, secret_purpose: p } =>
+        gunbc.spark.managed_access_bootstrap.OperatorBootstrapCredentialRequired { host: h, first_privileged: f, more_privileged: m, secret_purpose: p } =>
           join([
             "authorization host=", h as String, " OPERATOR-CREDENTIAL-REQUIRED privileged_effects=",
             to_string(1 + length(m)), "\n  purpose ", p as String, "\n", effects,
@@ -541,7 +549,7 @@ data spark_standing_receipt_path: String = "target/spark-managed-access-standing
 
 // The Spark hosts only: this derivation is about the serving fleet, and running it over srv1..srv4
 // would produce bootstrap plans for hosts whose managed access is a different lane's question.
-data spark_standing_hosts: List<String> = ["srv5", "srv6"]
+data spark_standing_hosts: std.types.List<String> = ["srv5", "srv6"]
 
 func spark_managed_access_standing_wet() -> std.process.ProcessExit
   uses net: std.resources.Network
@@ -561,14 +569,14 @@ func spark_managed_access_standing_wet() -> std.process.ProcessExit
 // at all and the func exited 0 whatever it observed (found while fixing the sibling defect in
 // review 51704). ManagedAccessBootstrapRequired is a real observation and stays a success; only
 // ManagedAccessUnobserved -- no reachable principal, so nothing was measured -- fails.
-fn spark_standing_unobserved_host(standings: List<gunbc.spark_managed_access_bootstrap.SparkManagedAccessStanding>) -> String? {
+fn spark_standing_unobserved_host(standings: std.types.List<gunbc.spark_managed_access_bootstrap.SparkManagedAccessStanding>) -> String? {
   fold(standings, init: none, f: fn(acc, standing) {
     match acc {
       Present { value: _ } => acc
       Absent => match standing {
-        ManagedAccessUnobserved { host: h } => Present { value: h as String }
-        ManagedAccessGrounded { occurrence: _ } => none
-        ManagedAccessBootstrapRequired { host: _, missing: _, bootstrap_transport: _ } => none
+        gunbc.spark.managed_access_bootstrap.ManagedAccessUnobserved { host: h } => Present { value: h as String }
+        gunbc.spark.managed_access_bootstrap.ManagedAccessGrounded { occurrence: _ } => none
+        gunbc.spark.managed_access_bootstrap.ManagedAccessBootstrapRequired { host: _, missing: _, bootstrap_transport: _ } => none
       }
     }
   })
@@ -594,13 +602,13 @@ func spark_managed_access_standing_for_attempt(
   uses net: std.resources.Network
 {
   match probe_agent_credential_verification(attempt: attempt) {
-    FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed } =>
+    gunbc.fleet_ssh_credential_verify.FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed } =>
       std.process.exit_failure(
         reason: gunbc.fleet_ssh_credential_verify.fleet_ssh_credential_verification_refusal_reason(
           verification: gunbc.fleet_ssh_credential_verify.FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed },
         ),
       )
-    FleetSshCredentialDerivationRefused { cause: cause } =>
+    gunbc.fleet_ssh_credential_verify.FleetSshCredentialDerivationRefused { cause: cause } =>
       std.process.exit_failure(
         reason: gunbc.fleet_ssh_credential_verify.fleet_ssh_credential_verification_refusal_reason(
           verification: gunbc.fleet_ssh_credential_verify.FleetSshCredentialDerivationRefused { cause: cause },
@@ -633,7 +641,7 @@ func spark_managed_access_standing_with_verified_credential(
     gunbc.spark_managed_access_bootstrap.derive_spark_managed_access_standing(host: h as product.placement_supply.HostIdentity, observations: observations))
   let body = join([
     join([
-      "spark managed-access standing probed_at=", now as String,
+      "spark managed-access standing probed_at=", probed_at_word(reading: now) as String,
       " attempt_raw=", attempt_raw,
       " credential_identity=", std.content_hash.serialize_content_hash(hash: credential_identity) as String,
       " transport=in-run-ssh-agent\n",

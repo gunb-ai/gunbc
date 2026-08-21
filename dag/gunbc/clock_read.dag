@@ -10,9 +10,24 @@ fn clock_now_probed_at() -> std.types.NonEmptyStr? {
   }
 }
 
-fn clock_now_probed_at_or_unknown() -> std.types.NonEmptyStr {
-  match clock_now_probed_at() {
+// The ONE rendering authority for a clock reading that is going into receipt text. It exists
+// because fourteen sites across eight modules had each written `now as String` over the Optional
+// instead, which does not fail and does not warn: it renders the OPTIONAL, so live receipts carried
+// `probed_at=Present { value: 2026-08-20T21:11:38Z }` -- a wrapper spelled into a field that is
+// supposed to hold an instant. Two receipts from srv5 and srv6 on 2026-08-20 show it. The absent
+// arm is a loud word rather than a plausible-looking one, because a receipt reader scanning a
+// timestamp column must not read the failure as data; `unknown` was the previous spelling and is
+// exactly the kind of value that reads as a legitimate field.
+//
+// This takes the reading it is given rather than probing, so a caller that already holds `now`
+// renders the SAME instant it observed instead of a second, later one.
+fn probed_at_word(reading: std.types.NonEmptyStr?) -> std.types.NonEmptyStr {
+  match reading {
     Present { value: ts } => ts
-    Absent => "unknown" as std.types.NonEmptyStr
+    Absent => "clock-unreadable" as std.types.NonEmptyStr
   }
+}
+
+fn clock_now_probed_at_or_unknown() -> std.types.NonEmptyStr {
+  probed_at_word(reading: clock_now_probed_at())
 }

@@ -1,0 +1,463 @@
+module gunbc.live_deploy.deployed_tree_observation
+
+
+// ONE HOST, SEALED WITH ITS CREDENTIAL AND ITS REPO PATH, SO A CROSS-HOST JOIN HAS NO CONSTRUCTOR.
+//
+// The revision and the tree state are two facts that only mean something together: the deployed tree
+// IS the admitted revision exactly when the revision matches AND nothing has been modified since.
+// If each were observed through its own host parameter, a join could read the revision from one
+// machine and the modification state from another and report a convergence about neither -- and it
+// would typecheck, because two host-parameterized observations and one join is a well-formed program
+// with no arm in which to refuse.
+//
+// So neither observation takes a host. Both are taken THROUGH this locus, and the observation carries
+// the locus it was taken through, which is why `observe_deployed_tree` returns BOTH facts from ONE
+// call rather than exposing two readers and a join. There is no constructor for the pair other than
+// the one that takes both readings in a single traversal of a single locus, so the mixed-host verdict
+// is unrepresentable rather than refused.
+//
+// `FleetSshExecutionContext` deliberately does not carry a host -- it carries the attempt identity,
+// the trust policy and the credential, all of which are per-ATTEMPT and shared across the hosts an
+// attempt touches. Binding the host here rather than widening that context keeps one attempt able to
+// observe many hosts while keeping any single observation about exactly one.
+type DeployedTreeLocus sole_constructor {
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext
+  target: gunbc.fleet_known_hosts_anchor.SshTarget
+  repo: std.types.NonEmptyStr
+}
+
+fn deployed_tree_locus(
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
+  target: gunbc.fleet_known_hosts_anchor.SshTarget,
+  repo: std.types.NonEmptyStr,
+) -> DeployedTreeLocus {
+  DeployedTreeLocus { context: context, target: target, repo: repo }
+}
+
+fn deployed_tree_locus_transport(locus: DeployedTreeLocus) -> gunbc.host_effect.HostEffectTransport {
+  gunbc.host_effect.FleetSsh { target: locus.target, context: locus.context }
+}
+
+// THE INSTRUMENT IS GIT, AND IT IS FOUR SINGLE COMMANDS BECAUSE IT HAS TO BE.
+//
+// The portable-word alphabet admits no pipe, so a content digest of the deployed directory cannot be
+// a shell pipeline -- and that constraint turned out to point at a better instrument than the one it
+// forbade. git is ALREADY the content-identity authority for the deployed scope. THIS SENTENCE USED TO
+// SAY the tracked set is exactly what the rsync leg ships, and that was FALSE -- the sync publishes the
+// working directory wholesale modulo the exclusion authority, so untracked and ignored paths inside the
+// deployed scope ship too, which is why the observation reads all three and not one. Corrected in place
+// rather than left standing beside the later paragraph that says the opposite: two accounts of one fact
+// is the state this module exists to refuse. So there is no digest to compute, no second content
+// domain to normalize, and no dependency on the exclusion authority: comparing a source tree against
+// a deployed directory would compare two different projections and disagree forever, which fails safe
+// and is indistinguishable from real drift, which is how a signal gets silenced.
+// THE ARGV TAKES THE REPO, NOT THE LOCUS, and that is a modelling fact rather than a testing
+// convenience: these words are a function of WHICH TREE is being asked about and of nothing else --
+// the credential and the endpoint decide where the question is delivered, never what it says. Taking
+// the whole locus would also make the builders unreachable to any witness, because the execution
+// context is sealed with an admitted caller list and no test can mint one. A wall that makes the
+// wrong factoring untestable is the wall doing its job.
+fn deployed_tree_revision_argv(repo: std.types.NonEmptyStr) -> std.types.List<String> {
+  ["git", "-C", repo as String, "rev-parse", "HEAD"]
+}
+
+// THE WORKTREE IS COMPARED AGAINST AN INDEX WE BUILD, AND THE DEPLOYED REPO'S OWN INDEX IS NEVER
+// CONSULTED. This is the third instrument this observation has had, and the first two were both
+// wrong in the same way, so the reasoning is recorded rather than just the answer.
+//
+// The .git leg is a WHITELIST sync -- HEAD, objects, packed-refs, refs -- and its own carrier note
+// lists what never crosses: "config, config.worktree, INDEX, hooks, logs". So a correctly synced host
+// is in a state git never produces on its own: HEAD and objects at the new revision, the worktree at
+// the new revision, and .git/index still recording whatever the target held before. An earlier
+// observation on srv1 found 4,604 files staged as DELETED while present on disk -- that is this state
+// at production scale, already measured.
+//
+// `git status` reports every changed path modified in both columns against such an index. `git diff
+// --name-only HEAD` was then adopted on a measurement that turned out to be an artifact of a
+// one-file fixture: on a three-file repo whose worktree was verified byte-identical to HEAD, it
+// reported two of the three as drifted. Tolerating a stale index was never a property git offers --
+// it was a coincidence of which files happened to be re-hashed.
+//
+// So the construction does not tolerate a stale index, it CANNOT SEE ONE: read-tree materializes a
+// TEMPORARY index from the revision the host is actually on, and status runs against that. Nothing
+// inherits the deployed repo's staged state or its index flags. Verified: on the same stale-index
+// tree the temp-index form answers empty, a corrupted tracked file answers ` M <path>`, restoring it
+// answers empty again, and the real .git/index md5 is unchanged across all three.
+//
+// WHY diff AND status WERE REJECTED, WITH THE DISCRIMINATOR NAMED -- because both of them WORK on
+// some machines, and a later reader who tries one on a nanosecond filesystem will see it succeed and
+// conclude this was precious. git stores index ctime/mtime as seconds PLUS a nanosecond field and
+// compares both. Where the filesystem populates nanoseconds, two writes in the same second still
+// differ and the stat cache cannot collide. Where that field is coarse or zero, same-second writes
+// collide exactly, git trusts the cache, never reads the file, and reports the worktree as matching
+// the STALE index rather than the commit.
+//
+// Measured on both kinds by two people: one index recording `ctime: 1787281139:854780220` never
+// collided across repeated deliberate attempts; another recording whole seconds collided on exactly
+// the file whose ctime matched, which `git ls-files --debug` shows directly. The failure is PER-FILE
+// AND SILENT -- some paths answer correctly and one does not, in the same run, with nothing in the
+// output distinguishing them.
+//
+// This matters more in production than in a scratch repo, not less: rsync -t takes mtime from the
+// SOURCE rather than minting a fresh local one, and the index being compared against was written by
+// an earlier sync of the same kind. Whether /opt/gunbc's filesystem populates nanoseconds is one
+// read-only stat away and is worth knowing for anything ELSE that consults the deployed index -- but
+// it is deliberately NOT a dependency of this module, which is correct on both kinds because it does
+// not consult the artifact the divergence lives in.
+// `--no-optional-locks` IS LOAD-BEARING AND NOT COSMETIC: plain `git status` WRITES the index back
+// (measured -- the md5 changes), so without the flag an "observation" would mutate the host it claims
+// to be reading. The same defect is live in extdeps.git.inspect WorkingTreeStatus, which declares
+// `readonly` while omitting the flag; that is a separate repair.
+//
+// THE SUBJECT IS THE DEPLOYED SCOPE, NOT THE TRACKED SET, and an earlier revision of this module said
+// otherwise: it read `--untracked-files=no` and its note dispositioned untracked-but-shipped to
+// candidate admission as "a different class". That disposition was false and it was false in the
+// unsafe direction. Candidate admission owns the SOURCE checkout; nothing owned the target. The sync
+// leg publishes the working directory wholesale modulo the deployment exclusion authority, so a
+// target could carry HEAD=desired, tracked files clean, and an untracked or ignored `.dag` source
+// inside the deployed scope -- and the observation would report converged while the deployed bytes
+// were not the ones the commit names. Membership is projected through `path_is_deployed`, the same
+// single authority the source side projects through, so the two sides cannot disagree about scope.
+//
+// ONE PRECONDITION, CLEAN TODAY AND WITH AN ENFORCEABLE HOME. The comparison runs through
+// gitattributes, so a clean/smudge filter, text=auto, eol= or working-tree-encoding would report
+// clean while the deployed bytes differ by normalization -- and rsync ships bytes. Verified with
+// `git check-attr`, which is the authority rather than a grep because it accounts for attributes at
+// any depth and for info/attributes: text, eol, filter and working-tree-encoding all report
+// `unspecified`. .gitattributes is generated from gunbc.gitattributes_emit, whose two attribute
+// constants are literals with no mechanism to admit a third, so the premise is structural rather than
+// merely observed.
+
+// THE COMPOSED CLAIM, stated because the status leg alone proves less than it looks like it proves.
+// `status` reports HEAD-versus-index as well as worktree-versus-index. Here the temp index is built
+// from the revision the rev-parse leg OBSERVED, so the HEAD-versus-index half is equal by
+// construction and every reported entry is a worktree difference. That is what makes the empty result
+// mean "the tracked worktree realizes the commit HEAD names" without needing any external fact --
+// and it is why the index is built from the observed revision rather than the admitted one.
+//
+// The temp index is named for the ATTEMPT, so two observations running under different attempts cannot
+// collide on it. FleetSshAttemptIdentity is a PathSegment admitted through path_segment_is_safe, so
+// the path is safe by construction rather than by escaping -- there is no spelling of an attempt that
+// makes this argv unportable.
+fn deployed_tree_temp_index_path(locus: DeployedTreeLocus) -> String {
+  join(["/tmp/gunbc-deployed-tree-index-", locus.context.attempt as String], "")
+}
+
+// BOTH LEGS BIND THE TEMP INDEX THROUGH GIT_INDEX_FILE, and `--index-output` is NOT a substitute --
+// this was tried and it is wrong. `--index-output` redirects where entries are WRITTEN but still
+// LOCKS the real index: with a `.git/index.lock` present, `read-tree --index-output=/tmp/x` fails
+// with "Unable to create .git/index.lock: File exists", while the GIT_INDEX_FILE form succeeds and
+// so does the status leg against it. The flag names one of the operation's couplings and gives no
+// hint of the other.
+//
+// That distinction is decisive on THIS host rather than academic: a live worktree registration per
+// dispatch, plus the belt and agent sessions running ordinary git against the same shared repo, mean
+// an existing index.lock is the NORMAL case on srv1 -- the target-local state apply_tree_split_sync
+// exists to preserve. An observation that took the real lock would fail in proportion to how busy the
+// host is, and each failure would arrive as an Unobserved whose cause reads like a transient. It
+// would be fail-closed and it would train its readers to ignore it, which is worse than a hard fault.
+//
+// `--no-sparse-checkout` IS LOAD-BEARING AND ITS ABSENCE IS SILENT: without it, repository
+// sparse-checkout configuration can set skip-worktree bits in the temporary index, and a MISSING
+// tracked path then reads as intentionally absent rather than as drift. That is a false CLEAN on
+// precisely the failure this observation exists to catch -- a path the sync did not deliver.
+fn deployed_tree_read_tree_argv(repo: std.types.NonEmptyStr, revision_hex: String, index_path: String) -> std.types.List<String> {
+  [
+    "env", join(["GIT_INDEX_FILE=", index_path], ""),
+    "git", "-C", repo as String, "read-tree", "--no-sparse-checkout", revision_hex,
+  ]
+}
+
+// `env` carries GIT_INDEX_FILE because that variable has no command-line equivalent, and every word
+// here stays inside the portable alphabet: letters, digits and `_ = / . -`. No shell, no pipe.
+fn deployed_tree_status_argv(repo: std.types.NonEmptyStr, index_path: String) -> std.types.List<String> {
+  [
+    "env", join(["GIT_INDEX_FILE=", index_path], ""),
+    "git", "-C", repo as String, "--no-optional-locks",
+    "status", "--porcelain=v1", "-z", "--untracked-files=all",
+  ]
+}
+
+// THE IGNORED LEG EXISTS BECAUSE THE SYNC SHIPS IGNORED PATHS AND git status NEVER REPORTS THEM.
+// `--untracked-files=all` answers for untracked files and is silent about ignored ones, so without
+// this second reading a deployed `.env` or an ignored `.dag` source under the deployed scope is
+// invisible to an observation that then reports converged. Candidate admission already owns exactly
+// this subject on the SOURCE side and refuses on it; this is the same subject on the TARGET side, and
+// it is read with the same two argv surfaces and scanned by the same two functions rather than a
+// second scanner for one grammar.
+//
+// It runs under the same temporary index for the same reason the status leg does: `ls-files --others`
+// consults the index to decide what "other" means, and the deployed repo's index is the artifact this
+// module refuses to trust.
+fn deployed_tree_ignored_argv(repo: std.types.NonEmptyStr, index_path: String) -> std.types.List<String> {
+  [
+    "env", join(["GIT_INDEX_FILE=", index_path], ""),
+    "git", "-C", repo as String,
+    "ls-files", "--others", "--ignored", "--exclude-standard", "-z",
+  ]
+}
+
+// A TRANSPORT REFUSAL IS ITS OWN ARM, NEVER A SYNTHETIC EXIT CODE. Rendering a leg that was never
+// attempted as `exit_code: 127` manufactures a plausible observation of a host nobody contacted, and
+// every downstream reader then cannot distinguish "the command ran and failed" from "no command ran".
+type DeployedTreeLegOutcome
+  = DeployedTreeLegRan { result: extdeps.ssh.session.SshSessionExecResult }
+  | DeployedTreeLegNotAttempted { reason: String }
+
+fn deployed_tree_leg(locus: DeployedTreeLocus, argv: std.types.List<String>) -> DeployedTreeLegOutcome {
+  match run_typed_argv_transport(argv: argv, transport: deployed_tree_locus_transport(locus: locus)) {
+    gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } => DeployedTreeLegRan { result: r }
+    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } => DeployedTreeLegNotAttempted { reason: why }
+  }
+}
+
+// FOUR STATES, NONE COLLAPSIBLE, AND THE THIRD IS THE ONE THE EXISTING STANDING CANNOT EXPRESS.
+//
+// A deployed tree at the right commit with modified tracked files is NOT converged and NOT drifted:
+// its revision agrees while its bytes do not, so reporting it as either is wrong in a way that
+// matters. `fleet_desired_observe` `fleet_revision_standing` compares revisions alone and has no arm
+// for it, which means a hand-edited deployed file reads as converged there and reads as modified here.
+// THE REFUSAL IS TYPED TO WHAT IS DECIDABLE, AND NO FURTHER. The tempting split is "not a git
+// repository" versus "permission denied on .git", because those have different remedies. It is NOT
+// AVAILABLE: git exits 128 for a missing repository, for an unreadable .git, AND for a valid
+// repository with no commits -- measured, all three. Separating them means matching stderr prose,
+// which is a heuristic, and §4 holds that a heuristic is never necessary in a closed system: the
+// richer source either exists or can be written, and here it does not exist yet.
+//
+// So the arms are the distinctions the exit status actually carries, and the stderr is CARRIED
+// UNINTERPRETED rather than parsed. A reader gets the remedy; the model does not guess at it. The
+// split that matters operationally is already here and was previously collapsed into prose: a leg
+// that never ran (the credential or transport is wrong -- nothing was asked of the host) is a
+// different situation from a leg that ran and failed (the host answered, and its answer is bad),
+// and a consumer can now branch on that without reading a sentence.
+type DeployedTreeUnobservableCause
+  = TreeLegNotAttempted { leg: String, reason: String }
+  | TreeCommandFailed { leg: String, exit_code: Int, stderr: String }
+  | TreeRevisionUndecodable { text: String }
+  | TreeStatusUnreadable { detail: String }
+
+type DeployedTreeObservation
+  = DeployedTreeObserved { revision: extdeps.git.object_store.GitObjectId, content: DeployedTreeContentState }
+  | DeployedTreeUnobservable { cause: DeployedTreeUnobservableCause }
+
+// ONE RENDERING, so every consumer that needs prose derives it from the arms rather than each
+// re-inventing a sentence -- which is how one fact acquires several spellings.
+fn deployed_tree_unobservable_text(cause: DeployedTreeUnobservableCause) -> String {
+  match cause {
+    TreeLegNotAttempted { leg: leg, reason: why } =>
+      join(["the ", leg, " leg was never attempted, so the host was not asked: ", why], "")
+    TreeCommandFailed { leg: leg, exit_code: code, stderr: err } =>
+      join(["the ", leg, " leg ran and failed (exit ", code as String, "): ", err], "")
+    TreeRevisionUndecodable { text: t } =>
+      join(["the revision was read but is not a decodable git object id: ", t], "")
+    TreeStatusUnreadable { detail: d } =>
+      join(["the deployed tree answered, but its state is not readable and is not assumed clean: ", d], "")
+  }
+}
+
+// MODIFIED CARRIES THE PATHS IT SAW, as a NonEmptyStr so that "modified, with nothing to show for it"
+// has no constructor. An empty diff body and a clean tree are the same bytes, so a single field with
+// emptiness meaning clean would be the state-space conflation this coproduct exists to prevent -- and
+// the receipt ruling applies here as everywhere: a verdict must name what it observed, not merely that
+// it disagreed.
+type DeployedTreeContentState
+  = DeployedScopeMatchesCommit
+  | DeployedScopeDiverged { changed_paths: std.types.NonEmptyStr }
+
+// A SCAN THAT CANNOT PARSE ITS INPUT REFUSES; IT DOES NOT ANSWER CLEAN. Both refusals are the ones
+// candidate admission already names, because the grammar is the same grammar: a field that is neither
+// a well-formed record nor a rename source, and a list that ends owing a rename source. Rendering
+// either as an empty change set would be the empty-observation narrow -- the deploy proceeds because
+// nothing was found, when in fact nothing was readable.
+type DeployedTreeContentReading
+  = ContentRead { state: DeployedTreeContentState }
+  | ContentUnreadable { detail: String }
+
+fn deployed_tree_content_reading(entries_nul: String, ignored_nul: String) -> DeployedTreeContentReading {
+  let scan = scan_checkout_status(entries_nul: entries_nul)
+  let ignored_deployed = scan_ignored_deployed_paths(paths_nul: ignored_nul)
+  if scan.malformed {
+    ContentUnreadable {
+      detail: "git status --porcelain=v1 -z produced a field that is neither a well-formed record nor a rename source",
+    }
+  } else if scan.expect_rename_source {
+    ContentUnreadable {
+      detail: "git status --porcelain=v1 -z ended on a rename or copy record with no source field; the entry list is truncated",
+    }
+  } else {
+    let changed = list_append(
+      scan.staged,
+      list_append(scan.tracked, list_append(scan.untracked, ignored_deployed)),
+    )
+    if length(changed) == 0 {
+      ContentRead { state: DeployedScopeMatchesCommit }
+    } else {
+      ContentRead { state: DeployedScopeDiverged { changed_paths: join(changed, " ") as std.types.NonEmptyStr } }
+    }
+  }
+}
+
+// THE FOUR LEGS ARE ONE PER-HOST OBSERVATION AND NOT ONE PER-TIME OBSERVATION, AND THAT REMAINS OPEN.
+// The sealed locus makes a cross-HOST join unrepresentable; it does not make the readings atomic. A
+// tree sync landing between the revision leg and the status leg yields revision D joined to a clean
+// reading taken at revision L, and the pair never described one target state. The temp index narrows
+// this -- the status and ignored legs are both bound to the revision the FIRST leg observed, so a
+// mid-flight sync presents as divergence rather than as a false clean -- but it does not close it: the
+// worktree could move to L in full while the index still names D, and every path would then read as
+// changed, which is a false MODIFIED rather than a false CONVERGED. Fail-safe in direction, still
+// wrong in fact.
+//
+// RUNG: mitigatable. NEXT-RUNG TRIGGER: the deployment execution lease. The two candidate closers are
+// one git operation carrying revision and state together (porcelain v2 `--branch` emits `# branch.oid`
+// beside the entries) and an exclusive lease held across observation, publication and read-back. The
+// second is required anyway -- publication has to hold it -- so the atomic read arrives as a property
+// of the lease rather than as a separate mechanism, and building the v2 scanner first would be a
+// second grammar for one concept that the lease then obsoletes.
+
+// BOTH READINGS OR NEITHER. The revision read is attempted first and a failure there ends the
+// observation, because a modification count without a revision to attach it to is a fact about no
+// particular commit -- and reporting it beside a fabricated or absent revision is the state-space
+// conflation this type exists to prevent.
+fn observe_deployed_tree(locus: DeployedTreeLocus) -> DeployedTreeObservation {
+  match deployed_tree_leg(locus: locus, argv: deployed_tree_revision_argv(repo: locus.repo)) {
+    DeployedTreeLegNotAttempted { reason: why } =>
+      DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "revision", reason: why } }
+    DeployedTreeLegRan { result: rev } =>
+      if rev.exit_code != 0 {
+        DeployedTreeUnobservable {
+          cause: TreeCommandFailed { leg: "revision", exit_code: rev.exit_code, stderr: rev.stderr },
+        }
+      } else {
+        match git_object_id_from_untagged_hex(hex: trim(s: rev.stdout)) {
+          Absent =>
+            DeployedTreeUnobservable { cause: TreeRevisionUndecodable { text: trim(s: rev.stdout) } }
+          Present { value: oid } =>
+            observe_deployed_tree_against_revision(locus: locus, revision: oid, revision_hex: trim(s: rev.stdout))
+        }
+      }
+  }
+}
+
+// THE TEMP INDEX IS BUILT FROM THE REVISION THE HOST IS ACTUALLY ON, not from the admitted one. That
+// keeps this observation answering ONE question -- does the deployed scope realize the commit HEAD names --
+// and leaves "is that the right commit" to the standing. Building it from the desired revision would
+// fuse the two, and a host on the wrong commit would then report modifications for every path that
+// differs between the two revisions, which is drift wearing a modification's label.
+fn observe_deployed_tree_against_revision(
+  locus: DeployedTreeLocus,
+  revision: extdeps.git.object_store.GitObjectId,
+  revision_hex: String,
+) -> DeployedTreeObservation {
+  let index_path = deployed_tree_temp_index_path(locus: locus)
+  match deployed_tree_leg(
+    locus: locus,
+    argv: deployed_tree_read_tree_argv(repo: locus.repo, revision_hex: revision_hex, index_path: index_path),
+  ) {
+    DeployedTreeLegNotAttempted { reason: why } =>
+      DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "index materialization", reason: why } }
+    DeployedTreeLegRan { result: rt } =>
+      if rt.exit_code != 0 {
+        DeployedTreeUnobservable {
+          cause: TreeCommandFailed { leg: "index materialization", exit_code: rt.exit_code, stderr: rt.stderr },
+        }
+      } else {
+        match deployed_tree_leg(
+          locus: locus,
+          argv: deployed_tree_status_argv(repo: locus.repo, index_path: index_path),
+        ) {
+          DeployedTreeLegNotAttempted { reason: why2 } =>
+            DeployedTreeUnobservable {
+              cause: TreeLegNotAttempted { leg: "worktree comparison", reason: why2 },
+            }
+          DeployedTreeLegRan { result: st } =>
+            if st.exit_code != 0 {
+              DeployedTreeUnobservable {
+                cause: TreeCommandFailed { leg: "worktree comparison", exit_code: st.exit_code, stderr: st.stderr },
+              }
+            } else {
+              match deployed_tree_leg(
+                locus: locus,
+                argv: deployed_tree_ignored_argv(repo: locus.repo, index_path: index_path),
+              ) {
+                DeployedTreeLegNotAttempted { reason: why3 } =>
+                  DeployedTreeUnobservable {
+                    cause: TreeLegNotAttempted { leg: "ignored deployed paths", reason: why3 },
+                  }
+                DeployedTreeLegRan { result: ig } =>
+                  if ig.exit_code != 0 {
+                    DeployedTreeUnobservable {
+                      cause: TreeCommandFailed {
+                        leg: "ignored deployed paths",
+                        exit_code: ig.exit_code,
+                        stderr: ig.stderr,
+                      },
+                    }
+                  } else {
+                    match deployed_tree_content_reading(entries_nul: st.stdout, ignored_nul: ig.stdout) {
+                      ContentUnreadable { detail: d } =>
+                        DeployedTreeUnobservable { cause: TreeStatusUnreadable { detail: d } }
+                      ContentRead { state: s } =>
+                        DeployedTreeObserved { revision: revision, content: s }
+                    }
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+
+// FOUR ARMS, AND THE THIRD IS WHY THIS EXISTS. `gunbc.fleet_desired_observe` `fleet_revision_standing`
+// compares revisions and nothing else, so a deployed tree sitting at the admitted commit with edited
+// tracked files reads as CONVERGED there. It is not: its revision agrees while its bytes do not, and
+// the whole point of publishing a tree is the bytes. That state gets its own arm here rather than
+// being folded into drift, because the remedies differ -- drift is answered by moving to another
+// commit, modification by restoring the one already named.
+type DeployedTreeStanding
+  = DeployedTreeConverged { revision: extdeps.git.object_store.GitObjectId }
+  | DeployedTreeRevisionDrifted { desired: extdeps.git.object_store.GitObjectId, local: extdeps.git.object_store.GitObjectId }
+  | DeployedTreeModifiedAtRevision { revision: extdeps.git.object_store.GitObjectId, changed_paths: std.types.NonEmptyStr }
+  | DeployedTreeStandingUnobserved { cause: DeployedTreeUnobservableCause }
+
+// DRIFT DOMINATES MODIFICATION, and the reason is about meaning rather than precedence. The
+// modification state answers "do the bytes match THE COMMIT THE TREE IS ON". When that commit is not
+// the admitted one, a clean answer and a dirty answer are both statements about a revision nobody
+// asked for, so reporting either as the standing would attach a true fact to the wrong subject.
+// Drift is therefore reported first and the modification state is not consulted -- not because it is
+// less important, but because at that point it is not evidence about the question.
+//
+// A PURE FOLD: observation and desired revision in, standing out, no effect. The effectful read
+// stays at the call site, which is what lets a witness drive every arm through the real decision
+// without a host -- the same extraction the belt revision gate needed before its arms could be
+// tested at all.
+fn deployed_tree_standing(
+  desired: extdeps.git.object_store.GitObjectId,
+  observation: DeployedTreeObservation,
+) -> DeployedTreeStanding {
+  match observation {
+    DeployedTreeUnobservable { cause: c } => DeployedTreeStandingUnobserved { cause: c }
+    DeployedTreeObserved { revision: local, content: content } =>
+      if !git_object_id_eq(left: desired, right: local) {
+        DeployedTreeRevisionDrifted { desired: desired, local: local }
+      } else {
+        match content {
+          DeployedScopeMatchesCommit => DeployedTreeConverged { revision: local }
+          DeployedScopeDiverged { changed_paths: body } =>
+            DeployedTreeModifiedAtRevision { revision: local, changed_paths: body }
+        }
+      }
+  }
+}
+
+// ONE PREDICATE FOR THE ONLY QUESTION AN ACTUATOR MAY ASK, so no caller re-derives "is this good
+// enough" from the arms and quietly admits a third state. Exactly one arm is publication-satisfied;
+// every other arm, including the unobserved one, is not -- an unobserved standing treated as
+// satisfied would be the empty-observation narrow, could-not-look rendered as nothing-is-wrong.
+fn deployed_tree_standing_is_converged(standing: DeployedTreeStanding) -> Bool {
+  match standing {
+    DeployedTreeConverged { revision: _ } => true
+    DeployedTreeRevisionDrifted { desired: _, local: _ } => false
+    DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
+    DeployedTreeStandingUnobserved { cause: _ } => false
+  }
+}

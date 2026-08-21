@@ -1,5 +1,6 @@
 module gunbc.fleet_converge_plan
 
+
 type TimerRetirementMemberAt = std.types.NonEmptyStr
 
 data fleet_converge_plan_authority_note: String = "On-demand fleet converge PLAN authority (operator directive 2026-08-13, sleek-heron-218): membership_reconcile computes the typed hunks — MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused — that a human reviews BEFORE apply. Plan and apply are the same spine at different poles; this module owns serialization, the content-addressed artifact, subject identity, std.temporal_effect LeaseEpoch generation protection, and the observed baseline fingerprint apply must CAS against. A plan names its subject (host + member-set fingerprint) and mints a generation-scoped lease so two applies against the same observed baseline cannot both act. Timer retirement: desired has NO fleet-converge timers; observed lists legacy units still on the host. MemberRemovalRefused arms are rendered in plan output and never filtered — they are precisely what a reviewer needs to see before approving."
@@ -28,6 +29,7 @@ fn fleet_converge_plan_subject(
   host: std.types.NonEmptyStr,
   observed_timers: std.types.List<TimerRetirementMember>,
   observed_caps: std.types.List<gunbc.host_axis_caps.CapMember>,
+  observed_spark: std.types.List<gunbc.spark.serving_membership.SparkServingMember>,
 ) -> FleetConvergePlanSubject {
   FleetConvergePlanSubject {
     host: host,
@@ -35,6 +37,7 @@ fn fleet_converge_plan_subject(
       host: host,
       observed_timers: observed_timers,
       observed_caps: observed_caps,
+      observed_spark: observed_spark,
     ),
   }
 }
@@ -43,12 +46,14 @@ fn fleet_converge_member_set_fingerprint(
   host: std.types.NonEmptyStr,
   observed_timers: std.types.List<TimerRetirementMember>,
   observed_caps: std.types.List<gunbc.host_axis_caps.CapMember>,
+  observed_spark: std.types.List<gunbc.spark.serving_membership.SparkServingMember>,
 ) -> std.content_hash.ContentHash {
-  std.content_hash.content_hash_of_value(
+  content_hash_of_value(
     value: observed_baseline_text(
       host: host,
       observed_timers: observed_timers,
       observed_caps: observed_caps,
+      observed_spark: observed_spark,
     ) as std.types.NonEmptyStr,
   )
 }
@@ -62,6 +67,7 @@ fn fleet_converge_apply_subject_admits(
   observed_host: std.types.NonEmptyStr,
   observed_timers: std.types.List<TimerRetirementMember>,
   observed_caps: std.types.List<gunbc.host_axis_caps.CapMember>,
+  observed_spark: std.types.List<gunbc.spark.serving_membership.SparkServingMember>,
 ) -> Bool {
   fleet_converge_apply_subject_host_matches(planned_host: planned_subject.host, observed_host: observed_host)
     && compare_content_hash(
@@ -70,6 +76,7 @@ fn fleet_converge_apply_subject_admits(
         host: observed_host,
         observed_timers: observed_timers,
         observed_caps: observed_caps,
+        observed_spark: observed_spark,
       ),
     ) == std.content_hash.ContentHashEqual
 }
@@ -103,6 +110,7 @@ fn fleet_converge_member_set_fingerprint_matches(
   host: std.types.NonEmptyStr,
   observed_timers: std.types.List<TimerRetirementMember>,
   observed_caps: std.types.List<gunbc.host_axis_caps.CapMember>,
+  observed_spark: std.types.List<gunbc.spark.serving_membership.SparkServingMember>,
 ) -> Bool {
   std.algebra.trim(s: planned_fingerprint_text) == (
     std.content_hash.serialize_content_hash(
@@ -110,6 +118,7 @@ fn fleet_converge_member_set_fingerprint_matches(
         host: host,
         observed_timers: observed_timers,
         observed_caps: observed_caps,
+        observed_spark: observed_spark,
       ),
     ) as String
   )
@@ -176,31 +185,31 @@ fn teardown_refusal_cause_label(cause: gunbc.membership_reconcile.TeardownRefusa
 
 fn timer_action_line(action: gunbc.membership_reconcile.MemberAction<TimerRetirementMember, TimerRetirementMemberAt>) -> String {
   match action {
-    MemberAdded { at: _, to: m } => concat("ADD timer-unit ", m.unit_name as String)
-    MemberChanged { at: _, from: f, to: t } =>
+    gunbc.membership_reconcile.MemberAdded { at: _, to: m } => concat("ADD timer-unit ", m.unit_name as String)
+    gunbc.membership_reconcile.MemberChanged { at: _, from: f, to: t } =>
       concat(concat("CHANGE timer-unit ", f.unit_name as String), concat(" -> ", t.unit_name as String))
-    MemberRemoved { at: _, from: m } => concat("REMOVE timer-unit ", m.unit_name as String)
-    MemberRemovalRefused { from: m, cause: c } =>
+    gunbc.membership_reconcile.MemberRemoved { at: _, from: m } => concat("REMOVE timer-unit ", m.unit_name as String)
+    gunbc.membership_reconcile.MemberRemovalRefused { from: m, cause: c } =>
       concat(
         concat("REFUSED-REMOVAL timer-unit ", m.unit_name as String),
         concat(" cause=", teardown_refusal_cause_label(cause: c)),
       )
-    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "REFUSED-DUPLICATE-KEY"
+    gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "REFUSED-DUPLICATE-KEY"
   }
 }
 
 fn cap_action_line(action: gunbc.membership_reconcile.MemberAction<gunbc.host_axis_caps.CapMember, gunbc.host_axis_caps.CapMemberAt>) -> String {
   match action {
-    MemberAdded { at: _, to: m } => concat("ADD cap ", m.dropin_path as String)
-    MemberChanged { at: _, from: f, to: t } =>
+    gunbc.membership_reconcile.MemberAdded { at: _, to: m } => concat("ADD cap ", m.dropin_path as String)
+    gunbc.membership_reconcile.MemberChanged { at: _, from: f, to: t } =>
       concat(concat("CHANGE cap ", f.dropin_path as String), concat(" -> content drift"))
-    MemberRemoved { at: _, from: m } => concat("REMOVE cap ", m.dropin_path as String)
-    MemberRemovalRefused { from: m, cause: c } =>
+    gunbc.membership_reconcile.MemberRemoved { at: _, from: m } => concat("REMOVE cap ", m.dropin_path as String)
+    gunbc.membership_reconcile.MemberRemovalRefused { from: m, cause: c } =>
       concat(
         concat("REFUSED-REMOVAL cap ", m.dropin_path as String),
         concat(" cause=", teardown_refusal_cause_label(cause: c)),
       )
-    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "REFUSED-DUPLICATE-KEY"
+    gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "REFUSED-DUPLICATE-KEY"
   }
 }
 
@@ -238,24 +247,126 @@ fn fleet_converge_desired_caps() -> std.types.List<gunbc.host_axis_caps.CapMembe
   ]
 }
 
+// THE OBSERVED SPARK POPULATION IS PART OF THE COMPARE-AND-SWAP BASELINE.
+//
+// It was not, and the consequence was specific rather than theoretical: the baseline fingerprinted
+// host, timers and caps only, so a Spark member could change between plan and apply -- a model
+// replaced, a unit rewritten, linger turned off -- WITHOUT invalidating the approved plan. The lease
+// would still admit, and apply would execute operations planned against a state that no longer held.
+//
+// Freezing the operations (above) closed the other half of that: apply executes exactly what plan
+// admitted. This closes the half the freeze cannot reach, because a frozen operation is only as
+// good as the baseline it was planned against. Each member contributes its ADDRESS and its
+// state_digest -- the address alone would let a value change without moving the fingerprint, which
+// is precisely the drift being guarded.
 fn observed_baseline_text(
   host: std.types.NonEmptyStr,
   observed_timers: std.types.List<TimerRetirementMember>,
   observed_caps: std.types.List<gunbc.host_axis_caps.CapMember>,
+  observed_spark: std.types.List<gunbc.spark.serving_membership.SparkServingMember>,
 ) -> String {
   join(
     concat(
-      [concat("host:", host as String)],
-      map(observed_timers, m => concat("timer:", m.unit_name as String)),
-      map(observed_caps, c => concat("cap:", c.dropin_path as String, "=", c.content)),
+      concat(
+        [concat("host:", host as String)],
+        map(observed_timers, m => concat("timer:", m.unit_name as String)),
+      ),
+      concat(
+        map(observed_caps, c => concat("cap:", c.dropin_path as String, "=", c.content)),
+        map(observed_spark, m => concat(
+          "spark:", spark_serving_member_key(member: m), "=", m.state_digest as String,
+        )),
+      ),
     ),
     "\n",
   )
 }
 
+// THE ROW FREEZES WHAT APPLY EXECUTES, not merely what it should figure out.
+//
+// The row used to carry the action and its effects only. `WriteUserUnitFile` is a bare variant with
+// no bytes, so apply resolved the unit content, path and mode from the repository's CURRENT
+// authorities at execution time -- and the bundle hash could not detect a plan/apply divergence
+// because the bytes were never in the bundle. Freezing the realized operations closes that: what the
+// plan admitted is exactly what runs.
+// THE OPERATION LIST IS STRUCTURALLY NONEMPTY, head plus tail.
+//
+// It was `operations: List<RemoteOperation>` guarded by an apply-time check reading "there are
+// effects and the aggregate operation list is empty". That check is over AGGREGATES, so it does not
+// catch the case it exists for: one row carrying effects and ZERO operations, sitting beside another
+// row that has operations. The totals are both nonzero, the check passes, and that row's effect is
+// reported applied while nothing ran for it -- a fabricated plausible output at the actuation seam.
+//
+// Head plus tail removes the state instead of catching it (DESIGN section 5, construction over
+// validation): a row with no operations has no constructor, so the aggregate check is not tightened,
+// it is unnecessary. The same shape StagedIntermediates uses, for the same reason.
+//
+// EACH EFFECT OWNS ITS OWN OPERATIONS.
+//
+// The row previously carried two PARALLEL populations: a list of effects, and one flat operation
+// sequence covering all of them. That guaranteed the row was nonempty and nothing more -- there was
+// no relation between the two lists, so a row carrying three effects could not say which operation
+// belonged to which, and no apply receipt could report "the download succeeded, the digest verified,
+// the extraction failed" against the effect that owns those steps.
+//
+// Parallel lists are also the shape that goes wrong silently as the sequences get long. A short
+// linger effect contributing one argv and a runtime install contributing nine cannot be told apart
+// in a flat list of ten, so a receipt has to guess an attribution, and a guess at the actuation seam
+// is the fabricated plausible output this lane keeps closing one layer down.
+//
+// The relation is now structural: one execution binds one effect to the operations that realize it,
+// head plus tail, so an effect with zero operations has no constructor. Ordering is preserved in
+// both directions -- executions in effect order, operations in realization order within each -- and
+// the flat sequence the actuator consumes is DERIVED by concatenation rather than stored beside the
+// executions, so the two cannot disagree.
+type PlannedEffectExecution {
+  effect: gunbc.spark.serving_realization.ServingInstallEffect
+  first_step: gunbc.remote_operation.PlannedRemoteStep
+  further_steps: std.types.List<gunbc.remote_operation.PlannedRemoteStep>
+}
+
+fn planned_effect_execution_steps(x: PlannedEffectExecution) -> std.types.List<gunbc.remote_operation.PlannedRemoteStep> {
+  concat([x.first_step], x.further_steps)
+}
+
+// The row is nonempty in EXECUTIONS now rather than in operations, and each execution is nonempty in
+// operations. A row with no executions is unwritable for the same reason a row with no operations
+// was: it would report its effects applied while nothing ran for them.
 type FleetConvergeSparkServingTypedAction {
-  action: gunbc.membership_reconcile.MemberAction<gunbc.spark_serving_membership.SparkServingMember, gunbc.spark_serving_membership.SparkServingMemberAt>,
-  install_effects: std.types.List<gunbc.spark_serving_realization.ServingInstallEffect>
+  action: gunbc.membership_reconcile.MemberAction<gunbc.spark.serving_membership.SparkServingMember, gunbc.spark.serving_membership.SparkServingMemberAt>,
+  first_execution: PlannedEffectExecution
+  further_executions: std.types.List<PlannedEffectExecution>
+}
+
+fn fleet_converge_spark_serving_row_executions(
+  row: FleetConvergeSparkServingTypedAction,
+) -> std.types.List<PlannedEffectExecution> {
+  concat([row.first_execution], row.further_executions)
+}
+
+// The effect roster is DERIVED from the executions rather than stored, which is what retires the
+// parallel-population defect: there is no second list to fall out of step with the first.
+fn fleet_converge_spark_serving_row_effects(
+  row: FleetConvergeSparkServingTypedAction,
+) -> std.types.List<gunbc.spark.serving_realization.ServingInstallEffect> {
+  map(fleet_converge_spark_serving_row_executions(row: row), x => x.effect)
+}
+
+fn fleet_converge_spark_serving_row_steps(
+  row: FleetConvergeSparkServingTypedAction,
+) -> std.types.List<gunbc.remote_operation.PlannedRemoteStep> {
+  flat_map(
+    fleet_converge_spark_serving_row_executions(row: row),
+    x => planned_effect_execution_steps(x: x),
+  )
+}
+
+// The bare operations, for the consumers that hash or count them. Deliberately DERIVED from the
+// steps rather than stored, so the identities and the operations cannot describe different work.
+fn fleet_converge_spark_serving_row_operations(
+  row: FleetConvergeSparkServingTypedAction,
+) -> std.types.List<gunbc.remote_operation.RemoteOperation> {
+  map(fleet_converge_spark_serving_row_steps(row: row), st => st.operation)
 }
 
 type FleetConvergePlanArtifact {
@@ -265,7 +376,7 @@ type FleetConvergePlanArtifact {
   observed_baseline_hex: std.content_hash.Fnv1a64StructuralDigestHex
   plan_body: String
   apply_shell: String
-  spark_serving_typed_actions: std.types.List<FleetConvergeSparkServingTypedAction>
+  spark_serving_typed_actions: gunbc.spark.serving_execution_schedule.ScheduledRows<FleetConvergeSparkServingTypedAction>
 }
 
 // NO WILDCARD. The wildcard is what made ServingInstallEffect extensible in silence: a thirteenth
@@ -277,45 +388,74 @@ type FleetConvergePlanArtifact {
 fn fleet_converge_spark_serving_effect_wire(effect: gunbc.spark_serving_realization.ServingInstallEffect) -> String {
   match effect {
     EnableLingerForOwnAccount => "EnableLingerForOwnAccount"
-    WriteSystemUnitFile => "WriteSystemUnitFile"
-    ReloadSystemManager => "ReloadSystemManager"
-    EnableSystemUnit => "EnableSystemUnit"
-    WriteUserUnitFile => "WriteUserUnitFile"
-    ReloadUserManager => "ReloadUserManager"
-    EnableUserUnit => "EnableUserUnit"
-    InstallRuntimePackage => "InstallRuntimePackage"
-    InstallOwnedRuntimeClosure => "InstallOwnedRuntimeClosure"
-    PullModelArtifact => "PullModelArtifact"
-    GrantContainerRuntimeAccess => "GrantContainerRuntimeAccess"
-    RunContainerAsOwnUser => "RunContainerAsOwnUser"
+    gunbc.spark.serving_realization.WriteSystemUnitFile => "WriteSystemUnitFile"
+    gunbc.spark.serving_realization.ReloadSystemManager => "ReloadSystemManager"
+    gunbc.spark.serving_realization.EnableSystemUnit => "EnableSystemUnit"
+    gunbc.spark.serving_realization.WriteUserUnitFile => "WriteUserUnitFile"
+    gunbc.spark.serving_realization.ReloadUserManager => "ReloadUserManager"
+    gunbc.spark.serving_realization.EnableUserUnit => "EnableUserUnit"
+    gunbc.spark.serving_realization.StartUserUnit => "StartUserUnit"
+    gunbc.spark.serving_realization.InstallRuntimePackage => "InstallRuntimePackage"
+    gunbc.spark.serving_realization.InstallOwnedRuntimeClosure => "InstallOwnedRuntimeClosure"
+    gunbc.spark.serving_realization.MaterializeModelArtifact => "MaterializeModelArtifact"
+    gunbc.spark.serving_realization.GrantContainerRuntimeAccess => "GrantContainerRuntimeAccess"
+    gunbc.spark.serving_realization.RunContainerAsOwnUser => "RunContainerAsOwnUser"
   }
 }
 
 fn fleet_converge_spark_serving_action_kind(action: gunbc.membership_reconcile.MemberAction<gunbc.spark_serving_membership.SparkServingMember, gunbc.spark_serving_membership.SparkServingMemberAt>) -> String {
   match action {
-    MemberAdded { at: _, to: _ } => "ADD"
-    MemberChanged { at: _, from: _, to: _ } => "CHANGE"
-    MemberRemoved { at: _, from: _ } => "REMOVE"
-    MemberRemovalRefused { from: _, cause: _ } => "REFUSED-REMOVAL"
-    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "REFUSED-DUPLICATE-KEY"
+    gunbc.membership_reconcile.MemberAdded { at: _, to: _ } => "ADD"
+    gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: _ } => "CHANGE"
+    gunbc.membership_reconcile.MemberRemoved { at: _, from: _ } => "REMOVE"
+    gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => "REFUSED-REMOVAL"
+    gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "REFUSED-DUPLICATE-KEY"
+  }
+}
+
+// THE MEMBER VALUES ARE IN THE WIRE, NOT ONLY THE MEMBER KEY.
+//
+// `spark_serving_member_key` is host x principal x ADDRESS -- deliberately, because that is the
+// stable identity reconcile keys on. But the hash needs the VALUE too: with the key alone, a row
+// whose `to` digest changed from one model manifest to another serializes identically, so the
+// approved artifact would still admit after the very drift the CAS baseline exists to catch. Key
+// answers "which resource"; the digests answer "from what, to what", and an approval is about both.
+//
+// `from` is rendered explicitly as absent where the arm has none, rather than omitted, so an add and
+// a change to the same value cannot collide on one string.
+fn fleet_converge_spark_serving_action_state_wire(
+  action: gunbc.membership_reconcile.MemberAction<gunbc.spark.serving_membership.SparkServingMember, gunbc.spark.serving_membership.SparkServingMemberAt>,
+) -> String {
+  match action {
+    gunbc.membership_reconcile.MemberAdded { at: _, to: m } => join([" from=<none> to=", m.state_digest as String], "")
+    gunbc.membership_reconcile.MemberChanged { at: _, from: f, to: m } =>
+      join([" from=", f.state_digest as String, " to=", m.state_digest as String], "")
+    gunbc.membership_reconcile.MemberRemoved { at: _, from: f } => join([" from=", f.state_digest as String, " to=<none>"], "")
+    gunbc.membership_reconcile.MemberRemovalRefused { from: f, cause: c } =>
+      join([" from=", f.state_digest as String, " to=<refused> cause=", c], "")
+    gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: f, duplicate: d } =>
+      join([" first=", f.state_digest as String, " duplicate=", d.state_digest as String], "")
   }
 }
 
 fn fleet_converge_spark_serving_action_line(row: FleetConvergeSparkServingTypedAction) -> String {
   let member = match row.action {
-    MemberAdded { at: _, to: m } => m
-    MemberChanged { at: _, from: _, to: m } => m
-    MemberRemoved { at: _, from: m } => m
-    MemberRemovalRefused { from: m, cause: _ } => m
-    MemberRosterDuplicateKeyRefused { roster: _, first: f, duplicate: _ } => f
+    gunbc.membership_reconcile.MemberAdded { at: _, to: m } => m
+    gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: m } => m
+    gunbc.membership_reconcile.MemberRemoved { at: _, from: m } => m
+    gunbc.membership_reconcile.MemberRemovalRefused { from: m, cause: _ } => m
+    gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: f, duplicate: _ } => f
   }
   join(
     [
       fleet_converge_spark_serving_action_kind(action: row.action),
       " spark-serving ",
-      gunbc.spark_serving_membership.spark_serving_member_key(member: member),
+      spark_serving_member_key(member: member),
+      fleet_converge_spark_serving_action_state_wire(action: row.action),
       " effects=",
-      join(map(row.install_effects, e => fleet_converge_spark_serving_effect_wire(effect: e)), ","),
+      join(map(fleet_converge_spark_serving_row_effects(row: row), e => fleet_converge_spark_serving_effect_wire(effect: e)), ","),
+      " ops=",
+      remote_operations_wire(operations: fleet_converge_spark_serving_row_operations(row: row)),
     ],
     "",
   )
@@ -349,10 +489,10 @@ fn fleet_converge_plan_body_claims_spark_typed_actions(plan_body: String) -> Boo
 
 fn fleet_converge_plan_spark_typed_actions_consistency_admits(
   plan_body: String,
-  spark_serving_typed_actions: std.types.List<FleetConvergeSparkServingTypedAction>,
+  spark_serving_typed_actions: gunbc.spark.serving_execution_schedule.ScheduledRows<FleetConvergeSparkServingTypedAction>,
 ) -> Bool {
   let body_claims = fleet_converge_plan_body_claims_spark_typed_actions(plan_body: plan_body)
-  if length(spark_serving_typed_actions) > 0 && !body_claims {
+  if length(scheduled_rows_list(scheduled: spark_serving_typed_actions)) > 0 && !body_claims {
     false
   } else {
     true
@@ -455,7 +595,7 @@ fn fleet_converge_plan_artifact_hash(artifact: FleetConvergePlanArtifact) -> std
     plan_body: artifact.plan_body,
     apply_shell: artifact.apply_shell,
     spark_typed_actions_wire: fleet_converge_spark_serving_typed_actions_wire(
-      rows: artifact.spark_serving_typed_actions,
+      rows: scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions),
     ),
   )
 }
@@ -469,7 +609,7 @@ fn fleet_converge_plan_artifact_bundle_admits(artifact: FleetConvergePlanArtifac
       plan_body: artifact.plan_body,
       apply_shell: artifact.apply_shell,
       spark_typed_actions_wire: fleet_converge_spark_serving_typed_actions_wire(
-        rows: artifact.spark_serving_typed_actions,
+        rows: scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions),
       ),
       claimed_hex: claimed_hex,
     )
@@ -496,11 +636,11 @@ fn timer_retirement_remove_line(unit_name: std.types.NonEmptyStr) -> String {
 
 fn cap_apply_line(action: gunbc.membership_reconcile.MemberAction<gunbc.host_axis_caps.CapMember, gunbc.host_axis_caps.CapMemberAt>) -> String {
   match action {
-    MemberAdded { at: _, to: m } => gunbc.host_axis_caps.cap_upsert_script(m: m)
-    MemberChanged { at: _, from: _, to: t } => gunbc.host_axis_caps.cap_upsert_script(m: t)
-    MemberRemoved { at: _, from: m } => concat("rm -f ", m.dropin_path as String)
-    MemberRemovalRefused { from: _, cause: _ } => ""
-    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => ""
+    gunbc.membership_reconcile.MemberAdded { at: _, to: m } => gunbc.host_axis_caps.cap_upsert_script(m: m)
+    gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: t } => gunbc.host_axis_caps.cap_upsert_script(m: t)
+    gunbc.membership_reconcile.MemberRemoved { at: _, from: m } => concat("rm -f ", m.dropin_path as String)
+    gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => ""
+    gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => ""
   }
 }
 
@@ -509,12 +649,12 @@ data fleet_converge_cap_apply_shell_note: String = "Cap MemberAdded/Changed/Remo
 fn timer_apply_lines(plan: gunbc.membership_reconcile.MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>) -> std.types.List<String> {
   flat_map(plan.actions, a =>
     match a {
-      MemberRemoved { at: _, from: m } =>
+      gunbc.membership_reconcile.MemberRemoved { at: _, from: m } =>
         [timer_retirement_disable_line(unit_name: m.unit_name), timer_retirement_remove_line(unit_name: m.unit_name)]
-      MemberRemovalRefused { from: _, cause: _ } => []
-      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
-      MemberAdded { at: _, to: _ } => []
-      MemberChanged { at: _, from: _, to: _ } => []
+      gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => []
+      gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
+      gunbc.membership_reconcile.MemberAdded { at: _, to: _ } => []
+      gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: _ } => []
     }
   )
 }
@@ -619,11 +759,13 @@ fn fleet_converge_plan_artifact(
   prior_generation: Int,
   observed_timers: std.types.List<TimerRetirementMember>,
   observed_caps: std.types.List<gunbc.host_axis_caps.CapMember>,
+  observed_spark: std.types.List<gunbc.spark.serving_membership.SparkServingMember>,
 ) -> FleetConvergePlanArtifact? {
   let subject = fleet_converge_plan_subject(
     host: host,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
+    observed_spark: observed_spark,
   )
   let timer_plan = timer_retirement_plan(observed: observed_timers)
   let cap_plan = gunbc.host_axis_caps.caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps)
@@ -633,6 +775,7 @@ fn fleet_converge_plan_artifact(
     host: host,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
+    observed_spark: observed_spark,
   )
   let planned_generation = prior_generation + 1
   let body = join(
@@ -677,7 +820,7 @@ fn fleet_converge_plan_artifact(
           observed_baseline_hex: structural.digest,
           plan_body: body,
           apply_shell: apply_shell,
-          spark_serving_typed_actions: [],
+          spark_serving_typed_actions: scheduled_rows_empty(),
         },
       }
     _ => Absent
@@ -707,11 +850,13 @@ fn fleet_converge_observed_baseline_matches(
   observed_baseline_hex: std.content_hash.Fnv1a64StructuralDigestHex,
   observed_timers: std.types.List<TimerRetirementMember>,
   observed_caps: std.types.List<gunbc.host_axis_caps.CapMember>,
+  observed_spark: std.types.List<gunbc.spark.serving_membership.SparkServingMember>,
 ) -> Bool {
   let baseline = observed_baseline_text(
     host: host,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
+    observed_spark: observed_spark,
   )
   match std.content_hash.content_hash_of_value(value: baseline as std.types.NonEmptyStr) {
     std.content_hash.Fnv1a64(structural) => structural.digest == observed_baseline_hex

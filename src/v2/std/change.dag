@@ -9,13 +9,13 @@ type ChangeKind
   | ArtifactChanged
 
 type Change {
-  kind: ChangeKind
-  subject: Node
+  kind: v2.std.change.ChangeKind
+  subject: v2.std.node.Node
   at: v2.std.node.Path
 }
 
 type ChangeSet {
-  changes: List<Change>
+  changes: std.types.List<Change>
 }
 
 type DependencyEndpoint
@@ -31,7 +31,7 @@ type AffectedDependency {
 type AffectedExclusion {
   change: Change
   dependency: v2.std.dependency.DependencyView
-  usage_site: Node
+  usage_site: v2.std.node.Node
   changed_dimension: v2.std.node.Symbol
 }
 
@@ -42,9 +42,9 @@ type AffectedSetEvidence
 type AffectedSet
   = AffectedSetProduced {
       changes: ChangeSet,
-      affected: List<AffectedDependency>,
-      exclusions: List<AffectedExclusion>,
-      restricted_to: List<v2.std.dependency.DependencyKind>
+      affected: std.types.List<AffectedDependency>,
+      exclusions: std.types.List<AffectedExclusion>,
+      restricted_to: std.types.List<v2.std.dependency.DependencyKind>
     }
   | AffectedSetFailClosed {
       changes: ChangeSet,
@@ -53,6 +53,6 @@ type AffectedSet
 
 type RecomputePlan {
   affected: AffectedSet
-  layers: List<v2.std.dependency.ReadinessLayer>
-  diagnostic: Outcome<v2.std.node.Symbol>
+  layers: std.types.List<v2.std.dependency.ReadinessLayer<v2.std.node.Node>>
+  diagnostic: v2.std.diagnostic.Outcome<v2.std.node.Symbol>
 }

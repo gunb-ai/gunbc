@@ -1,0 +1,246 @@
+module test.claim.spark_serving_unit_observation_witness_test
+
+
+fn digest_of(state: gunbc.spark.serving_observed_members.SparkServingObservedUnitState) -> String {
+  match state {
+    gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: d } => d as String
+    gunbc.spark.serving_observed_members.UserUnitStateAbsent => "<absent>"
+    gunbc.spark.serving_observed_members.UserUnitStateUnobserved => "<unobserved>"
+  }
+}
+
+// ── Converged: the file on disk IS the desired spec ─────────────────────────────────────────────
+
+// A unit whose bytes equal the rendering carries the SAME digest as the desired member, so the
+// reconcile sees no change. This is what finally lets a second plan be empty.
+//
+// The digest is not COPIED from the desired state -- what was measured is a byte equality, which is
+// a real observation of the file. Equal bytes are what establish that the address holds the spec.
+test fn a_unit_matching_the_rendering_observes_the_desired_digest() -> Bool {
+  test.claim.spark_serving_unit_observation_witness_test.digest_of(
+    state: classify_observed_user_unit(
+      read_succeeded: true,
+      read_stdout: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text()),
+      file_absent: false,
+    ),
+  ) == (spark_serving_user_unit_state_digest() as String)
+}
+
+// ── Drifted: present, but not what was asked for ────────────────────────────────────────────────
+
+// THE KEYSTONE. A unit file that exists but differs must NOT observe the desired digest, or a
+// drifted host would report converged forever and the member would be unable to detect the one
+// thing it exists to detect. The two digests must be distinct constants, not merely "some digest".
+test fn a_drifted_unit_does_not_observe_the_desired_digest() -> Bool {
+  test.claim.spark_serving_unit_observation_witness_test.digest_of(
+    state: classify_observed_user_unit(
+      read_succeeded: true,
+      read_stdout: spark_serving_user_unit_content_wire(text: "[Unit]\nDescription=something else\n"),
+      file_absent: false,
+    ),
+  ) != (spark_serving_user_unit_state_digest() as String)
+}
+
+// A drifted unit is still OBSERVED -- we read it and know what it holds. Rendering drift as
+// unobserved would lose the fact that we successfully looked.
+test fn a_drifted_unit_is_still_observed() -> Bool {
+  spark_serving_unit_state_was_observed(
+    unit: classify_observed_user_unit(
+      read_succeeded: true,
+      read_stdout: spark_serving_user_unit_content_wire(text: "[Unit]\nDescription=something else\n"),
+      file_absent: false,
+    ),
+  )
+}
+
+// Whitespace is not a free pass: a byte difference is a difference. The convergence comparison is
+// exact, so a trailing-newline change is drift, which is the same reason the renderer's trailing
+// newline is load-bearing.
+test fn a_unit_differing_only_in_its_trailing_newline_is_drift() -> Bool {
+  test.claim.spark_serving_unit_observation_witness_test.digest_of(
+    state: classify_observed_user_unit(
+      read_succeeded: true,
+      read_stdout: spark_serving_user_unit_content_wire(text: "[Unit]\nDescription=x"),
+      file_absent: false,
+    ),
+  ) != (spark_serving_user_unit_state_digest() as String)
+}
+
+// ── Absent is not unobserved, and a failed read is not absence ──────────────────────────────────
+
+// `cat` exits non-zero both when the file is missing and when it cannot be read, and only the first
+// means the member is absent. The remedies differ -- write the unit, versus fix why it is unreadable
+// -- so a failed read that did not establish absence stays unobserved.
+test fn a_failed_read_that_did_not_establish_absence_stays_unobserved() -> Bool {
+  match classify_observed_user_unit(read_succeeded: false, read_stdout: "", file_absent: false) {
+    gunbc.spark.serving_observed_members.UserUnitStateUnobserved => true
+    gunbc.spark.serving_observed_members.UserUnitStateAbsent => false
+    gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: _ } => false
+  }
+}
+
+test fn a_read_that_established_absence_observes_absence() -> Bool {
+  match classify_observed_user_unit(read_succeeded: false, read_stdout: "", file_absent: true) {
+    gunbc.spark.serving_observed_members.UserUnitStateAbsent => true
+    gunbc.spark.serving_observed_members.UserUnitStateUnobserved => false
+    gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: _ } => false
+  }
+}
+
+// The two failure arms must not collapse: this asserts they are DIFFERENT, which is the property a
+// single "not found" arm would silently destroy.
+test fn a_failed_read_and_an_established_absence_are_different_states() -> Bool {
+  test.claim.spark_serving_unit_observation_witness_test.digest_of(state: classify_observed_user_unit(read_succeeded: false, read_stdout: "", file_absent: false))
+    != test.claim.spark_serving_unit_observation_witness_test.digest_of(state: classify_observed_user_unit(read_succeeded: false, read_stdout: "", file_absent: true))
+}
+
+// An empty successful read is NOT absence either -- an empty file is a file, and it is drift.
+test fn an_empty_successful_read_is_drift_not_absence() -> Bool {
+  match classify_observed_user_unit(read_succeeded: true, read_stdout: "", file_absent: false) {
+    gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: _ } => true
+    gunbc.spark.serving_observed_members.UserUnitStateAbsent => false
+    gunbc.spark.serving_observed_members.UserUnitStateUnobserved => false
+  }
+}
+
+// ── The probes read what they claim to read ─────────────────────────────────────────────────────
+
+test fn the_unit_read_probe_reads_the_modeled_unit_path() -> Bool {
+  spark_serving_user_unit_read_argv()
+    == ["base64", "-w", "0", spark_serving_user_unit_path() as String]
+}
+
+// THE PROBE MUST NOT READ RAW BYTES, and this is the claim that keeps it from drifting back. `cat`
+// is the obvious spelling and it cannot work: the channel trims trailing whitespace, so a unit file
+// -- which always ends in a newline -- arrives one byte short and compares unequal to itself.
+// -w 0 is load-bearing too; without it base64 wraps at 76 columns and the wire gains newlines whose
+// last one the trim would eat.
+test fn the_unit_read_probe_does_not_ask_for_raw_bytes() -> Bool {
+  let argv = spark_serving_user_unit_read_argv()
+  !string_list_contains(xs: argv, wanted: "cat")
+    && string_list_contains(xs: argv, wanted: "-w")
+    && string_list_contains(xs: argv, wanted: "0")
+}
+
+// `is-enabled` is the INSTALL state, a different question from is-active. It is asked of the USER
+// manager, because this is a user unit and a system-manager query would answer about a different
+// unit namespace entirely.
+test fn the_enabled_probe_asks_the_user_manager() -> Bool {
+  spark_serving_user_unit_is_enabled_argv()
+    == ["systemctl", "--user", "is-enabled", "gunbc-spark-serving.service"]
+}
+
+// ── The three defects this closes ───────────────────────────────────────────────────────────────
+
+// ONE IDENTITY DOMAIN. The observed identity is the identity of the bytes read, on every arm. An
+// earlier revision returned the DESIRED spec's digest when bytes matched, so the same file on disk
+// changed identity whenever desired state changed, and the equality arm imported the answer it was
+// meant to establish. Asserted by construction: the matching case equals the identity taken over the
+// rendered text independently, not a value the classifier chose.
+test fn the_observed_identity_is_taken_over_bytes_on_both_sides() -> Bool {
+  test.claim.spark_serving_unit_observation_witness_test.digest_of(
+    state: classify_observed_user_unit(
+      read_succeeded: true,
+      read_stdout: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text()),
+      file_absent: false,
+    ),
+  ) == (spark_serving_desired_user_unit_content_identity() as String)
+}
+
+// THE REGRESSION FOR THE UNCONVERGEABLE MEMBER, and it is a round trip rather than a restatement.
+//
+// A host holding exactly the declared unit must observe as exactly the declared identity. It did not:
+// the observation read raw bytes through a trimming channel, so a 500-byte file was identified as its
+// own first 499 bytes and the content member compared unequal to itself on every run. The host was
+// correct and the plan could never say so.
+//
+// The discriminating part is the trailing newline specifically -- the byte the channel eats. The
+// desired text ends in one, so encoding it, handing it to the classifier as the probe would, and
+// requiring the desired identity back is exactly the path that was broken.
+test fn a_host_holding_the_declared_unit_observes_as_the_declared_identity() -> Bool {
+  let text = spark_serving_desired_user_unit_text()
+  string_contains(text, "WantedBy")
+    && test.claim.spark_serving_unit_observation_witness_test.digest_of(
+         state: classify_observed_user_unit(
+           read_succeeded: true,
+           read_stdout: spark_serving_user_unit_content_wire(text: text),
+           file_absent: false,
+         ),
+       ) == (spark_serving_desired_user_unit_content_identity() as String)
+}
+
+// The wire is NOT the raw text: if these were equal the claim above would hold vacuously on an
+// encoder that returned its input, and the trim would still be eating the newline.
+test fn the_wire_form_is_an_encoding_and_not_the_text() -> Bool {
+  let text = spark_serving_desired_user_unit_text()
+  spark_serving_user_unit_content_wire(text: text) != text
+    && !string_contains(spark_serving_user_unit_content_wire(text: text), "WantedBy")
+}
+
+// A HOST HOLDING SOMETHING ELSE STILL DIFFERS. The encoding must not make everything match -- this is
+// the control that the round trip above is discriminating rather than an identity function.
+test fn a_host_holding_other_bytes_observes_as_a_different_identity() -> Bool {
+  test.claim.spark_serving_unit_observation_witness_test.digest_of(
+    state: classify_observed_user_unit(
+      read_succeeded: true,
+      read_stdout: spark_serving_user_unit_content_wire(text: "[Unit]\nDescription=something else\n"),
+      file_absent: false,
+    ),
+  ) != (spark_serving_desired_user_unit_content_identity() as String)
+}
+
+// AN EMPTY FILE IS DRIFT, not an impossible state. The identity is taken over `String`, so `""` needs
+// no cast to `NonEmptyStr` -- an earlier revision forced one, which was a lie about what was read.
+test fn an_empty_file_gets_a_real_identity_rather_than_a_cast() -> Bool {
+  let e = test.claim.spark_serving_unit_observation_witness_test.digest_of(
+    state: classify_observed_user_unit(
+      read_succeeded: true, read_stdout: "", file_absent: false,
+    ),
+  )
+  e != "<absent>" && e != "<unobserved>"
+    && e != (spark_serving_user_unit_state_digest() as String)
+}
+
+// ENABLEMENT IS PART OF THE STATE. A unit with exactly the right bytes that is DISABLED will not
+// RETIRED AND REPLACED, with its receipt. This asserted that exact bytes which are disabled produce
+// a DIFFERENT content digest than desired -- true only under the `disabled:` prefix encoding, which
+// folded enablement into the content identity and thereby planned a file rewrite to fix an
+// enablement. The claim it was protecting is real and survives: a disabled unit is not converged.
+// It now lands where it belongs, on the enablement member, and the content claim inverts.
+test fn exact_bytes_that_are_disabled_still_match_the_desired_content() -> Bool {
+  test.claim.spark_serving_unit_observation_witness_test.digest_of(
+    state: classify_observed_user_unit(
+      read_succeeded: true,
+      read_stdout: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text()),
+      file_absent: false,
+    ),
+  ) == (spark_serving_user_unit_state_digest() as String)
+}
+
+// An unregistered unit is distinct from a disabled one: different remedies, different states. That
+// is now a claim about the ENABLEMENT classifier, since the content identity no longer carries it.
+test fn a_not_found_enablement_is_distinct_from_disabled() -> Bool {
+  spark_serving_user_unit_not_registered_state != spark_serving_user_unit_disabled_state
+    && spark_serving_user_unit_disabled_state != spark_serving_user_unit_enabled_state
+}
+
+// THIS TEST ASSERTED THE DEFECT, and is retired with its receipt rather than left standing.
+//
+// It required that an unobserved enablement leave the UNIT unobserved -- which is exactly the
+// coupling that let a failed enablement probe erase a successfully read file. A test whose only
+// subject is behavior the model now rejects is how obsolete behavior grants itself immortality.
+//
+// The successor claim is the opposite, and it is the one that had to be true all along: the read
+// succeeded, so the content is established, and the enablement's failure scopes to the enablement.
+test fn an_unobserved_enablement_leaves_the_read_content_observed() -> Bool {
+  match classify_observed_user_unit(
+    read_succeeded: true,
+    read_stdout: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text()),
+    file_absent: false,
+  ) {
+    gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: d } =>
+      (d as String) == (spark_serving_user_unit_state_digest() as String)
+    gunbc.spark.serving_observed_members.UserUnitStateUnobserved => false
+    gunbc.spark.serving_observed_members.UserUnitStateAbsent => false
+  }
+}
