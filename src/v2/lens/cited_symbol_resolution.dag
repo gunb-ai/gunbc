@@ -14,11 +14,18 @@ import v2.lens.common.construction_justification {
   WallAfterGrounding,
 }
 import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
-import v2.lens.module_graph { module_declaration_facts_live }
+import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
 import v2.lens.roster_registry { roster_registry_declaration_refs }
 import v2.std.decl_index { DeclFact, FnItem, decl_facts }
 import v2.std.decl_ref_resolution {
   cited_declaration_ref_refusal_count,
+  declaration_ref_resolves,
+  resolve_declaration_ref,
+  DeclarationRefAmbiguous,
+  DeclarationRefResolved,
+  DeclarationRefModuleAbsent,
+  DeclarationRefDeclarationAbsent,
+  DeclarationRefFieldAbsent,
 }
 
 data cited_symbol_resolution_law: String = "feature:cited-symbol-resolution — every typed DeclarationRef enrolled in hand_authored_production_doc_declaration_refs (HandAuthoredDocBind primary_work + additional_works, excluding permanent g1-cited-symbol-control-* probe rows) resolves to exactly one decl_facts row over a declared module, or refuses with a typed five-arm result. Population is structural, not corpus text scan. Permanent planted controls in hand_authored_cited_symbol_control_declaration_refs stay enrolled for mutation witnesses — they never retire when production goes green (operator ruling 2026-08-03, DESIGN 4b(4)). Resolution semantics live in v2.std.decl_ref_resolution.resolve_declaration_ref over decl_facts + module_declaration_facts — single authority, no per-kind fork. dissolve-on: substrate refuses unwritable DeclarationRef at construction; enrollment widens to every structural DeclarationRef carrier when the Node-tree reader lands."
@@ -86,4 +93,36 @@ fn cited_symbol_planted_control_refusal_count() -> Int {
     facts: decl_facts(pool_roots: pool),
     modules: module_declaration_facts_live(pool_roots: pool)
   )
+}
+
+data cited_symbol_required_ci_phase_note: String = "THE LENS EXECUTES ON EVERY CI RUN AS A PHASE, NOT AS A WITNESS, AND THE REASON IS STRUCTURAL RATHER THAN BUDGETARY. Until 2026-08-21 the live-corpus claim was carried only by cited_symbol_resolution_lens_is_green_on_live_corpus in dag/test/claim/long/, whose whole file is classified OfflineLocalRecipe — so nothing executed it, and it was RED on unmodified main with 27 refusing production references while every required check stayed green. The refusals were real: the floor cut, the regen cut and the falsifier deletion each removed a module while its citations stayed authored, which is precisely the DESIGN section 3 stale-citation class this lens exists to make decidable.\n\nWHY NOT THE REQUIRED FLOOR. run_required_floor admits an identity only if its module is outside the long home AND the entry does not read the live tree; the second arm is the fatal one here, because reading the live corpus IS this census's subject — decl_facts and module_declaration_facts over compile_clean_source_roots. Relocating the file moves the identity from DeclinedLongModule to DeclinedLiveTree and never to Planned (measured at identity grain in test.claim.transport_script_wall_compile_red). No amount of making it cheaper changes that, so the floor was never the route.\n\nWHAT A PHASE IS. claim_executor --required-ci runs its phases in one process, each reporting its own outcome into one ledger, so a phase is not a claim and is outside both the per-claim safety deadline and the live-tree arm. That is the same shape parse, regen and the fixed point already use, and it matches the 2026-08-20 consolidation directive rather than working around it. The sixteen witnesses stay where they are: they are the discriminating mechanism evidence (planted controls, five-arm refusals, the ambiguity fixture), and DESIGN 4b(4) keeps them enrolled rather than retiring them when production goes green."
+
+fn cited_symbol_unresolved_reference_report() -> List<String> {
+  let pool = hand_authored_works_resolution_pool_roots()
+  let facts = decl_facts(pool_roots: pool)
+  let modules = module_declaration_facts_live(pool_roots: pool)
+  map(
+    filter(
+      cited_symbol_production_declaration_refs(),
+      r => !declaration_ref_resolves(ref: r, facts: facts, modules: modules)
+    ),
+    r => concat(
+      cited_symbol_reference_refusal_arm(ref: r, facts: facts, modules: modules),
+      concat(" ", concat(r.module_path as String, concat(" ", r.decl_name as String)))
+    )
+  )
+}
+
+fn cited_symbol_reference_refusal_arm(
+  ref: DeclarationRef,
+  facts: List<DeclFact>,
+  modules: List<ModuleDeclarationFact>
+) -> String {
+  match resolve_declaration_ref(ref: ref, facts: facts, modules: modules) {
+    DeclarationRefResolved { declaration_identity: _ } => "RESOLVED"
+    DeclarationRefModuleAbsent { reference: _ } => "MODULE-ABSENT"
+    DeclarationRefDeclarationAbsent { reference: _ } => "DECLARATION-ABSENT"
+    DeclarationRefFieldAbsent { reference: _ } => "FIELD-ABSENT"
+    DeclarationRefAmbiguous { reference: _, candidates: _ } => "AMBIGUOUS"
+  }
 }
