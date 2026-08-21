@@ -6,7 +6,7 @@ import v2.compiler.trait_derive_completeness {
   repr_grounding_derive_completeness_predicate_for_elem,
   repr_grounding_derive_elem_shape,
   repr_grounding_derive_trait_satisfied,
-  trait_derive_completeness_gate_for_collection_witness,
+  trait_derive_completeness_gate_for_collection_requirement,
   trait_derive_int_kernel_type_node
 }
 import std.trait_derive_shape {
@@ -27,8 +27,7 @@ import v2.extdeps.languages.rust {
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.compilers.target_model {
-  RequiredTraitWitness,
-  TargetCollectionWitnessOrd,
+  TargetCapabilityRequirement,
   symbol_kernel_type_node
 }
 import v2.std.algebra { Cons, Empty }
@@ -134,13 +133,33 @@ fn tdc_elem_shape_is_kernel_string(elem: Node) -> Bool {
   }
 }
 
-fn tdc_collection_witness_gate_is_incomplete(
-  witness: RequiredTraitWitness,
+fn tdc_collection_requirement_gate_is_incomplete(
+  requirement: TargetCapabilityRequirement,
   elem: Node
 ) -> Bool {
-  match trait_derive_completeness_gate_for_collection_witness(witness: witness, elem: elem) {
-    TraitDeriveCompletenessIncomplete => true
-    TraitDeriveCompletenessSatisfied => false
+  match trait_derive_completeness_gate_for_collection_requirement(
+    requirement: requirement,
+    elem: elem
+  ) {
+    Present { value: gate } =>
+      match gate {
+        TraitDeriveCompletenessIncomplete => true
+        TraitDeriveCompletenessSatisfied => false
+      }
+    Absent => false
+  }
+}
+
+fn tdc_collection_requirement_capability_unknown(
+  requirement: TargetCapabilityRequirement,
+  elem: Node
+) -> Bool {
+  match trait_derive_completeness_gate_for_collection_requirement(
+    requirement: requirement,
+    elem: elem
+  ) {
+    Present { value: _ } => false
+    Absent => true
   }
 }
 
@@ -184,10 +203,30 @@ test fn tdc_int_kernel_satisfies_arith_and_ord() -> Bool {
 test fn tdc_unknown_atom_refuses_ord_completeness() -> Bool {
   repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveOrd, elem: tdc_unknown_atom_node()) == false
     && tdc_elem_shape_is_unknown(elem: tdc_unknown_atom_node())
-    && tdc_collection_witness_gate_is_incomplete(
-      witness: TargetCollectionWitnessOrd { type_param: ^target_collection_type_param_t },
+    && tdc_collection_requirement_gate_is_incomplete(
+      requirement: TargetCapabilityRequirement {
+        representation_parameter: ^target_collection_type_param_t,
+        capability_key: ^target_collection_trait_ord
+      },
       elem: tdc_unknown_atom_node()
     )
+}
+
+test fn tdc_unknown_capability_refuses_rather_than_defaulting() -> Bool {
+  tdc_collection_requirement_capability_unknown(
+    requirement: TargetCapabilityRequirement {
+      representation_parameter: ^target_collection_type_param_t,
+      capability_key: ^tdc_capability_not_declared_by_any_target
+    },
+    elem: symbol_kernel_type_node()
+  )
+    && tdc_collection_requirement_capability_unknown(
+      requirement: TargetCapabilityRequirement {
+        representation_parameter: ^target_collection_type_param_t,
+        capability_key: ^target_collection_trait_ord
+      },
+      elem: symbol_kernel_type_node()
+    ) == false
 }
 
 test fn tdc_payload_coproduct_shape_and_predicate() -> Bool {
