@@ -2,15 +2,15 @@ module v2.std.provenance
 
 type OriginEvent
   = FromSource { locus: v2.std.diagnostic.Locus }
-  | DerivedBy { producer: v2.std.node.Symbol, from: List<std.occurrence_identity.OccurrenceId> }
-  | GeneratedBy { generator: v2.std.artifact.GeneratorId, from: List<std.occurrence_identity.OccurrenceId> }
+  | DerivedBy { producer: v2.std.node.Symbol, from: std.types.List<std.occurrence_identity.OccurrenceId> }
+  | GeneratedBy { generator: v2.std.artifact.GeneratorId, from: std.types.List<std.occurrence_identity.OccurrenceId> }
 
 fn origin_event_from_source(locus: v2.std.diagnostic.Locus) -> OriginEvent {
   FromSource { locus: locus }
 }
 
 type SpanIndex {
-  entries: Map<std.occurrence_identity.OccurrenceId, OriginEvent>
+  entries: std.types.Map<std.occurrence_identity.OccurrenceId, OriginEvent>
 }
 
 fn span_index_empty() -> SpanIndex {
@@ -38,7 +38,7 @@ fn span_index_lookup(index: SpanIndex, id: std.occurrence_identity.OccurrenceId)
 fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
   SpanIndex {
     entries: v2.std.algebra.fold_list(
-      xs: incoming.entries.keys(),
+      xs: map_keys(incoming.entries),
       empty: base.entries,
       cons: fn(acc, id) {
         match acc.lookup(id) {
@@ -64,7 +64,7 @@ fn span_index_origin_chain_exhausted_diagnostic() -> v2.std.diagnostic.Diagnosti
 
 fn span_index_resolve_textual_locus_from_ids(
   index: SpanIndex,
-  ids: List<std.occurrence_identity.OccurrenceId>
+  ids: std.types.List<std.occurrence_identity.OccurrenceId>
 ) -> v2.std.witness.Witness<v2.std.diagnostic.Locus> {
   v2.std.algebra.fold_list(
     xs: ids,
@@ -72,7 +72,7 @@ fn span_index_resolve_textual_locus_from_ids(
     cons: fn(acc, id) {
       match acc {
         Holds { value: _ } => acc
-        Violates { diagnostic: _ } =>
+        v2.std.witness.Violates { diagnostic: _ } =>
           span_index_resolve_textual_locus(index: index, id: id)
       }
     }
@@ -85,7 +85,7 @@ fn span_index_resolve_textual_locus(index: SpanIndex, id: std.occurrence_identit
       match event {
         FromSource { locus } =>
           match locus {
-            Textual { file: _, extent: _ } => v2.std.witness.Holds { value: locus }
+            v2.std.diagnostic.Textual { file: _, extent: _ } => v2.std.witness.Holds { value: locus }
             _ => v2.std.witness.Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
           }
         DerivedBy { producer: _, from: from } =>
@@ -93,7 +93,7 @@ fn span_index_resolve_textual_locus(index: SpanIndex, id: std.occurrence_identit
         GeneratedBy { generator: _, from: from } =>
           span_index_resolve_textual_locus_from_ids(index: index, ids: from)
       }
-    Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
+    v2.std.witness.Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
   }
 }
 

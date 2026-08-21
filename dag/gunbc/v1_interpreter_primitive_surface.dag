@@ -70,19 +70,19 @@ fn form_is_unknown(form: InterpreterDispatchForm) -> Bool {
   }
 }
 
-fn v1_interpreter_free_call_arms() -> List<InterpreterPrimitiveDispatchArm> {
+fn v1_interpreter_free_call_arms() -> std.types.List<InterpreterPrimitiveDispatchArm> {
   v1_interpreter_authored_roster_arms() |> filter(r => r.form == FreeCall)
 }
 
-fn v1_interpreter_method_call_arms() -> List<InterpreterPrimitiveDispatchArm> {
+fn v1_interpreter_method_call_arms() -> std.types.List<InterpreterPrimitiveDispatchArm> {
   v1_interpreter_authored_roster_arms() |> filter(r => r.form == MethodCall)
 }
 
-fn v1_interpreter_unknown_form_arms() -> List<InterpreterPrimitiveDispatchArm> {
+fn v1_interpreter_unknown_form_arms() -> std.types.List<InterpreterPrimitiveDispatchArm> {
   v1_interpreter_authored_roster_arms() |> filter(r => form_is_unknown(form: r.form))
 }
 
-fn v1_interpreter_declared_arms() -> List<InterpreterPrimitiveDispatchArm> {
+fn v1_interpreter_declared_arms() -> std.types.List<InterpreterPrimitiveDispatchArm> {
   [
     InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "method_call_short_circuit.lookup" },
@@ -123,11 +123,11 @@ fn arm_declares_dissolution_trigger(arm: InterpreterPrimitiveDispatchArm) -> Boo
   }
 }
 
-fn v1_interpreter_primitive_arms() -> List<InterpreterPrimitiveDispatchArm> {
+fn v1_interpreter_primitive_arms() -> std.types.List<InterpreterPrimitiveDispatchArm> {
   v1_interpreter_authored_roster_arms() |> concat(v1_interpreter_declared_arms())
 }
 
-fn distinct_strings(xs: List<String>) -> List<String> {
+fn distinct_strings(xs: std.types.List<String>) -> std.types.List<String> {
   xs |> fold(init: [], f: (acc, x) => if acc |> any(y => y == x) { acc } else { acc |> concat([x]) })
 }
 
@@ -155,18 +155,18 @@ fn authored_spelling_count() -> Int {
   count(gunbc.v1_interpreter_primitive_surface.distinct_strings(xs: v1_interpreter_primitive_arms() |> map(r => r.authored_spelling)))
 }
 
-fn spelling_arm_identities(rows: List<InterpreterPrimitiveDispatchArm>, spelling: String) -> List<String> {
+fn spelling_arm_identities(rows: std.types.List<InterpreterPrimitiveDispatchArm>, spelling: String) -> std.types.List<String> {
   rows |> filter(r => r.authored_spelling == spelling) |> map(r => r.arm.identity)
 }
 
-fn form_has_no_shadowed_spelling(rows: List<InterpreterPrimitiveDispatchArm>) -> Bool {
+fn form_has_no_shadowed_spelling(rows: std.types.List<InterpreterPrimitiveDispatchArm>) -> Bool {
   rows |> all(r =>
     count(
       spelling_arm_identities(rows: rows, spelling: r.authored_spelling)
         |> filter(id => id != r.arm.identity)) == 0)
 }
 
-fn shadowed_spellings(rows: List<InterpreterPrimitiveDispatchArm>) -> List<String> {
+fn shadowed_spellings(rows: std.types.List<InterpreterPrimitiveDispatchArm>) -> std.types.List<String> {
   let shadowed = rows
     |> filter(r =>
       count(
@@ -184,7 +184,7 @@ fn row_key(row: InterpreterPrimitiveDispatchArm) -> String {
     |> concat(row.authored_spelling)
 }
 
-fn duplicate_row_keys(rows: List<InterpreterPrimitiveDispatchArm>) -> List<String> {
+fn duplicate_row_keys(rows: std.types.List<InterpreterPrimitiveDispatchArm>) -> std.types.List<String> {
   let dupes = rows
     |> filter(r =>
       count(rows |> filter(o =>
@@ -195,7 +195,7 @@ fn duplicate_row_keys(rows: List<InterpreterPrimitiveDispatchArm>) -> List<Strin
   gunbc.v1_interpreter_primitive_surface.distinct_strings(xs: dupes)
 }
 
-fn v1_interpreter_cross_form_spellings() -> List<String> {
+fn v1_interpreter_cross_form_spellings() -> std.types.List<String> {
   let rows = v1_interpreter_primitive_arms()
   let cross = rows
     |> filter(r =>
@@ -215,7 +215,7 @@ data shadowed_spelling_semantics_note: String = "WHAT form_has_no_shadowed_spell
 data v1_interpreter_authored_roster_note: String = "CANONICAL R1 AUTHORITY for interpreter dispatch arms. Each row is authored once as InterpreterPrimitiveDispatchArm in v1_interpreter_authored_roster_arms(); v1_interpreter_dispatch_emit derives Rust enum variant names from arm identity and generates lookup tables. Handler bodies remain hand Rust behind an exhaustive match. Bootstrapped from the live interpreter macro census on 2026-08-02; ongoing edits are manual at this carrier, not regenerated from Rust."
 
 
-fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm> {
+fn v1_interpreter_authored_roster_arms() -> std.types.List<InterpreterPrimitiveDispatchArm> {
   [
     InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "free_call.parse_stage0_cargo_manifest_bins" },
@@ -1523,15 +1523,6 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "method_call.contains" },
-      form: MethodCall,
-      authored_spelling: "has",
-      realization_module: "v1_interpreter",
-      dispatch_symbol: "eval_algebra_method_inner",
-      dispatch_emit_site: EvalAlgebraMethodInnerSite,
-      enumeration: AuthoredInRoster,
-    },
-    InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "method_call.join" },
       form: MethodCall,
       authored_spelling: "join",
@@ -1634,24 +1625,6 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       arm: InterpreterPrimitiveArmId { identity: "method_call.merge" },
       form: MethodCall,
       authored_spelling: "merge",
-      realization_module: "v1_interpreter",
-      dispatch_symbol: "eval_algebra_method_inner",
-      dispatch_emit_site: EvalAlgebraMethodInnerSite,
-      enumeration: AuthoredInRoster,
-    },
-    InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "method_call.keys" },
-      form: MethodCall,
-      authored_spelling: "keys",
-      realization_module: "v1_interpreter",
-      dispatch_symbol: "eval_algebra_method_inner",
-      dispatch_emit_site: EvalAlgebraMethodInnerSite,
-      enumeration: AuthoredInRoster,
-    },
-    InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "method_call.values" },
-      form: MethodCall,
-      authored_spelling: "values",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_algebra_method_inner",
       dispatch_emit_site: EvalAlgebraMethodInnerSite,
@@ -1888,7 +1861,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
 type SeedScaffoldDisposition {
   scaffold: std.types.NonEmptyStr
   realization_module: std.types.NonEmptyStr
-  carried_symbols: List<std.types.NonEmptyStr>
+  carried_symbols: std.types.List<std.types.NonEmptyStr>
   net_added_lines: Int
   target_roadmap_node: std.types.NonEmptyStr
   deletion_condition: std.types.NonEmptyStr

@@ -408,8 +408,6 @@ pub enum EvalAlgebraMethodArm {
     MethodCallMapIsEmpty,
     MethodCallInsert,
     MethodCallMerge,
-    MethodCallKeys,
-    MethodCallValues,
     MethodCallReplace,
     MethodCallSplit,
     MethodCallTrim,
@@ -459,8 +457,6 @@ pub fn lookup_eval_algebra_method_inner(spelling: &str) -> Option<EvalAlgebraMet
         "insert" => Some(EvalAlgebraMethodArm::MethodCallInsert),
         "map_insert" => Some(EvalAlgebraMethodArm::MethodCallInsert),
         "merge" => Some(EvalAlgebraMethodArm::MethodCallMerge),
-        "keys" => Some(EvalAlgebraMethodArm::MethodCallKeys),
-        "values" => Some(EvalAlgebraMethodArm::MethodCallValues),
         "replace" => Some(EvalAlgebraMethodArm::MethodCallReplace),
         "split" => Some(EvalAlgebraMethodArm::MethodCallSplit),
         "trim" => Some(EvalAlgebraMethodArm::MethodCallTrim),
@@ -504,8 +500,6 @@ macro_rules! eval_algebra_method_inner_arm {
     ("method_call.map_is_empty") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallMapIsEmpty };
     ("method_call.insert") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallInsert };
     ("method_call.merge") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallMerge };
-    ("method_call.keys") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallKeys };
-    ("method_call.values") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallValues };
     ("method_call.replace") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallReplace };
     ("method_call.split") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallSplit };
     ("method_call.trim") => { $crate::v1_interpreter_dispatch_generated::EvalAlgebraMethodArm::MethodCallTrim };

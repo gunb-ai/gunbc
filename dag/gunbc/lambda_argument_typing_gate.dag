@@ -1,0 +1,106 @@
+module gunbc.lambda_argument_typing_gate
+
+// A FOUR-NAME LITERAL DECIDES WHETHER A LAMBDA ARGUMENT GETS ITS PARAMETER TYPES.
+//
+// In `v1.compiler.emit_rust` `emit_typed_call`, a lambda passed to a FREE CALL has its parameters
+// bound from the call only when the callee's BARE NAME is one of four hardcoded strings:
+//
+//     let collection_scope = if func == "map" || func == "filter" || func == "flat_map" || func == "fold" {
+//       ... bind the lambda's params from the call ...
+//     } else { scope }
+//
+// Every other callee falls to plain `scope`. The lambda's parameters are never bound to the
+// callee's declared types, and the closure emits with parameters the target compiler cannot infer.
+//
+// THE MACHINERY TO DO IT CORRECTLY ALREADY EXISTS AND IS NOT REACHED FROM HERE. Three functions in
+// the same module render typed lambda parameters — and `lambda_param_type_strs` always emits an
+// annotation, falling back to the wildcard rather than to nothing, so a site that reaches it can
+// never produce a bare parameter. The two callers of the typed emitters are both inside METHOD and
+// pipeline emission; free-call argument emission has none.
+//
+// AND THE RESOLVED DECLARATION IS ALREADY IN SCOPE. `emit_typed_call` binds `callee` from
+// `lookup_item` a few lines below this gate, and binds `is_rt` from a second bare-name roster a few
+// lines below that. Neither consults the declaration. The name-keyed gate and the name-keyed
+// realization roster sit within a handful of lines of the resolved answer they both decline to read.
+
+type LambdaTypingGateSite {
+  caller: std.decl_ref.DeclarationRef
+  callee_spelled: String
+  miss: GateMiss
+}
+
+// Why the callee misses the roster. The distinction is not cosmetic: a NEAR MISS is a name that
+// reads as covered and is not, so an author has no signal that the gate declined; an ABSENT name
+// was never a candidate. They fail identically and are noticed differently.
+type GateMiss
+  = NearMissOfARosterName { roster_name: String }
+  | AbsentFromRoster
+
+data lambda_typing_gate_sites: std.types.List<LambdaTypingGateSite> = [
+  {
+    caller: std.decl_ref.decl_ref(module_path: "v2.compiler.parse", decl_name: "parse_lexeme_digest"),
+    callee_spelled: "fold_list",
+    miss: NearMissOfARosterName { roster_name: "fold" },
+  },
+  {
+    caller: std.decl_ref.decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "target_value_expr_effect_apply_callee"),
+    callee_spelled: "fold_list",
+    miss: NearMissOfARosterName { roster_name: "fold" },
+  },
+  {
+    caller: std.decl_ref.decl_ref(module_path: "v2.compiler.tokenize", decl_name: "lex_match_prefix"),
+    callee_spelled: "is_prefix_of",
+    miss: AbsentFromRoster,
+  },
+]
+
+// THESE THREE ARE THE DISCRIMINATING RED FOR WHOEVER TAKES THE ROSTER ROOT.
+//
+// They are already located, already attributed to a mechanism, and already separated from the
+// larger population they were hiding inside. A root fix that does not turn all three green has not
+// closed this instance, and one that turns them green without touching the four-name literal has
+// closed something else.
+// THE POPULATION IS AN UPPER BOUND, NOT A MEASUREMENT, AND KNOWING THE CAUSE DOES NOT CLOSE THAT.
+//
+// The three were separated from ten by intersecting the inference-failure sites with the
+// arity-failure sites: a site reporting both at one position is a companion of the membership
+// call-target defect and belongs to that held class, not here. That direction is sound and
+// mechanical. The residue direction is not equally strong — it is defined by an ABSENCE, and holds
+// only if arity reporting is complete at those positions. A suppressed downstream diagnostic would
+// leave a companion looking like a member of this class.
+//
+// STANDING PREDICTION, which converts the bound into a measurement at no cost: when the membership
+// call-target defect is repaired, all three sites below must STILL be present and still report an
+// inference failure. Any that vanishes with that repair was never a member of this class.
+type PopulationConfidence
+  = UpperBoundPendingResidueCheck
+  | MeasuredPopulation
+
+data lambda_typing_gate_population_confidence: PopulationConfidence = UpperBoundPendingResidueCheck
+
+// THE REACH IS WHY THIS ROW EXISTS INSTEAD OF A FIX.
+//
+// Adding the two missing names to the literal is the wrong repair: it is a fifth key on a
+// bare-name-keyed table, and the type side of this same seam already measured that road — three
+// spellings of one container name, all three still missed, because the emit path transforms the
+// name before the lookup. A table carrying several spellings of one name does not need another one.
+//
+// The principled repair — consult the callee's declared parameter types instead of the name — is
+// correct and changes lambda-argument emission for EVERY free call carrying a lambda, not only the
+// three that fail. The counts below are a SINGLE-LINE GREP over the corpus: a proxy, not a census,
+// and multi-line calls are invisible to it. They are recorded to size the reach, never to be quoted
+// as a population.
+//
+//     any        ~755 call sites        all       ~264        sort_by  ~30
+//     filter_map, any_provision, for_all, bind_outcome and others in the tail
+//
+// All of those emit correctly today. So the honest ratio is three sites repaired against roughly a
+// thousand sites' emission changed, and "the rest of the delta is inert" is a claim that would have
+// to be carried across all of them. That is a blast radius with a conversion inside it.
+// DISSOLUTION: this row dies when the bare-name-roster class is repaired at its root — the gate
+// consulting the resolved declaration rather than a literal name list. It is one of four recorded
+// instances of that class, and it is the instance that changes only how an argument is ANNOTATED:
+// no call target moves and no semantics change, so unlike the instances that decide WHICH FUNCTION
+// IS CALLED, this one waits on no naming decision. That seam is why the root work can begin on this
+// half while the call-target half is held.
+data lambda_typing_gate_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: v1.compiler.emit_rust emit_typed_call binds a lambda argument's parameters from the callee's RESOLVED DECLARATION rather than from the four-name literal roster. Dies with the root repair of bare-name-keyed dispatch, not with a fifth key added to the list.")

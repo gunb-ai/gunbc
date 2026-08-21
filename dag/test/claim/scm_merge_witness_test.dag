@@ -1,0 +1,550 @@
+module test.claim.scm_merge_witness
+
+// NAMES ARE QUALIFIED BECAUSE A TOP-LEVEL DEFINITION IS CORPUS-WIDE. `leaf` and `bind` are
+// the obvious names for these helpers and both are already defined by other witness files.
+// The resolver admits duplicate top-level definitions and silently selects one (#8707), so a
+// generic helper name here is not a local convenience -- it makes the binding for that name
+// arbitrary across every module in a shared scope.
+fn merge_witness_leaf(name: v2.std.node.Symbol) -> v2.std.node.Node {
+  v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: name } }, children: [])
+}
+
+fn scope_of(edges: std.types.List<v2.std.node.Edge>) -> v2.std.node.Node {
+  v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Conj }, children: edges)
+}
+
+fn merge_witness_bind(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: target }
+}
+
+type Fixture {
+  store: gunbc.scm.object_store.ObjectStore
+  target: gunbc.scm.checkout.Commit
+}
+
+fn store_or_empty(outcome: gunbc.scm.object_store.StoreOutcome) -> gunbc.scm.object_store.ObjectStore {
+  match outcome {
+    Stored { store: store, identity: _ } => store
+    gunbc.scm.object_store.LocatorCollision { identity: _, existing: _, incoming: _ } => gunbc.scm.object_store.empty_store()
+  }
+}
+
+fn identity_or(outcome: gunbc.scm.object_store.StoreOutcome, fallback: gunbc.scm.object_store.ObjectId) -> gunbc.scm.object_store.ObjectId {
+  match outcome {
+    Stored { store: _, identity: identity } => identity
+    gunbc.scm.object_store.LocatorCollision { identity: _, existing: _, incoming: _ } => fallback
+  }
+}
+
+// THE TARGET IS A COMMIT THAT ALREADY EXISTS, and every arm below starts from this same one. Holding
+// the target and the authored operations FIXED across the pair is what makes the pair a
+// discriminator: if the arms differed in more than the dependency edge, an implementation could
+// answer them differently for a reason that has nothing to do with dependency.
+fn fixture_with(edges: std.types.List<v2.std.node.Edge>) -> Fixture {
+  let outcome = gunbc.scm.object_store.store_node(store: gunbc.scm.object_store.empty_store(), n: scope_of(edges: edges))
+  Fixture {
+    store: store_or_empty(outcome: outcome),
+    target: gunbc.scm.checkout.Commit { root: identity_or(outcome: outcome, fallback: fallback_id()) },
+  }
+}
+
+fn fallback_id() -> gunbc.scm.object_store.ObjectId {
+  match gunbc.scm.object_store.store_node(store: gunbc.scm.object_store.empty_store(), n: merge_witness_leaf(name: ^fallback)) {
+    Stored { store: _, identity: identity } => identity
+    gunbc.scm.object_store.LocatorCollision { identity: identity, existing: _, incoming: _ } => identity
+  }
+}
+
+fn add_k_proposal(deps: std.types.List<gunbc.scm.merge.MergeDependency>) -> gunbc.scm.merge.Proposal {
+  gunbc.scm.merge.Proposal {
+    requirements: [gunbc.scm.merge.RequireBinding { role: ^k, value: merge_witness_leaf(name: ^K) }],
+    dependencies: deps,
+  }
+}
+
+fn remove_f_proposal() -> gunbc.scm.merge.Proposal {
+  gunbc.scm.merge.Proposal {
+    requirements: [gunbc.scm.merge.RequireBindingAbsent { role: ^f }],
+    dependencies: [],
+  }
+}
+
+fn outcome_is_merged(o: gunbc.scm.merge.MergeOutcome) -> std.types.Bool {
+  match o {
+    gunbc.scm.merge.Merged { store: _, commit: _, roles: _ } => true
+    gunbc.scm.merge.MergeRolesContested { role: _, alternatives: _ } => false
+    gunbc.scm.merge.MergeRefused { cause: _ } => false
+  }
+}
+
+fn merged_roles(o: gunbc.scm.merge.MergeOutcome) -> std.types.List<gunbc.scm.merge.ResolvedRole> {
+  match o {
+    gunbc.scm.merge.Merged { store: _, commit: _, roles: roles } => roles
+    gunbc.scm.merge.MergeRolesContested { role: _, alternatives: _ } => []
+    gunbc.scm.merge.MergeRefused { cause: _ } => []
+  }
+}
+
+// THE ASSERTION CHECKS THE PRIMARY LOCATION, not merely the fact of refusal. A refusal that named
+// the right pair but pointed nowhere useful would satisfy a weaker predicate while failing the thing
+// the diagnostic exists to do, so `usage_site` is asserted alongside the dependent, the requirement
+// and the removed role.
+fn refusal_locates(
+  o: gunbc.scm.merge.MergeOutcome,
+  dependent: v2.std.node.Symbol,
+  required: v2.std.node.Symbol,
+  usage_site: v2.std.node.Symbol,
+) -> std.types.Bool {
+  match o {
+    gunbc.scm.merge.Merged { store: _, commit: _, roles: _ } => false
+    gunbc.scm.merge.MergeRolesContested { role: _, alternatives: _ } => false
+    gunbc.scm.merge.MergeRefused { cause: cause } =>
+      match cause {
+        gunbc.scm.merge.RequiredDependencyRemoved { dependency: dep, removed_role: removed } =>
+          ((dep.dependent as String) == (dependent as String))
+            && ((dep.required as String) == (required as String))
+            && ((dep.usage_site as String) == (usage_site as String))
+            && ((removed as String) == (required as String))
+        gunbc.scm.merge.TargetRootMissing { identity: _ } => false
+        gunbc.scm.merge.TargetChildMissing { role: _, identity: _ } => false
+        gunbc.scm.merge.BindingLocatorCollision { role: _, identity: _ } => false
+        gunbc.scm.merge.DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: _ } => false
+      }
+  }
+}
+
+fn role_holds_target_object(roles: std.types.List<gunbc.scm.merge.ResolvedRole>, role: v2.std.node.Symbol, expected: gunbc.scm.object_store.ObjectId) -> std.types.Bool {
+  fold(roles, init: false, f: fn(found, r) {
+    if found {
+      true
+    } else {
+      if (r.role as String) == (role as String) {
+        match r.value {
+          gunbc.scm.merge.PreservedFromTarget { object: object } =>
+            gunbc.scm.object_store.object_id_eq(left: object, right: expected)
+          gunbc.scm.merge.ProvidedByProposal { object: _ } => false
+          gunbc.scm.merge.RemovedByProposal => false
+        }
+      } else {
+        false
+      }
+    }
+  })
+}
+
+fn role_absent_from_result(roles: std.types.List<gunbc.scm.merge.ResolvedRole>, role: v2.std.node.Symbol) -> std.types.Bool {
+  fold(roles, init: true, f: fn(ok, r) {
+    if (r.role as String) == (role as String) {
+      match r.value {
+        gunbc.scm.merge.RemovedByProposal => ok
+        gunbc.scm.merge.PreservedFromTarget { object: _ } => false
+        gunbc.scm.merge.ProvidedByProposal { object: _ } => false
+      }
+    } else {
+      ok
+    }
+  })
+}
+
+// THE PAIRED FIXTURE. Target holds `f` and `h`. Both arms author the SAME two operations -- add `k`,
+// require `f` absent -- and carry exactly ONE dependency row with the same kind, the same dependent
+// and the same usage site. The single varying fact is which source that row requires.
+fn paired_fixture() -> Fixture {
+  fixture_with(edges: [
+    merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F)),
+    merge_witness_bind(name: ^h, target: merge_witness_leaf(name: ^H)),
+  ])
+}
+
+fn paired_proposals(required: v2.std.node.Symbol) -> std.types.List<gunbc.scm.merge.Proposal> {
+  [
+    add_k_proposal(deps: [gunbc.scm.merge.MergeDependency {
+      dependent: ^k,
+      required: required,
+      kind: v2.std.dependency.DataDependsOn,
+      usage_site: ^u,
+    }]),
+    remove_f_proposal(),
+  ]
+}
+
+// ARM A -- INDEPENDENT. `K` depends on `h`, which survives. Deleting `f` touches nothing `K` needs,
+// so both operations land.
+//
+// ARM A CARRIES A REAL EDGE RATHER THAN AN EMPTY LIST, and that is the correction that makes this
+// pair a discriminator at all. An earlier draft gave Arm A no dependencies, so an implementation
+// whose dependency input is never read would have passed it trivially -- the arm could not tell
+// "no dependency exists" from "dependencies are not consulted". The edge-presence control below
+// proves this row is genuinely in the traversed population.
+test fn independent_add_and_delete_both_land() -> std.types.Bool {
+  let fx = paired_fixture()
+  let out = gunbc.scm.merge.merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: paired_proposals(required: ^h),
+  )
+  outcome_is_merged(o: out) && role_absent_from_result(roles: merged_roles(o: out), role: ^f)
+}
+
+// ARM B -- DEPENDENT. Same target, same two authored operations, same dependency kind, same
+// dependent, same usage site, same row count. The ONLY difference from Arm A is that the row requires
+// `f` instead of `h`. Deleting `f` while `k` still reads it must refuse, located at the use.
+test fn dependent_add_and_delete_refuses() -> std.types.Bool {
+  let fx = paired_fixture()
+  let out = gunbc.scm.merge.merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: paired_proposals(required: ^f),
+  )
+  refusal_locates(o: out, dependent: ^k, required: ^f, usage_site: ^u)
+}
+
+// EDGE-PRESENCE CONTROL. Arm A's row, at the same position in the same fixture, but declared with an
+// unsupported kind. If this refuses, the row Arm A supplies is genuinely read; if Arm A could pass
+// while this one silently merged, the dependency population would be inert and Arm A's green would
+// mean nothing. This is what stops the pair from proving the outcomes through unrelated fixture
+// behaviour while the dependency input goes unconsumed.
+test fn the_arm_a_dependency_row_is_actually_read() -> std.types.Bool {
+  let fx = paired_fixture()
+  let out = gunbc.scm.merge.merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: [
+      add_k_proposal(deps: [gunbc.scm.merge.MergeDependency {
+        dependent: ^k,
+        required: ^h,
+        kind: v2.std.dependency.BarrierBefore,
+        usage_site: ^u,
+      }]),
+      remove_f_proposal(),
+    ],
+  )
+  match out {
+    gunbc.scm.merge.MergeRefused { cause: cause } =>
+      match cause {
+        gunbc.scm.merge.DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: kind } =>
+          (kind as String) == (^barrier_before as String)
+        gunbc.scm.merge.RequiredDependencyRemoved { dependency: _, removed_role: _ } => false
+        gunbc.scm.merge.TargetRootMissing { identity: _ } => false
+        gunbc.scm.merge.TargetChildMissing { role: _, identity: _ } => false
+        gunbc.scm.merge.BindingLocatorCollision { role: _, identity: _ } => false
+      }
+    gunbc.scm.merge.Merged { store: _, commit: _, roles: _ } => false
+    gunbc.scm.merge.MergeRolesContested { role: _, alternatives: _ } => false
+  }
+}
+
+// CONTAINMENT IS NOT PROPAGATION -- THE DISCRIMINATING FORM. `g` and `f` share a container and
+// nothing else; a container-based algorithm believes `g` depends on `f` for that reason alone, which
+// is what the `Contains` row states. `f` is then REMOVED. Because containment does not propagate a
+// removal, `g` is untouched and the merge lands.
+//
+// THE ROW HAS TO SURVIVE TO THE VALIDATOR FOR THIS TO MEAN ANYTHING, and an earlier version of this
+// claim did not clear that bar. It stated the row as `dependent: f`, and since the proposal authored
+// `f` the row was discarded by effective_dependencies before validation ever saw it -- so the claim
+// passed because its dependency was thrown away, not because Contains was inert. Mutating Contains
+// to propagate left it green, which is how the hole surfaced. Here `g` is the dependent and `g` is
+// never authored, so the row reaches the validator and the mutation bites.
+test fn a_contains_relation_does_not_propagate_a_removal() -> std.types.Bool {
+  let fx = fixture_with(edges: [
+    merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F)),
+    merge_witness_bind(name: ^g, target: merge_witness_leaf(name: ^G)),
+  ])
+  let g_id = identity_or(
+    outcome: gunbc.scm.object_store.store_node(store: gunbc.scm.object_store.empty_store(), n: merge_witness_leaf(name: ^G)),
+    fallback: fallback_id(),
+  )
+  let out = gunbc.scm.merge.merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [gunbc.scm.merge.MergeDependency {
+      dependent: ^g,
+      required: ^f,
+      kind: v2.std.dependency.Contains,
+      usage_site: ^shared_scope,
+    }],
+    proposals: [remove_f_proposal()],
+  )
+  outcome_is_merged(o: out)
+    && role_holds_target_object(roles: merged_roles(o: out), role: ^g, expected: g_id)
+}
+
+// A SUPPORTED KIND IN THE SAME POSITION DOES REFUSE. Identical to the claim above in every respect --
+// same target, same removal, same dependent, same usage site -- except the kind is DataDependsOn
+// rather than Contains. Without this, "Contains did not refuse" could mean the row was never read.
+test fn the_same_row_under_a_supported_kind_refuses() -> std.types.Bool {
+  let fx = fixture_with(edges: [
+    merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F)),
+    merge_witness_bind(name: ^g, target: merge_witness_leaf(name: ^G)),
+  ])
+  let out = gunbc.scm.merge.merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [gunbc.scm.merge.MergeDependency {
+      dependent: ^g,
+      required: ^f,
+      kind: v2.std.dependency.DataDependsOn,
+      usage_site: ^shared_scope,
+    }],
+    proposals: [remove_f_proposal()],
+  )
+  refusal_locates(o: out, dependent: ^g, required: ^f, usage_site: ^shared_scope)
+}
+
+// A ROLE NO PROPOSAL AUTHORED KEEPS THE TARGET'S OWN OBJECT. This is a regression control on the
+// preservation MECHANISM, and it is deliberately not described as a test of Contains propagation --
+// preservation here is structural (a role nothing authored is never rebuilt), so no frontier decision
+// can reach it. Saying otherwise would credit the claim with catching something it cannot catch.
+test fn an_independent_sibling_is_preserved_exactly() -> std.types.Bool {
+  let fx = fixture_with(edges: [
+    merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F)),
+    merge_witness_bind(name: ^g, target: merge_witness_leaf(name: ^G)),
+  ])
+  let g_id = identity_or(
+    outcome: gunbc.scm.object_store.store_node(store: gunbc.scm.object_store.empty_store(), n: merge_witness_leaf(name: ^G)),
+    fallback: fallback_id(),
+  )
+  let out = gunbc.scm.merge.merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: [gunbc.scm.merge.Proposal {
+      requirements: [gunbc.scm.merge.RequireBinding { role: ^f, value: merge_witness_leaf(name: ^F2) }],
+      dependencies: [],
+    }],
+  )
+  outcome_is_merged(o: out)
+    && role_holds_target_object(roles: merged_roles(o: out), role: ^g, expected: g_id)
+}
+
+// A DEPENDENCY REPAIRED IN THE SAME PROPOSAL IS NOT A VIOLATION. The target's `k -> f` edge describes
+// the value the target held; a proposal that re-authors `k` to read `h` instead supersedes it.
+// Without this the kernel treats every historical dependency as eternal and refuses valid
+// coordinated change.
+test fn a_dependency_retargeted_in_the_same_proposal_lands() -> std.types.Bool {
+  let fx = fixture_with(edges: [
+    merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F)),
+    merge_witness_bind(name: ^h, target: merge_witness_leaf(name: ^H)),
+    merge_witness_bind(name: ^k, target: merge_witness_leaf(name: ^K)),
+  ])
+  let out = gunbc.scm.merge.merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [gunbc.scm.merge.MergeDependency {
+      dependent: ^k,
+      required: ^f,
+      kind: v2.std.dependency.DataDependsOn,
+      usage_site: ^k_body,
+    }],
+    proposals: [gunbc.scm.merge.Proposal {
+      requirements: [
+        gunbc.scm.merge.RequireBinding { role: ^k, value: merge_witness_leaf(name: ^K2) },
+        gunbc.scm.merge.RequireBindingAbsent { role: ^f },
+      ],
+      dependencies: [gunbc.scm.merge.MergeDependency {
+        dependent: ^k,
+        required: ^h,
+        kind: v2.std.dependency.DataDependsOn,
+        usage_site: ^k_body,
+      }],
+    }],
+  )
+  outcome_is_merged(o: out)
+}
+
+// ORDER IS NOT AUTHORITY. Both arms answer identically with the proposals swapped -- and both use
+// the SAME paired fixture as the arms themselves, so neither reintroduces the empty-dependency shape
+// that made the original Arm A undiscriminating.
+test fn arm_a_is_order_independent() -> std.types.Bool {
+  let fx = paired_fixture()
+  let forward = gunbc.scm.merge.merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: paired_proposals(required: ^h),
+  )
+  let backward = gunbc.scm.merge.merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: [remove_f_proposal(), add_k_proposal(deps: [gunbc.scm.merge.MergeDependency {
+      dependent: ^k,
+      required: ^h,
+      kind: v2.std.dependency.DataDependsOn,
+      usage_site: ^u,
+    }])],
+  )
+  outcome_is_merged(o: forward) && outcome_is_merged(o: backward)
+}
+
+test fn arm_b_is_order_independent() -> std.types.Bool {
+  let fx = paired_fixture()
+  let forward = gunbc.scm.merge.merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: paired_proposals(required: ^f),
+  )
+  let backward = gunbc.scm.merge.merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: [remove_f_proposal(), add_k_proposal(deps: [gunbc.scm.merge.MergeDependency {
+      dependent: ^k,
+      required: ^f,
+      kind: v2.std.dependency.DataDependsOn,
+      usage_site: ^u,
+    }])],
+  )
+  refusal_locates(o: forward, dependent: ^k, required: ^f, usage_site: ^u)
+    && refusal_locates(o: backward, dependent: ^k, required: ^f, usage_site: ^u)
+}
+
+// AN UNSUPPORTED KIND REFUSES BY NAME rather than inheriting a generic reachability rule it was
+// never validated against. Widening the classifier is then a deliberate act with its own controls,
+// not a silent consequence of an edge appearing in the population.
+test fn an_unsupported_dependency_kind_refuses() -> std.types.Bool {
+  let fx = fixture_with(edges: [merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F))])
+  let out = gunbc.scm.merge.merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [gunbc.scm.merge.MergeDependency {
+      dependent: ^f,
+      required: ^somewhere,
+      kind: v2.std.dependency.PlacementDependsOn,
+      usage_site: ^board,
+    }],
+    proposals: [],
+  )
+  match out {
+    gunbc.scm.merge.MergeRefused { cause: cause } =>
+      match cause {
+        gunbc.scm.merge.DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: kind } =>
+          (kind as String) == (^placement_depends_on as String)
+        gunbc.scm.merge.RequiredDependencyRemoved { dependency: _, removed_role: _ } => false
+        gunbc.scm.merge.TargetRootMissing { identity: _ } => false
+        gunbc.scm.merge.TargetChildMissing { role: _, identity: _ } => false
+        gunbc.scm.merge.BindingLocatorCollision { role: _, identity: _ } => false
+      }
+    gunbc.scm.merge.Merged { store: _, commit: _, roles: _ } => false
+    gunbc.scm.merge.MergeRolesContested { role: _, alternatives: _ } => false
+  }
+}
+
+// A REAL CONTEST REPORTS EVERY DISTINCT ALTERNATIVE, and the assertion counts them. One proposal
+// requires f = F2, another requires f absent: two distinct requested states, so two alternatives.
+fn contested_alternative_count(o: gunbc.scm.merge.MergeOutcome) -> Int {
+  match o {
+    gunbc.scm.merge.MergeRolesContested { role: _, alternatives: alternatives } => length(alternatives)
+    gunbc.scm.merge.Merged { store: _, commit: _, roles: _ } => 0
+    gunbc.scm.merge.MergeRefused { cause: _ } => 0
+  }
+}
+
+fn contested_at_role(o: gunbc.scm.merge.MergeOutcome, role: v2.std.node.Symbol) -> std.types.Bool {
+  match o {
+    gunbc.scm.merge.MergeRolesContested { role: at, alternatives: _ } => (at as String) == (role as String)
+    gunbc.scm.merge.Merged { store: _, commit: _, roles: _ } => false
+    gunbc.scm.merge.MergeRefused { cause: _ } => false
+  }
+}
+
+test fn two_distinct_requests_for_one_role_are_contested() -> std.types.Bool {
+  let fx = fixture_with(edges: [merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F))])
+  let out = gunbc.scm.merge.merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: [
+      gunbc.scm.merge.Proposal {
+        requirements: [gunbc.scm.merge.RequireBinding { role: ^f, value: merge_witness_leaf(name: ^F2) }],
+        dependencies: [],
+      },
+      remove_f_proposal(),
+    ],
+  )
+  contested_at_role(o: out, role: ^f) && (contested_alternative_count(o: out) == 2)
+}
+
+// AGREEMENT IS NOT A CONTEST. Two proposals requiring the SAME object at one role agree, and an
+// earlier revision reported that as a choice -- fabricating a question whose alternatives are
+// identical. This is the discriminating claim for that fix: the same authoring twice must MERGE,
+// not ask. Its mirror below does the same for two absence requirements.
+test fn the_same_request_authored_twice_is_not_a_contest() -> std.types.Bool {
+  let fx = fixture_with(edges: [merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F))])
+  let out = gunbc.scm.merge.merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: [
+      gunbc.scm.merge.Proposal {
+        requirements: [gunbc.scm.merge.RequireBinding { role: ^f, value: merge_witness_leaf(name: ^F2) }],
+        dependencies: [],
+      },
+      gunbc.scm.merge.Proposal {
+        requirements: [gunbc.scm.merge.RequireBinding { role: ^f, value: merge_witness_leaf(name: ^F2) }],
+        dependencies: [],
+      },
+    ],
+  )
+  outcome_is_merged(o: out)
+}
+
+test fn absence_authored_twice_is_not_a_contest() -> std.types.Bool {
+  let fx = fixture_with(edges: [merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F))])
+  let out = gunbc.scm.merge.merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: [remove_f_proposal(), remove_f_proposal()],
+  )
+  outcome_is_merged(o: out) && role_absent_from_result(roles: merged_roles(o: out), role: ^f)
+}
+
+// THE CONTESTED SET IS COMPLETE UNDER ANY ORDER. Three proposals requesting three different
+// objects at one role produce THREE alternatives whichever way they arrive. A fold that stopped at
+// the first competitor would report two, and WHICH two would depend on arrival order -- the
+// order-is-not-authority law broken in the one place its violation is invisible from a single run.
+test fn every_distinct_alternative_is_accumulated_regardless_of_order() -> std.types.Bool {
+  let fx = fixture_with(edges: [merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F))])
+  let a = gunbc.scm.merge.Proposal {
+    requirements: [gunbc.scm.merge.RequireBinding { role: ^f, value: merge_witness_leaf(name: ^F1) }],
+    dependencies: [],
+  }
+  let b = gunbc.scm.merge.Proposal {
+    requirements: [gunbc.scm.merge.RequireBinding { role: ^f, value: merge_witness_leaf(name: ^F2) }],
+    dependencies: [],
+  }
+  let c = gunbc.scm.merge.Proposal {
+    requirements: [gunbc.scm.merge.RequireBinding { role: ^f, value: merge_witness_leaf(name: ^F3) }],
+    dependencies: [],
+  }
+  let forward = gunbc.scm.merge.merge(
+    store: fx.store, target: fx.target, target_dependencies: [], proposals: [a, b, c],
+  )
+  let backward = gunbc.scm.merge.merge(
+    store: fx.store, target: fx.target, target_dependencies: [], proposals: [c, b, a],
+  )
+  (contested_alternative_count(o: forward) == 3)
+    && (contested_alternative_count(o: backward) == 3)
+}
+
+// SILENCE PRESERVES.// SILENCE PRESERVES. With no proposals at all, every target role survives holding its own object.
+test fn an_empty_proposal_set_preserves_the_target() -> std.types.Bool {
+  let fx = fixture_with(edges: [merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F))])
+  let f_id = identity_or(
+    outcome: gunbc.scm.object_store.store_node(store: gunbc.scm.object_store.empty_store(), n: merge_witness_leaf(name: ^F)),
+    fallback: fallback_id(),
+  )
+  let out = gunbc.scm.merge.merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: [],
+  )
+  outcome_is_merged(o: out)
+    && role_holds_target_object(roles: merged_roles(o: out), role: ^f, expected: f_id)
+}
