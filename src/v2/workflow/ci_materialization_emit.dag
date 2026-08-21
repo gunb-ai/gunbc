@@ -36,7 +36,7 @@ fn ci_sccache_provider_shell_injection_intent() -> Pipeline {
         cond: ExitZero {
           run: Run {
             command: ci_sccache_show_stats_command,
-            env: [],
+            env: Empty,
             redirect: Present { value: DiscardAll },
             capture: Absent
           }
