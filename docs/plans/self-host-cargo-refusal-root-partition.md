@@ -2625,3 +2625,95 @@ base→head loop silently measured the base compiler — fixed in gunbc#8763 by 
 `git rev-parse HEAD`. (3) Report error blocks, distinct sites and grep mentions as three separate
 grains; a mention count includes rustc's `note:` and backtrace lines and is not comparable to a block
 count.
+
+## 22. `v2_compiler_parse.rs`: the "seven flat classes" are two mechanisms and three `.dag` defects (`neat-ferret-237`, 2026-08-21)
+
+**Dispatched question.** This file was picked as a FILE lane rather than a class lane on a
+scale-free property — 28 diagnostics over seven codes, top-class share 21%, five classes within
+1.5x of the top — i.e. the flattest board in the emitted corpus, with no code that a class lane
+would already own. The lane's question is what a flat file is actually made of.
+
+**Answer: it is not flat.** Read at MECHANISM grain instead of error-code grain, 19 of the
+surviving 21 diagnostics (90%) are **two** roots, and the seven-class spread is an artifact of
+one mechanism wearing three rustc codes and another wearing two.
+
+**Subject / ref / producer.** Subject `v2_compiler_parse.rs` in the emitted `03_ingest` closure;
+ref `531a107787` (clean worktree) for the characterization, and a second independent tree
+(`ba63edc09b` + 61 ambient dirty files, one BuildBuddy dispatch) for the before/after; producer
+`docs/probes/curated_cargo_probe_one.sh` with `CSSL_STD_SEED_LINK=1`, blocks attributed to a file
+by the `-->` line of each coded `error[E…]` block. The two trees agree at **24 diagnostics with a
+byte-identical site list**, which is worth more than either run alone.
+
+**The brief's board was already one class stale, and this is the first thing to take from here.**
+It was measured at `6c3fbeb960` as `E0308:6 E0282:5 E0609:5 E0061:4 E0597:4 E0560:3 E0573:1` = 28.
+Live, the **E0597 column is zero** — gunbc#8799 ("E0597 … v2_compiler_parse.rs=4") landed after
+that measurement and closed all four. No delta is claimed against the other columns (§15.1); the
+E0597 claim is a join on the class being absent, not on counts moving.
+
+### 22.1 The partition (24 at `531a107787`, mechanism grain)
+
+| mechanism | diagnostics | source sites | codes worn |
+|---|---:|---:|---|
+| **T3 — `Set` modeled as a function-record, realized as `OrdSet`** | 11 | 7 | E0560:3 · E0609:5 · E0308:3 |
+| **RT-builtin — bare-name interception of `contains`** | 8 | 4 | E0061:4 · E0282:4 |
+| `.dag` type defects in `02_parse.dag` (fixed here) | 3 | 3 | E0573:1 · E0308:2 |
+| Optional collapse at a `witness_from_optional` argument | 1 | 1 | E0308:1 |
+| `fold_list` closure parameter uninferable | 1 | 1 | E0282:1 |
+
+**T3** is §11.18's root, and this file is a clean specimen of it: the emitter renders a `Set`
+literal as `Rc::new(Set { member: <closure> })` while every consumer position is typed
+`OrdSet<String>`, so the *same* construction yields E0560 (no field `member` on the
+`PointwisePower` it built), E0308 (`PointwisePower` where `OrdSet` was expected) and — at every
+read — E0609 (no field `member` on `OrdSet`). One decision, three codes, and a class lane keyed on
+any one of them sees a third of it.
+
+**RT-builtin** is §21's root, and its E0061/E0282 pairing is the mechanism, not two findings:
+`02_parse.dag` imports `v2.std.algebra.contains` explicitly (`contains<T>(xs, item, eq)`) and the
+emitter routes the call to the host builtin `v1_rt::contains(s: String, sub: String)` anyway. The
+arity mismatch is E0061; the `eq` closure that has nowhere to land is then uninferable, which is
+E0282 at the same call. **An import is evidence of visibility and the emitter overrode it** — so
+this is a resolution defect, and no amount of work in this file can reach it.
+
+### 22.2 What this lane fixed, and what it deliberately did not
+
+Fixed — three genuine type defects in `src/v2/compiler/02_parse.dag`, all inside
+`parse_expr_terminal`, none of them emitter behaviour:
+
+1. `stamp: StampClass` declared a **variant** as a parameter **type**. `StampClass` is a variant of
+   `TerminalStampMode`, the value is passed straight to `parse_stamp_terminal(stamp:
+   TerminalStampMode)`, and the sibling declaration two hundred lines up already spells it
+   correctly. (E0573)
+2. `occurrence_id: node_occurrence_minted(id: minted.id)` wrapped an `OccurrenceId` into a
+   `NodeOccurrenceId` for a callee that declares `OccurrenceId`. The wrapper is spurious at this
+   position; `minted.id` is already the right carrier. (E0308)
+3. `ParseExprRejected { diagnostics: d }` bound `Outcome`'s `NonEmptyDiagnostics` to a
+   `List<Diagnostic>` field. The module already declares the converter
+   (`parse_non_empty_diagnostics_to_list`) and uses it elsewhere. (E0308)
+
+Not fixed, and not this lane's to fix: T3 and RT-builtin are corpus-wide emitter/resolution roots
+(§11.18, §21). Patching their symptoms inside `02_parse.dag` — hand-rolling a membership list to
+dodge `Set`, renaming `contains` to dodge the interception — is the §5 unmarked workaround, and it
+would delete the specimens that make these two roots legible. **This file is now the cleanest
+available specimen of both**, which is more valuable than three fewer diagnostics.
+
+### 22.3 Evidence
+
+Two arms, **one dispatch, one ambient tree**, so the delta is attributable even though that tree
+was neither arm's declared ref (the runner mirrors a different checkout than the requesting
+worktree — noted because it silently confounded a first attempt at this measurement):
+
+```
+ARM=BASE  TOTAL 431  v2_compiler_parse.rs 24
+ARM=HEAD  TOTAL 428  v2_compiler_parse.rs 21
+```
+
+Joined at SITE identity, not by count: the removed set is exactly
+`{E0573@1664:56, E0308@1675:62, E0308@1684:18}`. **Nothing was added**, in this file or any other,
+and every other file's count is identical across the arms — so the −3 total is the −3 in this file
+and not a class moving upstream.
+
+Surviving board: `E0282:5 E0609:5 E0308:4 E0061:4 E0560:3`. The **E0573 column is now zero**, and
+the file's top-class share rises from 21% to 24% — i.e. fixing the singletons makes the file
+*flatter* by the code-grain metric while making it more concentrated by the mechanism-grain one.
+That is the same confound in miniature: **a code-grain histogram is not a root census**, and a
+lane picked off one should re-partition before it plans.
