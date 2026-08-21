@@ -9949,16 +9949,13 @@ pub fn emit_parametric_phantom_opaque_struct(
         let item_text = authored_name_at(source_indices.clone(), item.clone());
         let type_params = emit_type_params(item.params.clone(), source_indices.clone());
         let generic_names = item_generic_param_names(item.clone(), source_indices.clone());
-        let marker_ty = match generic_names.clone().first().cloned() {
-            Some(g) => v1_rt::concat(
-                v1_rt::concat(
-                    "std::marker::PhantomData<".to_string(),
-                    to_pascal(g.clone()),
-                ),
-                ">".to_string(),
+        let marker_ty = v1_rt::concat(
+            v1_rt::concat(
+                "std::marker::PhantomData<".to_string(),
+                rust_phantom_marker_inner(generic_names.clone()),
             ),
-            None => "std::marker::PhantomData<()>".to_string(),
-        };
+            ">".to_string(),
+        );
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
