@@ -91,6 +91,29 @@ fn git_remote_ref_cas_refspec(request: GitRemoteRefCasRequest) -> NonEmptyStr {
   concat(git_object_id_wire_hex(oid: request.new_oid) as String, concat(":", request.ref_name as String))
 }
 
+// PushRefUpdateWithLease -- the compare-and-swap publication. `lease` and `refspec` arrive pre-rendered from
+// git_remote_ref_lease_word / git_remote_ref_cas_refspec so this template stays literal.
+//
+// THIS OPERATION DOES NOT DISTINGUISH A REFUSED LEASE FROM A FAILED PUSH, and the distinction
+// is real: a refused lease is an ANSWER -- the remote moved under us, the caller's observed
+// prior is stale, retry after re-observing -- while a transport failure is an absence of any
+// answer, whose remedy is not retrying with a fresh prior. Both arrive here as `nonzero` and
+// one `String`. An earlier revision of this comment asserted that the two "must not be
+// collapsed" while the exit block below collapsed them, which is a claim the code does not
+// carry (raised in review 54192); it is corrected rather than deleted, because a consumer
+// reading only the warning would have believed the transport separated them.
+//
+// WHY IT IS NOT FIXED HERE: git reports both as exit 1, and the discriminating evidence is
+// the "(stale info)" / "[rejected]" text on stderr. Deciding an outcome by matching upstream
+// human-readable output is its own modeling job with its own cited authority, and guessing at
+// it inside this row would fabricate a distinction rather than ground one.
+//
+// RUNG: mitigatable. The evidence is retained -- `exit_code` and `stderr` are both output
+// fields -- so a caller CAN recover the distinction; nothing here derives it for them, and no
+// caller exists yet to be misled. NEXT TRIGGER: the first consumer that must retry on a stale
+// prior, which needs a cited decoder for git's push-rejection output before this arm can
+// carry a typed outcome.
+//
 // GitCommitRequest.allow_empty selects RecordEmptyCommit vs RecordCommit at transport bind — two operations, because shell argv templates cannot branch on Bool.
 service git.PublicationTransport {
   operation PushRefUpdate {
@@ -110,28 +133,6 @@ service git.PublicationTransport {
     }
   }
 
-  // The compare-and-swap publication. `lease` and `refspec` arrive pre-rendered from
-  // git_remote_ref_lease_word / git_remote_ref_cas_refspec so this template stays literal.
-  //
-  // THIS OPERATION DOES NOT DISTINGUISH A REFUSED LEASE FROM A FAILED PUSH, and the distinction
-  // is real: a refused lease is an ANSWER -- the remote moved under us, the caller's observed
-  // prior is stale, retry after re-observing -- while a transport failure is an absence of any
-  // answer, whose remedy is not retrying with a fresh prior. Both arrive here as `nonzero` and
-  // one `String`. An earlier revision of this comment asserted that the two "must not be
-  // collapsed" while the exit block below collapsed them, which is a claim the code does not
-  // carry (raised in review 54192); it is corrected rather than deleted, because a consumer
-  // reading only the warning would have believed the transport separated them.
-  //
-  // WHY IT IS NOT FIXED HERE: git reports both as exit 1, and the discriminating evidence is
-  // the "(stale info)" / "[rejected]" text on stderr. Deciding an outcome by matching upstream
-  // human-readable output is its own modeling job with its own cited authority, and guessing at
-  // it inside this row would fabricate a distinction rather than ground one.
-  //
-  // RUNG: mitigatable. The evidence is retained -- `exit_code` and `stderr` are both output
-  // fields -- so a caller CAN recover the distinction; nothing here derives it for them, and no
-  // caller exists yet to be misled. NEXT TRIGGER: the first consumer that must retry on a stale
-  // prior, which needs a cited decoder for git's push-rejection output before this arm can
-  // carry a typed outcome.
   operation PushRefUpdateWithLease {
     input {
       remote: NonEmptyStr
