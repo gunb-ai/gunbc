@@ -14,7 +14,7 @@ fn is_kernel_type(name: String) -> std.types.Bool {
 }
 
 data container_type_arity: std.types.Map<String, Int> = {
-  "List": 1, "std.types.List": 1, "Set": 1, "Map": 2, "Witness": 1
+  "List": 1, "std.types.List": 1, "Set": 1, "std.types.Set": 1, "Map": 2, "std.types.Map": 2, "Witness": 1
 }
 
 fn is_container_type(name: String) -> std.types.Bool {
@@ -61,8 +61,10 @@ data container_template_algebra_rows: std.types.Map<String, String> = {
   "std.types.List": "FreeMonoid",
   "list": "FreeMonoid",
   "Set": "PointwisePower",
+  "std.types.Set": "PointwisePower",
   "set": "PointwisePower",
   "Map": "PartialFunction",
+  "std.types.Map": "PartialFunction",
   "map": "PartialFunction",
   "FreeMonoid": "FreeMonoid",
   "free_monoid": "FreeMonoid",
@@ -79,8 +81,10 @@ data container_template_alias_rows: std.types.Map<String, String> = {
   "std.types.List": "FreeMonoid",
   "list": "FreeMonoid",
   "Set": "PointwisePower",
+  "std.types.Set": "PointwisePower",
   "set": "PointwisePower",
   "Map": "PartialFunction",
+  "std.types.Map": "PartialFunction",
   "map": "PartialFunction"
 }
 
@@ -93,7 +97,7 @@ fn container_template_alias_algebra(name: String) -> String? {
 }
 
 fn canonical_container_names() -> List<String> {
-  ["BooleanAlgebra", "FreeMonoid", "List", "std.types.List", "Map", "PartialFunction", "Set", "Witness"]
+  ["BooleanAlgebra", "FreeMonoid", "List", "std.types.List", "Map", "std.types.Map", "PartialFunction", "Set", "std.types.Set", "Witness"]
 }
 
 type Bool = True | False

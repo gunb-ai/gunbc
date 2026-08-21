@@ -48,7 +48,9 @@ pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
             __m.insert("List".to_string(), 1);
             __m.insert("std.types.List".to_string(), 1);
             __m.insert("Set".to_string(), 1);
+            __m.insert("std.types.Set".to_string(), 1);
             __m.insert("Map".to_string(), 2);
+            __m.insert("std.types.Map".to_string(), 2);
             __m.insert("Witness".to_string(), 1);
             Rc::new(__m)
         };
@@ -143,8 +145,10 @@ pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
             __m.insert("std.types.List".to_string(), "FreeMonoid".to_string());
             __m.insert("list".to_string(), "FreeMonoid".to_string());
             __m.insert("Set".to_string(), "PointwisePower".to_string());
+            __m.insert("std.types.Set".to_string(), "PointwisePower".to_string());
             __m.insert("set".to_string(), "PointwisePower".to_string());
             __m.insert("Map".to_string(), "PartialFunction".to_string());
+            __m.insert("std.types.Map".to_string(), "PartialFunction".to_string());
             __m.insert("map".to_string(), "PartialFunction".to_string());
             __m.insert("FreeMonoid".to_string(), "FreeMonoid".to_string());
             __m.insert("free_monoid".to_string(), "FreeMonoid".to_string());
@@ -168,8 +172,10 @@ pub fn container_template_alias_rows() -> Rc<HashMap<String, String>> {
             __m.insert("std.types.List".to_string(), "FreeMonoid".to_string());
             __m.insert("list".to_string(), "FreeMonoid".to_string());
             __m.insert("Set".to_string(), "PointwisePower".to_string());
+            __m.insert("std.types.Set".to_string(), "PointwisePower".to_string());
             __m.insert("set".to_string(), "PointwisePower".to_string());
             __m.insert("Map".to_string(), "PartialFunction".to_string());
+            __m.insert("std.types.Map".to_string(), "PartialFunction".to_string());
             __m.insert("map".to_string(), "PartialFunction".to_string());
             Rc::new(__m)
         };
@@ -192,8 +198,10 @@ pub fn canonical_container_names() -> Rc<Vec<String>> {
         "List".to_string(),
         "std.types.List".to_string(),
         "Map".to_string(),
+        "std.types.Map".to_string(),
         "PartialFunction".to_string(),
         "Set".to_string(),
+        "std.types.Set".to_string(),
         "Witness".to_string(),
     ])
 }

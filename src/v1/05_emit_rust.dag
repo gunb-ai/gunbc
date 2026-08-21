@@ -2311,10 +2311,10 @@ fn v1_item_signature_type_exprs(item: v1.std.core.Node) -> std.types.List<v1.std
   )
 }
 
-fn v1_map_key_seed_type_exprs(modules: std.types.List<v1.compiler.infer_items.TypedModule>, type_decl_items: std.types.Map<String, v1.std.core.Node>) -> std.types.List<v1.std.core.Node> {
+fn v1_map_key_seed_type_exprs(modules: std.types.List<v1.compiler.infer_items.TypedModule>, type_decl_items: std.types.Map<String, v1.std.core.Node>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> std.types.List<v1.std.core.Node> {
   let declaration_field_exprs = map_keys(type_decl_items) |> flat_map(type_name =>
     match map_get(type_decl_items, type_name) {
-      Present { value: item } => v1.compiler.trait_derive_emit.v1_item_field_type_exprs(item: item)
+      Present { value: item } => v1.compiler.trait_derive_emit.v1_item_field_type_exprs(item: item, source_indices: source_indices)
       Absent => []
     }
   )
@@ -2335,7 +2335,7 @@ fn emit_rust(typed: v1.compiler.infer_items.ResolvedGraph) -> v1.compiler.emit_c
     source_indices: merged_module_source_indices(modules: typed.modules)
   )
   let map_key_required = v1.compiler.trait_derive_emit.v1_map_key_required_type_names(
-    seed_type_exprs: v1_map_key_seed_type_exprs(modules: typed.modules, type_decl_items: base_info.type_decl_items),
+    seed_type_exprs: v1_map_key_seed_type_exprs(modules: typed.modules, type_decl_items: base_info.type_decl_items, source_indices: merged_module_source_indices(modules: typed.modules)),
     extra_seed_names: hand_maintained_map_key_required_type_names,
     type_decl_items: base_info.type_decl_items,
     source_indices: merged_module_source_indices(modules: typed.modules)
@@ -2569,7 +2569,7 @@ fn emit_module(typed_module: v1.compiler.infer_items.TypedModule, registry: std.
     source_indices: merged_module_source_indices(modules: [typed_module])
   )
   let map_key_required = v1.compiler.trait_derive_emit.v1_map_key_required_type_names(
-    seed_type_exprs: v1_map_key_seed_type_exprs(modules: [typed_module], type_decl_items: base_info.type_decl_items),
+    seed_type_exprs: v1_map_key_seed_type_exprs(modules: [typed_module], type_decl_items: base_info.type_decl_items, source_indices: merged_module_source_indices(modules: [typed_module])),
     extra_seed_names: hand_maintained_map_key_required_type_names,
     type_decl_items: base_info.type_decl_items,
     source_indices: merged_module_source_indices(modules: [typed_module])

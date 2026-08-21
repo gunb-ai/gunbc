@@ -12,7 +12,7 @@ data trait_derive_emit_item_clone_bound_contract_fork_note: String = "MODEL-REAL
 
 data trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_note: String = "COUNTED SCAFFOLD (emit_fn_def module_path arm): std.keyed_row and std.keyed_roster generic fns emit Clone on every item generic because List<KeyedRow<..>> value-param type exprs reach emit as opaque containers — the element applied-type children are not readable in param_node_type_expr, so v1_fn_param_type_needs_clone_bound cannot derive K/V from rows: List<KeyedRow<K, V>> even though item-level KeyedRow<K: Clone, V: Clone> and the emitted bodies clone both fields. The override is module-scoped, not a seed widen: it does not change v1_generic_params_needing_clone_bound's per-param filter. Membership is the typed allowlist trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist, enrolled DeclaredFrontier in gunbc.roster_registry — not gunbc.non_fold_residue (no wildcard-match site). Witness: regen --verify on std_keyed_row/std_keyed_roster without this arm drops V: Clone on keyed_row_find and drops all fn-level bounds on keyed_roster_build (compile errors on .value.clone())."
 
-data trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist: List<String> = [
+data trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist: std.types.List<String> = [
   "std.keyed_row",
   "std.keyed_roster",
 ]
@@ -34,13 +34,13 @@ fn v1_trait_derive_refuse(message: String) -> String {
   concat("compile_error!(\"", message, "\");")
 }
 
-fn v1_coproduct_all_variants_nullary(children: List<v1.std.core.Node>) -> Bool {
+fn v1_coproduct_all_variants_nullary(children: std.types.List<v1.std.core.Node>) -> Bool {
   children |> all(v => v.children |> count == 0)
 }
 
 fn v1_repr_grounding_derive_elem_shape_from_coproduct_children(
-  children: List<v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  children: std.types.List<v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> std.trait_derive_shape.ReprGroundingDeriveElemShape {
   if v1_coproduct_all_variants_nullary(children: children) {
     std.trait_derive_shape.ReprDeriveElemNullaryEnumCopy
@@ -49,12 +49,12 @@ fn v1_repr_grounding_derive_elem_shape_from_coproduct_children(
   }
 }
 
-fn rust_nominal_identity_carrier_shape_eligible(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn rust_nominal_identity_carrier_shape_eligible(n: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
   v1.std.core.authored_name_at(source_indices: source_indices, node: n) == "Symbol"
     && (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == v1.std.core.NoConnective
 }
 
-fn rust_symbol_wrapped_ord_carrier_shape_eligible(children: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn rust_symbol_wrapped_ord_carrier_shape_eligible(children: std.types.List<v1.std.core.Node>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
   if (children |> count) != 1 {
     false
   } else {
@@ -67,8 +67,8 @@ fn rust_symbol_wrapped_ord_carrier_shape_eligible(children: List<v1.std.core.Nod
 }
 
 fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
-  children: List<v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  children: std.types.List<v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> std.trait_derive_shape.ReprGroundingDeriveElemShape {
   if rust_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices) {
     std.trait_derive_shape.ReprDeriveElemSymbolWrappedOrdCarrier
@@ -100,9 +100,9 @@ fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
 // onto this fixpoint is the named next step and is deliberately not taken here, because it would move
 // emitted bytes for a population this change has not measured.
 fn v1_with_map_key_requirement(
-  base: List<std.trait_derive_shape.ReprGroundingDeriveTrait>,
+  base: std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait>,
   map_key_required: Bool
-) -> List<std.trait_derive_shape.ReprGroundingDeriveTrait> {
+) -> std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait> {
   if map_key_required {
     std.trait_derive_shape.derive_traits_union(base: base, extra: std.trait_derive_shape.map_key_required_derive_traits())
   } else {
@@ -110,7 +110,7 @@ fn v1_with_map_key_requirement(
   }
 }
 
-fn v1_type_expr_is_keyed_map(type_expr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn v1_type_expr_is_keyed_map(type_expr: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match std.types.container_template_algebra(name: v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr)) {
     Present { value: algebra } => algebra == "PartialFunction"
     Absent => false
@@ -119,8 +119,8 @@ fn v1_type_expr_is_keyed_map(type_expr: v1.std.core.Node, source_indices: Map<St
 
 fn v1_map_key_head_names_in_type_expr(
   type_expr: v1.std.core.Node,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
-) -> List<String> {
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
+) -> std.types.List<String> {
   let own = if v1_type_expr_is_keyed_map(type_expr: type_expr, source_indices: source_indices) {
     match type_expr.children |> first {
       Present { value: key_child } =>
@@ -141,8 +141,8 @@ fn v1_map_key_head_names_in_type_expr(
 
 fn v1_type_expr_head_names(
   type_expr: v1.std.core.Node,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
-) -> List<String> {
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
+) -> std.types.List<String> {
   concat(
     [v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr)],
     type_expr.children |> flat_map(ch =>
@@ -152,7 +152,7 @@ fn v1_type_expr_head_names(
 }
 
 type MapKeyRequirementRound {
-  names: Set<String>
+  names: std.types.Set<String>
   added: Int
 }
 
@@ -164,20 +164,20 @@ fn v1_map_key_round_add(round: MapKeyRequirementRound, name: String) -> MapKeyRe
   }
 }
 
-data map_key_alias_hop_gap_note: String = "MEASURED GAP, ATTEMPTED AND REVERTED -- the propagation edge is real, and a correct fix needs an authority this module cannot reach. Map-key requirement propagation walks a required type's FIELD type expressions, and a type ALIAS has no fields: it is a bare leaf item whose right-hand side hangs off the item's own inference rather than off a child. So `type Hash = Fnv1a64Structural` in v2.std.node terminates the walk, Fnv1a64Structural is emitted with PartialEq but without Eq or std::hash::Hash, and `Map<Hash, RuntimeValue>` in v2.extdeps.runtimes.v2_effect_io_pure fails to compile at four sites. MEASURED, not reasoned: emitting the v2.compiler.05_eval closure with the Hash checkpoint row retired gives exactly those four E0277 sites, and adding the alias arm removes all four and adds none. THE EDGE WAS ALWAYS MISSING; it became observable only when the bare-name checkpoint stopped realizing Hash as a String alias, because until then the key type carried Rust's own derives and the hop was never asked for -- the defect's own output had been standing in for the traversal. WHY THE OBVIOUS FIX IS WRONG, proven by execution rather than argued: following every alias right-hand side makes `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` reach map-key positions, and both carry Rc<dyn Fn> fields, so the fold refuses them -- two stage0 files diverge. That refusal is a FALSE POSITIVE, and its shape is this lane's own subject: the derive analysis reasons about a type's DECLARED structure while the emitter renders its REALIZED one. Int and Nat realize as i64, which already carries Eq and Hash, so AbelianGroup never appears at the key position at all; Hash has no realization and therefore renders structurally, which is exactly why its hop is owed. So the rule is not `follow aliases` but `follow an alias precisely as far as the emitter renders it structurally`, and the authority that answers that is a realization binding keyed on DeclarationRef, WHICH DOES NOT EXIST YET -- an earlier revision of this note cited gunbc.rust_realization rust_realization_target_for as though it did, and those modules were removed from this branch as consumer-less authority (review 53510), so the citation is corrected rather than left pointing at a symbol the tree does not carry. This module has names, not declaration identity. NOT LANDED FOR THAT REASON. A structural proxy was available and deliberately refused: the two specimens differ in that Hash aliases a bare record while Int and Nat alias an APPLIED template, and keying on that would separate the measured cases while tracing a property nobody claims is the real one -- the same substitution this note exists to name. DISSOLVE-ON: declaration identity reaching the type renderer and this analysis, which is the same threading the identity-keyed lookup_checkpoint cut is blocked on; when it lands, the alias arm and the four sites go together."
+data map_key_alias_hop_gap_note: String = "LANDED. The gap this note originally recorded (see git history for the full pre-landing account) was that map-key requirement propagation walks a required type's FIELD type expressions, and a type ALIAS has no fields -- it is a bare leaf item whose right-hand side hangs off the item's own inference rather than off a child -- so `type Hash = Fnv1a64Structural` in v2.std.node terminated the walk, Fnv1a64Structural was emitted with PartialEq but without Eq or std::hash::Hash, and `Map<Hash, RuntimeValue>` in v2.extdeps.runtimes.v2_effect_io_pure failed to compile at four sites. The DISSOLVE-ON trigger named at the time -- declaration identity reaching the type renderer, the same threading the identity-keyed lookup_checkpoint cut (T7, #8537) was blocked on -- landed as v1.compiler.coercion lookup_checkpoint/decl_identity_file, so the fix reuses that authority rather than inventing the DeclarationRef binding the earlier attempt lacked (DESIGN section 2/3, single authority). v1_item_alias_hop_type_exprs (below v1_item_field_type_exprs) follows a bare-leaf alias item's resolved right-hand side into the walk ONLY when lookup_checkpoint(target: Rust, dag_name, decl_file) returns Absent for the alias's own (dag_name, decl_file) -- i.e. only when the emitter has no native realization and renders the alias structurally. `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` both have Rust checkpoint rows (realize as i64), so lookup_checkpoint returns Present and the alias arm contributes nothing for them -- the previously measured false positive (AbelianGroup/CommutativeSemiring reaching map-key position via Rc<dyn Fn> fields) does not recur, because the gate is keyed on realization rather than on bare-alias shape. Folded into the single shared v1_item_field_type_exprs (see v1_item_field_type_exprs_alias_hop_note) rather than a map-key-only variant, since is_bare_leaf_item forces params.count == 0 on every alias item, so no alias ever enters the generic-only clone-bound fixpoints that are this function's other callers."
 
 fn v1_map_key_propagate_round(
   round: MapKeyRequirementRound,
-  declared_type_names: List<String>,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  declared_type_names: std.types.List<String>,
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> MapKeyRequirementRound {
   declared_type_names |> fold(init: round, f: (acc, type_name) =>
     if !set_contains(acc.names, type_name) { acc }
     else {
       match map_get(type_decl_items, type_name) {
         Present { value: item } =>
-          v1_item_field_type_exprs(item: item) |> fold(init: acc, f: (inner, te) =>
+          v1_item_field_type_exprs(item: item, source_indices: source_indices) |> fold(init: acc, f: (inner, te) =>
             v1_type_expr_head_names(type_expr: te, source_indices: source_indices)
               |> fold(init: inner, f: (deep, head) =>
                 if map_has_declared_type(type_decl_items: type_decl_items, name: head) {
@@ -191,7 +191,7 @@ fn v1_map_key_propagate_round(
   )
 }
 
-fn map_has_declared_type(type_decl_items: Map<String, v1.std.core.Node>, name: String) -> Bool {
+fn map_has_declared_type(type_decl_items: std.types.Map<String, v1.std.core.Node>, name: String) -> Bool {
   match map_get(type_decl_items, name) {
     Present { value: _ } => true
     Absent => false
@@ -200,11 +200,11 @@ fn map_has_declared_type(type_decl_items: Map<String, v1.std.core.Node>, name: S
 
 fn v1_map_key_fixpoint_loop(
   round: MapKeyRequirementRound,
-  declared_type_names: List<String>,
-  type_decl_items: Map<String, v1.std.core.Node>,
+  declared_type_names: std.types.List<String>,
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
   remaining: Int,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
-) -> Set<String> {
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
+) -> std.types.Set<String> {
   if remaining <= 0 {
     round.names
   } else {
@@ -236,11 +236,11 @@ fn v1_map_key_fixpoint_loop(
 // computation grows from. An unknown-to-this-corpus name is silently dropped by
 // v1_map_key_round_add's declared-type guard inside the fixpoint loop, never inserted bare.
 fn v1_map_key_required_type_names(
-  seed_type_exprs: List<v1.std.core.Node>,
-  extra_seed_names: List<String>,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
-) -> Set<String> {
+  seed_type_exprs: std.types.List<v1.std.core.Node>,
+  extra_seed_names: std.types.List<String>,
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
+) -> std.types.Set<String> {
   let declared_type_names = map_keys(type_decl_items)
   let scanned = seed_type_exprs |> fold(init: MapKeyRequirementRound { names: empty_set(), added: 0 }, f: (acc, te) =>
     v1_map_key_head_names_in_type_expr(type_expr: te, source_indices: source_indices)
@@ -272,10 +272,10 @@ type V1FreeMonoidSupplementalRoute
 
 fn v1_freemonoid_row_route(row: extdeps.languages.rust.derive_contracts.RustVecSupplementalGenericBoundRow) -> V1FreeMonoidSupplementalRoute? {
   match row.derive_trait {
-    ReprDeriveDebug => Present { value: FreeMonoidHandWrittenImpl }
-    ReprDerivePartialEq => Present { value: FreeMonoidHandWrittenImpl }
-    ReprDeriveSerialize => Present { value: FreeMonoidSerdeBoundAttr }
-    ReprDeriveDeserialize => Present { value: FreeMonoidSerdeBoundAttr }
+    std.trait_derive_shape.ReprDeriveDebug => Present { value: FreeMonoidHandWrittenImpl }
+    std.trait_derive_shape.ReprDerivePartialEq => Present { value: FreeMonoidHandWrittenImpl }
+    std.trait_derive_shape.ReprDeriveSerialize => Present { value: FreeMonoidSerdeBoundAttr }
+    std.trait_derive_shape.ReprDeriveDeserialize => Present { value: FreeMonoidSerdeBoundAttr }
     _ => Absent
   }
 }
@@ -289,21 +289,21 @@ fn v1_freemonoid_unroutable_row_refusal() -> String {
   }
 }
 
-fn v1_freemonoid_hand_written_traits() -> List<std.trait_derive_shape.ReprGroundingDeriveTrait> {
+fn v1_freemonoid_hand_written_traits() -> std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait> {
   extdeps.languages.rust.derive_contracts.rust_vec_freemonoid_supplemental_generic_bound_rows
     |> filter(row => match v1_freemonoid_row_route(row: row) { Present { value: FreeMonoidHandWrittenImpl } => true  _ => false })
     |> map(row => row.derive_trait)
 }
 
-fn v1_freemonoid_filter_hand_written(traits: List<std.trait_derive_shape.ReprGroundingDeriveTrait>) -> List<std.trait_derive_shape.ReprGroundingDeriveTrait> {
+fn v1_freemonoid_filter_hand_written(traits: std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait>) -> std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait> {
   traits |> filter(t => !(v1_freemonoid_hand_written_traits() |> any(h => h == t)))
 }
 
 fn v1_freemonoid_element_params(
-  generic_param_names: List<String>,
-  field_type_exprs: List<v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
-) -> List<String> {
+  generic_param_names: std.types.List<String>,
+  field_type_exprs: std.types.List<v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
+) -> std.types.List<String> {
   generic_param_names |> filter(p =>
     field_type_exprs |> any(te =>
       v1.std.core.authored_name_at(source_indices: source_indices, node: te) == "FreeMonoid"
@@ -314,8 +314,8 @@ fn v1_freemonoid_element_params(
 
 fn v1_freemonoid_param_in_fields(
   param_name: String,
-  field_type_exprs: List<v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  field_type_exprs: std.types.List<v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   field_type_exprs |> any(te => v1_type_expr_contains_param_name(param_name: param_name, type_expr: te, source_indices: source_indices))
 }
@@ -326,11 +326,11 @@ fn v1_freemonoid_supplemental_bound_spelling() -> String {
 }
 
 fn v1_freemonoid_impl_type_params(
-  generic_param_names: List<String>,
-  fm_params: List<String>,
-  field_type_exprs: List<v1.std.core.Node>,
+  generic_param_names: std.types.List<String>,
+  fm_params: std.types.List<String>,
+  field_type_exprs: std.types.List<v1.std.core.Node>,
   structural_spelling: String,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> String {
   if (generic_param_names |> count) == 0 { "" } else {
     let entries = generic_param_names |> map(p =>
@@ -344,15 +344,15 @@ fn v1_freemonoid_impl_type_params(
   }
 }
 
-fn v1_freemonoid_bare_type_args(generic_param_names: List<String>) -> String {
+fn v1_freemonoid_bare_type_args(generic_param_names: std.types.List<String>) -> String {
   if (generic_param_names |> count) == 0 { "" } else {
     concat("<", generic_param_names |> map(p => v1.compiler.emit_core_support.to_pascal(name: p)) |> join(separator: ", "), ">")
   }
 }
 
 fn v1_freemonoid_serde_bound_attr(
-  generic_param_names: List<String>,
-  fm_params: List<String>
+  generic_param_names: std.types.List<String>,
+  fm_params: std.types.List<String>
 ) -> String {
   let supplement = v1_freemonoid_supplemental_bound_spelling()
   let ser_entries = generic_param_names |> map(p =>
@@ -379,11 +379,11 @@ fn v1_freemonoid_serde_bound_attr(
 
 fn v1_freemonoid_struct_debug_impl(
   name: String,
-  generic_param_names: List<String>,
-  fm_params: List<String>,
-  children: List<v1.std.core.Node>,
-  field_type_exprs: List<v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  generic_param_names: std.types.List<String>,
+  fm_params: std.types.List<String>,
+  children: std.types.List<v1.std.core.Node>,
+  field_type_exprs: std.types.List<v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> String {
   let tp = v1_freemonoid_impl_type_params(generic_param_names: generic_param_names, fm_params: fm_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug", source_indices: source_indices)
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
@@ -402,11 +402,11 @@ fn v1_freemonoid_struct_debug_impl(
 
 fn v1_freemonoid_struct_partial_eq_impl(
   name: String,
-  generic_param_names: List<String>,
-  fm_params: List<String>,
-  children: List<v1.std.core.Node>,
-  field_type_exprs: List<v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  generic_param_names: std.types.List<String>,
+  fm_params: std.types.List<String>,
+  children: std.types.List<v1.std.core.Node>,
+  field_type_exprs: std.types.List<v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> String {
   let tp = v1_freemonoid_impl_type_params(generic_param_names: generic_param_names, fm_params: fm_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq", source_indices: source_indices)
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
@@ -426,11 +426,11 @@ fn v1_freemonoid_struct_partial_eq_impl(
 
 fn v1_freemonoid_enum_debug_impl(
   name: String,
-  generic_param_names: List<String>,
-  fm_params: List<String>,
-  children: List<v1.std.core.Node>,
-  field_type_exprs: List<v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  generic_param_names: std.types.List<String>,
+  fm_params: std.types.List<String>,
+  children: std.types.List<v1.std.core.Node>,
+  field_type_exprs: std.types.List<v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> String {
   let tp = v1_freemonoid_impl_type_params(generic_param_names: generic_param_names, fm_params: fm_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug", source_indices: source_indices)
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
@@ -458,11 +458,11 @@ fn v1_freemonoid_enum_debug_impl(
 
 fn v1_freemonoid_enum_partial_eq_impl(
   name: String,
-  generic_param_names: List<String>,
-  fm_params: List<String>,
-  children: List<v1.std.core.Node>,
-  field_type_exprs: List<v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  generic_param_names: std.types.List<String>,
+  fm_params: std.types.List<String>,
+  children: std.types.List<v1.std.core.Node>,
+  field_type_exprs: std.types.List<v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> String {
   let tp = v1_freemonoid_impl_type_params(generic_param_names: generic_param_names, fm_params: fm_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq", source_indices: source_indices)
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
@@ -492,11 +492,11 @@ fn v1_freemonoid_enum_partial_eq_impl(
 
 fn v1_emit_struct_derives(
   name: String,
-  children: List<v1.std.core.Node>,
-  shared_types: Set<String>,
+  children: std.types.List<v1.std.core.Node>,
+  shared_types: std.types.Set<String>,
   has_fn_fields: Bool,
   map_key_required: Bool,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> String {
   if has_fn_fields {
     if map_key_required {
@@ -539,11 +539,11 @@ fn v1_emit_struct_derives(
 // serde in this scope" -- trading one error class for another rather than removing it, which is
 // the class this predicate exists to close. has_fn_fields therefore dominates and returns early.
 fn v1_emit_enum_derives(
-  children: List<v1.std.core.Node>,
+  children: std.types.List<v1.std.core.Node>,
   has_fn_fields: Bool,
   map_key_required: Bool,
-  generic_param_names: List<String>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  generic_param_names: std.types.List<String>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> String {
   if has_fn_fields {
     if map_key_required {
@@ -570,13 +570,13 @@ fn v1_emit_enum_derives(
   let nullary_traits = v1_with_map_key_requirement(base: std.trait_derive_shape.nullary_coproduct_derive_traits(), map_key_required: map_key_required)
   let payload_traits = v1_with_map_key_requirement(base: std.trait_derive_shape.payload_coproduct_derive_traits(), map_key_required: map_key_required)
   match shape {
-    ReprDeriveElemNullaryEnumCopy =>
+    std.trait_derive_shape.ReprDeriveElemNullaryEnumCopy =>
       if std.trait_derive_shape.repr_grounding_derive_completeness_predicate(nullary_traits, shape) {
         extdeps.languages.rust.emit.rust_trait_derive_attr_from_traits(nullary_traits)
       } else {
         v1_trait_derive_refuse("trait_derive_emit: nullary coproduct derive completeness refused")
       }
-    ReprDeriveElemPayloadCoproduct =>
+    std.trait_derive_shape.ReprDeriveElemPayloadCoproduct =>
       if std.trait_derive_shape.repr_grounding_derive_completeness_predicate(payload_traits, shape) {
         extdeps.languages.rust.emit.rust_trait_derive_attr_from_traits(payload_traits)
       } else {
@@ -590,7 +590,7 @@ fn v1_emit_enum_derives(
 fn v1_type_expr_contains_param_name(
   param_name: String,
   type_expr: v1.std.core.Node,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   if v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr) == param_name {
     true
@@ -607,10 +607,10 @@ fn v1_type_expr_contains_param_name(
 
 fn v1_generic_param_used_as_collection_element(
   param_name: String,
-  value_params: List<v1.std.core.Node>,
-  bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  value_params: std.types.List<v1.std.core.Node>,
+  bounds: std.types.Map<String, std.types.Set<String>>,
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   value_params |> any(vp =>
     let te = v1.std.core.param_node_type_expr(n: vp)
@@ -629,8 +629,8 @@ fn v1_generic_param_used_as_collection_element(
 
 fn v1_generic_param_used_as_bare_value_param_type(
   param_name: String,
-  value_params: List<v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  value_params: std.types.List<v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   value_params |> any(vp =>
     let te = v1.std.core.param_node_type_expr(n: vp)
@@ -642,10 +642,10 @@ fn v1_generic_param_used_as_bare_value_param_type(
 
 fn v1_generic_param_used_in_value_param_type_surface(
   param_name: String,
-  value_params: List<v1.std.core.Node>,
-  bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  value_params: std.types.List<v1.std.core.Node>,
+  bounds: std.types.Map<String, std.types.Set<String>>,
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   value_params |> any(vp =>
     v1_type_expr_mentions_param_non_phantom(
@@ -661,9 +661,9 @@ fn v1_generic_param_used_in_value_param_type_surface(
 fn v1_item_phantom_only_param_names(
   item_name: String,
   item: v1.std.core.Node,
-  bounds: Map<String, Set<String>>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
-) -> List<String> {
+  bounds: std.types.Map<String, std.types.Set<String>>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
+) -> std.types.List<String> {
   item.params |> map(p => v1.std.core.generic_param_name_at(n: p, source_indices: source_indices)) |> filter(p =>
     match map_get(bounds, item_name) {
       Present { value: s } => !set_contains(s, p)
@@ -672,18 +672,18 @@ fn v1_item_phantom_only_param_names(
   )
 }
 
-fn v1_phantom_only_param_names_contains(names: List<String>, param_name: String) -> Bool {
+fn v1_phantom_only_param_names_contains(names: std.types.List<String>, param_name: String) -> Bool {
   names |> any(n => n == param_name)
 }
 
 fn v1_declared_type_app_mentions_param_non_phantom_loop(
   param_name: String,
-  decl_params: List<v1.std.core.Node>,
-  type_args: List<v1.std.core.Node>,
-  phantom_slot_names: List<String>,
-  bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  decl_params: std.types.List<v1.std.core.Node>,
+  type_args: std.types.List<v1.std.core.Node>,
+  phantom_slot_names: std.types.List<String>,
+  bounds: std.types.Map<String, std.types.Set<String>>,
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   match decl_params |> first {
     Absent => false
@@ -726,10 +726,10 @@ fn v1_declared_type_app_mentions_param_non_phantom(
   param_name: String,
   decl_name: String,
   decl: v1.std.core.Node,
-  type_args: List<v1.std.core.Node>,
-  bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  type_args: std.types.List<v1.std.core.Node>,
+  bounds: std.types.Map<String, std.types.Set<String>>,
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   v1_declared_type_app_mentions_param_non_phantom_loop(
     param_name: param_name,
@@ -750,9 +750,9 @@ fn v1_declared_type_app_mentions_param_non_phantom(
 fn v1_type_expr_mentions_param_non_phantom(
   param_name: String,
   type_expr: v1.std.core.Node,
-  bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  bounds: std.types.Map<String, std.types.Set<String>>,
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   if v1_type_expr_is_bare_param(param_name: param_name, type_expr: type_expr, source_indices: source_indices) {
     true
@@ -797,13 +797,13 @@ fn v1_type_expr_mentions_param_non_phantom(
 }
 
 fn v1_fn_phantom_only_generic_param_names(
-  generic_param_names: List<String>,
-  value_params: List<v1.std.core.Node>,
+  generic_param_names: std.types.List<String>,
+  value_params: std.types.List<v1.std.core.Node>,
   ret: v1.std.core.Node,
-  bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
-) -> List<String> {
+  bounds: std.types.Map<String, std.types.Set<String>>,
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
+) -> std.types.List<String> {
   generic_param_names |> filter(p =>
     !(value_params |> any(vp =>
       v1_type_expr_mentions_param_non_phantom(
@@ -827,7 +827,7 @@ fn v1_fn_phantom_only_generic_param_names(
 fn v1_type_expr_mentions_type_head(
   type_name: String,
   type_expr: v1.std.core.Node,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   if v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr) == type_name {
     true
@@ -844,10 +844,10 @@ fn v1_type_expr_mentions_type_head(
 
 fn v1_fn_generic_clone_bound_via_referenced_decl(
   param_name: String,
-  value_params: List<v1.std.core.Node>,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  clone_bounds: Map<String, Set<String>>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  value_params: std.types.List<v1.std.core.Node>,
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  clone_bounds: std.types.Map<String, std.types.Set<String>>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   map_keys(type_decl_items) |> any(decl_name =>
     match map_get(type_decl_items, decl_name) {
@@ -879,9 +879,9 @@ fn v1_fn_generic_clone_bound_via_referenced_decl(
 
 fn v1_fn_generic_clone_bound_via_bounded_container_element(
   param_name: String,
-  value_params: List<v1.std.core.Node>,
-  clone_bounds: Map<String, Set<String>>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  value_params: std.types.List<v1.std.core.Node>,
+  clone_bounds: std.types.Map<String, std.types.Set<String>>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   value_params |> any(vp =>
     let te = v1.std.core.param_node_type_expr(n: vp)
@@ -901,10 +901,10 @@ fn v1_type_param_needs_clone_bound(
   return_is_bare_generic: Bool,
   ret_name: String,
   body_is_param_ref: Bool,
-  value_params: List<v1.std.core.Node>,
-  bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  value_params: std.types.List<v1.std.core.Node>,
+  bounds: std.types.Map<String, std.types.Set<String>>,
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   let structural = (return_is_bare_generic && !body_is_param_ref && param_name == ret_name)
     || v1_generic_param_used_as_collection_element(param_name: param_name, value_params: value_params, bounds: bounds, type_decl_items: type_decl_items, source_indices: source_indices)
@@ -915,10 +915,10 @@ fn v1_type_param_needs_clone_bound(
 
 fn v1_fn_param_type_needs_clone_bound(
   param_name: String,
-  value_params: List<v1.std.core.Node>,
-  bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  value_params: std.types.List<v1.std.core.Node>,
+  bounds: std.types.Map<String, std.types.Set<String>>,
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   value_params |> any(vp =>
     let te = v1.std.core.param_node_type_expr(n: vp)
@@ -954,16 +954,16 @@ fn v1_fn_param_type_needs_clone_bound(
 }
 
 fn v1_generic_params_needing_clone_bound(
-  generic_param_names: List<String>,
-  value_params: List<v1.std.core.Node>,
+  generic_param_names: std.types.List<String>,
+  value_params: std.types.List<v1.std.core.Node>,
   return_is_bare_generic: Bool,
   ret_name: String,
   body_is_param_ref: Bool,
   ret: v1.std.core.Node,
-  bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
-) -> List<String> {
+  bounds: std.types.Map<String, std.types.Set<String>>,
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
+) -> std.types.List<String> {
   let phantom_only = v1_fn_phantom_only_generic_param_names(
     generic_param_names: generic_param_names,
     value_params: value_params,
@@ -1009,7 +1009,7 @@ fn v1_generic_params_needing_clone_bound(
 fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
   param_name: String,
   type_expr: v1.std.core.Node,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   let name = v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr)
   if name == param_name && type_expr.connective == v1.std.core.NoConnective && (type_expr.children |> count) == 0 {
@@ -1024,8 +1024,8 @@ fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
 
 fn v1_item_type_param_needs_clone_bound_struct(
   param_name: String,
-  field_type_exprs: List<v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  field_type_exprs: std.types.List<v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   field_type_exprs |> any(te =>
     v1_field_type_expr_needs_clone_bound_for_param_narrow(
@@ -1036,7 +1036,7 @@ fn v1_item_type_param_needs_clone_bound_struct(
   )
 }
 
-fn v1_wf_child_type_node(ch: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.Node {
+fn v1_wf_child_type_node(ch: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.Node {
   let resolved = v1.compiler.infer_types.child_type_node(ch: ch)
   if v1.std.core.authored_name_at(source_indices: source_indices, node: resolved) != "" {
     resolved
@@ -1045,7 +1045,7 @@ fn v1_wf_child_type_node(ch: v1.std.core.Node, source_indices: Map<String, v1.st
   }
 }
 
-fn v1_type_expr_is_bare_param(param_name: String, type_expr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
+fn v1_type_expr_is_bare_param(param_name: String, type_expr: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
   v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr) == param_name
     && type_expr.connective == v1.std.core.NoConnective
     && (type_expr.children |> count) == 0
@@ -1053,15 +1053,15 @@ fn v1_type_expr_is_bare_param(param_name: String, type_expr: v1.std.core.Node, s
 
 fn v1_type_expr_head_is_known(
   name: String,
-  type_decl_items: Map<String, v1.std.core.Node>
+  type_decl_items: std.types.Map<String, v1.std.core.Node>
 ) -> Bool {
   std.types.is_container_type(name: name) || map_get(type_decl_items, name) != none
 }
 
 fn v1_item_generic_param_name_set(
   item: v1.std.core.Node,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
-) -> Set<String> {
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
+) -> std.types.Set<String> {
   item.params |> fold(init: empty_set(), f: (acc, p) =>
     set_insert(acc, v1.std.core.generic_param_name_at(n: p, source_indices: source_indices))
   )
@@ -1069,9 +1069,9 @@ fn v1_item_generic_param_name_set(
 
 fn v1_type_expr_clone_undecided_head(
   type_expr: v1.std.core.Node,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>,
-  item_generic_params: Set<String>
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>,
+  item_generic_params: std.types.Set<String>
 ) -> String {
   let name = v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr)
   if (type_expr.children |> count) == 0 {
@@ -1098,9 +1098,9 @@ fn v1_type_expr_clone_undecided_head(
 fn v1_type_expr_clone_impl_needs_param(
   param_name: String,
   type_expr: v1.std.core.Node,
-  bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  bounds: std.types.Map<String, std.types.Set<String>>,
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   let name = v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr)
   if v1_type_expr_is_bare_param(param_name: param_name, type_expr: type_expr, source_indices: source_indices) {
@@ -1135,12 +1135,12 @@ fn v1_type_expr_clone_impl_needs_param(
 
 fn v1_declared_type_app_clone_impl_needs_param_loop(
   param_name: String,
-  decl_params: List<v1.std.core.Node>,
-  type_args: List<v1.std.core.Node>,
-  phantom_slot_names: List<String>,
-  bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  decl_params: std.types.List<v1.std.core.Node>,
+  type_args: std.types.List<v1.std.core.Node>,
+  phantom_slot_names: std.types.List<String>,
+  bounds: std.types.Map<String, std.types.Set<String>>,
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   match decl_params |> first {
     Absent => false
@@ -1183,10 +1183,10 @@ fn v1_declared_type_app_clone_impl_needs_param(
   param_name: String,
   decl_name: String,
   decl: v1.std.core.Node,
-  type_args: List<v1.std.core.Node>,
-  bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  type_args: std.types.List<v1.std.core.Node>,
+  bounds: std.types.Map<String, std.types.Set<String>>,
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   v1_declared_type_app_clone_impl_needs_param_loop(
     param_name: param_name,
@@ -1206,12 +1206,12 @@ fn v1_declared_type_app_clone_impl_needs_param(
 
 fn v1_declared_arg_positions_need_clone_param(
   param_name: String,
-  decl_params: List<v1.std.core.Node>,
-  type_args: List<v1.std.core.Node>,
-  bound_params: Set<String>,
-  bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  decl_params: std.types.List<v1.std.core.Node>,
+  type_args: std.types.List<v1.std.core.Node>,
+  bound_params: std.types.Set<String>,
+  bounds: std.types.Map<String, std.types.Set<String>>,
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   match decl_params |> first {
     Absent => false
@@ -1243,9 +1243,9 @@ fn v1_declared_arg_positions_need_clone_param(
 fn v1_type_expr_wf_needs_clone_param(
   param_name: String,
   type_expr: v1.std.core.Node,
-  bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  bounds: std.types.Map<String, std.types.Set<String>>,
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   let name = v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr)
   if (type_expr.children |> count) == 0 {
@@ -1280,22 +1280,39 @@ fn v1_type_expr_wf_needs_clone_param(
   }
 }
 
-fn v1_item_field_type_exprs(item: v1.std.core.Node) -> List<v1.std.core.Node> {
+data v1_item_field_type_exprs_alias_hop_note: String = "Threads declaration identity into the field-type-expression walk so a type ALIAS's right-hand side is followed exactly as far as the emitter renders it structurally, per map_key_alias_hop_gap_note's DISSOLVE-ON: the alias arm below fires only when the alias's own (dag_name, decl_file) resolves to no Rust checkpoint (lookup_checkpoint == Absent), meaning the emitter has no native realization for it and renders its declared structure. `type Hash = Fnv1a64Structural` in v2.std.node has no checkpoint row, so its RHS is the walk's one field type expression and the map-key fixpoint reaches Fnv1a64Structural. `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` DO have checkpoint rows (they realize as i64), so lookup_checkpoint returns Present and the arm below contributes nothing for them -- the measured false positive (AbelianGroup/CommutativeSemiring at map-key position) that sank the earlier attempt never recurs, because the gate is keyed on realization, not on 'is this a bare alias'. Safe to fold into the single shared v1_item_field_type_exprs rather than a map-key-only variant: is_bare_leaf_item requires params.count == 0, so no alias item is ever a member of v1_generic_declared_type_names (params > 0), and every OTHER caller of this function (the clone-bound wf/impl fixpoints) is seeded exclusively from that generic-only population -- the alias arm is therefore dead code on every path except the map-key propagation this note exists for, and reusing one function keeps the field-type-expression authority single (DESIGN section 2/3) instead of forking a second copy that could drift."
+
+fn v1_item_alias_hop_type_exprs(item: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> std.types.List<v1.std.core.Node> {
+  if v1.compiler.emit_core_support.is_type_alias_item(item: item, source_indices: source_indices) {
+    let dag_name = v1.std.core.authored_name_at(source_indices: source_indices, node: item)
+    let decl_file = v1.compiler.coercion.decl_identity_file(item: item)
+    match v1.compiler.coercion.lookup_checkpoint(target: v1.compiler.artifact.Rust, dag_name: dag_name, decl_file: decl_file) {
+      Present { value: _ } => []
+      Absent => [resolved_type(n: item)]
+    }
+  } else {
+    []
+  }
+}
+
+fn v1_item_field_type_exprs(item: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> std.types.List<v1.std.core.Node> {
   if v1.compiler.infer_types.is_coproduct_type(n: item) {
     item.children |> flat_map(variant => variant.children |> map(f => v1.compiler.infer_types.child_type_node(ch: f)))
-  } else {
+  } else if item.children |> count > 0 {
     item.children |> map(f => v1.compiler.infer_types.child_type_node(ch: f))
+  } else {
+    v1_item_alias_hop_type_exprs(item: item, source_indices: source_indices)
   }
 }
 
 fn v1_item_param_wf_needs_clone(
   param_name: String,
   item: v1.std.core.Node,
-  bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  bounds: std.types.Map<String, std.types.Set<String>>,
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
-  v1_item_field_type_exprs(item: item) |> any(te =>
+  v1_item_field_type_exprs(item: item, source_indices: source_indices) |> any(te =>
     v1_type_expr_wf_needs_clone_param(
       param_name: param_name,
       type_expr: te,
@@ -1308,11 +1325,11 @@ fn v1_item_param_wf_needs_clone(
 
 fn v1_fn_param_wf_needs_clone(
   param_name: String,
-  value_params: List<v1.std.core.Node>,
+  value_params: std.types.List<v1.std.core.Node>,
   ret: v1.std.core.Node,
-  bounds: Map<String, Set<String>>,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  bounds: std.types.Map<String, std.types.Set<String>>,
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> Bool {
   value_params |> any(vp =>
     v1_type_expr_wf_needs_clone_param(
@@ -1333,11 +1350,11 @@ fn v1_fn_param_wf_needs_clone(
 
 fn v1_item_clone_undecided_head(
   item: v1.std.core.Node,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> String {
   let item_generic_params = v1_item_generic_param_name_set(item: item, source_indices: source_indices)
-  v1_item_field_type_exprs(item: item) |> fold(init: "", f: (acc, te) =>
+  v1_item_field_type_exprs(item: item, source_indices: source_indices) |> fold(init: "", f: (acc, te) =>
     if acc != "" {
       acc
     } else {
@@ -1352,7 +1369,7 @@ fn v1_item_clone_undecided_head(
 }
 
 type CloneBoundRound {
-  bounds: Map<String, Set<String>>
+  bounds: std.types.Map<String, std.types.Set<String>>
   added: Int
 }
 
@@ -1379,8 +1396,8 @@ fn v1_clone_bound_round_for_item(
   round: CloneBoundRound,
   type_name: String,
   item: v1.std.core.Node,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> CloneBoundRound {
   item.params |> fold(init: round, f: (acc, p) =>
     let param_name = v1.std.core.generic_param_name_at(n: p, source_indices: source_indices)
@@ -1402,12 +1419,12 @@ fn v1_clone_bound_seed_for_item(
   round: CloneBoundRound,
   type_name: String,
   item: v1.std.core.Node,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> CloneBoundRound {
   if v1.compiler.infer_types.is_coproduct_type(n: item) {
     round
   } else {
-    let field_type_exprs = v1_item_field_type_exprs(item: item)
+    let field_type_exprs = v1_item_field_type_exprs(item: item, source_indices: source_indices)
     item.params |> fold(init: round, f: (acc, p) =>
       let param_name = v1.std.core.generic_param_name_at(n: p, source_indices: source_indices)
       if v1_item_type_param_needs_clone_bound_struct(
@@ -1424,12 +1441,12 @@ fn v1_clone_bound_seed_for_item(
 }
 
 fn v1_clone_bound_fixpoint_loop(
-  generic_type_names: List<String>,
-  type_decl_items: Map<String, v1.std.core.Node>,
-  bounds: Map<String, Set<String>>,
+  generic_type_names: std.types.List<String>,
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  bounds: std.types.Map<String, std.types.Set<String>>,
   remaining: Int,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
-) -> Map<String, Set<String>> {
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
+) -> std.types.Map<String, std.types.Set<String>> {
   if remaining <= 0 {
     bounds
   } else {
@@ -1460,7 +1477,7 @@ fn v1_clone_bound_fixpoint_loop(
   }
 }
 
-fn v1_generic_declared_type_names(type_decl_items: Map<String, v1.std.core.Node>) -> List<String> {
+fn v1_generic_declared_type_names(type_decl_items: std.types.Map<String, v1.std.core.Node>) -> std.types.List<String> {
   map_keys(type_decl_items) |> filter(n =>
     match map_get(type_decl_items, n) {
       Present { value: item } => (item.params |> count) > 0
@@ -1470,9 +1487,9 @@ fn v1_generic_declared_type_names(type_decl_items: Map<String, v1.std.core.Node>
 }
 
 fn v1_clone_bounded_type_params(
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
-) -> Map<String, Set<String>> {
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
+) -> std.types.Map<String, std.types.Set<String>> {
   let generic_type_names = v1_generic_declared_type_names(type_decl_items: type_decl_items)
   let seeded = generic_type_names |> fold(init: CloneBoundRound { bounds: empty_map(), added: 0 }, f: (acc, type_name) =>
     match map_get(type_decl_items, type_name) {
@@ -1495,15 +1512,15 @@ fn v1_clone_bounded_type_params(
   )
 }
 
-data clone_impl_required_type_params_note: String = "THE SECOND RECORD, and the reason there must be two. v1_clone_bounded_type_params answers 'does naming G<A..> require P: Clone' — well-formedness, which is what a DECLARATION must print, because naming an ill-formed type is an error whether or not you clone. This one answers 'does CLONING G<A..> require P: Clone' — the derive-impl fact, because derive(Clone) on G emits impl<P: Clone> Clone for G<P>.
+data clone_impl_required_type_params_note: String = "THE SECOND RECORD, and the reason there must be two. v1_clone_bounded_type_params answers 'does naming G<A..> require P: Clone' — well-formedness, which is what a DECLARATION must print, because naming an ill-formed type is an error whether or not you clone. extdeps.access.zanzibar.This one answers 'does CLONING G<A..> require P: Clone' — the derive-impl fact, because derive(Clone) on G emits impl<P: Clone> Clone for G<P>.
 
-They differ exactly on generic coproducts. An enum's declaration must NOT print a bound it earns from derive (derive supplies it per-impl, and w_coproduct_bare_payload_param_stays_bare pins that), while a CONSUMER cloning that enum must still be told the parameter is required. One map cannot hold both answers: seeding coproducts into the declaration record would print spurious enum bounds, and not seeding them anywhere leaves consumers with nothing to propagate from. So the seed differs and the fixpoint is shared.
+They differ exactly on generic coproducts. An enum's declaration must NOT print a bound it earns from derive (derive supplies it per-impl, and w_coproduct_bare_payload_param_stays_bare pins that), while a CONSUMER cloning that enum must still be told the parameter is required. std.measure.One map cannot hold both answers: seeding coproducts into the declaration record would print spurious enum bounds, and not seeding them anywhere leaves consumers with nothing to propagate from. So the seed differs and the fixpoint is shared.
 
 WHY THE GAP WAS INVISIBLE. The two axes have complementary blind spots. v1_type_expr_wf_needs_clone_param opens on a zero-children test, so well-formedness structurally cannot bound a BARE parameter — it only fires on a parameter occupying an argument position of an already-bounded declared type. The seed exists to cover the bare case and was switched off for coproducts. A generic coproduct with a bare payload fell between them and was bounded by nothing. Neither predicate is wrong read alone; the defect is the relation.
 
-MEASURED, at distinct-site grain over eleven entries. 142 A-class sites, of which 104 are fn signatures and only 6 are type declarations — so this is a fn-bound defect, not a declaration one. Thirteen signatures fail PARTIALLY, and they discriminate the mechanism: fold_list<T, A: Clone> misses T via Rc<im::Vector<T>>, resolve_probe<A: Clone, B> misses B via CacheProbe<B>, reconcile_grounded<A: Clone, R, E> misses R via ShowEffectiveRead<R>. Every parameter that earned its bound flows through a carrier that has one; every parameter that missed flows through a carrier that has none.
+MEASURED, at distinct-site grain over eleven entries. 142 A-class sites, of which 104 are fn signatures and only 6 are type declarations — so this is a fn-bound defect, not a declaration one. Thirteen signatures fail PARTIALLY, and they discriminate the mechanism: fold_list<T, A: Clone> misses T via Rc<im::Vector<T>>, resolve_probe<A: Clone, B> misses B via v2.std.staging.CacheProbe<B>, reconcile_grounded<A: Clone, R, E> misses R via std.realization_reconcile.ShowEffectiveRead<R>. Every parameter that earned its bound flows through a carrier that has one; every parameter that missed flows through a carrier that has none.
 
-WHY NO USAGE GATE. Bounding a fn that names Outcome<T> and never clones it would fabricate a requirement, since enum Outcome<T> declares no bound and the well-formedness justification does not transfer. Measured over the 03_ingest closure: of 21 generic fns taking one of these carriers in PARAMETER position, 21 clone that parameter. Zero would be spuriously bounded. The proxy is exact rather than approximate — derive emits impl<T: Clone>, so cloning the carrier IS the obligation. The one fn with no clone in its body has the carrier in return position only. A usage gate is therefore a later refinement, not a prerequisite; re-open it if the return-position population grows.
+WHY NO USAGE GATE. Bounding a fn that names v2.std.diagnostic.Outcome<T> and never clones it would fabricate a requirement, since enum v2.std.diagnostic.Outcome<T> declares no bound and the well-formedness justification does not transfer. Measured over the 03_ingest closure: of 21 generic fns taking one of these carriers in PARAMETER position, 21 clone that parameter. v2.std.nat.Zero would be spuriously bounded. The proxy is exact rather than approximate — derive emits impl<T: Clone>, so cloning the carrier IS the obligation. The one fn with no clone in its body has the carrier in return position only. A usage gate is therefore a later refinement, not a prerequisite; re-open it if the return-position population grows.
 
 NOT CLOSED BY THIS: a carrier whose declaration is UPSTREAM. im::Vector<T> has no corpus declaration to seed from, so its Clone requirement must come from the target API's own impl requirements — trait_derive_emit_item_clone_bound_contract_fork_note, whose dissolution is that grounding. Of A's 64 generic-receiver sites, 30 are im::Vector and stay standing."
 
@@ -1511,9 +1528,9 @@ fn v1_clone_impl_seed_for_item(
   round: CloneBoundRound,
   type_name: String,
   item: v1.std.core.Node,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> CloneBoundRound {
-  let field_type_exprs = v1_item_field_type_exprs(item: item)
+  let field_type_exprs = v1_item_field_type_exprs(item: item, source_indices: source_indices)
   item.params |> fold(init: round, f: (acc, p) =>
     let param_name = v1.std.core.generic_param_name_at(n: p, source_indices: source_indices)
     if v1_item_type_param_needs_clone_bound_struct(
@@ -1529,9 +1546,9 @@ fn v1_clone_impl_seed_for_item(
 }
 
 fn v1_clone_impl_required_type_params(
-  type_decl_items: Map<String, v1.std.core.Node>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
-) -> Map<String, Set<String>> {
+  type_decl_items: std.types.Map<String, v1.std.core.Node>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
+) -> std.types.Map<String, std.types.Set<String>> {
   let generic_type_names = v1_generic_declared_type_names(type_decl_items: type_decl_items)
   let seeded = generic_type_names |> fold(init: CloneBoundRound { bounds: empty_map(), added: 0 }, f: (acc, type_name) =>
     match map_get(type_decl_items, type_name) {
@@ -1556,9 +1573,9 @@ fn v1_clone_impl_required_type_params(
 
 fn v1_item_clone_bounded_param_names(
   item_name: String,
-  generic_param_names: List<String>,
-  bounds: Map<String, Set<String>>
-) -> List<String> {
+  generic_param_names: std.types.List<String>,
+  bounds: std.types.Map<String, std.types.Set<String>>
+) -> std.types.List<String> {
   match map_get(bounds, item_name) {
     Present { value: s } => generic_param_names |> filter(g => set_contains(s, g))
     Absent => []
@@ -1566,9 +1583,9 @@ fn v1_item_clone_bounded_param_names(
 }
 
 fn v1_emit_type_params_with_clone_bounds(
-  params: List<v1.std.core.Node>,
-  clone_param_names: List<String>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  params: std.types.List<v1.std.core.Node>,
+  clone_param_names: std.types.List<String>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> String {
   if params |> count == 0 { "" }
   else {
@@ -1588,12 +1605,12 @@ fn v1_emit_type_params_with_clone_bounds(
 fn v1_emit_struct_from_capability_table(
   module_path: String,
   name: String,
-  children: List<v1.std.core.Node>,
-  shared_types: Set<String>,
+  children: std.types.List<v1.std.core.Node>,
+  shared_types: std.types.Set<String>,
   has_fn_fields: Bool,
   map_key_required: Bool,
-  generic_param_names: List<String>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>,
+  generic_param_names: std.types.List<String>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>,
   carrier_param_needs_clone: Bool
 ) -> StructCapabilityEmit {
   let field_type_exprs = children |> map(f => v1.compiler.infer_types.child_type_node(ch: f))
@@ -1641,16 +1658,16 @@ fn v1_emit_struct_from_capability_table(
   }
 }
 
-fn v1_enum_variant_field_type_exprs(children: List<v1.std.core.Node>) -> List<v1.std.core.Node> {
+fn v1_enum_variant_field_type_exprs(children: std.types.List<v1.std.core.Node>) -> std.types.List<v1.std.core.Node> {
   children |> flat_map(variant => variant.children |> map(f => v1.compiler.infer_types.child_type_node(ch: f)))
 }
 
 fn v1_emit_enum_supplemental_impls(
   module_path: String,
   name: String,
-  children: List<v1.std.core.Node>,
-  generic_param_names: List<String>,
-  source_indices: Map<String, v1.std.core.NewlineIndex>
+  children: std.types.List<v1.std.core.Node>,
+  generic_param_names: std.types.List<String>,
+  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> String {
   let field_type_exprs = v1_enum_variant_field_type_exprs(children: children)
   let fm_params = v1_freemonoid_element_params(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs, source_indices: source_indices)
