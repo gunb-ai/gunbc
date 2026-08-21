@@ -8,20 +8,72 @@ import gunbc.fleet_multi_principal_probe {
   SparkConvergeTargetAllObserveOnly,
   SparkConvergeTargetRefused,
 }
-import gunbc.membership_reconcile { MemberChanged }
+import gunbc.membership_reconcile { MemberChanged, MemberAdded }
 import gunbc.fleet_converge_plan {
   FleetConvergePlanArtifact,
+  FleetConvergeSparkServingTypedAction,
+  PlannedEffectExecution,
+  PlannedRemoteStep,
+  fleet_converge_spark_serving_typed_actions_wire,
   fleet_converge_plan_artifact_hash,
   fleet_converge_plan_artifact_bundle_admits,
   fleet_converge_plan_spark_typed_actions_consistency_admits,
 }
-import gunbc.spark_serving_converge_plan {
+import gunbc.spark.serving_execution_schedule {
+  scheduled_rows_empty,
+  scheduled_rows_list,
+}
+import gunbc.spark.serving_converge_plan {
   spark_serving_fleet_converge_plan_artifact,
+  SparkServingPlanArtifactReady,
+  SparkServingPlanArtifactRefused,
   spark_serving_linger_slice_noop_when_converged,
   spark_serving_linger_membership_plan,
   spark_serving_frozen_linger_effect,
 }
-import gunbc.spark_serving_converge_slice_wet {
+import gunbc.spark.serving_release {
+  SparkServingRelease,
+}
+import gunbc.spark.serving_desired {
+  SparkServingDesiredAdmitted,
+  SparkServingDesiredRefused,
+  spark_serving_desired_admission,
+}
+import std.content_hash { serialize_content_hash }
+import gunbc.ollama_runtime_bundle {
+  ModelStoreComplete,
+  RuntimeMaterializationComplete,
+  RuntimeMaterializationIncomplete,
+  RuntimeMaterializationAbsent,
+  RuntimeMaterializationObservationRefused,
+  RuntimeExecutableMissing,
+  ollama_runtime_materialization_identity_for_required_release,
+}
+import gunbc.spark.serving_membership {
+  spark_serving_user_unit_state_digest,
+  spark_serving_member,
+  spark_serving_member_key,
+  spark_serving_serving_principal,
+  SparkServingUserUnitAddress,
+}
+import gunbc.ownership { Owned }
+import gunbc.remote_operation { RemoteOperation, RemoteArgv }
+import std.types { List }
+import gunbc.spark.serving_observed_members {
+  SparkServingObservedMemberProjection,
+  SparkServingUnitManagerState,
+  UserUnitManagerEnabled,
+  UnitActivityRunning,
+  UserUnitManagerDisabled,
+  UserUnitManagerNotRegistered,
+  UserUnitManagerUnobserved,
+  UserUnitStateObserved,
+  LingerObservedEnabled,
+  LingerObservedDisabled,
+  spark_serving_observed_members,
+}
+import product.placement_supply { HostIdentity }
+import gunbc.spark.serving_converge_slice_wet {
   render_observed_linger,
   spark_serving_slice_verdict_is_converged,
   spark_serving_slice_verdict_noop_converged,
@@ -32,24 +84,25 @@ import gunbc.spark_serving_converge_slice_wet {
   LingerObserved,
   LingerUnobserved,
 }
-import gunbc.spark_serving_converge_apply {
+import gunbc.spark.serving_converge_apply {
   spark_serving_apply_reads_frozen_typed_rows,
   SparkServingFrozenApplied,
   SparkServingFrozenApplyRefused,
 }
-import gunbc.spark_serving_converge_realize {
+import gunbc.spark.serving_converge_realize {
   spark_serving_enable_linger_remote_argv,
   spark_serving_enable_linger_argv_matches_expected,
   realize_spark_serving_install_effect_commands,
   spark_serving_reload_user_manager_remote_argv,
   spark_serving_enable_user_unit_remote_argv,
+  spark_serving_start_user_unit_remote_argv,
   SparkServingInstallRemoteCommandsPresent,
   SparkServingInstallRemoteCommandsRefused,
 }
 import gunbc.remote_operation { remote_operations_argv_only, remote_operation_count }
-import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
-import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
-import gunbc.spark_serving_realization { EnableLingerForOwnAccount, ReloadUserManager, EnableUserUnit, PullModelArtifact }
+import gunbc.spark.serving_desired { spark_serving_automation_principal_login }
+import gunbc.spark.serving_unit_identity { spark_serving_unit_name }
+import gunbc.spark.serving_realization { EnableLingerForOwnAccount, ReloadUserManager, EnableUserUnit, RunContainerAsOwnUser }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -75,9 +128,9 @@ test fn linger_slice_enable_linger_remote_argv_is_portable_word_list() -> Bool {
   match spark_serving_enable_linger_remote_argv(
     login: spark_serving_automation_principal_login(),
   ) {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operations_argv_only(operations: ops).length() == 1
-        && spark_serving_enable_linger_argv_matches_expected(argv: remote_operations_argv_only(operations: ops).first())
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      remote_operations_argv_only(operations: map(sts, st => st.operation)).length() == 1
+        && spark_serving_enable_linger_argv_matches_expected(argv: remote_operations_argv_only(operations: map(sts, st => st.operation)).first())
     _ => false
   }
 }
@@ -93,10 +146,10 @@ test fn two_install_effects_realize_as_two_commands_not_one_fused_argv() -> Bool
     effects: [EnableLingerForOwnAccount, EnableLingerForOwnAccount],
     executor_login: spark_serving_automation_principal_login(),
   ) {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operations_argv_only(operations: ops).length() == 2
-        && remote_operations_argv_only(operations: ops).first().length() == 5
-        && spark_serving_enable_linger_argv_matches_expected(argv: remote_operations_argv_only(operations: ops).first())
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      remote_operations_argv_only(operations: map(sts, st => st.operation)).length() == 2
+        && remote_operations_argv_only(operations: map(sts, st => st.operation)).first().length() == 5
+        && spark_serving_enable_linger_argv_matches_expected(argv: remote_operations_argv_only(operations: map(sts, st => st.operation)).first())
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
@@ -106,34 +159,64 @@ test fn a_single_effect_still_realizes_to_exactly_one_command() -> Bool {
     effects: [EnableLingerForOwnAccount],
     executor_login: spark_serving_automation_principal_login(),
   ) {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operations_argv_only(operations: ops).length() == 1
-        && spark_serving_enable_linger_argv_matches_expected(argv: remote_operations_argv_only(operations: ops).first())
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      remote_operations_argv_only(operations: map(sts, st => st.operation)).length() == 1
+        && spark_serving_enable_linger_argv_matches_expected(argv: remote_operations_argv_only(operations: map(sts, st => st.operation)).first())
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
 
 test fn an_unrealized_effect_still_refuses_the_whole_sequence() -> Bool {
   match realize_spark_serving_install_effect_commands(
-    effects: [EnableLingerForOwnAccount, PullModelArtifact],
+    effects: [EnableLingerForOwnAccount, RunContainerAsOwnUser],
     executor_login: spark_serving_automation_principal_login(),
   ) {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => true
-    SparkServingInstallRemoteCommandsPresent { operations: _ } => false
+    SparkServingInstallRemoteCommandsPresent { steps: _ } => false
   }
 }
 
+// THE PLAN NOW TAKES AN OBSERVATION, NOT A LINGER BOOL. These three claims are about the LINGER
+// member specifically, so everything else in the observation is pinned to exactly desired and only
+// linger varies -- which is what keeps them claims about linger rather than about the widening.
+fn slice_release() -> SparkServingRelease? {
+  match spark_serving_desired_admission {
+    SparkServingDesiredAdmitted { serving_release: r } => Present { value: r }
+    SparkServingDesiredRefused { cause: _ } => none
+  }
+}
+
+fn slice_projection_linger(r: SparkServingRelease, linger_enabled: Bool) -> SparkServingObservedMemberProjection {
+  spark_serving_observed_members(
+    host: witness_host_srv5 as HostIdentity,
+    runtime: RuntimeMaterializationComplete {
+      identity: ollama_runtime_materialization_identity_for_required_release(),
+    },
+    store: ModelStoreComplete {
+      manifest_identity: serialize_content_hash(hash: r.model.identity) as NonEmptyStr,
+      blob_closure_count: 1,
+    },
+    unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+    enablement: UserUnitManagerEnabled,
+    activity: UnitActivityRunning,
+    linger: if linger_enabled { LingerObservedEnabled } else { LingerObservedDisabled },
+  )
+}
+
 test fn linger_slice_freezes_enable_linger_typed_row() -> Bool {
+  match slice_release() {
+    Absent => false
+    Present { value: rel } =>
   match spark_serving_fleet_converge_plan_artifact(
     host: witness_host_srv5,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [],
-    linger_enabled: false,
+    projection: slice_projection_linger(r: rel, linger_enabled: false),
   ) {
-    Present { value: artifact } =>
-      length(artifact.spark_serving_typed_actions) == 1
-        && match spark_serving_frozen_linger_effect(row: artifact.spark_serving_typed_actions[0]) {
+    SparkServingPlanArtifactReady { artifact: artifact } =>
+      length(scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions)) == 1
+        && match spark_serving_frozen_linger_effect(row: scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions)[0]) {
           Present { value: e } => e == EnableLingerForOwnAccount
           Absent => false
         }
@@ -142,32 +225,40 @@ test fn linger_slice_freezes_enable_linger_typed_row() -> Bool {
           pattern: "# spark-serving-typed-actions:",
         )
         && !string_contains(s: artifact.apply_shell, pattern: "loginctl")
-    Absent => false
+    SparkServingPlanArtifactRefused { cause: _ } => false
+  }
   }
 }
 
 test fn linger_slice_converged_plan_has_empty_typed_rows() -> Bool {
+  match slice_release() {
+    Absent => false
+    Present { value: rel } =>
   match spark_serving_fleet_converge_plan_artifact(
     host: witness_host_srv5,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [],
-    linger_enabled: true,
+    projection: slice_projection_linger(r: rel, linger_enabled: true),
   ) {
-    Present { value: artifact } => length(artifact.spark_serving_typed_actions) == 0
-    Absent => false
+    SparkServingPlanArtifactReady { artifact: artifact } => length(scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions)) == 0
+    SparkServingPlanArtifactRefused { cause: _ } => false
+  }
   }
 }
 
 test fn linger_slice_bundle_refuses_smuggled_v1_without_typed_rows() -> Bool {
+  match slice_release() {
+    Absent => false
+    Present { value: rel } =>
   match spark_serving_fleet_converge_plan_artifact(
     host: witness_host_srv5,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [],
-    linger_enabled: false,
+    projection: slice_projection_linger(r: rel, linger_enabled: false),
   ) {
-    Present { value: artifact } =>
+    SparkServingPlanArtifactReady { artifact: artifact } =>
       match fleet_converge_plan_artifact_hash(artifact: artifact) {
         Present { value: hex } =>
           !fleet_converge_plan_artifact_bundle_admits(
@@ -178,84 +269,97 @@ test fn linger_slice_bundle_refuses_smuggled_v1_without_typed_rows() -> Bool {
               observed_baseline_hex: artifact.observed_baseline_hex,
               plan_body: artifact.plan_body,
               apply_shell: artifact.apply_shell,
-              spark_serving_typed_actions: [],
+              spark_serving_typed_actions: scheduled_rows_empty(),
             },
             claimed_hex: hex as String,
           )
         Absent => false
       }
-    Absent => false
+    SparkServingPlanArtifactRefused { cause: _ } => false
+  }
   }
 }
 
 test fn linger_slice_apply_reads_frozen_rows_as_typed_argv_when_drift() -> Bool {
+  match slice_release() {
+    Absent => false
+    Present { value: rel } =>
   match spark_serving_fleet_converge_plan_artifact(
     host: witness_host_srv5,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [],
-    linger_enabled: false,
+    projection: slice_projection_linger(r: rel, linger_enabled: false),
   ) {
-    Present { value: artifact } =>
+    SparkServingPlanArtifactReady { artifact: artifact } =>
       match fleet_converge_plan_artifact_hash(artifact: artifact) {
         Present { value: hex } =>
           match spark_serving_apply_reads_frozen_typed_rows(
             artifact: artifact,
             claimed_bundle_hex: hex as String,
           ) {
-            SparkServingFrozenApplied { remote_operations: ops, effect_count: n } =>
+            SparkServingFrozenApplied { remote_steps: sts, effect_count: n } =>
               n == 1
-                && remote_operations_argv_only(operations: ops).length() == 1
+                && remote_operations_argv_only(operations: map(sts, st => st.operation)).length() == 1
                 && spark_serving_enable_linger_argv_matches_expected(
-                  argv: remote_operations_argv_only(operations: ops).first(),
+                  argv: remote_operations_argv_only(operations: map(sts, st => st.operation)).first(),
                 )
             SparkServingFrozenApplyRefused { reason: _ } => false
           }
         Absent => false
       }
-    Absent => false
+    SparkServingPlanArtifactRefused { cause: _ } => false
+  }
   }
 }
 
 test fn linger_slice_apply_noop_when_converged() -> Bool {
+  match slice_release() {
+    Absent => false
+    Present { value: rel } =>
   match spark_serving_fleet_converge_plan_artifact(
     host: witness_host_srv5,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [],
-    linger_enabled: true,
+    projection: slice_projection_linger(r: rel, linger_enabled: true),
   ) {
-    Present { value: artifact } =>
+    SparkServingPlanArtifactReady { artifact: artifact } =>
       match fleet_converge_plan_artifact_hash(artifact: artifact) {
         Present { value: hex } =>
           match spark_serving_apply_reads_frozen_typed_rows(
             artifact: artifact,
             claimed_bundle_hex: hex as String,
           ) {
-            SparkServingFrozenApplied { remote_operations: ops, effect_count: n } =>
-              n == 0 && remote_operation_count(operations: ops) == 0
+            SparkServingFrozenApplied { remote_steps: sts, effect_count: n } =>
+              n == 0 && remote_operation_count(operations: map(sts, st => st.operation)) == 0
             SparkServingFrozenApplyRefused { reason: _ } => false
           }
         Absent => false
       }
-    Absent => false
+    SparkServingPlanArtifactRefused { cause: _ } => false
+  }
   }
 }
 
 test fn linger_slice_consistency_wall_requires_body_marker() -> Bool {
+  match slice_release() {
+    Absent => false
+    Present { value: rel } =>
   match spark_serving_fleet_converge_plan_artifact(
     host: witness_host_srv5,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [],
-    linger_enabled: false,
+    projection: slice_projection_linger(r: rel, linger_enabled: false),
   ) {
-    Present { value: artifact } =>
+    SparkServingPlanArtifactReady { artifact: artifact } =>
       fleet_converge_plan_spark_typed_actions_consistency_admits(
         plan_body: artifact.plan_body,
         spark_serving_typed_actions: artifact.spark_serving_typed_actions,
       )
-    Absent => false
+    SparkServingPlanArtifactRefused { cause: _ } => false
+  }
   }
 }
 
@@ -329,6 +433,35 @@ test fn slice_verdict_classifier_admits_exactly_the_two_converged_verdicts() -> 
     && spark_serving_slice_verdict_is_converged(verdict: spark_serving_slice_verdict_applied_converged)
 }
 
+// THE APPLIED VERDICT NOW CARRIES ITS SERVING EVIDENCE, and the classifier admits it WITH that
+// suffix. Left as an equality the classifier would have called a healthy host unconverged the moment
+// the verdict gained evidence -- an inversion at the boundary the exit status is read from, and one
+// that would have looked like a serving failure rather than a string comparison.
+test fn the_converged_verdict_is_admitted_with_its_serving_evidence() -> Bool {
+  spark_serving_slice_verdict_is_converged(
+    verdict: join([spark_serving_slice_verdict_applied_converged, " serving-converged version=0.32.9 model=gpt-oss:20b"], ""),
+  )
+    && spark_serving_slice_verdict_is_converged(
+         verdict: join([spark_serving_slice_verdict_noop_converged, " serving-converged version=0.32.9 model=gpt-oss:20b"], ""),
+       )
+}
+
+// AND A HOST THAT RECONCILES BUT CANNOT SERVE IS NOT CONVERGED. This is the whole point of splitting
+// the verdict: the resources matched, so every membership check says yes, and the server answers
+// nothing. It must not reach the converged classification, and it must not do so by accident of
+// string prefixes either -- the unhealthy verdict deliberately shares no prefix with the healthy one.
+test fn a_resource_converged_but_unhealthy_host_is_not_converged() -> Bool {
+  !spark_serving_slice_verdict_is_converged(
+    verdict: join([spark_serving_slice_verdict_applied_converged, "-but-resources-converged-but-serving-unhealthy generation-incomplete"], ""),
+  )
+    && !spark_serving_slice_verdict_is_converged(
+         verdict: join([spark_serving_slice_verdict_noop_converged, "-but-resources-converged-but-serving-unhealthy generation-incomplete"], ""),
+       )
+    && !spark_serving_slice_verdict_is_converged(
+         verdict: join([spark_serving_slice_verdict_noop_converged, "-but-serving-health-unobserved generation probe produced no output"], ""),
+       )
+}
+
 test fn slice_verdict_classifier_rejects_every_refusal_and_failure_shape() -> Bool {
   !spark_serving_slice_verdict_is_converged(verdict: "observation-refused probe-did-not-run")
     && !spark_serving_slice_verdict_is_converged(verdict: "plan-refused")
@@ -370,24 +503,52 @@ test fn slice_host_report_carries_converged_as_data_matching_its_verdict() -> Bo
 // effect does not call for, so absence of sudo is asserted rather than assumed.
 test fn reload_user_manager_is_user_scope_and_carries_no_sudo() -> Bool {
   match spark_serving_reload_user_manager_remote_argv() {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operations_argv_only(operations: ops).length() == 1
-        && join(remote_operations_argv_only(operations: ops).first(), "\0") == join(["systemctl", "--user", "daemon-reload"], "\0")
-        && !any(remote_operations_argv_only(operations: ops).first(), w => w == "sudo")
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      remote_operations_argv_only(operations: map(sts, st => st.operation)).length() == 1
+        && join(remote_operations_argv_only(operations: map(sts, st => st.operation)).first(), "\0") == join(["systemctl", "--user", "daemon-reload"], "\0")
+        && !any(remote_operations_argv_only(operations: map(sts, st => st.operation)).first(), w => w == "sudo")
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
 
-// The unit name is asserted against gunbc.spark_serving_unit_identity, NOT against a literal
+// The unit name is asserted against gunbc.spark.serving_unit_identity, NOT against a literal
 // repeated here. A literal would pass while the enabled unit and the observed unit drifted apart,
 // which is the single-authority failure this grounding exists to prevent.
 test fn enable_user_unit_targets_the_unit_identity_authority() -> Bool {
   match spark_serving_enable_user_unit_remote_argv() {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operations_argv_only(operations: ops).length() == 1
-        && join(remote_operations_argv_only(operations: ops).first(), "\0")
-          == join(["systemctl", "--user", "enable", "--now", spark_serving_unit_name], "\0")
-        && !any(remote_operations_argv_only(operations: ops).first(), w => w == "sudo")
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      remote_operations_argv_only(operations: map(sts, st => st.operation)).length() == 1
+        && join(remote_operations_argv_only(operations: map(sts, st => st.operation)).first(), "\0")
+          == join(["systemctl", "--user", "enable", spark_serving_unit_name], "\0")
+        && !any(remote_operations_argv_only(operations: map(sts, st => st.operation)).first(), w => w == "sudo")
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+  }
+}
+
+// ENABLE DOES NOT START, AND THIS IS THE CLAIM THAT KEEPS IT THAT WAY.
+//
+// The install used `enable --now`, which applies two remedies under one word: persistence and
+// activity. That made an enabled-but-dead unit indistinguishable from a converged one at the
+// membership layer, because the enablement member was the only place either fact could be recorded.
+// A `--now` reintroduced anywhere fails here.
+test fn enable_user_unit_does_not_also_start_the_unit() -> Bool {
+  match spark_serving_enable_user_unit_remote_argv() {
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      !any(remote_operations_argv_only(operations: map(sts, st => st.operation)).first(), w => w == "--now")
+        && !any(remote_operations_argv_only(operations: map(sts, st => st.operation)).first(), w => w == "start")
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+  }
+}
+
+// The other half: starting is its own operation against the same unit identity authority, so the
+// two remedies exist separately rather than the activity one having been dropped.
+test fn start_user_unit_is_its_own_operation_on_the_unit_identity() -> Bool {
+  match spark_serving_start_user_unit_remote_argv() {
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      remote_operations_argv_only(operations: map(sts, st => st.operation)).length() == 1
+        && join(remote_operations_argv_only(operations: map(sts, st => st.operation)).first(), "\0")
+          == join(["systemctl", "--user", "start", spark_serving_unit_name], "\0")
+        && !any(remote_operations_argv_only(operations: map(sts, st => st.operation)).first(), w => w == "sudo")
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }
@@ -400,11 +561,101 @@ test fn realized_sequence_preserves_frozen_effect_order() -> Bool {
     effects: [ReloadUserManager, EnableUserUnit],
     executor_login: spark_serving_automation_principal_login(),
   ) {
-    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-      remote_operations_argv_only(operations: ops).length() == 2
-        && join(remote_operations_argv_only(operations: ops)[0], "\0") == join(["systemctl", "--user", "daemon-reload"], "\0")
-        && join(remote_operations_argv_only(operations: ops)[1], "\0")
-          == join(["systemctl", "--user", "enable", "--now", spark_serving_unit_name], "\0")
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      remote_operations_argv_only(operations: map(sts, st => st.operation)).length() == 2
+        && join(remote_operations_argv_only(operations: map(sts, st => st.operation))[0], "\0") == join(["systemctl", "--user", "daemon-reload"], "\0")
+        && join(remote_operations_argv_only(operations: map(sts, st => st.operation))[1], "\0")
+          == join(["systemctl", "--user", "enable", spark_serving_unit_name], "\0")
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
+}
+
+// ── Tamper controls: what the approved artifact hash actually discriminates ──────────────────────
+
+fn tamper_row(state: NonEmptyStr, ops: List<RemoteOperation>) -> FleetConvergeSparkServingTypedAction {
+  FleetConvergeSparkServingTypedAction {
+    action: MemberAdded {
+      at: spark_serving_member_key(
+        member: spark_serving_member(
+          host: witness_host_srv5 as HostIdentity,
+          principal: spark_serving_serving_principal(),
+          address: SparkServingUserUnitAddress,
+          state_digest: state,
+          ownership: Owned,
+        ),
+      ),
+      to: spark_serving_member(
+        host: witness_host_srv5 as HostIdentity,
+        principal: spark_serving_serving_principal(),
+        address: SparkServingUserUnitAddress,
+        state_digest: state,
+        ownership: Owned,
+      ),
+    },
+    first_execution: PlannedEffectExecution {
+      effect: EnableLingerForOwnAccount,
+      first_step: PlannedRemoteStep {
+        identity: "tamper-head" as NonEmptyStr,
+        operation: match ops.first() {
+          Present { value: h } => h
+          Absent => RemoteArgv { argv: ["unreachable-empty-tamper-fixture"] }
+        },
+      },
+      further_steps: map(
+        ops.skip(n: 1),
+        op => PlannedRemoteStep { identity: "tamper-tail" as NonEmptyStr, operation: op },
+      ),
+    },
+    further_executions: [],
+  }
+}
+
+fn tamper_wire(state: NonEmptyStr, ops: List<RemoteOperation>) -> String {
+  fleet_converge_spark_serving_typed_actions_wire(rows: [tamper_row(state: state, ops: ops)])
+}
+
+data tamper_base_ops: List<RemoteOperation> = [RemoteArgv { argv: ["loginctl", "enable-linger", "a"] }]
+
+// THE APPROVAL IS OVER THE VALUES, NOT ONLY THE ADDRESS. A row whose `to` digest moved from one
+// model manifest to another used to serialize identically, because the member KEY is host x
+// principal x address by design -- so the approved artifact still admitted after exactly the drift
+// the baseline exists to catch. Key answers "which resource"; the digest answers "to what".
+test fn changing_a_member_state_digest_changes_the_wire() -> Bool {
+  tamper_wire(state: "digest-a" as NonEmptyStr, ops: tamper_base_ops)
+    != tamper_wire(state: "digest-b" as NonEmptyStr, ops: tamper_base_ops)
+}
+
+// Changing one argv word changes it.
+test fn changing_one_argv_word_changes_the_wire() -> Bool {
+  tamper_wire(state: "digest-a" as NonEmptyStr, ops: tamper_base_ops)
+    != tamper_wire(
+      state: "digest-a" as NonEmptyStr,
+      ops: [RemoteArgv { argv: ["loginctl", "enable-linger", "b"] }],
+    )
+}
+
+// REORDERING is a distinct tamper from substitution: the same two operations in the other order is
+// a different program -- writing the unit before creating its directory is precisely the bare-host
+// failure the mkdir ordering exists to prevent -- and a set-shaped wire would call them equal.
+test fn reordering_two_operations_changes_the_wire() -> Bool {
+  let a = RemoteArgv { argv: ["mkdir", "-p", "/d"] }
+  let b = RemoteArgv { argv: ["loginctl", "enable-linger", "a"] }
+  tamper_wire(state: "digest-a" as NonEmptyStr, ops: [a, b])
+    != tamper_wire(state: "digest-a" as NonEmptyStr, ops: [b, a])
+}
+
+// And DROPPING an operation changes it, so a row cannot be quietly emptied while keeping its effects.
+test fn dropping_an_operation_changes_the_wire() -> Bool {
+  let a = RemoteArgv { argv: ["mkdir", "-p", "/d"] }
+  let b = RemoteArgv { argv: ["loginctl", "enable-linger", "a"] }
+  tamper_wire(state: "digest-a" as NonEmptyStr, ops: [a, b])
+    != tamper_wire(state: "digest-a" as NonEmptyStr, ops: [a])
+}
+
+// THE POSITIVE CONTROL. Every claim above is an inequality, and inequalities are satisfied by a wire
+// that is simply nondeterministic. Two structurally identical rows must produce the SAME wire, or
+// the four claims above prove nothing about tamper detection.
+test fn two_identical_rows_produce_the_same_wire() -> Bool {
+  tamper_wire(state: "digest-a" as NonEmptyStr, ops: tamper_base_ops)
+    == tamper_wire(state: "digest-a" as NonEmptyStr, ops: tamper_base_ops)
 }

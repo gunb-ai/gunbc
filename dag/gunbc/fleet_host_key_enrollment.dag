@@ -48,7 +48,7 @@ import gunbc.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation_privk
 //     claim this arm without naming a non-empty authority: the "anchored but unnamed"
 //     state has no constructor (construction over validation, §5 — no witness restates
 //     what the carrier already forbids). The srv5/srv6 DGX Spark units are the intended
-//     inhabitant (gunbc.dgx_spark_procurement carries their cited CR1000A reservations,
+//     inhabitant (gunbc.spark.dgx_procurement carries their cited CR1000A reservations,
 //     and the slot->box assignment IS decided — dgx_spark_router_binding_operator_allocation,
 //     SPARK-ALLOC-LAND-0 2026-08-07, ascending address order: srv5->192.168.1.222,
 //     srv6->192.168.1.223). They stay ScannedFirstContact here NOT because the binding is

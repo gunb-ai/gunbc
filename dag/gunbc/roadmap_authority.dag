@@ -2159,7 +2159,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_HYV4E84MRC1MJ73EDJZYXP89S8",
       id: "fleet-spark-host-enrollment",
       owner: "fleet",
-      path: "dag/gunbc/dgx_spark_procurement.dag",
+      path: "dag/gunbc/spark/dgx_procurement.dag",
       t: fields(
         headline: "Turn the two Spark machines from hand-managed boxes into exact fleet members",
         boundary: "srv5 and srv6 become fleet members: enrollment intents carrying InferenceServingParticipation, with endpoint rows derived downstream from the assigned reservation rows — re-typing the address literal refuses, a reverse import into the network intent refuses, and the join is a projection between the two existing authorities, never a second host-identity authority. Enrollment constructs their four required lifecycle cells — identity converge, reach, compute-fabric enrolment, assimilation complete — and every cell stays honestly Unobserved until an observation producer answers it. Enrolled is not converged: no identity convergence, reach satisfaction, capacity acceptance, or serving claim lives here.",
@@ -2174,7 +2174,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_3JQZN7WVPD1KXCB0RTMG84LHY6",
       id: "fleet-spark-inference-serving",
       owner: "fleet",
-      path: "dag/gunbc/dgx_spark_procurement.dag",
+      path: "dag/gunbc/spark/dgx_procurement.dag",
       t: fields(
         headline: "Bring the two new machines up as model-serving members, through the same path as everything else",
         boundary: "Both new machines join through the same standing-up sequence every other machine uses, reach a stated model and runtime, and serve requests on an endpoint. Which model is actually being served, and whether the endpoint is healthy, are read back independently, and each machine stays separately observable. They serve models — they are not job runners and not build caches.",
