@@ -169,7 +169,7 @@ type EatResult
   | EatUnchanged { tokens: TokenStream }
 
 type TokenResult { token: v1.std.core.Token, tokens: TokenStream, err: v1.std.core.ErrorNode? }
-type NameResult { name: String, span: SourceSpan, tokens: TokenStream, err: v1.std.core.ErrorNode? }
+type NameResult { name: String, span: std.types.SourceSpan, tokens: TokenStream, err: v1.std.core.ErrorNode? }
 type ExprResult { expr: v1.std.core.Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
 type ItemResult { item: v1.std.core.Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
 type TypeResult { type_expr: v1.std.core.Node, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
@@ -191,7 +191,7 @@ type ResUseResult { resource_use: v1.std.core.Node, tokens: TokenStream, ctx: Pa
 
 type ItemPrefixResult {
   name: String
-  name_span: SourceSpan
+  name_span: std.types.SourceSpan
   type_params: List<v1.std.core.Node>
   params: List<v1.std.core.Node>
   inferred: v1.std.core.InferredNode?
@@ -241,7 +241,7 @@ type ArmsResult { arms: List<v1.std.core.Node>, tokens: TokenStream, ctx: ParseC
 type ModsResult { modifiers: List<v1.std.core.OperationModifier>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
 type BindingsResult { field_bindings: List<v1.std.core.Node>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
 
-fn parse_recovery_expr(span: SourceSpan, message: String) -> v1.std.core.Node {
+fn parse_recovery_expr(span: std.types.SourceSpan, message: String) -> v1.std.core.Node {
   v1.std.core.make_expr_error_node(kind: v1.std.core.ParseRecoveryError, message: message, span: span)
 }
 
@@ -257,7 +257,7 @@ type GuardResult { guard: v1.std.core.Node?, tokens: TokenStream, ctx: ParseCont
 type FromKeyResult { from_key: String?, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
 
 type PostfixResult { expr: v1.std.core.Node, changed: Bool, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
-type ParserParam { name: String, span: SourceSpan }
+type ParserParam { name: String, span: std.types.SourceSpan }
 type LambdaCheckResult { is_lambda: Bool, params: List<ParserParam>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
 type IdentCollectResult { success: Bool, params: List<ParserParam>, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
 type RangeArgsResult { min_val: Int?, max_val: Int?, tokens: TokenStream, ctx: ParseContext, err: v1.std.core.ErrorNode? }
@@ -299,7 +299,7 @@ type ParserResultWitness
 
 type DescResult { desc: String?, tokens: TokenStream }
 
-fn token_span(tok: v1.std.core.Token?) -> SourceSpan {
+fn token_span(tok: v1.std.core.Token?) -> std.types.SourceSpan {
   match tok { Present { value: t } => t.span  Absent => v1.std.core.no_span() }
 }
 
@@ -310,7 +310,7 @@ fn advance(tokens: TokenStream) -> AdvanceResult {
   }
 }
 
-fn parse_error(msg: String, span: SourceSpan) -> v1.std.core.ErrorNode {
+fn parse_error(msg: String, span: std.types.SourceSpan) -> v1.std.core.ErrorNode {
   v1.std.core.make_error_node(diagnostic: v1.std.core.ParseError { message: msg, span: span }, module_name: "")
 }
 
@@ -495,7 +495,7 @@ fn tok_is_pipe_arrow(tok: v1.std.core.Token?) -> Bool {
 fn tok_is_question(tok: v1.std.core.Token?) -> Bool {
   match tok { Present { value: t } => is_question_shape(shape: t.shape)  Absent => false }
 }
-fn tok_span(tok: v1.std.core.Token?) -> SourceSpan {
+fn tok_span(tok: v1.std.core.Token?) -> std.types.SourceSpan {
   match tok { Present { value: t } => t.span  Absent => v1.std.core.no_span() }
 }
 fn tok_keyword_to_name(tok: v1.std.core.Token?) -> String? {
@@ -858,11 +858,11 @@ fn parser_result_witness(expr: v1.std.core.Node, source_indices: Map<String, v1.
   }
 }
 
-fn leaf_type_node(name: String, span: SourceSpan) -> v1.std.core.Node {
+fn leaf_type_node(name: String, span: std.types.SourceSpan) -> v1.std.core.Node {
   v1.std.core.Node { name: name, span: span, ident_span: if name == "" { none } else { Present { value: span } }, children: [], connective: v1.std.core.NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
 }
 
-fn literal_width_nat_type_node(value: Int, span: SourceSpan) -> v1.std.core.Node {
+fn literal_width_nat_type_node(value: Int, span: std.types.SourceSpan) -> v1.std.core.Node {
   v1.std.core.Node { name: "", span: span, ident_span: none, children: [], connective: v1.std.core.NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.ExprLiteral { value: std.syntax.LitInt { value: value } } }
 }
 
@@ -915,12 +915,12 @@ fn parse_dotted_ident(tokens: TokenStream) -> NameResult {
   parse_dotted_ident_rest(tokens: r.tokens, acc: r.name, span: r.span)
 }
 
-fn parse_dotted_ident_rest(tokens: TokenStream, acc: String, span: SourceSpan) -> NameResult {
+fn parse_dotted_ident_rest(tokens: TokenStream, acc: String, span: std.types.SourceSpan) -> NameResult {
   match eat(tokens: tokens, expected: ExpectDot) {
   EatConsumed { token: _, tokens: __ec } =>
     let r = expect_name(tokens: __ec)
     if has_err(err: r.err) { return r }
-    let extended = SourceSpan { file: span.file, start: span.start, end: r.span.end }
+    let extended = std.types.SourceSpan { file: span.file, start: span.start, end: r.span.end }
     parse_dotted_ident_rest(tokens: r.tokens, acc: concat(acc, ".", r.name), span: extended)
   EatUnchanged { tokens: __eu } =>
     NameResult { name: acc, span: span, tokens: __eu, err: none }
@@ -1098,7 +1098,7 @@ fn parse_context_record_occurrence(
   role: ParsedOccurrenceRole,
   occurrence: std.occurrence_identity.OccurrenceId,
   containment: std.occurrence_identity.OccurrenceContainmentPath,
-  diagnostic_span: SourceSpan
+  diagnostic_span: std.types.SourceSpan
 ) -> ParseContext {
   match role {
     ParsedOccurrenceDeclaration { category: category } =>
@@ -1565,7 +1565,7 @@ fn parse_import_names(tokens: TokenStream, ctx: ParseContext) -> NamesResult {
   parse_import_names_acc(tokens: tokens, ctx: ctx, acc: [])
 }
 
-fn parsed_name_leaf(name: String, span: SourceSpan) -> v1.std.core.Node {
+fn parsed_name_leaf(name: String, span: std.types.SourceSpan) -> v1.std.core.Node {
   v1.std.core.leaf_node_with_span(name: name, span: span)
 }
 
@@ -1712,7 +1712,7 @@ fn variant_to_child_node(variant: v1.std.core.Node, source_indices: Map<String, 
     type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
 }
 
-fn outputs_to_inferred(outputs: List<v1.std.core.Node>, span: SourceSpan, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.InferredNode? {
+fn outputs_to_inferred(outputs: List<v1.std.core.Node>, span: std.types.SourceSpan, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.InferredNode? {
   if outputs |> count > 0 {
     Present { value: v1.std.core.Resolved { node: v1.std.core.Node { name: "", span: span, ident_span: none, children: map(outputs, f => field_to_child_node(field: f, source_indices: source_indices)), connective: v1.std.core.Conj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData } } }
   } else {
@@ -1720,7 +1720,7 @@ fn outputs_to_inferred(outputs: List<v1.std.core.Node>, span: SourceSpan, source
   }
 }
 
-fn make_operation_node(name: String, ident_span: SourceSpan?, inputs: List<v1.std.core.Node>, outputs: List<v1.std.core.Node>, response_props: List<v1.std.core.Node>, mock_props: List<v1.std.core.Node>, exit_props: List<v1.std.core.Node>, modifier_props: List<v1.std.core.Node>, transport: v1.std.core.Node?, span: SourceSpan, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.Node {
+fn make_operation_node(name: String, ident_span: std.types.SourceSpan?, inputs: List<v1.std.core.Node>, outputs: List<v1.std.core.Node>, response_props: List<v1.std.core.Node>, mock_props: List<v1.std.core.Node>, exit_props: List<v1.std.core.Node>, modifier_props: List<v1.std.core.Node>, transport: v1.std.core.Node?, span: std.types.SourceSpan, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.Node {
   let all_props = concat(modifier_props, response_props, exit_props, mock_props)
   v1.std.core.Node { name: name, span: span, ident_span: ident_span,
     children: [],
@@ -1735,7 +1735,7 @@ fn make_operation_node(name: String, ident_span: SourceSpan?, inputs: List<v1.st
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
 }
 
-fn make_capability_node(name: String, ident_span: SourceSpan?, inputs: List<v1.std.core.Node>, outputs: List<v1.std.core.Node>, span: SourceSpan, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.Node {
+fn make_capability_node(name: String, ident_span: std.types.SourceSpan?, inputs: List<v1.std.core.Node>, outputs: List<v1.std.core.Node>, span: std.types.SourceSpan, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.Node {
   v1.std.core.Node { name: name, span: span, ident_span: ident_span,
     children: [],
     params: inputs |> map(f => v1.std.core.make_param_node(
@@ -1757,7 +1757,7 @@ fn parse_type_def(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
   parse_type_after_kw(tokens: r.tokens, ctx: ctx, start_span: start_span)
 }
 
-fn parse_type_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceSpan) -> ItemResult {
+fn parse_type_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: std.types.SourceSpan) -> ItemResult {
   let dummy = v1.std.core.Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, connective: v1.std.core.NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
 
   let r = expect_ident(tokens: tokens)
@@ -1798,7 +1798,7 @@ fn parse_type_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sourc
   }
 }
 
-fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
+fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: std.types.SourceSpan) -> ItemResult {
   let name = prefix.name
   let name_span = prefix.name_span
   let type_params = prefix.type_params
@@ -1832,7 +1832,7 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
   }
 }
 
-fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String, name_span: SourceSpan, start_span: SourceSpan, type_params: List<v1.std.core.Node>) -> ItemResult {
+fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String, name_span: std.types.SourceSpan, start_span: std.types.SourceSpan, type_params: List<v1.std.core.Node>) -> ItemResult {
   let dummy = v1.std.core.Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: type_params, inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, connective: v1.std.core.NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
 
   match eat(tokens: tokens, expected: ExpectPipe) {
@@ -1887,7 +1887,7 @@ fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String
   }
 }
 
-fn try_where_clause(tokens: TokenStream, ctx: ParseContext, base_te: v1.std.core.Node, start_span: SourceSpan) -> TypeResult {
+fn try_where_clause(tokens: TokenStream, ctx: ParseContext, base_te: v1.std.core.Node, start_span: std.types.SourceSpan) -> TypeResult {
   if tok_is_keyword(tok: token_stream_first(stream: tokens), kw: "where") {
     match advance(tokens: tokens) {
       AdvanceOk { token: _, tokens: rest } =>
@@ -2050,7 +2050,7 @@ fn parse_positional_variant_type_fields(tokens: TokenStream, ctx: ParseContext) 
   }
 }
 
-fn parse_variant_fields(tokens: TokenStream, ctx: ParseContext, vname: String, vname_span: SourceSpan) -> VariantResult {
+fn parse_variant_fields(tokens: TokenStream, ctx: ParseContext, vname: String, vname_span: std.types.SourceSpan) -> VariantResult {
   let start_span = token_span(tok: token_stream_first(stream: tokens))
   match eat(tokens: tokens, expected: ExpectLBrace) {
   EatConsumed { token: _, tokens: __ec } =>
@@ -2134,7 +2134,7 @@ fn parse_type_expr(tokens: TokenStream, ctx: ParseContext) -> TypeResult {
   }
 }
 
-fn parse_callable_type_expr(tokens: TokenStream, ctx: ParseContext, start_span: SourceSpan) -> TypeResult {
+fn parse_callable_type_expr(tokens: TokenStream, ctx: ParseContext, start_span: std.types.SourceSpan) -> TypeResult {
 
   let dummy_te = leaf_type_node(name: "", span: start_span)
   let r = expect(tokens: tokens, expected: ExpectLParen)
@@ -2181,7 +2181,7 @@ fn parse_callable_param_types(tokens: TokenStream, ctx: ParseContext, acc: List<
   }
 }
 
-fn finish_type_expr_from_name(tokens: TokenStream, ctx: ParseContext, type_name: String, start_span: SourceSpan) -> TypeResult {
+fn finish_type_expr_from_name(tokens: TokenStream, ctx: ParseContext, type_name: String, start_span: std.types.SourceSpan) -> TypeResult {
   let dummy_te = leaf_type_node(name: type_name, span: start_span)
   match eat(tokens: tokens, expected: ExpectLt) {
   EatConsumed { token: _, tokens: __ec } =>
@@ -2253,7 +2253,7 @@ fn collect_type_args(tokens: TokenStream, ctx: ParseContext, args: List<v1.std.c
   }
 }
 
-fn maybe_optional(tokens: TokenStream, ctx: ParseContext, te: v1.std.core.Node, start_span: SourceSpan) -> TypeResult {
+fn maybe_optional(tokens: TokenStream, ctx: ParseContext, te: v1.std.core.Node, start_span: std.types.SourceSpan) -> TypeResult {
   match eat(tokens: tokens, expected: ExpectQuestion) {
   EatConsumed { token: _, tokens: __ec } =>
     let ote = v1.std.core.Node { name: te.name, span: te.span, ident_span: te.ident_span, children: te.children, connective: te.connective, params: te.params, inferred: te.inferred, return_cardinality: v1.std.core.CardOptional, uses: te.uses, body: te.body, transport: te.transport, properties: te.properties, type_annotation: te.type_annotation, is_self_recursive: te.is_self_recursive, has_non_tail_self_call: te.has_non_tail_self_call, match_pattern: te.match_pattern, expr_data: te.expr_data }
@@ -2363,7 +2363,7 @@ fn parse_fn_def(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
   parse_fn_after_kw(tokens: r.tokens, ctx: ctx, start_span: start_span)
 }
 
-fn parse_fn_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceSpan) -> ItemResult {
+fn parse_fn_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: std.types.SourceSpan) -> ItemResult {
   let dummy = v1.std.core.Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, connective: v1.std.core.NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
 
   let r = expect_ident(tokens: tokens)
@@ -2423,7 +2423,7 @@ fn parse_optional_admit_callers(tokens: TokenStream, ctx: ParseContext) -> Admit
   }
 }
 
-fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
+fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: std.types.SourceSpan) -> ItemResult {
   let name = prefix.name
   let name_span = prefix.name_span
   let type_params = prefix.type_params
@@ -2477,7 +2477,7 @@ fn parse_func_def(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
   parse_block_body_from_prefix(prefix: prefix, start_span: start_span)
 }
 
-fn parse_block_item_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceSpan, form: std.syntax.ItemForm) -> ItemResult {
+fn parse_block_item_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: std.types.SourceSpan, form: std.syntax.ItemForm) -> ItemResult {
   let dummy = v1.std.core.Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, connective: v1.std.core.NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
 
   let r = expect_ident(tokens: tokens)
@@ -2518,7 +2518,7 @@ fn parse_block_item_after_kw(tokens: TokenStream, ctx: ParseContext, start_span:
   ItemResult { item: item, tokens: skip_newlines(tokens: r.tokens), ctx: r.ctx, err: none }
 }
 
-fn parse_block_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
+fn parse_block_body_from_prefix(prefix: ItemPrefixResult, start_span: std.types.SourceSpan) -> ItemResult {
   let name = prefix.name
   let name_span = prefix.name_span
   let params = prefix.params
@@ -2539,7 +2539,7 @@ fn parse_block_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan
   ItemResult { item: item, tokens: skip_newlines(tokens: r.tokens), ctx: r.ctx, err: none }
 }
 
-fn parse_no_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
+fn parse_no_body_from_prefix(prefix: ItemPrefixResult, start_span: std.types.SourceSpan) -> ItemResult {
   let item = v1.std.core.Node {
     name: prefix.name, span: start_span, ident_span: Present { value: prefix.name_span }, children: [],
     params: prefix.params, inferred: prefix.inferred, return_cardinality: v1.std.core.Required, uses: prefix.uses,
@@ -2663,7 +2663,7 @@ fn parse_service_def(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
   parse_service_after_kw(tokens: r.tokens, ctx: ctx, start_span: start_span)
 }
 
-fn parse_service_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceSpan) -> ItemResult {
+fn parse_service_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: std.types.SourceSpan) -> ItemResult {
   let dummy = v1.std.core.Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, connective: v1.std.core.NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
 
   let r_ns = expect_name(tokens: tokens)
@@ -2984,7 +2984,7 @@ fn parse_operation_def(tokens: TokenStream, ctx: ParseContext) -> OpResult {
   }
 }
 
-fn parse_operation_v2_inline(tokens: TokenStream, ctx: ParseContext, name: String, name_span: SourceSpan, start_span: SourceSpan) -> OpResult {
+fn parse_operation_v2_inline(tokens: TokenStream, ctx: ParseContext, name: String, name_span: std.types.SourceSpan, start_span: std.types.SourceSpan) -> OpResult {
   let dummy_op = make_operation_node(name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span, source_indices: ctx.source_indices)
   let mods_r = parse_operation_modifiers(tokens: tokens, ctx: ctx)
   let modifiers = mods_r.modifiers
@@ -3029,7 +3029,7 @@ fn parse_operation_v2_inline(tokens: TokenStream, ctx: ParseContext, name: Strin
   OpResult { operation: op, tokens: tokens, ctx: ctx, err: none }
 }
 
-fn parse_operation_v1_body(tokens: TokenStream, ctx: ParseContext, name: String, name_span: SourceSpan, start_span: SourceSpan) -> OpResult {
+fn parse_operation_v1_body(tokens: TokenStream, ctx: ParseContext, name: String, name_span: std.types.SourceSpan, start_span: std.types.SourceSpan) -> OpResult {
   let dummy_op = make_operation_node(name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span, source_indices: ctx.source_indices)
   let r = expect(tokens: tokens, expected: ExpectLBrace)
   if has_err(err: r.err) { return OpResult { operation: dummy_op, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -3141,11 +3141,11 @@ fn parse_op_body_entries(
   }
 }
 
-fn modifier_to_prop(name: String, span: SourceSpan) -> v1.std.core.Node {
+fn modifier_to_prop(name: String, span: std.types.SourceSpan) -> v1.std.core.Node {
   v1.std.core.make_field_init_node(name: name, value: v1.std.core.make_expr_node(expr_data: v1.std.core.ExprLiteral { value: std.syntax.LitBool { value: true } }, children: [], inferred: none, span: span), span: span, name_span: span)
 }
 
-fn modifiers_to_props(modifiers: List<v1.std.core.OperationModifier>, span: SourceSpan) -> List<v1.std.core.Node> {
+fn modifiers_to_props(modifiers: List<v1.std.core.OperationModifier>, span: std.types.SourceSpan) -> List<v1.std.core.Node> {
   modifiers |> map(m => match m {
     v1.std.core.Idempotent => modifier_to_prop(name: "idempotent", span: span)
     v1.std.core.Readonly => modifier_to_prop(name: "readonly", span: span)
@@ -3418,7 +3418,7 @@ fn parse_resource_def(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
   parse_resource_after_kw(tokens: r.tokens, ctx: ctx, start_span: start_span)
 }
 
-fn parse_resource_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceSpan) -> ItemResult {
+fn parse_resource_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: std.types.SourceSpan) -> ItemResult {
   let dummy = v1.std.core.Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, connective: v1.std.core.NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
 
   let r = expect_ident(tokens: tokens)
@@ -3602,7 +3602,7 @@ fn parse_data_def(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
   parse_data_after_kw(tokens: r.tokens, ctx: ctx, start_span: start_span)
 }
 
-fn parse_alias_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceSpan) -> ItemResult {
+fn parse_alias_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: std.types.SourceSpan) -> ItemResult {
   let dummy = v1.std.core.Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, connective: v1.std.core.NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
 
   let r = expect_ident(tokens: tokens)
@@ -3640,7 +3640,7 @@ fn parse_alias_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sour
   ItemResult { item: item, tokens: skip_newlines(tokens: r.tokens), ctx: ctx, err: none }
 }
 
-fn parse_data_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceSpan) -> ItemResult {
+fn parse_data_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: std.types.SourceSpan) -> ItemResult {
   let dummy = v1.std.core.Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, connective: v1.std.core.NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
 
   let r = expect_ident(tokens: tokens)
@@ -4002,7 +4002,7 @@ fn infix_bp(tokens: TokenStream) -> BindingPower? {
   }
 }
 
-fn parse_pipe_rhs(tokens: TokenStream, ctx: ParseContext, receiver: v1.std.core.Node, span: SourceSpan) -> ExprResult {
+fn parse_pipe_rhs(tokens: TokenStream, ctx: ParseContext, receiver: v1.std.core.Node, span: std.types.SourceSpan) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
   let r = expect_name(tokens: tokens)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -4356,7 +4356,7 @@ fn try_constraint_annotations(tokens: TokenStream, ctx: ParseContext) -> Constra
   }
 }
 
-fn make_call_expr(lhs: v1.std.core.Node, args: List<v1.std.core.Node>, span: SourceSpan, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.Node {
+fn make_call_expr(lhs: v1.std.core.Node, args: List<v1.std.core.Node>, span: std.types.SourceSpan, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.Node {
   match lhs.expr_data {
     v1.std.core.ExprVar { binding_kind: _ } => v1.std.core.make_named_expr_node(name: v1.std.core.expr_var_name_at(texpr: lhs, source_indices: source_indices), expr_data: v1.std.core.ExprCall { call_semantics: none, descent_evidence: none }, children: args, inferred: none, span: lhs.span, name_span: v1.std.core.node_name_span(n: lhs))
     v1.std.core.ExprFieldAccess { summary: _ } => v1.std.core.make_named_expr_node(name: v1.std.core.field_access_field_at(texpr: lhs, source_indices: source_indices), expr_data: v1.std.core.ExprMethodCall { method_semantics: none }, children: concat([first(lhs.children).value], args), inferred: none, span: lhs.span, name_span: v1.std.core.node_name_span(n: lhs))
@@ -4364,7 +4364,7 @@ fn make_call_expr(lhs: v1.std.core.Node, args: List<v1.std.core.Node>, span: Sou
   }
 }
 
-fn parse_index_or_slice(tokens: TokenStream, ctx: ParseContext, base: v1.std.core.Node, span: SourceSpan) -> ExprResult {
+fn parse_index_or_slice(tokens: TokenStream, ctx: ParseContext, base: v1.std.core.Node, span: std.types.SourceSpan) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, expected: ExpectLBracket)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -4930,21 +4930,21 @@ fn parse_for(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   ExprResult { expr: for_expr, tokens: r.tokens, ctx: r.ctx, err: none }
 }
 
-fn field_access_chain_span(texpr: v1.std.core.Node) -> SourceSpan {
+fn field_access_chain_span(texpr: v1.std.core.Node) -> std.types.SourceSpan {
   match texpr.expr_data {
     v1.std.core.ExprFieldAccess { summary: _ } =>
       let base_span = field_access_chain_span(texpr: v1.std.core.field_access_base(texpr: texpr))
       let chain_end = match texpr.ident_span { Present { value: is } => is.end  Absent => texpr.span.end }
-      SourceSpan { file: base_span.file, start: base_span.start, end: chain_end }
+      std.types.SourceSpan { file: base_span.file, start: base_span.start, end: chain_end }
     _ => texpr.span
   }
 }
 
-fn parse_record_literal(tokens: TokenStream, ctx: ParseContext, name: String, span: SourceSpan) -> ExprResult {
+fn parse_record_literal(tokens: TokenStream, ctx: ParseContext, name: String, span: std.types.SourceSpan) -> ExprResult {
   parse_record_literal_named(tokens: tokens, ctx: ctx, name: name, span: span, name_span: span)
 }
 
-fn parse_record_literal_named(tokens: TokenStream, ctx: ParseContext, name: String, span: SourceSpan, name_span: SourceSpan) -> ExprResult {
+fn parse_record_literal_named(tokens: TokenStream, ctx: ParseContext, name: String, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, expected: ExpectLBrace)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -5177,7 +5177,7 @@ fn parse_string_interp(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   }
 }
 
-fn parse_interp_parts(tokens: TokenStream, ctx: ParseContext, parts: List<v1.std.core.StringPart>, span: SourceSpan) -> ExprResult {
+fn parse_interp_parts(tokens: TokenStream, ctx: ParseContext, parts: List<v1.std.core.StringPart>, span: std.types.SourceSpan) -> ExprResult {
   let r = parse_expr(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) {
     return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: Present { value: parse_error(msg: interp_body_error_message(err: r.err), span: span) } }

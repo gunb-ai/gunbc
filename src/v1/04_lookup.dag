@@ -526,7 +526,7 @@ type DeclaredArgContract
   | MethodUnresolved
   | ContractUnavailable
 
-fn declared_arg_types_for_method(receiver_type: Node, method_name: String, source_indices: Map<String, NewlineIndex>, expand_field_type: fn(Node) -> Node) -> DeclaredArgContract {
+fn declared_arg_types_for_method(receiver_type: Node, method_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>, expand_field_type: fn(Node) -> Node) -> DeclaredArgContract {
   let lookup = lookup_structural_method(receiver_type: receiver_type, method_name: method_name, source_indices: source_indices)
   match lookup.resolution {
     Absent => MethodUnresolved
@@ -554,7 +554,7 @@ fn declared_arg_types_for_method(receiver_type: Node, method_name: String, sourc
   }
 }
 
-fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, service_registry: Map<String, List<OpEntry>>, source_indices: Map<String, NewlineIndex>) -> KnownMethodResolution {
+fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, service_registry: Map<String, List<v1.compiler.infer_service.OpEntry>>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> KnownMethodResolution {
 
   let tier0 = lookup_structural_method(receiver_type: receiver_type, method_name: method_name, source_indices: source_indices)
   match tier0.resolution {

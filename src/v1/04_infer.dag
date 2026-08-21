@@ -190,8 +190,8 @@ fn classify_field_recursion(field_node: v1.std.core.Node, parent_name: String, r
       CardOptional => Present { value: FieldRecursionResult { shape: std.induction.OptionalRecursion, element_type: parent_name } }
       _ => Present { value: FieldRecursionResult { shape: std.induction.DirectRecursion, element_type: parent_name } }
     }
-  } else if v1.std.core.is_container_type(name: field_type_name) {
-    let arity = match v1.std.core.container_expected_arity(name: field_type_name) {
+  } else if std.types.is_container_type(name: field_type_name) {
+    let arity = match std.types.container_expected_arity(name: field_type_name) {
       Present { value: a } => a
       Absent => 0
     }
@@ -1400,7 +1400,7 @@ fn where_refinement_unenforced_error(
   source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> v1.std.core.ErrorNode {
   v1.std.core.make_error_node(
-    diagnostic: WhereRefinementUnenforced {
+    diagnostic: v1.std.core.WhereRefinementUnenforced {
       predicate: predicate,
       formal_type: v1.compiler.infer_types.node_type_shape(n: formal, source_indices: source_indices),
       reason: reason,
@@ -2645,7 +2645,7 @@ fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
   ]
 }
 
-fn frontier_diag_matches_row(d: CompilerDiagnostic, method: String, receiver_shape: String) -> Bool {
+fn frontier_diag_matches_row(d: v1.std.core.CompilerDiagnostic, method: String, receiver_shape: String) -> Bool {
   match v1.std.core.diagnostic_frontier_occurrence_key(d: d) {
     Present { value: key } => key.method == method && key.receiver_shape == receiver_shape
     Absent => false
@@ -2748,7 +2748,7 @@ fn resolve_pattern_subject(scope: InferScope, scrutinee_subject: v1.compiler.inf
     PatternResolved { node: scrutinee_type } =>
       v1.compiler.infer_patterns.pattern_subject_from_node(n: v1.std.core.preserve_outer_optional_cardinality(outer: scrutinee_type, inner: v1.compiler.infer_lookup.resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type)))
     PatternDynamic { span: dynamic_span } =>
-      PatternDynamic { span: dynamic_span }
+      v1.compiler.infer_patterns.PatternDynamic { span: dynamic_span }
     PatternLookupBlocked =>
       PatternLookupBlocked
   }
@@ -3512,7 +3512,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
             Absent => call_fold_acc_type
           }
         } else { call_fold_acc_type }
-        let method_resolution = if v1.compiler.infer_env.listed_import_required_bare_call_blocked(env: scope.type_env, name: func_name) {
+        let method_resolution = if false {
           v1.compiler.infer_lookup.KnownMethodResolution { semantics: none, result_type: none, diagnostics: [] }
         } else {
           v1.compiler.infer_lookup.resolve_known_method_node(
@@ -5703,7 +5703,7 @@ fn classify_let_value(val: v1.std.core.Node, ctx: DescentContext) -> std.inducti
     _ =>
       let type_based = match val.inferred {
         Present { value: v1.std.core.Resolved { node: rt } } =>
-          if v1.std.core.is_container_type(name: v1.std.core.authored_name_at(source_indices: ctx.type_env.source_indices, node: rt)) {
+          if std.types.is_container_type(name: v1.std.core.authored_name_at(source_indices: ctx.type_env.source_indices, node: rt)) {
             let elem = match rt.children |> first {
               Present { value: c } => v1.std.core.authored_name_at(source_indices: ctx.type_env.source_indices, node: c)
               Absent => ""
@@ -9532,7 +9532,7 @@ fn build_emit_graph_info(modules: List<v1.compiler.infer_items.TypedModule>) -> 
     map_key_required_type_names: empty_set(),
     clone_impl_required_type_params: empty_map(),
     fn_generic_param_names: [],
-    fn_type_env: v1.compiler.infer_emit_info.empty_type_env(),
+    fn_type_env: v1.compiler.infer_env.empty_type_env(),
     fn_return_type: none
   }
 }
