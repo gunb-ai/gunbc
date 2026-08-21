@@ -32,10 +32,10 @@ data fleet_desired_admission_workflow_concurrency_group: String = "gunbc-fleet-d
 
 fn fleet_desired_admission_checkout_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.UsesStep {
-    name: v2.std.optional.Present { value: "Checkout" },
+    name: Present { value: "Checkout" },
     id: none,
     uses: extdeps.github.actions.checkout_action,
-    with: v2.std.optional.Present {
+    with: Present {
       value: [extdeps.languages.yaml.types.kv(key: "fetch-depth", value: extdeps.languages.yaml.types.yaml_string(s: "0"))]
     },
     env: none,
@@ -57,7 +57,7 @@ fn fleet_desired_admission_checkout_step() -> extdeps.github.actions.Step {
 // several consumers (DESIGN section 3).
 fn fleet_desired_admission_build_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.RunStep {
-    name: v2.std.optional.Present { value: "Build the admission binary" },
+    name: Present { value: "Build the admission binary" },
     id: none,
     run: "cargo build --release -p v1-compiler --bin gunbc\n",
     shell: none,
@@ -76,7 +76,7 @@ fn fleet_desired_admission_build_step() -> extdeps.github.actions.Step {
 // a refused admission cannot be actuated by a file a previous run left behind.
 fn fleet_desired_admission_stage_payload_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.RunStep {
-    name: v2.std.optional.Present { value: "Stage the floor run event payload" },
+    name: Present { value: "Stage the floor run event payload" },
     id: none,
     run: join([
       "set -eu\n",
@@ -98,7 +98,7 @@ fn fleet_desired_admission_stage_payload_step() -> extdeps.github.actions.Step {
 // the ref keeps its previous admitted revision and the cause is in the log, located and typed.
 fn fleet_desired_admission_decide_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.RunStep {
-    name: v2.std.optional.Present { value: "Decide whether the floor admits this revision" },
+    name: Present { value: "Decide whether the floor admits this revision" },
     id: none,
     run: join([
       "ROOT=", gunbc.merge_admission_produce.ci_repo_root_shell(), "\n",
@@ -124,7 +124,7 @@ fn fleet_desired_admission_decide_step() -> extdeps.github.actions.Step {
 // treating a missing authorization as permission.
 fn fleet_desired_admission_push_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.RunStep {
-    name: v2.std.optional.Present { value: "Execute the authorized fleet-desired advance" },
+    name: Present { value: "Execute the authorized fleet-desired advance" },
     id: none,
     run: join([
       "set -eu\n",
@@ -159,17 +159,17 @@ fn fleet_desired_admission_job() -> extdeps.github.actions.Job {
     needs: [],
     env: none,
     outputs: none,
-    if_condition: v2.std.optional.Present {
+    if_condition: Present {
       value: join([
         "github.event.workflow_run.head_branch == '", gunbc.repo_identity.gunbc_default_branch_name, "'",
       ], ""),
     },
-    timeout_minutes: v2.std.optional.Present { value: 60 },
+    timeout_minutes: Present { value: 60 },
     continue_on_error: none,
     concurrency: none,
-    permissions: v2.std.optional.Present {
+    permissions: Present {
       value: extdeps.github.actions.WorkflowPermissions {
-        contents: v2.std.optional.Present { value: extdeps.github.actions.PermWrite },
+        contents: Present { value: extdeps.github.actions.PermWrite },
         pull_requests: none,
         issues: none,
         actions: none,
@@ -251,7 +251,7 @@ data fleet_desired_admission_workflow: extdeps.github.actions.Workflow = extdeps
   on: [
     extdeps.github.actions.WorkflowRunCompleted { workflows: [gunbc.witness_floor_workflow.witness_floor_workflow_name] }
   ],
-  concurrency: v2.std.optional.Present {
+  concurrency: Present {
     value: extdeps.github.actions.ConcurrencyMappingQueueNotMax {
       group: fleet_desired_admission_workflow_concurrency_group,
       cancel_in_progress: none,

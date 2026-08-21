@@ -1013,7 +1013,7 @@ fn rust_signature_one_param_tokens(edge: v2.std.node.Edge) -> v2.std.diagnostic.
           )
         }
       )
-    Positional =>
+    v2.std.node.Positional =>
       v2.std.diagnostic.outcome_rejected(
         d: rust_signature_diagnostic(reason: ^rust_signature_param_unnamed, node: edge.target)
       )
@@ -1023,7 +1023,7 @@ fn rust_signature_one_param_tokens(edge: v2.std.node.Edge) -> v2.std.diagnostic.
 fn rust_signature_params_tail_tokens(params: std.types.List<v2.std.node.Edge>) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match params {
     Empty => v2.std.diagnostic.outcome_accepted(value: Empty)
-    Cons { head: e, tail: rest } =>
+    std.algebra.Cons { head: e, tail: rest } =>
       v2.std.diagnostic.bind_outcome(
         o: rust_signature_one_param_tokens(edge: e),
         f: fn(toks) {
@@ -1049,7 +1049,7 @@ fn rust_signature_params_tail_tokens(params: std.types.List<v2.std.node.Edge>) -
 fn rust_signature_params_tokens(params: std.types.List<v2.std.node.Edge>) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match params {
     Empty => v2.std.diagnostic.outcome_accepted(value: Empty)
-    Cons { head: e, tail: rest } =>
+    std.algebra.Cons { head: e, tail: rest } =>
       v2.std.diagnostic.bind_outcome(
         o: rust_signature_one_param_tokens(edge: e),
         f: fn(first_toks) {
@@ -1123,13 +1123,13 @@ fn rust_signature_from_name_and_arrow(fn_name: v2.std.node.Symbol, arrow: v2.std
 
 fn rust_signature_with_open_from_decl(decl: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match decl.kind {
-    TypeNode { connective: v2.std.node.Conj } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
       match v2.std.collection.list_at_optional(xs: decl.children, index: 0) {
         Present { value: decl_edge } =>
           match decl_edge.label {
             Named { name: fn_name } =>
               rust_signature_from_name_and_arrow(fn_name: fn_name, arrow: decl_edge.target)
-            Positional =>
+            v2.std.node.Positional =>
               v2.std.diagnostic.outcome_rejected(
                 d: rust_signature_diagnostic(reason: ^rust_signature_decl_unnamed, node: decl)
               )
@@ -1243,7 +1243,7 @@ fn rust_collection_representation_parameters() -> std.types.Map<v2.std.node.Symb
 }
 
 fn rust_single_parameter_supplemental_generic_bound_requirements(
-  required_trait: v2.std.compilers.target_model.ReprGroundingDeriveTrait,
+  required_trait: std.trait_derive_shape.ReprGroundingDeriveTrait,
   authority: extdeps.external_authority.ExternalAuthority
 ) -> std.types.Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementSet> {
   v2.std.collection.map_insert(
@@ -1338,7 +1338,7 @@ fn rust_hash_set_supplemental_generic_bound_contracts() -> std.types.Map<v2.std.
 }
 
 type RustSupplementalGenericBoundContractCoverageBlocker {
-  derive_trait: v2.std.compilers.target_model.ReprGroundingDeriveTrait
+  derive_trait: std.trait_derive_shape.ReprGroundingDeriveTrait
   requirements: std.types.Set<v2.std.compilers.target_model.RequiredTraitWitness>
   authority: extdeps.external_authority.ExternalAuthority
   coverage: extdeps.languages.rust.derive_contracts.RustSupplementalGenericBoundContractCoverageDisposition
@@ -1474,7 +1474,7 @@ fn rust_collection_repr_bundle_node(form: v2.std.compilers.target_model.TargetRe
 
 fn rust_collection_witness_bundle_node(witness: v2.std.compilers.target_model.RequiredTraitWitness) -> v2.std.node.Node {
   match witness {
-    TargetCollectionWitnessOrd { type_param: type_param } =>
+    v2.std.compilers.target_model.TargetCollectionWitnessOrd { type_param: type_param } =>
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
         children: [
@@ -1489,7 +1489,7 @@ fn rust_collection_witness_bundle_node(witness: v2.std.compilers.target_model.Re
         ],
         occurrence_id: v2.std.node.SyntheticOccurrence
 }
-    TargetCollectionWitnessHash { type_param: type_param } =>
+    v2.std.compilers.target_model.TargetCollectionWitnessHash { type_param: type_param } =>
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
         children: [
@@ -1504,7 +1504,7 @@ fn rust_collection_witness_bundle_node(witness: v2.std.compilers.target_model.Re
         ],
         occurrence_id: v2.std.node.SyntheticOccurrence
 }
-    TargetCollectionWitnessEq { type_param: type_param } =>
+    v2.std.compilers.target_model.TargetCollectionWitnessEq { type_param: type_param } =>
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
         children: [
@@ -2089,7 +2089,7 @@ fn rust_trait_derive_coproduct_diagnostic(reason: v2.std.node.Symbol, node: v2.s
 
 fn rust_trait_derive_surface_binding_for_coproduct(coproduct: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Symbol> {
   match coproduct.kind {
-    TypeNode { connective: v2.std.node.Disj } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Disj } =>
       if v2.std.compilers.coproduct_variant_shape.coproduct_all_variants_nullary(edges: coproduct.children) {
         v2.std.diagnostic.outcome_accepted(value: ^rust_decl_derive_enum_copy_binding)
       } else {
@@ -3142,7 +3142,7 @@ fn rust_insert_per_language_fact_bundle_entry_outcome(
         key: entry.key,
         fact_value: entry.fact_value
       )
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -3172,9 +3172,9 @@ fn rust_snoc_primitive_bundle(
           value: v2.std.algebra.list_snoc_item(xs: bundles, item: bundle),
           diagnostics: d
         }
-      Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -3234,9 +3234,9 @@ fn rust_append_primitive_bundle_outcomes(
     Accepted { value: l, diagnostics: _ } => match right {
       Accepted { value: r, diagnostics: d } =>
         v2.std.diagnostic.Accepted { value: v2.std.algebra.list_append(left: l, right: r), diagnostics: d }
-      Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -3267,9 +3267,9 @@ fn rust_model_core() -> v2.std.diagnostic.Outcome<v2.std.model_core.ModelCore> {
             },
             diagnostics: d
           }
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
       }
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -3286,7 +3286,7 @@ fn rust_fn_add_language_model() -> v2.std.diagnostic.Outcome<v2.std.language_mod
         },
         diagnostics: d
       }
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -3931,7 +3931,7 @@ fn rust_language_model() -> v2.std.diagnostic.Outcome<v2.std.language_model.Lang
         },
         diagnostics: d
       }
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -4251,7 +4251,7 @@ fn rust_sg2_type_expr_target_model_bundle_core() -> v2.std.node.Node {
 
 fn rust_sg2_type_expr_target_model_node() -> v2.std.node.Node {
   match rust_sg2_type_expr_target_model_bundle_core().kind {
-    TypeNode { connective: v2.std.node.Conj } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
         children: v2.std.algebra.list_snoc_item(
@@ -4559,7 +4559,7 @@ fn rust_sg2_emitted_without_named_edge(base: v2.std.node.Node, field: v2.std.nod
           } else {
             v2.std.algebra.list_snoc_item(xs: acc, item: e)
           }
-        Positional => v2.std.algebra.list_snoc_item(xs: acc, item: e)
+        v2.std.node.Positional => v2.std.algebra.list_snoc_item(xs: acc, item: e)
       }
     }),
     occurrence_id: v2.std.node.SyntheticOccurrence
@@ -4653,7 +4653,7 @@ fn rust_sg2_malformed_atom_zero_positional_emitted() -> v2.std.node.Node {
     kind: base.kind,
     children: fold(base.children, init: std.algebra.Empty, f: fn(acc, e) {
       match e.label {
-        Positional => acc
+        v2.std.node.Positional => acc
         _ => v2.std.algebra.list_snoc_item(xs: acc, item: e)
       }
     }),

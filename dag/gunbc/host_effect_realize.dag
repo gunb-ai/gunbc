@@ -30,7 +30,7 @@ type ResolvedHostEffectCell =
   | EffectivePrincipalReadOnHost { node: gunbc.fleet_intent.ComputeHost, read: extdeps.access.posix_effective_principal.EffectivePosixPrincipalRead }
   | SudoNopasswdExecuteProbeOnHost { node: gunbc.fleet_intent.ComputeHost, probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdExecuteProbeShape }
   | SudoNopasswdGrantListProbeOnHost { node: gunbc.fleet_intent.ComputeHost, probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdGrantListProbeShape }
-  | LiveDeployApplyOnHost { node: gunbc.fleet_intent.ComputeHost, spec: gunbc.live_deploy.spec.DeploymentSpec, candidate: CandidateRelease }
+  | LiveDeployApplyOnHost { node: gunbc.fleet_intent.ComputeHost, spec: gunbc.live_deploy.spec.DeploymentSpec, candidate: gunbc.live_deploy.candidate.CandidateRelease }
   | LiveDeployRetractOnHost { node: gunbc.fleet_intent.ComputeHost, spec: gunbc.live_deploy.spec.DeploymentSpec }
   | LiveDeployEnsureDependencyOnHost { node: gunbc.fleet_intent.ComputeHost, dep: gunbc.live_deploy.spec.DeploymentDependencyStep }
   | LiveDeployDigestReadbackOnHost { node: gunbc.fleet_intent.ComputeHost, port: Int }
@@ -71,29 +71,29 @@ fn resolve_host_effect_cell(target: gunbc.host_effect.NodeControlPlane, effect: 
   match target {
     HostOs { node: n } =>
       match effect {
-        OsInstallActuatorToolchainEnsure {} =>
+        gunbc.host_effect.OsInstallActuatorToolchainEnsure {} =>
           OsInstallActuatorToolchainOnHost { node: n }
-        EnsureBuildCacheInstance { desired: d } =>
+        gunbc.host_effect.EnsureBuildCacheInstance { desired: d } =>
           ProvisionBuildCacheOnHost { node: n, desired: d }
-        ProvisionCodexRuntime {} =>
+        gunbc.host_effect.ProvisionCodexRuntime {} =>
           ProvisionCodexRuntimeOnHost { node: n }
-        Srv3ReceiptEmit { lines: lines } =>
+        gunbc.host_effect.Srv3ReceiptEmit { lines: lines } =>
           ReceiptEmitOnHost { node: n, lines: lines }
-        Srv3BootOnceReadBackSleep =>
+        gunbc.host_effect.Srv3BootOnceReadBackSleep =>
           BootOnceReadBackSleepOnHost { node: n }
-        Srv3SeededInstallMediaToolchainEnsure =>
+        gunbc.host_effect.Srv3SeededInstallMediaToolchainEnsure =>
           SeededInstallMediaToolchainOnHost { node: n }
-        Srv3BmcwebSessionLogin =>
+        gunbc.host_effect.Srv3BmcwebSessionLogin =>
           BmcwebSessionLoginOnHost { node: n }
-        Srv3BmcwebTokenExtract =>
+        gunbc.host_effect.Srv3BmcwebTokenExtract =>
           BmcwebTokenExtractOnHost { node: n }
-        LiveDeployApply { spec: s, candidate: c } =>
+        gunbc.host_effect.LiveDeployApply { spec: s, candidate: c } =>
           LiveDeployApplyOnHost { node: n, spec: s, candidate: c }
-        LiveDeployRetract { spec: s } =>
+        gunbc.host_effect.LiveDeployRetract { spec: s } =>
           LiveDeployRetractOnHost { node: n, spec: s }
-        LiveDeployEnsureDependency { dep: d } =>
+        gunbc.host_effect.LiveDeployEnsureDependency { dep: d } =>
           LiveDeployEnsureDependencyOnHost { node: n, dep: d }
-        LiveDeployDigestReadback { port: p } =>
+        gunbc.host_effect.LiveDeployDigestReadback { port: p } =>
           LiveDeployDigestReadbackOnHost { node: n, port: p }
         _ =>
           match effect {
@@ -102,65 +102,65 @@ fn resolve_host_effect_cell(target: gunbc.host_effect.NodeControlPlane, effect: 
                 node: n,
                 script: gunbc.retained_shell_script.retained_srvn(body: s, reason: "host_effect ShellCommand raw-script leaf (anemic String terminal, DESIGN section 5)"),
               }
-            RedfishAction { action: _ } =>
+            gunbc.host_effect.RedfishAction { action: _ } =>
               IncompatibleCell { reason: "host_effect: RedfishAction is out-of-band (Redfish) and cannot target HostOs (in-band shell/systemd); target BmcController instead. Typed mismatch via total fold, DESIGN section 5." }
-            ConvergePlan { policy: p } =>
+            gunbc.host_effect.ConvergePlan { policy: p } =>
               if n.identity != p.identity {
                 IncompatibleCell { reason: converge_plan_identity_mismatch_reason(node: n, policy: p) }
               } else {
                 ConvergeOnHost { node: n, host_converge: p }
               }
-            OsInstallActuatorToolchainEnsure {} =>
+            gunbc.host_effect.OsInstallActuatorToolchainEnsure {} =>
               OsInstallActuatorToolchainOnHost { node: n }
-            EnsureBuildCacheInstance { desired: d } =>
+            gunbc.host_effect.EnsureBuildCacheInstance { desired: d } =>
               ProvisionBuildCacheOnHost { node: n, desired: d }
-            ProvisionCodexRuntime {} =>
+            gunbc.host_effect.ProvisionCodexRuntime {} =>
               ProvisionCodexRuntimeOnHost { node: n }
-            Srv3InstallMediaFetch => TypedReconcileOnHost { node: n, kind: TypedReconcileFetch }
-            Srv3SeededInstallMediaRemaster => TypedReconcileOnHost { node: n, kind: TypedReconcileRemaster }
-            Srv3SeededInstallMediaToolchainEnsure =>
+            gunbc.host_effect.Srv3InstallMediaFetch => TypedReconcileOnHost { node: n, kind: TypedReconcileFetch }
+            gunbc.host_effect.Srv3SeededInstallMediaRemaster => TypedReconcileOnHost { node: n, kind: TypedReconcileRemaster }
+            gunbc.host_effect.Srv3SeededInstallMediaToolchainEnsure =>
               SeededInstallMediaToolchainOnHost { node: n }
-            Srv3BmcwebSessionLogin =>
+            gunbc.host_effect.Srv3BmcwebSessionLogin =>
               BmcwebSessionLoginOnHost { node: n }
-            Srv3BmcwebTokenExtract =>
+            gunbc.host_effect.Srv3BmcwebTokenExtract =>
               BmcwebTokenExtractOnHost { node: n }
-            Srv3BootOnceReadBackSleep =>
+            gunbc.host_effect.Srv3BootOnceReadBackSleep =>
               BootOnceReadBackSleepOnHost { node: n }
-            Srv3ReceiptEmit { lines: lines } =>
+            gunbc.host_effect.Srv3ReceiptEmit { lines: lines } =>
               ReceiptEmitOnHost { node: n, lines: lines }
-            SetHostnameCas { hostnamectl_path: p, base: b, desired: d } =>
+            gunbc.host_effect.SetHostnameCas { hostnamectl_path: p, base: b, desired: d } =>
               HostnameOnHost { node: n, hostnamectl_path: p, base: b, desired: d }
-            ReadEffectivePosixPrincipal { read: r } =>
+            gunbc.host_effect.ReadEffectivePosixPrincipal { read: r } =>
               EffectivePrincipalReadOnHost { node: n, read: r }
-            SudoNopasswdExecuteProbe { probe: p } =>
+            gunbc.host_effect.SudoNopasswdExecuteProbe { probe: p } =>
               SudoNopasswdExecuteProbeOnHost { node: n, probe: p }
-            SudoNopasswdGrantListProbe { probe: p } =>
+            gunbc.host_effect.SudoNopasswdGrantListProbe { probe: p } =>
               SudoNopasswdGrantListProbeOnHost { node: n, probe: p }
-            Srv3NbdProxyServe { intent: i, lease_key: k } =>
+            gunbc.host_effect.Srv3NbdProxyServe { intent: i, lease_key: k } =>
               NbdProxySessionOnHost { node: n, intent: i, lease_key: k }
-            CodexSupervisedWorkerTurn { intent: i, lease_key: k } =>
+            gunbc.host_effect.CodexSupervisedWorkerTurn { intent: i, lease_key: k } =>
               CodexSupervisedWorkerTurnOnHost { node: n, intent: i, lease_key: k }
-            HostIdentityShortHostnameRead =>
+            gunbc.host_effect.HostIdentityShortHostnameRead =>
               HostnameReadOnHost { node: n }
-            LiveDeployApply { spec: s, candidate: c } =>
+            gunbc.host_effect.LiveDeployApply { spec: s, candidate: c } =>
               LiveDeployApplyOnHost { node: n, spec: s, candidate: c }
-            LiveDeployRetract { spec: s } =>
+            gunbc.host_effect.LiveDeployRetract { spec: s } =>
               LiveDeployRetractOnHost { node: n, spec: s }
-            LiveDeployEnsureDependency { dep: d } =>
+            gunbc.host_effect.LiveDeployEnsureDependency { dep: d } =>
               LiveDeployEnsureDependencyOnHost { node: n, dep: d }
-            LiveDeployDigestReadback { port: p } =>
+            gunbc.host_effect.LiveDeployDigestReadback { port: p } =>
               LiveDeployDigestReadbackOnHost { node: n, port: p }
-            EnsureActionsRunnerRelease { runner_release: r } =>
+            gunbc.host_effect.EnsureActionsRunnerRelease { runner_release: r } =>
               EnsureActionsRunnerReleaseOnHost { node: n, runner_release: r }
-            EnsureRunnerSlotDirectory { slot: s, artifact: a } =>
+            gunbc.host_effect.EnsureRunnerSlotDirectory { slot: s, artifact: a } =>
               EnsureRunnerSlotDirectoryOnHost { node: n, slot: s, artifact: a }
-            EnsureRunnerJitWrapper { host_label: l } =>
+            gunbc.host_effect.EnsureRunnerJitWrapper { host_label: l } =>
               EnsureRunnerJitWrapperOnHost { node: n, host_label: l }
-            EnsureRunnerSystemdTemplate { host_label: l } =>
+            gunbc.host_effect.EnsureRunnerSystemdTemplate { host_label: l } =>
               EnsureRunnerSystemdTemplateOnHost { node: n, host_label: l }
-            EnsureRunnerMemoryCaps { slot: s } =>
+            gunbc.host_effect.EnsureRunnerMemoryCaps { slot: s } =>
               EnsureRunnerMemoryCapsOnHost { node: n, slot: s }
-            ActivateRunnerSlot { slot: s } =>
+            gunbc.host_effect.ActivateRunnerSlot { slot: s } =>
               ActivateRunnerSlotOnHost { node: n, slot: s }
             ReplaceRunnerIncarnation { from: inc, cause: c } =>
               ReplaceRunnerIncarnationOnHost { node: n, from: inc, cause: c }
@@ -168,7 +168,7 @@ fn resolve_host_effect_cell(target: gunbc.host_effect.NodeControlPlane, effect: 
               ObserveRunnerLocalStateOnHost { node: n, slot: s }
             ObserveGitHubRunnerRegistration { slot: s, organization: o } =>
               ObserveGitHubRunnerRegistrationOnHost { node: n, slot: s, organization: o }
-            DeployAccessPreflight {} =>
+            gunbc.host_effect.DeployAccessPreflight {} =>
               IncompatibleCell {
                 reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot be applied; typed mismatch, DESIGN section 5.",
               }
@@ -176,76 +176,76 @@ fn resolve_host_effect_cell(target: gunbc.host_effect.NodeControlPlane, effect: 
       }
     BmcController { node: n } =>
       match effect {
-        OsInstallActuatorToolchainEnsure {} =>
+        gunbc.host_effect.OsInstallActuatorToolchainEnsure {} =>
           IncompatibleCell { reason: "host_effect: OsInstallActuatorToolchainEnsure is in-band (actuator host toolchain) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-        EnsureBuildCacheInstance { desired: _ } =>
+        gunbc.host_effect.EnsureBuildCacheInstance { desired: _ } =>
           IncompatibleCell { reason: "host_effect: EnsureBuildCacheInstance is in-band (per-host sccache daemon) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-        ProvisionCodexRuntime {} =>
+        gunbc.host_effect.ProvisionCodexRuntime {} =>
           IncompatibleCell { reason: "host_effect: ProvisionCodexRuntime is in-band (per-host provider runtime bundle) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-        Srv3NbdProxyServe { intent: _, lease_key: _ } =>
+        gunbc.host_effect.Srv3NbdProxyServe { intent: _, lease_key: _ } =>
           IncompatibleCell { reason: "host_effect: Srv3NbdProxyServe is in-band (actuator host long-running session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-        CodexSupervisedWorkerTurn { intent: _, lease_key: _ } =>
+        gunbc.host_effect.CodexSupervisedWorkerTurn { intent: _, lease_key: _ } =>
           IncompatibleCell { reason: "host_effect: CodexSupervisedWorkerTurn is in-band (actuator host app-server stdio session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         _ =>
           match effect {
             ShellCommand { script: _ } =>
               IncompatibleCell { reason: "host_effect: ShellCommand is in-band (shell/systemd) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            RedfishAction { action: a } => RedfishOnBmc { node: n, action: a }
-            ConvergePlan { policy: _ } =>
+            gunbc.host_effect.RedfishAction { action: a } => RedfishOnBmc { node: n, action: a }
+            gunbc.host_effect.ConvergePlan { policy: _ } =>
               IncompatibleCell { reason: "host_effect: ConvergePlan is in-band (host OS converge) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            OsInstallActuatorToolchainEnsure {} =>
+            gunbc.host_effect.OsInstallActuatorToolchainEnsure {} =>
               IncompatibleCell { reason: "host_effect: OsInstallActuatorToolchainEnsure is in-band (actuator host toolchain) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            EnsureBuildCacheInstance { desired: _ } =>
+            gunbc.host_effect.EnsureBuildCacheInstance { desired: _ } =>
               IncompatibleCell { reason: "host_effect: EnsureBuildCacheInstance is in-band (per-host sccache daemon) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ProvisionCodexRuntime {} =>
+            gunbc.host_effect.ProvisionCodexRuntime {} =>
               IncompatibleCell { reason: "host_effect: ProvisionCodexRuntime is in-band (per-host provider runtime bundle) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3InstallMediaFetch =>
+            gunbc.host_effect.Srv3InstallMediaFetch =>
               IncompatibleCell { reason: "host_effect: Srv3InstallMediaFetch is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3SeededInstallMediaRemaster =>
+            gunbc.host_effect.Srv3SeededInstallMediaRemaster =>
               IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaRemaster is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3SeededInstallMediaToolchainEnsure =>
+            gunbc.host_effect.Srv3SeededInstallMediaToolchainEnsure =>
               IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaToolchainEnsure is in-band (actuator host typed toolchain ensure) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3BmcwebSessionLogin =>
+            gunbc.host_effect.Srv3BmcwebSessionLogin =>
               IncompatibleCell { reason: "host_effect: Srv3BmcwebSessionLogin is in-band (actuator host typed curl login) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3BmcwebTokenExtract =>
+            gunbc.host_effect.Srv3BmcwebTokenExtract =>
               IncompatibleCell { reason: "host_effect: Srv3BmcwebTokenExtract is in-band (actuator host typed jq extract + write) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3NbdProxyServe { intent: _, lease_key: _ } =>
+            gunbc.host_effect.Srv3NbdProxyServe { intent: _, lease_key: _ } =>
               IncompatibleCell { reason: "host_effect: Srv3NbdProxyServe is in-band (actuator host long-running session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            CodexSupervisedWorkerTurn { intent: _, lease_key: _ } =>
+            gunbc.host_effect.CodexSupervisedWorkerTurn { intent: _, lease_key: _ } =>
               IncompatibleCell { reason: "host_effect: CodexSupervisedWorkerTurn is in-band (actuator host app-server stdio session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3BootOnceReadBackSleep =>
+            gunbc.host_effect.Srv3BootOnceReadBackSleep =>
               IncompatibleCell { reason: "host_effect: Srv3BootOnceReadBackSleep is in-band (actuator host typed sleep) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            Srv3ReceiptEmit { lines: _ } =>
+            gunbc.host_effect.Srv3ReceiptEmit { lines: _ } =>
               IncompatibleCell { reason: "host_effect: Srv3ReceiptEmit is in-band (actuator host typed receipt) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } =>
+            gunbc.host_effect.SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } =>
               IncompatibleCell { reason: "host_effect: SetHostnameCas is in-band (shell hostnamectl) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ReadEffectivePosixPrincipal { read: _ } =>
+            gunbc.host_effect.ReadEffectivePosixPrincipal { read: _ } =>
               IncompatibleCell { reason: "host_effect: ReadEffectivePosixPrincipal is in-band (shell whoami) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            SudoNopasswdExecuteProbe { probe: _ } =>
+            gunbc.host_effect.SudoNopasswdExecuteProbe { probe: _ } =>
               IncompatibleCell { reason: "host_effect: SudoNopasswdExecuteProbe is in-band (shell sudo -n probe) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            SudoNopasswdGrantListProbe { probe: _ } =>
+            gunbc.host_effect.SudoNopasswdGrantListProbe { probe: _ } =>
               IncompatibleCell { reason: "host_effect: SudoNopasswdGrantListProbe is in-band (typed sudo grant-list probe) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            HostIdentityShortHostnameRead =>
+            gunbc.host_effect.HostIdentityShortHostnameRead =>
               IncompatibleCell { reason: "host_effect: HostIdentityShortHostnameRead is in-band (shell hostname -s) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            LiveDeployApply { spec: _, candidate: _ } =>
+            gunbc.host_effect.LiveDeployApply { spec: _, candidate: _ } =>
               IncompatibleCell { reason: "host_effect: LiveDeployApply is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            LiveDeployRetract { spec: _ } =>
+            gunbc.host_effect.LiveDeployRetract { spec: _ } =>
               IncompatibleCell { reason: "host_effect: LiveDeployRetract is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            LiveDeployEnsureDependency { dep: _ } =>
+            gunbc.host_effect.LiveDeployEnsureDependency { dep: _ } =>
               IncompatibleCell { reason: "host_effect: LiveDeployEnsureDependency is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            LiveDeployDigestReadback { port: _ } =>
+            gunbc.host_effect.LiveDeployDigestReadback { port: _ } =>
               IncompatibleCell { reason: "host_effect: LiveDeployDigestReadback is in-band (actuator host shell readback) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            EnsureActionsRunnerRelease { runner_release: _ } =>
+            gunbc.host_effect.EnsureActionsRunnerRelease { runner_release: _ } =>
               IncompatibleCell { reason: "host_effect: EnsureActionsRunnerRelease is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            EnsureRunnerSlotDirectory { slot: _, artifact: _ } =>
+            gunbc.host_effect.EnsureRunnerSlotDirectory { slot: _, artifact: _ } =>
               IncompatibleCell { reason: "host_effect: EnsureRunnerSlotDirectory is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            EnsureRunnerJitWrapper { host_label: _ } =>
+            gunbc.host_effect.EnsureRunnerJitWrapper { host_label: _ } =>
               IncompatibleCell { reason: "host_effect: EnsureRunnerJitWrapper is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            EnsureRunnerSystemdTemplate { host_label: _ } =>
+            gunbc.host_effect.EnsureRunnerSystemdTemplate { host_label: _ } =>
               IncompatibleCell { reason: "host_effect: EnsureRunnerSystemdTemplate is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            EnsureRunnerMemoryCaps { slot: _ } =>
+            gunbc.host_effect.EnsureRunnerMemoryCaps { slot: _ } =>
               IncompatibleCell { reason: "host_effect: EnsureRunnerMemoryCaps is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            ActivateRunnerSlot { slot: _ } =>
+            gunbc.host_effect.ActivateRunnerSlot { slot: _ } =>
               IncompatibleCell { reason: "host_effect: ActivateRunnerSlot is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             ReplaceRunnerIncarnation { from: _, cause: _ } =>
               IncompatibleCell { reason: "host_effect: ReplaceRunnerIncarnation is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
@@ -253,7 +253,7 @@ fn resolve_host_effect_cell(target: gunbc.host_effect.NodeControlPlane, effect: 
               IncompatibleCell { reason: "host_effect: ObserveRunnerLocalState is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             ObserveGitHubRunnerRegistration { slot: _, organization: _ } =>
               IncompatibleCell { reason: "host_effect: ObserveGitHubRunnerRegistration is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-            DeployAccessPreflight {} =>
+            gunbc.host_effect.DeployAccessPreflight {} =>
               IncompatibleCell { reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot target BmcController; typed mismatch, DESIGN section 5." }
           }
       }
@@ -375,11 +375,11 @@ fn realize_boot_once_read_back_sleep_on_host(
   match transport {
     LocalShell =>
       realize_boot_once_read_back_sleep_body(transport: transport, intent: intent)
-    SshShell { ssh_host: _ } =>
+    gunbc.host_effect.SshShell { ssh_host: _ } =>
       realize_boot_once_read_back_sleep_body(transport: transport, intent: intent)
-    FleetSsh { target: _, context: _ } =>
+    gunbc.host_effect.FleetSsh { target: _, context: _ } =>
       realize_boot_once_read_back_sleep_body(transport: transport, intent: intent)
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: Srv3BootOnceReadBackSleep cannot use EmitArtifactThenThinRun transport; typed mismatch.",
         applied: intent,
@@ -507,11 +507,11 @@ fn realize_seeded_install_media_toolchain_ensure_on_host(
   match transport {
     LocalShell =>
       realize_seeded_install_media_toolchain_ensure_body(transport: transport, intent: intent)
-    SshShell { ssh_host: _ } =>
+    gunbc.host_effect.SshShell { ssh_host: _ } =>
       realize_seeded_install_media_toolchain_ensure_body(transport: transport, intent: intent)
-    FleetSsh { target: _, context: _ } =>
+    gunbc.host_effect.FleetSsh { target: _, context: _ } =>
       realize_seeded_install_media_toolchain_ensure_body(transport: transport, intent: intent)
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: Srv3SeededInstallMediaToolchainEnsure cannot use EmitArtifactThenThinRun transport; typed mismatch.",
         applied: intent,
@@ -566,11 +566,11 @@ fn realize_bmcweb_session_login_on_host(
   match transport {
     LocalShell =>
       realize_bmcweb_session_login_body(transport: transport, intent: intent)
-    SshShell { ssh_host: _ } =>
+    gunbc.host_effect.SshShell { ssh_host: _ } =>
       realize_bmcweb_session_login_body(transport: transport, intent: intent)
-    FleetSsh { target: _, context: _ } =>
+    gunbc.host_effect.FleetSsh { target: _, context: _ } =>
       realize_bmcweb_session_login_body(transport: transport, intent: intent)
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: Srv3BmcwebSessionLogin cannot use EmitArtifactThenThinRun transport; typed mismatch.",
         applied: intent,
@@ -693,17 +693,17 @@ fn realize_bmcweb_token_extract_on_host(
   match transport {
     LocalShell =>
       realize_bmcweb_token_extract_body(intent: intent)
-    SshShell { ssh_host: _ } =>
+    gunbc.host_effect.SshShell { ssh_host: _ } =>
       std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: Srv3BmcwebTokenExtract runs typed jq argv + Filesystem.Write on the executor host; SshShell transport is a fail-closed Unimplemented stub until remote extract+write is realized with structured bin invocation.",
         applied: intent,
       }
-    FleetSsh { target: _, context: _ } =>
+    gunbc.host_effect.FleetSsh { target: _, context: _ } =>
       std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: Srv3BmcwebTokenExtract runs typed jq argv + Filesystem.Write on the executor host; SshShell transport is a fail-closed Unimplemented stub until remote extract+write is realized with structured bin invocation.",
         applied: intent,
       }
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: Srv3BmcwebTokenExtract cannot use EmitArtifactThenThinRun transport; typed mismatch.",
         applied: intent,
@@ -775,11 +775,11 @@ fn codex_runtime_typed_argv_step(
   transport: gunbc.host_effect.HostEffectTransport,
 ) -> CodexRuntimeStepResult {
   match run_typed_argv_transport(argv: argv, transport: transport) {
-    TypedArgvExecConverged { result: r } =>
+    gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } =>
       CodexRuntimeStepRan {
         observed: ShellExecObserved { exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr },
       }
-    TypedArgvExecRefused { reason: why } => CodexRuntimeStepRefused { reason: why }
+    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } => CodexRuntimeStepRefused { reason: why }
   }
 }
 
@@ -794,17 +794,17 @@ fn codex_runtime_observe_step(
         observed: ShellExecObserved { exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr },
       }
     }
-    SshShell { ssh_host: _ } =>
+    gunbc.host_effect.SshShell { ssh_host: _ } =>
       codex_runtime_typed_argv_step(
         argv: gunbc.host_codex_runtime_provision_verdict.codex_runtime_observe_argv(executable: executable as String),
         transport: transport,
       )
-    FleetSsh { target: _, context: _ } =>
+    gunbc.host_effect.FleetSsh { target: _, context: _ } =>
       codex_runtime_typed_argv_step(
         argv: gunbc.host_codex_runtime_provision_verdict.codex_runtime_observe_argv(executable: executable as String),
         transport: transport,
       )
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       CodexRuntimeStepRefused {
         reason: "host_effect_apply: ProvisionCodexRuntime cannot use EmitArtifactThenThinRun transport; typed mismatch.",
       }
@@ -834,7 +834,7 @@ fn codex_runtime_materialize_step(
         observed: ShellExecObserved { exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr },
       }
     }
-    SshShell { ssh_host: _ } =>
+    gunbc.host_effect.SshShell { ssh_host: _ } =>
       codex_runtime_typed_argv_step(
         argv: concat(
           [gunbc_binary as String],
@@ -847,7 +847,7 @@ fn codex_runtime_materialize_step(
         ),
         transport: transport,
       )
-    FleetSsh { target: _, context: _ } =>
+    gunbc.host_effect.FleetSsh { target: _, context: _ } =>
       codex_runtime_typed_argv_step(
         argv: concat(
           [gunbc_binary as String],
@@ -860,7 +860,7 @@ fn codex_runtime_materialize_step(
         ),
         transport: transport,
       )
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       CodexRuntimeStepRefused {
         reason: "host_effect_apply: ProvisionCodexRuntime cannot use EmitArtifactThenThinRun transport; typed mismatch.",
       }
@@ -869,7 +869,7 @@ fn codex_runtime_materialize_step(
 
 fn provision_codex_runtime_refuse(
   host: product.placement_supply.HostIdentity,
-  observed: CodexRuntimeObservation,
+  observed: gunbc.host_codex_runtime_provision_verdict.CodexRuntimeObservation,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   match gunbc.host_codex_runtime_provision_verdict.provision_codex_runtime_verdict(host: host, observed: observed) {
@@ -1012,24 +1012,24 @@ fn realize_provision_codex_runtime(
   effect_intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   match effect_intent.effect {
-    ProvisionCodexRuntime {} =>
+    gunbc.host_effect.ProvisionCodexRuntime {} =>
       match effect_intent.transport {
         LocalShell =>
           realize_provision_codex_runtime_body(
             transport: effect_intent.transport,
             effect_intent: effect_intent,
           )
-        SshShell { ssh_host: _ } =>
+        gunbc.host_effect.SshShell { ssh_host: _ } =>
           realize_provision_codex_runtime_body(
             transport: effect_intent.transport,
             effect_intent: effect_intent,
           )
-        FleetSsh { target: _, context: _ } =>
+        gunbc.host_effect.FleetSsh { target: _, context: _ } =>
           realize_provision_codex_runtime_body(
             transport: effect_intent.transport,
             effect_intent: effect_intent,
           )
-        EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+        gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
           std.realization_reconcile.NotConverged {
             reason: "host_effect_apply: ProvisionCodexRuntime cannot use EmitArtifactThenThinRun transport; typed mismatch.",
             applied: effect_intent,
@@ -1071,9 +1071,9 @@ type Srv3HostPredicate
 
 fn srv3_predicate_from_typed_argv(outcome: gunbc.typed_argv_exec.TypedArgvExecOutcome) -> Srv3HostPredicate {
   match outcome {
-    TypedArgvExecConverged { result: r } =>
+    gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } =>
       if r.success { Srv3PredicateHolds } else { Srv3PredicateFails }
-    TypedArgvExecRefused { reason: why } => Srv3PredicateUnobserved { reason: why }
+    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } => Srv3PredicateUnobserved { reason: why }
   }
 }
 
@@ -1092,14 +1092,14 @@ type Srv3ObservedToken
 
 fn srv3_observed_token_from_typed_argv(outcome: gunbc.typed_argv_exec.TypedArgvExecOutcome) -> Srv3ObservedToken {
   match outcome {
-    TypedArgvExecConverged { result: r } =>
+    gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } =>
       if r.success {
         let out = std.algebra.trim(s: r.stdout)
         if out == "" { Srv3TokenAbsent } else { Srv3TokenObserved { value: out } }
       } else {
         Srv3TokenAbsent
       }
-    TypedArgvExecRefused { reason: why } => Srv3TokenUnobserved { reason: why }
+    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } => Srv3TokenUnobserved { reason: why }
   }
 }
 
@@ -1128,7 +1128,7 @@ fn srv3_transport_witness_bin_success(
       } else {
         Srv3PredicateFails
       }
-    SshShell { ssh_host: h } =>
+    gunbc.host_effect.SshShell { ssh_host: h } =>
       if workdir == "/" {
         srv3_predicate_from_typed_argv(
           outcome: gunbc.typed_argv_exec.typed_argv_exec_over_ssh(
@@ -1139,7 +1139,7 @@ fn srv3_transport_witness_bin_success(
       } else {
         Srv3PredicateUnobserved { reason: srv3_nonroot_workdir_unobservable_reason }
       }
-    FleetSsh { target: t, context: c } =>
+    gunbc.host_effect.FleetSsh { target: t, context: c } =>
       if workdir == "/" {
         srv3_predicate_from_typed_argv(
           outcome: gunbc.typed_argv_exec.typed_argv_exec_over_fleet_ssh(
@@ -1151,7 +1151,7 @@ fn srv3_transport_witness_bin_success(
       } else {
         Srv3PredicateUnobserved { reason: srv3_nonroot_workdir_unobservable_reason }
       }
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       Srv3PredicateUnobserved {
         reason: "EmitArtifactThenThinRun transport has no arm that can run a witness binary",
       }
@@ -1166,11 +1166,11 @@ fn srv3_transport_test_executable(path: String, transport: gunbc.host_effect.Hos
       } else {
         Srv3PredicateFails
       }
-    SshShell { ssh_host: h } =>
+    gunbc.host_effect.SshShell { ssh_host: h } =>
       srv3_predicate_from_typed_argv(
         outcome: gunbc.typed_argv_exec.typed_argv_exec_over_ssh(host: h, argv: extdeps.shell.shell_test_is_executable_argv(path: path)),
       )
-    FleetSsh { target: t, context: c } =>
+    gunbc.host_effect.FleetSsh { target: t, context: c } =>
       srv3_predicate_from_typed_argv(
         outcome: gunbc.typed_argv_exec.typed_argv_exec_over_fleet_ssh(
           target: t,
@@ -1178,7 +1178,7 @@ fn srv3_transport_test_executable(path: String, transport: gunbc.host_effect.Hos
           argv: extdeps.shell.shell_test_is_executable_argv(path: path),
         ),
       )
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       Srv3PredicateUnobserved {
         reason: "EmitArtifactThenThinRun transport has no arm that can test an executable",
       }
@@ -1193,11 +1193,11 @@ fn srv3_apt_tool_present(tool_name: std.types.NonEmptyStr, transport: gunbc.host
       } else {
         Srv3PredicateFails
       }
-    SshShell { ssh_host: h } =>
+    gunbc.host_effect.SshShell { ssh_host: h } =>
       srv3_predicate_from_typed_argv(
         outcome: gunbc.typed_argv_exec.typed_argv_exec_over_ssh(host: h, argv: extdeps.shell.posix_command_v_check_argv(command: tool_name)),
       )
-    FleetSsh { target: t, context: c } =>
+    gunbc.host_effect.FleetSsh { target: t, context: c } =>
       srv3_predicate_from_typed_argv(
         outcome: gunbc.typed_argv_exec.typed_argv_exec_over_fleet_ssh(
           target: t,
@@ -1205,7 +1205,7 @@ fn srv3_apt_tool_present(tool_name: std.types.NonEmptyStr, transport: gunbc.host
           argv: extdeps.shell.posix_command_v_check_argv(command: tool_name),
         ),
       )
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       Srv3PredicateUnobserved {
         reason: "EmitArtifactThenThinRun transport has no arm that can probe tool presence",
       }
@@ -1225,11 +1225,11 @@ fn srv3_tool_bin_path(tool_name: std.types.NonEmptyStr, transport: gunbc.host_ef
         Srv3TokenAbsent
       }
     }
-    SshShell { ssh_host: h } =>
+    gunbc.host_effect.SshShell { ssh_host: h } =>
       srv3_observed_token_from_typed_argv(
         outcome: gunbc.typed_argv_exec.typed_argv_exec_over_ssh(host: h, argv: extdeps.shell.posix_command_v_check_argv(command: tool_name)),
       )
-    FleetSsh { target: t, context: c } =>
+    gunbc.host_effect.FleetSsh { target: t, context: c } =>
       srv3_observed_token_from_typed_argv(
         outcome: gunbc.typed_argv_exec.typed_argv_exec_over_fleet_ssh(
           target: t,
@@ -1237,7 +1237,7 @@ fn srv3_tool_bin_path(tool_name: std.types.NonEmptyStr, transport: gunbc.host_ef
           argv: extdeps.shell.posix_command_v_check_argv(command: tool_name),
         ),
       )
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       Srv3TokenUnobserved {
         reason: "EmitArtifactThenThinRun transport has no arm that can resolve a tool path",
       }
@@ -1298,12 +1298,12 @@ fn srv3_chown_directory_to_current_user(path: String, transport: gunbc.host_effe
         Srv3PredicateFails
       }
     }
-    SshShell { ssh_host: h } => {
+    gunbc.host_effect.SshShell { ssh_host: h } => {
       let uid = srv3_observed_token_from_typed_argv(outcome: gunbc.typed_argv_exec.typed_argv_exec_over_ssh(host: h, argv: extdeps.tools.id.id_uid_argv()))
       let gid = srv3_observed_token_from_typed_argv(outcome: gunbc.typed_argv_exec.typed_argv_exec_over_ssh(host: h, argv: extdeps.tools.id.id_gid_argv()))
       srv3_chown_with_observed_owner(uid: uid, gid: gid, path: path, transport: transport)
     }
-    FleetSsh { target: t, context: c } => {
+    gunbc.host_effect.FleetSsh { target: t, context: c } => {
       let uid = srv3_observed_token_from_typed_argv(
         outcome: gunbc.typed_argv_exec.typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: extdeps.tools.id.id_uid_argv()),
       )
@@ -1312,7 +1312,7 @@ fn srv3_chown_directory_to_current_user(path: String, transport: gunbc.host_effe
       )
       srv3_chown_with_observed_owner(uid: uid, gid: gid, path: path, transport: transport)
     }
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       Srv3PredicateUnobserved {
         reason: "EmitArtifactThenThinRun transport has no arm that can read uid/gid or chown",
       }
@@ -1638,17 +1638,17 @@ fn realize_os_install_actuator_toolchain_ensure(
         transport: effect_intent.transport,
         effect_intent: effect_intent,
       )
-    SshShell { ssh_host: _ } =>
+    gunbc.host_effect.SshShell { ssh_host: _ } =>
       srv3_realize_os_install_actuator_toolchain_ensure_body(
         transport: effect_intent.transport,
         effect_intent: effect_intent,
       )
-    FleetSsh { target: _, context: _ } =>
+    gunbc.host_effect.FleetSsh { target: _, context: _ } =>
       srv3_realize_os_install_actuator_toolchain_ensure_body(
         transport: effect_intent.transport,
         effect_intent: effect_intent,
       )
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: OsInstallActuatorToolchainEnsure cannot use EmitArtifactThenThinRun transport; typed mismatch.",
         applied: effect_intent,
@@ -1886,11 +1886,11 @@ fn realize_provision_build_cache(
   effect_intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   match effect_intent.effect {
-    EnsureBuildCacheInstance { desired: instance } =>
+    gunbc.host_effect.EnsureBuildCacheInstance { desired: instance } =>
       match gunbc.host_build_cache_catalog_gate.provision_build_cache_catalog_gate_verdict(catalog_id: instance.implementation) {
-        ProvisionBuildCacheCatalogRefused { reason: reason } =>
+        gunbc.host_build_cache_catalog_gate.ProvisionBuildCacheCatalogRefused { reason: reason } =>
           std.realization_reconcile.NotConverged { reason: reason as String, applied: effect_intent }
-        ProvisionBuildCacheCatalogRealizable =>
+        gunbc.host_build_cache_catalog_gate.ProvisionBuildCacheCatalogRealizable =>
           match effect_intent.transport {
             LocalShell =>
               realize_provision_build_cache_body(
@@ -1898,19 +1898,19 @@ fn realize_provision_build_cache(
                 transport: effect_intent.transport,
                 effect_intent: effect_intent,
               )
-            SshShell { ssh_host: _ } =>
+            gunbc.host_effect.SshShell { ssh_host: _ } =>
               realize_provision_build_cache_body(
                 instance: instance,
                 transport: effect_intent.transport,
                 effect_intent: effect_intent,
               )
-            FleetSsh { target: _, context: _ } =>
+            gunbc.host_effect.FleetSsh { target: _, context: _ } =>
               realize_provision_build_cache_body(
                 instance: instance,
                 transport: effect_intent.transport,
                 effect_intent: effect_intent,
               )
-            EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+            gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
               std.realization_reconcile.NotConverged {
                 reason: "host_effect_apply: EnsureBuildCacheInstance cannot use EmitArtifactThenThinRun transport; typed mismatch.",
                 applied: effect_intent,
@@ -1980,7 +1980,7 @@ fn run_shell_transport(script: gunbc.retained_shell_script.RetainedShellScript, 
         stderr: result.stderr,
       }
     }
-    SshShell { ssh_host: h } => {
+    gunbc.host_effect.SshShell { ssh_host: h } => {
       if script.body == "" {
         ShellExecObserved {
           exit_code: 1,
@@ -1998,7 +1998,7 @@ fn run_shell_transport(script: gunbc.retained_shell_script.RetainedShellScript, 
         }
       }
     }
-    FleetSsh { target: t, context: _ } =>
+    gunbc.host_effect.FleetSsh { target: t, context: _ } =>
       ShellExecObserved {
         exit_code: 1,
         success: false,
@@ -2012,7 +2012,7 @@ fn run_shell_transport(script: gunbc.retained_shell_script.RetainedShellScript, 
         ], ""),
         stderr: "",
       }
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       ShellExecObserved {
         exit_code: 1,
         success: false,
@@ -2026,7 +2026,7 @@ fn realize_converge_in_process(host_converge: gunbc.host_converge.HostConverge, 
   match gunbc.host_converge_realize.interpret_host_converge(host_converge: host_converge) {
     ConvergeHostRefused { reason: why } =>
       std.realization_reconcile.NotConverged { reason: why, applied: intent }
-    ConvergeHostInterpreted { knob_count: n, stdout: out } =>
+    gunbc.host_converge_realize.ConvergeHostInterpreted { knob_count: n, stdout: out } =>
       if n == 0 {
         std.realization_reconcile.NotConverged { reason: gunbc.host_converge_realize.converge_host_no_knobs_reason, applied: intent }
       } else {
@@ -2049,24 +2049,24 @@ fn realize_converge_in_process(host_converge: gunbc.host_converge.HostConverge, 
 
 fn realize_converge_on_host(host_converge: gunbc.host_converge.HostConverge, transport: gunbc.host_effect.HostEffectTransport, intent: gunbc.host_effect.HostEffectIntent) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   match transport {
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       match gunbc.host_converge.gunbc_apply_mode_for_host(host: host_converge.identity) {
-        FreshStandup =>
+        gunbc.host_converge.FreshStandup =>
           std.realization_reconcile.NotConverged {
             reason: "host_effect_apply: EmitArtifactThenThinRun fresh-standup bootstrap+thin-run is fail-closed Unimplemented until bootstrap_fragment_script_carrier_scaffold and thin_invocation_argv_carrier_scaffold dissolve via bash-emit (#5828 / shell-emission slice 1+2).",
             applied: intent,
           }
-        ExistingHostQuiescentReload =>
+        gunbc.host_converge.ExistingHostQuiescentReload =>
           realize_converge_in_process(host_converge: host_converge, intent: intent)
       }
     LocalShell =>
       realize_converge_in_process(host_converge: host_converge, intent: intent)
-    SshShell { ssh_host: _ } =>
+    gunbc.host_effect.SshShell { ssh_host: _ } =>
       std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: ConvergePlan over SshShell is a fail-closed Unimplemented stub; use EmitArtifactThenThinRun or LocalShell for the converge lane.",
         applied: intent,
       }
-    FleetSsh { target: _, context: _ } =>
+    gunbc.host_effect.FleetSsh { target: _, context: _ } =>
       std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: ConvergePlan over SshShell is a fail-closed Unimplemented stub; use EmitArtifactThenThinRun or LocalShell for the converge lane.",
         applied: intent,
@@ -2076,7 +2076,7 @@ fn realize_converge_on_host(host_converge: gunbc.host_converge.HostConverge, tra
 
 fn realize_install_media_fetch_in_process(intent: gunbc.host_effect.HostEffectIntent) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   match extdeps.provisioning.ubuntu_install_media_fetch.install_media_fetch_reconcile(artifact: gunbc.srv3_ubuntu_install_media_artifact.srv3_ubuntu_install_media_artifact) {
-    InstallMediaFetchAlreadyPresent { path: p } =>
+    extdeps.provisioning.ubuntu_install_media_fetch.InstallMediaFetchAlreadyPresent { path: p } =>
       std.realization_reconcile.reconcile_grounded(
         apply_effect: intent,
         show_read: std.realization_reconcile.ReadObserved { value: p as String },
@@ -2087,7 +2087,7 @@ fn realize_install_media_fetch_in_process(intent: gunbc.host_effect.HostEffectIn
           }
         }
       )
-    InstallMediaFetchFetched { path: p, mirror_url: u } =>
+    extdeps.provisioning.ubuntu_install_media_fetch.InstallMediaFetchFetched { path: p, mirror_url: u } =>
       std.realization_reconcile.reconcile_grounded(
         apply_effect: intent,
         show_read: std.realization_reconcile.ReadObserved { value: p as String },
@@ -2098,14 +2098,14 @@ fn realize_install_media_fetch_in_process(intent: gunbc.host_effect.HostEffectIn
           }
         }
       )
-    InstallMediaFetchRefused { reason: why } =>
+    extdeps.provisioning.ubuntu_install_media_fetch.InstallMediaFetchRefused { reason: why } =>
       std.realization_reconcile.NotConverged { reason: concat("install-media-fetch: ", why as String), applied: intent }
   }
 }
 
 fn realize_install_media_remaster_in_process(intent: gunbc.host_effect.HostEffectIntent) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   match extdeps.provisioning.ubuntu_seeded_install_media_remaster.install_media_remaster_reconcile(artifact: gunbc.srv3_seeded_install_media_artifact.srv3_seeded_install_media_artifact) {
-    InstallMediaRemasterAlreadyPresent { path: p } =>
+    extdeps.provisioning.ubuntu_seeded_install_media_remaster.InstallMediaRemasterAlreadyPresent { path: p } =>
       std.realization_reconcile.reconcile_grounded(
         apply_effect: intent,
         show_read: std.realization_reconcile.ReadObserved { value: p as String },
@@ -2116,7 +2116,7 @@ fn realize_install_media_remaster_in_process(intent: gunbc.host_effect.HostEffec
           }
         }
       )
-    InstallMediaRemasterRemastered { path: p } =>
+    extdeps.provisioning.ubuntu_seeded_install_media_remaster.InstallMediaRemasterRemastered { path: p } =>
       std.realization_reconcile.reconcile_grounded(
         apply_effect: intent,
         show_read: std.realization_reconcile.ReadObserved { value: p as String },
@@ -2127,7 +2127,7 @@ fn realize_install_media_remaster_in_process(intent: gunbc.host_effect.HostEffec
           }
         }
       )
-    InstallMediaRemasterRefused { reason: why } =>
+    extdeps.provisioning.ubuntu_seeded_install_media_remaster.InstallMediaRemasterRefused { reason: why } =>
       std.realization_reconcile.NotConverged { reason: concat("install-media-remaster: ", why as String), applied: intent }
   }
 }
@@ -2139,17 +2139,17 @@ fn realize_srv3_typed_reconcile(kind: TypedReconcileKind, transport: gunbc.host_
         TypedReconcileFetch => realize_install_media_fetch_in_process(intent: intent)
         TypedReconcileRemaster => realize_install_media_remaster_in_process(intent: intent)
       }
-    SshShell { ssh_host: _ } =>
+    gunbc.host_effect.SshShell { ssh_host: _ } =>
       std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: TypedReconcileOnHost runs in-process on the executor's own host; SshShell transport is a fail-closed Unimplemented stub until the typed reconcile is realized over a remote-observe/apply transport.",
         applied: intent,
       }
-    FleetSsh { target: _, context: _ } =>
+    gunbc.host_effect.FleetSsh { target: _, context: _ } =>
       std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: TypedReconcileOnHost runs in-process on the executor's own host; SshShell transport is a fail-closed Unimplemented stub until the typed reconcile is realized over a remote-observe/apply transport.",
         applied: intent,
       }
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: TypedReconcileOnHost runs in-process on the executor's own host; EmitArtifactThenThinRun is a fail-closed Unimplemented stub for this cell until the typed reconcile is realized over that transport.",
         applied: intent,
@@ -2178,7 +2178,7 @@ fn reconcile_ssh_argv_exec_outcome(
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   match outcome {
-    TypedArgvExecConverged { result: r } =>
+    gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } =>
       reconcile_shell_exec_observed(
         observed: ShellExecObserved {
           exit_code: r.exit_code,
@@ -2188,7 +2188,7 @@ fn reconcile_ssh_argv_exec_outcome(
         },
         intent: intent,
       )
-    TypedArgvExecRefused { reason: why } =>
+    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } =>
       std.realization_reconcile.NotConverged { reason: why, applied: intent }
   }
 }
@@ -2204,11 +2204,11 @@ fn run_typed_argv_transport(
       gunbc.typed_argv_exec.TypedArgvExecRefused {
         reason: "run_typed_argv_transport: LocalShell has no remote target — use SshShell or FleetSsh when executor and subject host differ",
       }
-    SshShell { ssh_host: h } =>
+    gunbc.host_effect.SshShell { ssh_host: h } =>
       gunbc.typed_argv_exec.typed_argv_exec_over_ssh(host: h, argv: argv)
-    FleetSsh { target: t, context: c } =>
+    gunbc.host_effect.FleetSsh { target: t, context: c } =>
       gunbc.typed_argv_exec.typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv)
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       gunbc.typed_argv_exec.TypedArgvExecRefused {
         reason: "run_typed_argv_transport: EmitArtifactThenThinRun is not a typed argv transport",
       }
@@ -2234,17 +2234,17 @@ fn realize_effective_principal_read_on_host(
         intent: intent,
       )
     }
-    SshShell { ssh_host: h } =>
+    gunbc.host_effect.SshShell { ssh_host: h } =>
       reconcile_ssh_argv_exec_outcome(
         outcome: gunbc.typed_argv_exec.typed_argv_exec_over_ssh(host: h, argv: argv),
         intent: intent,
       )
-    FleetSsh { target: t, context: c } =>
+    gunbc.host_effect.FleetSsh { target: t, context: c } =>
       reconcile_ssh_argv_exec_outcome(
         outcome: gunbc.typed_argv_exec.typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
         intent: intent,
       )
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: ReadEffectivePosixPrincipal cannot use EmitArtifactThenThinRun transport; typed mismatch.",
         applied: intent,
@@ -2271,17 +2271,17 @@ fn realize_sudo_nopasswd_execute_probe_on_host(
         intent: intent,
       )
     }
-    SshShell { ssh_host: h } =>
+    gunbc.host_effect.SshShell { ssh_host: h } =>
       reconcile_ssh_argv_exec_outcome(
         outcome: gunbc.typed_argv_exec.typed_argv_exec_over_ssh(host: h, argv: argv),
         intent: intent,
       )
-    FleetSsh { target: t, context: c } =>
+    gunbc.host_effect.FleetSsh { target: t, context: c } =>
       reconcile_ssh_argv_exec_outcome(
         outcome: gunbc.typed_argv_exec.typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
         intent: intent,
       )
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: SudoNopasswdExecuteProbe cannot use EmitArtifactThenThinRun transport; typed mismatch.",
         applied: intent,
@@ -2319,7 +2319,7 @@ fn reconcile_sudo_nopasswd_grant_list_outcome(
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   match outcome {
-    TypedArgvExecConverged { result: r } =>
+    gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } =>
       reconcile_shell_exec_observed(
         observed: sudo_nopasswd_grant_list_observed(
           probe: probe,
@@ -2330,7 +2330,7 @@ fn reconcile_sudo_nopasswd_grant_list_outcome(
         ),
         intent: intent,
       )
-    TypedArgvExecRefused { reason: why } =>
+    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } =>
       std.realization_reconcile.NotConverged { reason: why, applied: intent }
   }
 }
@@ -2355,19 +2355,19 @@ fn realize_sudo_nopasswd_grant_list_probe_on_host(
         intent: intent,
       )
     }
-    SshShell { ssh_host: h } =>
+    gunbc.host_effect.SshShell { ssh_host: h } =>
       reconcile_sudo_nopasswd_grant_list_outcome(
         probe: probe,
         outcome: gunbc.typed_argv_exec.typed_argv_exec_over_ssh(host: h, argv: argv),
         intent: intent,
       )
-    FleetSsh { target: t, context: c } =>
+    gunbc.host_effect.FleetSsh { target: t, context: c } =>
       reconcile_sudo_nopasswd_grant_list_outcome(
         probe: probe,
         outcome: gunbc.typed_argv_exec.typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
         intent: intent,
       )
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       std.realization_reconcile.NotConverged {
         reason: "host_effect_apply: SudoNopasswdGrantListProbe cannot use EmitArtifactThenThinRun transport; typed mismatch.",
         applied: intent,
@@ -2393,7 +2393,7 @@ fn realize_set_hostname_cas_on_host(
     base: base,
     desired: desired,
   ) {
-    HostnameSetCasApplied =>
+    gunbc.hostname_set.HostnameSetCasApplied =>
       reconcile_shell_exec_observed(
         observed: ShellExecObserved {
           exit_code: 0,
@@ -2403,12 +2403,12 @@ fn realize_set_hostname_cas_on_host(
         },
         intent: intent,
       )
-    HostnameSetCasReadRefused { reason: why } =>
+    gunbc.hostname_set.HostnameSetCasReadRefused { reason: why } =>
       std.realization_reconcile.NotConverged {
         reason: concat("host_effect: SetHostnameCas hostname read refused; fail-closed: ", why),
         applied: intent,
       }
-    HostnameSetCasBaseMismatch { observed: o, base: b } =>
+    gunbc.hostname_set.HostnameSetCasBaseMismatch { observed: o, base: b } =>
       std.realization_reconcile.NotConverged {
         reason: concat(
           concat("host_effect: SetHostnameCas CAS refused — observed ", o),
@@ -2416,7 +2416,7 @@ fn realize_set_hostname_cas_on_host(
         ),
         applied: intent,
       }
-    HostnameSetCasApplyFailed { stderr: e } =>
+    gunbc.hostname_set.HostnameSetCasApplyFailed { stderr: e } =>
       std.realization_reconcile.NotConverged {
         reason: concat("host_effect: SetHostnameCas hostnamectl set-hostname failed: ", e),
         applied: intent,
@@ -2434,7 +2434,7 @@ fn realize_hostname_read_on_host(
         observed: ShellExecObserved { exit_code: 0, success: true, stdout: name, stderr: "" },
         intent: intent,
       )
-    HostnameShortCaptureRefused { reason: why } =>
+    gunbc.hostname_read.HostnameShortCaptureRefused { reason: why } =>
       reconcile_shell_exec_observed(
         observed: ShellExecObserved {
           exit_code: 1,
@@ -2466,7 +2466,7 @@ fn realize_codex_supervised_worker_turn_on_host(
       client_command_id: cmd_id_read.content as std.types.NonEmptyStr,
       transport: transport,
     ) {
-      CodexSupervisedSessionApplyConverged {
+      gunbc.host_effect_codex_supervised_turn.CodexSupervisedSessionApplyConverged {
         stdout: out,
         stderr: err,
         exit_code: code,
@@ -2480,7 +2480,7 @@ fn realize_codex_supervised_worker_turn_on_host(
           },
           intent: intent_record,
         )
-      CodexSupervisedSessionApplyRefused { reason: why } =>
+      gunbc.host_effect_codex_supervised_turn.CodexSupervisedSessionApplyRefused { reason: why } =>
         std.realization_reconcile.NotConverged { reason: why, applied: intent_record }
     }
   }
@@ -2494,7 +2494,7 @@ fn realize_nbd_proxy_session_on_host(
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   let binding = gunbc.host_effect_nbd_proxy_serve.host_effect_nbd_proxy_serve_session_binding(intent: intent, lease_key: lease_key)
   match gunbc.host_effect_nbd_proxy_serve.host_effect_nbd_proxy_serve_apply(binding: binding, transport: transport) {
-    NbdProxyServeApplyConverged { stdout: out } =>
+    gunbc.host_effect_nbd_proxy_serve.NbdProxyServeApplyConverged { stdout: out } =>
       std.realization_reconcile.reconcile_grounded(
         apply_effect: intent_record,
         show_read: std.realization_reconcile.ReadObserved {
@@ -2509,7 +2509,7 @@ fn realize_nbd_proxy_session_on_host(
           evidence: gunbc.host_effect.ShellEffectApplied { exit_code: 0, stdout: out, stderr: "" },
         },
       )
-    NbdProxyServeApplyRefused { reason: why } =>
+    gunbc.host_effect_nbd_proxy_serve.NbdProxyServeApplyRefused { reason: why } =>
       std.realization_reconcile.NotConverged { reason: why, applied: intent_record }
   }
 }
@@ -2519,26 +2519,26 @@ data candidate_observation_locus_note: String = "THE CANDIDATE WAS OBSERVED IN T
 fn live_deploy_apply_candidate_locus_refusal(transport: gunbc.host_effect.HostEffectTransport) -> String {
   match transport {
     LocalShell => ""
-    SshShell { ssh_host: h } =>
+    gunbc.host_effect.SshShell { ssh_host: h } =>
       join([
         "live_deploy apply refused over ssh host=", h,
         ": the candidate release was observed in the LOCAL deploying checkout, and no modeled source transfer proves the remote tree is that candidate. ",
         "Emitting the local revision into the remote unit would publish a release identity the process may not be running.",
       ], "")
-    FleetSsh { target: t, context: _ } =>
+    gunbc.host_effect.FleetSsh { target: t, context: _ } =>
       join([
         "live_deploy apply refused over fleet ssh endpoint=", t.endpoint as String,
         ": the candidate release was observed in the LOCAL deploying checkout, and no modeled source transfer proves the remote tree is that candidate. ",
         "Emitting the local revision into the remote unit would publish a release identity the process may not be running.",
       ], "")
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       "live_deploy apply refused over EmitArtifactThenThinRun: the candidate release was observed in the local deploying checkout and no modeled source transfer proves the executing tree is that candidate."
   }
 }
 
 fn realize_live_deploy_apply_on_host(
   spec: gunbc.live_deploy.spec.DeploymentSpec,
-  candidate: CandidateRelease,
+  candidate: gunbc.live_deploy.candidate.CandidateRelease,
   transport: gunbc.host_effect.HostEffectTransport,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
@@ -2550,7 +2550,7 @@ fn realize_live_deploy_apply_on_host(
       script: gunbc.retained_shell_script.retained_srvn(
         body: gunbc.live_deploy.emit.live_deploy_apply_script_for(
           spec: spec,
-          revision: RevisionBoundAtEmission { revision: candidate.revision },
+          revision: gunbc.live_deploy.emit.RevisionBoundAtEmission { revision: candidate.revision },
         ),
         reason: "live_deploy apply (unit install + start)",
       ),
@@ -2712,9 +2712,9 @@ fn deploy_access_shell_apply_success_stdout(
           } else {
             none
           }
-        ConvergePlanApplied { stdout: _, exit_code: _ } => Absent
+        gunbc.host_effect.ConvergePlanApplied { stdout: _, exit_code: _ } => Absent
       }
-    NotConverged { reason: _, applied: _ } => Absent
+    std.realization_reconcile.NotConverged { reason: _, applied: _ } => Absent
   }
 }
 
@@ -2790,7 +2790,7 @@ fn host_effect_apply_gated(
   }
   let verdict = host_effect_privilege_verdict(access: access, fixture_actor: fixture_actor)
   match verdict {
-    Permit =>
+    std.access.Permit =>
       match resolve_host_effect_cell(target: target, effect: effect) {
         ShellOnHost { node: _, script: s } => realize_shell_on_host(script: s, transport: transport, intent: intent)
         ConvergeOnHost { node: _, host_converge: hc } =>
@@ -2882,7 +2882,7 @@ fn not_converged_directive(drive: gunbc.host_effect.Drive) -> ConvergeDirective 
 fn host_effect_drive_directive(r: std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence>) -> ConvergeDirective {
   match r {
     Converged { evidence: _, applied: _ } => Settled
-    NotConverged { reason: why, applied: intent } =>
+    std.realization_reconcile.NotConverged { reason: why, applied: intent } =>
       match intent.privilege_denial {
         Present { value: std.access.Deny { refusal: _ } } => Refused { reason: why }
         Present { value: std.access.Permit } => not_converged_directive(drive: gunbc.host_effect.host_effect_drive(intent: intent))

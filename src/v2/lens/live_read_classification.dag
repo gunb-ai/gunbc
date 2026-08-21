@@ -8,32 +8,32 @@ module v2.lens.live_read_classification
 // does for the same function.
 data live_read_classification_law: String = "G2 (call-reachability) live-read classification per docs/plans/live-read-witness-classification-design.md P1: proven runtime-read closure = import-closure modules intersecting carrier homes PLUS call-reachable fn bodies from the witness entry module over fn-arrow DependencyView facts. Carrier invocations (filesystem_read, module_declaration_facts, decl_facts) are located in reachable skeletons; path patterns are LiteralPath when a string literal atom is statable, ParamRef when the filesystem_read path argument is a parameter reference, UnknownPath fail-closed otherwise."
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority }
 }
 
-data empty_carrier_list: List<LiveReadCarrier> = []
-data empty_decl_list: List<FnArrowDecl> = []
-data empty_string_list: List<String> = []
-data empty_symbol_list: List<Symbol> = []
-data empty_node_list: List<Node> = []
+data empty_carrier_list: std.types.List<v2.std.live_read.LiveReadCarrier> = []
+data empty_decl_list: std.types.List<v2.std.fn_index.FnArrowDecl> = []
+data empty_string_list: std.types.List<String> = []
+data empty_symbol_list: std.types.List<v2.std.node.Symbol> = []
+data empty_node_list: std.types.List<v2.std.node.Node> = []
 
 fn string_eq(a: String, b: String) -> Bool {
   a == b
 }
 
-fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
+fn symbol_eq(a: v2.std.node.Symbol, b: v2.std.node.Symbol) -> Bool {
   a == b
 }
 
-fn carrier_home_module(home: LiveReadCarrierHome) -> String {
+fn carrier_home_module(home: v2.std.live_read.LiveReadCarrierHome) -> String {
   home.module
 }
 
 fn carrier_homes_in_closure(
-  closure_modules: List<String>,
-  carrier_homes: List<LiveReadCarrierHome>
-) -> List<LiveReadCarrierHome> {
+  closure_modules: std.types.List<String>,
+  carrier_homes: std.types.List<v2.std.live_read.LiveReadCarrierHome>
+) -> std.types.List<v2.std.live_read.LiveReadCarrierHome> {
   filter(
     xs: carrier_homes,
     predicate: fn(home) {
@@ -42,42 +42,42 @@ fn carrier_homes_in_closure(
   )
 }
 
-fn carrier_home_kind_to_g1_carrier(home: LiveReadCarrierHome) -> LiveReadCarrier {
+fn carrier_home_kind_to_g1_carrier(home: v2.std.live_read.LiveReadCarrierHome) -> v2.std.live_read.LiveReadCarrier {
   match home.kind {
-    FilesystemReadCarrier =>
-      FilesystemReadPath { path_pattern: UnknownPath }
-    ModuleDeclarationFactsCarrier => ModuleDeclarationFactsScan
-    DeclFactsReflectionCarrier =>
-      DeclFactsReflection { home: home.module }
+    v2.std.live_read.FilesystemReadCarrier =>
+      v2.std.live_read.FilesystemReadPath { path_pattern: v2.std.live_read.UnknownPath }
+    v2.std.live_read.ModuleDeclarationFactsCarrier => v2.std.live_read.ModuleDeclarationFactsScan
+    v2.std.live_read.DeclFactsReflectionCarrier =>
+      v2.std.live_read.DeclFactsReflection { home: home.module }
   }
 }
 
-fn g1_carriers_from_homes(homes: List<LiveReadCarrierHome>) -> List<LiveReadCarrier> {
+fn g1_carriers_from_homes(homes: std.types.List<v2.std.live_read.LiveReadCarrierHome>) -> std.types.List<v2.std.live_read.LiveReadCarrier> {
   fold_list(xs: homes, empty: empty_carrier_list, cons: fn(acc, home) {
     list_snoc_item(xs: acc, item: carrier_home_kind_to_g1_carrier(home: home))
   })
 }
 
 fn live_read_classification_g1(
-  closure_modules: List<String>,
-  carrier_homes: List<LiveReadCarrierHome>
-) -> LiveReadClassification {
+  closure_modules: std.types.List<String>,
+  carrier_homes: std.types.List<v2.std.live_read.LiveReadCarrierHome>
+) -> v2.std.live_read.LiveReadClassification {
   let hits = carrier_homes_in_closure(
     closure_modules: closure_modules,
     carrier_homes: carrier_homes
   )
   if length(xs: hits) == 0 {
-    LocalRead
+    v2.std.live_read.LocalRead
   } else {
-    RuntimeRead { carriers: g1_carriers_from_homes(homes: hits) }
+    v2.std.live_read.RuntimeRead { carriers: g1_carriers_from_homes(homes: hits) }
   }
 }
 
 fn live_read_classification_from_facts(
   entry_module: String,
-  facts: List<ModuleImportFact>,
-  carrier_homes: List<LiveReadCarrierHome>
-) -> LiveReadClassification {
+  facts: std.types.List<v2.lens.witness_cost_locality.ModuleImportFact>,
+  carrier_homes: std.types.List<v2.std.live_read.LiveReadCarrierHome>
+) -> v2.std.live_read.LiveReadClassification {
   live_read_classification_g1(
     closure_modules: v2.lens.witness_cost_locality.witness_import_closure(root: entry_module, facts: facts),
     carrier_homes: carrier_homes
@@ -86,8 +86,8 @@ fn live_read_classification_from_facts(
 
 fn live_read_classification_from_facts_v0(
   entry_module: String,
-  facts: List<ModuleImportFact>
-) -> LiveReadClassification {
+  facts: std.types.List<v2.lens.witness_cost_locality.ModuleImportFact>
+) -> v2.std.live_read.LiveReadClassification {
   live_read_classification_from_facts(
     entry_module: entry_module,
     facts: facts,
@@ -99,19 +99,19 @@ fn decl_module_prefix(mod_path: String) -> String {
   concat(mod_path, ".")
 }
 
-fn decl_belongs_to_module(decl: FnArrowDecl, mod_path: String) -> Bool {
+fn decl_belongs_to_module(decl: v2.std.fn_index.FnArrowDecl, mod_path: String) -> Bool {
   starts_with(s: decl.qualified_name, prefix: decl_module_prefix(mod_path: mod_path))
     || string_eq(a: decl.qualified_name, b: mod_path)
 }
 
-fn decls_in_module(decls: List<FnArrowDecl>, mod_path: String) -> List<FnArrowDecl> {
+fn decls_in_module(decls: std.types.List<v2.std.fn_index.FnArrowDecl>, mod_path: String) -> std.types.List<v2.std.fn_index.FnArrowDecl> {
   filter(
     xs: decls,
     predicate: fn(decl) { decl_belongs_to_module(decl: decl, mod_path: mod_path) }
   )
 }
 
-fn decls_in_modules(decls: List<FnArrowDecl>, modules: List<String>) -> List<FnArrowDecl> {
+fn decls_in_modules(decls: std.types.List<v2.std.fn_index.FnArrowDecl>, modules: std.types.List<String>) -> std.types.List<v2.std.fn_index.FnArrowDecl> {
   fold_list(xs: modules, empty: empty_decl_list, cons: fn(acc, mod_path) {
     list_append(left: acc, right: decls_in_module(decls: decls, mod_path: mod_path))
   })
@@ -128,15 +128,15 @@ fn callee_text_is_known_carrier(text: String) -> Bool {
 }
 
 type AtomCollectState {
-  node: Node
-  atoms: List<Symbol>
+  node: v2.std.node.Node
+  atoms: std.types.List<v2.std.node.Symbol>
 }
 
-fn atom_collect_init(n: Node) -> AtomCollectState {
+fn atom_collect_init(n: v2.std.node.Node) -> AtomCollectState {
   AtomCollectState { node: n, atoms: empty_symbol_list }
 }
 
-fn atom_collect_step(acc: AtomCollectState, _edge: Edge, child: AtomCollectState) -> AtomCollectState {
+fn atom_collect_step(acc: AtomCollectState, _edge: v2.std.node.Edge, child: AtomCollectState) -> AtomCollectState {
   let atoms = match node_atom_identity_optional(node: child.node) {
     Present { value: sym } =>
       if contains(xs: acc.atoms, item: sym, eq: symbol_eq) {
@@ -149,11 +149,11 @@ fn atom_collect_step(acc: AtomCollectState, _edge: Edge, child: AtomCollectState
   AtomCollectState { node: acc.node, atoms: atoms }
 }
 
-fn atom_collect_algebra() -> NodeFold<AtomCollectState> {
-  NodeFold { init: atom_collect_init, step: atom_collect_step }
+fn atom_collect_algebra() -> v2.std.node.NodeFold<AtomCollectState> {
+  v2.std.node.NodeFold { init: atom_collect_init, step: atom_collect_step }
 }
 
-fn atom_identities_in_node(node: Node) -> List<Symbol> {
+fn atom_identities_in_node(node: v2.std.node.Node) -> std.types.List<v2.std.node.Symbol> {
   let from_descendants = fold_node(n: node, algebra: atom_collect_algebra()).atoms
   match node_atom_identity_optional(node: node) {
     Present { value: sym } =>
@@ -166,67 +166,67 @@ fn atom_identities_in_node(node: Node) -> List<Symbol> {
   }
 }
 
-fn param_names_of(decl: FnArrowDecl) -> List<String> {
+fn param_names_of(decl: v2.std.fn_index.FnArrowDecl) -> std.types.List<String> {
   fold_list(xs: decl.params, empty: empty_string_list, cons: fn(acc, p) {
     list_snoc_item(xs: acc, item: symbol_lexeme(sym: p.name))
   })
 }
 
-fn path_pattern_from_lexeme(text: String, param_names: List<String>) -> PathPattern {
+fn path_pattern_from_lexeme(text: String, param_names: std.types.List<String>) -> v2.std.live_read.PathPattern {
   if is_path_like_lexeme(text: text) {
-    LiteralPath { path: text }
+    v2.std.live_read.LiteralPath { path: text }
   } else if contains(xs: param_names, item: text, eq: string_eq) {
-    ParamRef { name: text }
+    v2.std.live_read.ParamRef { name: text }
   } else {
-    UnknownPath
+    v2.std.live_read.UnknownPath
   }
 }
 
-fn path_pattern_eq(a: PathPattern, b: PathPattern) -> Bool {
+fn path_pattern_eq(a: v2.std.live_read.PathPattern, b: v2.std.live_read.PathPattern) -> Bool {
   match a {
-    LiteralPath { path: pa } =>
+    v2.std.live_read.LiteralPath { path: pa } =>
       match b {
-        LiteralPath { path: pb } => string_eq(a: pa, b: pb)
+        v2.std.live_read.LiteralPath { path: pb } => string_eq(a: pa, b: pb)
         _ => false
       }
-    ParamRef { name: na } =>
+    v2.std.live_read.ParamRef { name: na } =>
       match b {
-        ParamRef { name: nb } => string_eq(a: na, b: nb)
+        v2.std.live_read.ParamRef { name: nb } => string_eq(a: na, b: nb)
         _ => false
       }
-    UnknownPath =>
+    v2.std.live_read.UnknownPath =>
       match b {
-        UnknownPath => true
+        v2.std.live_read.UnknownPath => true
         _ => false
       }
   }
 }
 
-fn live_read_carrier_eq(a: LiveReadCarrier, b: LiveReadCarrier) -> Bool {
+fn live_read_carrier_eq(a: v2.std.live_read.LiveReadCarrier, b: v2.std.live_read.LiveReadCarrier) -> Bool {
   match a {
-    FilesystemReadPath { path_pattern: pa } =>
+    v2.std.live_read.FilesystemReadPath { path_pattern: pa } =>
       match b {
-        FilesystemReadPath { path_pattern: pb } => path_pattern_eq(a: pa, b: pb)
+        v2.std.live_read.FilesystemReadPath { path_pattern: pb } => path_pattern_eq(a: pa, b: pb)
         _ => false
       }
-    ModuleDeclarationFactsScan =>
+    v2.std.live_read.ModuleDeclarationFactsScan =>
       match b {
-        ModuleDeclarationFactsScan => true
+        v2.std.live_read.ModuleDeclarationFactsScan => true
         _ => false
       }
-    DeclFactsReflection { home: ha } =>
+    v2.std.live_read.DeclFactsReflection { home: ha } =>
       match b {
-        DeclFactsReflection { home: hb } => string_eq(a: ha, b: hb)
+        v2.std.live_read.DeclFactsReflection { home: hb } => string_eq(a: ha, b: hb)
         _ => false
       }
   }
 }
 
-fn carrier_already_present(carriers: List<LiveReadCarrier>, candidate: LiveReadCarrier) -> Bool {
+fn carrier_already_present(carriers: std.types.List<v2.std.live_read.LiveReadCarrier>, candidate: v2.std.live_read.LiveReadCarrier) -> Bool {
   any(xs: carriers, predicate: fn(c) { live_read_carrier_eq(a: c, b: candidate) })
 }
 
-fn merge_carriers(left: List<LiveReadCarrier>, right: List<LiveReadCarrier>) -> List<LiveReadCarrier> {
+fn merge_carriers(left: std.types.List<v2.std.live_read.LiveReadCarrier>, right: std.types.List<v2.std.live_read.LiveReadCarrier>) -> std.types.List<v2.std.live_read.LiveReadCarrier> {
   fold_list(xs: right, empty: left, cons: fn(acc, c) {
     if carrier_already_present(carriers: acc, candidate: c) {
       acc
@@ -238,40 +238,40 @@ fn merge_carriers(left: List<LiveReadCarrier>, right: List<LiveReadCarrier>) -> 
 
 fn carrier_for_callee_text(
   callee_text: String,
-  args: List<Symbol>,
-  param_names: List<String>
-) -> LiveReadCarrier {
+  args: std.types.List<v2.std.node.Symbol>,
+  param_names: std.types.List<String>
+) -> v2.std.live_read.LiveReadCarrier {
   if string_eq(a: callee_text, b: "filesystem_read") {
     match list_head(xs: args) {
-      HeadFound { value: arg } =>
-        FilesystemReadPath {
+      v2.std.algebra.HeadFound { value: arg } =>
+        v2.std.live_read.FilesystemReadPath {
           path_pattern: path_pattern_from_lexeme(
             text: symbol_lexeme(sym: arg),
             param_names: param_names
           )
         }
-      HeadAbsent => FilesystemReadPath { path_pattern: UnknownPath }
+      v2.std.algebra.HeadAbsent => v2.std.live_read.FilesystemReadPath { path_pattern: v2.std.live_read.UnknownPath }
     }
   } else if string_eq(a: callee_text, b: "module_declaration_facts")
     || string_eq(a: callee_text, b: "module_declaration_facts_live") {
-    ModuleDeclarationFactsScan
+    v2.std.live_read.ModuleDeclarationFactsScan
   } else if string_eq(a: callee_text, b: "decl_facts") {
-    DeclFactsReflection { home: "v2.std.decl_index" }
+    v2.std.live_read.DeclFactsReflection { home: "v2.std.decl_index" }
   } else {
-    FilesystemReadPath { path_pattern: UnknownPath }
+    v2.std.live_read.FilesystemReadPath { path_pattern: v2.std.live_read.UnknownPath }
   }
 }
 
-fn positional_child_targets(node: Node) -> List<Node> {
+fn positional_child_targets(node: v2.std.node.Node) -> std.types.List<v2.std.node.Node> {
   fold(node.children, init: empty_node_list, f: fn(acc, e) {
     match e.label {
-      Positional => list_snoc_item(xs: acc, item: e.target)
+      v2.std.node.Positional => list_snoc_item(xs: acc, item: e.target)
       Named { name: _ } => acc
     }
   })
 }
 
-fn arg_symbols_from_nodes(nodes: List<Node>) -> List<Symbol> {
+fn arg_symbols_from_nodes(nodes: std.types.List<v2.std.node.Node>) -> std.types.List<v2.std.node.Symbol> {
   fold_list(xs: nodes, empty: empty_symbol_list, cons: fn(acc, n) {
     match node_atom_identity_optional(node: n) {
       Present { value: sym } => list_snoc_item(xs: acc, item: sym)
@@ -280,10 +280,10 @@ fn arg_symbols_from_nodes(nodes: List<Node>) -> List<Symbol> {
   })
 }
 
-fn carriers_from_call_node(node: Node, param_names: List<String>) -> List<LiveReadCarrier> {
+fn carriers_from_call_node(node: v2.std.node.Node, param_names: std.types.List<String>) -> std.types.List<v2.std.live_read.LiveReadCarrier> {
   let targets = positional_child_targets(node: node)
   match list_head(xs: targets) {
-    HeadFound { value: callee_node } =>
+    v2.std.algebra.HeadFound { value: callee_node } =>
       match node_atom_identity_optional(node: callee_node) {
         Present { value: callee } =>
           let callee_text = symbol_lexeme(sym: callee)
@@ -297,25 +297,25 @@ fn carriers_from_call_node(node: Node, param_names: List<String>) -> List<LiveRe
           }
         Absent => empty_carrier_list
       }
-    HeadAbsent => empty_carrier_list
+    v2.std.algebra.HeadAbsent => empty_carrier_list
   }
 }
 
-fn tail_nodes(xs: List<Node>) -> List<Node> {
+fn tail_nodes(xs: std.types.List<v2.std.node.Node>) -> std.types.List<v2.std.node.Node> {
   match list_tail(xs: xs) {
-    TailFound { tail: t } => t
-    TailAbsent => empty_node_list
+    v2.std.algebra.TailFound { tail: t } => t
+    v2.std.algebra.TailAbsent => empty_node_list
   }
 }
 
-fn literal_path_carrier(text: String) -> LiveReadCarrier {
-  FilesystemReadPath { path_pattern: LiteralPath { path: text } }
+fn literal_path_carrier(text: String) -> v2.std.live_read.LiveReadCarrier {
+  v2.std.live_read.FilesystemReadPath { path_pattern: v2.std.live_read.LiteralPath { path: text } }
 }
 
 fn literal_path_carriers_from_atoms(
-  atoms: List<Symbol>,
-  param_names: List<String>
-) -> List<LiveReadCarrier> {
+  atoms: std.types.List<v2.std.node.Symbol>,
+  param_names: std.types.List<String>
+) -> std.types.List<v2.std.live_read.LiveReadCarrier> {
   fold_list(xs: atoms, empty: empty_carrier_list, cons: fn(acc, sym) {
     let text = symbol_lexeme(sym: sym)
     if is_path_like_lexeme(text: text) {
@@ -332,18 +332,18 @@ fn literal_path_carriers_from_atoms(
 }
 
 type CarrierScanState {
-  node: Node
-  carriers: List<LiveReadCarrier>
-  param_names: List<String>
+  node: v2.std.node.Node
+  carriers: std.types.List<v2.std.live_read.LiveReadCarrier>
+  param_names: std.types.List<String>
 }
 
-fn carrier_scan_init(n: Node, param_names: List<String>) -> CarrierScanState {
+fn carrier_scan_init(n: v2.std.node.Node, param_names: std.types.List<String>) -> CarrierScanState {
   CarrierScanState { node: n, carriers: empty_carrier_list, param_names: param_names }
 }
 
 fn carrier_scan_step(
   acc: CarrierScanState,
-  _edge: Edge,
+  _edge: v2.std.node.Edge,
   child: CarrierScanState
 ) -> CarrierScanState {
   let from_call = carriers_from_call_node(node: child.node, param_names: acc.param_names)
@@ -361,14 +361,14 @@ fn carrier_scan_step(
   }
 }
 
-fn carrier_scan_algebra(param_names: List<String>) -> NodeFold<CarrierScanState> {
-  NodeFold {
+fn carrier_scan_algebra(param_names: std.types.List<String>) -> v2.std.node.NodeFold<CarrierScanState> {
+  v2.std.node.NodeFold {
     init: fn(n) { carrier_scan_init(n: n, param_names: param_names) },
     step: carrier_scan_step
   }
 }
 
-fn carriers_in_node(node: Node, param_names: List<String>) -> List<LiveReadCarrier> {
+fn carriers_in_node(node: v2.std.node.Node, param_names: std.types.List<String>) -> std.types.List<v2.std.live_read.LiveReadCarrier> {
   let from_descendants = fold_node(n: node, algebra: carrier_scan_algebra(param_names: param_names)).carriers
   merge_carriers(
     left: from_descendants,
@@ -382,7 +382,7 @@ fn carriers_in_node(node: Node, param_names: List<String>) -> List<LiveReadCarri
   )
 }
 
-fn callees_from_node(node: Node) -> List<String> {
+fn callees_from_node(node: v2.std.node.Node) -> std.types.List<String> {
   fold_list(
     xs: atom_identities_in_node(node: node),
     empty: empty_string_list,
@@ -400,33 +400,33 @@ fn callees_from_node(node: Node) -> List<String> {
 }
 
 fn decls_matching_callee(
-  decls: List<FnArrowDecl>,
-  modules: List<String>,
+  decls: std.types.List<v2.std.fn_index.FnArrowDecl>,
+  modules: std.types.List<String>,
   callee: String
-) -> List<FnArrowDecl> {
+) -> std.types.List<v2.std.fn_index.FnArrowDecl> {
   filter(
     xs: decls_in_modules(decls: decls, modules: modules),
     predicate: fn(decl) { string_eq(a: decl.name, b: callee) }
   )
 }
 
-fn fn_arrow_decl_eq(a: FnArrowDecl, b: FnArrowDecl) -> Bool {
+fn fn_arrow_decl_eq(a: v2.std.fn_index.FnArrowDecl, b: v2.std.fn_index.FnArrowDecl) -> Bool {
   string_eq(a: a.qualified_name, b: b.qualified_name)
 }
 
-fn decl_in_list(decl: FnArrowDecl, xs: List<FnArrowDecl>) -> Bool {
+fn decl_in_list(decl: v2.std.fn_index.FnArrowDecl, xs: std.types.List<v2.std.fn_index.FnArrowDecl>) -> Bool {
   any(xs: xs, predicate: fn(d) { fn_arrow_decl_eq(a: d, b: decl) })
 }
 
 fn call_reachable_decls_go(
-  seeds: List<FnArrowDecl>,
-  closure_modules: List<String>,
-  decls: List<FnArrowDecl>,
-  reached: List<FnArrowDecl>
-) -> List<FnArrowDecl> {
+  seeds: std.types.List<v2.std.fn_index.FnArrowDecl>,
+  closure_modules: std.types.List<String>,
+  decls: std.types.List<v2.std.fn_index.FnArrowDecl>,
+  reached: std.types.List<v2.std.fn_index.FnArrowDecl>
+) -> std.types.List<v2.std.fn_index.FnArrowDecl> {
   match list_head(xs: seeds) {
-    HeadAbsent => reached
-    HeadFound { value: seed } =>
+    v2.std.algebra.HeadAbsent => reached
+    v2.std.algebra.HeadFound { value: seed } =>
       let rest = tail_decls(xs: seeds)
       if decl_in_list(decl: seed, xs: reached) {
         call_reachable_decls_go(
@@ -458,18 +458,18 @@ fn call_reachable_decls_go(
   }
 }
 
-fn tail_decls(xs: List<FnArrowDecl>) -> List<FnArrowDecl> {
+fn tail_decls(xs: std.types.List<v2.std.fn_index.FnArrowDecl>) -> std.types.List<v2.std.fn_index.FnArrowDecl> {
   match list_tail(xs: xs) {
-    TailFound { tail: t } => t
-    TailAbsent => empty_decl_list
+    v2.std.algebra.TailFound { tail: t } => t
+    v2.std.algebra.TailAbsent => empty_decl_list
   }
 }
 
 fn call_reachable_decls(
   entry_module: String,
-  closure_modules: List<String>,
-  decls: List<FnArrowDecl>
-) -> List<FnArrowDecl> {
+  closure_modules: std.types.List<String>,
+  decls: std.types.List<v2.std.fn_index.FnArrowDecl>
+) -> std.types.List<v2.std.fn_index.FnArrowDecl> {
   call_reachable_decls_go(
     seeds: decls_in_module(decls: decls, mod_path: entry_module),
     closure_modules: closure_modules,
@@ -483,10 +483,10 @@ data g2_root_grain_law: String = "THE ROOT IS THE ENROLLED DECLARATION, NOT ITS 
 The seeded variant below takes the exact enrolled function and roots the walk there. Entry-grain skip is then DERIVED by conjunction over the entry rows rather than assumed: an entry may fast-skip only when every enrolled row in it is completely classified and untouched. That derivation is what keeps a single live-read witness from making its siblings unskippable, which is the same precision loss as the G1 union one level down."
 
 fn decl_named_in_module(
-  decls: List<FnArrowDecl>,
+  decls: std.types.List<v2.std.fn_index.FnArrowDecl>,
   mod_path: String,
   fn_name: String
-) -> List<FnArrowDecl> {
+) -> std.types.List<v2.std.fn_index.FnArrowDecl> {
   filter(
     xs: decls_in_module(decls: decls, mod_path: mod_path),
     predicate: fn(decl) { string_eq(a: decl.name, b: fn_name) }
@@ -496,9 +496,9 @@ fn decl_named_in_module(
 fn call_reachable_decls_from_root(
   entry_module: String,
   fn_name: String,
-  closure_modules: List<String>,
-  decls: List<FnArrowDecl>
-) -> List<FnArrowDecl> {
+  closure_modules: std.types.List<String>,
+  decls: std.types.List<v2.std.fn_index.FnArrowDecl>
+) -> std.types.List<v2.std.fn_index.FnArrowDecl> {
   call_reachable_decls_go(
     seeds: decl_named_in_module(decls: decls, mod_path: entry_module, fn_name: fn_name),
     closure_modules: closure_modules,
@@ -507,7 +507,7 @@ fn call_reachable_decls_from_root(
   )
 }
 
-fn carriers_from_reachable_decls(reachable: List<FnArrowDecl>) -> List<LiveReadCarrier> {
+fn carriers_from_reachable_decls(reachable: std.types.List<v2.std.fn_index.FnArrowDecl>) -> std.types.List<v2.std.live_read.LiveReadCarrier> {
   fold_list(xs: reachable, empty: empty_carrier_list, cons: fn(acc, decl) {
     merge_carriers(
       left: acc,
@@ -516,16 +516,16 @@ fn carriers_from_reachable_decls(reachable: List<FnArrowDecl>) -> List<LiveReadC
   })
 }
 
-data g2_carrier_homes_parameter_role_note: String = "WHY carrier_homes IS STILL A PARAMETER WHILE A COMPLETED G2 RESULT IGNORES IT. Until 2026-08-07 this function unioned the G1 carrier-home result into its answer, so a completed G2 classification inherited every carrier home reachable through the import graph. That made the answer a function of import reachability rather than of reachable invocations: an entry whose closure happens to contain a broad carrier home was classified RuntimeRead on every nonempty diff, and the floor's runtime axis therefore refused to skip it. Measured consequence: the two-entry helper-edit control ran both entries (SelectionSuperset, 2 of 2) because the unrelated entry's 474-module closure reaches a carrier home while calling no carrier at all.
+data g2_carrier_homes_parameter_role_note: String = "WHY carrier_homes IS STILL A PARAMETER WHILE A COMPLETED G2 RESULT IGNORES IT. Until 2026-08-07 this function unioned the G1 carrier-home result into its answer, so a completed G2 classification inherited every carrier home reachable through the import graph. That made the answer a function of import reachability rather than of reachable invocations: an entry whose closure happens to contain a broad carrier home was classified v2.std.live_read.RuntimeRead on every nonempty diff, and the floor's runtime axis therefore refused to skip it. Measured consequence: the two-entry helper-edit control ran both entries (SelectionSuperset, 2 of 2) because the unrelated entry's 474-module closure reaches a carrier home while calling no carrier at all.
 
-G1 IS NOW EVIDENCE, NOT AN ANSWER. A COMPLETED G2 classification is derived from reachable carrier invocations only, so this parameter is deliberately unread on that path. It is retained rather than deleted because the classified/refused projection still to land needs it on the OTHER path: when the fn-arrow facts required to establish G2 are unavailable or incomplete, carrier-home reachability is the evidence that decides between refusing loudly and refusing at all — it must never silently become a successful classification, because an unavailable G2 producer would then be observationally identical to the defect just repaired. Deleting the parameter now and reintroducing it with that seam would be churn; leaving it undocumented would read as an oversight. This row is the difference."
+G1 IS NOW EVIDENCE, NOT AN ANSWER. A COMPLETED G2 classification is derived from reachable carrier invocations only, so this parameter is deliberately unread on that path. It is retained rather than deleted because the classified/refused projection still to land needs it on the OTHER path: when the fn-arrow facts required to establish G2 are unavailable or incomplete, carrier-home reachability is the evidence that decides between refusing loudly and refusing at all — it must never silently become a successful classification, because an unavailable G2 producer would then be observationally identical to the defect just repaired. Deleting the parameter now and reintroducing it with that seam would be churn; leaving it undocumented would read as an oversight. extdeps.access.zanzibar.This row is the difference."
 
 fn live_read_classification_g2_from_facts(
   entry_module: String,
-  facts: List<ModuleImportFact>,
-  decls: List<FnArrowDecl>,
-  carrier_homes: List<LiveReadCarrierHome>
-) -> LiveReadClassification {
+  facts: std.types.List<v2.lens.witness_cost_locality.ModuleImportFact>,
+  decls: std.types.List<v2.std.fn_index.FnArrowDecl>,
+  carrier_homes: std.types.List<v2.std.live_read.LiveReadCarrierHome>
+) -> v2.std.live_read.LiveReadClassification {
   let closure_modules = v2.lens.witness_cost_locality.witness_import_closure(root: entry_module, facts: facts)
   let reachable = call_reachable_decls(
     entry_module: entry_module,
@@ -534,9 +534,9 @@ fn live_read_classification_g2_from_facts(
   )
   let carriers = carriers_from_reachable_decls(reachable: reachable)
   if length(xs: carriers) == 0 {
-    LocalRead
+    v2.std.live_read.LocalRead
   } else {
-    RuntimeRead { carriers: carriers }
+    v2.std.live_read.RuntimeRead { carriers: carriers }
   }
 }
 
@@ -551,22 +551,22 @@ type LiveReadSelectionRequest {
 
 type LiveReadSelectionManifestRow {
   key: String
-  projection: LiveReadSelectionProjection
+  projection: v2.std.live_read.LiveReadSelectionProjection
 }
 
-data empty_manifest_rows: List<LiveReadSelectionManifestRow> = []
+data empty_manifest_rows: std.types.List<LiveReadSelectionManifestRow> = []
 
 fn live_read_manifest_row_key(entry_path: String, fn_name: String) -> String {
   concat(concat(entry_path, "::"), fn_name)
 }
 
 fn live_read_selection_manifest_over(
-  requests: List<LiveReadSelectionRequest>,
-  subject: G2FactSubject,
-  edges: List<ModuleDependencyEdge>,
-  nodes: List<ModuleDeclarationFact>,
-  decls: List<FnArrowDecl>
-) -> List<LiveReadSelectionManifestRow> {
+  requests: std.types.List<LiveReadSelectionRequest>,
+  subject: v2.std.live_read.G2FactSubject,
+  edges: std.types.List<v2.lens.module_graph.ModuleDependencyEdge>,
+  nodes: std.types.List<v2.lens.module_graph.ModuleDeclarationFact>,
+  decls: std.types.List<v2.std.fn_index.FnArrowDecl>
+) -> std.types.List<LiveReadSelectionManifestRow> {
   fold_list(xs: requests, empty: empty_manifest_rows, cons: fn(acc, req) {
     list_snoc_item(
       xs: acc,
@@ -588,14 +588,14 @@ fn live_read_selection_manifest_over(
 data whole_tree_subject_mint_site_law: String = "THE COMPLETE SUBJECT IS MINTED WHERE THE WHOLE-TREE PRODUCERS ARE CALLED, AND NOWHERE ELSE. WholeTreeFactSubject carried a caller-supplied subject_id in an earlier revision, which meant the completeness claim was a string a caller wrote beside a fact list it also chose — the two were never related, so a fixture population could be labelled whole-tree and would then be permitted to decide LocalRead. Making the variant nullary removes the thing a caller could author. It is constructed at exactly one site, live_read_selection_manifest_live, which is also the only site that calls dependency_resolution_facts_live, module_declaration_facts_live and fn_arrow_decl_facts_live — so the subject and the facts have one origin by construction rather than by a caller pairing them correctly. RESIDUE, STATED RATHER THAN CLAIMED AWAY: this makes the subject unforgeable from outside, and it does NOT yet prove that fn_arrow_decl_facts_live covers every module the consuming index holds. Until a control shows a declaration outside the producer entry's own closure appearing in that population, the mint site is a construction wall around an unproven premise, not a proof of coverage. The seed-side identity check is the other half — the manifest is stamped with the producing index's generation and refuses a lookup from any other index."
 
 fn live_read_selection_manifest_live(
-  requests: List<LiveReadSelectionRequest>,
-  pool_roots: List<String>,
-  importer_roots: List<String>,
-  exclude_substrings: List<String>
-) -> List<LiveReadSelectionManifestRow> {
+  requests: std.types.List<LiveReadSelectionRequest>,
+  pool_roots: std.types.List<String>,
+  importer_roots: std.types.List<String>,
+  exclude_substrings: std.types.List<String>
+) -> std.types.List<LiveReadSelectionManifestRow> {
   live_read_selection_manifest_over(
     requests: requests,
-    subject: WholeTreeFactSubject,
+    subject: v2.std.live_read.WholeTreeFactSubject,
     edges: v2.lens.module_graph.dependency_resolution_facts_live(
       pool_roots: pool_roots,
       importer_roots: importer_roots,
@@ -606,14 +606,14 @@ fn live_read_selection_manifest_live(
   )
 }
 
-data g2_live_production_boundary_law: String = "THE LIVE BOUNDARY IS ModuleDependencyEdge, NOT ModuleImportFact (operator ruling, 2026-08-07). v2.lens.module_graph declares dependency_resolution_facts_live the single swappable edge producer and forbids a second one, because the namespace terminal step replaces its BODY when the import grammar is deleted. Two consequences bind this module. Calling import_resolution_facts_live instead would omit the strict-tier reference-derived edges that producer already unions in, so a G2 closure would be narrower than the selection closure that decides the same question one axis over — an under-selection source. And it would bind live classification to the import grammar that is scheduled to disappear, so the namespace swap would silently narrow G2 instead of leaving it untouched, which is exactly what the edge-source-agnostic-by-construction note exists to prevent.
+data g2_live_production_boundary_law: String = "THE LIVE BOUNDARY IS v2.lens.module_graph.ModuleDependencyEdge, NOT v2.lens.witness_cost_locality.ModuleImportFact (operator ruling, 2026-08-07). v2.lens.module_graph declares dependency_resolution_facts_live the single swappable edge producer and forbids a second one, because the namespace terminal step replaces its BODY when the import grammar is deleted. Two consequences bind this module. Calling import_resolution_facts_live instead would omit the strict-tier reference-derived edges that producer already unions in, so a G2 closure would be narrower than the selection closure that decides the same question one axis over — an under-selection source. And it would bind live classification to the import grammar that is scheduled to disappear, so the namespace swap would silently narrow G2 instead of leaving it untouched, which is exactly what the edge-source-agnostic-by-construction note exists to prevent.
 
-ModuleImportFact stays FIXTURE-FACING. It is a hand-authorable \{module, imports} view with no live producer in the corpus, which is what makes it good for planted tests and wrong for production: a shape nothing derives cannot be kept honest against the tree. The seed does not mint it either — asking the host to fabricate the fact shape would put fact production back in the layer this lane is repairing."
+v2.lens.witness_cost_locality.ModuleImportFact stays FIXTURE-FACING. It is a hand-authorable \{module, imports} view with no live producer in the corpus, which is what makes it good for planted tests and wrong for production: a shape nothing derives cannot be kept honest against the tree. The seed does not mint it either — asking the host to fabricate the fact shape would put fact production back in the layer this lane is repairing."
 
 fn modules_of_closure_paths(
-  closure_paths: List<String>,
-  nodes: List<ModuleDeclarationFact>
-) -> List<String> {
+  closure_paths: std.types.List<String>,
+  nodes: std.types.List<v2.lens.module_graph.ModuleDeclarationFact>
+) -> std.types.List<String> {
   fold_list(xs: nodes, empty: empty_string_list, cons: fn(acc, node) {
     if contains(xs: closure_paths, item: node.path, eq: string_eq) {
       if contains(xs: acc, item: node.module, eq: string_eq) {
@@ -631,10 +631,10 @@ fn live_read_classification_g2_from_edges(
   entry_path: String,
   entry_module: String,
   fn_name: String,
-  edges: List<ModuleDependencyEdge>,
-  nodes: List<ModuleDeclarationFact>,
-  decls: List<FnArrowDecl>
-) -> LiveReadClassification {
+  edges: std.types.List<v2.lens.module_graph.ModuleDependencyEdge>,
+  nodes: std.types.List<v2.lens.module_graph.ModuleDeclarationFact>,
+  decls: std.types.List<v2.std.fn_index.FnArrowDecl>
+) -> v2.std.live_read.LiveReadClassification {
   let closure_modules = modules_of_closure_paths(
     closure_paths: v2.lens.module_graph.dependency_closure(
       entry_path: entry_path,
@@ -651,24 +651,24 @@ fn live_read_classification_g2_from_edges(
   )
   let carriers = carriers_from_reachable_decls(reachable: reachable)
   if length(xs: carriers) == 0 {
-    LocalRead
+    v2.std.live_read.LocalRead
   } else {
-    RuntimeRead { carriers: carriers }
+    v2.std.live_read.RuntimeRead { carriers: carriers }
   }
 }
 
-data live_read_selection_projection_law: String = "THE SELECTION SEAM, and the state the classification type cannot express. LiveReadClassification answers what an entry reads; it has no arm for we could not establish what this entry reads. That third state is not cosmetic: an unavailable G2 producer that silently answered LocalRead would be observationally identical to the G1-only defect this lane repairs, except failing in the opposite and more dangerous direction — under-selection, which looks like a faster green floor rather than a failure. So the seam carries a projection around the existing authority rather than a second classification type (DESIGN section 3: no parallel representation of one fact).
+data live_read_selection_projection_law: String = "THE SELECTION SEAM, and the state the classification type cannot express. v2.std.live_read.LiveReadClassification answers what an entry reads; it has no arm for we could not establish what this entry reads. That third state is not cosmetic: an unavailable G2 producer that silently answered v2.std.live_read.LocalRead would be observationally identical to the G1-only defect this lane repairs, except failing in the opposite and more dangerous direction — under-selection, which looks like a faster green floor rather than a failure. So the seam carries a projection around the existing authority rather than a second classification type (DESIGN section 3: no parallel representation of one fact).
 
-WHAT COMPLETE MEANS, concretely, and why carrier homes decide it. G2 concludes LocalRead by finding no reachable carrier invocation. That conclusion is only sound when the facts actually contain the bodies where such an invocation would appear. If the import closure reaches a carrier home whose declarations are absent from the supplied fn-arrow facts, then no-call-found is indistinguishable from nothing-to-look-at, and answering LocalRead would assert the stronger of the two. Carrier-home reachability is therefore G1 used as EVIDENCE about coverage — never as an answer, which is precisely the conflation the completed-G2 recut removed."
+WHAT COMPLETE MEANS, concretely, and why carrier homes decide it. G2 concludes v2.std.live_read.LocalRead by finding no reachable carrier invocation. That conclusion is only sound when the facts actually contain the bodies where such an invocation would appear. If the import closure reaches a carrier home whose declarations are absent from the supplied fn-arrow facts, then no-call-found is indistinguishable from nothing-to-look-at, and answering v2.std.live_read.LocalRead would assert the stronger of the two. Carrier-home reachability is therefore G1 used as EVIDENCE about coverage — never as an answer, which is precisely the conflation the completed-G2 recut removed."
 
-fn carrier_home_decls_present(decls: List<FnArrowDecl>, home: LiveReadCarrierHome) -> Bool {
+fn carrier_home_decls_present(decls: std.types.List<v2.std.fn_index.FnArrowDecl>, home: v2.std.live_read.LiveReadCarrierHome) -> Bool {
   length(xs: decls_in_module(decls: decls, mod_path: carrier_home_module(home: home))) > 0
 }
 
 fn g2_facts_cover_reachable_carrier_homes(
-  closure_modules: List<String>,
-  carrier_homes: List<LiveReadCarrierHome>,
-  decls: List<FnArrowDecl>
+  closure_modules: std.types.List<String>,
+  carrier_homes: std.types.List<v2.std.live_read.LiveReadCarrierHome>,
+  decls: std.types.List<v2.std.fn_index.FnArrowDecl>
 ) -> Bool {
   fold_list(
     xs: carrier_homes_in_closure(closure_modules: closure_modules, carrier_homes: carrier_homes),
@@ -677,31 +677,31 @@ fn g2_facts_cover_reachable_carrier_homes(
   )
 }
 
-fn classification_is_local_read(c: LiveReadClassification) -> Bool {
+fn classification_is_local_read(c: v2.std.live_read.LiveReadClassification) -> Bool {
   match c {
-    LocalRead => true
-    RuntimeRead { carriers: _ } => false
+    v2.std.live_read.LocalRead => true
+    v2.std.live_read.RuntimeRead { carriers: _ } => false
   }
 }
 
 data partial_subject_never_decides_law: String = "PARTIAL POSITIVE EVIDENCE IS NOT A DECIDING CLASSIFICATION, and the earlier asymmetric gate got this exactly backwards on the arm that mattered. It refused LocalRead on a partial subject — correctly, since absence cannot be established from an incomplete view — and ACCEPTED RuntimeRead, on the reasoning that a carrier found is a carrier found. That reasoning holds for the EXISTENCE of a runtime read and fails for the SET of paths it reads, which is the fact selection actually consumes. A complete closure reading LiteralPath a.dag and LiteralPath b.dag, viewed partially, still classifies RuntimeRead while exposing only a.dag; a diff touching b.dag then misses the carrier set and licenses a skip. The accepted arm was therefore the under-selection direction wearing a safe-looking label — worse than the LocalRead arm it was paired against, because RuntimeRead reads as the cautious answer. So the law is one-sided: only a subject established complete for the exact tree may decide, and every partial, unbound, or mismatched subject refuses. The classification survives INSIDE the refusal as diagnostic payload, which is what keeps this a refusal carrying what it knew rather than an erasure."
 
-fn classification_diagnostic_label(c: LiveReadClassification) -> String {
+fn classification_diagnostic_label(c: v2.std.live_read.LiveReadClassification) -> String {
   match c {
-    LocalRead => "LocalRead"
-    RuntimeRead { carriers: _ } => "RuntimeRead"
+    v2.std.live_read.LocalRead => "LocalRead"
+    v2.std.live_read.RuntimeRead { carriers: _ } => "RuntimeRead"
   }
 }
 
 fn live_read_selection_projection_for_subject(
-  subject: G2FactSubject,
-  classification: LiveReadClassification
-) -> LiveReadSelectionProjection {
+  subject: v2.std.live_read.G2FactSubject,
+  classification: v2.std.live_read.LiveReadClassification
+) -> v2.std.live_read.LiveReadSelectionProjection {
   match subject {
-    WholeTreeFactSubject =>
-      LiveReadSelectionClassified { classification: classification }
-    PartialFactSubject { cause: cause } =>
-      LiveReadSelectionRefused {
+    v2.std.live_read.WholeTreeFactSubject =>
+      v2.std.live_read.LiveReadSelectionClassified { classification: classification }
+    v2.std.live_read.PartialFactSubject { cause: cause } =>
+      v2.std.live_read.LiveReadSelectionRefused {
         cause: concat(
           concat(
             "G2 ran against a partial fact subject, so no classification may decide a skip. ",
@@ -716,14 +716,14 @@ fn live_read_selection_projection_for_subject(
 fn live_read_selection_projection_live(
   entry_path: String,
   fn_name: String,
-  subject: G2FactSubject,
-  edges: List<ModuleDependencyEdge>,
-  nodes: List<ModuleDeclarationFact>,
-  decls: List<FnArrowDecl>
-) -> LiveReadSelectionProjection {
+  subject: v2.std.live_read.G2FactSubject,
+  edges: std.types.List<v2.lens.module_graph.ModuleDependencyEdge>,
+  nodes: std.types.List<v2.lens.module_graph.ModuleDeclarationFact>,
+  decls: std.types.List<v2.std.fn_index.FnArrowDecl>
+) -> v2.std.live_read.LiveReadSelectionProjection {
   match bind_g2_root(entry_path: entry_path, fn_name: fn_name, nodes: nodes, decls: decls) {
     G2RootUnbound { cause: cause } =>
-      LiveReadSelectionRefused {
+      v2.std.live_read.LiveReadSelectionRefused {
         cause: concat("G2 root is not exactly bound, so no classification was run: ", cause)
       }
     G2RootBound { entry_path: bound_path, entry_module: bound_module, decl: _ } =>
@@ -743,17 +743,17 @@ fn live_read_selection_projection_live(
 
 fn live_read_selection_projection_from_facts(
   entry_module: String,
-  facts: List<ModuleImportFact>,
-  decls: List<FnArrowDecl>,
-  carrier_homes: List<LiveReadCarrierHome>
-) -> LiveReadSelectionProjection {
+  facts: std.types.List<v2.lens.witness_cost_locality.ModuleImportFact>,
+  decls: std.types.List<v2.std.fn_index.FnArrowDecl>,
+  carrier_homes: std.types.List<v2.std.live_read.LiveReadCarrierHome>
+) -> v2.std.live_read.LiveReadSelectionProjection {
   let closure_modules = v2.lens.witness_cost_locality.witness_import_closure(root: entry_module, facts: facts)
   if g2_facts_cover_reachable_carrier_homes(
     closure_modules: closure_modules,
     carrier_homes: carrier_homes,
     decls: decls
   ) {
-    LiveReadSelectionClassified {
+    v2.std.live_read.LiveReadSelectionClassified {
       classification: live_read_classification_g2_from_facts(
         entry_module: entry_module,
         facts: facts,
@@ -762,7 +762,7 @@ fn live_read_selection_projection_from_facts(
       )
     }
   } else {
-    LiveReadSelectionRefused {
+    v2.std.live_read.LiveReadSelectionRefused {
       cause: concat(
         "G2 fn-arrow facts do not cover a reachable carrier home for entry ",
         entry_module
@@ -773,8 +773,8 @@ fn live_read_selection_projection_from_facts(
 
 fn live_read_selection_projection_from_facts_v0(
   entry_module: String,
-  facts: List<ModuleImportFact>
-) -> LiveReadSelectionProjection {
+  facts: std.types.List<v2.lens.witness_cost_locality.ModuleImportFact>
+) -> v2.std.live_read.LiveReadSelectionProjection {
   live_read_selection_projection_from_facts(
     entry_module: entry_module,
     facts: facts,
@@ -785,8 +785,8 @@ fn live_read_selection_projection_from_facts_v0(
 
 fn live_read_classification_g2_from_facts_v0(
   entry_module: String,
-  facts: List<ModuleImportFact>
-) -> LiveReadClassification {
+  facts: std.types.List<v2.lens.witness_cost_locality.ModuleImportFact>
+) -> v2.std.live_read.LiveReadClassification {
   live_read_classification_g2_from_facts(
     entry_module: entry_module,
     facts: facts,
@@ -796,51 +796,51 @@ fn live_read_classification_g2_from_facts_v0(
 }
 
 fn live_read_classification(
-  closure_modules: List<String>,
-  carrier_homes: List<LiveReadCarrierHome>
-) -> LiveReadClassification {
+  closure_modules: std.types.List<String>,
+  carrier_homes: std.types.List<v2.std.live_read.LiveReadCarrierHome>
+) -> v2.std.live_read.LiveReadClassification {
   live_read_classification_g1(closure_modules: closure_modules, carrier_homes: carrier_homes)
 }
 
-fn classification_is_local(classification: LiveReadClassification) -> Bool {
+fn classification_is_local(classification: v2.std.live_read.LiveReadClassification) -> Bool {
   match classification {
-    LocalRead => true
-    RuntimeRead { carriers: _ } => false
+    v2.std.live_read.LocalRead => true
+    v2.std.live_read.RuntimeRead { carriers: _ } => false
   }
 }
 
-fn classification_has_runtime_read(classification: LiveReadClassification) -> Bool {
+fn classification_has_runtime_read(classification: v2.std.live_read.LiveReadClassification) -> Bool {
   !classification_is_local(classification: classification)
 }
 
-fn classification_has_corpus_scan_carrier(classification: LiveReadClassification) -> Bool {
+fn classification_has_corpus_scan_carrier(classification: v2.std.live_read.LiveReadClassification) -> Bool {
   match classification {
-    LocalRead => false
-    RuntimeRead { carriers: carriers } =>
+    v2.std.live_read.LocalRead => false
+    v2.std.live_read.RuntimeRead { carriers: carriers } =>
       any(
         xs: carriers,
         predicate: fn(carrier) {
           match carrier {
-            ModuleDeclarationFactsScan => true
-            DeclFactsReflection { home: _ } => true
-            FilesystemReadPath { path_pattern: _ } => false
+            v2.std.live_read.ModuleDeclarationFactsScan => true
+            v2.std.live_read.DeclFactsReflection { home: _ } => true
+            v2.std.live_read.FilesystemReadPath { path_pattern: _ } => false
           }
         }
       )
   }
 }
 
-fn classification_has_filesystem_read_carrier(classification: LiveReadClassification) -> Bool {
+fn classification_has_filesystem_read_carrier(classification: v2.std.live_read.LiveReadClassification) -> Bool {
   match classification {
-    LocalRead => false
-    RuntimeRead { carriers: carriers } =>
+    v2.std.live_read.LocalRead => false
+    v2.std.live_read.RuntimeRead { carriers: carriers } =>
       any(
         xs: carriers,
         predicate: fn(carrier) {
           match carrier {
-            FilesystemReadPath { path_pattern: _ } => true
-            ModuleDeclarationFactsScan => false
-            DeclFactsReflection { home: _ } => false
+            v2.std.live_read.FilesystemReadPath { path_pattern: _ } => true
+            v2.std.live_read.ModuleDeclarationFactsScan => false
+            v2.std.live_read.DeclFactsReflection { home: _ } => false
           }
         }
       )
@@ -848,32 +848,32 @@ fn classification_has_filesystem_read_carrier(classification: LiveReadClassifica
 }
 
 fn classification_has_literal_path(
-  classification: LiveReadClassification,
+  classification: v2.std.live_read.LiveReadClassification,
   path: String
 ) -> Bool {
   match classification {
-    LocalRead => false
-    RuntimeRead { carriers: carriers } =>
+    v2.std.live_read.LocalRead => false
+    v2.std.live_read.RuntimeRead { carriers: carriers } =>
       any(xs: carriers, predicate: fn(carrier) {
         match carrier {
-          FilesystemReadPath { path_pattern: LiteralPath { path: p } } => string_eq(a: p, b: path)
-          FilesystemReadPath { path_pattern: _ } => false
-          ModuleDeclarationFactsScan => false
-          DeclFactsReflection { home: _ } => false
+          v2.std.live_read.FilesystemReadPath { path_pattern: v2.std.live_read.LiteralPath { path: p } } => string_eq(a: p, b: path)
+          v2.std.live_read.FilesystemReadPath { path_pattern: _ } => false
+          v2.std.live_read.ModuleDeclarationFactsScan => false
+          v2.std.live_read.DeclFactsReflection { home: _ } => false
         }
       })
   }
 }
 
-fn runtime_read_carrier_module_names(classification: LiveReadClassification) -> List<String> {
+fn runtime_read_carrier_module_names(classification: v2.std.live_read.LiveReadClassification) -> std.types.List<String> {
   match classification {
-    LocalRead => empty_string_list
-    RuntimeRead { carriers: carriers } =>
+    v2.std.live_read.LocalRead => empty_string_list
+    v2.std.live_read.RuntimeRead { carriers: carriers } =>
       fold_list(xs: carriers, empty: empty_string_list, cons: fn(acc, carrier) {
         match carrier {
-          FilesystemReadPath { path_pattern: _ } => acc
-          ModuleDeclarationFactsScan => acc
-          DeclFactsReflection { home: home } =>
+          v2.std.live_read.FilesystemReadPath { path_pattern: _ } => acc
+          v2.std.live_read.ModuleDeclarationFactsScan => acc
+          v2.std.live_read.DeclFactsReflection { home: home } =>
             if contains(xs: acc, item: home, eq: string_eq) {
               acc
             } else {
@@ -885,52 +885,52 @@ fn runtime_read_carrier_module_names(classification: LiveReadClassification) -> 
 }
 
 fn runtime_read_touched_by_path_g1(
-  classification: LiveReadClassification,
+  classification: v2.std.live_read.LiveReadClassification,
   touched_path: String
 ) -> Bool {
   if string_is_empty(s: touched_path) {
     false
   } else {
     match classification {
-      LocalRead => false
-      RuntimeRead { carriers: _ } => true
+      v2.std.live_read.LocalRead => false
+      v2.std.live_read.RuntimeRead { carriers: _ } => true
     }
   }
 }
 
 fn filesystem_path_carrier_touched(
-  path_pattern: PathPattern,
+  path_pattern: v2.std.live_read.PathPattern,
   touched_path: String
 ) -> Bool {
   match path_pattern {
-    LiteralPath { path: p } => v2.lens.module_graph.path_matches_touched(closure_path: p, touched_path: touched_path)
-    UnknownPath => true
-    ParamRef { name: _ } => true
+    v2.std.live_read.LiteralPath { path: p } => v2.lens.module_graph.path_matches_touched(closure_path: p, touched_path: touched_path)
+    v2.std.live_read.UnknownPath => true
+    v2.std.live_read.ParamRef { name: _ } => true
   }
 }
 
 fn live_read_carrier_touched_by_path(
-  carrier: LiveReadCarrier,
+  carrier: v2.std.live_read.LiveReadCarrier,
   touched_path: String
 ) -> Bool {
   match carrier {
-    FilesystemReadPath { path_pattern: pa } =>
+    v2.std.live_read.FilesystemReadPath { path_pattern: pa } =>
       filesystem_path_carrier_touched(path_pattern: pa, touched_path: touched_path)
-    ModuleDeclarationFactsScan => true
-    DeclFactsReflection { home: _ } => true
+    v2.std.live_read.ModuleDeclarationFactsScan => true
+    v2.std.live_read.DeclFactsReflection { home: _ } => true
   }
 }
 
 fn runtime_read_touched_by_path_g2(
-  classification: LiveReadClassification,
+  classification: v2.std.live_read.LiveReadClassification,
   touched_path: String
 ) -> Bool {
   if string_is_empty(s: touched_path) {
     false
   } else {
     match classification {
-      LocalRead => false
-      RuntimeRead { carriers: carriers } =>
+      v2.std.live_read.LocalRead => false
+      v2.std.live_read.RuntimeRead { carriers: carriers } =>
         any(xs: carriers, predicate: fn(carrier) {
           live_read_carrier_touched_by_path(carrier: carrier, touched_path: touched_path)
         })
@@ -939,8 +939,8 @@ fn runtime_read_touched_by_path_g2(
 }
 
 fn runtime_read_touched_by_paths_g1(
-  classification: LiveReadClassification,
-  touched_paths: List<String>
+  classification: v2.std.live_read.LiveReadClassification,
+  touched_paths: std.types.List<String>
 ) -> Bool {
   any(
     xs: touched_paths,
@@ -948,34 +948,34 @@ fn runtime_read_touched_by_paths_g1(
   )
 }
 
-fn g2_implies_reads_live_tree(classification: LiveReadClassification) -> Bool {
+fn g2_implies_reads_live_tree(classification: v2.std.live_read.LiveReadClassification) -> Bool {
   classification_has_runtime_read(classification: classification)
 }
 
 data g2_root_binding_law: String = "THE ROOT IS ONE BOUND DECLARATION, NOT THREE INDEPENDENTLY WRITABLE STRINGS. The earlier request carried entry_path, entry_module and fn_name side by side, and nothing related them: the dependency closure walked from the PATH while declaration seeding used the separately supplied MODULE and NAME, so a request naming module A's path, module B, and a function in B was constructible and would answer about a graph position it never occupied. The zero and many cases were worse than the mismatch, because both looked like success — zero matching declarations seeded an empty walk that reaches no carrier and therefore classifies LocalRead, which is the strongest answer the lens can give and the one that licenses a skip; many same-named declarations were all seeded and silently unioned, so an unrelated homonym's carrier reach could be attributed to this root, or conceal that the intended one was never found. Both are the empty-observation narrow: an observation that could not express what it was asked about, rendered as a verdict about it. So the binder is a chain of exact transitions — entry path to exactly one ModuleDeclarationFact, its module to exactly one FnArrowDecl — and zero or many at either step REFUSES with the count named. The module is DERIVED from the path rather than supplied, which is what makes the mismatch unwritable rather than merely detected."
 
-data empty_module_declaration_fact_list: List<ModuleDeclarationFact> = []
+data empty_module_declaration_fact_list: std.types.List<v2.lens.module_graph.ModuleDeclarationFact> = []
 
 type G2RootBinding
-  = G2RootBound { entry_path: String, entry_module: String, decl: FnArrowDecl }
+  = G2RootBound { entry_path: String, entry_module: String, decl: v2.std.fn_index.FnArrowDecl }
   | G2RootUnbound { cause: String }
 
-fn module_facts_for_path(path: String, nodes: List<ModuleDeclarationFact>) -> List<ModuleDeclarationFact> {
+fn module_facts_for_path(path: String, nodes: std.types.List<v2.lens.module_graph.ModuleDeclarationFact>) -> std.types.List<v2.lens.module_graph.ModuleDeclarationFact> {
   fold_list(xs: nodes, empty: empty_module_declaration_fact_list, cons: fn(acc, n) {
     if string_eq(a: n.path, b: path) { list_snoc_item(xs: acc, item: n) } else { acc }
   })
 }
 
-fn decls_with_qualified_name(qualified: String, decls: List<FnArrowDecl>) -> List<FnArrowDecl> {
+fn decls_with_qualified_name(qualified: String, decls: std.types.List<v2.std.fn_index.FnArrowDecl>) -> std.types.List<v2.std.fn_index.FnArrowDecl> {
   fold_list(xs: decls, empty: empty_decl_list, cons: fn(acc, d) {
     if string_eq(a: d.qualified_name, b: qualified) { list_snoc_item(xs: acc, item: d) } else { acc }
   })
 }
 
-fn tail_module_facts(xs: List<ModuleDeclarationFact>) -> List<ModuleDeclarationFact> {
+fn tail_module_facts(xs: std.types.List<v2.lens.module_graph.ModuleDeclarationFact>) -> std.types.List<v2.lens.module_graph.ModuleDeclarationFact> {
   match list_tail(xs: xs) {
-    TailFound { tail: t } => t
-    TailAbsent => empty_module_declaration_fact_list
+    v2.std.algebra.TailFound { tail: t } => t
+    v2.std.algebra.TailAbsent => empty_module_declaration_fact_list
   }
 }
 
@@ -983,32 +983,32 @@ fn tail_module_facts(xs: List<ModuleDeclarationFact>) -> List<ModuleDeclarationF
 fn bind_g2_root(
   entry_path: String,
   fn_name: String,
-  nodes: List<ModuleDeclarationFact>,
-  decls: List<FnArrowDecl>
+  nodes: std.types.List<v2.lens.module_graph.ModuleDeclarationFact>,
+  decls: std.types.List<v2.std.fn_index.FnArrowDecl>
 ) -> G2RootBinding {
   let module_matches = module_facts_for_path(path: entry_path, nodes: nodes)
   match list_head(xs: module_matches) {
-    HeadAbsent => G2RootUnbound {
+    v2.std.algebra.HeadAbsent => G2RootUnbound {
       cause: concat("no module declaration fact names entry path ", entry_path)
     }
-    HeadFound { value: first_module } =>
+    v2.std.algebra.HeadFound { value: first_module } =>
       match list_head(xs: tail_module_facts(xs: module_matches)) {
-        HeadFound { value: _ } => G2RootUnbound {
+        v2.std.algebra.HeadFound { value: _ } => G2RootUnbound {
           cause: concat("more than one module declaration fact names entry path ", entry_path)
         }
-        HeadAbsent => {
+        v2.std.algebra.HeadAbsent => {
           let qualified = concat(concat(first_module.module, "."), fn_name)
           let decl_matches = decls_with_qualified_name(qualified: qualified, decls: decls)
           match list_head(xs: decl_matches) {
-            HeadAbsent => G2RootUnbound {
+            v2.std.algebra.HeadAbsent => G2RootUnbound {
               cause: concat("no fn-arrow declaration is named ", qualified)
             }
-            HeadFound { value: first_decl } =>
+            v2.std.algebra.HeadFound { value: first_decl } =>
               match list_head(xs: tail_decls(xs: decl_matches)) {
-                HeadFound { value: _ } => G2RootUnbound {
+                v2.std.algebra.HeadFound { value: _ } => G2RootUnbound {
                   cause: concat("more than one fn-arrow declaration is named ", qualified)
                 }
-                HeadAbsent => G2RootBound {
+                v2.std.algebra.HeadAbsent => G2RootBound {
                   entry_path: entry_path,
                   entry_module: first_module.module,
                   decl: first_decl

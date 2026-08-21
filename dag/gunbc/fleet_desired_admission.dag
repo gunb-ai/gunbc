@@ -139,6 +139,14 @@ fn fleet_desired_admission_decide(event: extdeps.github.workflow_run_event.Workf
               why,
             ], ""),
           }
+        FleetDesiredAbsent =>
+          AdmissionRefused {
+            cause: "fleet_desired_admission: the admitted prior is ABSENT, and an absent prior authorizes nothing. Advancing here would write a first admission from an arm that cannot tell a genuine first admission from a lost ref; a real first admission arrives as a distinguished observation.",
+          }
+        FleetDesiredUndecodable { advertised: advertised } =>
+          AdmissionRefused {
+            cause: concat("fleet_desired_admission: the admitted prior was advertised but did not decode, so the prior is unknown rather than absent and no advance is authorized: ", advertised),
+          }
         FleetDesiredAdmitted { revision: prior } =>
           match extdeps.git.object_store.git_object_id_from_untagged_hex(hex: event.head_sha as String) {
             Absent =>
