@@ -1598,10 +1598,15 @@ than argued.
    this item never enumerated, and it under-counted: `map_response_to_value_json` has TWO distinct arms that skip
    straight to `json_to_value`, one when the operation's return type does not resolve to `Resolved` and a second
    when it resolves but has no children, and the earlier wording named only the first. The arms this item
-   identifies are therefore: the unresolved-return-type skip, the childless-return-type skip, the per-field
-   conversion on the main path, and the `Null` fill when the JSON body has no matching key. Stated as an
-   enumeration rather than a universal, because nothing here establishes that the list is exhaustive. (Those two fallback
-   branches are a source-level read only — see "What was NOT executed," below.) **A third,
+   identifies are therefore: the unresolved-return-type skip, the childless-return-type skip, the array-response
+   arm (when the JSON body is an array and the return type has children, the whole array is converted with
+   `json_to_value` and placed into the *first* declared field, so that field's refinement is unchecked and the
+   remaining declared fields are absent entirely), the per-field conversion on the main path, and the `Null` fill
+   when the JSON body has no matching key. A sixth arm — return type authored `List` with no children — is
+   unreachable, because the childless skip above it already returned. Stated as an enumeration rather than a
+   universal, because nothing here establishes that the list is exhaustive; the array arm was itself missed by an
+   earlier revision of this very enumeration, which is the standing evidence for that caveat. (Those three
+   arms are a source-level read only — see "What was NOT executed," below.) **A third,
    separate path exists and is unmeasured by this item:** when the operation's response format
    is `Text` rather than `Json`, `decide_rest_exchange` routes to `map_response_to_value`, not
    to `map_response_to_value_json` — a different function this item did not execute a case
@@ -1629,9 +1634,9 @@ than argued.
        for this case — the empty string arrived over the wire from an ordinary HTTP response
        and was placed into the `NonEmptyStr`-declared field unchecked.
 
-   **What was NOT executed (source-level read, stated as such, not overclaimed):** the two
-   fallback branches named in 20b's mechanism paragraph above (return-type-did-not-resolve,
-   array-response-with-non-empty-declared-fields) and the `Text`-format third path
+   **What was NOT executed (source-level read, stated as such, not overclaimed):** three of the
+   arms named in 20b's mechanism paragraph above (return-type-did-not-resolve, childless-return-type,
+   and array-response-with-non-empty-declared-fields) and the `Text`-format third path
    (`map_response_to_value`) were read from source, not driven by a constructed executing
    case. Named here as source-level evidence only; no rung claim rests on them.
 
