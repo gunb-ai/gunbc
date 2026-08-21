@@ -1,0 +1,319 @@
+module gunbc.scm.repository_envelope
+
+// THE REPOSITORY ENVELOPE: the layer that gunbc.scm.image deliberately is not.
+//
+// image.dag holds ONE ROOT AND ITS CLOSURE. A repository holds facts that carrier cannot express,
+// and each one is a reason this module exists rather than a field bolted onto that one:
+//
+//   - AN EMPTY INITIALIZED STATE. `init` produces a repository with no commits and no root at all.
+//     A carrier requiring a root would force `init` to invent a phantom commit, which would then be
+//     indistinguishable from a real one in the log. So `commits` may be empty and `checked_out` may
+//     be absent, and neither is an error.
+//   - SEVERAL COMMITS OVER ONE NODE POPULATION. Commits share structure; embedding a closure per
+//     commit would re-serialize every unchanged object once per commit. One object table, and each
+//     commit root is a reference into it.
+//   - A CHECKED-OUT SELECTION, which is local workspace state, not authoritative history.
+//
+// COMMIT IDENTITY IS NOT STORED AND NOT STORABLE HERE. A commit's identity is its root object's
+// identity, and that is re-derived from structure on load exactly as image.dag re-derives every
+// other. `message` is a log fact and participates in no identity; two commits with identical roots
+// and different messages name the SAME program, which is the point of content addressing and not a
+// collision.
+
+import std.types { Bool, Int, List, String }
+
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonKeyValue,
+  JsonArray,
+  JsonObject,
+  JsonString,
+  JsonNull,
+  json_kv,
+  json_array,
+  json_object,
+  json_string,
+}
+import extdeps.languages.json.parse {
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+  json_object_unique_member,
+}
+
+import gunbc.scm.object_store { ObjectId, ObjectStore, empty_store, object_id_eq }
+import gunbc.scm.image {
+  ImageRefusal,
+  ImageMemberMissing,
+  ImageMemberDuplicated,
+  ImageMemberWrongShape,
+  ImageNotAnObject,
+  ImageFormatUnrecognized,
+  ImageRootUnresolved,
+  DecodeAcc,
+  DecodePositions,
+  EncodeAcc,
+  encode_object_table,
+  encoded_root_reference,
+  decode_object_table,
+  resolve_reference,
+  read_string_member,
+  MemberString,
+  MemberArray,
+  MemberFailed,
+  read_member,
+}
+
+// THE ENCODING IS NOT CANONICAL WITH RESPECT TO INSERTION HISTORY, and that is declared here rather
+// than left for someone to discover by diffing two repositories that ought to match.
+//
+// Objects are emitted in store_records_in_dependency_order, which is INSERTION order. Storing
+// program A then B, versus B then A, yields the same semantic repository -- the same objects, the
+// same derived identities, the same commits -- but a different position assignment, hence different
+// bytes. So two repositories that are semantically equal can serialize differently.
+//
+// What that costs: byte comparison cannot be used to decide repository equality, and a mirror or a
+// content-addressed repository image is not yet expressible. What it does NOT cost: nothing about
+// identity or reconstruction, because every ObjectId is derived from structure and never from a
+// position -- the references are image-local addresses, so a different assignment names the same
+// objects. scm_env_re_encoding_is_stable pins the weaker property that DOES hold: one image
+// re-encodes to itself byte-for-byte, which is what the position references depend on.
+//
+// dissolve-on: a deterministic emission order -- a topological order with a content-digest tie-break
+// -- which is canonical because the digests are already content-derived. That is a real change to
+// encode_object_table rather than a flag, so it is a separate slice, not a footnote.
+data repository_envelope_format_tag: String = "gunbc-scm-repository-v1"
+
+// THE IDENTITY RULE IS VERSIONED SEPARATELY FROM THE SCHEMA, AND THE TWO ARE DIFFERENT AXES.
+//
+// repository_envelope_format_tag versions the SHAPE of this document -- which members exist and what
+// they mean. It says nothing about how a structural node becomes an ObjectId. Those can move
+// independently: the schema could hold still while canonicalize_node_for_content_hash or the fnv1a64
+// folding changed, and every stored repository would then reconstruct to DIFFERENT identities while
+// still parsing perfectly. Nothing would refuse, and the commits a user had made would silently
+// become commits they had not.
+//
+// Naming the rule in the document turns that silent reinterpretation into a typed refusal. It is
+// deliberately NOT derived from the code that implements the rule: a tag computed from the current
+// implementation would agree with itself by construction and could never disagree, which is the
+// change-detector failure -- it would go green precisely when the rule changed.
+data repository_node_identity_rule_tag: String = "fnv1a64-structural-canonical-v1"
+
+type RepositoryCommitRecord {
+  root_reference: String
+  message: String
+}
+
+type RepositoryCommit {
+  root: ObjectId
+  message: String
+}
+
+type RepositoryEnvelope {
+  store: ObjectStore
+  commits: List<RepositoryCommit>
+  checked_out: ObjectId?
+}
+
+type RepositoryRefusal
+  = RepositoryImageRefusal { cause: ImageRefusal }
+  | RepositoryIdentityRuleUnrecognized { found: String }
+  | RepositoryCommitRootUnresolved { reference: String }
+  | RepositoryCheckedOutUnresolved { reference: String }
+
+type RepositoryDecodeOutcome
+  = RepositoryDecoded { envelope: RepositoryEnvelope }
+  | RepositoryDecodeRefused { cause: RepositoryRefusal }
+
+fn empty_repository() -> RepositoryEnvelope {
+  RepositoryEnvelope { store: empty_store(), commits: [], checked_out: none }
+}
+
+// ------------------------------------------------------------------------------------------------
+// Encoding
+// ------------------------------------------------------------------------------------------------
+
+// ABSENCE IS JsonNull, NOT THE EMPTY STRING, and the distinction is load-bearing rather than
+// stylistic. The empty string is already what encoded_root_reference yields for a root that names no
+// object -- the value decode refuses as unresolved. Spelling "no commit is checked out" the same way
+// would fuse a legitimate repository state with a corruption signal, so an empty repository and a
+// repository whose checkout reference is dangling would become one state (DESIGN section 5).
+fn encode_optional_reference(acc: EncodeAcc, selected: ObjectId?) -> JsonValue {
+  match selected {
+    Absent => JsonNull
+    Present { value: identity } =>
+      json_string(s: encoded_root_reference(acc: acc, root: identity))
+  }
+}
+
+fn encode_commit_record(acc: EncodeAcc, commit: RepositoryCommit) -> JsonValue {
+  json_object(
+    members: [
+      json_kv(key: "root", value: json_string(s: encoded_root_reference(acc: acc, root: commit.root))),
+      json_kv(key: "message", value: json_string(s: commit.message)),
+    ]
+  )
+}
+
+fn encode_commit_records(acc: EncodeAcc, commits: List<RepositoryCommit>) -> List<JsonValue> {
+  map(commits, c => encode_commit_record(acc: acc, commit: c))
+}
+
+fn encode_repository(repo: RepositoryEnvelope) -> JsonValue {
+  let acc = encode_object_table(store: repo.store)
+  json_object(
+    members: [
+      json_kv(key: "format", value: json_string(s: repository_envelope_format_tag)),
+      json_kv(key: "identity_rule", value: json_string(s: repository_node_identity_rule_tag)),
+      json_kv(key: "objects", value: json_array(elements: acc.objects)),
+      json_kv(
+        key: "commits",
+        value: json_array(elements: encode_commit_records(acc: acc, commits: repo.commits))
+      ),
+      json_kv(key: "checked_out", value: encode_optional_reference(acc: acc, selected: repo.checked_out)),
+    ]
+  )
+}
+
+// ------------------------------------------------------------------------------------------------
+// Decoding
+// ------------------------------------------------------------------------------------------------
+
+type CommitDecodeAcc {
+  commits: List<RepositoryCommit>
+  refusal: RepositoryRefusal?
+}
+
+fn decode_commit_step(positions: DecodePositions, acc: CommitDecodeAcc, value: JsonValue) -> CommitDecodeAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match read_string_member(v: value, key: "root") {
+        MemberFailed { cause: c } =>
+          CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryImageRefusal { cause: c } } }
+        MemberString { value: reference } =>
+          match resolve_reference(positions: positions, reference: reference) {
+            Absent =>
+              CommitDecodeAcc {
+                commits: acc.commits,
+                refusal: Present { value: RepositoryCommitRootUnresolved { reference: reference } },
+              }
+            Present { value: root } =>
+              match read_string_member(v: value, key: "message") {
+                MemberFailed { cause: c } =>
+                  CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryImageRefusal { cause: c } } }
+                MemberString { value: message } =>
+                  CommitDecodeAcc {
+                    commits: concat(acc.commits, [RepositoryCommit { root: root, message: message }]),
+                    refusal: acc.refusal,
+                  }
+                _ =>
+                  CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryImageRefusal { cause: ImageMemberWrongShape { key: "message" } } } }
+              }
+          }
+        _ =>
+          CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryImageRefusal { cause: ImageMemberWrongShape { key: "root" } } } }
+      }
+  }
+}
+
+// THE IDENTITY RULE IS CHECKED BEFORE ANY OBJECT IS DECODED, for the same reason the format tag is:
+// a document written under a different node-identity rule would decode cleanly and reconstruct
+// DIFFERENT identities, so discovering the mismatch after the walk would mean reporting a
+// well-formed repository that silently is not the one that was stored.
+fn decode_repository(v: JsonValue) -> RepositoryDecodeOutcome {
+  match read_string_member(v: v, key: "format") {
+    MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: c } }
+    MemberString { value: format } =>
+      if format != repository_envelope_format_tag {
+        RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: ImageFormatUnrecognized { found: format } } }
+      } else {
+        match read_string_member(v: v, key: "identity_rule") {
+          MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: c } }
+          MemberString { value: rule } =>
+            if rule != repository_node_identity_rule_tag {
+              RepositoryDecodeRefused { cause: RepositoryIdentityRuleUnrecognized { found: rule } }
+            } else {
+              decode_repository_body(v: v)
+            }
+          _ => RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: ImageMemberWrongShape { key: "identity_rule" } } }
+        }
+      }
+    _ => RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: ImageMemberWrongShape { key: "format" } } }
+  }
+}
+
+fn decode_repository_body(v: JsonValue) -> RepositoryDecodeOutcome {
+  match read_member(v: v, key: "objects") {
+    MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: c } }
+    MemberArray { elements: object_values } =>
+      match decode_object_table(object_values: object_values) {
+        DecodeAcc { store: store, positions: positions, next: _, refusal: table_refusal } =>
+          match table_refusal {
+            Present { value: c } => RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: c } }
+            Absent =>
+              match read_member(v: v, key: "commits") {
+                MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: c } }
+                MemberArray { elements: commit_values } =>
+                  match fold(
+                    commit_values,
+                    init: CommitDecodeAcc { commits: [], refusal: none },
+                    f: fn(acc, cv) { decode_commit_step(positions: positions, acc: acc, value: cv) }
+                  ) {
+                    CommitDecodeAcc { commits: commits, refusal: commit_refusal } =>
+                      match commit_refusal {
+                        Present { value: c } => RepositoryDecodeRefused { cause: c }
+                        Absent =>
+                          decode_repository_checkout(
+                            v: v, store: store, positions: positions, commits: commits
+                          )
+                      }
+                  }
+                _ => RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: ImageMemberWrongShape { key: "commits" } } }
+              }
+          }
+      }
+    _ => RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: ImageMemberWrongShape { key: "objects" } } }
+  }
+}
+
+// A DANGLING CHECKOUT REFERENCE REFUSES RATHER THAN DEGRADING TO "nothing checked out". Those are
+// different states: one is an ordinary empty repository, the other is a document whose workspace
+// selection names an object the table does not contain. Answering the first for the second would
+// silently discard the user's position and present the result as a healthy repository.
+fn decode_repository_checkout(
+  v: JsonValue,
+  store: ObjectStore,
+  positions: DecodePositions,
+  commits: List<RepositoryCommit>
+) -> RepositoryDecodeOutcome {
+  match json_object_unique_member(v: v, key: "checked_out") {
+    JsonMemberAbsent =>
+      RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: ImageMemberMissing { key: "checked_out" } } }
+    JsonMemberDuplicated { count: _ } =>
+      RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: ImageMemberDuplicated { key: "checked_out" } } }
+    JsonMemberNotAnObject =>
+      RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: ImageNotAnObject } }
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonNull =>
+          RepositoryDecoded {
+            envelope: RepositoryEnvelope { store: store, commits: commits, checked_out: none }
+          }
+        JsonString { value: reference } =>
+          match resolve_reference(positions: positions, reference: reference) {
+            Absent =>
+              RepositoryDecodeRefused { cause: RepositoryCheckedOutUnresolved { reference: reference } }
+            Present { value: identity } =>
+              RepositoryDecoded {
+                envelope: RepositoryEnvelope {
+                  store: store, commits: commits, checked_out: Present { value: identity }
+                }
+              }
+          }
+        _ =>
+          RepositoryDecodeRefused { cause: RepositoryImageRefusal { cause: ImageMemberWrongShape { key: "checked_out" } } }
+      }
+  }
+}
