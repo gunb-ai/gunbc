@@ -6940,7 +6940,7 @@ mod cast_identity_empty_kernel_tests {
 
     use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
-    use crate::v1_std_core::{make_expr_error_node, make_span, ExprErrorKind};
+    use crate::v1_std_core::{make_expr_error_node, no_span, ExprErrorKind};
 
     use super::{cast_identity_result, ExecutionMode, InterpContext, Value};
 
@@ -6963,7 +6963,7 @@ mod cast_identity_empty_kernel_tests {
         let malformed_target = make_expr_error_node(
             ExprErrorKind::InternalExprError,
             "malformed node: missing cast target".to_string(),
-            make_span(0, 0),
+            no_span(),
         );
         let val = Value::Str(Rc::from("payload"));
         let result = cast_identity_result(&val, &ctx, "", malformed_target, "");
@@ -6984,7 +6984,7 @@ mod cast_identity_empty_kernel_tests {
         let string_target = make_expr_error_node(
             ExprErrorKind::InternalExprError,
             "unused".to_string(),
-            make_span(0, 0),
+            no_span(),
         );
         let string_target = Rc::new(crate::v1_std_core::Node {
             name: "String".to_string(),

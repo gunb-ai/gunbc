@@ -1,0 +1,45 @@
+module test.claim.reconstruction_door_rest_probe
+
+import std.types { NonEmptyStr }
+
+// Reconstruction-door probe (audit queue item 20b, REST JSON projection; was labelled "ARM 2"). Declares a REST
+// service whose `id` output is a refined `NonEmptyStr`, deliberately with NO
+// `mock_response` — claim_batch's default hermetic-mock mode refuses without
+// one, which forces the `--record` path to dispatch a genuine HTTP request
+// rather than evaluating authored .dag source. Point `config.endpoint` at a
+// local stand-in HTTP server (any server that returns the JSON bodies below
+// is sufficient) and run each `witness_*` function once under
+// `--record --fixture-store <dir>` (a fresh directory per case — the fixture
+// store refuses to record two different response shapes for the same
+// operation/input_hash pair). Exact reproduction steps are in
+// docs/plans/compiler-guarantee-recovery-gap-analysis.md item 20.
+
+service DoorProbeRest {
+  config {
+    endpoint: "http://127.0.0.1:8991"
+  }
+
+  operation Fetch {
+    output { id: NonEmptyStr from "id" }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/fetch"
+    }
+    response {
+      200 => Json
+    }
+  }
+}
+
+// Case 1 (positive control): server body is {"id":"valid-value"}.
+func witness_rest_id_equals_valid() -> Bool {
+  DoorProbeRest.Fetch().id == "valid-value"
+}
+
+// Case 2 (predicate bypass, no tampering at all): server body is
+// {"id":""}, returned over a real socket by a real HTTP server — nothing on
+// disk is edited for this case.
+func witness_rest_id_equals_empty() -> Bool {
+  DoorProbeRest.Fetch().id == ""
+}
