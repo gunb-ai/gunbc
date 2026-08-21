@@ -58,7 +58,10 @@ test fn honest_frontier_projection_refuses_observed_paths_without_revision() -> 
       manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
       tracked_rust_repo_paths: ["synthetic/a.rs"],
       prior_tracked_rust_repo_paths: [],
-      cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+      cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
+      emit_population_evidence: EmitPopulationConfirmed {
+        emitted_stage0_repo_paths: []
+      }
     }
   ) {
     TrackedRustProjectionObservationRefused { detail: detail } =>

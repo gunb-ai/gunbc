@@ -68,7 +68,8 @@ fn product_reachability_receipt(
       tracked_rust_repo_paths: tracked_paths,
       cargo_bin_repo_paths: cargo_bin_repo_paths,
       manifest_content_identity: _,
-      prior_tracked_rust_repo_paths: _
+      prior_tracked_rust_repo_paths: _,
+      emit_population_evidence: _
     } =>
       if revision == "" {
         ProductReachabilityObservationRefused
@@ -194,6 +195,10 @@ fn exact_reachability_refused_paths(
   }
 }
 
+// This fixture's subject is cargo-target reachability, not the generated/hand split, so it
+// declares its whole tracked list as the emitted population: the emit population is STATED rather
+// than dodged, and stating it this way keeps every tracked path classified, so no unrelated
+// classification arm fires ahead of the axis under test.
 fn product_reachability_witness_observation(
   tracked_paths: List<String>,
   cargo_bin_repo_paths: List<String>
@@ -203,6 +208,9 @@ fn product_reachability_witness_observation(
     manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
     tracked_rust_repo_paths: tracked_paths,
     prior_tracked_rust_repo_paths: tracked_paths,
-    cargo_bin_repo_paths: cargo_bin_repo_paths
+    cargo_bin_repo_paths: cargo_bin_repo_paths,
+    emit_population_evidence: EmitPopulationConfirmed {
+      emitted_stage0_repo_paths: tracked_paths
+    }
   }
 }

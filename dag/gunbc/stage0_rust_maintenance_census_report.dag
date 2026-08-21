@@ -103,7 +103,8 @@ fn rust_maintenance_census_report_over(
       manifest_content_identity: _,
       tracked_rust_repo_paths: _,
       prior_tracked_rust_repo_paths: _,
-      cargo_bin_repo_paths: _
+      cargo_bin_repo_paths: _,
+      emit_population_evidence: _
     } =>
       match lifecycle_totality_receipt(observation: observation) {
         LifecycleTotalityObservationRefused =>

@@ -36,20 +36,20 @@ fn char_in_class(c: std.types.Char, class: v2.std.compilers.lexing.LexCharClass)
     WhitespaceChar =>
       c == 32 || c == 9 || c == 10 || c == 13
     DigitChar =>
-      v2.std.nat.nat_gte(a: c, b: 48) && v2.std.nat.nat_lte(a: c, b: 57)
+      (c >= 48) && (c <= 57)
     HexDigitChar =>
-      (v2.std.nat.nat_gte(a: c, b: 48) && v2.std.nat.nat_lte(a: c, b: 57)) ||
-      (v2.std.nat.nat_gte(a: c, b: 65) && v2.std.nat.nat_lte(a: c, b: 70)) ||
-      (v2.std.nat.nat_gte(a: c, b: 97) && v2.std.nat.nat_lte(a: c, b: 102))
+      ((c >= 48) && (c <= 57)) ||
+      ((c >= 65) && (c <= 70)) ||
+      ((c >= 97) && (c <= 102))
     IdentStartChar =>
-      (v2.std.nat.nat_gte(a: c, b: 65) && v2.std.nat.nat_lte(a: c, b: 90)) ||
-      (v2.std.nat.nat_gte(a: c, b: 97) && v2.std.nat.nat_lte(a: c, b: 122)) ||
+      ((c >= 65) && (c <= 90)) ||
+      ((c >= 97) && (c <= 122)) ||
       c == 95
     IdentContinueChar =>
-      (v2.std.nat.nat_gte(a: c, b: 65) && v2.std.nat.nat_lte(a: c, b: 90)) ||
-      (v2.std.nat.nat_gte(a: c, b: 97) && v2.std.nat.nat_lte(a: c, b: 122)) ||
+      ((c >= 65) && (c <= 90)) ||
+      ((c >= 97) && (c <= 122)) ||
       c == 95 ||
-      (v2.std.nat.nat_gte(a: c, b: 48) && v2.std.nat.nat_lte(a: c, b: 57))
+      ((c >= 48) && (c <= 57))
     StringTextChar =>
       c != 34 && c != 10
     LineCommentTextChar =>

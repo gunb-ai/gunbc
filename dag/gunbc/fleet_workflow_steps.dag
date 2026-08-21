@@ -268,40 +268,6 @@ fn ci_fleet_key_agent_step() -> extdeps.github.actions.Step {
   }
 }
 
-// MATERIALIZED ONLY FOR THE MODE THAT NEEDS IT. The credential is fetched when the run is going to
-// install a grant and not otherwise: a job that only observes has no business holding an
-// administrator password, and gating the fetch on the mode keeps the blast radius of a leak equal to
-// the set of runs that genuinely required privilege.
-fn ci_spark_admin_credential_step(if_condition: String) -> Step {
-  extdeps.github.actions.RunStep {
-    name: Present { value: "Materialize the spark administrator credential in-run (SM versions/1 pinned -> RUNNER_TEMP 0600; PATH exported, credential not)" },
-    id: none,
-    run: gunbc_ci_spark_admin_credential_script(),
-    shell: none,
-    env: Present {
-      value: [kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}"))]
-    },
-    working_directory: none,
-    if_condition: Present { value: if_condition },
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-  }
-}
-
-fn ci_spark_admin_credential_cleanup_step() -> Step {
-  extdeps.github.actions.RunStep {
-    name: Present { value: "Remove the in-run administrator credential (never outlives the job)" },
-    id: none,
-    run: gunbc_ci_spark_admin_credential_cleanup_script(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: Present { value: "always()" },
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-  }
-}
-
 fn ci_fleet_key_agent_cleanup_step() -> Step {
   extdeps.github.actions.RunStep {
     name: Present { value: "Kill the in-run ssh-agent (key never outlives the job)" },

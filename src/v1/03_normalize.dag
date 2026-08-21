@@ -13,15 +13,20 @@ fn check_bare_containers(n: v1.std.core.Node, module_name: String, source_indice
   let has_structure = match n.body { Present { value: _ } => true  Absent => false } || (n.uses |> count) > 0 || (n.properties |> count) > 0
   let is_expr = match n.expr_data { NoExprData => false  _ => true }
   let nname = authored_name_at(source_indices: source_indices, node: n)
-  let self_diags = if is_expr { [] } else { match container_expected_arity(name: nname) {
-    Present { value: expected } =>
+  let self_diags = if is_expr { [] } else { match authored_container_spelling_verdict(node: n, source_indices: source_indices) {
+    ContainerSpellingDeclared { arity: expected } =>
       if (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == NoConnective && !has_structure {
         [make_error_node(
           diagnostic: v1.std.core.ArityMismatch { name: nname, expected: expected, got: 0, span: n.span },
           module_name: module_name
         )]
       } else { [] }
-    Absent => []
+    ContainerSpellingUnknown { container_leaf: leaf } =>
+      [make_error_node(
+        diagnostic: v1.std.core.ContainerSpellingUnrecognized { name: nname, container_leaf: leaf, span: n.span },
+        module_name: module_name
+      )]
+    NotAContainerSpelling => []
   } }
   let child_diags = flat_map(n.children, c => check_bare_containers(n: c, module_name: module_name, source_indices: source_indices))
   let param_diags = flat_map(n.params, p => check_bare_containers(n: p, module_name: module_name, source_indices: source_indices))

@@ -49,7 +49,8 @@ fn honest_frontier_integration_receipt(
       manifest_content_identity: manifest_content_identity,
       tracked_rust_repo_paths: tracked_rust_repo_paths,
       prior_tracked_rust_repo_paths: prior_tracked_rust_repo_paths,
-      cargo_bin_repo_paths: cargo_bin_repo_paths
+      cargo_bin_repo_paths: cargo_bin_repo_paths,
+      emit_population_evidence: _
     } =>
       if revision == "" {
         HonestFrontierIntegrationRefused {
@@ -124,7 +125,8 @@ fn tracked_rust_unclassified_projection(
           manifest_content_identity: manifest_content_identity,
           tracked_rust_repo_paths: tracked_rust_repo_paths,
           prior_tracked_rust_repo_paths: prior_tracked_rust_repo_paths,
-          cargo_bin_repo_paths: cargo_bin_repo_paths
+          cargo_bin_repo_paths: cargo_bin_repo_paths,
+          emit_population_evidence: _
         } => TrackedRustProjectionObservationRefused { detail: detail }
       }
     HonestFrontierIntegrationDerived {

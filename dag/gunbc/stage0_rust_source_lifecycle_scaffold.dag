@@ -1,6 +1,7 @@
 module gunbc.stage0_rust_source_lifecycle_scaffold
 
 
+
 data stage0_rust_source_lifecycle_scaffold_note: String = "SCAFFOLD — NOT the live ZeroHandMaintainedRust instrument. gunbc.stage0_rust_host_observation supplies the exact tracked-Rust subject plus Cargo target ROLE facts. This module keeps role and maintenance disposition independent: CargoBin never classifies a path as Generated, DeleteWith, RetainedKernel, or HandScaffold. A Cargo target with no maintenance disposition refuses as CargoTargetMissingLifecycleDisposition. Product reachability and LOC/capability ratchets remain explicit v1-honest-frontier follow-on work; this observation prerequisite does not claim those finish lines."
 
 data zero_hand_maintained_rust_finish_line_attachment_note: String = "Observation prerequisite only: RustManifestObserved establishes the revision-addressed subject and Cargo roles. v1-honest-frontier must separately derive maintenance disposition, product reachability, generation authority, retirement trigger, hand LOC, and typed hand obligations before V1FinishLine ZeroHandMaintainedRust can consume it."
@@ -18,6 +19,7 @@ type RustSourceManifestStateRefusal
   | DerivedDuplicateExactPaths { count: Int }
   | DerivedHandMaintainedGrew { prior: Int, current: Int }
   | DerivedUnclassifiedTracked { count: Int }
+  | EmitPopulationUnobservedEvidence { detail: String }
   | ObservedCargoPathUntracked { path: String }
   | CargoTargetMissingLifecycleDisposition { path: String }
 
@@ -179,7 +181,13 @@ fn count_observed_manifest_duplicate_excess(
 // zero by construction rather than because the defect stopped occurring. Caught by execution:
 // scaffold_observed_cargo_role_does_not_supply_lifecycle_disposition went red on the floor while
 // two reviews passed over the change. The comparison is against the AUTHORED classification.
-fn rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_host_observation.RustSourceHostObservation) -> RustSourceManifestStateVerdict {
+// ON THE EmitPopulationUnobserved ARM BELOW: THE LINE STOPS; IT DOES NOT WIDEN. Without the
+// emitter's declaration this module cannot separate "the emitter produces this" from "nobody
+// registered this", which is precisely the deficit #8674's rung drop was declared over. Falling
+// back to the crate-layout complement in that arm would restore the deficit while still reporting
+// a verdict, with its own firing rate zeroed by construction -- the absorbing fallback DESIGN 5
+// forbids. So the arm refuses, typed and located, and the degradation is countable.
+fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) -> RustSourceManifestStateVerdict {
   match observation {
     RustManifestReadRefused { detail: detail } =>
       ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: detail } }
@@ -192,56 +200,65 @@ fn rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_host_observ
       manifest_content_identity: manifest_content_identity,
       tracked_rust_repo_paths: tracked_paths,
       prior_tracked_rust_repo_paths: prior_tracked_paths,
-      cargo_bin_repo_paths: cargo_bin_repo_paths
+      cargo_bin_repo_paths: cargo_bin_repo_paths,
+      emit_population_evidence: emit_population_evidence
     } =>
       if repository_revision == "" {
         ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: "observed manifest missing repository_revision" } }
       } else {
-        let file_grain_paths = file_grain_lifecycle_repo_paths(tracked_paths: tracked_paths)
-        let classified_paths = file_grain_paths
-        let lifecycle_paths = classified_paths
-        let newly_unclassified = count_newly_unclassified_tracked(
-          tracked_paths: tracked_paths,
-          prior_tracked_paths: prior_tracked_paths,
-          classified_paths: classified_paths
-        )
-        let unclassified = count_tracked_unclassified(tracked_paths: tracked_paths, classified_paths: classified_paths)
-        let stale = count_stale_lifecycle_rows(tracked_paths: tracked_paths, lifecycle_paths: lifecycle_paths)
-        let duplicate_excess = count_observed_manifest_duplicate_excess(
-          tracked_paths: tracked_paths,
-          prior_tracked_paths: prior_tracked_paths,
-          cargo_bin_repo_paths: cargo_bin_repo_paths
-        )
-        let hand_current = count_hand_maintained_in_tracked(tracked_paths: tracked_paths)
-        let hand_prior = count_hand_maintained_in_prior_tracked(prior_tracked_paths: prior_tracked_paths)
-        let untracked_cargo = first_untracked_cargo_path(
-          cargo_bin_repo_paths: cargo_bin_repo_paths,
-          tracked_paths: tracked_paths
-        )
-        let cargo_without_disposition = first_untracked_cargo_path(
-          cargo_bin_repo_paths: cargo_bin_repo_paths,
-          tracked_paths: non_generated_classified_repo_paths()
-        )
-        if v2.std.algebra.length(xs: cargo_bin_repo_paths) == 0 {
-          ManifestStateScaffoldRefused { cause: HostManifestParseRefused { detail: "observed manifest missing cargo_bin_repo_paths evidence" } }
-        } else if untracked_cargo != "" {
-          ManifestStateScaffoldRefused { cause: ObservedCargoPathUntracked { path: untracked_cargo } }
-        } else if cargo_without_disposition != "" {
-          ManifestStateScaffoldRefused {
-            cause: CargoTargetMissingLifecycleDisposition { path: cargo_without_disposition }
-          }
-        } else if newly_unclassified != 0 {
-          ManifestStateScaffoldRefused { cause: DerivedNewlyUnclassified { count: newly_unclassified } }
-        } else if stale != 0 {
-          ManifestStateScaffoldRefused { cause: DerivedStaleLifecycleRows { count: stale } }
-        } else if duplicate_excess != 0 {
-          ManifestStateScaffoldRefused { cause: DerivedDuplicateExactPaths { count: duplicate_excess } }
-        } else if hand_current > hand_prior {
-          ManifestStateScaffoldRefused { cause: DerivedHandMaintainedGrew { prior: hand_prior, current: hand_current } }
-        } else if unclassified != 0 {
-          ManifestStateScaffoldRefused { cause: DerivedUnclassifiedTracked { count: unclassified } }
-        } else {
-          ManifestStateScaffoldOk
+        match emit_population_evidence {
+          EmitPopulationUnobserved { detail: detail } =>
+            ManifestStateScaffoldRefused { cause: EmitPopulationUnobservedEvidence { detail: detail } }
+          EmitPopulationConfirmed { emitted_stage0_repo_paths: emitted_stage0_repo_paths } =>
+            let file_grain_paths = file_grain_lifecycle_repo_paths(
+              emitted_stage0_repo_paths: emitted_stage0_repo_paths,
+              tracked_paths: tracked_paths
+            )
+            let classified_paths = file_grain_paths
+            let lifecycle_paths = classified_paths
+            let newly_unclassified = count_newly_unclassified_tracked(
+              tracked_paths: tracked_paths,
+              prior_tracked_paths: prior_tracked_paths,
+              classified_paths: classified_paths
+            )
+            let unclassified = count_tracked_unclassified(tracked_paths: tracked_paths, classified_paths: classified_paths)
+            let stale = count_stale_lifecycle_rows(tracked_paths: tracked_paths, lifecycle_paths: lifecycle_paths)
+            let duplicate_excess = count_observed_manifest_duplicate_excess(
+              tracked_paths: tracked_paths,
+              prior_tracked_paths: prior_tracked_paths,
+              cargo_bin_repo_paths: cargo_bin_repo_paths
+            )
+            let hand_current = count_hand_maintained_in_tracked(tracked_paths: tracked_paths)
+            let hand_prior = count_hand_maintained_in_prior_tracked(prior_tracked_paths: prior_tracked_paths)
+            let untracked_cargo = first_untracked_cargo_path(
+              cargo_bin_repo_paths: cargo_bin_repo_paths,
+              tracked_paths: tracked_paths
+            )
+            let cargo_without_disposition = first_untracked_cargo_path(
+              cargo_bin_repo_paths: cargo_bin_repo_paths,
+              tracked_paths: non_generated_classified_repo_paths()
+            )
+            if length(xs: cargo_bin_repo_paths) == 0 {
+              ManifestStateScaffoldRefused { cause: HostManifestParseRefused { detail: "observed manifest missing cargo_bin_repo_paths evidence" } }
+            } else if untracked_cargo != "" {
+              ManifestStateScaffoldRefused { cause: ObservedCargoPathUntracked { path: untracked_cargo } }
+            } else if cargo_without_disposition != "" {
+              ManifestStateScaffoldRefused {
+                cause: CargoTargetMissingLifecycleDisposition { path: cargo_without_disposition }
+              }
+            } else if newly_unclassified != 0 {
+              ManifestStateScaffoldRefused { cause: DerivedNewlyUnclassified { count: newly_unclassified } }
+            } else if stale != 0 {
+              ManifestStateScaffoldRefused { cause: DerivedStaleLifecycleRows { count: stale } }
+            } else if duplicate_excess != 0 {
+              ManifestStateScaffoldRefused { cause: DerivedDuplicateExactPaths { count: duplicate_excess } }
+            } else if hand_current > hand_prior {
+              ManifestStateScaffoldRefused { cause: DerivedHandMaintainedGrew { prior: hand_prior, current: hand_current } }
+            } else if unclassified != 0 {
+              ManifestStateScaffoldRefused { cause: DerivedUnclassifiedTracked { count: unclassified } }
+            } else {
+              ManifestStateScaffoldOk
+            }
         }
       }
   }
@@ -308,50 +325,40 @@ fn stage0_src_repo_path(filename: String) -> String {
   concat(stage0_src_repo_prefix, filename)
 }
 
-// THE GENERATED POPULATION IS DERIVED FROM THE OBSERVED TREE, NOT STORED.
-// It was a 100+ row hand list, `gunbc.stage0_emit_plan_generated generated_stage0_files`,
-// whose producer `gunbc.stage0_emit_plan` died in the #8406 regen root cut. A roster with no
-// producer does not stop being an authority -- it becomes a SECOND one that drifts silently,
-// and it did: #8587 had to hand-edit it to remove two files the emit had stopped producing.
-//
-// The derivation below is the one `required_regen_host` `committed_generated_basenames`
-// already executes in production: a direct-child `.rs` under the stage0 source root that the
-// crate-layout authority does not claim IS the generated population. Both sides now read one
-// authority -- `v2.compiler.self_host.stage0_crate_layout` -- so .dag cannot disagree with the
-// host about which files the emitter owns.
-//
-// WHAT THIS ARM CANNOT DECIDE, stated rather than absorbed: a NEWLY hand-added stage0 file
-// that nobody registered lands here as `generated` instead of surfacing as `unclassified`.
-// That class is not lost -- it is decided one rung up, by `claim_executor --required-regen`,
-// whose `committed_not_emitted` refusal names exactly such a file because it compares against
-// the real emit population, which no at-rest .dag fact carries. The stale roster could only
-// catch it by BEING stale, and could not catch the converse (a file the emit stopped
-// producing) at all. The lower-rung machinery dissolves; its evidence stays enrolled.
-fn stage0_src_direct_child_rust_path(path: String) -> Bool {
-  if !rust_source_path_has_prefix(path: path, prefix: stage0_src_repo_prefix) {
-    false
-  } else if !ends_with(s: path, suffix: ".rs") {
-    false
-  } else {
-    let n = string_length(s: path)
-    let prefix_length = string_length(s: stage0_src_repo_prefix)
-    let relative = substring(s: path, start: prefix_length, end: n)
-    !string_contains(s: relative, pattern: "/")
-  }
-}
 
 //
 // `claimed` is hoisted rather than inlined into the predicate: non_generated_classified_repo_paths()
 // folds three rosters through list_concat_unique, which is quadratic in its own length, and
 // calling it per tracked path would multiply that by the whole observed tree.
-fn derived_generated_stage0_repo_paths(tracked_paths: std.types.List<String>) -> std.types.List<String> {
-  let claimed = non_generated_classified_repo_paths()
-  v2.std.algebra.filter(
+// THE GENERATED POPULATION IS THE ONE THE EMITTER DECLARED, READ RATHER THAN RECONSTRUCTED.
+//
+// It was, in order: a 100+ row hand roster with no producer (deleted by #8674, because its
+// producer died in the #8406 regen cut); then the COMPLEMENT of the crate-layout claim over the
+// observed tree. The complement is a faithful reconstruction and it still cannot answer the
+// question this module asks, which is why #8674 had to declare a rung drop: a direct child of
+// the stage0 root that nobody claims is "generated" BY DEFINITION under a complement, so a newly
+// hand-added file nobody registered could never surface as unclassified, and the refusal's firing
+// rate went to zero by construction.
+//
+// The emitter now declares its own population (`v1.compiler.emit_rust`
+// `emit_emitted_population_manifest` -> `src/v1/stage0/src/emitted_population.rs`), the
+// observation reads it at the revision, and this filter selects the tracked paths that
+// declaration names. A file the emitter does not produce is now absent from the generated
+// population no matter where it sits, which restores exactly the distinction the drop declared
+// unavailable -- "the emitter produces this" versus "nobody registered this".
+//
+// The intersection with `tracked_paths` is deliberate and is not a narrowing: the population this
+// module classifies is the OBSERVED tree, so a declared path absent from the tree is not this
+// carrier's subject. `required_regen`'s `committed_not_emitted` / `emitted_not_committed` arms
+// are the authority on that disagreement and they compare against the real emit, which no at-rest
+// fact can. Two carriers, two questions, no second answer to either.
+fn derived_generated_stage0_repo_paths(
+  emitted_stage0_repo_paths: List<String>,
+  tracked_paths: List<String>
+) -> List<String> {
+  filter(
     xs: tracked_paths,
-    predicate: fn(path) {
-      stage0_src_direct_child_rust_path(path: path)
-        && !path_in_list(path: path, paths: claimed)
-    }
+    predicate: fn(path) { path_in_list(path: path, paths: emitted_stage0_repo_paths) }
   )
 }
 
@@ -561,10 +568,16 @@ fn non_generated_classified_repo_paths() -> std.types.List<String> {
   list_concat_unique(acc: with_residue, items: generated_artifact_stage0_src_repo_paths())
 }
 
-fn file_grain_lifecycle_repo_paths(tracked_paths: std.types.List<String>) -> std.types.List<String> {
+fn file_grain_lifecycle_repo_paths(
+  emitted_stage0_repo_paths: List<String>,
+  tracked_paths: List<String>
+) -> List<String> {
   list_concat_unique(
     acc: non_generated_classified_repo_paths(),
-    items: derived_generated_stage0_repo_paths(tracked_paths: tracked_paths)
+    items: derived_generated_stage0_repo_paths(
+      emitted_stage0_repo_paths: emitted_stage0_repo_paths,
+      tracked_paths: tracked_paths
+    )
   )
 }
 
@@ -593,7 +606,10 @@ fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> gunb
     manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
     tracked_rust_repo_paths: list_concat_unique(acc: classified, items: [extra_path]),
     prior_tracked_rust_repo_paths: classified,
-    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
+    emit_population_evidence: EmitPopulationConfirmed {
+      emitted_stage0_repo_paths: witness_generated_stage0_fixture_paths
+    }
   }
 }
 
@@ -609,7 +625,10 @@ fn witness_hand_maintained_growth_observation() -> gunbc.stage0_rust_host_observ
     manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
     tracked_rust_repo_paths: classified,
     prior_tracked_rust_repo_paths: prior_classified,
-    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
+    emit_population_evidence: EmitPopulationConfirmed {
+      emitted_stage0_repo_paths: witness_generated_stage0_fixture_paths
+    }
   }
 }
 
@@ -620,7 +639,10 @@ fn witness_honest_minimal_observation_ok() -> gunbc.stage0_rust_host_observation
     manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
     tracked_rust_repo_paths: classified,
     prior_tracked_rust_repo_paths: classified,
-    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
+    emit_population_evidence: EmitPopulationConfirmed {
+      emitted_stage0_repo_paths: witness_generated_stage0_fixture_paths
+    }
   }
 }
 
@@ -648,7 +670,10 @@ fn witness_standing_unclassified_observation(planted_path: String) -> gunbc.stag
     manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
     tracked_rust_repo_paths: tracked,
     prior_tracked_rust_repo_paths: tracked,
-    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
+    emit_population_evidence: EmitPopulationConfirmed {
+      emitted_stage0_repo_paths: witness_generated_stage0_fixture_paths
+    }
   }
 }
 
@@ -675,7 +700,10 @@ fn witness_duplicate_tracked_observation() -> gunbc.stage0_rust_host_observation
     manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
     tracked_rust_repo_paths: tracked_with_dup,
     prior_tracked_rust_repo_paths: classified,
-    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
+    emit_population_evidence: EmitPopulationConfirmed {
+      emitted_stage0_repo_paths: witness_generated_stage0_fixture_paths
+    }
   }
 }
 

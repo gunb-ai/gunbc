@@ -9,6 +9,16 @@
 
 ---
 
+## 0a. SECOND CORRECTION, AND IT IS LARGER THAN §0: THIS POPULATION DOES NOT HOLD THE DOOR
+
+§0 corrected the SUBJECT these numbers describe. This corrects why anyone was reading them at all.
+
+**All 32 wrapper-retained observations are produced on an `Accepted` path.** `v2.compiler.body_lowering_fold` `body_lower_wrapper_retained_shell` returns `Accepted { value: shell, diagnostics: ... }` -- it is the corpus's single, deliberate producer of retention and it never refuses. They reach boundary 4's `Rejected` list only as carriage, through `v2.std.diagnostic` `rejected_with_pending`. The same holds for the 7 `parse_grammar_choice_overlap_residue`, which `v2.compiler.02_parse` `grammar_validate_and_analyze` attaches to an `Accepted`'s diagnostics field.
+
+So of the 40 diagnostics at boundary 4, **39 are carried and exactly one rejects**. Closing every observation partitioned in this document would advance boundary 4 by zero boundaries. The measurements below stay real and reproducible; what is retired is the premise that they size the work.
+
+Full reading, with what it destroys and what it does not claim: -> [b4 causal versus carried](b4_causal_versus_carried_2026-08-21.md).
+
 ## 0. CORRECTION (2026-08-21, same day): THIS IS ONE MODULE'S POPULATION, NOT THE CLOSURE'S
 
 **The header of this document originally read "every wrapper-retained observation, whole — not a sample". That is false.** It was written from two subjects that happened to differ, and never tested against a subject that should have agreed. Four executed runs falsify it, and they are reported here rather than in a second document because a superseded claim and its correction must not be two artifacts.

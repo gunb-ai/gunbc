@@ -10,7 +10,21 @@ data stage0_cargo_toml_repo_path: String = "src/v1/stage0/Cargo.toml"
 
 data stage0_package_root: String = "src/v1/stage0/"
 
-data stage0_cargo_bin_paths_observation_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
+// The package-relative source directory, cited to Cargo's package layout rather than coined.
+// Cargo's default layout puts a package's sources under `src/`, which is why the emitter's own
+// target-relative root (`v1.compiler.emit_rust` `rust_source_root`, from the Rust scaffold's
+// `source_dir`) and this repository-relative segment carry the same characters: they are two
+// projections of one upstream convention, not a nickname for each other. This is the repo-side
+// projection, and it is declared here because it is a fact about where the stage0 PACKAGE lives,
+// which is exactly what this module already owns (`stage0_package_root`,
+// `stage0_cargo_toml_repo_path`).
+//
+// Consumed by gunbc.stage0_rust_host_observation to address the emitted-population manifest at a
+// revision. Its absence is why an earlier revision spelled "src/" inline at the reading end,
+// which would have been a second, uncited spelling of the emitter's own root.
+data stage0_source_dir_relative_to_package: String = "src/"
+
+data stage0_cargo_bin_paths_observation_ref: DeclarationRef = DeclarationRef {
   module_path: "gunbc.stage0_rust_host_observation",
   decl_name: "current_stage0_rust_source_observation",
   field: WholeDeclaration

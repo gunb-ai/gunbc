@@ -2,11 +2,11 @@ module v2.compiler.body_lowering_fold
 
 
 
-data body_lowering_fold_note: String = "Forward body producer fold (general-body-producer Stage A remainder + B/C/D): production-identity dispatch in normalize AFTER child-fold, BEFORE sugar (body_lower_finish in 03_normalize.dag). INTERIM scaffold — dissolves into v2.compiler.body_producer_forward GrammarRelationRow forward fold (general-body-producer-design §3) once Slice 4 deletes this module; match/if/body_try hand-walker scaffolds dissolved into body_producer_forward + body_lower_fold. COMPLEMENTS #6443 fold_lowering.dag — does NOT re-fork it. Seam: fold_lowering owns fold-CALL semantic desugar (callee-head keyed: ^fold/^fold_list/… → seam Loop via v2.compiler.fold_lowering.fold_call_to_loop); body_lowering_fold owns fn-BODY shape lowering (fn_decl→v2.std.node.Arrow+domain, infix→v2.std.node.Transform, let→Bind, …). The only overlap point is body_lower_try_fold_loop which DELEGATES to v2.compiler.fold_lowering.fold_call_to_loop — one authority, no parallel fold→Loop path. Pass-through expr wrappers unwrap; ^dag_surface_fn_body is deferred (shell retained until parent fn_decl lowers); metadata (module/import/qn) preserved; core substrate (v2.std.node.Arrow, v2.std.node.ComputationNode) is a positive terminal; out-of-scope emitted identities land wrapper-retained with typed diagnostic ^body_lowering_reason_wrapper_retained_emitted (general-body-producer-design Stage A frontier: lowered | wrapper-retained cause, counted — never silent shell accept)."
+data body_lowering_fold_note: String = "Forward body producer fold (general-body-producer Stage A remainder + B/C/D): production-identity dispatch in normalize AFTER child-fold, BEFORE sugar (body_lower_finish in 03_normalize.dag). INTERIM scaffold — dissolves into v2.compiler.body_producer_forward GrammarRelationRow forward fold (general-body-producer-design §3) once Slice 4 deletes this module; match/if/body_try hand-walker scaffolds dissolved into body_producer_forward + body_lower_fold. COMPLEMENTS #6443 fold_lowering.dag — does NOT re-fork it. Seam: fold_lowering owns fold-CALL semantic desugar (callee-head keyed: ^fold/^fold_list/… → seam Loop via fold_call_to_loop); body_lowering_fold owns fn-BODY shape lowering (fn_decl→Arrow+domain, infix→Transform, let→Bind, …). The only overlap point is body_lower_try_fold_loop which DELEGATES to fold_call_to_loop — one authority, no parallel fold→Loop path. Pass-through expr wrappers unwrap; ^dag_surface_fn_body is deferred (shell retained until parent fn_decl lowers); metadata (module/import/qn) preserved; core substrate (Arrow, ComputationNode) is a positive terminal; out-of-scope emitted identities land wrapper-retained with typed diagnostic ^body_lowering_reason_wrapper_retained_emitted (general-body-producer-design Stage A frontier: lowered | wrapper-retained cause, counted — never silent shell accept)."
 
-data body_lowering_fold_dissolution_contract: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "FLAG E dissolution DELETES this module — coverage lives in v2.compiler.body_producer_forward forward rows + GrammarRelationRow slot-map apply (general-body-producer-design §3). The hand-authored families (body_lower_deep_unwrap*, body_lower_operand_ref*, body_lower_operator_tail/infix*, body_lower_postfix_projection*) are receipt scaffolding only. Acceptance: this file is gone and coverage lives in forward rows + existing witnesses. match/if/body_try hand-walker scaffolds LANDED: body_lower_try_body_lowered delegates behavior productions to body_lower_fold; body_producer_forward owns the forward row table.")
+data body_lowering_fold_dissolution_contract: DissolutionCondition = unbound_dissolution(description: "FLAG E dissolution DELETES this module — coverage lives in v2.compiler.body_producer_forward forward rows + GrammarRelationRow slot-map apply (general-body-producer-design §3). The hand-authored families (body_lower_deep_unwrap*, body_lower_operand_ref*, body_lower_operator_tail/infix*, body_lower_postfix_projection*) are receipt scaffolding only. Acceptance: this file is gone and coverage lives in forward rows + existing witnesses. match/if/body_try hand-walker scaffolds LANDED: body_lower_try_body_lowered delegates behavior productions to body_lower_fold; body_producer_forward owns the forward row table.")
 
-data body_lowering_rejection_propagation_note: String = "GENUINE REJECTION PROPAGATES; RETENTION IS PRODUCED, NEVER INFERRED FROM FAILURE (2026-08-11). body_lower_finish_for_normalize previously matched EVERY v2.std.diagnostic.Rejected from body_lower_after_children and returned a wrapper-retained v2.std.diagnostic.Accepted instead, binding the rejection diagnostics to _ and discarding them. That conflated four different states behind one arm: this lowering strategy does not apply, this valid form has no producer yet, this form is malformed, and an invariant was violated. It is the inverse of the not-applicable-versus-malformed conflation #6558 already ruled on, moved out to the outer seam.\n\nThe repair is a deletion rather than a new mechanism, because the legitimate case was already explicit: body_lower_production_emitted's final arm returns body_lower_wrapper_retained_shell for an emitted identity with no registered producer. That IS the declared lowered | wrapper-retained frontier, produced deliberately at the point where not-applicable is known. The outer catch was therefore a second, inferential source of retention standing beside the real one, and it could only fire on outcomes the strategy functions had already judged. So retention now has exactly one producer, and the outer v2.std.diagnostic.Outcome owns genuine rejection with its diagnostics preserved through v2.std.diagnostic.rejected_with_pending.\n\nWHAT THIS DOES NOT DO: it does not scope, weaken or relocate normalize's recursive well_formed gate, which #6520 established as the sole structural wall and which stays unchanged. Modules whose retained bodies still fail that gate continue to fail it; this change only stops a real refusal from being relabelled as a counted frontier state on its way there."
+data body_lowering_rejection_propagation_note: String = "GENUINE REJECTION PROPAGATES; RETENTION IS PRODUCED, NEVER INFERRED FROM FAILURE (2026-08-11). body_lower_finish_for_normalize previously matched EVERY Rejected from body_lower_after_children and returned a wrapper-retained Accepted instead, binding the rejection diagnostics to _ and discarding them. That conflated four different states behind one arm: this lowering strategy does not apply, this valid form has no producer yet, this form is malformed, and an invariant was violated. It is the inverse of the not-applicable-versus-malformed conflation #6558 already ruled on, moved out to the outer seam.\n\nThe repair is a deletion rather than a new mechanism, because the legitimate case was already explicit: body_lower_production_emitted's final arm returns body_lower_wrapper_retained_shell for an emitted identity with no registered producer. That IS the declared lowered | wrapper-retained frontier, produced deliberately at the point where not-applicable is known. The outer catch was therefore a second, inferential source of retention standing beside the real one, and it could only fire on outcomes the strategy functions had already judged. So retention now has exactly one producer, and the outer Outcome owns genuine rejection with its diagnostics preserved through rejected_with_pending.\n\nWHAT THIS DOES NOT DO: it does not scope, weaken or relocate normalize's recursive well_formed gate, which #6520 established as the sole structural wall and which stays unchanged. Modules whose retained bodies still fail that gate continue to fail it; this change only stops a real refusal from being relabelled as a counted frontier state on its way there."
 
 data body_lowering_interim_scaffold_dissolved_note: String = "Wave 1 Gate 1 Track B: match/if/body_try interim hand-walker scaffolds dissolved into body_producer_forward (forward row table + production-identity dispatch via body_lower_fold). body_lowering_interim_scaffold_seed_retained_count is pinned at 0 — RED if any SeedRetained scaffold reappears."
 
@@ -665,25 +665,50 @@ fn body_lower_try_fold_loop_search(node: v2.std.node.Node) -> v2.std.diagnostic.
     Absent =>
       fold(node.children, init: v2.std.diagnostic.outcome_accepted(value: v2.std.optional.optional_absent()), f: fn(acc, e) {
         match acc {
-          Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-          Accepted { value: found, diagnostics: _ } =>
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: found, diagnostics: carried } =>
             match found {
               Present { value: _ } => acc
-              Absent => body_lower_try_fold_loop(node: e.target)
+              Absent =>
+                match body_lower_try_fold_loop(node: e.target) {
+                  Rejected { diagnostics: r } =>
+                    Rejected { diagnostics: rejected_with_pending(pending: carried, rejected: r) }
+                  Accepted { value: next, diagnostics: nd } =>
+                    outcome_with_diagnostics(
+                      value: next,
+                      diagnostics: diagnostics_merge(outer: carried, inner: nd)
+                    )
+                }
             }
         }
       })
   }
 }
 
-fn body_lower_try_fold_loop(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.optional.Optional<v2.std.node.Node>> {
-  match v2.compiler.fold_lowering.fold_call_head_symbol(fold_call: node) {
+// FoldCallStepFormUnresolved is a COUNTED FRONTIER STATE HERE, not a refusal,
+// and this is the one place in the corpus that reads it that way. The stage
+// cannot resolve the callee (see fold_call_lowering's note), so it cannot know
+// whether a fold-family call with no fn literal is malformed or merely carries
+// its step by name. It therefore reports "no loop produced" with the typed,
+// located diagnostic attached rather than refusing on a judgement it has not
+// earned -- and produces no Loop, exactly as the refusal did. A retained shell
+// that is genuinely broken still meets normalize's recursive well_formed gate,
+// which #6520 established as the sole structural wall and which is untouched.
+// FoldCallStepShapeInvalid stays a refusal: there the fn literal is in hand.
+fn body_lower_try_fold_loop(node: Node) -> Outcome<Optional<Node>> {
+  match fold_call_head_symbol(fold_call: node) {
     Present { value: head } =>
-      if v2.compiler.fold_lowering.fold_family_head(sym: head) {
-        match v2.compiler.fold_lowering.fold_call_to_loop(fold_call: node) {
-          Accepted { value: loop_node, diagnostics: _ } =>
-            v2.std.diagnostic.outcome_accepted(value: v2.std.optional.optional_present(value: loop_node))
-          Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+      if fold_family_head(sym: head) {
+        match fold_call_lowering(fold_call: node) {
+          FoldCallLowered { seam_loop: loop_node } =>
+            outcome_accepted(value: optional_present(value: loop_node))
+          FoldCallStepFormUnresolved { diagnostic: d } =>
+            outcome_with_diagnostics(
+              value: optional_absent(),
+              diagnostics: Some { diagnostics: diagnostics_singleton(d: d) }
+            )
+          FoldCallNotAFold { diagnostic: d } => outcome_rejected(d: d)
+          FoldCallStepShapeInvalid { diagnostic: d } => outcome_rejected(d: d)
         }
       } else {
         body_lower_try_fold_loop_search(node: node)
@@ -3736,10 +3761,20 @@ fn body_lower_postfix_expr(shell: v2.std.node.Node) -> v2.std.diagnostic.Outcome
                   match body_lower_try_fold_loop(node: captured) {
                     Rejected { diagnostics: _ } =>
                       body_lower_try_operand_or_reject(shell: shell, captured: captured)
-                    Accepted { value: fold_result, diagnostics: _ } =>
+                    Accepted { value: fold_result, diagnostics: fd } =>
                       match fold_result {
-                        Present { value: loop_node } => v2.std.diagnostic.outcome_accepted(value: loop_node)
-                        Absent => body_lower_try_operand_or_reject(shell: shell, captured: captured)
+                        Present { value: loop_node } =>
+                          outcome_with_diagnostics(value: loop_node, diagnostics: fd)
+                        Absent =>
+                          match body_lower_try_operand_or_reject(shell: shell, captured: captured) {
+                            Rejected { diagnostics: r } =>
+                              Rejected { diagnostics: rejected_with_pending(pending: fd, rejected: r) }
+                            Accepted { value: v, diagnostics: od } =>
+                              outcome_with_diagnostics(
+                                value: v,
+                                diagnostics: diagnostics_merge(outer: fd, inner: od)
+                              )
+                          }
                       }
                   }
               }
@@ -3795,10 +3830,20 @@ fn body_lower_primary_expr(shell: v2.std.node.Node) -> v2.std.diagnostic.Outcome
                   match body_lower_try_fold_loop(node: captured) {
                     Rejected { diagnostics: _ } =>
                       body_lower_try_operand_or_reject(shell: shell, captured: captured)
-                    Accepted { value: fold_result, diagnostics: _ } =>
+                    Accepted { value: fold_result, diagnostics: fd } =>
                       match fold_result {
-                        Present { value: loop_node } => v2.std.diagnostic.outcome_accepted(value: loop_node)
-                        Absent => body_lower_try_operand_or_reject(shell: shell, captured: captured)
+                        Present { value: loop_node } =>
+                          outcome_with_diagnostics(value: loop_node, diagnostics: fd)
+                        Absent =>
+                          match body_lower_try_operand_or_reject(shell: shell, captured: captured) {
+                            Rejected { diagnostics: r } =>
+                              Rejected { diagnostics: rejected_with_pending(pending: fd, rejected: r) }
+                            Accepted { value: v, diagnostics: od } =>
+                              outcome_with_diagnostics(
+                                value: v,
+                                diagnostics: diagnostics_merge(outer: fd, inner: od)
+                              )
+                          }
                       }
                   }
               }

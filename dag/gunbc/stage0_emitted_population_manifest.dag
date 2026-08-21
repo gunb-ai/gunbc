@@ -1,0 +1,51 @@
+module gunbc.stage0_emitted_population_manifest
+
+
+// THE NAME OF THE ARTIFACT IN WHICH THE EMITTER DECLARES THE POPULATION IT PRODUCED.
+//
+// This module exists to hold ONE string, and that is the point rather than an accident of
+// factoring. The manifest has two ends -- `v1.compiler.emit_rust` writes it and
+// `gunbc.stage0_rust_host_observation` reads it -- and if each spelled the basename itself,
+// the artifact would have two names for one file, which is the nicknaming failure DESIGN 3
+// names and the exact class the manifest exists to end. A shared leaf module is the smallest
+// carrier that lets both ends resolve the same symbol without the reader importing the whole
+// emitter's closure to get at one literal.
+//
+// ONLY THE BASENAME IS SHARED, DELIBERATELY. The two ends compose different roots because they
+// address different spaces: the emitter writes target-relative (under `rust_source_root()`,
+// i.e. `src/`), the observation addresses repository-relative (under `stage0_package_root`,
+// i.e. `src/v1/stage0/`). Hoisting a single "path" here would force one of them to hold a path
+// in a space it does not speak, so the shared fact is the part that is genuinely one fact.
+data emitted_population_manifest_basename: String = "emitted_population.rs"
+
+// The manifest's line grammar, stated once for the same reason the basename is.
+//
+// The emitter renders one line per path as `line_prefix ++ path`, joined by the separator; the
+// observation recovers the population by splitting on the separator and stripping the prefix.
+// One grammar read in both directions (DESIGN 4) -- the structural inverse, not a second parser.
+//
+// WHY THE ARTIFACT IS A `.rs` OF COMMENT LINES, WHICH LOOKS ODD UNTIL YOU SEE WHAT IT BUYS.
+// Two demands pull opposite ways. GATING wants the manifest inside the population
+// `required_regen` already compares, and that population is `.rs`-shaped end to end: every
+// compared member is rustfmt-normalized before its digest is taken, so a `.txt` member is
+// REFUSED at normalization ("expected one of `!` or `::`, found `.`") -- measured, not
+// predicted. READING wants recovery without parsing Rust, because a text-parse standing in for
+// a modeled fact is exactly what this lane spent the day deleting (gunbc#8690, cssl_assemble's
+// seed lib.rs oracle), and a generated `const &[&str]` would put one right back.
+//
+// A file of nothing but `//` lines satisfies both. It is valid Rust, so it enters the compared
+// population by construction and normalizes to itself (a comments-only file is already a
+// rustfmt fixed point, which is the property DESIGN's two-consumer rule demands). And it is
+// read by splitting and stripping a literal prefix -- no Rust grammar is involved on the
+// reading side at all. It is deliberately NOT a module: it is appended to the emitted file list
+// AFTER `lib.rs` is rendered, so no `pub mod` line names it and nothing compiles it.
+// DISSOLUTION: this shape is owed to the compared population being Rust-shaped end to end, not
+// to anything about the fact itself. When that population becomes medium-agnostic -- when
+// `required_regen`'s comparison normalizes an artifact by its declared medium rather than by
+// assuming Rust -- the manifest becomes the line-delimited text it wants to be, this paragraph
+// deletes, and the `.rs` extension goes with it. Until then the extension is load-bearing and
+// "cleaning it up" into a `const &[&str]` would silently reintroduce a Rust parse on the read
+// side, which is the class gunbc#8690 deleted.
+data emitted_population_manifest_line_prefix: String = "// "
+
+data emitted_population_manifest_line_separator: String = "\n"

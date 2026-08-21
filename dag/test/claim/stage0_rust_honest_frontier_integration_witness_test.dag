@@ -34,7 +34,10 @@ test fn honest_frontier_integration_refusal_does_not_project_empty_hand_paths() 
       manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
       tracked_rust_repo_paths: derived_hand_maintained_stage0_repo_paths(),
       prior_tracked_rust_repo_paths: [],
-      cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+      cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
+      emit_population_evidence: EmitPopulationConfirmed {
+        emitted_stage0_repo_paths: []
+      }
     }
   ) {
     HonestFrontierIntegrationRefused { detail: detail } => detail != ""

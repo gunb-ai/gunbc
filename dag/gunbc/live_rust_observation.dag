@@ -52,7 +52,8 @@ fn admit_live_rust_observation(
       manifest_content_identity: identity,
       tracked_rust_repo_paths: tracked,
       prior_tracked_rust_repo_paths: prior,
-      cargo_bin_repo_paths: cargo
+      cargo_bin_repo_paths: cargo,
+      emit_population_evidence: _
     } =>
       if request.expected_repository_revision == "" {
         LiveObservationRefused {

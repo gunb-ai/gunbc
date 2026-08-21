@@ -295,6 +295,14 @@ test fn instance_gap_outside_index_refs_really_do_refuse() -> Bool {
 // them, so they must refuse for the reason under test — the declaration is absent — and not because
 // they sit outside the index. Marking a planted red outside-index would make it refuse for the
 // wrong reason and the control would stop discriminating the thing it was planted for.
+//
+// THE CAUSE FIELDS ARE SiteCauseUnmeasured / NotYetProbed AND MUST STAY THAT WAY. This site is
+// SYNTHETIC -- it names a declaration that does not exist, so no probe can ever have measured why it
+// fails to type, and there is nothing for a receipt to point at. Copying a real site's cause here to
+// make the literal look complete would put a measured attribution on a specimen no run produced,
+// which is the fabricated-receipt failure the carrier's own receipt field exists to prevent. The
+// fields were added when the carrier gained per-site causes and the census refused this literal;
+// that refusal is the mechanism working.
 test fn instance_gap_carrier_dangling_caller_red_control_refuses() -> Bool {
   let planted = [
     LambdaTypingGateSite {
@@ -305,6 +313,8 @@ test fn instance_gap_carrier_dangling_caller_red_control_refuses() -> Bool {
       callee_spelled: "fold_list",
       miss: AbsentFromRoster,
       index_coverage: CitableThroughDeclIndex,
+      cause: SiteCauseUnmeasured,
+      cause_receipt: NotYetProbed,
     },
   ]
   let pool = hand_authored_works_resolution_pool_roots()

@@ -1,0 +1,54 @@
+module test.claim.map_lookup_key_generic_realization_witness_test
+
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// The modeled row is `std.algebra` `partial_function_templates` `lookup`, whose key parameter is
+// `ReceiverKey` — the map's own key type, whatever it is. Every sibling realization of that same
+// row in the Rust seed (`map_get`, `map_has`, `map_contains_key`, `map_keys`, `map_values`,
+// `map_insert`, `map_is_empty`) is generic over `K`; `lookup` alone was written
+// `HashMap<String, V>`, so the Rust realization admitted a strictly smaller set of maps than the
+// model declares and than the interpreter realization (`v1_interpreter.rs` `raw_map_lookup`, which
+// keys on arbitrary `Value`) accepts. That is a realization that does not preserve modeled
+// behavior, and it is invisible from the .dag side: nothing in the model mentions `String`, so the
+// only place the divergence exists is the seed's Rust text.
+//
+// It surfaced as 15 of the 20 `RT-builtin` E0308 sites in
+// docs/probes/e0308_partition_2026-08-21.md — every non-String-keyed `Map` lookup in the emitted
+// v2 closure — and it is pinned here at signature grain rather than by name, because the
+// three-file name agreement that runtime_rust_seed_bootstrap_sync_witness_test already checks
+// stayed green through the entire life of the defect.
+data map_lookup_key_generic_realization_note: String = "v1_rt::lookup realizes the ReceiverKey-generic PartialFunction lookup row and must be generic over the key type, like every sibling map builtin. A String-pinned realization type-errors at every non-String-keyed Map in emitted Rust while the interpreter accepts it, and no .dag-side check can see the difference."
+
+data runtime_rust_dag_path: String = "src/v1/runtime_rust.dag"
+data runtime_rust_seed_path: String = "src/v1/stage0/src/v1_compiler_runtime_rust.rs"
+data v1_rt_generated_path: String = "src/v1/stage0/src/v1_rt.rs"
+
+data key_generic_signature: String = "pub fn lookup<K: std::cmp::Eq + std::hash::Hash, V: Clone>(m: &HashMap<K, V>, key: K) -> Option<V>"
+data string_pinned_signature: String = "pub fn lookup<V: Clone>(table: &HashMap<String, V>, key: String)"
+
+fn file_contains(path: String, pattern: String) -> Bool {
+  let src = filesystem_read(path: path)
+  string_contains(s: src.content, pattern: pattern)
+}
+
+test fn dag_authority_realizes_lookup_key_generically() -> Bool {
+  file_contains(path: runtime_rust_dag_path, pattern: key_generic_signature)
+}
+
+test fn checked_in_seed_agrees_with_the_dag_authority() -> Bool {
+  file_contains(path: runtime_rust_seed_path, pattern: key_generic_signature)
+}
+
+test fn generated_runtime_agrees_with_both() -> Bool {
+  file_contains(path: v1_rt_generated_path, pattern: key_generic_signature)
+}
+
+// The discriminating RED: the exact pre-fix spelling must be absent from all three files. A
+// signature-presence check alone greens if someone adds a second, String-pinned overload beside
+// the generic one, or reverts one of the three files while the other two still carry the pattern.
+test fn w_RED_string_pinned_lookup_is_absent_from_every_file() -> Bool {
+  !file_contains(path: runtime_rust_dag_path, pattern: string_pinned_signature)
+    && !file_contains(path: runtime_rust_seed_path, pattern: string_pinned_signature)
+    && !file_contains(path: v1_rt_generated_path, pattern: string_pinned_signature)
+}

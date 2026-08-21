@@ -112,24 +112,67 @@ fn v1_with_map_key_requirement(
   }
 }
 
-fn v1_type_expr_is_keyed_map(type_expr: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
-  match std.types.container_template_algebra(name: v1.std.core.authored_name_at(source_indices: source_indices, node: type_expr)) {
-    Present { value: algebra } => algebra == "PartialFunction"
-    Absent => false
+// The same three-state question as TypeResolutionVerdict, asked of one type expr.
+// The Absent arm of container_template_algebra used to answer "this is not a keyed
+// map" for a name it had no row for at all -- including a container spelling it did
+// not recognize, whose first child may well be a map key. KeyedMapUndecidable is
+// that state given a name of its own.
+//
+// The algebra lookup below deliberately keeps the FULL authored name rather than
+// the last segment: matching a leaf to REFUSE is conservative, but matching a leaf
+// to DECIDE would collapse a qualified spelling onto the kernel row and select the
+// wrong template. Refuse on the leaf, decide on the whole name.
+type KeyedMapVerdict
+  = KeyedMap
+  | NotKeyedMap
+  | KeyedMapUndecidable { name: String }
+
+fn v1_type_expr_keyed_map_verdict(type_expr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> KeyedMapVerdict {
+  match authored_container_spelling_verdict(node: type_expr, source_indices: source_indices) {
+    ContainerSpellingUnknown { container_leaf: _ } =>
+      KeyedMapUndecidable { name: authored_name_at(source_indices: source_indices, node: type_expr) }
+    ContainerSpellingDeclared { arity: _ } =>
+      v1_keyed_map_verdict_from_algebra(type_expr: type_expr, source_indices: source_indices)
+    NotAContainerSpelling =>
+      v1_keyed_map_verdict_from_algebra(type_expr: type_expr, source_indices: source_indices)
   }
 }
 
+fn v1_keyed_map_verdict_from_algebra(type_expr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> KeyedMapVerdict {
+  match container_template_algebra(name: authored_name_at(source_indices: source_indices, node: type_expr)) {
+    Present { value: algebra } => if algebra == "PartialFunction" { KeyedMap } else { NotKeyedMap }
+    Absent => NotKeyedMap
+  }
+}
+
+fn v1_type_expr_is_keyed_map(type_expr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
+  match v1_type_expr_keyed_map_verdict(type_expr: type_expr, source_indices: source_indices) {
+    KeyedMap => true
+    NotKeyedMap => false
+    KeyedMapUndecidable { name: _ } => false
+  }
+}
+
+// The KeyedMapUndecidable arm contributes no key head names, and that is a
+// fail-closed marker rather than a policy choice: an unrecognized container
+// spelling is refused by v1.compiler.normalize check_bare_containers before any
+// module reaches the derive walk, so no Accepted program can carry one here. The
+// arm exists so that a future path reaching this walk without passing that wall
+// announces itself as a distinct state instead of being read as "not a map".
 fn v1_map_key_head_names_in_type_expr(
   type_expr: v1.std.core.Node,
-  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
-) -> std.types.List<String> {
-  let own = if v1_type_expr_is_keyed_map(type_expr: type_expr, source_indices: source_indices) {
-    match type_expr.children |> first {
-      Present { value: key_child } =>
-        [v1.std.core.authored_name_at(source_indices: source_indices, node: v1.compiler.infer_types.child_type_node(ch: key_child))]
-      Absent => []
-    }
-  } else { [] }
+  source_indices: Map<String, v1.std.core.NewlineIndex>
+) -> List<String> {
+  let own = match v1_type_expr_keyed_map_verdict(type_expr: type_expr, source_indices: source_indices) {
+    KeyedMap =>
+      match type_expr.children |> first {
+        Present { value: key_child } =>
+          [authored_name_at(source_indices: source_indices, node: child_type_node(ch: key_child))]
+        Absent => []
+      }
+    NotKeyedMap => []
+    KeyedMapUndecidable { name: _ } => []
+  }
   concat(
     own,
     type_expr.children |> flat_map(ch =>

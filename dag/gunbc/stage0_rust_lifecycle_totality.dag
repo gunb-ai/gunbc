@@ -1,5 +1,7 @@
 module gunbc.stage0_rust_lifecycle_totality
 
+
+
 data stage0_rust_lifecycle_totality_note: String = "C1 carrier (Lane C / v1-honest-frontier): derives exact path sets from gunbc.stage0_rust_host_observation RustManifestObserved — tracked, generated, well-formed maintenance-disposition, unclassified, stale, duplicate-within-authority (generated, disposition, role rows BEFORE deduplication), cross-axis overlap (generated ∩ disposition), role-without-disposition, ill-formed maintenance-disposition shape. stage0_rust_lifecycle_totality_underived_axes names C1 axes the brief requires but this carrier cannot derive yet (counted, not silent). Completeness is an identity join over exact paths, never a count oracle (DESIGN section 5). Discovery and decision each require every reported defect dimension to be explicitly zero — not incidental implication."
 
 type LifecycleTotalityUnderivedAxis
@@ -73,9 +75,40 @@ fn well_formed_maintenance_disposition_paths() -> std.types.List<String> {
 // subject. Before this, `generated_paths` was the same 100+ hand rows on every observation --
 // the receipt reported a fact about a list someone maintained, under the name of a fact about
 // the tree it had just observed.
-fn derived_file_grain_classified_repo_paths(tracked_paths: std.types.List<String>) -> std.types.List<String> {
-  gunbc.stage0_rust_source_lifecycle_scaffold.list_concat_unique(
-    acc: gunbc.stage0_rust_source_lifecycle_scaffold.derived_generated_stage0_repo_paths(tracked_paths: tracked_paths),
+// THE EMIT POPULATION IS AN OBSERVED FACT THIS RECEIPT REQUIRES, so an unobserved one refuses
+// through the SAME arm as a failed git read or a failed manifest parse. That is not a state-space
+// conflation slipped in: `LifecycleTotalityObservationRefused` is already this module's single
+// answer for "the observation did not produce the facts this receipt needs" -- read refusals,
+// parse refusals and git refusals all land there (see the fold below). An emitted-population that
+// could not be read is the same class, and giving it a private variant would fork one question
+// across three consumer modules for no gain in what any of them can do about it.
+//
+// What it must NOT do is proceed on an empty population, which would report every tracked stage0
+// path as unclassified under the name of a measurement. Hence the guard before the derivation
+// rather than a default inside it.
+fn emit_population_declared(evidence: EmitPopulationEvidence) -> Bool {
+  match evidence {
+    EmitPopulationConfirmed { emitted_stage0_repo_paths: _ } => true
+    EmitPopulationUnobserved { detail: _ } => false
+  }
+}
+
+fn declared_emit_population_or_empty(evidence: EmitPopulationEvidence) -> List<String> {
+  match evidence {
+    EmitPopulationConfirmed { emitted_stage0_repo_paths: paths } => paths
+    EmitPopulationUnobserved { detail: _ } => []
+  }
+}
+
+fn derived_file_grain_classified_repo_paths(
+  emitted_stage0_repo_paths: List<String>,
+  tracked_paths: List<String>
+) -> List<String> {
+  list_concat_unique(
+    acc: derived_generated_stage0_repo_paths(
+      emitted_stage0_repo_paths: emitted_stage0_repo_paths,
+      tracked_paths: tracked_paths
+    ),
     items: well_formed_maintenance_disposition_paths()
   )
 }
@@ -138,15 +171,27 @@ fn lifecycle_totality_receipt(
       tracked_rust_repo_paths: tracked_paths,
       cargo_bin_repo_paths: cargo_bin_repo_paths,
       manifest_content_identity: _,
-      prior_tracked_rust_repo_paths: _
+      prior_tracked_rust_repo_paths: _,
+      emit_population_evidence: emit_population_evidence
     } =>
       if revision == "" {
         LifecycleTotalityObservationRefused
+      } else if !emit_population_declared(evidence: emit_population_evidence) {
+        LifecycleTotalityObservationRefused
       } else {
-        let generated_paths = gunbc.stage0_rust_source_lifecycle_scaffold.derived_generated_stage0_repo_paths(tracked_paths: tracked_paths)
+        let emitted_stage0_repo_paths = declared_emit_population_or_empty(
+          evidence: emit_population_evidence
+        )
+        let generated_paths = derived_generated_stage0_repo_paths(
+          emitted_stage0_repo_paths: emitted_stage0_repo_paths,
+          tracked_paths: tracked_paths
+        )
         let raw_disposition_paths = raw_disposition_authority_paths()
         let maintenance_disposition_paths = well_formed_maintenance_disposition_paths()
-        let classified_paths = derived_file_grain_classified_repo_paths(tracked_paths: tracked_paths)
+        let classified_paths = derived_file_grain_classified_repo_paths(
+          emitted_stage0_repo_paths: emitted_stage0_repo_paths,
+          tracked_paths: tracked_paths
+        )
         LifecycleTotalityDerived {
           tracked_paths: tracked_paths,
           generated_paths: generated_paths,
@@ -256,7 +301,10 @@ fn lifecycle_totality_witness_observation(extra_paths: std.types.List<String>) -
     manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
     tracked_rust_repo_paths: gunbc.stage0_rust_source_lifecycle_scaffold.list_concat_unique(acc: classified, items: extra_paths),
     prior_tracked_rust_repo_paths: classified,
-    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"],
+    emit_population_evidence: EmitPopulationConfirmed {
+      emitted_stage0_repo_paths: witness_generated_stage0_fixture_paths
+    }
   }
 }
 

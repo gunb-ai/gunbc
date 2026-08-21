@@ -191,14 +191,15 @@ fn fleet_converge_spark_durability_step() -> Step {
 }
 
 fn fleet_converge_spark_grants_step() -> Step {
-  extdeps.github.actions.RunStep {
-    name: Present { value: "Spark managed grant reconcile (installs only the grants measured missing at the named target)" },
+  RunStep {
+    name: Present { value: "Spark managed grant reconcile (materializes its own administrator credential in-run, installs only the grants measured missing at the named target, removes the credential within this same step)" },
     id: Present { value: "spark_grants" },
     run: gunbc_ci_spark_grant_install_invoke(),
     shell: none,
     env: Present {
       value: [
         kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
+        kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
       ]
     },
     working_directory: none,
@@ -241,7 +242,6 @@ fn fleet_converge_job() -> extdeps.github.actions.Job {
           ci_release_bins_unpack_verify_step(),
           ci_fleet_wif_auth_step(),
           ci_fleet_key_agent_step(),
-          ci_spark_admin_credential_step(if_condition: fleet_converge_spark_grants_step_if),
         ]
       ),
       [
@@ -254,7 +254,6 @@ fn fleet_converge_job() -> extdeps.github.actions.Job {
         fleet_converge_spark_observe_step(),
         fleet_converge_spark_reboot_step(),
         fleet_converge_spark_durability_step(),
-        ci_spark_admin_credential_cleanup_step(),
         ci_fleet_key_agent_cleanup_step(),
       ]
     ),

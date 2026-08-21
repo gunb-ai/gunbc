@@ -1,0 +1,83 @@
+module gunbc.untyped_fold_init_accumulator
+
+
+// A FOLD'S INITIAL ACCUMULATOR IS EMITTED WITH ITS TYPE PARAMETERS OPEN, AND NOTHING DOWNSTREAM
+// CLOSES THEM.
+//
+// `empty_map()` as a fold's `empty:` argument emits as `v1_rt::rc_empty_map::<_, _>()`. The key and
+// value types are left to inference, and the only thing that could constrain them is the fold's own
+// closure -- which receives the accumulator as a parameter, so the target compiler is asked to infer
+// the parameter's type from a body that uses it. It refuses:
+//
+//     error[E0282]: type annotations needed
+//      --> src/v2_std_compilers_target_model.rs:2730:94
+//          ..._map::<_, _>(), |acc, row| v1_rt::rc_map_insert(acc.clone(), row.effect_kind.clone(), ...
+//                              ^^^                            --- type must be known at this point
+//     help: consider giving this closure parameter an explicit type
+//          |acc: /* Type */, row|
+//
+// WHAT RULES OUT THE NEIGHBOURING EXPLANATIONS, because this site was first filed under one of them.
+// The collection is `shape.callees: List<TargetEffectCalleeRow>`, a genuine list of records -- so
+// this is NOT the String declaration-site alias that explains its two former partition-mates, where
+// the collection realizes as the host String and the ELEMENT is what cannot be typed. rustc never
+// asks about `row` here. It asks about `acc`, and `acc` traces to the fold's init, not to the
+// collection and not to the callee's spelling.
+//
+// THE DISCRIMINATOR IS FREE AND IT IS THE SAME ONE THE SIBLING ROW USES: rustc's help names WHICH
+// PARAMETER it wants annotated. `|acc: /* Type */, row|` is this class. `|acc, ch: /* Type */|` is
+// the collection-realization class. Same error code, same closure shape, two mechanisms, told apart
+// by which half of the closure the compiler points at.
+
+type UntypedFoldInitSite {
+  caller: DeclarationRef
+  init_expression: String
+  emitted_init: String
+  emitted_file: String
+  emitted_line: Int
+  rustc_help_annotates: String
+}
+
+data untyped_fold_init_sites: List<UntypedFoldInitSite> = [
+  {
+    caller: decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "target_value_expr_effect_apply_callee"),
+    init_expression: "empty_map()",
+    emitted_init: "v1_rt::rc_empty_map::<_, _>()",
+    emitted_file: "v2_std_compilers_target_model.rs",
+    emitted_line: 2730,
+    rustc_help_annotates: "acc (the accumulator)",
+  },
+]
+
+// THE POPULATION IS ONE MEASURED SITE, AND ONE MEASURED SITE IS NOT A CENSUS.
+//
+// This site was found because it happened to sit in a partition of three that was probed one member
+// at a time. No sweep for untyped empty-collection literals in fold-init position has been run, so
+// the count below is what has been OBSERVED, never what EXISTS. Any other `empty_map()`,
+// `empty_set()` or empty-list literal reaching a fold's `empty:` argument through a closure that
+// cannot otherwise constrain it is the same defect and is not listed here.
+//
+// The sweep is cheap and is the obvious next step; it is named rather than performed so that the
+// absence is a stated gap and not an implied zero.
+type PopulationBasis
+  = ObservedSitesOnly { found_via: String }
+  | SweptCorpus { sweep: String }
+
+data untyped_fold_init_population_basis: PopulationBasis = ObservedSitesOnly {
+  found_via: "one cargo probe over the v2.std.compilers.target_model emitted closure, reached while probing an unrelated partition member by member",
+}
+
+// WHY THIS IS ITS OWN ROW RATHER THAN A NOTE ON THE ROW THAT SURFACED IT.
+//
+// It was found inside gunbc.lambda_argument_typing_gate's three-site partition and stays listed there
+// as a member, because that partition records how the three were derived TOGETHER and splitting it
+// would destroy the only artifact of that derivation. But the CAUSE is distinct, the repair is
+// distinct, and it belongs to neither the String declaration-site work nor the bare-name roster the
+// partition was originally filed under. A cause with its own repair earns its own row; a site does
+// not stop being a member of the set it was found in.
+data untyped_fold_init_surfaced_by: DeclarationRef = decl_ref(module_path: "gunbc.lambda_argument_typing_gate", decl_name: "lambda_typing_gate_sites")
+
+// DISSOLUTION IS KEYED TO THE SITE COMPILING, NOT TO ANY PARTICULAR REPAIR. The sibling row learned
+// this the expensive way: its first trigger named a mechanism, that mechanism turned out to be inert,
+// and the trigger was therefore satisfiable by a change that fixed nothing -- a false trigger
+// disposes of the evidence, which is worse than a false cause misleading a reader.
+data untyped_fold_init_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: every site in untyped_fold_init_sites emits an initial accumulator whose type is determined without a caller-supplied annotation, and compiles with no inference-failure diagnostic at that position, established by execution against the emitted crate. Not satisfied by annotating the closure parameter at the call site -- that moves the obligation to the author rather than deriving it, and the .dag source already carries the accumulator's type at the fold's declared signature. While untyped_fold_init_population_basis is ObservedSitesOnly, a green on the listed site retires the site, not the class.")

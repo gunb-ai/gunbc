@@ -57,6 +57,8 @@ RECEIPT: RED
 
 **Boundary 4 is a subject-specific refusal carrying a partition, not a label.** This is the first real number at that boundary in this repository.
 
+**AND THE PARTITION IS MOSTLY CARRIAGE, NOT CAUSE (added 2026-08-21).** 32 of the 40 come from `body_lower_wrapper_retained_shell` and 7 from `grammar_validate_and_analyze`, both of which return `Accepted`; they enter this list through `rejected_with_pending`. Exactly ONE diagnostic per subject rejects -- `body_lowering_reason_unsupported_form` here, `fold_lowering_shape_invalid` on the 29-module control below. §3.1's ranking of the wrapper-retained families is therefore a ranking of non-blocking observations, and this sentence's "first real number at that boundary" is true of the count and false of the door. -> [b4 causal versus carried](b4_causal_versus_carried_2026-08-21.md).
+
 ---
 
 ## 3. The 29-module control — subject `src/v2/compiler/07_target_carriers.dag`
