@@ -5267,6 +5267,7 @@ pub fn v1_item_signature_type_exprs(item: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 pub fn v1_map_key_seed_type_exprs(
     modules: Rc<Vec<Rc<TypedModule>>>,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
     {
         let declaration_field_exprs = Rc::new({
@@ -5274,7 +5275,9 @@ pub fn v1_map_key_seed_type_exprs(
             for type_name in Rc::new(v1_rt::map_keys(&type_decl_items)).iter().cloned() {
                 __result.extend(
                     (*match v1_rt::map_get(&type_decl_items, type_name.clone()) {
-                        Some(item) => v1_item_field_type_exprs(item.clone()),
+                        Some(item) => {
+                            v1_item_field_type_exprs(item.clone(), source_indices.clone())
+                        }
                         None => Rc::new(vec![]),
                     })
                     .iter()
@@ -5333,7 +5336,11 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             merged_module_source_indices(typed.modules.clone()),
         );
         let map_key_required = v1_map_key_required_type_names(
-            v1_map_key_seed_type_exprs(typed.modules.clone(), base_info.type_decl_items.clone()),
+            v1_map_key_seed_type_exprs(
+                typed.modules.clone(),
+                base_info.type_decl_items.clone(),
+                merged_module_source_indices(typed.modules.clone()),
+            ),
             hand_maintained_map_key_required_type_names(),
             base_info.type_decl_items.clone(),
             merged_module_source_indices(typed.modules.clone()),
@@ -5842,6 +5849,7 @@ pub fn emit_module(
             v1_map_key_seed_type_exprs(
                 Rc::new(vec![typed_module.clone()]),
                 base_info.type_decl_items.clone(),
+                merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
             ),
             hand_maintained_map_key_required_type_names(),
             base_info.type_decl_items.clone(),
