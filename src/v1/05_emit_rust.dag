@@ -232,7 +232,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
         let elem_node = child_type_node(ch: elem_child)
         let inner_str = render_rust_type(n: elem_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
         let tn = authored_name_at(source_indices: source_indices, node: n)
-        let base = emit_container(kind: to_snake(name: tn), inner: inner_str, target: Rust)
+        let base = emit_container(name: tn, inner: inner_str, target: Rust)
         render_rust_shared_type_with_optional(n: n, type_name: tn, rendered: base, shared_types: shared_types)
       Absent => render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
     }
@@ -569,10 +569,6 @@ fn rust_applied_type_base(name: String, decl_file: String) -> String {
   rust_named_type_base(name: name, decl_file: decl_file)
 }
 
-fn rust_normalize_witness_type_text(rendered: String) -> String {
-  replace(rendered, "witness<", "Witness<")
-}
-
 fn rust_witness_parent_leaf(parent: String) -> Bool {
   qualified_last_segment(name: parent) == "Witness"
 }
@@ -702,16 +698,6 @@ fn rust_witness_variant_ctor_path(variant_name: String, ctor_name: String, effec
       }
     Absent => ctor_name
   }
-}
-
-fn rust_normalize_partial_function_field_type_text(rendered: String) -> String {
-  replace(
-    replace(
-      replace(rendered, "HashMap<K, V>", "PartialFunction<K, V>"),
-      "Vec<K>", "FreeMonoid<K>"
-    ),
-    "Vec<V>", "FreeMonoid<V>"
-  )
 }
 
 fn is_parametric_opaque_type_by_name(env: TypeEnv, type_name: String) -> Bool {
@@ -5427,16 +5413,11 @@ fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_
   } else {
     render_rust_type(n: rt_child, shared_types: shared_types, source_indices: env.source_indices, emit_info: emit_info)
   }
-  let generic_ty = if struct_name == "PartialFunction" {
-    rust_normalize_partial_function_field_type_text(rendered: rust_normalize_witness_type_text(rendered: ty))
-  } else {
-    ty
-  }
   let final_ty = if needs_box_wrapping(n: rt_child, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
-    concat("Box<", generic_ty, ">")
-  } else if rt_child.return_cardinality != CardOptional && set_contains(shared_types, authored_name_at(source_indices: env.source_indices, node: rt_child)) && !rust_type_is_rc_wrapped(type_name: generic_ty) {
-    wrap_shared_type(target: Rust, inner: generic_ty)
-  } else { generic_ty }
+    concat("Box<", ty, ">")
+  } else if rt_child.return_cardinality != CardOptional && set_contains(shared_types, authored_name_at(source_indices: env.source_indices, node: rt_child)) && !rust_type_is_rc_wrapped(type_name: ty) {
+    wrap_shared_type(target: Rust, inner: ty)
+  } else { ty }
   let needs_serde = struct_needs_serde(name: struct_name, emit_info: emit_info)
   let rename_attr = if !needs_serde { "" } else {
     match child.properties |> filter(p => field_init_node_name_at(n: p, source_indices: env.source_indices) == "from_key") |> first {
