@@ -20624,6 +20624,24 @@ pub fn emit_typed_function_value_call(
     }
 }
 
+pub fn lambda_argument_scope(arg: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferScope> {
+    match (*arg.expr_data.clone()).clone() {
+        ExprData::ExprLambda => lambda_scope_from_children(
+            scope.clone(),
+            lambda_param_names_at(arg.clone(), scope.type_env.clone().source_indices.clone()),
+            Rc::new(
+                arg.children
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(1 as usize)
+                    .collect::<Vec<_>>(),
+            ),
+        ),
+        _ => scope.clone(),
+    }
+}
+
 pub fn emit_typed_call(
     func: String,
     args: Rc<Vec<Rc<Node>>>,
@@ -20847,50 +20865,13 @@ pub fn emit_typed_call(
                 return disc_result;
             }
         }
-        let collection_scope = if ((((func.clone() == "map".to_string())
-            || (func.clone() == "filter".to_string()))
-            || (func.clone() == "flat_map".to_string()))
-            || (func.clone() == "fold".to_string()))
-        {
-            {
-                let call_args = order_typed_call_args(args.clone(), func.clone(), scope.clone());
-                match call_args.clone().last().cloned() {
-                    Some(a) => match (*arg_value(a.clone()).expr_data.clone()).clone() {
-                        ExprData::ExprLambda => {
-                            let lps = lambda_param_names_at(
-                                arg_value(a.clone()),
-                                scope.type_env.clone().source_indices.clone(),
-                            );
-                            lambda_scope_from_children(
-                                scope.clone(),
-                                lps.clone(),
-                                Rc::new(
-                                    arg_value(a.clone())
-                                        .children
-                                        .clone()
-                                        .iter()
-                                        .cloned()
-                                        .skip(1 as usize)
-                                        .collect::<Vec<_>>(),
-                                ),
-                            )
-                        }
-                        _ => scope.clone(),
-                    },
-                    None => scope.clone(),
-                }
-            }
-        } else {
-            scope.clone()
-        };
-        let ordered_args =
-            order_typed_call_args(args.clone(), func.clone(), collection_scope.clone());
+        let ordered_args = order_typed_call_args(args.clone(), func.clone(), scope.clone());
         let callee = lookup_item(registry.clone(), qualified_last_segment(func.clone()));
         let filled_args = fill_default_args(
             ordered_args.clone(),
             callee.clone(),
             registry.clone(),
-            collection_scope.clone(),
+            scope.clone(),
             depth.clone(),
             shared_types.clone(),
             emit_info.clone(),
@@ -20916,12 +20897,13 @@ pub fn emit_typed_call(
                 __result.push({
                     let idx = pair.0.clone();
                     let a = pair.1.clone();
+                    let arg_scope = lambda_argument_scope(arg_value(a.clone()), scope.clone());
                     if (is_rt_ref_map.clone() && (idx.clone() == 0)) {
                         {
                             let base = emit_typed_expr_base(
                                 arg_value(a.clone()),
                                 registry.clone(),
-                                collection_scope.clone(),
+                                arg_scope.clone(),
                                 depth.clone(),
                                 shared_types.clone(),
                                 emit_info.clone(),
@@ -20933,7 +20915,7 @@ pub fn emit_typed_call(
                             let base = emit_cloned_arg(
                                 arg_value(a.clone()),
                                 registry.clone(),
-                                collection_scope.clone(),
+                                arg_scope.clone(),
                                 depth.clone(),
                                 shared_types.clone(),
                                 emit_info.clone(),
