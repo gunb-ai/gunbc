@@ -5605,20 +5605,31 @@ fn emit_rust_field_definition(authored: String, final_ty: String, rename_attr: S
   concat(keyword_rename, rename_attr, indent, visibility, emitted, ": ", final_ty, ",")
 }
 
-fn enum_derives(name: String, children: List<Node>, generic_param_names: List<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
+fn enum_derives(name: String, children: List<Node>, has_fn_fields: Bool, generic_param_names: List<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
   v1_emit_enum_derives(
     children: children,
+    has_fn_fields: has_fn_fields,
     map_key_required: set_contains(emit_info.map_key_required_type_names, name),
     generic_param_names: generic_param_names,
     source_indices: source_indices
   )
 }
 
+// Narrowing a coproduct's derive set to Clone is not only a fact about the derive line: a serde
+// ATTRIBUTE has no macro left to consume it once the serde derives are gone, so an orphaned
+// `#[serde(tag = ..)]` or a variant `#[serde(rename = ..)]` becomes "cannot find attribute serde
+// in this scope" -- trading one error for another rather than removing it. The derive decision
+// and the attribute decision are therefore one decision with two renderings, and both read the
+// same has_fn_fields here rather than deriving it twice.
 fn emit_enum_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde, emit_info: EmitGraphInfo) -> String {
-  let derives = enum_derives(name: name, children: children, generic_param_names: generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
-  let variant_lines = children |> map(child => emit_variant_from_child(child: child, enum_name: name, generic_param_names: generic_param_names, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy, emit_info: emit_info))
+  let has_fn_fields = type_has_fn_fields(name: name, emit_info: emit_info)
+  let derives = enum_derives(name: name, children: children, has_fn_fields: has_fn_fields, generic_param_names: generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
+  let effective_serde_policy = if has_fn_fields {
+    rust_serde_policy(enum_attr: "", rename_prefix: none, rename_suffix: none, rename_style: none)
+  } else { serde_policy }
+  let variant_lines = children |> map(child => emit_variant_from_child(child: child, enum_name: name, generic_param_names: generic_param_names, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: effective_serde_policy, emit_info: emit_info))
   let variants_str = variant_lines |> join(separator: "\n")
-  let tag_line = if serde_policy.enum_attr == "" { "" } else { concat(serde_policy.enum_attr, "\n") }
+  let tag_line = if effective_serde_policy.enum_attr == "" { "" } else { concat(effective_serde_policy.enum_attr, "\n") }
   let enum_def = concat(derives, "\n", tag_line, rust_visibility_prefix(), rust_items().enum_keyword, " ", name, type_params, " {\n", variants_str, "\n}")
   let accessor_impl = emit_enum_shared_accessors(name: name, type_params: type_params, generic_param_names: generic_param_names, children: children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
   let supplemental = v1_emit_enum_supplemental_impls(module_path: env.module_path, name: name, children: children, generic_param_names: generic_param_names, source_indices: env.source_indices)
