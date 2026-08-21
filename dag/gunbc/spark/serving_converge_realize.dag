@@ -1,6 +1,7 @@
 module gunbc.spark.serving_converge_realize
 
 import std.types { String, List, NonEmptyStr, Bool }
+import std.measure { Second, second, second_count }
 import extdeps.systemd.systemctl { systemctl_user_enable_argv, systemctl_user_start_argv }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words, portable_remote_words_strings }
 import gunbc.spark.serving_realization {
@@ -228,10 +229,27 @@ fn spark_serving_start_user_unit_remote_argv() -> SparkServingInstallRemoteComma
 // it forms a verdict. The file was written and never read: an artifact whose only reader was a
 // sentence in this comment. Waiting is this step's whole job, so the body goes to /dev/null and the
 // step's product is the fact that it exited zero.
-data spark_serving_api_readiness_retry_attempts: String = "60"
-data spark_serving_api_readiness_retry_delay_seconds: String = "2"
-data spark_serving_api_readiness_retry_max_seconds: String = "180"
-data spark_serving_api_readiness_connect_timeout_seconds: String = "5"
+// THREE RETRY CONSTANTS WERE DELETED HERE, AND THEY WERE NOT MISTYPED -- THEY WERE DEAD.
+// `spark_serving_api_readiness_retry_attempts`, `..._retry_delay_seconds` and `..._retry_max_seconds`
+// each had exactly ONE reference in the corpus: their own declaration. A review flagged all four of
+// these as durations wrongly stored as String; measuring the references first turned three of them
+// into a different and worse finding, because a `String` row whose only purpose is to sit there is
+// dead data wearing a policy's name -- and retyping it would have preserved it as a better-typed
+// corpse. Waiting is the readiness step's whole job and the step does not retry: it either exits zero
+// or the line stops. If a retry policy is ever wanted, it arrives as a carrier the step CONSUMES.
+//
+// THE SURVIVOR CARRIES A DURATION AND THE ARGV RENDERS IT. The domain fact is "five seconds"; a curl
+// word is its rendering, and storing the rendering AS the fact fused transport into the authority
+// (DESIGN section 3 -- the tell is a policy value that is already argv-shaped). `Second` is
+// `Measure<Time, One, Nat>`, so a caller cannot pass a microsecond count where seconds are meant, and
+// the one place that needs the word asks for the word.
+fn spark_serving_api_readiness_connect_timeout() -> Second {
+  second(count: 5)
+}
+
+fn spark_serving_api_readiness_connect_timeout_word() -> String {
+  to_string(second_count(spark_serving_api_readiness_connect_timeout()))
+}
 
 fn spark_serving_materialize_model_artifact_steps() -> SparkServingInstallRemoteCommandsVerdict {
   spark_serving_concat_step_verdicts(verdicts: concat(
@@ -248,7 +266,7 @@ fn spark_serving_materialize_model_artifact_steps() -> SparkServingInstallRemote
         spark_serving_admit_portable_remote_argv(
           identity: "fetch-manifest-by-reference" as NonEmptyStr,
           raws: [
-            "curl", "-fsSL", "--connect-timeout", spark_serving_api_readiness_connect_timeout_seconds,
+            "curl", "-fsSL", "--connect-timeout", spark_serving_api_readiness_connect_timeout_word(),
             "-o", spark_serving_staged_manifest_path() as String,
             spark_serving_registry_manifest_url(),
           ],
@@ -299,7 +317,7 @@ fn spark_serving_materialize_blob_steps(blob: OllamaBlobDigest) -> List<SparkSer
     spark_serving_admit_portable_remote_argv(
       identity: concat("fetch-blob-", blob.hex as String) as NonEmptyStr,
       raws: [
-        "curl", "-fsSL", "--connect-timeout", spark_serving_api_readiness_connect_timeout_seconds,
+        "curl", "-fsSL", "--connect-timeout", spark_serving_api_readiness_connect_timeout_word(),
         "-o", spark_serving_staged_blob_path(hex: blob.hex) as String,
         spark_serving_registry_blob_url(hex: blob.hex),
       ],

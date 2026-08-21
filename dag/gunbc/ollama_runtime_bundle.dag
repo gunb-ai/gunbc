@@ -251,6 +251,12 @@ fn runtime_materialization_was_observed(observation: RuntimeMaterializationObser
 // and the answer is known. It could be folded into Incomplete and reconcile would behave the same,
 // but the operator question differs: a missing blob was never fetched, a corrupt one was fetched and
 // damaged, and the second says something about the host that the first does not.
+// THE COUNT IS A CARDINAL, AND ITS NAME SAYS SO. This field was `blob_closure_size` until a review
+// caught the ambiguity: "size" reads as a magnitude in bytes, and a reader who assumed that would have
+// been wrong about the one thing the field asserts. Its producer is `length(required)` -- the number of
+// blobs in the closure -- so it is a discrete count and stays a bare `Int` rather than acquiring a
+// `std.measure` unit. Renamed rather than annotated, because the fix for a name that suggests the wrong
+// magnitude is the right name, not a sentence beside the wrong one.
 type ModelStoreObservation
   = ModelStoreAbsent
   | ModelStoreIncomplete {
@@ -260,7 +266,7 @@ type ModelStoreObservation
     }
   | ModelStoreComplete {
       manifest_identity: NonEmptyStr
-      blob_closure_size: Int
+      blob_closure_count: Int
     }
   | ModelStoreCorrupt {
       manifest_identity: NonEmptyStr
@@ -278,7 +284,7 @@ fn model_store_missing_blobs(observation: ModelStoreObservation) -> List<NonEmpt
       further_missing_blobs: rest,
     } => concat([b], rest)
     ModelStoreAbsent => []
-    ModelStoreComplete { manifest_identity: _, blob_closure_size: _ } => []
+    ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => []
     ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => []
     ModelStoreObservationRefused { cause: _ } => []
   }
@@ -311,7 +317,7 @@ fn model_store_missing_blobs(observation: ModelStoreObservation) -> List<NonEmpt
 // if one of them also had an unrelated blob, which is not a difference in this member's state.
 fn model_store_state_digest(observation: ModelStoreObservation) -> NonEmptyStr? {
   match observation {
-    ModelStoreComplete { manifest_identity: id, blob_closure_size: _ } => Present { value: id }
+    ModelStoreComplete { manifest_identity: id, blob_closure_count: _ } => Present { value: id }
     ModelStoreCorrupt { manifest_identity: id, first_corrupt_blob: b } =>
       Present {
         value: content_hash_atom(
@@ -345,7 +351,7 @@ fn model_store_state_digest(observation: ModelStoreObservation) -> NonEmptyStr? 
 fn model_store_was_observed(observation: ModelStoreObservation) -> Bool {
   match observation {
     ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => true
-    ModelStoreComplete { manifest_identity: _, blob_closure_size: _ } => true
+    ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => true
     ModelStoreIncomplete {
       manifest_identity: _,
       first_missing_blob: _,

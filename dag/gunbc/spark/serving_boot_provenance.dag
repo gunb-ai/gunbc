@@ -1,6 +1,8 @@
 module gunbc.spark.serving_boot_provenance
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.measure { Microsecond, microsecond, microsecond_count }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
 import std.algebra { trim }
 import extdeps.ssh.session { SshSessionExecResult }
 import extdeps.systemd.systemctl { systemctl_show_property_argv }
@@ -39,9 +41,19 @@ import gunbc.spark.serving_unit_identity { spark_serving_unit_name }
 // established", never a pass. What it removes is the need to CAUSE the boot, not the need for one to
 // happen.
 
+// THE MICROSECONDS ARE CARRIED AS Microsecond, NOT AS Int, and the comment that used to explain the
+// scale is why. This module previously said "Both are converted to microseconds so the comparison is
+// between like magnitudes rather than between a number and a string that happens to sort" -- a
+// sentence doing a type's job. systemd reports ActiveEnterTimestampMonotonic in bare microseconds and
+// /proc/uptime reports seconds, so the two arrive at DIFFERENT scales and are made to agree by hand;
+// with both sides bare `Int` nothing stops a later edit feeding the seconds value straight in, and the
+// comparison would silently be a million times wrong while still typechecking. `Measure<Time, Micro,
+// Nat>` makes that unwritable rather than warned against, and `Nat` is the honest carrier besides: a
+// monotonic timestamp and an uptime are both non-negative, so the negative half of `Int` was a state
+// with no meaning that every consumer had to ignore.
 type SparkServingBootProvenance
-  = UnitStartedByManagerAtBoot { active_enter_monotonic_us: Int, uptime_us: Int }
-  | UnitStartedAfterBoot { active_enter_monotonic_us: Int, uptime_us: Int }
+  = UnitStartedByManagerAtBoot { active_enter_monotonic: Microsecond, uptime: Microsecond }
+  | UnitStartedAfterBoot { active_enter_monotonic: Microsecond, uptime: Microsecond }
   | UnitNotActiveAtAll
   | BootProvenanceUnobserved { cause: NonEmptyStr }
 
@@ -66,7 +78,9 @@ fn spark_serving_uptime_probe_argv() -> List<String> {
 // minutes or hours in. It is stated as a number with a reason rather than tuned against an
 // observation, because a threshold fitted to the current tree is a snapshot of today's boot rather
 // than a statement about what boot-start means.
-data spark_serving_boot_start_window_us: Int = 10000000
+fn spark_serving_boot_start_window() -> Microsecond {
+  microsecond(count: 10000000)
+}
 
 // systemd reports the monotonic timestamp as bare microseconds; /proc/uptime reports seconds with
 // two decimals. Both are converted to microseconds so the comparison is between like magnitudes
@@ -111,11 +125,21 @@ fn spark_serving_classify_boot_provenance(
               BootProvenanceUnobserved {
                 cause: join(["/proc/uptime is not parseable: ", trim(s: uptime.stdout)], "") as NonEmptyStr,
               }
-            Present { value: up_us } =>
-              if entered_us <= spark_serving_boot_start_window_us {
-                UnitStartedByManagerAtBoot { active_enter_monotonic_us: entered_us, uptime_us: up_us }
-              } else {
-                UnitStartedAfterBoot { active_enter_monotonic_us: entered_us, uptime_us: up_us }
+            Present { value: up } =>
+              match checked_int_magnitude(a: entered_us) {
+                CheckedNatOverflow { cause: _ } =>
+                  BootProvenanceUnobserved {
+                    cause: "ActiveEnterTimestampMonotonic is not representable as a microsecond count" as NonEmptyStr,
+                  }
+                CheckedNatReady { value: entered_nat } => {
+                  let entered = microsecond(count: entered_nat)
+                  let window_us = microsecond_count(spark_serving_boot_start_window())
+                  if microsecond_count(entered) <= window_us {
+                    UnitStartedByManagerAtBoot { active_enter_monotonic: entered, uptime: up }
+                  } else {
+                    UnitStartedAfterBoot { active_enter_monotonic: entered, uptime: up }
+                  }
+                }
               }
           }
         }
@@ -126,7 +150,7 @@ fn spark_serving_classify_boot_provenance(
 // /proc/uptime is "SECONDS.FF IDLE\n". Only the whole-second part is taken and scaled: the
 // hundredths carry no information at the resolution this comparison works at, and parsing a decimal
 // to keep them would be inventing precision the decision does not use.
-fn spark_serving_uptime_microseconds(stdout: String) -> Int? {
+fn spark_serving_uptime_microseconds(stdout: String) -> Microsecond? {
   match split(trim(s: stdout), " ").first() {
     Absent => none
     Present { value: secs_field } =>
@@ -135,7 +159,15 @@ fn spark_serving_uptime_microseconds(stdout: String) -> Int? {
         Present { value: whole } =>
           match parse_int(s: whole) {
             Absent => none
-            Present { value: n } => Present { value: n * 1000000 }
+            Present { value: n } =>
+              if n < 0 {
+                none
+              } else {
+                match checked_int_magnitude(a: n * 1000000) {
+                  CheckedNatOverflow { cause: _ } => none
+                  CheckedNatReady { value: scaled } => Present { value: microsecond(count: scaled) }
+                }
+              }
           }
       }
   }
@@ -158,8 +190,8 @@ fn spark_serving_uptime_microseconds(stdout: String) -> Int? {
 // unconverged -- which the boot_id comparison cannot tell you.
 fn spark_serving_boot_provenance_establishes_durability(p: SparkServingBootProvenance) -> Bool {
   match p {
-    UnitStartedByManagerAtBoot { active_enter_monotonic_us: _, uptime_us: _ } => true
-    UnitStartedAfterBoot { active_enter_monotonic_us: _, uptime_us: _ } => false
+    UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => true
+    UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
     UnitNotActiveAtAll => false
     BootProvenanceUnobserved { cause: _ } => false
   }
@@ -167,16 +199,16 @@ fn spark_serving_boot_provenance_establishes_durability(p: SparkServingBootProve
 
 fn spark_serving_boot_provenance_wire(p: SparkServingBootProvenance) -> String {
   match p {
-    UnitStartedByManagerAtBoot { active_enter_monotonic_us: e, uptime_us: u } =>
+    UnitStartedByManagerAtBoot { active_enter_monotonic: e, uptime: u } =>
       join([
-        "boot-provenance=started-by-manager-at-boot active_enter_us=", to_string(e),
-        " uptime_us=", to_string(u),
+        "boot-provenance=started-by-manager-at-boot active_enter_us=", to_string(microsecond_count(e)),
+        " uptime_us=", to_string(microsecond_count(u)),
         " -- the unit came up WITH this boot, so enablement is doing its job",
       ], "")
-    UnitStartedAfterBoot { active_enter_monotonic_us: e, uptime_us: u } =>
+    UnitStartedAfterBoot { active_enter_monotonic: e, uptime: u } =>
       join([
-        "boot-provenance=started-after-boot active_enter_us=", to_string(e),
-        " uptime_us=", to_string(u),
+        "boot-provenance=started-after-boot active_enter_us=", to_string(microsecond_count(e)),
+        " uptime_us=", to_string(microsecond_count(u)),
         " -- the unit is running but did NOT come up with this boot; durability is not established by this boot",
       ], "")
     UnitNotActiveAtAll => "boot-provenance=unit-not-active"

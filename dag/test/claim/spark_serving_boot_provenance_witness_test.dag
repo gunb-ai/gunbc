@@ -1,6 +1,7 @@
 module test.claim.spark_serving_boot_provenance_witness
 
 import std.types { Bool, String, NonEmptyStr, Int }
+import std.measure { microsecond, microsecond_count }
 import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
 import gunbc.spark.serving_boot_provenance {
@@ -9,7 +10,7 @@ import gunbc.spark.serving_boot_provenance {
   spark_serving_classify_boot_provenance,
   spark_serving_boot_provenance_establishes_durability,
   spark_serving_boot_provenance_wire,
-  spark_serving_boot_start_window_us,
+  spark_serving_boot_start_window,
   UnitStartedByManagerAtBoot,
   UnitStartedAfterBoot,
   UnitNotActiveAtAll,
@@ -35,9 +36,9 @@ test fn a_unit_active_early_in_the_boot_was_started_by_the_manager() -> Bool {
     active_enter: ok(out: "4200000\n"),
     uptime: uptime(secs: "259200"),
   ) {
-    UnitStartedByManagerAtBoot { active_enter_monotonic_us: e, uptime_us: u } =>
-      e == 4200000 && u == 259200000000
-    UnitStartedAfterBoot { active_enter_monotonic_us: _, uptime_us: _ } => false
+    UnitStartedByManagerAtBoot { active_enter_monotonic: e, uptime: u } =>
+      microsecond_count(e) == 4200000 && microsecond_count(u) == 259200000000
+    UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
     UnitNotActiveAtAll => false
     BootProvenanceUnobserved { cause: _ } => false
   }
@@ -52,8 +53,8 @@ test fn a_unit_started_hours_into_the_boot_does_not_establish_durability() -> Bo
     active_enter: ok(out: "7200000000"),
     uptime: uptime(secs: "259200"),
   ) {
-    UnitStartedAfterBoot { active_enter_monotonic_us: e, uptime_us: _ } => e == 7200000000
-    UnitStartedByManagerAtBoot { active_enter_monotonic_us: _, uptime_us: _ } => false
+    UnitStartedAfterBoot { active_enter_monotonic: e, uptime: _ } => microsecond_count(e) == 7200000000
+    UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
     UnitNotActiveAtAll => false
     BootProvenanceUnobserved { cause: _ } => false
   }
@@ -63,10 +64,10 @@ test fn a_unit_started_hours_into_the_boot_does_not_establish_durability() -> Bo
 // into the passing side.
 test fn only_the_boot_started_arm_establishes_durability() -> Bool {
   spark_serving_boot_provenance_establishes_durability(
-    p: UnitStartedByManagerAtBoot { active_enter_monotonic_us: 1, uptime_us: 2 },
+    p: UnitStartedByManagerAtBoot { active_enter_monotonic: microsecond(count: 1), uptime: microsecond(count: 2) },
   )
     && !spark_serving_boot_provenance_establishes_durability(
-         p: UnitStartedAfterBoot { active_enter_monotonic_us: 1, uptime_us: 2 },
+         p: UnitStartedAfterBoot { active_enter_monotonic: microsecond(count: 1), uptime: microsecond(count: 2) },
        )
     && !spark_serving_boot_provenance_establishes_durability(p: UnitNotActiveAtAll)
     && !spark_serving_boot_provenance_establishes_durability(
@@ -81,8 +82,8 @@ test fn a_zero_timestamp_is_an_inactive_unit_not_an_unobserved_one() -> Bool {
   match spark_serving_classify_boot_provenance(active_enter: ok(out: "0\n"), uptime: uptime(secs: "100")) {
     UnitNotActiveAtAll => true
     BootProvenanceUnobserved { cause: _ } => false
-    UnitStartedByManagerAtBoot { active_enter_monotonic_us: _, uptime_us: _ } => false
-    UnitStartedAfterBoot { active_enter_monotonic_us: _, uptime_us: _ } => false
+    UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
   }
 }
 
@@ -94,8 +95,8 @@ test fn a_failed_probe_is_unobserved_and_not_a_durability_verdict() -> Bool {
     uptime: uptime(secs: "100"),
   ) {
     BootProvenanceUnobserved { cause: c } => string_contains(c as String, "Failed to connect to bus")
-    UnitStartedByManagerAtBoot { active_enter_monotonic_us: _, uptime_us: _ } => false
-    UnitStartedAfterBoot { active_enter_monotonic_us: _, uptime_us: _ } => false
+    UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
     UnitNotActiveAtAll => false
   }
 }
@@ -108,8 +109,8 @@ test fn an_unreadable_uptime_refuses_rather_than_deciding() -> Bool {
     uptime: bad(err: "cat: /proc/uptime: Permission denied"),
   ) {
     BootProvenanceUnobserved { cause: c } => string_contains(c as String, "Permission denied")
-    UnitStartedByManagerAtBoot { active_enter_monotonic_us: _, uptime_us: _ } => false
-    UnitStartedAfterBoot { active_enter_monotonic_us: _, uptime_us: _ } => false
+    UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
     UnitNotActiveAtAll => false
   }
 }
@@ -118,20 +119,20 @@ test fn an_unreadable_uptime_refuses_rather_than_deciding() -> Bool {
 // of it decides differently, which is what makes the constant load-bearing rather than decorative.
 test fn the_boot_window_is_the_boundary_that_decides() -> Bool {
   match spark_serving_classify_boot_provenance(
-    active_enter: ok(out: to_string(spark_serving_boot_start_window_us)),
+    active_enter: ok(out: to_string(microsecond_count(spark_serving_boot_start_window()))),
     uptime: uptime(secs: "100"),
   ) {
-    UnitStartedByManagerAtBoot { active_enter_monotonic_us: _, uptime_us: _ } =>
+    UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } =>
       match spark_serving_classify_boot_provenance(
-        active_enter: ok(out: to_string(spark_serving_boot_start_window_us + 1)),
+        active_enter: ok(out: to_string(microsecond_count(spark_serving_boot_start_window()) + 1)),
         uptime: uptime(secs: "100"),
       ) {
-        UnitStartedAfterBoot { active_enter_monotonic_us: _, uptime_us: _ } => true
-        UnitStartedByManagerAtBoot { active_enter_monotonic_us: _, uptime_us: _ } => false
+        UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => true
+        UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
         UnitNotActiveAtAll => false
         BootProvenanceUnobserved { cause: _ } => false
       }
-    UnitStartedAfterBoot { active_enter_monotonic_us: _, uptime_us: _ } => false
+    UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
     UnitNotActiveAtAll => false
     BootProvenanceUnobserved { cause: _ } => false
   }
@@ -157,11 +158,11 @@ test fn both_probes_are_portable_unprivileged_reads() -> Bool {
 // both and the difference is the entire finding.
 test fn the_wire_separates_came_up_with_this_boot_from_started_later() -> Bool {
   string_contains(
-    spark_serving_boot_provenance_wire(p: UnitStartedByManagerAtBoot { active_enter_monotonic_us: 1, uptime_us: 2 }),
+    spark_serving_boot_provenance_wire(p: UnitStartedByManagerAtBoot { active_enter_monotonic: microsecond(count: 1), uptime: microsecond(count: 2) }),
     "came up WITH this boot",
   )
     && string_contains(
-         spark_serving_boot_provenance_wire(p: UnitStartedAfterBoot { active_enter_monotonic_us: 1, uptime_us: 2 }),
+         spark_serving_boot_provenance_wire(p: UnitStartedAfterBoot { active_enter_monotonic: microsecond(count: 1), uptime: microsecond(count: 2) }),
          "did NOT come up with this boot",
        )
 }

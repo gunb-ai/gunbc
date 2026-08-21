@@ -137,7 +137,7 @@ data gpt_oss_20b_blob_closure: List<OllamaBlobDigest> = [
   },
 ]
 
-fn gpt_oss_20b_blob_closure_size() -> Int {
+fn gpt_oss_20b_blob_closure_count() -> Int {
   length(gpt_oss_20b_blob_closure)
 }
 

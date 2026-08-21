@@ -892,7 +892,23 @@ fn spark_plan_demand(
 // says what is allowed. A selected DestroyVersion produces a real demand cell AND is refused here,
 // which is the whole point: adding a dangerous call to the workflow must not authorize it.
 fn spark_demand_decision(demand: ExternalAccessDemand) -> AccessDecision {
-  if !principal_role_admits_operation_ref(principal: demand.executor, op: demand.invocation) {
+  match secret_manager_operation_of_ref(op: demand.invocation) {
+    Absent =>
+      Deny { refusal: AccessRefusal {
+        cause: AccessSubjectNotRecognized {
+          subject: "operation is not a modelled Secret Manager operation; the ceiling has no row to rule on it, so it is refused rather than assumed excluded",
+        },
+        location: AccessRefusalLocation {
+          profile: "spark_access_demand",
+          subject: spark_principal_label(principal: demand.executor),
+          action: demand.invocation.operation,
+          object: demand.resource as String } } }
+    Present { value: decoded } => spark_demand_decision_for(demand: demand, op: decoded)
+  }
+}
+
+fn spark_demand_decision_for(demand: ExternalAccessDemand, op: SecretManagerOperation) -> AccessDecision {
+  if !principal_role_admits_operation(principal: demand.executor, op: op) {
     Deny { refusal: AccessRefusal {
       cause: AccessSubjectNotRecognized { subject: "operation outside this principal's role ceiling; no binding can admit it" },
       location: AccessRefusalLocation {
@@ -906,8 +922,51 @@ fn spark_demand_decision(demand: ExternalAccessDemand) -> AccessDecision {
 }
 
 
-// THE CEILING, KEYED ON THE REAL OPERATION IDENTITY. This is now the authority; the
-// SecretManagerOperation-keyed function below delegates to it and is a shrinking shim.
+// THE CEILING, KEYED ON THE REAL OPERATION IDENTITY -- AND IT NOW DELEGATES, WHICH THIS NOTE ALREADY
+// CLAIMED IT DID.
+//
+// THE DEFECT, RECORDED BECAUSE IT IS THE RECURRING ONE. This note said the SecretManagerOperation-keyed
+// function "delegates to it and is a shrinking shim". It did not delegate. It carried a full, independent
+// match over all seven operations, so ONE policy had TWO authorities that could disagree -- and they
+// already disagreed in KIND: the coproduct form is exhaustive over a closed type, so adding an operation
+// is a compiler refusal until both roles rule on it, while the string form silently answers false for
+// anything it does not recognize. A renamed upstream operation would therefore have started refusing
+// every principal with no diagnostic anywhere. A review read this note and reported a self-declared
+// shim with no dissolution trigger; measuring it found something worse than an unadmitted scaffold,
+// which is a note describing behaviour the code did not have.
+//
+// THE REPAIR IS THE ONE THE NOTE PROMISED: decode the ref to the closed operation ONCE, then answer from
+// the single exhaustive policy. The decode is total and its `Absent` arm is an UNRECOGNIZED operation --
+// which the caller reports with its own cause, because "this principal's role ceiling excludes the
+// operation" and "this system does not know what that operation is" are different states with different
+// remedies (rule on the principal, versus add the row to the decode). Both deny; only the second is a
+// modelling gap, and collapsing them into one Bool would have hidden it.
+//
+// THE TWO SPELLINGS ARE NOT A NICKNAME, THEY ARE A BOUNDARY. Upstream names the policy operations
+// GetSecretIamPolicy and SetSecretIamPolicy; the local coproduct spells them SmGetIamPolicy and
+// SmSetIamPolicy. Decoding is exactly where a wire name is mapped to a modelled one, and the upstream
+// spelling stays authoritative on the wire side (DESIGN section 3 -- keep the real names). What would
+// have been a nickname is what was here before: two independent policy tables keyed on the two
+// spellings, neither derived from the other.
+fn secret_manager_operation_of_ref(op: OperationRef) -> SecretManagerOperation? {
+  if op.operation == "AccessVersion" {
+    Present { value: SmAccessVersion }
+  } else if op.operation == "AddVersion" {
+    Present { value: SmAddVersion }
+  } else if op.operation == "GetSecret" {
+    Present { value: SmGetSecret }
+  } else if op.operation == "GetSecretIamPolicy" {
+    Present { value: SmGetIamPolicy }
+  } else if op.operation == "SetSecretIamPolicy" {
+    Present { value: SmSetIamPolicy }
+  } else if op.operation == "DisableVersion" {
+    Present { value: SmDisableVersion }
+  } else if op.operation == "DestroyVersion" {
+    Present { value: SmDestroyVersion }
+  } else {
+    none
+  }
+}
 //
 // Naming the operations as strings HERE is not the roster this lane deleted: these are the
 // normative policy rows -- which operations a principal may ever reach -- and policy is authored
@@ -917,11 +976,10 @@ fn spark_demand_decision(demand: ExternalAccessDemand) -> AccessDecision {
 // An operation this policy has no row for is REFUSED, not admitted: a new Secret Manager
 // operation must be ruled on before any principal can reach it.
 fn principal_role_admits_operation_ref(principal: FleetCloudPrincipalKey, op: OperationRef) -> Bool {
-  match principal {
-    FleetCloudConvergencePrincipal { role: _ } =>
-      op.operation == "AccessVersion" || op.operation == "AddVersion" || op.operation == "GetSecret"
-    FleetCloudGrantAdministratorPrincipal { role: _ } =>
-      op.operation == "GetSecretIamPolicy" || op.operation == "SetSecretIamPolicy" || op.operation == "GetSecret"
+  match secret_manager_operation_of_ref(op: op) {
+    Absent => false
+    Present { value: decoded } =>
+      principal_role_admits_operation(principal: principal, op: decoded)
   }
 }
 

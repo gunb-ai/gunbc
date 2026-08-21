@@ -152,7 +152,7 @@ fn complete_required_store() -> ModelStoreObservation {
     Present { value: r } =>
       ModelStoreComplete {
         manifest_identity: serialize_content_hash(hash: r.model.identity) as NonEmptyStr,
-        blob_closure_size: 1,
+        blob_closure_count: 1,
       }
   }
 }

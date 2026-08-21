@@ -194,7 +194,7 @@ fn slice_projection_linger(r: SparkServingRelease, linger_enabled: Bool) -> Spar
     },
     store: ModelStoreComplete {
       manifest_identity: serialize_content_hash(hash: r.model.identity) as NonEmptyStr,
-      blob_closure_size: 1,
+      blob_closure_count: 1,
     },
     unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
     enablement: UserUnitManagerEnabled,

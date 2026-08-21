@@ -106,7 +106,7 @@ test fn an_exact_store_carries_the_desired_identity() -> Bool {
       match model_store_state_digest(
         observation: ModelStoreComplete {
           manifest_identity: desired as NonEmptyStr,
-          blob_closure_size: 3,
+          blob_closure_count: 3,
         },
       ) {
         Absent => false
@@ -159,7 +159,7 @@ test fn a_host_holding_the_declared_model_reconciles_as_converged() -> Bool {
         ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
         ModelStoreObservationRefused { cause: _ } => false
         ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
-        ModelStoreComplete { manifest_identity: _, blob_closure_size: n } =>
+        ModelStoreComplete { manifest_identity: _, blob_closure_count: n } =>
           match model_store_state_digest(
             observation: spark_serving_classify_model_store(
               manifest_body: join([
@@ -204,7 +204,7 @@ test fn a_host_missing_a_blob_does_not_reconcile_as_converged() -> Bool {
         blobs_listing: "sha256-1111111111111111111111111111111111111111111111111111111111111111",
         blob_digest_stdout: intact_blob_digests(),
       ) {
-        ModelStoreComplete { manifest_identity: _, blob_closure_size: _ } => false
+        ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
         ModelStoreAbsent => false
         ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
         ModelStoreObservationRefused { cause: _ } => false
@@ -238,7 +238,7 @@ test fn a_different_store_does_not_carry_the_desired_identity() -> Bool {
       match model_store_state_digest(
         observation: ModelStoreComplete {
           manifest_identity: "sha256:0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr,
-          blob_closure_size: 3,
+          blob_closure_count: 3,
         },
       ) {
         Absent => true
@@ -287,7 +287,7 @@ test fn an_incomplete_store_differs_from_a_complete_one_with_the_same_manifest()
     Absent => false
     Present { value: partial } =>
       match model_store_state_digest(
-        observation: ModelStoreComplete { manifest_identity: ident, blob_closure_size: 2 },
+        observation: ModelStoreComplete { manifest_identity: ident, blob_closure_count: 2 },
       ) {
         Absent => false
         Present { value: whole } => (partial as String) != (whole as String)
@@ -317,7 +317,7 @@ test fn an_unobserved_store_blocks_the_empty_replan_bar() -> Bool {
         runtime: complete_runtime_stub(),
         store: ModelStoreComplete {
           manifest_identity: serialize_content_hash(hash: r.model.identity) as NonEmptyStr,
-          blob_closure_size: 1,
+          blob_closure_count: 1,
         },
         unit: UserUnitStateObserved { unit_state_digest: "u" as NonEmptyStr },
         enablement: UserUnitManagerEnabled,
@@ -355,7 +355,7 @@ test fn an_unparseable_manifest_says_so() -> Bool {
     ModelStoreAbsent => false
     ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
     ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
-    ModelStoreComplete { manifest_identity: _, blob_closure_size: _ } => false
+    ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
   }
 }
 
@@ -370,7 +370,7 @@ test fn a_manifest_whose_layer_has_no_digest_says_malformed() -> Bool {
     ModelStoreAbsent => false
     ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
     ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
-    ModelStoreComplete { manifest_identity: _, blob_closure_size: _ } => false
+    ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
   }
 }
 
@@ -388,7 +388,7 @@ test fn a_manifest_naming_no_blobs_refuses_rather_than_reporting_complete() -> B
     ModelStoreAbsent => false
     ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
     ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
-    ModelStoreComplete { manifest_identity: _, blob_closure_size: _ } => false
+    ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
   }
 }
 
@@ -416,7 +416,7 @@ test fn a_corrupt_blob_is_not_a_complete_store() -> Bool {
   ) {
     ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: b } =>
       (b as String) == "2222222222222222222222222222222222222222222222222222222222222222"
-    ModelStoreComplete { manifest_identity: _, blob_closure_size: _ } => false
+    ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
     ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
     ModelStoreAbsent => false
     ModelStoreObservationRefused { cause: _ } => false
@@ -432,7 +432,7 @@ test fn the_same_store_with_intact_blobs_is_complete() -> Bool {
     blobs_listing: present_listing(),
     blob_digest_stdout: intact_blob_digests(),
   ) {
-    ModelStoreComplete { manifest_identity: _, blob_closure_size: n } => n == 2
+    ModelStoreComplete { manifest_identity: _, blob_closure_count: n } => n == 2
     ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
     ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
     ModelStoreAbsent => false

@@ -1317,7 +1317,7 @@ fn spark_serving_classify_model_store(
                 Absent =>
                   ModelStoreComplete {
                     manifest_identity: ident,
-                    blob_closure_size: length(required),
+                    blob_closure_count: length(required),
                   }
               }
             Present { value: head } =>

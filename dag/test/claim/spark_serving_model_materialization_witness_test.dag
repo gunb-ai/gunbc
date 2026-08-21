@@ -16,7 +16,7 @@ import gunbc.spark.serving_install_paths {
 }
 import gunbc.ollama_model_resolution {
   gpt_oss_20b_blob_closure,
-  gpt_oss_20b_blob_closure_size,
+  gpt_oss_20b_blob_closure_count,
   gpt_oss_20b_manifest_digest_2026_08_19,
 }
 import gunbc.remote_operation { remote_operations_argv_only }
@@ -83,7 +83,7 @@ test fn the_manifest_checksum_names_the_frozen_resolved_digest() -> Bool {
 test fn every_blob_url_carries_its_own_digest() -> Bool {
   length(filter(gpt_oss_20b_blob_closure, b =>
     any(step_argvs(), a => any(a, w => w == spark_serving_registry_blob_url(hex: b.hex)))
-  )) == gpt_oss_20b_blob_closure_size()
+  )) == gpt_oss_20b_blob_closure_count()
 }
 
 // STAGED, VERIFIED, THEN PUBLISHED -- never fetched straight to the store name. The observe side
@@ -101,7 +101,7 @@ test fn no_blob_is_fetched_directly_into_the_store() -> Bool {
 test fn each_blob_owes_a_fetch_a_checksum_a_verify_and_a_publish() -> Bool {
   length(filter(gpt_oss_20b_blob_closure, b =>
     length(filter(step_identities(), id => string_contains(id, b.hex as String))) == 4
-  )) == gpt_oss_20b_blob_closure_size()
+  )) == gpt_oss_20b_blob_closure_count()
 }
 
 // THE MANIFEST IS PUBLISHED LAST, after every blob it names is in place. Publishing it first would
@@ -113,7 +113,7 @@ test fn the_manifest_is_published_after_every_blob() -> Bool {
     && length(filter(gpt_oss_20b_blob_closure, b =>
          first_index_containing(concat("publish-blob-", b.hex as String)) < publish_manifest
          && first_index_containing(concat("publish-blob-", b.hex as String)) >= 0
-       )) == gpt_oss_20b_blob_closure_size()
+       )) == gpt_oss_20b_blob_closure_count()
 }
 
 // The verification refuses rather than warns: `sha256sum -c` exits non-zero on a mismatch and a
