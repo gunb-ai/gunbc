@@ -1868,10 +1868,40 @@ fn websocat_trace_labels(walk: WebsocatWalk) -> List<String> {
 // or list position -- those were the two shapes that made the previous body run mutations it had
 // no business running.
 //
-// The nesting is deliberate and is not a fold: each stage needs a different effect and some need
-// values the previous stage produced (the resolved curl path), so a uniform step function would
-// have to carry a union of every stage's inputs. The sequencing decision is still folded -- that
-// is websocat_after, which this driver and the trace witness both consume.
+// The chain is not a fold: each stage needs a different effect and some need values the previous
+// stage produced (the resolved curl path), so a uniform step function would have to carry a union
+// of every stage's inputs. The sequencing decision IS folded -- that is websocat_after, which this
+// driver and the trace witness both consume.
+// THE DRIVER DEPENDS ON THE STAGE websocat_after NAMED, rather than assuming it. This closes a
+// real fork that the first cut left open and the first mutation could not see: every driver site
+// matched `WebsocatContinue { next: _ }` and then ran the stage it expected, so websocat_after was
+// the sole authority for STOP-OR-CONTINUE while the stage EDGE was hardcoded a second time in the
+// driver. Rewriting an edge -- EnsureDirectory continuing to Download instead of EnsureOwnership --
+// would have reddened the trace, which follows `next`, while production carried on in its original
+// order. Two authorities agreeing today is not one authority (raised in side-chat review).
+//
+// Comparison goes through websocat_stage_label because that fold is already the total, exhaustive
+// projection of the stage type; adding a second equality over the same coproduct would be the fork
+// this function exists to remove.
+fn websocat_edge_admits(actual: WebsocatStage, expected: WebsocatStage) -> Bool {
+  websocat_stage_label(stage: actual) == websocat_stage_label(stage: expected)
+}
+
+// A DISAGREEMENT REFUSES; IT DOES NOT PROCEED AND IT DOES NOT GUESS. The driver cannot honour a
+// transition it does not implement, and running the stage it happens to have code for would be the
+// absorbing fallback -- carrying on because carrying on is available.
+fn websocat_edge_disagreement(actual: WebsocatStage, expected: WebsocatStage) -> Srv3HostPredicate {
+  Srv3PredicateUnobserved {
+    reason: join([
+      "srv3 websocat: the sequence authority named stage ",
+      websocat_stage_label(stage: actual),
+      " but this driver site implements ",
+      websocat_stage_label(stage: expected),
+      " -- the walk and the driver disagree about the stage order, so no host was touched",
+    ], ""),
+  }
+}
+
 fn srv3_ensure_websocat(transport: HostEffectTransport) -> Srv3HostPredicate {
   let install_path = websocat_install_path as String
   match websocat_after(
@@ -1880,21 +1910,43 @@ fn srv3_ensure_websocat(transport: HostEffectTransport) -> Srv3HostPredicate {
   ) {
     WebsocatAlreadySatisfied => Srv3PredicateHolds
     WebsocatStop { verdict: v } => v
-    WebsocatContinue { next: _ } =>
-      match srv3_tool_bin_path(tool_name: curl_cli_tool.name, transport: transport) {
-        Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
-        Srv3TokenAbsent => Srv3PredicateFails
-        Srv3TokenObserved { value: curl_path } =>
-          srv3_websocat_install_from(
-            curl_path: curl_path,
-            install_path: install_path,
-            transport: transport,
-          )
+    WebsocatContinue { next: n } =>
+      match websocat_edge_admits(actual: n, expected: ResolveCurl) {
+        false => websocat_edge_disagreement(actual: n, expected: ResolveCurl)
+        true =>
+          match srv3_tool_bin_path(tool_name: curl_cli_tool.name, transport: transport) {
+            Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+            Srv3TokenAbsent => Srv3PredicateFails
+            Srv3TokenObserved { value: curl_path } =>
+              srv3_websocat_install_from(
+                curl_path: curl_path,
+                install_path: install_path,
+                transport: transport,
+              )
+          }
       }
   }
 }
 
+// ONE FUNCTION PER STAGE, rather than one function nesting five matches. The nesting was not a
+// style problem: at depth five, adding the edge check to each site pushed the effect bodies far
+// enough right that the thing being guarded stopped being visible beside its guard. Each stage now
+// runs its own effect, consults the sequence authority, checks that the authority named the stage
+// this chain implements next, and calls it. The stage order therefore appears exactly once as data
+// (in websocat_after) and once as a call graph that refuses when the two disagree.
 fn srv3_websocat_install_from(
+  curl_path: String,
+  install_path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  websocat_stage_ensure_directory(
+    curl_path: curl_path,
+    install_path: install_path,
+    transport: transport,
+  )
+}
+
+fn websocat_stage_ensure_directory(
   curl_path: String,
   install_path: String,
   transport: HostEffectTransport,
@@ -1911,51 +1963,104 @@ fn srv3_websocat_install_from(
   ) {
     WebsocatAlreadySatisfied => Srv3PredicateHolds
     WebsocatStop { verdict: v } => v
-    WebsocatContinue { next: _ } =>
-      match websocat_after(
-        stage: EnsureOwnership,
-        outcome: srv3_chown_directory_to_current_user(path: bin_dir, transport: transport),
-      ) {
-        WebsocatAlreadySatisfied => Srv3PredicateHolds
-        WebsocatStop { verdict: v } => v
-        WebsocatContinue { next: _ } =>
-          match websocat_after(
-            stage: Download,
-            outcome: srv3_transport_witness_bin_success(
+    WebsocatContinue { next: n } =>
+      match websocat_edge_admits(actual: n, expected: EnsureOwnership) {
+        false => websocat_edge_disagreement(actual: n, expected: EnsureOwnership)
+        true =>
+          websocat_stage_ensure_ownership(
+            curl_path: curl_path,
+            install_path: install_path,
+            transport: transport,
+          )
+      }
+  }
+}
+
+fn websocat_stage_ensure_ownership(
+  curl_path: String,
+  install_path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match websocat_after(
+    stage: EnsureOwnership,
+    outcome: srv3_chown_directory_to_current_user(
+      path: gunbc_bin_dir as String,
+      transport: transport,
+    ),
+  ) {
+    WebsocatAlreadySatisfied => Srv3PredicateHolds
+    WebsocatStop { verdict: v } => v
+    WebsocatContinue { next: n } =>
+      match websocat_edge_admits(actual: n, expected: Download) {
+        false => websocat_edge_disagreement(actual: n, expected: Download)
+        true =>
+          websocat_stage_download(
+            curl_path: curl_path,
+            install_path: install_path,
+            transport: transport,
+          )
+      }
+  }
+}
+
+fn websocat_stage_download(
+  curl_path: String,
+  install_path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match websocat_after(
+    stage: Download,
+    outcome: srv3_transport_witness_bin_success(
+      transport: transport,
+      workdir: "/",
+      bin_path: curl_path,
+      args: [
+        "-fsSL",
+        srv3_actuator_toolchain_websocat_release_download_url(),
+        "-o",
+        install_path,
+      ],
+    ),
+  ) {
+    WebsocatAlreadySatisfied => Srv3PredicateHolds
+    WebsocatStop { verdict: v } => v
+    WebsocatContinue { next: n } =>
+      match websocat_edge_admits(actual: n, expected: EnsureExecutableMode) {
+        false => websocat_edge_disagreement(actual: n, expected: EnsureExecutableMode)
+        true =>
+          websocat_stage_ensure_executable_mode(
+            install_path: install_path,
+            transport: transport,
+          )
+      }
+  }
+}
+
+fn websocat_stage_ensure_executable_mode(
+  install_path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match websocat_after(
+    stage: EnsureExecutableMode,
+    outcome: srv3_transport_witness_bin_success(
+      transport: transport,
+      workdir: "/",
+      bin_path: "/bin/chmod",
+      args: ["+x", install_path],
+    ),
+  ) {
+    WebsocatAlreadySatisfied => Srv3PredicateHolds
+    WebsocatStop { verdict: v } => v
+    WebsocatContinue { next: n } =>
+      match websocat_edge_admits(actual: n, expected: Readback) {
+        false => websocat_edge_disagreement(actual: n, expected: Readback)
+        true =>
+          websocat_after_readback(
+            outcome: srv3_transport_test_executable(
+              path: install_path,
               transport: transport,
-              workdir: "/",
-              bin_path: curl_path,
-              args: [
-                "-fsSL",
-                srv3_actuator_toolchain_websocat_release_download_url(),
-                "-o",
-                install_path,
-              ],
             ),
-          ) {
-            WebsocatAlreadySatisfied => Srv3PredicateHolds
-            WebsocatStop { verdict: v } => v
-            WebsocatContinue { next: _ } =>
-              match websocat_after(
-                stage: EnsureExecutableMode,
-                outcome: srv3_transport_witness_bin_success(
-                  transport: transport,
-                  workdir: "/",
-                  bin_path: "/bin/chmod",
-                  args: ["+x", install_path],
-                ),
-              ) {
-                WebsocatAlreadySatisfied => Srv3PredicateHolds
-                WebsocatStop { verdict: v } => v
-                WebsocatContinue { next: _ } =>
-                  websocat_after_readback(
-                    outcome: srv3_transport_test_executable(
-                      path: install_path,
-                      transport: transport,
-                    ),
-                  )
-              }
-          }
+          )
       }
   }
 }
@@ -1967,7 +2072,7 @@ fn websocat_after_readback(outcome: Srv3HostPredicate) -> Srv3HostPredicate {
   match websocat_after(stage: Readback, outcome: outcome) {
     WebsocatAlreadySatisfied => Srv3PredicateHolds
     WebsocatStop { verdict: v } => v
-    WebsocatContinue { next: _ } => Srv3PredicateFails
+    WebsocatContinue { next: n } => websocat_edge_disagreement(actual: n, expected: Readback)
   }
 }
 
