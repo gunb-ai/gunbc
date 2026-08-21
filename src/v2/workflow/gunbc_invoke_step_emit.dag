@@ -1,6 +1,6 @@
 module v2.workflow.gunbc_invoke_step_emit
 
-import std.algebra { FreeMonoid }
+import std.algebra { Empty, FreeMonoid }
 import v2.compiler.emit_orchestration { orch_emit_pipeline, orch_shell_unquoted_path_ok }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
@@ -148,7 +148,7 @@ fn gunbc_invoke_words_command(words: List<InvocationWord>) -> String {
 fn gunbc_invoke_run(command: String) -> Run {
   Run {
     command: command,
-    env: [],
+    env: Empty,
     redirect: Absent,
     capture: Absent
   }
