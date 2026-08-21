@@ -401,12 +401,39 @@ fn build_type_summary(item: Node, source_indices: Map<String, NewlineIndex>) -> 
       repr: EnumRepr { unit_only: unit_only },
       field_summaries: build_enum_field_summaries(variants: item.children, source_indices: source_indices),
       field_type_map: empty_map(),
-      field_import_surface_names: [],
+      field_import_surface_names: enum_variant_payload_surface_names(variants: item.children, source_indices: source_indices),
       variant_name_set: fold(item.children, init: empty_map(), f: (acc, child) => map_insert(acc, authored_name_at(source_indices: source_indices, node: child), true)),
       generic_param_names: gpn,
-      has_fn_fields: has_fn
+      has_fn_fields: has_fn || enum_variant_payload_has_fn(variants: item.children)
     } }
   }
+}
+
+// A coproduct's payload fields are reachable values exactly as a product's fields are, so the
+// fn-reachability walk needs the same edges from an enum that it gets from a struct. Before this,
+// build_type_summary gave every non-product an empty field_type_map AND an empty
+// field_import_surface_names, which made an enum a dead end in both directions: an enum whose
+// variant payload reached a function value derived serde itself, and it blocked propagation to
+// anything holding it. Measured on a specimen: `ViaEnum = HasInner { held: Inner } | Empty` with
+// `Inner { apply: fn(Int) -> Int }` emitted Serialize/Deserialize on ViaEnum and on its holder,
+// while the direct-field control `NestedDirect { inner: Inner }` correctly emitted Clone alone.
+fn enum_variant_payload_surface_names(variants: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  dedupe_nonempty_strings(items: variants |> flat_map(v =>
+    let built = build_field_type_map(children: v.children, source_indices: source_indices)
+    built.import_surface_names
+  ))
+}
+
+// The direct arm of the same gap: a variant payload whose own resolved type IS an arrow. A
+// function type has no authored name, so the surface-name walk above cannot see it and this is a
+// separate question rather than a special case of it.
+fn enum_variant_payload_has_fn(variants: List<Node>) -> Bool {
+  variants |> any(v => v.children |> any(child =>
+    match child.inferred {
+      Present { value: Resolved { node: rt } } => rt.connective == Arrow
+      _ => false
+    }
+  ))
 }
 
 fn type_summary_reaches_fn(name: String, summaries: Map<String, TypeSummary>, visited: Set<String>) -> Bool {
@@ -419,7 +446,8 @@ fn type_summary_reaches_fn(name: String, summaries: Map<String, TypeSummary>, vi
           true
         } else {
           let v2 = set_insert(visited, name)
-          map_values(s.field_type_map) |> any(ft => type_summary_reaches_fn(name: ft, summaries: summaries, visited: v2))
+          concat(map_values(s.field_type_map), s.field_import_surface_names)
+            |> any(ft => type_summary_reaches_fn(name: ft, summaries: summaries, visited: v2))
         }
       Absent => false
     }
