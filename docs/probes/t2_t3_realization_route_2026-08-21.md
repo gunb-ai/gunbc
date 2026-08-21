@@ -218,6 +218,26 @@ emitted file — and the T2 head now has a sharper statement than "two spellings
 `FreeMonoid<T>` **cannot** satisfy the type renderer's test, because `T` is not spelled `Char`. The
 decision is syntactic and pre-instantiation, so no monomorphization repairs it.
 
+### Expectation set before the step-1 census runs
+
+Recorded here, not only in a thread, because it is the number most likely to be mistaken for a
+defect. **Decision divergence will almost certainly exceed 25, possibly by a lot.** The 25 are rustc
+*errors*; the census measures *decisions*. Many occurrences where the short-circuit and the authority
+disagree still compile — either side happens to typecheck there, or the disagreement is absorbed
+downstream. Those are real divergences and they belong in the census.
+
+So: **do not tune the census toward 25**, and do not read a large `Diverges` count as evidence the
+instrument is wrong. That gap **is** the masked population, and measuring it is the reason step 1
+exists rather than going straight to A/B/C/D. The number that must reconcile with 25 is the step-2
+site-conversion ledger, never the step-1 divergence count.
+
+The receipt therefore publishes a **cross-tab**, not three totals: `Agrees` /
+`DivergesWithExactIdentity` / `IdentityUnavailable`, each split by whether the occurrence currently
+produces a rustc diagnostic. **A large `DivergesWithExactIdentity` with zero diagnostics is the
+silently-wrong-output class** (DESIGN §5, below the ladder entirely) and would be the strongest thing
+this lane could find — which is exactly why the cross-tab is the artifact and the marginal counts are
+not.
+
 ### The emitted aliases carry the fork, and they are the control
 
 ```rust
@@ -296,13 +316,17 @@ constrain the *next* measurement and a message is not where the next author will
   way. The error came from grepping the *type* name rather than the *function*. It is corrected here
   rather than quietly dropped because it was relayed upward and planned against, and because the
   corrected fact is the stronger one: the authority is present, correct, **and unreachable** for this
-  carrier — five type renderers (`render_rust_type`, `render_rust_type_without_applied_binding`,
-  `render_rust_applied_type`, `render_rust_decl_type`, `render_rust_fn_sig_type`) each return on
-  their first line via `is_host_text_carrier_type` → `"String"`, unconditional on `decl_file`, while
+  carrier — **six** type renderers (`render_rust_type`, `render_rust_type_without_applied_binding`,
+  `render_rust_applied_type`, `render_rust_type_with_applied_binding`, `render_rust_decl_type`,
+  `render_rust_fn_sig_type`) each return on their first line via `is_host_text_carrier_type` →
+  `"String"`, unconditional on `decl_file`, while
   `structural_declaration_modules_for("String")` lists both declaring modules. An unreachable wall,
   not a missing one (DESIGN §6 coverage-by-illusion). Established by reading those five renderers'
-  control flow; **not** established by a discriminating execution, and it says nothing about a sixth
-  renderer that may handle some type position without that preamble.
+  control flow — each call verified to be the statement immediately following its own `fn`
+  declaration; **not** established by a discriminating execution, and silent about any renderer that
+  reaches a type position without that preamble. This count read *five* until 2026-08-21;
+  `render_rust_type_with_applied_binding` was missed when the first sweep's grep output truncated
+  before it (derivation in gunbc#8805).
 
 Per-site attribution: [`t2_t3_realization_route_2026-08-21/routes.tsv`](t2_t3_realization_route_2026-08-21/routes.tsv)
 (columns: file, line, col, expected, found, coded_root, expected_route, found_route, carrier,

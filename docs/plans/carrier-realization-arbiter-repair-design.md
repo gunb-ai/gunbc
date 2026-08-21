@@ -41,13 +41,17 @@ thin derivation of it for every `decl_file != ""` caller. (An earlier revision o
 claimed zero consumers; that was an error, from grepping the type name rather than the function.)
 
 `structural_declaration_modules_for("String")` = `["src/v2/std/text.dag", "dag/std/string_type.dag"]`,
-so the strict query **would** refuse the native spelling. But five type renderers —
-`render_rust_type`, `render_rust_type_without_applied_binding`, `render_rust_applied_type`,
-`render_rust_decl_type`, `render_rust_fn_sig_type` — each **return on their first line** via
+so the strict query **would** refuse the native spelling. But six type renderers — `render_rust_type`, `render_rust_type_without_applied_binding`,
+`render_rust_applied_type`, `render_rust_type_with_applied_binding`, `render_rust_decl_type`,
+`render_rust_fn_sig_type` — each **return on their first line** via
 `is_host_text_carrier_type` → `"String"`, unconditional on `decl_file`. **No `String`-spelled
 reference in type position can reach the authority.** An unreachable wall, not a missing one (DESIGN
-§6 coverage-by-illusion). Established from those five renderers' control flow; **not** by a
-discriminating execution, and silent about any sixth renderer without that preamble.
+§6 coverage-by-illusion). Established from those six renderers' control flow — each call verified to be the statement
+immediately following its own `fn` declaration, not merely early in the body; **not** established by
+a discriminating execution. (This count read *five* until 2026-08-21:
+`render_rust_type_with_applied_binding` was missed when the first sweep's grep output was truncated
+before reaching it. The full derivation is in gunbc#8805; the correction is recorded rather than
+silently applied because the earlier count was relayed upward and a review restated it as fact.)
 
 ## §2 — Why the experiment is not "delete the short-circuit"
 
