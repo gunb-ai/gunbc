@@ -1,0 +1,11 @@
+module test.fixture.duplicate_callable_probe
+
+import std.types { String }
+
+fn duplicated() -> String { "FIRST_DECLARATION" }
+
+fn duplicated() -> String { "SECOND_DECLARATION" }
+
+fn observe_which_declaration_wins() -> String {
+  duplicated()
+}

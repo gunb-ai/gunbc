@@ -650,10 +650,12 @@ fn realize_seeded_install_media_toolchain_ensure_body(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match srv3_predicate_all(steps: [
-    srv3_apt_tool_present(tool_name: xorriso_cli_tool.name, transport: transport),
-    srv3_apt_tool_version_ok(tool_name: xorriso_cli_tool.name, transport: transport),
-  ]) {
+  // Short-circuited deliberately: srv3_predicate_all takes a LIST, and a list argument is built
+  // eagerly, so passing both probes to it runs the version probe even when presence already
+  // failed. The pre-cut code short-circuited through &&. Same class as the install regression
+  // below -- read-only rather than privileged, so a cost defect not a safety one, but DESIGN's
+  // bare-minimum-cost rule fixes a proven cost shape regardless of the realized n.
+  match srv3_probe_present_then_version(tool_name: xorriso_cli_tool.name, transport: transport) {
     Srv3PredicateUnobserved { reason: why } =>
       NotConverged {
         reason: concat(
@@ -1645,15 +1647,25 @@ fn srv3_ensure_apt_tool(
       if require_version_probe == false {
         Srv3PredicateHolds
       } else {
-        srv3_version_gate_then(
-          verdict: srv3_apt_tool_version_ok(tool_name: tool_name, transport: transport),
-          otherwise: srv3_apt_install_then_reprobe(
-            tool_name: tool_name,
-            package: package,
-            require_version_probe: require_version_probe,
-            transport: transport,
-          ),
-        )
+        // THE INSTALL MUST SIT IN A BRANCH, NEVER IN AN ARGUMENT POSITION.
+        //
+        // This was srv3_version_gate_then(verdict: ..., otherwise: srv3_apt_install_then_reprobe(...)),
+        // which reads correctly and is wrong: an argument is evaluated to build the call, so the
+        // PRIVILEGED APT INSTALL RAN ON EVERY ENSURE of a present, correctly-versioned tool. The
+        // pre-cut code short-circuited through if/else and never had this defect; the regression
+        // came from moving the install out of a branch and into a parameter while the types stayed
+        // identical. A match arm is a branch, so only the selected arm evaluates.
+        match srv3_apt_tool_version_ok(tool_name: tool_name, transport: transport) {
+          Srv3PredicateHolds => Srv3PredicateHolds
+          Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+          Srv3PredicateFails =>
+            srv3_apt_install_then_reprobe(
+              tool_name: tool_name,
+              package: package,
+              require_version_probe: require_version_probe,
+              transport: transport,
+            )
+        }
       }
     Srv3PredicateFails =>
       srv3_apt_install_then_reprobe(
@@ -1662,6 +1674,22 @@ fn srv3_ensure_apt_tool(
         require_version_probe: require_version_probe,
         transport: transport,
       )
+  }
+}
+
+fn srv3_probe_present_then_version(
+  tool_name: NonEmptyStr,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match srv3_apt_tool_present(tool_name: tool_name, transport: transport) {
+    Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+    Srv3PredicateFails => Srv3PredicateFails
+    Srv3PredicateHolds =>
+      match srv3_apt_tool_version_ok(tool_name: tool_name, transport: transport) {
+        Srv3PredicateHolds => Srv3PredicateHolds
+        Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+        Srv3PredicateFails => Srv3PredicateFails
+      }
   }
 }
 
@@ -1682,24 +1710,16 @@ fn srv3_apt_install_then_reprobe(
           if require_version_probe == false {
             Srv3PredicateHolds
           } else {
-            srv3_version_gate_then(
-              verdict: srv3_apt_tool_version_ok(tool_name: tool_name, transport: transport),
-              otherwise: Srv3PredicateFails,
-            )
+            match srv3_apt_tool_version_ok(tool_name: tool_name, transport: transport) {
+              Srv3PredicateHolds => Srv3PredicateHolds
+              Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+              Srv3PredicateFails => Srv3PredicateFails
+            }
           }
       }
   }
 }
 
-// A version verdict that could not be OBTAINED must not read as a version that failed: the
-// first is a reason to refuse, the second a reason to install.
-fn srv3_version_gate_then(verdict: Srv3HostPredicate, otherwise: Srv3HostPredicate) -> Srv3HostPredicate {
-  match verdict {
-    Srv3PredicateHolds => Srv3PredicateHolds
-    Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
-    Srv3PredicateFails => otherwise
-  }
-}
 
 fn srv3_ensure_websocat(transport: HostEffectTransport) -> Srv3HostPredicate {
   let install_path = websocat_install_path as String
