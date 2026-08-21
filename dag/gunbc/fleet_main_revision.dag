@@ -261,6 +261,7 @@ type FleetDesiredAdvanceRefusal
   = AdvanceExpectationUnavailable { cause: FleetDesiredExpectationRefusal }
   | AdvanceHistoriesUnrelated { current: GitObjectId, accepted: GitObjectId }
   | AdvanceRelationUnobservable { current: GitObjectId, accepted: GitObjectId, cause: NonEmptyStr }
+  | InitialFleetDesiredCreationNotAuthorized { accepted: GitObjectId }
   | AdvanceRelationIsAboutAnotherPair {
       relation_current: GitObjectId,
       relation_accepted: GitObjectId,
@@ -319,7 +320,7 @@ type FleetDesiredAdvanceInput<E, M>
 type FleetDesiredAdvanceDecision<E, M>
   = FleetDesiredAdvanceAdmitted {
       accepted: AcceptedFleetRevision<E, M>,
-      expected: GitRemoteRefExpectation,
+      expected_prior: GitObjectId,
     }
   | FleetDesiredAlreadyConverged { accepted: AcceptedFleetRevision<E, M> }
   | FleetDesiredSupersededNoOp {
@@ -335,7 +336,8 @@ fn fleet_desired_admitted_expectation<E, M>(
   decision: FleetDesiredAdvanceDecision<E, M>,
 ) -> GitRemoteRefExpectation? {
   match decision {
-    FleetDesiredAdvanceAdmitted { accepted: _, expected: e } => Present { value: e }
+    FleetDesiredAdvanceAdmitted { accepted: _, expected_prior: prior } =>
+      Present { value: RemoteRefMustEqual { oid: prior } }
     FleetDesiredAlreadyConverged { accepted: _ } => none
     FleetDesiredSupersededNoOp { accepted: _, current: _ } => none
     FleetDesiredAdvanceRefused { cause: _ } => none
@@ -367,6 +369,12 @@ fn fleet_desired_advance_refusal_message(cause: FleetDesiredAdvanceRefusal) -> S
         " and ", git_object_id_wire_hex(oid: acc) as String,
         " could not be established, and an unknown direction is never read as forward: ", c,
       ], "")
+    InitialFleetDesiredCreationNotAuthorized { accepted: acc } =>
+      join([
+        "origin advertises no such ref. An absent ref is a STATE and creation is a CAPABILITY: this path is authorized to ADVANCE an existing ref, not to mint the fleet root. Creating it at ",
+        git_object_id_wire_hex(oid: acc) as String,
+        " needs a positive mint authority, which no observation of absence can supply",
+      ], "")
     AdvanceRelationIsAboutAnotherPair {
       relation_current: rc,
       relation_accepted: ra,
@@ -382,25 +390,43 @@ fn fleet_desired_advance_refusal_message(cause: FleetDesiredAdvanceRefusal) -> S
   }
 }
 
-// AN ABSENT REF IS ADMITTED AS A CREATION, AND THIS ARM WAS BRIEFLY REFUSED BY MISTAKE.
+// AN ABSENT REF DOES NOT AUTHORIZE CREATION, AND THIS GATE RETRACTS gunbc#8746's AUTHORIZATION
+// RATHER THAN FAILING TO PORT IT. Declared, because retracting a landed capability silently is
+// exactly what §4b(3) forbids.
 //
-// An earlier revision of this cut refused it, with a cause named
-// InitialFleetDesiredCreationNotAuthorized. That was correct against the main this branch forked
-// from -- creation genuinely had no expressible form then, because the admitted decision carried a
-// bare prior oid and an absent ref has no prior to carry. gunbc#8746 then landed creation on main
-// by widening the carrier to GitRemoteRefExpectation, and merging main into this branch brought
-// that code in while the wholesale rewrite here silently replaced it. Nothing conflicted, because
-// the two changes touched different declarations of the same function.
+// THE POLICY: absence is a STATE; creation is a CAPABILITY. Observing that origin advertises no
+// refs/fleet/desired establishes that nothing is there -- it establishes nothing about who may
+// mint the fleet root. Authorizing creation from "absence was observed AND this revision is
+// floor-green" makes the ref self-healing in the one case where it must not be: DELETE the ref,
+// and the next green main push silently recreates it at whatever happened to land, with no human
+// decision anywhere in the loop. That erases the distinction between "the fleet has never been
+// initialized" and "someone removed the baseline", which have opposite remedies.
 //
-// So the refusal was not a decision about creation policy; it was a capability regression wearing
-// a typed refusal's clothes -- which is the worst shape for one, because a refusal LOOKS like a
-// considered position. Restored here, and the carrier is the reason it can be: the decision
-// carries the EXPECTATION rather than a prior oid, so "the ref must be absent" and "the ref must
-// equal X" are two inhabitants of one type instead of one representable state and one missing one.
+// So the admitted decision carries `expected_prior: GitObjectId` and NOT a
+// GitRemoteRefExpectation. That is deliberate and is the stronger form: with the narrower
+// carrier, an authorized creation has no spelling in this module at all, rather than being a
+// representable state some later arm must remember to refuse.
 //
-// A creation is still a compare-and-swap, never an unconditional push: RemoteRefMustBeAbsent is a
-// PRECONDITION the remote enforces, so a ref that appears between the observation and the push
-// refuses at the remote rather than being overwritten.
+// THE HISTORY, because I got this wrong in both directions within one day and the record should
+// not read as though the current shape was obvious. This refusal was authored at 07:47 as one of
+// three deliberate structural corrections, under the title "creation is not implied by absence".
+// gunbc#8746 landed the opposite policy on main at 12:14 -- four and a half hours LATER -- so
+// merging main into this branch was a genuine POLICY DIVERGENCE, not a lost port. At 14:00 I
+// then "restored" creation here, describing my own considered position as an accidental
+// capability regression that a clean merge had silently reverted. That was wrong on the facts:
+// nothing was silently reverted, a policy was reversed, and calling a reversal a repair is how a
+// decision gets unmade without anyone deciding.
+//
+// WHAT WOULD MAKE CREATION ADMISSIBLE, stated so this is a bounded retraction and not a
+// permanent no: a positive MINT-AUTHORITY carrier -- some fact that says THIS revision may
+// establish the fleet root, authored by whoever is entitled to say so, rather than inferred from
+// the ref's absence. When that carrier exists, the absent arm consumes it and this refusal
+// dissolves. Until then the refusal is the honest answer, and a red witness demanding creation
+// is answered by deleting the demand, never by re-adding the authorization.
+//
+// Raised by nimble-fox-671 relaying side-chat adjudication of both heads, who named the trap
+// precisely: a red witness whose correct fix is DELETION looks exactly like one whose correct fix
+// is RESTORATION, and only the policy tells them apart.
 fn decide_fleet_desired_advance<E, M>(
   input: FleetDesiredAdvanceInput<E, M>,
 ) -> FleetDesiredAdvanceDecision<E, M> {
@@ -408,7 +434,9 @@ fn decide_fleet_desired_advance<E, M>(
     FleetDesiredExpectationRefusedInput { accepted: _, cause: c } =>
       FleetDesiredAdvanceRefused { cause: AdvanceExpectationUnavailable { cause: c } }
     FleetDesiredRefAbsentInput { accepted: a } =>
-      FleetDesiredAdvanceAdmitted { accepted: a, expected: RemoteRefMustBeAbsent }
+      FleetDesiredAdvanceRefused {
+        cause: InitialFleetDesiredCreationNotAuthorized { accepted: a.revision },
+      }
     FleetDesiredObservedCurrentInput { accepted: a, current: cur, relation: rel } =>
       decide_against_observed_current(accepted: a, current: cur, relation: rel)
   }
@@ -466,10 +494,7 @@ fn classify_admitted_relation<E, M>(
   match rel {
     SameRevision => FleetDesiredAlreadyConverged { accepted: accepted }
     DeployedIsAncestor =>
-      FleetDesiredAdvanceAdmitted {
-        accepted: accepted,
-        expected: RemoteRefMustEqual { oid: current },
-      }
+      FleetDesiredAdvanceAdmitted { accepted: accepted, expected_prior: current }
     CandidateIsAncestor =>
       FleetDesiredSupersededNoOp { accepted: accepted, current: current }
     UnrelatedHistories =>

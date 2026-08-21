@@ -134,7 +134,7 @@ data fleet_desired_admission_repo_root: FilePath = "." as FilePath
 // the fold rather than a structural guarantee. What it does buy is that adding a fourth action
 // cannot silently produce an empty script without deleting a literal on purpose.
 type FleetDesiredAuthorizedAction
-  = FleetDesiredRemoteAdvance { accepted: GitObjectId, expected: GitRemoteRefExpectation }
+  = FleetDesiredRemoteAdvance { accepted: GitObjectId, expected_prior: GitObjectId }
   | FleetDesiredAlreadyConvergedAction { revision: GitObjectId }
   | FleetDesiredSupersededAction { accepted: GitObjectId, current: GitObjectId }
 
@@ -203,9 +203,9 @@ fn fleet_desired_action_from_decision(
   decision: FleetDesiredAdvanceDecision<NonEmptyStr, NonEmptyStr>,
 ) -> FleetDesiredAdmissionOutcome {
   match decision {
-    FleetDesiredAdvanceAdmitted { accepted: a, expected: e } =>
+    FleetDesiredAdvanceAdmitted { accepted: a, expected_prior: prior } =>
       AdmissionActionAuthorized {
-        action: FleetDesiredRemoteAdvance { accepted: a.revision, expected: e },
+        action: FleetDesiredRemoteAdvance { accepted: a.revision, expected_prior: prior },
       }
     FleetDesiredAlreadyConverged { accepted: a } =>
       AdmissionActionAuthorized {
@@ -243,6 +243,20 @@ data fleet_desired_authorized_action_shell_scaffold: Disposition = Scaffold {
 
 data fleet_desired_authorized_action_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_desired_authorized_action_script + gunbc.fleet_desired_admission_workflow fleet_desired_admission_action_step — the admitted advance is a model-rendered shell script executed by `sh`. THE PREMISE THIS ROW CARRIED UNTIL 2026-08-21 WAS THAT NO TYPED COMPARE-AND-SWAP CARRIER EXISTED; that is now false and the honest remaining debt is narrower. extdeps.git.publication_transport PushRefUpdateWithLease IS the typed leased-push wire capability, and its own annotation states its rung: it takes `lease` and `refspec` as three independent NonEmptyStr, so nothing at that boundary requires them to have been derived from one GitRemoteRefCasRequest, and it collapses a REFUSED LEASE (an answer — the remote moved, re-observe and retry) into the same nonzero-plus-String as a TRANSPORT FAILURE (no answer at all). It has zero consumers. So what is missing is not the capability but the three things that would make it safe to be its first consumer: the sole request-to-wire binder push_remote_ref_compare_and_swap, a cited decoder for git's push-rejection output that separates a stale lease from a failed push, and an independent remote readback confirming the ref landed where the decision said. DISSOLVES WHEN those three land and this module reaches the remote through the binder instead of through rendered argv, at which point the renderer and the sh step are deleted together — not before, because moving to the typed row today would trade a shell that is honestly untyped for a typed call whose refusal semantics this gate cannot yet read.")
 
+// THE WIRE WORDS COME FROM THE CAS-REQUEST CARRIER, NOT FROM A STRING BUILT HERE. An earlier
+// revision of this renderer hand-spelled `--force-with-lease=<ref>:<hex>`, which was a SECOND
+// rendering of the lease beside extdeps.git.publication_transport, the module that owns it. That
+// survives the creation retraction because it is orthogonal to it: the expectation is constructed
+// here as RemoteRefMustEqual because an admitted advance is the only thing this gate authorizes,
+// and the carrier still renders the words.
+//
+// A RECEIPT-ONLY PHRASE FUNCTION WAS DELETED WITH THE CREATION ARM rather than kept for one live
+// case. It existed to render absence as a positive word, because git spells "must be absent" as
+// an EMPTY expect value and an empty string in a receipt cannot be told from an operand nobody
+// printed. With creation unauthorized here that arm is unreachable, and an unreachable arm is the
+// dead-state problem in miniature. The reasoning is preserved upstream in nimble-fox-671's #8768,
+// where creation IS authorized and the distinction is live.
+//
 // The authorized action, rendered from the decision's own operands. On the advancing arm
 // --force-with-lease names the observed prior as the expected value, so a concurrent admission
 // refuses at the remote instead of silently overwriting -- the compare-and-swap the authority
@@ -254,27 +268,14 @@ data fleet_desired_authorized_action_shell_dissolution_trigger: DissolutionCondi
 // "authorization produced nothing" -- a transport or writer failure -- from "authorization said
 // do nothing". If a no-op could render empty, those two states would collide at the only place
 // that can still tell them apart, and a dropped authorization would read as a converged fleet.
-// THE RECEIPT AND THE LEASE NEED DIFFERENT RENDERINGS OF THE SAME FACT, AND SHARING ONE IS HOW
-// THE OPERAND GOT LOST. git spells "the ref must be absent" as an EMPTY expect value, which is
-// exactly right for the lease word and useless in a receipt: an empty string there is
-// indistinguishable from an operand nobody printed. So the receipt renders the absent arm as a
-// positive word, and it matches over the closed expectation sum rather than over the lease's
-// hex-or-empty text. Design owed to nimble-fox-671, who traced the regression that motivated it.
-fn fleet_desired_receipt_expected_phrase(expected: GitRemoteRefExpectation) -> String {
-  match expected {
-    RemoteRefMustBeAbsent => "absent"
-    RemoteRefMustEqual { oid: prior } => git_object_id_wire_hex(oid: prior) as String
-  }
-}
-
 fn fleet_desired_authorized_action_script(action: FleetDesiredAuthorizedAction) -> NonEmptyStr {
   match action {
-    FleetDesiredRemoteAdvance { accepted: to, expected: e } => {
+    FleetDesiredRemoteAdvance { accepted: to, expected_prior: prior } => {
       let request = GitRemoteRefCasRequest {
         remote: "origin" as NonEmptyStr,
         ref_name: fleet_desired_ref_name as GitRefName,
         new_oid: to,
-        expected: e,
+        expected: RemoteRefMustEqual { oid: prior },
       }
       join([
         "set -eu\n",
@@ -282,7 +283,7 @@ fn fleet_desired_authorized_action_script(action: FleetDesiredAuthorizedAction) 
         " ", request.remote as String,
         " ", git_remote_ref_cas_refspec(request: request) as String, "\n",
         "echo \"[fleet-desired] admitted ", git_object_id_wire_hex(oid: to) as String,
-        " expected-prior ", fleet_desired_receipt_expected_phrase(expected: e), "\"\n",
+        " expected-prior ", git_object_id_wire_hex(oid: prior) as String, "\"\n",
       ], "") as NonEmptyStr
     }
     FleetDesiredAlreadyConvergedAction { revision: rev } =>

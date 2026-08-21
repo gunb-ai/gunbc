@@ -225,13 +225,9 @@ test fn a_descendant_candidate_authorizes_an_advance_carrying_the_observed_prior
     AdmissionRefused { cause: _ } => false
     AdmissionActionAuthorized { action: a } =>
       match a {
-        FleetDesiredRemoteAdvance { accepted: to, expected: e } =>
+        FleetDesiredRemoteAdvance { accepted: to, expected_prior: prior } =>
           (git_object_id_wire_hex(oid: to) as String == fixture_candidate_hex)
-            && match e {
-                 RemoteRefMustEqual { oid: prior } =>
-                   git_object_id_wire_hex(oid: prior) as String == fixture_prior_hex
-                 RemoteRefMustBeAbsent => false
-               }
+            && (git_object_id_wire_hex(oid: prior) as String == fixture_prior_hex)
         FleetDesiredAlreadyConvergedAction { revision: _ } => false
         FleetDesiredSupersededAction { accepted: _, current: _ } => false
       }
@@ -249,7 +245,7 @@ test fn an_already_converged_fleet_authorizes_a_no_op_rather_than_refusing() -> 
       match a {
         FleetDesiredAlreadyConvergedAction { revision: r } =>
           git_object_id_wire_hex(oid: r) as String == fixture_candidate_hex
-        FleetDesiredRemoteAdvance { accepted: _, expected: _ } => false
+        FleetDesiredRemoteAdvance { accepted: _, expected_prior: _ } => false
         FleetDesiredSupersededAction { accepted: _, current: _ } => false
       }
   }
@@ -264,7 +260,7 @@ test fn a_superseded_candidate_authorizes_a_no_op_and_never_an_advance() -> Bool
     AdmissionActionAuthorized { action: a } =>
       match a {
         FleetDesiredSupersededAction { accepted: _, current: _ } => true
-        FleetDesiredRemoteAdvance { accepted: _, expected: _ } => false
+        FleetDesiredRemoteAdvance { accepted: _, expected_prior: _ } => false
         FleetDesiredAlreadyConvergedAction { revision: _ } => false
       }
   }
@@ -283,32 +279,24 @@ test fn an_unobservable_prior_refuses_rather_than_authorizing_a_creation() -> Bo
   }
 }
 
-// AN ABSENT REF AUTHORIZES A CREATION, AND THIS ROW ASSERTED THE OPPOSITE UNTIL 2026-08-21.
+// AN ABSENT REF REFUSES, AND THIS ROW WAS INVERTED AND THEN INVERTED BACK WITHIN ONE DAY.
 //
-// It read `an_absent_ref_refuses_rather_than_authorizing_an_initial_creation` and was GREEN,
-// because the decision it tested had regressed with it. gunbc#8746 landed creation on main by
-// widening the admitted decision to carry a GitRemoteRefExpectation; merging main into this branch
-// brought that code in, and the wholesale rewrite here replaced it with a bare prior oid -- a
-// carrier in which creation is not representable at all. Nothing conflicted; the two changes
-// touched different declarations of one function.
+// The policy it asserts -- absence is a STATE, creation is a CAPABILITY, and no observation of
+// absence can supply a mint authority -- is gunbc.fleet_main_revision's, authored deliberately
+// under the title "creation is not implied by absence". gunbc#8746 landed the opposite policy on
+// main four and a half hours later, so merging main here was a policy DIVERGENCE. I then flipped
+// this row to assert creation, calling my own position an accidental regression. It was not, and
+// the flip is reverted with the reasoning recorded rather than quietly undone.
 //
-// The row is inverted rather than deleted, and that matters: a witness asserting a capability's
-// ABSENCE is the thing that makes a silent capability deletion look verified. This one would have
-// defended the regression through review.
-test fn an_absent_ref_authorizes_a_creation_leasing_on_absence() -> Bool {
+// WHY THIS PARTICULAR ROW IS DANGEROUS IN BOTH DIRECTIONS, which is the reusable part: a witness
+// about a capability that SHOULD NOT EXIST and a witness about one that WAS LOST look identical
+// when red. Restoring the action greens either. Only the policy says which repair is correct --
+// so this annotation states the policy, and a future red here is answered by reading it, not by
+// making the row pass.
+test fn an_absent_ref_refuses_because_creation_needs_a_mint_authority() -> Bool {
   match action_for(input: FleetDesiredRefAbsentInput { accepted: accepted_fixture() }) {
-    AdmissionRefused { cause: _ } => false
-    AdmissionActionAuthorized { action: a } =>
-      match a {
-        FleetDesiredRemoteAdvance { accepted: to, expected: e } =>
-          (git_object_id_wire_hex(oid: to) as String == fixture_candidate_hex)
-            && match e {
-                 RemoteRefMustBeAbsent => true
-                 RemoteRefMustEqual { oid: _ } => false
-               }
-        FleetDesiredAlreadyConvergedAction { revision: _ } => false
-        FleetDesiredSupersededAction { accepted: _, current: _ } => false
-      }
+    AdmissionActionAuthorized { action: _ } => false
+    AdmissionRefused { cause: c } => string_contains(s: c, pattern: "mint the fleet root")
   }
 }
 
@@ -321,54 +309,31 @@ test fn the_authorized_advance_carries_the_observed_prior_as_the_cas_expectation
   let script = fleet_desired_authorized_action_script(
     action: FleetDesiredRemoteAdvance {
       accepted: fixture_oid(hex: fixture_candidate_hex),
-      expected: RemoteRefMustEqual { oid: fixture_oid(hex: fixture_prior_hex) },
+      expected_prior: fixture_oid(hex: fixture_prior_hex),
     },
   ) as String
   string_contains(s: script, pattern: concat("--force-with-lease=refs/fleet/desired:", fixture_prior_hex))
     && string_contains(s: script, pattern: concat(fixture_candidate_hex, ":refs/fleet/desired"))
 }
 
-// THE CREATION PUSH LEASES ON THE REF BEING ABSENT, which git spells as an EMPTY expect value --
-// so the lease reads `--force-with-lease=refs/fleet/desired:` with nothing after the colon. The
-// trailing space in the pattern is what pins that: without it, a lease that silently rendered the
-// prior-oid form would still match.
-test fn the_creation_push_leases_on_the_ref_being_absent() -> Bool {
+// THE RECEIPT MUST NAME THE EXPECTED PRIOR, NOT ONLY THE TARGET. The regression this guards
+// shipped upstream as collateral of a correct change: when main's admitted decision widened from
+// a prior oid to an expectation, the echo could no longer print `from` on the absent arm, and
+// dropping it for BOTH arms was the path of least resistance. What actually happened stays
+// recoverable from git's range line; what was EXPECTED then appeared nowhere in the run.
+//
+// This gate has one authorized action, so there is one arm to check -- and the check is the
+// contiguous pattern rather than the two hexes separately, because a script naming both revisions
+// in unrelated positions would satisfy a looser assertion while telling the reader nothing about
+// which was expected. Found by nimble-fox-671.
+test fn the_receipt_names_the_expected_prior_beside_the_target() -> Bool {
   let script = fleet_desired_authorized_action_script(
     action: FleetDesiredRemoteAdvance {
       accepted: fixture_oid(hex: fixture_candidate_hex),
-      expected: RemoteRefMustBeAbsent,
+      expected_prior: fixture_oid(hex: fixture_prior_hex),
     },
   ) as String
-  string_contains(s: script, pattern: "--force-with-lease=refs/fleet/desired: ")
-    && string_contains(s: script, pattern: concat(fixture_candidate_hex, ":refs/fleet/desired"))
-    && !string_contains(s: script, pattern: fixture_prior_hex)
-}
-
-// THE RECEIPT MUST NAME THE EXPECTED PRIOR, AND THE ABSENT ARM MUST NAME IT AS A WORD.
-// The regression this guards shipped as collateral of a correct change: when the admitted decision
-// widened from a prior oid to an expectation, the echo could no longer print `from` on the absent
-// arm, and dropping it for BOTH arms was the path of least resistance. What actually happened stays
-// recoverable from git's range line; what was EXPECTED then appeared nowhere in the run.
-//
-// The second conjunct is the discriminating half: an empty rendering would leave `expected-prior "`
-// in the script, which is indistinguishable from an operand nobody printed. That is exactly the
-// shape the regression had, so this row goes red if it ever returns.
-test fn the_receipt_names_the_expected_prior_on_both_arms() -> Bool {
-  let advancing = fleet_desired_authorized_action_script(
-    action: FleetDesiredRemoteAdvance {
-      accepted: fixture_oid(hex: fixture_candidate_hex),
-      expected: RemoteRefMustEqual { oid: fixture_oid(hex: fixture_prior_hex) },
-    },
-  ) as String
-  let creating = fleet_desired_authorized_action_script(
-    action: FleetDesiredRemoteAdvance {
-      accepted: fixture_oid(hex: fixture_candidate_hex),
-      expected: RemoteRefMustBeAbsent,
-    },
-  ) as String
-  string_contains(s: advancing, pattern: concat("expected-prior ", fixture_prior_hex))
-    && string_contains(s: creating, pattern: "expected-prior absent")
-    && !string_contains(s: creating, pattern: "expected-prior \"")
+  string_contains(s: script, pattern: concat(concat("admitted ", fixture_candidate_hex), concat(" expected-prior ", fixture_prior_hex)))
 }
 
 // THE WALL THE EXECUTING STEP DEPENDS ON. `test -s` distinguishes "authorization produced
