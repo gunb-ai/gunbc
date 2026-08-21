@@ -1,0 +1,11 @@
+name: probe-queue-max
+on: push
+concurrency:
+  queue: max
+  group: probe-queue-max-group
+  cancel-in-progress: false
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "if this job exists at all, GHA accepted the concurrency block"
