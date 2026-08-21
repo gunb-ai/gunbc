@@ -2161,6 +2161,15 @@ fn build_cache_classify_failure_body() -> String {
   ], "\n")
 }
 
+// THE HEREDOC TERMINATOR IS CONCATENATED ONTO THE UNIT TEXT, NOT JOINED AS A SIBLING LINE.
+//
+// build_cache_unit_text ends in its own terminating newline, because extdeps.systemd.unit_file
+// serializes a unit as a complete file. The heredoc supplies a newline of its own before the
+// terminator, so joining the two as adjacent list elements would emit BOTH and deliver a unit
+// carrying a trailing blank line. Concatenating spends the render's newline as the one the
+// terminator needs, which is what keeps the delivered bytes identical to the hand renderer this
+// replaced -- measured on both the CI and session instances rather than argued. The drift would
+// have been one byte in a file that convergence compares byte-for-byte against this same render.
 fn build_cache_ensure_daemon_body(instance: BuildCacheInstance, arch_token: NonEmptyStr, digest: Digest) -> String {
   join([
     join(["if [ ! -x '", sccache_installed_binary_path, "' ]; then"], ""),
@@ -2169,10 +2178,6 @@ fn build_cache_ensure_daemon_body(instance: BuildCacheInstance, arch_token: NonE
     "_gunbc_stage=\"$(mktemp -d)\"",
     "trap 'rm -rf \"$_gunbc_stage\"' EXIT",
     join(["cat > \"$_gunbc_stage/", instance.intended_unit as String, "\" <<'__GUNBC_SCCACHE_UNIT__'"], ""),
-    // The unit text already ends in its terminating newline, so the heredoc terminator is
-    // CONCATENATED onto it rather than joined as a sibling line. Joining would insert a second
-    // separator and deliver a unit carrying a trailing blank line -- a silent one-byte drift in a
-    // file that is compared byte-for-byte against this render when convergence reads it back.
     concat(build_cache_unit_text(instance: instance), "__GUNBC_SCCACHE_UNIT__"),
     join(["sudo -n install -m 0644 \"$_gunbc_stage/", instance.intended_unit as String, "\" ", build_cache_unit_system_path(instance: instance)], ""),
     systemctl_daemon_reload_command(privileged: true),
