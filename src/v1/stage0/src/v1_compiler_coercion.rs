@@ -21,6 +21,7 @@ pub use crate::std_coercion::{
 pub use crate::std_types::{canonical_container_names, container_template_algebra};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
+pub use crate::v1_compiler_emit_rust::rust_seed_host_numeric_alias;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::qualified_last_segment;
@@ -207,7 +208,25 @@ pub fn type_realization_decision(
                 Some(cp) => Rc::new(TypeRealizationDecision::Realized {
                     checkpoint: cp.clone(),
                 }),
-                None => Rc::new(TypeRealizationDecision::Unrealized),
+                None => {
+                    let native = if (target.clone() == RenderTarget::Rust) {
+                        rust_seed_host_numeric_alias(dag_name.clone(), decl_file.clone())
+                    } else {
+                        None
+                    };
+                    match native.clone() {
+                        Some(host) => Rc::new(TypeRealizationDecision::Realized {
+                            checkpoint: Rc::new(TypeCheckpoint {
+                                dag_name: dag_name.clone(),
+                                target_type: host.clone(),
+                                default_expr: None,
+                                is_copy: None,
+                                literal_suffix: None,
+                            }),
+                        }),
+                        None => Rc::new(TypeRealizationDecision::Unrealized),
+                    }
+                }
             }
         }
     }

@@ -189,10 +189,31 @@ fn type_realization_decision(
   } else {
     match target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first {
       Present { value: cp } => Realized { checkpoint: cp }
-      Absent => Unrealized
+      Absent =>
+        let native = if (target == Rust) { rust_seed_host_numeric_alias(name: dag_name, decl_file: decl_file) } else { none }
+        match native {
+          Present { value: host } => Realized { checkpoint: TypeCheckpoint { dag_name: dag_name, target_type: host, default_expr: none, is_copy: none, literal_suffix: none } }
+          Absent => Unrealized
+        }
     }
   }
 }
+
+// Rust-target closure over the native-numeric gap (review 54323 finding 2): Nat/Int declared at
+// dag/std/nat.dag or dag/std/integer.dag (or minted by the kernel) answer Realized with a
+// synthesized TypeCheckpoint (target_type: "i64", the same string rust_seed_host_numeric_alias
+// (v1.compiler.emit_rust) always returned) rather than Unrealized -- restoring the fifth
+// discriminating witness this decision was landed without: Nat at dag/std/nat.dag now answers
+// Realized:i64 while Nat at src/v2/std/nat.dag continues to answer Unrealized, for the same
+// declaration-identity reason the Hash witness already demonstrated (decl_file discriminating two
+// declarations sharing a spelling), not merely two different Unrealized causes. Gated on
+// target == Rust because rust_seed_host_numeric_alias is a Rust-target fact (its name says so) and
+// this decision is target-generic across Rust/Python/Go/Dag; applying it unconditionally would
+// answer Realized:i64 for a Python or Go render that has no such native alias. The synthesized
+// TypeCheckpoint's non-target_type fields (default_expr, is_copy, literal_suffix) are none rather
+// than guessed, matching what rust_seed_host_numeric_alias itself has always carried -- it returns
+// a bare String, not a full checkpoint row, so this decision is not inventing information the prior
+// mechanism lacked.
 
 // decl_file == "" is NOT routed through type_realization_decision's Refused arm here: dozens of
 // production call sites across v1.compiler.emit_rust and v1.compiler.emit already pass an empty
