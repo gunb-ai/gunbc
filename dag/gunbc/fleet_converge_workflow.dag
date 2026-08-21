@@ -433,5 +433,4 @@ fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
   } else {
     FleetConvergeYamlGenerationRefused { reason: fleet_converge_capability_closure_refusal }
   }
-  }
 }
