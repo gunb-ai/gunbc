@@ -193,15 +193,16 @@ test fn an_unobservable_prior_refuses_rather_than_creating_the_ref() -> Bool {
 // A compile fix alone would leave the two most dangerous inputs to an actuator covered by
 // nothing that executes, which is how a repaired build acquires an untested arm.
 //
-// Absent is refused as a CAPABILITY boundary, not an error: this path authorizes an advance from
-// an observed prior, and creating the ref is a different admission with its own authorization.
+// Absent is refused as an EXECUTIONAL limit, not a policy: an absent ref genuinely does license a
+// first creation, and this module simply cannot perform one yet. The cause is asserted on that
+// wording rather than on a prohibition, because the follow-up author reads it first.
 // Undecodable is refused on stronger grounds -- the ref EXISTS holding something unreadable, so a
 // write would destroy it and a retry would not help. The causes are asserted distinctly, because
 // the whole point of the four-way split is that these two remedies are not interchangeable.
 test fn an_absent_ref_is_refused_rather_than_created_by_this_path() -> Bool {
   match decided(event: admitting_event(), observed: FleetDesiredAbsent) {
     AdmissionAdvanceAuthorized { from: _, to: _ } => false
-    AdmissionRefused { cause: c } => string_contains(s: c, pattern: "never a first creation")
+    AdmissionRefused { cause: c } => string_contains(s: c, pattern: "cannot yet execute one")
   }
 }
 
@@ -214,7 +215,7 @@ test fn an_undecodable_advertisement_is_refused_and_never_written_over() -> Bool
     AdmissionRefused { cause: c } =>
       string_contains(s: c, pattern: "must not be written over")
         && string_contains(s: c, pattern: "not-a-sha")
-        && !string_contains(s: c, pattern: "never a first creation")
+        && !string_contains(s: c, pattern: "cannot yet execute one")
   }
 }
 

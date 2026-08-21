@@ -188,9 +188,17 @@ fn fleet_desired_admission_decide(event: WorkflowRunEvent, observed: FleetDesire
         // The answers follow this function's own stated policy rather than inventing one. It
         // already declines to create the ref from an unobserved prior, on the reasoning that a
         // first admission must arrive as a distinguished observation and not as an arm guessing.
-        // FleetDesiredAbsent IS that distinguished observation -- but authorizing creation here
-        // would be a NEW capability landing as a side effect of a compile fix, so it refuses and
-        // says what it would take. Undecodable refuses on stronger grounds: the ref EXISTS
+        // FleetDesiredAbsent IS that distinguished observation, and the refusal is deliberately
+        // NOT a policy against creation -- fleet_main_revision says outright that an absent ref is
+        // where a create belongs, and its expectation seam already maps Absent to
+        // RemoteRefMustBeAbsent. The limit is executional and local to this module: its outcome
+        // carries a non-optional prior and its push renderer spells only
+        // --force-with-lease=<ref>:<prior-hex>, which has no operand for "expect this ref to be
+        // absent". Reusing the advance path would name a prior nobody observed -- an unconditional
+        // write wearing a compare-and-swap, which overwrites silently if the absence reading was
+        // ever wrong. So the cause says what this module cannot yet EXECUTE, not what policy
+        // forbids, because that is the sentence whoever picks up the create will read first.
+        // (Wording per nimble-fox-671, the module owner, who reached the same refusal independently.) Undecodable refuses on stronger grounds: the ref EXISTS
         // holding something unreadable, so a write would destroy it, and the remedy is to read
         // the bytes rather than to retry.
         FleetDesiredAbsent =>
@@ -198,7 +206,7 @@ fn fleet_desired_admission_decide(event: WorkflowRunEvent, observed: FleetDesire
             cause: join([
               "fleet_desired_admission: origin advertises no ",
               fleet_desired_ref_name,
-              " -- this path authorizes an ADVANCE from an observed prior and never a first creation; creating it is a separate admission with its own authorization",
+              " -- an absent ref DOES license a first creation, but this module cannot yet execute one: it authorizes an advance from an observed prior, and its push renderer has no operand for expecting a ref to be absent",
             ], ""),
           }
         FleetDesiredUndecodable { advertised: line } =>
