@@ -18311,15 +18311,16 @@ fn git_stdout(workspace: &Path, args: &[&str]) -> Result<String, String> {
 /// a module that silently produces nothing is indistinguishable from a module that passed, and
 /// that conflation is what makes an unexecuted receipt read as a green one.
 ///
-/// Each arm has a producer. An earlier revision declared three, adding `NoEmissionChange`
+/// EVERY ARM HAS A PRODUCER. An earlier revision declared three, adding `NoEmissionChange`
 /// (authority moved but emission did not) and `CorpusNotDerivable`. Neither was ever constructed:
-/// the first needs the emission this fragment does not yet compute, and the second duplicates
-/// `ModuleCorpusPlan::refused`, which already carries every refusal with the function and type
-/// that caused it. A declared-but-unconstructed variant is vocabulary claiming a distinction
-/// nothing draws, so both were deleted rather than carried until a producer appears.
+/// the first needs the emission this fragment does not yet compute, and the second was a second
+/// name for `ModuleCorpusPlan::refused`, which already carries every refusal with the function
+/// and type that caused it. A declared-but-unconstructed variant is vocabulary claiming a
+/// distinction nothing draws, so both were deleted rather than carried until a producer appeared.
 /// `NoEmissionChange` returns when the two-build differential lands and can actually observe it.
-/// `NoFunctionsDeclared` is a genuine third arm because `declared_fn_lines == 0` is itself the
-/// producer -- a fact read straight off the authored source, not a placeholder for one.
+///
+/// `NoFunctionHasACorpus` is the one that came back, WITH a producer and at a different grain --
+/// see its own comment.
 #[derive(Debug, Clone, PartialEq)]
 enum ReceiptExclusion {
     /// No emitted mirror in the generated population names this authority, under EITHER header
@@ -18330,15 +18331,30 @@ enum ReceiptExclusion {
     /// skipped, because a changed authority that maps to nothing must be visible.
     NoEmittedMirror { module_path: String },
 
-    /// The authority declares zero `fn` lines, so `plan_module_corpus` can only ever derive an
-    /// empty `derivable` set for it -- a fact decidable from the source at selection time, before
-    /// any differential runs. Left unexcluded, `behavioral_differential`'s `total == 0` guard
-    /// refuses every such module on every diff that touches it: a domain that can never hold a
-    /// corpus was being admitted into the domain that requires one. Construction over validation
-    /// (DESIGN.md §5): a module with no functions is excluded here, by the same decidable fact
-    /// that would otherwise make the differential refuse it downstream, rather than being run and
-    /// caught as a runtime `Refused` verdict.
-    NoFunctionsDeclared { module_path: String },
+    /// NOT ONE FUNCTION in this authority yields a call, so there is no corpus to compare -- and
+    /// the arm carries EVERY declared function with the cause that stopped it, because the
+    /// deficit lives at the function and a module-level "nothing derived" cannot be acted on.
+    ///
+    /// WHY THIS IS AN EXCLUSION AND NOT A REFUSAL, which is the whole of the change that
+    /// introduced it. The verdict used to be decided by a FILE-LEVEL count crossing zero: a
+    /// module where 1 of 20 functions derived ran and reported EQUIVALENT, and a module where 0
+    /// of 20 derived hard-failed required CI. One deficit -- functions whose corpus this fragment
+    /// cannot derive -- and two opposite verdicts, separated by nothing but where the count
+    /// happened to land. Worse, the red had no closing move: an author cannot make
+    /// `List<T>` enumerable to get their diff through, so the only way past the gate was to stop
+    /// touching the authority. A gate whose sole closing move does not exist does not enforce,
+    /// it launders (DESIGN.md, the fixed-point repair).
+    ///
+    /// So non-derivability is reported at the grain it occurs at -- per function, typed, located,
+    /// counted -- and a module with no covered function is EXCLUDED from a differential it can
+    /// never take, exactly as `NoEmittedMirror` is. It is not silence: the count of uncovered
+    /// functions is printed on every run beside the module count, so the deficit stays rankable
+    /// rather than having its frequency zeroed.
+    NoFunctionHasACorpus {
+        module_path: String,
+        /// `(function, why it yields no call)`, one row per declared function.
+        uncovered: Vec<(String, RefusalCause)>,
+    },
 }
 
 /// The domain a corpus actually enumerated, reported as a DERIVED FACT rather than a label.
@@ -18754,6 +18770,23 @@ enum RefusalCause {
     TupleBudgetExceeded {
         param: String,
     },
+    /// Every parameter's domain derived, and the product of them contains NO tuple -- so the
+    /// function yields no call while looking, in a count of derivable functions, exactly like one
+    /// that yields a thousand.
+    ///
+    /// COUNTED SEPARATELY FROM THE NEVER-DERIVABLE ONES ON PURPOSE: the remedies differ. A
+    /// function refused for `List<T>` needs a length partition; a function with an empty product
+    /// needs the enumerator that produced an empty value set fixed. Summing them would name one
+    /// piece of work where there are two.
+    ///
+    /// REACHABILITY, STATED RATHER THAN IMPLIED: no enumerator in this fragment returns an empty
+    /// value set today (a zero-variant coproduct is dropped before it becomes a `DagTypeDecl`, and
+    /// a zero-field record enumerates to the one empty literal), so there is no live specimen in
+    /// the corpus. The producer is the classification in `function_grain_coverage`, which is
+    /// executed against this state by `empty_derived_domain_is_uncovered_not_covered`. It exists
+    /// because a zero that reads as success is the exact failure this whole arm closes: a
+    /// function counted as covered while contributing nothing to the transcript.
+    EmptyDerivedDomain,
     /// A refusal reached through a record field, carrying the field path for locating and the
     /// UNDERLYING cause for ranking -- grounding the inner type unlocks the outer record too.
     ViaField {
@@ -18798,6 +18831,7 @@ impl RefusalCause {
             RefusalCause::TupleBudgetExceeded { .. } => {
                 format!("(combination exceeds {MAX_TUPLES_PER_FUNCTION} tuples)")
             }
+            RefusalCause::EmptyDerivedDomain => "(derived domain contains no values)".to_string(),
             RefusalCause::ViaField { inner, .. } => inner.subject(),
         }
     }
@@ -18859,10 +18893,24 @@ impl RefusalCause {
                 "{param} (corpus exceeds {MAX_TUPLES_PER_FUNCTION} tuples; refusing rather than \
                  sampling)"
             ),
+            RefusalCause::EmptyDerivedDomain => {
+                "every parameter derived, but their product contains no tuple, so this function \
+                 yields no call at all"
+                    .to_string()
+            }
             RefusalCause::ViaField { ty, field, inner } => {
                 format!("{ty}.{field}: {}", inner.describe())
             }
         }
+    }
+}
+
+/// `Debug` IS `describe()`. A derived `Debug` would print the variant name, which is the one
+/// rendering of a refusal that cannot be acted on -- and a test asserting on it would pin the
+/// spelling of a Rust identifier rather than the fact.
+impl std::fmt::Debug for RefusalCause {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.describe())
     }
 }
 
@@ -19159,6 +19207,73 @@ struct ModuleCorpusPlan {
     parsed_signatures: usize,
 }
 
+/// One module's surface partitioned AT FUNCTION GRAIN: which declared functions actually yield a
+/// call, and which yield none and why.
+///
+/// This is the fact the receipt is denominated in. `ModuleCorpusPlan::derivable` is close to it
+/// but not equal to it: a function whose parameter domains all derived while their product is
+/// empty sits in `derivable` and contributes nothing, so counting that vector counts a coverage
+/// claim rather than coverage.
+#[derive(Debug)]
+struct FunctionGrainCoverage {
+    /// Functions that yield at least one call, with how many.
+    covered: Vec<(String, usize)>,
+    /// Functions that yield none, each with the cause. `RefusalCause::EmptyDerivedDomain`
+    /// distinguishes "derived, but to nothing" from "did not derive".
+    uncovered: Vec<(String, RefusalCause)>,
+}
+
+impl FunctionGrainCoverage {
+    fn calls(&self) -> usize {
+        self.covered.iter().map(|(_, n)| n).sum()
+    }
+}
+
+/// The partition itself. Pure over the plan, which is what lets both arms of it be executed
+/// against hand-built states rather than only against whatever the live corpus happens to hold.
+fn function_grain_coverage(plan: &ModuleCorpusPlan) -> FunctionGrainCoverage {
+    let mut covered = Vec::new();
+    let mut uncovered = Vec::new();
+    for (name, _domain, tuples) in &plan.derivable {
+        if tuples.is_empty() {
+            uncovered.push((name.clone(), RefusalCause::EmptyDerivedDomain));
+        } else {
+            covered.push((name.clone(), tuples.len()));
+        }
+    }
+    for (name, cause) in &plan.refused {
+        uncovered.push((name.clone(), cause.clone()));
+    }
+    FunctionGrainCoverage { covered, uncovered }
+}
+
+/// A plan CARRYING AT LEAST ONE CALL. There is no other way to build one.
+///
+/// The differential used to check this itself -- `if total == 0 { Refused }` -- which is
+/// validation of a state the caller was free to construct (DESIGN.md section 5: prefer making the
+/// bad state unwritable to flagging it afterwards). Selection now decides admission at function
+/// grain, and hands the differential a value that cannot represent an empty corpus, so the
+/// comparison-over-nothing the old guard existed to catch has no spelling. The guard is deleted
+/// rather than kept beside the new arm: two answers to one question is the dual authority
+/// DESIGN.md section 3 forbids, and the surviving one would be the one that never runs.
+struct AdmittedPlan<'a> {
+    plan: &'a ModuleCorpusPlan,
+    coverage: FunctionGrainCoverage,
+}
+
+impl<'a> AdmittedPlan<'a> {
+    /// `Err` carries the function-grain partition of a module no function of which yields a call
+    /// -- the rows the exclusion is built from, so the refusal and the report read the same fact.
+    fn of(plan: &'a ModuleCorpusPlan) -> Result<AdmittedPlan<'a>, FunctionGrainCoverage> {
+        let coverage = function_grain_coverage(plan);
+        if coverage.covered.is_empty() {
+            Err(coverage)
+        } else {
+            Ok(AdmittedPlan { plan, coverage })
+        }
+    }
+}
+
 /// Every `.dag` module reachable from the source roots, keyed by its declared module path.
 fn collect_dag_module_sources(
     source_roots: &[String],
@@ -19397,9 +19512,10 @@ enum ReceiptVerdict {
         calls: usize,
         first_difference: String,
     },
-    /// The comparison could NOT be taken. Never reported as equivalence: an emit that failed, a
-    /// driver that would not compile, or a corpus with nothing in it is ignorance, and rendering
-    /// ignorance as the clean verdict is the empty-observation narrow.
+    /// The comparison could NOT be taken. Never reported as equivalence: an emit that failed, or
+    /// a driver that would not compile, is ignorance, and rendering ignorance as the clean verdict
+    /// is the empty-observation narrow. A corpus with nothing in it is NOT among these any more --
+    /// it never reaches the differential, because `AdmittedPlan` cannot carry it.
     Refused { reason: String },
 }
 
@@ -19555,19 +19671,13 @@ fn behavioral_differential(
     krate: &ReceiptCrate,
     mirror_path: &std::path::Path,
     candidate_source: &str,
-    plan: &ModuleCorpusPlan,
+    admitted: &AdmittedPlan<'_>,
     module_alias: &str,
 ) -> ReceiptVerdict {
-    let total: usize = plan.derivable.iter().map(|(_, _, t)| t.len()).sum();
-    if total == 0 {
-        return ReceiptVerdict::Refused {
-            reason: format!(
-                "{}: nothing derived, so there is no corpus to run. Reported as a refusal rather \
-                 than as equivalence, which is what an empty comparison would otherwise look like",
-                plan.module_path
-            ),
-        };
-    }
+    // No emptiness check: `AdmittedPlan` cannot be built from a plan with no call in it, so the
+    // comparison-over-nothing this function used to guard against is unrepresentable here rather
+    // than rejected here.
+    let plan = admitted.plan;
     let driver = generate_receipt_driver(module_alias, plan);
     let shown = mirror_path.display().to_string();
 
@@ -20165,6 +20275,19 @@ fn behavioral_receipt_selftest(source_roots: &[String]) -> Result<bool, String> 
     let seed_path = fixture.join("src/lib.rs");
     let mut ok = true;
     let krate = ReceiptCrate::receipt_fixture();
+    // The fixture must ADMIT, and it says so here rather than deep inside an arm: a fixture that
+    // stopped yielding calls would otherwise turn both arms into an exclusion and this control
+    // into a control that cannot fail.
+    let admitted = AdmittedPlan::of(&plan).map_err(|c| {
+        format!(
+            "the fixture yields no call at all, so neither arm could discriminate. Uncovered: {}",
+            c.uncovered
+                .iter()
+                .map(|(f, w)| format!("{f}: {}", w.describe()))
+                .collect::<Vec<_>>()
+                .join("; ")
+        )
+    })?;
 
     for (arm, candidate_file, expect_equivalent) in [
         ("preserving", "behaviour_preserving.rs", true),
@@ -20186,7 +20309,7 @@ fn behavioral_receipt_selftest(source_roots: &[String]) -> Result<bool, String> 
         }
 
         let verdict =
-            behavioral_differential(&workspace, &krate, &seed_path, &candidate, &plan, alias);
+            behavioral_differential(&workspace, &krate, &seed_path, &candidate, &admitted, alias);
         match (&verdict, expect_equivalent) {
             (ReceiptVerdict::Equivalent { calls }, true) => {
                 eprintln!("receipt-selftest: arm {arm} EQUIVALENT over {calls} derived calls — as required");
@@ -20349,6 +20472,11 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
 
     let mut exclusions: Vec<ReceiptExclusion> = Vec::new();
     let mut plans: Vec<(String, ModuleCorpusPlan, String)> = Vec::new();
+    // BOTH GRAINS, ACCUMULATED ACROSS EVERY CHANGED AUTHORITY -- including the excluded ones,
+    // which is the point: a function that yields no call is uncovered whether or not its module
+    // had a sibling that saved it from exclusion.
+    let mut declared_functions = 0usize;
+    let mut covered_functions = 0usize;
 
     for rel in &changed {
         let abs = workspace.join(rel);
@@ -20377,8 +20505,17 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
                     &declared_anywhere,
                     &alias,
                 );
-                if plan.declared_fn_lines == 0 {
-                    exclusions.push(ReceiptExclusion::NoFunctionsDeclared { module_path });
+                // ADMISSION IS DECIDED HERE, AT FUNCTION GRAIN, and it is decided from a fact the
+                // source already carries -- no build, no emit, no differential is spent on a
+                // module that cannot produce a call.
+                let coverage = function_grain_coverage(&plan);
+                declared_functions += coverage.covered.len() + coverage.uncovered.len();
+                covered_functions += coverage.covered.len();
+                if coverage.covered.is_empty() {
+                    exclusions.push(ReceiptExclusion::NoFunctionHasACorpus {
+                        module_path,
+                        uncovered: coverage.uncovered,
+                    });
                 } else {
                     plans.push((mirror, plan, alias))
                 }
@@ -20386,11 +20523,18 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
         }
     }
 
+    // BOTH GRAINS, SIDE BY SIDE, ON EVERY RUN -- even when they agree (operator directive,
+    // 2026-08-21). A module count alone reads as coverage ("3 modules, one pass"); a function
+    // count alone reads as what happened but hides how much of the corpus was in scope at all.
+    // The gap between the two sentences is the thing worth seeing, and a reader given one number
+    // infers the other one wrongly.
     eprintln!(
-        "behavioral-receipt: changed_authorities={} selected={} excluded={}",
+        "behavioral-receipt: GRAIN module: changed_authorities={} selected={} excluded={} | \
+         function: declared={declared_functions} covered={covered_functions} uncovered={}",
         changed.len(),
         plans.len(),
-        exclusions.len()
+        exclusions.len(),
+        declared_functions - covered_functions
     );
     for e in &exclusions {
         match e {
@@ -20400,11 +20544,26 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
                  convention (the index refuses outright if any generated file is \
                  unindexable, so this is a fact about the corpus and not a lookup miss)"
             ),
-            ReceiptExclusion::NoFunctionsDeclared { module_path } => eprintln!(
-                "behavioral-receipt: excluded {module_path} — zero declared `fn` lines, so no \
-                 differential corpus can ever be derived for it (a decidable fact about the \
-                 authored source, not a runtime refusal)"
-            ),
+            ReceiptExclusion::NoFunctionHasACorpus {
+                module_path,
+                uncovered,
+            } => {
+                eprintln!(
+                    "behavioral-receipt: excluded {module_path} — none of its {} declared \
+                     functions yields a call, so there is no corpus to compare. NOT a failure of \
+                     this diff: the same non-derivability in a module with one derivable sibling \
+                     runs and passes, so refusing here would be a verdict decided by where a \
+                     file-level count landed. Every uncovered function is named below and counted \
+                     in the FUNCTION-GRAIN line",
+                    uncovered.len()
+                );
+                for (f, why) in uncovered {
+                    eprintln!(
+                        "behavioral-receipt:   uncovered {module_path}::{f} — {}",
+                        why.describe()
+                    );
+                }
+            }
         }
     }
     for (_mirror, p, _alias) in &plans {
@@ -20450,9 +20609,11 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
     // what a one-module change costs for no additional information.
     if plans.is_empty() {
         eprintln!(
-            "behavioral-receipt: no changed authority module has an emitted mirror, so there is \
-             nothing to compare and this run costs nothing. That is a real pass over an EMPTY \
-             selection, stated rather than printed as a bare PASS"
+            "behavioral-receipt: no changed authority module reached the differential — every one \
+             was excluded above, either for having no emitted mirror or for yielding no call from \
+             any of its declared functions. Nothing to compare, so this run costs nothing. That \
+             is a real pass over an EMPTY selection, stated rather than printed as a bare PASS, \
+             and the FUNCTION-GRAIN counts above say how much surface that silence covers"
         );
         return Ok(ReceiptPlanOutcome::Ran { agreed: true });
     }
@@ -20499,6 +20660,11 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
 
     let emitted = v1_compiler::cli_run::emitted_generated_sources()?;
     let mut all_equivalent = true;
+    // Accumulated as each module is admitted and printed after every verdict, so the denominator
+    // is the SAME partition the admission was decided from. Recomputing it from the plan
+    // afterwards would be a second producer of one fact, and the one that gets reported is the
+    // one that never gated anything.
+    let mut denominators: Vec<String> = Vec::new();
     for (mirror, plan, alias) in &plans {
         let Some(candidate_source) = emitted.get(mirror) else {
             eprintln!(
@@ -20509,12 +20675,38 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
             all_equivalent = false;
             continue;
         };
+        // Infallible in fact -- selection only pushed plans that admitted -- but derived here
+        // rather than asserted, so the differential's precondition is carried by the value it
+        // receives instead of by a comment about an earlier loop.
+        let admitted = match AdmittedPlan::of(plan) {
+            Ok(a) => a,
+            Err(coverage) => {
+                eprintln!(
+                    "behavioral-receipt: {} REFUSED — selected but yields no call ({} uncovered \
+                     functions). Selection and admission disagree, which is a defect in this \
+                     fragment, not in the authority",
+                    plan.module_path,
+                    coverage.uncovered.len()
+                );
+                all_equivalent = false;
+                continue;
+            }
+        };
+        denominators.push(format!(
+            "behavioral-receipt: DENOMINATOR {} — {} derived calls over {} of {} declared \
+             functions; the other {} yield no call and are NOT covered by this verdict",
+            plan.module_path,
+            admitted.coverage.calls(),
+            admitted.coverage.covered.len(),
+            plan.parsed_signatures,
+            admitted.coverage.uncovered.len()
+        ));
         match behavioral_differential(
             &workspace,
             &ReceiptCrate::v1_compiler(),
             &workspace.join("src/v1/stage0/src").join(mirror),
             candidate_source,
-            plan,
+            &admitted,
             alias,
         ) {
             ReceiptVerdict::Equivalent { calls } => eprintln!(
@@ -20543,18 +20735,121 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
     // THE DENOMINATOR, EVERY RUN (operator ruling, 2026-08-20). A green here means the DERIVED
     // CALLS in the selected modules agreed -- never that a module is behaviourally equivalent.
     // Printing a bare PASS is how, inside a week, someone reads this as promotion evidence.
-    for (_m, plan, _a) in &plans {
-        let calls: usize = plan.derivable.iter().map(|(_, _, t)| t.len()).sum();
-        eprintln!(
-            "behavioral-receipt: DENOMINATOR {} — {calls} derived calls over {} of {} declared \
-             functions; the other {} refused and are NOT covered by this verdict",
-            plan.module_path,
-            plan.derivable.len(),
-            plan.parsed_signatures,
-            plan.refused.len()
-        );
+    for line in &denominators {
+        eprintln!("{line}");
     }
     Ok(ReceiptPlanOutcome::Ran {
         agreed: all_equivalent,
     })
+}
+
+#[cfg(test)]
+mod function_grain_admission_tests {
+    use super::*;
+
+    fn plan(derivable: Vec<(&str, usize)>, refused: Vec<(&str, RefusalCause)>) -> ModuleCorpusPlan {
+        let declared = derivable.len() + refused.len();
+        ModuleCorpusPlan {
+            module_path: "test.module".to_string(),
+            derivable: derivable
+                .into_iter()
+                .map(|(name, calls)| {
+                    (
+                        name.to_string(),
+                        EnumeratedDomain::Exhaustive { cardinality: calls },
+                        (0..calls).map(|i| vec![format!("{i}i64")]).collect(),
+                    )
+                })
+                .collect(),
+            refused: refused
+                .into_iter()
+                .map(|(name, cause)| (name.to_string(), cause))
+                .collect(),
+            declared_fn_lines: declared,
+            parsed_signatures: declared,
+        }
+    }
+
+    fn unbounded() -> RefusalCause {
+        RefusalCause::UnboundedString {
+            ty: "String".to_string(),
+        }
+    }
+
+    /// THE DISCRIMINATING RED for the whole change. A module whose every declared function refuses
+    /// derivation used to reach the differential and come back `Refused`, which made the diff that
+    /// touched it hard-fail required CI. It must now fail admission instead -- and name every
+    /// function, because a module-level "nothing derived" is not something an author can act on.
+    #[test]
+    fn a_module_with_no_derivable_function_is_excluded_not_refused() {
+        let p = plan(vec![], vec![("alpha", unbounded()), ("beta", unbounded())]);
+        let coverage = AdmittedPlan::of(&p).err().expect(
+            "a module yielding no call must not be admissible to a differential that would \
+             compare a program against itself over an empty transcript",
+        );
+        let named: Vec<&str> = coverage.uncovered.iter().map(|(f, _)| f.as_str()).collect();
+        assert_eq!(named, vec!["alpha", "beta"]);
+        assert_eq!(coverage.calls(), 0);
+    }
+
+    /// THE POSITIVE CONTROL, and the one that makes the red above load-bearing rather than a
+    /// mechanism that refuses everything. One derivable function is enough to admit, and the
+    /// refused sibling stays counted as uncovered rather than disappearing into the pass.
+    #[test]
+    fn one_function_with_a_call_admits_and_the_rest_stay_counted() {
+        let p = plan(vec![("alpha", 3)], vec![("beta", unbounded())]);
+        let admitted = AdmittedPlan::of(&p).expect("one function with calls must admit");
+        assert_eq!(admitted.coverage.covered, vec![("alpha".to_string(), 3)]);
+        assert_eq!(admitted.coverage.calls(), 3);
+        assert_eq!(
+            admitted
+                .coverage
+                .uncovered
+                .iter()
+                .map(|(f, _)| f.as_str())
+                .collect::<Vec<_>>(),
+            vec!["beta"],
+            "a function nothing ran must remain visible in the denominator of a passing module"
+        );
+    }
+
+    /// THE SUBTLER HALF: a function that derived a domain containing nothing sits in `derivable`
+    /// and contributes no call. Counting it as covered is a zero that reads as success. It is
+    /// uncovered, with its OWN cause -- separate from the never-derivable ones, whose remedy is a
+    /// different piece of work.
+    #[test]
+    fn empty_derived_domain_is_uncovered_not_covered() {
+        let p = plan(vec![("alpha", 0)], vec![("beta", unbounded())]);
+        assert_eq!(
+            p.derivable.len(),
+            1,
+            "precondition: the plan does record this function as derivable, which is exactly why \
+             counting that vector would over-report coverage"
+        );
+        let coverage = AdmittedPlan::of(&p)
+            .err()
+            .expect("a derivable function with an empty domain yields no call, so nothing admits");
+        assert_eq!(
+            coverage.uncovered,
+            vec![
+                ("alpha".to_string(), RefusalCause::EmptyDerivedDomain),
+                ("beta".to_string(), unbounded()),
+            ],
+            "the two causes must stay distinguishable: one needs an enumerator fixed, the other \
+             needs a type grounded"
+        );
+    }
+
+    /// A module carrying an empty-domain function BESIDE a real one still admits, and the empty
+    /// one is not silently promoted into the covered count by the module having passed.
+    #[test]
+    fn an_empty_domain_function_does_not_ride_a_covered_sibling() {
+        let p = plan(vec![("alpha", 2), ("empty", 0)], vec![]);
+        let admitted = AdmittedPlan::of(&p).expect("alpha yields calls, so the module admits");
+        assert_eq!(admitted.coverage.covered, vec![("alpha".to_string(), 2)]);
+        assert_eq!(
+            admitted.coverage.uncovered,
+            vec![("empty".to_string(), RefusalCause::EmptyDerivedDomain)]
+        );
+    }
 }
