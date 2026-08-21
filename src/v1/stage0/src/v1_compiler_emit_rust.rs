@@ -13467,6 +13467,46 @@ pub fn render_rust_field_type_with_applied_binding(
     }
 }
 
+pub fn rust_field_carrier_final_type_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "ONE field-carrier layer decision, asked once and projected at every field position. rust_carrier_is_at_shared_layer already unified the four positions that used to answer 'is this carrier at the shared reference layer?' from a rendering or an authored spelling; the ENUM VARIANT RECORD FIELD position was not among them and kept a needs_box_wrapping-only rule, so it rendered a shared cross-module carrier BARE while every other position -- the constructor, the destructuring, the callee signature -- rendered it Rc-wrapped. MEASURED at d72ffe8708b on the src/v2/compiler/03_ingest.dag closure: SymbolicCost::ConstantCost declared `value: Nat` while constant_cost took Rc<Nat>, constructed it with an Rc, and passed the destructured field to nat_dominates(Rc<Nat>); the nested-pattern lowering then emitted `value.as_ref()` against a bare &Nat, which is 18 of that board's 41 E0599 (9 sites x guard + prelude), all in v2_lens_cost.rs. The bareness is not the pattern lowering's defect -- the lowering is right about the layer and the declaration is wrong -- so the repair is at the declaration, and it is shared with the struct-field position rather than copied to it. SCOPE, stated so it is not read as wider: this covers the RECORD-field positions (struct fields and variant record fields). The positional (tuple) payload position renders through render_variant_payload_type and is a distinct path whose layer decision has to be established on its own evidence, not asserted here. RUNG (DESIGN 4b): mitigatable, inherited unchanged from rust_carrier_is_at_shared_layer -- nothing stops a sixth field position from re-deriving the layer locally; the next rung is the same modeled layer transition that predicate names.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_field_carrier_final_type(
+    rt_field: Rc<Node>,
+    ty: String,
+    recursive_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if needs_box_wrapping(
+        rt_field.clone(),
+        recursive_types.clone(),
+        shared_types.clone(),
+        source_indices.clone(),
+    ) {
+        v1_rt::concat(
+            v1_rt::concat("Box<".to_string(), ty.clone()),
+            ">".to_string(),
+        )
+    } else {
+        if (rust_carrier_is_at_shared_layer(
+            rt_field.clone(),
+            source_indices.clone(),
+            shared_types.clone(),
+        ) && !rust_type_is_rc_wrapped(ty.clone()))
+        {
+            wrap_shared_type(RenderTarget::Rust, ty.clone())
+        } else {
+            ty.clone()
+        }
+    }
+}
+
 pub fn emit_struct_field_from_child(
     struct_name: String,
     child: Rc<Node>,
@@ -13602,28 +13642,13 @@ pub fn emit_struct_field_from_child(
                 }
             }
         };
-        let final_ty = if needs_box_wrapping(
+        let final_ty = rust_field_carrier_final_type(
             rt_child.clone(),
+            ty.clone(),
             recursive_types.clone(),
             shared_types.clone(),
             env.source_indices.clone(),
-        ) {
-            v1_rt::concat(
-                v1_rt::concat("Box<".to_string(), ty.clone()),
-                ">".to_string(),
-            )
-        } else {
-            if (rust_carrier_is_at_shared_layer(
-                rt_child.clone(),
-                env.source_indices.clone(),
-                shared_types.clone(),
-            ) && !rust_type_is_rc_wrapped(ty.clone()))
-            {
-                wrap_shared_type(RenderTarget::Rust, ty.clone())
-            } else {
-                ty.clone()
-            }
-        };
+        );
         let needs_serde = struct_needs_serde(struct_name.clone(), emit_info.clone());
         let rename_attr = if !needs_serde.clone() {
             "".to_string()
@@ -14644,19 +14669,13 @@ pub fn emit_variant_from_child(
                                             emit_info.variant_to_enum.clone(),
                                             env.clone(),
                                         );
-                                        let final_ty = if needs_box_wrapping(
+                                        let final_ty = rust_field_carrier_final_type(
                                             rt_f.clone(),
+                                            ty.clone(),
                                             recursive_types.clone(),
                                             shared_types.clone(),
                                             env.source_indices.clone(),
-                                        ) {
-                                            v1_rt::concat(
-                                                v1_rt::concat("Box<".to_string(), ty.clone()),
-                                                ">".to_string(),
-                                            )
-                                        } else {
-                                            ty.clone()
-                                        };
+                                        );
                                         emit_rust_field_definition(
                                             authored_name(env.clone(), f.clone()),
                                             final_ty.clone(),
@@ -14701,19 +14720,13 @@ pub fn emit_variant_from_child(
                                     emit_info.variant_to_enum.clone(),
                                     env.clone(),
                                 );
-                                let final_ty = if needs_box_wrapping(
+                                let final_ty = rust_field_carrier_final_type(
                                     rt_f.clone(),
+                                    ty.clone(),
                                     recursive_types.clone(),
                                     shared_types.clone(),
                                     env.source_indices.clone(),
-                                ) {
-                                    v1_rt::concat(
-                                        v1_rt::concat("Box<".to_string(), ty.clone()),
-                                        ">".to_string(),
-                                    )
-                                } else {
-                                    ty.clone()
-                                };
+                                );
                                 emit_rust_field_definition(
                                     authored_name(env.clone(), f.clone()),
                                     final_ty.clone(),
