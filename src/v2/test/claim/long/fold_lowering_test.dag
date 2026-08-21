@@ -325,3 +325,11 @@ fn probe_lowering_name() -> String {
       }
   }
 }
+
+fn probe_all() -> String {
+  let loc = if probe_locate_found() { "loc=yes" } else { "loc=no" }
+  let kids = int_to_string(n: probe_ingest_root_children_count())
+  let idn = int_to_string(n: list_length(items: probe_idents()))
+  let fold_seen = if symbol_in(needle: ^fold, xs: probe_idents()) { "fold=yes" } else { "fold=no" }
+  "{loc} kids={kids} idents={idn} {fold_seen} disp={probe_lowering_name()}"
+}
