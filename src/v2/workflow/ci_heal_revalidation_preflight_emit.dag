@@ -29,7 +29,7 @@ fn ci_heal_revalidation_diag(text: String) -> PipelineStep {
   Do {
     run: Run {
       command: concat("echo \"", concat(text, "\"")),
-      env: [],
+      env: Empty,
       redirect: Absent,
       capture: Absent
     }
