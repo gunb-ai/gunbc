@@ -2502,6 +2502,10 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     type_decl_items: base_info.type_decl_items,
     source_indices: merged_module_source_indices(modules: typed.modules)
   )
+  let ord_bounded = v1_ord_bounded_type_params(
+    type_decl_items: base_info.type_decl_items,
+    source_indices: merged_module_source_indices(modules: typed.modules)
+  )
   let emit_info = EmitGraphInfo {
     type_summaries: base_info.type_summaries,
     type_decl_items: base_info.type_decl_items,
@@ -2519,6 +2523,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     clone_bounded_type_params: clone_bounded,
     map_key_required_type_names: map_key_required,
     clone_impl_required_type_params: clone_impl_required,
+    ord_bounded_type_params: ord_bounded,
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
     fn_return_type: none
@@ -2736,6 +2741,10 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     type_decl_items: base_info.type_decl_items,
     source_indices: merged_module_source_indices(modules: [typed_module])
   )
+  let ord_bounded = v1_ord_bounded_type_params(
+    type_decl_items: base_info.type_decl_items,
+    source_indices: merged_module_source_indices(modules: [typed_module])
+  )
   let emit_info = EmitGraphInfo {
     type_summaries: base_info.type_summaries,
     type_decl_items: base_info.type_decl_items,
@@ -2753,6 +2762,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     clone_bounded_type_params: clone_bounded,
     map_key_required_type_names: map_key_required,
     clone_impl_required_type_params: clone_impl_required,
+    ord_bounded_type_params: ord_bounded,
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
     fn_return_type: none
@@ -5133,6 +5143,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       clone_bounded_type_params: emit_info.clone_bounded_type_params,
       map_key_required_type_names: emit_info.map_key_required_type_names,
       clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
+      ord_bounded_type_params: emit_info.ord_bounded_type_params,
       fn_generic_param_names: emit_info.fn_generic_param_names,
       fn_type_env: emit_info.fn_type_env,
       fn_return_type: emit_info.fn_return_type
@@ -5233,8 +5244,13 @@ fn emit_item_type_params_with_clone_bounds(item_name: String, params: List<Node>
     generic_param_names: generic_param_names,
     bounds: emit_info.clone_bounded_type_params
   )
-  if (clone_param_names |> count) > 0 {
-    v1_emit_type_params_with_clone_bounds(params: params, clone_param_names: clone_param_names, source_indices: source_indices)
+  let ord_param_names = v1_item_clone_bounded_param_names(
+    item_name: item_name,
+    generic_param_names: generic_param_names,
+    bounds: emit_info.ord_bounded_type_params
+  )
+  if (clone_param_names |> count) > 0 || (ord_param_names |> count) > 0 {
+    v1_emit_type_params_with_clone_and_ord_bounds(params: params, clone_param_names: clone_param_names, ord_param_names: ord_param_names, source_indices: source_indices)
   } else {
     emit_type_params(params: params, source_indices: source_indices)
   }
@@ -8416,6 +8432,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               clone_bounded_type_params: emit_info.clone_bounded_type_params,
               map_key_required_type_names: emit_info.map_key_required_type_names,
               clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
+              ord_bounded_type_params: emit_info.ord_bounded_type_params,
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
               fn_return_type: emit_info.fn_return_type
@@ -8447,6 +8464,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               clone_bounded_type_params: emit_info.clone_bounded_type_params,
               map_key_required_type_names: emit_info.map_key_required_type_names,
               clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
+              ord_bounded_type_params: emit_info.ord_bounded_type_params,
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
               fn_return_type: emit_info.fn_return_type

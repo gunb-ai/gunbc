@@ -1,0 +1,125 @@
+module test.claim.generic_item_ord_bound_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data generic_item_ord_bound_witness_note: String = "Executing floor witness for v1.compiler.trait_derive_emit item-level Ord bounds (v1_ord_bounded_type_params / v1_emit_type_params_with_clone_and_ord_bounds), the well-formedness analogue of generic_item_clone_bound_witness_test.dag's Clone mechanism. compile_dag_rust_emit_check is the per-PR enrolled consumer here; it compiles inline fixtures through the real emitter and asserts emitted Rust spellings. ONE TRIGGER ONLY, unlike Clone's two: nothing in this emitter derives Ord automatically for any type (types derive Debug/Clone/PartialEq/Serialize/Deserialize, never Ord), so the header-declared bound is the sole possible source of the requirement for BOTH struct and enum shapes -- there is no derive-side skip to hold a coproduct bare the way Clone's DERIVE trigger does. The seed is narrowly gated on Set<P> (realizing to im::OrdSet<P>, whose own impls require P: Ord); no other container (List, Map value, FreeMonoid) seeds it. Propagation reuses v1_clone_bound_fixpoint_loop UNCHANGED (trait-agnostic, parameterized purely by the bounds map), so the same least-fixpoint-over-declared-type-graph behavior applies: a declared generic type naming a Set<P>-bearing type transitively inherits P: Ord. w_both_clone_and_ord_render_together proves the two independent maps compose into one header spelling rather than colliding. w_audience_set_shape_gets_ord_bound reproduces the actual reported bug shape (an enum variant holding Set<P> directly, matching std.authorization_profile.AudienceSet) as a regression witness."
+
+fn w_set_field_emits_ord_bound() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_ord_witness.fixture\n\ntype MemberRoster<P> {\n  members: Set<P>\n}\n",
+    "src/generic_item_ord_witness_fixture.rs",
+    ["struct MemberRoster<P: Ord>"],
+    []
+  )
+}
+
+fn w_non_set_container_stays_bare() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_ord_witness.non_set\nimport std.algebra { FreeMonoid }\n\ntype Ledger<P> {\n  rows: FreeMonoid<P>\n}\n",
+    "src/generic_item_ord_witness_non_set.rs",
+    ["struct Ledger<P>"],
+    ["struct Ledger<P: Ord>"]
+  )
+}
+
+fn w_list_container_stays_bare() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_ord_witness.list_only\n\ntype Roster<P> {\n  entries: List<P>\n}\n",
+    "src/generic_item_ord_witness_list_only.rs",
+    ["struct Roster<P>"],
+    ["struct Roster<P: Ord>"]
+  )
+}
+
+fn w_bare_field_stays_bare() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_ord_witness.bare\n\ntype Holder<P> {\n  tag: P\n}\n",
+    "src/generic_item_ord_witness_bare.rs",
+    ["struct Holder<P>"],
+    ["struct Holder<P: Ord>"]
+  )
+}
+
+fn w_coproduct_set_variant_gets_ord_bound() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_ord_witness.coproduct\n\ntype Audience<P>\n  = Universal\n  | Enumerated { members: Set<P> }\n",
+    "src/generic_item_ord_witness_coproduct.rs",
+    ["enum Audience<P: Ord>"],
+    ["enum Audience<P>"]
+  )
+}
+
+fn w_audience_set_shape_gets_ord_bound() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_ord_witness.audience_regression\n\ntype AudienceSet<P>\n  = UniversalAudience\n  | EnumeratedAudience { members: Set<P> }\n\ntype PublicationContext<C, P> {\n  audience: AudienceSet<P>\n  context: C\n}\n",
+    "src/generic_item_ord_witness_audience_regression.rs",
+    [
+      "enum AudienceSet<P: Ord>",
+      "struct PublicationContext<C, P: Ord>"
+    ],
+    [
+      "struct PublicationContext<C: Ord, P: Ord>",
+      "struct PublicationContext<C, P>"
+    ]
+  )
+}
+
+fn w_bound_propagates_through_declared_generic_type() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_ord_witness.propagate\n\ntype MemberRoster<P> {\n  members: Set<P>\n}\n\ntype RosterHolder<P> {\n  roster: MemberRoster<P>\n}\n",
+    "src/generic_item_ord_witness_propagate.rs",
+    [
+      "struct MemberRoster<P: Ord>",
+      "struct RosterHolder<P: Ord>"
+    ],
+    ["struct RosterHolder<P>"]
+  )
+}
+
+fn w_both_clone_and_ord_render_together() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_ord_witness.both_traits\nimport std.algebra { FreeMonoid }\n\ntype Both<P> {\n  members: Set<P>\n  listed: FreeMonoid<P>\n}\n",
+    "src/generic_item_ord_witness_both_traits.rs",
+    ["struct Both<P: Clone + Ord>"],
+    [
+      "struct Both<P: Ord + Clone>",
+      "struct Both<P: Clone>",
+      "struct Both<P: Ord>",
+      "struct Both<P>"
+    ]
+  )
+}
+
+test fn set_field_ord_bound_positive() -> Bool {
+  w_set_field_emits_ord_bound()
+}
+
+test fn non_set_container_negative_control() -> Bool {
+  w_non_set_container_stays_bare()
+}
+
+test fn list_container_negative_control() -> Bool {
+  w_list_container_stays_bare()
+}
+
+test fn bare_field_negative_control() -> Bool {
+  w_bare_field_stays_bare()
+}
+
+test fn coproduct_set_variant_ord_bound_positive() -> Bool {
+  w_coproduct_set_variant_gets_ord_bound()
+}
+
+test fn audience_set_regression_positive() -> Bool {
+  w_audience_set_shape_gets_ord_bound()
+}
+
+test fn ord_bound_propagation_positive() -> Bool {
+  w_bound_propagates_through_declared_generic_type()
+}
+
+test fn both_clone_and_ord_render_together() -> Bool {
+  w_both_clone_and_ord_render_together()
+}

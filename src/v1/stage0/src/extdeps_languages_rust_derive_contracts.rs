@@ -11,7 +11,7 @@ use crate::std_disposition::Disposition::Scaffold;
 pub use crate::std_disposition::{ConstructionMechanism, Disposition};
 pub use crate::std_trait_derive_shape::ReprGroundingDeriveTrait;
 use crate::std_trait_derive_shape::ReprGroundingDeriveTrait::{
-    ReprDeriveClone, ReprDeriveDebug, ReprDeriveDeserialize, ReprDerivePartialEq,
+    ReprDeriveClone, ReprDeriveDebug, ReprDeriveDeserialize, ReprDeriveOrd, ReprDerivePartialEq,
     ReprDeriveSerialize,
 };
 use crate::v1_rt;
@@ -225,6 +225,105 @@ pub fn rust_vec_freemonoid_supplemental_generic_bound_rows(
         derive_trait: ReprGroundingDeriveTrait::ReprDeriveDeserialize,
         required: ReprGroundingDeriveTrait::ReprDeriveClone,
         authority: im_15_1_0_vector_deserialize_impl_authority(),
+    })])
+            };
+        }
+    CACHED.with(|c: &Rc<Vec<Rc<RustVecSupplementalGenericBoundRow>>>| c.clone())
+}
+
+pub fn im_15_1_0_ordset_debug_impl_authority() -> Rc<ExternalAuthority> {
+    thread_local! {
+            static CACHED: Rc<ExternalAuthority> = {
+                Rc::new(ExternalAuthority {
+        uri: Rc::new(Uri {
+        scheme: UriScheme::Https,
+        locator: "docs.rs/crate/im/15.1.0/source/src/ord/set.rs#937".to_string(),
+    }),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
+
+pub fn im_15_1_0_ordset_partial_eq_impl_authority() -> Rc<ExternalAuthority> {
+    thread_local! {
+            static CACHED: Rc<ExternalAuthority> = {
+                Rc::new(ExternalAuthority {
+        uri: Rc::new(Uri {
+        scheme: UriScheme::Https,
+        locator: "docs.rs/crate/im/15.1.0/source/src/ord/set.rs#844".to_string(),
+    }),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
+
+pub fn im_15_1_0_ordset_serialize_impl_authority() -> Rc<ExternalAuthority> {
+    thread_local! {
+            static CACHED: Rc<ExternalAuthority> = {
+                Rc::new(ExternalAuthority {
+        uri: Rc::new(Uri {
+        scheme: UriScheme::Https,
+        locator: "docs.rs/crate/im/15.1.0/source/src/ser.rs#134".to_string(),
+    }),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
+
+pub fn im_15_1_0_ordset_deserialize_impl_authority() -> Rc<ExternalAuthority> {
+    thread_local! {
+            static CACHED: Rc<ExternalAuthority> = {
+                Rc::new(ExternalAuthority {
+        uri: Rc::new(Uri {
+        scheme: UriScheme::Https,
+        locator: "docs.rs/crate/im/15.1.0/source/src/ser.rs#125".to_string(),
+    }),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
+
+pub fn rust_ordset_supplemental_generic_bound_rows_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "SINGLE AUTHORITY for the trait -> supplemental-generic-bound facts of the Set realization (im-15.1.0 im::OrdSet, aliased BTreeSet at the use-statement -- NOT std::collections::BTreeSet): deriving Debug or PartialEq for an item carrying an im::OrdSet<P> field additionally requires P: Ord, because each of those upstream impls is conditional on A: Ord (cited per row, measured directly against the vendored crate source, not std's BTreeSet -- the six pre-existing stubs above (rust_1_93_btree_set_trait_implementations_authority and its serde siblings) cite the wrong upstream for this realization and are left untouched, out of scope). Serialize and Deserialize are each conditional on A: Ord + A: Clone, so each contributes two rows. Clone itself is deliberately NOT a row: OrdSet's own impl<A> Clone for OrdSet<A> is unconditional, so no supplemental fact exists for it, matching the FreeMonoid list's same omission for the same reason (rust_vec_freemonoid_supplemental_generic_bound_rows_note).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_ordset_supplemental_generic_bound_rows(
+) -> Rc<Vec<Rc<RustVecSupplementalGenericBoundRow>>> {
+    thread_local! {
+            static CACHED: Rc<Vec<Rc<RustVecSupplementalGenericBoundRow>>> = {
+                Rc::new(vec![Rc::new(RustVecSupplementalGenericBoundRow {
+        derive_trait: ReprGroundingDeriveTrait::ReprDeriveDebug,
+        required: ReprGroundingDeriveTrait::ReprDeriveOrd,
+        authority: im_15_1_0_ordset_debug_impl_authority(),
+    }), Rc::new(RustVecSupplementalGenericBoundRow {
+        derive_trait: ReprGroundingDeriveTrait::ReprDerivePartialEq,
+        required: ReprGroundingDeriveTrait::ReprDeriveOrd,
+        authority: im_15_1_0_ordset_partial_eq_impl_authority(),
+    }), Rc::new(RustVecSupplementalGenericBoundRow {
+        derive_trait: ReprGroundingDeriveTrait::ReprDeriveSerialize,
+        required: ReprGroundingDeriveTrait::ReprDeriveOrd,
+        authority: im_15_1_0_ordset_serialize_impl_authority(),
+    }), Rc::new(RustVecSupplementalGenericBoundRow {
+        derive_trait: ReprGroundingDeriveTrait::ReprDeriveSerialize,
+        required: ReprGroundingDeriveTrait::ReprDeriveClone,
+        authority: im_15_1_0_ordset_serialize_impl_authority(),
+    }), Rc::new(RustVecSupplementalGenericBoundRow {
+        derive_trait: ReprGroundingDeriveTrait::ReprDeriveDeserialize,
+        required: ReprGroundingDeriveTrait::ReprDeriveOrd,
+        authority: im_15_1_0_ordset_deserialize_impl_authority(),
+    }), Rc::new(RustVecSupplementalGenericBoundRow {
+        derive_trait: ReprGroundingDeriveTrait::ReprDeriveDeserialize,
+        required: ReprGroundingDeriveTrait::ReprDeriveClone,
+        authority: im_15_1_0_ordset_deserialize_impl_authority(),
     })])
             };
         }

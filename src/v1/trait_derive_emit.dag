@@ -9,6 +9,7 @@ import v1.compiler.emit_core_support { unique_strings }
 import extdeps.languages.rust.derive_contracts {
   RustVecSupplementalGenericBoundRow,
   rust_vec_freemonoid_supplemental_generic_bound_rows,
+  rust_ordset_supplemental_generic_bound_rows,
 }
 import v1.std.core {
   Node, NewlineIndex, authored_name_at, generic_param_name_at, param_node_type_expr,
@@ -21,6 +22,7 @@ import std.trait_derive_shape {
   ReprDerivePartialEq,
   ReprDeriveSerialize,
   ReprDeriveDeserialize,
+  ReprDeriveOrd,
   map_key_required_derive_traits,
   derive_traits_union,
   ReprGroundingDeriveElemShape,
@@ -52,7 +54,7 @@ data trait_derive_emit_scope_note: String = "Root-4 arm (b): v1 seed emit select
 
 data trait_derive_emit_item_clone_bound_rule_note: String = "Item-level Clone bound rule: for each generic type parameter P on a derive-only struct (no fn fields, no supplemental impl_bodies from v1_emit_struct_from_capability_table), emit P: Clone when P is a bare resolved field type or a direct element of a container/FreeMonoid field (same structural trigger as v1_generic_param_used_as_collection_element on field type exprs). Under THIS trigger enum items keep bare item params — derive emits per-impl bounds, so variant-payload mention does not add declaration bounds. That is a statement about the derive trigger only, and it is not the whole rule for enums: the well-formedness trigger below DOES bound enum params, because naming a Clone-bounded declared type in a variant payload is ill-formed without the bound whatever the derive does. Read the two notes together before concluding an enum keeps bare params. Phantom-only params receive no bound. Callable-field structs keep bare item params under this trigger. ARITHMETIC CARRIERS NO LONGER DO, and this sentence is corrected in place rather than left standing: supplemental impl blocks were gated on impl_bodies being nonempty, which was ONE FLAG ENCODING TWO FACTS -- it stood in for the field-bound question AND kept the item header in agreement with its supplemental impl headers. Header bareness now derives from the well-formedness record, so GroupCompletion emits a BOUNDED header (pub struct GroupCompletion<M: Clone>) and its supplemental impls read the same record through one Bool, because Rust requires an impl's generics to satisfy the type's own bounds. Note the bound renders in the impl GENERIC LIST only and must be absent from the type reference -- one fact, two renderings. Not wired from target_derive_supplemental_generic_bound_contract."
 
-data trait_derive_emit_item_clone_bound_wf_propagation_note: String = "SECOND, INDEPENDENT trigger for an item-level Clone bound, distinct from the derive/lowering trigger above and NOT a widening of it: WELL-FORMEDNESS PROPAGATION. Naming a declared generic type G<A..> at all requires satisfying G's own declared bounds, so if G's i-th parameter already carries `: Clone` and the i-th argument's Clone impl requires P: Clone, then the item declaring that field is ill-formed without P: Clone -- rustc E0277 at the field, before any derive is considered. This applies to STRUCTS AND ENUMS alike, because it is a property of naming the type, not of deriving Clone for it; the rule note above correctly scopes the DERIVE trigger to structs (derive emits per-impl bounds) and that scoping is unchanged here. The two axes are grounded differently and can disagree: im::Vector<A> carries NO declaration bound (checked against im-15.1.0 vector::Vector), so a container field is a derive-trigger fact only, while Boxed<T: Clone> is a well-formedness fact that propagates through Nested<T> { boxed: Boxed<T> } and List<Boxed<T>> alike. The requirement is a LEAST FIXPOINT over the declared-type graph (v1_clone_bounded_type_params), not a one-field-shape-deep read: each round derives every declared generic type's bounded parameters from the current approximation and stops when a round adds nothing, so a chain Boxed -> Nested -> TwoHop propagates all the way and a recursive type (Cyclic<T> { self_ref: Cyclic<T>? }) saturates instead of diverging. The derive trigger SEEDS the fixpoint (v1_clone_bound_seed_for_item, structs only, reusing v1_item_type_param_needs_clone_bound_struct verbatim rather than restating it) and then propagates, because Boxed<T: Clone> earns its bound from the derive trigger and Nested<T> { boxed: Boxed<T> } inherits it from well-formedness. Two sub-predicates, deliberately separate because they answer different questions about the same type expression: v1_type_expr_clone_impl_needs_param asks whether `tau: Clone` requires P: Clone (every derive(Clone) type and every container bounds all of its parameters, so this reduces to `P occurs in tau`), while v1_type_expr_wf_needs_clone_param asks whether NAMING tau requires it (only the argument positions the fixpoint has already bounded count). The undecidable residue is answered by its own total function rather than fused into either Bool: a type application whose head is neither a container nor a declared type in the closure has no readable parameter list, so v1_type_expr_clone_undecided_head names it and the emit site refuses with compile_error!. It is NOT silently treated as `no bound needed` and NOT widened to `bound everything` -- widening would zero the deficit's frequency by construction (DESIGN section 5, absorbing fallback). Dead in corpus as of this landing; kept as the fail-closed arm."
+data trait_derive_emit_item_clone_bound_wf_propagation_note: String = "SECOND, INDEPENDENT trigger for an item-level Clone bound, distinct from the derive/lowering trigger above and NOT a widening of it: WELL-FORMEDNESS PROPAGATION. Naming a declared generic type G<A..> at all requires satisfying G's own declared bounds, so if G's i-th parameter already carries `: Clone` and the i-th argument's Clone impl requires P: Clone, then the item declaring that field is ill-formed without P: Clone -- rustc E0277 at the field, before any derive is considered. This applies to STRUCTS AND ENUMS alike, because it is a property of naming the type, not of deriving Clone for it; the rule note above correctly scopes the DERIVE trigger to structs (derive emits per-impl bounds) and that scoping is unchanged here. The two axes are grounded differently and can disagree: im::Vector<A> carries NO declaration bound (checked against im-15.1.0 vector::Vector), so a container field is a derive-trigger fact only, while Boxed<T: Clone> is a well-formedness fact that propagates through Nested<T> { boxed: Boxed<T> } and List<Boxed<T>> alike. The requirement is a LEAST FIXPOINT over the declared-type graph (v1_clone_bounded_type_params), not a one-field-shape-deep read: each round derives every declared generic type's bounded parameters from the current approximation and stops when a round adds nothing, so a chain Boxed -> Nested -> TwoHop propagates all the way and a recursive type (Cyclic<T> { self_ref: Cyclic<T>? }) saturates instead of diverging. The derive trigger SEEDS the fixpoint (v1_bound_seed_for_item, structs only, reusing v1_item_type_param_needs_bound_struct verbatim rather than restating it) and then propagates, because Boxed<T: Clone> earns its bound from the derive trigger and Nested<T> { boxed: Boxed<T> } inherits it from well-formedness. Two sub-predicates, deliberately separate because they answer different questions about the same type expression: v1_type_expr_clone_impl_needs_param asks whether `tau: Clone` requires P: Clone (every derive(Clone) type and every container bounds all of its parameters, so this reduces to `P occurs in tau`), while v1_type_expr_wf_needs_clone_param asks whether NAMING tau requires it (only the argument positions the fixpoint has already bounded count). The undecidable residue is answered by its own total function rather than fused into either Bool: a type application whose head is neither a container nor a declared type in the closure has no readable parameter list, so v1_type_expr_clone_undecided_head names it and the emit site refuses with compile_error!. It is NOT silently treated as `no bound needed` and NOT widened to `bound everything` -- widening would zero the deficit's frequency by construction (DESIGN section 5, absorbing fallback). Dead in corpus as of this landing; kept as the fail-closed arm."
 
 data trait_derive_emit_fn_clone_bound_wf_propagation_note: String = "THIRD site for the SAME well-formedness trigger (trait_derive_emit_item_clone_bound_wf_propagation_note above), applied to FN declarations rather than item (struct/enum) declarations: naming a Clone-bounded declared type G<A..> in a fn's value-param or return type is exactly as ill-formed as naming it in a field, so a fn generic parameter P earns `: Clone` when v1_fn_param_wf_needs_clone finds it occupying a Clone-bounded argument position of some declared type mentioned in a value param or the return type — reusing v1_type_expr_wf_needs_clone_param verbatim against the same v1_clone_bounded_type_params fixpoint (EmitGraphInfo.clone_bounded_type_params), not a second fixpoint or a restated predicate. This is additive to, not a replacement for, the existing structural fn trigger (v1_type_param_needs_clone_bound: bare-generic return or direct container-element usage) computed in v1_generic_params_needing_clone_bound — the two triggers answer different questions (usage-shape vs. naming-a-bounded-declared-type) and a fn param needing either earns the bound. Enum/struct IMPL surfaces (accessor impl blocks, supplemental impls) already inherit their item's bounded type_params string from emit_item_type_params_with_clone_bounds at the struct/enum decl site, so no separate IMPL-side propagation is needed there; the gap closed here is specifically free FN declarations, whose type_params were computed independently of the item-level fixpoint. Discovered live (not hypothetical) in deep-heron's honest regen of dag/std/occurrence_binding.dag: occurrence_binding_from_candidates<N> names BindingOccurrence<N> and BindingCandidate<N> (each well-formedness-bounded because their field ContainmentPath<N> is FreeMonoid<N>-derive-bounded) at value-param position without the fn declaring N: Clone, and OccurrenceBindingResult<N> at the return position — E0277 at both without this trigger."
 
@@ -1054,31 +1056,55 @@ fn v1_generic_params_needing_clone_bound(
   )
 }
 
-fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
-  param_name: String,
-  type_expr: Node,
-  source_indices: Map<String, NewlineIndex>
+data v1_item_header_bound_trigger_note: String = "ONE TRIGGER PREDICATE, PARAMETERIZED BY TRAIT AND ROUTE, replacing what were once two Clone-only functions plus a hand-forked Ord pair (trait_derive_emit_item_clone_bound_contract_fork_note documents why the forked pair was rejected; this is the generalization the parent design chose instead). `broad_container_trigger` and `include_bare_param_trigger` are v1-local REALIZATION-ROUTING knowledge (like v1_freemonoid_row_route's HandWrittenImpl-vs-SerdeBoundAttr split), not upstream facts, so they stay Bool parameters here rather than cited rows: Clone's broad any-container trigger is a pre-existing structural over-approximation (im::Vector/im::HashMap/im::OrdSet/Witness ALL require Clone, so 'any container names the param' has always been an exact proxy for Clone, unchanged by this generalization) and Clone's own derive(Clone) computes its bound over EVERY field including bare ones (include_bare_param_trigger: true). Ord is never derived automatically for any type in this emitter (ord_bounded_type_params_note), so it has no bare-field derive-trigger analogue (include_bare_param_trigger: false) and, unlike Clone, only ONE structural container (Set, realizing to im::OrdSet) actually requires it -- so its container check must ask the cited data rather than assume every container does (broad_container_trigger: false), routing through v1_container_requires_narrow_bound to extdeps.languages.rust.derive_contracts's cited rows per DESIGN.md S3's cite-the-fact-not-a-literal discipline."
+
+fn v1_container_requires_narrow_bound(
+  container_name: String,
+  bound_trait: ReprGroundingDeriveTrait
 ) -> Bool {
-  let name = authored_name_at(source_indices: source_indices, node: type_expr)
-  if name == param_name && type_expr.connective == NoConnective && (type_expr.children |> count) == 0 {
-    true
-  } else if is_container_type(name: name)
-    && type_expr.children |> any(c => authored_name_at(source_indices: source_indices, node: c) == param_name) {
-    true
+  if container_name == "Set" {
+    rust_ordset_supplemental_generic_bound_rows |> any(r => r.required == bound_trait)
   } else {
     false
   }
 }
 
-fn v1_item_type_param_needs_clone_bound_struct(
+fn v1_field_type_expr_needs_bound_for_param_narrow(
+  param_name: String,
+  type_expr: Node,
+  bound_trait: ReprGroundingDeriveTrait,
+  include_bare_param_trigger: Bool,
+  broad_container_trigger: Bool,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  let name = authored_name_at(source_indices: source_indices, node: type_expr)
+  let bare_hit = include_bare_param_trigger
+    && name == param_name && type_expr.connective == NoConnective && (type_expr.children |> count) == 0
+  let container_matches = if broad_container_trigger {
+    is_container_type(name: name)
+  } else {
+    v1_container_requires_narrow_bound(container_name: name, bound_trait: bound_trait)
+  }
+  let container_hit = container_matches
+    && type_expr.children |> any(c => authored_name_at(source_indices: source_indices, node: c) == param_name)
+  bare_hit || container_hit
+}
+
+fn v1_item_type_param_needs_bound_struct(
   param_name: String,
   field_type_exprs: List<Node>,
+  bound_trait: ReprGroundingDeriveTrait,
+  include_bare_param_trigger: Bool,
+  broad_container_trigger: Bool,
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
   field_type_exprs |> any(te =>
-    v1_field_type_expr_needs_clone_bound_for_param_narrow(
+    v1_field_type_expr_needs_bound_for_param_narrow(
       param_name: param_name,
       type_expr: te,
+      bound_trait: bound_trait,
+      include_bare_param_trigger: include_bare_param_trigger,
+      broad_container_trigger: broad_container_trigger,
       source_indices: source_indices
     )
   )
@@ -1446,21 +1472,30 @@ fn v1_clone_bound_round_for_item(
   )
 }
 
-fn v1_clone_bound_seed_for_item(
+data v1_bound_seed_for_item_note: String = "ONE TRAIT-PARAMETERIZED SEED, replacing v1_clone_bound_seed_for_item / v1_clone_impl_seed_for_item / the WIP's separate v1_ord_bound_seed_for_item — they differed only in `skip_coproducts` (does derive supply this type's own per-impl bound, per clone_impl_required_type_params_note) and in which narrow-trigger parameters they fed v1_item_type_param_needs_bound_struct (v1_item_header_bound_trigger_note). Clone's two existing maps are still two calls of this one seed (skip_coproducts: true for the WF/declaration map, false for the impl-required map) — they remain two RECORDS because the underlying question (does naming vs. cloning require the bound) genuinely differs per clone_impl_required_type_params_note; only the seed body was duplicated, and that duplication is what this generalizes."
+
+fn v1_bound_seed_for_item(
   round: CloneBoundRound,
   type_name: String,
   item: Node,
+  bound_trait: ReprGroundingDeriveTrait,
+  skip_coproducts: Bool,
+  include_bare_param_trigger: Bool,
+  broad_container_trigger: Bool,
   source_indices: Map<String, NewlineIndex>
 ) -> CloneBoundRound {
-  if is_coproduct_type(n: item) {
+  if skip_coproducts && is_coproduct_type(n: item) {
     round
   } else {
     let field_type_exprs = v1_item_field_type_exprs(item: item)
     item.params |> fold(init: round, f: (acc, p) =>
       let param_name = generic_param_name_at(n: p, source_indices: source_indices)
-      if v1_item_type_param_needs_clone_bound_struct(
+      if v1_item_type_param_needs_bound_struct(
         param_name: param_name,
         field_type_exprs: field_type_exprs,
+        bound_trait: bound_trait,
+        include_bare_param_trigger: include_bare_param_trigger,
+        broad_container_trigger: broad_container_trigger,
         source_indices: source_indices
       ) {
         v1_clone_bound_round_add(round: acc, type_name: type_name, param_name: param_name)
@@ -1517,18 +1552,26 @@ fn v1_generic_declared_type_names(type_decl_items: Map<String, Node>) -> List<St
   )
 }
 
-fn v1_clone_bounded_type_params(
+fn v1_bounded_type_params(
   type_decl_items: Map<String, Node>,
+  bound_trait: ReprGroundingDeriveTrait,
+  skip_coproducts: Bool,
+  include_bare_param_trigger: Bool,
+  broad_container_trigger: Bool,
   source_indices: Map<String, NewlineIndex>
 ) -> Map<String, Set<String>> {
   let generic_type_names = v1_generic_declared_type_names(type_decl_items: type_decl_items)
   let seeded = generic_type_names |> fold(init: CloneBoundRound { bounds: empty_map(), added: 0 }, f: (acc, type_name) =>
     match map_get(type_decl_items, type_name) {
       Present { value: item } =>
-        v1_clone_bound_seed_for_item(
+        v1_bound_seed_for_item(
           round: acc,
           type_name: type_name,
           item: item,
+          bound_trait: bound_trait,
+          skip_coproducts: skip_coproducts,
+          include_bare_param_trigger: include_bare_param_trigger,
+          broad_container_trigger: broad_container_trigger,
           source_indices: source_indices
         )
       Absent => acc
@@ -1539,6 +1582,20 @@ fn v1_clone_bounded_type_params(
     type_decl_items: type_decl_items,
     bounds: seeded.bounds,
     remaining: (generic_type_names |> count) + 1,
+    source_indices: source_indices
+  )
+}
+
+fn v1_clone_bounded_type_params(
+  type_decl_items: Map<String, Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> Map<String, Set<String>> {
+  v1_bounded_type_params(
+    type_decl_items: type_decl_items,
+    bound_trait: ReprDeriveClone,
+    skip_coproducts: true,
+    include_bare_param_trigger: true,
+    broad_container_trigger: true,
     source_indices: source_indices
   )
 }
@@ -1555,49 +1612,38 @@ WHY NO USAGE GATE. Bounding a fn that names Outcome<T> and never clones it would
 
 NOT CLOSED BY THIS: a carrier whose declaration is UPSTREAM. im::Vector<T> has no corpus declaration to seed from, so its Clone requirement must come from the target API's own impl requirements — trait_derive_emit_item_clone_bound_contract_fork_note, whose dissolution is that grounding. Of A's 64 generic-receiver sites, 30 are im::Vector and stay standing."
 
-fn v1_clone_impl_seed_for_item(
-  round: CloneBoundRound,
-  type_name: String,
-  item: Node,
-  source_indices: Map<String, NewlineIndex>
-) -> CloneBoundRound {
-  let field_type_exprs = v1_item_field_type_exprs(item: item)
-  item.params |> fold(init: round, f: (acc, p) =>
-    let param_name = generic_param_name_at(n: p, source_indices: source_indices)
-    if v1_item_type_param_needs_clone_bound_struct(
-      param_name: param_name,
-      field_type_exprs: field_type_exprs,
-      source_indices: source_indices
-    ) {
-      v1_clone_bound_round_add(round: acc, type_name: type_name, param_name: param_name)
-    } else {
-      acc
-    }
-  )
-}
-
 fn v1_clone_impl_required_type_params(
   type_decl_items: Map<String, Node>,
   source_indices: Map<String, NewlineIndex>
 ) -> Map<String, Set<String>> {
-  let generic_type_names = v1_generic_declared_type_names(type_decl_items: type_decl_items)
-  let seeded = generic_type_names |> fold(init: CloneBoundRound { bounds: empty_map(), added: 0 }, f: (acc, type_name) =>
-    match map_get(type_decl_items, type_name) {
-      Present { value: item } =>
-        v1_clone_impl_seed_for_item(
-          round: acc,
-          type_name: type_name,
-          item: item,
-          source_indices: source_indices
-        )
-      Absent => acc
-    }
-  )
-  v1_clone_bound_fixpoint_loop(
-    generic_type_names: generic_type_names,
+  v1_bounded_type_params(
     type_decl_items: type_decl_items,
-    bounds: seeded.bounds,
-    remaining: (generic_type_names |> count) + 1,
+    bound_trait: ReprDeriveClone,
+    skip_coproducts: false,
+    include_bare_param_trigger: true,
+    broad_container_trigger: true,
+    source_indices: source_indices
+  )
+}
+
+data ord_bounded_type_params_note: String = "ORD'S ANALOGUE OF THE CLONE WELL-FORMEDNESS FIXPOINT ABOVE, WITH ONE FEWER RECORD AND ONE FEWER SKIP, NOW SHARING v1_bound_seed_for_item / v1_bounded_type_params RATHER THAN FORKING THEM (v1_bound_seed_for_item_note; the earlier WIP's separate v1_ord_bound_seed_for_item / v1_ord_bounded_type_params were the rejected fork, per trait_derive_emit_item_clone_bound_contract_fork_note and parent-session review). Set<P> realizes as Rc<im::OrdSet<P>> (aliased BTreeSet), and OrdSet's own trait impls (the ones this module's #[derive(Debug, ..)] on the OUTER carrier reaches into) require P: Ord -- exactly the way im::Vector<A> demands A: Clone, but through a narrower door: only Set, not every container, realizes to an Ord-requiring collection (List/Map-value/Witness do not; v1_container_requires_narrow_bound answers this from extdeps.languages.rust.derive_contracts rust_ordset_supplemental_generic_bound_rows, never a literal container-name-to-trait fact hardcoded here).
+
+WHY ONE SEED CALL, NOT TWO MAPS. Clone needs a WF map (skip_coproducts: true, derive supplies the enum's own per-impl bound) and a separate impl-required map (skip_coproducts: false, for consumers that clone the enum) because #[derive(Clone)] computes the enum's bound itself. NOTHING here derives Ord for the type -- this module never emits #[derive(..Ord..)] on a struct or enum, so the ONLY place P: Ord can come from is the type's own header, for BOTH struct and enum shapes alike. There is no derive-vs-declaration split to make, so the Ord call passes skip_coproducts: false (mirrors the Clone impl-required call's shape, not the Clone WF call's), and the single resulting map is both the header-printing source and the propagation seed.
+
+WHY THE SEED IS Set-NARROW, NOT is_container_type-BROAD. Clone's call passes broad_container_trigger: true because im::Vector<T>/im::HashMap<K,V>/im::OrdSet<T> et al. all require Clone. Only im::OrdSet<T> requires Ord, so Ord's call passes broad_container_trigger: false, routing v1_field_type_expr_needs_bound_for_param_narrow's container check through the cited rows instead -- widening to is_container_type would fabricate an Ord requirement on List<P>/Map<K,V> fields that carry none. Ord's call also passes include_bare_param_trigger: false: unlike Clone, no derive computes Ord unconditionally over every field, so a bare `P` field alone never justifies the bound.
+
+PROPAGATION REUSES v1_clone_bound_fixpoint_loop UNCHANGED. The loop and its supporting well-formedness predicates (v1_item_param_wf_needs_clone, v1_type_expr_wf_needs_clone_param, v1_declared_arg_positions_need_clone_param, v1_type_expr_clone_impl_needs_param) are parameterized entirely by the `bounds` map argument -- despite the Clone-specific names, nothing in that call chain reads a Clone-specific global, so feeding an Ord-seeded map through them correctly discovers that naming a declared Ord-bounded type (e.g. AudienceSet<P>) in another type's field (PublicationContext<C, P>'s outer P) is equally ill-formed without the bound. This is the SAME well-formedness fact this file already documents for Clone (trait_derive_emit_item_clone_bound_wf_propagation_note) applied to a different seeded trait; it does not warrant a forked propagation engine."
+
+fn v1_ord_bounded_type_params(
+  type_decl_items: Map<String, Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> Map<String, Set<String>> {
+  v1_bounded_type_params(
+    type_decl_items: type_decl_items,
+    bound_trait: ReprDeriveOrd,
+    skip_coproducts: false,
+    include_bare_param_trigger: false,
+    broad_container_trigger: false,
     source_indices: source_indices
   )
 }
@@ -1618,13 +1664,33 @@ fn v1_emit_type_params_with_clone_bounds(
   clone_param_names: List<String>,
   source_indices: Map<String, NewlineIndex>
 ) -> String {
+  v1_emit_type_params_with_clone_and_ord_bounds(
+    params: params,
+    clone_param_names: clone_param_names,
+    ord_param_names: [],
+    source_indices: source_indices
+  )
+}
+
+fn v1_emit_type_params_with_clone_and_ord_bounds(
+  params: List<Node>,
+  clone_param_names: List<String>,
+  ord_param_names: List<String>,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
   if params |> count == 0 { "" }
   else {
     let names = params |> map(p =>
       let pname = generic_param_name_at(n: p, source_indices: source_indices)
       let pascal = to_pascal(name: pname)
-      if clone_param_names |> any(c => c == pname) {
+      let needs_clone = clone_param_names |> any(c => c == pname)
+      let needs_ord = ord_param_names |> any(o => o == pname)
+      if needs_clone && needs_ord {
+        concat(pascal, ": Clone + Ord")
+      } else if needs_clone {
         concat(pascal, ": Clone")
+      } else if needs_ord {
+        concat(pascal, ": Ord")
       } else {
         pascal
       }

@@ -20403,6 +20403,7 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
             clone_bounded_type_params: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             map_key_required_type_names: v1_rt::rc_empty_set::<String>(),
             clone_impl_required_type_params: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
+            ord_bounded_type_params: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             fn_generic_param_names: Rc::new(vec![]),
             fn_type_env: empty_type_env(),
             fn_return_type: None,

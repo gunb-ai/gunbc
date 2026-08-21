@@ -130,6 +130,9 @@ pub use crate::v1_compiler_trait_derive_emit::{
     v1_item_clone_undecided_head, v1_item_field_type_exprs, v1_map_key_required_type_names,
     v1_trait_derive_refuse, v1_with_map_key_requirement,
 };
+pub use crate::v1_compiler_trait_derive_emit::{
+    v1_emit_type_params_with_clone_and_ord_bounds, v1_ord_bounded_type_params,
+};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{
@@ -5318,6 +5321,10 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             base_info.type_decl_items.clone(),
             merged_module_source_indices(typed.modules.clone()),
         );
+        let ord_bounded = v1_ord_bounded_type_params(
+            base_info.type_decl_items.clone(),
+            merged_module_source_indices(typed.modules.clone()),
+        );
         let emit_info = Rc::new(EmitGraphInfo {
             type_summaries: base_info.type_summaries.clone(),
             type_decl_items: base_info.type_decl_items.clone(),
@@ -5335,6 +5342,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             clone_bounded_type_params: clone_bounded.clone(),
             map_key_required_type_names: map_key_required.clone(),
             clone_impl_required_type_params: clone_impl_required.clone(),
+            ord_bounded_type_params: ord_bounded.clone(),
             fn_generic_param_names: base_info.fn_generic_param_names.clone(),
             fn_type_env: base_info.fn_type_env.clone(),
             fn_return_type: None,
@@ -5827,6 +5835,10 @@ pub fn emit_module(
             base_info.type_decl_items.clone(),
             merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
         );
+        let ord_bounded = v1_ord_bounded_type_params(
+            base_info.type_decl_items.clone(),
+            merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
+        );
         let emit_info = Rc::new(EmitGraphInfo {
             type_summaries: base_info.type_summaries.clone(),
             type_decl_items: base_info.type_decl_items.clone(),
@@ -5844,6 +5856,7 @@ pub fn emit_module(
             clone_bounded_type_params: clone_bounded.clone(),
             map_key_required_type_names: map_key_required.clone(),
             clone_impl_required_type_params: clone_impl_required.clone(),
+            ord_bounded_type_params: ord_bounded.clone(),
             fn_generic_param_names: base_info.fn_generic_param_names.clone(),
             fn_type_env: base_info.fn_type_env.clone(),
             fn_return_type: None,
@@ -12475,6 +12488,7 @@ pub fn emit_typed_item(
                                 clone_impl_required_type_params: emit_info
                                     .clone_impl_required_type_params
                                     .clone(),
+                                ord_bounded_type_params: emit_info.ord_bounded_type_params.clone(),
                                 fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
                                 fn_type_env: emit_info.fn_type_env.clone(),
                                 fn_return_type: emit_info.fn_return_type.clone(),
@@ -12752,10 +12766,18 @@ pub fn emit_item_type_params_with_clone_bounds(
             generic_param_names.clone(),
             emit_info.clone_bounded_type_params.clone(),
         );
-        if ((clone_param_names.clone().len() as i64) > 0) {
-            v1_emit_type_params_with_clone_bounds(
+        let ord_param_names = v1_item_clone_bounded_param_names(
+            item_name.clone(),
+            generic_param_names.clone(),
+            emit_info.ord_bounded_type_params.clone(),
+        );
+        if (((clone_param_names.clone().len() as i64) > 0)
+            || ((ord_param_names.clone().len() as i64) > 0))
+        {
+            v1_emit_type_params_with_clone_and_ord_bounds(
                 params.clone(),
                 clone_param_names.clone(),
+                ord_param_names.clone(),
                 source_indices.clone(),
             )
         } else {
@@ -21841,6 +21863,7 @@ pub fn emit_rust_fold_method_call(
                             clone_impl_required_type_params: emit_info
                                 .clone_impl_required_type_params
                                 .clone(),
+                            ord_bounded_type_params: emit_info.ord_bounded_type_params.clone(),
                             fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
                             fn_type_env: emit_info.fn_type_env.clone(),
                             fn_return_type: emit_info.fn_return_type.clone(),
@@ -21887,6 +21910,7 @@ pub fn emit_rust_fold_method_call(
                                 clone_impl_required_type_params: emit_info
                                     .clone_impl_required_type_params
                                     .clone(),
+                                ord_bounded_type_params: emit_info.ord_bounded_type_params.clone(),
                                 fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
                                 fn_type_env: emit_info.fn_type_env.clone(),
                                 fn_return_type: emit_info.fn_return_type.clone(),

@@ -11,6 +11,7 @@ import std.trait_derive_shape {
   ReprDerivePartialEq,
   ReprDeriveSerialize,
   ReprDeriveDeserialize,
+  ReprDeriveOrd,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -125,6 +126,69 @@ data rust_vec_freemonoid_supplemental_generic_bound_rows: List<RustVecSupplement
     derive_trait: ReprDeriveDeserialize
     required: ReprDeriveClone
     authority: im_15_1_0_vector_deserialize_impl_authority
+  },
+]
+
+data im_15_1_0_ordset_debug_impl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.rs/crate/im/15.1.0/source/src/ord/set.rs#937"
+  }
+}
+
+data im_15_1_0_ordset_partial_eq_impl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.rs/crate/im/15.1.0/source/src/ord/set.rs#844"
+  }
+}
+
+data im_15_1_0_ordset_serialize_impl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.rs/crate/im/15.1.0/source/src/ser.rs#134"
+  }
+}
+
+data im_15_1_0_ordset_deserialize_impl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.rs/crate/im/15.1.0/source/src/ser.rs#125"
+  }
+}
+
+data rust_ordset_supplemental_generic_bound_rows_note: String = "SINGLE AUTHORITY for the trait -> supplemental-generic-bound facts of the Set realization (im-15.1.0 im::OrdSet, aliased BTreeSet at the use-statement -- NOT std::collections::BTreeSet): deriving Debug or PartialEq for an item carrying an im::OrdSet<P> field additionally requires P: Ord, because each of those upstream impls is conditional on A: Ord (cited per row, measured directly against the vendored crate source, not std's BTreeSet -- the six pre-existing stubs above (rust_1_93_btree_set_trait_implementations_authority and its serde siblings) cite the wrong upstream for this realization and are left untouched, out of scope). Serialize and Deserialize are each conditional on A: Ord + A: Clone, so each contributes two rows. Clone itself is deliberately NOT a row: OrdSet's own impl<A> Clone for OrdSet<A> is unconditional, so no supplemental fact exists for it, matching the FreeMonoid list's same omission for the same reason (rust_vec_freemonoid_supplemental_generic_bound_rows_note)."
+
+data rust_ordset_supplemental_generic_bound_rows: List<RustVecSupplementalGenericBoundRow> = [
+  RustVecSupplementalGenericBoundRow {
+    derive_trait: ReprDeriveDebug
+    required: ReprDeriveOrd
+    authority: im_15_1_0_ordset_debug_impl_authority
+  },
+  RustVecSupplementalGenericBoundRow {
+    derive_trait: ReprDerivePartialEq
+    required: ReprDeriveOrd
+    authority: im_15_1_0_ordset_partial_eq_impl_authority
+  },
+  RustVecSupplementalGenericBoundRow {
+    derive_trait: ReprDeriveSerialize
+    required: ReprDeriveOrd
+    authority: im_15_1_0_ordset_serialize_impl_authority
+  },
+  RustVecSupplementalGenericBoundRow {
+    derive_trait: ReprDeriveSerialize
+    required: ReprDeriveClone
+    authority: im_15_1_0_ordset_serialize_impl_authority
+  },
+  RustVecSupplementalGenericBoundRow {
+    derive_trait: ReprDeriveDeserialize
+    required: ReprDeriveOrd
+    authority: im_15_1_0_ordset_deserialize_impl_authority
+  },
+  RustVecSupplementalGenericBoundRow {
+    derive_trait: ReprDeriveDeserialize
+    required: ReprDeriveClone
+    authority: im_15_1_0_ordset_deserialize_impl_authority
   },
 ]
 
