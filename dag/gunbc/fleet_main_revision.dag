@@ -372,6 +372,16 @@ fn fleet_desired_admitted_expectation<E, M>(
 // The typed refusal rendered for a human-facing receipt. Rendering lives beside the cause set so a
 // new arm cannot be added without this fold refusing to compile. Consumers that ROUTE still match
 // the variants; this is the line an operator reads, never a substitute for the typed cause.
+//
+// THE UNRELATED ARM SAYS ONLY WHAT ITS CARRIER ESTABLISHES. It used to read "sideways onto a
+// DISJOINT history", which is false for the case that actually produces it most of the time: two
+// revisions that diverged from a shared ancestor are not disjoint, they have a common past and a
+// merge base an operator can name. The carrier behind this arm is the quotient "neither is an
+// ancestor of the other", and that is now exactly what the sentence claims. A receipt asserting
+// more topology than the observation carries is the same fabrication as a fabricated value; it is
+// worse here than in a field, because a human reads THIS line and reaches for the wrong remedy --
+// disjoint says wrong repository, divergent says force-push. When the deploy lane splits the
+// variant this arm can say which, and until then it does not guess.
 fn fleet_desired_advance_refusal_message(cause: FleetDesiredAdvanceRefusal) -> String {
   match cause {
     AdvanceExpectationUnavailable { cause: why } =>
@@ -386,7 +396,7 @@ fn fleet_desired_advance_refusal_message(cause: FleetDesiredAdvanceRefusal) -> S
         "neither revision is an ancestor of the other (current ",
         git_object_id_wire_hex(oid: cur) as String,
         ", accepted ", git_object_id_wire_hex(oid: acc) as String,
-        ") -- advancing would move the ref sideways onto a disjoint history",
+        ") -- advancing would move the ref sideways",
       ], "")
     AdvanceRelationUnobservable { current: cur, accepted: acc, cause: c } =>
       join([
