@@ -8,6 +8,7 @@ import gunbc.fleet_known_hosts_anchor { portable_remote_words }
 import gunbc.live_deploy.deployed_tree_observation {
   deployed_tree_revision_argv,
   deployed_tree_status_argv,
+  deployed_tree_read_tree_argv,
   DeployedTrackedState,
   TrackedMatchesCommit,
   TrackedModified,
@@ -40,8 +41,22 @@ fn probe_revision_words() -> List<String> {
   ["git", "-C", probe_repo() as String, "rev-parse", "HEAD"]
 }
 
+data probe_index_path: String = "/tmp/gunbc-deployed-tree-index-probe-attempt"
+
 fn probe_status_words() -> List<String> {
-  ["git", "-C", probe_repo() as String, "diff", "--name-only", "HEAD"]
+  [
+    "env", "GIT_INDEX_FILE=/tmp/gunbc-deployed-tree-index-probe-attempt",
+    "git", "-C", probe_repo() as String, "--no-optional-locks",
+    "status", "--porcelain=v1", "--untracked-files=no",
+  ]
+}
+
+fn probe_read_tree_words() -> List<String> {
+  [
+    "env", "GIT_INDEX_FILE=/tmp/gunbc-deployed-tree-index-probe-attempt",
+    "git", "-C", probe_repo() as String, "read-tree", "--no-sparse-checkout",
+    "8a472fff9e9000600e33cc3559ecfad4ba55e3a3",
+  ]
 }
 
 // DRIVEN THROUGH THE REAL WALL, not asserted about the strings. `portable_remote_words` is the
@@ -73,16 +88,50 @@ test fn witness_the_portability_wall_refuses_a_pipeline() -> Bool {
 
 // The flag is the whole reason the instrument reads tracked modifications rather than host noise,
 // and asserting the built argv contains it is what goes red if someone "simplifies" it away.
-// THE COMMAND MUST NOT BE `status`, asserted as a REFUSAL and not only as a positive, because status
-// is the obvious spelling and reads as equivalent. It is not: the .git whitelist omits the index, so
-// status reports permanent modification on a correctly synced host. A witness checking only for "diff"
-// would stay green if someone added a status leg beside it.
-test fn witness_the_command_compares_worktree_to_head_and_never_consults_status() -> Bool {
-  any(deployed_tree_status_argv(repo: probe_repo()), w => w == "diff")
-    && any(deployed_tree_status_argv(repo: probe_repo()), w => w == "HEAD")
-    && any(deployed_tree_status_argv(repo: probe_repo()), w => w == "--name-only")
-    && !any(deployed_tree_status_argv(repo: probe_repo()), w => w == "status")
-    && !any(deployed_tree_status_argv(repo: probe_repo()), w => w == "--porcelain")
+// THE COMPARISON MUST RUN AGAINST THE TEMP INDEX, NOT THE HOST'S. Asserted by requiring the env
+// binding to be present, because without it `status` silently falls back to the deployed repo's own
+// index -- which is the artifact the whole construction exists to avoid consulting, and the fallback
+// produces a plausible answer rather than an error.
+test fn witness_the_comparison_is_bound_to_the_materialized_index() -> Bool {
+  any(deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path),
+      w => w == join(["GIT_INDEX_FILE=", probe_index_path], ""))
+    && any(deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path), w => w == "env")
+    && any(deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path), w => w == "status")
+}
+
+// `--no-optional-locks` IS LOAD-BEARING: plain `git status` WRITES the index back, measured by md5.
+// Without the flag an observation mutates the host it claims to be reading -- and it would still
+// answer correctly, so nothing downstream would notice. This witness is the only thing standing
+// between that flag and a later reader who removes it as noise.
+test fn witness_the_observation_cannot_write_the_hosts_index() -> Bool {
+  any(deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path),
+      w => w == "--no-optional-locks")
+}
+
+// The materialization must name the revision it loads and the index it writes; a read-tree that wrote
+// the DEFAULT index would corrupt the deployed repo rather than observe it.
+test fn witness_the_index_is_materialized_from_the_revision_into_a_named_file() -> Bool {
+  let argv = deployed_tree_read_tree_argv(
+    repo: probe_repo(),
+    revision_hex: "8a472fff9e9000600e33cc3559ecfad4ba55e3a3",
+    index_path: probe_index_path,
+  )
+  argv == probe_read_tree_words()
+    && any(argv, w => w == "read-tree")
+    && any(argv, w => w == join(["GIT_INDEX_FILE=", probe_index_path], ""))
+    // --index-output is NOT a substitute: it still locks the real index, so a host with an existing
+    // .git/index.lock -- the normal case on srv1 -- would refuse. Asserted as an absence so the
+    // cheaper-looking flag cannot be reintroduced silently.
+    && !any(argv, w => w == join(["--index-output=", probe_index_path], ""))
+    // Without --no-sparse-checkout, sparse config can set skip-worktree bits and a MISSING tracked
+    // path reads as intentionally absent -- a false clean on the exact failure this catches.
+    && any(argv, w => w == "--no-sparse-checkout")
+}
+
+// The temp index must be named for the ATTEMPT, so two concurrent observations cannot collide on one
+// file -- a collision would have one run reading an index the other is writing.
+test fn witness_the_temp_index_is_named_for_the_attempt() -> Bool {
+  string_contains(s: probe_index_path, pattern: "probe-attempt")
 }
 
 test fn witness_revision_argv_asks_for_head_in_the_deployed_repo() -> Bool {
@@ -90,7 +139,14 @@ test fn witness_revision_argv_asks_for_head_in_the_deployed_repo() -> Bool {
 }
 
 test fn witness_status_argv_targets_the_deployed_repo() -> Bool {
-  deployed_tree_status_argv(repo: probe_repo()) == probe_status_words()
+  deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path) == probe_status_words()
+}
+
+test fn witness_read_tree_argv_is_admitted_by_the_portability_wall() -> Bool {
+  match portable_remote_words(raws: probe_read_tree_words()) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 // CLEAN AND MODIFIED ARE DISTINCT ARMS, and whitespace-only output is CLEAN rather than a

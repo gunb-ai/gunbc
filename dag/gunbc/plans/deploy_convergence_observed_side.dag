@@ -1,7 +1,8 @@
 module gunbc.plans.deploy_convergence_observed_side
 
+import std.dissolution { unbound_dissolution }
 import std.types { List }
-import gunbc.plan { Plan, PlanHasNoRetirement }
+import gunbc.plan { Plan, PlanRetiresWhen }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { h2, p, li, ul }
 
@@ -109,5 +110,9 @@ data deploy_convergence_observed_side_plan: Plan = Plan {
   slug: "deploy-convergence-observed-side",
   title: "Deploy convergence: the observed side, and why the obvious repair is a regression",
   body: deploy_convergence_observed_side_body(),
-  retirement: PlanHasNoRetirement,
+  retirement: PlanRetiresWhen {
+    condition: unbound_dissolution(
+      description: "Delete this record when the tree-publication vertical is live and its lessons have moved to the carriers that enforce them: the deployed-tree observation green-by-execution against srv1 with a receipt; publication constructible only through a quiescence guard that proves the belt TIMER and SERVICE inactive with no queued or running invocation; belt admission consuming a release identity that binds binary to tree rather than repository revision alone; and the recurring class -- a predicate true by construction under a degenerate input, still asserted by its type when the input becomes real -- carried as a row in the guarantee census with its own discriminating control. Until every one of those holds, this is the only place the refuted branch, the instrument history and the belt-enablement finding are written down, and deleting it would cost the next author the same three nights.",
+    ),
+  },
 }

@@ -71,44 +71,114 @@ fn deployed_tree_revision_argv(repo: NonEmptyStr) -> List<String> {
   ["git", "-C", repo as String, "rev-parse", "HEAD"]
 }
 
-// `git diff --name-only HEAD` AND NOT `git status`, AND THE REASON IS A PROPERTY OF THIS DEPLOY.
+// THE WORKTREE IS COMPARED AGAINST AN INDEX WE BUILD, AND THE DEPLOYED REPO'S OWN INDEX IS NEVER
+// CONSULTED. This is the third instrument this observation has had, and the first two were both
+// wrong in the same way, so the reasoning is recorded rather than just the answer.
+//
 // The .git leg is a WHITELIST sync -- HEAD, objects, packed-refs, refs -- and its own carrier note
-// lists what never crosses: "config, config.worktree, INDEX, hooks, logs". So after a CORRECT sync the
-// deployed repo is in a state git never produces on its own: HEAD and objects at the new revision, the
-// worktree at the new revision, and .git/index still recording whatever the target held before. git
-// status compares HEAD to index to worktree, so with a stale index every path that changed reports
-// modified in BOTH columns, permanently, on a host that is exactly right.
+// lists what never crosses: "config, config.worktree, INDEX, hooks, logs". So a correctly synced host
+// is in a state git never produces on its own: HEAD and objects at the new revision, the worktree at
+// the new revision, and .git/index still recording whatever the target held before. An earlier
+// observation on srv1 found 4,604 files staged as DELETED while present on disk -- that is this state
+// at production scale, already measured.
 //
-// MEASURED, not reasoned: a repo at D with its index restored from L reports `MM f.txt` from
-// `status --porcelain --untracked-files=no`, while the same command on the same repo with a correct
-// index reports nothing. `git diff --name-only HEAD` compares worktree CONTENT against HEAD's tree
-// and tolerates the stale index -- empty when the host is right, naming the path when a tracked file
-// is actually wrong, empty again on restore. All three arms were driven.
+// `git status` reports every changed path modified in both columns against such an index. `git diff
+// --name-only HEAD` was then adopted on a measurement that turned out to be an artifact of a
+// one-file fixture: on a three-file repo whose worktree was verified byte-identical to HEAD, it
+// reported two of the three as drifted. Tolerating a stale index was never a property git offers --
+// it was a coincidence of which files happened to be re-hashed.
 //
-// It also dissolves the untracked question rather than managing it with a flag: `git diff HEAD` has no
-// untracked concept, so the subject is exactly "do the tracked bytes equal this commit" and there is no
-// option for a later reader to simplify away. Untracked-but-shipped remains candidate admission's
-// class, which already owns and refuses it.
+// So the construction does not tolerate a stale index, it CANNOT SEE ONE: read-tree materializes a
+// TEMPORARY index from the revision the host is actually on, and status runs against that. Nothing
+// inherits the deployed repo's staged state or its index flags. Verified: on the same stale-index
+// tree the temp-index form answers empty, a corrupted tracked file answers ` M <path>`, restoring it
+// answers empty again, and the real .git/index md5 is unchanged across all three.
 //
-// THE MIRROR FAILURE WAS TESTED AND DOES NOT REACH US. git may skip re-hashing when stat data matches
-// the index, and rsync -t preserves mtimes, which would be a false CLEAN -- the silent direction. But
-// git's stat cache records ctime too, and ctime cannot be set by touch or preserved by rsync: a synced
-// file's ctime is the sync time, so the cache never matches and git re-hashes unconditionally. A
-// deliberate same-size, mtime-restored content change was caught. The property that makes the index
-// stale is the same one that blocks the silent failure.
-// ONE PRECONDITION, CLEAN TODAY AND WITH AN ENFORCEABLE HOME. `git diff HEAD` compares worktree
-// content to HEAD's blobs THROUGH gitattributes, so a clean/smudge filter, `text=auto`, `eol=`, or
-// `working-tree-encoding` would make it report clean when the deployed bytes differ from the blob
-// bytes by normalization -- and rsync ships bytes, so that is not the claim wanted. Measured: zero
-// occurrences of text=, eol=, filter= or working-tree-encoding in .gitattributes, which carries only
-// `linguist-language` (presentation) and `merge=generated-artifact` (merge driver, no clean/smudge).
-// So the comparison is raw bytes today. Unlike most preconditions this one has an AUTHORITY rather
-// than only an inspection: .gitattributes is generated from gunbc.gitattributes_emit, so a refusal to
-// emit a normalizing attribute would make the premise unwritable instead of true-by-inspection. That
-// row lands with the publication vertical rather than ahead of it, because reaching the bad state
-// requires someone to author a normalizing row in a generated file, which is not an accident.
-fn deployed_tree_status_argv(repo: NonEmptyStr) -> List<String> {
-  ["git", "-C", repo as String, "diff", "--name-only", "HEAD"]
+// WHY diff AND status WERE REJECTED, WITH THE DISCRIMINATOR NAMED -- because both of them WORK on
+// some machines, and a later reader who tries one on a nanosecond filesystem will see it succeed and
+// conclude this was precious. git stores index ctime/mtime as seconds PLUS a nanosecond field and
+// compares both. Where the filesystem populates nanoseconds, two writes in the same second still
+// differ and the stat cache cannot collide. Where that field is coarse or zero, same-second writes
+// collide exactly, git trusts the cache, never reads the file, and reports the worktree as matching
+// the STALE index rather than the commit.
+//
+// Measured on both kinds by two people: one index recording `ctime: 1787281139:854780220` never
+// collided across repeated deliberate attempts; another recording whole seconds collided on exactly
+// the file whose ctime matched, which `git ls-files --debug` shows directly. The failure is PER-FILE
+// AND SILENT -- some paths answer correctly and one does not, in the same run, with nothing in the
+// output distinguishing them.
+//
+// This matters more in production than in a scratch repo, not less: rsync -t takes mtime from the
+// SOURCE rather than minting a fresh local one, and the index being compared against was written by
+// an earlier sync of the same kind. Whether /opt/gunbc's filesystem populates nanoseconds is one
+// read-only stat away and is worth knowing for anything ELSE that consults the deployed index -- but
+// it is deliberately NOT a dependency of this module, which is correct on both kinds because it does
+// not consult the artifact the divergence lives in.
+// `--no-optional-locks` IS LOAD-BEARING AND NOT COSMETIC: plain `git status` WRITES the index back
+// (measured -- the md5 changes), so without the flag an "observation" would mutate the host it claims
+// to be reading. The same defect is live in extdeps.git.inspect WorkingTreeStatus, which declares
+// `readonly` while omitting the flag; that is a separate repair.
+//
+// The subject is exactly "do the tracked bytes equal the commit HEAD names". Untracked-but-shipped is
+// a different class and stays with candidate admission, which already owns and refuses it.
+//
+// ONE PRECONDITION, CLEAN TODAY AND WITH AN ENFORCEABLE HOME. The comparison runs through
+// gitattributes, so a clean/smudge filter, text=auto, eol= or working-tree-encoding would report
+// clean while the deployed bytes differ by normalization -- and rsync ships bytes. Verified with
+// `git check-attr`, which is the authority rather than a grep because it accounts for attributes at
+// any depth and for info/attributes: text, eol, filter and working-tree-encoding all report
+// `unspecified`. .gitattributes is generated from gunbc.gitattributes_emit, whose two attribute
+// constants are literals with no mechanism to admit a third, so the premise is structural rather than
+// merely observed.
+
+// THE COMPOSED CLAIM, stated because the status leg alone proves less than it looks like it proves.
+// `status` reports HEAD-versus-index as well as worktree-versus-index. Here the temp index is built
+// from the revision the rev-parse leg OBSERVED, so the HEAD-versus-index half is equal by
+// construction and every reported entry is a worktree difference. That is what makes the empty result
+// mean "the tracked worktree realizes the commit HEAD names" without needing any external fact --
+// and it is why the index is built from the observed revision rather than the admitted one.
+//
+// The temp index is named for the ATTEMPT, so two observations running under different attempts cannot
+// collide on it. FleetSshAttemptIdentity is a PathSegment admitted through path_segment_is_safe, so
+// the path is safe by construction rather than by escaping -- there is no spelling of an attempt that
+// makes this argv unportable.
+fn deployed_tree_temp_index_path(locus: DeployedTreeLocus) -> String {
+  join(["/tmp/gunbc-deployed-tree-index-", locus.context.attempt as String], "")
+}
+
+// BOTH LEGS BIND THE TEMP INDEX THROUGH GIT_INDEX_FILE, and `--index-output` is NOT a substitute --
+// this was tried and it is wrong. `--index-output` redirects where entries are WRITTEN but still
+// LOCKS the real index: with a `.git/index.lock` present, `read-tree --index-output=/tmp/x` fails
+// with "Unable to create .git/index.lock: File exists", while the GIT_INDEX_FILE form succeeds and
+// so does the status leg against it. The flag names one of the operation's couplings and gives no
+// hint of the other.
+//
+// That distinction is decisive on THIS host rather than academic: a live worktree registration per
+// dispatch, plus the belt and agent sessions running ordinary git against the same shared repo, mean
+// an existing index.lock is the NORMAL case on srv1 -- the target-local state apply_tree_split_sync
+// exists to preserve. An observation that took the real lock would fail in proportion to how busy the
+// host is, and each failure would arrive as an Unobserved whose cause reads like a transient. It
+// would be fail-closed and it would train its readers to ignore it, which is worse than a hard fault.
+//
+// `--no-sparse-checkout` IS LOAD-BEARING AND ITS ABSENCE IS SILENT: without it, repository
+// sparse-checkout configuration can set skip-worktree bits in the temporary index, and a MISSING
+// tracked path then reads as intentionally absent rather than as drift. That is a false CLEAN on
+// precisely the failure this observation exists to catch -- a path the sync did not deliver.
+fn deployed_tree_read_tree_argv(repo: NonEmptyStr, revision_hex: String, index_path: String) -> List<String> {
+  [
+    "env", join(["GIT_INDEX_FILE=", index_path], ""),
+    "git", "-C", repo as String, "read-tree", "--no-sparse-checkout", revision_hex,
+  ]
+}
+
+// `env` carries GIT_INDEX_FILE because that variable has no command-line equivalent, and every word
+// here stays inside the portable alphabet: letters, digits and `_ = / . -`. No shell, no pipe.
+fn deployed_tree_status_argv(repo: NonEmptyStr, index_path: String) -> List<String> {
+  [
+    "env", join(["GIT_INDEX_FILE=", index_path], ""),
+    "git", "-C", repo as String, "--no-optional-locks",
+    "status", "--porcelain=v1", "--untracked-files=no",
+  ]
 }
 
 // A TRANSPORT REFUSAL IS ITS OWN ARM, NEVER A SYNTHETIC EXIT CODE. Rendering a leg that was never
@@ -187,9 +257,7 @@ fn deployed_tracked_state_of(changed_paths: String) -> DeployedTrackedState {
 fn observe_deployed_tree(locus: DeployedTreeLocus) -> DeployedTreeObservation {
   match deployed_tree_leg(locus: locus, argv: deployed_tree_revision_argv(repo: locus.repo)) {
     DeployedTreeLegNotAttempted { reason: why } =>
-      DeployedTreeUnobservable {
-        cause: TreeLegNotAttempted { leg: "revision", reason: why },
-      }
+      DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "revision", reason: why } }
     DeployedTreeLegRan { result: rev } =>
       if rev.exit_code != 0 {
         DeployedTreeUnobservable {
@@ -198,26 +266,55 @@ fn observe_deployed_tree(locus: DeployedTreeLocus) -> DeployedTreeObservation {
       } else {
         match git_object_id_from_untagged_hex(hex: trim(s: rev.stdout)) {
           Absent =>
-            DeployedTreeUnobservable {
-              cause: TreeRevisionUndecodable { text: trim(s: rev.stdout) },
-            }
+            DeployedTreeUnobservable { cause: TreeRevisionUndecodable { text: trim(s: rev.stdout) } }
           Present { value: oid } =>
-            match deployed_tree_leg(locus: locus, argv: deployed_tree_status_argv(repo: locus.repo)) {
-              DeployedTreeLegNotAttempted { reason: why2 } =>
-                DeployedTreeUnobservable {
-                  cause: TreeLegNotAttempted { leg: "worktree comparison", reason: why2 },
-                }
-              DeployedTreeLegRan { result: st } =>
-                if st.exit_code != 0 {
-                  DeployedTreeUnobservable {
-                    cause: TreeCommandFailed { leg: "worktree comparison", exit_code: st.exit_code, stderr: st.stderr },
-                  }
-                } else {
-                  DeployedTreeObserved {
-                    revision: oid,
-                    tracked: deployed_tracked_state_of(changed_paths: st.stdout),
-                  }
-                }
+            observe_deployed_tree_against_revision(locus: locus, revision: oid, revision_hex: trim(s: rev.stdout))
+        }
+      }
+  }
+}
+
+// THE TEMP INDEX IS BUILT FROM THE REVISION THE HOST IS ACTUALLY ON, not from the admitted one. That
+// keeps this observation answering ONE question -- do the tracked bytes equal the commit HEAD names --
+// and leaves "is that the right commit" to the standing. Building it from the desired revision would
+// fuse the two, and a host on the wrong commit would then report modifications for every path that
+// differs between the two revisions, which is drift wearing a modification's label.
+fn observe_deployed_tree_against_revision(
+  locus: DeployedTreeLocus,
+  revision: GitObjectId,
+  revision_hex: String,
+) -> DeployedTreeObservation {
+  let index_path = deployed_tree_temp_index_path(locus: locus)
+  match deployed_tree_leg(
+    locus: locus,
+    argv: deployed_tree_read_tree_argv(repo: locus.repo, revision_hex: revision_hex, index_path: index_path),
+  ) {
+    DeployedTreeLegNotAttempted { reason: why } =>
+      DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "index materialization", reason: why } }
+    DeployedTreeLegRan { result: rt } =>
+      if rt.exit_code != 0 {
+        DeployedTreeUnobservable {
+          cause: TreeCommandFailed { leg: "index materialization", exit_code: rt.exit_code, stderr: rt.stderr },
+        }
+      } else {
+        match deployed_tree_leg(
+          locus: locus,
+          argv: deployed_tree_status_argv(repo: locus.repo, index_path: index_path),
+        ) {
+          DeployedTreeLegNotAttempted { reason: why2 } =>
+            DeployedTreeUnobservable {
+              cause: TreeLegNotAttempted { leg: "worktree comparison", reason: why2 },
+            }
+          DeployedTreeLegRan { result: st } =>
+            if st.exit_code != 0 {
+              DeployedTreeUnobservable {
+                cause: TreeCommandFailed { leg: "worktree comparison", exit_code: st.exit_code, stderr: st.stderr },
+              }
+            } else {
+              DeployedTreeObserved {
+                revision: revision,
+                tracked: deployed_tracked_state_of(changed_paths: st.stdout),
+              }
             }
         }
       }
