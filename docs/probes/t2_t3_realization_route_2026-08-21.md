@@ -285,11 +285,24 @@ constrain the *next* measurement and a message is not where the next author will
   establish what any of those arms should do instead, what a unified consultation costs elsewhere in
   the emitter, or that the three arms have one fix — nothing was changed and nothing was re-emitted
   under a change, so no such claim could be evidenced here.
-- **No repair is proposed as decided.** The shape of one is visible — `std.coercion`
-  `TypeRealizationDecision` (landed #8739) is exactly the *"which of a named declaration's possible
-  renderings actually applies"* query this root needs, and it currently has **zero consumers** in
-  the corpus. Whether the expression renderer should consult it, and what that does to the
-  carriers' construction walls, is the next question, not this document's answer.
+- **No repair is proposed as decided.** The design that follows from this trace is
+  [`docs/plans/carrier-realization-arbiter-repair-design.md`](../plans/carrier-realization-arbiter-repair-design.md);
+  it leaves the one policy question it turns on to that question's owner and proposes a measurement,
+  not a merge, as the next executable step.
+- **CORRECTION, 2026-08-21, same day: an earlier revision of this document and of this lane's PR body
+  claimed `TypeRealizationDecision` has "zero consumers" in the corpus. That is FALSE.**
+  `v1.compiler.coercion` `lookup_checkpoint` is a thin derivation of `type_realization_decision` for
+  every `decl_file != ""` caller, and `v1.compiler.trait_derive_emit`'s alias-hop arm reaches it that
+  way. The error came from grepping the *type* name rather than the *function*. It is corrected here
+  rather than quietly dropped because it was relayed upward and planned against, and because the
+  corrected fact is the stronger one: the authority is present, correct, **and unreachable** for this
+  carrier — five type renderers (`render_rust_type`, `render_rust_type_without_applied_binding`,
+  `render_rust_applied_type`, `render_rust_decl_type`, `render_rust_fn_sig_type`) each return on
+  their first line via `is_host_text_carrier_type` → `"String"`, unconditional on `decl_file`, while
+  `structural_declaration_modules_for("String")` lists both declaring modules. An unreachable wall,
+  not a missing one (DESIGN §6 coverage-by-illusion). Established by reading those five renderers'
+  control flow; **not** established by a discriminating execution, and it says nothing about a sixth
+  renderer that may handle some type position without that preamble.
 
 Per-site attribution: [`t2_t3_realization_route_2026-08-21/routes.tsv`](t2_t3_realization_route_2026-08-21/routes.tsv)
 (columns: file, line, col, expected, found, coded_root, expected_route, found_route, carrier,
