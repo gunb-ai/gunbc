@@ -2530,3 +2530,44 @@ control, and the classifier's known-positive RESIDUE arm):
 [`docs/probes/e0277_root_partition_2026-08-21.md`](../probes/e0277_root_partition_2026-08-21.md).
 Per-site TSV:
 [`docs/probes/e0277_partition_2026-08-21/sites_classified.tsv`](../probes/e0277_partition_2026-08-21/sites_classified.tsv).
+
+## 21. E0308 re-derived on current main — mechanism grain at M=1 (`smart-otter-254`, 2026-08-21)
+
+**Dispatched question:** re-derive E0308's expected/found categories against the **live 199**
+(39% of 03_ingest's coded board, no owner) instead of inheriting §19's M=11 partition or the older
+204/275 boards. **Answer:** at `2a2bd0ad59…`, 03_ingest carries **199 E0308 blocks / 235 distinct
+(file, line, col, expected, found) sites** in **15 categories**, 7 unclassified (3.0%), and **four
+of the categories do not exist in §19 or §11.3**.
+
+| root | sites | % | note |
+|---|---:|---:|---|
+| B3 — modeled `Nat` vs native integer | 49 | 20.9% | 28 are an integer *literal* at a `Rc<Nat>` parameter |
+| T2 — text carrier vs `String` | 34 | 14.5% | value `String`, declaration `Rc<im::Vector<_>>` |
+| R1 — bare↔`Rc` wrap | 33 | 14.0% | **11 of them at type-argument depth**, not the outer position |
+| T3 — collection carrier fork | 25 | 10.6% | |
+| **RT-builtin** — host-builtin signature interception | 20 | 8.5% | **NEW**: callee resolves to `src/v1_rt.rs`; E0308 face of the bare-name interception root |
+| D — alias arity | 13 | 5.5% | all in `v2_lens_coverage.rs` |
+| **ARG-ORDER** — call argument order | 11 | 4.7% | **NEW**: rustc `reorder these arguments`, five `eval_*_node` callees |
+| R2 / W / A-clone / B2 / R5 / C / DIAG | 9/8/6/6/6/4/4 | | **A-clone is Root A surfacing under E0308**, missed by an E0277-only view |
+| RESIDUE | 7 | 3.0% | printed, fail-closed |
+
+**Three things a session planning E0308 work should take from this and not from §19.**
+
+1. **§19's largest root has zero sites on this subject.** T7 (`Fnv1a64Structural` ↔ `String`,
+   99 sites / 24.3% at M=11) does not appear at M=1 on 03_ingest. Per §15.1/§16 **no delta is
+   claimed** — different subject and different M — but a plan that opens with T7 because §19 ranked
+   it first will find nothing to do in this closure.
+2. **Two mechanisms are not carrier forks at all.** ARG-ORDER (11) is the emitter reordering a
+   call against its callee's declaration — the failure DESIGN.md §4b names in its rung-honesty
+   clause, now measured with five named callees in `v2_compiler_eval.rs`. RT-builtin (20) is a
+   *resolution* defect: the call is routed to a host builtin sharing a spelling with the corpus
+   declaration, so its `String`-typed signature is the "expected" side. Neither dissolves under any
+   Rc-wrap or repr work.
+3. **The tail is in files.** `v2_compiler_tokenize.rs` carries 68 of 235 sites (28.9%) across two
+   roots that are one seam (Nat and text realized natively at the value, modeled at the
+   declaration). 47 files hold the rest.
+
+Full receipt, with the board reproduced beside its denominator, the block-vs-site instrument split,
+and the controls: [`docs/probes/e0308_partition_2026-08-21.md`](../probes/e0308_partition_2026-08-21.md).
+Per-site TSV:
+[`docs/probes/e0308_partition_2026-08-21/sites_classified.tsv`](../probes/e0308_partition_2026-08-21/sites_classified.tsv).
