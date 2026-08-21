@@ -57,6 +57,22 @@ import extdeps.shell.exec
 import extdeps.tools.id { id_uid_argv, id_gid_argv, id_binary_path }
 import extdeps.tools.mkdir { mkdir_parents_argv }
 import extdeps.tools.chown { chown_argv }
+import extdeps.tools.stat { stat_owner_user_argv, stat_owner_group_argv }
+import extdeps.posix.path_ownership {
+  PathOwnershipObservation,
+  PathOwnerObserved,
+  PathOwnerUnobserved,
+  PathOwnershipDecision,
+  OwnershipAlreadySatisfied,
+  OwnershipMutationRequired,
+  OwnershipDecisionRefused,
+  PathOwnershipEnsureOutcome,
+  PathAlreadyOwned,
+  PathOwnershipChanged,
+  PathOwnershipEnsureRefused,
+  path_ownership_decision,
+  path_ownership_verdict,
+}
 import extdeps.posix.identity { PosixOwnerSpec, posix_user_id_from_text, posix_group_id_from_text }
 import extdeps.sudo.elevation { sudo_elevate, sudo_binary_path }
 import gunbc.retained_shell_script {
@@ -1520,118 +1536,191 @@ fn srv3_apt_tool_version_ok(tool_name: NonEmptyStr, transport: HostEffectTranspo
 // the harm is small, but the shape is the one that produced this file's two worst defects: an
 // effectful call outside the branch that decides whether it should happen runs anyway, and nothing
 // in the signature says so.
-fn srv3_chown_directory_to_current_user(path: String, transport: HostEffectTransport) -> Srv3HostPredicate {
-  match transport {
-    LocalShell =>
-      match srv3_local_id_token(flag: "-u") {
-        Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
-        Srv3TokenAbsent => Srv3PredicateFails
-        Srv3TokenObserved { value: uid_value } =>
-          match srv3_local_id_token(flag: "-g") {
-            Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
-            Srv3TokenAbsent => Srv3PredicateFails
-            Srv3TokenObserved { value: gid_value } =>
-              srv3_chown_to_decoded_owner(
-                uid_text: uid_value,
-                gid_text: gid_value,
-                path: path,
-                transport: transport,
-              )
-          }
-      }
-    SshShell { ssh_host: h } => {
-      let uid = srv3_observed_token_from_typed_argv(outcome: typed_argv_exec_over_ssh(host: h, argv: id_uid_argv()))
-      let gid = srv3_observed_token_from_typed_argv(outcome: typed_argv_exec_over_ssh(host: h, argv: id_gid_argv()))
-      srv3_chown_with_observed_owner(uid: uid, gid: gid, path: path, transport: transport)
-    }
-    FleetSsh { target: t, context: c } => {
-      let uid = srv3_observed_token_from_typed_argv(
-        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: id_uid_argv()),
-      )
-      let gid = srv3_observed_token_from_typed_argv(
-        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: id_gid_argv()),
-      )
-      srv3_chown_with_observed_owner(uid: uid, gid: gid, path: path, transport: transport)
-    }
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      Srv3PredicateUnobserved {
-        reason: "EmitArtifactThenThinRun transport has no arm that can read uid/gid or chown",
+fn srv3_effective_owner(transport: HostEffectTransport) -> Srv3EffectiveOwner {
+  match srv3_transport_token(argv: id_uid_argv_absolute(), transport: transport) {
+    Srv3TokenUnobserved { reason: why } => Srv3EffectiveOwnerUnobserved { reason: why }
+    Srv3TokenAbsent =>
+      Srv3EffectiveOwnerUnobserved { reason: "srv3 owner: `id -u` produced no output" }
+    Srv3TokenObserved { value: uid_text } =>
+      match srv3_transport_token(argv: id_gid_argv_absolute(), transport: transport) {
+        Srv3TokenUnobserved { reason: why } => Srv3EffectiveOwnerUnobserved { reason: why }
+        Srv3TokenAbsent =>
+          Srv3EffectiveOwnerUnobserved { reason: "srv3 owner: `id -g` produced no output" }
+        Srv3TokenObserved { value: gid_text } =>
+          srv3_owner_from_texts(uid_text: uid_text, gid_text: gid_text)
       }
   }
 }
 
-// LOCAL `id` READS GO THROUGH THE SAME TOKEN SHAPE THE SSH ARMS USE. The local arm previously
-// consumed `.stdout` raw and unconditionally, so a trailing newline -- which `id` emits and every
-// other arm in this file trims -- was concatenated straight into a privileged chown argument. That
-// is not a hypothetical: the ssh path trimmed and the local path did not, so the two transports
-// disagreed about what the same command returned, and only one of them was right.
-fn srv3_local_id_token(flag: String) -> Srv3ObservedToken {
-  let r = gunbc.WitnessBin.Run(workdir: "/", bin_path: id_binary_path as String, args: [flag])
-  if r.success {
-    let out = trim(s: r.stdout)
-    if out == "" { Srv3TokenAbsent } else { Srv3TokenObserved { value: out } }
-  } else {
-    Srv3TokenAbsent
-  }
+// The absolute-path spellings. extdeps.tools.id's bare argv rows resolve through PATH, which is
+// right for a remote shell; the local witness-bin surface takes a binary path, and a sudoers rule
+// matches on one, so both spellings are real and neither is the other's nickname.
+fn id_uid_argv_absolute() -> List<String> {
+  [id_binary_path as String, "-u"]
 }
 
-fn srv3_chown_with_observed_owner(
-  uid: Srv3ObservedToken,
-  gid: Srv3ObservedToken,
-  path: String,
-  transport: HostEffectTransport,
-) -> Srv3HostPredicate {
-  match uid {
-    Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
-    Srv3TokenAbsent => Srv3PredicateFails
-    Srv3TokenObserved { value: uid_value } =>
-      match gid {
-        Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
-        Srv3TokenAbsent => Srv3PredicateFails
-        Srv3TokenObserved { value: gid_value } =>
-          srv3_chown_to_decoded_owner(
-            uid_text: uid_value,
-            gid_text: gid_value,
-            path: path,
-            transport: transport,
-          )
-      }
-  }
+fn id_gid_argv_absolute() -> List<String> {
+  [id_binary_path as String, "-g"]
 }
+
+type Srv3EffectiveOwner
+  = Srv3EffectiveOwnerObserved { owner: PosixOwnerSpec }
+  | Srv3EffectiveOwnerUnobserved { reason: String }
 
 // AN UNDECODABLE ID REFUSES; IT IS NOT CHOWNED TO. `id` printed SOMETHING and it is not a POSIX
-// id, which is a different state from "id printed nothing" (Absent, a failed observation) and from
-// "id was never run" (Unobserved, no observation) -- and the remedy differs: unparseable output
-// means the probe's assumption about the host is wrong, and retrying will produce the same text.
-// It reports Unobserved because the owner was genuinely not learned; what it must never do is
-// compose the text into an owner argument anyway, which is exactly what the String-concatenated
-// predecessor did with whatever `id` had put on stdout.
-fn srv3_chown_to_decoded_owner(
-  uid_text: String,
-  gid_text: String,
-  path: String,
-  transport: HostEffectTransport,
-) -> Srv3HostPredicate {
+// id, which is a different state from "id printed nothing" and from "id was never run" -- and the
+// remedy differs: unparseable output means the probe's assumption about the host is wrong, and
+// retrying will produce the same text.
+fn srv3_owner_from_texts(uid_text: String, gid_text: String) -> Srv3EffectiveOwner {
   match posix_user_id_from_text(text: uid_text) {
     Absent =>
-      Srv3PredicateUnobserved {
-        reason: concat("srv3 chown: `id -u` output is not a POSIX user id: ", uid_text),
+      Srv3EffectiveOwnerUnobserved {
+        reason: concat("srv3 owner: `id -u` output is not a POSIX user id: ", uid_text),
       }
     Present { value: user } =>
       match posix_group_id_from_text(text: gid_text) {
         Absent =>
-          Srv3PredicateUnobserved {
-            reason: concat("srv3 chown: `id -g` output is not a POSIX group id: ", gid_text),
+          Srv3EffectiveOwnerUnobserved {
+            reason: concat("srv3 owner: `id -g` output is not a POSIX group id: ", gid_text),
           }
         Present { value: group } =>
-          srv3_elevated_witness_bin_success(
-            transport: transport,
-            command: chown_argv(
-              owner: PosixOwnerSpec { user: user, group: group },
-              path: path,
-            ),
-          )
+          Srv3EffectiveOwnerObserved {
+            owner: PosixOwnerSpec { user: user, group: group },
+          }
       }
+  }
+}
+
+// THE PATH'S CURRENT OWNER, read independently of anything this process did to it.
+fn srv3_observe_path_owner(path: String, transport: HostEffectTransport) -> PathOwnershipObservation {
+  match srv3_transport_token(argv: stat_owner_user_argv(path: path), transport: transport) {
+    Srv3TokenUnobserved { reason: why } => PathOwnerUnobserved { reason: why }
+    Srv3TokenAbsent =>
+      PathOwnerUnobserved {
+        reason: concat("srv3 owner: `stat -c %u` produced no output for ", path),
+      }
+    Srv3TokenObserved { value: uid_text } =>
+      match srv3_transport_token(argv: stat_owner_group_argv(path: path), transport: transport) {
+        Srv3TokenUnobserved { reason: why } => PathOwnerUnobserved { reason: why }
+        Srv3TokenAbsent =>
+          PathOwnerUnobserved {
+            reason: concat("srv3 owner: `stat -c %g` produced no output for ", path),
+          }
+        Srv3TokenObserved { value: gid_text } =>
+          srv3_path_owner_from_texts(uid_text: uid_text, gid_text: gid_text, path: path)
+      }
+  }
+}
+
+fn srv3_path_owner_from_texts(
+  uid_text: String,
+  gid_text: String,
+  path: String,
+) -> PathOwnershipObservation {
+  match srv3_owner_from_texts(uid_text: uid_text, gid_text: gid_text) {
+    Srv3EffectiveOwnerUnobserved { reason: why } =>
+      PathOwnerUnobserved { reason: concat(concat("srv3 owner of ", path), concat(": ", why)) }
+    Srv3EffectiveOwnerObserved { owner: o } => PathOwnerObserved { owner: o }
+  }
+}
+
+// OWNERSHIP IS ENSURED BY READBACK, NOT BY EXIT STATUS -- and this is the stage where that
+// distinction was previously absent. The predecessor ran an elevated chown and returned
+// Holds/Fails from the process result, so "the chown exited zero" and "the directory is owned by
+// us" were the same claim. They are not: a chown that followed a symlink, or that raced a replaced
+// path, or that ran under a sudoers rule permitting the binary but not the target, can exit zero
+// having converged nothing.
+//
+// The chown's own result is deliberately not consulted for the verdict. It cannot be: the verdict
+// comes from path_ownership_verdict, which takes the readback and the desired owner and has
+// nowhere to put a process result. A failed chown surfaces as the readback disagreeing.
+fn srv3_ensure_directory_owned_by_current_user(
+  path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match srv3_effective_owner(transport: transport) {
+    Srv3EffectiveOwnerUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+    Srv3EffectiveOwnerObserved { owner: desired } =>
+      srv3_converge_path_owner(
+        desired: desired,
+        decision: path_ownership_decision(
+          desired: desired,
+          observed: srv3_observe_path_owner(path: path, transport: transport),
+        ),
+        path: path,
+        transport: transport,
+      )
+  }
+}
+
+// THE ALREADY-SATISFIED ARM PERFORMS NO PRIVILEGED INVOCATION AT ALL, which on a converge that has
+// already run is every invocation this stage would have made.
+fn srv3_converge_path_owner(
+  desired: PosixOwnerSpec,
+  decision: PathOwnershipDecision,
+  path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match decision {
+    OwnershipDecisionRefused { reason: why } => Srv3PredicateUnobserved { reason: why }
+    OwnershipAlreadySatisfied { owner: _ } => Srv3PredicateHolds
+    OwnershipMutationRequired { current: _, desired: target } =>
+      srv3_path_owner_readback_verdict(
+        desired: target,
+        mutation: srv3_elevated_witness_bin_success(
+          transport: transport,
+          command: chown_argv(owner: target, path: path),
+        ),
+        path: path,
+        transport: transport,
+      )
+  }
+}
+
+// The mutation's predicate is taken as a parameter so it is EVALUATED BEFORE the readback -- the
+// argument position is load-bearing here in the opposite direction from everywhere else in this
+// file: the chown must run first. Its value is then used only to distinguish an unobservable
+// mutation (the host was never reached, so a readback would describe a host nobody touched) from
+// an observed one; a chown that ran and reported failure still goes to the readback, because
+// "reported failure" is not evidence about the filesystem either.
+fn srv3_path_owner_readback_verdict(
+  desired: PosixOwnerSpec,
+  mutation: Srv3HostPredicate,
+  path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match mutation {
+    Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+    Srv3PredicateFails =>
+      srv3_path_owner_readback(desired: desired, path: path, transport: transport)
+    Srv3PredicateHolds =>
+      srv3_path_owner_readback(desired: desired, path: path, transport: transport)
+  }
+}
+
+// The two observed arms above are deliberately identical, and collapsing them into one would
+// require a wildcard the non-fold-residue floor forbids -- but the identity is the POINT rather
+// than an accident: a chown that reported failure gets read back exactly like one that reported
+// success, because a process result is not evidence about the filesystem in either direction. The
+// only arm that skips the readback is the one where no host was reached at all.
+fn srv3_path_owner_readback(
+  desired: PosixOwnerSpec,
+  path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  srv3_predicate_from_ownership_outcome(
+    outcome: path_ownership_verdict(
+      desired: desired,
+      readback: srv3_observe_path_owner(path: path, transport: transport),
+    ),
+  )
+}
+
+fn srv3_predicate_from_ownership_outcome(outcome: PathOwnershipEnsureOutcome) -> Srv3HostPredicate {
+  match outcome {
+    PathAlreadyOwned { owner: _ } => Srv3PredicateHolds
+    PathOwnershipChanged { owner: _ } => Srv3PredicateHolds
+    PathOwnershipEnsureRefused { reason: why } => Srv3PredicateUnobserved { reason: why }
   }
 }
 
@@ -2046,7 +2135,7 @@ fn websocat_stage_ensure_ownership(
 ) -> Srv3HostPredicate {
   match websocat_after(
     stage: EnsureOwnership,
-    outcome: srv3_chown_directory_to_current_user(
+    outcome: srv3_ensure_directory_owned_by_current_user(
       path: gunbc_bin_dir as String,
       transport: transport,
     ),

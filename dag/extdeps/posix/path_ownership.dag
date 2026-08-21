@@ -1,0 +1,107 @@
+module extdeps.posix.path_ownership
+
+import std.types { String, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.posix.identity { PosixOwnerSpec, posix_owner_spec_text }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/functions/chown.html"
+  }
+}
+
+// OWNERSHIP CONVERGENCE, MODELED AS A DECISION RATHER THAN AS A PROCESS EXIT.
+//
+// A successful chown process is not evidence that a path is owned. It is evidence that one
+// invocation of one utility exited zero -- which is a claim about the utility, not about the
+// filesystem. The two come apart in ordinary ways: a chown that silently followed a symlink
+// changed something else, a chown on a path that a concurrent process replaced changed the old
+// inode, and a chown under a sudoers rule that permits the binary but not the target can exit zero
+// having done nothing on some configurations. Treating exit status as convergence is the
+// fabricated-plausible-output failure at the actuation boundary.
+//
+// So the ensure is: observe, decide, mutate only if needed, observe again independently, and let
+// the SECOND observation decide the verdict. The mutation's own exit status is not consulted for
+// the verdict at all -- it can only cause the readback to disagree.
+
+type PathOwnershipIntent {
+  path: String
+  owner: PosixOwnerSpec
+}
+
+// AN UNOBSERVED OWNER IS NOT AN UNOWNED PATH. `stat` refusing and `stat` reporting a different
+// owner are different states with opposite actuations: the first must not chown at all (the host
+// was never asked), the second must. Collapsing them is the empty-observation narrow pointed at a
+// privileged mutation.
+type PathOwnershipObservation
+  = PathOwnerObserved { owner: PosixOwnerSpec }
+  | PathOwnerUnobserved { reason: String }
+
+// THE PRE-MUTATION DECISION. Separated from the ensure itself so it is decidable without a host:
+// the whole point of the readback design is that the interesting logic is pure and the effects are
+// three calls at the edges.
+type PathOwnershipDecision
+  = OwnershipAlreadySatisfied { owner: PosixOwnerSpec }
+  | OwnershipMutationRequired { current: PosixOwnerSpec, desired: PosixOwnerSpec }
+  | OwnershipDecisionRefused { reason: String }
+
+type PathOwnershipEnsureOutcome
+  = PathAlreadyOwned { owner: PosixOwnerSpec }
+  | PathOwnershipChanged { owner: PosixOwnerSpec }
+  | PathOwnershipEnsureRefused { reason: String }
+
+fn posix_owner_spec_equal(left: PosixOwnerSpec, right: PosixOwnerSpec) -> Bool {
+  left.user.value == right.user.value && left.group.value == right.group.value
+}
+
+// SKIPPING AN UNNECESSARY CHOWN IS A SAFETY PROPERTY, NOT AN OPTIMIZATION. The mutation requires
+// elevation; not performing it is one fewer privileged invocation on the host, and on the common
+// path -- a converge that has already run -- it is the only invocation the ensure would have made.
+fn path_ownership_decision(
+  desired: PosixOwnerSpec,
+  observed: PathOwnershipObservation,
+) -> PathOwnershipDecision {
+  match observed {
+    PathOwnerUnobserved { reason: why } =>
+      OwnershipDecisionRefused {
+        reason: concat("path ownership: the current owner could not be observed, so no chown is authorized: ", why),
+      }
+    PathOwnerObserved { owner: current } =>
+      match posix_owner_spec_equal(left: current, right: desired) {
+        true => OwnershipAlreadySatisfied { owner: current }
+        false => OwnershipMutationRequired { current: current, desired: desired }
+      }
+  }
+}
+
+// THE VERDICT COMES FROM THE READBACK AND FROM NOTHING ELSE. There is no argument here for the
+// mutation's exit status, which is the structural form of the rule: a caller cannot report
+// convergence from a process result because this function has nowhere to put one.
+//
+// The refusal on a mismatch names both owners. "The chown did not take" and "the chown took, to
+// the wrong owner" are the same shape here and are distinguished by the values, not by an arm --
+// what matters to the caller is that the path is not owned as intended.
+fn path_ownership_verdict(
+  desired: PosixOwnerSpec,
+  readback: PathOwnershipObservation,
+) -> PathOwnershipEnsureOutcome {
+  match readback {
+    PathOwnerUnobserved { reason: why } =>
+      PathOwnershipEnsureRefused {
+        reason: concat("path ownership: the owner could not be read back after the chown, so convergence is not established: ", why),
+      }
+    PathOwnerObserved { owner: after } =>
+      match posix_owner_spec_equal(left: after, right: desired) {
+        true => PathOwnershipChanged { owner: after }
+        false =>
+          PathOwnershipEnsureRefused {
+            reason: concat(
+              concat("path ownership: the chown reported no error but the path is owned by ", posix_owner_spec_text(spec: after)),
+              concat(", not ", posix_owner_spec_text(spec: desired)),
+            ),
+          }
+      }
+  }
+}
