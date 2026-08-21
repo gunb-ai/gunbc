@@ -128,7 +128,7 @@ import v1.compiler.emit {
   emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
   emit_typed_cast_shared, emit_string_literal, emit_simple_expr, escape_rust_interp_text,
   module_emit_scope, scope_after_expr, lookup_item, has_nested_records_node,
-  emit_data_value_json, is_null_coalesce, has_service_items, typed_named_arg_matches,
+  emit_data_value_json, EmitterOutcome, Emitted, Refused, is_null_coalesce, has_service_items, typed_named_arg_matches,
   order_typed_call_args, is_tco_eligible, is_self_recursive, emit_shared_tco_expr,
   tco_reassign_core, is_tco_identity_passthrough, service_fallback_transport,
   effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls,
@@ -10113,8 +10113,9 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
   if mock_props |> count > 0 {
     let first_mock = mock_props |> first
     match first_mock {
-      Present { value: mp } => {
-        let mock_json = emit_data_value_json(value: field_init_node_value(n: mp), source_indices: source_indices)
+      Present { value: mp } => match emit_data_value_json(value: field_init_node_value(n: mp), source_indices: source_indices) {
+        Refused { reason: r } => concat(log_line, "\ncompile_error!(\"", r, "\");")
+        Emitted { json: mock_json } => {
         let is_multi_field_conj = inferred.connective == Conj && inferred.children |> count > 1
         if is_multi_field_conj {
           let children = inferred.children
@@ -10175,6 +10176,7 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
           concat(log_line, "\n",
             "let mock_value: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n",
             "Ok(serde_json::from_value(mock_value)?)")
+        }
         }
       }
       Absent => concat(log_line, "\ncompile_error!(\"mock property list was non-empty but first() returned None\")")
@@ -11070,9 +11072,11 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
       _ => "            compile_error!(\"BoundedLattice data must be a record\")"
     }
   } else if has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) {
-    let json_str = emit_data_value_json(value: value, source_indices: scope.type_env.source_indices)
-    concat("            serde_json::from_value(serde_json::json!(", json_str, "))\n",
-      "                .expect(\"valid data definition\")")
+    match emit_data_value_json(value: value, source_indices: scope.type_env.source_indices) {
+      Refused { reason: r } => concat("            compile_error!(\"", r, "\")")
+      Emitted { json: json_str } => concat("            serde_json::from_value(serde_json::json!(", json_str, "))\n",
+        "                .expect(\"valid data definition\")")
+    }
   } else {
     let is_map = node_is_keyed_collection(n: type_node, source_indices: scope.type_env.source_indices)
     if is_map {

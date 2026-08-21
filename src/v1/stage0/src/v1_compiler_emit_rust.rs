@@ -38,6 +38,7 @@ pub use crate::v1_compiler_coercion::{
     coerce_primitive_type, is_copy, lookup_checkpoint, type_reference_decl_file,
 };
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
+use crate::v1_compiler_emit::EmitterOutcome::{Emitted, Refused};
 pub use crate::v1_compiler_emit::{
     compute_service_fields, effective_operation_transport, emit_bin_op_symbol, emit_container,
     emit_data_value_json, emit_error_expr, emit_ident, emit_keyword, emit_lambda,
@@ -52,7 +53,7 @@ pub use crate::v1_compiler_emit::{
     service_field_ctors, service_field_decls, tco_reassign_core, typed_named_arg_matches,
 };
 pub use crate::v1_compiler_emit::{
-    BlockEmitState, InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput,
+    BlockEmitState, EmitterOutcome, InterpPart, ServiceFieldSet, TcoFrame, TcoReassignInput,
 };
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
@@ -27805,9 +27806,10 @@ pub fn emit_dry_run_branch_from_props(
             {
                 let first_mock = mock_props.clone().first().cloned();
                 match first_mock.clone() {
-    Some(mp) => {
-                    let mock_json = emit_data_value_json(field_init_node_value(mp.clone()), source_indices.clone());
-let is_multi_field_conj = ((inferred.connective.clone() == Connective::Conj) && ((inferred.children.clone().len() as i64) > 1));
+    Some(mp) => match (*emit_data_value_json(field_init_node_value(mp.clone()), source_indices.clone())).clone() {
+    EmitterOutcome::Refused { reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(log_line.clone(), "\ncompile_error!(\"".to_string()), r.clone()), "\");".to_string()),
+    EmitterOutcome::Emitted { json: mock_json, .. } => {
+                    let is_multi_field_conj = ((inferred.connective.clone() == Connective::Conj) && ((inferred.children.clone().len() as i64) > 1));
 if is_multi_field_conj.clone() {
                         {
                             let children = inferred.children.clone();
@@ -27869,6 +27871,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
                     } else {
                         v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(log_line.clone(), "\n".to_string()), "let mock_value: serde_json::Value = serde_json::from_str(r#\"".to_string()), mock_json.clone()), "\"#)?;\n".to_string()), "Ok(serde_json::from_value(mock_value)?)".to_string())
                     }
+},
 },
     None => v1_rt::concat(log_line.clone(), "\ncompile_error!(\"mock property list was non-empty but first() returned None\")".to_string()),
 }
@@ -30366,12 +30369,17 @@ pub fn emit_data_def_body(
                 scope.type_env.clone().source_indices.clone(),
             ) && !data_value_has_cross_refs(value.clone()))
             {
+                match (*emit_data_value_json(
+                    value.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                ))
+                .clone()
                 {
-                    let json_str = emit_data_value_json(
-                        value.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                    );
-                    v1_rt::concat(
+                    EmitterOutcome::Refused { reason: r, .. } => v1_rt::concat(
+                        v1_rt::concat("            compile_error!(\"".to_string(), r.clone()),
+                        "\")".to_string(),
+                    ),
+                    EmitterOutcome::Emitted { json: json_str, .. } => v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
                                 "            serde_json::from_value(serde_json::json!(".to_string(),
@@ -30380,7 +30388,7 @@ pub fn emit_data_def_body(
                             "))\n".to_string(),
                         ),
                         "                .expect(\"valid data definition\")".to_string(),
-                    )
+                    ),
                 }
             } else {
                 {

@@ -374,29 +374,64 @@ fn has_nested_records_node(n: Node, source_indices: Map<String, NewlineIndex>) -
   }
 }
 
-fn emit_data_value_json(value: Node, source_indices: Map<String, NewlineIndex>) -> String {
+type EmitterOutcome
+  = Emitted { json: String }
+  | Refused { reason: String }
+
+fn first_refusal(outcomes: List<EmitterOutcome>) -> EmitterOutcome? {
+  outcomes |> fold(init: Absent, f: (acc, outcome) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => match outcome {
+        Refused { reason: _ } => Present { value: outcome }
+        Emitted { json: _ } => Absent
+      }
+    }
+  )
+}
+
+fn unwrap_emitted_json(outcome: EmitterOutcome) -> String {
+  match outcome {
+    Emitted { json: j } => j
+    Refused { reason: r } => r
+  }
+}
+
+fn emit_data_value_json(value: Node, source_indices: Map<String, NewlineIndex>) -> EmitterOutcome {
   match value.expr_data {
     ExprLiteral { value: v } => match v {
-      LitStr { value: s } => concat("\"", escape_json_string(s: s), "\"")
-      LitSymbol { value: s } => concat("\"", escape_json_string(s: s), "\"")
-      LitInt { value: i } => to_string(value: i)
-      LitFloat { value: f } => f
-      LitBool { value: b } => if b { "true" } else { "false" }
-      LitNull => "null"
+      LitStr { value: s } => Emitted { json: concat("\"", escape_json_string(s: s), "\"") }
+      LitSymbol { value: s } => Emitted { json: concat("\"", escape_json_string(s: s), "\"") }
+      LitInt { value: i } => Emitted { json: to_string(value: i) }
+      LitFloat { value: f } => Emitted { json: f }
+      LitBool { value: b } => Emitted { json: if b { "true" } else { "false" } }
+      LitNull => Emitted { json: "null" }
     }
     ExprListLit => {
-      let el_strs = value.children |> map(e => emit_data_value_json(value: e, source_indices: source_indices))
-      concat("[", el_strs |> join(separator: ", "), "]")
+      let outcomes = value.children |> map(e => emit_data_value_json(value: e, source_indices: source_indices))
+      match first_refusal(outcomes) {
+        Present { value: r } => r
+        Absent => Emitted { json: concat("[", outcomes |> map(unwrap_emitted_json) |> join(separator: ", "), "]") }
+      }
     }
     ExprRecordLit { parent_enum: _ } => {
-      let field_strs = value.children |> map(f =>
-        concat("\"", escape_json_string(s: field_init_node_name_at(n: f, source_indices: source_indices)), "\": ", emit_data_value_json(value: field_init_node_value(n: f), source_indices: source_indices))
-      )
-      concat("{", field_strs |> join(separator: ", "), "}")
+      let field_outcomes = value.children |> map(f => emit_data_value_json(value: field_init_node_value(n: f), source_indices: source_indices))
+      match first_refusal(field_outcomes) {
+        Present { value: r } => r
+        Absent => {
+          let field_strs = value.children |> map(f =>
+            concat("\"", escape_json_string(s: field_init_node_name_at(n: f, source_indices: source_indices)), "\": ", unwrap_emitted_json(emit_data_value_json(value: field_init_node_value(n: f), source_indices: source_indices)))
+          )
+          Emitted { json: concat("{", field_strs |> join(separator: ", "), "}") }
+        }
+      }
     }
-    ExprVar { binding_kind: _ } => concat("\"", escape_json_string(s: expr_var_name_at(texpr: value, source_indices: source_indices)), "\"")
-    ExprUnaryOp { op: Neg } => concat("-", emit_data_value_json(value: unaryop_operand(texpr: value), source_indices: source_indices))
-    _ => "compile_error!(\"unsupported mock expression\")"
+    ExprVar { binding_kind: _ } => Emitted { json: concat("\"", escape_json_string(s: expr_var_name_at(texpr: value, source_indices: source_indices)), "\"") }
+    ExprUnaryOp { op: Neg } => match emit_data_value_json(value: unaryop_operand(texpr: value), source_indices: source_indices) {
+      Emitted { json: j } => Emitted { json: concat("-", j) }
+      Refused { reason: r } => Refused { reason: r }
+    }
+    _ => Refused { reason: "unsupported mock expression" }
   }
 }
 
