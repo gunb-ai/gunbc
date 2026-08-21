@@ -1,0 +1,101 @@
+module v2.test.workflow.body_lowering_retention_census
+
+import v2.std.algebra { Empty, length }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.workflow.body_lowering_retention_census {
+  RetainedProduction,
+  retained_production_key,
+  retention_families_total,
+  retention_family_bump
+}
+
+// Constructed fixtures throughout: this file tests whether the census can
+// TELL TWO ABSENT PRODUCERS APART, which is a property of the partition, not
+// of whatever the emitter happened to refuse today.
+
+fn observation(emitted_production: String, node_shape: String) -> RetainedProduction {
+  RetainedProduction {
+    emitted_production: emitted_production,
+    node_shape: node_shape,
+    child_count: 2,
+    occurrence: "minted"
+  }
+}
+
+// THE CLAIM THE WHOLE LANE RESTS ON. One diagnostic reason stands over
+// several distinct absent producers; if the census collapsed them, a repair
+// to one family would read as the population moving. Two productions at the
+// same node shape must stay two rows.
+test fn two_productions_at_one_node_shape_stay_two_families() -> Bool {
+  let families = retention_family_bump(
+    families: retention_family_bump(
+      families: Empty,
+      observation: observation(emitted_production: "dag_surface_type_variant", node_shape: "Type/Conj")
+    ),
+    observation: observation(emitted_production: "dag_surface_field_init", node_shape: "Type/Conj")
+  )
+  (length(xs: families) == 2) && (retention_families_total(families: families) == 2)
+}
+
+// The mirror: one production observed repeatedly is ONE family with a count,
+// not N families of one. Without this the partition inflates into a per-
+// observation listing and stops ranking anything.
+test fn one_production_observed_repeatedly_is_one_family_with_a_count() -> Bool {
+  let families = retention_family_bump(
+    families: retention_family_bump(
+      families: retention_family_bump(
+        families: Empty,
+        observation: observation(emitted_production: "dag_surface_type_alias_rhs", node_shape: "Type/Conj")
+      ),
+      observation: observation(emitted_production: "dag_surface_type_alias_rhs", node_shape: "Type/Conj")
+    ),
+    observation: observation(emitted_production: "dag_surface_type_alias_rhs", node_shape: "Type/Conj")
+  )
+  (length(xs: families) == 1) && (retention_families_total(families: families) == 3)
+}
+
+// The node shape is part of the key, not decoration. One production identity
+// retained at two different shapes is two different missing producers, and a
+// key that dropped the shape would merge them.
+test fn one_production_at_two_node_shapes_stays_two_families() -> Bool {
+  let families = retention_family_bump(
+    families: retention_family_bump(
+      families: Empty,
+      observation: observation(emitted_production: "dag_surface_fn_type", node_shape: "Type/Conj")
+    ),
+    observation: observation(emitted_production: "dag_surface_fn_type", node_shape: "Computation/Transform")
+  )
+  (length(xs: families) == 2) && (retention_families_total(families: families) == 2)
+}
+
+// The total must survive the partition. A bump that lost or duplicated an
+// observation would still look like a well-formed census, so the invariant is
+// asserted rather than assumed: whatever the family count, the observations
+// sum to what went in.
+test fn the_observation_total_is_preserved_across_every_partition() -> Bool {
+  let families = retention_family_bump(
+    families: retention_family_bump(
+      families: retention_family_bump(
+        families: retention_family_bump(
+          families: Empty,
+          observation: observation(emitted_production: "a", node_shape: "Type/Conj")
+        ),
+        observation: observation(emitted_production: "b", node_shape: "Type/Conj")
+      ),
+      observation: observation(emitted_production: "a", node_shape: "Type/Conj")
+    ),
+    observation: observation(emitted_production: "c", node_shape: "Type/Conj")
+  )
+  (length(xs: families) == 3) && (retention_families_total(families: families) == 4)
+}
+
+// The key is what a reader acts on, so it must name the production and the
+// shape and not silently drop either half.
+test fn the_family_key_names_both_the_production_and_the_shape() -> Bool {
+  let key = retained_production_key(
+    observation: observation(emitted_production: "dag_surface_field_decl_block", node_shape: "Type/Conj")
+  )
+  string_contains(s: key, pattern: "dag_surface_field_decl_block")
+    && string_contains(s: key, pattern: "Type/Conj")
+}
