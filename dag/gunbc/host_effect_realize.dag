@@ -50,7 +50,7 @@ import std.realization_reconcile {
   ReadObserved, Grounds, DoesNotGround,
   reconcile_grounded
 }
-import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.algebra { fold_list, list_snoc_item, list_append }
 import extdeps.shell
 import extdeps.shell { posix_command_v_check_argv, shell_test_is_executable_argv }
 import extdeps.shell.exec
@@ -1366,8 +1366,9 @@ fn srv3_observed_token_from_typed_argv(outcome: TypedArgvExecOutcome) -> Srv3Obs
 
 data srv3_nonroot_workdir_unobservable_reason: String = "typed_argv_exec over ssh/fleet_ssh carries a bare argv with no working-directory channel, so a non-root workdir cannot be honoured and the probe is not run"
 
+// Same cost shape, same fix as extdeps.sudo.elevation: one append rather than a snoc per element.
 fn srv3_argv_with_bin(bin_path: String, args: List<String>) -> List<String> {
-  fold_list(xs: args, empty: [bin_path], cons: fn(acc, a) { list_snoc_item(xs: acc, item: a) })
+  list_append(left: [bin_path], right: args)
 }
 
 

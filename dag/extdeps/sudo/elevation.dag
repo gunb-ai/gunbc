@@ -3,7 +3,7 @@ module extdeps.sudo.elevation
 import std.types { String, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.algebra { list_append }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -43,13 +43,14 @@ data sudo_non_interactive_flag: NonEmptyStr = "-n"
 // `command` is the full argv of the program being elevated, binary first -- the same shape that
 // would run unelevated. Elevation is therefore a transformation OF an invocation, not a separate
 // spelling of one, so a caller cannot elevate a command it could not otherwise name.
+// ONE APPEND, NOT A SNOC PER ELEMENT. The fold this replaces walked `command` appending to a
+// growing accumulator, which is quadratic in argv length. DESIGN section 6's bare-minimum-cost rule
+// fixes a proven cost shape regardless of the realized n, precisely because "n is small here" is
+// not time-stable -- this function is the one place every privileged invocation in the repository
+// is assembled, so its n is whatever a future caller's argv turns out to be.
 fn sudo_elevate(command: List<String>) -> ElevatedInvocation {
   ElevatedInvocation {
     bin_path: sudo_binary_path as String,
-    args: fold_list(
-      xs: command,
-      empty: [sudo_non_interactive_flag as String],
-      cons: fn(acc, a) { list_snoc_item(xs: acc, item: a) },
-    ),
+    args: list_append(left: [sudo_non_interactive_flag as String], right: command),
   }
 }
