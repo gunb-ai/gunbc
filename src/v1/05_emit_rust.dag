@@ -7218,8 +7218,9 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
             } else { qualified }
             }
           Absent =>
+            let resolved_name = value_ref_normalize_self_module(name: n, module_name: scope.module_name)
             match lookup_item_for_value_ref(
-              resolved_name: value_ref_normalize_self_module(name: n, module_name: scope.module_name),
+              resolved_name: resolved_name,
               registry: registry
             ) {
               Present { value: info } =>
@@ -7228,10 +7229,10 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
                 } else {
                   let is_data = info.kind == DataItem
                   if is_data { concat(emit_value_ref_ident(name: n, registry: registry, emit_info: emit_info), "()") }
-                  else { emit_value_ref_ident(name: n, registry: registry, emit_info: emit_info) }
+                  else { emit_value_ref_ident(name: resolved_name, registry: registry, emit_info: emit_info) }
                 }
               Absent =>
-                emit_value_ref_ident(name: n, registry: registry, emit_info: emit_info)
+                emit_value_ref_ident(name: resolved_name, registry: registry, emit_info: emit_info)
             }
         }
       }
