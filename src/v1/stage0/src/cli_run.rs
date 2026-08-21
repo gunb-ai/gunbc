@@ -192,6 +192,7 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
 pub(crate) fn extract_reference_module_paths(
     content: &str,
     index: &std::collections::HashMap<String, PathBuf>,
+    services: &std::collections::HashMap<String, String>,
 ) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
@@ -272,9 +273,22 @@ pub(crate) fn extract_reference_module_paths(
             let mut k = segs.len();
             while k >= 2 {
                 let cand = segs[..k].join(".");
-                if index.contains_key(&cand) {
-                    if seen.insert(cand.clone()) {
-                        out.push(cand);
+                // A service's addressable name lives in a FLAT namespace unrelated to the
+                // module tree (`extdeps.shell` declares `service shell.PosixCommandV`), so a
+                // reference like `shell.PosixCommandV.Check` names no module at any prefix and
+                // the declaring module was never pulled into the closure. Before the cut an
+                // `import extdeps.shell` supplied it; with imports deleted the reference IS
+                // the edge, and this is the only place that can see it. Resolving the service
+                // name to its declaring module keeps `seen` keyed on module paths, so a module
+                // reached both ways is stored once.
+                let resolved = if index.contains_key(&cand) {
+                    Some(cand.clone())
+                } else {
+                    services.get(&cand).cloned()
+                };
+                if let Some(module_path) = resolved {
+                    if seen.insert(module_path.clone()) {
+                        out.push(module_path);
                     }
                     break;
                 }
@@ -3665,10 +3679,20 @@ fn regen_collect_dag_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), S
     Ok(())
 }
 
+/// Module index plus the service-name index built in the SAME pass. A second walk over the
+/// corpus to answer "which module declares this service" would re-read every `.dag` to learn
+/// one more fact per file, so both facts come off one read.
 fn regen_build_module_index(
     roots: &[PathBuf],
-) -> Result<std::collections::HashMap<String, PathBuf>, String> {
+) -> Result<
+    (
+        std::collections::HashMap<String, PathBuf>,
+        std::collections::HashMap<String, String>,
+    ),
+    String,
+> {
     let mut index: std::collections::HashMap<String, PathBuf> = std::collections::HashMap::new();
+    let mut services: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     for root in roots {
         if !root.exists() {
             return Err(format!("source root does not exist: {}", root.display()));
@@ -3686,11 +3710,37 @@ fn regen_build_module_index(
                         path.display()
                     ));
                 }
+                for service_name in extract_service_names(&content) {
+                    services.insert(service_name, module_path.clone());
+                }
                 index.insert(module_path, path);
             }
         }
     }
-    Ok(index)
+    Ok((index, services))
+}
+
+/// Service declarations are module-scope `service <name> {` rows. `<name>` is the ADDRESSABLE
+/// name and is not derived from the module path, which is exactly why it needs its own index.
+fn extract_service_names(content: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in content.lines() {
+        let rest = match line.strip_prefix("service ") {
+            Some(r) => r,
+            None => continue,
+        };
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '.')
+            .collect();
+        // Only a dotted name can be seen by the reference scanner, which requires a run of at
+        // least two dot-separated segments. A single-segment service name is recorded anyway so
+        // the index states what the corpus declares rather than what one consumer can use.
+        if !name.is_empty() {
+            out.push(name);
+        }
+    }
+    out
 }
 
 /// The two source roots the self-host regen compiles: `src/v1` entry seeds and `dag`
@@ -3742,7 +3792,7 @@ pub fn regen_source_roots(workspace: &Path) -> Vec<PathBuf> {
 /// oracle guarding that equivalence.
 pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, String> {
     let roots = regen_source_roots(workspace);
-    let index = regen_build_module_index(&roots)?;
+    let (index, services) = regen_build_module_index(&roots)?;
     let entry_root = roots
         .first()
         .ok_or_else(|| "regen source root list must not be empty".to_string())?;
@@ -3764,7 +3814,7 @@ pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, St
         queue.push(content);
     }
     while let Some(content) = queue.pop() {
-        for module_path in extract_reference_module_paths(&content, &index) {
+        for module_path in extract_reference_module_paths(&content, &index, &services) {
             if seen.contains_key(&module_path) {
                 continue;
             }

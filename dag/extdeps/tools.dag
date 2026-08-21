@@ -40,7 +40,7 @@ type ResolveResult
 fn one_hint(source: InstallSource) -> String {
   match source {
     SourceCoreutils => "expected from system coreutils (GNU on Linux, BSD on macOS)"
-    SourceRustup => concat("install rustup from ", rustup_install_url)
+    SourceRustup => concat("install rustup from ", extdeps.rustup.rustup_install_url)
     SourceBrew { formula: f } => concat("brew install ", f)
     SourceApt { package: p } => concat("apt install ", p)
     SourceGitHubRelease { repo: r, tag: t, install_path: p, asset_aarch64: _, asset_x86_64: _ } =>

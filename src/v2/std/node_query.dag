@@ -230,7 +230,7 @@ fn node_is_callee_reference(node: v2.std.node.Node) -> Bool {
 fn node_is_call(node: v2.std.node.Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Transform } =>
-      match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+      match v2.std.collection.list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
         Present { value: callee } => node_is_callee_reference(node: callee)
         Absent => false
       }
@@ -240,7 +240,7 @@ fn node_is_call(node: v2.std.node.Node) -> Bool {
 
 fn call_callee_target(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   if node_is_call(node: node) {
-    match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+    match v2.std.collection.list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
       Present { value: callee } => outcome_accepted(value: callee)
       Absent =>
         outcome_rejected(d: v2.std.diagnostic.Diagnostic {
@@ -425,7 +425,7 @@ fn conj_ordered_named_param_binding_ids(domain: v2.std.node.Node) -> v2.std.diag
 fn arrow_domain_named_param_bindings(arrow: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.node.Symbol>> {
   match arrow.kind {
     TypeNode { connective: Arrow } =>
-      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+      match v2.std.collection.list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
         Present { value: domain } =>
           conj_ordered_named_param_binding_ids(domain: domain)
         Absent =>
