@@ -187,10 +187,34 @@ test fn literal_suffix_production_call_site_never_threads_declaration_identity()
 // and DESIGN section 4b(4) -- the discriminating RED remains enrolled as the
 // evidence that the higher rung stays real -- does not hold for these rows yet.
 //
+// AND THE MECHANISM IS NOT MERELY AN ENVELOPE THAT NEVER INCLUDED THEM. The
+// consumer that DID run v1 claim entries -- the scoped witness batch, the only
+// ScopedWitnessBatch instance that ever existed, under a dag plus src/v1 envelope
+// -- was DELETED 2026-08-15 (gunbc.ci_layer_roots
+// v1_claim_scoped_witness_batch_deleted_note, which also carries triage receipts
+// for seventeen other v1 witness files retired for this same root). These rows
+// are therefore enrolled against a consumer that no longer exists, which is a
+// worse state than being outside a live envelope: nothing refuses, because
+// nothing is asking.
+//
 // This is declared rather than left to be rediscovered, per 4b(2)'s no-untracked-
-// stall rule. NEXT-RUNG TRIGGER: src/v1 witnesses reachable from the required-CI
-// envelope, either by the envelope widening or by these assertions being re-homed
-// onto a carrier inside it. Re-homing is not free and is not done here: the rows
+// stall rule. NEXT-RUNG TRIGGER, AND THE OBVIOUS ONE IS RULED OUT: it is NOT
+// "widen the required-CI envelope to include src/v1". That restore was measured
+// and refused, and the reason was re-measured 2026-08-19 when the original went
+// stale -- the blocker is no longer cost (preparation completes in ~9 minutes)
+// but NAME RESOLUTION: src/v1 and src/v2 share no exact module path yet collide
+// on the LAST SEGMENT in twelve places (artifact, coercion, common, compile,
+// complexity, emit, infer, normalize, ownership, parse, resolve, tokenize), so
+// admitting src/v1 supplies a second module whose last segment matches and bare
+// cross-module references that resolve today by pool-membership coincidence stop
+// resolving. The damage is in what is ALREADY there, not in what is admitted:
+// of 532 typed diagnostics, 525 were in src/v2 and 7 in dag/test -- ZERO in
+// src/v1. The real trigger is therefore bare cross-module references binding BY
+// CONTAINMENT rather than by pool coincidence, whose current vehicle is the
+// namespace cut (gunbc#8282, crisp-crab-430) -- explicitly not the floor getting
+// faster and not the envelope widening.
+//
+// Re-homing is not free and is not done here: the rows
 // import v1.compiler.emit_rust directly, and the dag/ sibling of this file can
 // only observe the emitter black-box through compile_dag_rust_emit_check, which
 // is a weaker instrument -- it sees rendered output, not the function's answer.
