@@ -13,7 +13,7 @@ type FactCardinalityDeclFact {
 
 data fact_cardinality_cross_tree_coexistence_baseline: Int = 43
 
-data no_coexistence_keys: FreeMonoid<String> = Empty
+data no_coexistence_keys: FreeMonoid<String> = std.algebra.Empty
 
 fn string_eq(a: String, b: String) -> Bool {
   a == b

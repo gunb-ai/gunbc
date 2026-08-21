@@ -17,7 +17,7 @@ fn witness_plan_ctx() -> gunbc.host_effect_plan.HostEffectPlanContext {
 }
 
 fn witness_empty_plan() -> gunbc.host_effect_plan.HostEffectPlan {
-  v2.std.effect_plan.EffectPlan { steps: Empty, on_failure: v2.std.orchestration.FailFast }
+  v2.std.effect_plan.EffectPlan { steps: std.algebra.Empty, on_failure: v2.std.orchestration.FailFast }
 }
 
 fn witness_if_control_flow_plan() -> gunbc.host_effect_plan.HostEffectPlan {

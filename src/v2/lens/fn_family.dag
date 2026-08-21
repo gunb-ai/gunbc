@@ -68,7 +68,7 @@ fn singleton_group(def: Node, ordinal: Int) -> FnFamilyGroup {
 fn insert_into_groups(groups: FreeMonoid<FnFamilyGroup>, def: Node, ordinal: Int) -> FreeMonoid<FnFamilyGroup> {
   let s = fold_list(
     xs: groups,
-    empty: GroupInsertState { placed: false, acc: Empty },
+    empty: GroupInsertState { placed: false, acc: std.algebra.Empty },
     cons: fn(st, g) { insert_step(st: st, g: g, def: def, ordinal: ordinal) }
   )
   if s.placed {
@@ -86,7 +86,7 @@ type GroupFoldState {
 fn group_fn_defs(defs: FreeMonoid<Node>) -> FreeMonoid<FnFamilyGroup> {
   let s = fold_list(
     xs: defs,
-    empty: GroupFoldState { next_ordinal: 0, groups: Empty },
+    empty: GroupFoldState { next_ordinal: 0, groups: std.algebra.Empty },
     cons: fn(st, def) {
       GroupFoldState {
         next_ordinal: st.next_ordinal + 1,
@@ -107,7 +107,7 @@ fn finding_for_group(g: FnFamilyGroup) -> FnFamilyFinding {
 }
 
 fn no_findings() -> FreeMonoid<FnFamilyFinding> {
-  Empty
+  std.algebra.Empty
 }
 
 fn sigma_families_of_defs(defs: FreeMonoid<Node>) -> FreeMonoid<FnFamilyFinding> {

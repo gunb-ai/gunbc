@@ -1022,7 +1022,7 @@ fn rust_signature_one_param_tokens(edge: v2.std.node.Edge) -> v2.std.diagnostic.
 
 fn rust_signature_params_tail_tokens(params: std.types.List<v2.std.node.Edge>) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match params {
-    Empty => v2.std.diagnostic.outcome_accepted(value: Empty)
+    std.algebra.Empty => v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty)
     std.algebra.Cons { head: e, tail: rest } =>
       v2.std.diagnostic.bind_outcome(
         o: rust_signature_one_param_tokens(edge: e),
@@ -1048,7 +1048,7 @@ fn rust_signature_params_tail_tokens(params: std.types.List<v2.std.node.Edge>) -
 
 fn rust_signature_params_tokens(params: std.types.List<v2.std.node.Edge>) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match params {
-    Empty => v2.std.diagnostic.outcome_accepted(value: Empty)
+    std.algebra.Empty => v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty)
     std.algebra.Cons { head: e, tail: rest } =>
       v2.std.diagnostic.bind_outcome(
         o: rust_signature_one_param_tokens(edge: e),
