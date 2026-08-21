@@ -9,7 +9,6 @@ import v2.compiler.self_host.closure_witness_layer_roots {
 }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
-  SourceRootIngest,
   SourceRootIngestBuildOk,
   SourceRootIngestBuildReadFailed,
   SourceRootManifestElided,
@@ -43,12 +42,6 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-fn compiler_closure_ingest_from_manifest() -> SourceRootIngest {
-  match source_root_ingest_build_from_source_refs(refs: host_source_root_closure_refs) {
-    SourceRootIngestBuildOk { ingest: ingest } => ingest
-    SourceRootIngestBuildReadFailed { result: _ } => Empty
-  }
-}
 
 type Gap4IngestProbeState
   = Gap4IngestProbePending
@@ -62,6 +55,7 @@ type Gap4IngestProbeState
       remain_start: Optional<Int>,
       remain_end: Optional<Int>,
     }
+  | Gap4IngestProbeSourceReadFailed
 
 fn gap4_probe_found_from_parse_reject(
   path: String,
@@ -89,6 +83,7 @@ fn gap4_ingest_probe_step(
     Gap4IngestProbeFound {
       path: _, reason: _, stage: _, at: _, remain_class: _, remain_lexeme: _, remain_start: _, remain_end: _
     } => state
+    Gap4IngestProbeSourceReadFailed => state
     Gap4IngestProbePending =>
       match tokenize(text: read.source.carried, file: read.compilation_unit, rules: lm.lex) {
         Rejected { diagnostics: d } =>
@@ -131,13 +126,17 @@ fn gap4_ingest_probe_step(
 }
 
 fn gap4_probe_first_ingest_reject() -> Gap4IngestProbeState {
-  fold_list(
-    xs: compiler_closure_ingest_from_manifest(),
-    empty: Gap4IngestProbePending,
-    cons: fn(state, read) {
-      gap4_ingest_probe_step(state: state, read: read, lm: dag_language_model())
-    }
-  )
+  match source_root_ingest_build_from_source_refs(refs: host_source_root_closure_refs) {
+    SourceRootIngestBuildReadFailed { result: _ } => Gap4IngestProbeSourceReadFailed
+    SourceRootIngestBuildOk { ingest: ingest } =>
+      fold_list(
+        xs: ingest,
+        empty: Gap4IngestProbePending,
+        cons: fn(state, read) {
+          gap4_ingest_probe_step(state: state, read: read, lm: dag_language_model())
+        }
+      )
+  }
 }
 
 fn list_contains_str(xs: List<String>, target: String) -> Bool {
@@ -205,6 +204,7 @@ test fn compiler_closure_ingest_overflow_refuses_never_empty_holds() -> Bool {
 test fn gap4_probe_all_ingest_reads_accept_holds() -> Bool {
   match gap4_probe_first_ingest_reject() {
     Gap4IngestProbePending => true
+    Gap4IngestProbeSourceReadFailed => false
     Gap4IngestProbeFound {
       path: _, reason: _, stage: _, at: _, remain_class: _, remain_lexeme: _, remain_start: _, remain_end: _
     } => false
@@ -212,12 +212,16 @@ test fn gap4_probe_all_ingest_reads_accept_holds() -> Bool {
 }
 
 test fn compiler_closure_scoped_ingest_parses_holds() -> Bool {
-  match module_roots_from_source_root_ingest(
-    ingest: compiler_closure_ingest_from_manifest(),
-    lm: dag_language_model()
-  ) {
-    Accepted { value: roots, diagnostics: _ } =>
-      length(xs: roots) == host_source_root_ingest_coverage_receipt.ingest_read_count
-    Rejected { diagnostics: _ } => false
+  match source_root_ingest_build_from_source_refs(refs: host_source_root_closure_refs) {
+    SourceRootIngestBuildReadFailed { result: _ } => false
+    SourceRootIngestBuildOk { ingest: ingest } =>
+      match module_roots_from_source_root_ingest(
+        ingest: ingest,
+        lm: dag_language_model()
+      ) {
+        Accepted { value: roots, diagnostics: _ } =>
+          length(xs: roots) == host_source_root_ingest_coverage_receipt.ingest_read_count
+        Rejected { diagnostics: _ } => false
+      }
   }
 }
