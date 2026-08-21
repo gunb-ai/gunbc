@@ -1,0 +1,117 @@
+module v2.test.claim.staged_front_end
+
+import v2.compiler.staged_front_end {
+  FrontEndBoundReached,
+  FrontEndNormalize,
+  FrontEndParse,
+  FrontEndRefused,
+  FrontEndResolve,
+  FrontEndResolvedModule,
+  FrontEndRun,
+  FrontEndStage,
+  FrontEndStagePassed,
+  FrontEndStageRejected,
+  FrontEndStageStep,
+  FrontEndTokenize,
+  front_end_stage_index,
+  front_end_run_outcome,
+  run_front_end,
+  run_front_end_to
+}
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data staged_front_end_test_note: String = "THE DISCRIMINATING PAIR IS THE POINT OF THE DECOMPOSITION. Before it, the front end answered one Outcome<Node> for four stages, so a candidate that died at parse and a candidate that died at resolve were the same observation. These two candidates must land on DIFFERENT stages; if they ever land on the same one, the decomposition carries nothing and the harness's per-stage evidence is decorative. The tokenize candidate is the third point on the same axis, and the accepted candidate is the positive control that keeps the whole set from passing vacuously."
+
+data candidate_accepted_source: String = "module m\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
+data candidate_dies_at_parse_source: String = "module m\n\nfn add(x: Int, y: Int) -> Int { x + y\n"
+data candidate_dies_at_resolve_source: String = "module m\n\nfn add(x: Int, y: Int) -> Int { undefined_name }\n"
+
+fn stage_of_first_rejection(run: FrontEndRun) -> Optional<FrontEndStage> {
+  fold(run.steps, init: Absent, f: fn(acc, step) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match step {
+          FrontEndStageRejected { stage: s, diagnostics: _ } => Present { value: s }
+          FrontEndStagePassed { stage: _, receipt: _, diagnostics: _ } => Absent
+        }
+    }
+  })
+}
+
+fn rejected_at_index(source: String, index: Int) -> Bool {
+  match stage_of_first_rejection(run: run_front_end(source: source, file: ^candidate_module)) {
+    Absent => false
+    Present { value: stage } => front_end_stage_index(stage: stage) == index
+  }
+}
+
+fn passed_stage_count(run: FrontEndRun) -> Int {
+  fold(run.steps, init: 0, f: fn(acc, step) {
+    match step {
+      FrontEndStagePassed { stage: _, receipt: _, diagnostics: _ } => acc + 1
+      FrontEndStageRejected { stage: _, diagnostics: _ } => acc
+    }
+  })
+}
+
+test fn staged_front_end_accepts_a_well_formed_module() -> Bool {
+  let run = run_front_end(source: candidate_accepted_source, file: ^candidate_module)
+  match run.completion {
+    FrontEndResolvedModule { resolved: _ } => passed_stage_count(run: run) == 4
+    FrontEndBoundReached { last: _ } => false
+    FrontEndRefused => false
+  }
+}
+
+test fn staged_front_end_parse_and_resolve_deaths_land_on_different_stages() -> Bool {
+  rejected_at_index(source: candidate_dies_at_parse_source, index: 2)
+    && rejected_at_index(source: candidate_dies_at_resolve_source, index: 4)
+}
+
+test fn staged_front_end_resolve_death_still_passes_parse() -> Bool {
+  passed_stage_count(
+    run: run_front_end(source: candidate_dies_at_resolve_source, file: ^candidate_module)
+  ) == 3
+}
+
+test fn staged_front_end_projection_agrees_with_the_staged_steps() -> Bool {
+  match front_end_run_outcome(
+    run: run_front_end(source: candidate_accepted_source, file: ^candidate_module)
+  ) {
+    Accepted { value: _, diagnostics: _ } =>
+      match front_end_run_outcome(
+        run: run_front_end(source: candidate_dies_at_resolve_source, file: ^candidate_module)
+      ) {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn staged_front_end_bound_stops_before_the_stages_it_was_not_asked_for() -> Bool {
+  let run = run_front_end_to(source: candidate_dies_at_resolve_source, file: ^candidate_module, depth: 2)
+  match run.completion {
+    FrontEndBoundReached { last: last } => front_end_stage_index(stage: last) == 2
+    FrontEndResolvedModule { resolved: _ } => false
+    FrontEndRefused => false
+  }
+}
+
+test fn staged_front_end_bounded_run_refuses_the_whole_front_end_question() -> Bool {
+  match front_end_run_outcome(
+    run: run_front_end_to(source: candidate_accepted_source, file: ^candidate_module, depth: 2)
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+

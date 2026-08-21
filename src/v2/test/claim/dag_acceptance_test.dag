@@ -1,0 +1,349 @@
+module v2.test.claim.dag_acceptance
+
+import v2.std.collection { List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.workflow.dag_acceptance {
+  TargetCompileClaim,
+  TargetCompileObligation,
+  TranslateObligation,
+  TranslationClaim,
+  obligation_eq,
+  target_compile_row,
+  AcceptanceContractIncomplete,
+  AcceptanceContractRejected,
+  AcceptanceContractSatisfied,
+  AcceptanceEnvironment,
+  AcceptanceRunState,
+  BlockedByPrerequisite,
+  DagAcceptanceContract,
+  DagAcceptanceReceipt,
+  DagCandidate,
+  DagStageObligation,
+  ExecutorUnavailable,
+  FullLedger,
+  InferObligation,
+  InteractiveFailFast,
+  NonEmptyObligations,
+  NormalizeObligation,
+  NotRequiredByContract,
+  ParseObligation,
+  ResolveObligation,
+  SkippedAfterDecisiveRejection,
+  StageCostRow,
+  StageExecution,
+  StageNotRun,
+  StagePassed,
+  StageRejected,
+  StageUndecided,
+  TargetCompileAccepted,
+  TargetCompileDiagnosed,
+  TargetCompileExecutor,
+  TargetCompileFailedUnparsed,
+  TargetCompileObservation,
+  TargetCompilerUnavailable,
+  TokenizeObligation,
+  VerifierBudgetRemainingMs,
+  VerifierBudgetUnavailable,
+  VerifierBudgetUnbounded,
+  acceptance_verdict,
+  fail_fast_skip_reason,
+  obligation_label,
+  obligation_prerequisites,
+  row_obligation,
+  run_acceptance
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data dag_acceptance_test_note: String = "The candidates are real source strings run through the real compile chain, not hand-built trees: the harness's whole claim is about what happens to a STRING, and a fixture tree would prove the fold and skip the subject. The target-toolchain executor IS a fixture here, deliberately — it is the seam where a host effect would enter, and the hermetic envelope refuses host effects, so the arms are exercised against declared observations. What that establishes is the MAPPING from observation to execution row; that the real toolchain produces those observations is a separate, wet claim and is not asserted by this file."
+
+data candidate_dies_at_resolve_source: String = "module m\n\nfn add(x: Int, y: Int) -> Int { undefined_name }\n"
+data candidate_reaches_resolve_source: String = "module m\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
+
+fn candidate(source: String) -> DagCandidate {
+  DagCandidate { file: ^candidate_module, source: source }
+}
+
+fn fixture_executor(observation: TargetCompileObservation) -> TargetCompileExecutor {
+  TargetCompileExecutor { compile_target_source: fn(_source) { observation } }
+}
+
+fn unbounded_env() -> AcceptanceEnvironment {
+  AcceptanceEnvironment {
+    target_compile: fixture_executor(observation: TargetCompileAccepted),
+    budget: VerifierBudgetUnbounded
+  }
+}
+
+fn contract(
+  name: Symbol,
+  head: DagStageObligation,
+  tail: List<DagStageObligation>,
+  costs: List<StageCostRow>
+) -> DagAcceptanceContract {
+  DagAcceptanceContract {
+    name: name,
+    obligations: NonEmptyObligations { head: head, tail: tail },
+    policy: InteractiveFailFast,
+    stage_costs: costs
+  }
+}
+
+fn row_for(receipt: DagAcceptanceReceipt, label: Symbol) -> Optional<StageExecution> {
+  fold(receipt.rows, init: optional_absent(), f: fn(acc, row) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if obligation_label(obligation: row_obligation(row: row)) == label {
+          optional_present(value: row)
+        } else {
+          optional_absent()
+        }
+    }
+  })
+}
+
+fn row_is_blocked_by(receipt: DagAcceptanceReceipt, label: Symbol, prerequisite: Symbol) -> Bool {
+  match row_for(receipt: receipt, label: label) {
+    Absent => false
+    Present { value: row } =>
+      match row {
+        StageNotRun { obligation: _, reason: reason } =>
+          match reason {
+            BlockedByPrerequisite { prerequisite: p } => p == prerequisite
+            _ => false
+          }
+        _ => false
+      }
+  }
+}
+
+fn row_is_budget_unavailable(receipt: DagAcceptanceReceipt, label: Symbol) -> Bool {
+  match row_for(receipt: receipt, label: label) {
+    Absent => false
+    Present { value: row } =>
+      match row {
+        StageNotRun { obligation: _, reason: reason } =>
+          match reason {
+            VerifierBudgetUnavailable { required_ms: _, remaining_ms: _ } => true
+            _ => false
+          }
+        _ => false
+      }
+  }
+}
+
+fn verdict_is_rejected_at(receipt: DagAcceptanceReceipt, label: Symbol) -> Bool {
+  match acceptance_verdict(receipt: receipt) {
+    AcceptanceContractRejected { first_rejection: first, further_rejections: _ } => first == label
+    _ => false
+  }
+}
+
+fn verdict_is_incomplete(receipt: DagAcceptanceReceipt) -> Bool {
+  match acceptance_verdict(receipt: receipt) {
+    AcceptanceContractIncomplete { first_unfinished: _, further_unfinished: _ } => true
+    _ => false
+  }
+}
+
+fn verdict_is_satisfied(receipt: DagAcceptanceReceipt) -> Bool {
+  match acceptance_verdict(receipt: receipt) {
+    AcceptanceContractSatisfied => true
+    _ => false
+  }
+}
+
+test fn acceptance_resolve_contract_accepts_a_resolvable_candidate() -> Bool {
+  verdict_is_satisfied(
+    receipt: run_acceptance(
+      contract: contract(name: ^resolve_only, head: ResolveObligation, tail: [], costs: []),
+      candidate: candidate(source: candidate_reaches_resolve_source),
+      env: unbounded_env()
+    )
+  )
+}
+
+test fn acceptance_locates_a_resolve_death_at_resolve() -> Bool {
+  verdict_is_rejected_at(
+    receipt: run_acceptance(
+      contract: contract(name: ^resolve_only, head: ResolveObligation, tail: [], costs: []),
+      candidate: candidate(source: candidate_dies_at_resolve_source),
+      env: unbounded_env()
+    ),
+    label: ^obligation_resolve
+  )
+}
+
+test fn acceptance_blocks_infer_behind_a_failed_resolve() -> Bool {
+  let receipt = run_acceptance(
+    contract: contract(name: ^through_infer, head: InferObligation, tail: [], costs: []),
+    candidate: candidate(source: candidate_dies_at_resolve_source),
+    env: unbounded_env()
+  )
+  row_is_blocked_by(receipt: receipt, label: ^obligation_infer, prerequisite: ^obligation_resolve)
+    && verdict_is_rejected_at(receipt: receipt, label: ^obligation_resolve)
+}
+
+test fn acceptance_accounts_for_a_stage_the_contract_never_asked_for() -> Bool {
+  match row_for(
+    receipt: run_acceptance(
+      contract: contract(name: ^tokenize_only, head: TokenizeObligation, tail: [], costs: []),
+      candidate: candidate(source: candidate_reaches_resolve_source),
+      env: unbounded_env()
+    ),
+    label: ^obligation_infer
+  ) {
+    Absent => false
+    Present { value: row } =>
+      match row {
+        StageNotRun { obligation: _, reason: reason } =>
+          match reason {
+            NotRequiredByContract => true
+            _ => false
+          }
+        _ => false
+      }
+  }
+}
+
+data budget_red_note: String = "THE VERIFIER-BUDGET RED. A harness that cannot afford to look must not report that it looked and disliked what it saw. This contract declares a cost the ledger cannot meet, and the assertion is TWO-SIDED: the rows say VerifierBudgetUnavailable, and the verdict is Incomplete rather than Rejected. Dropping the second half would let the very conflation this exists to prevent — a slow machine reading as a bad candidate — pass the test."
+
+test fn acceptance_budget_exhaustion_is_incomplete_never_rejected() -> Bool {
+  let receipt = run_acceptance(
+    contract: contract(
+      name: ^expensive_resolve,
+      head: ResolveObligation,
+      tail: [],
+      costs: [StageCostRow { obligation: ResolveObligation, required_ms: 1000 }]
+    ),
+    candidate: candidate(source: candidate_dies_at_resolve_source),
+    env: AcceptanceEnvironment {
+      target_compile: fixture_executor(observation: TargetCompileAccepted),
+      budget: VerifierBudgetRemainingMs { remaining_ms: 1 }
+    }
+  )
+  row_is_budget_unavailable(receipt: receipt, label: ^obligation_resolve)
+    && verdict_is_incomplete(receipt: receipt)
+}
+
+data target_compile_prerequisite_note: String = "The prerequisite is DERIVED from the claim the obligation already carries, which is why 'target-compile an emission nobody requested' cannot be written down. This asserts the derivation, not a hand-authored edge: the prerequisite of a TargetCompile obligation is exactly the Translate obligation over ITS OWN translation claim, and the assertion compares the translation IDENTITY rather than the discriminant, so a prerequisite pointing at some other target would fail here."
+
+fn rust_translation_claim() -> TranslationClaim {
+  TranslationClaim {
+    target: rust_target_model(),
+    target_identity: ^target_rust,
+    emitter_identity: ^emitter_v2_emit
+  }
+}
+
+fn rustc_target_compile_claim() -> TargetCompileClaim {
+  TargetCompileClaim {
+    translation: rust_translation_claim(),
+    toolchain_identity: ^toolchain_rustc
+  }
+}
+
+test fn acceptance_target_compile_prerequisite_is_its_own_translation() -> Bool {
+  fold(
+    obligation_prerequisites(
+      obligation: TargetCompileObligation { claim: rustc_target_compile_claim() }
+    ),
+    init: false,
+    f: fn(acc, p) {
+      acc || obligation_eq(a: p, b: TranslateObligation { claim: rust_translation_claim() })
+    }
+  )
+}
+
+data target_compile_mapping_note: String = "The four observation arms are exercised at the mapping itself, and this is scoped honestly: it proves that an accepted observation passes, a diagnosed one REJECTS, an unparseable failure lands UNDECIDED rather than rejected, and an unavailable toolchain lands NOT RUN rather than rejected. It does NOT prove that a real toolchain produces those observations — that is a wet claim about v2.workflow.dag_acceptance_rustc and it is not asserted here."
+
+fn row_kind(row: StageExecution) -> Symbol {
+  match row {
+    StagePassed { obligation: _, receipt: _ } => ^row_passed
+    StageRejected { obligation: _, refusal: _ } => ^row_rejected
+    StageNotRun { obligation: _, reason: _ } => ^row_not_run
+    StageUndecided { obligation: _, cause: _ } => ^row_undecided
+  }
+}
+
+fn observation_row_kind(observation: TargetCompileObservation) -> Symbol {
+  row_kind(row: target_compile_row(claim: rustc_target_compile_claim(), observation: observation))
+}
+
+test fn acceptance_target_compile_observations_partition_by_subject() -> Bool {
+  (observation_row_kind(observation: TargetCompileAccepted) == ^row_passed)
+    && (observation_row_kind(
+          observation: TargetCompileDiagnosed { marker: "error", stderr_length: 12 }
+        ) == ^row_rejected)
+    && (observation_row_kind(
+          observation: TargetCompileFailedUnparsed { exit_code: 4, stderr_length: 0 }
+        ) == ^row_undecided)
+    && (observation_row_kind(
+          observation: TargetCompilerUnavailable { cause: "absent" }
+        ) == ^row_not_run)
+}
+
+test fn acceptance_infer_row_for_a_resolvable_candidate_is_determinate() -> Bool {
+  match row_for(
+    receipt: run_acceptance(
+      contract: contract(name: ^through_infer, head: InferObligation, tail: [], costs: []),
+      candidate: candidate(source: candidate_reaches_resolve_source),
+      env: unbounded_env()
+    ),
+    label: ^obligation_infer
+  ) {
+    Absent => false
+    Present { value: row } => (row_kind(row: row) == ^row_passed) || (row_kind(row: row) == ^row_rejected)
+  }
+}
+
+test fn acceptance_fail_fast_skip_is_not_a_block() -> Bool {
+  let rejected_state = AcceptanceRunState {
+    rows: [],
+    resolved: optional_absent(),
+    inferred: optional_absent(),
+    translations: [],
+    ledger: VerifierBudgetUnbounded,
+    first_rejection: optional_present(value: ^obligation_eval)
+  }
+  let fail_fast = contract(name: ^ff, head: InferObligation, tail: [], costs: [])
+  let full_ledger = DagAcceptanceContract {
+    name: ^fl,
+    obligations: NonEmptyObligations { head: InferObligation, tail: [] },
+    policy: FullLedger,
+    stage_costs: []
+  }
+  skip_reason_is_decisive(contract: fail_fast, state: rejected_state)
+    && !skip_reason_is_decisive(contract: full_ledger, state: rejected_state)
+}
+
+fn skip_reason_is_decisive(contract: DagAcceptanceContract, state: AcceptanceRunState) -> Bool {
+  match fail_fast_skip_reason(contract: contract, state: state) {
+    Absent => false
+    Present { value: reason } =>
+      match reason {
+        SkippedAfterDecisiveRejection { rejected_obligation: _ } => true
+        _ => false
+      }
+  }
+}
+
+test fn probe_infer_row_is_passed() -> Bool {
+  match row_for(
+    receipt: run_acceptance(
+      contract: contract(name: ^through_infer, head: InferObligation, tail: [], costs: []),
+      candidate: candidate(source: candidate_reaches_resolve_source),
+      env: unbounded_env()
+    ),
+    label: ^obligation_infer
+  ) {
+    Absent => false
+    Present { value: row } => row_kind(row: row) == ^row_passed
+  }
+}

@@ -1,0 +1,39 @@
+module v2.workflow.dag_acceptance_rustc
+
+import extdeps.rustc
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.workflow.dag_acceptance {
+  TargetCompileAccepted,
+  TargetCompileDiagnosed,
+  TargetCompileExecutor,
+  TargetCompileFailedUnparsed,
+  TargetCompileObservation,
+  TargetCompilerUnavailable
+}
+
+data dag_acceptance_rustc_note: String = "THE REALIZATION HALF, AND IT LIVES AT THE PERIPHERY ON PURPOSE. v2.workflow.dag_acceptance is a pure fold that takes a TargetCompileExecutor; this module is one binding of that interface, to the cited rustc surface. The dispatch that selects a realization is itself realization (DESIGN section 3), so the harness never names a toolchain and a second target toolchain is a second binding here, never an edit to the harness.\n\nIT IS A HOST-EFFECT MODULE, so it executes only on a wet run: the hermetic envelope refuses the subprocess before it is reached, which is correct rather than a gap — mocking that refusal would score a candidate against a fabricated exit status, the exact failure this stage exists to catch."
+
+data rustc_missing_exit_code: Int = 127
+
+data rustc_observation_partition_note: String = "FOUR OBSERVED FACTS, PARTITIONED BY WHAT THEY ARE FACTS ABOUT, and the order of the arms is the whole content of this function. A zero exit is the candidate accepted. Exit 127 is the shell's own not-found status — a fact about THIS MACHINE, never about the candidate, so it can never read as a rejection. Output carrying an error marker is the candidate rejected. Everything else is a run that failed and told us nothing we can read, which is IGNORANCE and gets the undecided arm rather than being rounded toward the nearer verdict."
+
+fn rustc_target_compile_observation(source: String) -> TargetCompileObservation {
+  let result = rustc.Check.CheckSourceText(source: source, edition: "2021")
+  if result.success {
+    TargetCompileAccepted
+  } else if result.exit_code == rustc_missing_exit_code {
+    TargetCompilerUnavailable { cause: "rustc is not executable on this host" }
+  } else if string_contains(s: result.stderr, needle: "error") {
+    TargetCompileDiagnosed { marker: "error", stderr_length: string_length(s: result.stderr) }
+  } else {
+    TargetCompileFailedUnparsed {
+      exit_code: result.exit_code,
+      stderr_length: string_length(s: result.stderr)
+    }
+  }
+}
+
+fn rustc_target_compile_executor() -> TargetCompileExecutor {
+  TargetCompileExecutor { compile_target_source: rustc_target_compile_observation }
+}

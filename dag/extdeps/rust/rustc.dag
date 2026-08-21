@@ -1,0 +1,37 @@
+module extdeps.rustc
+
+import std.types { String, Bool, Int }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/rustc/command-line-arguments.html"
+  }
+}
+
+data rustc_stdin_source_note: String = "rustc reads a crate from STANDARD INPUT when the input filename is `-`, which is the cited interface this operation binds. It matters here beyond convenience: the alternative is materializing a candidate's emitted source as a file inside the tree, and the batch executor builds its module index ONCE at startup, so a file appearing mid-run is invisible to that index at best and poisons later entries at worst. Feeding the text through stdin keeps a candidate a value rather than a tree mutation. Only metadata is emitted, into a temporary directory that is removed on the way out: the question asked is whether the target toolchain ACCEPTS the source, and producing a linked artifact would pay for an answer nobody reads. The directory is real rather than /dev/null because rustc writes its temporaries BESIDE its output path, so directing output at a device node fails for a reason that has nothing to do with the candidate — measured, not assumed: it produced `could not create a temp dir` and an `error:` line, which the observation mapping would have read as the candidate being diagnosed."
+
+service rustc.Check {
+  operation CheckSourceText {
+    input { source: String, edition: String = "2021" }
+    output {
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "sh", "-c",
+        "d=$(mktemp -d) && printf '%s' \"$1\" | rustc --edition \"$2\" --crate-type lib --emit=metadata --out-dir \"$d\" -; rc=$?; rm -rf \"$d\"; exit $rc",
+        "sh", "{source}", "{edition}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "rustc did not accept the source"
+    }
+  }
+}
