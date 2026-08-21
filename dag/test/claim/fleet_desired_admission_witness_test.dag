@@ -257,6 +257,31 @@ test fn the_creation_push_leases_on_the_ref_being_absent() -> Bool {
     && !string_contains(s: script, pattern: fixture_prior_hex)
 }
 
+// THE RECEIPT HALF, WHICH THE TWO CLAIMS ABOVE DO NOT COVER. They assert what the push DEMANDS;
+// this asserts what the run RECORDS. The two came apart once already: #8746 replaced the `from`
+// operand with the expectation sum and the echo silently lost its prior, leaving eleven successful
+// admissions whose demanded prior appears nowhere in their logs — the lease is real but unechoed
+// (`set -eu`, no trace), and git's range line reports what happened, not what was required.
+test fn the_receipt_names_both_operands_of_the_compare_and_swap() -> Bool {
+  let script = fleet_desired_authorized_push_script(
+    expected: RemoteRefMustEqual { oid: fixture_oid(hex: fixture_prior_hex) },
+    to: fixture_oid(hex: fixture_candidate_hex),
+  )
+  string_contains(s: script, pattern: concat("[fleet-desired] admitted ", concat(fixture_candidate_hex, concat(" expected-prior ", fixture_prior_hex))))
+}
+
+// The creation arm has no prior to name, and the receipt must say so POSITIVELY. git spells the
+// absent expectation as an empty <expect>, and an empty string in a receipt is indistinguishable
+// from an operand that was never printed — which is the state this whole pair exists to refuse.
+test fn the_creation_receipt_names_absence_rather_than_nothing() -> Bool {
+  let script = fleet_desired_authorized_push_script(
+    expected: RemoteRefMustBeAbsent,
+    to: fixture_oid(hex: fixture_candidate_hex),
+  )
+  string_contains(s: script, pattern: "expected-prior absent")
+    && !string_contains(s: script, pattern: "expected-prior \"")
+}
+
 // THE EMISSION HALF. The pure decision above proves the gate decides correctly; it proves nothing
 // about what the workflow actually runs, so these read the emitted bytes.
 test fn the_admission_workflow_triggers_on_the_floor_workflow_completing() -> Bool {
