@@ -44,8 +44,6 @@ import gunbc.ci_spec {
   ci_release_bins_pack_script, ci_release_bins_unpack_verify_script,
   ci_release_bins_archive_name,
   gunbc_ci_fleet_key_agent_script,
-  gunbc_ci_spark_admin_credential_script,
-  gunbc_ci_spark_admin_credential_cleanup_script,
   gunbc_ci_fleet_key_agent_cleanup_script,
 }
 import gunbc.fleet_host_key_enrollment { probe_identity_secret_access_requirement }
@@ -295,40 +293,6 @@ fn ci_fleet_key_agent_step() -> Step {
     },
     working_directory: none,
     if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-  }
-}
-
-// MATERIALIZED ONLY FOR THE MODE THAT NEEDS IT. The credential is fetched when the run is going to
-// install a grant and not otherwise: a job that only observes has no business holding an
-// administrator password, and gating the fetch on the mode keeps the blast radius of a leak equal to
-// the set of runs that genuinely required privilege.
-fn ci_spark_admin_credential_step(if_condition: String) -> Step {
-  RunStep {
-    name: Present { value: "Materialize the spark administrator credential in-run (SM versions/1 pinned -> RUNNER_TEMP 0600; PATH exported, credential not)" },
-    id: none,
-    run: gunbc_ci_spark_admin_credential_script(),
-    shell: none,
-    env: Present {
-      value: [kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}"))]
-    },
-    working_directory: none,
-    if_condition: Present { value: if_condition },
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-  }
-}
-
-fn ci_spark_admin_credential_cleanup_step() -> Step {
-  RunStep {
-    name: Present { value: "Remove the in-run administrator credential (never outlives the job)" },
-    id: none,
-    run: gunbc_ci_spark_admin_credential_cleanup_script(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: Present { value: "always()" },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
