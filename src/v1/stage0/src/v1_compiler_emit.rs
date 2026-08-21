@@ -14,8 +14,8 @@ use crate::std_syntax::BinOp::NullCoalesce;
 use crate::std_syntax::BinOp::*;
 use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
+pub use crate::std_types::is_container_type;
 pub use crate::std_types::SourceSpan;
-pub use crate::std_types::{container_template_algebra, is_container_type};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 pub use crate::v1_compiler_coercion::{
@@ -897,7 +897,7 @@ pub fn emit_data_value_json(
                 "-".to_string(),
                 emit_data_value_json(unaryop_operand(value.clone()), source_indices.clone()),
             ),
-            _ => "\"compile_error!(unsupported mock expression)\"".to_string(),
+            _ => "compile_error!(\"unsupported mock expression\")".to_string(),
         }
     })
 }
@@ -1199,21 +1199,24 @@ pub fn emit_bin_op_symbol(
     }
 }
 
-pub fn emit_container(kind: String, inner: String, target: RenderTarget) -> String {
-    if (kind.clone() == "optional".to_string()) {
-        apply_type_template1(target_optional_template(target.clone()), inner.clone())
-    } else {
-        match coerce_container_template(target.clone(), kind.clone()) {
-            Some(template) => apply_type_template1(template.clone(), inner.clone()),
-            None => {
-                let spec = language_spec(target.clone());
-                v1_rt::concat(
+pub fn emit_container(name: String, inner: String, target: RenderTarget) -> String {
+    {
+        let kind = to_snake(name.clone());
+        if (kind.clone() == "optional".to_string()) {
+            apply_type_template1(target_optional_template(target.clone()), inner.clone())
+        } else {
+            match coerce_container_template(target.clone(), kind.clone()) {
+                Some(template) => apply_type_template1(template.clone(), inner.clone()),
+                None => {
+                    let spec = language_spec(target.clone());
                     v1_rt::concat(
-                        v1_rt::concat(kind.clone(), spec.type_arg_open.clone()),
-                        inner.clone(),
-                    ),
-                    spec.type_arg_close.clone(),
-                )
+                        v1_rt::concat(
+                            v1_rt::concat(name.clone(), spec.type_arg_open.clone()),
+                            inner.clone(),
+                        ),
+                        spec.type_arg_close.clone(),
+                    )
+                }
             }
         }
     }
@@ -1561,16 +1564,13 @@ pub fn render_node_type(
                 if (n.ident_span.clone() != None) {
                     {
                         let snake = to_snake(tn.clone());
-                        let has_template = match container_template_algebra(snake.clone()) {
-                            Some(_) => true,
-                            None => false,
-                        };
+                        let has_template = is_declared_container_alias_spelling(tn.clone());
                         if has_template.clone() {
                             {
                                 let base = if (snake.clone() == "map".to_string()) {
                                     emit_map_type("_".to_string(), "_".to_string(), target.clone())
                                 } else {
-                                    emit_container(snake.clone(), "_".to_string(), target.clone())
+                                    emit_container(tn.clone(), "_".to_string(), target.clone())
                                 };
                                 let conj_container_str = if shared.clone() {
                                     wrap_shared_type(target.clone(), base.clone())
@@ -1615,17 +1615,13 @@ pub fn render_node_type(
                     (is_container_type(tn.clone()) && (to_snake(tn.clone()) == "map".to_string()));
                 let bare_is_collection =
                     (is_declared_container_alias_spelling(tn.clone()) && !bare_is_map.clone());
-                let has_container_template = match container_template_algebra(to_snake(tn.clone()))
-                {
-                    Some(_) => true,
-                    None => false,
-                };
+                let has_container_template = is_declared_container_alias_spelling(tn.clone());
                 let param_count = (n.params.clone().len() as i64);
                 let base = if bare_is_map.clone() {
                     emit_map_type("_".to_string(), "_".to_string(), target.clone())
                 } else {
                     if bare_is_collection.clone() {
-                        emit_container(to_snake(tn.clone()), "_".to_string(), target.clone())
+                        emit_container(tn.clone(), "_".to_string(), target.clone())
                     } else {
                         if (has_container_template.clone() && (param_count.clone() == 1)) {
                             {
@@ -1638,7 +1634,7 @@ pub fn render_node_type(
                                     ),
                                     None => "_".to_string(),
                                 };
-                                emit_container(to_snake(tn.clone()), inner.clone(), target.clone())
+                                emit_container(tn.clone(), inner.clone(), target.clone())
                             }
                         } else {
                             if (param_count.clone() > 0) {
@@ -1736,7 +1732,7 @@ pub fn render_node_type(
                 };
                 let is_container = node_is_collection(n.clone(), source_indices.clone());
                 let base = if is_container.clone() {
-                    emit_container(to_snake(tn.clone()), child_str.clone(), target.clone())
+                    emit_container(tn.clone(), child_str.clone(), target.clone())
                 } else {
                     {
                         let type_base = coerce_primitive_type(

@@ -520,11 +520,15 @@ data witness_floor_workflow: Workflow = {
 // nothing in this repository could refuse it.
 data witness_floor_capability_closure_refusal: String = "REFUSED gunbc.witness_floor_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in witness_floor_bound_steps or the order of the steps themselves."
 
-fn expected_witness_floor_yml() -> String {
+type WitnessFloorGenerationOutcome
+  = WitnessFloorGenerated { content: String }
+  | WitnessFloorGenerationRefused
+
+fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
   if witness_floor_capability_closure_holds() {
-    serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow))
+    WitnessFloorGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow)) }
   } else {
-    witness_floor_capability_closure_refusal
+    WitnessFloorGenerationRefused
   }
 }
 
