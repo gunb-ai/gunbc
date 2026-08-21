@@ -1,0 +1,126 @@
+module test.claim.live_deploy.deployed_tree_report_witness
+
+import std.types { String, NonEmptyStr, Bool }
+import extdeps.git
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import gunbc.live_deploy.deployed_tree_observation {
+  DeployedTreeStanding,
+  DeployedTreeConverged,
+  DeployedTreeRevisionDrifted,
+  DeployedTreeModifiedAtRevision,
+  DeployedTreeStandingUnobserved,
+}
+import gunbc.live_deploy.deployed_tree_report {
+  deployed_tree_standing_line,
+  deployed_tree_standing_is_publication_converged,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn oid_a() -> GitObjectId? {
+  git_object_id_from_untagged_hex(hex: "8a472fff9e9000600e33cc3559ecfad4ba55e3a3")
+}
+
+fn oid_b() -> GitObjectId? {
+  git_object_id_from_untagged_hex(hex: "1111111111111111111111111111111111111111")
+}
+
+// EXACTLY ONE ARM IS PUBLICATION-CONVERGED, asserted across ALL FOUR rather than by checking the
+// happy one. A predicate tested only on the value it should accept cannot distinguish "returns true
+// for Converged" from "returns true".
+test fn witness_only_the_converged_arm_is_publication_converged() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } =>
+      deployed_tree_standing_is_publication_converged(standing: DeployedTreeConverged { revision: a })
+        && !deployed_tree_standing_is_publication_converged(
+          standing: DeployedTreeRevisionDrifted { desired: a, local: a },
+        )
+        && !deployed_tree_standing_is_publication_converged(
+          standing: DeployedTreeModifiedAtRevision { revision: a, porcelain: "M x" as NonEmptyStr },
+        )
+        && !deployed_tree_standing_is_publication_converged(
+          standing: DeployedTreeStandingUnobserved { cause: "ssh refused" },
+        )
+  }
+}
+
+// THE DRIFTED LINE MUST NAME BOTH SIDES, and it is asserted by finding each DISTINCT hex in the text
+// rather than by a Boolean that would stay true if one side were dropped or if both rendered the same
+// value. This is the arm a catch-up consumes as its compare-and-swap baseline.
+test fn witness_the_drifted_line_names_both_revisions_distinctly() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } =>
+      match oid_b() {
+        Absent => false
+        Present { value: b } => {
+          let line = deployed_tree_standing_line(
+            standing: DeployedTreeRevisionDrifted { desired: a, local: b },
+          )
+          string_contains(s: line, pattern: git_object_id_wire_hex(oid: a) as String)
+            && string_contains(s: line, pattern: git_object_id_wire_hex(oid: b) as String)
+            && string_contains(s: line, pattern: "REVISION-DRIFTED")
+        }
+      }
+  }
+}
+
+// THE MODIFIED LINE MUST CARRY THE PORCELAIN BODY. A verdict that says the bytes disagree without
+// naming which ones sends a reader to the host to re-derive what the run already knew.
+test fn witness_the_modified_line_carries_what_git_reported() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } => {
+      let line = deployed_tree_standing_line(
+        standing: DeployedTreeModifiedAtRevision {
+          revision: a,
+          porcelain: "M dag/gunbc/ci_spec.dag" as NonEmptyStr,
+        },
+      )
+      string_contains(s: line, pattern: "MODIFIED-AT-REVISION")
+        && string_contains(s: line, pattern: "M dag/gunbc/ci_spec.dag")
+        && string_contains(s: line, pattern: git_object_id_wire_hex(oid: a) as String)
+    }
+  }
+}
+
+test fn witness_the_unobserved_line_carries_its_cause() -> Bool {
+  let line = deployed_tree_standing_line(
+    standing: DeployedTreeStandingUnobserved { cause: "ssh leg never attempted" },
+  )
+  string_contains(s: line, pattern: "UNOBSERVED")
+    && string_contains(s: line, pattern: "ssh leg never attempted")
+}
+
+// FOUR DISTINCT LABELS. If two arms rendered the same label the receipt would be unreadable, and a
+// per-arm witness would not catch it -- each would pass on its own text while a reader could not tell
+// the two states apart.
+test fn witness_every_arm_renders_a_distinct_label() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } => {
+      let c = deployed_tree_standing_line(standing: DeployedTreeConverged { revision: a })
+      let d = deployed_tree_standing_line(standing: DeployedTreeRevisionDrifted { desired: a, local: a })
+      let m = deployed_tree_standing_line(
+        standing: DeployedTreeModifiedAtRevision { revision: a, porcelain: "M x" as NonEmptyStr },
+      )
+      let u = deployed_tree_standing_line(standing: DeployedTreeStandingUnobserved { cause: "why" })
+      c != d && c != m && c != u && d != m && d != u && m != u
+    }
+  }
+}
+
+// The converged line must NOT read as one of the failure labels -- the string a human greps for.
+test fn witness_the_converged_line_is_not_confusable_with_a_failure() -> Bool {
+  match oid_a() {
+    Absent => false
+    Present { value: a } => {
+      let c = deployed_tree_standing_line(standing: DeployedTreeConverged { revision: a })
+      string_contains(s: c, pattern: "CONVERGED")
+        && !string_contains(s: c, pattern: "DRIFTED")
+        && !string_contains(s: c, pattern: "UNOBSERVED")
+        && !string_contains(s: c, pattern: "MODIFIED")
+    }
+  }
+}
