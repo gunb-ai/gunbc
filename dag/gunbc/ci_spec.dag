@@ -635,48 +635,87 @@ fn gunbc_ci_fleet_key_agent_script() -> String {
 // exactly this API, having been burned by reading an empty testIamPermissions response as proof of
 // denial rather than of nothing. So the refusal states the ambiguity and gives the remedy that
 // covers both arms, rather than picking the arm that happens to fit the current guess.
-data gunbc_ci_spark_admin_credential_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "gunbc_ci_spark_admin_credential_script",
-    field: WholeDeclaration
-  }
-}
-
-data gunbc_ci_spark_admin_credential_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_spark_admin_credential_script — concat-built foreign-executor (GitHub Actions run:) shell materializing the spark administrator password from its modeled Secret Manager version into a 0600 RUNNER_TEMP file whose PATH (never the credential) is exported; DISSOLVES WHEN a job-scoped secret-materialization lifetime (SecretRef -> run-local file that PERSISTS across GitHub Actions steps, with explicit cleanup) is modeled on the CI-emission layer -- the root v2.workflow.gunbc_invoke_step_emit gunbc_run_step_script already dissolved four sibling markers through -- and this step becomes an emitted typed effect. THIS TRIGGER WAS REWRITTEN 2026-08-21 BECAUSE ITS FIRST FORM COULD NEVER FIRE, and the correction is recorded rather than silently swapped because an unfalsifiable trigger is worse than no trigger: it reads as tracked debt while being unreachable. It named host_effect_apply, whose HostEffectIntent.target is a NodeControlPlane, whose only two arms both require a ComputeHost -- a full hardware description in gunbc.fleet_intent (baseboard, processors, memory devices, storage, network interfaces). An ephemeral GitHub runner is not one, and gunbc.ci_deploy_target_host already refuses exactly this conflation (runner identity does not prove target host). It also cited SECRET-VERSION-LIFECYCLE-0, which models secret ROTATION -- how a secret's value is replaced -- and never answers how a running step consumes a secret already at rest. Both errors have the same origin: reaching for the nearest carrier whose NAME matched, without checking that its subject did. The real foundation is gunbc.auth.materialized_secret, whose SshKeyFile leg is landed and correctly scoped to fleet transports authenticating to real ComputeHosts; its own Scaffold row is falsifiable BECAUSE its population fits that surface. This step is the other population -- a runner materializing a secret for its own local use, authenticating to no host -- and the lifetime it needs is not the landed materialize/use/shred bracket, which is synchronous and single-call, but one that survives the step boundary by design")
-
-fn gunbc_ci_spark_admin_credential_script() -> String {
-  join([
-    "# ", dissolution_description(condition: gunbc_ci_spark_admin_credential_shell_emit_dissolution_trigger), "\n",
-    "set -euo pipefail\n",
-    "umask 077\n",
-    "CRED_FILE=\"$RUNNER_TEMP/spark-administrator-credential\"\n",
-    "cleanup() { rm -f \"$CRED_FILE\" \"$RUNNER_TEMP/spark-administrator-response.json\"; }\n",
-    "trap cleanup EXIT\n",
-    "RESP_FILE=\"$RUNNER_TEMP/spark-administrator-response.json\"\n",
-    "HTTP_CODE=\"$(curl -sS -o \"$RESP_FILE\" -w '%\{http_code}' -H \"Authorization: Bearer $WIF_ACCESS_TOKEN\" \"", secret_ref_access_url(ref: spark_administrator_password_secret_ref), "\" || echo 000)\"\n",
-    "if [ \"$HTTP_CODE\" = 403 ]; then echo \"SparkAdministratorCredentialUnreadable: ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), " answered 403 to ", spark_bootstrap_cloud_principal_member(), ". Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant that principal roles/secretmanager.secretAccessor on it. Contacting NO host.\" >&2; exit 1; fi\n",
-    "if [ \"$HTTP_CODE\" = 404 ]; then echo \"SparkAdministratorCredentialAbsent: ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), " answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host.\" >&2; exit 1; fi\n",
-    "if [ \"$HTTP_CODE\" != 200 ]; then echo \"SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), "; contacting NO host.\" >&2; exit 1; fi\n",
-    "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$RESP_FILE\" > \"$CRED_FILE\"\n",
-    "rm -f \"$RESP_FILE\"\n",
-    "chmod 600 \"$CRED_FILE\"\n",
-    "if [ ! -s \"$CRED_FILE\" ]; then echo \"SparkAdministratorCredentialEmpty: ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), " returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host\" >&2; exit 1; fi\n",
-    "trap - EXIT\n",
-    "echo \"", spark_grant_credential_path_env as String, "=$CRED_FILE\" >> \"$GITHUB_ENV\"\n",
-    "echo \"spark-admin-credential: materialized from ", secret_ref_version_resource(ref: spark_administrator_password_secret_ref), " to a 0600 run-local file; the PATH is exported, the credential is not\"\n",
-  ], "")
-}
-
-// The credential teardown, a FRESH per-job effect for the same reason the agent teardown is: each
-// isolated job materializes and must remove its own file. Named so the workflow step and any
-// fresh-effect list reference ONE authority rather than an inline literal duplicated per job.
-fn gunbc_ci_spark_admin_credential_cleanup_script() -> String {
-  join([
-    "if [ -n \"$\{", spark_grant_credential_path_env as String, ":-}\" ]; then rm -f \"$\{",
-    spark_grant_credential_path_env as String, "}\" || true; fi\n",
-  ], "")
+// THE SPARK ADMINISTRATOR CREDENTIAL PRELUDE, folded into the ONE step that consumes it. The
+// former two-step shape (a separate "materialize" step exporting a path via GITHUB_ENV, plus an
+// always()-gated cleanup step) is gone: the five steps that once sat between them all carry
+// mutually exclusive mode == '...' guards against this step's own mode == 'spark_grants' guard,
+// so on the only path this credential is ever fetched, nothing genuinely ran between fetch and
+// consumption -- the two-step shape was YAML-adjacent, not runtime-adjacent. One shell script now
+// fetches, decodes, and hands the credential to the grant-install invocation entirely within its
+// own process tree: one trap (armed for the whole script, never disarmed, because nothing needs
+// the file to survive past this script's own exit), one CRED_FILE, a shell-local export instead
+// of GITHUB_ENV so the path never crosses a step boundary.
+fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
+  [
+    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
+    Do { run: ci_retry_body_run(command: "umask 077") },
+    Do { run: ci_retry_body_run(command: "CRED_FILE=\"$RUNNER_TEMP/spark-administrator-credential\"") },
+    Do { run: ci_retry_body_run(command: "RESP_FILE=\"$RUNNER_TEMP/spark-administrator-response.json\"") },
+    Do { run: ci_retry_body_run(command: "trap 'rm -f \"$CRED_FILE\" \"$RESP_FILE\"' EXIT") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "HTTP_CODE=\"$(curl -sS -o \"$RESP_FILE\" -w '%\{http_code}' -H \"Authorization: Bearer $WIF_ACCESS_TOKEN\" \"",
+          secret_ref_access_url(ref: spark_administrator_password_secret_ref),
+          "\" || echo 000)\""
+        ], "")
+      )
+    },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "if [ \"$HTTP_CODE\" = 403 ]; then echo \"SparkAdministratorCredentialUnreadable: ",
+          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          " answered 403 to ", spark_bootstrap_cloud_principal_member(),
+          ". Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant that principal roles/secretmanager.secretAccessor on it. Contacting NO host.\" >&2; exit 1; fi"
+        ], "")
+      )
+    },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "if [ \"$HTTP_CODE\" = 404 ]; then echo \"SparkAdministratorCredentialAbsent: ",
+          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          " answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host.\" >&2; exit 1; fi"
+        ], "")
+      )
+    },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "if [ \"$HTTP_CODE\" != 200 ]; then echo \"SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from ",
+          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          "; contacting NO host.\" >&2; exit 1; fi"
+        ], "")
+      )
+    },
+    Do { run: ci_retry_body_run(command: "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$RESP_FILE\" > \"$CRED_FILE\"") },
+    Do { run: ci_retry_body_run(command: "rm -f \"$RESP_FILE\"") },
+    Do { run: ci_retry_body_run(command: "chmod 600 \"$CRED_FILE\"") },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "if [ ! -s \"$CRED_FILE\" ]; then echo \"SparkAdministratorCredentialEmpty: ",
+          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          " returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host\" >&2; exit 1; fi"
+        ], "")
+      )
+    },
+    Do {
+      run: ci_retry_body_run(
+        command: join(["export ", spark_grant_credential_path_env as String, "=\"$CRED_FILE\""], "")
+      )
+    },
+    Do {
+      run: ci_retry_body_run(
+        command: join([
+          "echo \"spark-admin-credential: materialized from ",
+          secret_ref_version_resource(ref: spark_administrator_password_secret_ref),
+          " to a 0600 run-local file, consumed and removed within this one step\""
+        ], "")
+      )
+    }
+  ]
 }
 
 // The in-run ssh-agent teardown — a FRESH per-job effect (each isolated job starts and
@@ -770,7 +809,8 @@ fn gunbc_ci_spark_serving_durability_invoke() -> String {
 }
 
 fn gunbc_ci_spark_grant_install_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
     source_roots: witness_layer_roots,
     entry: "dag/gunbc/spark/grant_install.dag",
     function: "spark_grant_install_ci_wet",
