@@ -13791,12 +13791,14 @@ pub fn emit_rust_field_definition(
 pub fn enum_derives(
     name: String,
     children: Rc<Vec<Rc<Node>>>,
+    has_fn_fields: bool,
     generic_param_names: Rc<Vec<String>>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     v1_emit_enum_derives(
         children.clone(),
+        has_fn_fields.clone(),
         v1_rt::set_contains(&emit_info.map_key_required_type_names.clone(), name.clone()),
         generic_param_names.clone(),
         source_indices.clone(),
@@ -13815,13 +13817,20 @@ pub fn emit_enum_from_children(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
+        let has_fn_fields = type_has_fn_fields(name.clone(), emit_info.clone());
         let derives = enum_derives(
             name.clone(),
             children.clone(),
+            has_fn_fields.clone(),
             generic_param_names.clone(),
             emit_info.clone(),
             env.source_indices.clone(),
         );
+        let effective_serde_policy = if has_fn_fields.clone() {
+            rust_serde_policy("".to_string(), None, None, None)
+        } else {
+            serde_policy.clone()
+        };
         let variant_lines = Rc::new({
             let mut __result = Vec::new();
             for child in children.clone().iter().cloned() {
@@ -13832,17 +13841,17 @@ pub fn emit_enum_from_children(
                     recursive_types.clone(),
                     shared_types.clone(),
                     env.clone(),
-                    serde_policy.clone(),
+                    effective_serde_policy.clone(),
                     emit_info.clone(),
                 ));
             }
             __result
         });
         let variants_str = variant_lines.clone().join(&"\n".to_string());
-        let tag_line = if (serde_policy.enum_attr.clone() == "".to_string()) {
+        let tag_line = if (effective_serde_policy.enum_attr.clone() == "".to_string()) {
             "".to_string()
         } else {
-            v1_rt::concat(serde_policy.enum_attr.clone(), "\n".to_string())
+            v1_rt::concat(effective_serde_policy.enum_attr.clone(), "\n".to_string())
         };
         let enum_def = v1_rt::concat(
             v1_rt::concat(
