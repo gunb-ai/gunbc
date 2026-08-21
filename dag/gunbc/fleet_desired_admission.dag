@@ -304,6 +304,21 @@ fn fleet_desired_authorized_push_cas_request(expected: GitRemoteRefExpectation, 
 // governs repository CONTENT and never which workflow file orchestrates the run. It is also not the
 // candidate, and not the subject the required floor judged.
 //
+// AND THE JUDGE FIELD IS CALLER-COUPLED, WHICH IS A WEAKER CLAIM THAN ITS NAME SUGGESTS. What is
+// read is the CHECKOUT's HEAD. What the receipt asserts is the provenance of the BINARY THAT
+// DECIDED. Those are the same fact only because the workflow builds that binary from that checkout
+// inside the same job (`cargo build --release -p v1-compiler --bin gunbc`, toolchain cache off) --
+// a property of the CALLER, not of this function. Hand the job a cached, prebuilt, or
+// externally-installed gunbc and HEAD still reports the checkout, so the receipt would name a judge
+// that did not judge, confidently and with no way to tell from the receipt.
+//
+// The condition, stated so it can be checked rather than assumed: THE BINARY EXECUTING THIS
+// DECISION WAS BUILT, IN THIS JOB, FROM THE TREE THIS READ OBSERVES. It holds today. It is not
+// enforced anywhere, and nothing fails if a future edit to the workflow breaks it. Closing that
+// properly means the binary carrying its own build provenance rather than the run inferring it from
+// a neighbouring checkout; until then this field is honest evidence under a named condition and not
+// a structural guarantee.
+//
 // TODAY ALL OF THESE COINCIDE AND THAT IS EXACTLY THE HAZARD. With no `ref:`, the checkout and
 // GITHUB_SHA are both the default-branch tip, so judge == transport by accident of configuration.
 // The moment the checkout is pinned to the candidate they DIVERGE -- the judge becomes the
