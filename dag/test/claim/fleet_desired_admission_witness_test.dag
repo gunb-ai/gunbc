@@ -8,19 +8,25 @@ import extdeps.github.workflow_runs {
 import extdeps.github.workflow_run_event { WorkflowRunEvent }
 import gunbc.witness_floor_workflow { witness_floor_workflow_name }
 import gunbc.repo_identity { gunbc_default_branch_name }
-import extdeps.git.publication_transport {
-  GitRemoteRefExpectation, RemoteRefMustBeAbsent, RemoteRefMustEqual,
-}
+import gunbc.fleet_revision_acceptance { AcceptedFleetRevision }
 import gunbc.fleet_main_revision {
-  FleetDesiredRevision, FleetDesiredAdmitted, FleetDesiredAbsent,
-  FleetDesiredUndecodable, FleetDesiredUnobserved,
+  DeployRevisionRelation, SameRevision, DeployedIsAncestor, CandidateIsAncestor,
+  FleetRevisionRelationObservation,
+  FleetDesiredAdvanceInput,
+  FleetDesiredExpectationRefusedInput, FleetDesiredRefAbsentInput, FleetDesiredObservedCurrentInput,
+  FleetDesiredRefUnobserved,
+  FleetDesiredRefUndecodable,
+  decide_fleet_desired_advance,
 }
 import gunbc.fleet_desired_admission {
-  FleetDesiredAdmissionOutcome, AdmissionAdvanceAuthorized, AdmissionRefused,
-  fleet_desired_admission_decide,
-  fleet_desired_floor_green,
-  fleet_desired_authorized_push_script,
-  fleet_desired_admission_authorized_push_path,
+  FleetDesiredAdmissionOutcome, AdmissionActionAuthorized, AdmissionRefused,
+  FleetDesiredAuthorizedAction,
+  FleetDesiredRemoteAdvance, FleetDesiredAlreadyConvergedAction, FleetDesiredSupersededAction,
+  FleetDesiredAcceptedRevision, FleetDesiredRevisionAccepted, FleetDesiredRevisionRefused,
+  fleet_desired_accepted_from_event,
+  fleet_desired_action_from_decision,
+  fleet_desired_authorized_action_script,
+  fleet_desired_admission_authorized_action_path,
 }
 import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml }
 
@@ -35,24 +41,20 @@ fn fixture_oid(hex: String) -> GitObjectId {
   }
 }
 
-fn fixture_prior() -> FleetDesiredRevision {
-  FleetDesiredAdmitted { revision: fixture_oid(hex: fixture_prior_hex) }
-}
-
-fn fixture_event(workflow_name: String, conclusion: WorkflowRunConclusion, branch: String, head_repo: String, activity: String) -> WorkflowRunEvent {
+fn fixture_event(workflow_name: String, conclusion: WorkflowRunConclusion, branch: String, head_repo: String, activity: String, workflow_path: String, originating: String) -> WorkflowRunEvent {
   WorkflowRunEvent {
     activity: activity,
     run_id: "1" as NonEmptyStr,
     workflow_name: workflow_name,
     workflow_id: "2" as NonEmptyStr,
-    workflow_path: ".github/workflows/witnesses.yml",
+    workflow_path: workflow_path,
     conclusion: conclusion,
     html_url: "https://example.invalid/run" as NonEmptyStr,
     run_started_at: "2026-08-20T00:00:00Z" as NonEmptyStr,
     head_sha: fixture_candidate_hex as CommitSha,
     head_branch: branch,
     head_repository_full_name: head_repo,
-    originating_event: "push",
+    originating_event: originating,
     repository_full_name: fixture_repo,
   }
 }
@@ -64,222 +66,338 @@ fn admitting_event() -> WorkflowRunEvent {
     branch: gunbc_default_branch_name,
     head_repo: fixture_repo,
     activity: "completed",
+    workflow_path: ".github/workflows/witnesses.yml",
+    originating: "push",
   )
 }
 
-fn decided(event: WorkflowRunEvent, observed: FleetDesiredRevision) -> FleetDesiredAdmissionOutcome {
-  fleet_desired_admission_decide(event: event, observed: observed)
-}
-
-fn is_refused(o: FleetDesiredAdmissionOutcome) -> Bool {
+fn is_event_refused(o: FleetDesiredAcceptedRevision) -> Bool {
   match o {
-    AdmissionRefused { cause: _ } => true
-    AdmissionAdvanceAuthorized { expected: _, to: _ } => false
-  }
-}
-
-fn expectation_is_prior(expected: GitRemoteRefExpectation, hex: String) -> Bool {
-  match expected {
-    RemoteRefMustEqual { oid: prior } => git_object_id_wire_hex(oid: prior) as String == hex
-    RemoteRefMustBeAbsent => false
-  }
-}
-
-fn expectation_is_absent(expected: GitRemoteRefExpectation) -> Bool {
-  match expected {
-    RemoteRefMustBeAbsent => true
-    RemoteRefMustEqual { oid: _ } => false
+    FleetDesiredRevisionRefused { cause: _ } => true
+    FleetDesiredRevisionAccepted { accepted: _ } => false
   }
 }
 
 // THE POSITIVE CONTROL. Every refusal claim below removes exactly one fact from THIS event, so a
-// refusal that fired for an unrelated reason would show up here as a failure to admit at all.
-test fn a_floor_green_default_branch_run_admits_the_candidate() -> Bool {
-  match decided(event: admitting_event(), observed: fixture_prior()) {
-    AdmissionRefused { cause: _ } => false
-    AdmissionAdvanceAuthorized { expected: e, to: t } =>
-      expectation_is_prior(expected: e, hex: fixture_prior_hex)
-        && (git_object_id_wire_hex(oid: t) as String == fixture_candidate_hex)
+// refusal that fired for an unrelated reason would show up here as a failure to accept at all.
+// It also pins the revision, because an acceptance naming the wrong one would advance the fleet
+// to something the floor never proved.
+test fn a_floor_green_default_branch_run_accepts_the_candidate_revision() -> Bool {
+  match fleet_desired_accepted_from_event(event: admitting_event()) {
+    FleetDesiredRevisionRefused { cause: _ } => false
+    FleetDesiredRevisionAccepted { accepted: a } =>
+      git_object_id_wire_hex(oid: a.revision) as String == fixture_candidate_hex
   }
 }
 
-// THE OTHER WRITE THE AUTHORITY ADMITS, and the one this gate could not express at all until the
-// outcome stopped carrying a bare prior oid. An origin that advertises no such ref is an ANSWER
-// about the remote, so first creation is authorized — and it is authorized as a compare-and-swap
-// expecting absence, never as an unconditional push.
-test fn an_absent_desired_ref_authorizes_a_creation_expecting_absence() -> Bool {
-  match decided(event: admitting_event(), observed: FleetDesiredAbsent) {
-    AdmissionRefused { cause: _ } => false
-    AdmissionAdvanceAuthorized { expected: e, to: t } =>
-      expectation_is_absent(expected: e)
-        && (git_object_id_wire_hex(oid: t) as String == fixture_candidate_hex)
-  }
-}
-
-// THE DISCRIMINATING RED FOR THE ARM THAT DID NOT EXIST. An undecodable advertisement means the
-// ref EXISTS holding something unreadable; a write would destroy it and a retry will not fix it.
-// The claim pins the remedy-bearing wording so this cannot be satisfied by the unobserved arm's
-// cause — the two refusals must stay distinguishable, which is why the authority kept them apart.
+// AN UNDECODABLE ADVERTISEMENT REFUSES WITHOUT WRITING OVER THE REF, and this row is PORTED from
+// main rather than dropped with the vocabulary it was written against. It arrived here through a
+// clean auto-merge -- no conflict marker -- still spelled in main's deleted `decided` /
+// AdmissionAdvanceAuthorized terms, so it would not have compiled; the tempting resolution was to
+// delete it with its siblings. But the CLAIM is real and this branch had no equivalent, and a
+// replacement that quietly drops a refusal has erased a correctness distinction rather than
+// completed a migration.
+//
+// The claim: the ref EXISTS holding something unreadable, so a write would destroy it and a retry
+// will not fix it. The assertion pins the remedy-bearing wording AND denies the unobserved arm's,
+// because the two refusals must stay distinguishable -- an operator repairs a corrupt ref and
+// retries an unreachable one. Wording follows THIS branch's authority
+// (gunbc.fleet_main_revision fleet_desired_advance_refusal_message), not main's, since porting a
+// claim means re-asserting it against the live message rather than copying a string that no
+// longer exists.
 test fn an_undecodable_desired_ref_refuses_without_writing_over_it() -> Bool {
-  match decided(
-    event: admitting_event(),
-    observed: FleetDesiredUndecodable { advertised: "not-a-sha refs/fleet/desired" },
-  ) {
-    AdmissionAdvanceAuthorized { expected: _, to: _ } => false
+  match action_for(input: FleetDesiredExpectationRefusedInput {
+    accepted: accepted_fixture(),
+    cause: FleetDesiredRefUndecodable { advertised: "not-a-sha refs/fleet/desired" },
+  }) {
+    AdmissionActionAuthorized { action: _ } => false
     AdmissionRefused { cause: c } =>
-      string_contains(s: c, pattern: "a write would destroy it")
+      string_contains(s: c, pattern: "must not be written over")
         && string_contains(s: c, pattern: "not-a-sha refs/fleet/desired")
-        && !string_contains(s: c, pattern: "never read as an absent one")
+        && !string_contains(s: c, pattern: "could not be observed")
   }
 }
 
 // THE KEYSTONE. This is the defect the emitted deploy.yml carried: a candidate whose floor is not
-// green was advanced anyway. The refusal must come from the modeled authority, so the claim pins
-// the authority's own prevented-class wording rather than merely observing that something refused.
-test fn a_floor_red_candidate_is_refused_by_the_modeled_authority() -> Bool {
-  match decided(
-    event: fixture_event(
-      workflow_name: witness_floor_workflow_name,
-      conclusion: Failure,
-      branch: gunbc_default_branch_name,
-      head_repo: fixture_repo,
-      activity: "completed",
-    ),
-    observed: fixture_prior(),
-  ) {
-    AdmissionAdvanceAuthorized { expected: _, to: _ } => false
-    AdmissionRefused { cause: c } =>
-      string_contains(s: c, pattern: "raw-HEAD simultaneous fleet-bricking")
-        && string_contains(s: c, pattern: "failure")
-  }
+// green was advanced anyway. Every non-Success conclusion is red -- Cancelled and Skipped are the
+// two that most invite a "close enough" arm, since a cancelled floor proves nothing and a skipped
+// one ran nothing. Enumerated rather than sampled, because the arm that admits one of these is
+// exactly the arm that never fires in testing.
+fn accepted_with_conclusion(conclusion: WorkflowRunConclusion) -> Bool {
+  !is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
+    workflow_name: witness_floor_workflow_name,
+    conclusion: conclusion,
+    branch: gunbc_default_branch_name,
+    head_repo: fixture_repo,
+    activity: "completed",
+    workflow_path: ".github/workflows/witnesses.yml",
+    originating: "push",
+  )))
 }
 
-// Every non-Success conclusion is red. Cancelled and Skipped are the two that most invite a
-// "close enough" arm — a cancelled floor proves nothing and a skipped one ran nothing.
-test fn only_success_is_floor_green() -> Bool {
-  fleet_desired_floor_green(conclusion: Success)
-    && !fleet_desired_floor_green(conclusion: Failure)
-    && !fleet_desired_floor_green(conclusion: Cancelled)
-    && !fleet_desired_floor_green(conclusion: Skipped)
-    && !fleet_desired_floor_green(conclusion: TimedOut)
-    && !fleet_desired_floor_green(conclusion: Neutral)
-    && !fleet_desired_floor_green(conclusion: ActionRequired)
-    && !fleet_desired_floor_green(conclusion: StartupFailure)
+test fn only_a_success_conclusion_is_accepted() -> Bool {
+  accepted_with_conclusion(conclusion: Success)
+    && !accepted_with_conclusion(conclusion: Failure)
+    && !accepted_with_conclusion(conclusion: Cancelled)
+    && !accepted_with_conclusion(conclusion: Skipped)
+    && !accepted_with_conclusion(conclusion: TimedOut)
+    && !accepted_with_conclusion(conclusion: Neutral)
+    && !accepted_with_conclusion(conclusion: ActionRequired)
+    && !accepted_with_conclusion(conclusion: StartupFailure)
 }
 
-test fn a_conclusion_from_another_workflow_is_refused() -> Bool {
-  is_refused(o: decided(
-    event: fixture_event(
-      workflow_name: "deploy",
-      conclusion: Success,
-      branch: gunbc_default_branch_name,
-      head_repo: fixture_repo,
-      activity: "completed",
-    ),
-    observed: fixture_prior(),
-  ))
+// The floor is identified by PATH, not by name. A workflow that renames itself "witnesses" does
+// not become the floor, and the old wall -- which matched on the name -- would have admitted it.
+test fn a_run_of_another_workflow_path_is_refused() -> Bool {
+  is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
+    workflow_name: witness_floor_workflow_name,
+    conclusion: Success,
+    branch: gunbc_default_branch_name,
+    head_repo: fixture_repo,
+    activity: "completed",
+    workflow_path: ".github/workflows/deploy.yml",
+    originating: "push",
+  )))
 }
 
 test fn a_non_default_branch_run_is_refused() -> Bool {
-  is_refused(o: decided(
-    event: fixture_event(
-      workflow_name: witness_floor_workflow_name,
-      conclusion: Success,
-      branch: "session/nimble-fox-671",
-      head_repo: fixture_repo,
-      activity: "completed",
-    ),
-    observed: fixture_prior(),
-  ))
+  is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
+    workflow_name: witness_floor_workflow_name,
+    conclusion: Success,
+    branch: "session/nimble-fox-671",
+    head_repo: fixture_repo,
+    activity: "completed",
+    workflow_path: ".github/workflows/witnesses.yml",
+    originating: "push",
+  )))
 }
 
 test fn a_fork_head_repository_is_refused() -> Bool {
-  is_refused(o: decided(
-    event: fixture_event(
-      workflow_name: witness_floor_workflow_name,
-      conclusion: Success,
-      branch: gunbc_default_branch_name,
-      head_repo: "someone-else/gunbc",
-      activity: "completed",
-    ),
-    observed: fixture_prior(),
-  ))
+  is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
+    workflow_name: witness_floor_workflow_name,
+    conclusion: Success,
+    branch: gunbc_default_branch_name,
+    head_repo: "someone-else/gunbc",
+    activity: "completed",
+    workflow_path: ".github/workflows/witnesses.yml",
+    originating: "push",
+  )))
 }
 
 test fn an_incomplete_activity_is_refused() -> Bool {
-  is_refused(o: decided(
-    event: fixture_event(
-      workflow_name: witness_floor_workflow_name,
-      conclusion: Success,
-      branch: gunbc_default_branch_name,
-      head_repo: fixture_repo,
-      activity: "requested",
-    ),
-    observed: fixture_prior(),
-  ))
+  is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
+    workflow_name: witness_floor_workflow_name,
+    conclusion: Success,
+    branch: gunbc_default_branch_name,
+    head_repo: fixture_repo,
+    activity: "requested",
+    workflow_path: ".github/workflows/witnesses.yml",
+    originating: "push",
+  )))
 }
 
-// THE EMPTY-OBSERVATION NARROW, AS A CLAIM. An unreadable prior must refuse, not be treated as an
-// absent one — the arm that would create the ref from scratch and overwrite an admitted revision
-// nobody could read. This is the discriminating input: the event is otherwise fully admitting.
-test fn an_unobservable_prior_refuses_rather_than_creating_the_ref() -> Bool {
-  match decided(
-    event: admitting_event(),
-    observed: FleetDesiredUnobserved { cause: "ls-remote refused: network unreachable" },
-  ) {
-    AdmissionAdvanceAuthorized { expected: _, to: _ } => false
-    AdmissionRefused { cause: c } =>
-      string_contains(s: c, pattern: "never read as an absent one")
+// A refusal the OLD wall did not make at all. A floor run triggered by anything but a push to the
+// default branch -- a manual dispatch, a schedule -- proves the floor green for a tree that was
+// never merged, so its head_sha is not a landed revision.
+test fn a_non_push_originating_event_is_refused() -> Bool {
+  is_event_refused(o: fleet_desired_accepted_from_event(event: fixture_event(
+    workflow_name: witness_floor_workflow_name,
+    conclusion: Success,
+    branch: gunbc_default_branch_name,
+    head_repo: fixture_repo,
+    activity: "completed",
+    workflow_path: ".github/workflows/witnesses.yml",
+    originating: "workflow_dispatch",
+  )))
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE JOIN. The rows above prove the event is classified; gunbc.fleet_main_revision's own witness
+// proves the advance decision. These prove the seam BETWEEN them -- that each decision becomes
+// exactly one action, and that a refusal becomes no action at all.
+
+// The refusing arm is unreachable while the positive control above holds -- it recurses rather
+// than fabricating an accepted revision, because a fabricated one would let every row below pass
+// against a fixture the producers never admitted.
+fn accepted_fixture() -> AcceptedFleetRevision<NonEmptyStr, NonEmptyStr> {
+  match fleet_desired_accepted_from_event(event: admitting_event()) {
+    FleetDesiredRevisionAccepted { accepted: a } => a
+    FleetDesiredRevisionRefused { cause: _ } => accepted_fixture()
   }
 }
 
-// The authorized push names the observed prior as the compare-and-swap expectation, so a
+fn action_for(input: FleetDesiredAdvanceInput<NonEmptyStr, NonEmptyStr>) -> FleetDesiredAdmissionOutcome {
+  fleet_desired_action_from_decision(decision: decide_fleet_desired_advance(input: input))
+}
+
+// The relation is carried as an OBSERVATION -- which two revisions were compared -- rather than as
+// a bare verdict, so these fixtures name both endpoints. Building it any other way would let a
+// relation computed for one pair be applied to another, which is the refusal the last row here
+// pins down.
+fn observed_input(current_hex: String, relation: DeployRevisionRelation) -> FleetDesiredAdvanceInput<NonEmptyStr, NonEmptyStr> {
+  FleetDesiredObservedCurrentInput {
+    accepted: accepted_fixture(),
+    current: fixture_oid(hex: current_hex),
+    relation: FleetRevisionRelationObservation {
+      current: fixture_oid(hex: current_hex),
+      accepted: fixture_oid(hex: fixture_candidate_hex),
+      relation: relation,
+    },
+  }
+}
+
+// A candidate descending from the current ref is the advancing case, and the authorized action must carry BOTH
+// operands: the revision to publish and the prior it expects. An action naming only the target is
+// a blind overwrite wearing a compare-and-swap's name.
+test fn a_descendant_candidate_authorizes_an_advance_carrying_the_observed_prior() -> Bool {
+  match action_for(input: observed_input(current_hex: fixture_prior_hex, relation: DeployedIsAncestor)) {
+    AdmissionRefused { cause: _ } => false
+    AdmissionActionAuthorized { action: a } =>
+      match a {
+        FleetDesiredRemoteAdvance { accepted: to, expected_prior: prior } =>
+          (git_object_id_wire_hex(oid: to) as String == fixture_candidate_hex)
+            && (git_object_id_wire_hex(oid: prior) as String == fixture_prior_hex)
+        FleetDesiredAlreadyConvergedAction { revision: _ } => false
+        FleetDesiredSupersededAction { accepted: _, current: _ } => false
+      }
+  }
+}
+
+// THE TWO NO-OP ARMS ARE AUTHORIZED, NOT REFUSED, and the distinction is the whole point of the
+// action type: "the fleet is already where it should be" is a successful admission that mutates
+// nothing, while a refusal means the gate could not decide. Collapsing them would make a healthy
+// converged fleet report as a broken one on every floor run.
+test fn an_already_converged_fleet_authorizes_a_no_op_rather_than_refusing() -> Bool {
+  match action_for(input: observed_input(current_hex: fixture_candidate_hex, relation: SameRevision)) {
+    AdmissionRefused { cause: _ } => false
+    AdmissionActionAuthorized { action: a } =>
+      match a {
+        FleetDesiredAlreadyConvergedAction { revision: r } =>
+          git_object_id_wire_hex(oid: r) as String == fixture_candidate_hex
+        FleetDesiredRemoteAdvance { accepted: _, expected_prior: _ } => false
+        FleetDesiredSupersededAction { accepted: _, current: _ } => false
+      }
+  }
+}
+
+// A superseded candidate must never roll the fleet backwards. The relation says the accepted
+// revision is an ancestor of what the fleet already runs, so publishing it would be a rewind
+// dressed as an advance.
+test fn a_superseded_candidate_authorizes_a_no_op_and_never_an_advance() -> Bool {
+  match action_for(input: observed_input(current_hex: fixture_candidate_hex, relation: CandidateIsAncestor)) {
+    AdmissionRefused { cause: _ } => false
+    AdmissionActionAuthorized { action: a } =>
+      match a {
+        FleetDesiredSupersededAction { accepted: _, current: _ } => true
+        FleetDesiredRemoteAdvance { accepted: _, expected_prior: _ } => false
+        FleetDesiredAlreadyConvergedAction { revision: _ } => false
+      }
+  }
+}
+
+// THE EMPTY-OBSERVATION NARROW, AS A CLAIM. An unreadable prior must refuse, not be treated as an
+// absent one -- the arm that would create the ref from scratch and overwrite an admitted revision
+// nobody could read. The event is otherwise fully admitting, so this is discriminating.
+test fn an_unobservable_prior_refuses_rather_than_authorizing_a_creation() -> Bool {
+  match action_for(input: FleetDesiredExpectationRefusedInput {
+    accepted: accepted_fixture(),
+    cause: FleetDesiredRefUnobserved { cause: "ls-remote refused: network unreachable" },
+  }) {
+    AdmissionActionAuthorized { action: _ } => false
+    AdmissionRefused { cause: c } => string_contains(s: c, pattern: "fleet_desired_admission: ")
+  }
+}
+
+// AN ABSENT REF REFUSES, AND THIS ROW WAS INVERTED AND THEN INVERTED BACK WITHIN ONE DAY.
+//
+// The policy it asserts -- absence is a STATE, creation is a CAPABILITY, and no observation of
+// absence can supply a mint authority -- is gunbc.fleet_main_revision's, authored deliberately
+// under the title "creation is not implied by absence". gunbc#8746 landed the opposite policy on
+// main four and a half hours later, so merging main here was a policy DIVERGENCE. I then flipped
+// this row to assert creation, calling my own position an accidental regression. It was not, and
+// the flip is reverted with the reasoning recorded rather than quietly undone.
+//
+// WHY THIS PARTICULAR ROW IS DANGEROUS IN BOTH DIRECTIONS, which is the reusable part: a witness
+// about a capability that SHOULD NOT EXIST and a witness about one that WAS LOST look identical
+// when red. Restoring the action greens either. Only the policy says which repair is correct --
+// so this annotation states the policy, and a future red here is answered by reading it, not by
+// making the row pass.
+test fn an_absent_ref_refuses_because_creation_needs_a_mint_authority() -> Bool {
+  match action_for(input: FleetDesiredRefAbsentInput { accepted: accepted_fixture() }) {
+    AdmissionActionAuthorized { action: _ } => false
+    AdmissionRefused { cause: c } => string_contains(s: c, pattern: "mint the fleet root")
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE RENDERED ACTION.
+
+// The authorized advance names the observed prior as the compare-and-swap expectation, so a
 // concurrent admission refuses at the remote instead of overwriting.
-test fn the_authorized_push_carries_the_observed_prior_as_the_cas_expectation() -> Bool {
-  let script = fleet_desired_authorized_push_script(
-    expected: RemoteRefMustEqual { oid: fixture_oid(hex: fixture_prior_hex) },
-    to: fixture_oid(hex: fixture_candidate_hex),
-  )
+test fn the_authorized_advance_carries_the_observed_prior_as_the_cas_expectation() -> Bool {
+  let script = fleet_desired_authorized_action_script(
+    action: FleetDesiredRemoteAdvance {
+      accepted: fixture_oid(hex: fixture_candidate_hex),
+      expected_prior: fixture_oid(hex: fixture_prior_hex),
+    },
+  ) as String
   string_contains(s: script, pattern: concat("--force-with-lease=refs/fleet/desired:", fixture_prior_hex))
     && string_contains(s: script, pattern: concat(fixture_candidate_hex, ":refs/fleet/desired"))
 }
 
-// The creation push is still a compare-and-swap: git's empty `<expect>` is "the ref must not
-// already exist". The claim pins the space after the colon so an expectation that silently
-// rendered the prior-oid form — or dropped the lease entirely — cannot satisfy it.
-test fn the_creation_push_leases_on_the_ref_being_absent() -> Bool {
-  let script = fleet_desired_authorized_push_script(
-    expected: RemoteRefMustBeAbsent,
-    to: fixture_oid(hex: fixture_candidate_hex),
-  )
-  string_contains(s: script, pattern: "--force-with-lease=refs/fleet/desired: ")
-    && string_contains(s: script, pattern: concat(fixture_candidate_hex, ":refs/fleet/desired"))
-    && !string_contains(s: script, pattern: fixture_prior_hex)
+// THE RECEIPT MUST NAME THE EXPECTED PRIOR, NOT ONLY THE TARGET. The regression this guards
+// shipped upstream as collateral of a correct change: when main's admitted decision widened from
+// a prior oid to an expectation, the echo could no longer print `from` on the absent arm, and
+// dropping it for BOTH arms was the path of least resistance. What actually happened stays
+// recoverable from git's range line; what was EXPECTED then appeared nowhere in the run.
+//
+// This gate has one authorized action, so there is one arm to check -- and the check is the
+// contiguous pattern rather than the two hexes separately, because a script naming both revisions
+// in unrelated positions would satisfy a looser assertion while telling the reader nothing about
+// which was expected. Found by nimble-fox-671.
+test fn the_receipt_names_the_expected_prior_beside_the_target() -> Bool {
+  let script = fleet_desired_authorized_action_script(
+    action: FleetDesiredRemoteAdvance {
+      accepted: fixture_oid(hex: fixture_candidate_hex),
+      expected_prior: fixture_oid(hex: fixture_prior_hex),
+    },
+  ) as String
+  string_contains(s: script, pattern: concat(concat("admitted ", fixture_candidate_hex), concat(" expected-prior ", fixture_prior_hex)))
 }
 
-// THE RECEIPT HALF, WHICH THE TWO CLAIMS ABOVE DO NOT COVER. They assert what the push DEMANDS;
-// this asserts what the run RECORDS. The two came apart once already: #8746 replaced the `from`
-// operand with the expectation sum and the echo silently lost its prior, leaving eleven successful
-// admissions whose demanded prior appears nowhere in their logs — the lease is real but unechoed
-// (`set -eu`, no trace), and git's range line reports what happened, not what was required.
-test fn the_receipt_names_both_operands_of_the_compare_and_swap() -> Bool {
-  let script = fleet_desired_authorized_push_script(
-    expected: RemoteRefMustEqual { oid: fixture_oid(hex: fixture_prior_hex) },
-    to: fixture_oid(hex: fixture_candidate_hex),
-  )
-  string_contains(s: script, pattern: concat("[fleet-desired] admitted ", concat(fixture_candidate_hex, concat(" expected-prior ", fixture_prior_hex))))
+// THE WALL THE EXECUTING STEP DEPENDS ON. `test -s` distinguishes "authorization produced
+// nothing" -- a writer or transport failure -- from "authorization said do nothing". That
+// distinction survives only while a no-op action renders a NONEMPTY script, and it must hold by
+// the renderer's shape rather than by an author remembering to echo. These two rows are the
+// discriminating half: if either no-op arm is ever simplified to an empty string, the executing
+// step reads a dropped authorization as a converged fleet.
+test fn a_no_op_action_still_renders_a_nonempty_script() -> Bool {
+  let converged = fleet_desired_authorized_action_script(
+    action: FleetDesiredAlreadyConvergedAction { revision: fixture_oid(hex: fixture_candidate_hex) },
+  ) as String
+  let superseded = fleet_desired_authorized_action_script(
+    action: FleetDesiredSupersededAction {
+      accepted: fixture_oid(hex: fixture_prior_hex),
+      current: fixture_oid(hex: fixture_candidate_hex),
+    },
+  ) as String
+  (string_length(s: converged) > 0) && (string_length(s: superseded) > 0)
 }
 
-// The creation arm has no prior to name, and the receipt must say so POSITIVELY. git spells the
-// absent expectation as an empty <expect>, and an empty string in a receipt is indistinguishable
-// from an operand that was never printed — which is the state this whole pair exists to refuse.
-test fn the_creation_receipt_names_absence_rather_than_nothing() -> Bool {
-  let script = fleet_desired_authorized_push_script(
-    expected: RemoteRefMustBeAbsent,
-    to: fixture_oid(hex: fixture_candidate_hex),
-  )
-  string_contains(s: script, pattern: "expected-prior absent")
-    && !string_contains(s: script, pattern: "expected-prior \"")
+// A no-op must mutate no ref. The renderer is the last place a stray push could be introduced,
+// and the executing step runs whatever it produces without inspecting it.
+test fn a_no_op_action_renders_no_ref_mutation() -> Bool {
+  let converged = fleet_desired_authorized_action_script(
+    action: FleetDesiredAlreadyConvergedAction { revision: fixture_oid(hex: fixture_candidate_hex) },
+  ) as String
+  let superseded = fleet_desired_authorized_action_script(
+    action: FleetDesiredSupersededAction {
+      accepted: fixture_oid(hex: fixture_prior_hex),
+      current: fixture_oid(hex: fixture_candidate_hex),
+    },
+  ) as String
+  !string_contains(s: converged, pattern: "git push")
+    && !string_contains(s: superseded, pattern: "git push")
 }
 
 // THE EMISSION HALF. The pure decision above proves the gate decides correctly; it proves nothing
@@ -291,11 +409,63 @@ test fn the_admission_workflow_triggers_on_the_floor_workflow_completing() -> Bo
     && string_contains(s: yml, pattern: "admit_fleet_desired_from_floor_event_wet")
 }
 
-// THE ACTUATION CARRIES NO DECISION. If the push step ever names the ref or a revision expression
-// of its own, it has re-acquired the ability to push something the gate did not admit.
-test fn the_admission_workflow_push_step_names_no_revision_of_its_own() -> Bool {
+// THE TRIGGER MUST FILTER ON THE BRANCH, NOT ONLY THE JOB. A workflow_run trigger naming no
+// branches creates a run for EVERY branch's floor completion; each one enters the single constant
+// concurrency group before the job-level condition can skip it, and in the default group an
+// arriving entry evicts the pending one. So an unfiltered trigger lets an irrelevant branch cancel
+// a pending admission for a green main revision and then do nothing -- the drop this row exists to
+// keep closed. It reads the emitted bytes because the defect was in the emission, not the model:
+// the branch was checked in two places that both ran too late.
+test fn the_admission_workflow_filters_the_trigger_to_the_default_branch() -> Bool {
   let yml = expected_fleet_desired_yml()
-  string_contains(s: yml, pattern: fleet_desired_admission_authorized_push_path)
+  let workflow_run_block = split(s: yml, delimiter: "workflow_run:").last()
+  let trigger = split(s: workflow_run_block, delimiter: "jobs:").first()
+  string_contains(s: trigger, pattern: "branches:")
+    && string_contains(s: trigger, pattern: gunbc_default_branch_name)
+}
+
+// MAIN-FLOOR COMPLETIONS ARE RETAINED FOR ADJUDICATION RATHER THAN PENDING-REPLACED, AND THE
+// CLAIM IS BOUNDED BY THE PLATFORM'S QUEUE CAPACITY.
+//
+// The default concurrency group holds one running and one PENDING entry, and an arriving entry
+// CANCELS the pending one -- so under it a green admission could be dropped by a later run that
+// cannot advance (a red floor, a manual dispatch, an older rerun). The trigger filter cannot close
+// that half: those all carry head_branch main, and whether they can advance is decided in-model,
+// after the run exists. So the emitted mapping must carry `queue: max`.
+//
+// THIS ROW WAS NAMED `..._queues_every_admissible_completion_...` AND THAT WAS AN OVERCLAIM.
+// GitHub documents the ceiling explicitly: "Up to 100 jobs or workflow runs can be `pending` in
+// the concurrency group. When the queue is full, any additional jobs or workflow runs are
+// canceled." (docs.github.com, workflow syntax, concurrency; read 2026-08-21.) So the honest claim
+// is retention-instead-of-replacement WHILE THE GROUP SITS BELOW 100 PENDING -- not "every".
+//
+// The overclaim was not observable from the bytes this row reads, which is exactly why the NAME
+// mattered: at 100 pending the mechanism cancels and this row still greens, because a queue depth
+// is not a fact about an emitted mapping. A name is the claim the next reader inherits, and this
+// one promised something the witness cannot witness.
+//
+// IF ABSOLUTE LOSSLESSNESS EVER BECOMES REQUIRED, THE NEXT RUNG IS NOT A BIGGER QUEUE. It is
+// durable reconciliation over (eligible floor-green revisions MINUS recorded admission decisions).
+// `queue: max` is a strong bounded transport, not an unbounded event ledger -- and it cannot buy
+// ordering either, since GitHub processes pending entries by when they began waiting and does not
+// guarantee order. Found by side-chat review, relayed by nimble-fox-671; the 100-entry cap and the
+// cancel-when-full half were both verified against the documentation rather than taken on report.
+//
+// cancel-in-progress must ALSO be false, and it is a separate assertion rather than an implied
+// one: it is what keeps a RUNNING admission from being interrupted between the compare-and-swap
+// decision and the push, which is the one property the default group was genuinely providing.
+test fn the_admission_workflow_uses_the_maximum_pending_queue_instead_of_pending_replacement() -> Bool {
+  let yml = expected_fleet_desired_yml()
+  let concurrency = split(s: split(s: yml, delimiter: "concurrency:").last(), delimiter: "jobs:").first()
+  string_contains(s: concurrency, pattern: "queue: max")
+    && string_contains(s: concurrency, pattern: "cancel-in-progress: false")
+}
+
+// THE ACTUATION CARRIES NO DECISION. If the action step ever names the ref or a revision
+// expression of its own, it has re-acquired the ability to push something the gate did not admit.
+test fn the_admission_workflow_action_step_names_no_revision_of_its_own() -> Bool {
+  let yml = expected_fleet_desired_yml()
+  string_contains(s: yml, pattern: fleet_desired_admission_authorized_action_path)
     && !string_contains(s: yml, pattern: "GITHUB_SHA")
     && !string_contains(s: yml, pattern: "force-with-lease")
     && !string_contains(s: yml, pattern: "ls-remote")
