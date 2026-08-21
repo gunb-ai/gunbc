@@ -29,6 +29,21 @@
 #   and on harness refuse so a missing log after refuse is observable (not a prior run's file).
 #   Use a fresh PROBE_KEEP_LOG_DIR per orchestrated sweep when switching cohorts.
 #   PAIRED READING: publish a count beside any zero — a bare zero from this instrument is suspect.
+#   ROW COLUMNS (2026-08-21, appended — existing consumers read no positions past column 8, so
+#                        the three new fields are appended rather than inserted):
+#     1 module  2 emit_summary  3 cargo_verdict  4 first_error  5 mapped_gate  6 verdict
+#     7 error_histogram  8 raw_dup_pub_use  9 HEAD_SHA  10 CARGO_ERROR_TOTAL  11 HISTOGRAM_SUM
+#   WHY 9: a number published without its ref is a measurement of something nobody asked about,
+#          and PROBE_EXPECT_BASE_SHA only protects callers who remember to declare a baseline.
+#          The field protects every reader; the check protects a declared comparison. Both stay.
+#   WHY 10 AND 11 TOGETHER, NEVER ONE: cargo's own "due to N previous errors" line and the count
+#          of error lines are DIFFERENT INSTRUMENTS. Differencing one run's 10 against another's
+#          11 reads exactly like a delta and is not one. Emitting both from one run makes that
+#          confusion unrepresentable instead of merely warned against; a gap between them is
+#          itself a reading (cargo counts errors, the histogram counts coded error lines), never
+#          a discrepancy to reconcile. Both are "n/a" — deliberately not 0 — on any path that
+#          never reached cargo, because a zero there reads as a clean build to anything summing
+#          the column.
 #   Ground-truth discriminator for embedded refusals: rg 'UNRESOLVED_CompilerError' or the rustc
 #                           error literal in the emitted crate AFTER cssl_assemble — compile_error!
 #                           in source = real emit-residue (no shim can fix); string-only = note.
@@ -63,10 +78,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$ROOT"
 
+# The measured tree's sha, captured UNCONDITIONALLY and published as a row field. This is not the
+# same mechanism as PROBE_EXPECT_BASE_SHA below and does not replace it: that check refuses a run
+# against the wrong tree, this one makes it impossible to publish a number without its ref. The
+# check protects a declared comparison; the field protects every reader, including the ones who
+# never declare one. Measured cost of not having it (2026-08-21): three consecutive probe and emit
+# runs in one session were attributed to a ref that was not the ref they ran at — twice because
+# main advanced between checkout and dispatch, once because a `git checkout … || true` swallowed
+# its own failure — and each was caught only because that session happened to echo the sha from
+# inside its own wrapper. A per-caller habit is not a mechanism; the row is.
+HEAD_SHA="$(git rev-parse HEAD)"
+
 if [[ -n "${PROBE_EXPECT_BASE_SHA:-}" ]]; then
-  ACTUAL_SHA="$(git rev-parse HEAD)"
-  if [[ "$ACTUAL_SHA" != "$PROBE_EXPECT_BASE_SHA" ]]; then
-    echo "curated_cargo_probe: SAME_BASE_REFUSE — tree at $ACTUAL_SHA, comparison baseline expects $PROBE_EXPECT_BASE_SHA" >&2
+  if [[ "$HEAD_SHA" != "$PROBE_EXPECT_BASE_SHA" ]]; then
+    echo "curated_cargo_probe: SAME_BASE_REFUSE — tree at $HEAD_SHA, comparison baseline expects $PROBE_EXPECT_BASE_SHA" >&2
     exit 1
   fi
 fi
@@ -138,6 +163,11 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
 fi
 
 CARGO_VERDICT="skip"
+# Defaults for the paths that never reach cargo. "n/a" is deliberately not "0": a run that did not
+# build has no error total, and a zero there would read as a clean build on any consumer that sums
+# the column.
+CARGO_ERROR_TOTAL="n/a"
+HISTOGRAM_SUM="n/a"
 FIRST_ERROR=""
 MAPPED_GATE=""
 ERROR_HISTOGRAM=""
@@ -195,8 +225,9 @@ PY
 emit_harness_refuse_row_and_exit() {
   ERROR_HISTOGRAM="instrument_down:1"
   clear_probe_keep_log
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM" "$RAW_DUP_PUB_USE"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM" "$RAW_DUP_PUB_USE" \
+    "$HEAD_SHA" "$CARGO_ERROR_TOTAL" "$HISTOGRAM_SUM"
   exit 1
 }
 
@@ -237,7 +268,18 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
     ERROR_HISTOGRAM="clean"
   else
     CARGO_VERDICT="refuse"
+    # BOTH TOTALS, ALWAYS, AND THIS IS THE POINT OF THE PAIR. cargo's own
+    # "due to N previous errors" line and the sum of this histogram are DIFFERENT INSTRUMENTS
+    # answering the same-sounding question, and differencing one against the other is a silent
+    # category error — it reads as a delta and is not one. Publishing exactly one of them is what
+    # made that mistake possible: a reader who receives "655" cannot tell which field produced it,
+    # and a later run that publishes the other field looks comparable. Emitting both, from one
+    # run, makes the ambiguity unrepresentable rather than merely warned about, and a gap between
+    # them is itself informative (cargo counts errors, the histogram counts coded error LINES).
+    CARGO_ERROR_TOTAL="$(grep -oE 'due to [0-9]+ previous error' "$BUILD_LOG" | grep -oE '[0-9]+' | head -1)"
+    CARGO_ERROR_TOTAL="${CARGO_ERROR_TOTAL:-unreported}"
     ERROR_HISTOGRAM="$(grep -oE '^error\[E[0-9]+\]' "$BUILD_LOG" | sort | uniq -c | sort -rn | awk '{printf "%s%s:%s", sep, $2, $1; sep=" "}' || true)"
+    HISTOGRAM_SUM="$(grep -cE '^error(\[E[0-9]+\])?:' "$BUILD_LOG" || true)"
     UNCODED_SUFFIX="$(uncoded_histogram_suffix "$BUILD_LOG")"
     if [[ -z "$ERROR_HISTOGRAM" ]]; then
       ERROR_HISTOGRAM="${UNCODED_SUFFIX:-uncoded_only:0}"
@@ -294,8 +336,9 @@ elif [[ "$EMIT_OK" -eq 0 ]]; then
   clear_probe_keep_log
 fi
 
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-  "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM" "$RAW_DUP_PUB_USE"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT" "$ERROR_HISTOGRAM" "$RAW_DUP_PUB_USE" \
+  "$HEAD_SHA" "$CARGO_ERROR_TOTAL" "$HISTOGRAM_SUM"
 
 case "$VERDICT" in
   HARNESS_REFUSE | EMIT_REFUSE) exit 1 ;;
