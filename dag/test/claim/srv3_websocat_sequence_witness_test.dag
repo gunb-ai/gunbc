@@ -113,10 +113,10 @@ test fn the_readback_never_runs_after_a_failed_step() -> Bool {
 }
 
 // THE POSITIVE CONTROL, without which every test above passes on a walk that never runs anything.
+// It passes SEVEN outcomes for seven stages. An earlier draft passed six and could not have
+// reached readback -- the test would have "passed" by asserting a chain it never walked.
 test fn a_fully_successful_install_runs_the_complete_chain_then_reads_back() -> Bool {
   labels_equal(
-    // SEVEN outcomes for seven stages. An earlier draft passed six and could not have reached
-    // readback -- the test would have "passed" by asserting a chain it never walked.
     actual: trace_of(
       outcomes: [
         Srv3PredicateFails,

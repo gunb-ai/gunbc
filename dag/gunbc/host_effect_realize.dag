@@ -1779,12 +1779,12 @@ fn websocat_terminal(outcome: Srv3HostPredicate) -> WebsocatStep {
   }
 }
 
+// ObserveInstalled IS THE ONLY STAGE WHERE Fails MEANS PROCEED. "Is it already installed"
+// answering no is the whole reason to install, so that arm continues; every other stage's Fails is
+// a real failure and stops. Unobserved stops at every stage including that one -- a host that could
+// not be asked whether the binary exists must not be handed an install.
 fn websocat_after(stage: WebsocatStage, outcome: Srv3HostPredicate) -> WebsocatStep {
   match stage {
-    // THE ONLY STAGE WHERE Fails MEANS PROCEED. "Is it already installed" answering no is the
-    // whole reason to install, so this arm continues; every other stage's Fails is a real failure
-    // and stops. Unobserved stops here as everywhere -- a host that could not be asked whether the
-    // binary exists must not be handed an install.
     ObserveInstalled =>
       match outcome {
         Srv3PredicateHolds => WebsocatAlreadySatisfied
