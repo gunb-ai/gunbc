@@ -5243,6 +5243,7 @@ pub fn v1_item_signature_type_exprs(item: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 pub fn v1_map_key_seed_type_exprs(
     modules: Rc<Vec<Rc<TypedModule>>>,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
     {
         let declaration_field_exprs = Rc::new({
@@ -5250,7 +5251,9 @@ pub fn v1_map_key_seed_type_exprs(
             for type_name in Rc::new(v1_rt::map_keys(&type_decl_items)).iter().cloned() {
                 __result.extend(
                     (*match v1_rt::map_get(&type_decl_items, type_name.clone()) {
-                        Some(item) => v1_item_field_type_exprs(item.clone()),
+                        Some(item) => {
+                            v1_item_field_type_exprs(item.clone(), source_indices.clone())
+                        }
                         None => Rc::new(vec![]),
                     })
                     .iter()
@@ -5309,7 +5312,11 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             merged_module_source_indices(typed.modules.clone()),
         );
         let map_key_required = v1_map_key_required_type_names(
-            v1_map_key_seed_type_exprs(typed.modules.clone(), base_info.type_decl_items.clone()),
+            v1_map_key_seed_type_exprs(
+                typed.modules.clone(),
+                base_info.type_decl_items.clone(),
+                merged_module_source_indices(typed.modules.clone()),
+            ),
             hand_maintained_map_key_required_type_names(),
             base_info.type_decl_items.clone(),
             merged_module_source_indices(typed.modules.clone()),
@@ -5818,6 +5825,7 @@ pub fn emit_module(
             v1_map_key_seed_type_exprs(
                 Rc::new(vec![typed_module.clone()]),
                 base_info.type_decl_items.clone(),
+                merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
             ),
             hand_maintained_map_key_required_type_names(),
             base_info.type_decl_items.clone(),
@@ -20437,6 +20445,85 @@ pub fn rust_call_arg_fail_closed_unwrap(
     }
 }
 
+pub fn rust_call_arg_function_value_adapt(
+    arg_str: String,
+    arg: Rc<Node>,
+    callee: Option<Rc<ItemInfo>>,
+    idx: i64,
+) -> String {
+    {
+        let is_call_result = match (*arg.expr_data.clone()).clone() {
+            ExprData::ExprCall { .. } => true,
+            _ => false,
+        };
+        if !is_call_result.clone() {
+            return arg_str.clone();
+        }
+        match callee.clone() {
+            Some(info) => match function_value_params(info.params.clone())
+                .iter()
+                .cloned()
+                .skip(idx.clone() as usize)
+                .next()
+            {
+                Some(param) => {
+                    let arity = (param_node_type_expr(param.clone()).params.clone().len() as i64);
+                    if (arity.clone() > 0) {
+                        {
+                            let closure_params = Rc::new({
+                                let mut __result = Vec::new();
+                                for pair in Rc::new(
+                                    param_node_type_expr(param.clone())
+                                        .params
+                                        .clone()
+                                        .iter()
+                                        .cloned()
+                                        .enumerate()
+                                        .map(|(i, v)| (i as i64, v))
+                                        .collect::<Vec<_>>(),
+                                )
+                                .iter()
+                                .cloned()
+                                {
+                                    __result.push(v1_rt::concat(
+                                        "__adapt_a".to_string(),
+                                        (pair.0.clone()).to_string(),
+                                    ));
+                                }
+                                __result
+                            });
+                            let closure_params_str = closure_params.clone().join(&", ".to_string());
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "{ let __adapt_f = ".to_string(),
+                                                    arg_str.clone(),
+                                                ),
+                                                "; move |".to_string(),
+                                            ),
+                                            closure_params_str.clone(),
+                                        ),
+                                        "| __adapt_f(".to_string(),
+                                    ),
+                                    closure_params_str.clone(),
+                                ),
+                                ") }".to_string(),
+                            )
+                        }
+                    } else {
+                        arg_str.clone()
+                    }
+                }
+                None => arg_str.clone(),
+            },
+            None => arg_str.clone(),
+        }
+    }
+}
+
 pub fn emit_typed_function_value_call(
     func: String,
     args: Rc<Vec<Rc<Node>>>,
@@ -20788,12 +20875,18 @@ pub fn emit_typed_call(
                                 shared_types.clone(),
                                 emit_info.clone(),
                             );
-                            rust_call_arg_fail_closed_unwrap(
+                            let unwrapped = rust_call_arg_fail_closed_unwrap(
                                 base.clone(),
                                 arg_value(a.clone()),
                                 callee.clone(),
                                 idx.clone(),
                                 func.clone(),
+                            );
+                            rust_call_arg_function_value_adapt(
+                                unwrapped.clone(),
+                                arg_value(a.clone()),
+                                callee.clone(),
+                                idx.clone(),
                             )
                         }
                     }

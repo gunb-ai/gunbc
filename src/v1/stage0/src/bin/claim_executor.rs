@@ -18489,29 +18489,6 @@ enum ReceiptExclusion {
     /// skipped, because a changed authority that maps to nothing must be visible.
     NoEmittedMirror { module_path: String },
 
-    /// A mirror DOES name this authority, and the emit is structurally never going to produce
-    /// that mirror: it is a wet-actuator artifact, written by `main_wet` or a sibling actuator
-    /// rather than by `compile_stage0`, and `emitted_generated_sources` filters it out of the
-    /// candidate map by the very same predicate this arm asks.
-    ///
-    /// WHY THIS IS THE SAME DEFECT AS `NoFunctionHasACorpus` AND NOT A NEIGHBOUR OF IT. Both are
-    /// the phase asking a question that has no subject: there is no candidate to compare in one
-    /// case and no behaviour that could diverge in the other. Before this arm existed the first
-    /// case was not excluded at all -- selection admitted the module on the header alone, the
-    /// differential then looked for the candidate, did not find it, and REFUSED as `missing
-    /// candidate is ignorance`. That refusal is correct about a mirror the emit owes and did not
-    /// write, and simply false about one it was never going to write; stated against a
-    /// wet-actuator mirror it reds every PR that touches such an authority, with no closing move
-    /// available to the author -- the shape DESIGN.md calls a gate that launders rather than
-    /// enforces. So the two states are separated at SELECTION, where the fact is decidable
-    /// without an emit, and the differential's refusal keeps the meaning it always had.
-    ///
-    /// It is an exclusion and not a silent drop: it is counted in the module-grain line and
-    /// printed with its mirror, because a changed authority that reaches no verdict must be
-    /// visible (DESIGN.md section 5 -- a failure arm refuses and counts, it never widens or
-    /// drops).
-    MirrorOutsideEmittedPopulation { module_path: String, mirror: String },
-
     /// The authority declares NO functions at all, so it has no behaviour that could diverge.
     ///
     /// SEPARATE FROM `NoFunctionHasACorpus` BECAUSE THEY ARE DIFFERENT STATES WITH DIFFERENT
@@ -20153,6 +20130,110 @@ fn nondeterministic_call_functions(
     names
 }
 
+/// What the generated-artifact population says about one repo-relative path.
+///
+/// Three states because the honest answers are three. `NotGenerated` is a POSITIVE answer -- this
+/// path is not in the generated-artifact population at all -- and is what routes a caller to the
+/// mirror-emit population. Folding it into `Refused` would tell a caller that generation FAILED
+/// for an ordinary mirror, which is false and differently actionable.
+enum GeneratedArtifactPathBody {
+    Produced(String),
+    Refused(String),
+    NotGenerated,
+}
+
+/// Ask the already-resolved generated-artifact authority for the body it generates at a path.
+///
+/// THIS IS NOT A SECOND PRODUCER. The `.dag` side is a projection over the same three authorities
+/// `main_wet` uses -- the committed-artifact roster, `artifact_path`, and the single
+/// `artifact_generate` dispatch -- asked by path instead of by artifact. Reaching past it to a
+/// per-artifact emitter would have been the forked dispatch DESIGN §3 forbids.
+///
+/// COST SHAPE, and it is why this takes a CONTEXT rather than `source_roots`. The first draft
+/// resolved `generated_artifact_emit`'s whole closure inside the per-module loop, making the unit
+/// of computation the corpus while the unit of fact was one path -- DESIGN §6's cost-shape defect,
+/// where the rule is that a proven one is fixed regardless of the realized n. The caller resolves
+/// once; each path is then one interpreter call against that context.
+/// The generated-artifact authority's evaluation context, resolved AT MOST ONCE per run and
+/// shared by every caller that needs it.
+///
+/// One cell rather than one resolve per asking site: selection asks it for a module that yields
+/// no call, and the differential loop asks it for every selected module. Two resolves of one
+/// closure would be two producers of the same context and would pay the corpus-sized cost twice.
+fn generated_artifact_ctx<'a>(
+    source_roots: &[String],
+    cell: &'a mut Option<v1_compiler::v1_interpreter::InterpContext>,
+) -> Result<&'a v1_compiler::v1_interpreter::InterpContext, String> {
+    if cell.is_none() {
+        let entry = "dag/gunbc/generated_artifact_emit.dag";
+        let (graph, indices) =
+            v1_compiler::cli_run::resolve_entry_graph_shared(source_roots, entry)
+                .map_err(|e| format!("resolve {entry}: {e}"))?;
+        *cell = Some(v1_compiler::cli_run::make_eval_context(
+            &graph,
+            indices,
+            // HERMETIC, not Wet. The projection is pure -- it folds a roster and returns a String
+            // -- so a host effect reached during it would mean a generator is doing something
+            // this gate must not perform on its behalf. Hermetic refuses there instead of
+            // carrying it out.
+            v1_compiler::v1_interpreter::ExecutionMode::Hermetic,
+        ));
+    }
+    Ok(cell.as_ref().expect("the context was just installed"))
+}
+
+fn generated_artifact_body_for_path(
+    ctx: &v1_compiler::v1_interpreter::InterpContext,
+    repo_rel_path: &str,
+) -> Result<GeneratedArtifactPathBody, String> {
+    use v1_compiler::v1_interpreter::Value;
+    let out = v1_compiler::v1_interpreter::run_in_context_with_args(
+        ctx,
+        "generated_artifact_body_for_path",
+        &[(
+            Some("path".to_string()),
+            Value::Str(repo_rel_path.to_string().into()),
+        )],
+        false,
+    )
+    .map_err(|e| format!("generated_artifact_body_for_path({repo_rel_path}): {e:?}"))?;
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &out
+    else {
+        // No default arm: a shape this code does not understand is ignorance, and guessing
+        // NotGenerated here would silently route a real generated artifact to the mirror emit
+        // and refuse it there for the wrong reason.
+        return Err(format!(
+            "generated_artifact_body_for_path({repo_rel_path}) returned a non-variant value"
+        ));
+    };
+    if ctx.sym_eq(*variant_name, "GeneratedArtifactPathNotGenerated") {
+        return Ok(GeneratedArtifactPathBody::NotGenerated);
+    }
+    if ctx.sym_eq(*variant_name, "GeneratedArtifactPathBodyProduced") {
+        return match ctx.field(fields, "content") {
+            Some(Value::Str(c)) => Ok(GeneratedArtifactPathBody::Produced(c.to_string())),
+            _ => Err(format!(
+                "GeneratedArtifactPathBodyProduced for {repo_rel_path} carried no String content"
+            )),
+        };
+    }
+    if ctx.sym_eq(*variant_name, "GeneratedArtifactPathBodyRefused") {
+        return match ctx.field(fields, "reason") {
+            Some(Value::Str(r)) => Ok(GeneratedArtifactPathBody::Refused(r.to_string())),
+            _ => Err(format!(
+                "GeneratedArtifactPathBodyRefused for {repo_rel_path} carried no String reason"
+            )),
+        };
+    }
+    Err(format!(
+        "generated_artifact_body_for_path({repo_rel_path}) returned an unknown variant"
+    ))
+}
+
 /// Map an authority module path to the emitted mirror that declares it as its authority.
 ///
 /// DERIVED, never authored: each generated file names its authority in its own header, written
@@ -20869,6 +20950,12 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
 
     let mut exclusions: Vec<ReceiptExclusion> = Vec::new();
     let mut plans: Vec<(String, ModuleCorpusPlan, String)> = Vec::new();
+    // BUILT ON FIRST DEMAND, not before the loop. Only a module that yields no call needs to ask
+    // the generated-artifact population during selection, which is a small population and often
+    // an empty one; resolving its closure unconditionally would put a corpus-sized resolve on
+    // every run of a per-change gate -- the cost shape DESIGN §6 names, where the unit of
+    // computation is the corpus and the unit of fact is one path.
+    let mut generated_ctx_cell: Option<v1_compiler::v1_interpreter::InterpContext> = None;
     // BOTH GRAINS, ACCUMULATED ACROSS EVERY CHANGED AUTHORITY -- including the excluded ones,
     // which is the point: a function that yields no call is uncovered whether or not its module
     // had a sibling that saved it from exclusion.
@@ -20885,16 +20972,6 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
         };
         match mirror_index.by_module.get(&module_path).cloned() {
             None => exclusions.push(ReceiptExclusion::NoEmittedMirror { module_path }),
-            Some(mirror) if v1_compiler::cli_run::mirror_outside_emitted_population(&mirror) => {
-                // ASKED HERE, BEFORE ANY WORK IS SPENT, and asked of the emit's own filter rather
-                // than of a roster kept beside it. A mirror the emit structurally never writes
-                // cannot produce a candidate, so selecting it buys a refusal about ignorance over
-                // a fact that was decidable for free.
-                exclusions.push(ReceiptExclusion::MirrorOutsideEmittedPopulation {
-                    module_path,
-                    mirror,
-                })
-            }
             Some(mirror) => {
                 // The Rust module path is the mirror's basename without its extension — derived
                 // from the artifact, like the mapping that found it, never spelled out here.
@@ -20921,8 +20998,33 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
                 declared_functions += coverage.covered.len() + coverage.uncovered.len();
                 covered_functions += coverage.covered.len();
                 match plan_grain_selection(&plan, coverage)? {
-                    Some(exclusion) => exclusions.push(exclusion),
                     None => plans.push((mirror, plan, alias)),
+                    Some(exclusion) => {
+                        // A ZERO-CALL MODULE IS NOT AUTOMATICALLY A SUBJECTLESS ONE, and getting
+                        // this wrong is how an exclusion becomes the thing it was meant to
+                        // prevent. #8753 established the fact by measurement: for a mirror in the
+                        // GENERATED-ARTIFACT population the subject is the artifact's BYTES, not
+                        // its behaviour, and that population's only drift observer anywhere is the
+                        // identity check inside the differential loop. Excluding here on `no
+                        // function yields a call` would delete that observer for exactly the
+                        // artifacts that have no functions to call -- silently, and while printing
+                        // a line that says the module has nothing to compare.
+                        //
+                        // So the population is ASKED, and it is asked with the same projection
+                        // the loop asks (`generated_artifact_body_for_path`), not with a second
+                        // roster. `NotGenerated` is a positive answer -- this path is a module
+                        // mirror -- and only then is the exclusion a fact.
+                        let repo_rel = format!("src/v1/stage0/src/{mirror}");
+                        let ctx = generated_artifact_ctx(source_roots, &mut generated_ctx_cell)?;
+                        match generated_artifact_body_for_path(ctx, &repo_rel)? {
+                            GeneratedArtifactPathBody::NotGenerated => exclusions.push(exclusion),
+                            // Produced OR Refused: either way the path belongs to the
+                            // generated-artifact population, and the loop is where that
+                            // population's answer -- identity, drift, or a generator refusal --
+                            // is reported. Deciding it here would be a second adjudicator.
+                            _ => plans.push((mirror, plan, alias)),
+                        }
+                    }
                 }
             }
         }
@@ -20940,15 +21042,11 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
     // work removes. Collapsing them is how a population that cannot shrink gets read as debt that
     // simply has not been paid.
     let mut excluded_no_mirror = 0usize;
-    let mut excluded_outside_population = 0usize;
     let mut excluded_no_function_declared = 0usize;
     let mut excluded_no_corpus = 0usize;
     for e in &exclusions {
         match e {
             ReceiptExclusion::NoEmittedMirror { .. } => excluded_no_mirror += 1,
-            ReceiptExclusion::MirrorOutsideEmittedPopulation { .. } => {
-                excluded_outside_population += 1
-            }
             ReceiptExclusion::NoFunctionDeclared { .. } => excluded_no_function_declared += 1,
             ReceiptExclusion::NoFunctionHasACorpus { .. } => excluded_no_corpus += 1,
         }
@@ -20956,7 +21054,6 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
     eprintln!(
         "behavioral-receipt: GRAIN module: changed_authorities={} selected={} excluded={} \
          (no-emitted-mirror={excluded_no_mirror} \
-         mirror-outside-emitted-population={excluded_outside_population} \
          no-function-declared={excluded_no_function_declared} \
          no-function-has-a-corpus={excluded_no_corpus}) | \
          function: declared={declared_functions} covered={covered_functions} uncovered={}",
@@ -20972,17 +21069,6 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
                  generated population names it as its authority, under either header \
                  convention (the index refuses outright if any generated file is \
                  unindexable, so this is a fact about the corpus and not a lookup miss)"
-            ),
-            ReceiptExclusion::MirrorOutsideEmittedPopulation {
-                module_path,
-                mirror,
-            } => eprintln!(
-                "behavioral-receipt: excluded {module_path} — its emitted mirror {mirror} is \
-                 outside the emit's population: it is a wet-actuator artifact, produced by \
-                 another actuator and filtered out of the candidate map by the emit's own \
-                 predicate, so no run of this phase can ever obtain a candidate for it. NOT a \
-                 missing candidate: the emit does not owe this file. No work closes this row \
-                 short of the artifact acquiring a compile_stage0 producer"
             ),
             ReceiptExclusion::NoFunctionDeclared { module_path } => eprintln!(
                 "behavioral-receipt: excluded {module_path} — the authority declares no \
@@ -21057,7 +21143,7 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
     if plans.is_empty() {
         eprintln!(
             "behavioral-receipt: no changed authority module reached the differential — every one \
-             was excluded above, each under one of the four typed arms counted on the \
+             was excluded above, each under one of the three typed arms counted on the \
              module-grain line. Nothing to compare, so this run costs nothing. That \
              is a real pass over an EMPTY selection, stated rather than printed as a bare PASS, \
              and the FUNCTION-GRAIN counts above say how much surface that silence covers"
@@ -21111,21 +21197,123 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
     // is the SAME partition the admission was decided from. Recomputing it from the plan
     // afterwards would be a second producer of one fact, and the one that gets reported is the
     // one that never gated anything.
+    // ONE RESOLVE for the whole run -- see `generated_artifact_body_for_path`'s cost-shape note.
+    // The cell may already hold it: selection asks the same authority when a module yields no
+    // call, and asking it twice would resolve one closure twice.
+    let generated_ctx = generated_artifact_ctx(source_roots, &mut generated_ctx_cell)?;
     let mut denominators: Vec<String> = Vec::new();
     let mut nondeterministic_calls_total = 0usize;
     let mut nondeterministic_modules = 0usize;
     for (mirror, plan, alias) in &plans {
-        let Some(candidate_source) = emitted.get(mirror) else {
-            eprintln!(
-                "behavioral-receipt: {} REFUSED — the emit OWES {mirror} and produced no such \
-                 file, so there is no candidate to compare. Not equivalence: a missing candidate \
-                 is ignorance. This arm now means only that: a mirror the emit was never going \
-                 to write is excluded at selection under \
-                 mirror-outside-emitted-population and never reaches here",
-                plan.module_path
-            );
-            all_equivalent = false;
-            continue;
+        // WHICH POPULATION OWNS THIS MIRROR, decided before anything is fetched.
+        //
+        // Two generators write into `src/v1/stage0/src`: the v1 compiler emits module mirrors,
+        // and gunbc's artifact emitters write a handful of generated files whose headers say so.
+        // This fragment used to ask only the first and refuse when it came back empty, which made
+        // the SECOND population permanently unaskable -- any change to the interpreter dispatch
+        // roster or the stage0 crate layout redded this phase with "a missing candidate is
+        // ignorance", correct as written and with no reachable green.
+        //
+        // The population is asked FIRST and answers positively. This is deliberately not a
+        // fallback from the mirror-emit miss: a fallback would make absence in one producer mean
+        // presence in the other, so a genuinely unknown path would silently be regenerated from
+        // nothing instead of refused. Here each population answers for what it owns, and a path
+        // in neither still refuses.
+        let repo_rel = format!("src/v1/stage0/src/{mirror}");
+        let generated = match generated_artifact_body_for_path(&generated_ctx, &repo_rel) {
+            Ok(g) => g,
+            Err(e) => {
+                eprintln!(
+                    "behavioral-receipt: {} REFUSED — could not ask the generated-artifact \
+                     population about {repo_rel}: {e}. Not equivalence: an unanswered question \
+                     is ignorance",
+                    plan.module_path
+                );
+                all_equivalent = false;
+                continue;
+            }
+        };
+        let owned_candidate: Option<String> = match generated {
+            GeneratedArtifactPathBody::Produced(content) => Some(content),
+            GeneratedArtifactPathBody::Refused(reason) => {
+                eprintln!(
+                    "behavioral-receipt: {} REFUSED — {repo_rel} is a generated artifact and its \
+                     generator refused: {reason}",
+                    plan.module_path
+                );
+                all_equivalent = false;
+                continue;
+            }
+            GeneratedArtifactPathBody::NotGenerated => None,
+        };
+        // A GENERATED ARTIFACT IS CHECKED BY IDENTITY, NOT BY CALLING IT -- and this is the
+        // correct check for it, not a weaker stand-in for the differential.
+        //
+        // MEASURED, after the first draft of this change got it wrong. Producing the candidate
+        // was necessary and not sufficient: with the candidate in hand the differential went one
+        // step further and refused again, because it compiles a driver that CALLS the authority's
+        // declared functions against the mirror --
+        //
+        //   the driver did not compile against the mirror: error[E0425]: cannot find function
+        //   `v1_interpreter_arm_shape_derivability` in module v1_compiler::v1_interpreter_dispatch_generated
+        //
+        // -- and `v1_interpreter_dispatch_generated.rs` exposes enums and `lookup_*` fns. It is a
+        // file DERIVED FROM the authority's data, not a Rust projection of the authority's
+        // functions, so those functions are not there and never will be. The differential's
+        // precondition (the mirror answers the same calls the authority declares) simply does not
+        // hold for this population.
+        //
+        // For a generated artifact the whole content IS the product, so byte identity between a
+        // freshly generated candidate and the committed file is the complete statement of
+        // correctness -- which is exactly the drift check that has had no owner since the
+        // generated-artifact drift gates were dropped in the floor cut.
+        let candidate_source: &String = match owned_candidate.as_ref() {
+            Some(candidate) => {
+                let committed_path = workspace.join(&repo_rel);
+                match fs::read_to_string(&committed_path) {
+                    Err(e) => {
+                        eprintln!(
+                            "behavioral-receipt: {} REFUSED — {repo_rel} is a generated artifact \
+                             but its committed bytes could not be read ({e}), so identity cannot \
+                             be established",
+                            plan.module_path
+                        );
+                        all_equivalent = false;
+                    }
+                    Ok(committed_bytes) if committed_bytes == *candidate => {
+                        eprintln!(
+                            "behavioral-receipt: {} ARTIFACT-IDENTICAL — {repo_rel} regenerates \
+                             byte-for-byte from its authority. This is identity, not behavioural \
+                             equivalence: the artifact exposes no function this fragment could \
+                             call, so its bytes are the whole claim",
+                            plan.module_path
+                        );
+                    }
+                    Ok(_) => {
+                        eprintln!(
+                            "behavioral-receipt: {} ARTIFACT-DRIFT — {repo_rel} does not match \
+                             what its authority generates. Regenerate it (main_wet on \
+                             dag/tools/generated_artifact_gate.dag) and commit the result",
+                            plan.module_path
+                        );
+                        all_equivalent = false;
+                    }
+                }
+                continue;
+            }
+            None => match emitted.get(mirror) {
+                Some(c) => c,
+                None => {
+                    eprintln!(
+                        "behavioral-receipt: {} REFUSED — {mirror} is in neither population: the \
+                         v1 emit produced no mirror for it and it is not a committed generated \
+                         artifact. Not equivalence: a missing candidate is ignorance",
+                        plan.module_path
+                    );
+                    all_equivalent = false;
+                    continue;
+                }
+            },
         };
         // Infallible in fact -- selection only pushed plans that admitted -- but derived here
         // rather than asserted, so the differential's precondition is carried by the value it

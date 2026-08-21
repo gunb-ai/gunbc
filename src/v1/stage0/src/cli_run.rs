@@ -42488,11 +42488,6 @@ pub fn run_required_regen_fixed_point(
 /// regen compared. A second emit here would be a second producer of the candidate itself.
 pub use required_regen_host::emitted_generated_sources;
 
-/// The population predicate that goes WITH the map above: whether a mirror basename is one the
-/// emit structurally never writes. Re-exported beside its map so a caller cannot reach one
-/// without the other being in view.
-pub use required_regen_host::mirror_outside_emitted_population;
-
 /// The authority's own declared module path, for consumers outside this module.
 ///
 /// Exposed rather than re-implemented: a second parser for `module <path>` would be a second
