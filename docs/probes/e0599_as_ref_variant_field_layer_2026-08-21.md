@@ -152,6 +152,10 @@ reason `checkpoint_identity_keying_witness_test.dag` already records: the fixtur
 `v2.std.node`'s bare-qualified references before the field is ever rendered (re-confirmed by
 execution here, not assumed).
 
+That harness limitation is filed on its own, because it bounds the standard witness route
+corpus-wide rather than only this lane:
+[`compile_dag_rust_emit_check_qualification_blind_2026-08-21.md`](compile_dag_rust_emit_check_qualification_blind_2026-08-21.md).
+
 **Next-rung trigger, named rather than stalled:** a fixture surface that preserves the authored
 namespace qualification — or an emitter-level assertion over a real corpus module rather than a
 virtual one — makes this class mechanically preventable. Until then it is *mitigatable*: the
