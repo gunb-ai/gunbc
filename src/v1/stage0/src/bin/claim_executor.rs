@@ -10798,6 +10798,25 @@ fn run() -> Result<ExitCode, ExitCode> {
         // have the PUSH RANGE, which is a real subject. Giving this phase that subject on main is
         // what would end the PR-only coverage; until someone does it, the sentence above stands
         // and a green main must not be read as evidence for anything here.
+        //
+        // THE SHAPE THAT WORK TAKES, so it is not re-invented and, more importantly, so it is not
+        // built as a substitute:
+        //
+        //     ChangeSubject = PullRequestDiff { base, head }
+        //                   | PushRange       { before, after }
+        //                   | NoSubject
+        //
+        // `PushRange` is a DIFFERENT subject, not a stand-in for a PR diff, and the coproduct is
+        // what keeps WHICH change relation was measured visible in the result instead of two
+        // relations collapsing into one word `diff`. The downstream predicate can be shared; the
+        // upstream distinction may not be.
+        //
+        // AND THE ARM THAT MUST NOT MOVE IS `NoSubject`. The missing work is a real push-range
+        // subject; it is not making this arm return something. A phase that always has an answer
+        // has a deficit frequency of zero by construction -- the absorbing fallback wearing the
+        // fix's clothes. So: PHASE INVOKED, SUBJECT ABSENT, TYPED `NoSubject` RETURNED is not
+        // SUBJECT EVALUATED AND AGREED, and no counter above or below may let the first be read
+        // as the second.
         eprintln!("required-ci: phase receipt (changed authorities vs their mirrors)");
         match behavioral_receipt_plan(&source_roots) {
             Ok(ReceiptPlanOutcome::Ran { agreed: true }) => {
