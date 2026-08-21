@@ -452,3 +452,91 @@ to adding `src/v1` as a root is **not** roster blast radius. The whole `src/v1` 
 question is **resolution**, not population: the floor resolves its roots as one program
 (`modules_resolved=3820`), so whether `v1` and `v2` module namespaces collide when unified is the
 thing to measure. That measurement is a one-command experiment and it belongs to the owner above.
+
+## THE REPAIR IN THIS DOCUMENT DOES NOT FIX ARM A — the identity key is a location (2026-08-21)
+
+Measured, then confirmed from the code. Both halves are below, and the second one invalidates the
+design above rather than qualifying it.
+
+### The measurement: `decl_file` is where the reference SITS, not where the type is DECLARED
+
+The calibration control ran over the 22-module import closure of `src/v2/compiler/01_tokenize.dag` —
+the module that emits `src/v2_compiler_tokenize.rs`, where all 25 arm-A sites live. It **failed**, and
+the failure is the finding:
+
+```
+1142 rows: 1134 Agrees, 8 DivergesWithExactIdentity, 0 IdentityUnavailable
+arm x outcome:  1036 fallback|Agrees   98 resolved|Agrees   8 fallback|Diverges
+```
+
+Every one of the **111 `String` references took the fallback arm**; the resolved arm fired zero times
+for this carrier. `decl_file` came back as the referencing module's own file in every case —
+`std.types` → `dag/std/types.dag`, `v2.compiler.tokenize` → `src/v2/compiler/01_tokenize.dag`,
+`v2.std.text` → `src/v2/std/text.dag`. The value `src/v2/std/text.dag` is produced **only** from
+inside `v2.std.text` itself; no cross-module reference to `String` ever yields it.
+
+So the 8 divergences are **true by accident**: they are exactly the references that happen to sit
+inside their own declaring module, where "the file I am in" and "the file it is declared in" are the
+same string.
+
+This also dissolves the `decl_file` partition recorded earlier in this lane (41 `types.dag` /
+6 `algebra.dag` / 4 `string_type.dag`, "zero counterexamples"). That was never a partition by
+declaring module — it was a histogram of which file each occurrence sits in. Its zero counterexamples
+were **structural**: a column that is a function of the row's own location cannot produce one.
+
+### The mechanism, named as the class DESIGN already names
+
+`v1.compiler.coercion` `type_reference_decl_file` projects the resolved node bound to the reference
+and otherwise **falls back to the reference node's own `ident_span`**. Its authority note describes
+that arm as firing *"when the reference IS the declaration"* — but the arm also fires whenever
+inference is simply unavailable, with no way to tell the two apart from outside. That is:
+
+- **state-space conflation** (§5) — *the reference is its own declaration* and *inference was
+  unavailable* are different states with different remedies, collapsed into one arm;
+- **the absorbing fallback** (§5) — a failure arm that **widens instead of refusing**. The note itself
+  warns that an empty identity yields no realization and silently renders structurally; the fallback
+  avoids the empty string by substituting a **wrong non-empty one**, which is strictly worse — it is
+  undetectable rather than merely absent, and its deficit frequency is zeroed by construction.
+
+Splitting that arm into two named outcomes is a **prerequisite** for the census, not a cleanup after
+it: until they are split, 1036 of 1142 rows are `fallback` and cannot be scored correct or wrong.
+
+### Why this invalidates the repair above
+
+`type_realization_decision` **takes `decl_file` as a parameter** —
+
+```
+fn type_realization_decision(target: RenderTarget, dag_name: String, decl_file: String)
+```
+
+— and derives nothing declaration-shaped internally. Every production caller supplies it identically:
+`v1.compiler.emit` and `v1.compiler.emit_rust` both pass `type_reference_decl_file(n: n)`, and
+`lookup_checkpoint` is a thin derivation of the same call, so it inherits the key too.
+
+**Therefore routing the six renderers through the authority changes which function computes the answer
+and leaves the basis of the answer identical.** The authority is not a second opinion about identity;
+it is the same location-valued key wearing a better name. Arm A survives the repair with its 25 sites
+intact, and an A/B counterfactual would return `converted=0` for a reason unrelated to whether routing
+was the right idea.
+
+**One retraction this forces, on the finding that opened this lane.** It was reported that
+`type_realization_decision` is *"present, correct, and unreachable"* for the text carrier in type
+position. *Present* and *unreachable* hold. **Correct does not** — its logic was checked and its key
+never was. A total function over a wrong key is not a correct authority that happens to be bypassed;
+reaching it would have produced a confidently wrong answer instead of no answer. That word is what
+made routing look sufficient, so it is retracted here rather than left standing as the premise.
+
+### Sequencing, replacing the step order above
+
+1. Split the fallback arm into two named outcomes — prerequisite.
+2. Establish **why** `n.inferred` is not `Resolved` at these reference sites. This is likely the defect
+   itself rather than something to route around, and the fallback is what has been hiding it.
+3. Only then ask whether routing to the authority is the right repair, on a key that means something.
+
+No production change is made on any of this yet. The A/B/C/D counterfactual crates are **not** built
+on the current design, and no divergence count is published.
+
+**One thing deliberately not claimed:** `v2.compiler.tokenize` has exactly 25 `String` rows and there
+are exactly 25 arm-A sites. The relation should be many-to-one, so equal counts are as consistent with
+coincidence as with a join. Upgrading it requires a join on the **same occurrences**, not on both sets
+having 25 members.
