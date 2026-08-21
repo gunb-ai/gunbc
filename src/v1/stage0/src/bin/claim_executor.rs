@@ -19915,6 +19915,83 @@ fn nondeterministic_call_functions(
     names
 }
 
+/// What the generated-artifact population says about one repo-relative path.
+///
+/// Three states because the honest answers are three. `NotGenerated` is a POSITIVE answer -- this
+/// path is not in the generated-artifact population at all -- and is what routes a caller to the
+/// mirror-emit population. Folding it into `Refused` would tell a caller that generation FAILED
+/// for an ordinary mirror, which is false and differently actionable.
+enum GeneratedArtifactPathBody {
+    Produced(String),
+    Refused(String),
+    NotGenerated,
+}
+
+/// Ask `gunbc.generated_artifact_emit` for the body it generates at `repo_rel_path`.
+///
+/// THIS IS NOT A SECOND PRODUCER. `generated_artifact_body_for_path` is a projection over the
+/// same three authorities `main_wet` uses -- the committed-artifact roster, `artifact_path`, and
+/// the single `artifact_generate` dispatch -- asked by path instead of by artifact. Reaching past
+/// it to a per-artifact emitter would have been the forked dispatch DESIGN §3 forbids.
+/// Ask the already-resolved generated-artifact authority for the body it generates at a path.
+///
+/// COST SHAPE, and it is why this takes a CONTEXT rather than `source_roots`. The first draft
+/// resolved `generated_artifact_emit`'s whole closure inside the per-module loop, making the unit
+/// of computation the corpus while the unit of fact was one path -- DESIGN §6's cost-shape defect,
+/// where the rule is that a proven one is fixed regardless of the realized n. The caller resolves
+/// once; each path is then one interpreter call against that context.
+fn generated_artifact_body_for_path(
+    ctx: &v1_compiler::v1_interpreter::InterpContext,
+    repo_rel_path: &str,
+) -> Result<GeneratedArtifactPathBody, String> {
+    use v1_compiler::v1_interpreter::Value;
+    let out = v1_compiler::v1_interpreter::run_in_context_with_args(
+        ctx,
+        "generated_artifact_body_for_path",
+        &[(
+            Some("path".to_string()),
+            Value::Str(repo_rel_path.to_string().into()),
+        )],
+        false,
+    )
+    .map_err(|e| format!("generated_artifact_body_for_path({repo_rel_path}): {e:?}"))?;
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &out
+    else {
+        // No default arm: a shape this code does not understand is ignorance, and guessing
+        // NotGenerated here would silently route a real generated artifact to the mirror emit
+        // and refuse it there for the wrong reason.
+        return Err(format!(
+            "generated_artifact_body_for_path({repo_rel_path}) returned a non-variant value"
+        ));
+    };
+    if ctx.sym_eq(*variant_name, "GeneratedArtifactPathNotGenerated") {
+        return Ok(GeneratedArtifactPathBody::NotGenerated);
+    }
+    if ctx.sym_eq(*variant_name, "GeneratedArtifactPathBodyProduced") {
+        return match ctx.field(fields, "content") {
+            Some(Value::Str(c)) => Ok(GeneratedArtifactPathBody::Produced(c.to_string())),
+            _ => Err(format!(
+                "GeneratedArtifactPathBodyProduced for {repo_rel_path} carried no String content"
+            )),
+        };
+    }
+    if ctx.sym_eq(*variant_name, "GeneratedArtifactPathBodyRefused") {
+        return match ctx.field(fields, "reason") {
+            Some(Value::Str(r)) => Ok(GeneratedArtifactPathBody::Refused(r.to_string())),
+            _ => Err(format!(
+                "GeneratedArtifactPathBodyRefused for {repo_rel_path} carried no String reason"
+            )),
+        };
+    }
+    Err(format!(
+        "generated_artifact_body_for_path({repo_rel_path}) returned an unknown variant"
+    ))
+}
+
 /// Map an authority module path to the emitted mirror that declares it as its authority.
 ///
 /// DERIVED, never authored: each generated file names its authority in its own header, written
@@ -20823,18 +20900,82 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
     // is the SAME partition the admission was decided from. Recomputing it from the plan
     // afterwards would be a second producer of one fact, and the one that gets reported is the
     // one that never gated anything.
+    // ONE RESOLVE for the whole loop -- see `generated_artifact_body_for_path`'s cost-shape note.
+    // Built before the loop rather than lazily inside it: every selected module asks this
+    // question, so laziness would buy nothing and would put a corpus resolve at an unpredictable
+    // point in the middle of a differential.
+    let generated_entry = "dag/gunbc/generated_artifact_emit.dag";
+    let (generated_graph, generated_indices) =
+        v1_compiler::cli_run::resolve_entry_graph_shared(source_roots, generated_entry)
+            .map_err(|e| format!("resolve {generated_entry}: {e}"))?;
+    let generated_ctx = v1_compiler::cli_run::make_eval_context(
+        &generated_graph,
+        generated_indices,
+        // HERMETIC, not Wet. The projection is pure -- it folds a roster and returns a String --
+        // so a host effect reached during it would mean a generator is doing something this gate
+        // must not perform on its behalf. Hermetic refuses there instead of carrying it out.
+        v1_compiler::v1_interpreter::ExecutionMode::Hermetic,
+    );
     let mut denominators: Vec<String> = Vec::new();
     let mut nondeterministic_calls_total = 0usize;
     let mut nondeterministic_modules = 0usize;
     for (mirror, plan, alias) in &plans {
-        let Some(candidate_source) = emitted.get(mirror) else {
-            eprintln!(
-                "behavioral-receipt: {} REFUSED — the emit produced no {mirror}, so there is no \
-                 candidate to compare. Not equivalence: a missing candidate is ignorance",
-                plan.module_path
-            );
-            all_equivalent = false;
-            continue;
+        // WHICH POPULATION OWNS THIS MIRROR, decided before anything is fetched.
+        //
+        // Two generators write into `src/v1/stage0/src`: the v1 compiler emits module mirrors,
+        // and gunbc's artifact emitters write a handful of generated files whose headers say so.
+        // This fragment used to ask only the first and refuse when it came back empty, which made
+        // the SECOND population permanently unaskable -- any change to the interpreter dispatch
+        // roster or the stage0 crate layout redded this phase with "a missing candidate is
+        // ignorance", correct as written and with no reachable green.
+        //
+        // The population is asked FIRST and answers positively. This is deliberately not a
+        // fallback from the mirror-emit miss: a fallback would make absence in one producer mean
+        // presence in the other, so a genuinely unknown path would silently be regenerated from
+        // nothing instead of refused. Here each population answers for what it owns, and a path
+        // in neither still refuses.
+        let repo_rel = format!("src/v1/stage0/src/{mirror}");
+        let generated = match generated_artifact_body_for_path(&generated_ctx, &repo_rel) {
+            Ok(g) => g,
+            Err(e) => {
+                eprintln!(
+                    "behavioral-receipt: {} REFUSED — could not ask the generated-artifact \
+                     population about {repo_rel}: {e}. Not equivalence: an unanswered question \
+                     is ignorance",
+                    plan.module_path
+                );
+                all_equivalent = false;
+                continue;
+            }
+        };
+        let owned_candidate: Option<String> = match generated {
+            GeneratedArtifactPathBody::Produced(content) => Some(content),
+            GeneratedArtifactPathBody::Refused(reason) => {
+                eprintln!(
+                    "behavioral-receipt: {} REFUSED — {repo_rel} is a generated artifact and its \
+                     generator refused: {reason}",
+                    plan.module_path
+                );
+                all_equivalent = false;
+                continue;
+            }
+            GeneratedArtifactPathBody::NotGenerated => None,
+        };
+        let candidate_source: &String = match owned_candidate.as_ref() {
+            Some(c) => c,
+            None => match emitted.get(mirror) {
+                Some(c) => c,
+                None => {
+                    eprintln!(
+                        "behavioral-receipt: {} REFUSED — {mirror} is in neither population: the \
+                         v1 emit produced no mirror for it and it is not a committed generated \
+                         artifact. Not equivalence: a missing candidate is ignorance",
+                        plan.module_path
+                    );
+                    all_equivalent = false;
+                    continue;
+                }
+            },
         };
         // Infallible in fact -- selection only pushed plans that admitted -- but derived here
         // rather than asserted, so the differential's precondition is carried by the value it
