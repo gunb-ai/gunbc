@@ -16,6 +16,7 @@ import extdeps.cloud.gcp.secret_manager {
 
 import product.placement_supply { HostIdentity }
 import v2.std.operation_argv { OperationRef }
+import std.measure { Second, second }
 
 import std.authorization_profile { EffectRequest, EffectAuthorizationAction, effect_access_request }
 
@@ -310,7 +311,7 @@ type SparkCloudContext {
   workflow: NonEmptyStr
   revision: NonEmptyStr
   purpose: NonEmptyStr
-  duration_seconds: Int
+  duration: Second
   max_uses: Int
   approval: SparkGrantApproval
 }

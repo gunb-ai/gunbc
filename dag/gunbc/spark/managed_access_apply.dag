@@ -231,9 +231,25 @@ fn create_inference_identity_script(admitted: PortableRemoteWord) -> String {
     "set -e\n",
     "id -u ", login, " >/dev/null 2>&1 || useradd --system --create-home --shell /usr/sbin/nologin ", login, "\n",
     "passwd -l ", login, " >/dev/null 2>&1 || true\n",
+    "passwd -S ", login, " | awk '{ print $2 }' | grep -qx L\n",
     "getent passwd ", login, " | cut -d: -f7\n",
   ], "")
 }
+
+// WHY `|| true` SURVIVES ON THE LOCK AND WHY IT IS NO LONGER AN ABSORBING ARM. A review read
+// `passwd -l ... || true` as silencing a failure, and read correctly: on its own it is exactly the
+// absorbing fallback -- the line whose whole job is making this a service identity rather than an
+// account someone can become, tolerating its own failure. What it was papering over is that
+// `passwd -l` exit statuses are not portable across shadow-utils versions for an account that has no
+// password set, which is the normal state of a freshly created system account, so a bare `set -e`
+// would stop the line on the SUCCESS case on some hosts.
+//
+// The repair is not a better-tolerated command, it is asserting the STATE instead of trusting the
+// exit status: `passwd -S` reports the lock field, and `grep -qx L` fails the script under `set -e`
+// unless the account is actually locked. So the tolerated status now decides nothing -- an
+// unsuccessful lock stops the line at the next line, on every host, and a host whose `passwd -l`
+// returns nonzero while locking correctly continues. That is the §5 move: check the property you
+// care about rather than the command that was supposed to establish it.
 
 // 🟡 dissolve-on: typed posix-account HostEffect rows realized through host_effect_apply (extend
 // fleet_posix_accounts + membership_reconcile for authorized_keys); deletes create_*_script

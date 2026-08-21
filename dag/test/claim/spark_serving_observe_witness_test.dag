@@ -714,8 +714,8 @@ test fn an_absent_boot_probe_leg_is_unobserved_at_the_wiring() -> Bool {
   match spark_serving_boot_provenance_from_probes(active_enter: none, uptime: none) {
     BootProvenanceUnobserved { cause: c } =>
       string_contains(c as String, "ActiveEnterTimestampMonotonic probe leg did not run")
-    UnitStartedByManagerAtBoot { active_enter_monotonic_us: _, uptime_us: _ } => false
-    UnitStartedAfterBoot { active_enter_monotonic_us: _, uptime_us: _ } => false
+    UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
     UnitNotActiveAtAll => false
   }
 }
