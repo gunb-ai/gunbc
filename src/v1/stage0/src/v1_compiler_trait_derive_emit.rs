@@ -2,8 +2,11 @@
 // Source module: v1.compiler.trait_derive_emit
 
 use self::V1FreeMonoidSupplementalRoute::*;
-pub use crate::extdeps_languages_rust_derive_contracts::rust_vec_freemonoid_supplemental_generic_bound_rows;
 pub use crate::extdeps_languages_rust_derive_contracts::RustVecSupplementalGenericBoundRow;
+pub use crate::extdeps_languages_rust_derive_contracts::{
+    rust_btree_set_supplemental_generic_bound_rows,
+    rust_vec_freemonoid_supplemental_generic_bound_rows,
+};
 pub use crate::extdeps_languages_rust_emit::{
     rust_supplemental_impls_bool_coproduct, rust_supplemental_impls_group_completion,
     rust_trait_derive_attr_from_traits, rust_trait_derive_spelling,
@@ -788,6 +791,174 @@ pub fn v1_freemonoid_serde_bound_attr(
     }
 }
 
+pub fn trait_derive_emit_set_ord_supplemental_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "ROOT A, Ord half (E0277 root-partition adhoc-a407cd3d-840): std.authorization_profile AudienceSet's EnumeratedAudience { members: Set<P> } realizes Set<P> as BTreeSet<P> (rust_1_93_btree_set_trait_implementations_authority), whose own Debug/Clone/PartialEq/Serialize impls need only P's natural per-derive bound -- but impl<'de, P: Deserialize<'de> + Ord> Deserialize<'de> for BTreeSet<P> additionally requires P: Ord to reconstruct the ordering invariant during deserialization (serde_1_0_228_btree_set_deserialize_authority), a fact this module previously had no way to express: the FreeMonoid apparatus above is a Clone-shaped fork (three Clone-only triggers named in trait_derive_emit_item_clone_bound_contract_fork_note) that structurally cannot emit P: Ord. Consuming the dag-rooted single authority extdeps.languages.rust.derive_contracts rust_btree_set_supplemental_generic_bound_rows (NEVER a literal trait list in this module, same discipline as the FreeMonoid rows) rather than adding a second Clone-shaped item-header fixpoint: the item header and the #[derive(...)] trait list are UNCHANGED (P: Ord never unions onto AudienceSet<P>'s own declaration or onto the whole derive), and a #[serde(bound(deserialize = \"...\"))]-only attribute is appended naming every item generic param, Set-affected params carrying the row's supplemental Ord requirement in addition to their natural Deserialize<'de> bound. No serialize clause is ever emitted for this route -- Serialize carries no row and needs no override, so leaving the default inferred bound in place is the CORRECT output, not an omission (the discriminating control this lane names explicitly: a type whose Deserialize impl needs Ord but whose Serialize does not -- correct output bounds the DERIVE-TRAIT-SPECIFIC clause, not the type). A row this realization cannot route (any derive_trait other than Deserialize) or a Set-affected param whose trait list omits Deserialize both REFUSE via compile_error (typed, located), never skip. Scoped to the enum derive path (v1_emit_enum_derives) because that is AudienceSet's actual shape and the only exercised Set<P> generic field in the corpus (verified: the sole generic Set<P> field in dag/std/authorization_profile.dag); no struct in the corpus carries a generic Set<P> field today, so struct-side wiring would be speculative. Dissolution: same as trait_derive_emit_item_clone_bound_contract_fork_dissolve_on (v2 emitter subsumption at this grain).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn v1_set_element_params(
+    generic_param_names: Rc<Vec<String>>,
+    field_type_exprs: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in generic_param_names.clone().iter().cloned() {
+            if {
+                let mut __found = false;
+                for te in field_type_exprs.clone().iter().cloned() {
+                    if ((authored_name_at(source_indices.clone(), te.clone()) == "Set".to_string())
+                        && {
+                            let mut __found = false;
+                            for c in te.children.clone().iter().cloned() {
+                                if v1_type_expr_contains_param_name(
+                                    p.clone(),
+                                    c.clone(),
+                                    source_indices.clone(),
+                                ) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        })
+                    {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                __result.push(p);
+            }
+        }
+        __result
+    })
+}
+
+pub fn v1_set_unroutable_row_refusal() -> String {
+    {
+        let unroutable = Rc::new({
+            let mut __result = Vec::new();
+            for row in rust_btree_set_supplemental_generic_bound_rows()
+                .iter()
+                .cloned()
+            {
+                if (row.derive_trait.clone() != ReprGroundingDeriveTrait::ReprDeriveDeserialize) {
+                    __result.push(row);
+                }
+            }
+            __result
+        });
+        if ((unroutable.clone().len() as i64) == 0) {
+            "".to_string()
+        } else {
+            v1_trait_derive_refuse("trait_derive_emit: a rust_btree_set_supplemental_generic_bound_rows row names a derive trait this realization cannot route (only Deserialize is wired as a serde bound override) — extend v1_emit_enum_derives' Set/Ord handling rather than skipping the row".to_string())
+        }
+    }
+}
+
+pub fn v1_set_supplemental_bound_spelling() -> String {
+    unique_strings(Rc::new({
+        let mut __result = Vec::new();
+        for row in rust_btree_set_supplemental_generic_bound_rows()
+            .iter()
+            .cloned()
+        {
+            __result.push(rust_trait_derive_spelling(row.required.clone()));
+        }
+        __result
+    }))
+    .join(&" + ".to_string())
+}
+
+pub fn v1_set_deserialize_bound_attr(
+    generic_param_names: Rc<Vec<String>>,
+    set_params: Rc<Vec<String>>,
+) -> String {
+    {
+        let supplement = v1_set_supplemental_bound_spelling();
+        let de_entries = Rc::new({
+            let mut __result = Vec::new();
+            for p in generic_param_names.clone().iter().cloned() {
+                __result.push({
+                    let pascal = to_pascal(p.clone());
+                    if {
+                        let mut __found = false;
+                        for f in set_params.clone().iter().cloned() {
+                            if (f.clone() == p.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    } {
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(pascal.clone(), ": ".to_string()),
+                                supplement.clone(),
+                            ),
+                            " + serde::Deserialize<'de>".to_string(),
+                        )
+                    } else {
+                        v1_rt::concat(pascal.clone(), ": serde::Deserialize<'de>".to_string())
+                    }
+                });
+            }
+            __result
+        });
+        v1_rt::concat(
+            v1_rt::concat(
+                "#[serde(bound(deserialize = \"".to_string(),
+                de_entries.clone().join(&", ".to_string()),
+            ),
+            "\"))]".to_string(),
+        )
+    }
+}
+
+pub fn v1_set_serde_bound_attr_for_traits(
+    traits: Rc<Vec<ReprGroundingDeriveTrait>>,
+    generic_param_names: Rc<Vec<String>>,
+    set_params: Rc<Vec<String>>,
+) -> String {
+    if ((set_params.clone().len() as i64) == 0) {
+        "".to_string()
+    } else {
+        {
+            let refusal = v1_set_unroutable_row_refusal();
+            if (refusal.clone() != "".to_string()) {
+                refusal.clone()
+            } else {
+                if !{
+                    let mut __found = false;
+                    for t in traits.clone().iter().cloned() {
+                        if (t.clone() == ReprGroundingDeriveTrait::ReprDeriveDeserialize) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
+                    v1_trait_derive_refuse("trait_derive_emit: a Set<P> field requires P: Ord for Deserialize but the derive trait list for this coproduct elem shape does not include Deserialize — supplemental bound cannot attach".to_string())
+                } else {
+                    v1_rt::concat(
+                        "\n".to_string(),
+                        v1_set_deserialize_bound_attr(
+                            generic_param_names.clone(),
+                            set_params.clone(),
+                        ),
+                    )
+                }
+            }
+        }
+    }
+}
+
 pub fn v1_freemonoid_struct_debug_impl(
     name: String,
     generic_param_names: Rc<Vec<String>>,
@@ -1253,6 +1424,15 @@ pub fn v1_emit_enum_derives(
                 v1_freemonoid_serde_bound_attr(generic_param_names.clone(), fm_params.clone()),
             );
         }
+        let set_params = if map_key_required.clone() {
+            Rc::new(vec![])
+        } else {
+            v1_set_element_params(
+                generic_param_names.clone(),
+                v1_enum_variant_field_type_exprs(children.clone()),
+                source_indices.clone(),
+            )
+        };
         let shape = v1_repr_grounding_derive_elem_shape_from_coproduct_children(
             children.clone(),
             source_indices.clone(),
@@ -1271,7 +1451,14 @@ pub fn v1_emit_enum_derives(
                     nullary_traits.clone(),
                     shape.clone(),
                 ) {
-                    rust_trait_derive_attr_from_traits(nullary_traits.clone())
+                    v1_rt::concat(
+                        rust_trait_derive_attr_from_traits(nullary_traits.clone()),
+                        v1_set_serde_bound_attr_for_traits(
+                            nullary_traits.clone(),
+                            generic_param_names.clone(),
+                            set_params.clone(),
+                        ),
+                    )
                 } else {
                     v1_trait_derive_refuse(
                         "trait_derive_emit: nullary coproduct derive completeness refused"
@@ -1284,7 +1471,14 @@ pub fn v1_emit_enum_derives(
                     payload_traits.clone(),
                     shape.clone(),
                 ) {
-                    rust_trait_derive_attr_from_traits(payload_traits.clone())
+                    v1_rt::concat(
+                        rust_trait_derive_attr_from_traits(payload_traits.clone()),
+                        v1_set_serde_bound_attr_for_traits(
+                            payload_traits.clone(),
+                            generic_param_names.clone(),
+                            set_params.clone(),
+                        ),
+                    )
                 } else {
                     v1_trait_derive_refuse(
                         "trait_derive_emit: payload coproduct derive completeness refused"

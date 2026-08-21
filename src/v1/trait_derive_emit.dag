@@ -9,6 +9,7 @@ import v1.compiler.emit_core_support { unique_strings }
 import extdeps.languages.rust.derive_contracts {
   RustVecSupplementalGenericBoundRow,
   rust_vec_freemonoid_supplemental_generic_bound_rows,
+  rust_btree_set_supplemental_generic_bound_rows,
 }
 import v1.std.core {
   Node, NewlineIndex, authored_name_at, generic_param_name_at, param_node_type_expr,
@@ -425,6 +426,64 @@ fn v1_freemonoid_serde_bound_attr(
   )
 }
 
+data trait_derive_emit_set_ord_supplemental_note: String = "ROOT A, Ord half (E0277 root-partition adhoc-a407cd3d-840): std.authorization_profile AudienceSet's EnumeratedAudience { members: Set<P> } realizes Set<P> as BTreeSet<P> (rust_1_93_btree_set_trait_implementations_authority), whose own Debug/Clone/PartialEq/Serialize impls need only P's natural per-derive bound -- but impl<'de, P: Deserialize<'de> + Ord> Deserialize<'de> for BTreeSet<P> additionally requires P: Ord to reconstruct the ordering invariant during deserialization (serde_1_0_228_btree_set_deserialize_authority), a fact this module previously had no way to express: the FreeMonoid apparatus above is a Clone-shaped fork (three Clone-only triggers named in trait_derive_emit_item_clone_bound_contract_fork_note) that structurally cannot emit P: Ord. Consuming the dag-rooted single authority extdeps.languages.rust.derive_contracts rust_btree_set_supplemental_generic_bound_rows (NEVER a literal trait list in this module, same discipline as the FreeMonoid rows) rather than adding a second Clone-shaped item-header fixpoint: the item header and the #[derive(...)] trait list are UNCHANGED (P: Ord never unions onto AudienceSet<P>'s own declaration or onto the whole derive), and a #[serde(bound(deserialize = \"...\"))]-only attribute is appended naming every item generic param, Set-affected params carrying the row's supplemental Ord requirement in addition to their natural Deserialize<'de> bound. No serialize clause is ever emitted for this route -- Serialize carries no row and needs no override, so leaving the default inferred bound in place is the CORRECT output, not an omission (the discriminating control this lane names explicitly: a type whose Deserialize impl needs Ord but whose Serialize does not -- correct output bounds the DERIVE-TRAIT-SPECIFIC clause, not the type). A row this realization cannot route (any derive_trait other than Deserialize) or a Set-affected param whose trait list omits Deserialize both REFUSE via compile_error (typed, located), never skip. Scoped to the enum derive path (v1_emit_enum_derives) because that is AudienceSet's actual shape and the only exercised Set<P> generic field in the corpus (verified: the sole generic Set<P> field in dag/std/authorization_profile.dag); no struct in the corpus carries a generic Set<P> field today, so struct-side wiring would be speculative. Dissolution: same as trait_derive_emit_item_clone_bound_contract_fork_dissolve_on (v2 emitter subsumption at this grain)."
+
+fn v1_set_element_params(
+  generic_param_names: List<String>,
+  field_type_exprs: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  generic_param_names |> filter(p =>
+    field_type_exprs |> any(te =>
+      authored_name_at(source_indices: source_indices, node: te) == "Set"
+        && te.children |> any(c => v1_type_expr_contains_param_name(param_name: p, type_expr: c, source_indices: source_indices))
+    )
+  )
+}
+
+fn v1_set_unroutable_row_refusal() -> String {
+  let unroutable = rust_btree_set_supplemental_generic_bound_rows |> filter(row => row.derive_trait != ReprDeriveDeserialize)
+  if (unroutable |> count) == 0 { "" } else {
+    v1_trait_derive_refuse("trait_derive_emit: a rust_btree_set_supplemental_generic_bound_rows row names a derive trait this realization cannot route (only Deserialize is wired as a serde bound override) — extend v1_emit_enum_derives' Set/Ord handling rather than skipping the row")
+  }
+}
+
+fn v1_set_supplemental_bound_spelling() -> String {
+  unique_strings(items: rust_btree_set_supplemental_generic_bound_rows |> map(row => rust_trait_derive_spelling(row.required)))
+    |> join(separator: " + ")
+}
+
+fn v1_set_deserialize_bound_attr(
+  generic_param_names: List<String>,
+  set_params: List<String>
+) -> String {
+  let supplement = v1_set_supplemental_bound_spelling()
+  let de_entries = generic_param_names |> map(p =>
+    let pascal = to_pascal(name: p)
+    if set_params |> any(f => f == p) {
+      concat(pascal, ": ", supplement, " + serde::Deserialize<'de>")
+    } else {
+      concat(pascal, ": serde::Deserialize<'de>")
+    }
+  )
+  concat("#[serde(bound(deserialize = \"", de_entries |> join(separator: ", "), "\"))]")
+}
+
+fn v1_set_serde_bound_attr_for_traits(
+  traits: List<ReprGroundingDeriveTrait>,
+  generic_param_names: List<String>,
+  set_params: List<String>
+) -> String {
+  if (set_params |> count) == 0 { "" } else {
+    let refusal = v1_set_unroutable_row_refusal()
+    if refusal != "" { refusal } else if !(traits |> any(t => t == ReprDeriveDeserialize)) {
+      v1_trait_derive_refuse("trait_derive_emit: a Set<P> field requires P: Ord for Deserialize but the derive trait list for this coproduct elem shape does not include Deserialize — supplemental bound cannot attach")
+    } else {
+      concat("\n", v1_set_deserialize_bound_attr(generic_param_names: generic_param_names, set_params: set_params))
+    }
+  }
+}
+
 fn v1_freemonoid_struct_debug_impl(
   name: String,
   generic_param_names: List<String>,
@@ -590,19 +649,32 @@ fn v1_emit_enum_derives(
       v1_freemonoid_serde_bound_attr(generic_param_names: generic_param_names, fm_params: fm_params)
     )
   }
+  let set_params = if map_key_required { [] } else {
+    v1_set_element_params(
+      generic_param_names: generic_param_names,
+      field_type_exprs: v1_enum_variant_field_type_exprs(children: children),
+      source_indices: source_indices
+    )
+  }
   let shape = v1_repr_grounding_derive_elem_shape_from_coproduct_children(children: children, source_indices: source_indices)
   let nullary_traits = v1_with_map_key_requirement(base: nullary_coproduct_derive_traits(), map_key_required: map_key_required)
   let payload_traits = v1_with_map_key_requirement(base: payload_coproduct_derive_traits(), map_key_required: map_key_required)
   match shape {
     ReprDeriveElemNullaryEnumCopy =>
       if repr_grounding_derive_completeness_predicate(nullary_traits, shape) {
-        rust_trait_derive_attr_from_traits(nullary_traits)
+        concat(
+          rust_trait_derive_attr_from_traits(nullary_traits),
+          v1_set_serde_bound_attr_for_traits(traits: nullary_traits, generic_param_names: generic_param_names, set_params: set_params)
+        )
       } else {
         v1_trait_derive_refuse("trait_derive_emit: nullary coproduct derive completeness refused")
       }
     ReprDeriveElemPayloadCoproduct =>
       if repr_grounding_derive_completeness_predicate(payload_traits, shape) {
-        rust_trait_derive_attr_from_traits(payload_traits)
+        concat(
+          rust_trait_derive_attr_from_traits(payload_traits),
+          v1_set_serde_bound_attr_for_traits(traits: payload_traits, generic_param_names: generic_param_names, set_params: set_params)
+        )
       } else {
         v1_trait_derive_refuse("trait_derive_emit: payload coproduct derive completeness refused")
       }

@@ -11,7 +11,7 @@ use crate::std_disposition::Disposition::Scaffold;
 pub use crate::std_disposition::{ConstructionMechanism, Disposition};
 pub use crate::std_trait_derive_shape::ReprGroundingDeriveTrait;
 use crate::std_trait_derive_shape::ReprGroundingDeriveTrait::{
-    ReprDeriveClone, ReprDeriveDebug, ReprDeriveDeserialize, ReprDerivePartialEq,
+    ReprDeriveClone, ReprDeriveDebug, ReprDeriveDeserialize, ReprDeriveOrd, ReprDerivePartialEq,
     ReprDeriveSerialize,
 };
 use crate::v1_rt;
@@ -225,6 +225,29 @@ pub fn rust_vec_freemonoid_supplemental_generic_bound_rows(
         derive_trait: ReprGroundingDeriveTrait::ReprDeriveDeserialize,
         required: ReprGroundingDeriveTrait::ReprDeriveClone,
         authority: im_15_1_0_vector_deserialize_impl_authority(),
+    })])
+            };
+        }
+    CACHED.with(|c: &Rc<Vec<Rc<RustVecSupplementalGenericBoundRow>>>| c.clone())
+}
+
+pub fn rust_btree_set_supplemental_generic_bound_rows_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "SINGLE AUTHORITY for the trait -> supplemental-generic-bound facts of the Set/BTreeSet realization (rustc 1.93 std::collections::BTreeSet): BTreeSet<T>'s own Debug, Clone, PartialEq and Serialize impls need only T's natural per-field bound (cited to rust_1_93_btree_set_trait_implementations_authority / serde_1_0_228_btree_set_serialize_authority in the v2 contract map, which does not fold this row list because those four require no element-type SUPPLEMENT beyond the derive's natural bound). Only Deserialize is conditional on an extra bound past its natural Deserialize<'de> requirement: impl<'de, T: Deserialize<'de> + Ord> Deserialize<'de> for BTreeSet<T> — BTreeSet must reconstruct its ordering invariant during deserialization, so Ord is required even though no derived Deserialize impl would otherwise ask for it. This module is dag-rooted so both pools read one authority: the v1 seed emitter (regen pool [src/v1, dag]) consumes this row in v1.compiler.trait_derive_emit, and v2.extdeps.languages.rust folds it into rust_btree_set_supplemental_generic_bound_contracts's Deserialize entry — mirroring rust_vec_freemonoid_supplemental_generic_bound_rows's row-authority split rather than restating the requirement inline a second time.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_btree_set_supplemental_generic_bound_rows(
+) -> Rc<Vec<Rc<RustVecSupplementalGenericBoundRow>>> {
+    thread_local! {
+            static CACHED: Rc<Vec<Rc<RustVecSupplementalGenericBoundRow>>> = {
+                Rc::new(vec![Rc::new(RustVecSupplementalGenericBoundRow {
+        derive_trait: ReprGroundingDeriveTrait::ReprDeriveDeserialize,
+        required: ReprGroundingDeriveTrait::ReprDeriveOrd,
+        authority: serde_1_0_228_btree_set_deserialize_authority(),
     })])
             };
         }

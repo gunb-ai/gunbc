@@ -19,6 +19,7 @@ import extdeps.languages.rust.derive_contracts {
   im_15_1_0_vector_serialize_impl_authority,
   rust_1_93_btree_set_trait_implementations_authority,
   rust_1_93_hash_set_trait_implementations_authority,
+  rust_btree_set_supplemental_generic_bound_rows,
   rust_hash_set_supplemental_generic_bound_contract_coverage_disposition,
   serde_1_0_228_btree_set_deserialize_authority,
   serde_1_0_228_btree_set_serialize_authority,
@@ -1633,6 +1634,11 @@ fn rust_vec_supplemental_generic_bound_contracts() -> Map<TargetDeriveTraitKey, 
   )
 }
 
+// The Deserialize -> Ord supplemental-bound FACT lives once, dag-rooted, in
+// extdeps.languages.rust.derive_contracts rust_btree_set_supplemental_generic_bound_rows
+// (readable from both the regen pool and this tree, and consumed by v1's seed emitter for
+// the same fact); this fn only lifts it into the target_model-typed contract map, mirroring
+// rust_vec_supplemental_generic_bound_contracts's row-fold rather than restating it inline.
 fn rust_btree_set_supplemental_generic_bound_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
   let debug_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
       contracts: target_derive_supplemental_generic_bound_contract_authorities_empty(),
@@ -1654,14 +1660,20 @@ fn rust_btree_set_supplemental_generic_bound_contracts() -> Map<TargetDeriveTrai
       derive_trait: ReprDeriveSerialize,
       authority: serde_1_0_228_btree_set_serialize_authority
     )
-  target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
-    contracts: serialize_contract,
-    derive_trait: ReprDeriveDeserialize,
-    authority: serde_1_0_228_btree_set_deserialize_authority,
-    requirements: rust_single_parameter_supplemental_generic_bound_requirements(
-      required_trait: ReprDeriveOrd,
-      authority: serde_1_0_228_btree_set_deserialize_authority
-    )
+  fold_list(
+    xs: rust_btree_set_supplemental_generic_bound_rows,
+    empty: serialize_contract,
+    cons: fn(acc, row) {
+      target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
+        contracts: acc,
+        derive_trait: row.derive_trait,
+        authority: row.authority,
+        requirements: rust_single_parameter_supplemental_generic_bound_requirements(
+          required_trait: row.required,
+          authority: row.authority
+        )
+      )
+    }
   )
 }
 
