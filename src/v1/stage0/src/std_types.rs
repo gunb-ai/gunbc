@@ -52,6 +52,7 @@ pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
             __m.insert("Map".to_string(), 2);
             __m.insert("std.types.Map".to_string(), 2);
             __m.insert("Witness".to_string(), 1);
+            __m.insert("v2.std.witness.Witness".to_string(), 1);
             Rc::new(__m)
         };
     }
@@ -151,12 +152,16 @@ pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
             __m.insert("std.types.Map".to_string(), "PartialFunction".to_string());
             __m.insert("map".to_string(), "PartialFunction".to_string());
             __m.insert("FreeMonoid".to_string(), "FreeMonoid".to_string());
+            __m.insert("std.algebra.FreeMonoid".to_string(), "FreeMonoid".to_string());
             __m.insert("free_monoid".to_string(), "FreeMonoid".to_string());
             __m.insert("BooleanAlgebra".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("std.algebra.BooleanAlgebra".to_string(), "BooleanAlgebra".to_string());
             __m.insert("boolean_algebra".to_string(), "BooleanAlgebra".to_string());
             __m.insert("PartialFunction".to_string(), "PartialFunction".to_string());
+            __m.insert("std.algebra.PartialFunction".to_string(), "PartialFunction".to_string());
             __m.insert("partial_function".to_string(), "PartialFunction".to_string());
             __m.insert("PointwisePower".to_string(), "PointwisePower".to_string());
+            __m.insert("std.algebra.PointwisePower".to_string(), "PointwisePower".to_string());
             __m.insert("pointwise_power".to_string(), "PointwisePower".to_string());
             Rc::new(__m)
         };
@@ -203,6 +208,10 @@ pub fn canonical_container_names() -> Rc<Vec<String>> {
         "Set".to_string(),
         "std.types.Set".to_string(),
         "Witness".to_string(),
+        "v2.std.witness.Witness".to_string(),
+        "std.algebra.FreeMonoid".to_string(),
+        "std.algebra.BooleanAlgebra".to_string(),
+        "std.algebra.PartialFunction".to_string(),
     ])
 }
 

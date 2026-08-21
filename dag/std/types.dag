@@ -13,8 +13,18 @@ fn is_kernel_type(name: String) -> std.types.Bool {
   }
 }
 
+// Qualified spellings (std.types.List, std.algebra.FreeMonoid, ...) carry their own rows because
+// several call sites key these lookups on the FULL authored name rather than its last segment.
+// The rows are DERIVED from the bare row each mirrors, which is why the coverage is deliberately
+// uneven: Witness takes an arity row and no template row, PointwisePower takes a template row and
+// no canonical entry, and ordered_element_collections takes nothing because Set and Map are not
+// ordered. DECLARED RESIDUAL: a qualified spelling with no row does not refuse -- both consuming
+// arms answer `false` -- so a NEW spelling added later is silently wrong rather than loud. Rung:
+// mitigatable. Trigger and the three-conjunct wall it needs (including the six service-operation
+// false-refusals a leaf-only test would hit): docs/plans/qualified-container-spelling-residual.md
 data container_type_arity: std.types.Map<String, Int> = {
-  "List": 1, "std.types.List": 1, "Set": 1, "std.types.Set": 1, "Map": 2, "std.types.Map": 2, "Witness": 1
+  "List": 1, "std.types.List": 1, "Set": 1, "std.types.Set": 1, "Map": 2, "std.types.Map": 2, "Witness": 1,
+  "v2.std.witness.Witness": 1
 }
 
 fn is_container_type(name: String) -> std.types.Bool {
@@ -73,7 +83,11 @@ data container_template_algebra_rows: std.types.Map<String, String> = {
   "PartialFunction": "PartialFunction",
   "partial_function": "PartialFunction",
   "PointwisePower": "PointwisePower",
-  "pointwise_power": "PointwisePower"
+  "pointwise_power": "PointwisePower",
+  "std.algebra.FreeMonoid": "FreeMonoid",
+  "std.algebra.BooleanAlgebra": "BooleanAlgebra",
+  "std.algebra.PointwisePower": "PointwisePower",
+  "std.algebra.PartialFunction": "PartialFunction"
 }
 
 data container_template_alias_rows: std.types.Map<String, String> = {
@@ -97,7 +111,7 @@ fn container_template_alias_algebra(name: String) -> String? {
 }
 
 fn canonical_container_names() -> List<String> {
-  ["BooleanAlgebra", "FreeMonoid", "List", "std.types.List", "Map", "std.types.Map", "PartialFunction", "Set", "std.types.Set", "Witness"]
+  ["BooleanAlgebra", "FreeMonoid", "List", "std.types.List", "Map", "std.types.Map", "PartialFunction", "Set", "std.types.Set", "Witness", "std.algebra.FreeMonoid", "v2.std.witness.Witness", "std.algebra.BooleanAlgebra", "std.algebra.PartialFunction"]
 }
 
 type Bool = True | False
