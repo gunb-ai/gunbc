@@ -14,6 +14,10 @@ import gunbc.live_deploy.deployed_tree_observation {
   DeployedTreeObservation,
   DeployedTreeObserved,
   DeployedTreeUnobservable,
+  TreeLegNotAttempted,
+  TreeCommandFailed,
+  TreeRevisionUndecodable,
+  deployed_tree_unobservable_text,
   DeployedTreeStanding,
   DeployedTreeConverged,
   DeployedTreeRevisionDrifted,
@@ -23,7 +27,7 @@ import gunbc.live_deploy.deployed_tree_observation {
   deployed_tree_standing_is_converged,
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn probe_repo() -> NonEmptyStr {
   "/opt/gunbc" as NonEmptyStr
@@ -234,15 +238,58 @@ test fn witness_unobservable_is_not_converged_and_keeps_its_cause() -> Bool {
   match oid_a() {
     Absent => false
     Present { value: a } =>
-      match standing_for(desired: a, obs: DeployedTreeUnobservable { cause: "ssh refused" }) {
+      match standing_for(desired: a, obs: DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "revision", reason: "ssh refused" } }) {
         DeployedTreeStandingUnobserved { cause: c } =>
-          c == "ssh refused"
+          match c {
+            TreeLegNotAttempted { leg: _, reason: why } => why == "ssh refused"
+            TreeCommandFailed { leg: _, exit_code: _, stderr: _ } => false
+            TreeRevisionUndecodable { text: _ } => false
+          }
             && !deployed_tree_standing_is_converged(
-              standing: standing_for(desired: a, obs: DeployedTreeUnobservable { cause: "ssh refused" }),
+              standing: standing_for(desired: a, obs: DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "revision", reason: "ssh refused" } }),
             )
         DeployedTreeConverged { revision: _ } => false
         DeployedTreeRevisionDrifted { desired: _, local: _ } => false
         DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
       }
   }
+}
+
+// THE SPLIT THAT WAS PREVIOUSLY PROSE. A leg that never ran and a leg that ran and failed are
+// different situations with different remedies -- fix the credential versus fix the host -- and a
+// consumer must be able to tell them apart WITHOUT reading a sentence. Asserted by matching the
+// arms, so this stays green only while the distinction is structural.
+test fn witness_never_attempted_and_ran_and_failed_are_different_arms() -> Bool {
+  match TreeLegNotAttempted { leg: "revision", reason: "no credential" } {
+    TreeLegNotAttempted { leg: _, reason: _ } =>
+      match TreeCommandFailed { leg: "revision", exit_code: 128, stderr: "not a git repository" } {
+        TreeCommandFailed { leg: _, exit_code: code, stderr: _ } => code == 128
+        TreeLegNotAttempted { leg: _, reason: _ } => false
+        TreeRevisionUndecodable { text: _ } => false
+      }
+    TreeCommandFailed { leg: _, exit_code: _, stderr: _ } => false
+    TreeRevisionUndecodable { text: _ } => false
+  }
+}
+
+// THE STDERR IS CARRIED UNINTERPRETED, and this witness is what keeps it that way: the remedy text
+// must survive into the rendering rather than being classified into an arm the exit status cannot
+// justify. git exits 128 for a missing repository, an unreadable .git, AND a repository with no
+// commits, so the model must not claim to know which.
+test fn witness_the_failure_rendering_carries_the_hosts_own_words() -> Bool {
+  let text = deployed_tree_unobservable_text(
+    cause: TreeCommandFailed { leg: "revision", exit_code: 128, stderr: "fatal: not a git repository" },
+  )
+  string_contains(s: text, pattern: "fatal: not a git repository")
+    && string_contains(s: text, pattern: "128")
+    && string_contains(s: text, pattern: "ran and failed")
+}
+
+test fn witness_a_never_attempted_leg_does_not_read_as_a_host_failure() -> Bool {
+  let text = deployed_tree_unobservable_text(
+    cause: TreeLegNotAttempted { leg: "revision", reason: "no credential" },
+  )
+  string_contains(s: text, pattern: "never attempted")
+    && string_contains(s: text, pattern: "no credential")
+    && !string_contains(s: text, pattern: "ran and failed")
 }

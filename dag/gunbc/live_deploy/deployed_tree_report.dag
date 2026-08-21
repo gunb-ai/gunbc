@@ -24,6 +24,7 @@ import gunbc.live_deploy.deployed_tree_observation {
   deployed_tree_locus,
   observe_deployed_tree,
   deployed_tree_standing,
+  deployed_tree_unobservable_text,
   DeployedTreeStanding,
   DeployedTreeConverged,
   DeployedTreeRevisionDrifted,
@@ -75,7 +76,7 @@ fn deployed_tree_standing_line(standing: DeployedTreeStanding) -> String {
             " -- the revision agrees and the bytes do not; git status reports: ", body as String], "")
     DeployedTreeStandingUnobserved { cause: c } =>
       join(["deployed-tree host=", deployed_tree_report_host as String,
-            " UNOBSERVED -- ", c], "")
+            " UNOBSERVED -- ", deployed_tree_unobservable_text(cause: c)], "")
   }
 }
 

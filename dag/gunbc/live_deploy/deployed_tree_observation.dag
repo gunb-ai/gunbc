@@ -1,6 +1,6 @@
 module gunbc.live_deploy.deployed_tree_observation
 
-import std.types { String, NonEmptyStr, List, Bool }
+import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.algebra { trim }
 import extdeps.git
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq }
@@ -131,9 +131,40 @@ fn deployed_tree_leg(locus: DeployedTreeLocus, argv: List<String>) -> DeployedTr
 // its revision agrees while its bytes do not, so reporting it as either is wrong in a way that
 // matters. `fleet_desired_observe` `fleet_revision_standing` compares revisions alone and has no arm
 // for it, which means a hand-edited deployed file reads as converged there and reads as modified here.
+// THE REFUSAL IS TYPED TO WHAT IS DECIDABLE, AND NO FURTHER. The tempting split is "not a git
+// repository" versus "permission denied on .git", because those have different remedies. It is NOT
+// AVAILABLE: git exits 128 for a missing repository, for an unreadable .git, AND for a valid
+// repository with no commits -- measured, all three. Separating them means matching stderr prose,
+// which is a heuristic, and §4 holds that a heuristic is never necessary in a closed system: the
+// richer source either exists or can be written, and here it does not exist yet.
+//
+// So the arms are the distinctions the exit status actually carries, and the stderr is CARRIED
+// UNINTERPRETED rather than parsed. A reader gets the remedy; the model does not guess at it. The
+// split that matters operationally is already here and was previously collapsed into prose: a leg
+// that never ran (the credential or transport is wrong -- nothing was asked of the host) is a
+// different situation from a leg that ran and failed (the host answered, and its answer is bad),
+// and a consumer can now branch on that without reading a sentence.
+type DeployedTreeUnobservableCause
+  = TreeLegNotAttempted { leg: String, reason: String }
+  | TreeCommandFailed { leg: String, exit_code: Int, stderr: String }
+  | TreeRevisionUndecodable { text: String }
+
 type DeployedTreeObservation
   = DeployedTreeObserved { revision: GitObjectId, tracked: DeployedTrackedState }
-  | DeployedTreeUnobservable { cause: String }
+  | DeployedTreeUnobservable { cause: DeployedTreeUnobservableCause }
+
+// ONE RENDERING, so every consumer that needs prose derives it from the arms rather than each
+// re-inventing a sentence -- which is how one fact acquires several spellings.
+fn deployed_tree_unobservable_text(cause: DeployedTreeUnobservableCause) -> String {
+  match cause {
+    TreeLegNotAttempted { leg: leg, reason: why } =>
+      join(["the ", leg, " leg was never attempted, so the host was not asked: ", why], "")
+    TreeCommandFailed { leg: leg, exit_code: code, stderr: err } =>
+      join(["the ", leg, " leg ran and failed (exit ", code as String, "): ", err], "")
+    TreeRevisionUndecodable { text: t } =>
+      join(["the revision was read but is not a decodable git object id: ", t], "")
+  }
+}
 
 // MODIFIED CARRIES THE PATHS IT SAW, as a NonEmptyStr so that "modified, with nothing to show for it"
 // has no constructor. An empty diff body and a clean tree are the same bytes, so a single field with
@@ -157,29 +188,29 @@ fn observe_deployed_tree(locus: DeployedTreeLocus) -> DeployedTreeObservation {
   match deployed_tree_leg(locus: locus, argv: deployed_tree_revision_argv(repo: locus.repo)) {
     DeployedTreeLegNotAttempted { reason: why } =>
       DeployedTreeUnobservable {
-        cause: join(["deployed tree revision leg was never attempted: ", why], ""),
+        cause: TreeLegNotAttempted { leg: "revision", reason: why },
       }
     DeployedTreeLegRan { result: rev } =>
       if rev.exit_code != 0 {
         DeployedTreeUnobservable {
-          cause: join(["deployed tree revision unreadable (git rev-parse exit ", rev.exit_code as String, "): ", rev.stderr], ""),
+          cause: TreeCommandFailed { leg: "revision", exit_code: rev.exit_code, stderr: rev.stderr },
         }
       } else {
         match git_object_id_from_untagged_hex(hex: trim(s: rev.stdout)) {
           Absent =>
             DeployedTreeUnobservable {
-              cause: "deployed tree revision read but undecodable as a git object id",
+              cause: TreeRevisionUndecodable { text: trim(s: rev.stdout) },
             }
           Present { value: oid } =>
             match deployed_tree_leg(locus: locus, argv: deployed_tree_status_argv(repo: locus.repo)) {
               DeployedTreeLegNotAttempted { reason: why2 } =>
                 DeployedTreeUnobservable {
-                  cause: join(["deployed tree status leg was never attempted: ", why2], ""),
+                  cause: TreeLegNotAttempted { leg: "worktree comparison", reason: why2 },
                 }
               DeployedTreeLegRan { result: st } =>
                 if st.exit_code != 0 {
                   DeployedTreeUnobservable {
-                    cause: join(["deployed tree status unreadable (git status exit ", st.exit_code as String, "): ", st.stderr], ""),
+                    cause: TreeCommandFailed { leg: "worktree comparison", exit_code: st.exit_code, stderr: st.stderr },
                   }
                 } else {
                   DeployedTreeObserved {
@@ -203,7 +234,7 @@ type DeployedTreeStanding
   = DeployedTreeConverged { revision: GitObjectId }
   | DeployedTreeRevisionDrifted { desired: GitObjectId, local: GitObjectId }
   | DeployedTreeModifiedAtRevision { revision: GitObjectId, changed_paths: NonEmptyStr }
-  | DeployedTreeStandingUnobserved { cause: String }
+  | DeployedTreeStandingUnobserved { cause: DeployedTreeUnobservableCause }
 
 // DRIFT DOMINATES MODIFICATION, and the reason is about meaning rather than precedence. The
 // modification state answers "do the bytes match THE COMMIT THE TREE IS ON". When that commit is not

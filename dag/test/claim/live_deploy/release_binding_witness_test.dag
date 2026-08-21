@@ -123,7 +123,7 @@ test fn witness_modifications_do_not_change_the_binding() -> Bool {
 
 test fn witness_an_unreadable_tree_makes_the_binding_undecidable() -> Bool {
   match deployed_release_binding(
-    observation: DeployedTreeUnobservable { cause: "ssh refused" },
+    observation: DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "revision", reason: "ssh refused" } },
     identity: process_saying(hex: hex_a, surface: probe_surface()),
   ) {
     ReleaseBindingUnobserved { cause: c } => string_contains(s: c, pattern: "ssh refused")

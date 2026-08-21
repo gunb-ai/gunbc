@@ -9,13 +9,15 @@ import gunbc.live_deploy.deployed_tree_observation {
   DeployedTreeRevisionDrifted,
   DeployedTreeModifiedAtRevision,
   DeployedTreeStandingUnobserved,
+  TreeLegNotAttempted,
+  TreeCommandFailed,
 }
 import gunbc.live_deploy.deployed_tree_report {
   deployed_tree_standing_line,
   deployed_tree_standing_is_publication_converged,
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn oid_a() -> GitObjectId? {
   git_object_id_from_untagged_hex(hex: "8a472fff9e9000600e33cc3559ecfad4ba55e3a3")
@@ -40,7 +42,7 @@ test fn witness_only_the_converged_arm_is_publication_converged() -> Bool {
           standing: DeployedTreeModifiedAtRevision { revision: a, changed_paths: "x" as NonEmptyStr },
         )
         && !deployed_tree_standing_is_publication_converged(
-          standing: DeployedTreeStandingUnobserved { cause: "ssh refused" },
+          standing: DeployedTreeStandingUnobserved { cause: TreeLegNotAttempted { leg: "revision", reason: "ssh refused" } },
         )
   }
 }
@@ -87,7 +89,7 @@ test fn witness_the_modified_line_carries_what_git_reported() -> Bool {
 
 test fn witness_the_unobserved_line_carries_its_cause() -> Bool {
   let line = deployed_tree_standing_line(
-    standing: DeployedTreeStandingUnobserved { cause: "ssh leg never attempted" },
+    standing: DeployedTreeStandingUnobserved { cause: TreeLegNotAttempted { leg: "revision", reason: "ssh leg never attempted" } },
   )
   string_contains(s: line, pattern: "UNOBSERVED")
     && string_contains(s: line, pattern: "ssh leg never attempted")
@@ -105,7 +107,7 @@ test fn witness_every_arm_renders_a_distinct_label() -> Bool {
       let m = deployed_tree_standing_line(
         standing: DeployedTreeModifiedAtRevision { revision: a, changed_paths: "x" as NonEmptyStr },
       )
-      let u = deployed_tree_standing_line(standing: DeployedTreeStandingUnobserved { cause: "why" })
+      let u = deployed_tree_standing_line(standing: DeployedTreeStandingUnobserved { cause: TreeCommandFailed { leg: "revision", exit_code: 128, stderr: "why" } })
       c != d && c != m && c != u && d != m && d != u && m != u
     }
   }
