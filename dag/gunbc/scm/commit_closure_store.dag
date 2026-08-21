@@ -1,0 +1,174 @@
+module gunbc.scm.commit_closure_store
+
+// PERSISTENCE: the host-effect half of the COMMIT-CLOSURE image.
+//
+// THE GRAIN IS IN THE NAME ON PURPOSE. This saves and loads ONE ROOT AND ITS REACHABLE CLOSURE, not
+// a repository. A repository has facts this carrier cannot express -- an empty initialized state
+// with no root at all, several commits sharing one node population, a checked-out selection, pending
+// authored work, source projections -- and every one of them lives in an envelope ABOVE this file.
+// An earlier revision called this module `repository`, which would have collided with that envelope
+// exactly when it arrives and would have pushed `init` toward inventing a phantom commit merely to
+// satisfy a carrier that demands a root.
+//
+// gunbc.scm.image is pure -- ObjectStore to JsonValue and back -- and is proven by floor witnesses
+// because it can be. THIS module cannot be, and the reason is structural rather than an omission:
+// Filesystem.Read and Filesystem.Write are effects, and the required floor evaluates hermetically,
+// so a witness calling them is REFUSED at the hermetic boundary before the assertion runs. Mocking
+// that refusal away would prove the round trip against a fabricated filesystem -- the exact
+// fabricated-plausible-output failure the persistence claim exists to rule out.
+//
+// So the standings are deliberately different and must not be conflated (DESIGN section 4b, rung
+// honesty is measured per path): the CODEC is floor-verified; PERSISTENCE is verified by direct
+// execution in Wet mode against a real path. `commit_closure_round_trip_probe` below is that executable
+// subject, and it carries its own discriminating arm rather than only reporting success.
+
+import std.types { Bool, Int, List, String }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+
+import extdeps.languages.json.emit { JsonValue, serialize_json }
+import extdeps.languages.json.parse { parse_json }
+
+import v2.std.node {
+  Node, Edge, Named, TypeNode, Connective, Atom, Conj, Symbol, node_synthetic,
+}
+import gunbc.scm.object_store {
+  ObjectId, ObjectStore, StoreOutcome, Stored, LocatorCollision, empty_store, store_node,
+}
+import gunbc.scm.image {
+  ImageRefusal,
+  ImageLoadOutcome,
+  ImageLoaded,
+  ImageRefused,
+  encode_image,
+  decode_image,
+}
+
+// THE HOST'S THREE PARALLEL FIELDS ARE FOLDED INTO A COPRODUCT AT THE BOUNDARY, AND THIS IS THE
+// POINT OF THE TYPE. Filesystem.Write reports `success: Bool`, `error: String` and `bytes_written`
+// as three independent members, so the shape admits states the operation cannot actually be in --
+// success with an error, failure with bytes written. That is the state-space conflation DESIGN
+// section 5 names. Reading it once, here, into a two-armed outcome means no consumer downstream ever
+// has to decide which member to believe, and no consumer can read `.content` from a failed read.
+type CommitClosureRefusal
+  = CommitClosureWriteFailed { path: String, error: String }
+  | CommitClosureReadFailed { path: String, error: String }
+  | CommitClosureTextNotJson { path: String }
+  | CommitClosureImageRefused { path: String, cause: ImageRefusal }
+
+type CommitClosureSaveOutcome
+  = CommitClosureSaved { path: String }
+  | CommitClosureSaveRefused { cause: CommitClosureRefusal }
+
+type CommitClosureLoadOutcome
+  = CommitClosureLoaded { store: ObjectStore, root: ObjectId }
+  | CommitClosureLoadRefused { cause: CommitClosureRefusal }
+
+func commit_closure_save(path: String, store: ObjectStore, root: ObjectId) -> CommitClosureSaveOutcome {
+  let text = serialize_json(v: encode_image(store: store, root: root))
+  let written = Filesystem.Write(path: path, content: text)
+  if written.success {
+    CommitClosureSaved { path: path }
+  } else {
+    CommitClosureSaveRefused {
+      cause: CommitClosureWriteFailed { path: path, error: written.error },
+    }
+  }
+}
+
+// EVERY FAILURE ARM REFUSES AND NAMES THE PATH. None widens, defaults, or answers an empty store.
+// An unreadable repository and an EMPTY one are different states with different remedies, and
+// answering `empty_store()` for the first would be the empty-observation narrow -- the caller would
+// proceed to commit against a repository it believed had no history.
+func commit_closure_load(path: String) -> CommitClosureLoadOutcome {
+  let read = Filesystem.Read(path: path)
+  if !read.success {
+    CommitClosureLoadRefused {
+      cause: CommitClosureReadFailed { path: path, error: read.error },
+    }
+  } else {
+    match parse_json(s: read.content) {
+      Absent => CommitClosureLoadRefused { cause: CommitClosureTextNotJson { path: path } }
+      Present { value: parsed } =>
+        match decode_image(v: parsed) {
+          ImageRefused { cause: cause } =>
+            CommitClosureLoadRefused {
+              cause: CommitClosureImageRefused { path: path, cause: cause },
+            }
+          ImageLoaded { store: store, root: root } =>
+            CommitClosureLoaded { store: store, root: root }
+        }
+    }
+  }
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// The executable subject. This is what proves persistence, because a floor witness structurally
+// cannot -- see the module header.
+// ------------------------------------------------------------------------------------------------
+
+// A PATH GRANT IS NOT MODELED HERE, and that is a scope statement rather than an oversight.
+// extdeps.realization.artifact_store_fs guards its writes with a scratch-area grant because it has a
+// policy to enforce; a repository path supplied by a user has no such policy yet, and inventing one
+// with no consumer would be speculative. When repository location becomes a policy question, the
+// grant belongs at that boundary, not retrofitted here.
+// dissolve-on: a modeled repository-location policy.
+
+fn commit_closure_probe_atom(identity: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+}
+
+fn commit_closure_probe_program() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ^probe_left }, target: commit_closure_probe_atom(identity: ^PL) },
+      Edge { label: Named { name: ^probe_right }, target: commit_closure_probe_atom(identity: ^PR) },
+    ],
+  )
+}
+
+// THE PROBE ASSERTS BOTH DIRECTIONS, and the second is what makes the first mean anything.
+//
+// Writing a file and reading it back proves only that the filesystem works. The claim under test is
+// that what comes back IS THE SAME PROGRAM, so the probe compares the reconstructed root identity
+// against the one it saved -- and then it corrupts the file and requires a REFUSAL. A save/load pair
+// with no corruption arm would pass identically if load fabricated a store on any input, which is
+// precisely the failure persistence is supposed to exclude.
+func commit_closure_round_trip_probe(path: String) -> ProcessExit {
+  let put = store_node(store: empty_store(), n: commit_closure_probe_program())
+  match put {
+    LocatorCollision { identity: _, existing: _, incoming: _ } =>
+      return exit_failure(reason: "commit-closure probe: fixture collided in an empty store")
+    Stored { store: store, identity: root } => {
+      match commit_closure_save(path: path, store: store, root: root) {
+        CommitClosureSaveRefused { cause: _ } =>
+          return exit_failure(reason: "commit-closure probe: save refused")
+        CommitClosureSaved { path: _ } => {
+          match commit_closure_load(path: path) {
+            CommitClosureLoadRefused { cause: _ } =>
+              return exit_failure(reason: "commit-closure probe: load refused a file we just wrote")
+            CommitClosureLoaded { store: _, root: loaded_root } => {
+              if (loaded_root.digest as String) != (root.digest as String) {
+                return exit_failure(reason: "commit-closure probe: reloaded root is a different program")
+              }
+              // THE DISCRIMINATING ARM. Overwrite with text that is not this image and require the
+              // refusal. If this greens, load is fabricating rather than decoding.
+              let clobber = Filesystem.Write(path: path, content: "{\"format\": \"not-a-gunbc-image\"}")
+              if !clobber.success {
+                return exit_failure(reason: "commit-closure probe: could not write the corruption case")
+              }
+              match commit_closure_load(path: path) {
+                CommitClosureLoaded { store: _, root: _ } =>
+                  return exit_failure(reason: "commit-closure probe: a corrupted image LOADED -- load fabricates")
+                CommitClosureLoadRefused { cause: _ } =>
+                  return ExitSuccess
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -114,7 +114,7 @@ type ImageLoadOutcome
   = ImageLoaded { store: ObjectStore, root: ObjectId }
   | ImageRefused { cause: ImageRefusal }
 
-data image_format_tag: String = "gunbc-scm-image-v1"
+data image_format_tag: String = "gunbc-scm-commit-closure-v1"
 
 // WHAT THIS MODULE IS AND IS NOT, so the next layer is not built on a wrong assumption.
 //

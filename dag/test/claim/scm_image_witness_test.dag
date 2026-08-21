@@ -286,7 +286,7 @@ test fn scm_image_an_unrecognized_format_refuses() -> Bool {
       v: scm_image_with(
         v: scm_image_encoded(n: scm_image_program()),
         key: "format",
-        value: json_string(s: "gunbc-scm-image-v99"),
+        value: json_string(s: "gunbc-scm-commit-closure-v99"),
       )
     )
   )
@@ -336,7 +336,7 @@ test fn scm_image_an_edge_naming_a_later_position_refuses() -> Bool {
     loaded: decode_image(
       v: json_object(
         members: [
-          json_kv(key: "format", value: json_string(s: "gunbc-scm-image-v1")),
+          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v1")),
           json_kv(
             key: "objects",
             value: json_array(
@@ -383,7 +383,7 @@ test fn scm_image_an_unknown_connective_tag_refuses() -> Bool {
     loaded: decode_image(
       v: json_object(
         members: [
-          json_kv(key: "format", value: json_string(s: "gunbc-scm-image-v1")),
+          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v1")),
           json_kv(
             key: "objects",
             value: json_array(
@@ -421,7 +421,7 @@ test fn scm_image_the_hand_authored_shape_itself_loads() -> Bool {
     loaded: decode_image(
       v: json_object(
         members: [
-          json_kv(key: "format", value: json_string(s: "gunbc-scm-image-v1")),
+          json_kv(key: "format", value: json_string(s: "gunbc-scm-commit-closure-v1")),
           json_kv(
             key: "objects",
             value: json_array(
