@@ -1499,17 +1499,22 @@ than argued.
 
 20. **Reconstruction doors, umbrella.** Two interpreter reconstruction mechanisms admit serialized
    observations without completing semantic acceptance: fixture replay reconstructs NOMINALLY TAGGED records or
-   variants without declaration admission, while REST JSON projection constructs a DECLARATION-SHAPED output
-   record — no variant — without accepting each field value against its declared type and invariant. (An earlier
+   variants without declaration admission, while REST JSON projection has access to the resolved return
+   declaration but consumes it to varying degrees by arm — ordinary object projection derives all declared field
+   names, the array arm uses only the first, and the unresolved and childless arms bypass field projection
+   entirely — with no arm semantically accepting the resulting runtime value against the declared return type. (An earlier
    revision said both build a "typed `Value::Record`/`Value::Variant`", which over-granted twice: "typed" claims
    an admission the fixture decoder never performs — the tag is carried, not checked — and only the fixture
    decoder produces variants at all.) Both sit outside any construction call site. (A further earlier revision called the input "untrusted bytes", which overstates it: a recorded fixture DOES carry outer operation, input-hash, input-equality and freshness checks — what is missing is semantic acceptance of the response against the current program declaration, not provenance checking.) This queue
    item covers both — but external review (2026-08-20) found they are **different mechanisms
    that need separate rows**, corrected here as 20a/20b rather than one joint claim: 20a
    (`value_from_fixture_json`) mints a nominally tagged value **without ever establishing the
-   named declaration exists**; 20b (`map_response_to_value_json`) **does** honor the
-   operation's declared output shape — it looks up the real field names — but never validates
-   a field's *value* against that field's declared refinement predicate. The earlier joint
+   named declaration exists**; 20b (`map_response_to_value_json`) **does** consult the
+   operation's declared output shape on its ordinary object arm — it looks up the real field names — but never
+   validates a field's *value* against that field's declared refinement predicate, and on its other arms consumes
+   the declaration only partially (array: first field only) or not at all (unresolved, childless). An earlier
+   revision of this umbrella stated the ordinary arm's behavior at function grain, which the 20b control-flow
+   tree below disproves. The earlier joint
    headline ("no declaration lookup" for both) was true only of 20a; stating it jointly
    over-answered for 20b. Both share: measurement only, no change to either mechanism, to
    `sole_constructor`, or to where-refinement machinery (see "What repair is not in this
