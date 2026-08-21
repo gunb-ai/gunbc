@@ -11,16 +11,21 @@ not residue.
 
 ## 1. The defensible number
 
-| quantity | value |
-| --- | --- |
-| `.dag` modules under `dag/` + `src/v2` | 3816 |
-| consumed by discovery, not by import (`/test/`, `*_test.dag`, `/lens/`, `/manual/`, `/fixture*`) | 1928 |
-| additional roots: named as an `--entry` argv anywhere in the tree | 34 |
-| additional roots: carrying a v1 seed mirror in `src/v1/stage0/src/<module_with_underscores>.rs` | 81 |
-| reachable from those roots through imports **and qualified calls** | 3513 |
-| **unreachable — the census population** | **303** |
+| quantity | value | unit |
+| --- | --- | --- |
+| `.dag` modules under `dag/` + `src/v2` | 3816 | DistinctModuleCount |
+| consumed by discovery, not by import (`/test/`, `*_test.dag`, `/lens/`, `/manual/`, `/fixture*`) | 1928 | DistinctModuleCount |
+| additional roots: named by an entry row (argv `--entry` or an `*entry*:` path field) | 48 | DistinctModuleCount |
+| additional roots: carrying a v1 seed mirror in `src/v1/stage0/src/<module_with_underscores>.rs` | 79 | DistinctModuleCount |
+| reachable from those roots through imports **and qualified calls** | 3518 | DistinctModuleCount |
+| **unreachable — the census population** | **298** | DistinctModuleCount |
 
-**303, not 337.** The inherited figure was an upper bound over a different question
+Every number in this document carries its unit, and two units are deliberately never
+interchangeable: a **DistinctFileCount** (how many files name a thing) and a
+**SourceOccurrenceCount** (how many times it is named). Reporting one as the other is what
+produced the false escalation in §4b, and the discipline is cheap: name the unit.
+
+**298, not 337.** The inherited figure was an upper bound over a different question
 (*zero importers*), and it was correct to label it that way. Two independent corrections
 move it, in opposite directions, and they do not cancel:
 
@@ -32,13 +37,16 @@ move it, in opposite directions, and they do not cancel:
 
 Re-derived here from scratch; the inherited number was not reused for anything.
 
-## 2. Instrument, and the four defects found in building it
+## 2. Instrument: the universe it decodes, and the five defects found in building it
 
-The parent's brief named two defects to avoid; both were avoided. Two more were found
-after that: the third here, which invalidates any import-line-only instrument including
-the inherited one, and the fourth **by review of this document's own first revision** —
-which is worth stating plainly, because that one had already produced a false escalation
-(§4b) before it was caught.
+Attribution matters here, because a lesson that reads as one session's mistakes gets
+discounted. **Defects 1 and 2 were the dispatching lane's, self-reported** in the brief
+that commissioned this census. **Defect 3 was in both instruments** — theirs and this
+one's first pass. **Defects 4 and 5 were this census's own**, and neither was caught by
+its author: 4 by review of the first revision, after it had already produced a false
+escalation (§4b), and 5 by an architecture ruling that asked which call surfaces the
+number covered. Two of five were found by the measurer; three were found by someone
+reading the measurement.
 
 1. **Module name is not derivable from the path.** Names come from the declared `module`
    line. All 3816 files carry one (checked; zero missing).
@@ -77,6 +85,30 @@ must reproduce to agree.
    name.** Re-measuring the whole population this way moved only 4 rows, so the class was
    narrow — but it was fatal on exactly the row the census had escalated.
 
+5. **NEW — an entry row is not always spelled `--entry`.** The first revision decoded argv
+   `--entry` and a narrow `entry_file` form. It did not decode the `entry: "dag/…"` /
+   `<name>_entry_file: String = "…"` field rows that `gunbc.ci_spec` and the emitted
+   workflows actually use — 764 SourceOccurrenceCount of that shape against 116 of the
+   argv shape, so the undecoded surface was the *larger* one. Decoding it moved the
+   population 303 → 298 and returned three modules to consumed, two of which this document
+   had classified FROZEN-PENDING-RE-ADD on the strength of a re-add anchor:
+   `tools.floor_effect_gate_witness` and `tools.ci_heal_dispatch` are not frozen, they are
+   **invoked**. A carve-out argued from a named anchor was still wrong, because the
+   instrument had not looked at the surface that would have settled it.
+
+**The universe the 298 is over.** Call surfaces decoded: `import` lines; fully-qualified
+`module.symbol` references (string- and annotation-stripped); argv `--entry` path literals;
+`*entry*:` path-field rows in `.dag`, `.yml`, `.rs`, `.md`, and shell; v1 seed mirrors by
+filename. Surfaces **not** decoded, each of which can only make the population smaller:
+
+- **Dynamically composed argv.** `gunbc.roadmap_serve` is invoked with
+  `--function ", svc.serve_function` — the function is a field read, not a literal. Any
+  entry whose *path* is likewise composed is invisible to this instrument.
+- **Host-side invocation in Rust that names neither the path nor the module.**
+- **An entry row declared inside a module that is itself unreachable** — admitted here as a
+  root, which over-admits consumption. `v2.workflow.product_receipt_stage` is rooted this
+  way by a dead declarer.
+
 **Controls, run on every pass** (a zero is readable only beside a nonzero):
 `v2.compiler.compile`, `gunbc.spark.serving_desired`, `gunbc.clock_read`, `v2.std.node`
 all score *reachable*; `gunbc.accelerator_demo_gpu` scores *reachable* only after defect 3
@@ -96,20 +128,20 @@ row can be re-derived and disagreed with.
 | disposition | count | rule | what it means |
 | --- | --- | --- | --- |
 | RESIDUE-EMPTY | 8 | ≤5 lines — a `module` line and nothing else | Delete. No content to strand. |
-| CITED-AUTHORITY | 104 | declares an `ExternalAuthority` anchor | **Do not sweep.** The value may be the citation (DESIGN §3 extdeps duty), not a call. Needs a per-island decision, §4. |
-| PROSE-NAMED | 81 | named by live (reachable) `.dag`, `.rs`, or `.yml` source, boundary-anchored | Deleting strands a citation. Each needs the mention read before it moves: superseded, missing-consumer, or delete-with-citation-repair. |
-| FROZEN-PENDING-RE-ADD | 15 | the `.dag` side of a capability whose invoker a cut removed, where the re-add is named | **Not residue.** DESIGN §3 frozen-X: deleting these deletes what the re-add queue exists to re-attach. Each row names its anchor, §4d. |
+| CITED-AUTHORITY | 103 | declares an `ExternalAuthority` anchor | **Do not sweep.** The value may be the citation (DESIGN §3 extdeps duty), not a call. Needs a per-island decision, §4. |
+| PROSE-NAMED | 79 | named by live (reachable) `.dag`, `.rs`, or `.yml` source, boundary-anchored | Deleting strands a citation. Each needs the mention read before it moves: superseded, missing-consumer, or delete-with-citation-repair. |
+| FROZEN-PENDING-RE-ADD | 13 | the `.dag` side of a capability whose invoker a cut removed, where the re-add is named | **Not residue.** DESIGN §3 frozen-X: deleting these deletes what the re-add queue exists to re-attach. Each row names its anchor, §4d. |
 | RESIDUE-DOC-ONLY | 28 | named only in `.md`, receipts/TSVs, or other dead modules | Delete; repair the doc citation in the same diff. |
 | RESIDUE-UNMENTIONED | 67 | not named anywhere in the tree outside itself | Delete. Highest-confidence residue. |
 
 Per-module rows: appendix, §6.
 
 **ENTRY-INVOKED is zero here by construction.** The brief's first job was to build the
-entry index and subtract; it is built (34 `--entry` argv roots + 81 seed mirrors) and
+entry index and subtract; it is built (48 entry-row roots + 79 seed mirrors) and
 subtracted *before* the population is formed, so every entry-invoked module is already
-outside the 303. The subtraction was smaller than expected for a reason worth recording:
-most entry-invoked modules were already reachable by import anyway, so the index moved the
-count by less than it moved confidence in it.
+outside the 298. The first revision's index was smaller (34 roots) because it decoded only
+the argv spelling; §2's defect 5 is what that cost, and it is the reason this section now
+reports the index by *surface* rather than as one number.
 
 ## 4. Named findings
 
@@ -154,7 +186,7 @@ surfaces with zero readers. Note the standing irony: DESIGN's fixed-point rule f
 emitted mirror is *about* rustfmt, and `v2.extdeps.formatters.rustfmt` is not what
 implements it. Missing-consumer or residue — not a mechanical call.
 
-**d. `dag/tools/` — 15 FROZEN, 5 residue, and the split is per-module.** These are the
+**d. `dag/tools/` — 13 FROZEN, 5 residue, 2 that turned out to be invoked, and the split is per-module.** These are the
 `.dag` sides of capabilities whose invokers the floor cut (2026-08-15) and the regen root
 cut (2026-08-18) removed. DESIGN's CI paragraph names a **re-add queue** with a restoration
 trigger, and a module the queue exists to re-attach is §3 frozen-X, not residue — deleting
@@ -167,10 +199,14 @@ against a named anchor**, never to the group:
   **`gunbc.ci_release_bins` (live, reachable) still declares as a CI release artifact**.
   The binary is retained and the `.dag` invoker is the unattached half — the definition of
   frozen.
-- **`tools.floor_effect_gate_witness`** (the seven effect gates), **`tools.ci_heal_dispatch`**
-  (heal), **`tools.merge_admission_capture_transport`** and
-  **`tools.merge_admission_current_context`** (merge-admission stamping). Anchor: each gate
-  is named on DESIGN's own unguarded list.
+- **`tools.merge_admission_capture_transport`** and **`tools.merge_admission_current_context`**
+  (merge-admission stamping). Anchor: the gate is named on DESIGN's own unguarded list.
+- **NOT frozen after all: `tools.floor_effect_gate_witness` and `tools.ci_heal_dispatch`.**
+  The first revision froze them on the unguarded-list anchor. Decoding the `entry:` field
+  surface (§2, defect 5) shows both are named by live entry rows — they are **invoked**,
+  and were never in the population. Recorded rather than quietly dropped: an anchor can be
+  real and the conclusion still wrong, when the instrument has not read the surface that
+  settles it.
 - **`tools.dag_compile_clean_seam`, `_seam_transport`, `_shard_transport`.** Anchor:
   DESIGN's compile-clean entry-point trigger — **the weakest of the three anchors, and
   flagged as such**: prose, no binary, no queue line. If that trigger is judged not to be a
@@ -182,7 +218,7 @@ against a named anchor**, never to the group:
 script, and `gunbc.witness_floor_workflow` → `.github/workflows/witnesses.yml` is what
 actually runs CI now. That is the §3 second-authority find in this cluster.
 
-Related, and the reason this cluster is worth naming at all: **12 of the 303 declare
+Related, and the reason this cluster is worth naming at all: **12 of the 298 declare
 `main()`** — an entry shape with no argv anywhere that names it. Four are in `tools/`; the
 rest are `examples/` and three `extdeps` witnesses. An entry that lost its invoker is the
 exact residue a delete-first cut is supposed to surface loudly, and it did not surface,
@@ -201,7 +237,7 @@ one we execute" is a claim about intent, so it is flagged, not classified.
 
 ## 5. Proposed sequencing (for approval, not execution)
 
-One red in a 300-file deletion blocks everything, so: small coherent batches, each its own
+One red in a 298-file deletion blocks everything, so: small coherent batches, each its own
 PR, each verified by `claim_executor --required-ci --source-root dag --source-root src/v2`
 with `failed=` read and PASS counted against the roster.
 
@@ -213,7 +249,7 @@ with `failed=` read and PASS counted against the roster.
 3. **B3 — RESIDUE-DOC-ONLY (28).** Deletion plus the doc/receipt citation repair in the
    same diff.
 4. **B4 — the five `tools/` rows that are NOT on the re-add queue (finding d)**, including
-   the superseded `tools.gunbc_ci`. The 15 FROZEN-PENDING-RE-ADD rows are in no batch: they
+   the superseded `tools.gunbc_ci`. The 13 FROZEN-PENDING-RE-ADD rows are in no batch: they
    stay until their queued gate is re-derived, and their disposition is recorded here so a
    future census does not re-derive the question and answer "residue".
 5. **B5 — `std.verification` (finding b)** alone: delete the module, repoint the two plan
@@ -221,17 +257,84 @@ with `failed=` read and PASS counted against the roster.
 6. **B6+ — the extdeps islands (finding a, c)**, one island per PR, each gated on whether
    the citation is the deliverable.
 
-PROSE-NAMED (81) does not get a batch until each row's mention has been read; several will
+PROSE-NAMED (79) does not get a batch until each row's mention has been read; several will
 resolve to *missing consumer* and be wired up rather than deleted, which is the directive's
 second arm.
 
 **Excluded from every batch:** `dag/gunbc/spark/` — `fierce-lynx-647` owns that area and is
-mid-census there. Two of the 303 (`gunbc.spark.provisioning`,
+mid-census there. Two of the 298 (`gunbc.spark.provisioning`,
 `gunbc.spark.managed_access_apply`) fall in it and are reported here for their benefit
 only. `gunbc.spark.provisioning` is a live instance of the dangling-annotation hazard:
 `extdeps/systems/nvidia_dgx_spark_setup.dag` names it as a fact's home.
 
-## 6. Appendix — the 303 rows
+
+## 6. Completeness standing
+
+**`LowerBoundOnly`.** 298 resolved-unconsumed modules over the universe declared in §2.
+Not `CompleteForDeclaredUniverse`, and the difference is not modesty: three call surfaces
+are named as undecoded in §2, and every one of them can only *remove* modules from the
+population, never add. Two prior revisions of this document each lost modules to a newly
+decoded surface (333 → 303 → 298), which is the empirical case for the standing rather
+than an argument for it.
+
+What the instrument can support: *298 resolved consumers-of-none over universe U;
+standing LowerBoundOnly; blind spots as named.* What it cannot support, and what this
+document does not claim anywhere: *there are exactly 298 unconsumed modules.* The second
+sentence dies the moment someone decodes a fourth surface; the first survives it, and
+tells the reader what would change it.
+
+This standing is why §5's batches are ordered as they are. RESIDUE-UNMENTIONED first is
+not merely the lowest-argument batch — it is the class least exposed to the blind spots,
+because a module named nowhere in any surface is not waiting on a surface to be decoded.
+
+### Two broken entry strings, confirmed
+
+Decoding the entry-row surface also surfaced consumption that is *declared and broken* —
+neither consumed nor residue, and invisible to the import graph. Confirmed by reading both
+sites, not by the count:
+
+- **`dag/gunbc/spark/grant_install.dag`** — `gunbc.ci_spec` `gunbc_ci_spark_grant_install_invoke`
+  names it as an entry with function `spark_grant_install_ci_wet`. **The file does not
+  exist.**
+- **`dag/gunbc/spark/serving_durability.dag`** with function
+  `"spark_serving_durability_ci_wet"` — named by `gunbc.ci_spec` *and* by
+  `.github/workflows/fleet-converge.yml`. The file exists; **that function is not in it**
+  (its `fn`s are `spark_serving_boot_id_probe_argv`, `..._from_probe`,
+  `spark_serving_reboot_transition`, `spark_serving_durability_verdict`, `..._is_proven`,
+  `..._wire`).
+
+Both are in `dag/gunbc/spark/`, which is `fierce-lynx-647`'s area — reported, not touched.
+A sibling lane found the same two independently; this is a second instrument agreeing, not
+a second report of one measurement.
+
+**Not defects, and named so a future sweep does not "fix" them:** the raw scan also flags
+`dag/a.dag`, `dag/mini.dag`, `dag/gunbc/live_deploy/WRONG_ENTRY.dag`,
+`dag/test/claim/__no_such_entry_zzz.dag` and similar. Those are *deliberate negative
+controls* inside witness tests — an entry that must fail to resolve. An instrument that
+reports them is producing false positives, which is exactly what §7's last case exists to
+catch.
+
+## 7. Calibration benchmark for the next audit instrument
+
+Today's failures, written as cases rather than as prose, so a future instrument calibrates
+against a suite instead of rediscovering all five. Each case names a real subject in this
+tree, the wrong answer, and the answer that is honest.
+
+| # | case | subject | wrong answer | required answer |
+| --- | --- | --- | --- | --- |
+| 1 | **cardinality** | `std.verification` | one number for "how cited" | **both** units: SourceOccurrenceCount 6 **and** DistinctFileCount 3 — they are different questions |
+| 2 | **exact identity** | `std.verification` vs `v2.std.verification` | substring match folds them | boundary-anchored: the two stay separate, and the suffix relation never merges them |
+| 3 | **representation vs subject** | any modeled capability | "spelling absent ⟹ capability absent" | a typed model present with zero occurrences of its shell spelling means capability PRESENT, spelling ABSENT — **no absence conclusion** |
+| 4 | **qualified use** | `gunbc.accelerator_demo_gpu` ← `dag/test/claim/accelerator_demo_gpu_witness_test.dag` | orphan (no import line) | caller edge PRESENT; an import-line census must declare itself incomplete |
+| 5 | **string-bound entry** | `dag/gunbc/spark/serving_durability.dag` + `spark_serving_durability_ci_wet` | consumed (path resolves) | **resolution REFUSED** — path present, function absent; neither consumed nor residue |
+| 6 | **positive no-finding** | `dag/gunbc/live_deploy/WRONG_ENTRY.dag`, `dag/a.dag`, `__no_such_entry_zzz.dag`; and any healthy imported module | flagged as broken/orphaned | **no finding** — deliberate negative controls and ordinary live modules must come back clean |
+
+Case 6 is the one most likely to be skipped and the one that catches a broken audit: a
+suite built only from defects is passed by an instrument that reports *everything* as
+suspicious. Cases 1, 2, 4, 5 each have a live specimen in this tree, so the suite is
+executable against the real corpus rather than against a fixture someone has to maintain.
+
+## 8. Appendix — the 298 rows
 
 ### RESIDUE-EMPTY — 8 modules
 
@@ -351,19 +454,17 @@ only. `gunbc.spark.provisioning` is a live instance of the dangling-annotation h
 | `v2.test.workflow.host_discovered_owned_data_manifest` | `src/v2/workflow/host_discovered_owned_data_manifest.dag` | 19 | —  |
 | `v2.workflow.ci_stage0_partition_compile_gate_emit` | `src/v2/workflow/ci_stage0_partition_compile_gate_emit.dag` | 103 | —  |
 
-### FROZEN-PENDING-RE-ADD — 15 modules
+### FROZEN-PENDING-RE-ADD — 13 modules
 
 | module | path | lines | re-add anchor |
 | --- | --- | --- | --- |
 | `tools.auth_declared_but_unwired_witness_transport` | `dag/tools/auth_declared_but_unwired_witness_transport.dag` | 12 | `auth_declared_but_unwired_witness` bin, still declared in `gunbc.ci_release_bins` |
 | `tools.bootstrap_witness_transport` | `dag/tools/bootstrap_witness_transport.dag` | 12 | `bootstrap_witness` bin, still declared in `gunbc.ci_release_bins` |
-| `tools.ci_heal_dispatch` | `dag/tools/ci_heal_dispatch.dag` | 48 | heal — named on DESIGN's unguarded list |
 | `tools.dag_collect_fingerprint_witness_transport` | `dag/tools/dag_collect_fingerprint_witness_transport.dag` | 12 | `dag_collect_fingerprint_witness` bin, still declared in `gunbc.ci_release_bins` |
 | `tools.dag_compile_clean_seam` | `dag/tools/dag_compile_clean_seam.dag` | 110 | compile-clean entry point — WEAKER ANCHOR: a prose restoration trigger in DESIGN, no bin and no queue line |
 | `tools.dag_compile_clean_seam_transport` | `dag/tools/dag_compile_clean_seam_transport.dag` | 124 | compile-clean entry point — WEAKER ANCHOR, as above |
 | `tools.dag_compile_clean_shard_transport` | `dag/tools/dag_compile_clean_shard_transport.dag` | 43 | compile-clean entry point — WEAKER ANCHOR, as above |
 | `tools.effects_rest_transport_witness_transport` | `dag/tools/effects_rest_transport_witness_transport.dag` | 12 | `effects_rest_transport_witness` bin, still declared in `gunbc.ci_release_bins` |
-| `tools.floor_effect_gate_witness` | `dag/tools/floor_effect_gate_witness.dag` | 59 | the seven effect gates — named on DESIGN's unguarded list |
 | `tools.infer_semantics_witness_transport` | `dag/tools/infer_semantics_witness_transport.dag` | 12 | `infer_semantics_witness` bin, still declared in `gunbc.ci_release_bins` |
 | `tools.interp_recorded_fixture_witness_transport` | `dag/tools/interp_recorded_fixture_witness_transport.dag` | 13 | `interp_recorded_fixture_witness` bin, still declared in `gunbc.ci_release_bins` |
 | `tools.merge_admission_capture_transport` | `dag/tools/merge_admission_capture_transport.dag` | 32 | merge-admission stamping — named on DESIGN's unguarded list |
@@ -371,7 +472,7 @@ only. `gunbc.spark.provisioning` is a live instance of the dangling-annotation h
 | `tools.parse_witness_transport` | `dag/tools/parse_witness_transport.dag` | 20 | `parse_witness` bin, still declared in `gunbc.ci_release_bins` |
 | `tools.v1_dag_parse_transport` | `dag/tools/v1_dag_parse_transport.dag` | 12 | `v1_src_dag_parse` bin, still declared in `gunbc.ci_release_bins` |
 
-### PROSE-NAMED — 81 modules
+### PROSE-NAMED — 79 modules
 
 | module | path | lines | live-source mentions |
 | --- | --- | --- | --- |
@@ -402,7 +503,6 @@ only. `gunbc.spark.provisioning` is a live instance of the dangling-annotation h
 | `gunbc.deployed_intent_v0` | `dag/gunbc/deployed_intent_v0.dag` | 61 | {'dag': 2} `dag/gunbc/host_standup.dag` `dag/gunbc/host_identity_adopt.dag` |
 | `gunbc.deployed_intent_v1` | `dag/gunbc/deployed_intent_v1.dag` | 69 | {'dag': 1} `dag/gunbc/host_standup.dag` |
 | `gunbc.design_argument` | `dag/gunbc/design_argument.dag` | 93 | {'dag': 1} `dag/gunbc/plans/axiom_syllogism_lens.dag` |
-| `gunbc.fleet_probe_identity_observe` | `dag/gunbc/fleet_probe_identity_observe.dag` | 86 | {'dag': 1} `dag/gunbc/ci_spec.dag` |
 | `gunbc.githooks_pre_push_cli` | `dag/gunbc/githooks_pre_push_cli.dag` | 10 | {'dag': 2, 'rs': 2} `dag/std/emit_on_demand.dag` `dag/gunbc/githooks_pre_push_fmt_transport_scaffold.dag` |
 | `gunbc.host_authorized_keys_reconcile` | `dag/gunbc/host_authorized_keys_reconcile.dag` | 104 | {'dag': 1} `dag/gunbc/build_cache_instance.dag` |
 | `gunbc.host_build_cache_provision` | `dag/gunbc/host_build_cache_provision.dag` | 335 | {'dag': 4} `dag/gunbc/build_cache_instance.dag` `dag/gunbc/fleet_host_budget.dag` |
@@ -445,7 +545,6 @@ only. `gunbc.spark.provisioning` is a live instance of the dangling-annotation h
 | `v2.extdeps.languages.ptx` | `src/v2/extdeps/languages/ptx.dag` | 223 | {'dag': 1} `dag/gunbc/language_target_registry.dag` |
 | `v2.extdeps.languages.swift` | `src/v2/extdeps/languages/swift.dag` | 2366 | {'dag': 2} `dag/gunbc/language_target_registry.dag` `src/v2/test/claim/complexity/accumulator_copy_roster_gate_swift_test.dag` |
 | `v2.extdeps.languages.wasm` | `src/v2/extdeps/languages/wasm.dag` | 2019 | {'dag': 2} `dag/gunbc/language_target_registry.dag` `dag/gunbc/plans/language_target_self_host_frontier.dag` |
-| `v2.program` | `src/v2/program.dag` | 466 | {'dag': 1} `dag/gunbc/non_fold_residue.dag` |
 | `v2.std.datetime` | `src/v2/std/datetime.dag` | 658 | {'dag': 2, 'rs': 1} `dag/extdeps/pin.dag` `src/v2/test/manual/parse_forensics_scaling_witness.dag` |
 | `v2.std.float` | `src/v2/std/float.dag` | 174 | {'dag': 1} `dag/gunbc/non_fold_residue.dag` |
 | `v2.std.probe_selector` | `src/v2/std/probe_selector.dag` | 674 | {'dag': 2} `dag/gunbc/non_fold_residue.dag` `dag/gunbc/plans/dag_v2_defork_audit.dag` |
@@ -457,7 +556,7 @@ only. `gunbc.spark.provisioning` is a live instance of the dangling-annotation h
 | `v2.workflow.source_root_ingest_gate` | `src/v2/workflow/source_root_ingest_gate.dag` | 18 | {'dag': 3} `dag/test/claim/guarantee_rung_drop_witness_test.dag` `dag/tools/ci_gates.dag` |
 | `v2.workflow.source_root_ingest_transport` | `src/v2/workflow/source_root_ingest_transport.dag` | 90 | {'dag': 2} `dag/tools/ci_gates.dag` `src/v2/test/claim/host_language_transport_script/corpus/migrated_transports_clean_test.dag` |
 
-### CITED-AUTHORITY — 104 modules
+### CITED-AUTHORITY — 103 modules
 
 | module | path | lines | live-source mentions |
 | --- | --- | --- | --- |
@@ -525,7 +624,6 @@ only. `gunbc.spark.provisioning` is a live instance of the dangling-annotation h
 | `extdeps.github.issues` | `dag/extdeps/github/issues.dag` | 202 | {'dag': 1, 'rs': 1} `dag/gunbc/extdeps_scope_frontier.dag` `src/v1/stage0/src/bin/effects_rest_transport_witness.rs` |
 | `extdeps.github.mergeable_state` | `dag/extdeps/github/mergeable_state.dag` | 39 | —  |
 | `extdeps.github.mergeable_state_contracts` | `dag/extdeps/github/mergeable_state_contracts.dag` | 18 | —  |
-| `extdeps.github.workflows` | `dag/extdeps/github/workflows.dag` | 73 | {'dag': 1} `dag/test/claim/commit_writer_admission_witness_test.dag` |
 | `extdeps.gitignore` | `dag/extdeps/git/gitignore.dag` | 36 | —  |
 | `extdeps.languages.go.module` | `dag/extdeps/languages/go/module.dag` | 144 | {'dag': 1} `dag/gunbc/commit_workflow.dag` |
 | `extdeps.languages.go.primitives` | `dag/extdeps/languages/go/primitives.dag` | 211 | {'dag': 1, 'rs': 1} `dag/std/checked_arithmetic.dag` `src/v1/stage0/src/std_checked_arithmetic.rs` |
