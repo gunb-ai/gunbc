@@ -103,6 +103,13 @@ data fleet_desired_observe_repository_path_note: String = "The repository whose 
 // The alternative -- record against `.` while launching the recorder from another directory -- is
 // specifically rejected: it makes one identical operation input mean different repositories
 // depending on ambient process state, which is the ambiguity naming the repository removed.
+// THE CALLER NO LONGER TRIMS, and the reason is narrower than it looks: the trim here was INERT.
+// The operation's output binding already delivers `sha` without git's line terminator -- measured,
+// not assumed (a recorded fixture's stored sha is 40 characters, and removing the trim left the
+// whole wet matrix green). So this was a guard against a byte that never arrives, and normalization
+// now happens once inside extdeps.git.inspect merge_base_outcome, at the boundary that owns the
+// wire format. Deleting it removes a second site for one invariant; it does not close a defect,
+// and saying otherwise would credit this change with a repair it did not make.
 fn observe_fleet_revision_relation_in(
   repository_path: String,
   current: GitObjectId,
@@ -125,7 +132,7 @@ fn observe_fleet_revision_relation_in(
       current: current,
       accepted: accepted,
       exit_code: probe.exit_code,
-      base_hex: trim(s: probe.sha as String),
+      base_hex: probe.sha as String,
       stderr: probe.stderr,
     )
   }

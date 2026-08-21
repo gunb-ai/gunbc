@@ -248,7 +248,7 @@ fn merge_base_relation(
   } else {
     match merge_base_outcome(exit_code: exit_code, stdout: base_hex, stderr: stderr) {
       NoCommonAncestor => UnrelatedHistories
-      MergeBaseReported { stdout: hex } =>
+      MergeBaseReported { base_hex: hex } =>
         match git_object_id_from_untagged_hex(hex: hex) {
           Present { value: base } =>
             relation_from_merge_base_oid(current: current, accepted: accepted, base: base)

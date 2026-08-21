@@ -87,6 +87,33 @@ fn fleet_default_branch() -> String {
   gunbc_default_branch_name
 }
 
+// THESE TWO ARE AN UNDECLARED SUM AND THE CLASS IS THE ONE THIS BRANCH CLOSED ONE LAYER DOWN,
+// so it is named here rather than left for the next reader to notice the inconsistency. Comparing
+// a wire string with `==` against a local `data` row is exactly what `merge_base_exit_ok: Int = 0`
+// was doing to git's exit table before extdeps.git.inspect grew MergeBaseOutcome (raised in
+// review 54424, which spotted the parallel).
+//
+// THE TWO HALVES ARE NOT THE SAME PROBLEM, though, and that distinction is why neither is fixed by
+// reflex here. `activity` is a CLOSED vocabulary upstream documents exhaustively -- requested,
+// in_progress, completed -- so it is genuinely a coproduct waiting to be written, and it belongs in
+// extdeps.github.workflow_run_event beside the envelope that decodes it, not in this consumer.
+// `originating_event` is NOT closed: it is the whole GitHub event namespace, open-ended and
+// extended by upstream without notice, so a closed sum over it would be re-coining an open
+// vocabulary -- the §3 nickname wearing a coproduct. Its honest shape is the documented members
+// this repository actually discriminates plus an explicit unrecognized arm carrying the wire text,
+// which is a different modeling decision than the first and should be made as one.
+//
+// NEXT-RUNG TRIGGER: a WorkflowRunActivity coproduct on extdeps.github.workflow_run_event, decoded
+// where the envelope is already parsed, at which point these two rows and both `!=` comparisons
+// below dissolve into exhaustive matches. RUNG until then: mitigatable -- a wire-value drift is
+// caught, because both comparisons FAIL CLOSED into a typed refusal naming the observed string
+// (CiActivityNotCompleted, BranchEventIsNotAPush) rather than admitting. What is unprotected is the
+// opposite direction: a typo in these rows refuses everything forever, and nothing here would say
+// which of the two it was.
+//
+// NOT AN ADMISSION. Recording a trigger does not authorize the shape; it is deferred because typing
+// the envelope changes an extdeps carrier and its decoder, which is a different change from this
+// branch's, and the deferral is stated so a reader can hold me to it rather than discover it.
 data required_ci_completed_activity: String = "completed"
 
 data default_branch_originating_event: String = "push"
