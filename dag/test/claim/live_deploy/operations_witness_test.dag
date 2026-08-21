@@ -1,7 +1,7 @@
 module test.claim.live_deploy.operations_witness
 
 import std.logic { Bool }
-import std.types { String, List }
+import std.types { String, List, NonEmptyStr }
 import extdeps.apt { package_nodejs, package_tailscale, apt_install_argv }
 import extdeps.dpkg { dpkg_status_argv }
 import extdeps.systemd.systemctl {
@@ -17,11 +17,11 @@ import gunbc.live_deploy.operations {
   systemctl_enable_command,
   systemctl_restart_command,
   systemctl_disable_now_command,
-  privileged_command,
 }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.operation_argv { operation_argv_bind_text, operation_argv_tokens_or_refusal_label }
+import extdeps.posix.shell_command_language { posix_single_quote }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -34,6 +34,17 @@ data systemctl_service: String = "systemd.Systemctl"
 
 fn argv_join(argv: List<String>) -> String {
   join(argv, " ")
+}
+
+// The expected emitted spelling is DERIVED from the POSIX quoting authority, not transcribed:
+// every argv element is a separately quoted word, so an element carrying a space or a quote
+// keeps its boundary. Transcribing the text here would only restate whatever the emitter did.
+fn quoted_command(argv: List<String>) -> String {
+  join(map(argv, w => posix_single_quote(spelling: w)), " ")
+}
+
+fn quoted_privileged_command(argv: List<String>) -> String {
+  quoted_command(argv: concat(["sudo", "-n"], argv))
 }
 
 test fn witness_dpkg_status_argv_matches_transport_row() -> Bool {
@@ -129,33 +140,53 @@ test fn witness_dpkg_status_command_matches_transport() -> Bool {
 }
 
 test fn witness_apt_install_command_matches_transport() -> Bool {
-  apt_install_command(package: package_nodejs, privileged: false) == "apt-get install --yes nodejs"
+  apt_install_command(package: package_nodejs, privileged: false)
+    == quoted_command(argv: apt_install_argv(package: package_nodejs))
 }
 
 test fn witness_privileged_apt_install_command() -> Bool {
-  apt_install_command(package: package_tailscale, privileged: true) == "sudo -n apt-get install --yes tailscale"
+  apt_install_command(package: package_tailscale, privileged: true)
+    == quoted_privileged_command(argv: apt_install_argv(package: package_tailscale))
 }
 
 test fn witness_systemctl_restart_command_matches_transport() -> Bool {
-  systemctl_restart_command(unit: gunbc_roadmap_unit_name, privileged: true) == "sudo -n systemctl restart gunbc-roadmap.service"
+  systemctl_restart_command(unit: gunbc_roadmap_unit_name, privileged: true)
+    == quoted_privileged_command(argv: systemctl_restart_argv(unit: gunbc_roadmap_unit_name))
 }
 
 test fn witness_systemctl_enable_command_matches_transport() -> Bool {
-  systemctl_enable_command(unit: gunbc_roadmap_unit_name, privileged: true) == "sudo -n systemctl enable gunbc-roadmap.service"
+  systemctl_enable_command(unit: gunbc_roadmap_unit_name, privileged: true)
+    == quoted_privileged_command(argv: systemctl_enable_argv(unit: gunbc_roadmap_unit_name))
 }
 
 test fn witness_systemctl_disable_now_command_matches_transport() -> Bool {
-  systemctl_disable_now_command(unit: gunbc_roadmap_unit_name, privileged: true) == "sudo -n systemctl disable --now gunbc-roadmap.service"
-}
-
-test fn witness_privileged_command_prefixes_sudo_n() -> Bool {
-  privileged_command(argv: systemctl_daemon_reload_argv()) == "sudo -n systemctl daemon-reload"
+  systemctl_disable_now_command(unit: gunbc_roadmap_unit_name, privileged: true)
+    == quoted_privileged_command(argv: systemctl_disable_now_argv(unit: gunbc_roadmap_unit_name))
 }
 
 test fn witness_systemctl_daemon_reload_command_privileged() -> Bool {
-  systemctl_daemon_reload_command(privileged: true) == "sudo -n systemctl daemon-reload"
+  systemctl_daemon_reload_command(privileged: true)
+    == quoted_privileged_command(argv: systemctl_daemon_reload_argv())
 }
 
 test fn live_deploy_operations_RED_apt_install_wrong_package_golden() -> Bool {
-  apt_install_command(package: package_tailscale, privileged: false) != "apt-get install --yes nodejs"
+  apt_install_command(package: package_tailscale, privileged: false)
+    != quoted_command(argv: apt_install_argv(package: package_nodejs))
+}
+
+// RED discriminators against the former `join(argv, " ")` spelling returning. Under it an argv
+// element carrying a space or an apostrophe lost its boundary and the host re-parsed it as
+// several words; both assertions fail on that spelling and pass on the modelled command.
+data spacey_package: NonEmptyStr = "tail scale"
+
+test fn operations_RED_argv_element_with_a_space_keeps_its_boundary() -> Bool {
+  string_contains(
+    s: apt_install_command(package: spacey_package, privileged: false),
+    pattern: posix_single_quote(spelling: spacey_package as String),
+  )
+}
+
+test fn operations_RED_command_is_not_a_bare_space_join() -> Bool {
+  apt_install_command(package: spacey_package, privileged: false)
+    != argv_join(argv: apt_install_argv(package: spacey_package))
 }
