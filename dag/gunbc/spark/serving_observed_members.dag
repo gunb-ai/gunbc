@@ -299,7 +299,7 @@ fn spark_serving_reached_host_members(
     runtime_observed: runtime_materialization_was_observed(observation: runtime),
     model_observed: model_store_was_observed(observation: store),
     unit_observed: spark_serving_unit_state_was_observed(unit: unit),
-    registration_observed: spark_serving_registration_was_observed(manager: enablement),
+    registration_observed: spark_serving_enablement_was_observed(manager: enablement),
     enablement_observed: spark_serving_enablement_was_observed(manager: enablement),
     activity_observed: spark_serving_activity_was_observed(activity: activity),
     linger_observed: spark_serving_linger_state_was_observed(linger: linger),
@@ -319,20 +319,15 @@ fn spark_serving_reached_host_members(
 // ENABLEMENT CARRIES ITS OWN COMPLETENESS FACT. It used to borrow `unit_observed=false` as an
 // indirect refusal wall, which only worked because the content classifier was erasing itself on the
 // enablement's behalf. With the subjects separated, each owes its own answer to "was this measured".
+//
+// ONE PREDICATE, NOT TWO. A byte-identical `spark_serving_registration_was_observed` stood beside this
+// over the same subject with the same four arms, justified on a future registration probe that does not
+// come from `is-enabled`. That justification is the §3 nicknaming pattern with a future tense: the two
+// answered one question about one subject, so they were one fact under two names, and the fork would
+// have drifted the first time either was edited. Registration is established by exactly this probe
+// today, so it consumes this predicate. The second predicate is minted when the second SUBJECT lands --
+// against its own probe and its own state -- not in advance of it.
 fn spark_serving_enablement_was_observed(manager: SparkServingUnitManagerState) -> Bool {
-  match manager {
-    UserUnitManagerEnabled => true
-    UserUnitManagerDisabled => true
-    UserUnitManagerNotRegistered => true
-    UserUnitManagerUnobserved => false
-  }
-}
-
-// Registration is established by exactly the same probe, so its completeness bit is the same
-// question asked of the same answer. It is stated separately rather than shared because the two are
-// now separate subjects, and a future registration probe that does not come from is-enabled must not
-// silently inherit enablement's completeness.
-fn spark_serving_registration_was_observed(manager: SparkServingUnitManagerState) -> Bool {
   match manager {
     UserUnitManagerEnabled => true
     UserUnitManagerDisabled => true

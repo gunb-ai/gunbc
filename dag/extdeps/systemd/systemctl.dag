@@ -64,20 +64,27 @@ fn systemctl_show_property_argv(unit: NonEmptyStr, property: SystemdUnitProperty
 // manager could parse a unit file for it). A unit can be loaded and active yet not enabled, and
 // would then not come back after a reboot -- so a convergence claim that reads only is-active is
 // answering a question it was not asked.
-fn systemctl_is_enabled_argv(unit: NonEmptyStr) -> List<String> {
-  ["systemctl", "is-enabled", unit as String]
-}
-
 fn systemctl_user_is_enabled_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "--user", "is-enabled", unit as String]
 }
 
-// `is-active` answers whether the unit is RUNNING NOW, which is the fact `is-enabled` does not carry
-// and cannot be derived from. Both directions are real: an enabled unit can be dead, and a running
-// unit can be disabled and vanish at the next boot.
-fn systemctl_user_is_active_argv(unit: NonEmptyStr) -> List<String> {
-  ["systemctl", "--user", "is-active", unit as String]
-}
+// TWO SIBLING BUILDERS WERE DELETED HERE RATHER THAN KEPT FOR SYMMETRY, and counting their references
+// is what decided it. A review read this block as a transport-as-authority fork paralleling the modeled
+// `service systemd.Systemctl` operations. Measuring first split the block three ways: the system-scope
+// `is-enabled` builder and the user-scope `is-active` builder each had exactly ONE reference in the
+// corpus -- their own declaration -- so they were dead, and a dead builder is not a fork to consolidate,
+// it is a row to remove. `IsActive` additionally EXISTS as a modeled operation, so the user-scope
+// builder would have been a genuine second authority the moment anything called it.
+//
+// WHAT SURVIVES AND WHY IT IS NOT A FORK: there is no modeled `IsEnabled` operation at all, so
+// `systemctl_user_is_enabled_argv` forks nothing -- it is the only way this corpus can ask the question,
+// and it has a real consumer. What the review correctly identifies as the standing defect is that
+// `--user` is hand-encoded in the builder name rather than being a SCOPE PARAMETER on the modeled
+// surface; that is true of the pre-existing builders too and is not repaired here.
+//
+// RUNG: mitigatable. NEXT-RUNG TRIGGER: a `scope: SystemdScope` input on the modeled operations, which
+// makes `--user` a value rather than a spelling and lets `IsEnabled` land once for both scopes. Until
+// then this builder is the honest minimum -- one consumer, one question, no modeled surface to fork.
 
 // Enable and start are SEPARATE OPERATIONS, deliberately not `enable --now`. The fused form applies
 // two remedies under one word, so a plan that needed only one of them pays for both, and -- worse --
