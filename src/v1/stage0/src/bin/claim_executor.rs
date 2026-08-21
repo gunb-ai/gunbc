@@ -19503,8 +19503,17 @@ fn plan_module_corpus(
 /// The verdict for one candidate module. Three arms, and the third is not a soft pass.
 #[derive(Debug, Clone, PartialEq)]
 enum ReceiptVerdict {
-    /// Both builds ran the derived corpus and every call agreed.
-    Equivalent { calls: usize },
+    /// Both builds ran the derived corpus and every call THAT COULD BE COMPARED agreed.
+    ///
+    /// `nondeterministic_calls` is carried on this arm rather than printed beside it because a
+    /// green with an excluded population is a DIFFERENT claim from a green over everything, and
+    /// separating the two would let the weaker one be read as the stronger. Zero is the ordinary
+    /// case and reads as the full claim.
+    Equivalent {
+        calls: usize,
+        nondeterministic_calls: usize,
+        nondeterministic_functions: Vec<String>,
+    },
     /// Both builds ran and at least one call disagreed. The first difference is carried because
     /// a count alone cannot be acted on.
     Divergent {
@@ -19516,6 +19525,17 @@ enum ReceiptVerdict {
     /// is the empty-observation narrow. A corpus with nothing in it is NOT among these any more --
     /// it never reaches the differential, because `AdmittedPlan` cannot carry it.
     Refused { reason: String },
+    /// EVERY derived call in this module renders unstably, so no comparison exists to take.
+    ///
+    /// Not `Equivalent` (nothing was compared) and not `Divergent` (nothing disagreed about the
+    /// program). Not `Refused` either: a refusal in this fragment means the measurement could not
+    /// be attempted, whereas this one WAS attempted and produced a well-defined result -- the
+    /// subject is unaskable, and the fix lives in emission rather than in this gate or in the
+    /// diff under test.
+    NondeterministicRendering {
+        unstable_calls: usize,
+        functions: Vec<String>,
+    },
 }
 
 /// Generate the driver: one `println!` per call in the derived corpus.
@@ -19543,6 +19563,57 @@ fn generate_receipt_driver(module_alias: &str, plan: &ModuleCorpusPlan) -> Strin
     }
     out.push_str("}\n");
     out
+}
+
+/// One driver's output, plus WHICH of its lines are not a function of the program alone.
+///
+/// A line is `unstable` when two executions of the SAME binary printed different text for it.
+/// That is proof, not inference: the code, the inputs and the build are identical across the two
+/// runs, so anything that differs came from somewhere other than the program's meaning. In this
+/// corpus the somewhere is `HashMap`/`HashSet` iteration order reaching `{:?}`, whose seed is
+/// randomized per process -- measured at 20 distinct transcripts over 20 executions of one
+/// unchanged binary for `std.algebra::kernel_algebra_profile_value`.
+///
+/// WHY THIS IS MEASURED RATHER THAN DECIDED FROM THE TYPE. Order-dependent rendering is a
+/// property of the value's TRANSITIVE shape: a record CONTAINING a map renders nondeterministically
+/// while its own return type says `Record`. Any check keying on the outermost constructor
+/// under-refuses by construction, and it under-refuses SILENTLY -- the missed call lands in
+/// `Divergent`, indistinguishable from a real divergence. Running the binary twice keys on the
+/// property itself, so there is no type walk to keep in sync with the corpus.
+///
+/// THE RESIDUE, STATED: two randomized renderings can coincide, so a subject that happened to
+/// agree twice is not caught. That makes every count derived from this a FLOOR, and the floor is
+/// printed as such rather than left in this comment. It is a residue that SHRINKS with more
+/// executions, unlike a structural blind spot, but this is not an argument for adding runs
+/// speculatively -- one extra run is what the evidence to date justifies.
+#[derive(Debug, Clone, PartialEq)]
+struct DriverTranscript {
+    lines: Vec<String>,
+    /// Indices into `lines` that differed between the two executions.
+    unstable: std::collections::BTreeSet<usize>,
+}
+
+impl DriverTranscript {
+    fn of(first: Vec<String>, second: Vec<String>) -> Self {
+        // A length difference between two runs of one binary is itself instability, and it is
+        // not attributable to any single index -- so every line of the longer run is marked
+        // rather than none. Silently comparing the common prefix would hide it.
+        let unstable = if first.len() != second.len() {
+            (0..first.len().max(second.len())).collect()
+        } else {
+            first
+                .iter()
+                .zip(second.iter())
+                .enumerate()
+                .filter(|(_, (a, b))| a != b)
+                .map(|(i, _)| i)
+                .collect()
+        };
+        Self {
+            lines: first,
+            unstable,
+        }
+    }
 }
 
 /// Build the crate as it currently stands, compile the driver against it, and return the
@@ -19585,7 +19656,7 @@ fn run_receipt_driver(
     krate: &ReceiptCrate,
     driver_src: &str,
     label: &str,
-) -> Result<Vec<String>, String> {
+) -> Result<DriverTranscript, String> {
     let drv_dir = workspace.join("target/behavioral-receipt");
     fs::create_dir_all(&drv_dir).map_err(|e| format!("create {}: {e}", drv_dir.display()))?;
     let src_path = drv_dir.join(format!("driver_{label}.rs"));
@@ -19636,7 +19707,22 @@ fn run_receipt_driver(
                 .join(" | ")
         ));
     }
-    let run = Command::new(&bin_path)
+    // TWICE, AND THE SECOND RUN IS THE POINT. The two are executions of the SAME BINARY -- the
+    // cargo build and the rustc compile above are already paid, so this costs milliseconds and
+    // not a rebuild. Two executions of one unchanged binary that disagree PROVE the disagreeing
+    // call renders nondeterministically, which is the only way to learn that fact: it is a
+    // property of the value's rendering, not of its type, so nothing before the run can know it.
+    let first = run_driver_binary(workspace, &bin_path, label)?;
+    let second = run_driver_binary(workspace, &bin_path, label)?;
+    Ok(DriverTranscript::of(first, second))
+}
+
+fn run_driver_binary(
+    workspace: &std::path::Path,
+    bin_path: &std::path::Path,
+    label: &str,
+) -> Result<Vec<String>, String> {
+    let run = Command::new(bin_path)
         .current_dir(workspace)
         .output()
         .map_err(|e| format!("spawn driver ({label}): {e}"))?;
@@ -19754,25 +19840,79 @@ fn behavioral_differential(
         Err(e) => return ReceiptVerdict::Refused { reason: e },
     };
 
-    if seed.len() != candidate.len() {
+    if seed.lines.len() != candidate.lines.len() {
         return ReceiptVerdict::Divergent {
-            calls: seed.len(),
+            calls: seed.lines.len(),
             first_difference: format!(
                 "transcript lengths differ: seed {} lines, candidate {} lines",
-                seed.len(),
-                candidate.len()
+                seed.lines.len(),
+                candidate.lines.len()
             ),
         };
     }
-    for (a, b) in seed.iter().zip(candidate.iter()) {
+    // THE UNION, NOT THE SEED'S SET ALONE. Each side is its own binary and each was measured
+    // independently, so a call can render unstably in one and (by coincidence, on that pair of
+    // runs) stably in the other. Comparing a line either side proved unstable would score a
+    // coin flip as a behavioural difference, which is the fabricated-difference failure this
+    // whole change exists to remove.
+    let unstable: std::collections::BTreeSet<usize> =
+        seed.unstable.union(&candidate.unstable).copied().collect();
+    let excluded = nondeterministic_call_functions(admitted, &unstable);
+
+    let compared: Vec<(usize, (&String, &String))> = seed
+        .lines
+        .iter()
+        .zip(candidate.lines.iter())
+        .enumerate()
+        .filter(|(i, _)| !unstable.contains(i))
+        .collect();
+
+    // Nothing left to compare is NOT equivalence, and it is not a divergence either: it is a
+    // module whose every derived call renders unstably, so this fragment cannot ask it anything
+    // honestly. Reported as its own verdict rather than folded into either, because the action
+    // it calls for -- make emission deterministic -- is neither "fix the diff" nor "nothing to do".
+    if compared.is_empty() {
+        return ReceiptVerdict::NondeterministicRendering {
+            unstable_calls: unstable.len(),
+            functions: excluded,
+        };
+    }
+    for (_, (a, b)) in &compared {
         if a != b {
             return ReceiptVerdict::Divergent {
-                calls: seed.len(),
+                calls: compared.len(),
                 first_difference: format!("seed: {a}  |  candidate: {b}"),
             };
         }
     }
-    ReceiptVerdict::Equivalent { calls: seed.len() }
+    ReceiptVerdict::Equivalent {
+        calls: compared.len(),
+        nondeterministic_calls: unstable.len(),
+        nondeterministic_functions: excluded,
+    }
+}
+
+/// Which declared functions own the calls at `unstable`.
+///
+/// The driver prints one line per call in exactly the order `AdmittedPlan` enumerates them, so
+/// the mapping is positional and derived from the same iteration that produced the transcript --
+/// not a second traversal that could disagree with it. Names, because a COUNT of excluded calls
+/// cannot be acted on and a name can: it is the function whose return value to make deterministic.
+fn nondeterministic_call_functions(
+    admitted: &AdmittedPlan<'_>,
+    unstable: &std::collections::BTreeSet<usize>,
+) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    let mut index = 0usize;
+    for (name, _domain, tuples) in &admitted.plan.derivable {
+        for _ in tuples {
+            if unstable.contains(&index) && !names.iter().any(|n| n == name) {
+                names.push(name.clone());
+            }
+            index += 1;
+        }
+    }
+    names
 }
 
 /// Map an authority module path to the emitted mirror that declares it as its authority.
@@ -20310,8 +20450,28 @@ fn behavioral_receipt_selftest(source_roots: &[String]) -> Result<bool, String> 
         let verdict =
             behavioral_differential(&workspace, &krate, &seed_path, &candidate, &admitted, alias);
         match (&verdict, expect_equivalent) {
-            (ReceiptVerdict::Equivalent { calls }, true) => {
-                eprintln!("receipt-selftest: arm {arm} EQUIVALENT over {calls} derived calls — as required");
+            (
+                ReceiptVerdict::Equivalent {
+                    calls,
+                    nondeterministic_calls,
+                    ..
+                },
+                true,
+            ) => {
+                // FALSE-POSITIVE CONTROL for the two-run instability probe, and it is the reason
+                // this arm now reads a second field. The fixture's corpus is deterministic, so
+                // the probe must find NOTHING unstable in it. Without this, a probe that marked
+                // every line unstable would still print EQUIVALENT here -- over an empty compared
+                // set it would not even reach this arm, but over a partially-marked one it would,
+                // and the arm would pass while the gate had quietly stopped comparing anything.
+                if *nondeterministic_calls != 0 {
+                    eprintln!(
+                        "receipt-selftest: arm {arm} EQUIVALENT but the instability probe marked                          {nondeterministic_calls} call(s) unstable in a DETERMINISTIC fixture — the                          probe is producing false positives, so its exclusions cannot be trusted"
+                    );
+                    ok = false;
+                } else {
+                    eprintln!("receipt-selftest: arm {arm} EQUIVALENT over {calls} derived calls — as required");
+                }
             }
             (
                 ReceiptVerdict::Divergent {
@@ -20664,6 +20824,8 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
     // afterwards would be a second producer of one fact, and the one that gets reported is the
     // one that never gated anything.
     let mut denominators: Vec<String> = Vec::new();
+    let mut nondeterministic_calls_total = 0usize;
+    let mut nondeterministic_modules = 0usize;
     for (mirror, plan, alias) in &plans {
         let Some(candidate_source) = emitted.get(mirror) else {
             eprintln!(
@@ -20708,10 +20870,43 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
             &admitted,
             alias,
         ) {
-            ReceiptVerdict::Equivalent { calls } => eprintln!(
-                "behavioral-receipt: {} EQUIVALENT over {calls} derived calls",
-                plan.module_path
-            ),
+            ReceiptVerdict::Equivalent {
+                calls,
+                nondeterministic_calls,
+                nondeterministic_functions,
+            } => {
+                if nondeterministic_calls == 0 {
+                    eprintln!(
+                        "behavioral-receipt: {} EQUIVALENT over {calls} derived calls",
+                        plan.module_path
+                    );
+                } else {
+                    eprintln!(
+                        "behavioral-receipt: {} EQUIVALENT over {calls} derived calls, with \
+                         {nondeterministic_calls} EXCLUDED as nondeterministically rendered — \
+                         {}. Those calls were NOT compared, so this green does not cover them",
+                        plan.module_path,
+                        nondeterministic_functions.join(", ")
+                    );
+                    nondeterministic_calls_total += nondeterministic_calls;
+                    nondeterministic_modules += 1;
+                }
+            }
+            ReceiptVerdict::NondeterministicRendering {
+                unstable_calls,
+                functions,
+            } => {
+                eprintln!(
+                    "behavioral-receipt: {} NONDETERMINISTIC-RENDERING — all {unstable_calls} \
+                     derived call(s) render unstably, so nothing could be compared: {}. This is \
+                     a property of what the mirror RETURNS, not a defect in this diff, and it is \
+                     not scored as a divergence",
+                    plan.module_path,
+                    functions.join(", ")
+                );
+                nondeterministic_calls_total += unstable_calls;
+                nondeterministic_modules += 1;
+            }
             ReceiptVerdict::Divergent {
                 calls,
                 first_difference,
@@ -20737,9 +20932,83 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
     for line in &denominators {
         eprintln!("{line}");
     }
+    // EVERY RUN, INCLUDING ZERO -- a counter that appears only when nonzero teaches a reader that
+    // its absence means "not measured", and the two then look alike in a log tail.
+    //
+    // THE FLOOR IS IN THE LINE, NOT IN A NOTE BESIDE IT. The line outlives the note: someone will
+    // trend this number, watch it sit at N, and conclude the class is nearly closed. It is a floor
+    // because the probe proves instability by DISAGREEMENT between two runs, and two randomized
+    // renderings can coincide -- an uncaught call is scored as an ordinary comparison and, if it
+    // then differs across the seed/candidate pair, inflates the DIVERGENT count instead.
+    //
+    // DISSOLUTION: this goes to zero when emission is deterministic (a `BTreeMap` container
+    // template rather than `HashMap`), NOT when the probe gets better at spotting the residue.
+    // A shrinking count from a sharper probe would be the metric improving while the defect stays.
+    eprintln!(
+        "behavioral-receipt: nondeterministic_rendering={nondeterministic_calls_total} call(s) \
+         across {nondeterministic_modules} module(s) — FLOOR, not a total: instability is proved \
+         by two runs disagreeing, so a call whose randomized rendering happened to agree twice is \
+         not counted here and is compared as if it were deterministic. Not failures; each is a \
+         subject this fragment cannot ask about until emission is deterministic"
+    );
     Ok(ReceiptPlanOutcome::Ran {
         agreed: all_equivalent,
     })
+}
+
+#[cfg(test)]
+mod driver_transcript_tests {
+    use super::*;
+
+    fn lines(xs: &[&str]) -> Vec<String> {
+        xs.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// The property the exclusion rests on: two runs of ONE binary that disagree at an index
+    /// prove that index is not a function of the program alone.
+    #[test]
+    fn a_line_that_differs_between_two_runs_is_unstable() {
+        let t = DriverTranscript::of(
+            lines(&["stable() = 1", "m() = {a, b}", "also_stable() = 2"]),
+            lines(&["stable() = 1", "m() = {b, a}", "also_stable() = 2"]),
+        );
+        assert_eq!(t.unstable, [1].into_iter().collect());
+        // The transcript itself is the FIRST run, unchanged -- the probe observes, it does not
+        // rewrite what gets compared.
+        assert_eq!(
+            t.lines,
+            lines(&["stable() = 1", "m() = {a, b}", "also_stable() = 2"])
+        );
+    }
+
+    /// THE FALSE-POSITIVE CONTROL, at unit grain. A deterministic corpus must yield NOTHING
+    /// unstable, or every module would silently stop being compared while still printing a green.
+    #[test]
+    fn two_identical_runs_mark_nothing_unstable() {
+        let t = DriverTranscript::of(
+            lines(&["a() = 1", "b() = 2"]),
+            lines(&["a() = 1", "b() = 2"]),
+        );
+        assert!(t.unstable.is_empty());
+    }
+
+    /// A length difference is instability that belongs to no single index. Marking every line is
+    /// the fail-closed reading; comparing the common prefix would silently compare a shifted pair.
+    #[test]
+    fn a_length_difference_marks_every_line() {
+        let t = DriverTranscript::of(lines(&["a() = 1"]), lines(&["a() = 1", "b() = 2"]));
+        assert_eq!(t.unstable, [0, 1].into_iter().collect());
+    }
+
+    /// THE RESIDUE, ASSERTED SO IT IS NOT MISTAKEN FOR A CLOSED CLASS. Two randomized renderings
+    /// can coincide; when they do, the probe cannot see it and the call is compared as if it were
+    /// deterministic. This test PINS that limitation rather than hiding it -- if someone later
+    /// makes the probe complete, this test fails and forces the FLOOR wording to be revisited.
+    #[test]
+    fn a_nondeterministic_call_that_agreed_twice_is_not_caught() {
+        let t = DriverTranscript::of(lines(&["m() = {a, b}"]), lines(&["m() = {a, b}"]));
+        assert!(t.unstable.is_empty());
+    }
 }
 
 #[cfg(test)]
