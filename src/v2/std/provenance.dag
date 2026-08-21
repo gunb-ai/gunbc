@@ -55,7 +55,7 @@ fn span_index_lookup(index: SpanIndex, id: OccurrenceId) -> Witness<OriginEvent>
 fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
   SpanIndex {
     entries: fold_list(
-      xs: incoming.entries.keys(),
+      xs: map_keys(incoming.entries),
       empty: base.entries,
       cons: fn(acc, id) {
         match acc.lookup(id) {
