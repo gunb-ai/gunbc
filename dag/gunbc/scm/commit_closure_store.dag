@@ -135,7 +135,16 @@ fn commit_closure_probe_program() -> Node {
 // that what comes back IS THE SAME PROGRAM, so the probe compares the reconstructed root identity
 // against the one it saved -- and then it corrupts the file and requires a REFUSAL. A save/load pair
 // with no corruption arm would pass identically if load fabricated a store on any input, which is
-// precisely the failure persistence is supposed to exclude.
+// precisely the failure persistence is supposed to exclude. That corruption step is the `clobber`
+// write below: it overwrites with text that is not this image, and the load after it must refuse or
+// the probe fails -- if that arm ever greens, load is fabricating rather than decoding.
+//
+// WHY THIS RATIONALE SITS HERE RATHER THAN BESIDE THE LINE IT DESCRIBES. It was originally two `//`
+// lines inside the function body, which `gunbc run` ACCEPTED and the required floor REFUSED
+// (DESIGN section 4c models annotations at module-item grain only). The same source, two acceptance
+// paths, two verdicts -- so a green Wet-mode probe proved nothing about whether CI would take the
+// file. That is the standing acceptance-path gap, met head-on: the lenient path is the one this
+// module is exercised through, so it cannot be the path that decides admissibility.
 func commit_closure_round_trip_probe(path: String) -> ProcessExit {
   let put = store_node(store: empty_store(), n: commit_closure_probe_program())
   match put {
@@ -153,8 +162,6 @@ func commit_closure_round_trip_probe(path: String) -> ProcessExit {
               if (loaded_root.digest as String) != (root.digest as String) {
                 return exit_failure(reason: "commit-closure probe: reloaded root is a different program")
               }
-              // THE DISCRIMINATING ARM. Overwrite with text that is not this image and require the
-              // refusal. If this greens, load is fabricating rather than decoding.
               let clobber = Filesystem.Write(path: path, content: "{\"format\": \"not-a-gunbc-image\"}")
               if !clobber.success {
                 return exit_failure(reason: "commit-closure probe: could not write the corruption case")
