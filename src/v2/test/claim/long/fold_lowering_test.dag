@@ -333,5 +333,12 @@ fn yn(b: Bool, name: String) -> String {
 fn probe_all() -> String {
   let ids = probe_idents()
   let n = list_length(items: ids)
-  "{yn(b: probe_locate_found(), name: \"loc\")} {yn(b: int_gt(a: n, b: 0), name: \"anyident\")} {yn(b: int_gt(a: n, b: 10), name: \"gt10\")} {yn(b: symbol_in(needle: ^fold, xs: ids), name: \"fold\")} {yn(b: symbol_in(needle: ^xs, xs: ids), name: \"xs\")} {yn(b: int_gt(a: probe_ingest_root_children_count(), b: 0), name: \"kids\")} disp={probe_lowering_name()}"
+  let a = yn(b: probe_locate_found(), name: "loc")
+  let b = yn(b: int_gt(a: n, b: 0), name: "anyident")
+  let c = yn(b: int_gt(a: n, b: 10), name: "gt10")
+  let d = yn(b: symbol_in(needle: ^fold, xs: ids), name: "foldsym")
+  let e = yn(b: symbol_in(needle: ^xs, xs: ids), name: "xssym")
+  let f = yn(b: int_gt(a: probe_ingest_root_children_count(), b: 0), name: "kids")
+  let g = probe_lowering_name()
+  "{a} {b} {c} {d} {e} {f} disp={g}"
 }
