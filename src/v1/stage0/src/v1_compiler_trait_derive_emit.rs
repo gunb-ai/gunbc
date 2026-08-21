@@ -2734,6 +2734,76 @@ pub fn v1_emit_type_params_with_clone_bounds(
     }
 }
 
+pub fn v1_emit_type_params_with_clone_and_ord_bounds_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "gunbc dashboard node://adhoc-a9f61ade-340. New sibling of v1_emit_type_params_with_clone_bounds above rather than an edit to it (DESIGN.md S3: that function has two call sites -- the item/struct-derive header and emit_fn_def -- and only the fn-generic call site in emit_fn_def needs an Ord arm; widening the shared renderer would also touch the struct-header call site, which is out of scope for the fn-signature trigger this renders for, see v1_set_union_ord_bound_note in src/v1/trait_bound_witness.dag). Renders identically to v1_emit_type_params_with_clone_bounds when ord_param_names is empty (': Clone' or bare), so the fn-generic call site in emit_fn_def can switch to this renderer unconditionally without changing output for the 25-site Clone-only population; it adds ': Ord' and ': Ord + Clone' arms for the params set_union's rc_set_union<T: Ord + Clone> lowering requires Ord of.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn v1_emit_type_params_with_clone_and_ord_bounds(
+    params: Rc<Vec<Rc<Node>>>,
+    clone_param_names: Rc<Vec<String>>,
+    ord_param_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if ((params.clone().len() as i64) == 0) {
+        "".to_string()
+    } else {
+        {
+            let names = Rc::new({
+                let mut __result = Vec::new();
+                for p in params.clone().iter().cloned() {
+                    __result.push({
+                        let pname = generic_param_name_at(p.clone(), source_indices.clone());
+                        let pascal = to_pascal(pname.clone());
+                        let needs_clone = {
+                            let mut __found = false;
+                            for c in clone_param_names.clone().iter().cloned() {
+                                if (c.clone() == pname.clone()) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        };
+                        let needs_ord = {
+                            let mut __found = false;
+                            for c in ord_param_names.clone().iter().cloned() {
+                                if (c.clone() == pname.clone()) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        };
+                        if (needs_ord.clone() && needs_clone.clone()) {
+                            v1_rt::concat(pascal.clone(), ": Ord + Clone".to_string())
+                        } else {
+                            if needs_ord.clone() {
+                                v1_rt::concat(pascal.clone(), ": Ord".to_string())
+                            } else {
+                                if needs_clone.clone() {
+                                    v1_rt::concat(pascal.clone(), ": Clone".to_string())
+                                } else {
+                                    pascal.clone()
+                                }
+                            }
+                        }
+                    });
+                }
+                __result
+            });
+            v1_rt::concat(
+                v1_rt::concat("<".to_string(), names.clone().join(&", ".to_string())),
+                ">".to_string(),
+            )
+        }
+    }
+}
+
 pub fn v1_emit_struct_from_capability_table(
     module_path: String,
     name: String,

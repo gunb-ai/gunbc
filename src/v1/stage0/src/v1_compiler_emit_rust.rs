@@ -119,16 +119,17 @@ pub use crate::v1_compiler_resolve::get_exported_names;
 pub use crate::v1_compiler_runtime_rust::rust_runtime_source;
 pub use crate::v1_compiler_trait_bound_witness::{
     v1_call_forwarding_clone_bound_wrapper_param_names,
-    v1_rc_match_scrutinee_clone_bound_param_names, v1_union_clone_param_names,
+    v1_rc_match_scrutinee_clone_bound_param_names, v1_set_union_ord_bound_param_names,
+    v1_union_clone_param_names,
 };
 pub use crate::v1_compiler_trait_derive_emit::{
     rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible,
     trait_derive_emit_fn_clone_bound_keyed_carrier_module, v1_clone_bounded_type_params,
     v1_clone_impl_required_type_params, v1_emit_enum_derives, v1_emit_enum_supplemental_impls,
-    v1_emit_struct_from_capability_table, v1_emit_type_params_with_clone_bounds,
-    v1_generic_params_needing_clone_bound, v1_item_clone_bounded_param_names,
-    v1_item_clone_undecided_head, v1_item_field_type_exprs, v1_map_key_required_type_names,
-    v1_trait_derive_refuse, v1_with_map_key_requirement,
+    v1_emit_struct_from_capability_table, v1_emit_type_params_with_clone_and_ord_bounds,
+    v1_emit_type_params_with_clone_bounds, v1_generic_params_needing_clone_bound,
+    v1_item_clone_bounded_param_names, v1_item_clone_undecided_head, v1_item_field_type_exprs,
+    v1_map_key_required_type_names, v1_trait_derive_refuse, v1_with_map_key_requirement,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -14888,6 +14889,204 @@ pub fn v1_fn_body_derived_clone_param_names(
     }
 }
 
+pub fn v1_collect_set_union_call_elem_type_names_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Node-consuming extraction walker for v1_set_union_ord_bound_param_names (src/v1/trait_bound_witness.dag), gunbc dashboard node://adhoc-a9f61ade-340. Walks a function body collecting the resolved element-type-argument name of every argument passed to a set_union(..) call anywhere in the body -- not scoped to a direct top-level shape (unlike BoundedToDirectTopLevelMatchBody/BoundedToDirectSingleCallLambdaBody above) because the two real specimens this was traced from (audience_subset/audience_join, dag/std/authorization_profile.dag) both reach their set_union call through a nested match, one of them two matches deep. The variant coverage below starts from ownership.dag's collect_callable_refs (same file's own precedent for a full-body Node walker over this same expr_data vocabulary) rather than a blind recursion over .children -- ExprCall/ExprMatch/ExprIf/ExprLet/ExprBlock/ExprRecordLit/ExprMethodCall/ExprReturn/ExprLambda/ExprForEach/ExprFieldAccess are each named explicitly, matching that precedent -- plus one addition that precedent lacks: ExprBinOp, walking both binop_left/binop_right, needed because audience_subset's set_union call sits inside a `==` comparison (set_union(members, right_members) == right_members) and would otherwise be silently unreached; any other variant (ExprLiteral, ExprVar, etc.) is a base case with no nested expr to walk and contributes nothing.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn v1_collect_set_union_call_elem_type_names(
+    texpr: Rc<Node>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*texpr.expr_data.clone()).clone() {
+            ExprData::ExprCall { .. } => {
+                let callee_name = expr_call_func_at(texpr.clone(), si.clone());
+                let arg_hits = texpr.children.clone().iter().cloned().fold(
+                    Rc::new(vec![]),
+                    |acc: _, a: Rc<Node>| {
+                        v1_rt::concat(
+                            acc,
+                            v1_collect_set_union_call_elem_type_names(
+                                arg_value(a.clone()),
+                                si.clone(),
+                            ),
+                        )
+                    },
+                );
+                if (callee_name.clone() == "set_union".to_string()) {
+                    {
+                        let elem_hits = texpr.children.clone().iter().cloned().fold(
+                            Rc::new(vec![]),
+                            |acc: _, a: Rc<Node>| {
+                                let arg = arg_value(a.clone());
+                                match arg.inferred.clone().as_deref().cloned() {
+                                    Some(InferredNode::Resolved { node: rt, .. }) => v1_rt::concat(
+                                        acc.clone(),
+                                        Rc::new({
+                                            let mut __result = Vec::new();
+                                            for c in rt.children.clone().iter().cloned() {
+                                                __result
+                                                    .push(authored_name_at(si.clone(), c.clone()));
+                                            }
+                                            __result
+                                        }),
+                                    ),
+                                    _ => acc.clone(),
+                                }
+                            },
+                        );
+                        v1_rt::concat(elem_hits.clone(), arg_hits.clone())
+                    }
+                } else {
+                    arg_hits.clone()
+                }
+            }
+            ExprData::ExprMatch => {
+                let scrut = v1_collect_set_union_call_elem_type_names(
+                    match_scrutinee(texpr.clone()),
+                    si.clone(),
+                );
+                match_arm_nodes(texpr.clone()).iter().cloned().fold(
+                    scrut.clone(),
+                    |acc: Rc<Vec<String>>, arm: Rc<Node>| {
+                        v1_rt::concat(
+                            acc,
+                            v1_collect_set_union_call_elem_type_names(
+                                arm_body(arm.clone()),
+                                si.clone(),
+                            ),
+                        )
+                    },
+                )
+            }
+            ExprData::ExprIf => {
+                let cond = v1_collect_set_union_call_elem_type_names(
+                    if_condition(texpr.clone()),
+                    si.clone(),
+                );
+                let then_br = v1_collect_set_union_call_elem_type_names(
+                    if_then_branch(texpr.clone()),
+                    si.clone(),
+                );
+                let else_br = match if_else_branch(texpr.clone()) {
+                    Some(eb) => v1_collect_set_union_call_elem_type_names(eb.clone(), si.clone()),
+                    None => Rc::new(vec![]),
+                };
+                v1_rt::concat(
+                    v1_rt::concat(cond.clone(), then_br.clone()),
+                    else_br.clone(),
+                )
+            }
+            ExprData::ExprLet => {
+                let v =
+                    v1_collect_set_union_call_elem_type_names(let_value(texpr.clone()), si.clone());
+                match let_body(texpr.clone()) {
+                    Some(lb) => v1_rt::concat(
+                        v.clone(),
+                        v1_collect_set_union_call_elem_type_names(lb.clone(), si.clone()),
+                    ),
+                    None => v.clone(),
+                }
+            }
+            ExprData::ExprBlock => texpr.children.clone().iter().cloned().fold(
+                Rc::new(vec![]),
+                |acc: Rc<Vec<String>>, child: Rc<Node>| {
+                    v1_rt::concat(
+                        acc,
+                        v1_collect_set_union_call_elem_type_names(child.clone(), si.clone()),
+                    )
+                },
+            ),
+            ExprData::ExprRecordLit { .. } => texpr.children.clone().iter().cloned().fold(
+                Rc::new(vec![]),
+                |acc: Rc<Vec<String>>, field: Rc<Node>| {
+                    v1_rt::concat(
+                        acc,
+                        v1_collect_set_union_call_elem_type_names(
+                            arg_value(field.clone()),
+                            si.clone(),
+                        ),
+                    )
+                },
+            ),
+            ExprData::ExprMethodCall {
+                method_semantics: _,
+                ..
+            } => {
+                let recv = v1_collect_set_union_call_elem_type_names(
+                    method_receiver(texpr.clone()),
+                    si.clone(),
+                );
+                method_arg_nodes(texpr.clone()).iter().cloned().fold(
+                    recv.clone(),
+                    |acc: Rc<Vec<String>>, a: Rc<Node>| {
+                        v1_rt::concat(
+                            acc,
+                            v1_collect_set_union_call_elem_type_names(
+                                arg_value(a.clone()),
+                                si.clone(),
+                            ),
+                        )
+                    },
+                )
+            }
+            ExprData::ExprReturn => match texpr.children.clone().first().cloned() {
+                Some(child) => v1_collect_set_union_call_elem_type_names(child.clone(), si.clone()),
+                None => Rc::new(vec![]),
+            },
+            ExprData::ExprLambda => {
+                v1_collect_set_union_call_elem_type_names(lambda_body(texpr.clone()), si.clone())
+            }
+            ExprData::ExprForEach => {
+                let col = v1_collect_set_union_call_elem_type_names(
+                    foreach_collection(texpr.clone()),
+                    si.clone(),
+                );
+                v1_rt::concat(
+                    col.clone(),
+                    v1_collect_set_union_call_elem_type_names(
+                        foreach_body(texpr.clone()),
+                        si.clone(),
+                    ),
+                )
+            }
+            ExprData::ExprFieldAccess { .. } => v1_collect_set_union_call_elem_type_names(
+                field_access_base(texpr.clone()),
+                si.clone(),
+            ),
+            ExprData::ExprBinOp { .. } => {
+                let l = v1_collect_set_union_call_elem_type_names(
+                    binop_left(texpr.clone()),
+                    si.clone(),
+                );
+                let r = v1_collect_set_union_call_elem_type_names(
+                    binop_right(texpr.clone()),
+                    si.clone(),
+                );
+                v1_rt::concat(l.clone(), r.clone())
+            }
+            _ => Rc::new(vec![]),
+        }
+    })
+}
+
+pub fn v1_fn_body_set_union_ord_bound_param_names(
+    generic_param_names: Rc<Vec<String>>,
+    body: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    {
+        let elem_type_names =
+            v1_collect_set_union_call_elem_type_names(body.clone(), source_indices.clone());
+        v1_set_union_ord_bound_param_names(generic_param_names.clone(), elem_type_names.clone())
+    }
+}
+
 pub fn v1_call_forwarding_clone_bound_param_names(
     generic_param_names: Rc<Vec<String>>,
     body: Rc<Node>,
@@ -15075,14 +15274,29 @@ pub fn emit_fn_def(
                     derived_clone_param_names_with_rc_match.clone()
                 };
                 let needs_clone_bound = ((clone_param_names.clone().len() as i64) > 0);
-                let type_params_str = if needs_clone_bound.clone() {
-                    v1_emit_type_params_with_clone_bounds(
+                let ord_param_names = v1_fn_body_set_union_ord_bound_param_names(
+                    generic_param_names.clone(),
+                    body.clone(),
+                    si.clone(),
+                );
+                let needs_ord_bound = ((ord_param_names.clone().len() as i64) > 0);
+                let type_params_str = if needs_ord_bound.clone() {
+                    v1_emit_type_params_with_clone_and_ord_bounds(
                         type_params.clone(),
                         clone_param_names.clone(),
+                        ord_param_names.clone(),
                         si.clone(),
                     )
                 } else {
-                    emit_type_params(type_params.clone(), si.clone())
+                    if needs_clone_bound.clone() {
+                        v1_emit_type_params_with_clone_bounds(
+                            type_params.clone(),
+                            clone_param_names.clone(),
+                            si.clone(),
+                        )
+                    } else {
+                        emit_type_params(type_params.clone(), si.clone())
+                    }
                 };
                 let params_str = emit_params(
                     value_params.clone(),

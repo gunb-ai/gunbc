@@ -107,6 +107,49 @@ pub fn v1_union_clone_param_names(
     )
 }
 
+pub fn v1_set_union_ord_bound_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "gunbc dashboard node://adhoc-a9f61ade-340 (E0277 root A residual: fn-generic bound inference is Clone-only). std.authorization_profile's audience_subset<P>/audience_join<P> (dag/std/authorization_profile.dag) call the set_union builtin on Set<P> values (EnumeratedAudience { members: Set<P> }); set_union lowers to v1_rt::rc_set_union::<T: Ord + Clone>(src/v1/runtime_rust.dag), so the emitted signature needs P: Ord, not merely P: Clone. This is a DIFFERENT site from docs/probes/e0277_root_partition_2026-08-21.md's Root-A Ord-5 population, which is a struct-DERIVE bound on EnumeratedAudience's own members: Set<P> field (AudienceSet's #[derive(..)] header) -- that population is out of scope here and stays blocked on v2.std.compilers.target_model.target_derive_supplemental_generic_bound_contract per that document's own dissolution clause. This row is the fn-SIGNATURE half: the whole v1 supplemental-bound apparatus (v1_generic_params_needing_clone_bound, v1_clone_bounded_type_params, this module's own two Clone triggers above) is Clone-only by construction -- there is no arm anywhere in trait_derive_emit.dag or trait_bound_witness.dag that can emit a bound other than Clone on a function's own generic parameter list (confirmed by grep: no ': Ord' render exists at any fn-generic call site). Rather than widen the Clone apparatus to a general trait-inference system (DESIGN.md S6 bare-minimum-cost: no generalized multi-trait bound inference is built for a population of one real specimen), this is a narrowly-scoped THIRD trigger, structurally parallel to the two above: v1_set_union_ord_bound_param_names is the Node-free pure decision core (given a fn's generic_param_names and the element-type names found at every set_union call site anywhere in its body, already extracted by the Node-consuming walker at the call site in 05_emit_rust.dag, answers which of those element names ARE the fn's own bare generic params and therefore need Ord). Scope is exactly and only the set_union builtin's known Rust lowering (rc_set_union<T: Ord + Clone>) -- a second builtin gaining an analogous non-Clone bound is a declared next-rung trigger for a fourth sibling trigger, not silent widening of this one.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn v1_set_union_ord_bound_param_names(
+    generic_param_names: Rc<Vec<String>>,
+    set_union_call_elem_type_names: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    set_union_call_elem_type_names.clone().iter().cloned().fold(
+        Rc::new(vec![]),
+        |acc: Rc<Vec<String>>, elem_name: String| {
+            if ({
+                let mut __found = false;
+                for g in generic_param_names.clone().iter().cloned() {
+                    if (g.clone() == elem_name.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } && !{
+                let mut __found = false;
+                for a in acc.clone().iter().cloned() {
+                    if (a.clone() == elem_name.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }) {
+                v1_rt::concat(acc.clone(), Rc::new(vec![elem_name.clone()]))
+            } else {
+                acc.clone()
+            }
+        },
+    )
+}
+
 pub fn v1_call_forwarding_compound_type_arg_note() -> String {
     thread_local! {
         static CACHED: String = {
