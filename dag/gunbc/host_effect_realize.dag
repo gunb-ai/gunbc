@@ -54,7 +54,11 @@ import v2.std.algebra { fold_list, list_snoc_item }
 import extdeps.shell
 import extdeps.shell { posix_command_v_check_argv, shell_test_is_executable_argv }
 import extdeps.shell.exec
-import extdeps.tools.id { id_uid_argv, id_gid_argv }
+import extdeps.tools.id { id_uid_argv, id_gid_argv, id_binary_path }
+import extdeps.tools.mkdir { mkdir_parents_argv }
+import extdeps.tools.chown { chown_argv }
+import extdeps.posix.identity { PosixOwnerSpec, posix_user_id_from_text, posix_group_id_from_text }
+import extdeps.sudo.elevation { sudo_elevate, sudo_binary_path }
 import gunbc.retained_shell_script {
   RetainedShellScript,
   retained_shell_script_to_transport,
@@ -634,8 +638,9 @@ fn srv3_seeded_install_media_toolchain_receipt_line(outcome: NonEmptyStr) -> Str
 }
 
 fn srv3_seeded_install_media_toolchain_privileged_apt_install_is_gated() -> Bool {
-  let args = srv3_actuator_toolchain_privileged_apt_install_args(package: package_xorriso)
-  args == ["-n", apt_get_binary_path as String, "install", "-y", package_xorriso as String]
+  let elevated = sudo_elevate(command: srv3_actuator_toolchain_apt_install_command(package: package_xorriso))
+  elevated.bin_path == sudo_binary_path as String &&
+    elevated.args == ["-n", apt_get_binary_path as String, "install", "-y", package_xorriso as String]
 }
 
 // THE RECEIPT NAMES WHICH ARM THE ACTUATOR TOOK, so the probe that decides it must run BEFORE
@@ -1345,9 +1350,6 @@ fn srv3_argv_with_bin(bin_path: String, args: List<String>) -> List<String> {
   fold_list(xs: args, empty: [bin_path], cons: fn(acc, a) { list_snoc_item(xs: acc, item: a) })
 }
 
-fn srv3_actuator_toolchain_chown_args(owner: String, path: String) -> List<String> {
-  ["-n", "/usr/bin/chown", owner, path]
-}
 
 data srv3_transport_witness_bin_nonroot_workdir_note: String = "typed_argv_exec_over_\{ssh,fleet_ssh} carries a bare argv with no shell to `cd` first, so a non-root workdir has no typed form to hand it. Every in-tree caller passes workdir: \"/\" (checked at review time), so this arm is unreachable dead debt today -- named rather than folded into the workdir == \"/\" condition so a non-root workdir renders as a located refusal instead of an indistinguishable-from-measured `false` (DESIGN §5, fabricated negative). DISSOLVES WHEN a typed remote cd/chdir primitive lands and this reroutes to it, or when workdir is dropped from the signature because no caller ever varies it."
 
@@ -1514,26 +1516,29 @@ fn srv3_apt_tool_version_ok(tool_name: NonEmptyStr, transport: HostEffectTranspo
   }
 }
 
+// THE GID PROBE SITS INSIDE THE UID ARM, not beside it in a second `let`. Both are readonly, so
+// the harm is small, but the shape is the one that produced this file's two worst defects: an
+// effectful call outside the branch that decides whether it should happen runs anyway, and nothing
+// in the signature says so.
 fn srv3_chown_directory_to_current_user(path: String, transport: HostEffectTransport) -> Srv3HostPredicate {
   match transport {
-    LocalShell => {
-      let uid = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/usr/bin/id", args: ["-u"])
-      let gid = gunbc.WitnessBin.Run(workdir: "/", bin_path: "/usr/bin/id", args: ["-g"])
-      if uid.success && gid.success {
-        let owner = concat(uid.stdout, concat(":", gid.stdout))
-        if gunbc.WitnessBin.Run(
-          workdir: "/",
-          bin_path: "/usr/bin/sudo",
-          args: srv3_actuator_toolchain_chown_args(owner: owner, path: path),
-        ).success {
-          Srv3PredicateHolds
-        } else {
-          Srv3PredicateFails
-        }
-      } else {
-        Srv3PredicateFails
+    LocalShell =>
+      match srv3_local_id_token(flag: "-u") {
+        Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+        Srv3TokenAbsent => Srv3PredicateFails
+        Srv3TokenObserved { value: uid_value } =>
+          match srv3_local_id_token(flag: "-g") {
+            Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+            Srv3TokenAbsent => Srv3PredicateFails
+            Srv3TokenObserved { value: gid_value } =>
+              srv3_chown_to_decoded_owner(
+                uid_text: uid_value,
+                gid_text: gid_value,
+                path: path,
+                transport: transport,
+              )
+          }
       }
-    }
     SshShell { ssh_host: h } => {
       let uid = srv3_observed_token_from_typed_argv(outcome: typed_argv_exec_over_ssh(host: h, argv: id_uid_argv()))
       let gid = srv3_observed_token_from_typed_argv(outcome: typed_argv_exec_over_ssh(host: h, argv: id_gid_argv()))
@@ -1555,12 +1560,21 @@ fn srv3_chown_directory_to_current_user(path: String, transport: HostEffectTrans
   }
 }
 
-// REMAINING ANEMIA, NAMED RATHER THAN LEFT SILENT: `owner` is still a String composed as
-// uid + ":" + gid, and the chown binary is still the literal "/usr/bin/sudo". Both are the
-// String-as-anemic-modeling class this program exists to dissolve; neither is what this cut is
-// about, and grounding them belongs with the cited-coreutils interface work rather than here.
-// What this function does now is refuse when the owner could not be OBSERVED, instead of
-// chowning to a fabricated owner or reporting a plain false.
+// LOCAL `id` READS GO THROUGH THE SAME TOKEN SHAPE THE SSH ARMS USE. The local arm previously
+// consumed `.stdout` raw and unconditionally, so a trailing newline -- which `id` emits and every
+// other arm in this file trims -- was concatenated straight into a privileged chown argument. That
+// is not a hypothetical: the ssh path trimmed and the local path did not, so the two transports
+// disagreed about what the same command returned, and only one of them was right.
+fn srv3_local_id_token(flag: String) -> Srv3ObservedToken {
+  let r = gunbc.WitnessBin.Run(workdir: "/", bin_path: id_binary_path as String, args: [flag])
+  if r.success {
+    let out = trim(s: r.stdout)
+    if out == "" { Srv3TokenAbsent } else { Srv3TokenObserved { value: out } }
+  } else {
+    Srv3TokenAbsent
+  }
+}
+
 fn srv3_chown_with_observed_owner(
   uid: Srv3ObservedToken,
   gid: Srv3ObservedToken,
@@ -1575,12 +1589,45 @@ fn srv3_chown_with_observed_owner(
         Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
         Srv3TokenAbsent => Srv3PredicateFails
         Srv3TokenObserved { value: gid_value } =>
-          srv3_transport_witness_bin_success(
+          srv3_chown_to_decoded_owner(
+            uid_text: uid_value,
+            gid_text: gid_value,
+            path: path,
             transport: transport,
-            workdir: "/",
-            bin_path: "/usr/bin/sudo",
-            args: srv3_actuator_toolchain_chown_args(
-              owner: concat(uid_value, concat(":", gid_value)),
+          )
+      }
+  }
+}
+
+// AN UNDECODABLE ID REFUSES; IT IS NOT CHOWNED TO. `id` printed SOMETHING and it is not a POSIX
+// id, which is a different state from "id printed nothing" (Absent, a failed observation) and from
+// "id was never run" (Unobserved, no observation) -- and the remedy differs: unparseable output
+// means the probe's assumption about the host is wrong, and retrying will produce the same text.
+// It reports Unobserved because the owner was genuinely not learned; what it must never do is
+// compose the text into an owner argument anyway, which is exactly what the String-concatenated
+// predecessor did with whatever `id` had put on stdout.
+fn srv3_chown_to_decoded_owner(
+  uid_text: String,
+  gid_text: String,
+  path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match posix_user_id_from_text(text: uid_text) {
+    Absent =>
+      Srv3PredicateUnobserved {
+        reason: concat("srv3 chown: `id -u` output is not a POSIX user id: ", uid_text),
+      }
+    Present { value: user } =>
+      match posix_group_id_from_text(text: gid_text) {
+        Absent =>
+          Srv3PredicateUnobserved {
+            reason: concat("srv3 chown: `id -g` output is not a POSIX group id: ", gid_text),
+          }
+        Present { value: group } =>
+          srv3_elevated_witness_bin_success(
+            transport: transport,
+            command: chown_argv(
+              owner: PosixOwnerSpec { user: user, group: group },
               path: path,
             ),
           )
@@ -1588,18 +1635,35 @@ fn srv3_chown_with_observed_owner(
   }
 }
 
-fn srv3_privileged_apt_install(package: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
+// EVERY PRIVILEGED LEAF IN THIS FILE GOES THROUGH HERE, so sudo's calling convention is stated
+// once. Four call sites each carried `bin_path: "/usr/bin/sudo"` beside an args list beginning
+// with a bare "-n"; the binary and the flag are facts about sudo, not about chown, mkdir or
+// apt-get, and extdeps.sudo.elevation is where they belong.
+fn srv3_elevated_witness_bin_success(
+  transport: HostEffectTransport,
+  command: List<String>,
+) -> Srv3HostPredicate {
+  let elevated = sudo_elevate(command: command)
   srv3_transport_witness_bin_success(
     transport: transport,
     workdir: "/",
-    bin_path: "/usr/bin/sudo",
-    args: srv3_actuator_toolchain_privileged_apt_install_args(package: package),
+    bin_path: elevated.bin_path,
+    args: elevated.args,
   )
 }
 
-fn srv3_actuator_toolchain_privileged_apt_install_args(package: NonEmptyStr) -> List<String> {
+fn srv3_privileged_apt_install(package: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
+  srv3_elevated_witness_bin_success(
+    transport: transport,
+    command: srv3_actuator_toolchain_apt_install_command(package: package),
+  )
+}
+
+// THE COMMAND, NOT THE ELEVATED INVOCATION. This is the argv apt-get would take unprivileged;
+// elevation is applied to it rather than spelled inside it, so "which flag makes sudo
+// non-interactive" is not a fact this function has an opinion about.
+fn srv3_actuator_toolchain_apt_install_command(package: NonEmptyStr) -> List<String> {
   [
-    "-n",
     apt_get_binary_path as String,
     "install",
     "-y",
@@ -1615,8 +1679,9 @@ fn srv3_actuator_toolchain_websocat_release_download_url() -> String {
 }
 
 fn srv3_actuator_toolchain_realizer_apt_install_is_privileged_gated() -> Bool {
-  let args = srv3_actuator_toolchain_privileged_apt_install_args(package: package_curl)
-  args == ["-n", apt_get_binary_path as String, "install", "-y", package_curl as String]
+  let elevated = sudo_elevate(command: srv3_actuator_toolchain_apt_install_command(package: package_curl))
+  elevated.bin_path == sudo_binary_path as String &&
+    elevated.args == ["-n", apt_get_binary_path as String, "install", "-y", package_curl as String]
 }
 
 fn srv3_actuator_toolchain_realizer_websocat_uses_github_release_not_apt() -> Bool {
@@ -1954,11 +2019,9 @@ fn websocat_stage_ensure_directory(
   let bin_dir = gunbc_bin_dir as String
   match websocat_after(
     stage: EnsureDirectory,
-    outcome: srv3_transport_witness_bin_success(
+    outcome: srv3_elevated_witness_bin_success(
       transport: transport,
-      workdir: "/",
-      bin_path: "/usr/bin/sudo",
-      args: ["mkdir", "-p", bin_dir],
+      command: mkdir_parents_argv(path: bin_dir),
     ),
   ) {
     WebsocatAlreadySatisfied => Srv3PredicateHolds

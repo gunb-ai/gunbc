@@ -1,0 +1,176 @@
+module test.claim.srv3_principal_privilege_witness
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.posix.identity {
+  PosixUserId,
+  PosixGroupId,
+  PosixOwnerSpec,
+  posix_user_id_from_text,
+  posix_group_id_from_text,
+  posix_owner_spec_text,
+}
+import extdeps.tools.chown { chown_argv, chown_binary_path }
+import extdeps.tools.mkdir { mkdir_parents_argv }
+import extdeps.sudo.elevation { sudo_elevate, sudo_binary_path }
+import gunbc.host_effect_realize {
+  Srv3HostPredicate,
+  Srv3PredicateHolds,
+  Srv3PredicateFails,
+  Srv3PredicateUnobserved,
+  srv3_chown_to_decoded_owner,
+}
+import gunbc.host_effect { LocalShell }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THESE WITNESS. The predecessor composed a privileged chown's owner argument as
+// uid + ":" + gid from two raw stdout captures, so there was no state in which a bad `id` read
+// could be noticed -- concatenation always succeeds. The tests below are about the states that
+// used to be unrepresentable, not about the happy path.
+
+test fn a_decimal_uid_decodes() -> Bool {
+  match posix_user_id_from_text(text: "1000") {
+    Absent => false
+    Present { value: u } => u.value == 1000
+  }
+}
+
+// `id` terminates its output with a newline. The ssh arms trimmed and the local arm did not, so
+// the two transports disagreed about what the same command returned.
+test fn surrounding_whitespace_is_trimmed_before_decoding() -> Bool {
+  match posix_user_id_from_text(text: " 1000\n") {
+    Absent => false
+    Present { value: u } => u.value == 1000
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE DECODE. Each of these composed into a syntactically plausible
+// owner argument under the String predecessor.
+test fn non_numeric_output_does_not_decode() -> Bool {
+  match posix_user_id_from_text(text: "id: cannot find name for user ID 1000") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// THIS ONE WENT RED WHEN FIRST RUN, AND IT IS THE MOST DANGEROUS CASE IN THE FILE.
+// integer_lexeme_to_int_optional answers Present { value: 0 } for "", and 0 is root -- so an `id`
+// that printed nothing decoded to the most privileged principal on the host and was chowned to.
+// The decode alone did not close the hole; the decoder's empty case had to be answered.
+test fn empty_output_does_not_decode() -> Bool {
+  match posix_group_id_from_text(text: "") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// POSIX ids are non-negative. A negative lexeme decodes cleanly and means nothing, which is the
+// same shape as the empty case: a decode that succeeds is not the same as a value that is real.
+test fn a_negative_id_does_not_decode() -> Bool {
+  match posix_user_id_from_text(text: "-1") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// Whitespace-only is the empty case after trimming, and it is spelled separately because that is
+// what a probe that captured a newline and nothing else actually produces.
+test fn whitespace_only_output_does_not_decode() -> Bool {
+  match posix_user_id_from_text(text: "  \n ") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// THE LAW IS NOT "ZERO IS INVALID" -- root is a real principal and uid 0 is a real id. It is that
+// only the explicit lexical representation of zero may construct it. Absence of text may not.
+test fn an_explicit_zero_decodes_to_root() -> Bool {
+  match posix_user_id_from_text(text: "0") {
+    Absent => false
+    Present { value: u } => u.value == 0
+  }
+}
+
+test fn owner_spec_renders_as_uid_colon_gid() -> Bool {
+  posix_owner_spec_text(
+    spec: PosixOwnerSpec {
+      user: PosixUserId { value: 1000 },
+      group: PosixGroupId { value: 2000 },
+    },
+  ) == "1000:2000"
+}
+
+test fn chown_argv_names_the_binary_then_the_owner_then_the_path() -> Bool {
+  chown_argv(
+    owner: PosixOwnerSpec {
+      user: PosixUserId { value: 1000 },
+      group: PosixGroupId { value: 1000 },
+    },
+    path: "/opt/gunbc",
+  ) == ["/usr/bin/chown", "1000:1000", "/opt/gunbc"]
+}
+
+// ELEVATION IS APPLIED TO A COMMAND, so the elevated form is the unelevated argv with sudo and its
+// flag in front -- one place, rather than the four call sites that each spelled both.
+test fn elevation_prefixes_sudo_and_the_non_interactive_flag() -> Bool {
+  let elevated = sudo_elevate(command: ["/usr/bin/chown", "1000:1000", "/opt/gunbc"])
+  elevated.bin_path == sudo_binary_path as String &&
+    elevated.args == ["-n", "/usr/bin/chown", "1000:1000", "/opt/gunbc"]
+}
+
+test fn elevating_an_empty_command_is_the_flag_alone() -> Bool {
+  sudo_elevate(command: []).args == ["-n"]
+}
+
+test fn mkdir_parents_argv_is_the_idempotent_form() -> Bool {
+  mkdir_parents_argv(path: "/opt/gunbc/bin") == ["/usr/bin/mkdir", "-p", "/opt/gunbc/bin"]
+}
+
+// THE CENTRAL RED, AND THE ONLY ONE THAT TOUCHES THE REALIZER. An undecodable id must refuse
+// BEFORE any privileged mutation is attempted -- which is also why this can run as a pure test:
+// the refusal arms return without reaching a transport at all. Under the predecessor these same
+// inputs produced `chown -n "id: cannot find name for user ID 1000":1000 /opt/gunbc` and reported
+// whatever sudo made of it.
+test fn an_undecodable_uid_refuses_before_chowning() -> Bool {
+  match srv3_chown_to_decoded_owner(
+    uid_text: "id: cannot find name for user ID 1000",
+    gid_text: "1000",
+    path: "/opt/gunbc",
+    transport: LocalShell,
+  ) {
+    Srv3PredicateHolds => false
+    Srv3PredicateFails => false
+    Srv3PredicateUnobserved { reason: _ } => true
+  }
+}
+
+test fn an_undecodable_gid_refuses_before_chowning() -> Bool {
+  match srv3_chown_to_decoded_owner(
+    uid_text: "1000",
+    gid_text: "",
+    path: "/opt/gunbc",
+    transport: LocalShell,
+  ) {
+    Srv3PredicateHolds => false
+    Srv3PredicateFails => false
+    Srv3PredicateUnobserved { reason: _ } => true
+  }
+}
+
+// The refusal NAMES the text it could not read. A bare "unobserved" would leave an operator with a
+// chown that refuses and no way to see that `id` is the thing that is wrong.
+test fn the_refusal_carries_the_text_it_could_not_decode() -> Bool {
+  match srv3_chown_to_decoded_owner(
+    uid_text: "not-a-uid",
+    gid_text: "1000",
+    path: "/opt/gunbc",
+    transport: LocalShell,
+  ) {
+    Srv3PredicateHolds => false
+    Srv3PredicateFails => false
+    Srv3PredicateUnobserved { reason: why } => string_contains(s: why, pattern: "not-a-uid")
+  }
+}

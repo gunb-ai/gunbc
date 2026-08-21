@@ -11,6 +11,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// THE ABSOLUTE PATH IS LOAD-BEARING, NOT PEDANTRY. The argv rows above name `id` bare and resolve
+// through PATH, which is right for a remote shell. A sudoers NOPASSWD rule matches on the command
+// PATH, so a privileged invocation that names the binary bare is a different subject from the one
+// the grant authorizes -- and gunbc.host_effect_realize needs both spellings for the same tool.
+data id_binary_path: NonEmptyStr = "/usr/bin/id"
+
 fn id_uid_argv() -> List<String> {
   ["id", "-u"]
 }
