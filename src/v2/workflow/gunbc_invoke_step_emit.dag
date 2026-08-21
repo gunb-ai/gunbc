@@ -204,6 +204,8 @@ fn gunbc_run_command(
   let unsafe_word = gunbc_invoke_first_unsafe_word(words: words)
   if unsafe_word != "" {
     gunbc_invoke_word_unsafe_poison(word: unsafe_word)
+  } else if gunbc_run_step_target_resolves(source_roots: source_roots, entry: entry, function: function) == false {
+    gunbc_invoke_unresolved_target_poison(entry: entry, function: function)
   } else {
     gunbc_invoke_words_command(words: words)
   }
@@ -264,6 +266,19 @@ fn gunbc_invoke_step_emit_pipeline(p: Pipeline) -> String {
 // that cannot answer. The emitter was happy to emit them. That is why the wall belongs
 // HERE and not in a test beside it: a test catches the bad step after it exists, this
 // makes it unproducible.
+//
+// It sits at `gunbc_run_command`, beside the unsafe-word wall, and that placement is the
+// finding rather than a detail. The first version of this wall guarded the two entry points
+// I happened to be editing -- `gunbc_run_step_script` and `..._with_prelude` -- and MISSED
+// `gunbc_run_invocation_script_with_env`, the third sibling, which reaches
+// `gunbc_run_command` directly rather than through `gunbc_run_step_intent` and carries the
+// heal-dispatch call site. Review 54495 caught it. A wall covering two of three emitters is
+// not a wall: a rename under `ci_heal_dispatch` would have emitted cleanly with the exact
+// failure mode gunbc#8377 exhibited, while the carrier claimed such a target was
+// unproducible. The repair is not to add a third guard -- that is one refusal contract
+// spelled three times, and the next sibling emitter added would miss it again. It is to put
+// the refusal where the entry/function pair becomes an argv AT ALL, which is the single
+// crossing this function's own header already names for the word wall.
 //
 // It rides the poison-marker mechanism this module already established for the unsafe-word
 // wall rather than minting a second refusal shape. The marker is not valid workflow shell,
@@ -326,9 +341,6 @@ fn gunbc_run_step_script(
   claim_run: Bool,
   receipt_rel: String?
 ) -> String {
-  if gunbc_run_step_target_resolves(source_roots: source_roots, entry: entry, function: function) == false {
-    gunbc_invoke_unresolved_target_poison(entry: entry, function: function)
-  } else {
   gunbc_invoke_step_emit_pipeline(
     p: gunbc_run_step_intent(
       prelude: [],
@@ -339,7 +351,6 @@ fn gunbc_run_step_script(
       receipt_rel: receipt_rel
     )
   )
-  }
 }
 
 // Same root with a typed preamble in front of the ROOT stamp.
@@ -351,9 +362,6 @@ fn gunbc_run_step_script_with_prelude(
   claim_run: Bool,
   receipt_rel: String?
 ) -> String {
-  if gunbc_run_step_target_resolves(source_roots: source_roots, entry: entry, function: function) == false {
-    gunbc_invoke_unresolved_target_poison(entry: entry, function: function)
-  } else {
   gunbc_invoke_step_emit_pipeline(
     p: gunbc_run_step_intent(
       prelude: prelude,
@@ -364,7 +372,6 @@ fn gunbc_run_step_script_with_prelude(
       receipt_rel: receipt_rel
     )
   )
-  }
 }
 
 // Same root for a call site that carries env bindings on the invocation itself and
