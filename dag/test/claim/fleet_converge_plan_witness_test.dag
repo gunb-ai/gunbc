@@ -44,6 +44,7 @@ test fn timer_retirement_plan_shows_refused_removal_for_foreign_cap() -> Bool {
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [foreign],
+    observed_spark: [],
   ) {
     Present { value: artifact } =>
       string_contains(s: artifact.plan_body, pattern: "REFUSED-REMOVAL cap ")
@@ -70,6 +71,7 @@ test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
     prior_generation: 3,
     observed_timers: [],
     observed_caps: [observed_cap],
+    observed_spark: [],
   ) {
     Present { value: a1 } =>
       match fleet_converge_plan_artifact(
@@ -77,6 +79,7 @@ test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
         prior_generation: 3,
         observed_timers: [],
         observed_caps: [observed_cap],
+        observed_spark: [],
       ) {
         Present { value: a2 } =>
           match fleet_converge_plan_artifact_hash(artifact: a1) {
@@ -103,6 +106,7 @@ test fn observed_baseline_cas_refuses_after_drift() -> Bool {
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [observed_cap],
+    observed_spark: [],
   ) {
     Present { value: artifact } => {
       let drifted = CapMember {
@@ -114,6 +118,7 @@ test fn observed_baseline_cas_refuses_after_drift() -> Bool {
         observed_baseline_hex: artifact.observed_baseline_hex,
         observed_timers: [],
         observed_caps: [drifted],
+        observed_spark: [],
       )
     }
     Absent => false
@@ -126,6 +131,7 @@ test fn plan_body_names_subject_host_and_generation() -> Bool {
     prior_generation: 4,
     observed_timers: [],
     observed_caps: [],
+    observed_spark: [],
   ) {
     Present { value: artifact } =>
       string_contains(s: artifact.plan_body, pattern: "subject_host:srv1")
@@ -147,6 +153,7 @@ test fn cross_host_apply_refuses_subject_identity() -> Bool {
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [observed_cap],
+    observed_spark: [],
   ) {
     Present { value: artifact } =>
       !fleet_converge_apply_subject_admits(
@@ -154,6 +161,7 @@ test fn cross_host_apply_refuses_subject_identity() -> Bool {
         observed_host: witness_host_srv2,
         observed_timers: [],
         observed_caps: [observed_cap],
+        observed_spark: [],
       )
     Absent => false
   }
@@ -169,6 +177,7 @@ test fn same_host_different_generation_changes_plan_hash() -> Bool {
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [observed_cap],
+    observed_spark: [],
   ) {
     Present { value: gen0 } =>
       match fleet_converge_plan_artifact(
@@ -176,6 +185,7 @@ test fn same_host_different_generation_changes_plan_hash() -> Bool {
         prior_generation: 1,
         observed_timers: [],
         observed_caps: [observed_cap],
+        observed_spark: [],
       ) {
         Present { value: gen1 } =>
           match fleet_converge_plan_artifact_hash(artifact: gen0) {
@@ -210,6 +220,7 @@ test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [observed_cap],
+    observed_spark: [],
   ) {
     Present { value: artifact } => {
       let drifted = CapMember {
@@ -221,6 +232,7 @@ test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
         host: witness_host_srv1,
         observed_timers: [],
         observed_caps: [drifted],
+        observed_spark: [],
       )
     }
     Absent => false
@@ -243,6 +255,7 @@ test fn bundle_hash_binds_apply_shell_not_plan_body_only() -> Bool {
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [],
+    observed_spark: [],
   ) {
     Present { value: artifact } =>
       match fleet_converge_plan_bundle_digest_hex(
@@ -326,6 +339,7 @@ test fn apply_shell_carries_dissolve_on_marker_not_host_gate() -> Bool {
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [],
+    observed_spark: [],
   ) {
     Present { value: artifact } =>
       string_contains(s: artifact.apply_shell, pattern: "dissolve-on: fleet_converge_apply_shell")

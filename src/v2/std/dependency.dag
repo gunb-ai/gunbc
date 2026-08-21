@@ -40,6 +40,50 @@ type DependencyView {
   usage_site: Node
 }
 
+// THE PREREQUISITE RELATION, WITH ITS SUBJECT AS A PARAMETER.
+//
+// A dependency is a direction between two things plus what kind of dependence it is, and that shape
+// does not vary with what the two things are. DependencyView above is the COMPILER'S instantiation
+// of it: its subject is Node and it additionally carries usage_site, an AST occurrence that only
+// means anything when the subject is program structure. Those extra facts are compiler metadata, not
+// part of the relation, which is why the relation is extracted from underneath rather than
+// DependencyView being widened -- widening it would push a Node-shaped carrier onto every consumer
+// of a relation whose subject is not program structure at all.
+//
+// WHY THIS IS EXTRACTED RATHER THAN A SECOND GRAPH. Host convergence needs exactly this relation
+// over planned operations: a unit file must exist before the manager can register it, a runtime must
+// be materialized before a service that runs it can start. Answering that with its own graph would
+// fork readiness, cycle detection and layering -- three things that are easy to reimplement and easy
+// to reimplement subtly wrong -- and would leave two authorities answering one question, which is
+// the violation this module exists on the correct side of. The kinds it needs are already in the
+// closed vocabulary above (ResourceDependsOn for an enduring requirement, BarrierBefore for a
+// procedural one), modelled before any consumer existed.
+//
+// The subject carries no equality constraint. Callers supply one, exactly as the membership spine
+// takes key_eq rather than assuming its members are comparable.
+type DependencyRelation<Subject> {
+  prerequisite: Subject
+  dependent: Subject
+  kind: DependencyKind
+}
+
+// The compiler's view IS a relation over Node once its occurrence metadata is set aside. Naming the
+// projection means the scheduler consumes one shape, and the Node case stays a caller of the general
+// path rather than a parallel implementation of it.
+fn dependency_view_relation(view: DependencyView) -> DependencyRelation<Node> {
+  DependencyRelation {
+    prerequisite: view.source,
+    dependent: view.dependent,
+    kind: view.kind,
+  }
+}
+
+fn dependency_view_relations(views: List<DependencyView>) -> List<DependencyRelation<Node>> {
+  fold(views, init: [], f: fn(acc, v) {
+    list_snoc_item(xs: acc, item: dependency_view_relation(view: v))
+  })
+}
+
 type ClassifiedDependencyView<C> {
   dependency: DependencyView
   classification: C
@@ -191,14 +235,18 @@ fn dependency_lens(root: Node) -> List<DependencyView> {
   )
 }
 
-type ReadinessLayer {
-  ready: List<Node>
+// A layer is a set of subjects with no prerequisite among them still outstanding, so it is the same
+// shape whatever the subjects are. Parameterized for the same reason the relation above is: the
+// compiler schedules Nodes and host convergence schedules planned operations, and layering is one
+// concept rather than one per subject.
+type ReadinessLayer<Subject> {
+  ready: List<Subject>
 }
 
 type ReadinessFoldState {
   current: Node
   ready: List<Node>
-  layers: List<ReadinessLayer>
+  layers: List<ReadinessLayer<Node>>
 }
 
 fn readiness_fold_init(n: Node) -> ReadinessFoldState {
@@ -268,11 +316,11 @@ fn topological_layers_algebra() -> NodeFold<ReadinessFoldState> {
   }
 }
 
-fn readiness_fold_layers(state: ReadinessFoldState) -> List<ReadinessLayer> {
+fn readiness_fold_layers(state: ReadinessFoldState) -> List<ReadinessLayer<Node>> {
   state.layers
 }
 
-fn topological_layers(graph_node: Node) -> List<ReadinessLayer> {
+fn topological_layers(graph_node: Node) -> List<ReadinessLayer<Node>> {
   readiness_fold_layers(
     state: fold_node(
       n: graph_node,
@@ -281,6 +329,6 @@ fn topological_layers(graph_node: Node) -> List<ReadinessLayer> {
   )
 }
 
-fn append_readiness_layers(left: List<ReadinessLayer>, right: List<ReadinessLayer>) -> List<ReadinessLayer> {
+fn append_readiness_layers(left: List<ReadinessLayer<Node>>, right: List<ReadinessLayer<Node>>) -> List<ReadinessLayer<Node>> {
   list_append(left: left, right: right)
 }

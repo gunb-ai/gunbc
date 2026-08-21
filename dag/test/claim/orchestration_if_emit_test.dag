@@ -39,7 +39,7 @@ fn orch_if_streq_empty_then_intent() -> PipelineStep {
         Do {
           run: Run {
             command: "verdict=absent",
-            env: [],
+            env: Empty,
             redirect: Absent,
             capture: Absent
           }
@@ -59,7 +59,7 @@ fn orch_if_streq_empty_then_perturbed_intent() -> PipelineStep {
         Do {
           run: Run {
             command: "verdict=absent",
-            env: [],
+            env: Empty,
             redirect: Absent,
             capture: Absent
           }
@@ -83,7 +83,7 @@ fn orch_if_streq_else_intent() -> PipelineStep {
         Do {
           run: Run {
             command: "verdict=converged",
-            env: [],
+            env: Empty,
             redirect: Absent,
             capture: Absent
           }
@@ -97,7 +97,7 @@ fn orch_if_streq_else_intent() -> PipelineStep {
           Do {
             run: Run {
               command: "verdict=drifted",
-              env: [],
+              env: Empty,
               redirect: Absent,
               capture: Absent
             }
@@ -119,7 +119,7 @@ fn orch_if_exit_zero_negated_intent() -> PipelineStep {
       inner: ExitZero {
         run: Run {
           command: "mkdir -p \"$7\"",
-          env: [],
+          env: Empty,
           redirect: Absent,
           capture: Absent
         }
@@ -130,7 +130,7 @@ fn orch_if_exit_zero_negated_intent() -> PipelineStep {
         Do {
           run: Run {
             command: "echo missing",
-            env: [],
+            env: Empty,
             redirect: Absent,
             capture: Absent
           }
@@ -151,7 +151,7 @@ fn orch_if_run_redirect_ignore_fail_intent() -> PipelineStep {
     cond: ExitZero {
       run: Run {
         command: "(cd \"$checkout\" && git fetch --prune origin)",
-        env: [],
+        env: Empty,
         redirect: Present { value: DiscardAll },
         capture: Present { value: IgnoreFail }
       }
@@ -161,7 +161,7 @@ fn orch_if_run_redirect_ignore_fail_intent() -> PipelineStep {
         Do {
           run: Run {
             command: "echo ok",
-            env: [],
+            env: Empty,
             redirect: Absent,
             capture: Absent
           }
@@ -188,7 +188,7 @@ fn orch_if_log_matches_intent() -> PipelineStep {
         Do {
           run: Run {
             command: "echo retry",
-            env: [],
+            env: Empty,
             redirect: Absent,
             capture: Absent
           }
@@ -215,7 +215,7 @@ fn orch_if_and_tests_intent() -> PipelineStep {
         Do {
           run: Run {
             command: "pin_ok=1",
-            env: [],
+            env: Empty,
             redirect: Absent,
             capture: Absent
           }

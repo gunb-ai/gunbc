@@ -17,7 +17,7 @@ import extdeps.systems.nvidia_dgx_spark_pxe {
   BootloaderEnrolledForPxe,
 }
 import std.human_intervention { HumanIntervention, DeviceOnce }
-import gunbc.dgx_spark_pxe_boot {
+import gunbc.spark.dgx_pxe_boot {
   spark_unattended_image_boot,
   evaluate_pxe_network_standing,
   evaluate_spark_pxe_firmware_standing,
@@ -58,7 +58,7 @@ data witness_http_root: Uri = Uri {
 }
 
 data witness_dhcp_authority: DeclarationRef = decl_ref(
-  module_path: "gunbc.dgx_spark_pxe_boot",
+  module_path: "gunbc.spark.dgx_pxe_boot",
   decl_name: "admit_spark_unattended_pxe_boot",
 )
 

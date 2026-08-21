@@ -6940,7 +6940,7 @@ mod cast_identity_empty_kernel_tests {
 
     use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
-    use crate::v1_std_core::{make_expr_error_node, make_span, ExprErrorKind};
+    use crate::v1_std_core::{make_expr_error_node, no_span, ExprErrorKind};
 
     use super::{cast_identity_result, ExecutionMode, InterpContext, Value};
 
@@ -6963,7 +6963,7 @@ mod cast_identity_empty_kernel_tests {
         let malformed_target = make_expr_error_node(
             ExprErrorKind::InternalExprError,
             "malformed node: missing cast target".to_string(),
-            make_span(0, 0),
+            no_span(),
         );
         let val = Value::Str(Rc::from("payload"));
         let result = cast_identity_result(&val, &ctx, "", malformed_target, "");
@@ -6984,7 +6984,7 @@ mod cast_identity_empty_kernel_tests {
         let string_target = make_expr_error_node(
             ExprErrorKind::InternalExprError,
             "unused".to_string(),
-            make_span(0, 0),
+            no_span(),
         );
         let string_target = Rc::new(crate::v1_std_core::Node {
             name: "String".to_string(),
@@ -7415,7 +7415,7 @@ macro_rules! v1_algebra_method_arms {
                 Ok(list_value((result)))
             },
 
-            arm "method_call.contains" { "contains" | "has" } => match &$receiver {
+            arm "method_call.contains" { "contains" } => match &$receiver {
                 Value::Map(m) => {
                     let key = $args.first().ok_or_else(|| InterpError::TypeError {
                         msg: "contains requires a key argument".to_string(),
@@ -7545,18 +7545,6 @@ macro_rules! v1_algebra_method_arms {
                 counters.map_merge_calls += 1;
                 drop(counters);
                 Ok(map_value((*overlay).clone().union((*base).clone())))
-            },
-
-            arm "method_call.keys" { "keys" } => {
-                let m = expect_map(&$receiver, "keys")?;
-                let keys: Vec<Value> = m.keys().map(|k| k.key.clone()).collect();
-                Ok(list_value((keys)))
-            },
-
-            arm "method_call.values" { "values" } => {
-                let m = expect_map(&$receiver, "values")?;
-                let vals: Vec<Value> = m.values().cloned().collect();
-                Ok(list_value((vals)))
             },
 
             arm "method_call.replace" { "replace" } => {
@@ -11997,6 +11985,24 @@ fn run_cached_process_spec(
 ///   spawn uses the workspace, so check and spawn would disagree.
 /// Bare names are ambient divination; absolute paths are declared intent, but a
 /// nonexistent path still refuses before `Command::new`.
+// Both host-tool spawn sites resolve argv[0] to a concrete path and exec THAT
+// path, so a spawn failure is a fact about the resolved file and not about the
+// spelling the author wrote. Reporting only the spelling discards the one fact
+// that discriminates the failure's mechanism -- a rustup shim, a system cargo and
+// a per-job copy fail identically under `spawn "cargo"` while needing different
+// remedies -- and the resolved path is a live local at both call sites. Carrying
+// BOTH keeps the spelling greppable and makes the next occurrence self-diagnosing.
+fn host_tool_spawn_failure(
+    operation: &str,
+    spelling: &str,
+    resolved: &str,
+    err: &std::io::Error,
+) -> InterpError {
+    InterpError::TypeError {
+        msg: format!("{operation}: spawn {spelling:?} (resolved to {resolved:?}) failed: {err}"),
+    }
+}
+
 fn resolve_host_tool_program(name: &str) -> InterpResult<String> {
     if name.contains('/') {
         if name.starts_with("./") {
@@ -12447,15 +12453,13 @@ fn emit_host_run_transport_cached_in_workspace(
 
     let target_dir = workspace.join("target");
     let run_command = |argv: &[String]| -> InterpResult<std::process::Output> {
-        let mut command = std::process::Command::new(resolve_host_tool_program(&argv[0])?);
+        let program = resolve_host_tool_program(&argv[0])?;
+        let mut command = std::process::Command::new(&program);
         command.args(&argv[1..]).current_dir(workspace);
         emit_host_apply_build_environment(&mut command, build_environment);
         command.env("CARGO_TARGET_DIR", &target_dir);
-        command.output().map_err(|e| InterpError::TypeError {
-            msg: format!(
-                "emit_host_run_transport_cached: spawn {:?} failed: {e}",
-                argv[0]
-            ),
+        command.output().map_err(|e| {
+            host_tool_spawn_failure("emit_host_run_transport_cached", &argv[0], &program, &e)
         })
     };
 
@@ -12583,9 +12587,7 @@ fn emit_host_run_transport_in_workspace(
             .env_remove("RUSTC_WRAPPER")
             .env_remove("RUSTC_WORKSPACE_WRAPPER")
             .output()
-            .map_err(|e| InterpError::TypeError {
-                msg: format!("emit_host_run_transport: spawn {:?} failed: {e}", argv[0]),
-            })
+            .map_err(|e| host_tool_spawn_failure("emit_host_run_transport", &argv[0], &program, &e))
     };
 
     let transport_result = |phase: &str,
@@ -16356,6 +16358,7 @@ mod argv_arg_limit_test {
 /// spawn, witnessed in `.dag`).
 #[cfg(test)]
 mod resolve_host_tool_program_tests {
+    use super::host_tool_spawn_failure;
     use super::resolve_host_tool_program;
     use super::InterpError;
     use std::path::PathBuf;
@@ -16490,6 +16493,55 @@ mod resolve_host_tool_program_tests {
             Ok(path) => panic!("expected refusal, got resolved path {path:?}"),
             Err(other) => panic!("expected HostToolUnresolved refusal, got {other:?}"),
         }
+    }
+
+    // The discriminating property: the spelling and the resolved path are
+    // DIFFERENT strings, and the message must carry both. Asserting only that the
+    // message mentions "cargo" would pass against the old text, which carried the
+    // spelling alone -- so the resolved path is asserted as a distinct substring.
+    #[test]
+    fn host_tool_spawn_failure_names_the_resolved_path_not_only_the_spelling() {
+        let err = std::io::Error::from_raw_os_error(26); // ETXTBSY
+        let refusal = host_tool_spawn_failure(
+            "emit_host_run_transport",
+            "cargo",
+            "/home/runner/.cargo/bin/cargo",
+            &err,
+        );
+        let InterpError::TypeError { msg } = refusal else {
+            panic!("expected TypeError, got {refusal:?}");
+        };
+        assert!(
+            msg.contains("/home/runner/.cargo/bin/cargo"),
+            "message must name the file that was actually exec'd, got {msg:?}"
+        );
+        assert!(
+            msg.contains("\"cargo\""),
+            "message must keep the authored spelling greppable, got {msg:?}"
+        );
+        assert!(
+            msg.contains("emit_host_run_transport"),
+            "message must name the operation, got {msg:?}"
+        );
+    }
+
+    // A resolved path that merely repeats the spelling must not be mistaken for
+    // evidence: this pins that the two positions are rendered independently, so a
+    // future edit collapsing them back into one value fails here.
+    #[test]
+    fn host_tool_spawn_failure_renders_spelling_and_resolution_independently() {
+        let err = std::io::Error::from_raw_os_error(2);
+        let shim = host_tool_spawn_failure("op", "cargo", "/rustup/shims/cargo", &err);
+        let system = host_tool_spawn_failure("op", "cargo", "/opt/cargo/bin/cargo", &err);
+        let (InterpError::TypeError { msg: shim_msg }, InterpError::TypeError { msg: system_msg }) =
+            (shim, system)
+        else {
+            panic!("expected TypeError from both");
+        };
+        assert_ne!(
+            shim_msg, system_msg,
+            "two different exec'd files must not produce one indistinguishable message"
+        );
     }
 }
 

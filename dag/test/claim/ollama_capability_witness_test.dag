@@ -44,7 +44,7 @@ import extdeps.ollama.capability {
   ollama_semantic_version_cmp,
   ollama_semantic_version_at_least,
 }
-import gunbc.spark_serving_desired {
+import gunbc.spark.serving_desired {
   spark_serving_desired_admission,
   spark_serving_fleet_desired,
   SparkServingDesiredAdmitted,

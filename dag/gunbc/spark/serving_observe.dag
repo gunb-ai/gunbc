@@ -1,0 +1,1696 @@
+module gunbc.spark.serving_observe
+
+import std.types { String, List, NonEmptyStr }
+import std.algebra { trim }
+import std.content_hash { serialize_content_hash, as_content_hash_cryptographic, sha256_hex_digest }
+import extdeps.languages.json.parse {
+  parse_json,
+  json_object_unique_member,
+  json_string_value_or_empty,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+}
+import extdeps.languages.json.emit { JsonValue, JsonArray, JsonObject, JsonString, JsonNumber, JsonBool, JsonNull }
+import extdeps.ollama.model_store { ollama_blob_file_name }
+import gunbc.spark.serving_terminal_health {
+  SparkServingTerminalHealth,
+  spark_serving_health_from_captures,
+  spark_serving_health_version_probe_argv,
+  spark_serving_health_generate_probe_argv,
+  spark_serving_health_request_body,
+}
+import gunbc.ollama_runtime_bundle {
+  ModelStoreObservation,
+  ModelStoreAbsent,
+  ModelStoreIncomplete,
+  ModelStoreComplete,
+  ModelStoreCorrupt,
+  ModelStoreObservationRefused,
+}
+import gunbc.ollama_runtime_bundle {
+  RuntimeMaterializationObservation,
+  RuntimeMaterializationAbsent,
+  RuntimeMaterializationIncomplete,
+  RuntimeMaterializationComplete,
+  RuntimeMaterializationObservationRefused,
+  RuntimeRootPresentButEmpty,
+  RuntimeExecutableMissing,
+  RuntimeExecutableNotExecutable,
+  RuntimeMaterializationReceiptMissing,
+  RuntimeMaterializationReceiptIdentityMismatch,
+  ollama_runtime_materialization_identity_for_required_release,
+}
+import extdeps.ollama.binary_release { ollama_required_release }
+import gunbc.spark.serving_install_paths {
+  spark_serving_required_runtime_root,
+  spark_serving_required_runtime_executable_path,
+  spark_serving_required_runtime_receipt_path,
+}
+import v2.std.algebra { fold_list }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import product.placement_supply { HostIdentity }
+import extdeps.ssh.session { ssh_session_exec_portable_words, SshSessionExecResult }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.systemd { systemd_unit_load_state_not_found_wire }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet_known_hosts_anchor {
+  FleetSshExecutionContext,
+  fleet_ssh_execution_context_of,
+  materialize_fleet_known_hosts_anchor,
+  known_hosts_materialization_receipt,
+  fleet_ssh_attempt_identity,
+  SshTarget,
+  portable_remote_words,
+  shape_fleet_ssh_exec,
+}
+import gunbc.fleet_multi_principal_probe { fleet_ssh_attempt_raw_from_env }
+import gunbc.spark.credential_workflow { run_with_materialized_fleet_ssh_binding }
+import gunbc.auth.access_token_source { GcloudPrintToken }
+import gunbc.fleet_ssh_locus {
+  FleetSshContextReady,
+  FleetSshContextRefused,
+  prepare_fleet_ssh_agent_context,
+  fleet_locus_transport,
+  fleet_locus_label,
+}
+import gunbc.host_effect_realize { run_typed_argv_transport }
+import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.spark.serving_loaded_release {
+  SparkServingReadback,
+  SparkServingUnitProbeOutcome,
+  SparkServingUnitActive,
+  SparkServingUnitInactive,
+  SparkServingUnitAbsent,
+  SparkServingUnitObservationRefused,
+  derive_spark_serving_observation,
+}
+import gunbc.spark.serving_release {
+  SparkServingObservation,
+  spark_serving_release_identity,
+  SparkServingAbsent,
+  SparkServingObserved,
+  SparkServingObservationRefused,
+}
+import gunbc.spark.serving_unit_identity { spark_serving_unit_name }
+import gunbc.spark.serving_install_paths { spark_serving_readiness_scratch_root, spark_serving_health_request_body_path }
+import gunbc.spark.serving_runtime_receipt { spark_serving_executor_home }
+import gunbc.file_access { FileTreeScope }
+import gunbc.typed_remote_file_write {
+  typed_remote_file_write_seal,
+  TypedRemoteFileWriteAdmitted,
+  TypedRemoteFileWriteAdmissionRefused,
+  RemoteFileModeOwnerReadWrite,
+}
+import gunbc.remote_operation { RemoteFileBytes, remote_execution_permits_continuation }
+import gunbc.spark.serving_converge_apply { spark_serving_run_operation }
+import gunbc.fleet_ssh_locus { fleet_locus_transport }
+import gunbc.spark.managed_access_bootstrap { SparkGrantOutcome, GrantEnumerated, GrantAbsent, GrantProbeRefused }
+import gunbc.spark.managed_grant_reconcile { spark_managed_grant_report }
+import gunbc.spark.serving_boot_provenance {
+  spark_serving_active_enter_probe_argv,
+  spark_serving_uptime_probe_argv,
+  spark_serving_classify_boot_provenance,
+  spark_serving_boot_provenance_wire,
+  SparkServingBootProvenance,
+  BootProvenanceUnobserved,
+}
+import gunbc.spark.serving_observed_members {
+  spark_serving_observed_members,
+  SparkServingObservedMemberProjection,
+  SparkServingObservedLingerState,
+  SparkServingObservedUnitState,
+  UserUnitStateUnobserved,
+  SparkServingUnitManagerState,
+  SparkServingObservedActivityState,
+  UnitActivityRunning,
+  UnitActivityStopped,
+  UnitActivityUnobserved,
+  UserUnitManagerEnabled,
+  UserUnitManagerDisabled,
+  UserUnitManagerNotRegistered,
+  UserUnitManagerUnobserved,
+  classify_observed_user_unit,
+  spark_serving_user_unit_read_argv,
+  spark_serving_user_unit_is_enabled_argv,
+}
+import gunbc.spark.serving_runtime_receipt {
+  spark_serving_runtime_receipt_probe_words,
+  spark_serving_materialization_receipt_field_from_probe,
+}
+import gunbc.spark.serving_runtime_admission { spark_serving_parse_nvidia_driver_version }
+import gunbc.spark.serving_desired {
+  spark_serving_desired_hosts,
+  spark_serving_automation_principal_login,
+}
+import gunbc.spark.serving_readback_parse {
+  SparkServingReadbackField,
+  SparkServingReadbackAbsent,
+  SparkServingReadbackRefused,
+  SparkServingTagsReadbackFields,
+  spark_serving_parse_version_json,
+  spark_serving_parse_tags_json,
+  spark_serving_readback_field_label,
+}
+
+data spark_serving_observe_transport_note: String = "OBSERVATION PRODUCER (SPARK-SERVE-BIND-0 item B) over FleetSsh — callers supply a sealed FleetSshExecutionContext rather than hardcoding one credential route."
+
+data spark_serving_observe_note: String = "Wet observation only; a green witness over fixture strings is not proof gpt-oss:20b is serving. Runtime closure identity requires the release-archive admission receipt under ~/.local/share/gunbc/spark-serving/ (archive digest admitted at materialization — not proof of completed install) plus independent /api/version and /api/tags probes. This branch does not install or start Ollama on the hosts."
+
+data spark_serving_observe_receipt_path: String = "target/spark-serving-observe-receipt.txt"
+
+// A SEPARATE PATH FOR THE RUNNER-SIDE ENTRY, so a receipt on disk is unambiguous about which
+// entry produced it and therefore which credential locus and trust preconditions were in play.
+// Sharing one path would make an anchored-context observation and an ssh-agent observation
+// indistinguishable after the fact.
+data spark_serving_observe_ci_receipt_path: String = "target/spark-serving-observe-ci-receipt.txt"
+
+fn spark_serving_load_state_probe_words() -> List<String> {
+  [
+    "systemctl", "--user", "show", spark_serving_unit_name, "--property=LoadState", "--value",
+  ]
+}
+
+fn spark_serving_active_probe_words() -> List<String> {
+  [
+    "systemctl", "--user", "is-active", spark_serving_unit_name,
+  ]
+}
+
+data spark_serving_version_probe_words: List<String> = [
+  "curl", "-sf", "http://127.0.0.1:11434/api/version",
+]
+
+data spark_serving_tags_probe_words: List<String> = [
+  "curl", "-sf", "http://127.0.0.1:11434/api/tags",
+]
+
+data spark_serving_nvidia_driver_probe_words: List<String> = [
+  "nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader",
+]
+
+// PRIVILEGE IS PART OF WHAT A HOST HOLDS, so it is read on the leg that reads everything else. This
+// is not a new probe entry: the automation principal is the account that needs the grants, and this
+// path already connects as it, so measuring here costs one more leg and no new workflow mode.
+//
+// It is a READ. `sudo -n -l` enumerates and never actuates, which is why it can ride an observation
+// at all -- and why a failure of it is an observation too, not an error.
+data spark_serving_grant_probe_words: List<String> = [
+  "sudo", "-n", "-l",
+]
+
+fn spark_serving_grant_outcome_from_probe(probe: SshSessionExecResult?) -> SparkGrantOutcome {
+  match probe {
+    Absent => GrantProbeRefused { cause: "the grant probe leg did not run" }
+    Present { value: r } =>
+      if r.success {
+        GrantEnumerated { listing: r.stdout }
+      } else {
+        GrantAbsent { detail: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+      }
+  }
+}
+
+// THE READBACK TRAVELS WITH THE OBSERVATION, and it is not bookkeeping. The observation line says
+// only observed/absent/refused plus a release digest; every fact the derivation CONSUMED to reach
+// that verdict -- unit outcome, runtime version, model digest, and now boot provenance -- lived on
+// the readback and was dropped on the floor. So the wet receipt could report a host as observed
+// while staying silent on whether its unit would survive a power cycle, which is exactly the
+// question the run was dispatched to answer. A field with a witness and no wet reader is a carrier,
+// not an observation.
+type SparkServingHostObservation {
+  readback: SparkServingReadback
+  observation: SparkServingObservation
+}
+
+type SparkServingObservationReport
+  = SparkServingObservationsProduced {
+      first: SparkServingHostObservation,
+      more: List<SparkServingHostObservation>,
+    }
+  | SparkServingObservationReportRefused { cause: NonEmptyStr }
+
+// LOCUS-PARAMETERIZED PROBE LEG. Same observation, either credential locus. The
+// context-taking leg below remains for the operator-workstation entry; this one is what the
+// runner entry uses, because a GHA self-hosted slot carries no gcloud and cannot build an
+// anchored context at all (spark_credential_access_token_frontier_note). Refusals stay typed
+// rather than collapsing to `none`, so an unreachable host and an unportable word list do not
+// arrive at the caller as the same value.
+// THE TRANSPORT'S REFUSAL REASON IS CARRIED, and this is the fourth instrument of this exact shape
+// this lane has had to repair. The arm read `TypedArgvExecRefused { reason: _ } => none`, so a leg
+// the transport declined became indistinguishable from a leg nobody asked for, and every consumer
+// downstream could say only "probe leg did not run" -- the shape that costs a whole diagnostic cycle
+// because the one fact needed to end it was computed and thrown away one line from the caller.
+//
+// A refused leg now surfaces as a result carrying the reason on stderr with a non-zero exit, which
+// is the same shape a genuinely failing command produces and which every field reader already
+// renders with its cause attached. The distinction the exit code preserves: 127 is "this leg was
+// never attempted", not "the command ran and failed".
+fn spark_serving_probe_leg_via_locus(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  raw_words: List<String>,
+) -> SshSessionExecResult? {
+  match run_typed_argv_transport(
+    argv: raw_words,
+    transport: fleet_locus_transport(context: context, host: host),
+  ) {
+    TypedArgvExecConverged { result: r } => Present { value: r }
+    TypedArgvExecRefused { reason: why } =>
+      Present {
+        value: SshSessionExecResult {
+          exit_code: 127,
+          success: false,
+          stdout: "",
+          stderr: join(["transport refused the leg, it was never attempted: ", why], ""),
+        },
+      }
+  }
+}
+
+fn spark_serving_observe_host_via_locus(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+) -> SparkServingHostObservation {
+  let readback = spark_serving_readback_from_probe_results(
+    host: host,
+    load_state: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_load_state_probe_words()),
+    is_active: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_active_probe_words()),
+    version: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_version_probe_words),
+    tags: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_tags_probe_words),
+    nvidia_driver: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_nvidia_driver_probe_words),
+    runtime_receipt: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_runtime_materialization_receipt_probe_argv()),
+    active_enter: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_active_enter_probe_argv()),
+    uptime: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_uptime_probe_argv()),
+    grants: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_grant_probe_words),
+  )
+  SparkServingHostObservation {
+    readback: readback,
+    observation: derive_spark_serving_observation(readback: readback),
+  }
+}
+
+fn spark_serving_probe_leg(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  raw_words: List<String>,
+) -> SshSessionExecResult? {
+  match portable_remote_words(raws: raw_words) {
+    Absent => none
+    Present { value: words } => Present {
+      value: ssh_session_exec_portable_words(
+        client_args: shape_fleet_ssh_exec(
+          context: context,
+          target: SshTarget {
+            endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
+            principal: spark_serving_automation_principal_login(),
+          },
+          words: words,
+        ),
+      ),
+    }
+  }
+}
+
+fn spark_serving_unit_outcome_from_probe_results(
+  load_state: SshSessionExecResult?,
+  is_active: SshSessionExecResult?,
+) -> SparkServingUnitProbeOutcome {
+  match load_state {
+    Absent =>
+      SparkServingUnitObservationRefused {
+        cause: "unit LoadState probe leg did not run" as NonEmptyStr,
+      }
+    Present { value: load } =>
+      if load.success == false {
+        SparkServingUnitObservationRefused {
+          cause: join([
+            "unit LoadState probe failed for ", spark_serving_unit_name,
+            " exit=", to_string(load.exit_code),
+            " stderr=", load.stderr,
+          ], "") as NonEmptyStr,
+        }
+      } else if trim(s: load.stdout) == (systemd_unit_load_state_not_found_wire as String) {
+        SparkServingUnitAbsent
+      } else {
+        match is_active {
+          Absent =>
+            SparkServingUnitObservationRefused {
+              cause: "unit is-active probe leg did not run after LoadState observation" as NonEmptyStr,
+            }
+          Present { value: active } =>
+            if active.success && trim(s: active.stdout) == "active" {
+              SparkServingUnitActive
+            } else if active.exit_code == 3 {
+              SparkServingUnitInactive
+            } else if active.success == false {
+              SparkServingUnitObservationRefused {
+                cause: join([
+                  "unit is-active probe failed for ", spark_serving_unit_name,
+                  " exit=", to_string(active.exit_code),
+                  " stderr=", active.stderr,
+                ], "") as NonEmptyStr,
+              }
+            } else {
+              SparkServingUnitInactive
+            }
+        }
+      }
+  }
+}
+
+fn spark_serving_version_field_from_probe(probe: SshSessionExecResult?) -> SparkServingReadbackField {
+  match probe {
+    Absent =>
+      SparkServingReadbackRefused {
+        cause: "probe leg did not run" as NonEmptyStr,
+      }
+    Present { value: r } =>
+      if r.success {
+        spark_serving_parse_version_json(stdout: r.stdout)
+      } else {
+        SparkServingReadbackRefused {
+          cause: join([
+            "probe failed exit=", to_string(r.exit_code), " stderr=", r.stderr,
+          ], "") as NonEmptyStr,
+        }
+      }
+  }
+}
+
+fn spark_serving_tags_fields_from_probe(probe: SshSessionExecResult?) -> SparkServingTagsReadbackFields {
+  match probe {
+    Absent =>
+      SparkServingTagsReadbackFields {
+        model_name: SparkServingReadbackRefused {
+          cause: "probe leg did not run" as NonEmptyStr,
+        },
+        model_tag: SparkServingReadbackRefused {
+          cause: "probe leg did not run" as NonEmptyStr,
+        },
+        model_manifest_digest: SparkServingReadbackRefused {
+          cause: "probe leg did not run" as NonEmptyStr,
+        },
+      }
+    Present { value: r } =>
+      if r.success {
+        spark_serving_parse_tags_json(stdout: r.stdout)
+      } else {
+        SparkServingTagsReadbackFields {
+          model_name: SparkServingReadbackRefused {
+            cause: join([
+              "probe failed exit=", to_string(r.exit_code), " stderr=", r.stderr,
+            ], "") as NonEmptyStr,
+          },
+          model_tag: SparkServingReadbackRefused {
+            cause: join([
+              "probe failed exit=", to_string(r.exit_code), " stderr=", r.stderr,
+            ], "") as NonEmptyStr,
+          },
+          model_manifest_digest: SparkServingReadbackRefused {
+            cause: join([
+              "probe failed exit=", to_string(r.exit_code), " stderr=", r.stderr,
+            ], "") as NonEmptyStr,
+          },
+        }
+      }
+  }
+}
+
+fn spark_serving_unit_outcome_label(outcome: SparkServingUnitProbeOutcome) -> String {
+  match outcome {
+    SparkServingUnitActive => "active"
+    SparkServingUnitInactive => "inactive"
+    SparkServingUnitAbsent => "absent"
+    SparkServingUnitObservationRefused { cause: _ } => "refused"
+  }
+}
+
+fn spark_serving_nvidia_driver_field_from_probe(probe: SshSessionExecResult?) -> SparkServingReadbackField {
+  match probe {
+    Absent =>
+      SparkServingReadbackRefused {
+        cause: "probe leg did not run" as NonEmptyStr,
+      }
+    Present { value: r } =>
+      if r.success {
+        spark_serving_parse_nvidia_driver_version(stdout: r.stdout)
+      } else {
+        SparkServingReadbackRefused {
+          cause: join([
+            "probe failed exit=", to_string(r.exit_code), " stderr=", r.stderr,
+          ], "") as NonEmptyStr,
+        }
+      }
+  }
+}
+
+fn spark_serving_readback_from_probe_results(
+  host: HostIdentity,
+  load_state: SshSessionExecResult?,
+  is_active: SshSessionExecResult?,
+  version: SshSessionExecResult?,
+  tags: SshSessionExecResult?,
+  nvidia_driver: SshSessionExecResult?,
+  runtime_receipt: SshSessionExecResult?,
+  active_enter: SshSessionExecResult?,
+  uptime: SshSessionExecResult?,
+  grants: SshSessionExecResult?,
+) -> SparkServingReadback {
+  let tags_fields = spark_serving_tags_fields_from_probe(probe: tags)
+  SparkServingReadback {
+    host: host,
+    unit_outcome: spark_serving_unit_outcome_from_probe_results(
+      load_state: load_state,
+      is_active: is_active,
+    ),
+    runtime_version: spark_serving_version_field_from_probe(probe: version),
+    runtime_materialization_identity: spark_serving_materialization_receipt_field_from_probe(probe: runtime_receipt),
+    model_name: tags_fields.model_name,
+    model_tag: tags_fields.model_tag,
+    model_manifest_digest: tags_fields.model_manifest_digest,
+    nvidia_driver: spark_serving_nvidia_driver_field_from_probe(probe: nvidia_driver),
+    bind_address: SparkServingReadbackAbsent,
+    boot_provenance: spark_serving_boot_provenance_from_probes(active_enter: active_enter, uptime: uptime),
+    grants: spark_serving_grant_outcome_from_probe(probe: grants),
+  }
+}
+
+// A probe leg that never ran is UNOBSERVED, never a verdict that the unit failed to come up with the
+// boot. Collapsing an absent leg into a durability failure would manufacture the exact finding this
+// observation exists to report honestly.
+fn spark_serving_boot_provenance_from_probes(
+  active_enter: SshSessionExecResult?,
+  uptime: SshSessionExecResult?,
+) -> SparkServingBootProvenance {
+  match active_enter {
+    Absent => BootProvenanceUnobserved { cause: "ActiveEnterTimestampMonotonic probe leg did not run" as NonEmptyStr }
+    Present { value: enter } =>
+      match uptime {
+        Absent => BootProvenanceUnobserved { cause: "/proc/uptime probe leg did not run" as NonEmptyStr }
+        Present { value: up } => spark_serving_classify_boot_provenance(active_enter: enter, uptime: up)
+      }
+  }
+}
+
+fn spark_serving_readback_line(readback: SparkServingReadback) -> String {
+  join([
+    "observe host=", readback.host as String,
+    " unit_outcome=", spark_serving_unit_outcome_label(outcome: readback.unit_outcome),
+    " runtime_version=", spark_serving_readback_field_label(field: readback.runtime_version),
+    " runtime_materialization_identity=", spark_serving_readback_field_label(field: readback.runtime_materialization_identity),
+    " model_name=", spark_serving_readback_field_label(field: readback.model_name),
+    " model_tag=", spark_serving_readback_field_label(field: readback.model_tag),
+    " model_digest=", spark_serving_readback_field_label(field: readback.model_manifest_digest),
+    " nvidia_driver=", spark_serving_readback_field_label(field: readback.nvidia_driver),
+    " ", spark_serving_boot_provenance_wire(p: readback.boot_provenance),
+    "\n",
+    spark_managed_grant_report(host: readback.host, outcome: readback.grants),
+  ], "")
+}
+
+fn spark_serving_observation_line(observation: SparkServingObservation) -> String {
+  match observation {
+    SparkServingAbsent { host: h } => join(["observation host=", h as String, " state=absent\n"], "")
+    SparkServingObservationRefused { host: h, cause: c } =>
+      join(["observation host=", h as String, " state=refused cause=", c as String, "\n"], "")
+    SparkServingObserved { host: h, loaded_release: r } =>
+      join([
+        "observation host=", h as String, " state=observed digest=",
+        spark_serving_release_identity(spec: r).digest.digest as String, "\n",
+      ], "")
+  }
+}
+
+fn spark_serving_observe_host(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+) -> SparkServingObservation {
+  let load_state = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_load_state_probe_words())
+  let is_active = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_active_probe_words())
+  let version = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_version_probe_words)
+  let tags = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_tags_probe_words)
+  let nvidia_driver = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_nvidia_driver_probe_words)
+  let runtime_receipt = spark_serving_probe_leg(
+    context: context,
+    host: host,
+    raw_words: spark_serving_runtime_materialization_receipt_probe_argv(),
+  )
+  let active_enter = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_active_enter_probe_argv())
+  let uptime = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_uptime_probe_argv())
+  let grants = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_grant_probe_words)
+  let readback = spark_serving_readback_from_probe_results(
+    host: host,
+    load_state: load_state,
+    is_active: is_active,
+    version: version,
+    tags: tags,
+    nvidia_driver: nvidia_driver,
+    runtime_receipt: runtime_receipt,
+    active_enter: active_enter,
+    uptime: uptime,
+    grants: grants,
+  )
+  SparkServingHostObservation {
+    readback: readback,
+    observation: derive_spark_serving_observation(readback: readback),
+  }
+}
+
+fn spark_serving_observations_from_hosts(
+  context: FleetSshExecutionContext,
+  hosts: List<HostIdentity>,
+) -> List<SparkServingHostObservation> {
+  map(hosts, h => spark_serving_observe_host(context: context, host: h))
+}
+
+fn spark_serving_observation_report_from_observations(
+  observations: List<SparkServingHostObservation>,
+) -> SparkServingObservationReport? {
+  if observations.length() == 0 {
+    none
+  } else {
+    Present {
+      value: SparkServingObservationsProduced {
+        first: observations.first(),
+        more: observations.skip(n: 1),
+      },
+    }
+  }
+}
+
+fn spark_serving_observe_with_context(
+  context: FleetSshExecutionContext,
+  hosts: List<HostIdentity>,
+) -> SparkServingObservationReport {
+  match spark_serving_observation_report_from_observations(
+    observations: spark_serving_observations_from_hosts(context: context, hosts: hosts),
+  ) {
+    Absent =>
+      SparkServingObservationReportRefused {
+        cause: "spark serving observation requires at least one host" as NonEmptyStr,
+      }
+    Present { value: report } => report
+  }
+}
+
+fn spark_serving_observation_report_text(
+  report: SparkServingObservationReport,
+  probed_at: String,
+  attempt_raw: String,
+  materialization_receipt: String,
+) -> String {
+  match report {
+    SparkServingObservationReportRefused { cause: c } =>
+      join([
+        "spark serving observe probed_at=", probed_at,
+        " attempt_raw=", attempt_raw, "\n",
+        materialization_receipt,
+        "REFUSED: ", c as String, "\n",
+      ], "")
+    SparkServingObservationsProduced { first: f, more: m } =>
+      join(concat([
+        [join(["spark serving observe probed_at=", probed_at, " attempt_raw=", attempt_raw, "\n"], "")],
+        [materialization_receipt],
+        map(concat([f], m), ho => join([
+          spark_serving_readback_line(readback: ho.readback),
+          spark_serving_observation_line(observation: ho.observation),
+        ], "")),
+      ], []), "")
+  }
+}
+
+fn spark_serving_observation_succeeded(observation: SparkServingObservation) -> Bool {
+  match observation {
+    SparkServingObserved { host: _, loaded_release: _ } => true
+    SparkServingAbsent { host: _ } => false
+    SparkServingObservationRefused { host: _, cause: _ } => false
+  }
+}
+
+fn spark_serving_all_observations_succeeded(observations: List<SparkServingObservation>) -> Bool {
+  fold_list(
+    xs: observations,
+    empty: true,
+    cons: fn(acc, obs) {
+      acc && spark_serving_observation_succeeded(observation: obs)
+    },
+  )
+}
+
+fn spark_serving_observation_report_succeeded(report: SparkServingObservationReport) -> Bool {
+  match report {
+    SparkServingObservationsProduced { first: f, more: m } =>
+      spark_serving_observation_succeeded(observation: f.observation)
+        && spark_serving_all_observations_succeeded(observations: map(m, ho => ho.observation))
+    SparkServingObservationReportRefused { cause: _ } => false
+  }
+}
+
+// A read-only observation entry answers "did the probe reach every host", NOT "is the fleet
+// converged". SparkServingAbsent is a genuine observation of a host that is reachable and bare,
+// so reading it as a failed probe would conflate a working instrument with a broken one;
+// SparkServingObservationRefused is the probe failing to answer at all, and refuses. This axis is
+// deliberately weaker than spark_serving_observation_succeeded, which the converge entries use
+// because there absence means the desired state was not reached.
+fn spark_serving_observation_was_made(observation: SparkServingObservation) -> Bool {
+  match observation {
+    SparkServingObserved { host: _, loaded_release: _ } => true
+    SparkServingAbsent { host: _ } => true
+    SparkServingObservationRefused { host: _, cause: _ } => false
+  }
+}
+
+fn spark_serving_all_observations_were_made(observations: List<SparkServingObservation>) -> Bool {
+  fold_list(
+    xs: observations,
+    empty: true,
+    cons: fn(acc, obs) {
+      acc && spark_serving_observation_was_made(observation: obs)
+    },
+  )
+}
+
+fn spark_serving_report_observations_were_made(report: SparkServingObservationReport) -> Bool {
+  match report {
+    SparkServingObservationsProduced { first: f, more: m } =>
+      spark_serving_observation_was_made(observation: f.observation)
+        && spark_serving_all_observations_were_made(observations: map(m, ho => ho.observation))
+    SparkServingObservationReportRefused { cause: _ } => false
+  }
+}
+
+
+func spark_serving_observe_wet() -> ProcessExit
+  uses net: Network
+{
+  match fleet_ssh_attempt_raw_from_env() {
+    Absent =>
+      exit_failure(
+        reason: "spark_serving_observe_wet requires GUNBC_FLEET_SSH_ATTEMPT_RAW or GitHub GITHUB_RUN_ID+GITHUB_RUN_ATTEMPT env"
+      )
+    Present { value: attempt_raw } => spark_serving_observe_with_attempt(attempt_raw: attempt_raw)
+  }
+}
+
+func spark_serving_observe_with_attempt(attempt_raw: String) -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  run_with_materialized_fleet_ssh_binding(
+    attempt_raw: attempt_raw,
+    token_source: GcloudPrintToken,
+    body: fn(credential) {
+      let report = match fleet_ssh_attempt_identity(raw: attempt_raw) {
+        Absent =>
+          SparkServingObservationReportRefused {
+            cause: "attempt identity is not a safe path segment" as NonEmptyStr,
+          }
+        Present { value: attempt } => {
+          let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+          match fleet_ssh_execution_context_of(outcome: materialization, credential: credential) {
+            Absent =>
+              SparkServingObservationReportRefused {
+                cause: known_hosts_materialization_receipt(outcome: materialization) as NonEmptyStr,
+              }
+            Present { value: context } =>
+              spark_serving_observe_with_context(
+                context: context,
+                hosts: spark_serving_desired_hosts,
+              )
+          }
+        }
+      }
+      let materialization_receipt = match fleet_ssh_attempt_identity(raw: attempt_raw) {
+        Absent => ""
+        Present { value: attempt } =>
+          known_hosts_materialization_receipt(
+            outcome: materialize_fleet_known_hosts_anchor(attempt: attempt),
+          )
+      }
+      let receipt = spark_serving_observation_report_text(
+        report: report,
+        probed_at: probed_at_word(reading: now) as String,
+        attempt_raw: attempt_raw,
+        materialization_receipt: materialization_receipt,
+      )
+      if spark_serving_observation_report_succeeded(report: report) == false {
+        exit_failure(reason: receipt)
+      } else {
+        let w = Filesystem.Write(path: spark_serving_observe_receipt_path, content: receipt)
+        if w.success {
+          ExitSuccess
+        } else {
+          exit_failure(reason: join(["spark serving observe receipt write failed: ", w.error], ""))
+        }
+      }
+    },
+  )
+}
+
+
+// RUNNER-SIDE OBSERVATION ENTRY. spark_serving_observe_wet above resolves a credential through
+// GcloudPrintToken and is therefore an operator-workstation route only; a GHA self-hosted slot
+// carries no gcloud and that fetch fails at runtime rather than degrading. This entry observes
+// through the in-run ssh-agent the job already materialized, so the same probe legs run where
+// the fleet actually is. It is READ-ONLY: every word list here is a query.
+func spark_serving_observe_ci_wet() -> ProcessExit {
+  match prepare_fleet_ssh_agent_context(attempt_raw: spark_serving_observe_ci_attempt_raw) {
+    FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)
+    FleetSshContextReady { context: context, receipt: context_receipt } =>
+      spark_serving_observe_ci_with_context(context: context, context_receipt: context_receipt)
+  }
+}
+
+// The attempt this entry owns. It names the entry rather than a run, because the anchor and selector
+// paths it scopes live under target/ in a workspace one job owns.
+data spark_serving_observe_ci_attempt_raw: String = "spark-serving-observe-ci"
+
+func spark_serving_observe_ci_with_context(
+  context: FleetSshExecutionContext,
+  context_receipt: String,
+) -> ProcessExit {
+  let now = clock_now_probed_at()
+  let observations = map(
+    spark_serving_desired_hosts,
+    h => spark_serving_observe_host_via_locus(context: context, host: h),
+  )
+  let body = join(
+    concat(
+      [
+        join(["spark_serving_observe_ci_wet probed_at=", probed_at_word(reading: now) as String, "\n"], ""),
+        join(["credential_locus=", fleet_locus_label(context: context), "\n"], ""),
+        context_receipt,
+      ],
+      map(observations, o => join([
+        spark_serving_readback_line(readback: o.readback),
+        spark_serving_observation_line(observation: o.observation),
+      ], "")),
+    ),
+    "",
+  )
+  let report = match spark_serving_observation_report_from_observations(observations: observations) {
+    Absent =>
+      SparkServingObservationReportRefused {
+        cause: "spark_serving_observe_ci_wet: no host was probed — an empty observation list is ignorance, not a clean fleet" as NonEmptyStr,
+      }
+    Present { value: r } => r
+  }
+  let w = Filesystem.Write(path: spark_serving_observe_ci_receipt_path, content: body)
+  if w.success == false {
+    exit_failure(reason: join(["receipt write failed: ", w.error], ""))
+  } else if spark_serving_report_observations_were_made(report: report) == false {
+    exit_failure(
+      reason: join(
+        ["spark_serving_observe_ci_wet: at least one host could not be observed\n", body],
+        "",
+      ),
+    )
+  } else {
+    ExitSuccess
+  }
+}
+
+// ── Observing the user unit, on the same SSH legs as everything else ────────────────────────────
+
+// systemd's `is-enabled` answers with a WORD on stdout and an exit code, and the two disagree in a
+// way that matters: a disabled unit exits non-zero while printing "disabled", which is a successful
+// observation of a real state. Reading only the exit code would render that as a failed probe, so
+// the word is what is classified and the exit code only distinguishes "we could not ask".
+fn classify_is_enabled_stdout(result: SshSessionExecResult) -> SparkServingUnitManagerState {
+  let word = trim(s: result.stdout)
+  if word == "enabled" || word == "enabled-runtime" {
+    UserUnitManagerEnabled
+  } else if word == "disabled" {
+    UserUnitManagerDisabled
+  } else if word == "not-found" {
+    UserUnitManagerNotRegistered
+  } else {
+    UserUnitManagerUnobserved
+  }
+}
+
+// A `cat` that fails because the file is missing is ABSENCE; a `cat` that fails for any other reason
+// is an unobserved member. systemd's own message is not available here, so the discriminator is the
+// exit code GNU coreutils uses for a missing operand target alongside a stderr naming the path --
+// and where neither holds, the honest answer is unobserved rather than a guess at absence.
+fn cat_reported_missing_file(result: SshSessionExecResult) -> Bool {
+  string_contains(result.stderr, "No such file or directory")
+}
+
+// BOTH FACTS FROM ONE PAIR OF PROBES. The unit's content and its enablement are separate resources
+// and reconcile against separate addresses, but they come from the same two remote legs -- so they
+// are read once and returned together rather than by two callers each paying the round trips again.
+type SparkServingObservedUnit {
+  state: SparkServingObservedUnitState
+  enablement: SparkServingUnitManagerState
+  activity: SparkServingObservedActivityState
+}
+
+// `systemctl --user is-active` and nothing else decides this, and it answers in THREE definite ways
+// before it answers in none. Exit 0 with "active" is running. Exit 3 is systemd's documented answer
+// for a unit that exists and is not running. Exit 4 is "no such unit" -- equally definite, and the
+// arm whose absence blocked first provisioning: folded into Unobserved, a host with nothing
+// installed read as a host we had failed to measure, so the plan refused instead of installing.
+//
+// Every OTHER outcome does leave the activity unobserved, and that arm is still load-bearing: a
+// manager we could not reach has not told us the unit is dead, and planning a start on that silence
+// would actuate off a probe that never answered.
+fn classify_is_active_result(result: SshSessionExecResult) -> SparkServingObservedActivityState {
+  if result.success && trim(s: result.stdout) == "active" {
+    UnitActivityRunning
+  } else if result.exit_code == 3 {
+    UnitActivityStopped
+  } else if result.exit_code == 4 {
+    UnitActivityNoSuchUnit
+  } else if result.success {
+    UnitActivityStopped
+  } else {
+    UnitActivityUnobserved
+  }
+}
+
+// THE MODEL STORE PRODUCER -- the evidence behind the model-slot member.
+//
+// TWO LEGS, AND THE SECOND IS THE ONE THAT MATTERS. The manifest leg answers whether the reference
+// resolves to anything at all; the blob leg answers whether the bytes it names are actually there.
+// A check that stopped at the manifest would report a store as installed when an interrupted pull
+// left the manifest written and layers missing -- a host that looks converged and cannot serve a
+// token, which is precisely the state a long, interruptible pull produces.
+//
+// THE BLOB CLOSURE IS READ FROM THE MANIFEST, NOT ASSUMED. The manifest lists its layers by digest,
+// so the set of blobs to require is upstream's answer rather than ours; deriving it from the model
+// reference would be inventing a fact the store already carries.
+//
+// The counting leg is deliberately a single argv rather than one probe per blob: a model has many
+// layers, and paying a remote round trip each would make observation cost scale with model size for
+// a fact one command answers. `grep -o` over the manifest yields the digests, and the comparison is
+// against what the blobs directory holds.
+//
+// WHAT THIS DOES NOT ESTABLISH: that the blobs are INTACT. Presence is a filename fact; a truncated
+// layer has the right name. Verifying each blob's digest is a further rung this producer does not
+// reach, and `ModelStoreComplete` is documented as meaning present-and-named, not verified.
+fn spark_serving_model_manifest_probe_argv() -> List<String> {
+  ["cat", spark_serving_desired_model_manifest_path() as String]
+}
+
+fn spark_serving_model_blobs_listing_argv() -> List<String> {
+  ["ls", "-A", spark_serving_desired_model_blobs_dir() as String]
+}
+
+// BLOB CONTENTS, NOT BLOB NAMES -- and the distinction is the whole no-repull law.
+//
+// The listing above establishes that a file with the expected name exists. It establishes nothing
+// about what is IN it, and a truncated or corrupted blob keeps its name: an interrupted pull, a full
+// disk, a partially written layer all leave a correctly-named file. Reporting that store complete
+// suppresses MaterializeModelArtifact, so the repair for a corrupt model is exactly the operation the
+// observation prevents. That is a fail-open whose failure mode is a host that can never self-heal.
+//
+// Ollama names each blob for its own sha256, so the expected value travels WITH the file and needs
+// no separate manifest at compare time: hashing the blob and comparing to the hex in its own name is
+// the integrity check, self-describing and read-only. Observation must not mutate, which rules out
+// writing a checksum document on the target the way the installer legitimately does.
+//
+// THE COST IS REAL AND IS NOT HIDDEN. This hashes the full closure -- gigabytes -- on every
+// observation, and that is the honest price of the claim on a first canary. The cheaper steady-state
+// reading is immutability plus a previously admitted receipt, and that is an evidence-frequency
+// POLICY with its own carrier and its own decision, not something to arrive at by quietly checking
+// names and calling it complete. Until such a policy exists, this pays the cost.
+// The argv needs the required digests before the classifier runs, so the decode happens once here and
+// once inside the classifier. A decode that refuses yields an EMPTY argv list, which makes sha256sum
+// read no files and produce no lines -- and the classifier then refuses on its own decode, so the
+// empty case cannot be mistaken for "every blob verified".
+fn spark_serving_manifest_required_digests(manifest_body: String) -> List<NonEmptyStr> {
+  match spark_serving_manifest_decode(body: manifest_body) {
+    SparkServingManifestDigests { first: f, further: r } => concat([f], r)
+    SparkServingManifestUnparseable => []
+    SparkServingManifestMalformed { detail: _ } => []
+    SparkServingManifestNamesNoBlobs => []
+  }
+}
+
+fn spark_serving_model_blob_digest_argv(digest_hexes: List<NonEmptyStr>) -> List<String> {
+  concat(
+    ["sha256sum"],
+    map(digest_hexes, h => join([
+      spark_serving_desired_model_blobs_dir() as String,
+      "/",
+      ollama_blob_file_name(digest_hex: h) as String,
+    ], "")),
+  )
+}
+
+// Each `sha256sum` line is "<hex>  <path>". A blob is intact when the computed hex equals the hex
+// its own filename carries; anything else -- a short read, a rewritten layer, a name that does not
+// match its bytes -- is a mismatch, and the FIRST one is reported rather than a count, because an
+// operator repairs a named blob and not a number.
+fn spark_serving_first_corrupt_blob(stdout: String, expected: List<NonEmptyStr>) -> NonEmptyStr? {
+  fold(expected, init: none, f: fn(acc, want) {
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent =>
+        if any(
+          split(trim(s: stdout), "\n"),
+          line =>
+            string_contains(line, ollama_blob_file_name(digest_hex: want) as String)
+              && trim(s: split(trim(s: line), " ")[0]) == (want as String),
+        ) {
+          none
+        } else {
+          Present { value: want }
+        }
+    }
+  })
+}
+
+// THE MANIFEST'S BLOB CLOSURE, DECODED BY THE JSON PARSER RATHER THAN SCANNED FOR.
+//
+// A `grep -o sha256:[0-9a-f]*` over the body would find the same digests today and would also find
+// any digest that appeared anywhere for any reason -- in an annotation, a media type, a field this
+// decoder does not model. Reading the structure the manifest actually declares is the difference
+// between knowing which blobs are REQUIRED and knowing which hex strings are present in a file.
+//
+// An OCI-shaped manifest carries `config` (one descriptor) and `layers` (many). Both are blobs the
+// store must hold, and omitting the config is the kind of gap that shows up as a model that pulls
+// forever because one always-missing blob is never counted.
+// A DECODE VERDICT, NOT A BARE LIST. An empty list answered for three different things -- the body
+// did not parse, a key was duplicated, the manifest genuinely named nothing -- and all three then
+// refused with the same cause, which would tell an operator "names no blob digests" about a file
+// that is in fact unparseable. The refusal was already fail-closed; what was wrong was the sentence
+// it produced, and a diagnostic that misdescribes the fault sends the reader to the wrong place.
+type SparkServingManifestDecode
+  = SparkServingManifestDigests { first: NonEmptyStr, further: List<NonEmptyStr> }
+  | SparkServingManifestUnparseable
+  | SparkServingManifestMalformed { detail: NonEmptyStr }
+  | SparkServingManifestNamesNoBlobs
+
+fn spark_serving_manifest_decode(body: String) -> SparkServingManifestDecode {
+  match parse_json(s: body) {
+    Absent => SparkServingManifestUnparseable
+    Present { value: doc } =>
+      match spark_serving_manifest_descriptor_lists(doc: doc) {
+        SparkServingManifestMalformed { detail: d } => SparkServingManifestMalformed { detail: d }
+        SparkServingManifestUnparseable => SparkServingManifestUnparseable
+        SparkServingManifestNamesNoBlobs => SparkServingManifestNamesNoBlobs
+        SparkServingManifestDigests { first: f, further: r } =>
+          SparkServingManifestDigests { first: f, further: r }
+      }
+  }
+}
+
+fn spark_serving_manifest_descriptor_lists(doc: JsonValue) -> SparkServingManifestDecode {
+  match spark_serving_manifest_config_digest(doc: doc) {
+    SparkServingManifestMalformed { detail: d } => SparkServingManifestMalformed { detail: d }
+    SparkServingManifestUnparseable => SparkServingManifestUnparseable
+    SparkServingManifestDigests { first: _, further: _ } =>
+      spark_serving_manifest_join_layers(
+        doc: doc,
+        config: spark_serving_manifest_digest_list(v: spark_serving_manifest_config_digest(doc: doc)),
+      )
+    SparkServingManifestNamesNoBlobs =>
+      spark_serving_manifest_join_layers(doc: doc, config: [])
+  }
+}
+
+fn spark_serving_manifest_join_layers(
+  doc: JsonValue,
+  config: List<NonEmptyStr>,
+) -> SparkServingManifestDecode {
+  match spark_serving_manifest_layer_digests(doc: doc) {
+    SparkServingManifestMalformed { detail: d } => SparkServingManifestMalformed { detail: d }
+    SparkServingManifestUnparseable => SparkServingManifestUnparseable
+    SparkServingManifestNamesNoBlobs =>
+      match config.first() {
+        Absent => SparkServingManifestNamesNoBlobs
+        Present { value: h } => SparkServingManifestDigests { first: h, further: config.skip(n: 1) }
+      }
+    SparkServingManifestDigests { first: lf, further: lr } => {
+      let all = concat(config, concat([lf], lr))
+      match all.first() {
+        Absent => SparkServingManifestNamesNoBlobs
+        Present { value: h } => SparkServingManifestDigests { first: h, further: all.skip(n: 1) }
+      }
+    }
+  }
+}
+
+fn spark_serving_manifest_digest_list(v: SparkServingManifestDecode) -> List<NonEmptyStr> {
+  match v {
+    SparkServingManifestDigests { first: f, further: r } => concat([f], r)
+    SparkServingManifestUnparseable => []
+    SparkServingManifestMalformed { detail: _ } => []
+    SparkServingManifestNamesNoBlobs => []
+  }
+}
+
+// A DESCRIPTOR WITHOUT A USABLE DIGEST IS MALFORMED, NOT EMPTY. A layer entry that carries no
+// digest, carries two, or carries one this decoder cannot read means the manifest is not the shape
+// upstream documents -- and treating it as "this layer requires nothing" would quietly shrink the
+// required closure, which is the direction that reports a store complete when it is not.
+fn spark_serving_descriptor_digest(v: JsonValue) -> SparkServingManifestDecode {
+  match json_object_unique_member(v: v, key: "digest") {
+    JsonMemberFound { value: d } =>
+      match spark_serving_digest_hex_from_wire(wire: json_string_value_or_empty(v: d)) {
+        Absent =>
+          SparkServingManifestMalformed {
+            detail: "a descriptor digest is not a readable sha256 wire value" as NonEmptyStr,
+          }
+        Present { value: hex } => SparkServingManifestDigests { first: hex, further: [] }
+      }
+    JsonMemberAbsent =>
+      SparkServingManifestMalformed {
+        detail: "a descriptor carries no digest" as NonEmptyStr,
+      }
+    JsonMemberDuplicated { count: _ } =>
+      SparkServingManifestMalformed {
+        detail: "a descriptor carries more than one digest" as NonEmptyStr,
+      }
+    JsonMemberNotAnObject =>
+      SparkServingManifestMalformed {
+        detail: "a descriptor is not an object" as NonEmptyStr,
+      }
+  }
+}
+
+// `sha256:<hex>` is the WIRE spelling. The on-disk file is `sha256-<hex>`, and conflating the two is
+// how a consumer ends up looking for a file that exists on no host. The prefix is stripped here so
+// the digest travels as its hex alone and each side spells it its own way.
+fn spark_serving_digest_hex_from_wire(wire: String) -> NonEmptyStr? {
+  let parts = split(wire, ":")
+  if length(parts) == 2 && parts[0] == "sha256" && parts[1] != "" {
+    Present { value: parts[1] as NonEmptyStr }
+  } else {
+    none
+  }
+}
+
+fn spark_serving_manifest_config_digest(doc: JsonValue) -> SparkServingManifestDecode {
+  match json_object_unique_member(v: doc, key: "config") {
+    JsonMemberFound { value: cfg } => spark_serving_descriptor_digest(v: cfg)
+    JsonMemberAbsent => SparkServingManifestNamesNoBlobs
+    JsonMemberDuplicated { count: _ } =>
+      SparkServingManifestMalformed { detail: "manifest carries more than one config" as NonEmptyStr }
+    JsonMemberNotAnObject =>
+      SparkServingManifestMalformed { detail: "manifest is not an object" as NonEmptyStr }
+  }
+}
+
+fn spark_serving_manifest_layer_digests(doc: JsonValue) -> SparkServingManifestDecode {
+  match json_object_unique_member(v: doc, key: "layers") {
+    JsonMemberFound { value: layers } =>
+      match layers {
+        JsonArray { elements: els } =>
+          fold(els, init: SparkServingManifestNamesNoBlobs, f: fn(acc, el) {
+            match acc {
+              SparkServingManifestMalformed { detail: d } =>
+                SparkServingManifestMalformed { detail: d }
+              SparkServingManifestUnparseable => SparkServingManifestUnparseable
+              SparkServingManifestNamesNoBlobs => spark_serving_descriptor_digest(v: el)
+              SparkServingManifestDigests { first: f, further: r } =>
+                match spark_serving_descriptor_digest(v: el) {
+                  SparkServingManifestMalformed { detail: d } =>
+                    SparkServingManifestMalformed { detail: d }
+                  SparkServingManifestUnparseable => SparkServingManifestUnparseable
+                  SparkServingManifestNamesNoBlobs =>
+                    SparkServingManifestDigests { first: f, further: r }
+                  SparkServingManifestDigests { first: nf, further: nr } =>
+                    SparkServingManifestDigests {
+                      first: f,
+                      further: concat(r, concat([nf], nr)),
+                    }
+                }
+            }
+          })
+        JsonObject { members: _ } =>
+          SparkServingManifestMalformed { detail: "manifest layers is not an array" as NonEmptyStr }
+        JsonString { value: _ } =>
+          SparkServingManifestMalformed { detail: "manifest layers is not an array" as NonEmptyStr }
+        JsonNumber { lexeme: _ } =>
+          SparkServingManifestMalformed { detail: "manifest layers is not an array" as NonEmptyStr }
+        JsonBool { value: _ } =>
+          SparkServingManifestMalformed { detail: "manifest layers is not an array" as NonEmptyStr }
+        JsonNull =>
+          SparkServingManifestMalformed { detail: "manifest layers is not an array" as NonEmptyStr }
+      }
+    JsonMemberAbsent => SparkServingManifestNamesNoBlobs
+    JsonMemberDuplicated { count: _ } =>
+      SparkServingManifestMalformed { detail: "manifest carries more than one layers key" as NonEmptyStr }
+    JsonMemberNotAnObject =>
+      SparkServingManifestMalformed { detail: "manifest is not an object" as NonEmptyStr }
+  }
+}
+
+fn spark_serving_blob_file_name_for(digest_hex: NonEmptyStr) -> String {
+  ollama_blob_file_name(digest_hex: digest_hex)
+}
+
+// THE IDENTITY IS READ, NOT COMPUTED THIS SIDE, AND THE FAMILY IS WHY.
+//
+// An earlier revision identified the observed manifest with content_hash_atom over the bytes -- an
+// fnv1a64 structural digest. Desired carries `ModelArtifact.identity`, which comes off an ollama
+// model digest and is therefore Sha256. Comparing them does not yield "different"; it yields
+// ContentHashCrossFamilyIncomparable, so the model member could never have converged and the plan
+// could never have emptied. The cross-family wall was doing its job -- what was wrong was minting an
+// identity in whichever family happened to be convenient at the observation site.
+//
+// So the host computes it, in the family desired already speaks.
+//
+// VERIFIED BY THE srv6 CANARY, 2026-08-19, AND IT HOLDS. That sha256 of the manifest file equals the
+// digest `/api/tags` reports was stated here as an unverified upstream property, with its failure
+// named -- a member reconciling as drift forever -- and this canary nominated as what would decide
+// it. Both mechanisms were then measured against the same live store on srv6 and answered the same
+// value, 17052f91a42e97930aa6e28a6c6c06a983e6a58dbb00434885a0cf5313e376f7. The property stands and
+// the sha256sum leg is a sound way to read this identity.
+//
+// A CORRECTION IS RECORDED HERE BECAUSE THIS FILE BRIEFLY CLAIMED THE OPPOSITE. An earlier revision
+// of this comment declared the assumption refuted and rerouted the identity through /api/tags. That
+// conclusion came from comparing the observed value against the DECLARED desired digest and blaming
+// the difference on the mechanism, without ever measuring the second mechanism. The two mechanisms
+// never disagreed. What disagrees is the declaration and the host, and rerouting the observation
+// could not have touched that -- it only changed the format, since the API returns bare hex where
+// serialize_content_hash emits the sha256: form, which would have made the member unconvergeable on
+// spelling even had the values matched.
+//
+// THE DISAGREEMENT IS RESOLVED AND WAS NOT THIS FUNCTION'S TO SETTLE. It was a declaration problem:
+// desired state pinned the identity the tag resolved to on 2026-08-12, upstream republished, and the
+// pin then named bytes the tag no longer served. The operator re-selected on 2026-08-19 and desired
+// state now consumes gunbc.ollama_model_resolution, which records the reference, the resolved
+// identity, when, and the three readings behind it. Nothing about the observation changed, which was
+// the point of the correction above.
+fn spark_serving_model_manifest_digest_argv() -> List<String> {
+  ["sha256sum", spark_serving_desired_model_manifest_path() as String]
+}
+
+fn spark_serving_observe_model_store(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+) -> ModelStoreObservation {
+  match spark_serving_probe_leg(
+    context: context, host: host, raw_words: spark_serving_model_manifest_probe_argv(),
+  ) {
+    Absent =>
+      ModelStoreObservationRefused {
+        cause: "model manifest probe leg did not run" as NonEmptyStr,
+      }
+    Present { value: manifest } =>
+      if manifest.success == false {
+        if cat_reported_missing_file(result: manifest) {
+          ModelStoreAbsent
+        } else {
+          ModelStoreObservationRefused {
+            cause: join([
+              "model manifest unreadable exit=", to_string(manifest.exit_code),
+              " stderr=", manifest.stderr,
+            ], "") as NonEmptyStr,
+          }
+        }
+      } else {
+        match spark_serving_probe_leg(
+          context: context, host: host, raw_words: spark_serving_model_blobs_listing_argv(),
+        ) {
+          Absent =>
+            ModelStoreObservationRefused {
+              cause: "model blob listing leg did not run, so a complete manifest cannot be told from a complete store" as NonEmptyStr,
+            }
+          Present { value: blobs } =>
+            if blobs.success == false {
+              ModelStoreObservationRefused {
+                cause: join([
+                  "model blob listing failed exit=", to_string(blobs.exit_code),
+                  " stderr=", blobs.stderr,
+                ], "") as NonEmptyStr,
+              }
+            } else {
+              match spark_serving_probe_leg(
+                context: context, host: host,
+                raw_words: spark_serving_model_manifest_digest_argv(),
+              ) {
+                Absent =>
+                  ModelStoreObservationRefused {
+                    cause: "model manifest digest leg did not run, and an identity this side invented would not be comparable to the desired one" as NonEmptyStr,
+                  }
+                Present { value: digest } =>
+                  if digest.success == false {
+                    ModelStoreObservationRefused {
+                      cause: join([
+                        "model manifest digest failed exit=", to_string(digest.exit_code),
+                        " stderr=", digest.stderr,
+                      ], "") as NonEmptyStr,
+                    }
+                  } else {
+                    match spark_serving_probe_leg(
+                      context: context, host: host,
+                      raw_words: spark_serving_model_blob_digest_argv(
+                        digest_hexes: spark_serving_manifest_required_digests(
+                          manifest_body: manifest.stdout,
+                        ),
+                      ),
+                    ) {
+                      Absent =>
+                        ModelStoreObservationRefused {
+                          cause: "model blob digest leg did not run, so blob contents were never verified" as NonEmptyStr,
+                        }
+                      Present { value: blobdigests } =>
+                        spark_serving_classify_model_store(
+                          manifest_body: manifest.stdout,
+                          manifest_digest_stdout: digest.stdout,
+                          blobs_listing: blobs.stdout,
+                          blob_digest_stdout: blobdigests.stdout,
+                        )
+                    }
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+
+// A MANIFEST THAT PARSES TO NO LAYERS IS A REFUSAL, NOT AN EMPTY STORE. A readable file naming zero
+// blobs means either the manifest is not the shape this decoder expects or upstream changed it, and
+// answering "complete with zero blobs" to either would be the emptiest possible fabrication: every
+// blob it requires is present because it requires none.
+fn spark_serving_classify_model_store(
+  manifest_body: String,
+  manifest_digest_stdout: String,
+  blobs_listing: String,
+  blob_digest_stdout: String,
+) -> ModelStoreObservation {
+  let present = split(trim(s: blobs_listing), "\n")
+  match spark_serving_manifest_decode(body: manifest_body) {
+    SparkServingManifestUnparseable =>
+      ModelStoreObservationRefused {
+        cause: "model manifest is not parseable JSON" as NonEmptyStr,
+      }
+    SparkServingManifestMalformed { detail: d } =>
+      ModelStoreObservationRefused {
+        cause: join(["model manifest is malformed: ", d as String], "") as NonEmptyStr,
+      }
+    SparkServingManifestNamesNoBlobs =>
+      ModelStoreObservationRefused {
+        cause: "model manifest names no blob digests — refusing rather than reporting a store complete against an empty requirement" as NonEmptyStr,
+      }
+    SparkServingManifestDigests { first: rf, further: rr } => {
+      let required = concat([rf], rr)
+      let observed_identity = spark_serving_sha256sum_identity(stdout: manifest_digest_stdout)
+      let missing = fold(required, init: [], f: fn(acc, want) {
+        if any(present, p => trim(s: p) == spark_serving_blob_file_name_for(digest_hex: want)) {
+          acc
+        } else {
+          concat(acc, [want])
+        }
+      })
+      match observed_identity {
+        Absent =>
+          ModelStoreObservationRefused {
+            cause: "sha256sum output is not a readable sha256 hex digest" as NonEmptyStr,
+          }
+        Present { value: ident } =>
+          match missing.first() {
+            Absent =>
+              match spark_serving_first_corrupt_blob(stdout: blob_digest_stdout, expected: required) {
+                Present { value: bad } =>
+                  ModelStoreCorrupt { manifest_identity: ident, first_corrupt_blob: bad }
+                Absent =>
+                  ModelStoreComplete {
+                    manifest_identity: ident,
+                    blob_closure_count: length(required),
+                  }
+              }
+            Present { value: head } =>
+              ModelStoreIncomplete {
+                manifest_identity: ident,
+                first_missing_blob: head,
+                further_missing_blobs: missing.skip(n: 1),
+              }
+          }
+      }
+    }
+  }
+}
+
+fn spark_serving_observe_user_unit_pair(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+) -> SparkServingObservedUnit {
+  match spark_serving_probe_leg(
+    context: context, host: host, raw_words: spark_serving_user_unit_read_argv(),
+  ) {
+    Absent =>
+      SparkServingObservedUnit {
+        state: UserUnitStateUnobserved,
+        enablement: UserUnitManagerUnobserved,
+        activity: UnitActivityUnobserved,
+      }
+    Present { value: read } =>
+      match spark_serving_probe_leg(
+        context: context, host: host, raw_words: spark_serving_user_unit_is_enabled_argv(),
+      ) {
+        Absent =>
+          SparkServingObservedUnit {
+            state: UserUnitStateUnobserved,
+            enablement: UserUnitManagerUnobserved,
+            activity: UnitActivityUnobserved,
+          }
+        Present { value: enabled } =>
+          match spark_serving_probe_leg(
+            context: context, host: host, raw_words: spark_serving_active_probe_words(),
+          ) {
+            Absent =>
+              SparkServingObservedUnit {
+                state: classify_observed_user_unit(
+                  read_succeeded: read.success,
+                  read_stdout: read.stdout,
+                  file_absent: cat_reported_missing_file(result: read),
+                ),
+                enablement: classify_is_enabled_stdout(result: enabled),
+                activity: UnitActivityUnobserved,
+              }
+            Present { value: active } =>
+              SparkServingObservedUnit {
+                state: classify_observed_user_unit(
+                  read_succeeded: read.success,
+                  read_stdout: read.stdout,
+                  file_absent: cat_reported_missing_file(result: read),
+                ),
+                enablement: classify_is_enabled_stdout(result: enabled),
+                activity: classify_is_active_result(result: active),
+              }
+          }
+      }
+  }
+}
+
+// THE RUNTIME MATERIALIZATION PRODUCER -- the evidence behind the runtime-root member.
+//
+// This is what makes `RuntimeMaterializationObservation` a fact rather than a vocabulary. Until it
+// existed every `Complete` in the tree was caller-authored, and the runtime member was projected
+// from `/api/version` joined with the archive-admission receipt -- a pair that proves a process
+// answered and an archive was once admitted, and says nothing about the tree on disk.
+//
+// THE LEGS ARE `test`, WHICH ANSWERS BY EXIT CODE. That matters for the refusal boundary: a leg that
+// did not run at all yields `none` from the probe and REFUSES the observation, while a leg that ran
+// and exited nonzero is a successful measurement of a negative. Collapsing those would let an
+// unreachable host report a bare runtime and select a full materialization from ignorance.
+//
+// The order is root, then executable, then executable bit, and each answers a different question
+// with a different remedy. It stops at the first negative because the later legs are not meaningful
+// past it -- asking whether a missing file is executable has no answer worth carrying.
+//
+// The listing leg is CONDITIONAL and runs only when the root exists but the executable does not: an
+// empty root and a populated-but-wrong root are different failures (an interrupted extraction versus
+// a wrong recipe or a wrong release), and without it both would report as one missing executable.
+// It costs a fourth remote leg only on hosts that are already broken.
+//
+// NOT YET IN THIS PRODUCER, named rather than implied: the completion receipt and the local
+// executable's own reported version. Both belong here -- an extraction that finished and an
+// executable that IS the release the identity names are separate facts from the file merely being
+// present and +x -- and neither is observed yet, so `Complete` still means "the expected executable
+// is in the expected place and is executable", not "the tree is the one the identity names".
+fn spark_serving_runtime_root_probe_argv() -> List<String> {
+  ["test", "-d", spark_serving_required_runtime_root() as String]
+}
+
+fn spark_serving_runtime_executable_probe_argv() -> List<String> {
+  ["test", "-f", spark_serving_required_runtime_executable_path() as String]
+}
+
+fn spark_serving_runtime_executable_bit_probe_argv() -> List<String> {
+  ["test", "-x", spark_serving_required_runtime_executable_path() as String]
+}
+
+fn spark_serving_runtime_root_listing_argv() -> List<String> {
+  ["ls", "-A", spark_serving_required_runtime_root() as String]
+}
+
+fn spark_serving_required_runtime_executable_rel() -> NonEmptyStr {
+  ollama_required_release.executable_relative_path
+}
+
+fn spark_serving_classify_runtime_executable_absence(
+  listing: SshSessionExecResult?,
+) -> RuntimeMaterializationObservation {
+  let identity = ollama_runtime_materialization_identity_for_required_release()
+  match listing {
+    Absent =>
+      RuntimeMaterializationObservationRefused {
+        cause: "runtime root listing leg did not run, so an empty root cannot be told from a populated one" as NonEmptyStr,
+      }
+    Present { value: ls } =>
+      if ls.success == false {
+        RuntimeMaterializationObservationRefused {
+          cause: join([
+            "runtime root listing failed exit=", to_string(ls.exit_code), " stderr=", ls.stderr,
+          ], "") as NonEmptyStr,
+        }
+      } else {
+        if (ls.stdout as String).trim() == "" {
+          RuntimeMaterializationIncomplete {
+            identity: identity,
+            first_defect: RuntimeRootPresentButEmpty,
+            further_defects: [],
+          }
+        } else {
+          RuntimeMaterializationIncomplete {
+            identity: identity,
+            first_defect: RuntimeExecutableMissing {
+              expected_relative_path: spark_serving_required_runtime_executable_rel(),
+            },
+            further_defects: [],
+          }
+        }
+      }
+  }
+}
+
+// THE RECEIPT LEG, which is what stops an arbitrary executable reading as an installed closure.
+//
+// The install sequence writes this file last, after digest admission, extraction, the entrypoint
+// check and publication, so its presence is the one on-disk fact that covers the steps a directory
+// listing cannot see. Reading it is the difference between "something executable is at the expected
+// path" and "the closure this path names was installed by a sequence that completed".
+//
+// IT READS THE CONTENT, NOT JUST EXISTENCE. The installer writes the materialization identity into
+// this file, so `cat` plus a comparison establishes that the receipt names THE PLANNED closure --
+// where `test -f` established only that some receipt was there. A receipt left by a previous
+// materialization at a different identity is exactly the case that matters: the content-addressed
+// root makes that unlikely by construction, and an observation that cannot tell the difference is
+// still one that would be believed if it happened.
+fn spark_serving_runtime_materialization_receipt_probe_argv() -> List<String> {
+  ["cat", spark_serving_required_runtime_receipt_path() as String]
+}
+
+// TERMINAL SERVING HEALTH, OBSERVED. Two legs, in order: the version endpoint says the runtime that
+// answers is the planned one, and the generate endpoint says it can actually serve the planned model.
+//
+// A leg that did not run yields the EMPTY capture rather than a fabricated body, and the health fold
+// renders that as `ServingHealthUnobserved` -- so an unreachable endpoint reports as unobserved, not
+// as unhealthy. The distinction matters because the two have different next steps: unhealthy means
+// investigate the host, unobserved means the probe never got an answer to judge.
+// THE PROBE CARRIES ITS OWN REQUEST BODY, and this is a repair with a receipt. The body was written
+// by the model-materialization sequence, so it existed only on a host where the model had just been
+// materialized -- and the moment srv5's membership converged, that sequence stopped running and the
+// probe went back to failing with curl exit 26 on a host that was serving perfectly. A precondition
+// of a read that is produced by an unrelated write is a precondition that disappears exactly when
+// everything else starts working.
+//
+// It is not a seventh membership member either: the body is scratch a read needs, not declared host
+// state anyone reconciles toward. It is deterministic -- the same bytes from the same authority on
+// every run -- so writing it before each probe is idempotent setup, not a failure arm that widens.
+//
+// The write refusing does NOT fabricate a health verdict: the probe then reads nothing, the capture
+// is empty, and the fold says unobserved. A body we could not place and a server that did not answer
+// are both "we did not learn", which is the honest arm for either.
+fn spark_serving_observe_terminal_health(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+) -> SparkServingTerminalHealth {
+  let _prepared = spark_serving_place_health_request_body(context: context, host: host)
+  spark_serving_health_from_captures(
+    version_stdout: spark_serving_probe_stdout_or_empty(
+      context: context, host: host, raw_words: spark_serving_health_version_probe_argv(),
+    ),
+    generate_stdout: spark_serving_probe_stdout_or_empty(
+      context: context, host: host, raw_words: spark_serving_health_generate_probe_argv(),
+    ),
+  )
+}
+
+// Placing the body is two ordinary legs -- make the directory, write the bytes -- through the same
+// typed file write every other remote write uses, so the path is admitted for containment and
+// far-side portability rather than trusted.
+func spark_serving_place_health_request_body(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+) -> Bool
+  uses net: Network
+{
+  let made = spark_serving_probe_leg_via_locus(
+    context: context,
+    host: host,
+    raw_words: ["mkdir", "-p", spark_serving_readiness_scratch_root() as String],
+  )
+  match made {
+    Absent => false
+    Present { value: m } =>
+      if m.success == false {
+        false
+      } else {
+        match typed_remote_file_write_seal(
+          path: spark_serving_health_request_body_path(),
+          content: spark_serving_health_request_body(),
+          allowed_scope: FileTreeScope { root_path: spark_serving_executor_home as NonEmptyStr },
+        ) {
+          TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+          TypedRemoteFileWriteAdmitted { write: w } =>
+            remote_execution_permits_continuation(
+              execution: spark_serving_run_operation(
+                operation: RemoteFileBytes { write: w, mode: RemoteFileModeOwnerReadWrite },
+                transport: fleet_locus_transport(context: context, host: host),
+              ),
+            )
+        }
+      }
+  }
+}
+
+// A FAILED LEG IS AN EMPTY CAPTURE, NOT A MISSING ONE. `curl -fsS` exits nonzero on an HTTP error and
+// writes nothing useful, so returning its stdout regardless would hand the decoder an error page to
+// interpret. Empty is the honest input: it decodes to unobserved.
+fn spark_serving_probe_stdout_or_empty(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  raw_words: List<String>,
+) -> String {
+  match spark_serving_probe_leg(context: context, host: host, raw_words: raw_words) {
+    Absent => ""
+    Present { value: r } => if r.success { r.stdout } else { "" }
+  }
+}
+
+fn spark_serving_observe_runtime_materialization(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+) -> RuntimeMaterializationObservation {
+  let identity = ollama_runtime_materialization_identity_for_required_release()
+  match spark_serving_probe_leg(
+    context: context, host: host, raw_words: spark_serving_runtime_root_probe_argv(),
+  ) {
+    Absent =>
+      RuntimeMaterializationObservationRefused {
+        cause: "runtime root probe leg did not run" as NonEmptyStr,
+      }
+    Present { value: root } =>
+      if root.success == false {
+        RuntimeMaterializationAbsent
+      } else {
+        match spark_serving_probe_leg(
+          context: context, host: host, raw_words: spark_serving_runtime_executable_probe_argv(),
+        ) {
+          Absent =>
+            RuntimeMaterializationObservationRefused {
+              cause: "runtime executable probe leg did not run" as NonEmptyStr,
+            }
+          Present { value: exe } =>
+            if exe.success == false {
+              spark_serving_classify_runtime_executable_absence(
+                listing: spark_serving_probe_leg(
+                  context: context, host: host, raw_words: spark_serving_runtime_root_listing_argv(),
+                ),
+              )
+            } else {
+              match spark_serving_probe_leg(
+                context: context, host: host, raw_words: spark_serving_runtime_executable_bit_probe_argv(),
+              ) {
+                Absent =>
+                  RuntimeMaterializationObservationRefused {
+                    cause: "runtime executable-bit probe leg did not run" as NonEmptyStr,
+                  }
+                Present { value: bit } =>
+                  if bit.success == false {
+                    RuntimeMaterializationIncomplete {
+                      identity: identity,
+                      first_defect: RuntimeExecutableNotExecutable {
+                        expected_relative_path: spark_serving_required_runtime_executable_rel(),
+                      },
+                      further_defects: [],
+                    }
+                  } else {
+                    match spark_serving_probe_leg(
+                      context: context, host: host,
+                      raw_words: spark_serving_runtime_materialization_receipt_probe_argv(),
+                    ) {
+                      Absent =>
+                        RuntimeMaterializationObservationRefused {
+                          cause: "runtime materialization receipt probe leg did not run" as NonEmptyStr,
+                        }
+                      Present { value: receipt } =>
+                        if receipt.success == false {
+                          RuntimeMaterializationIncomplete {
+                            identity: identity,
+                            first_defect: RuntimeMaterializationReceiptMissing,
+                            further_defects: [],
+                          }
+                        } else if trim(s: receipt.stdout) != (identity.digest as String) {
+                          RuntimeMaterializationIncomplete {
+                            identity: identity,
+                            first_defect: RuntimeMaterializationReceiptIdentityMismatch {
+                              observed: trim(s: receipt.stdout) as NonEmptyStr,
+                            },
+                            further_defects: [],
+                          }
+                        } else {
+                          RuntimeMaterializationComplete { identity: identity }
+                        }
+                    }
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+
+
+// ONE OBSERVATION IN, ONE PROJECTION OUT.
+//
+// The production caller was invoking the probe pair TWICE -- once for .state and once for
+// .enablement -- which paid four remote legs and, worse, could join content read at one moment with
+// enablement read at another. Two facts about one unit taken from two different observations is not
+// an observation of that unit. This takes the bound pair so the join is structural.
+fn spark_serving_observed_members_for_unit(
+  host: HostIdentity,
+  runtime: RuntimeMaterializationObservation,
+  store: ModelStoreObservation,
+  observed_unit: SparkServingObservedUnit,
+  linger: SparkServingObservedLingerState,
+) -> SparkServingObservedMemberProjection {
+  spark_serving_observed_members(
+    host: host,
+    runtime: runtime,
+    store: store,
+    unit: observed_unit.state,
+    enablement: observed_unit.enablement,
+    activity: observed_unit.activity,
+    linger: linger,
+  )
+}
+
+// `sha256sum` prints "<hex>  <path>". Only the hex is taken, and it must parse as a real sha256 --
+// a truncated or error-shaped line refuses rather than becoming an identity nothing can compare.
+fn spark_serving_sha256sum_identity(stdout: String) -> NonEmptyStr? {
+  match split(trim(s: stdout), " ").first() {
+    Absent => none
+    Present { value: hex } =>
+      match sha256_hex_digest(hex: trim(s: hex)) {
+        Absent => none
+        Present { value: d } =>
+          Present {
+            value: serialize_content_hash(hash: as_content_hash_cryptographic(digest: d)) as NonEmptyStr,
+          }
+      }
+  }
+}
