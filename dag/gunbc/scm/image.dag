@@ -50,6 +50,7 @@ import v2.std.node {
   Symbol,
 }
 import v2.std.compilers.lexing { symbol_lexeme, symbol_intern_lexeme }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 
 import gunbc.scm.object_store {
   ObjectId,
@@ -210,28 +211,40 @@ fn encode_label(l: EdgeLabel) -> List<JsonKeyValue> {
   }
 }
 
+// POSITIONS ARE KEYED, NOT SCANNED, AND THE COST SHAPE IS THE REASON.
+//
+// The first version carried a List and answered position_of by folding it, once per edge, while the
+// list itself grew by concat-at-end inside a fold. That is O(n^2) in accumulator copying and
+// O(objects x edges) in lookup -- the copied-accumulator and quadratic-fold pair DESIGN section 6
+// names under bare minimum cost, where the rule is that a proven cost shape is ALWAYS fixed
+// regardless of the realized n. An earlier revision of this module excused it on the grounds that
+// object_store already scans linearly, which is precisely the "n is small here" reasoning that rule
+// rejects: inheriting a defect is not a licence to add one.
+//
+// WHY A MAP IS ADMISSIBLE HERE WHEN object_store REFUSES ONE. That refusal is about TRAVERSAL: a
+// store whose iteration order leaked into a digest would hash one program two ways. Nothing here
+// iterates a map -- these are point lookups only, and the emitted order comes from
+// store_records_in_dependency_order, not from the map. The determinism hazard is absent because the
+// operation that carries it is absent.
+//
+// The key is the digest STRING rather than the ObjectId record, so lookup identity is exactly the
+// equality object_id_eq already defines, rather than whatever structural equality a record key would
+// impose.
 type EncodePositions {
-  entries: List<EncodePosition>
+  by_identity: Map<String, String>
   next: Int
-}
-
-type EncodePosition {
-  identity: ObjectId
-  reference: String
 }
 
 fn position_reference(n: Int) -> String {
   json_int_lexeme(n: n) as String
 }
 
+fn object_id_key(identity: ObjectId) -> String {
+  identity.digest as String
+}
+
 fn position_of(positions: EncodePositions, identity: ObjectId) -> String? {
-  fold(positions.entries, init: none, f: fn(acc, entry) {
-    if object_id_eq(left: entry.identity, right: identity) {
-      Present { value: entry.reference }
-    } else {
-      acc
-    }
-  })
+  map_lookup(m: positions.by_identity, key: object_id_key(identity: identity))
 }
 
 // A missing position is UNREACHABLE rather than defended against, and the reason is worth stating
@@ -273,34 +286,55 @@ type EncodeAcc {
   objects: List<JsonValue>
 }
 
+// OBJECTS ACCUMULATE BY PREPEND AND ARE REVERSED ONCE, the corpus idiom (std.markdown, std.realization,
+// std.selected_witness_bundle all reverse a prepending fold). concat-at-end copies the whole
+// accumulator on every step; prepending does not, so the emitted order is restored by one linear
+// reverse instead of being bought with a quadratic.
 fn encode_step(acc: EncodeAcc, record: ObjectRecord) -> EncodeAcc {
   EncodeAcc {
     positions: EncodePositions {
-      entries: concat(
-        acc.positions.entries,
-        [
-          EncodePosition {
-            identity: record.identity,
-            reference: position_reference(n: acc.positions.next),
-          }
-        ]
+      by_identity: map_insert(
+        m: acc.positions.by_identity,
+        key: object_id_key(identity: record.identity),
+        value: position_reference(n: acc.positions.next),
       ),
       next: acc.positions.next + 1,
     },
-    objects: concat(acc.objects, [encode_record(positions: acc.positions, record: record)]),
+    objects: concat([encode_record(positions: acc.positions, record: record)], acc.objects),
+  }
+}
+
+// THE OBJECT TABLE IS SEPARATE FROM WHATEVER DESIGNATES ROOTS IN IT, and that split is what lets a
+// repository hold SEVERAL commits over ONE node population. Embedding a complete closure per commit
+// would re-serialize every unchanged object once per commit -- the same duplication that backward
+// positions already refuse within a single closure, reintroduced one layer up. Encoding the store
+// once and letting each root be an ordinary reference into that table is the same move at the
+// repository's grain.
+//
+// encode_image below is now one caller of this: the single-root case.
+fn encode_object_table(store: ObjectStore) -> EncodeAcc {
+  match fold(
+    store_records_in_dependency_order(store: store),
+    init: EncodeAcc { positions: EncodePositions { by_identity: empty_map(), next: 0 }, objects: [] },
+    f: fn(acc, record) { encode_step(acc: acc, record: record) }
+  ) {
+    EncodeAcc { positions: positions, objects: reversed } =>
+      EncodeAcc { positions: positions, objects: reverse(reversed) }
+  }
+}
+
+// A root that names no object in the table yields the empty reference, which decode refuses as
+// ImageRootUnresolved. It is never silently omitted from the commit list.
+fn encoded_root_reference(acc: EncodeAcc, root: ObjectId) -> String {
+  match position_of(positions: acc.positions, identity: root) {
+    Present { value: r } => r
+    Absent => ""
   }
 }
 
 fn encode_image(store: ObjectStore, root: ObjectId) -> JsonValue {
-  let acc = fold(
-    store_records_in_dependency_order(store: store),
-    init: EncodeAcc { positions: EncodePositions { entries: [], next: 0 }, objects: [] },
-    f: fn(acc, record) { encode_step(acc: acc, record: record) }
-  )
-  let root_reference = match position_of(positions: acc.positions, identity: root) {
-    Present { value: r } => r
-    Absent => ""
-  }
+  let acc = encode_object_table(store: store)
+  let root_reference = encoded_root_reference(acc: acc, root: root)
   json_object(
     members: [
       json_kv(key: "format", value: json_string(s: image_format_tag)),
@@ -422,19 +456,15 @@ fn decode_kind(kind_value: JsonValue) -> KindDecode {
   }
 }
 
-type DecodePosition {
-  reference: String
-  identity: ObjectId
-}
+// THE DECODE SIDE CARRIES THE SAME KEYED SHAPE FOR THE SAME REASON. Growing a List by
+// concat-at-end per object and folding it once per edge made load O(objects x edges) for work that
+// is O(n log n); the refusal semantics are unchanged, because a reference still resolves ONLY
+// against positions already decoded -- the map is populated in the same forward order the list was,
+// so a forward or fabricated reference is still absent and still refuses.
+type DecodePositions = Map<String, ObjectId>
 
-fn resolve_reference(positions: List<DecodePosition>, reference: String) -> ObjectId? {
-  fold(positions, init: none, f: fn(acc, entry) {
-    if entry.reference == reference {
-      Present { value: entry.identity }
-    } else {
-      acc
-    }
-  })
+fn resolve_reference(positions: DecodePositions, reference: String) -> ObjectId? {
+  map_lookup(m: positions, key: reference)
 }
 
 type LabelDecode
@@ -471,7 +501,7 @@ type EdgeAcc {
 // nearby object. Only earlier positions are in scope -- the accumulator holds exactly what has been
 // decoded so far -- so a forward reference and a fabricated one are the same refusal, and neither
 // can quietly bind to whatever happens to sit at that index later.
-fn decode_edge_step(positions: List<DecodePosition>, acc: EdgeAcc, edge_value: JsonValue) -> EdgeAcc {
+fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonValue) -> EdgeAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
@@ -508,7 +538,7 @@ fn decode_edge_step(positions: List<DecodePosition>, acc: EdgeAcc, edge_value: J
 
 type DecodeAcc {
   store: ObjectStore
-  positions: List<DecodePosition>
+  positions: DecodePositions
   next: Int
   refusal: ImageRefusal?
 }
@@ -552,9 +582,10 @@ fn decode_object_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
                             Stored { store: next_store, identity: identity } =>
                               DecodeAcc {
                                 store: next_store,
-                                positions: concat(
-                                  acc.positions,
-                                  [DecodePosition { reference: position_reference(n: acc.next), identity: identity }]
+                                positions: map_insert(
+                                  m: acc.positions,
+                                  key: position_reference(n: acc.next),
+                                  value: identity,
                                 ),
                                 next: acc.next + 1,
                                 refusal: acc.refusal,
@@ -572,6 +603,18 @@ fn decode_object_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
   }
 }
 
+// THE TABLE DECODE, exposed for the same reason the table encode is: a repository resolves SEVERAL
+// roots against one decoded population. Returning the accumulator rather than a finished store means
+// the caller keeps the position-to-identity map it needs to resolve those roots, which a
+// store-only return would have discarded -- forcing the caller to re-derive positions it cannot see.
+fn decode_object_table(object_values: List<JsonValue>) -> DecodeAcc {
+  fold(
+    object_values,
+    init: DecodeAcc { store: empty_store(), positions: empty_map(), next: 0, refusal: none },
+    f: fn(acc, object_value) { decode_object_step(acc: acc, object_value: object_value) }
+  )
+}
+
 // The format tag is checked BEFORE any object is decoded, so a file from a future format refuses as
 // a format mismatch rather than as a pile of unknown-tag errors from the middle of a walk.
 fn decode_image(v: JsonValue) -> ImageLoadOutcome {
@@ -584,11 +627,7 @@ fn decode_image(v: JsonValue) -> ImageLoadOutcome {
         match read_member(v: v, key: "objects") {
           MemberFailed { cause: c } => ImageRefused { cause: c }
           MemberArray { elements: object_values } =>
-            match fold(
-              object_values,
-              init: DecodeAcc { store: empty_store(), positions: [], next: 0, refusal: none },
-              f: fn(acc, object_value) { decode_object_step(acc: acc, object_value: object_value) }
-            ) {
+            match decode_object_table(object_values: object_values) {
               DecodeAcc { store: store, positions: positions, next: _, refusal: refusal } =>
                 match refusal {
                   Present { value: c } => ImageRefused { cause: c }
