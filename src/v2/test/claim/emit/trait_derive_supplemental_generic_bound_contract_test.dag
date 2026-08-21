@@ -483,11 +483,11 @@ fn sgb_contract_has_single_parameter_two_requirements(
   second_trait: ReprGroundingDeriveTrait,
   second_authority: ExternalAuthority
 ) -> Bool {
-  count(contract.requirements.keys()) == 1
+  count(map_keys(contract.requirements)) == 1
     && match contract.requirements.lookup(representation_parameter) {
       Absent => false
       Present { value: requirements } =>
-        count(requirements.keys()) == 2
+        count(map_keys(requirements)) == 2
           && sgb_requirement_authority_matches(
             contract: contract,
             representation_parameter: representation_parameter,
