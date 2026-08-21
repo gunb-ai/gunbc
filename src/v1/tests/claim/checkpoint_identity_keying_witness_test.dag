@@ -172,7 +172,32 @@ test fn literal_suffix_production_call_site_never_threads_declaration_identity()
 }
 
 // ---------------------------------------------------------------------------
-// THE ARITY SPLIT, EXECUTED. One TypeCheckpoint row was answering two
+// WHERE THE THREE ROWS BELOW EXECUTE, AND WHERE THEY DO NOT. They were run
+// directly during authoring -- green, plus a discriminating RED that fails at
+// the grounding assertion specifically while both reference assertions pass --
+// and that is evidence the assertions HOLD. It is NOT evidence that CI runs
+// them, and conflating the two is the error the note at the top of this file
+// exists to repair.
+//
+// They are NOT ENROLLED. The required-CI invocation is
+// `claim_executor --required-ci --source-root dag --source-root src/v2`, and
+// this file lives under src/v1, which is outside that envelope -- the same
+// reason the migration note above gives for the rows it could not carry across.
+// So the standing evidence for the two-role split is on-demand, not executing,
+// and DESIGN section 4b(4) -- the discriminating RED remains enrolled as the
+// evidence that the higher rung stays real -- does not hold for these rows yet.
+//
+// This is declared rather than left to be rediscovered, per 4b(2)'s no-untracked-
+// stall rule. NEXT-RUNG TRIGGER: src/v1 witnesses reachable from the required-CI
+// envelope, either by the envelope widening or by these assertions being re-homed
+// onto a carrier inside it. Re-homing is not free and is not done here: the rows
+// import v1.compiler.emit_rust directly, and the dag/ sibling of this file can
+// only observe the emitter black-box through compile_dag_rust_emit_check, which
+// is a weaker instrument -- it sees rendered output, not the function's answer.
+// Moving them there would silently downgrade what they discriminate.
+//
+// ---------------------------------------------------------------------------
+// THE TWO-ROLE SPLIT, EXECUTED. One TypeCheckpoint row was answering two
 // questions -- what a REFERENCE renders and what a DECLARATION's right-hand
 // side is GROUNDED IN -- and for String those answers differ: a reference
 // renders the bare `String`, while the declaration `pub type String = String;`
