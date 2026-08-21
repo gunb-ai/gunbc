@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, List, Bool, FilePath }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.clock_read { clock_now_probed_at }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_ssh_locus {
   prepare_fleet_ssh_agent_context,
   FleetSshContextReady,
@@ -768,7 +768,7 @@ func spark_grant_install_ci_wet() -> ProcessExit
             administrator: spark_grant_install_administrator_standing(),
           )
           let body = join([
-            "spark_grant_install_ci_wet probed_at=", now as String, "\n",
+            "spark_grant_install_ci_wet probed_at=", probed_at_word(reading: now) as String, "\n",
             context_receipt,
             spark_grant_install_run_text(run: run),
           ], "")

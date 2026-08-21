@@ -21,7 +21,7 @@ import gunbc.fleet_multi_principal_probe {
 import gunbc.host_effect_realize { run_typed_argv_transport }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.spark.managed_access_bootstrap { spark_managed_grant_argv, RebootThisHost }
-import gunbc.clock_read { clock_now_probed_at }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 
 // REBOOTING IS A DURABILITY PROBE, NOT A CONVERGE REMEDY, and the distinction is the whole reason
@@ -191,7 +191,7 @@ func spark_serving_reboot_with_context(
     SparkConvergeTargetSingle { host: only } => {
       let outcome = spark_serving_issue_reboot(context: context, host: only)
       let body = join([
-        "spark_serving_reboot_ci_wet probed_at=", now as String, "\n",
+        "spark_serving_reboot_ci_wet probed_at=", probed_at_word(reading: now) as String, "\n",
         context_receipt,
         spark_serving_reboot_outcome_wire(outcome: outcome),
       ], "")

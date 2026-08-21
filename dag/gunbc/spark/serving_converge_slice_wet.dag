@@ -6,7 +6,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import product.placement_supply { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.clock_read { clock_now_probed_at }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet_known_hosts_anchor {
@@ -682,7 +682,7 @@ fn spark_serving_converge_slice_emit_receipt(
                   let body = join(
                     concat(
                       [
-                        join(["spark_serving_converge_slice_wet probed_at=", now as String, "\n"], ""),
+                        join(["spark_serving_converge_slice_wet probed_at=", probed_at_word(reading: now) as String, "\n"], ""),
                         join(["attempt=", attempt_raw, "\n"], ""),
                         join([
                           "execute_apply=",

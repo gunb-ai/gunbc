@@ -13,6 +13,7 @@ import gunbc.fleet_lifecycle_observation {
   HardwareIdentitiesSame,
   HardwareIdentitiesIncomparable,
   compare_hardware_identity,
+  ProcessReceipt,
   execution_evidence_agrees,
   envelope_host_presentation_evidence,
   EnvelopeHostPresentationEvidence,
@@ -173,12 +174,17 @@ type DgxSparkDeployment {
   envelope_host_presentation: EnvelopeHostPresentationEvidence
 }
 
+// The receipt is carried WHOLE rather than destructured into a fresh `receipt_exit_status: Int`.
+// A re-declared int is a second authority for a fact `ProcessReceipt` already owns, and it can
+// drift from that carrier silently; carrying the receipt also keeps its attempt hash, so the
+// refusal names WHICH attempt disagreed. `reported_rc` stays an Int because it is the upstream
+// envelope's own shape (extdeps.systems.nvidia_fleet_lifecycle `rc`), not a name we coined.
 type DgxSparkAdmissionRefusalReason
   = DeploymentAdmissionNoEvidence { requested_identity: HostIdentity }
   | DeploymentAdmissionAmbiguousEvidence { requested_identity: HostIdentity, candidate_count: Int }
   | DeploymentAdmissionWrongTool { observed_tool: NonEmptyStr }
   | DeploymentAdmissionSubjectMismatch { dispatched_subject: HostIdentity, requested_identity: HostIdentity }
-  | DeploymentAdmissionExecutionEvidenceDisagrees { receipt_exit_status: Int, reported_rc: Int }
+  | DeploymentAdmissionExecutionEvidenceDisagrees { receipt: ProcessReceipt, reported_rc: Int }
   | DeploymentAdmissionObservationNotOk { observed_status: FleetLifecycleStatus, observed_rc: Int }
   | DeploymentAdmissionIdentityNotReserved { requested_identity: HostIdentity }
   | DeploymentAdmissionRouterBindingMismatch { binding_identity: HostIdentity, requested_identity: HostIdentity }
@@ -234,7 +240,7 @@ fn admit_selected_dgx_spark_observation(
       if !execution_evidence_agrees(observation: observation) {
         DgxSparkDeploymentRefused {
           reason: DeploymentAdmissionExecutionEvidenceDisagrees {
-            receipt_exit_status: observation.execution_receipt.exit_status,
+            receipt: observation.execution_receipt,
             reported_rc: observation.envelope.rc,
           }
         }

@@ -6,7 +6,7 @@ import gunbc.spark.serving_observed_members {
 }
 
 import std.types { String, List, Bool, NonEmptyStr, Int }
-import std.content_hash { content_hash_of_value, serialize_content_hash, Fnv1a64 }
+import std.content_hash { content_hash_of_value, content_hash_atom, serialize_content_hash }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.membership_reconcile {
@@ -399,27 +399,39 @@ fn spark_serving_fleet_converge_plan_artifact_for_release(
               cause: join(["plan-refused typed-actions ", why], ""),
             }
           SparkServingTypedActionsProjected { rows: spark_rows } =>
-            match spark_serving_fleet_converge_plan_artifact_from_rows(
-              host: host,
-              prior_generation: prior_generation,
-              observed_timers: observed_timers,
-              observed_caps: observed_caps,
-              spark_plan: full_plan,
-              spark_rows: spark_rows,
-              observed_spark: observed_members,
-            ) {
-              Absent =>
-                SparkServingPlanArtifactRefused {
-                  cause: "plan-refused baseline-hash: the observed baseline did not hash to a structural fnv1a64",
-                }
-              Present { value: artifact } =>
-                SparkServingPlanArtifactReady { artifact: artifact }
+            SparkServingPlanArtifactReady {
+              artifact: spark_serving_fleet_converge_plan_artifact_from_rows(
+                host: host,
+                prior_generation: prior_generation,
+                observed_timers: observed_timers,
+                observed_caps: observed_caps,
+                spark_plan: full_plan,
+                spark_rows: spark_rows,
+                observed_spark: observed_members,
+              ),
             }
         }
       }
   }
 }
 
+// THE ARTIFACT IS TOTAL, AND A WILDCARD USED TO MAKE IT OPTIONAL FOR NO REASON.
+//
+// This built the baseline digest by matching `content_hash_of_value` -- which returns the
+// subject-generic `ContentHash` union -- taking the `Fnv1a64` arm and answering `Absent` on `_`.
+// Three defects in one expression. It was an absorbing arm in the narrowing direction: a hash the
+// match did not recognize became "there is no plan artifact", which every caller reads as nothing to
+// converge rather than as could-not-classify. It was a wildcard over a closed coproduct, so a fifth
+// hash family would be silently swallowed here while reddening nothing. And the Optional return it
+// forced made every caller carry an Absent arm for a state that cannot occur.
+//
+// The repair is construction rather than a better refusal: `content_hash_atom` returns
+// `Fnv1a64Structural` directly -- the same digest, since `content_hash_of_value` is literally that
+// function wrapped in the union -- so there is no union to match, no arm to get wrong, and no
+// Optional to mishandle. DESIGN's own §3 convergence thread says exactly this: the structural family
+// member, NOT the subject-generic union. `owner_fingerprint` keeps `content_hash_of_value` because
+// `std.temporal_effect` `HeldLease` declares that field as `ContentHash`; that one is the union on
+// purpose.
 fn spark_serving_fleet_converge_plan_artifact_from_rows(
   host: NonEmptyStr,
   prior_generation: Int,
@@ -428,7 +440,7 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
   spark_plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
   spark_rows: ScheduledRows<FleetConvergeSparkServingTypedAction>,
   observed_spark: List<SparkServingMember>,
-) -> FleetConvergePlanArtifact? {
+) -> FleetConvergePlanArtifact {
   let subject = fleet_converge_plan_subject(
       host: host,
       observed_timers: observed_timers,
@@ -484,20 +496,14 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
       prior_generation: prior_generation,
       owner_fingerprint: owner_fp,
     )
-    match content_hash_of_value(value: baseline as NonEmptyStr) {
-      Fnv1a64(structural) =>
-        Present {
-          value: FleetConvergePlanArtifact {
-            subject: subject,
-            prior_generation: prior_generation,
-            plan_lease: lease,
-            observed_baseline_hex: structural.digest,
-            plan_body: body,
-            apply_shell: apply_shell,
-            spark_serving_typed_actions: spark_rows,
-          },
-        }
-      _ => Absent
+    FleetConvergePlanArtifact {
+      subject: subject,
+      prior_generation: prior_generation,
+      plan_lease: lease,
+      observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+      plan_body: body,
+      apply_shell: apply_shell,
+      spark_serving_typed_actions: spark_rows,
     }
 }
 

@@ -643,8 +643,8 @@ test fn w_red_admission_when_execution_receipt_disagrees_with_reported_rc_refuse
     router_binding: synthetic_bound_binding_for(identity_host: "srv5", last_octet: 222),
   ) {
     DgxSparkDeploymentRefused {
-      reason: DeploymentAdmissionExecutionEvidenceDisagrees { receipt_exit_status: e, reported_rc: r }
-    } => e == 1 && r == 0
+      reason: DeploymentAdmissionExecutionEvidenceDisagrees { receipt: rec, reported_rc: r }
+    } => rec.exit_status == 1 && r == 0
     DgxSparkDeploymentRefused { reason: _ } => false
     DgxSparkDeploymentAdmitted { deployment: _ } => false
   }

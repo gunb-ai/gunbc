@@ -131,7 +131,18 @@ data spark_legacy_containers: List<SparkLegacyContainerStanding> = [
   spark_legacy_administrator_container
 ]
 
-data spark_legacy_container_note: String = "Two containers exist in gunbai-secrets from an interactive apply on 2026-08-09, each carrying secretAccessor + secretVersionAdder for the BMC assimilator service account. They classify ObservedLegacyUnbound: real observations of starting state, not accepted output, and not the authority for any occurrence. Neither carries a version -- no payload was ever written -- so nothing depends on them. Two independent reasons they cannot simply be adopted: the population is four and these are two, and the principal bound on them is the BMC assimilator, which is the wrong authority per spark_cloud_principal_note."
+// THE TWO LEGACY CONTAINERS, MOVED OUT OF A `String` ROW (§4c, one reference: its own declaration).
+// What survives here is the REASONING -- why observed-but-unbound containers are not adoptable -- 
+// which is irreducible human rationale. The population arithmetic in it is not authority: the
+// classification these rows carry is `ObservedLegacyUnbound` in the typed standing, and that is what
+// any consumer must read.
+// Two containers exist in gunbai-secrets from an interactive apply on 2026-08-09, each carrying
+// secretAccessor + secretVersionAdder for the BMC assimilator service account. They classify
+// ObservedLegacyUnbound: real observations of starting state, not accepted output, and not the
+// authority for any occurrence. Neither carries a version -- no payload was ever written -- so
+// nothing depends on them. Two independent reasons they cannot simply be adopted: the population is
+// four and these are two, and the principal bound on them is the BMC assimilator, which is the
+// wrong authority per spark_cloud_principal_note.
 
 // ── The principal ─────────────────────────────────────────────────────────────────────────
 // The deleted patterns granted access to the BMC assimilator service account. That was a
@@ -518,7 +529,26 @@ fn spark_effective_access_standing() -> EffectiveAccessStanding {
   }
 }
 
-data spark_effective_access_receipt_note: String = "Measured 2026-08-09, GitHub Actions run 31335059188 at head 6b79d061c4a, read-only. WHAT IS ESTABLISHED: GitHub OIDC exchanged through WIF issued a 600-second token for fleet-cloud-convergence@ with no key, no credentials file and no gcloud, and that token positively exercised secretmanager.versions.access on fleet-automation-ssh-key. WHAT IS NOT ESTABLISHED, corrected after an overclaim in the prior revision of this row: nothing about absence. testIamPermissions returns the empty set for a resource that does not exist, is documented as a permission-aware-UI helper rather than an authorization check, and may fail open -- so an empty response carries exactly the denied-or-absent ambiguity a 403 carries, and the prior claim that it RESOLVED that ambiguity was wrong. The seven cells are therefore requested-but-not-returned, never a missing-cell population, and overbreadth is UNOBSERVED rather than absent because no policy enumeration ran. Also observed: the Cloud Resource Manager API is disabled on the project, so the project-level principal readback did not execute; the principal is grounded by the ISSUANCE receipt instead, which is a different and narrower fact."
+// A MEASUREMENT RECEIPT, MOVED OUT OF A `String` ROW. It had one reference -- its own declaration --
+// so it was dead data under DESIGN §4c, and the counts and run id inside it were machine-consumable
+// facts sitting where no machine can read them. It is kept as authored rationale rather than deleted
+// because the correction it records (an overclaim about what testIamPermissions establishes) is
+// exactly the kind of reasoning an annotation is for. The run id and cell count are HISTORICAL and
+// are not consumed by anything; if a consumer ever needs them they become a typed receipt carrier,
+// not a longer sentence.
+// Measured 2026-08-09, GitHub Actions run 31335059188 at head 6b79d061c4a, read-only. WHAT IS
+// ESTABLISHED: GitHub OIDC exchanged through WIF issued a 600-second token for
+// fleet-cloud-convergence@ with no key, no credentials file and no gcloud, and that token
+// positively exercised secretmanager.versions.access on fleet-automation-ssh-key. WHAT IS NOT
+// ESTABLISHED, corrected after an overclaim in the prior revision of this row: nothing about
+// absence. testIamPermissions returns the empty set for a resource that does not exist, is
+// documented as a permission-aware-UI helper rather than an authorization check, and may fail open
+// -- so an empty response carries exactly the denied-or-absent ambiguity a 403 carries, and the
+// prior claim that it RESOLVED that ambiguity was wrong. The seven cells are therefore
+// requested-but-not-returned, never a missing-cell population, and overbreadth is UNOBSERVED rather
+// than absent because no policy enumeration ran. Also observed: the Cloud Resource Manager API is
+// disabled on the project, so the project-level principal readback did not execute; the principal
+// is grounded by the ISSUANCE receipt instead, which is a different and narrower fact.
 // ── The convergence shape this model is consumed by ───────────────────────────────────────
 // Declared as the required sequence rather than implemented as callable mutation, because the
 // executor is the OIDC/WIF workflow. Each arm names why it exists.
@@ -548,7 +578,18 @@ data spark_effective_access_receipt_note: String = "Measured 2026-08-09, GitHub 
 //                            witness which version this run wrote.
 data spark_convergence_shape_note: String = "observe container (Get before Create; absent/matching/conflicting/unreadable are four distinct verdicts) -> reconcile IAM (GetIamPolicy, membership diff, preserve unrelated bindings, SetIamPolicy with observed etag, readback) -> materialize (at most one AddVersion per attempt identity, receipt naming the exact version) -> independent readback (AccessVersion at that exact version, compared by payload identity). Secret material never crosses a string-shaped CLI boundary: base64 is wire encoding, not confidentiality, and gunbc.spark.bootstrap_credential's sensitive-input policy already refuses secrets appearing in argv or standard streams. Material is generated or fetched inside the admitted run and projected to base64 at the REST boundary."
 
-data spark_provision_frontier_note: String = "NOT BUILT, and named so the absence is countable rather than implied: the four secret allocations, the container observe/classify operation, the IAM membership diff, the materialization attempt identity and receipt, the independent payload-identity readback, the allocated fleet cloud-convergence principal, the shared GitHub-to-GCP federation authority, and the generated workflow that executes all of it under OIDC/WIF. Until those exist the Spark cloud population converges 0 of 4 occurrences, and the two existing containers do not reduce that number."
+// THE UNBUILT FRONTIER, MOVED OUT OF A `String` ROW for the same §4c reason: one reference, its own
+// declaration. The '0 of 4' in it is a claim a machine should be able to check and cannot, which is
+// the defect rather than the phrasing -- the occurrence population already has a typed home in this
+// module's allocation standing, and the honest next step is that the count is DERIVED there rather
+// than asserted here. Recorded as rationale; the number is not authority.
+// NOT BUILT, and named so the absence is countable rather than implied: the four secret
+// allocations, the container observe/classify operation, the IAM membership diff, the
+// materialization attempt identity and receipt, the independent payload-identity readback, the
+// allocated fleet cloud-convergence principal, the shared GitHub-to-GCP federation authority, and
+// the generated workflow that executes all of it under OIDC/WIF. Until those exist the Spark cloud
+// population converges 0 of 4 occurrences, and the two existing containers do not reduce that
+// number.
 
 // ── Container observation: Get before Create ──────────────────────────────────────────────
 // Four verdicts, because "absent", "already correct", "present but not ours to write into" and

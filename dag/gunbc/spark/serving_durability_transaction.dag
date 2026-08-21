@@ -8,7 +8,7 @@ import extdeps.ssh.session { SshSessionExecResult }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
-import gunbc.clock_read { clock_now_probed_at }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_multi_principal_probe {
   spark_converge_target_selection,
   SparkConvergeTargetSelection,
@@ -283,7 +283,7 @@ func spark_serving_durability_with_context(
         context: context,
         context_receipt: context_receipt,
         host: only,
-        now: now as String,
+        now: probed_at_word(reading: now) as String,
       )
   }
 }

@@ -1,6 +1,6 @@
 module gunbc.spark.managed_access_apply
 
-import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.types { String, Bool, List, NonEmptyStr, Int, Secret }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
@@ -10,7 +10,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { shell_quote }
 import extdeps.ssh { ssh_public_key_line }
 import extdeps.ssh.session { ssh_session_exec_portable_words_with_stdin, SshSessionExecResult }
-import gunbc.clock_read { clock_now_probed_at }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
@@ -137,11 +137,25 @@ fn apply_outcome_label(outcome: SparkApplyOutcome) -> String {
 // invocation was wrong. `sudo -S` already consumes the credential from stdin's first line and leaves
 // the remainder for `sh -s` to read as its script, so the shape the wall admits is also the simpler
 // one. The credential still never reaches argv, on either side.
+// THE CREDENTIAL STAYS A `Secret` UNTIL THE BYTE THAT NEEDS IT, and it used to be a bare `String`
+// for the whole journey. `resolve_spark_administrator_credential` returns
+// `SparkAdministratorCredentialResolved { credential: Secret }`, and this lane immediately did
+// `administrator as String` at the call site and threaded `String` through two function boundaries
+// and four call sites. `Secret` is `nominal_opaque` -- its whole job is to be a type a lens can key
+// on -- so unwrapping it at the top of the lane deletes the only structural mark that distinguishes
+// a password from any other string. A "no secrets in argv" check cannot fire on a `String`, and this
+// is the one lane in the corpus where that check matters most (raised in review 54347).
+//
+// The unwrap now happens once, at the single expression that builds the stdin payload, which is the
+// only place the bytes are genuinely needed. Everything upstream carries the opaque type. That does
+// not by itself PREVENT a future caller putting the credential in argv -- `as String` is still
+// writable -- so this is mitigatable, not structural; what it buys is that the wrong move now
+// requires an explicit unwrap at the site that makes it, where a reader and a lens can both see it.
 fn privileged_leg(
   context: FleetSshExecutionContext,
   host: String,
   admin_principal: String,
-  admin_credential: String,
+  admin_credential: Secret,
   script: String,
 ) -> SparkApplyOutcome {
   match portable_remote_words(raws: ["sudo", "-S", "sh", "-s"]) {
@@ -156,7 +170,7 @@ fn privileged_leg(
           },
           words: words,
         ),
-        stdin_payload: join([admin_credential, "\n", script, "\n"], ""),
+        stdin_payload: join([admin_credential as String, "\n", script, "\n"], ""),
       )
       if r.success {
         ApplyConverged { detail: trim(s: r.stdout) }
@@ -255,7 +269,27 @@ fn create_inference_identity_script(admitted: PortableRemoteWord) -> String {
 // fleet_posix_accounts + membership_reconcile for authorized_keys); deletes create_*_script
 // builders. Wet-bootstrap only — not enrolled in fleet_converge_apply timer spine. DESIGN §5
 // gunbc#8073: no Scaffold arm for out-of-band actuation beside the modeled spine.
-data spark_managed_access_apply_shell_intent_frontier_note: String = "Privileged Spark bootstrap scripts are interim string bodies until typed HostEffects land; credential stdin uses portable-word ExecPortableWordsWithStdin, which host_effect_apply refuses for ShellCommand+FleetSsh by design (run_shell_transport)."
+// THE SHELL-INTENT FRONTIER, MOVED OUT OF A `String` ROW AND STATED HONESTLY.
+//
+// This was a `data ...: String` declaration whose entire content was commentary. DESIGN §4c is
+// explicit that an ordinary `String` declaration whose sole purpose is commentary is misplaced or
+// dead data -- prose is not forbidden, unclassified prose is -- so it belongs in an annotation the
+// compiler cannot read, which is exactly what it always was.
+//
+// WHAT IT SAYS, and the second half is the part a review correctly refused to accept as written
+// (review 54347): the privileged Spark bootstrap scripts are interim string bodies until typed
+// HostEffects land, and the credential reaches the far side through portable-word
+// ExecPortableWordsWithStdin, which host_effect_apply refuses for ShellCommand+FleetSsh by design
+// (run_shell_transport) -- that refusal is why the stdin path exists at all rather than being a
+// convenience.
+//
+// NO OPERATOR VERDICT COVERS THESE SCRIPT BODIES, and the previous wording admitted them anyway by
+// naming a future in which they dissolve. Per the 2026-08-10 ruling a dissolution trigger is a
+// lifecycle fact and not permission, and an author cannot approve their own exception, so this is
+// recorded as OUTSTANDING DEBT rather than as an admitted scaffold. The operator's spark rulings
+// covered the workflow-step dissolve-on blocks and the privilege bootstrap's existence; neither is a
+// verdict on rendering remote script bodies as strings. It is named here so a reader finds the gap
+// rather than a claim of approval, and so the ask can be made explicitly rather than assumed.
 
 // The authorized-key install, by exact-line presence so a repeat appends nothing.
 fn install_authorized_key_script(admitted: PortableRemoteWord, key_line: String) -> String {
@@ -314,7 +348,7 @@ data spark_apply_receipt_path: String = "target/spark-managed-access-apply-recei
 fn spark_managed_access_apply_with_resolved_credentials(
   attempt_raw: String,
   host: String,
-  admin_credential: String,
+  admin_credential: Secret,
   credential_binding: FleetSshCredentialBinding,
 ) -> SparkApplyReport {
   match fleet_ssh_attempt_identity(raw: attempt_raw) {
@@ -389,11 +423,11 @@ func spark_managed_access_apply_wet(attempt_raw: String, host: String) -> Proces
           let report = spark_managed_access_apply_with_resolved_credentials(
             attempt_raw: attempt_raw,
             host: host,
-            admin_credential: administrator as String,
+            admin_credential: administrator,
             credential_binding: binding,
           )
           let body = join([
-            "spark managed-access apply host=", host, " at=", now as String,
+            "spark managed-access apply host=", host, " at=", probed_at_word(reading: now) as String,
             " credential_identity=", serialize_content_hash(hash: binding.credential_identity) as String, "\n",
             spark_apply_report_text(report: report),
           ], "")

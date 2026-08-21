@@ -1,0 +1,30 @@
+module test.claim.probed_at_word_witness_test
+
+import std.types { String, NonEmptyStr }
+import gunbc.clock_read { probed_at_word }
+
+// A PERMANENT regression control for the leaked-Optional rendering, not a check that a match
+// statement has two arms. The defect these assert against was live in production receipts on
+// 2026-08-20: fourteen sites cast `NonEmptyStr?` to String directly, which renders the OPTIONAL,
+// so srv5 and srv6 receipts carried `probed_at=Present { value: 2026-08-20T21:11:38Z }`. The
+// discriminating half is the wrapper-name search: an assertion that the present arm merely CONTAINS
+// the instant would pass on the leaked spelling too, because the leaked spelling contains it.
+//
+// RUNG: mitigatable, and these witnesses do NOT raise it. They guard what the rendering authority
+// DOES; they do not guard that the fourteen call sites route through it. Reverting any one of those
+// sites to `now as String` leaves both of these green, so nothing here makes the leak unwritable --
+// claiming otherwise would be the rung inflation DESIGN section 4b names as worse than sitting low.
+// NEXT-RUNG TRIGGER: the leak is a cast from `T?` to a text type, which is decidable from the
+// declared types alone with no corpus knowledge, so it is a compiler refusal rather than a lens.
+// Until that lands, the sites are held by review and by this control on the authority they call.
+
+test fn w_probed_at_word_renders_the_instant_and_not_its_wrapper() -> Bool {
+  let rendered = probed_at_word(reading: Present { value: "2026-08-20T21:11:38Z" as NonEmptyStr }) as String
+  rendered == "2026-08-20T21:11:38Z"
+    && string_contains(s: rendered, pattern: "Present") == false
+}
+
+test fn w_probed_at_word_absent_reading_is_a_loud_word() -> Bool {
+  let rendered = probed_at_word(reading: none) as String
+  rendered == "clock-unreadable"
+}

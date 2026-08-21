@@ -55,7 +55,7 @@ import product.placement_supply { HostIdentity }
 import extdeps.ssh.session { ssh_session_exec_portable_words, SshSessionExecResult }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire }
-import gunbc.clock_read { clock_now_probed_at }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
@@ -733,7 +733,7 @@ func spark_serving_observe_with_attempt(attempt_raw: String) -> ProcessExit
       }
       let receipt = spark_serving_observation_report_text(
         report: report,
-        probed_at: now as String,
+        probed_at: probed_at_word(reading: now) as String,
         attempt_raw: attempt_raw,
         materialization_receipt: materialization_receipt,
       )
@@ -781,7 +781,7 @@ func spark_serving_observe_ci_with_context(
   let body = join(
     concat(
       [
-        join(["spark_serving_observe_ci_wet probed_at=", now as String, "\n"], ""),
+        join(["spark_serving_observe_ci_wet probed_at=", probed_at_word(reading: now) as String, "\n"], ""),
         join(["credential_locus=", fleet_locus_label(context: context), "\n"], ""),
         context_receipt,
       ],
