@@ -833,10 +833,10 @@ fn resolve_expr_types(texpr: v1.std.core.Node, env: v1.compiler.infer_env.TypeEn
           if has_guard {
             let guard_r = match arm_ch |> first { Present { value: g } => resolve_expr_types(texpr: g, env: env, module_name: module_name)  Absent => ExprResolveResult { expr: child, diagnostics: [] } }
             let body_r = match arm_ch |> skip(1) |> first { Present { value: b } => resolve_expr_types(texpr: b, env: env, module_name: module_name)  Absent => ExprResolveResult { expr: child, diagnostics: [] } }
-            ExprResolveResult { expr: make_arm_node(pattern: match child.match_pattern { Present { value: p } => p  Absent => Wildcard }, guard: Present { value: guard_r.expr }, body: body_r.expr, span: child.span), diagnostics: concat(guard_r.diagnostics, body_r.diagnostics) }
+            ExprResolveResult { expr: make_arm_node(pattern: match child.match_pattern { Present { value: p } => p  Absent => v1.std.core.Wildcard }, guard: Present { value: guard_r.expr }, body: body_r.expr, span: child.span), diagnostics: concat(guard_r.diagnostics, body_r.diagnostics) }
           } else {
             let body_r = match arm_ch |> first { Present { value: b } => resolve_expr_types(texpr: b, env: env, module_name: module_name)  Absent => ExprResolveResult { expr: child, diagnostics: [] } }
-            ExprResolveResult { expr: make_arm_node(pattern: match child.match_pattern { Present { value: p } => p  Absent => Wildcard }, guard: none, body: body_r.expr, span: child.span), diagnostics: body_r.diagnostics }
+            ExprResolveResult { expr: make_arm_node(pattern: match child.match_pattern { Present { value: p } => p  Absent => v1.std.core.Wildcard }, guard: none, body: body_r.expr, span: child.span), diagnostics: body_r.diagnostics }
           }
         }
       )

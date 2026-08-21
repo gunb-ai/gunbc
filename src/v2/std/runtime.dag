@@ -93,7 +93,7 @@ fn runtime_value_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) 
 }
 
 fn runtime_value_conj_node(children: std.types.List<v2.std.node.Edge>) -> v2.std.node.Node {
-  v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: Conj }, children: children)
+  v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Conj }, children: children)
 }
 
 fn runtime_value_symbol_atom(sym: v2.std.node.Symbol) -> v2.std.node.Node {

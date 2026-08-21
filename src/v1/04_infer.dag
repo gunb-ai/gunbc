@@ -5305,7 +5305,7 @@ fn classify_size_expr(val: v1.std.core.Node, ctx: DescentContext) -> DescentSize
       let left = v1.std.core.binop_left(texpr: val)
       let right = v1.std.core.binop_right(texpr: val)
       match val.expr_data {
-        ExprBinOp { op: v1.std.core.Div, algebra_field: _ } =>
+        ExprBinOp { op: Div, algebra_field: _ } =>
           match left.expr_data {
             ExprVar { binding_kind: _ } =>
               let lname = v1.std.core.expr_var_name_at(texpr: left, source_indices: ctx.type_env.source_indices)
@@ -5749,7 +5749,7 @@ fn classify_let_value(val: v1.std.core.Node, ctx: DescentContext) -> std.inducti
             ExprVar { binding_kind: _ } =>
               let lname = v1.std.core.expr_var_name_at(texpr: left, source_indices: ctx.type_env.source_indices)
               if map_get(ctx.param_names, lname) != none || map_get(ctx.sub_value_vars, lname) != none { lname } else { "" }
-            ExprBinOp { op: v1.std.core.Sub } =>
+            ExprBinOp { op: Sub } =>
               let inner_left = v1.std.core.binop_left(texpr: left)
               match inner_left.expr_data {
                 ExprVar { binding_kind: _ } =>
@@ -5980,7 +5980,7 @@ fn classify_argument(arg_expr: v1.std.core.Node, param_name: String, ctx: Descen
         Div =>
           let left_is_param = match left.expr_data {
             ExprVar { binding_kind: _ } => v1.std.core.expr_var_name_at(texpr: left, source_indices: ctx.type_env.source_indices) == param_name || map_get(ctx.sub_value_vars, v1.std.core.expr_var_name_at(texpr: left, source_indices: ctx.type_env.source_indices)) != none
-            ExprBinOp { op: v1.std.core.Sub } =>
+            ExprBinOp { op: Sub } =>
               let inner_left = v1.std.core.binop_left(texpr: left)
               match inner_left.expr_data {
                 ExprVar { binding_kind: _ } => v1.std.core.expr_var_name_at(texpr: inner_left, source_indices: ctx.type_env.source_indices) == param_name || map_get(ctx.sub_value_vars, v1.std.core.expr_var_name_at(texpr: inner_left, source_indices: ctx.type_env.source_indices)) != none
@@ -7800,7 +7800,7 @@ type ParentCacheRow {
 fn union_parent_type_env_caches(
   parent_index: Map<String, v1.compiler.infer_items.TypedModule>
 ) -> v1.compiler.infer_env.GuardedTypeEnvCacheMerge {
-  let parent_caches = []
+  let parent_caches: List<ParentCacheRow> = []
   match parent_caches |> first {
     Absent => v1.compiler.infer_env.GuardedTypeEnvCacheMerge { cache: v1.compiler.infer_env.empty_type_env_cache(), conflicts: [] }
     Present { value: head } =>
@@ -8609,7 +8609,7 @@ fn build_type_env(module: v1.compiler.resolve.ResolvedModule, parent_index: Map<
   let kernel = v1.compiler.infer_env.TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: v1.compiler.infer_env.str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: v1.compiler.infer_env.empty_symbol_index() }
 
   let module_name_str = v1.std.core.authored_name_at(source_indices: source_indices, node: module.module)
-  let import_parents = []
+  let import_parents: List<v1.compiler.infer_env.TypeEnv> = []
   let scope_parents = concat(import_parents, [kernel])
   let import_diags = []
   let namespace_alias_diags = flat_map(v1.std.core.module_items(n: module.module), item =>
@@ -8754,7 +8754,7 @@ fn build_type_env_unresolved(module: v1.compiler.resolve.ResolvedModule, parent_
   let kernel = v1.compiler.infer_env.TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: v1.compiler.infer_env.str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: v1.compiler.infer_env.empty_symbol_index() }
 
   let module_name_str = v1.std.core.authored_name_at(source_indices: source_indices, node: module.module)
-  let import_parents = []
+  let import_parents: List<v1.compiler.infer_env.TypeEnv> = []
   let scope_parents = concat(import_parents, [kernel])
   let local_bindings = fold(v1.std.core.module_items(n: module.module), init: empty_map(), f: (acc, item) =>
     if is_namespace_alias_item(item: item, source_indices: source_indices) {
@@ -9185,7 +9185,7 @@ fn build_module_context(contributions: List<ItemContribution>,
     svc_registry: map_merge(census_scope.svc_registry, local.svc_registry),
     svc_locals: map_merge(census_scope.svc_locals, local.svc_locals)
   )
-  let parent_envs = []
+  let parent_envs: List<v1.compiler.infer_sigs.ResolvedFuncEnv> = []
   let resolve_result = v1.compiler.infer_sigs.resolve_func_sigs(
     declared_sigs: local.func_sigs,
     parent_envs: parent_envs,

@@ -9,7 +9,7 @@ fn named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node
 }
 
 fn conj_record(children: FreeMonoid<v2.std.node.Edge>) -> v2.std.node.Node {
-  node_synthetic(kind: v2.std.node.TypeNode { connective: Conj }, children: children)
+  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Conj }, children: children)
 }
 
 fn fold_decode_reject(node: v2.std.node.Node, reason: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<FreeMonoid<v2.std.node.Node>> {

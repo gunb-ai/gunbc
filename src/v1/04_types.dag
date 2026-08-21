@@ -284,7 +284,7 @@ fn make_map_type(key: v1.std.core.Node, value: v1.std.core.Node) -> KernelTypeBu
 }
 
 fn make_callable_type(func_params: List<v1.std.core.Node>, ret: v1.std.core.Node) -> v1.std.core.Node {
-  v1.std.core.Node { name: "Callable", span: v1.std.core.kernel_span(name: "Callable"), ident_span: Present { value: v1.std.core.kernel_span(name: "Callable") }, children: [], connective: Arrow, params: func_params, inferred: Present { value: v1.std.core.Resolved { node: ret } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
+  v1.std.core.Node { name: "Callable", span: v1.std.core.kernel_span(name: "Callable"), ident_span: Present { value: v1.std.core.kernel_span(name: "Callable") }, children: [], connective: v1.std.core.Arrow, params: func_params, inferred: Present { value: v1.std.core.Resolved { node: ret } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: v1.std.core.NoExprData }
 }
 
 fn make_tuple_type(first: v1.std.core.Node, second: v1.std.core.Node) -> v1.std.core.Node {
@@ -617,7 +617,7 @@ fn callable_inferred(n: v1.std.core.Node) -> v1.std.core.Node {
   if is_callable {
     match n.inferred {
       Present { value: v1.std.core.Resolved { node: ret } } =>
-        if (ret.connective == Arrow) { ret } else { make_callable_type(func_params: n.params, ret: ret) }
+        if (ret.connective == v1.std.core.Arrow) { ret } else { make_callable_type(func_params: n.params, ret: ret) }
       Absent => v1.std.core.error_type
       _ => v1.std.core.error_type
     }
