@@ -64,7 +64,7 @@ fn deployed_tree_standing_line(standing: DeployedTreeStanding) -> String {
     DeployedTreeConverged { revision: r } =>
       join(["deployed-tree host=", deployed_tree_report_host as String,
             " CONVERGED revision=", git_object_id_wire_hex(oid: r) as String,
-            " -- the deployed tree is the admitted revision and its tracked bytes match it"], "")
+            " -- the deployed tree is the admitted revision and every path in the deployed scope realizes it"], "")
     DeployedTreeRevisionDrifted { desired: d, local: l } =>
       join(["deployed-tree host=", deployed_tree_report_host as String,
             " REVISION-DRIFTED desired=", git_object_id_wire_hex(oid: d) as String,

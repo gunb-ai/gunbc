@@ -53,12 +53,16 @@ fn deployed_tree_locus_transport(locus: DeployedTreeLocus) -> HostEffectTranspor
   FleetSsh { target: locus.target, context: locus.context }
 }
 
-// THE INSTRUMENT IS GIT, AND IT IS TWO SINGLE COMMANDS BECAUSE IT HAS TO BE.
+// THE INSTRUMENT IS GIT, AND IT IS FOUR SINGLE COMMANDS BECAUSE IT HAS TO BE.
 //
 // The portable-word alphabet admits no pipe, so a content digest of the deployed directory cannot be
 // a shell pipeline -- and that constraint turned out to point at a better instrument than the one it
-// forbade. git is ALREADY the content-identity authority for the tracked set, and the tracked set is
-// exactly what the working-tree rsync leg ships. So there is no digest to compute, no second content
+// forbade. git is ALREADY the content-identity authority for the deployed scope. THIS SENTENCE USED TO
+// SAY the tracked set is exactly what the rsync leg ships, and that was FALSE -- the sync publishes the
+// working directory wholesale modulo the exclusion authority, so untracked and ignored paths inside the
+// deployed scope ship too, which is why the observation reads all three and not one. Corrected in place
+// rather than left standing beside the later paragraph that says the opposite: two accounts of one fact
+// is the state this module exists to refuse. So there is no digest to compute, no second content
 // domain to normalize, and no dependency on the exclusion authority: comparing a source tree against
 // a deployed directory would compare two different projections and disagree forever, which fails safe
 // and is indistinguishable from real drift, which is how a signal gets silenced.
@@ -350,7 +354,7 @@ fn observe_deployed_tree(locus: DeployedTreeLocus) -> DeployedTreeObservation {
 }
 
 // THE TEMP INDEX IS BUILT FROM THE REVISION THE HOST IS ACTUALLY ON, not from the admitted one. That
-// keeps this observation answering ONE question -- do the tracked bytes equal the commit HEAD names --
+// keeps this observation answering ONE question -- does the deployed scope realize the commit HEAD names --
 // and leaves "is that the right commit" to the standing. Building it from the desired revision would
 // fuse the two, and a host on the wrong commit would then report modifications for every path that
 // differs between the two revisions, which is drift wearing a modification's label.

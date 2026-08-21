@@ -33,6 +33,28 @@ import gunbc.live_deploy.deployed_tree_observation {
 // drifted tree is COHERENTLY SERVING THE WRONG RELEASE -- a different situation from a mixed
 // realization, with a different remedy (publish and restart, versus restart alone), and a single
 // coprobe that reported one verdict would have to pick one of them to lose.
+// WHAT THIS BINDING DOES NOT ESTABLISH, AND THE MEASUREMENT THAT SETTLES IT. The process revision is
+// NOT read from the executable's bytes -- it is a LAUNCH ARGUMENT. The emitted systemd unit's ExecStart
+// carries `--release-revision <sha>` (verifiable in the unit-emission oracle's frozen expectation), so
+// the running process announces whatever the unit told it to announce.
+//
+// The consequence is exact and it bounds the claim. BEFORE a restart, an old process is still running
+// with the OLD unit's argument, so it announces L against a tree at D and this fold correctly answers
+// ReleaseMixed -- which is the transition that motivated this module. AFTER a restart, an old
+// EXECUTABLE relaunched under the NEW unit announces D, and this fold answers ReleaseBoundToTree while
+// the binary bytes are still the old ones. So the binding is a transition guard across the publication
+// window, NOT proof that the executable is the one admitted for that tree.
+//
+// An earlier revision of this record claimed the observable pair "already closes" the mixed-release
+// transition without that qualifier. It does not; it closes the pre-restart half. Corrected here rather
+// than left for a reader to discover from the unit file, because a carrier that overstates what it
+// proves is worse than one that proves less -- the overstatement is what stops anyone rechecking.
+//
+// RUNG: mitigatable, and it is honestly named. The next observable fact is already produced and not yet
+// consumed here -- `RunningReleaseObservation` carries a surface_bundle_identity beside the revision,
+// and that identity IS derived from what the process actually built rather than from an argument, so
+// requiring it alongside the revision raises the claim without inventing a field. Exact executable
+// provenance stays a declared future refinement, dependent on something observing the binary's bytes.
 type DeployedReleaseBinding
   = ReleaseBoundToTree { revision: GitObjectId }
   | ReleaseMixed { tree_revision: GitObjectId, process_revision: CommitSha }
