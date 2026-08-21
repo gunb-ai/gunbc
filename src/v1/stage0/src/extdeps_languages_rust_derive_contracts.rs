@@ -321,14 +321,14 @@ pub fn rust_hash_set_supplemental_generic_bound_contract_coverage_disposition(
     }),
         lane: Rc::new(DeclarationRef {
         module_path: "v2.std.compilers.target_model".to_string(),
-        decl_name: "RequiredTraitWitness".to_string(),
+        decl_name: "TargetCapabilityRequirement".to_string(),
         field: Rc::new(DeclField::WholeDeclaration),
     }),
         dissolution: Rc::new(Disposition::Scaffold {
         dissolves_to: ConstructionMechanism::SingleAuthority,
         bind: Rc::new(DeclarationRef {
         module_path: "v2.std.compilers.target_model".to_string(),
-        decl_name: "RequiredTraitWitness".to_string(),
+        decl_name: "TargetCapabilityRequirement".to_string(),
         field: Rc::new(DeclField::WholeDeclaration),
     }),
     }),
