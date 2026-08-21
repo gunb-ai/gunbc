@@ -896,7 +896,7 @@ pub fn rust_witness_parent_leaf(parent: String) -> bool {
 pub fn rust_witness_variant_arm_names_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Holds/Violates literals below are the two arms of v2.std.witness.Witness<C> (src/v2/std/witness.dag; this citation read std.witness / dag/std/witness.dag until 2026-08-16, naming a module that does not exist in the tree) — not minted nicknames. Pattern position routes via variant_pattern_qualified_path like any other modeled enum; construction turbofish here keys type-arg resolution off the modeled arm names only.".to_string()
+            "Holds/Violates literals below are the two arms of v2.std.witness.Witness<C> (src/v2/std/witness.dag; this citation read std.witness / dag/std/witness.dag until 2026-08-16, naming a module that does not exist in the tree) — not minted nicknames. Pattern position routes via rust_variant_path like any other modeled enum; construction turbofish here keys type-arg resolution off the modeled arm names only.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1165,10 +1165,7 @@ pub fn rust_witness_variant_ctor_path(
     match effective_parent.clone() {
         Some(parent) => {
             if !rust_witness_parent_leaf(parent.clone()) {
-                v1_rt::concat(
-                    v1_rt::concat(qualified_last_segment(parent.clone()), "::".to_string()),
-                    variant_name.clone(),
-                )
+                rust_variant_path(parent.clone(), variant_name.clone())
             } else {
                 match rust_witness_type_arg_for_variant(
                     variant_name.clone(),
@@ -4692,10 +4689,7 @@ pub fn rust_qualify_type_leaf_name(
     match v1_rt::map_get(&variant_to_enum, name.clone()) {
         Some(parent) => {
             if (parent.clone() != "".to_string()) {
-                v1_rt::concat(
-                    v1_rt::concat(parent.clone(), "::".to_string()),
-                    name.clone(),
-                )
+                rust_variant_path(parent.clone(), name.clone())
             } else {
                 name.clone()
             }
@@ -14087,19 +14081,15 @@ pub fn emit_enum_shared_accessors(
                             __result.push({
                                 let child_text = authored_name(env.clone(), child.clone());
                                 let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+                                let variant_path =
+                                    rust_variant_path(name.clone(), child_text.clone());
                                 if ((child.children.clone().len() as i64) == 0) {
                                     v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat(
                                                 v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        v1_rt::concat(
-                                                            "            ".to_string(),
-                                                            name.clone(),
-                                                        ),
-                                                        "::".to_string(),
-                                                    ),
-                                                    child_text.clone(),
+                                                    "            ".to_string(),
+                                                    variant_path.clone(),
                                                 ),
                                                 " => panic!(\"no ".to_string(),
                                             ),
@@ -14116,14 +14106,8 @@ pub fn emit_enum_shared_accessors(
                                             v1_rt::concat(
                                                 v1_rt::concat(
                                                     v1_rt::concat(
-                                                        v1_rt::concat(
-                                                            v1_rt::concat(
-                                                                "            ".to_string(),
-                                                                name.clone(),
-                                                            ),
-                                                            "::".to_string(),
-                                                        ),
-                                                        child_text.clone(),
+                                                        "            ".to_string(),
+                                                        variant_path.clone(),
                                                     ),
                                                     "(_) => panic!(\"no ".to_string(),
                                                 ),
@@ -14138,14 +14122,8 @@ pub fn emit_enum_shared_accessors(
                                                     v1_rt::concat(
                                                         v1_rt::concat(
                                                             v1_rt::concat(
-                                                                v1_rt::concat(
-                                                                    v1_rt::concat(
-                                                                        "            ".to_string(),
-                                                                        name.clone(),
-                                                                    ),
-                                                                    "::".to_string(),
-                                                                ),
-                                                                child_text.clone(),
+                                                                "            ".to_string(),
+                                                                variant_path.clone(),
                                                             ),
                                                             " { ".to_string(),
                                                         ),
@@ -16861,32 +16839,23 @@ pub fn optional_pattern_unknown_parent_note() -> String {
 pub fn variant_pattern_dotted_qualification_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Construction wall for the dotted-render class in PATTERN position (sibling of alias_rhs_qualified_name_routing_note, which covers TYPE position). A namespace-QUALIFIED variant/parent name in a match pattern (post source_authority, e.g. v2.extdeps.languages.dag.ParseSubtreeFound, or a dotted parent_enum from annotate_pattern_parent_enums's authored_name_at) is not a valid Rust path component: rustc reports 'expected one of ..., found {' or 'found .', a PARSE error that then masks every later error in the module. Rust pattern position never needs a crate::-qualified path (only import-line synthesis, a separate seam, brings the bare enum into scope) so the fix is simpler than alias_rhs: route both the variant name and the resolved parent through qualified_last_segment (v1.std.core, the same single authority) via variant_pattern_qualified_path, shared by emit_variant_pattern and emit_variant_pattern_rc_aware so the dotted-render fix is not forked a third time. Every already-bare pattern renders exactly as before (qualified_last_segment is the identity on an unqualified name).".to_string()
+            "Construction wall for the dotted-render class in every position that emits a Rust Parent::Variant path. A namespace-QUALIFIED variant/parent name (post source_authority, e.g. v2.extdeps.languages.dag.ParseSubtreeFound, or a dotted parent from annotate_pattern_parent_enums's authored_name_at, from derive_variant_to_enum's summary.name, or from resolved_type_name) is not a valid Rust path component: rustc reports 'expected one of ..., found {' or 'found .', a PARSE error that then masks every later error in the module. Emitted Rust never needs a crate::-qualified path here (only import-line synthesis, a separate seam, brings the bare enum into scope), so both halves route through qualified_last_segment (v1.std.core, the single authority) via rust_variant_path -- identity on an already-bare name, so every previously-correct render is byte-identical. THE COVERAGE RULE THIS WALL IS SCOPED BY, corrected 2026-08-21: a wall's coverage is over PRODUCERS of the output shape, not over POSITIONS in the source. The earlier revision of this note claimed PATTERN position and named alias_rhs_qualified_name_routing_note (TYPE) and value_ref_ident_dotted_fallback_note (VALUE) as the siblings that closed the rest -- a partition by position, which is not the partition the defect lives in. Enumerating instead by output shape (every site that concatenates a parent and a variant name into one Rust path) found five producers of that one shape, of which the position-partitioned account had walled two: emit_variant_pattern and emit_variant_pattern_rc_aware (authored patterns, walled) versus emit_discriminant_call_lowering (SYNTHESIZES match arms for a discriminant lowering -- no authored pattern exists at that site at all, so no caller of the pattern wall ever reaches it), emit_value_ref_ident and its rc-aware sibling (VALUE position was declared walled, but only the LEAF half was: the parent came from effective_variant_parent, i.e. authored_name_at, and rode out dotted), rust_qualify_type_leaf_name (TYPE position, parent from derive_variant_to_enum), emit_enum_shared_accessors (SYNTHESIZES the accessor match arms), and rust_witness_variant_ctor_path (parent reduced, variant half not). A synthesizing producer is invisible to a position census by construction, because the position it writes into has no authored source to census. The two byte-identical helpers variant_pattern_qualified_path and variant_pattern_shape_key were one concept under two names (DESIGN section 3) and are folded into rust_variant_path / rust_variant_path_opt, named for the output shape rather than for one of the positions that emits it -- a position-named authority is what licensed the position-partitioned coverage claim above.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn variant_pattern_qualified_path(
-    rust_name: String,
-    resolved_parent: Option<String>,
-) -> String {
-    match resolved_parent.clone() {
-        Some(parent) => v1_rt::concat(
-            v1_rt::concat(qualified_last_segment(parent.clone()), "::".to_string()),
-            rust_name.clone(),
-        ),
-        None => rust_name.clone(),
-    }
+pub fn rust_variant_path(parent: String, rust_name: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat(qualified_last_segment(parent.clone()), "::".to_string()),
+        qualified_last_segment(rust_name.clone()),
+    )
 }
 
-pub fn variant_pattern_shape_key(rust_name: String, resolved_parent: Option<String>) -> String {
+pub fn rust_variant_path_opt(rust_name: String, resolved_parent: Option<String>) -> String {
     match resolved_parent.clone() {
-        Some(parent) => v1_rt::concat(
-            v1_rt::concat(qualified_last_segment(parent.clone()), "::".to_string()),
-            rust_name.clone(),
-        ),
-        None => rust_name.clone(),
+        Some(parent) => rust_variant_path(parent.clone(), rust_name.clone()),
+        None => qualified_last_segment(rust_name.clone()),
     }
 }
 
@@ -16897,7 +16866,7 @@ pub fn variant_pattern_shape_str(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let shape_key = variant_pattern_shape_key(rust_name.clone(), resolved_parent.clone());
+        let shape_key = rust_variant_path_opt(rust_name.clone(), resolved_parent.clone());
         let is_positional = (v1_rt::set_contains(
             &emit_info.positional_payload_variants.clone(),
             shape_key.clone(),
@@ -16952,7 +16921,7 @@ pub fn emit_variant_pattern(
         let qualified = if optional_variant.clone() {
             rust_name.clone()
         } else {
-            variant_pattern_qualified_path(rust_name.clone(), resolved_parent.clone())
+            rust_variant_path_opt(rust_name.clone(), resolved_parent.clone())
         };
         if ((optional_variant.clone() && is_some_like_variant_name(bare_name.clone()))
             && ((field_bindings.clone().len() as i64) == 1))
@@ -17637,7 +17606,7 @@ pub fn emit_variant_pattern_rc_aware(
         let qualified = if optional_variant.clone() {
             rust_name.clone()
         } else {
-            variant_pattern_qualified_path(rust_name.clone(), resolved_parent.clone())
+            rust_variant_path_opt(rust_name.clone(), resolved_parent.clone())
         };
         if ((optional_variant.clone() && is_some_like_variant_name(bare_name.clone()))
             && ((field_bindings.clone().len() as i64) == 1))
@@ -18020,7 +17989,7 @@ pub fn variant_pattern_shape_for(
         let qualified = if optional_variant.clone() {
             rust_name.clone()
         } else {
-            variant_pattern_qualified_path(rust_name.clone(), resolved_parent.clone())
+            rust_variant_path_opt(rust_name.clone(), resolved_parent.clone())
         };
         variant_pattern_shape_str(
             qualified.clone(),
@@ -18648,10 +18617,7 @@ pub fn emit_var_ref(
                                         "None".to_string()
                                     }
                                 } else {
-                                    v1_rt::concat(
-                                        v1_rt::concat(enum_name.clone(), "::".to_string()),
-                                        leaf_name.clone(),
-                                    )
+                                    rust_variant_path(enum_name.clone(), leaf_name.clone())
                                 }
                             };
                             if variant_ref_self_wraps(
@@ -18803,11 +18769,8 @@ pub fn emit_typed_expr_base(
                                                     "None".to_string()
                                                 }
                                             } else {
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        enum_name.clone(),
-                                                        "::".to_string(),
-                                                    ),
+                                                rust_variant_path(
+                                                    enum_name.clone(),
                                                     leaf_name.clone(),
                                                 )
                                             };
@@ -20366,35 +20329,19 @@ pub fn emit_discriminant_call_lowering(
                                 __result.push({
                                     let child_text =
                                         authored_name(scope.type_env.clone(), child.clone());
+                                    let variant_path =
+                                        rust_variant_path(ty_name.clone(), child_text.clone());
                                     let pat = if ((child.children.clone().len() as i64) == 0) {
-                                        v1_rt::concat(
-                                            v1_rt::concat(ty_name.clone(), "::".to_string()),
-                                            child_text.clone(),
-                                        )
+                                        variant_path.clone()
                                     } else {
                                         if variant_is_synthetic_positional_payload(
                                             child.children.clone(),
                                             scope.type_env.clone().source_indices.clone(),
                                         ) {
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        ty_name.clone(),
-                                                        "::".to_string(),
-                                                    ),
-                                                    child_text.clone(),
-                                                ),
-                                                "(_)".to_string(),
-                                            )
+                                            v1_rt::concat(variant_path.clone(), "(_)".to_string())
                                         } else {
                                             v1_rt::concat(
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        ty_name.clone(),
-                                                        "::".to_string(),
-                                                    ),
-                                                    child_text.clone(),
-                                                ),
+                                                variant_path.clone(),
                                                 " { .. }".to_string(),
                                             )
                                         }
