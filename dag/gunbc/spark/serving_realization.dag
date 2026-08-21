@@ -626,7 +626,23 @@ data spark_user_unit_identity_contract_refutation_note: String = "A systemd user
 // this session were caught by walls; this one needed a person, and that asymmetry is the reason the
 // intent carrier is the wrong place to be liberal about what one assumes.
 //
-// 🟡 dissolve-on, and the operator's stated direction sharpens it (2026-08-12: "we'll use tailscale
+// The prose that used to sit beside this as `data spark_serving_endpoint_intent_is_operator_declared_note:
+// String` is deleted with the marker rather than left behind. It restated this paragraph and
+// nothing else, had no consumer anywhere in the tree, and carried its own copy of the condition --
+// so the reversal rule existed in two places, of which only one would get updated. DESIGN 4c is
+// explicit that a String declaration whose sole purpose is commentary is misplaced or dead data;
+// commentary belongs in an annotation the compiler cannot read, which is what this always was.
+//
+// WHEN THIS DECISION REVERSES. This is a standing condition on a currently-correct choice, not a
+// dissolution obligation, and it used to be marked as one. A dissolve-on marker asserts that
+// something temporary exists which will later be deleted; here there is no temporary construction
+// anywhere -- UnauthenticatedEndpoint is what the operator declared and what ships, and if the
+// condition below is ever met the intent CHANGES rather than any artifact being removed. Marking a
+// reversal condition as debt misreports both facts at once: it says correct modeling is owed work,
+// and it hides the reversal inside a lifecycle vocabulary that has no arm for it. The condition
+// itself is real, load-bearing, and kept verbatim.
+//
+// The operator's stated direction sharpens it (2026-08-12: "we'll use tailscale
 // at some point"). The naive trigger would have been "reachable beyond the LAN" -- but a WireGuard
 // mesh with device identity is a network-layer boundary that EXTENDS the trusted network rather than
 // removing it, so reaching these hosts over Tailscale does not by itself reinstate the requirement.
@@ -640,7 +656,6 @@ data spark_user_unit_identity_contract_refutation_note: String = "A systemd user
 // because a tailnet proves which device connected and never which consumer asked. At that point
 // ollama stops being admissible without a second authenticating component, and that consequence is
 // what this note preserves rather than the choice it records.
-data spark_serving_endpoint_intent_is_operator_declared_note: String = "Operator declaration 2026-08-12: the LAN is the boundary, so endpoint intent is UnauthenticatedEndpoint. AuthenticatedEndpoint was authored by me, never by the operator, and had no consumer outside my own model and fixture; it surfaced when the operator asked why it was there. Tailscale is planned; a tailnet authenticates DEVICES and extends the trusted network rather than removing the boundary, so reaching these hosts over it does not by itself reinstate the requirement. Dissolves back to AuthenticatedEndpoint when a principal the network layer does not authenticate can reach the port (Funnel exposure, shared tailnet, an uncontrolled node), or when per-consumer attribution is wanted -- which no network boundary provides, since a tailnet proves which device connected and never which consumer asked."
 
 data spark_serving_runtime_selection_is_declared_intent_note: String = "Measured on srv5: aarch64, GB10, docker present but not usable by gunbc-automation, egress works, no serving runtime installed. The serving install is a SECOND privileged effect population, not covered by the enable-linger grant. Runtime choice is declared intent, not derivation: ollama has no authentication and cannot satisfy endpoint: AuthenticatedEndpoint without a second authenticating component; vLLM accepts an API key; a NIM container carries NVIDIA's own auth and licensing. Awaiting an operator declaration before any serving effect is derived."
 
