@@ -17,12 +17,10 @@ import extdeps.languages.rust.derive_contracts {
   im_15_1_0_vector_deserialize_impl_authority,
   im_15_1_0_vector_partial_eq_impl_authority,
   im_15_1_0_vector_serialize_impl_authority,
-  rust_1_93_btree_set_trait_implementations_authority,
+  im_15_1_0_ord_set_clone_impl_authority,
   rust_1_93_hash_set_trait_implementations_authority,
   rust_btree_set_supplemental_generic_bound_rows,
   rust_hash_set_supplemental_generic_bound_contract_coverage_disposition,
-  serde_1_0_228_btree_set_deserialize_authority,
-  serde_1_0_228_btree_set_serialize_authority,
   serde_1_0_228_hash_set_deserialize_authority,
   serde_1_0_228_hash_set_serialize_authority
 }
@@ -77,7 +75,8 @@ import v2.std.collection {
   Set,
   empty_map,
   list_at_optional,
-  map_insert
+  map_insert,
+  map_lookup
 }
 import v2.std.optional {
   Absent,
@@ -1589,20 +1588,57 @@ fn rust_collection_representation_parameters() -> Map<Symbol, TargetRepresentati
   )
 }
 
-fn rust_single_parameter_supplemental_generic_bound_requirements(
-  required_trait: ReprGroundingDeriveTrait,
-  authority: ExternalAuthority
-) -> Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
-  map_insert(
-    m: target_derive_supplemental_generic_bound_contract_requirements_empty(),
+// A single required-parameter's requirement-set as it stands in an in-progress contract map,
+// defaulting to empty when the derive_trait has no entry yet (first row for that trait) --
+// the read half of the merge, so a second row for a derive_trait already carrying one
+// required trait ADDS to that set rather than the map_insert-at-the-outer-map overwrite that
+// insert_with_requirements alone would produce (needed once a derive_trait's supplemental
+// bound has more than one required trait, e.g. BTreeSet's Serialize/Deserialize needing both
+// Ord and Clone from one upstream im::OrdSet impl).
+fn rust_collection_supplemental_generic_bound_requirement_set_for_param(
+  requirements: Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>,
+  representation_parameter: Symbol
+) -> TargetDeriveSupplementalGenericBoundRequirementSet {
+  match map_lookup(m: requirements, key: representation_parameter) {
+    Present { value: set } => set
+    Absent => target_derive_supplemental_generic_bound_requirement_set_empty()
+  }
+}
+
+// Folds one RustVecSupplementalGenericBoundRow into an in-progress contract map, merging into
+// whatever requirement set the row's derive_trait already carries rather than replacing it --
+// the single merge point both rust_vec_supplemental_generic_bound_contracts and
+// rust_btree_set_supplemental_generic_bound_contracts fold over, so a derive_trait needing N
+// required traits is N rows in the shared derive_contracts.dag row list, never a bespoke
+// per-collection accumulator.
+fn rust_collection_supplemental_generic_bound_contracts_merge_row(
+  contracts: Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority>,
+  row: RustVecSupplementalGenericBoundRow
+) -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+  let key = target_grounding_derive_trait_key(derive_trait: row.derive_trait)
+  let existing_requirements = match map_lookup(m: contracts, key: key) {
+    Present { value: contract } => contract.requirements
+    Absent => target_derive_supplemental_generic_bound_contract_requirements_empty()
+  }
+  let existing_set = rust_collection_supplemental_generic_bound_requirement_set_for_param(
+    requirements: existing_requirements,
+    representation_parameter: ^target_collection_type_param_t
+  )
+  let merged_set = map_insert(
+    m: existing_set,
+    key: target_grounding_derive_trait_key(derive_trait: row.required),
+    value: TargetDeriveSupplementalGenericBoundRequirementAuthority { authority: row.authority }
+  )
+  let merged_requirements = map_insert(
+    m: existing_requirements,
     key: ^target_collection_type_param_t,
-    value: map_insert(
-      m: target_derive_supplemental_generic_bound_requirement_set_empty(),
-      key: target_grounding_derive_trait_key(derive_trait: required_trait),
-      value: TargetDeriveSupplementalGenericBoundRequirementAuthority {
-        authority: authority
-      }
-    )
+    value: merged_set
+  )
+  target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
+    contracts: contracts,
+    derive_trait: row.derive_trait,
+    authority: row.authority,
+    requirements: merged_requirements
   )
 }
 
@@ -1616,15 +1652,7 @@ fn rust_vec_supplemental_generic_bound_contracts() -> Map<TargetDeriveTraitKey, 
     xs: rust_vec_freemonoid_supplemental_generic_bound_rows,
     empty: target_derive_supplemental_generic_bound_contract_authorities_empty(),
     cons: fn(acc, row) {
-      target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
-        contracts: acc,
-        derive_trait: row.derive_trait,
-        authority: row.authority,
-        requirements: rust_single_parameter_supplemental_generic_bound_requirements(
-          required_trait: row.required,
-          authority: row.authority
-        )
-      )
+      rust_collection_supplemental_generic_bound_contracts_merge_row(contracts: acc, row: row)
     }
   )
   target_derive_supplemental_generic_bound_contract_authority_insert(
@@ -1634,46 +1662,25 @@ fn rust_vec_supplemental_generic_bound_contracts() -> Map<TargetDeriveTraitKey, 
   )
 }
 
-// The Deserialize -> Ord supplemental-bound FACT lives once, dag-rooted, in
-// extdeps.languages.rust.derive_contracts rust_btree_set_supplemental_generic_bound_rows
-// (readable from both the regen pool and this tree, and consumed by v1's seed emitter for
-// the same fact); this fn only lifts it into the target_model-typed contract map, mirroring
-// rust_vec_supplemental_generic_bound_contracts's row-fold rather than restating it inline.
+// The Debug/PartialEq/Serialize/Deserialize -> Ord/Clone supplemental-bound FACTS live once,
+// dag-rooted, in extdeps.languages.rust.derive_contracts rust_btree_set_supplemental_generic_bound_rows
+// (readable from both the regen pool and this tree, and consumed by v1's seed emitter for the
+// same facts); this fn only lifts them into the target_model-typed contract map, folded through
+// rust_collection_supplemental_generic_bound_contracts_merge_row exactly as
+// rust_vec_supplemental_generic_bound_contracts is, since Serialize and Deserialize each carry
+// two rows (Ord and Clone) that must merge into one requirement set rather than overwrite.
 fn rust_btree_set_supplemental_generic_bound_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
-  let debug_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
-      contracts: target_derive_supplemental_generic_bound_contract_authorities_empty(),
-      derive_trait: ReprDeriveDebug,
-      authority: rust_1_93_btree_set_trait_implementations_authority
-    )
-  let clone_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
-      contracts: debug_contract,
-      derive_trait: ReprDeriveClone,
-      authority: rust_1_93_btree_set_trait_implementations_authority
-    )
-  let partial_eq_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
-      contracts: clone_contract,
-      derive_trait: ReprDerivePartialEq,
-      authority: rust_1_93_btree_set_trait_implementations_authority
-    )
-  let serialize_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
-      contracts: partial_eq_contract,
-      derive_trait: ReprDeriveSerialize,
-      authority: serde_1_0_228_btree_set_serialize_authority
-    )
-  fold_list(
+  let from_rows = fold_list(
     xs: rust_btree_set_supplemental_generic_bound_rows,
-    empty: serialize_contract,
+    empty: target_derive_supplemental_generic_bound_contract_authorities_empty(),
     cons: fn(acc, row) {
-      target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
-        contracts: acc,
-        derive_trait: row.derive_trait,
-        authority: row.authority,
-        requirements: rust_single_parameter_supplemental_generic_bound_requirements(
-          required_trait: row.required,
-          authority: row.authority
-        )
-      )
+      rust_collection_supplemental_generic_bound_contracts_merge_row(contracts: acc, row: row)
     }
+  )
+  target_derive_supplemental_generic_bound_contract_authority_insert(
+    contracts: from_rows,
+    derive_trait: ReprDeriveClone,
+    authority: im_15_1_0_ord_set_clone_impl_authority
   )
 }
 

@@ -794,7 +794,7 @@ pub fn v1_freemonoid_serde_bound_attr(
 pub fn trait_derive_emit_set_ord_supplemental_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "ROOT A, Ord half (E0277 root-partition adhoc-a407cd3d-840): std.authorization_profile AudienceSet's EnumeratedAudience { members: Set<P> } realizes Set<P> as BTreeSet<P> (rust_1_93_btree_set_trait_implementations_authority), whose own Debug/Clone/PartialEq/Serialize impls need only P's natural per-derive bound -- but impl<'de, P: Deserialize<'de> + Ord> Deserialize<'de> for BTreeSet<P> additionally requires P: Ord to reconstruct the ordering invariant during deserialization (serde_1_0_228_btree_set_deserialize_authority), a fact this module previously had no way to express: the FreeMonoid apparatus above is a Clone-shaped fork (three Clone-only triggers named in trait_derive_emit_item_clone_bound_contract_fork_note) that structurally cannot emit P: Ord. Consuming the dag-rooted single authority extdeps.languages.rust.derive_contracts rust_btree_set_supplemental_generic_bound_rows (NEVER a literal trait list in this module, same discipline as the FreeMonoid rows) rather than adding a second Clone-shaped item-header fixpoint: the item header and the #[derive(...)] trait list are UNCHANGED (P: Ord never unions onto AudienceSet<P>'s own declaration or onto the whole derive), and a #[serde(bound(deserialize = \"...\"))]-only attribute is appended naming every item generic param, Set-affected params carrying the row's supplemental Ord requirement in addition to their natural Deserialize<'de> bound. No serialize clause is ever emitted for this route -- Serialize carries no row and needs no override, so leaving the default inferred bound in place is the CORRECT output, not an omission (the discriminating control this lane names explicitly: a type whose Deserialize impl needs Ord but whose Serialize does not -- correct output bounds the DERIVE-TRAIT-SPECIFIC clause, not the type). A row this realization cannot route (any derive_trait other than Deserialize) or a Set-affected param whose trait list omits Deserialize both REFUSE via compile_error (typed, located), never skip. Scoped to the enum derive path (v1_emit_enum_derives) because that is AudienceSet's actual shape and the only exercised Set<P> generic field in the corpus (verified: the sole generic Set<P> field in dag/std/authorization_profile.dag); no struct in the corpus carries a generic Set<P> field today, so struct-side wiring would be speculative. Dissolution: same as trait_derive_emit_item_clone_bound_contract_fork_dissolve_on (v2 emitter subsumption at this grain).".to_string()
+            "ROOT A, Ord half (E0277 root-partition adhoc-a407cd3d-840): std.authorization_profile AudienceSet's EnumeratedAudience { members: Set<P> } realizes Set<P> as im::OrdSet<P>, aliased `as BTreeSet` in every emitted use statement -- NOT std::collections::BTreeSet, corrected 2026-08-21 after a first pass of this lane cited the std/serde-for-std authorities and left 16 of the true P: Ord sites open under rustc (docs/probes/curated_cargo_probe_one.sh, not gunbc-compile-clean, is what caught it -- DESIGN section 5's 'a typecheck and a grep are not consumers'). Verified against the vendored im-15.1.0 source: OrdSet's own Debug and PartialEq impls (src/ord/set.rs#937, #844) are each conditional on P: Ord alone; its Serialize and Deserialize impls (src/ser.rs#134, #125) are each conditional on BOTH P: Ord and P: Clone; Clone itself is unconditional (set.rs#830, no row). The FreeMonoid apparatus above is a Clone-shaped fork (three Clone-only triggers named in trait_derive_emit_item_clone_bound_contract_fork_note) that structurally cannot emit P: Ord, so this lane consumes the dag-rooted single authority extdeps.languages.rust.derive_contracts rust_btree_set_supplemental_generic_bound_rows (NEVER a literal trait list in this module, same discipline as the FreeMonoid rows) rather than adding a second Clone-shaped item-header fixpoint: the item header and the #[derive(...)] trait list membership are UNCHANGED (P: Ord never unions onto AudienceSet<P>'s own declaration), but per-trait ROUTING now mirrors the FreeMonoid split exactly, reusing v1_freemonoid_row_route rather than a second copy of the same two-way split: Debug and PartialEq leave the derive list and are realized as hand-written impls whose headers union the trait's own structural requirement with the row's per-derive_trait Ord requirement ONLY (never Clone -- the discriminating control this lane names explicitly: a type whose Debug impl needs Ord but whose construction does not need Clone -- correct output bounds the DERIVE, not the type, and NOT every row's required trait unioned together, which would over-bound Debug/PartialEq with Clone they do not need); Serialize and Deserialize stay derived with a combined #[serde(bound(serialize = .., deserialize = ..))] override naming every item generic param, Set-affected params carrying Ord + Clone in both clauses (mirroring v1_freemonoid_serde_bound_attr, not a deserialize-only attribute). A row this realization cannot route, or a Set-affected param whose trait list omits a routed trait, REFUSES via compile_error (typed, located), never skips. Scoped to the enum derive path (v1_emit_enum_derives / v1_emit_enum_supplemental_impls) because that is AudienceSet's actual shape and the only exercised Set<P> generic field in the corpus (verified: the sole generic Set<P> field in dag/std/authorization_profile.dag); no struct in the corpus carries a generic Set<P> field today, so struct-side wiring would be speculative. Dissolution: same as trait_derive_emit_item_clone_bound_contract_fork_dissolve_on (v2 emitter subsumption at this grain).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -848,7 +848,10 @@ pub fn v1_set_unroutable_row_refusal() -> String {
                 .iter()
                 .cloned()
             {
-                if (row.derive_trait.clone() != ReprGroundingDeriveTrait::ReprDeriveDeserialize) {
+                if match v1_freemonoid_row_route(row.clone()) {
+                    Some(_) => false,
+                    None => true,
+                } {
                     __result.push(row);
                 }
             }
@@ -857,31 +860,139 @@ pub fn v1_set_unroutable_row_refusal() -> String {
         if ((unroutable.clone().len() as i64) == 0) {
             "".to_string()
         } else {
-            v1_trait_derive_refuse("trait_derive_emit: a rust_btree_set_supplemental_generic_bound_rows row names a derive trait this realization cannot route (only Deserialize is wired as a serde bound override) — extend v1_emit_enum_derives' Set/Ord handling rather than skipping the row".to_string())
+            v1_trait_derive_refuse("trait_derive_emit: a rust_btree_set_supplemental_generic_bound_rows row names a derive trait this realization cannot route (neither hand-written impl nor serde bound attr) — extend v1_freemonoid_row_route rather than skipping the row".to_string())
         }
     }
 }
 
-pub fn v1_set_supplemental_bound_spelling() -> String {
+pub fn v1_set_hand_written_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for row in Rc::new({
+            let mut __result = Vec::new();
+            for row in rust_btree_set_supplemental_generic_bound_rows()
+                .iter()
+                .cloned()
+            {
+                if match v1_freemonoid_row_route(row.clone()) {
+                    Some(V1FreeMonoidSupplementalRoute::FreeMonoidHandWrittenImpl) => true,
+                    _ => false,
+                } {
+                    __result.push(row);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.push(row.derive_trait.clone());
+        }
+        __result
+    })
+}
+
+pub fn v1_set_filter_hand_written(
+    traits: Rc<Vec<ReprGroundingDeriveTrait>>,
+) -> Rc<Vec<ReprGroundingDeriveTrait>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for t in traits.clone().iter().cloned() {
+            if !{
+                let mut __found = false;
+                for h in v1_set_hand_written_traits().iter().cloned() {
+                    if (h.clone() == t.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                __result.push(t);
+            }
+        }
+        __result
+    })
+}
+
+pub fn v1_set_required_traits_for(
+    derive_trait: ReprGroundingDeriveTrait,
+) -> Rc<Vec<ReprGroundingDeriveTrait>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for row in Rc::new({
+            let mut __result = Vec::new();
+            for row in rust_btree_set_supplemental_generic_bound_rows()
+                .iter()
+                .cloned()
+            {
+                if (row.derive_trait.clone() == derive_trait.clone()) {
+                    __result.push(row);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.push(row.required.clone());
+        }
+        __result
+    })
+}
+
+pub fn v1_set_supplemental_bound_spelling_for(derive_trait: ReprGroundingDeriveTrait) -> String {
     unique_strings(Rc::new({
         let mut __result = Vec::new();
-        for row in rust_btree_set_supplemental_generic_bound_rows()
+        for t in v1_set_required_traits_for(derive_trait.clone())
             .iter()
             .cloned()
         {
-            __result.push(rust_trait_derive_spelling(row.required.clone()));
+            __result.push(rust_trait_derive_spelling(t.clone()));
         }
         __result
     }))
     .join(&" + ".to_string())
 }
 
-pub fn v1_set_deserialize_bound_attr(
+pub fn v1_set_serde_bound_attr(
     generic_param_names: Rc<Vec<String>>,
     set_params: Rc<Vec<String>>,
 ) -> String {
     {
-        let supplement = v1_set_supplemental_bound_spelling();
+        let ser_supplement =
+            v1_set_supplemental_bound_spelling_for(ReprGroundingDeriveTrait::ReprDeriveSerialize);
+        let de_supplement =
+            v1_set_supplemental_bound_spelling_for(ReprGroundingDeriveTrait::ReprDeriveDeserialize);
+        let ser_entries = Rc::new({
+            let mut __result = Vec::new();
+            for p in generic_param_names.clone().iter().cloned() {
+                __result.push({
+                    let pascal = to_pascal(p.clone());
+                    if {
+                        let mut __found = false;
+                        for f in set_params.clone().iter().cloned() {
+                            if (f.clone() == p.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    } {
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(pascal.clone(), ": ".to_string()),
+                                ser_supplement.clone(),
+                            ),
+                            " + serde::Serialize".to_string(),
+                        )
+                    } else {
+                        v1_rt::concat(pascal.clone(), ": serde::Serialize".to_string())
+                    }
+                });
+            }
+            __result
+        });
         let de_entries = Rc::new({
             let mut __result = Vec::new();
             for p in generic_param_names.clone().iter().cloned() {
@@ -900,7 +1011,7 @@ pub fn v1_set_deserialize_bound_attr(
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(pascal.clone(), ": ".to_string()),
-                                supplement.clone(),
+                                de_supplement.clone(),
                             ),
                             " + serde::Deserialize<'de>".to_string(),
                         )
@@ -913,7 +1024,13 @@ pub fn v1_set_deserialize_bound_attr(
         });
         v1_rt::concat(
             v1_rt::concat(
-                "#[serde(bound(deserialize = \"".to_string(),
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "#[serde(bound(serialize = \"".to_string(),
+                        ser_entries.clone().join(&", ".to_string()),
+                    ),
+                    "\", deserialize = \"".to_string(),
+                ),
                 de_entries.clone().join(&", ".to_string()),
             ),
             "\"))]".to_string(),
@@ -934,7 +1051,16 @@ pub fn v1_set_serde_bound_attr_for_traits(
             if (refusal.clone() != "".to_string()) {
                 refusal.clone()
             } else {
-                if !{
+                if !({
+                    let mut __found = false;
+                    for t in traits.clone().iter().cloned() {
+                        if (t.clone() == ReprGroundingDeriveTrait::ReprDeriveSerialize) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } && {
                     let mut __found = false;
                     for t in traits.clone().iter().cloned() {
                         if (t.clone() == ReprGroundingDeriveTrait::ReprDeriveDeserialize) {
@@ -943,15 +1069,12 @@ pub fn v1_set_serde_bound_attr_for_traits(
                         }
                     }
                     __found
-                } {
-                    v1_trait_derive_refuse("trait_derive_emit: a Set<P> field requires P: Ord for Deserialize but the derive trait list for this coproduct elem shape does not include Deserialize — supplemental bound cannot attach".to_string())
+                }) {
+                    v1_trait_derive_refuse("trait_derive_emit: a Set<P> field requires P: Ord + Clone for Serialize/Deserialize but the derive trait list for this coproduct elem shape omits one of them — supplemental bound cannot attach".to_string())
                 } else {
                     v1_rt::concat(
                         "\n".to_string(),
-                        v1_set_deserialize_bound_attr(
-                            generic_param_names.clone(),
-                            set_params.clone(),
-                        ),
+                        v1_set_serde_bound_attr(generic_param_names.clone(), set_params.clone()),
                     )
                 }
             }
@@ -1344,6 +1467,338 @@ pub fn v1_freemonoid_enum_partial_eq_impl(
     }
 }
 
+pub fn v1_set_impl_type_params(
+    generic_param_names: Rc<Vec<String>>,
+    set_params: Rc<Vec<String>>,
+    field_type_exprs: Rc<Vec<Rc<Node>>>,
+    structural_spelling: String,
+    derive_trait: ReprGroundingDeriveTrait,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if ((generic_param_names.clone().len() as i64) == 0) {
+        "".to_string()
+    } else {
+        {
+            let entries = Rc::new({
+                let mut __result = Vec::new();
+                for p in generic_param_names.clone().iter().cloned() {
+                    __result.push({
+                        let pascal = to_pascal(p.clone());
+                        let supplemental = if {
+                            let mut __found = false;
+                            for f in set_params.clone().iter().cloned() {
+                                if (f.clone() == p.clone()) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        } {
+                            Rc::new(vec![v1_set_supplemental_bound_spelling_for(
+                                derive_trait.clone(),
+                            )])
+                        } else {
+                            Rc::new(vec![])
+                        };
+                        let structural = if v1_freemonoid_param_in_fields(
+                            p.clone(),
+                            field_type_exprs.clone(),
+                            source_indices.clone(),
+                        ) {
+                            Rc::new(vec![structural_spelling.clone()])
+                        } else {
+                            Rc::new(vec![])
+                        };
+                        let parts = v1_rt::concat(supplemental.clone(), structural.clone());
+                        if ((parts.clone().len() as i64) == 0) {
+                            pascal.clone()
+                        } else {
+                            v1_rt::concat(
+                                v1_rt::concat(pascal.clone(), ": ".to_string()),
+                                parts.clone().join(&" + ".to_string()),
+                            )
+                        }
+                    });
+                }
+                __result
+            });
+            v1_rt::concat(
+                v1_rt::concat("<".to_string(), entries.clone().join(&", ".to_string())),
+                ">".to_string(),
+            )
+        }
+    }
+}
+
+pub fn v1_set_enum_debug_impl(
+    name: String,
+    generic_param_names: Rc<Vec<String>>,
+    set_params: Rc<Vec<String>>,
+    children: Rc<Vec<Rc<Node>>>,
+    field_type_exprs: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let tp = v1_set_impl_type_params(
+            generic_param_names.clone(),
+            set_params.clone(),
+            field_type_exprs.clone(),
+            "std::fmt::Debug".to_string(),
+            ReprGroundingDeriveTrait::ReprDeriveDebug,
+            source_indices.clone(),
+        );
+        let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
+        let arms = Rc::new({
+            let mut __result = Vec::new();
+            for variant in children.clone().iter().cloned() {
+                __result.push({
+                    let vname =
+                        to_pascal(authored_name_at(source_indices.clone(), variant.clone()));
+                    if ((variant.children.clone().len() as i64) == 0) {
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat("            Self::".to_string(), vname.clone()),
+                                    " => f.write_str(\"".to_string(),
+                                ),
+                                vname.clone(),
+                            ),
+                            "\"),".to_string(),
+                        )
+                    } else {
+                        {
+                            let fields = Rc::new({
+                                let mut __result = Vec::new();
+                                for f in variant.children.clone().iter().cloned() {
+                                    __result.push(emit_ident(
+                                        authored_name_at(source_indices.clone(), f.clone()),
+                                        RenderTarget::Rust,
+                                    ));
+                                }
+                                __result
+                            });
+                            let bindings = fields.clone().join(&", ".to_string());
+                            let field_calls = Rc::new({
+                                let mut __result = Vec::new();
+                                for fi in fields.clone().iter().cloned() {
+                                    __result.push(v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(".field(\"".to_string(), fi.clone()),
+                                                "\", ".to_string(),
+                                            ),
+                                            fi.clone(),
+                                        ),
+                                        ")".to_string(),
+                                    ));
+                                }
+                                __result
+                            })
+                            .join(&"".to_string());
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            "            Self::".to_string(),
+                                                            vname.clone(),
+                                                        ),
+                                                        " { ".to_string(),
+                                                    ),
+                                                    bindings.clone(),
+                                                ),
+                                                " } => f.debug_struct(\"".to_string(),
+                                            ),
+                                            vname.clone(),
+                                        ),
+                                        "\")".to_string(),
+                                    ),
+                                    field_calls.clone(),
+                                ),
+                                ".finish(),".to_string(),
+                            )
+                        }
+                    }
+                });
+            }
+            __result
+        });
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("impl".to_string(), tp.clone()), " std::fmt::Debug for ".to_string()), name.clone()), args.clone()), " {\n".to_string()), "    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n".to_string()), "        match self {\n".to_string()), arms.clone().join(&"\n".to_string())), "\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "}".to_string())
+    }
+}
+
+pub fn v1_set_enum_partial_eq_impl(
+    name: String,
+    generic_param_names: Rc<Vec<String>>,
+    set_params: Rc<Vec<String>>,
+    children: Rc<Vec<Rc<Node>>>,
+    field_type_exprs: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let tp = v1_set_impl_type_params(
+            generic_param_names.clone(),
+            set_params.clone(),
+            field_type_exprs.clone(),
+            "PartialEq".to_string(),
+            ReprGroundingDeriveTrait::ReprDerivePartialEq,
+            source_indices.clone(),
+        );
+        let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
+        let arms = Rc::new({
+            let mut __result = Vec::new();
+            for variant in children.clone().iter().cloned() {
+                __result.push({
+                    let vname =
+                        to_pascal(authored_name_at(source_indices.clone(), variant.clone()));
+                    if ((variant.children.clone().len() as i64) == 0) {
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat("            (Self::".to_string(), vname.clone()),
+                                    ", Self::".to_string(),
+                                ),
+                                vname.clone(),
+                            ),
+                            ") => true,".to_string(),
+                        )
+                    } else {
+                        {
+                            let fields = Rc::new({
+                                let mut __result = Vec::new();
+                                for f in variant.children.clone().iter().cloned() {
+                                    __result.push(emit_ident(
+                                        authored_name_at(source_indices.clone(), f.clone()),
+                                        RenderTarget::Rust,
+                                    ));
+                                }
+                                __result
+                            });
+                            let a_bindings = Rc::new({
+                                let mut __result = Vec::new();
+                                for fi in fields.clone().iter().cloned() {
+                                    __result.push(v1_rt::concat(
+                                        v1_rt::concat(fi.clone(), ": a_".to_string()),
+                                        fi.clone(),
+                                    ));
+                                }
+                                __result
+                            })
+                            .join(&", ".to_string());
+                            let b_bindings = Rc::new({
+                                let mut __result = Vec::new();
+                                for fi in fields.clone().iter().cloned() {
+                                    __result.push(v1_rt::concat(
+                                        v1_rt::concat(fi.clone(), ": b_".to_string()),
+                                        fi.clone(),
+                                    ));
+                                }
+                                __result
+                            })
+                            .join(&", ".to_string());
+                            let comparisons = Rc::new({
+                                let mut __result = Vec::new();
+                                for fi in fields.clone().iter().cloned() {
+                                    __result.push(v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat("a_".to_string(), fi.clone()),
+                                            " == b_".to_string(),
+                                        ),
+                                        fi.clone(),
+                                    ));
+                                }
+                                __result
+                            })
+                            .join(&" && ".to_string());
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            v1_rt::concat(
+                                                                v1_rt::concat(
+                                                                    "            (Self::"
+                                                                        .to_string(),
+                                                                    vname.clone(),
+                                                                ),
+                                                                " { ".to_string(),
+                                                            ),
+                                                            a_bindings.clone(),
+                                                        ),
+                                                        " }, Self::".to_string(),
+                                                    ),
+                                                    vname.clone(),
+                                                ),
+                                                " { ".to_string(),
+                                            ),
+                                            b_bindings.clone(),
+                                        ),
+                                        " }) => ".to_string(),
+                                    ),
+                                    comparisons.clone(),
+                                ),
+                                ",".to_string(),
+                            )
+                        }
+                    }
+                });
+            }
+            __result
+        });
+        let catchall = if ((children.clone().len() as i64) > 1) {
+            "\n            _ => false,".to_string()
+        } else {
+            "".to_string()
+        };
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            "impl".to_string(),
+                                                            tp.clone(),
+                                                        ),
+                                                        " PartialEq for ".to_string(),
+                                                    ),
+                                                    name.clone(),
+                                                ),
+                                                args.clone(),
+                                            ),
+                                            " {\n".to_string(),
+                                        ),
+                                        "    fn eq(&self, other: &Self) -> bool {\n".to_string(),
+                                    ),
+                                    "        match (self, other) {\n".to_string(),
+                                ),
+                                arms.clone().join(&"\n".to_string()),
+                            ),
+                            catchall.clone(),
+                        ),
+                        "\n".to_string(),
+                    ),
+                    "        }\n".to_string(),
+                ),
+                "    }\n".to_string(),
+            ),
+            "}".to_string(),
+        )
+    }
+}
+
 pub fn v1_emit_struct_derives(
     name: String,
     children: Rc<Vec<Rc<Node>>>,
@@ -1445,20 +1900,35 @@ pub fn v1_emit_enum_derives(
             payload_coproduct_derive_traits(),
             map_key_required.clone(),
         );
+        let set_row_refusal = if ((set_params.clone().len() as i64) > 0) {
+            v1_set_unroutable_row_refusal()
+        } else {
+            "".to_string()
+        };
         match shape.clone() {
             ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy => {
                 if repr_grounding_derive_completeness_predicate(
                     nullary_traits.clone(),
                     shape.clone(),
                 ) {
-                    v1_rt::concat(
-                        rust_trait_derive_attr_from_traits(nullary_traits.clone()),
-                        v1_set_serde_bound_attr_for_traits(
-                            nullary_traits.clone(),
-                            generic_param_names.clone(),
-                            set_params.clone(),
-                        ),
-                    )
+                    {
+                        let derived_traits = if ((set_params.clone().len() as i64) > 0) {
+                            v1_set_filter_hand_written(nullary_traits.clone())
+                        } else {
+                            nullary_traits.clone()
+                        };
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                set_row_refusal.clone(),
+                                rust_trait_derive_attr_from_traits(derived_traits.clone()),
+                            ),
+                            v1_set_serde_bound_attr_for_traits(
+                                nullary_traits.clone(),
+                                generic_param_names.clone(),
+                                set_params.clone(),
+                            ),
+                        )
+                    }
                 } else {
                     v1_trait_derive_refuse(
                         "trait_derive_emit: nullary coproduct derive completeness refused"
@@ -1471,14 +1941,24 @@ pub fn v1_emit_enum_derives(
                     payload_traits.clone(),
                     shape.clone(),
                 ) {
-                    v1_rt::concat(
-                        rust_trait_derive_attr_from_traits(payload_traits.clone()),
-                        v1_set_serde_bound_attr_for_traits(
-                            payload_traits.clone(),
-                            generic_param_names.clone(),
-                            set_params.clone(),
-                        ),
-                    )
+                    {
+                        let derived_traits = if ((set_params.clone().len() as i64) > 0) {
+                            v1_set_filter_hand_written(payload_traits.clone())
+                        } else {
+                            payload_traits.clone()
+                        };
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                set_row_refusal.clone(),
+                                rust_trait_derive_attr_from_traits(derived_traits.clone()),
+                            ),
+                            v1_set_serde_bound_attr_for_traits(
+                                payload_traits.clone(),
+                                generic_param_names.clone(),
+                                set_params.clone(),
+                            ),
+                        )
+                    }
                 } else {
                     v1_trait_derive_refuse(
                         "trait_derive_emit: payload coproduct derive completeness refused"
@@ -3065,6 +3545,11 @@ pub fn v1_emit_enum_supplemental_impls(
             field_type_exprs.clone(),
             source_indices.clone(),
         );
+        let set_params = v1_set_element_params(
+            generic_param_names.clone(),
+            field_type_exprs.clone(),
+            source_indices.clone(),
+        );
         if ((fm_params.clone().len() as i64) > 0) {
             v1_rt::concat(
                 v1_rt::concat(
@@ -3091,16 +3576,43 @@ pub fn v1_emit_enum_supplemental_impls(
                 ),
             )
         } else {
-            if (repr_grounding_supplemental_bool_host_bridge_target(
-                module_path.clone(),
-                name.clone(),
-            ) && repr_grounding_derive_completeness_predicate(
-                nullary_coproduct_derive_traits(),
-                ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy,
-            )) {
-                rust_supplemental_impls_bool_coproduct()
+            if ((set_params.clone().len() as i64) > 0) {
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "\n\n".to_string(),
+                            v1_set_enum_debug_impl(
+                                name.clone(),
+                                generic_param_names.clone(),
+                                set_params.clone(),
+                                children.clone(),
+                                field_type_exprs.clone(),
+                                source_indices.clone(),
+                            ),
+                        ),
+                        "\n\n".to_string(),
+                    ),
+                    v1_set_enum_partial_eq_impl(
+                        name.clone(),
+                        generic_param_names.clone(),
+                        set_params.clone(),
+                        children.clone(),
+                        field_type_exprs.clone(),
+                        source_indices.clone(),
+                    ),
+                )
             } else {
-                "".to_string()
+                if (repr_grounding_supplemental_bool_host_bridge_target(
+                    module_path.clone(),
+                    name.clone(),
+                ) && repr_grounding_derive_completeness_predicate(
+                    nullary_coproduct_derive_traits(),
+                    ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy,
+                )) {
+                    rust_supplemental_impls_bool_coproduct()
+                } else {
+                    "".to_string()
+                }
             }
         }
     }
