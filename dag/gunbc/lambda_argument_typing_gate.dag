@@ -1,7 +1,13 @@
 module gunbc.lambda_argument_typing_gate
 
 import std.types { Bool, Int, List, String }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref {
+  CitableThroughDeclIndex,
+  CitationIndexCoverage,
+  DeclarationRef,
+  citation_is_outside_index,
+  decl_ref,
+}
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // THREE LOCATED E0282 SITES WHOSE CAUSE IS UNLOCATED.
@@ -40,6 +46,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 type LambdaTypingGateSite {
   caller: DeclarationRef
+  index_coverage: CitationIndexCoverage
   callee_spelled: String
   miss: GateMiss
   cause: SiteCause
@@ -90,6 +97,7 @@ type GateMiss
 data lambda_typing_gate_sites: List<LambdaTypingGateSite> = [
   {
     caller: decl_ref(module_path: "v2.compiler.parse", decl_name: "parse_lexeme_digest"),
+    index_coverage: CitableThroughDeclIndex,
     callee_spelled: "fold_list",
     miss: NearMissOfARosterName { roster_name: "fold" },
     cause: StringDeclarationSiteAlias,
@@ -103,6 +111,7 @@ data lambda_typing_gate_sites: List<LambdaTypingGateSite> = [
   },
   {
     caller: decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "target_value_expr_effect_apply_callee"),
+    index_coverage: CitableThroughDeclIndex,
     callee_spelled: "fold_list",
     miss: NearMissOfARosterName { roster_name: "fold" },
     cause: UntypedFoldInitAccumulator,
@@ -116,6 +125,7 @@ data lambda_typing_gate_sites: List<LambdaTypingGateSite> = [
   },
   {
     caller: decl_ref(module_path: "v2.compiler.tokenize", decl_name: "lex_match_prefix"),
+    index_coverage: CitableThroughDeclIndex,
     callee_spelled: "is_prefix_of",
     miss: AbsentFromRoster,
     cause: StringDeclarationSiteAlias,
@@ -244,3 +254,52 @@ data lambda_typing_gate_population_confidence: PopulationConfidence = UpperBound
 // The replacement keys on the only fact that can honestly retire this row: the three sites emitting
 // and compiling without an inference failure. No repair of any mechanism satisfies it on its own.
 data lambda_typing_gate_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: EVERY site in lambda_typing_gate_sites emits and compiles with no inference-failure diagnostic at that position, established by execution against the emitted crate. The sites now carry TWO different causes, so no single repair can fire this trigger: the String declaration-site alias repair closes the parse and tokenize rows, and the untyped fold-init accumulator repair closes the target_model row, and this row survives until both have. NOT satisfied by any repair to v1.compiler.emit_rust emit_typed_call's bare-name gate -- that mechanism is refuted by lambda_typing_gate_mechanism and its removal is a separate cleanup with a measured zero emitted-byte delta.")
+
+// MERGE NOTE. The trigger this replaced, and the reach paragraph that argued for it, came from main
+// and are DELETED here rather than kept beside the replacement: both were premised on the four-name
+// roster being the cause, and that mechanism was measured inert -- three arms, 258 files each, zero
+// differing files. Two triggers on one row is two answers to when it dies, which is the fork this
+// correction exists to close. The enrollment projection below is main's and is untouched by that.
+
+// ENROLLMENT PROJECTION — the `caller` refs, exposed so `v2.lens.cited_symbol_resolution` can
+// resolve them. This carrier's entire content is citations, so nothing else in it is checkable:
+// rename `parse_lexeme_digest` and, before this projection existed, every required check stayed
+// green while the row went quietly false. That is the stale-citation class living inside a
+// structural carrier, and enrollment is the remedy the lens's own law already names as its next
+// widening — every structural DeclarationRef carrier — so no second resolver is written here.
+//
+// `callee_spelled` is deliberately NOT projected and must stay a String. The finding this row
+// records is that the callee is consulted BY SPELLING rather than by declaration; typing it would
+// assert the resolution the defect proves does not happen, and erase the defect.
+data lambda_typing_gate_empty_declaration_refs: List<DeclarationRef> = []
+
+fn lambda_typing_gate_declaration_refs_from(
+  sites: List<LambdaTypingGateSite>
+) -> List<DeclarationRef> {
+  fold_list(
+    xs: sites,
+    empty: lambda_typing_gate_empty_declaration_refs,
+    cons: fn(acc, s) { concat(acc, [s.caller]) }
+  )
+}
+
+// EVERY ROW HERE IS CitableThroughDeclIndex TODAY, and the filter is present anyway. Not symmetry
+// for its own sake: the sibling carrier has two rows the index does not cover, and a carrier that
+// only grows the filter once it needs one is a carrier whose green silently changes meaning on the
+// day a witness-module producer is recorded. The count below is the readable half — zero here, two
+// there — and it is what keeps "all refs resolve" from being satisfiable by having no refs.
+fn lambda_typing_gate_citable_sites() -> List<LambdaTypingGateSite> {
+  filter(lambda_typing_gate_sites, s => citation_is_outside_index(coverage: s.index_coverage) == false)
+}
+
+fn lambda_typing_gate_outside_index_sites() -> List<LambdaTypingGateSite> {
+  filter(lambda_typing_gate_sites, s => citation_is_outside_index(coverage: s.index_coverage))
+}
+
+fn lambda_typing_gate_declaration_refs() -> List<DeclarationRef> {
+  lambda_typing_gate_declaration_refs_from(sites: lambda_typing_gate_citable_sites())
+}
+
+fn lambda_typing_gate_outside_index_count() -> Int {
+  length(xs: lambda_typing_gate_outside_index_sites())
+}
