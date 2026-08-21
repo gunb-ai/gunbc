@@ -33,6 +33,15 @@ import v2.std.optional { Absent, Present }
 import v2.std.text { String }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
 import v2.std.compilers.lexing { symbol_lexeme }
+import v2.workflow.body_lowering_retention_census {
+  CensusNotApplicable,
+  CensusOutcome,
+  CensusWriteFailed,
+  CensusWritten,
+  census_outcome_admits,
+  retention_census,
+  retention_census_render
+}
 import v2.test.workflow.host_source_root_ingest_manifest {
   host_compiler_closure_admission,
   host_source_root_closure_refs,
@@ -103,6 +112,7 @@ data product_receipt_stage_double_read_note: String = "DECLARED COST, not an ove
 data product_receipt_stage_manifest_rel: String = "/manifest/host_source_root_ingest_manifest.dag"
 data product_receipt_stage_candidate_rel: String = "/candidate"
 data product_receipt_stage_receipt_rel: String = "/receipt.txt"
+data product_receipt_stage_census_rel: String = "/b4-retention-census.txt"
 
 fn stage_identity_from_hex(hex: String, file_count: Int) -> ArtifactIdentity {
   match fnv1a64_structural_hex_digest(hex: hex) {
@@ -241,9 +251,11 @@ fn emitter_diagnostic_causes(ds: NonEmptyDiagnostics) -> List<DiagnosticCauseTal
 type ProductReceiptCandidate {
   observation: BoundaryObservation
   emitted_source: String
+  census: CensusOutcome
 }
 
 func product_receipt_candidate(
+  txn: String,
   candidate_dir: String,
   population_digest: ArtifactIdentity
 ) -> ProductReceiptCandidate {
@@ -254,20 +266,42 @@ func product_receipt_candidate(
     target: rust_target_model()
   ) {
     Rejected { diagnostics: ds } =>
-      ProductReceiptCandidate {
-        observation: stage_refused(
-          boundary: ClosureCandidateEmitted,
-          cause: EmitterRejected { causes: emitter_diagnostic_causes(ds: ds) },
-          consumed: population_digest
-        ),
-        emitted_source: ""
-      }
+      product_receipt_candidate_refused(
+        txn: txn,
+        ds: ds,
+        population_digest: population_digest
+      )
     Accepted { value: value, diagnostics: _ } =>
       product_receipt_candidate_materialize(
         candidate_dir: candidate_dir,
         population_digest: population_digest,
         emitted_source: value.source.carried
       )
+  }
+}
+
+// The census is written from INSIDE the transaction that produced the
+// diagnostics, not reconstructed afterwards from a log. A census rebuilt by
+// re-running the emitter would be a second observation of a second run, and
+// the whole argument of this lane is that a boundary's evidence has to be the
+// artifact the boundary actually produced.
+func product_receipt_candidate_refused(
+  txn: String,
+  ds: NonEmptyDiagnostics,
+  population_digest: ArtifactIdentity
+) -> ProductReceiptCandidate {
+  let census_write = Filesystem.Write(
+    path: concat(txn, product_receipt_stage_census_rel),
+    content: retention_census_render(families: retention_census(ds: ds))
+  )
+  ProductReceiptCandidate {
+    observation: stage_refused(
+      boundary: ClosureCandidateEmitted,
+      cause: EmitterRejected { causes: emitter_diagnostic_causes(ds: ds) },
+      consumed: population_digest
+    ),
+    emitted_source: "",
+    census: if census_write.success { CensusWritten } else { CensusWriteFailed }
   }
 }
 
@@ -284,7 +318,8 @@ func product_receipt_candidate_materialize(
         cause: EmittedHardRefusalsPresent { count: hard_refusals },
         consumed: population_digest
       ),
-      emitted_source: emitted_source
+      emitted_source: emitted_source,
+      census: CensusNotApplicable
     }
   } else {
     let made = shell.Mkdir.Parents(path: concat(candidate_dir, "/src"))
@@ -299,7 +334,8 @@ func product_receipt_candidate_materialize(
           consumed: population_digest,
           produced: product_artifact_identity(value: emitted_source, file_count: 1)
         ),
-        emitted_source: emitted_source
+        emitted_source: emitted_source,
+        census: CensusNotApplicable
       }
     } else {
       ProductReceiptCandidate {
@@ -308,7 +344,8 @@ func product_receipt_candidate_materialize(
           cause: EmitterRejected { causes: Empty },
           consumed: population_digest
         ),
-        emitted_source: emitted_source
+        emitted_source: emitted_source,
+        census: CensusNotApplicable
       }
     }
   }
@@ -535,17 +572,20 @@ func run_product_receipt_stage(txn: String, manifest_identity: String, entry: St
 
   let candidate = if b3_ok {
     product_receipt_candidate(
+      txn: txn,
       candidate_dir: candidate_dir,
       population_digest: population_digest
     )
   } else {
     ProductReceiptCandidate {
       observation: stage_not_exercised(boundary: ClosureCandidateEmitted),
-      emitted_source: ""
+      emitted_source: "",
+      census: CensusNotApplicable
     }
   }
   let b4 = candidate.observation
   let emitted_source = candidate.emitted_source
+  let census_outcome = candidate.census
 
   let b4_ok = match b4.standing {
     BoundaryCompleted => true
@@ -589,9 +629,15 @@ func run_product_receipt_stage(txn: String, manifest_identity: String, entry: St
     content: product_receipt_render(receipt: receipt)
   )
 
-  if written.success && product_receipt_green(receipt: receipt) {
-    ExitSuccess
+  if !census_outcome_admits(outcome: census_outcome) {
+    exit_failure(
+      reason: "boundary-4 retention census could not be written; the receipt would understate a population it observed"
+    )
   } else {
-    exit_failure(reason: "seven-boundary product receipt is RED")
+    if written.success && product_receipt_green(receipt: receipt) {
+      ExitSuccess
+    } else {
+      exit_failure(reason: "seven-boundary product receipt is RED")
+    }
   }
 }
