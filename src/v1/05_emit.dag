@@ -32,7 +32,7 @@ import std.induction { InductiveField, SubValueUnknown }
 
 import v1.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node, is_unit_like, is_declared_container_alias_spelling }
 
-import std.types { is_container_type, container_template_algebra }
+import std.types { is_container_type }
 
 import v1.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix, type_reference_decl_file }
 
@@ -374,29 +374,72 @@ fn has_nested_records_node(n: Node, source_indices: Map<String, NewlineIndex>) -
   }
 }
 
-fn emit_data_value_json(value: Node, source_indices: Map<String, NewlineIndex>) -> String {
+type EmitterOutcome
+  = Emitted { json: String }
+  | Refused { reason: String }
+
+type JsonFragmentsAccum
+  = FragmentsAccumulated { pieces: List<String> }
+  | FragmentsRefused { reason: String }
+
+fn accumulate_json_fragment(acc: JsonFragmentsAccum, outcome: EmitterOutcome) -> JsonFragmentsAccum {
+  match acc {
+    FragmentsRefused { reason: _ } => acc
+    FragmentsAccumulated { pieces: ps } => match outcome {
+      Refused { reason: r } => FragmentsRefused { reason: r }
+      Emitted { json: j } => FragmentsAccumulated { pieces: concat(ps, [j]) }
+    }
+  }
+}
+
+fn accumulate_json_field(acc: JsonFragmentsAccum, name: String, outcome: EmitterOutcome) -> JsonFragmentsAccum {
+  match acc {
+    FragmentsRefused { reason: _ } => acc
+    FragmentsAccumulated { pieces: ps } => match outcome {
+      Refused { reason: r } => FragmentsRefused { reason: r }
+      Emitted { json: j } => FragmentsAccumulated { pieces: concat(ps, [concat("\"", escape_json_string(s: name), "\": ", j)]) }
+    }
+  }
+}
+
+fn emit_data_value_json(value: Node, source_indices: Map<String, NewlineIndex>) -> EmitterOutcome {
   match value.expr_data {
     ExprLiteral { value: v } => match v {
-      LitStr { value: s } => concat("\"", escape_json_string(s: s), "\"")
-      LitSymbol { value: s } => concat("\"", escape_json_string(s: s), "\"")
-      LitInt { value: i } => to_string(value: i)
-      LitFloat { value: f } => f
-      LitBool { value: b } => if b { "true" } else { "false" }
-      LitNull => "null"
+      LitStr { value: s } => Emitted { json: concat("\"", escape_json_string(s: s), "\"") }
+      LitSymbol { value: s } => Emitted { json: concat("\"", escape_json_string(s: s), "\"") }
+      LitInt { value: i } => Emitted { json: to_string(value: i) }
+      LitFloat { value: f } => Emitted { json: f }
+      LitBool { value: b } => Emitted { json: if b { "true" } else { "false" } }
+      LitNull => Emitted { json: "null" }
     }
     ExprListLit => {
-      let el_strs = value.children |> map(e => emit_data_value_json(value: e, source_indices: source_indices))
-      concat("[", el_strs |> join(separator: ", "), "]")
+      let accum = value.children |> fold(init: FragmentsAccumulated { pieces: [] }, f: (acc, e) =>
+        accumulate_json_fragment(acc: acc, outcome: emit_data_value_json(value: e, source_indices: source_indices))
+      )
+      match accum {
+        FragmentsRefused { reason: r } => Refused { reason: r }
+        FragmentsAccumulated { pieces: ps } => Emitted { json: concat("[", ps |> join(separator: ", "), "]") }
+      }
     }
     ExprRecordLit { parent_enum: _ } => {
-      let field_strs = value.children |> map(f =>
-        concat("\"", escape_json_string(s: field_init_node_name_at(n: f, source_indices: source_indices)), "\": ", emit_data_value_json(value: field_init_node_value(n: f), source_indices: source_indices))
+      let accum = value.children |> fold(init: FragmentsAccumulated { pieces: [] }, f: (acc, fld) =>
+        accumulate_json_field(
+          acc: acc,
+          name: field_init_node_name_at(n: fld, source_indices: source_indices),
+          outcome: emit_data_value_json(value: field_init_node_value(n: fld), source_indices: source_indices)
+        )
       )
-      concat("{", field_strs |> join(separator: ", "), "}")
+      match accum {
+        FragmentsRefused { reason: r } => Refused { reason: r }
+        FragmentsAccumulated { pieces: ps } => Emitted { json: concat("{", ps |> join(separator: ", "), "}") }
+      }
     }
-    ExprVar { binding_kind: _ } => concat("\"", escape_json_string(s: expr_var_name_at(texpr: value, source_indices: source_indices)), "\"")
-    ExprUnaryOp { op: Neg } => concat("-", emit_data_value_json(value: unaryop_operand(texpr: value), source_indices: source_indices))
-    _ => "\"compile_error!(unsupported mock expression)\""
+    ExprVar { binding_kind: _ } => Emitted { json: concat("\"", escape_json_string(s: expr_var_name_at(texpr: value, source_indices: source_indices)), "\"") }
+    ExprUnaryOp { op: Neg } => match emit_data_value_json(value: unaryop_operand(texpr: value), source_indices: source_indices) {
+      Emitted { json: j } => Emitted { json: concat("-", j) }
+      Refused { reason: r } => Refused { reason: r }
+    }
+    _ => Refused { reason: "unsupported mock expression" }
   }
 }
 
@@ -533,7 +576,8 @@ fn emit_bin_op_symbol(op: BinOp, target: RenderTarget, algebra_field: AlgebraFie
   }
 }
 
-fn emit_container(kind: String, inner: String, target: RenderTarget) -> String {
+fn emit_container(name: String, inner: String, target: RenderTarget) -> String {
+  let kind = to_snake(name: name)
   if kind == "optional" {
     apply_type_template1(template: target_optional_template(target: target), arg0: inner)
   } else {
@@ -541,7 +585,7 @@ fn emit_container(kind: String, inner: String, target: RenderTarget) -> String {
       Present { value: template } => apply_type_template1(template: template, arg0: inner)
       Absent =>
         let spec = language_spec(target: target)
-        concat(kind, spec.type_arg_open, inner, spec.type_arg_close)
+        concat(name, spec.type_arg_open, inner, spec.type_arg_close)
     }
   }
 }
@@ -633,7 +677,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
   let is_optional = n.return_cardinality == CardOptional
   if is_optional {
     let inner_str = render_node_type(n: with_required_cardinality(n: n), target: target, shared_types: shared_types, source_indices: source_indices)
-    let opt_str = emit_container(kind: "optional", inner: inner_str, target: target)
+    let opt_str = emit_container(name: "optional", inner: inner_str, target: target)
     return opt_str
   }
 
@@ -675,12 +719,12 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
     }
     if n.ident_span != none {
       let snake = to_snake(name: tn)
-      let has_template = match container_template_algebra(name: snake) { Present { value: _ } => true  Absent => false }
+      let has_template = is_declared_container_alias_spelling(name: tn)
       if has_template {
         let base = if snake == "map" {
           emit_map_type(key_type: "_", val_type: "_", target: target)
         } else {
-          emit_container(kind: snake, inner: "_", target: target)
+          emit_container(name: tn, inner: "_", target: target)
         }
         let conj_container_str = if shared { wrap_shared_type(target: target, inner: base) } else { base }
         return conj_container_str
@@ -699,18 +743,18 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
   if n.children |> count == 0 {
     let bare_is_map = is_container_type(name: tn) && to_snake(name: tn) == "map"
     let bare_is_collection = is_declared_container_alias_spelling(name: tn) && !bare_is_map
-    let has_container_template = match container_template_algebra(name: to_snake(name: tn)) { Present { value: _ } => true  Absent => false }
+    let has_container_template = is_declared_container_alias_spelling(name: tn)
     let param_count = n.params |> count
     let base = if bare_is_map {
       emit_map_type(key_type: "_", val_type: "_", target: target)
     } else if bare_is_collection {
-      emit_container(kind: to_snake(name: tn), inner: "_", target: target)
+      emit_container(name: tn, inner: "_", target: target)
     } else if has_container_template && param_count == 1 {
       let inner = match n.params |> first {
         Present { value: p } => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: shared_types, source_indices: source_indices)
         Absent => "_"
       }
-      emit_container(kind: to_snake(name: tn), inner: inner, target: target)
+      emit_container(name: tn, inner: inner, target: target)
     } else if param_count > 0 {
       let param_strs = n.params |> map(p => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: shared_types, source_indices: source_indices))
       let spec = language_spec(target: target)
@@ -745,7 +789,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
     }
     let is_container = node_is_collection(n: n, source_indices: source_indices)
     let base = if is_container {
-      emit_container(kind: to_snake(name: tn), inner: child_str, target: target)
+      emit_container(name: tn, inner: child_str, target: target)
     } else {
       let type_base = coerce_primitive_type(target: target, dag_name: tn, decl_file: type_reference_decl_file(n: n))
       let spec = language_spec(target: target)

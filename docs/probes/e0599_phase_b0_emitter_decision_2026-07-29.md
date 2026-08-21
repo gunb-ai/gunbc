@@ -242,6 +242,43 @@ class does not arise: all sites resolve to an enclosing emitted fn, and **all
 resolve to a `.dag` source module** (joined on each module's own `module` declaration, not
 a filename heuristic — `v2.compiler.translate` lives in `06_translate.dag`).
 
+### 3.2b DEFECT, 2026-08-19 — this document reports TWO DIFFERENT `139`s and at least one is wrong
+
+**Marked unreliable rather than resolved or dropped** (operator instruction, `smart-ram-730`; recorded
+by `quick-lynx-620` during B1 carrier reconciliation).
+
+The figure `139` appears in two different partitions of the same 369-occurrence `CloneShared`
+population, with *different site counts*:
+
+| partition | row | sites | occurrences |
+|---|---|---:|---:|
+| receiver shape (§3.3) | `DerefCloneWholeValue` | 39 | 139 |
+| ownership arm (§ below) | `NoEmitterArm` | 20 | 139 |
+
+Both partitions sum to 369 independently (222 + 139 + 8; 230 + 139), so these are two partitions of one
+population, not one fact cited twice — the equal cell value is a coincidence.
+
+**Why it cannot be a benign coincidence.** `NoEmitterArm`'s cited authority lines
+(`:6959`/`:7587`/`:7893`/`:8748`) are a proper *subset* of `DerefCloneWholeValue`'s
+(`:6434`/`:6959`/`:7587`/`:7893`/`:8748`). A proper subset carrying an identical occurrence count
+requires `:6434` to contribute exactly zero occurrences while being listed as an inhabited authority.
+That cannot hold. So one of: a count is wrong, `:6434` is misattributed, or the two rows do not mean
+what their columns say.
+
+**Not resolved here, and deliberately not dropped.** The instrument that produced these counts was a
+shell scaffold (`docs/probes/e0599_emitter_decision_census.sh`) since deleted, so the measurement is
+not reproducible at this tree. A number nobody can reproduce is marked unreliable rather than adopted
+or quietly removed — dropping it would erase the evidence that the contradiction exists.
+
+**Consumers must not size work against either 139.** Both are emitted-Rust *occurrence* counts under a
+lowering-operation partition. Neither is a carrier-site count. Measured carrier populations at
+`e0c5e25444`: the B1 carrier `RequiredTraitWitness` had **18** references across 8 files and its three
+variants **34** across 5 files, corpus-wide. `src/v1/trait_bound_witness.dag` cites "139 counted
+occurrences" for `DerefCloneWholeValue`; that citation inherits this defect.
+
+**Dissolution:** re-running a reproducible census over the same population, at which point this section
+is replaced by the corrected partition rather than amended.
+
 ### 3.3 The receiver expression is the discriminator
 
 rustc's primary span highlights the failing method segment exactly, so the receiver is the

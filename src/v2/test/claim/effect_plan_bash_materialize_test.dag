@@ -477,7 +477,7 @@ test fn effect_plan_bash_RED_every_unsupported_step_arm_is_typed() -> Bool {
     expected: UnsupportedIf
   )
     && unsupported_step_refuses(
-      step: For { binder: ^item, over: ModeledList { items: [] }, body: empty_plan() },
+      step: For { binder: ^item, over: ModeledList { items: Empty }, body: empty_plan() },
       expected: UnsupportedFor
     )
     && unsupported_step_refuses(
@@ -485,7 +485,7 @@ test fn effect_plan_bash_RED_every_unsupported_step_arm_is_typed() -> Bool {
       expected: UnsupportedWhile
     )
     && unsupported_step_refuses(
-      step: Retry { body: empty_plan(), escalations: [], on_exhausted: empty_plan() },
+      step: Retry { body: empty_plan(), escalations: Empty, on_exhausted: empty_plan() },
       expected: UnsupportedRetry
     )
     && unsupported_step_refuses(

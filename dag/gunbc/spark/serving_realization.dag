@@ -1,0 +1,986 @@
+module gunbc.spark.serving_realization
+
+import std.types { String, Bool, List, Int, NonEmptyStr }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import product.placement_supply { HostIdentity }
+import std.content_hash {
+  ContentHash, compare_content_hash, ContentHashEqual, ContentHashDifferent,
+  ContentHashCrossFamilyIncomparable,
+}
+
+// SERVING REALIZATION IS DERIVED, NOT OBSERVED AND NOT ASKED.
+//
+// The function this replaces, gunbc.spark.bootstrap_provision derive_install_scope, crossed
+// straight from a privilege observation to an architecture decision:
+//
+//   passwordless_sudo               -> SystemUnitScope
+//   container_socket_admits         -> ContainerScope
+//   otherwise                       -> UserUnitScope
+//
+// Two things are wrong with that, and its own ground string confesses the second: "both closures
+// share one cause, so user scope is what remains". User scope is selected BY ELIMINATION, never by
+// proving it can satisfy the intended lifecycle, identity separation, restart behavior, accelerator
+// access, credential delivery or readback. And granting privilege SILENTLY CHANGES THE DESIRED
+// ARCHITECTURE: a host that gains passwordless sudo is "upgraded" from a user unit to a system unit
+// although the serving intent never changed. Privilege is an input to what is POSSIBLE; it must
+// never be an input to what is WANTED.
+//
+// The derivation this module models instead:
+//
+//   serving intent
+//     x realization contracts
+//     x observed host capabilities
+//     x explicit selection policy
+//   -> admitted realization -> exact effect plan -> required privilege
+//
+// Required privilege is the LAST term, an output. "Does the serving runtime need root" is therefore
+// not a question an operator can answer, because the answer is a property of a selection that has
+// not been made yet. Asking it is how an implementation property gets fixed before the model has
+// represented the behavior it is supposed to follow from.
+
+// ── Intent: what must be true, naming no mechanism ────────────────────────────────────────────
+
+type ServingLifecycleIntent = SurvivesReboot | SessionScoped
+
+type ServingAvailabilityIntent = RestartsOnFailure | ManualRestartAcceptable
+
+type ServingAuthorityIntent = ManagedConvergenceOwned | HumanOperatedAcceptable
+
+// The serving process's own identity. NoLoginNoSudoIdentity is the terminal Spark intent and is
+// already modeled upstream: gunbc.fleet_posix_accounts FleetAccountInferenceService is
+// NoLoginServiceIdentity with an empty sudo-grant population BY CONSTRUCTION, so this intent names
+// an identity the principal model can actually supply rather than a wish.
+type ServiceIdentityIntent
+  = NoLoginNoSudoIdentity
+  | SupervisorManagedDynamicIdentity
+  | ExecutorOwnedIdentity
+
+type ServingEndpointIntent = AuthenticatedEndpoint | UnauthenticatedEndpoint
+
+type ServingObservabilityIntent = IndependentlyObservable | ObservableThroughActuatorOnly
+
+type SparkServingIntent {
+  lifecycle: ServingLifecycleIntent
+  availability: ServingAvailabilityIntent
+  authority: ServingAuthorityIntent
+  service_identity: ServiceIdentityIntent
+  endpoint: ServingEndpointIntent
+  observability: ServingObservabilityIntent
+}
+
+// ── Capability observation: reports what EXISTS, selects nothing ──────────────────────────────
+
+// THREE states, not a Bool, and the distinction is the one this whole lane was built on: a
+// capability nobody has looked for is not an absent capability. CapabilityUnobserved has a
+// different remedy (go look) from CapabilityRefused (provision it), and collapsing them is how a
+// probe that never ran reads as a host that lacks something.
+type CapabilityObservation
+  = CapabilityPresent { evidence: NonEmptyStr }
+  | CapabilityRefused { cause: NonEmptyStr }
+  | CapabilityUnobserved
+
+type SparkHostCapabilityObservation {
+  host: NonEmptyStr
+  managed_executor_account: CapabilityObservation
+  no_login_service_identity: CapabilityObservation
+  system_unit_manager: CapabilityObservation
+  user_unit_manager: CapabilityObservation
+  user_lingering: CapabilityObservation
+  container_runtime: CapabilityObservation
+  accelerator_access: CapabilityObservation
+  writable_artifact_root: CapabilityObservation
+  endpoint_bindable: CapabilityObservation
+}
+
+// ── Candidate realizations and the exact requirements each one imposes ────────────────────────
+
+type SparkServingRealization
+  = UserUnitRealization
+  | SystemUnitRealization
+  | RootlessContainerRealization
+
+type ServingRequirement
+  = RequiresManagedExecutorAccount
+  | RequiresNoLoginServiceIdentity
+  | RequiresSystemUnitManager
+  | RequiresUserUnitManager
+  | RequiresUserLingering
+  | RequiresContainerRuntime
+  | RequiresAcceleratorAccess
+  | RequiresWritableArtifactRoot
+  | RequiresBindableEndpoint
+
+fn requirement_label(requirement: ServingRequirement) -> String {
+  match requirement {
+    RequiresManagedExecutorAccount => "managed executor account"
+    RequiresNoLoginServiceIdentity => "no-login service identity"
+    RequiresSystemUnitManager => "system unit manager"
+    RequiresUserUnitManager => "user unit manager"
+    RequiresUserLingering => "user lingering (unit survives logout/reboot)"
+    RequiresContainerRuntime => "container runtime"
+    RequiresAcceleratorAccess => "accelerator device access"
+    RequiresWritableArtifactRoot => "writable artifact root"
+    RequiresBindableEndpoint => "bindable endpoint"
+  }
+}
+
+fn observation_for(
+  capabilities: SparkHostCapabilityObservation,
+  requirement: ServingRequirement,
+) -> CapabilityObservation {
+  match requirement {
+    RequiresManagedExecutorAccount => capabilities.managed_executor_account
+    RequiresNoLoginServiceIdentity => capabilities.no_login_service_identity
+    RequiresSystemUnitManager => capabilities.system_unit_manager
+    RequiresUserUnitManager => capabilities.user_unit_manager
+    RequiresUserLingering => capabilities.user_lingering
+    RequiresContainerRuntime => capabilities.container_runtime
+    RequiresAcceleratorAccess => capabilities.accelerator_access
+    RequiresWritableArtifactRoot => capabilities.writable_artifact_root
+    RequiresBindableEndpoint => capabilities.endpoint_bindable
+  }
+}
+
+// The requirement population is a function of BOTH the realization and the intent, which is what
+// makes a user unit rejectable rather than merely last. A user unit that must survive reboot needs
+// lingering; the same realization under SessionScoped does not. So "the only unprivileged option"
+// can still fail to satisfy an unchanged intent, instead of being selected because nothing else is
+// left.
+fn realization_requirements(
+  intent: SparkServingIntent,
+  realization: SparkServingRealization,
+) -> List<ServingRequirement> {
+  let common = [
+    RequiresAcceleratorAccess,
+    RequiresWritableArtifactRoot,
+    RequiresBindableEndpoint,
+  ]
+  let identity = match intent.service_identity {
+    NoLoginNoSudoIdentity => [RequiresNoLoginServiceIdentity]
+    SupervisorManagedDynamicIdentity => []
+    ExecutorOwnedIdentity => []
+  }
+  let authority = match intent.authority {
+    ManagedConvergenceOwned => [RequiresManagedExecutorAccount]
+    HumanOperatedAcceptable => []
+  }
+  let mechanism = match realization {
+    SystemUnitRealization => [RequiresSystemUnitManager]
+    RootlessContainerRealization => [RequiresContainerRuntime, RequiresUserUnitManager]
+    UserUnitRealization =>
+      match intent.lifecycle {
+        SurvivesReboot => [RequiresUserUnitManager, RequiresUserLingering]
+        SessionScoped => [RequiresUserUnitManager]
+      }
+  }
+  concat(concat(concat(common, identity), authority), mechanism)
+}
+
+// ── Admission ─────────────────────────────────────────────────────────────────────────────────
+
+type ServingRequirementRefusal {
+  realization_label: String
+  requirement: ServingRequirement
+  cause: NonEmptyStr
+}
+
+type SparkServingRealizationAdmission
+  = RealizationAdmitted { realization: SparkServingRealization }
+  | RealizationNotAdmitted {
+      realization: SparkServingRealization
+      first: ServingRequirementRefusal
+      more: List<ServingRequirementRefusal>
+    }
+
+fn realization_label(realization: SparkServingRealization) -> String {
+  match realization {
+    UserUnitRealization => "user-unit"
+    SystemUnitRealization => "system-unit"
+    RootlessContainerRealization => "rootless-container"
+  }
+}
+
+// An UNOBSERVED capability refuses admission exactly as a refused one does, and carries a different
+// cause so the remedy is legible. Admitting on unobserved would be the empty-observation narrow:
+// treating "nobody looked" as "it is there".
+fn requirement_refusal(
+  realization: SparkServingRealization,
+  capabilities: SparkHostCapabilityObservation,
+  requirement: ServingRequirement,
+) -> ServingRequirementRefusal? {
+  match observation_for(capabilities: capabilities, requirement: requirement) {
+    CapabilityPresent { evidence: _ } => none
+    CapabilityRefused { cause: why } => Present {
+      value: ServingRequirementRefusal {
+        realization_label: realization_label(realization: realization),
+        requirement: requirement,
+        cause: why,
+      }
+    }
+    CapabilityUnobserved => Present {
+      value: ServingRequirementRefusal {
+        realization_label: realization_label(realization: realization),
+        requirement: requirement,
+        cause: concat("unobserved: ", requirement_label(requirement: requirement)) as NonEmptyStr,
+      }
+    }
+  }
+}
+
+// THE IDENTITY CONTRACT: what process identity each realization can ACTUALLY deliver. This is a
+// structural fact about the mechanism, not an observation of the host, and its absence is the defect
+// the live measurement exposed.
+//
+// The model checked two things independently -- "a user manager exists" and "a no-login identity
+// exists" -- and admitted the user unit when both held. But a systemd user unit runs as the user
+// whose manager owns it; measured on srv5, `systemd-run --user --scope` reports gunbc-automation.
+// The separate existence of gunbc-inference does not make a user unit run AS it. Two facts were both
+// true while the realization joining them did not exist, which no amount of capability observation
+// could have caught, because neither observation was wrong.
+type RealizationProcessIdentity
+  = RunsAsOwningExecutor
+  | RunsAsNamedServiceAccount
+  | RunsAsSupervisorDynamicIdentity
+  | RunsAsRelatedContainerIdentity
+
+fn realization_deliverable_identities(realization: SparkServingRealization) -> List<RealizationProcessIdentity> {
+  match realization {
+    UserUnitRealization => [RunsAsOwningExecutor]
+    SystemUnitRealization => [RunsAsNamedServiceAccount, RunsAsSupervisorDynamicIdentity]
+    RootlessContainerRealization => [RunsAsRelatedContainerIdentity, RunsAsOwningExecutor]
+  }
+}
+
+// What the INTENT requires the serving process to be. Under ManagedConvergenceOwned the executor
+// holds automation authority, so NoLoginNoSudoIdentity means the serving process must NOT be that
+// account -- which is precisely what RunsAsOwningExecutor delivers and therefore cannot satisfy.
+fn intent_admissible_process_identities(intent: SparkServingIntent) -> List<RealizationProcessIdentity> {
+  match intent.service_identity {
+    NoLoginNoSudoIdentity => [RunsAsNamedServiceAccount, RunsAsSupervisorDynamicIdentity, RunsAsRelatedContainerIdentity]
+    SupervisorManagedDynamicIdentity => [RunsAsSupervisorDynamicIdentity]
+    ExecutorOwnedIdentity => [RunsAsOwningExecutor, RunsAsNamedServiceAccount, RunsAsSupervisorDynamicIdentity, RunsAsRelatedContainerIdentity]
+  }
+}
+
+fn process_identity_eq(left: RealizationProcessIdentity, right: RealizationProcessIdentity) -> Bool {
+  match left {
+    RunsAsOwningExecutor => match right { RunsAsOwningExecutor => true RunsAsNamedServiceAccount => false RunsAsSupervisorDynamicIdentity => false RunsAsRelatedContainerIdentity => false }
+    RunsAsNamedServiceAccount => match right { RunsAsNamedServiceAccount => true RunsAsOwningExecutor => false RunsAsSupervisorDynamicIdentity => false RunsAsRelatedContainerIdentity => false }
+    RunsAsSupervisorDynamicIdentity => match right { RunsAsSupervisorDynamicIdentity => true RunsAsOwningExecutor => false RunsAsNamedServiceAccount => false RunsAsRelatedContainerIdentity => false }
+    RunsAsRelatedContainerIdentity => match right { RunsAsRelatedContainerIdentity => true RunsAsOwningExecutor => false RunsAsNamedServiceAccount => false RunsAsSupervisorDynamicIdentity => false }
+  }
+}
+
+// THE STRUCTURAL REFUSAL, and it is deliberately not a capability requirement: it depends on no
+// observation at all, so it holds on a host nobody has looked at. A realization whose deliverable
+// identities do not intersect the intent's admissible ones cannot satisfy that intent ON ANY HOST,
+// and saying so requires only the two lists.
+fn identity_contract_refusal(
+  intent: SparkServingIntent,
+  realization: SparkServingRealization,
+) -> ServingRequirementRefusal? {
+  let deliverable = realization_deliverable_identities(realization: realization)
+  let admissible = intent_admissible_process_identities(intent: intent)
+  let intersects = fold(deliverable, init: false, f: fn(acc, d) {
+    if acc { true } else {
+      fold(admissible, init: false, f: fn(inner, a) { if inner { true } else { process_identity_eq(left: d, right: a) } })
+    }
+  })
+  if intersects { none } else {
+    Present {
+      value: ServingRequirementRefusal {
+        realization_label: realization_label(realization: realization),
+        requirement: RequiresNoLoginServiceIdentity,
+        cause: "this realization cannot run the serving process as an identity the intent admits; a systemd user unit runs as the user whose manager owns it, so the separate existence of a no-login account does not make it run as that account" as NonEmptyStr,
+      }
+    }
+  }
+}
+
+fn admit_realization(
+  intent: SparkServingIntent,
+  capabilities: SparkHostCapabilityObservation,
+  realization: SparkServingRealization,
+) -> SparkServingRealizationAdmission {
+  let structural = match identity_contract_refusal(intent: intent, realization: realization) {
+    Present { value: r } => [r]
+    Absent => []
+  }
+  let observed = fold(
+    realization_requirements(intent: intent, realization: realization),
+    init: [],
+    f: fn(acc, r) {
+      match requirement_refusal(realization: realization, capabilities: capabilities, requirement: r) {
+        Present { value: refusal } => append(acc, items: [refusal])
+        Absent => acc
+      }
+    },
+  )
+  let refusals = prepend_structural_refusals(observed: observed, structural: structural)
+  match list_head_of(xs: refusals) {
+    Present { value: first } => RealizationNotAdmitted {
+      realization: realization,
+      first: first,
+      more: list_tail_of(xs: refusals),
+    }
+    Absent => RealizationAdmitted { realization: realization }
+  }
+}
+
+// head/tail come from the std list algebra rather than being re-derived here: a hand-rolled tail
+// was both an empty-literal type error and silently wrong (it never dropped the head), which is
+// what re-inventing an existing concept buys.
+fn list_head_of(xs: List<ServingRequirementRefusal>) -> ServingRequirementRefusal? {
+  match list_head(xs: xs) {
+    HeadFound { value: v } => Present { value: v }
+    HeadAbsent => none
+  }
+}
+
+fn list_tail_of(xs: List<ServingRequirementRefusal>) -> List<ServingRequirementRefusal> {
+  match list_tail(xs: xs) {
+    TailFound { tail: t } => t
+    TailAbsent => xs
+  }
+}
+
+// ── Normative policy and selection ────────────────────────────────────────────────────────────
+
+// Capabilities and contracts say what is POSSIBLE. They cannot rank two equally capable
+// realizations, and a model that silently picked one would be smuggling a preference in as a fact.
+// The policy is therefore explicit and general, never a per-host ruling.
+type PrivilegePolicy = LeastRequiredEffects | PreferSystemIntegration
+
+type SparkServingRealizationPolicy {
+  privilege: PrivilegePolicy
+}
+
+// THE EFFECT POPULATION EACH REALIZATION REQUIRES, from which privilege is COUNTED rather than
+// assigned. The previous form returned 1, 2, 3 -- integers I chose -- and called the winner the
+// least-required-effects realization. It was not: it was the realization with the smallest number
+// its author picked, and it agreed with the effects only because I happened to order them correctly.
+// A hand-assigned score cannot be wrong in a way anything detects, which is exactly what makes it
+// the wrong mechanism.
+//
+// Now each realization names its exact effects, each effect names the privilege it needs from what
+// it DOES, and the ordering is a count over that. Adding an effect to a realization changes its
+// ranking automatically; getting the ranking wrong now requires misstating what an effect does,
+// which is a claim a reader can check against the host.
+// InstallOwnedRuntimeClosure IS NOT A CHEAPER SPELLING OF InstallRuntimePackage. They mutate
+// different subjects, which is the whole reason one needs root and the other does not: apt-get
+// writes the host package database, owned by root and shared by every account on the machine, while
+// an owner-installed closure writes a directory the actor owns. The privilege difference is
+// therefore DERIVED from the subject rather than asserted about the method -- exactly what the
+// ownership model exists to do -- and it is why this is a modeling change rather than a workaround
+// that dodges sudo.
+//
+// The trade is real and named rather than hidden: the upstream's documented Linux layout extracts
+// into /usr, so a relocated owner-owned prefix is an adaptation of that layout, not the vendor's
+// supported one. What is bought is that first install on a clean Spark requires no administrator
+// credential at all. Both effects stay in the coproduct because a host that genuinely wants the
+// packaged runtime is still expressible; the realization chooses, and the grant follows.
+type ServingInstallEffect
+  = WriteSystemUnitFile
+  | ReloadSystemManager
+  | EnableSystemUnit
+  | WriteUserUnitFile
+  | ReloadUserManager
+  | EnableUserUnit
+  | StartUserUnit
+  | EnableLingerForOwnAccount
+  | InstallRuntimePackage
+  | InstallOwnedRuntimeClosure
+  | MaterializeModelArtifact
+  | GrantContainerRuntimeAccess
+  | RunContainerAsOwnUser
+
+// PRESERVED FOR THE ORDERING FOLD, and now a projection rather than an authority. It answers for
+// the DEFAULT actor -- the named serving account -- because effect_requires_escalation needs an
+// actor and the ranking question presumes one. Root would rank every realization at zero, which is
+// true and useless for choosing between them.
+fn serving_install_effect_requires_privilege(effect: ServingInstallEffect) -> Bool {
+  effect_requires_escalation(effect: effect, actor: NamedPrincipal { login: "gunbc-automation" as NonEmptyStr })
+}
+
+fn realization_install_effects(realization: SparkServingRealization) -> List<ServingInstallEffect> {
+  match realization {
+    UserUnitRealization =>
+      [InstallOwnedRuntimeClosure, WriteUserUnitFile, ReloadUserManager, EnableUserUnit, StartUserUnit, EnableLingerForOwnAccount, MaterializeModelArtifact]
+    SystemUnitRealization =>
+      [InstallRuntimePackage, WriteSystemUnitFile, ReloadSystemManager, EnableSystemUnit, MaterializeModelArtifact]
+    RootlessContainerRealization =>
+      [GrantContainerRuntimeAccess, RunContainerAsOwnUser, MaterializeModelArtifact]
+  }
+}
+
+// PRIVILEGE IS THE COUNT OF PRIVILEGED EFFECTS, derived. This is what "least required effects" was
+// always supposed to mean, and it now means it.
+fn realization_privileged_effect_count(realization: SparkServingRealization) -> Int {
+  fold(realization_install_effects(realization: realization), init: 0, f: fn(acc, e) {
+    if serving_install_effect_requires_privilege(effect: e) { acc + 1 } else { acc }
+  })
+}
+
+// The ordering key. Total effect count breaks a privilege tie, because between two realizations
+// needing the same privilege the one doing LESS is the smaller change -- and a tie left unbroken
+// would surface as an arbitrary pick rather than a derivation.
+fn realization_effect_weight(realization: SparkServingRealization) -> Int {
+  let privileged = realization_privileged_effect_count(realization: realization)
+  let total = length(realization_install_effects(realization: realization))
+  (privileged * 100) + total
+}
+
+type SparkServingRealizationSelection
+  = RealizationSelected { realization: SparkServingRealization }
+  | NoRealizationAdmitted {
+      first: ServingRequirementRefusal
+      more: List<ServingRequirementRefusal>
+    }
+  | RealizationChoiceRequired {
+      first: SparkServingRealization
+      second: SparkServingRealization
+      more: List<SparkServingRealization>
+      cause: NonEmptyStr
+    }
+
+data spark_serving_candidate_realizations: List<SparkServingRealization> = [
+  UserUnitRealization,
+  RootlessContainerRealization,
+  SystemUnitRealization,
+]
+
+fn admitted_realizations(
+  intent: SparkServingIntent,
+  capabilities: SparkHostCapabilityObservation,
+) -> List<SparkServingRealization> {
+  fold(spark_serving_candidate_realizations, init: [], f: fn(acc, r) {
+    match admit_realization(intent: intent, capabilities: capabilities, realization: r) {
+      RealizationAdmitted { realization: adm } => append(acc, items: [adm])
+      RealizationNotAdmitted { realization: _, first: _, more: _ } => acc
+    }
+  })
+}
+
+// Structural refusals come FIRST so the reported cause is the one that holds regardless of what was
+// observed: a caller reading only the first refusal should see "this mechanism cannot satisfy this
+// intent" rather than an incidental missing capability on one host.
+fn prepend_structural_refusals(
+  observed: List<ServingRequirementRefusal>,
+  structural: List<ServingRequirementRefusal>,
+) -> List<ServingRequirementRefusal> {
+  append(structural, items: observed)
+}
+
+fn all_refusals(
+  intent: SparkServingIntent,
+  capabilities: SparkHostCapabilityObservation,
+) -> List<ServingRequirementRefusal> {
+  fold(spark_serving_candidate_realizations, init: [], f: fn(acc, r) {
+    match admit_realization(intent: intent, capabilities: capabilities, realization: r) {
+      RealizationAdmitted { realization: _ } => acc
+      RealizationNotAdmitted { realization: _, first: f0, more: rest } =>
+        append(append(acc, items: [f0]), items: rest)
+    }
+  })
+}
+
+fn lowest_weight_admitted(admitted: List<SparkServingRealization>) -> SparkServingRealization? {
+  fold(admitted, init: none, f: fn(acc, r) {
+    match acc {
+      Absent => Present { value: r }
+      Present { value: best } =>
+        if realization_effect_weight(realization: r) < realization_effect_weight(realization: best) {
+          Present { value: r }
+        } else {
+          Present { value: best }
+        }
+    }
+  })
+}
+
+fn select_spark_serving_realization(
+  intent: SparkServingIntent,
+  capabilities: SparkHostCapabilityObservation,
+  policy: SparkServingRealizationPolicy,
+) -> SparkServingRealizationSelection {
+  let admitted = admitted_realizations(intent: intent, capabilities: capabilities)
+  match lowest_weight_admitted(admitted: admitted) {
+    Absent => {
+      let refusals = all_refusals(intent: intent, capabilities: capabilities)
+      match list_head_of(xs: refusals) {
+        Present { value: first } => NoRealizationAdmitted { first: first, more: list_tail_of(xs: refusals) }
+        Absent => NoRealizationAdmitted {
+          first: ServingRequirementRefusal {
+            realization_label: "none",
+            requirement: RequiresBindableEndpoint,
+            cause: "no candidate realization was evaluated" as NonEmptyStr,
+          },
+          more: [],
+        }
+      }
+    }
+    Present { value: best } =>
+      match policy.privilege {
+        LeastRequiredEffects => RealizationSelected { realization: best }
+        PreferSystemIntegration =>
+          match list_head_of(xs: admitted) {
+            Absent => RealizationSelected { realization: best }
+            Present { value: head } =>
+              match list_head_of(xs: list_tail_of(xs: admitted)) {
+                Absent => RealizationSelected { realization: head }
+                Present { value: second } => RealizationChoiceRequired {
+                  first: head,
+                  second: second,
+                  more: list_tail_of(xs: list_tail_of(xs: admitted)),
+                  cause: "PreferSystemIntegration does not order equally capable realizations by a modeled fact; the tie is a genuine choice rather than a derivation" as NonEmptyStr,
+                }
+              }
+          }
+      }
+  }
+}
+
+// MEASURED, 2026-08-11, as gunbc-automation on both Sparks through the bound-credential context, and
+// the result REFUTES the realization the effect-weight ordering would have selected.
+//
+// The facts:
+//   NVIDIA GB10 visible to gunbc-automation on srv5 and srv6 (accelerator access is real at the
+//     managed principal, not merely at the host)
+//   loginctl enable-linger through the narrow grant succeeds: Linger=no -> Linger=yes
+//   gunbc-inference exists, uid 996, shell /usr/sbin/nologin -- a genuine no-login identity
+//   systemd-run --user --scope reports id -un = gunbc-automation
+//
+// THE LAST ONE IS THE FINDING. A systemd USER unit runs as the user whose manager owns it. There is
+// no arrangement under which a user unit owned by gunbc-automation executes as gunbc-inference. So
+// under the terminal intent -- service_identity: NoLoginNoSudoIdentity, meaning the serving process
+// must NOT be the account that holds automation authority -- UserUnitRealization is STRUCTURALLY
+// INADMISSIBLE on these hosts, however capable they otherwise are.
+//
+// That is a derivation the earlier model could not have produced, because it checked "a user manager
+// exists" and "a no-login identity exists" as INDEPENDENT capabilities and admitted the user unit
+// when both held. Two facts can both be true while the realization joining them does not exist. The
+// requirement each candidate must satisfy is its own IDENTITY CONTRACT:
+//
+//   UserUnitRealization         process identity = the managed executor, necessarily
+//   SystemUnitRealization       process identity = a named service account, or DynamicUser
+//   RootlessContainerRealization host identity and container identity explicitly related
+//
+// The consequence is worth stating plainly because it is the opposite of a convenience: the admitted
+// realization on these hosts is the SYSTEM unit, which needs a privileged install. Privilege is
+// still an output -- nobody decided serving needs root -- but the output is not the answer that
+// would have been most comfortable, and the effect-weight ordering (UserUnit=1) would have selected
+// a realization that cannot satisfy the intent. Weights order candidates that are ADMITTED; they
+// must never be what decides admission.
+//
+// DISSOLVED 2026-08-13: the refutation is now DERIVED, not recorded. identity_contract_refusal
+// compares what each realization can deliver against what the intent admits, so UserUnitRealization
+// under NoLoginNoSudoIdentity is refused structurally -- with no capability observation, on any host.
+// The over-admission this note declared is closed; the note survives only as the measurement receipt
+// that produced the rule.
+data spark_user_unit_identity_contract_refutation_note: String = "A systemd user unit executes as its owning user; measured on srv5 as gunbc-automation. Under NoLoginNoSudoIdentity the serving process must be gunbc-inference, so UserUnitRealization cannot satisfy the intent on these hosts and SystemUnitRealization is the admitted candidate despite its higher effect weight."
+
+// MEASURED SERVING PRECONDITIONS, srv5 as gunbc-automation, 2026-08-11:
+//   aarch64, NVIDIA GB10, 3.5T free on /
+//   docker present at /usr/bin/docker; gunbc-automation CANNOT use it (permission denied on
+//     /var/run/docker.sock -- the narrow grant covers enable-linger and nothing else, which is the
+//     grant behaving exactly as designed)
+//   network egress works
+//   no serving runtime installed: no ollama, no vllm, no running inference unit
+//
+// TWO CONSEQUENCES, and neither is a thing this model may decide on its own.
+//
+// FIRST, THE SERVING INSTALL IS A SECOND PRIVILEGED POPULATION, distinct from the access bootstrap
+// that already landed. Installing a runtime, writing a system unit with User=gunbc-inference, and
+// granting the container runtime to a principal are all privileged, and none is covered by the
+// enable-linger grant. So the derivation reaches OperatorBootstrapCredentialRequired again, with a
+// different effect population -- correctly, because a credential authorized for one named population
+// is not authorization for another. Reusing the first approval here would be exactly the widening
+// the authorization type exists to prevent.
+//
+// SECOND, AND THIS ONE IS AN INTENT GAP RATHER THAN A MISSING EFFECT: the terminal intent declares
+// endpoint: AuthenticatedEndpoint, and the candidate runtimes differ on whether they can satisfy it
+// at all. Ollama serves no authentication -- an ollama endpoint is open to anything that can reach
+// the port, so it satisfies the intent only behind something that does authenticate, which is then a
+// second component with its own identity and failure modes. vLLM accepts an API key directly. A NIM
+// container is NVIDIA's packaged answer for this hardware and carries its own auth and licensing
+// terms. Those are three different products with different obligations, and the model cannot pick
+// among them by derivation: which runtime serves is a DECLARED intent, not a fact about the host.
+//
+// Recording it here rather than choosing keeps the compiler's refusal honest. An unstated preference
+// is never fabricated -- and picking ollama because it is easiest to install would have quietly
+// abandoned the authenticated-endpoint half of the intent while every other row still read green.
+// OPERATOR DECLARATION, 2026-08-12: the LAN is the boundary for these hosts, for now. So the
+// endpoint intent is UnauthenticatedEndpoint and the authenticated-endpoint gap above is CLOSED --
+// not by finding a runtime that authenticates, but by discovering the requirement was never the
+// operator's.
+//
+// RECORDING WHERE THAT REQUIREMENT CAME FROM, because the origin is the finding. AuthenticatedEndpoint
+// was authored by me in the serving model and its only uses were my own type definition and my own
+// witness fixture; no operator declaration of it existed anywhere in the corpus. I then let it block
+// the runtime decision and brought it back to the operator as though it were a constraint they had
+// set. That is the compiler-does-not-invent-unstated-intent rule violated inside the intent carrier
+// itself -- not a wrong fact, an unstated preference promoted to a modeled requirement, which is the
+// harder form to notice because everything downstream stays internally consistent.
+//
+// It surfaced only because the operator asked "why do you need authentication". Four other defects
+// this session were caught by walls; this one needed a person, and that asymmetry is the reason the
+// intent carrier is the wrong place to be liberal about what one assumes.
+//
+// 🟡 dissolve-on, and the operator's stated direction sharpens it (2026-08-12: "we'll use tailscale
+// at some point"). The naive trigger would have been "reachable beyond the LAN" -- but a WireGuard
+// mesh with device identity is a network-layer boundary that EXTENDS the trusted network rather than
+// removing it, so reaching these hosts over Tailscale does not by itself reinstate the requirement.
+// A tailnet authenticates DEVICES; an unauthenticated endpoint on it is reachable by every device
+// the tailnet admits, which is a real and different question from reachability.
+//
+// So the trigger is not topological, it is about who the network layer actually authenticates: the
+// endpoint intent returns to AuthenticatedEndpoint when a principal that the network layer does NOT
+// authenticate can reach the port (a Funnel exposure, a shared tailnet, a node the operator does not
+// control), or when per-consumer attribution is wanted -- which no network boundary provides,
+// because a tailnet proves which device connected and never which consumer asked. At that point
+// ollama stops being admissible without a second authenticating component, and that consequence is
+// what this note preserves rather than the choice it records.
+data spark_serving_endpoint_intent_is_operator_declared_note: String = "Operator declaration 2026-08-12: the LAN is the boundary, so endpoint intent is UnauthenticatedEndpoint. AuthenticatedEndpoint was authored by me, never by the operator, and had no consumer outside my own model and fixture; it surfaced when the operator asked why it was there. Tailscale is planned; a tailnet authenticates DEVICES and extends the trusted network rather than removing the boundary, so reaching these hosts over it does not by itself reinstate the requirement. Dissolves back to AuthenticatedEndpoint when a principal the network layer does not authenticate can reach the port (Funnel exposure, shared tailnet, an uncontrolled node), or when per-consumer attribution is wanted -- which no network boundary provides, since a tailnet proves which device connected and never which consumer asked."
+
+data spark_serving_runtime_selection_is_declared_intent_note: String = "Measured on srv5: aarch64, GB10, docker present but not usable by gunbc-automation, egress works, no serving runtime installed. The serving install is a SECOND privileged effect population, not covered by the enable-linger grant. Runtime choice is declared intent, not derivation: ollama has no authentication and cannot satisfy endpoint: AuthenticatedEndpoint without a second authenticating component; vLLM accepts an API key; a NIM container carries NVIDIA's own auth and licensing. Awaiting an operator declaration before any serving effect is derived."
+
+
+// ── WHY an effect needs privilege, from which the grant EMERGES ─────────────────────────────────
+
+// THE OPERATOR'S CORRECTION, and it went one level deeper than my first attempt. That version mapped
+// each effect to sudoers lines by hand and called the mapping derivation. It was not: it still
+// asserted "WriteSystemUnitFile is privileged" as a fact about the EFFECT, when that is only true
+// because /etc/systemd/system happens to be owned by root. The privilege is not a property of the
+// effect at all -- it is a relationship between the actor and the thing the effect mutates.
+//
+// So the model is: an effect MUTATES a subject, a subject has an OWNER, and an actor who is not that
+// owner must escalate. Privilege then EMERGES rather than being declared, and it emerges correctly in
+// cases a hand-drawn table gets wrong: the same WriteSystemUnitFile needs no grant when the actor IS
+// root, and MaterializeModelArtifact needs none because it writes a store the serving account already owns.
+// A table cannot express either, because it never mentions who is acting.
+//
+// This also makes a whole class of future error unwritable. If someone re-homes the unit directory,
+// or runs the install as a different principal, the grant follows automatically -- there is no second
+// list to remember to update, because there is no second list.
+
+type SystemPrincipal = RootPrincipal | NamedPrincipal { login: NonEmptyStr }
+
+fn principal_label(p: SystemPrincipal) -> String {
+  match p {
+    RootPrincipal => "root"
+    NamedPrincipal { login: l } => l as String
+  }
+}
+
+fn same_principal(left: SystemPrincipal, right: SystemPrincipal) -> Bool {
+  match left {
+    RootPrincipal =>
+      match right { RootPrincipal => true NamedPrincipal { login: _ } => false }
+    NamedPrincipal { login: a } =>
+      match right { RootPrincipal => false NamedPrincipal { login: b } => (a as String) == (b as String) }
+  }
+}
+
+// WHAT AN EFFECT MUTATES. Each subject is a real thing on the host with a real owner, named at the
+// grain that determines access -- the systemd SYSTEM registry is one subject regardless of which
+// unit is being written, because its ownership is what decides the question.
+type MutationSubject
+  = SystemUnitRegistry
+  | UserUnitRegistry { owner: SystemPrincipal }
+  | PackageDatabase
+  | GroupMembership
+  | LingerState
+  | ModelArtifactStore { owner: SystemPrincipal }
+  | RuntimeArtifactStore { owner: SystemPrincipal }
+  | ContainerRuntimeAsOwnUser { owner: SystemPrincipal }
+
+// THE OWNERSHIP FACTS, which are the only place root appears. These are properties of the HOST, and
+// they are what the whole derivation rests on: change one here and every grant that depends on it
+// changes with it.
+fn subject_owner(subject: MutationSubject) -> SystemPrincipal {
+  match subject {
+    SystemUnitRegistry => RootPrincipal
+    PackageDatabase => RootPrincipal
+    GroupMembership => RootPrincipal
+    LingerState => RootPrincipal
+    UserUnitRegistry { owner: o } => o
+    ModelArtifactStore { owner: o } => o
+    RuntimeArtifactStore { owner: o } => o
+    ContainerRuntimeAsOwnUser { owner: o } => o
+  }
+}
+
+// Which subject each effect mutates, against a deployment. Total over the coproduct, so a new effect
+// does not compile until it states what it touches -- and stating it is the whole safety property,
+// because an unstated effect cannot silently default to "needs nothing".
+fn effect_mutation_subject(
+  effect: ServingInstallEffect,
+  actor: SystemPrincipal,
+) -> MutationSubject {
+  match effect {
+    WriteSystemUnitFile => SystemUnitRegistry
+    ReloadSystemManager => SystemUnitRegistry
+    EnableSystemUnit => SystemUnitRegistry
+    InstallRuntimePackage => PackageDatabase
+    InstallOwnedRuntimeClosure => RuntimeArtifactStore { owner: actor }
+    GrantContainerRuntimeAccess => GroupMembership
+    EnableLingerForOwnAccount => LingerState
+    WriteUserUnitFile => UserUnitRegistry { owner: actor }
+    ReloadUserManager => UserUnitRegistry { owner: actor }
+    EnableUserUnit => UserUnitRegistry { owner: actor }
+    StartUserUnit => UserUnitRegistry { owner: actor }
+    MaterializeModelArtifact => ModelArtifactStore { owner: actor }
+    RunContainerAsOwnUser => ContainerRuntimeAsOwnUser { owner: actor }
+  }
+}
+
+// PRIVILEGE, DERIVED. An actor must escalate exactly when it does not own what it is about to mutate.
+// Nothing here lists effects; the answer falls out of two facts that are independently checkable
+// against the host.
+fn effect_requires_escalation(
+  effect: ServingInstallEffect,
+  actor: SystemPrincipal,
+) -> Bool {
+  !same_principal(
+    left: actor,
+    right: subject_owner(subject: effect_mutation_subject(effect: effect, actor: actor)),
+  )
+}
+
+// The deployment facts a grant is rendered against: policy, not upstream fact, and parameters rather
+// than constants so one model serves several deployments without forking.
+type ServingDeploymentTarget {
+  actor: SystemPrincipal
+  unit_name: NonEmptyStr
+  unit_path: NonEmptyStr
+  staged_unit_path: NonEmptyStr
+  runtime_package: NonEmptyStr
+}
+
+// HOW a mutation is actuated. This is realization, not policy: given that an effect must mutate a
+// subject it does not own, these are the exact argv that perform it. No shell, no wildcard, no token
+// the granted account controls -- a sudoers entry is a capability, and one loose token converts
+// "may restart this unit" into "may become root".
+//
+// A RESIDUE STATED RATHER THAN HIDDEN: the unit write grants `install` FROM a staged path the actor
+// can write, so the actor controls that file's CONTENT though not its location, mode or owner.
+// Closing it needs a delivery mechanism that stages where the actor cannot write. Not built, and not
+// waved past.
+// WHAT AN EMPTY LIST WOULD HAVE MEANT, and why this returns a variant instead (review 51710). The
+// five user-owned effects have no PRIVILEGED command -- the actor actuates them itself, as itself.
+// Returning [] for those said "no commands" in the same breath as "nothing to do", which is fine for
+// the sudoers consumer (it filters on escalation first) and a trap for any future caller that wants
+// to actuate a user-owned effect: it would read the empty list as work already done. The two states
+// are now different constructors, so that misreading has no representation to occur in.
+type EffectActuation
+  = ActuatedByEscalation { commands: List<NonEmptyStr> }
+  | ActuatedByOwnerDirectly
+
+fn effect_actuation(
+  effect: ServingInstallEffect,
+  target: ServingDeploymentTarget,
+) -> EffectActuation {
+  match effect {
+    WriteSystemUnitFile => ActuatedByEscalation { commands: [
+      join([
+        "/usr/bin/install -m 644 -o root -g root ",
+        target.staged_unit_path as String, " ", target.unit_path as String,
+      ], "") as NonEmptyStr,
+    ] }
+    ReloadSystemManager => ActuatedByEscalation { commands: ["/usr/bin/systemctl daemon-reload" as NonEmptyStr] }
+    EnableSystemUnit => ActuatedByEscalation { commands: [
+      join(["/usr/bin/systemctl enable ", target.unit_name as String], "") as NonEmptyStr,
+      join(["/usr/bin/systemctl start ", target.unit_name as String], "") as NonEmptyStr,
+      join(["/usr/bin/systemctl restart ", target.unit_name as String], "") as NonEmptyStr,
+    ] }
+    InstallRuntimePackage => ActuatedByEscalation { commands: [
+      join(["/usr/bin/apt-get install -y ", target.runtime_package as String], "") as NonEmptyStr,
+    ] }
+    GrantContainerRuntimeAccess => ActuatedByEscalation { commands: [
+      join(["/usr/sbin/usermod -aG docker ", principal_label(p: target.actor)], "") as NonEmptyStr,
+    ] }
+    EnableLingerForOwnAccount => ActuatedByEscalation { commands: [
+      join(["/usr/bin/loginctl enable-linger ", principal_label(p: target.actor)], "") as NonEmptyStr,
+    ] }
+    InstallOwnedRuntimeClosure => ActuatedByOwnerDirectly
+    WriteUserUnitFile => ActuatedByOwnerDirectly
+    ReloadUserManager => ActuatedByOwnerDirectly
+    EnableUserUnit => ActuatedByOwnerDirectly
+    StartUserUnit => ActuatedByOwnerDirectly
+    MaterializeModelArtifact => ActuatedByOwnerDirectly
+    RunContainerAsOwnUser => ActuatedByOwnerDirectly
+  }
+}
+
+// THE GRANT: only the effects that ACTUALLY require escalation for this actor contribute. Run the
+// same realization as root and the grant is empty -- which is the property a hand-drawn list cannot
+// have, and the clearest statement that privilege here is emergent rather than assigned.
+fn realization_escalated_commands(
+  realization: SparkServingRealization,
+  target: ServingDeploymentTarget,
+) -> List<NonEmptyStr> {
+  flat_map(
+    realization_install_effects(realization: realization),
+    e =>
+      if effect_requires_escalation(effect: e, actor: target.actor) {
+        match effect_actuation(effect: e, target: target) {
+          ActuatedByEscalation { commands: c } => c
+          ActuatedByOwnerDirectly => []
+        }
+      } else { [] },
+  )
+}
+
+fn realization_sudoers_grant_lines(
+  realization: SparkServingRealization,
+  target: ServingDeploymentTarget,
+) -> List<String> {
+  map(
+    realization_escalated_commands(realization: realization, target: target),
+    c => join([principal_label(p: target.actor), " ALL=(root) NOPASSWD: ", c as String], ""),
+  )
+}
+
+// ── Required escalation joined against observed grants ──────────────────────────────────────────
+
+// WHY THIS EXISTS. The derivation above answers "what needs escalation". It has no notion of what
+// the actor ALREADY holds, so "this realization needs no new privilege" was a sentence a human said
+// after reading two outputs side by side -- exactly the kind of claim that is true on the day it is
+// written and silently false later. The exact-grant probe answers the other half: it enumerates the
+// observed passwordless grant population verbatim rather than reducing it to a boolean, which is the
+// repair that made this join possible at all. A boolean "has sudo" cannot be subtracted from
+// anything.
+//
+// So the honest statement about a serving install is DERIVED here: required escalations minus
+// observed grants. If the result is empty, the plan is applicable with no administrator credential,
+// and the model says so. If it is not, the plan names precisely which commands are missing rather
+// than reporting that privilege is "required".
+//
+// THE UNKNOWN ARM IS NOT AN EMPTY SET. A host whose grant population could not be observed is not a
+// host with no grants -- the first would authorize an install attempt that the second would refuse.
+// Reading an unobserved population as empty is the empty-observation narrow DESIGN names: an
+// observation that could not answer rendered as the verdict "nothing is granted". It refuses.
+// THE POPULATION IS BOUND TO THE SUBJECT IT WAS MEASURED FOR. The first cut carried a bare command
+// list, which meant a grant population observed on srv6, or under root, or through a different
+// credential, could be handed to a shortfall authorizing srv5 x gunbc-automation -- the copied-receipt
+// class this model already refuses one type over, where host_matches exists precisely because a
+// receipt produced for one host must not answer as another's. A grant list is evidence, and evidence
+// with no subject is evidence about nothing.
+//
+// The credential identity rides it for the same reason PrincipalReachObservation carries one: a
+// probe's answer is a fact about (host x principal x key), and dropping the key axis is what produced
+// a wrong Spark finding earlier in this lane -- probing with a fleet-unowned bootstrap key and
+// concluding the fleet key absent while it was present on both hosts.
+type ObservedGrantPopulation
+  = GrantPopulationObserved {
+      host: HostIdentity
+      principal: NonEmptyStr
+      credential_identity: ContentHash
+      commands: List<NonEmptyStr>
+    }
+  | GrantPopulationUnobserved { host: HostIdentity, principal: NonEmptyStr, cause: NonEmptyStr }
+
+type EscalationShortfall
+  = NoNewPrivilegeRequired
+  | NewPrivilegeRequired { first: NonEmptyStr, more: List<NonEmptyStr> }
+  | ShortfallUndecidable { cause: NonEmptyStr }
+  | ShortfallEvidenceMismatch { cause: NonEmptyStr }
+
+fn grant_population_contains(population: List<NonEmptyStr>, command: NonEmptyStr) -> Bool {
+  fold(population, init: false, f: fn(acc, held) {
+    if acc { true } else { (held as String) == (command as String) }
+  })
+}
+
+// THE KEY AXIS IS CHECKED, not merely carried. An earlier revision matched host and principal and
+// bound credential_identity to `_` while the carrier comment claimed the key axis mattered -- so a
+// population observed under a DIFFERENT credential, with the same host, principal and commands,
+// authorized the shortfall (review 51843). A field that is stored and never read is worse than an
+// absent one: the prose beside it reports a guard that does not exist. Cross-family is refused rather
+// than collapsed to "different", because two hashes that cannot be compared is not the same fact as
+// two hashes that disagree.
+//
+// THE SUBJECT IS CHECKED ON BOTH ARMS. An earlier revision guarded only the observed one and let the
+// unobserved arm discard the host and principal it carries, so "we could not observe srv6" answered an
+// srv5 plan as blocked-on-observation (review 51851). That sends an operator to check a reachable host
+// while the actual defect is wiring -- the exact remedy split this carrier exists to preserve. A
+// failure to observe is still evidence, and evidence about the wrong subject is a mismatch first.
+//
+// THE SUBJECT IS CHECKED BEFORE THE SET DIFFERENCE, and a mismatch is its OWN arm rather than folding
+// into undecidable: "the evidence is about a different host or principal" and "we could not observe"
+// have different remedies -- one is a wiring defect, the other a reachability one -- and an operator
+// reading "undecidable" would go looking for an unreachable host that is fine.
+fn escalation_shortfall(
+  realization: SparkServingRealization,
+  subject_host: HostIdentity,
+  expected_credential: ContentHash,
+  target: ServingDeploymentTarget,
+  observed: ObservedGrantPopulation,
+) -> EscalationShortfall {
+  match observed {
+    GrantPopulationUnobserved { host: uh, principal: up, cause: c } =>
+      if (uh as String) != (subject_host as String) {
+        ShortfallEvidenceMismatch {
+          cause: join(["an unobserved-grant record for host ", uh as String, " cannot answer for ", subject_host as String], "") as NonEmptyStr,
+        }
+      } else {
+        if (up as String) != principal_label(p: target.actor) {
+          ShortfallEvidenceMismatch {
+            cause: join(["an unobserved-grant record for principal ", up as String, " cannot answer for ", principal_label(p: target.actor)], "") as NonEmptyStr,
+          }
+        } else {
+          ShortfallUndecidable { cause: c }
+        }
+      }
+    GrantPopulationObserved { host: oh, principal: op, credential_identity: ok, commands: held } =>
+      if (oh as String) != (subject_host as String) {
+        ShortfallEvidenceMismatch {
+          cause: join(["grant population was observed on host ", oh as String, " but authorizes ", subject_host as String], "") as NonEmptyStr,
+        }
+      } else {
+      if (op as String) != principal_label(p: target.actor) {
+        ShortfallEvidenceMismatch {
+          cause: join(["grant population was observed for principal ", op as String, " but authorizes ", principal_label(p: target.actor)], "") as NonEmptyStr,
+        }
+      } else {
+      match compare_content_hash(left: ok, right: expected_credential) {
+        ContentHashDifferent => ShortfallEvidenceMismatch {
+          cause: "grant population was observed under a different credential than the one this plan authorizes" as NonEmptyStr,
+        }
+        ContentHashCrossFamilyIncomparable => ShortfallEvidenceMismatch {
+          cause: "grant population credential identity is not comparable with the expected credential" as NonEmptyStr,
+        }
+        ContentHashEqual => {
+      let missing = fold(
+        realization_escalated_commands(realization: realization, target: target),
+        init: [],
+        f: fn(acc, required) {
+          if grant_population_contains(population: held, command: required) { acc }
+          else { concat(acc, [required]) }
+        },
+      )
+      match list_head(missing) {
+        HeadAbsent => NoNewPrivilegeRequired
+        HeadFound { value: f } => match list_tail(missing) {
+          TailAbsent => NewPrivilegeRequired { first: f, more: [] }
+          TailFound { tail: t } => NewPrivilegeRequired { first: f, more: t }
+        }
+      }
+        }
+      }
+      }
+      }
+  }
+}
+
+// Only a shortfall of NONE may proceed without an administrator credential. Total over the
+// coproduct, so a later arm cannot silently become applicable -- and ShortfallUndecidable answers
+// false, because "we do not know what is granted" is not permission.
+fn applicable_without_administrator(shortfall: EscalationShortfall) -> Bool {
+  match shortfall {
+    NoNewPrivilegeRequired => true
+    NewPrivilegeRequired { first: _, more: _ } => false
+    ShortfallUndecidable { cause: _ } => false
+    ShortfallEvidenceMismatch { cause: _ } => false
+  }
+}

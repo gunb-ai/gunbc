@@ -85,7 +85,7 @@ import extdeps.tools.sha256sum {
   Sha256Mismatch,
   Sha256VerifyInfraFailure,
 }
-import gunbc.spark_serving_runtime_receipt {
+import gunbc.spark.serving_runtime_receipt {
   SparkServingRuntimeArchiveAdmissionReceipt,
   write_spark_serving_runtime_archive_admission_receipt,
   spark_serving_runtime_receipt_wire_path,
@@ -3088,7 +3088,7 @@ fn materialize_codex_runtime_bundle(
   }
 }
 
-data spark_serving_ollama_runtime_materialization_note: String = "Archive admission only — NOT runtime install. Downloads the cited extdeps.ollama.binary_release archive, admits SHA-256, writes an executor-local gunbc.spark_serving_runtime_receipt (release-asset digest only — no host claim), then deletes the staging copy (local_path is not consumed downstream because nothing extracts). Does not extract, place bin/ollama, enable gunbc-spark-serving.service, or pull gpt-oss:20b. This PR cannot make srv5/srv6 answer — wet observation is a separate SSH read path. Full per-host install is #8225 follow-on; fleet registration is #8230."
+data spark_serving_ollama_runtime_materialization_note: String = "Archive admission only — NOT runtime install. Downloads the cited extdeps.ollama.binary_release archive, admits SHA-256, writes an executor-local gunbc.spark.serving_runtime_receipt (release-asset digest only — no host claim), then deletes the staging copy (local_path is not consumed downstream because nothing extracts). Does not extract, place bin/ollama, enable gunbc-spark-serving.service, or pull gpt-oss:20b. This PR cannot make srv5/srv6 answer — wet observation is a separate SSH read path. Full per-host install is #8225 follow-on; fleet registration is #8230."
 
 type SparkServingOllamaArchiveAdmission
   = SparkServingOllamaArchiveAdmitted {

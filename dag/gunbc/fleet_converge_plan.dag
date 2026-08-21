@@ -36,6 +36,7 @@ import gunbc.membership_reconcile {
   membership_refusal_count,
 }
 import gunbc.ownership { Ownership, Owned }
+import gunbc.spark.serving_execution_schedule { ScheduledRows, scheduled_rows_empty, scheduled_rows_list }
 import gunbc.fleet_converge_timer {
   fleet_converge_service_unit_name,
   fleet_converge_timer_unit_name,
@@ -63,12 +64,14 @@ import gunbc.host_converge {
   systemd_tasks_max_property,
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
-import gunbc.spark_serving_membership {
+import gunbc.spark.serving_membership {
   SparkServingMember,
   SparkServingMemberAt,
   spark_serving_member_key,
 }
-import gunbc.spark_serving_realization { ServingInstallEffect, EnableLingerForOwnAccount }
+import gunbc.spark.serving_realization { ServingInstallEffect, EnableLingerForOwnAccount }
+import gunbc.remote_operation {
+  PlannedRemoteStep, RemoteOperation, remote_operation_label, remote_operations_wire }
 
 type TimerRetirementMemberAt = NonEmptyStr
 
@@ -98,6 +101,7 @@ fn fleet_converge_plan_subject(
   host: NonEmptyStr,
   observed_timers: List<TimerRetirementMember>,
   observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
 ) -> FleetConvergePlanSubject {
   FleetConvergePlanSubject {
     host: host,
@@ -105,6 +109,7 @@ fn fleet_converge_plan_subject(
       host: host,
       observed_timers: observed_timers,
       observed_caps: observed_caps,
+      observed_spark: observed_spark,
     ),
   }
 }
@@ -113,12 +118,14 @@ fn fleet_converge_member_set_fingerprint(
   host: NonEmptyStr,
   observed_timers: List<TimerRetirementMember>,
   observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
 ) -> ContentHash {
   content_hash_of_value(
     value: observed_baseline_text(
       host: host,
       observed_timers: observed_timers,
       observed_caps: observed_caps,
+      observed_spark: observed_spark,
     ) as NonEmptyStr,
   )
 }
@@ -132,6 +139,7 @@ fn fleet_converge_apply_subject_admits(
   observed_host: NonEmptyStr,
   observed_timers: List<TimerRetirementMember>,
   observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
 ) -> Bool {
   fleet_converge_apply_subject_host_matches(planned_host: planned_subject.host, observed_host: observed_host)
     && compare_content_hash(
@@ -140,6 +148,7 @@ fn fleet_converge_apply_subject_admits(
         host: observed_host,
         observed_timers: observed_timers,
         observed_caps: observed_caps,
+        observed_spark: observed_spark,
       ),
     ) == ContentHashEqual
 }
@@ -173,6 +182,7 @@ fn fleet_converge_member_set_fingerprint_matches(
   host: NonEmptyStr,
   observed_timers: List<TimerRetirementMember>,
   observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
 ) -> Bool {
   trim(s: planned_fingerprint_text) == (
     serialize_content_hash(
@@ -180,6 +190,7 @@ fn fleet_converge_member_set_fingerprint_matches(
         host: host,
         observed_timers: observed_timers,
         observed_caps: observed_caps,
+        observed_spark: observed_spark,
       ),
     ) as String
   )
@@ -308,24 +319,126 @@ fn fleet_converge_desired_caps() -> List<CapMember> {
   ]
 }
 
+// THE OBSERVED SPARK POPULATION IS PART OF THE COMPARE-AND-SWAP BASELINE.
+//
+// It was not, and the consequence was specific rather than theoretical: the baseline fingerprinted
+// host, timers and caps only, so a Spark member could change between plan and apply -- a model
+// replaced, a unit rewritten, linger turned off -- WITHOUT invalidating the approved plan. The lease
+// would still admit, and apply would execute operations planned against a state that no longer held.
+//
+// Freezing the operations (above) closed the other half of that: apply executes exactly what plan
+// admitted. This closes the half the freeze cannot reach, because a frozen operation is only as
+// good as the baseline it was planned against. Each member contributes its ADDRESS and its
+// state_digest -- the address alone would let a value change without moving the fingerprint, which
+// is precisely the drift being guarded.
 fn observed_baseline_text(
   host: NonEmptyStr,
   observed_timers: List<TimerRetirementMember>,
   observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
 ) -> String {
   join(
     concat(
-      [concat("host:", host as String)],
-      map(observed_timers, m => concat("timer:", m.unit_name as String)),
-      map(observed_caps, c => concat("cap:", c.dropin_path as String, "=", c.content)),
+      concat(
+        [concat("host:", host as String)],
+        map(observed_timers, m => concat("timer:", m.unit_name as String)),
+      ),
+      concat(
+        map(observed_caps, c => concat("cap:", c.dropin_path as String, "=", c.content)),
+        map(observed_spark, m => concat(
+          "spark:", spark_serving_member_key(member: m), "=", m.state_digest as String,
+        )),
+      ),
     ),
     "\n",
   )
 }
 
+// THE ROW FREEZES WHAT APPLY EXECUTES, not merely what it should figure out.
+//
+// The row used to carry the action and its effects only. `WriteUserUnitFile` is a bare variant with
+// no bytes, so apply resolved the unit content, path and mode from the repository's CURRENT
+// authorities at execution time -- and the bundle hash could not detect a plan/apply divergence
+// because the bytes were never in the bundle. Freezing the realized operations closes that: what the
+// plan admitted is exactly what runs.
+// THE OPERATION LIST IS STRUCTURALLY NONEMPTY, head plus tail.
+//
+// It was `operations: List<RemoteOperation>` guarded by an apply-time check reading "there are
+// effects and the aggregate operation list is empty". That check is over AGGREGATES, so it does not
+// catch the case it exists for: one row carrying effects and ZERO operations, sitting beside another
+// row that has operations. The totals are both nonzero, the check passes, and that row's effect is
+// reported applied while nothing ran for it -- a fabricated plausible output at the actuation seam.
+//
+// Head plus tail removes the state instead of catching it (DESIGN section 5, construction over
+// validation): a row with no operations has no constructor, so the aggregate check is not tightened,
+// it is unnecessary. The same shape StagedIntermediates uses, for the same reason.
+//
+// EACH EFFECT OWNS ITS OWN OPERATIONS.
+//
+// The row previously carried two PARALLEL populations: a list of effects, and one flat operation
+// sequence covering all of them. That guaranteed the row was nonempty and nothing more -- there was
+// no relation between the two lists, so a row carrying three effects could not say which operation
+// belonged to which, and no apply receipt could report "the download succeeded, the digest verified,
+// the extraction failed" against the effect that owns those steps.
+//
+// Parallel lists are also the shape that goes wrong silently as the sequences get long. A short
+// linger effect contributing one argv and a runtime install contributing nine cannot be told apart
+// in a flat list of ten, so a receipt has to guess an attribution, and a guess at the actuation seam
+// is the fabricated plausible output this lane keeps closing one layer down.
+//
+// The relation is now structural: one execution binds one effect to the operations that realize it,
+// head plus tail, so an effect with zero operations has no constructor. Ordering is preserved in
+// both directions -- executions in effect order, operations in realization order within each -- and
+// the flat sequence the actuator consumes is DERIVED by concatenation rather than stored beside the
+// executions, so the two cannot disagree.
+type PlannedEffectExecution {
+  effect: ServingInstallEffect
+  first_step: PlannedRemoteStep
+  further_steps: List<PlannedRemoteStep>
+}
+
+fn planned_effect_execution_steps(x: PlannedEffectExecution) -> List<PlannedRemoteStep> {
+  concat([x.first_step], x.further_steps)
+}
+
+// The row is nonempty in EXECUTIONS now rather than in operations, and each execution is nonempty in
+// operations. A row with no executions is unwritable for the same reason a row with no operations
+// was: it would report its effects applied while nothing ran for them.
 type FleetConvergeSparkServingTypedAction {
   action: MemberAction<SparkServingMember, SparkServingMemberAt>,
-  install_effects: List<ServingInstallEffect>
+  first_execution: PlannedEffectExecution
+  further_executions: List<PlannedEffectExecution>
+}
+
+fn fleet_converge_spark_serving_row_executions(
+  row: FleetConvergeSparkServingTypedAction,
+) -> List<PlannedEffectExecution> {
+  concat([row.first_execution], row.further_executions)
+}
+
+// The effect roster is DERIVED from the executions rather than stored, which is what retires the
+// parallel-population defect: there is no second list to fall out of step with the first.
+fn fleet_converge_spark_serving_row_effects(
+  row: FleetConvergeSparkServingTypedAction,
+) -> List<ServingInstallEffect> {
+  map(fleet_converge_spark_serving_row_executions(row: row), x => x.effect)
+}
+
+fn fleet_converge_spark_serving_row_steps(
+  row: FleetConvergeSparkServingTypedAction,
+) -> List<PlannedRemoteStep> {
+  flat_map(
+    fleet_converge_spark_serving_row_executions(row: row),
+    x => planned_effect_execution_steps(x: x),
+  )
+}
+
+// The bare operations, for the consumers that hash or count them. Deliberately DERIVED from the
+// steps rather than stored, so the identities and the operations cannot describe different work.
+fn fleet_converge_spark_serving_row_operations(
+  row: FleetConvergeSparkServingTypedAction,
+) -> List<RemoteOperation> {
+  map(fleet_converge_spark_serving_row_steps(row: row), st => st.operation)
 }
 
 type FleetConvergePlanArtifact {
@@ -335,7 +448,7 @@ type FleetConvergePlanArtifact {
   observed_baseline_hex: Fnv1a64StructuralDigestHex
   plan_body: String
   apply_shell: String
-  spark_serving_typed_actions: List<FleetConvergeSparkServingTypedAction>
+  spark_serving_typed_actions: ScheduledRows<FleetConvergeSparkServingTypedAction>
 }
 
 // NO WILDCARD. The wildcard is what made ServingInstallEffect extensible in silence: a thirteenth
@@ -353,9 +466,10 @@ fn fleet_converge_spark_serving_effect_wire(effect: ServingInstallEffect) -> Str
     WriteUserUnitFile => "WriteUserUnitFile"
     ReloadUserManager => "ReloadUserManager"
     EnableUserUnit => "EnableUserUnit"
+    StartUserUnit => "StartUserUnit"
     InstallRuntimePackage => "InstallRuntimePackage"
     InstallOwnedRuntimeClosure => "InstallOwnedRuntimeClosure"
-    PullModelArtifact => "PullModelArtifact"
+    MaterializeModelArtifact => "MaterializeModelArtifact"
     GrantContainerRuntimeAccess => "GrantContainerRuntimeAccess"
     RunContainerAsOwnUser => "RunContainerAsOwnUser"
   }
@@ -368,6 +482,31 @@ fn fleet_converge_spark_serving_action_kind(action: MemberAction<SparkServingMem
     MemberRemoved { at: _, from: _ } => "REMOVE"
     MemberRemovalRefused { from: _, cause: _ } => "REFUSED-REMOVAL"
     MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "REFUSED-DUPLICATE-KEY"
+  }
+}
+
+// THE MEMBER VALUES ARE IN THE WIRE, NOT ONLY THE MEMBER KEY.
+//
+// `spark_serving_member_key` is host x principal x ADDRESS -- deliberately, because that is the
+// stable identity reconcile keys on. But the hash needs the VALUE too: with the key alone, a row
+// whose `to` digest changed from one model manifest to another serializes identically, so the
+// approved artifact would still admit after the very drift the CAS baseline exists to catch. Key
+// answers "which resource"; the digests answer "from what, to what", and an approval is about both.
+//
+// `from` is rendered explicitly as absent where the arm has none, rather than omitted, so an add and
+// a change to the same value cannot collide on one string.
+fn fleet_converge_spark_serving_action_state_wire(
+  action: MemberAction<SparkServingMember, SparkServingMemberAt>,
+) -> String {
+  match action {
+    MemberAdded { at: _, to: m } => join([" from=<none> to=", m.state_digest as String], "")
+    MemberChanged { at: _, from: f, to: m } =>
+      join([" from=", f.state_digest as String, " to=", m.state_digest as String], "")
+    MemberRemoved { at: _, from: f } => join([" from=", f.state_digest as String, " to=<none>"], "")
+    MemberRemovalRefused { from: f, cause: c } =>
+      join([" from=", f.state_digest as String, " to=<refused> cause=", c], "")
+    MemberRosterDuplicateKeyRefused { roster: _, first: f, duplicate: d } =>
+      join([" first=", f.state_digest as String, " duplicate=", d.state_digest as String], "")
   }
 }
 
@@ -384,8 +523,11 @@ fn fleet_converge_spark_serving_action_line(row: FleetConvergeSparkServingTypedA
       fleet_converge_spark_serving_action_kind(action: row.action),
       " spark-serving ",
       spark_serving_member_key(member: member),
+      fleet_converge_spark_serving_action_state_wire(action: row.action),
       " effects=",
-      join(map(row.install_effects, e => fleet_converge_spark_serving_effect_wire(effect: e)), ","),
+      join(map(fleet_converge_spark_serving_row_effects(row: row), e => fleet_converge_spark_serving_effect_wire(effect: e)), ","),
+      " ops=",
+      remote_operations_wire(operations: fleet_converge_spark_serving_row_operations(row: row)),
     ],
     "",
   )
@@ -419,10 +561,10 @@ fn fleet_converge_plan_body_claims_spark_typed_actions(plan_body: String) -> Boo
 
 fn fleet_converge_plan_spark_typed_actions_consistency_admits(
   plan_body: String,
-  spark_serving_typed_actions: List<FleetConvergeSparkServingTypedAction>,
+  spark_serving_typed_actions: ScheduledRows<FleetConvergeSparkServingTypedAction>,
 ) -> Bool {
   let body_claims = fleet_converge_plan_body_claims_spark_typed_actions(plan_body: plan_body)
-  if length(spark_serving_typed_actions) > 0 && !body_claims {
+  if length(scheduled_rows_list(scheduled: spark_serving_typed_actions)) > 0 && !body_claims {
     false
   } else {
     true
@@ -525,7 +667,7 @@ fn fleet_converge_plan_artifact_hash(artifact: FleetConvergePlanArtifact) -> Fnv
     plan_body: artifact.plan_body,
     apply_shell: artifact.apply_shell,
     spark_typed_actions_wire: fleet_converge_spark_serving_typed_actions_wire(
-      rows: artifact.spark_serving_typed_actions,
+      rows: scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions),
     ),
   )
 }
@@ -539,7 +681,7 @@ fn fleet_converge_plan_artifact_bundle_admits(artifact: FleetConvergePlanArtifac
       plan_body: artifact.plan_body,
       apply_shell: artifact.apply_shell,
       spark_typed_actions_wire: fleet_converge_spark_serving_typed_actions_wire(
-        rows: artifact.spark_serving_typed_actions,
+        rows: scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions),
       ),
       claimed_hex: claimed_hex,
     )
@@ -689,11 +831,13 @@ fn fleet_converge_plan_artifact(
   prior_generation: Int,
   observed_timers: List<TimerRetirementMember>,
   observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
 ) -> FleetConvergePlanArtifact? {
   let subject = fleet_converge_plan_subject(
     host: host,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
+    observed_spark: observed_spark,
   )
   let timer_plan = timer_retirement_plan(observed: observed_timers)
   let cap_plan = caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps)
@@ -703,6 +847,7 @@ fn fleet_converge_plan_artifact(
     host: host,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
+    observed_spark: observed_spark,
   )
   let planned_generation = prior_generation + 1
   let body = join(
@@ -747,7 +892,7 @@ fn fleet_converge_plan_artifact(
           observed_baseline_hex: structural.digest,
           plan_body: body,
           apply_shell: apply_shell,
-          spark_serving_typed_actions: [],
+          spark_serving_typed_actions: scheduled_rows_empty(),
         },
       }
     _ => Absent
@@ -777,11 +922,13 @@ fn fleet_converge_observed_baseline_matches(
   observed_baseline_hex: Fnv1a64StructuralDigestHex,
   observed_timers: List<TimerRetirementMember>,
   observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
 ) -> Bool {
   let baseline = observed_baseline_text(
     host: host,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
+    observed_spark: observed_spark,
   )
   match content_hash_of_value(value: baseline as NonEmptyStr) {
     Fnv1a64(structural) => structural.digest == observed_baseline_hex

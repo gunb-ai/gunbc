@@ -3,7 +3,7 @@ module test.claim.serving_privilege_derivation_witness_test
 import std.types { String, Bool, List, NonEmptyStr, Int }
 import std.content_hash { content_hash_of_value }
 import product.placement_supply { HostIdentity }
-import gunbc.spark_serving_realization {
+import gunbc.spark.serving_realization {
   ServingInstallEffect,
   WriteSystemUnitFile,
   ReloadSystemManager,
@@ -20,7 +20,7 @@ import gunbc.spark_serving_realization {
   ObservedGrantPopulation,
   GrantPopulationObserved,
   GrantPopulationUnobserved,
-  PullModelArtifact,
+  MaterializeModelArtifact,
   GrantContainerRuntimeAccess,
   RunContainerAsOwnUser,
   SystemPrincipal,
@@ -79,11 +79,11 @@ test fn w_escalation_follows_ownership_of_the_mutated_subject() -> Bool {
 }
 
 // AN ACTOR-OWNED SUBJECT NEEDS NOTHING, and this is where the model beats the table on a case the
-// table gets wrong by omission rather than by error: PullModelArtifact writes a store the serving
+// table gets wrong by omission rather than by error: MaterializeModelArtifact writes a store the serving
 // account already owns, and a user unit lives in that account's own registry. Neither belongs in a
 // sudoers file for ANY actor that owns them.
 test fn w_effects_on_actor_owned_subjects_never_escalate() -> Bool {
-  !effect_requires_escalation(effect: PullModelArtifact, actor: automation())
+  !effect_requires_escalation(effect: MaterializeModelArtifact, actor: automation())
     && !effect_requires_escalation(effect: WriteUserUnitFile, actor: automation())
     && !effect_requires_escalation(effect: EnableUserUnit, actor: automation())
     && !effect_requires_escalation(effect: RunContainerAsOwnUser, actor: automation())
@@ -134,7 +134,7 @@ test fn red_control_no_grant_line_carries_shell_or_wildcard() -> Bool {
 // actuation. This is the arm that keeps the grant from quietly including everything a realization
 // does -- the fold must consult escalation, not merely concatenate actuations.
 test fn red_control_non_escalating_effects_contribute_no_grant_line() -> Bool {
-  let actuation = length(match effect_actuation(effect: EnableLingerForOwnAccount, target: target_as(RootPrincipal)) { ActuatedByEscalation { commands: c } => c ActuatedByOwnerDirectly => [] })
+  let actuation = length(match effect_actuation(effect: EnableLingerForOwnAccount, target: target_as(RootPrincipal)) { ActuatedByEscalation { commands: c } => c ActuatedByOwnerDirectly => Empty })
   let granted = length(realization_escalated_commands(realization: UserUnitRealization, target: target_as(RootPrincipal)))
   actuation > 0 && granted == 0
 }

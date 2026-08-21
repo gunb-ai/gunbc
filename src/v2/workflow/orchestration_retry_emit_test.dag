@@ -184,7 +184,7 @@ fn orch_retry_perturbed_exhausted_intent() -> PipelineStep {
         body: b,
         escalations: e,
         on_exhausted: Pipeline {
-          steps: [Do { run: Run { command: "exit 2", env: [], redirect: Absent, capture: Absent } }],
+          steps: [Do { run: Run { command: "exit 2", env: Empty, redirect: Absent, capture: Absent } }],
           on_failure: FailFast
         }
       }
@@ -229,7 +229,7 @@ fn orch_retry_1level_intent() -> PipelineStep {
         Do {
           run: Run {
             command: orch_retry_1level_probe_command,
-            env: [],
+            env: Empty,
             redirect: Absent,
             capture: Absent
           }
@@ -243,7 +243,7 @@ fn orch_retry_1level_intent() -> PipelineStep {
         Do {
           run: Run {
             command: orch_retry_1level_exhausted_command,
-            env: [],
+            env: Empty,
             redirect: Absent,
             capture: Absent
           }
@@ -400,7 +400,7 @@ fn orch_retry_3level_intent() -> PipelineStep {
         Do {
           run: Run {
             command: orch_retry_1level_probe_command,
-            env: [],
+            env: Empty,
             redirect: Absent,
             capture: Absent
           }
@@ -418,7 +418,7 @@ fn orch_retry_3level_intent() -> PipelineStep {
         Do {
           run: Run {
             command: orch_retry_1level_exhausted_command,
-            env: [],
+            env: Empty,
             redirect: Absent,
             capture: Absent
           }
@@ -446,7 +446,7 @@ fn orch_retry_probe_escalation(source: String) -> EscalationLevel {
       severity: SeverityWarning,
       message: "probe"
     },
-    env: []
+    env: Empty
   }
 }
 
@@ -456,7 +456,7 @@ fn orch_retry_probe_exhausted() -> Pipeline {
       Do {
         run: Run {
           command: "exit 1",
-          env: [],
+          env: Empty,
           redirect: Absent,
           capture: Absent
         }
@@ -491,7 +491,7 @@ test fn orch_retry_body_multi_step_refused_holds() -> Bool {
         Do {
           run: Run {
             command: "true",
-            env: [],
+            env: Empty,
             redirect: Absent,
             capture: Absent
           }
@@ -499,7 +499,7 @@ test fn orch_retry_body_multi_step_refused_holds() -> Bool {
         Do {
           run: Run {
             command: "false",
-            env: [],
+            env: Empty,
             redirect: Absent,
             capture: Absent
           }
@@ -520,7 +520,7 @@ test fn orch_retry_body_redirect_present_refused_holds() -> Bool {
     s: orch_retry_probe_single_do(
       r: Run {
         command: "true",
-        env: [],
+        env: Empty,
         redirect: Present { value: DiscardAll },
         capture: Absent
       },
@@ -539,7 +539,7 @@ test fn orch_retry_body_capture_present_refused_holds() -> Bool {
     s: orch_retry_probe_single_do(
       r: Run {
         command: "true",
-        env: [],
+        env: Empty,
         redirect: Absent,
         capture: Present { value: TeeTo { log: "BUILD_LOG" } }
       },
@@ -558,7 +558,7 @@ test fn orch_retry_changed_log_source_refused_holds() -> Bool {
     s: orch_retry_probe_single_do(
       r: Run {
         command: "true",
-        env: [],
+        env: Empty,
         redirect: Absent,
         capture: Absent
       },
@@ -596,7 +596,7 @@ test fn orch_retry_body_env_empty_accepted_holds() -> Bool {
     s: orch_retry_probe_single_do(
       r: Run {
         command: "true",
-        env: [],
+        env: Empty,
         redirect: Absent,
         capture: Absent
       },
