@@ -207,12 +207,20 @@ test fn foreign_attempt_refuses_as_wrong_attempt() -> Bool {
   match v { MergeDeniedWrongAttempt => merge_admission_verdict_would_block(v: v)  _ => false }
 }
 
+// EVERY OTHER REFUSAL IS STACKED HERE ON PURPOSE, so "precedes" is measured against a receipt that
+// would trip all of them: foreign attempt, a head and base commit that disagree with the captured
+// subject, a base that has moved under the target, a stale roster, and a failing conclusion.
+// tested_base_commit_sha is other_base_commit_fx, NOT base_commit_fx: a receipt carrying the
+// CURRENT base would be fresh, and the stale-base half of the precedence claim would silently
+// vanish while the row stayed green -- which is what a blanket fixture rewrite did to this row
+// before review caught it. Precedence ordering is exactly the property that rots invisibly, since
+// a reordering regression leaves a row like this green unless every dominated arm is really armed.
 test fn wrong_attempt_precedes_every_other_refusal() -> Bool {
   let r = MergeAdmissionReceiptV2 {
     attempt_id: attempt_b(),
     pr_number: none,
     tested_head_sha: other_head_sha_fx,
-    tested_base_commit_sha: base_commit_fx,
+    tested_base_commit_sha: other_base_commit_fx,
     gate_roster_hash: merge_admission_witness_gate_roster(label: "roster-stale"),
     conclusion: Failure,
   }
