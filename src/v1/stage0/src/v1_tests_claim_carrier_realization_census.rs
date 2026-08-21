@@ -458,6 +458,40 @@ pub fn census_run_smoke() -> Rc<ProcessExit> {
     }
 }
 
+pub fn census_cross_module_subject_paths() -> Rc<Vec<String>> {
+    thread_local! {
+        static CACHED: Rc<Vec<String>> = {
+            Rc::new(vec!["dag/extdeps/communication/medium.dag".to_string(), "dag/extdeps/external_authority.dag".to_string(), "dag/extdeps/filesystem/filesystem_io.dag".to_string(), "dag/extdeps/units/dimensionless.dag".to_string(), "dag/extdeps/units/iec_80000_13.dag".to_string(), "dag/extdeps/units/iso8601.dag".to_string(), "dag/extdeps/units/iso_80000_3.dag".to_string(), "dag/extdeps/uri.dag".to_string(), "dag/std/algebra.dag".to_string(), "dag/std/bit.dag".to_string(), "dag/std/checked_arithmetic.dag".to_string(), "dag/std/computation.dag".to_string(), "dag/std/constructors.dag".to_string(), "dag/std/content_hash.dag".to_string(), "dag/std/currency.dag".to_string(), "dag/std/decl_ref.dag".to_string(), "dag/std/dissolution.dag".to_string(), "dag/std/error_primitives.dag".to_string(), "dag/std/induction.dag".to_string(), "dag/std/integer.dag".to_string(), "dag/std/keyed_roster.dag".to_string(), "dag/std/keyed_row.dag".to_string(), "dag/std/machine_constraints.dag".to_string(), "dag/std/magnitude.dag".to_string(), "dag/std/measure.dag".to_string(), "dag/std/nat.dag".to_string(), "dag/std/primitives.dag".to_string(), "dag/std/roster_frontier.dag".to_string(), "dag/std/termination.dag".to_string(), "dag/std/types.dag".to_string(), "dag/std/unicode/types.dag".to_string(), "src/v2/compiler/self_host.dag".to_string(), "src/v2/std/algebra.dag".to_string(), "src/v2/std/collection.dag".to_string(), "src/v2/std/constraint_satisfaction_predicate.dag".to_string(), "src/v2/std/diagnostic.dag".to_string(), "src/v2/std/exact_structural_equality_zip_fold_predicate.dag".to_string(), "src/v2/std/find_witness.dag".to_string(), "src/v2/std/integer.dag".to_string(), "src/v2/std/integer_value_set.dag".to_string(), "src/v2/std/logic.dag".to_string(), "src/v2/std/machine.dag".to_string(), "src/v2/std/model_core.dag".to_string(), "src/v2/std/nat.dag".to_string(), "src/v2/std/node.dag".to_string(), "src/v2/std/node_query.dag".to_string(), "src/v2/std/optional.dag".to_string(), "src/v2/std/passing_candidate_fold.dag".to_string(), "src/v2/std/project_to_core_predicate.dag".to_string(), "src/v2/std/refinement_widening_predicate.dag".to_string(), "src/v2/std/text.dag".to_string(), "src/v2/std/witness.dag".to_string()])
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+}
+
+pub fn census_cross_module_receipt_path() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "target/carrier_realization_cross_module.tsv".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn census_run_cross_module() -> Rc<ProcessExit> {
+    if filesystem
+        .write(
+            census_cross_module_receipt_path(),
+            census_receipt_for_paths(census_cross_module_subject_paths()),
+        )
+        .await?
+        .0
+        .clone()
+    {
+        Rc::new(ProcessExit::ExitSuccess)
+    } else {
+        exit_failure("cross-module receipt write failed".to_string())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Agrees;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
