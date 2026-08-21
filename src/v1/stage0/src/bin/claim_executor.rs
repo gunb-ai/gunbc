@@ -1790,37 +1790,6 @@ const MERGE_ADMISSION_REFRESH_REFUSAL_WIRE: &str = "target/merge-admission-refre
 /// toplevel resolution falls back to the bare relpath — the pre-anchor behavior — because
 /// the wire read is itself a diagnostic path: degrading its precision is acceptable,
 /// swallowing the stage failure it decorates is not.
-/// Run one zero- or one-argument wet `func` from a `.dag` entry and read its `Bool`.
-///
-/// The merge-admission producers are host-effect `func`s: they read git, write attempt-scoped
-/// wires, and return whether they succeeded. This is the same resolve/context/run shape the
-/// native-bundle selector uses; it is factored out here because two phases need it and because a
-/// non-`Bool` return must be a REFUSAL rather than a coerced `false` -- a producer that returned
-/// the wrong shape has not written the wire either, and reporting that as an ordinary `false`
-/// would lose the distinction between "declined" and "did not run".
-fn run_merge_admission_producer(
-    source_roots: &[String],
-    entry: &str,
-    function: &str,
-    args: &[(Option<String>, Value)],
-) -> Result<bool, String> {
-    let (graph, indices) = resolve_entry_graph(source_roots, entry)
-        .map_err(|e| format!("{entry} resolve refused: {e}"))?;
-    let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
-    let outcome = if args.is_empty() {
-        run_in_context(&ctx, function, false)
-    } else {
-        run_in_context_with_args(&ctx, function, args, false)
-    };
-    match outcome.map_err(|e| format!("{function} refused: {e}"))? {
-        Value::Bool(b) => Ok(b),
-        other => Err(format!("{function} returned non-bool {other:?}")),
-    }
-}
-
-const MERGE_ADMISSION_CAPTURE_ENTRY: &str = "dag/tools/merge_admission_capture.dag";
-const MERGE_ADMISSION_WALK_ENTRY: &str = "dag/tools/merge_admission_walk.dag";
-
 fn merge_admission_wire_read(relpath: &str) -> std::io::Result<String> {
     let toplevel = std::process::Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
@@ -10561,90 +10530,44 @@ fn run() -> Result<ExitCode, ExitCode> {
         return run_behavioral_receipt_plan(&source_roots);
     }
 
-    // THE COMPOSED CI RUN — one process, one ordered fold over the phases the job used to
-    // express as four GitHub Actions steps.
+    // THE COMPOSED CI RUN — one process, three phases: the src/v1 .dag parse sweep, the regen
+    // first-generation comparison, and the witness floor.
     //
-    // WHAT WAS WRONG WITH THE STEP LADDER, and it is not verbosity. Four steps meant four
-    // processes; the ORDER lived in a YAML list; each step's precondition was an `if:` naming
-    // another step's `outcome`; and the fixed-point phase received pass 1's digest by READING
-    // THE RECEIPT FILE the previous process had written. That last one is the tell — the
-    // function has taken `pass1_digest: Option<String>` all along, and the file round-trip
-    // existed only because a process boundary sat where a function call belonged. Sequencing a
-    // program's phases is the program's job (DESIGN §3: the workflow is a realization of the
-    // intent, not the place the intent lives).
+    // WHAT IT IS AND IS NOT. Sequencing a program's phases is the program's job (DESIGN §3: the
+    // workflow is a realization of the intent, not the place the intent lives), so the order
+    // lives here rather than in a YAML step list whose preconditions read each other's
+    // `outcome`. What is NOT here is a judgement about which checks CI ought to run: the roster
+    // is an operator decision, and the 2026-08-21 ruling set it to exactly these three.
     //
-    // WHAT THE ORDER IS, AND WHY EACH PHASE RUNS ANYWAY. Only ONE real dependency exists:
-    // fixed-point needs regen's pass-1 digest, so it is skipped — visibly, as its own reported
-    // state — when regen did not produce one. Everything else is independent, so every other
-    // phase RUNS EVEN AFTER AN EARLIER FAILURE and the run reports the complete ledger. That is
-    // deliberate and it is the one behavioural change here: under the step ladder a regen
-    // failure skipped the fixed point AND, before stern-tern-636's correction, could leave the
-    // floor's own precondition reading someone else's verdict — so one defect hid the others,
-    // and a fix landed blind to whatever else was red. The line still stops (a nonzero exit on
-    // any failed phase); it stops with every deficit named. This is the stopped-line AUDIT
-    // DESIGN §5 sanctions: it reports, it never greens.
+    // WHAT WAS DELETED AND WHY IT IS NOT LEFT AS A SKIPPED PHASE (operator ruling, 2026-08-21).
+    // Five phases previously ran inside this fold: merge-admission-capture, regen-determinism
+    // (the fixed point), receipt-selftest, receipt-vs-changed-authorities, and
+    // merge-admission-stamp. They are GONE from this mode — not disabled behind a flag, not
+    // reported as SKIPPED — because a phase that always reports the same non-verdict is the
+    // absorbing fallback wearing a phase's clothes (DESIGN §5): its deficit frequency is zero by
+    // construction and it reads as coverage on the ledger. The capabilities themselves survive
+    // where they had their own entry points and consumers: `--required-regen-fixed-point`,
+    // `--behavioral-receipt-selftest`, `--behavioral-receipt-plan` and
+    // `--behavioral-receipt-census` are unchanged and still run standalone. What ends is their
+    // enrolment in the required run, and that is the whole of the change.
     //
-    // WHAT IS *NOT* SHARED, stated so the saving is not overclaimed. `run_required_regen` and
-    // `run_required_regen_fixed_point` each call `compile_stage0`, and the second call STAYS:
-    // re-emitting the same input and comparing digests IS what the fixed point measures, so
-    // collapsing the two compiles would delete the measurement. The floor's own preparation is
-    // a different computation again (resolving witnesses, not emitting Rust) and shares with
-    // neither. What this removes is process startup, the receipt file round-trip, and the
-    // YAML-level orchestration — NOT a redundant compile.
+    // WHAT THAT COSTS, named rather than left to be rediscovered. No CI run now measures regen
+    // DETERMINISM (that the emitter reproduces its own output), behavioural equivalence of a
+    // changed authority against its committed mirror, or the receipt machinery's own
+    // discriminating arms; and no run mints a merge-admission receipt. The merge-admission
+    // consumers refuse on a missing receipt rather than admitting on one (DESIGN, the CI
+    // paragraph's re-add queue), so nothing is admitted by the absence — but the three
+    // measurements above are simply not taken, which is a declared rung drop, not a silent one.
+    //
+    // WHAT THE ORDER IS, AND WHY EACH PHASE RUNS ANYWAY. The three phases are independent —
+    // the one real data dependency, the fixed point's need for regen's pass-1 digest, went with
+    // the phase that consumed it — so every phase RUNS EVEN AFTER AN EARLIER FAILURE and the run
+    // reports the complete ledger instead of letting the first defect hide the rest. The line
+    // still stops (a nonzero exit on any failed phase); it stops with every deficit named. This
+    // is the stopped-line AUDIT DESIGN §5 sanctions: it reports, it never greens.
     if required_ci_mode {
         let mut phase_failures: Vec<String> = Vec::new();
         let mut ran: Vec<&'static str> = Vec::new();
-
-        // PHASE 0 — capture the TESTED SUBJECT, before anything is tested.
-        //
-        // WHY IT IS FIRST AND NOT BESIDE THE FLOOR. The subject is what this run is ABOUT: the
-        // head it checked out and the base tree it composed against. It has to be recorded before
-        // any phase runs, because after they run the only thing left is the receipt's own claim
-        // about what it tested, and a receipt that both states and certifies its subject can
-        // restate it (gunbc.merge_admission merge_admission_subject_binding_note: three bindings
-        // are required BEFORE any freshness question).
-        //
-        // AN ABSENT ATTEMPT IDENTITY IS A SKIP, NOT A FAILURE, AND THE ARM IS UNREACHABLE ON CI.
-        // The identity derives from GITHUB_RUN_ID + GITHUB_RUN_ATTEMPT + GITHUB_JOB, which GitHub
-        // always sets; off CI there is no merge attempt to admit and therefore no subject, which
-        // is the phase-5 NoSubject shape rather than the phase-3 shape. Every OTHER refusal cause
-        // -- head unreadable, base tree unreadable, unparseable oid, attempt dir, write -- is a
-        // real failure to record a subject that exists, and fails the phase. The cause is read
-        // from the modeled refusal wire, so the classification is the producer's, not a guess.
-        let mut merge_admission_subject_captured = false;
-        eprintln!("required-ci: phase merge-admission-capture (tested subject, before any phase)");
-        match run_merge_admission_producer(
-            &source_roots,
-            MERGE_ADMISSION_CAPTURE_ENTRY,
-            "capture_tested_subject",
-            &[],
-        ) {
-            Ok(true) => {
-                merge_admission_subject_captured = true;
-                eprintln!("required-ci: merge-admission-capture OK tested subject recorded");
-            }
-            Ok(false) => {
-                let cause = match merge_admission_wire_read(MERGE_ADMISSION_CAPTURE_REFUSAL_WIRE) {
-                    Ok(text) => text.trim().to_string(),
-                    Err(e) => format!("cause wire unreadable: {e}"),
-                };
-                if cause.contains("attempt-identity-absent") {
-                    eprintln!(
-                        "required-ci: phase merge-admission-capture SKIPPED — no walk-attempt \
-                         identity, so this run is not a merge attempt and has no subject to \
-                         record. Not a pass over a captured subject: the subject is absent"
-                    );
-                } else {
-                    eprintln!("required-ci: merge-admission-capture FAIL {cause}");
-                    phase_failures.push(format!("merge-admission-capture ({cause})"));
-                }
-            }
-            Err(e) => {
-                eprintln!("required-ci: merge-admission-capture refused: {e}");
-                phase_failures.push(format!("merge-admission-capture refused: {e}"));
-            }
-        }
-        ran.push("merge-admission-capture");
 
         // PHASE 1 — src/v1 .dag parse sweep. Independent of everything below it.
         eprintln!("required-ci: phase parse (src/v1 .dag)");
@@ -10659,12 +10582,9 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
         ran.push("parse");
 
-        // PHASE 2 — regen first generation. Produces the pass-1 digest phase 3 needs.
+        // PHASE 2 — regen first generation: the emitted mirrors against what is committed.
         eprintln!("required-ci: phase regen (first generation vs committed)");
-        let pass1_digest: Option<String> = match v1_compiler::cli_run::run_required_regen(
-            &regen_candidate_dir,
-            &regen_receipt_path,
-        ) {
+        match v1_compiler::cli_run::run_required_regen(&regen_candidate_dir, &regen_receipt_path) {
             Ok(outcome) => {
                 // Read through accessors, and print `unmeasured` rather than a plausible
                 // default when the pass built the wrong variant (#8650's shape).
@@ -10681,163 +10601,17 @@ fn run() -> Result<ExitCode, ExitCode> {
                 if !outcome.failures.is_empty() {
                     phase_failures.push(format!("regen ({} failure(s))", outcome.failures.len()));
                 }
-                // THE DIGEST IS HANDED OVER IN MEMORY, and it is produced whether or not the
-                // comparison agreed: pass 1 emitted a tree either way, and asking whether the
-                // emitter reproduces itself is a SEPARATE question from whether it matches what
-                // is committed. Skipping the fixed point on a regen mismatch would conflate
-                // them and lose a determinism signal exactly when drift makes it interesting.
-                //
-                // DRIFT AND REFUSAL ARE DIFFERENT, and the digest still comes from the
-                // outcome's typed `FirstGeneration` rather than from the receipt. The receipt
-                // can now tell them apart too -- a population refusal writes
-                // `RegenReceipt::Refused`, which has no digest field -- but reading it here
-                // would route an in-process handoff through a file for no reason, and the
-                // typed outcome is the carrier this decision was extracted onto.
-                v1_compiler::cli_run::pass1_digest_for_fixed_point(&outcome).map(str::to_string)
             }
             Err(e) => {
-                // A REFUSAL IS NOT A MISMATCH. Nothing was emitted, so there is no pass-1
-                // digest, and phase 3 has no subject rather than a failing one.
+                // A REFUSAL IS NOT A MISMATCH: nothing was emitted, so there is no comparison
+                // to report, and the refusal is named rather than folded into a drift verdict.
                 eprintln!("required-ci: regen refused: {e}");
                 phase_failures.push(format!("regen refused: {e}"));
-                None
             }
-        };
+        }
         ran.push("regen");
 
-        // PHASE 3 — regen determinism. The ONLY phase with a real precondition.
-        match pass1_digest {
-            Some(pass1) => {
-                eprintln!("required-ci: phase regen-fixed-point (G0 reproduces itself)");
-                match v1_compiler::cli_run::run_required_regen_fixed_point(
-                    &regen_receipt_path,
-                    Some(pass1),
-                ) {
-                    Ok(outcome) => {
-                        let fpe = outcome
-                            .receipt
-                            .fixed_point_equal()
-                            .map(|v| v.to_string())
-                            .unwrap_or_else(|| "unmeasured".to_string());
-                        eprintln!("required-ci: regen-fixed-point fixed_point_equal={fpe}");
-                        for failure in &outcome.failures {
-                            eprintln!("required-ci: regen-fixed-point FAIL {failure}");
-                        }
-                        if !outcome.failures.is_empty() {
-                            phase_failures.push(format!(
-                                "regen-fixed-point ({} failure(s))",
-                                outcome.failures.len()
-                            ));
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("required-ci: regen-fixed-point refused: {e}");
-                        phase_failures.push(format!("regen-fixed-point refused: {e}"));
-                    }
-                }
-                ran.push("regen-fixed-point");
-            }
-            None => {
-                // SKIPPED IS ITS OWN REPORTED STATE, never silence and never a pass. The phase
-                // did not run because its input does not exist; saying nothing here would make
-                // an unrun determinism check indistinguishable from a passing one.
-                eprintln!(
-                    "required-ci: phase regen-fixed-point SKIPPED — regen produced no \
-                     pass-1 digest, so there is nothing to compare a second pass against"
-                );
-                phase_failures
-                    .push("regen-fixed-point skipped (no pass-1 digest from regen)".to_string());
-            }
-        }
-
-        // PHASE 4 — the behavioral receipt's own arms, on a controlled fixture. Independent.
-        //
-        // The two regen phases answer whether the emitted mirrors EQUAL what the authority emits
-        // and whether that emit repeats. Neither compiles a candidate and neither runs one, so a
-        // rename and a semantic change are the same event to both. DESIGN §7 says a byte-identical
-        // fixed point is explicitly NOT the goal and names behavioural equivalence on a
-        // discriminating corpus instead; this phase is the evidence that comparison still
-        // discriminates, and it runs against a fixture that authors its own input and its own
-        // expected outcome, so it cannot be satisfied by a tree in which nothing happened to change.
-        eprintln!("required-ci: phase receipt-selftest (equivalent arm and divergent arm)");
-        match behavioral_receipt_selftest(&source_roots) {
-            Ok(true) => eprintln!("required-ci: receipt-selftest OK both arms discriminate"),
-            Ok(false) => {
-                eprintln!(
-                    "required-ci: receipt-selftest FAIL — the receipt's own arms no longer \
-                     discriminate, so no verdict phase 5 reports is evidence"
-                );
-                phase_failures.push("receipt-selftest".to_string());
-            }
-            Err(e) => {
-                eprintln!("required-ci: receipt-selftest refused: {e}");
-                phase_failures.push(format!("receipt-selftest refused: {e}"));
-            }
-        }
-        ran.push("receipt-selftest");
-
-        // PHASE 5 — the receipt against the REAL modules this diff changed.
-        //
-        // SKIPPED IS A REPORTED STATE HERE AND IT IS NOT A FAILURE, which differs from phase 3
-        // deliberately. Phase 3's input is produced by phase 2 inside this same run, so its
-        // absence means something went wrong. This phase's subject is a DIFF, and on a push to
-        // main the merge base is the head — there is no pull request to check, and never was.
-        // Counting that as a failure would red every main push over a check that has no subject;
-        // reporting it as a pass is the vacuous arm review 54102 caught. So it is neither.
-        //
-        // AND THE COVERAGE CONSEQUENCE, WHICH IS NOT OPTIONAL READING: a phase whose subject is a
-        // DIFF can never be exercised by the branch it protects. Its coverage is entirely
-        // PR-side, by construction. So NO main run, green or otherwise, is evidence about this
-        // phase -- comparing a PR's red against main's green compares a run against a SKIP -- and
-        // a defect that reds every PR touching one class of authority can sit indefinitely while
-        // main stays green. That is not hypothetical: it is how the wet-actuator selection defect
-        // (gunbc#8704, excluded at selection since) survived. Measured on main run 32475483128 at
-        // 7d3fec269a4, where this arm printed and nothing else ran.
-        //
-        // NEXT-RUNG TRIGGER, named rather than built: a push to main has no PR diff, but it does
-        // have the PUSH RANGE, which is a real subject. Giving this phase that subject on main is
-        // what would end the PR-only coverage; until someone does it, the sentence above stands
-        // and a green main must not be read as evidence for anything here.
-        //
-        // THE SHAPE THAT WORK TAKES, so it is not re-invented and, more importantly, so it is not
-        // built as a substitute:
-        //
-        //     ChangeSubject = PullRequestDiff { base, head }
-        //                   | PushRange       { before, after }
-        //                   | NoSubject
-        //
-        // `PushRange` is a DIFFERENT subject, not a stand-in for a PR diff, and the coproduct is
-        // what keeps WHICH change relation was measured visible in the result instead of two
-        // relations collapsing into one word `diff`. The downstream predicate can be shared; the
-        // upstream distinction may not be.
-        //
-        // AND THE ARM THAT MUST NOT MOVE IS `NoSubject`. The missing work is a real push-range
-        // subject; it is not making this arm return something. A phase that always has an answer
-        // has a deficit frequency of zero by construction -- the absorbing fallback wearing the
-        // fix's clothes. So: PHASE INVOKED, SUBJECT ABSENT, TYPED `NoSubject` RETURNED is not
-        // SUBJECT EVALUATED AND AGREED, and no counter above or below may let the first be read
-        // as the second.
-        eprintln!("required-ci: phase receipt (changed authorities vs their mirrors)");
-        match behavioral_receipt_plan(&source_roots) {
-            Ok(ReceiptPlanOutcome::Ran { agreed: true }) => {
-                eprintln!("required-ci: receipt OK every selected module is equivalent")
-            }
-            Ok(ReceiptPlanOutcome::Ran { agreed: false }) => {
-                phase_failures.push("receipt".to_string())
-            }
-            Ok(ReceiptPlanOutcome::NoSubject { head }) => eprintln!(
-                "required-ci: phase receipt SKIPPED — the merge base resolves to HEAD ({head}), \
-                 so this run has no diff to observe. Not a pass over an empty selection: the \
-                 subject is absent, not agreed"
-            ),
-            Err(e) => {
-                eprintln!("required-ci: receipt refused: {e}");
-                phase_failures.push(format!("receipt refused: {e}"));
-            }
-        }
-        ran.push("receipt");
-
-        // PHASE 6 — the witness floor. Independent; runs whatever happened above.
+        // PHASE 3 — the witness floor. Independent; runs whatever happened above.
         eprintln!("required-ci: phase floor (one prepared subject, one fold)");
         let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
         match v1_compiler::cli_run::run_required_floor(
@@ -10857,50 +10631,6 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
         }
         ran.push("floor");
-
-        // PHASE 7 — mint the floor receipt, carrying the conclusion this run actually reached.
-        //
-        // THE CONCLUSION IS THE MEASUREMENT, NOT A CONSTANT. tools.merge_admission_walk
-        // stamp_tested_floor writes `Success` literally; that was true only under the WalkPlan's
-        // ordering law ("stamp is reachable only after the whole ordinary floor and its
-        // finalization passed"), and the floor cut deleted the WalkPlan while leaving the
-        // constant. Calling it from here would certify Success over a red run -- a fabricated
-        // plausible output aimed at the one consumer that must never be lied to. So this calls
-        // stamp_tested_floor_for_exit_code with the real phase tally: a receipt exists for every
-        // attempt, and it says what happened.
-        //
-        // NO SUBJECT MEANS NO RECEIPT, and that is fail-closed rather than a gap: the merge gate
-        // refuses on a missing wire (tools.merge_admission_current_context "floor-receipt wire
-        // missing"), so declining to stamp cannot admit anything.
-        if merge_admission_subject_captured {
-            let exit_code = i64::from(!phase_failures.is_empty());
-            eprintln!(
-                "required-ci: phase merge-admission-stamp (receipt, conclusion from this run)"
-            );
-            match run_merge_admission_producer(
-                &source_roots,
-                MERGE_ADMISSION_WALK_ENTRY,
-                "stamp_tested_floor_for_exit_code",
-                &[(Some("exit_code".to_string()), Value::Int(exit_code))],
-            ) {
-                Ok(true) => eprintln!(
-                    "required-ci: merge-admission-stamp OK receipt minted conclusion={}",
-                    if exit_code == 0 { "success" } else { "failure" }
-                ),
-                Ok(false) => eprintln!(
-                    "required-ci: merge-admission-stamp declined — the producer did not write a \
-                     receipt. The merge gate refuses on a missing receipt, so nothing is admitted \
-                     by this; it is reported, not absorbed"
-                ),
-                Err(e) => eprintln!("required-ci: merge-admission-stamp refused: {e}"),
-            }
-            ran.push("merge-admission-stamp");
-        } else {
-            eprintln!(
-                "required-ci: phase merge-admission-stamp SKIPPED — no tested subject was \
-                 captured, so there is nothing to certify"
-            );
-        }
 
         eprintln!(
             "required-ci: phases_run={} failed={}",
