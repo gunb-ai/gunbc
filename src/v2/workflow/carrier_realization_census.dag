@@ -2,11 +2,12 @@ module v2.workflow.carrier_realization_census
 
 import v1.compiler.compile { SourceFile, FrontendResult, front_end_sources }
 import v1.compiler.emit_rust { is_host_text_carrier_type }
-import v1.compiler.trait_derive_emit { v1_item_field_type_exprs }
+import v1.compiler.emit_core_support { is_type_def_item }
+import v1.compiler.infer_types { is_coproduct_type }
 import v1.compiler.coercion { type_realization_decision, type_reference_decl_file }
 import v1.compiler.artifact { Rust }
 import v1.compiler.resolve { ModuleGraph, ResolvedModule }
-import v1.std.core { Node, NewlineIndex, authored_name_at, module_items, param_node_type_expr }
+import v1.std.core { Node, NewlineIndex, authored_name_at, module_items, param_node_type_expr, field_node_type_expr }
 import std.coercion { TypeRealizationDecision, Realized, Unrealized, Refused }
 import std.types { List, String, Map }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -53,12 +54,26 @@ fn source_indices_of(fr: FrontendResult) -> Map<String, NewlineIndex> {
 // The legacy answer, taken from the imported predicate rather than restated: when the
 // short-circuit fires the renderer returns the literal "String" before any checkpoint or
 // roster consultation, so that is the legacy base at this occurrence.
-fn legacy_base_of(n: Node, si: Map<String, NewlineIndex>) -> String {
-  if is_host_text_carrier_type(n: n, source_indices: si) {
-    "String"
-  } else {
-    ""
+// THE OUTCOME IS STRUCTURAL, NOT STRING EQUALITY, and the first version of this census
+// got that wrong. Comparing rendered spellings makes `String` (what the short-circuit
+// emits) equal `String` (what a structural render of the alias LEAF spells), so the very
+// divergence being measured compares equal. The mechanism is not a spelling difference:
+// the short-circuit emits the HOST String type, while the authority says no checkpoint
+// governs this declaration and its own structure must be rendered instead.
+fn legacy_claims_text(n: Node, si: Map<String, NewlineIndex>) -> Bool {
+  is_host_text_carrier_type(n: n, source_indices: si)
+}
+
+fn authority_realizes(name: String, decl_file: String) -> Bool {
+  match type_realization_decision(target: Rust, dag_name: name, decl_file: decl_file) {
+    Realized { checkpoint: _ } => true
+    Unrealized => false
+    Refused { cause: _ } => false
   }
+}
+
+fn legacy_base_label(n: Node, si: Map<String, NewlineIndex>) -> String {
+  if is_host_text_carrier_type(n: n, source_indices: si) { "String" } else { "<not-short-circuited>" }
 }
 
 fn authority_base_of(name: String, decl_file: String) -> String {
@@ -69,13 +84,13 @@ fn authority_base_of(name: String, decl_file: String) -> String {
   }
 }
 
-fn outcome_of(legacy: String, authority: String, decl_file: String) -> CensusOutcome {
+fn outcome_of(claims_text: Bool, realizes: Bool, decl_file: String) -> CensusOutcome {
   if decl_file == "" {
     IdentityUnavailable
-  } else if legacy == authority {
-    Agrees
-  } else {
+  } else if claims_text && !realizes {
     DivergesWithExactIdentity
+  } else {
+    Agrees
   }
 }
 
@@ -88,7 +103,7 @@ fn decision_row(
 ) -> CarrierDecisionRow {
   let name = authored_name_at(source_indices: si, node: n)
   let decl_file = type_reference_decl_file(n: n)
-  let legacy = legacy_base_of(n: n, si: si)
+  let legacy = legacy_base_label(n: n, si: si)
   let authority = authority_base_of(name: name, decl_file: decl_file)
   CarrierDecisionRow {
     module_file: module_file,
@@ -98,42 +113,50 @@ fn decision_row(
     decl_file: decl_file,
     legacy_base: legacy,
     authority_base: authority,
-    outcome: outcome_of(legacy: legacy, authority: authority, decl_file: decl_file)
+    outcome: outcome_of(
+      claims_text: legacy_claims_text(n: n, si: si),
+      realizes: authority_realizes(name: name, decl_file: decl_file),
+      decl_file: decl_file
+    )
   }
 }
 
 // Field/variant-field type positions of one declaration, enumerated through the
 // emitter's OWN enumeration (v1_item_field_type_exprs) rather than a parallel walk --
 // a second traversal is the drift risk the calibration control exists to catch.
+fn field_rows(
+  module_file: String,
+  enclosing: String,
+  fields: List<Node>,
+  si: Map<String, NewlineIndex>
+) -> List<CarrierDecisionRow> {
+  fields |> fold(init: no_rows(), f: (acc, fld) => concat(acc, [decision_row(
+    module_file: module_file,
+    enclosing: enclosing,
+    position_kind: "declaration_field",
+    n: field_node_type_expr(n: fld),
+    si: si
+  )]))
+}
+
+// A type declaration's FIELD type expressions -- and nothing else. The first version
+// called v1_item_field_type_exprs on EVERY item, including fn items and generic-bearing
+// type declarations, and read back `T`, `M`, `R` and `fn`: generic parameter names and
+// the fn keyword, never a carrier reference.
 fn item_decl_rows(
   module_file: String,
   item: Node,
   si: Map<String, NewlineIndex>
 ) -> List<CarrierDecisionRow> {
   let enclosing = authored_name_at(source_indices: si, node: item)
-  v1_item_field_type_exprs(item: item, source_indices: si)
-    |> fold(init: no_rows(), f: (acc, te) => concat(acc, [decision_row(
-         module_file: module_file,
-         enclosing: enclosing,
-         position_kind: "declaration_field",
-         n: te,
-         si: si
-       )]))
-}
-
-fn param_rows(
-  module_file: String,
-  item: Node,
-  si: Map<String, NewlineIndex>
-) -> List<CarrierDecisionRow> {
-  let enclosing = authored_name_at(source_indices: si, node: item)
-  item.params |> fold(init: no_rows(), f: (acc, p) => concat(acc, [decision_row(
-    module_file: module_file,
-    enclosing: enclosing,
-    position_kind: "fn_signature_param",
-    n: param_node_type_expr(n: p),
-    si: si
-  )]))
+  if !is_type_def_item(item: item) {
+    no_rows()
+  } else if is_coproduct_type(n: item) {
+    item.children |> fold(init: no_rows(), f: (acc, variant) =>
+      concat(acc, field_rows(module_file: module_file, enclosing: enclosing, fields: variant.children, si: si)))
+  } else {
+    field_rows(module_file: module_file, enclosing: enclosing, fields: item.children, si: si)
+  }
 }
 
 fn module_rows(m: ResolvedModule, si: Map<String, NewlineIndex>) -> List<CarrierDecisionRow> {
