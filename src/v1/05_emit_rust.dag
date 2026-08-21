@@ -5559,6 +5559,16 @@ fn render_rust_field_type_with_applied_binding(field: Node, generic_param_names:
   }
 }
 
+data rust_field_carrier_final_type_note: String = "ONE field-carrier layer decision, asked once and projected at every field position. rust_carrier_is_at_shared_layer already unified the four positions that used to answer 'is this carrier at the shared reference layer?' from a rendering or an authored spelling; the ENUM VARIANT RECORD FIELD position was not among them and kept a needs_box_wrapping-only rule, so it rendered a shared cross-module carrier BARE while every other position -- the constructor, the destructuring, the callee signature -- rendered it Rc-wrapped. MEASURED at d72ffe8708b on the src/v2/compiler/03_ingest.dag closure: SymbolicCost::ConstantCost declared `value: Nat` while constant_cost took Rc<Nat>, constructed it with an Rc, and passed the destructured field to nat_dominates(Rc<Nat>); the nested-pattern lowering then emitted `value.as_ref()` against a bare &Nat, which is 18 of that board's 41 E0599 (9 sites x guard + prelude), all in v2_lens_cost.rs. The bareness is not the pattern lowering's defect -- the lowering is right about the layer and the declaration is wrong -- so the repair is at the declaration, and it is shared with the struct-field position rather than copied to it. SCOPE, stated so it is not read as wider: this covers the RECORD-field positions (struct fields and variant record fields). The positional (tuple) payload position renders through render_variant_payload_type and is a distinct path whose layer decision has to be established on its own evidence, not asserted here. RUNG (DESIGN 4b): mitigatable, inherited unchanged from rust_carrier_is_at_shared_layer -- nothing stops a sixth field position from re-deriving the layer locally; the next rung is the same modeled layer transition that predicate names."
+
+fn rust_field_carrier_final_type(rt_field: Node, ty: String, recursive_types: Set<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  if needs_box_wrapping(n: rt_field, recursive_types: recursive_types, shared_types: shared_types, source_indices: source_indices) {
+    concat("Box<", ty, ">")
+  } else if rust_carrier_is_at_shared_layer(n: rt_field, source_indices: source_indices, shared_types: shared_types) && !rust_type_is_rc_wrapped(type_name: ty) {
+    wrap_shared_type(target: Rust, inner: ty)
+  } else { ty }
+}
+
 fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_names: List<String>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let rt_child = resolved_type(n: child)
   let authored_child_type = field_node_type_expr(n: child)
@@ -5587,11 +5597,7 @@ fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_
   } else {
     render_rust_type(n: rt_child, shared_types: shared_types, source_indices: env.source_indices, emit_info: emit_info)
   }
-  let final_ty = if needs_box_wrapping(n: rt_child, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
-    concat("Box<", ty, ">")
-  } else if rust_carrier_is_at_shared_layer(n: rt_child, source_indices: env.source_indices, shared_types: shared_types) && !rust_type_is_rc_wrapped(type_name: ty) {
-    wrap_shared_type(target: Rust, inner: ty)
-  } else { ty }
+  let final_ty = rust_field_carrier_final_type(rt_field: rt_child, ty: ty, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices)
   let needs_serde = struct_needs_serde(name: struct_name, emit_info: emit_info)
   let rename_attr = if !needs_serde { "" } else {
     match child.properties |> filter(p => field_init_node_name_at(n: p, source_indices: env.source_indices) == "from_key") |> first {
@@ -5927,9 +5933,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, generic_param_names: 
       let field_lines = child.children |> map(f =>
         let rt_f = resolved_type(n: f)
         let ty = render_rust_field_type_with_applied_binding(field: f, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
-        let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
-          concat("Box<", ty, ">")
-        } else { ty }
+        let final_ty = rust_field_carrier_final_type(rt_field: rt_f, ty: ty, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices)
         emit_rust_field_definition(authored: authored_name(env: env, node: f), final_ty: final_ty, rename_attr: "", indent: "        ", visibility: "", needs_serde: true)
       )
       let fields_str = field_lines |> join(separator: "\n")
@@ -5939,9 +5943,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, generic_param_names: 
     let field_lines = child.children |> map(f =>
       let rt_f = resolved_type(n: f)
       let ty = render_rust_field_type_with_applied_binding(field: f, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
-      let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
-        concat("Box<", ty, ">")
-      } else { ty }
+      let final_ty = rust_field_carrier_final_type(rt_field: rt_f, ty: ty, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices)
       emit_rust_field_definition(authored: authored_name(env: env, node: f), final_ty: final_ty, rename_attr: "", indent: "        ", visibility: "", needs_serde: true)
     )
     let fields_str = field_lines |> join(separator: "\n")
