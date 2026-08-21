@@ -77,7 +77,6 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
   SeedRetainedIntrinsicRegistration { basename: "resolved_graph_cache", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "shared_typecheck_store", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "recorded_fixture", has_pub_mod: true, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "main", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "phase_profile", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "pre_push", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "census_exclude_derive", has_pub_mod: false, is_dir: false },
@@ -106,7 +105,7 @@ data seed_retained_support_dir_registrations: List<SeedRetainedSupportDirRegistr
   SeedRetainedSupportDirRegistration { basename: "cli_run" }
 ]
 
-data seed_retained_quarantine_scaffold_stage0_files_note: String = "Review 44472: six quarantine modules (SeedRetained, emitter_produced_baseline=0) retain emitted .rs on disk for wet re-flip without pub mod — listed in HAND_MAINTAINED_STAGE0_FILES (has_pub_mod: false) so crate layout authority matches filesystem. Dissolve-on: witness-realization enables EmitterProduced and rows return to generated pub mod roster."
+data seed_retained_quarantine_scaffold_stage0_files_note: String = "Review 44472, count corrected to the live seven 2026-08-21 (it read six against eight rows, and one of those eight has since moved to the wet-actuator family where its producer actually lives): seven quarantine modules (SeedRetained, emitter_produced_baseline=0) retain emitted .rs on disk for wet re-flip without pub mod — listed in HAND_MAINTAINED_STAGE0_FILES (has_pub_mod: false) so crate layout authority matches filesystem. Dissolve-on: witness-realization enables EmitterProduced and rows return to generated pub mod roster."
 data seed_retained_scaffold_registrations: List<SeedRetainedScaffoldRegistration> = [
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_algebra" },
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_collection" },
@@ -114,8 +113,7 @@ data seed_retained_scaffold_registrations: List<SeedRetainedScaffoldRegistration
   SeedRetainedScaffoldRegistration { basename: "v2_compiler_resolve" },
   SeedRetainedScaffoldRegistration { basename: "v2_compiler_program_partition" },
   SeedRetainedScaffoldRegistration { basename: "v2_compiler_tokenize" },
-  SeedRetainedScaffoldRegistration { basename: "v2_compiler_infer" },
-  SeedRetainedScaffoldRegistration { basename: "v1_interpreter_dispatch_generated" }
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_infer" }
 ]
 
 fn intrinsic_pub_mod_basename_from_row(row: SeedRetainedIntrinsicRegistration) -> List<String> {
@@ -249,10 +247,41 @@ fn emit_hand_maintained_pub_mod_block() -> String {
   format_pub_mod_declarations(basenames: hand_maintained_pub_mod_basenames())
 }
 
+data hand_maintained_stage0_filenames_union_note: String = "This stays the UNION of every excluded family, including emitter_produced_divergent_stage0_files, because its two Rust consumers ask a question the union answers exactly: which basenames must be skipped by the flat committed-tree walk, and which must be copied into the candidate tree. Splitting the union here instead of beside it would drop the divergent file out of the copy, so the candidate tree would carry the emitter's 552-line main.rs and no longer build — a destructive remedy offered to whoever hits the refusal. The split that matters is the SECOND projection below, which names the divergent population separately so it can be counted and enforced; the union carries the same rows for the mechanical purpose it always had."
+
 fn hand_maintained_stage0_filenames() -> List<String> {
   concat(
-    concat(seed_retained_intrinsic_stage0_files(), seed_retained_scaffold_stage0_files()),
-    wet_actuator_generated_stage0_files()
+    concat(
+      concat(seed_retained_intrinsic_stage0_files(), seed_retained_scaffold_stage0_files()),
+      wet_actuator_generated_stage0_files()
+    ),
+    emitter_produced_divergent_stage0_files()
+  )
+}
+
+type EmitterProducedDivergentRegistration {
+  basename: String
+  reason: String
+  restoration_trigger: String
+}
+
+data emitter_produced_divergent_note: String = "A DECLARED RUNG DROP (DESIGN section 4b), not a hand-authored file. These basenames ARE in compile_stage0()'s emitted population and what it emits DIVERGES from what is committed. Every other exclusion family above names a file the emitter does not produce at all, so for them exclusion from the regen comparison costs nothing; for these it suppresses a real authority-versus-artifact divergence. Declared rung: mitigatable — the divergence is measured, named and counted on every required-regen run, and the population is bounded by this list. Ceiling: structural impossibility — the file is decidable and fully modelled, so the reachable end state is that the emitter produces the committed bytes and this family is EMPTY, not that a check reports the gap. main was carried as a SeedRetainedIntrinsicRegistration, whose type asserts hand-authored source with no .dag authority; that is false of a file the emitter emits, and the false family is exactly what made the divergence unobservable. The consumer enforces this list in three directions rather than reading it as permission: an undeclared divergence FAILS (a new suppression cannot be added by editing Rust), a declared row that no longer diverges FAILS (the restoration trigger is mechanical, not prose), and a declared row the emitter no longer produces FAILS (a row cannot outlive its producer)."
+
+data emitter_produced_divergent_registrations: List<EmitterProducedDivergentRegistration> = [
+  EmitterProducedDivergentRegistration {
+    basename: "main",
+    reason: "emit_main_rs (src/v1/05_emit_rust.dag) produces a generic workflow-function dispatcher; measured 2026-08-21 by execution it emits 552 lines against the committed 1318, omitting the Ci, Converge and Serve subcommands entirely along with compile's entry flag. The emitter does not model the gunbc CLI's own subcommand surface, so installing its output would delete the CLI. This is not formatting drift and no number of regenerations closes it.",
+    restoration_trigger: "emit_main_rs models the CLI subcommand surface it presently omits, so emitted and committed main.rs agree. At that moment the identical-but-declared arm in required_regen_host turns red and stays red until this row is deleted, which is what makes the trigger executable rather than a note."
+  }
+]
+
+fn emitter_produced_divergent_stage0_files() -> List<String> {
+  fold(
+    emitter_produced_divergent_registrations,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, [concat(row.basename, ".rs")])
+    }
   )
 }
 
@@ -261,8 +290,11 @@ type WetActuatorGeneratedRegistration {
 }
 
 data wet_actuator_generated_registrations: List<WetActuatorGeneratedRegistration> = [
-  WetActuatorGeneratedRegistration { basename: "bootstrap_stage0_crate_layout_generated" }
+  WetActuatorGeneratedRegistration { basename: "bootstrap_stage0_crate_layout_generated" },
+  WetActuatorGeneratedRegistration { basename: "v1_interpreter_dispatch_generated" }
 ]
+
+data v1_interpreter_dispatch_generated_family_note: String = "MOVED here from seed_retained_scaffold_registrations 2026-08-21. It was never a quarantine scaffold: its own banner names its producer, dag/gunbc/v1_interpreter_dispatch_emit.dag, a SECOND wet actuator with exactly the property this family exists to state — it reaches disk through main_wet and so structurally never appears in compile_stage0()'s emitted population, which is why it must stay in the filename exclusion. Verified NOT-EMITTED by execution 2026-08-21 alongside the other 34. The move is byte-neutral for the pub-mod block: pub_mod_decl_lines_for_basename returns the empty list for this basename because its declaration is spliced by the v1_interpreter row as a macro_use line, so leaving the scaffold family costs it no pub mod it previously had."
 
 data wet_actuator_generated_files_note: String = "bootstrap_stage0_crate_layout_generated.rs is NOT hand-Rust — it IS modeled, by this exact module (v2.compiler.self_host.stage0_crate_layout), and its content (HAND_MAINTAINED_STAGE0_FILES and friends) is exactly what hand_maintained_stage0_filenames/hand_maintained_pub_mod_basenames above derive. It reaches disk through dag/tools/generated_artifact_gate.dag main_wet, a wet actuator distinct from the ordinary per-module Rust emit compile_stage0() performs, so it structurally never appears in compile_stage0()'s emitted population and would misreport as committed_not_emitted without this row. It gets its own registration type rather than folding into SeedRetainedIntrinsicRegistration because that type asserts hand-authored source with no .dag authority, which is false here; this row instead names the real reason — a second, wet-actuator generation path compile_stage0() does not observe. It carries no pub mod line (wired via #[path=...] mod inside required_regen_host.rs, not lib.rs), so it contributes to the stage0 filename exclusion only, never to hand_maintained_pub_mod_basenames."
 
