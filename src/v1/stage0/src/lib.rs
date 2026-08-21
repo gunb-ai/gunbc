@@ -28,7 +28,6 @@ pub mod extdeps_languages_go_types;
 pub mod extdeps_languages_python_emit;
 pub mod extdeps_languages_python_syntax;
 pub mod extdeps_languages_python_types;
-pub mod extdeps_languages_rust_derive_contracts;
 pub mod extdeps_languages_rust_emit;
 pub mod extdeps_languages_rust_syntax;
 pub mod extdeps_languages_rust_types;

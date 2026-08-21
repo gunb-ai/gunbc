@@ -903,16 +903,9 @@ pub fn rust_pair_completion_body_render(body: Rc<PairCompletionBody>) -> String 
     }
 }
 
-pub fn rust_pair_completion_impl_render(
-    row: Rc<PairCompletionOpRow>,
-    carrier_param_needs_clone: bool,
-) -> String {
+pub fn rust_pair_completion_impl_render(row: Rc<PairCompletionOpRow>) -> String {
     match rust_pair_completion_spelling_for(row.op.clone()) {
-    Some(spelling) => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(if carrier_param_needs_clone.clone() {
-        "impl<M: Clone> ".to_string()
-    } else {
-        "impl<M> ".to_string()
-    }, spelling.trait_path.clone()), " for ".to_string()), rust_pair_completion_carrier()), "<M>".to_string()), if (spelling.where_bounds.clone() == "".to_string()) {
+    Some(spelling) => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("impl<M> ".to_string(), spelling.trait_path.clone()), " for ".to_string()), rust_pair_completion_carrier()), "<M>".to_string()), if (spelling.where_bounds.clone() == "".to_string()) {
         " {\n".to_string()
     } else {
         v1_rt::concat(v1_rt::concat("\n".to_string(), spelling.where_bounds.clone()), "\n{\n".to_string())
@@ -925,8 +918,8 @@ pub fn rust_pair_completion_impl_render(
 }
 }
 
-pub fn rust_supplemental_impls_group_completion(carrier_param_needs_clone: bool) -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat("\n// repr-grounding arm (b): GroupCompletion<M> carrier arithmetic, rendered from the\n".to_string(), "// pair-completion rows in std.trait_derive_shape (Add/Mul/Neg are row data; Sub/Div bodies\n".to_string()), "// remain keyed literals: only Add, Mul and Neg render from the PairCompletionSumOfProducts polynomial arms).\n".to_string()), Rc::new({ let mut __result = Vec::new(); for row in pair_completion_op_rows().iter().cloned() { __result.push(rust_pair_completion_impl_render(row.clone(), carrier_param_needs_clone.clone())); } __result }).join(&"".to_string()))
+pub fn rust_supplemental_impls_group_completion() -> String {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat("\n// repr-grounding arm (b): GroupCompletion<M> carrier arithmetic, rendered from the\n".to_string(), "// pair-completion rows in std.trait_derive_shape (Add/Mul/Neg are row data; Sub/Div bodies\n".to_string()), "// remain keyed literals: only Add, Mul and Neg render from the PairCompletionSumOfProducts polynomial arms).\n".to_string()), Rc::new({ let mut __result = Vec::new(); for row in pair_completion_op_rows().iter().cloned() { __result.push(rust_pair_completion_impl_render(row.clone())); } __result }).join(&"".to_string()))
 }
 
 pub fn rust_supplemental_impls_bool_coproduct() -> String {
