@@ -111,7 +111,7 @@ fn structural_declaration_modules_for(dag_name: String) -> List<String> {
   match dag_name {
     "Hash" => ["src/v2/std/node.dag"]
     "String" => ["src/v2/std/text.dag", "dag/std/string_type.dag"]
-    "Bool" => ["src/v2/std/logic.dag", "dag/std/types.dag"]
+    "Bool" => ["src/v2/std/logic.dag"]
     _ => []
   }
 }

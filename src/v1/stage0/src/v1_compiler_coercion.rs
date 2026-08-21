@@ -147,10 +147,7 @@ pub fn structural_declaration_modules_for(dag_name: String) -> Rc<Vec<String>> {
             "src/v2/std/text.dag".to_string(),
             "dag/std/string_type.dag".to_string(),
         ]),
-        "Bool" => Rc::new(vec![
-            "src/v2/std/logic.dag".to_string(),
-            "dag/std/types.dag".to_string(),
-        ]),
+        "Bool" => Rc::new(vec!["src/v2/std/logic.dag".to_string()]),
         _ => Rc::new(vec![]),
     }
 }
