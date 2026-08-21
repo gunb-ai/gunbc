@@ -1,6 +1,6 @@
 module test.claim.scm_merge_witness
 
-import std.types { Bool, String, List }
+import std.types { Bool, Int, String, List }
 
 import v2.std.node {
   Node,
@@ -36,8 +36,10 @@ import gunbc.scm.merge {
   MergeDependency,
   MergeOutcome,
   Merged,
-  MergeChoiceRequired,
-  MergeChoiceEvidence,
+  MergeRolesContested,
+  DesiredRoleValue,
+  DesiredBindingPresent,
+  DesiredBindingAbsent,
   MergeRefused,
   MergeRefusal,
   RequiredDependencyRemoved,
@@ -122,7 +124,7 @@ fn remove_f_proposal() -> Proposal {
 fn outcome_is_merged(o: MergeOutcome) -> Bool {
   match o {
     Merged { store: _, commit: _, roles: _ } => true
-    MergeChoiceRequired { evidence: _ } => false
+    MergeRolesContested { role: _, alternatives: _ } => false
     MergeRefused { cause: _ } => false
   }
 }
@@ -130,7 +132,7 @@ fn outcome_is_merged(o: MergeOutcome) -> Bool {
 fn merged_roles(o: MergeOutcome) -> List<ResolvedRole> {
   match o {
     Merged { store: _, commit: _, roles: roles } => roles
-    MergeChoiceRequired { evidence: _ } => []
+    MergeRolesContested { role: _, alternatives: _ } => []
     MergeRefused { cause: _ } => []
   }
 }
@@ -147,7 +149,7 @@ fn refusal_locates(
 ) -> Bool {
   match o {
     Merged { store: _, commit: _, roles: _ } => false
-    MergeChoiceRequired { evidence: _ } => false
+    MergeRolesContested { role: _, alternatives: _ } => false
     MergeRefused { cause: cause } =>
       match cause {
         RequiredDependencyRemoved { dependency: dep, removed_role: removed } =>
@@ -283,7 +285,7 @@ test fn the_arm_a_dependency_row_is_actually_read() -> Bool {
         BindingLocatorCollision { role: _, identity: _ } => false
       }
     Merged { store: _, commit: _, roles: _ } => false
-    MergeChoiceRequired { evidence: _ } => false
+    MergeRolesContested { role: _, alternatives: _ } => false
   }
 }
 
@@ -480,23 +482,29 @@ test fn an_unsupported_dependency_kind_refuses() -> Bool {
         BindingLocatorCollision { role: _, identity: _ } => false
       }
     Merged { store: _, commit: _, roles: _ } => false
-    MergeChoiceRequired { evidence: _ } => false
+    MergeRolesContested { role: _, alternatives: _ } => false
   }
 }
 
-// THE CHOICE CARRIES THE COMPETING PAIR, so this asserts the second authoring is the ABSENCE
-// requirement -- not merely that some conflict was found at f. A claim that checked only the
-// role would pass against an outcome that had forgotten what competed.
-fn choice_incoming_is_absence(incoming: Requirement) -> Bool {
-  match incoming {
-    RequireBindingAbsent { role: _ } => true
-    RequireBinding { role: _, value: _ } => false
+// A REAL CONTEST REPORTS EVERY DISTINCT ALTERNATIVE, and the assertion counts them. One proposal
+// requires f = F2, another requires f absent: two distinct requested states, so two alternatives.
+fn contested_alternative_count(o: MergeOutcome) -> Int {
+  match o {
+    MergeRolesContested { role: _, alternatives: alternatives } => length(alternatives)
+    Merged { store: _, commit: _, roles: _ } => 0
+    MergeRefused { cause: _ } => 0
   }
 }
 
-// TWO PROPOSALS AUTHORING ONE ROLE IS A QUESTION, not a resolution. Present-vs-absent is the same
-// question in a different costume and lands on the same arm.
-test fn one_role_authored_twice_asks() -> Bool {
+fn contested_at_role(o: MergeOutcome, role: Symbol) -> Bool {
+  match o {
+    MergeRolesContested { role: at, alternatives: _ } => (at as String) == (role as String)
+    Merged { store: _, commit: _, roles: _ } => false
+    MergeRefused { cause: _ } => false
+  }
+}
+
+test fn two_distinct_requests_for_one_role_are_contested() -> Bool {
   let fx = fixture_with(edges: [merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F))])
   let out = merge(
     store: fx.store,
@@ -510,16 +518,73 @@ test fn one_role_authored_twice_asks() -> Bool {
       remove_f_proposal(),
     ],
   )
-  match out {
-    MergeChoiceRequired { evidence: evidence } =>
-      ((evidence.role as String) == (^f as String))
-        && choice_incoming_is_absence(incoming: evidence.incoming)
-    Merged { store: _, commit: _, roles: _ } => false
-    MergeRefused { cause: _ } => false
-  }
+  contested_at_role(o: out, role: ^f) && (contested_alternative_count(o: out) == 2)
 }
 
-// SILENCE PRESERVES. With no proposals at all, every target role survives holding its own object.
+// AGREEMENT IS NOT A CONTEST. Two proposals requiring the SAME object at one role agree, and an
+// earlier revision reported that as a choice -- fabricating a question whose alternatives are
+// identical. This is the discriminating claim for that fix: the same authoring twice must MERGE,
+// not ask. Its mirror below does the same for two absence requirements.
+test fn the_same_request_authored_twice_is_not_a_contest() -> Bool {
+  let fx = fixture_with(edges: [merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F))])
+  let out = merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: [
+      Proposal {
+        requirements: [RequireBinding { role: ^f, value: merge_witness_leaf(name: ^F2) }],
+        dependencies: [],
+      },
+      Proposal {
+        requirements: [RequireBinding { role: ^f, value: merge_witness_leaf(name: ^F2) }],
+        dependencies: [],
+      },
+    ],
+  )
+  outcome_is_merged(o: out)
+}
+
+test fn absence_authored_twice_is_not_a_contest() -> Bool {
+  let fx = fixture_with(edges: [merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F))])
+  let out = merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: [remove_f_proposal(), remove_f_proposal()],
+  )
+  outcome_is_merged(o: out) && role_absent_from_result(roles: merged_roles(o: out), role: ^f)
+}
+
+// THE CONTESTED SET IS COMPLETE UNDER ANY ORDER. Three proposals requesting three different
+// objects at one role produce THREE alternatives whichever way they arrive. A fold that stopped at
+// the first competitor would report two, and WHICH two would depend on arrival order -- the
+// order-is-not-authority law broken in the one place its violation is invisible from a single run.
+test fn every_distinct_alternative_is_accumulated_regardless_of_order() -> Bool {
+  let fx = fixture_with(edges: [merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F))])
+  let a = Proposal {
+    requirements: [RequireBinding { role: ^f, value: merge_witness_leaf(name: ^F1) }],
+    dependencies: [],
+  }
+  let b = Proposal {
+    requirements: [RequireBinding { role: ^f, value: merge_witness_leaf(name: ^F2) }],
+    dependencies: [],
+  }
+  let c = Proposal {
+    requirements: [RequireBinding { role: ^f, value: merge_witness_leaf(name: ^F3) }],
+    dependencies: [],
+  }
+  let forward = merge(
+    store: fx.store, target: fx.target, target_dependencies: [], proposals: [a, b, c],
+  )
+  let backward = merge(
+    store: fx.store, target: fx.target, target_dependencies: [], proposals: [c, b, a],
+  )
+  (contested_alternative_count(o: forward) == 3)
+    && (contested_alternative_count(o: backward) == 3)
+}
+
+// SILENCE PRESERVES.// SILENCE PRESERVES. With no proposals at all, every target role survives holding its own object.
 test fn an_empty_proposal_set_preserves_the_target() -> Bool {
   let fx = fixture_with(edges: [merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F))])
   let f_id = identity_or(

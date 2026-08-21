@@ -229,31 +229,59 @@ type MergeRefusal
 // a real section 3 question this change does not settle -- it removes the corpus-wide
 // ambiguity without pretending the layering is resolved.
 //
-// THE OUTCOME SAYS WHAT COMPETED, NOT MERELY WHERE. An earlier revision carried only the role,
-// which locates the conflict and then discards the two things that caused it -- the same
-// information-loss defect as a usage_site that duplicates its own dependent. Both sides are in
-// hand at the moment the conflict is detected, so dropping them means every consumer must
-// re-derive what the engine already knew, and a presentation layer asking "which alternatives?"
-// cannot be answered from a role at all.
+// BOTH SIDES OF A CONTEST MUST INHABIT ONE DOMAIN, and neither of the two obvious carriers is
+// that domain. A Requirement is AUTHORED SYNTAX; a RoleValue is RESULT PROVENANCE. Comparing one
+// against the other cannot answer "are these the same request?", which is the only question that
+// decides whether a contest exists at all. So both normalize to the REQUESTED STATE first.
 //
-// THE ENGINE OWNS THE FACT, NOT THE QUESTION. This carries the competing pair; it does not carry
-// a rendered question or a resumable continuation, because those need audience authorization,
-// stable resume identities and proof the alternatives are materially distinct -- none of which
-// the engine holds. Manufacturing them here would be fabricating evidence one layer early.
-type MergeChoiceEvidence {
-  role: Symbol
-  held: RoleValue?
-  incoming: Requirement
+// THE CONVERSION BELONGS HERE, NOT ABOVE. Normalizing a present binding means storing the node
+// and taking its ObjectId, which can itself collide -- so it is object-store work, and a seam
+// that performed it would either duplicate this module's authority or redo its refusals.
+type DesiredRoleValue
+  = DesiredBindingPresent { object: ObjectId }
+  | DesiredBindingAbsent
+
+fn desired_role_value_eq(a: DesiredRoleValue, b: DesiredRoleValue) -> Bool {
+  match a {
+    DesiredBindingAbsent =>
+      match b {
+        DesiredBindingAbsent => true
+        DesiredBindingPresent { object: _ } => false
+      }
+    DesiredBindingPresent { object: left } =>
+      match b {
+        DesiredBindingAbsent => false
+        DesiredBindingPresent { object: right } => object_id_eq(left: left, right: right)
+      }
+  }
 }
 
-// CHOICE IS AN ANSWER, NOT A FAILURE. Two proposals stating different values for one role is a
+// IDENTICAL AUTHORINGS ARE NOT A CONTEST. Two proposals that both require f = F, or both require
+// f absent, AGREE -- and an earlier revision reported that as a choice, fabricating a question
+// with no alternatives in it. Worse, its witness asserted the broad behaviour, so the defect was
+// enshrined as the contract rather than caught by it. Distinctness is decided on the NORMALIZED
+// value, which is exactly the comparison this engine can make honestly: it can establish that two
+// requests name the same object, and it deliberately does NOT claim two different objects are
+// MATERIALLY different -- that needs an equivalence quotient this layer does not own.
+type AuthoredRoleState {
+  role: Symbol
+  alternatives: List<DesiredRoleValue>
+}
+
+// CONTESTED, NOT CHOICE-REQUIRED. Same correction as MergeRefused: an engine observation must not
+// be named for a stronger downstream conclusion. That distinct alternatives EXIST is what this
+// module establishes. That a USER must choose between them requires proving they survive the
+// admitted equivalence quotient, that the candidate population is closed, that no further machine
+// work resolves them, and that they are authorized for presentation -- none of which lives here.
+
+// CHOICE IS AN ANSWER, NOT A FAILURE.// CHOICE IS AN ANSWER, NOT A FAILURE. Two proposals stating different values for one role is a
 // QUESTION the system is not entitled to answer: latest-wins, first-wins and branch-priority-wins are
 // all fabricated plausible output, and each silently discards an authored requirement. Requiring a
 // role present and requiring it absent is the same question in a different costume, so it lands on
 // the same arm rather than being quietly resolved in favour of either.
 type MergeOutcome
   = Merged { store: ObjectStore, commit: Commit, roles: List<ResolvedRole> }
-  | MergeChoiceRequired { evidence: MergeChoiceEvidence }
+  | MergeRolesContested { role: Symbol, alternatives: List<DesiredRoleValue> }
   | MergeRefused { cause: MergeRefusal }
 
 fn edge_label_role(label: EdgeLabel) -> Symbol? {
@@ -331,8 +359,7 @@ fn upsert_role(roles: List<ResolvedRole>, incoming: ResolvedRole) -> List<Resolv
 type MergeApplyAcc {
   store: ObjectStore
   roles: List<ResolvedRole>
-  authored: List<Symbol>
-  choice: MergeChoiceEvidence?
+  authored: List<AuthoredRoleState>
   refusal: MergeRefusal?
 }
 
@@ -340,89 +367,147 @@ type MergeApplyAcc {
 // AUTHORED, not against what the role currently holds. Comparing against the current value would
 // make two proposals that both replace a role look like agreement whenever the second happened to
 // restate the first's result, and would make the answer depend on the order they were applied.
-fn already_authored(authored: List<Symbol>, role: Symbol) -> Bool {
+fn already_authored(authored: List<AuthoredRoleState>, role: Symbol) -> Bool {
   fold(authored, init: false, f: fn(seen, a) {
-    if seen { true } else { (a as String) == (role as String) }
+    if seen { true } else { (a.role as String) == (role as String) }
   })
 }
 
-fn held_role_value(roles: List<ResolvedRole>, role: Symbol) -> RoleValue? {
-  match role_named(roles: roles, role: role) {
-    Absent => none
-    Present { value: r } => Present { value: r.value }
+fn authored_state(authored: List<AuthoredRoleState>, role: Symbol) -> AuthoredRoleState? {
+  fold(authored, init: none, f: fn(found, a) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        if (a.role as String) == (role as String) { Present { value: a } } else { none }
+    }
+  })
+}
+
+fn alternatives_contain(alternatives: List<DesiredRoleValue>, desired: DesiredRoleValue) -> Bool {
+  fold(alternatives, init: false, f: fn(seen, alt) {
+    if seen { true } else { desired_role_value_eq(a: alt, b: desired) }
+  })
+}
+
+// A CONTEST IS A PROPERTY OF THE WHOLE PROPOSAL POPULATION, so alternatives ACCUMULATE and the
+// fold never stops at the first competitor. An earlier revision short-circuited there, which made
+// the reported evidence a function of ARRIVAL ORDER: with A=F1, B=F2, C=F3 it answered (F1,F2)
+// for one ordering and (F3,F2) for another. Both are true statements and neither is the fact, and
+// order deciding which one survives is precisely what this lane forbids. Accumulating every
+// distinct alternative makes the reported set complete under any permutation.
+fn record_alternative(
+  authored: List<AuthoredRoleState>,
+  role: Symbol,
+  desired: DesiredRoleValue,
+) -> List<AuthoredRoleState> {
+  if already_authored(authored: authored, role: role) {
+    fold(authored, init: [], f: fn(acc, a) {
+      if (a.role as String) == (role as String) {
+        if alternatives_contain(alternatives: a.alternatives, desired: desired) {
+          concat(acc, [a])
+        } else {
+          concat(acc, [AuthoredRoleState {
+            role: a.role,
+            alternatives: concat(a.alternatives, [desired]),
+          }])
+        }
+      } else {
+        concat(acc, [a])
+      }
+    })
+  } else {
+    concat(authored, [AuthoredRoleState { role: role, alternatives: [desired] }])
   }
 }
 
+fn first_contested_role(authored: List<AuthoredRoleState>) -> AuthoredRoleState? {
+  fold(authored, init: none, f: fn(found, a) {
+    match found {
+      Present { value: _ } => found
+      Absent => if length(a.alternatives) > 1 { Present { value: a } } else { none }
+    }
+  })
+}
+
+// NORMALIZE FIRST, THEN DECIDE. The requested state is computed BEFORE asking whether the role is
+// contested, because "is this the same request?" is only answerable on normalized values -- and
+// because normalizing a present binding stores the node, which can refuse on its own.
+type NormalizeOutcome
+  = Normalized { store: ObjectStore, desired: DesiredRoleValue }
+  | NormalizeRefused { cause: MergeRefusal }
+
+fn normalize_requirement(store: ObjectStore, req: Requirement) -> NormalizeOutcome {
+  match req {
+    RequireBindingAbsent { role: _ } =>
+      Normalized { store: store, desired: DesiredBindingAbsent }
+    RequireBinding { role: role, value: value } =>
+      match store_node(store: store, n: value) {
+        LocatorCollision { identity: identity, existing: _, incoming: _ } =>
+          NormalizeRefused {
+            cause: BindingLocatorCollision { role: role, identity: identity },
+          }
+        Stored { store: store, identity: identity } =>
+          Normalized {
+            store: store,
+            desired: DesiredBindingPresent { object: identity },
+          }
+      }
+  }
+}
+
+fn role_value_of_desired(desired: DesiredRoleValue) -> RoleValue {
+  match desired {
+    DesiredBindingAbsent => RemovedByProposal
+    DesiredBindingPresent { object: object } => ProvidedByProposal { object: object }
+  }
+}
+
+// THE FOLD NO LONGER SHORT-CIRCUITS ON A CONTEST. It records every authored alternative and keeps
+// going, so the contested set is complete and order-independent; the contest is reported after the
+// whole population has been seen. It still short-circuits on a REFUSAL, because a refusal is a
+// statement about this merge attempt rather than an accumulating property of the population.
 fn apply_requirement(acc: MergeApplyAcc, req: Requirement) -> MergeApplyAcc {
   match acc.refusal {
     Present { value: _ } => acc
-    Absent =>
-      match acc.choice {
-        Present { value: _ } => acc
-        Absent => {
-          let role = requirement_role(r: req)
-          if already_authored(authored: acc.authored, role: role) {
-            MergeApplyAcc {
-              store: acc.store,
-              roles: acc.roles,
-              authored: acc.authored,
-              choice: Present {
-                value: MergeChoiceEvidence {
-                  role: role,
-                  held: held_role_value(roles: acc.roles, role: role),
-                  incoming: req,
-                },
-              },
-              refusal: none,
-            }
-          } else {
-            apply_fresh_requirement(acc: acc, req: req, role: role)
-          }
-        }
-      }
-  }
-}
-
-fn apply_fresh_requirement(acc: MergeApplyAcc, req: Requirement, role: Symbol) -> MergeApplyAcc {
-  match req {
-    RequireBindingAbsent { role: _ } =>
-      MergeApplyAcc {
-        store: acc.store,
-        roles: upsert_role(
-          roles: acc.roles,
-          incoming: ResolvedRole { role: role, value: RemovedByProposal },
-        ),
-        authored: concat(acc.authored, [role]),
-        choice: none,
-        refusal: none,
-      }
-    RequireBinding { role: _, value: value } =>
-      match store_node(store: acc.store, n: value) {
-        LocatorCollision { identity: identity, existing: _, incoming: _ } =>
+    Absent => {
+      let role = requirement_role(r: req)
+      match normalize_requirement(store: acc.store, req: req) {
+        NormalizeRefused { cause: cause } =>
           MergeApplyAcc {
             store: acc.store,
             roles: acc.roles,
             authored: acc.authored,
-            choice: none,
-            refusal: Present {
-              value: BindingLocatorCollision { role: role, identity: identity },
-            },
+            refusal: Present { value: cause },
           }
-        Stored { store: store, identity: identity } =>
+        Normalized { store: store, desired: desired } => {
+          // ONLY THE FIRST AUTHORING RESOLVES THE ROLE. A later competing authoring is recorded as
+          // an alternative and must NOT overwrite it: silently taking the last writer is the
+          // fabricated winner this outcome type exists to refuse.
+          let next_roles =
+            if already_authored(authored: acc.authored, role: role) {
+              acc.roles
+            } else {
+              upsert_role(
+                roles: acc.roles,
+                incoming: ResolvedRole {
+                  role: role,
+                  value: role_value_of_desired(desired: desired),
+                },
+              )
+            }
           MergeApplyAcc {
             store: store,
-            roles: upsert_role(
-              roles: acc.roles,
-              incoming: ResolvedRole {
-                role: role,
-                value: ProvidedByProposal { object: identity },
-              },
+            roles: next_roles,
+            authored: record_alternative(
+              authored: acc.authored,
+              role: role,
+              desired: desired,
             ),
-            authored: concat(acc.authored, [role]),
-            choice: none,
             refusal: none,
           }
+        }
       }
+    }
   }
 }
 
@@ -431,6 +516,12 @@ fn apply_fresh_requirement(acc: MergeApplyAcc, req: Requirement, role: Symbol) -
 // so retargeting `k` from `f` to `h` in the same proposal must not leave the old `k -> f` obligation
 // standing. Without this rule the kernel would refuse valid coordinated changes, which is the
 // mirror-image defect of admitting invalid ones and is just as wrong.
+fn role_name_listed(names: List<Symbol>, role: Symbol) -> Bool {
+  fold(names, init: false, f: fn(seen, n) {
+    if seen { true } else { (n as String) == (role as String) }
+  })
+}
+
 fn effective_dependencies(
   target_dependencies: List<MergeDependency>,
   proposal_dependencies: List<MergeDependency>,
@@ -438,7 +529,7 @@ fn effective_dependencies(
 ) -> List<MergeDependency> {
   concat(
     fold(target_dependencies, init: [], f: fn(acc, dep) {
-      if already_authored(authored: authored, role: dep.dependent) {
+      if role_name_listed(names: authored, role: dep.dependent) {
         acc
       } else {
         concat(acc, [dep])
@@ -551,7 +642,6 @@ fn merge(
           store: store,
           roles: base,
           authored: [],
-          choice: none,
           refusal: none,
         },
         f: fn(acc, p) {
@@ -563,8 +653,12 @@ fn merge(
       match applied.refusal {
         Present { value: cause } => MergeRefused { cause: cause }
         Absent =>
-          match applied.choice {
-            Present { value: evidence } => MergeChoiceRequired { evidence: evidence }
+          match first_contested_role(authored: applied.authored) {
+            Present { value: contested } =>
+              MergeRolesContested {
+                role: contested.role,
+                alternatives: contested.alternatives,
+              }
             Absent =>
               finish_merge(
                 applied: applied,
@@ -575,6 +669,10 @@ fn merge(
       }
     }
   }
+}
+
+fn authored_role_names(authored: List<AuthoredRoleState>) -> List<Symbol> {
+  fold(authored, init: [], f: fn(acc, a) { concat(acc, [a.role]) })
 }
 
 fn all_proposal_dependencies(proposals: List<Proposal>) -> List<MergeDependency> {
@@ -589,7 +687,7 @@ fn finish_merge(
   let deps = effective_dependencies(
     target_dependencies: target_dependencies,
     proposal_dependencies: all_proposal_dependencies(proposals: proposals),
-    authored: applied.authored,
+    authored: authored_role_names(authored: applied.authored),
   )
   match validate_dependencies(roles: applied.roles, deps: deps) {
     Present { value: cause } => MergeRefused { cause: cause }
