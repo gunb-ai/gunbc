@@ -139,6 +139,48 @@ It composes with the cross-tab already committed to — the calibration is one c
 interesting cell (`DivergesWithExactIdentity` at zero diagnostics) is trustworthy only once the
 calibrated cell checks out.
 
+### Correction to (b) as ruled: the v2 assembly is the WRONG TREE, so (b) is v1-side
+
+Found while building it, and recorded because it falsifies a premise both the recommendation and the
+ruling rested on — not the ruling's *reasoning*, which survives intact, but the concrete artifact it
+named.
+
+**(b) was described as "a `v2.workflow` census module over the same assembled closure", reusing the
+`v2.workflow.realization_sweep` pattern. That is not implementable as stated.** That pattern's
+`assemble_program_from_ingest` returns an `Outcome<Node>` over **`v2.std.node.Node`**, while
+`v1.compiler.05_emit_rust` — the module whose decisions the census exists to measure — operates on
+**`v1.std.core.Node`**, imported by name at the top of that file. They are different types. A walk
+over the v2 assembly would be measuring a different tree from the one the emitter renders, which is
+the traversal-drift failure the calibration control exists to catch, built in at the foundation.
+
+**(b′), the corrected shape, is v1-side and is implementable today.** `v1.compiler.compile`
+`front_end_sources(sources: List<SourceFile>) -> FrontendResult` is a public entry returning
+`FrontendResult { graph: ModuleGraph?, newline_indices, intern_table, … }` — the v1 tree the emitter
+consumes, plus the `newline_indices` that `authored_name_at` needs. So:
+
+1. the host supplies the closure's `SourceFile` rows — **transport only**, the same role
+   `realization_sweep_survey.rs` plays for its probe;
+2. the census module calls `front_end_sources` and walks each module's items for type-reference
+   occurrences;
+3. per occurrence: `authored_name_at`, `v1.compiler.coercion` `type_reference_decl_file`, position
+   kind;
+4. legacy answer from the **imported** `is_host_text_carrier_type`; authority answer from the strict
+   `type_realization_decision`;
+5. rows out as TSV.
+
+**Everything the ruling actually reasoned about survives this correction**, which is why it is a
+correction and not a re-open: the predicate is still imported rather than re-derived, no output
+channel is added to the emit path, acceptance condition 8 is still true by construction for step 1,
+and the calibration control is unchanged and now matters more — a v1-side walk *can* still drift from
+the emitter's control flow, and reproducing the 25 is still what settles it.
+
+**One thing (b′) improves over (b) as ruled:** the census module does **not** have to live in
+`src/v1/`. Import direction is not a layer rule — DESIGN §3 makes acyclicity the only structural law
+and folders a browsing convention — so a probe module outside the seed may import `v1.std.core`,
+`v1.compiler.coercion` and `v1.compiler.05_emit_rust` without adding a module to the frozen seed.
+That removes the v1-growth question from step 1 entirely; the only seed edit remains the
+`is_host_text_carrier_type` visibility change disclosed above.
+
 ### (b) is NOT zero-touch on `05_emit_rust`, stated plainly
 
 An earlier revision of this document described the emitter as "untouched" under (b). That
