@@ -22,7 +22,7 @@ data novel_unit_input: v2.std.node.Node = v2.std.node.Node {
 
 test fn novel_unit_flagged_holds() -> v2.std.logic.Bool {
   match unit_modeling_gate(node: novel_unit_input) {
-    v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_blocked_pending_carrier
+    Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_blocked_pending_carrier
     Accepted { value: _, diagnostics: _ } => false
   }
 }

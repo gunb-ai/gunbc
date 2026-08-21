@@ -163,7 +163,7 @@ test fn effect_io_eval_unbound_fail_closed_holds() -> v2.std.logic.Bool {
     context: effect_io_eval_context_unbound(),
     inputs: v2.compiler.eval.inputs_root_only(root: effect_io_eval_roundtrip_node)
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^effect_io_eval_primitive_rejected
+    Rejected { diagnostics: d } => d.head.reason == ^effect_io_eval_primitive_rejected
     Accepted { value: _, diagnostics: _ } => false
   }
 }

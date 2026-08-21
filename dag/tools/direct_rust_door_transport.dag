@@ -33,14 +33,14 @@ fn run_direct_rust_door_emit_write_compile_smoke() -> v2.std.logic.Bool {
         written: written,
         cargo_green: compile_ok
       ) {
-        v2.std.optional.Present { value: cargo_written } =>
+        Present { value: cargo_written } =>
           v2.compiler.self_host.fixture_synthetic_emission.written_synthetic_emitted_artifact_ok(written: cargo_written)
             && v2.compiler.self_host.fixture_synthetic_emission.written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification(
               written: cargo_written
             )
-        v2.std.optional.Absent => false
+        Absent => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
   let cleanup = shell.Remove.RecursiveForce(path: dir.path)
   dir.success

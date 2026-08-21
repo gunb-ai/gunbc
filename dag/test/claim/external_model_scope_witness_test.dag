@@ -290,7 +290,7 @@ fn synthetic_manifest_add_diff() -> String {
 
 fn remove_only_exit_is_success(observation: gunbc.extdeps_scope_frontier.ManifestLineObservation) -> Bool {
   match manifest_remove_only_exit(observation: observation) {
-    std.process.ExitSuccess => true
+    ExitSuccess => true
     _ => false
   }
 }

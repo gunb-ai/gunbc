@@ -171,15 +171,15 @@ fn scope_placement_gate_verdict(
   let membership = scope_placement_membership_verdict(observation: change_observation)
   match membership {
     ExitFailure { code: _, reason: _ } => membership
-    std.process.ExitSuccess => {
+    ExitSuccess => {
       let freeze = scope_placement_freeze_verdict(observation: freeze_observation)
       match freeze {
         ExitFailure { code: _, reason: _ } => freeze
-        std.process.ExitSuccess => {
+        ExitSuccess => {
           let homing = language_module_home_verdict(observation: change_observation)
           match homing {
             ExitFailure { code: _, reason: _ } => homing
-            std.process.ExitSuccess => manifest_remove_only_verdict()
+            ExitSuccess => manifest_remove_only_verdict()
           }
         }
       }
@@ -198,7 +198,7 @@ data scope_placement_failure_receipt_note: String = "The loudness half (gunbc#76
 
 fn scope_placement_failure_reason(exit: std.process.ProcessExit) -> String {
   match exit {
-    std.process.ExitSuccess => ""
+    ExitSuccess => ""
     ExitFailure { code: _, reason: reason } => reason
   }
 }

@@ -73,8 +73,8 @@ fn some_let_binding_fact(fact: LetBindingFact) -> v2.std.optional.Optional<LetBi
 fn let_binding_fact_for(name: v2.std.node.Symbol, bindings: List<LetBinding>) -> v2.std.optional.Optional<LetBindingFact> {
   fold(bindings, init: no_let_binding_fact(), f: fn(acc, b) {
     match acc {
-      v2.std.optional.Present { value: _ } => acc
-      v2.std.optional.Absent =>
+      Present { value: _ } => acc
+      Absent =>
         if b.name == name {
           some_let_binding_fact(fact: b.fact)
         } else {
@@ -88,12 +88,12 @@ fn resolve_port_reading(reading: PortReading, bindings: List<LetBinding>) -> Por
   match reading {
     PortBareName { name: n } =>
       match let_binding_fact_for(name: n, bindings: bindings) {
-        v2.std.optional.Present { value: fact } =>
+        Present { value: fact } =>
           match fact {
             BindsFresh => PortPureLiteral
             BindsComputed { mentions: ms } => PortComputedExpression { mentions: ms }
           }
-        v2.std.optional.Absent => reading
+        Absent => reading
       }
     PortPureLiteral => reading
     PortComputedExpression { mentions: _ } => reading
@@ -124,17 +124,17 @@ fn classify_call(
   carriers: List<v2.std.node.Symbol>
 ) -> v2.std.optional.Optional<Finding> {
   match v2.lens.cost.copied_port_citations.copied_port_index_of(combiner: combiner) {
-    v2.std.optional.Absent =>
+    Absent =>
       if any_port_carries_carrier(ports: ports, carriers: carriers) {
         some_finding(f: Unclassifiable { at: at, cause: ^combiner_unregistered_carrier_reaches })
       } else {
         v2.std.optional.Absent
       }
-    v2.std.optional.Present { value: idx } =>
+    Present { value: idx } =>
       match list_at_optional(xs: ports, index: idx) {
-        v2.std.optional.Absent =>
+        Absent =>
           some_finding(f: Unclassifiable { at: at, cause: ^copied_port_argument_missing })
-        v2.std.optional.Present { value: reading } =>
+        Present { value: reading } =>
           classify_copied_port(at: at, reading: reading, carriers: carriers)
       }
   }

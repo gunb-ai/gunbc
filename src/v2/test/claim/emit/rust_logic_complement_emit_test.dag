@@ -25,7 +25,7 @@ test fn rust_logic_complement_emit_accepts() -> v2.std.logic.Bool {
   ) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_logic_complement_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -38,7 +38,7 @@ test fn rust_logic_complement_emit_swapped_discriminates() -> v2.std.logic.Bool 
       (source.carried == rust_logic_complement_swapped_arms_source_text) &&
       (source.carried != rust_logic_complement_source_text) &&
       (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

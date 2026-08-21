@@ -81,8 +81,8 @@ fn check_conclusion_wire_label(c: CheckConclusion) -> String {
 
 fn check_conclusion_wire_optional(c: CheckConclusion?) -> String? {
   match c {
-    v2.std.optional.Present { value: v } => v2.std.optional.Present { value: check_conclusion_wire_label(c: v) }
-    v2.std.optional.Absent => none
+    Present { value: v } => v2.std.optional.Present { value: check_conclusion_wire_label(c: v) }
+    Absent => none
   }
 }
 

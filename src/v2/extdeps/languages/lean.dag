@@ -883,8 +883,8 @@ fn lean_scalar_algebra_inhabitance_optional(facts: LeanPrimitiveFacts) -> v2.std
 
 fn lean_inhabitance_decl_step(acc: List<v2.std.model_core.AlgebraInhabitanceDecl>, facts: LeanPrimitiveFacts) -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   match lean_scalar_algebra_inhabitance_optional(facts: facts) {
-    v2.std.optional.Present { value: decl } => v2.std.algebra.list_snoc_item(xs: acc, item: decl)
-    v2.std.optional.Absent => acc
+    Present { value: decl } => v2.std.algebra.list_snoc_item(xs: acc, item: decl)
+    Absent => acc
   }
 }
 

@@ -119,7 +119,7 @@ fn wrap_decision_gate_rejects(
     source_carrier: source_carrier,
     use_site: use_site
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
     _ => false
   }
 }
@@ -242,7 +242,7 @@ fn wrap_decision_flow_rejects(
     producer_site: producer_site,
     consumer_site: consumer_site
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
@@ -375,7 +375,7 @@ fn wrap_decision_composite_boundary_result() -> v2.std.node.Node {
     use_site: OwnershipAtStructField
   ) {
     Accepted { value: node, diagnostics: _ } => node
-    v2.std.diagnostic.Rejected { diagnostics: _ } => wrap_decision_composite_projected()
+    Rejected { diagnostics: _ } => wrap_decision_composite_projected()
   }
 }
 
@@ -384,8 +384,8 @@ fn wrap_decision_composite_result_arg() -> v2.std.node.Node {
     xs: node_positional_child_targets(node: wrap_decision_composite_boundary_result()),
     index: 1
   ) {
-    v2.std.optional.Present { value: arg } => arg
-    v2.std.optional.Absent => wrap_decision_composite_projected_arg()
+    Present { value: arg } => arg
+    Absent => wrap_decision_composite_projected_arg()
   }
 }
 
@@ -395,6 +395,6 @@ test fn wrap_decision_instantiation_arg_is_wrapped() -> v2.std.logic.Bool {
     projection: rust_type_expression_projection()
   ) {
     Accepted { value: wire, diagnostics: _ } => wire.kind == TargetTypeExprInstantiation
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

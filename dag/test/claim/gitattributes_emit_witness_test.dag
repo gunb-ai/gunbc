@@ -46,7 +46,7 @@ test fn witness_duplicate_projection_path_refuses_before_emission() -> Bool {
     gunbc.generated_projection_paths.GeneratedProjectionPathRow { path: "same/path.rs" },
     gunbc.generated_projection_paths.GeneratedProjectionPathRow { path: "same/path.rs" }
   ]) {
-    gunbc.generated_projection_paths.GeneratedProjectionPathsRefused { cause: gunbc.generated_projection_paths.GeneratedProjectionPathCollision { path } } =>
+    GeneratedProjectionPathsRefused { cause: gunbc.generated_projection_paths.GeneratedProjectionPathCollision { path } } =>
       path == "same/path.rs"
     GeneratedProjectionPathsAccepted { paths: _ } => false
   }

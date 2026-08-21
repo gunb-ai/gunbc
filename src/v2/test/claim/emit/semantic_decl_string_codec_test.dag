@@ -4,7 +4,7 @@ module v2.test.emit.semantic_decl_string_codec
 fn round_trip_ok(s: String) -> v2.std.logic.Bool {
   match semantic_decl_string_from_bundle_node(bundle: semantic_decl_string_to_bundle_node(s: s)) {
     Accepted { value: decoded, diagnostics: _ } => decoded == s
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

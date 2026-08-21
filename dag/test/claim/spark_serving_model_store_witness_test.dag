@@ -51,8 +51,8 @@ fn present_listing() -> String {
 
 fn subject_release() -> gunbc.spark.serving_release.SparkServingRelease? {
   match spark_serving_desired_admission {
-    gunbc.spark.serving_desired.SparkServingDesiredAdmitted { serving_release: r } => Present { value: r }
-    gunbc.spark.serving_desired.SparkServingDesiredRefused { cause: _ } => none
+    SparkServingDesiredAdmitted { serving_release: r } => Present { value: r }
+    SparkServingDesiredRefused { cause: _ } => none
   }
 }
 
@@ -120,11 +120,11 @@ test fn a_host_holding_the_declared_model_reconciles_as_converged() -> Bool {
         ], ""),
         blob_digest_stdout: intact_blob_digests(),
       ) {
-        gunbc.ollama_runtime_bundle.ModelStoreAbsent => false
-        gunbc.ollama_runtime_bundle.ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
-        gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: _ } => false
-        gunbc.ollama_runtime_bundle.ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
-        gunbc.ollama_runtime_bundle.ModelStoreComplete { manifest_identity: _, blob_closure_count: n } =>
+        ModelStoreAbsent => false
+        ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
+        ModelStoreObservationRefused { cause: _ } => false
+        ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
+        ModelStoreComplete { manifest_identity: _, blob_closure_count: n } =>
           match model_store_state_digest(
             observation: spark_serving_classify_model_store(
               manifest_body: join([
@@ -169,11 +169,11 @@ test fn a_host_missing_a_blob_does_not_reconcile_as_converged() -> Bool {
         blobs_listing: "sha256-1111111111111111111111111111111111111111111111111111111111111111",
         blob_digest_stdout: intact_blob_digests(),
       ) {
-        gunbc.ollama_runtime_bundle.ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
-        gunbc.ollama_runtime_bundle.ModelStoreAbsent => false
-        gunbc.ollama_runtime_bundle.ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
-        gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: _ } => false
-        gunbc.ollama_runtime_bundle.ModelStoreIncomplete { manifest_identity: _, first_missing_blob: b, further_missing_blobs: rest } =>
+        ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
+        ModelStoreAbsent => false
+        ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
+        ModelStoreObservationRefused { cause: _ } => false
+        ModelStoreIncomplete { manifest_identity: _, first_missing_blob: b, further_missing_blobs: rest } =>
           match model_store_state_digest(
             observation: gunbc.ollama_runtime_bundle.ModelStoreIncomplete {
               manifest_identity: "sha256:49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05" as std.types.NonEmptyStr,
@@ -316,11 +316,11 @@ test fn an_unparseable_manifest_says_so() -> Bool {
     blobs_listing: "",
     blob_digest_stdout: "",
   ) {
-    gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: c } => string_contains(c as String, "not parseable")
-    gunbc.ollama_runtime_bundle.ModelStoreAbsent => false
-    gunbc.ollama_runtime_bundle.ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
-    gunbc.ollama_runtime_bundle.ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
-    gunbc.ollama_runtime_bundle.ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
+    ModelStoreObservationRefused { cause: c } => string_contains(c as String, "not parseable")
+    ModelStoreAbsent => false
+    ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
+    ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
+    ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
   }
 }
 
@@ -331,11 +331,11 @@ test fn a_manifest_whose_layer_has_no_digest_says_malformed() -> Bool {
     blobs_listing: "",
     blob_digest_stdout: "",
   ) {
-    gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: c } => string_contains(c as String, "malformed")
-    gunbc.ollama_runtime_bundle.ModelStoreAbsent => false
-    gunbc.ollama_runtime_bundle.ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
-    gunbc.ollama_runtime_bundle.ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
-    gunbc.ollama_runtime_bundle.ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
+    ModelStoreObservationRefused { cause: c } => string_contains(c as String, "malformed")
+    ModelStoreAbsent => false
+    ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
+    ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
+    ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
   }
 }
 
@@ -349,11 +349,11 @@ test fn a_manifest_naming_no_blobs_refuses_rather_than_reporting_complete() -> B
     blobs_listing: "",
     blob_digest_stdout: "",
   ) {
-    gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: c } => string_contains(c as String, "names no blob digests")
-    gunbc.ollama_runtime_bundle.ModelStoreAbsent => false
-    gunbc.ollama_runtime_bundle.ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
-    gunbc.ollama_runtime_bundle.ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
-    gunbc.ollama_runtime_bundle.ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
+    ModelStoreObservationRefused { cause: c } => string_contains(c as String, "names no blob digests")
+    ModelStoreAbsent => false
+    ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
+    ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
+    ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
   }
 }
 
@@ -379,12 +379,12 @@ test fn a_corrupt_blob_is_not_a_complete_store() -> Bool {
     blobs_listing: present_listing(),
     blob_digest_stdout: corrupt_blob_digests(),
   ) {
-    gunbc.ollama_runtime_bundle.ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: b } =>
+    ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: b } =>
       (b as String) == "2222222222222222222222222222222222222222222222222222222222222222"
-    gunbc.ollama_runtime_bundle.ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
-    gunbc.ollama_runtime_bundle.ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
-    gunbc.ollama_runtime_bundle.ModelStoreAbsent => false
-    gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: _ } => false
+    ModelStoreComplete { manifest_identity: _, blob_closure_count: _ } => false
+    ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
+    ModelStoreAbsent => false
+    ModelStoreObservationRefused { cause: _ } => false
   }
 }
 
@@ -397,11 +397,11 @@ test fn the_same_store_with_intact_blobs_is_complete() -> Bool {
     blobs_listing: present_listing(),
     blob_digest_stdout: intact_blob_digests(),
   ) {
-    gunbc.ollama_runtime_bundle.ModelStoreComplete { manifest_identity: _, blob_closure_count: n } => n == 2
-    gunbc.ollama_runtime_bundle.ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
-    gunbc.ollama_runtime_bundle.ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
-    gunbc.ollama_runtime_bundle.ModelStoreAbsent => false
-    gunbc.ollama_runtime_bundle.ModelStoreObservationRefused { cause: _ } => false
+    ModelStoreComplete { manifest_identity: _, blob_closure_count: n } => n == 2
+    ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => false
+    ModelStoreIncomplete { manifest_identity: _, first_missing_blob: _, further_missing_blobs: _ } => false
+    ModelStoreAbsent => false
+    ModelStoreObservationRefused { cause: _ } => false
   }
 }
 

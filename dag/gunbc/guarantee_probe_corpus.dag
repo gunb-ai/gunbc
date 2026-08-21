@@ -447,8 +447,8 @@ fn resolve_guarantee_probe_row(rows: std.types.List<GuaranteeProbeRow>, wanted: 
     ProbeRowDuplicate { wanted: wanted, matches: count(hits) }
   } else {
     match hits |> first {
-      v2.std.optional.Present { value: row } => ProbeRowResolved { row: row }
-      v2.std.optional.Absent => ProbeRowUnknown { wanted: wanted }
+      Present { value: row } => ProbeRowResolved { row: row }
+      Absent => ProbeRowUnknown { wanted: wanted }
     }
   }
 }
@@ -459,7 +459,7 @@ fn resolve_canonical_probe_row(wanted: gunbc.guarantee_measurement.GuaranteeProb
 
 fn canonical_probe_row_resolution_refuses_duplicate_population() -> Bool {
   match active_probe_row(probe: call_mislabel_red_probe) {
-    v2.std.optional.Present { value: row } =>
+    Present { value: row } =>
       match resolve_guarantee_probe_row(rows: guarantee_probe_rows(), wanted: call_mislabel_red_probe) {
         ProbeRowResolved { row: _ } =>
           match resolve_guarantee_probe_row(
@@ -471,7 +471,7 @@ fn canonical_probe_row_resolution_refuses_duplicate_population() -> Bool {
           }
         _ => false
       }
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }
 
@@ -513,15 +513,15 @@ fn v2_infer_eval_probe_row_from_registry(row: GuaranteeProbeRow) -> V2InferEvalP
 
 fn active_v1_compile_probe_row(probe: gunbc.guarantee_measurement.GuaranteeProbeId) -> V1CompileProbeRow? {
   match active_probe_row(probe: probe) {
-    v2.std.optional.Present { value: row } => v1_compile_probe_row_from_registry(row: row)
-    v2.std.optional.Absent => none
+    Present { value: row } => v1_compile_probe_row_from_registry(row: row)
+    Absent => none
   }
 }
 
 fn active_v2_infer_eval_probe_row(probe: gunbc.guarantee_measurement.GuaranteeProbeId) -> V2InferEvalProbeRow? {
   match active_probe_row(probe: probe) {
-    v2.std.optional.Present { value: row } => v2_infer_eval_probe_row_from_registry(row: row)
-    v2.std.optional.Absent => none
+    Present { value: row } => v2_infer_eval_probe_row_from_registry(row: row)
+    Absent => none
   }
 }
 
@@ -549,8 +549,8 @@ fn probe_ids_are_lexicographically_ordered(ids: std.types.List<gunbc.guarantee_m
       acc
     } else {
       match acc.prev {
-        v2.std.optional.Absent => ProbeLexWalk { prev: v2.std.optional.Present { value: current }, ok: true }
-        v2.std.optional.Present { value: prev } =>
+        Absent => ProbeLexWalk { prev: v2.std.optional.Present { value: current }, ok: true }
+        Present { value: prev } =>
           if std.string_type.string_is_lexicographically_before(left: prev, right: current) {
             ProbeLexWalk { prev: v2.std.optional.Present { value: current }, ok: true }
           } else {
@@ -709,22 +709,22 @@ fn census_primary_observation(rows: std.types.List<gunbc.compile_diagnostic_cens
   let blocking = gunbc.compile_diagnostic_census.census_blocking_rows(rows: rows)
   if census_row_count(rows: blocking) >= 1 {
     match blocking |> first {
-      v2.std.optional.Present { value: r } =>
+      Present { value: r } =>
         gunbc.guarantee_measurement.RefusedTyped {
           diagnostic_class: r.diagnostic_class,
           count: gunbc.compile_diagnostic_census.census_total_count(
             rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: blocking, wanted: r.diagnostic_class as String),
           ),
         }
-      v2.std.optional.Absent => gunbc.guarantee_measurement.AcceptedClean
+      Absent => gunbc.guarantee_measurement.AcceptedClean
     }
   } else if census_row_count(rows: rows) == 0 {
     gunbc.guarantee_measurement.AcceptedClean
   } else {
     match rows |> first {
-      v2.std.optional.Present { value: r } =>
+      Present { value: r } =>
         gunbc.guarantee_measurement.AcceptedCounted { diagnostic_class: r.diagnostic_class, count: r.count }
-      v2.std.optional.Absent => gunbc.guarantee_measurement.AcceptedClean
+      Absent => gunbc.guarantee_measurement.AcceptedClean
     }
   }
 }

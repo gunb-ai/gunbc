@@ -102,14 +102,14 @@ fn spark_serving_poll_for_new_boot_identity(
       }
     } else {
       match spark_serving_read_boot_identity(context: context, host: host) {
-        gunbc.spark.serving_durability.BootIdentityUnobserved { cause: _ } =>
+        BootIdentityUnobserved { cause: _ } =>
           spark_serving_poll_for_new_boot_identity(
             context: context,
             host: host,
             before: before,
             attempt: attempt + 1,
           )
-        gunbc.spark.serving_durability.BootIdentityObserved { boot_id: seen } => {
+        BootIdentityObserved { boot_id: seen } => {
           let seen_text = seen as String
           let before_text = before as String
           if seen_text == before_text {
@@ -156,11 +156,11 @@ fn spark_serving_post_reboot_verdict(
 ) -> SparkServingDurabilityTransaction {
   let linger_enabled = spark_serving_observe_linger_enabled(context: context, host: host)
   match spark_serving_replan_rows(context: context, host: host, linger_enabled: linger_enabled) {
-    gunbc.spark.serving_converge_slice_wet.SparkServingReplanRowsRefused { cause: why } =>
+    SparkServingReplanRowsRefused { cause: why } =>
       DurabilityTransactionRefused {
         cause: join(["post-reboot replan refused, so no pending-action count exists to judge: ", why], ""),
       }
-    gunbc.spark.serving_converge_slice_wet.SparkServingReplanRowsReady { rows: rows } => {
+    SparkServingReplanRowsReady { rows: rows } => {
       let health = spark_serving_observe_terminal_health(context: context, host: host)
       DurabilityTransactionSettled {
         verdict: spark_serving_durability_verdict(
@@ -202,7 +202,7 @@ data spark_serving_durability_ci_attempt_raw: String = "spark-serving-durability
 
 func spark_serving_durability_ci_wet() -> std.process.ProcessExit {
   match prepare_fleet_ssh_agent_context(attempt_raw: spark_serving_durability_ci_attempt_raw) {
-    gunbc.fleet_ssh_locus.FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)
+    FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)
     FleetSshContextReady { context: context, receipt: context_receipt } =>
       spark_serving_durability_with_context(context: context, context_receipt: context_receipt)
   }
@@ -217,8 +217,8 @@ func spark_serving_durability_with_context(
 ) -> std.process.ProcessExit {
   let now = clock_now_probed_at()
   match spark_converge_target_selection(execute_apply: true) {
-    gunbc.fleet_multi_principal_probe.SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
-    gunbc.fleet_multi_principal_probe.SparkConvergeTargetAllObserveOnly =>
+    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+    SparkConvergeTargetAllObserveOnly =>
       exit_failure(
         reason: "spark_serving_durability_ci_wet: SPARK_CONVERGE_TARGET names no host, and a durability transaction reboots its target, so it must never fan out across the fleet from an unset variable",
       )
@@ -239,7 +239,7 @@ func spark_serving_durability_for_host(
   now: String,
 ) -> std.process.ProcessExit {
   match spark_serving_read_boot_identity(context: context, host: host) {
-    gunbc.spark.serving_durability.BootIdentityUnobserved { cause: c } =>
+    BootIdentityUnobserved { cause: c } =>
       spark_serving_durability_emit(
         context_receipt: context_receipt,
         now: now,
@@ -249,7 +249,7 @@ func spark_serving_durability_for_host(
         ], ""),
         proven: false,
       )
-    gunbc.spark.serving_durability.BootIdentityObserved { boot_id: before } => {
+    BootIdentityObserved { boot_id: before } => {
       let outcome = spark_serving_issue_reboot(context: context, host: host)
       if spark_serving_reboot_was_attempted(outcome: outcome) == false {
         spark_serving_durability_emit(

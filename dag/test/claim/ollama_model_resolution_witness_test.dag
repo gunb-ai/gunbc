@@ -8,9 +8,9 @@ test fn desired_model_identity_is_the_resolved_identity() -> Bool {
     left: spark_serving_desired_model_artifact().identity,
     right: gpt_oss_20b_resolution().resolved_identity,
   ) {
-    std.content_hash.ContentHashEqual => true
-    std.content_hash.ContentHashDifferent => false
-    std.content_hash.ContentHashCrossFamilyIncomparable => false
+    ContentHashEqual => true
+    ContentHashDifferent => false
+    ContentHashCrossFamilyIncomparable => false
   }
 }
 
@@ -21,9 +21,9 @@ test fn the_superseded_identity_is_not_the_desired_one() -> Bool {
     left: spark_serving_desired_model_artifact().identity,
     right: as_content_hash_cryptographic(digest: gpt_oss_20b_manifest_digest_2026_08_12),
   ) {
-    std.content_hash.ContentHashDifferent => true
-    std.content_hash.ContentHashEqual => false
-    std.content_hash.ContentHashCrossFamilyIncomparable => false
+    ContentHashDifferent => true
+    ContentHashEqual => false
+    ContentHashCrossFamilyIncomparable => false
   }
 }
 

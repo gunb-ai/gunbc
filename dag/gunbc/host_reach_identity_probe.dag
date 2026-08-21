@@ -296,20 +296,20 @@ type FleetReachProbeRun {
 // dimensions and the receipt carries the requested principal for the identity verdict.
 fn probe_reachable_with_principal(target: String, hostname_stdout: String) -> ReachProbeOutcome {
   match typed_argv_probe_over_ssh(host: target as std.types.NonEmptyStr, argv: ["id", "-un"]) {
-    gunbc.typed_argv_exec.TypedArgvExecConverged { result: idr } =>
+    TypedArgvExecConverged { result: idr } =>
       if idr.success {
         ProbeReachable { observed_short_hostname: trim(hostname_stdout), observed_principal: trim(idr.stdout) }
       } else {
         ProbeTransportUnavailable { cause: join(["id-un-failed stderr=", idr.stderr], "") }
       }
-    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } => ProbeTransportUnavailable { cause: why }
+    TypedArgvExecRefused { reason: why } => ProbeTransportUnavailable { cause: why }
   }
 }
 
 fn probe_ready_target_once(host: String, endpoint: String, remote_principal: String) -> ReachProbeOutcome {
   let target = fleet_probe_ready_ssh_target(t_host: host, endpoint: endpoint, remote_principal: remote_principal)
   match typed_argv_probe_over_ssh(host: target as std.types.NonEmptyStr, argv: ["hostname"]) {
-    gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } =>
+    TypedArgvExecConverged { result: r } =>
       if r.success {
         probe_reachable_with_principal(target: target, hostname_stdout: r.stdout)
       } else {
@@ -320,28 +320,28 @@ fn probe_ready_target_once(host: String, endpoint: String, remote_principal: Str
           expected_fingerprint: enrolled_fingerprint_for(host: host),
         )
       }
-    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } => ProbeTransportUnavailable { cause: why }
+    TypedArgvExecRefused { reason: why } => ProbeTransportUnavailable { cause: why }
   }
 }
 
 fn probe_host_reach_once(host: String, probed_at: String) -> HostReachIdentityProbeReceipt {
   match fleet_probe_target_for(host: host) {
-    gunbc.fleet_reach_endpoint.ProbeTargetReady { host: _, endpoint: e, remote_principal: p } =>
+    ProbeTargetReady { host: _, endpoint: e, remote_principal: p } =>
       HostReachIdentityProbeReceipt {
         host: host as product.placement_supply.HostIdentity,
         probed_at: probed_at as std.types.NonEmptyStr,
         requested_principal: p,
         outcome: probe_ready_target_once(host: host, endpoint: e, remote_principal: p),
       }
-    gunbc.fleet_reach_endpoint.ProbeTargetRefused { host: _, cause: c } =>
+    ProbeTargetRefused { host: _, cause: c } =>
       HostReachIdentityProbeReceipt {
         host: host as product.placement_supply.HostIdentity,
         probed_at: probed_at as std.types.NonEmptyStr,
         requested_principal: "",
         outcome: ProbeTargetUnobserved {
           cause: match c {
-            gunbc.fleet_reach_endpoint.PrincipalUnobserved { note: n } => join(["principal unobserved (no SSH attempted): ", n], "")
-            gunbc.fleet_reach_endpoint.EndpointUnobserved { note: n } => join(["endpoint unobserved (no SSH attempted): ", n], "")
+            PrincipalUnobserved { note: n } => join(["principal unobserved (no SSH attempted): ", n], "")
+            EndpointUnobserved { note: n } => join(["endpoint unobserved (no SSH attempted): ", n], "")
           },
         },
       }

@@ -18,9 +18,9 @@ test fn witness_runtime_archive_admission_receipt_json_round_trips_digest() -> B
     },
   )
   match spark_serving_parse_runtime_receipt_json(stdout: json) {
-    gunbc.spark.serving_readback_parse.SparkServingReadbackPresent { value: hex } =>
+    SparkServingReadbackPresent { value: hex } =>
       hex == test.claim.spark_serving_runtime_receipt_witness_test.witness_required_release_asset_digest_hex
-    gunbc.spark.serving_readback_parse.SparkServingReadbackAbsent => false
-    gunbc.spark.serving_readback_parse.SparkServingReadbackRefused { cause: _ } => false
+    SparkServingReadbackAbsent => false
+    SparkServingReadbackRefused { cause: _ } => false
   }
 }

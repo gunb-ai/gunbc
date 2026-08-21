@@ -865,7 +865,7 @@ fn ts_grammar_relation_row_token_edges_witness(row: v2.std.node.Node) -> v2.std.
             }
           }
       }
-    v2.std.diagnostic.Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
+    Rejected { diagnostics: nd } => v2.std.witness.Violates { diagnostic: nd.head }
   }
 }
 
@@ -3126,28 +3126,28 @@ fn ts_build_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.
                                     axis: v2.std.model_core.ModelCoreFactAxisEncoding {},
                                     value: ts_inhabitant_atom(id: ts_facts_string.encoding)
                                   )
-                                v2.std.diagnostic.Rejected { diagnostics: d } =>
+                                Rejected { diagnostics: d } =>
                                   v2.std.diagnostic.Rejected { diagnostics: d }
                               }
-                            v2.std.diagnostic.Rejected { diagnostics: d } =>
+                            Rejected { diagnostics: d } =>
                               v2.std.diagnostic.Rejected { diagnostics: d }
                           }
-                        v2.std.diagnostic.Rejected { diagnostics: d } =>
+                        Rejected { diagnostics: d } =>
                           v2.std.diagnostic.Rejected { diagnostics: d }
                       }
-                    v2.std.diagnostic.Rejected { diagnostics: d } =>
+                    Rejected { diagnostics: d } =>
                       v2.std.diagnostic.Rejected { diagnostics: d }
                   }
-                v2.std.diagnostic.Rejected { diagnostics: d } =>
+                Rejected { diagnostics: d } =>
                   v2.std.diagnostic.Rejected { diagnostics: d }
               }
-            v2.std.diagnostic.Rejected { diagnostics: d } =>
+            Rejected { diagnostics: d } =>
               v2.std.diagnostic.Rejected { diagnostics: d }
           }
-        v2.std.diagnostic.Rejected { diagnostics: d } =>
+        Rejected { diagnostics: d } =>
           v2.std.diagnostic.Rejected { diagnostics: d }
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }

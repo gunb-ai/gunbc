@@ -61,11 +61,11 @@ fn fleet_converge_spark_serving_action_at(
   action: gunbc.membership_reconcile.MemberAction<gunbc.spark.serving_membership.SparkServingMember, gunbc.spark.serving_membership.SparkServingMemberAt>,
 ) -> gunbc.spark.serving_membership.SparkServingMemberAt {
   match action {
-    gunbc.membership_reconcile.MemberAdded { at: at, to: _ } => at
-    gunbc.membership_reconcile.MemberChanged { at: at, from: _, to: _ } => at
-    gunbc.membership_reconcile.MemberRemoved { at: at, from: _ } => at
-    gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => ""
-    gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => ""
+    MemberAdded { at: at, to: _ } => at
+    MemberChanged { at: at, from: _, to: _ } => at
+    MemberRemoved { at: at, from: _ } => at
+    MemberRemovalRefused { from: _, cause: _ } => ""
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => ""
   }
 }
 
@@ -113,7 +113,7 @@ fn spark_serving_planned_effect_executions(
           effect: effect,
           executor_login: spark_serving_automation_principal_login(),
         ) {
-          gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => none
+          SparkServingInstallRemoteCommandsRefused { reason: _ } => none
           SparkServingInstallRemoteCommandsPresent { steps: steps } =>
             match steps.first() {
               Absent => none
@@ -164,9 +164,9 @@ fn fleet_converge_spark_serving_typed_actions(
     plan: plan,
     desired_addresses: flat_map(desired, m => [m.address]),
   ) {
-    gunbc.spark.serving_execution_schedule.SparkServingScheduleRefused { cause: why } =>
+    SparkServingScheduleRefused { cause: why } =>
       SparkServingTypedActionsRefused { cause: why }
-    gunbc.spark.serving_execution_schedule.SparkServingScheduleFrozen { schedule: schedule } =>
+    SparkServingScheduleFrozen { schedule: schedule } =>
       fleet_converge_spark_serving_typed_actions_in_order(plan: plan, schedule: schedule)
   }
 }
@@ -242,11 +242,11 @@ fn spark_serving_fleet_converge_plan_artifact(
     }
   } else {
     match spark_serving_desired_admission {
-      gunbc.spark.serving_desired.SparkServingDesiredRefused { cause: why } =>
+      SparkServingDesiredRefused { cause: why } =>
         SparkServingPlanArtifactRefused {
           cause: join(["plan-refused desired-release-unadmitted ", why as String], ""),
         }
-      gunbc.spark.serving_desired.SparkServingDesiredAdmitted { serving_release: admitted_release } =>
+      SparkServingDesiredAdmitted { serving_release: admitted_release } =>
         spark_serving_fleet_converge_plan_artifact_for_release(
           host: host,
           prior_generation: prior_generation,
@@ -476,7 +476,7 @@ fn spark_serving_full_membership_plan(
   projection: gunbc.spark.serving_observed_members.SparkServingObservedMemberProjection,
 ) -> SparkServingFullMembershipPlan {
   match projection {
-    gunbc.spark.serving_observed_members.SparkServingObservedMembers {
+    SparkServingObservedMembers {
       members: observed,
       runtime_observed: runtime_observed,
       model_observed: model_observed,

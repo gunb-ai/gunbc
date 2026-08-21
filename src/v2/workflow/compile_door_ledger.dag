@@ -43,7 +43,7 @@ type AdmissionDerivation
 
 fn derive_module_admission(root: v2.std.node.Node) -> AdmissionDerivation {
   match admission_from_module_root(root: root) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => AdmissionRefused { reason: d.head.reason }
+    Rejected { diagnostics: d } => AdmissionRefused { reason: d.head.reason }
     Accepted { value: admission, diagnostics: _ } =>
       AdmissionDerived { admission: admission }
   }
@@ -82,7 +82,7 @@ fn door_ledger_row(subject_path: String, facts: ModuleGraphFacts) -> DoorLedgerR
     source_text: subject_text,
     file: symbol_intern_lexeme(lexeme: subject_path)
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       DoorLedgerRow { module_path: subject_path, outcome: DoorRefused { reason: d.head.reason } }
     Accepted { value: parse_root, diagnostics: _ } =>
       match derive_module_admission(root: parse_root) {
@@ -102,7 +102,7 @@ fn door_ledger_row(subject_path: String, facts: ModuleGraphFacts) -> DoorLedgerR
           ) {
             Accepted { value: _, diagnostics: _ } =>
               DoorLedgerRow { module_path: subject_path, outcome: DoorCompiled }
-            v2.std.diagnostic.Rejected { diagnostics: d } =>
+            Rejected { diagnostics: d } =>
               DoorLedgerRow {
                 module_path: subject_path,
                 outcome: DoorRefused { reason: d.head.reason }
@@ -283,8 +283,8 @@ fn cause_ownership_lookup(cause: v2.std.node.Symbol) -> v2.std.optional.Optional
 
 fn cause_is_attributed(cause: v2.std.node.Symbol) -> v2.std.logic.Bool {
   match cause_ownership_lookup(cause: cause) {
-    v2.std.optional.Present { value: _ } => true
-    v2.std.optional.Absent => false
+    Present { value: _ } => true
+    Absent => false
   }
 }
 

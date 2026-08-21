@@ -51,30 +51,30 @@ type RetentionFamily {
 
 fn connective_label(c: v2.std.node.Connective) -> String {
   match c {
-    v2.std.node.Atom { identity: identity } => concat("Atom:", symbol_lexeme(sym: identity))
-    v2.std.node.Conj => "Conj"
-    v2.std.node.Disj => "Disj"
-    v2.std.node.Arrow => "Arrow"
-    v2.std.node.Cardinality => "Cardinality"
-    v2.std.node.Instantiation => "Instantiation"
+    Atom { identity: identity } => concat("Atom:", symbol_lexeme(sym: identity))
+    Conj => "Conj"
+    Disj => "Disj"
+    Arrow => "Arrow"
+    Cardinality => "Cardinality"
+    Instantiation => "Instantiation"
   }
 }
 
 fn behavior_label(b: v2.std.node.Behavior) -> String {
   match b {
-    v2.std.node.Value => "Value"
-    v2.std.node.Transform => "Transform"
-    v2.std.node.Branch => "Branch"
-    v2.std.node.Loop => "Loop"
-    v2.std.node.Bind => "Bind"
-    v2.std.node.Match => "Match"
+    Value => "Value"
+    Transform => "Transform"
+    Branch => "Branch"
+    Loop => "Loop"
+    Bind => "Bind"
+    Match => "Match"
   }
 }
 
 fn node_shape_label(kind: v2.std.node.NodeKind) -> String {
   match kind {
-    v2.std.node.TypeNode { connective: c } => concat("Type/", connective_label(c: c))
-    v2.std.node.ComputationNode { behavior: b } => concat("Computation/", behavior_label(b: b))
+    TypeNode { connective: c } => concat("Type/", connective_label(c: c))
+    ComputationNode { behavior: b } => concat("Computation/", behavior_label(b: b))
   }
 }
 
@@ -84,15 +84,15 @@ fn node_shape_label(kind: v2.std.node.NodeKind) -> String {
 // and collapsing them would hide the first inside the second.
 fn emitted_production_label(node: v2.std.node.Node) -> String {
   match parse_production_emitted_identity_optional(node: node) {
-    v2.std.optional.Present { value: sym } => symbol_lexeme(sym: sym)
-    v2.std.optional.Absent => "<no production identity on the retained node>"
+    Present { value: sym } => symbol_lexeme(sym: sym)
+    Absent => "<no production identity on the retained node>"
   }
 }
 
 fn occurrence_label(occurrence: v2.std.node.NodeOccurrenceId) -> String {
   match occurrence {
-    v2.std.node.SyntheticOccurrence => "synthetic"
-    v2.std.node.MintedOccurrence { id: _ } => "minted"
+    SyntheticOccurrence => "synthetic"
+    MintedOccurrence { id: _ } => "minted"
   }
 }
 
@@ -119,9 +119,9 @@ fn retained_production_key(observation: RetainedProduction) -> String {
 // it exists to size.
 fn retained_node_optional(d: v2.std.diagnostic.Diagnostic) -> v2.std.optional.Optional<v2.std.node.Node> {
   match d.at {
-    v2.std.diagnostic.NodeLocus { anchor: anchor } => v2.std.optional.Present { value: anchor.at }
-    v2.std.diagnostic.Textual { file: _, extent: _ } => v2.std.optional.Absent
-    v2.std.diagnostic.PortLocus { anchor: _ } => v2.std.optional.Absent
+    NodeLocus { anchor: anchor } => v2.std.optional.Present { value: anchor.at }
+    Textual { file: _, extent: _ } => v2.std.optional.Absent
+    PortLocus { anchor: _ } => v2.std.optional.Absent
   }
 }
 
@@ -183,12 +183,12 @@ fn retention_census_step(
 ) -> std.types.List<RetentionFamily> {
   if diagnostic_is_wrapper_retained(d: d) {
     match retained_node_optional(d: d) {
-      v2.std.optional.Present { value: node } =>
+      Present { value: node } =>
         retention_family_bump(
           families: families,
           observation: retained_production_of(node: node)
         )
-      v2.std.optional.Absent =>
+      Absent =>
         retention_family_bump(
           families: families,
           observation: RetainedProduction {

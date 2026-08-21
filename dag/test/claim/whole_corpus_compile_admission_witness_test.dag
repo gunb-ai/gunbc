@@ -22,7 +22,7 @@ fn fleet_runner_slot_budget() -> gunbc.host_budget_source.HostBudgetResolution {
 
 test fn the_budget_that_was_sigkilled_refuses_and_names_its_source() -> Bool {
   match gunbc.whole_corpus_compile_admission.whole_corpus_compile_admission(budget: observed_doomed_budget()) {
-    gunbc.whole_corpus_compile_admission.WholeCorpusCompileRefusedBudgetBelowMeasuredDemand {
+    WholeCorpusCompileRefusedBudgetBelowMeasuredDemand {
       budget: b,
       required: r,
       source: s,

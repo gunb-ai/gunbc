@@ -25,13 +25,13 @@ fn trait_derive_unit_kernel_type_node() -> v2.std.node.Node {
 
 fn repr_grounding_derive_elem_shape(elem: v2.std.node.Node) -> std.trait_derive_shape.ReprGroundingDeriveElemShape {
   match elem.kind {
-    v2.std.node.TypeNode { connective: v2.std.node.Disj } =>
+    TypeNode { connective: v2.std.node.Disj } =>
       if coproduct_all_variants_nullary(edges: elem.children) {
         std.trait_derive_shape.ReprDeriveElemNullaryEnumCopy
       } else {
         std.trait_derive_shape.ReprDeriveElemPayloadCoproduct
       }
-    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } =>
+    TypeNode { connective: v2.std.node.Atom { identity: id } } =>
       if id == ^target_collection_kernel_string || id == ^symbol_kernel_type_atom {
         std.trait_derive_shape.ReprDeriveElemKernelString
       } else {
@@ -127,10 +127,10 @@ fn trait_derive_completeness_gate_for_collection_requirement(
   elem: v2.std.node.Node
 ) -> v2.std.optional.Optional<TraitDeriveCompletenessGate> {
   match repr_grounding_derive_traits_for_collection_requirement(requirement: requirement) {
-    v2.std.optional.Present { value: required } =>
+    Present { value: required } =>
       optional_present(
         value: trait_derive_completeness_gate(required: required, elem: elem)
       )
-    v2.std.optional.Absent => optional_absent()
+    Absent => optional_absent()
   }
 }

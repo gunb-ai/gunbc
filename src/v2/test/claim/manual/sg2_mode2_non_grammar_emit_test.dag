@@ -48,7 +48,7 @@ test fn sg2_mode2_translation_rules_empty() -> v2.std.logic.Bool {
         TypeNode { connective: v2.std.node.Conj } => v2.std.algebra.is_empty(xs: rules.children)
         _ => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -60,9 +60,9 @@ fn sg2_mode2_emitted_has_no_grammar_row(emitted: v2.std.node.Node) -> v2.std.log
     Accepted { value: rules, diagnostics: _ } =>
       match v2.compiler.translate.grammar_relation_row_for_emitted(rules: rules, emitted: emitted) {
         Accepted { value: _, diagnostics: _ } => false
-        v2.std.diagnostic.Rejected { diagnostics: _ } => true
+        Rejected { diagnostics: _ } => true
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -77,21 +77,21 @@ fn sg2_mode2_wire_has_kind_authority(emitted: v2.std.node.Node) -> v2.std.logic.
 fn sg2_mode2_serialize_accepts(emitted: v2.std.node.Node) -> v2.std.logic.Bool {
   match v2.compiler.translate.target_serialize_source_from_model(target: sg2_mode2_target(), emitted: emitted) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn sg2_mode2_serialized_text(emitted: v2.std.node.Node) -> String {
   match v2.compiler.translate.target_serialize_source_from_model(target: sg2_mode2_target(), emitted: emitted) {
     Accepted { value: source, diagnostics: _ } => source.carried
-    v2.std.diagnostic.Rejected { diagnostics: _ } => sg2_mode2_fail_text
+    Rejected { diagnostics: _ } => sg2_mode2_fail_text
   }
 }
 
 fn sg2_mode2_translate_emitted() -> v2.std.node.Node {
   match v2.compiler.translate.translate(tree: sg2_mode2_inferred_tree, target: sg2_mode2_target()) {
     Accepted { value: emitted, diagnostics: _ } => emitted
-    v2.std.diagnostic.Rejected { diagnostics: _ } => sg2_mode2_fail_node()
+    Rejected { diagnostics: _ } => sg2_mode2_fail_node()
   }
 }
 
@@ -103,21 +103,21 @@ test fn sg2_mode2_translate_matches_golden() -> v2.std.logic.Bool {
 test fn sg2_mode2_emit_accepts() -> v2.std.logic.Bool {
   match v2.compiler.emit.emit(tree: sg2_mode2_inferred_tree, target: sg2_mode2_target()) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn sg2_mode2_emit_text() -> String {
   match v2.compiler.emit.emit(tree: sg2_mode2_inferred_tree, target: sg2_mode2_target()) {
     Accepted { value: source, diagnostics: _ } => source.carried
-    v2.std.diagnostic.Rejected { diagnostics: _ } => sg2_mode2_fail_text
+    Rejected { diagnostics: _ } => sg2_mode2_fail_text
   }
 }
 
 fn sg2_mode2_perturbed_emit_text() -> String {
   match v2.compiler.emit.emit(tree: sg2_mode2_perturbed_inferred_tree, target: sg2_mode2_target()) {
     Accepted { value: source, diagnostics: _ } => source.carried
-    v2.std.diagnostic.Rejected { diagnostics: _ } => sg2_mode2_fail_text
+    Rejected { diagnostics: _ } => sg2_mode2_fail_text
   }
 }
 
@@ -154,8 +154,8 @@ fn sg2_mode2_outcome_node_source_type() -> v2.std.node.Node {
 
 test fn sg2_mode2_lex_only_absent_from_binding_spellings() -> v2.std.logic.Bool {
   match v2.extdeps.languages.rust.rust_sg2_binding_spellings().lookup(^rust_binding_sg2_lex_only_atom) {
-    v2.std.optional.Absent => true
-    v2.std.optional.Present { value: _ } => false
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
@@ -173,9 +173,9 @@ fn sg2_mode2_outcome_return_shell() -> v2.std.node.Node {
         use_site: v2.std.compilers.target_model.OwnershipAtFunctionReturn
       ) {
         Accepted { value: wrapped, diagnostics: _ } => wrapped
-        v2.std.diagnostic.Rejected { diagnostics: _ } => sg2_mode2_fail_node()
+        Rejected { diagnostics: _ } => sg2_mode2_fail_node()
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => sg2_mode2_fail_node()
+    Rejected { diagnostics: _ } => sg2_mode2_fail_node()
   }
 }
 

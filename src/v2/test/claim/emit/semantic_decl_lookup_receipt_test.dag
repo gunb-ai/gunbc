@@ -11,9 +11,9 @@ test fn row_lookup_returns_derive_spelling() -> v2.std.logic.Bool {
         binding: ^rust_decl_derive_enum_copy_binding
       ) {
         Accepted { value: spelling, diagnostics: _ } => spelling == expected_derive_spelling
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -27,11 +27,11 @@ test fn map_lookup_returns_derive_spelling() -> v2.std.logic.Bool {
             binding: ^rust_decl_derive_enum_copy_binding
           ) {
             Accepted { value: spelling, diagnostics: _ } => spelling == expected_derive_spelling
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -41,6 +41,6 @@ test fn live_map_returns_derive_spelling() -> v2.std.logic.Bool {
     binding: ^rust_decl_derive_enum_copy_binding
   ) {
     Accepted { value: spelling, diagnostics: _ } => spelling == expected_derive_spelling
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

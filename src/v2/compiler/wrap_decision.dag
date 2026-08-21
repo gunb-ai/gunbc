@@ -17,7 +17,7 @@ fn wrap_decision_bundle_child_lookup_step(
     WrapDecisionBundleChildDuplicate => acc
     WrapDecisionBundleChildMissing =>
       match e.label {
-        v2.std.node.Named { name: n } =>
+        Named { name: n } =>
           if n == edge_name {
             WrapDecisionBundleChildFound { value: e.target }
           } else {
@@ -27,7 +27,7 @@ fn wrap_decision_bundle_child_lookup_step(
       }
     WrapDecisionBundleChildFound { value: _ } =>
       match e.label {
-        v2.std.node.Named { name: n } =>
+        Named { name: n } =>
           if n == edge_name {
             WrapDecisionBundleChildDuplicate
           } else {
@@ -94,10 +94,10 @@ fn wrap_decision_bundle_edge_present(
   match wrap_decision_bundle_optional_child(target: target, edge_name: edge_name) {
     Accepted { value: optional_child, diagnostics: _ } =>
       match optional_child {
-        v2.std.optional.Absent => outcome_accepted(false)
-        v2.std.optional.Present { value: _ } => outcome_accepted(true)
+        Absent => outcome_accepted(false)
+        Present { value: _ } => outcome_accepted(true)
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -277,13 +277,13 @@ fn wrap_decision_gate(
         ),
         f: fn(optional_catalog) {
           match optional_catalog {
-            v2.std.optional.Absent =>
+            Absent =>
               outcome_rejected(
                 wrap_decision_sg_rc_bundle_partial_diagnostic(
                   source_carrier: source_carrier
                 )
               )
-            v2.std.optional.Present { value: catalog_node } =>
+            Present { value: catalog_node } =>
               bind_outcome(
                 o: wrap_decision_bundle_optional_child(
                   target: target,
@@ -291,8 +291,8 @@ fn wrap_decision_gate(
                 ),
                 f: fn(optional_carriers) {
                   let value_semantics_carriers = match optional_carriers {
-                    v2.std.optional.Absent => std.algebra.Empty
-                    v2.std.optional.Present { value: node } =>
+                    Absent => std.algebra.Empty
+                    Present { value: node } =>
                       target_value_semantics_carriers_from_node(node: node)
                   }
                   bind_outcome(
@@ -313,6 +313,6 @@ fn wrap_decision_gate(
           }
         }
       )
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }

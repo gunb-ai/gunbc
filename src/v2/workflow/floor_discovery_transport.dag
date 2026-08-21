@@ -116,8 +116,8 @@ fn floor_discovery_transport_observe(
     }
     TransportNeedsTrackedWorktree { request: request } => match observation {
       TrackedWorktreeObserved { modified_paths: paths } => match paths.first() {
-        v2.std.optional.Present { value: _ } => TransportRefused { cause: TransportTrackedWorktreeDirty }
-        v2.std.optional.Absent => TransportNeedsUntrackedWorktree { request: request }
+        Present { value: _ } => TransportRefused { cause: TransportTrackedWorktreeDirty }
+        Absent => TransportNeedsUntrackedWorktree { request: request }
       }
       TransportObservationRefused { cause: cause } =>
         TransportRefused { cause: TransportObservationRefusalCause { cause: cause } }
@@ -127,9 +127,9 @@ fn floor_discovery_transport_observe(
     }
     TransportNeedsUntrackedWorktree { request: request } => match observation {
       UntrackedWorktreeObserved { paths: paths } => match paths.first() {
-        v2.std.optional.Present { value: path } =>
+        Present { value: path } =>
           TransportRefused { cause: TransportUntrackedWorktree { path: path } }
-        v2.std.optional.Absent => TransportNeedsPublication { request: request }
+        Absent => TransportNeedsPublication { request: request }
       }
       TransportObservationRefused { cause: cause } =>
         TransportRefused { cause: TransportObservationRefusalCause { cause: cause } }

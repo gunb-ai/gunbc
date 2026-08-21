@@ -19,8 +19,8 @@ fn translate_diagnostic_reason_from_symbol_over_variants(
 ) -> v2.std.optional.Optional<v2.compiler.translate.TranslateDiagnosticReason> {
   fold(variants, init: optional_absent(), f: fn(acc, variant) {
     match acc {
-      v2.std.optional.Present { value: _ } => acc
-      v2.std.optional.Absent =>
+      Present { value: _ } => acc
+      Absent =>
         if sym == translate_diagnostic_reason_symbol(reason: variant) {
           optional_present(value: variant)
         } else {
@@ -41,8 +41,8 @@ fn translate_diagnostic_reason_variants_without_malformed() -> List<v2.compiler.
 
 fn translate_diagnostic_reason_variant_round_trips(variant: v2.compiler.translate.TranslateDiagnosticReason) -> v2.std.logic.Bool {
   match translate_diagnostic_reason_from_symbol(sym: translate_diagnostic_reason_symbol(reason: variant)) {
-    v2.std.optional.Present { value: reason } => translate_diagnostic_reason_symbol(reason: reason) == translate_diagnostic_reason_symbol(reason: variant)
-    v2.std.optional.Absent => false
+    Present { value: reason } => translate_diagnostic_reason_symbol(reason: reason) == translate_diagnostic_reason_symbol(reason: variant)
+    Absent => false
   }
 }
 
@@ -67,8 +67,8 @@ fn translate_diagnostic_reason_variants_drop_malformed_perturb_red_holds() -> v2
     sym: translate_diagnostic_reason_symbol(reason: TargetBundleMalformed),
     variants: translate_diagnostic_reason_variants_without_malformed()
   ) {
-    v2.std.optional.Absent => true
-    v2.std.optional.Present { value: _ } => false
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
@@ -85,7 +85,7 @@ fn candidate_generation_dag_add_slice_accepts() -> v2.std.logic.Bool {
   ) {
     Accepted { value: candidate, diagnostics: d } =>
       (candidate.emitted == dag_emitted_add_fn_node()) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -99,11 +99,11 @@ fn translate_error_profile_rust_add_malformed_bundle_known() -> v2.std.logic.Boo
     emitted: rust_add_emitted_root
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: r } =>
+    Rejected { diagnostics: r } =>
       match translate_diagnostic_reason_from_symbol(sym: r.head.reason) {
-        v2.std.optional.Present { value: TargetBundleMalformed } => true
-        v2.std.optional.Present { value: _ } => false
-        v2.std.optional.Absent => false
+        Present { value: TargetBundleMalformed } => true
+        Present { value: _ } => false
+        Absent => false
       }
   }
 }
@@ -114,7 +114,7 @@ fn translate_error_profile_sg2_projected_arrow_serialize_known() -> v2.std.logic
     emitted: sg2_project_arrow_emitted()
   ) {
     Accepted { value: source, diagnostics: _ } => source.carried == sg2_expected_arrow_text
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -124,7 +124,7 @@ fn translate_error_profile_sg2_projected_conj_serialize_known() -> v2.std.logic.
     emitted: sg2_project_conj_emitted()
   ) {
     Accepted { value: source, diagnostics: _ } => source.carried == sg2_expected_conj_text
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -134,7 +134,7 @@ fn translate_error_profile_sg2_projected_instantiation_serialize_known() -> v2.s
     emitted: sg2_project_instantiation_emitted()
   ) {
     Accepted { value: source, diagnostics: _ } => source.carried == sg2_expected_type_text
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -158,16 +158,16 @@ fn translate_error_profile_coproduct_swap_perturb_discriminates() -> v2.std.logi
     emitted: rust_add_emitted_root
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: r } =>
+    Rejected { diagnostics: r } =>
       match translate_diagnostic_reason_from_symbol(sym: r.head.reason) {
-        v2.std.optional.Present { value: TargetBundleMalformed } =>
+        Present { value: TargetBundleMalformed } =>
           match translate_diagnostic_reason_from_symbol_swapped_malformed_duplicate(sym: r.head.reason) {
-            v2.std.optional.Present { value: TargetBundleDuplicateEdge } => true
-            v2.std.optional.Present { value: _ } => false
-            v2.std.optional.Absent => false
+            Present { value: TargetBundleDuplicateEdge } => true
+            Present { value: _ } => false
+            Absent => false
           }
-        v2.std.optional.Present { value: _ } => false
-        v2.std.optional.Absent => false
+        Present { value: _ } => false
+        Absent => false
       }
   }
 }

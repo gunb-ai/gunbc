@@ -1256,7 +1256,7 @@ fn expr_literal_string_optional(expr: v1.std.core.Node) -> String? {
   match expr.expr_data {
     ExprLiteral { value: lit } =>
       match lit {
-        std.syntax.LitStr { value: v } => Present { value: v }
+        LitStr { value: v } => Present { value: v }
         _ => none
       }
     _ => none
@@ -1797,6 +1797,14 @@ fn preserve_outer_optional_cardinality(outer: v1.std.core.Node, inner: v1.std.co
 
 fn module_path_segments(path: String) -> List<String> {
   if path == "" { [] } else { path |> split(delimiter: ".") }
+}
+
+// The module half of a dotted reference: everything before the last segment.
+// Returns "" for a bare name, which is a different answer from any module path.
+fn qualified_module_prefix(name: String) -> String {
+  let segs = module_path_segments(path: name)
+  let n = segs |> count
+  if n < 2 { "" } else { segs |> take(n - 1) |> join(separator: ".") }
 }
 
 fn qualified_last_segment(name: String) -> String {

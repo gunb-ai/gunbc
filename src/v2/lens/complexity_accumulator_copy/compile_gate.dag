@@ -11,7 +11,7 @@ fn finding_diagnostic(f: v2.lens.complexity_accumulator_copy.Finding) -> v2.std.
         at: node_locus(node: n),
         correction: v2.std.diagnostic.Unavailable { reason: ExternalContractUnknown }
       }
-    v2.lens.complexity_accumulator_copy.Unclassifiable { at: n, cause: c } =>
+    Unclassifiable { at: n, cause: c } =>
       v2.std.diagnostic.Diagnostic {
         reason: c,
         at: node_locus(node: n),

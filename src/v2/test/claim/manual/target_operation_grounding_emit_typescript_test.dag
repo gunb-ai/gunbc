@@ -103,34 +103,34 @@ fn op_grounding_emit(operation: v2.std.compilers.target_model.CanonicalOperation
 test fn op_grounding_emits_subtraction() -> v2.std.logic.Bool {
   match op_grounding_emit(operation: canonical_operation_op_sub(), catalog: op_grounding_catalog()) {
     Accepted { value: s, diagnostics: _ } => s == "x - y"
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn op_grounding_emits_less_than() -> v2.std.logic.Bool {
   match op_grounding_emit(operation: canonical_operation_op_lt(), catalog: op_grounding_catalog()) {
     Accepted { value: s, diagnostics: _ } => s == "x < y"
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn op_grounding_emits_equality() -> v2.std.logic.Bool {
   match op_grounding_emit(operation: canonical_operation_op_eq(), catalog: op_grounding_catalog()) {
     Accepted { value: s, diagnostics: _ } => s == "x == y"
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn op_grounding_wrong_token_discriminates() -> v2.std.logic.Bool {
   match op_grounding_emit(operation: canonical_operation_op_sub(), catalog: op_grounding_catalog_sub_mistoken()) {
     Accepted { value: s, diagnostics: _ } => (s == "x + y") && (s != "x - y")
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn op_grounding_catalog_miss_rejects() -> v2.std.logic.Bool {
   match op_grounding_emit(operation: canonical_operation_op_lt(), catalog: op_grounding_catalog_sub_only()) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }

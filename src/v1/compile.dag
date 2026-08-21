@@ -408,7 +408,7 @@ fn serialize_match_pattern(pattern: MatchPattern, source_indices: Map<String, v1
       concat("{\"kind\": \"Bind\", \"name\": ", json_quote(s: declaration.name), "}")
     LitPattern { value: inner } =>
       concat("{\"kind\": \"LitPattern\", \"value\": ", serialize_literal(value: inner), "}")
-    v1.std.core.VariantPattern { name: inner, parent_enum: parent_enum, field_bindings: field_bindings } =>
+    VariantPattern { name: inner, parent_enum: parent_enum, field_bindings: field_bindings } =>
       concat(
         "{\"kind\": \"v1.std.core.VariantPattern\", \"name\": ", json_quote(s: inner),
         ", \"parent_enum\": ", json_optional_string(value: parent_enum),
@@ -689,7 +689,7 @@ fn serialize_expr_data(expr_node: v1.std.core.Node, source_indices: Map<String, 
 
 fn serialize_inferred_node_ref(inferred: InferredNode, key_to_id: Map<String, String>) -> String {
   match inferred {
-    v1.std.core.Resolved { node: node } =>
+    Resolved { node: node } =>
       concat("{\"kind\": \"Resolved\", \"node\": ", serialize_node_ref(node: node, key_to_id: key_to_id), "}")
     CompilerError { message: message, span: span } =>
       concat(

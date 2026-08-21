@@ -23,7 +23,7 @@ fn sql_fold_fold_serialize(
             None => v2.std.diagnostic.Accepted { value: source.carried, diagnostics: v2.std.diagnostic.None }
             Some { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
           }
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     Violates { diagnostic: d } => v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
@@ -44,9 +44,9 @@ fn sql_fold_fold_matches_oracle(op: v2.extdeps.formats.sql.SqlSchemaOperation) -
       match sql_serialize_schema_operation(op: op) {
         Accepted { value: oracle, diagnostics: od } =>
           (folded == oracle) && (od == v2.std.diagnostic.None)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -100,9 +100,9 @@ fn sql_fold_direct_serialize_matches_oracle(
           match sql_serialize_schema_operation(op: op) {
             Accepted { value: oracle, diagnostics: od } =>
               (source.carried == oracle) && (d == v2.std.diagnostic.None) && (od == v2.std.diagnostic.None)
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
     Violates { diagnostic: _ } => false
   }
@@ -148,7 +148,7 @@ test fn sql_fold_oracle_rejects_unsupported_drop_table_holds() -> v2.std.logic.B
     op: v2.extdeps.formats.sql.SqlDropTable { table_name: v2.extdeps.formats.sql.SqlRegularIdentifier { name: "t" } }
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -160,7 +160,7 @@ test fn sql_fold_oracle_rejects_parameterized_numeric_type_holds() -> v2.std.log
     }
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 

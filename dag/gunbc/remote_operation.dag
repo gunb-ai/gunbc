@@ -62,13 +62,13 @@ fn remote_execution_permits_continuation(execution: RemoteOperationExecution) ->
   match execution {
     RemoteArgvExecution { outcome: o } =>
       match o {
-        gunbc.typed_argv_exec.TypedArgvExecRefused { reason: _ } => false
-        gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } => r.success
+        TypedArgvExecRefused { reason: _ } => false
+        TypedArgvExecConverged { result: r } => r.success
       }
     RemoteFileExecution { outcome: o } =>
       match o {
-        gunbc.typed_remote_file_write.TypedRemoteFileConvergenceRefused { step: _, reason: _ } => false
-        gunbc.typed_remote_file_write.TypedRemoteFileConverged { path: _, mode: _ } => true
+        TypedRemoteFileConvergenceRefused { step: _, reason: _ } => false
+        TypedRemoteFileConverged { path: _, mode: _ } => true
       }
   }
 }
@@ -109,17 +109,17 @@ fn remote_step_failure_cause(standing: RemoteStepStanding) -> String? {
       match x {
         RemoteArgvExecution { outcome: o } =>
           match o {
-            gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } => Present { value: why }
-            gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } =>
+            TypedArgvExecRefused { reason: why } => Present { value: why }
+            TypedArgvExecConverged { result: r } =>
               Present {
                 value: join(["argv exit=", to_string(r.exit_code), " stderr=", r.stderr], ""),
               }
           }
         RemoteFileExecution { outcome: o } =>
           match o {
-            gunbc.typed_remote_file_write.TypedRemoteFileConvergenceRefused { step: st, reason: why } =>
+            TypedRemoteFileConvergenceRefused { step: st, reason: why } =>
               Present { value: join(["file-write refused at ", st, ": ", why], "") }
-            gunbc.typed_remote_file_write.TypedRemoteFileConverged { path: _, mode: _ } => none
+            TypedRemoteFileConverged { path: _, mode: _ } => none
           }
       }
   }

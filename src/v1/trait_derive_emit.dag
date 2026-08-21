@@ -239,7 +239,7 @@ fn v1_map_key_propagate_round(
 }
 
 fn map_has_declared_type(type_decl_items: std.types.Map<String, v1.std.core.Node>, name: String) -> Bool {
-  match map_get(type_decl_items, name) {
+  match map_get(type_decl_items, v1.std.core.qualified_last_segment(name: name)) {
     Present { value: _ } => true
     Absent => false
   }
@@ -319,10 +319,10 @@ type V1FreeMonoidSupplementalRoute
 
 fn v1_freemonoid_row_route(row: extdeps.languages.rust.derive_contracts.RustVecSupplementalGenericBoundRow) -> V1FreeMonoidSupplementalRoute? {
   match row.derive_trait {
-    std.trait_derive_shape.ReprDeriveDebug => Present { value: FreeMonoidHandWrittenImpl }
-    std.trait_derive_shape.ReprDerivePartialEq => Present { value: FreeMonoidHandWrittenImpl }
-    std.trait_derive_shape.ReprDeriveSerialize => Present { value: FreeMonoidSerdeBoundAttr }
-    std.trait_derive_shape.ReprDeriveDeserialize => Present { value: FreeMonoidSerdeBoundAttr }
+    ReprDeriveDebug => Present { value: FreeMonoidHandWrittenImpl }
+    ReprDerivePartialEq => Present { value: FreeMonoidHandWrittenImpl }
+    ReprDeriveSerialize => Present { value: FreeMonoidSerdeBoundAttr }
+    ReprDeriveDeserialize => Present { value: FreeMonoidSerdeBoundAttr }
     _ => Absent
   }
 }
@@ -928,7 +928,7 @@ fn v1_emit_enum_derives(
   let payload_traits = v1_with_map_key_requirement(base: payload_coproduct_derive_traits(), map_key_required: map_key_required)
   let set_row_refusal = if (set_params |> count) > 0 { v1_set_unroutable_row_refusal() } else { "" }
   match shape {
-    std.trait_derive_shape.ReprDeriveElemNullaryEnumCopy =>
+    ReprDeriveElemNullaryEnumCopy =>
       if repr_grounding_derive_completeness_predicate(nullary_traits, shape) {
         let derived_traits = if (set_params |> count) > 0 { v1_set_filter_hand_written(traits: nullary_traits) } else { nullary_traits }
         concat(
@@ -939,7 +939,7 @@ fn v1_emit_enum_derives(
       } else {
         v1_trait_derive_refuse("trait_derive_emit: nullary coproduct derive completeness refused")
       }
-    std.trait_derive_shape.ReprDeriveElemPayloadCoproduct =>
+    ReprDeriveElemPayloadCoproduct =>
       if repr_grounding_derive_completeness_predicate(payload_traits, shape) {
         let derived_traits = if (set_params |> count) > 0 { v1_set_filter_hand_written(traits: payload_traits) } else { payload_traits }
         concat(
@@ -1138,7 +1138,7 @@ fn v1_type_expr_mentions_param_non_phantom(
       ) {
       true
     } else {
-      match map_get(type_decl_items, name) {
+      match map_get(type_decl_items, v1.std.core.qualified_last_segment(name: name)) {
         Present { value: decl } =>
           v1_declared_type_app_mentions_param_non_phantom(
             param_name: param_name,
@@ -1419,11 +1419,17 @@ fn v1_type_expr_is_bare_param(param_name: String, type_expr: v1.std.core.Node, s
     && (type_expr.children |> count) == 0
 }
 
+// The declaration index is keyed by BARE name, so a qualified authored head
+// (std.algebra.FreeMonoid) missed it and the Clone-bound well-formedness question
+// became undecidable for every field applying a cross-module generic. Leaf-reducing
+// asks the arity question the index can answer; it never needed to decide WHICH
+// module declares the name.
 fn v1_type_expr_head_is_known(
   name: String,
   type_decl_items: std.types.Map<String, v1.std.core.Node>
 ) -> Bool {
-  std.types.is_container_type(name: name) || map_get(type_decl_items, name) != none
+  let leaf = v1.std.core.qualified_last_segment(name: name)
+  std.types.is_container_type(name: leaf) || map_get(type_decl_items, leaf) != none
 }
 
 fn v1_item_generic_param_name_set(
@@ -1476,7 +1482,7 @@ fn v1_type_expr_clone_impl_needs_param(
   } else if (type_expr.children |> count) == 0 {
     false
   } else {
-    match map_get(type_decl_items, name) {
+    match map_get(type_decl_items, v1.std.core.qualified_last_segment(name: name)) {
       Present { value: decl } =>
         v1_declared_type_app_clone_impl_needs_param(
           param_name: param_name,
@@ -1628,7 +1634,7 @@ fn v1_type_expr_wf_needs_clone_param(
         source_indices: source_indices
       )
     )
-    match map_get(type_decl_items, name) {
+    match map_get(type_decl_items, v1.std.core.qualified_last_segment(name: name)) {
       Present { value: decl } =>
         let bound_params = match map_get(bounds, name) {
           Present { value: s } => s

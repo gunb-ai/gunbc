@@ -36,7 +36,7 @@ fn selected_dynamic_is(sel: extdeps.http.server.RouteSelection<test.claim.http_s
         ProbeDispatch => want_dispatch
       }
     SelectedStatic { route: _ } => false
-    extdeps.http.server.MethodNotAllowed { allowed: _ } => false
+    MethodNotAllowed { allowed: _ } => false
     NoRouteMatched => false
   }
 }
@@ -46,7 +46,7 @@ fn selection_param(sel: extdeps.http.server.RouteSelection<test.claim.http_serve
     SelectedDynamic { handler: _, params: ps } =>
       fold(ps, init: "", f: (acc, p) => if p.name == name { p.value } else { acc })
     SelectedStatic { route: _ } => ""
-    extdeps.http.server.MethodNotAllowed { allowed: _ } => ""
+    MethodNotAllowed { allowed: _ } => ""
     NoRouteMatched => ""
   }
 }
@@ -59,7 +59,7 @@ test fn witness_static_row_selects_static() -> Bool {
   match serve_select_route(table: probe_table(), method: GET, path: "/healthz") {
     SelectedStatic { route: r } => r.body == "ok" && r.status_on_hit == 200
     SelectedDynamic { handler: _, params: _ } => false
-    extdeps.http.server.MethodNotAllowed { allowed: _ } => false
+    MethodNotAllowed { allowed: _ } => false
     NoRouteMatched => false
   }
 }
@@ -72,7 +72,7 @@ test fn witness_dispatch_post_binds_param() -> Bool {
 
 test fn witness_wrong_method_folds_405_with_allowed() -> Bool {
   match serve_select_route(table: probe_table(), method: GET, path: "/dispatch/x") {
-    extdeps.http.server.MethodNotAllowed { allowed: ms } =>
+    MethodNotAllowed { allowed: ms } =>
       count(ms) == 1 && any(ms, m => m == std.types.POST)
     SelectedStatic { route: _ } => false
     SelectedDynamic { handler: _, params: _ } => false
@@ -85,7 +85,7 @@ test fn witness_unknown_path_folds_404() -> Bool {
     NoRouteMatched => true
     SelectedStatic { route: _ } => false
     SelectedDynamic { handler: _, params: _ } => false
-    extdeps.http.server.MethodNotAllowed { allowed: _ } => false
+    MethodNotAllowed { allowed: _ } => false
   }
 }
 
@@ -183,8 +183,8 @@ fn parity_corpus() -> List<String> {
 
 fn matcher_accepts(template: std.http_path.PathTemplate, path: String) -> Bool {
   match extdeps.uri_path.match_path_template(template: template, path: path) {
-    extdeps.uri_path.PathMatched { params: _ } => true
-    extdeps.uri_path.PathNotMatched => false
+    PathMatched { params: _ } => true
+    PathNotMatched => false
   }
 }
 

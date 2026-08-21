@@ -42,17 +42,17 @@ test fn compiler_tests_rust_blobs_are_all_rostered() -> Bool {
 
 test fn reasoned_terminal_is_accepted() -> Bool {
   let is_scaffold = match legitimate_terminal_control_row.disposition {
-    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
-    std.disposition.Terminal { reason: _ } => false
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
   }
   language_source_scaffold_row_is_dispositioned(row: legitimate_terminal_control_row) && is_scaffold == false
 }
 
 test fn pair_completion_spelling_binds_the_derivation_authority() -> Bool {
   match rust_pair_completion_spelling_scaffold_trigger {
-    std.disposition.Scaffold { dissolves_to: _, bind: bind } =>
+    Scaffold { dissolves_to: _, bind: bind } =>
       bind.module_path == "std.trait_derive_shape" && bind.decl_name == "pair_completion_op_rows"
-    std.disposition.Terminal { reason: _ } => false
+    Terminal { reason: _ } => false
   }
 }
 

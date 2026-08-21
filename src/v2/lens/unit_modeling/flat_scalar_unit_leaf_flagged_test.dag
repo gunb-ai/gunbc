@@ -22,7 +22,7 @@ data flat_scalar_unit_leaf_input: v2.std.node.Node = v2.std.node.Node {
 
 test fn flat_scalar_unit_leaf_flagged_holds() -> v2.std.logic.Bool {
   match unit_modeling_gate(node: flat_scalar_unit_leaf_input) {
-    v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_unit_leaf_fixable
+    Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_unit_leaf_fixable
     Accepted { value: _, diagnostics: _ } => false
   }
 }

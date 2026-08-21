@@ -74,14 +74,14 @@ fn selection_label(capabilities: gunbc.spark_serving_realization.SparkHostCapabi
     capabilities: capabilities,
     policy: least_privilege_policy(),
   ) {
-    gunbc.spark.serving_realization.RealizationSelected { realization: r } =>
+    RealizationSelected { realization: r } =>
       match r {
-        gunbc.spark.serving_realization.UserUnitRealization => "selected:user-unit"
-        gunbc.spark.serving_realization.SystemUnitRealization => "selected:system-unit"
-        gunbc.spark.serving_realization.RootlessContainerRealization => "selected:rootless-container"
+        UserUnitRealization => "selected:user-unit"
+        SystemUnitRealization => "selected:system-unit"
+        RootlessContainerRealization => "selected:rootless-container"
       }
-    gunbc.spark.serving_realization.NoRealizationAdmitted { first: _, more: _ } => "no-realization-admitted"
-    gunbc.spark.serving_realization.RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => "choice-required"
+    NoRealizationAdmitted { first: _, more: _ } => "no-realization-admitted"
+    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => "choice-required"
   }
 }
 
@@ -91,14 +91,14 @@ fn selects_user_unit(capabilities: gunbc.spark_serving_realization.SparkHostCapa
     capabilities: capabilities,
     policy: least_privilege_policy(),
   ) {
-    gunbc.spark.serving_realization.RealizationSelected { realization: r } =>
+    RealizationSelected { realization: r } =>
       match r {
-        gunbc.spark.serving_realization.UserUnitRealization => true
-        gunbc.spark.serving_realization.SystemUnitRealization => false
-        gunbc.spark.serving_realization.RootlessContainerRealization => false
+        UserUnitRealization => true
+        SystemUnitRealization => false
+        RootlessContainerRealization => false
       }
-    gunbc.spark.serving_realization.NoRealizationAdmitted { first: _, more: _ } => false
-    gunbc.spark.serving_realization.RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
+    NoRealizationAdmitted { first: _, more: _ } => false
+    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
   }
 }
 
@@ -212,9 +212,9 @@ test fn w_user_unit_refused_when_it_cannot_satisfy_the_lifecycle() -> Bool {
     capabilities: no_lingering,
     policy: least_privilege_policy(),
   ) {
-    gunbc.spark.serving_realization.NoRealizationAdmitted { first: _, more: _ } => true
-    gunbc.spark.serving_realization.RealizationSelected { realization: _ } => false
-    gunbc.spark.serving_realization.RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
+    NoRealizationAdmitted { first: _, more: _ } => true
+    RealizationSelected { realization: _ } => false
+    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
   }
 }
 
@@ -238,9 +238,9 @@ test fn w_unobserved_capability_refuses_rather_than_admitting() -> Bool {
     capabilities: unobserved,
     policy: least_privilege_policy(),
   ) {
-    gunbc.spark.serving_realization.NoRealizationAdmitted { first: _, more: _ } => true
-    gunbc.spark.serving_realization.RealizationSelected { realization: _ } => false
-    gunbc.spark.serving_realization.RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
+    NoRealizationAdmitted { first: _, more: _ } => true
+    RealizationSelected { realization: _ } => false
+    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
   }
 }
 
@@ -264,14 +264,14 @@ test fn w_system_unit_selected_when_it_is_the_only_admitted_mechanism() -> Bool 
     capabilities: system_only,
     policy: least_privilege_policy(),
   ) {
-    gunbc.spark.serving_realization.RealizationSelected { realization: r } =>
+    RealizationSelected { realization: r } =>
       match r {
-        gunbc.spark.serving_realization.SystemUnitRealization => true
-        gunbc.spark.serving_realization.UserUnitRealization => false
-        gunbc.spark.serving_realization.RootlessContainerRealization => false
+        SystemUnitRealization => true
+        UserUnitRealization => false
+        RootlessContainerRealization => false
       }
-    gunbc.spark.serving_realization.NoRealizationAdmitted { first: _, more: _ } => false
-    gunbc.spark.serving_realization.RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
+    NoRealizationAdmitted { first: _, more: _ } => false
+    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
   }
 }
 
@@ -296,9 +296,9 @@ test fn w_no_managed_executor_refuses_under_managed_authority() -> Bool {
     capabilities: human_only,
     policy: least_privilege_policy(),
   ) {
-    gunbc.spark.serving_realization.NoRealizationAdmitted { first: _, more: _ } => true
-    gunbc.spark.serving_realization.RealizationSelected { realization: _ } => false
-    gunbc.spark.serving_realization.RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
+    NoRealizationAdmitted { first: _, more: _ } => true
+    RealizationSelected { realization: _ } => false
+    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
   }
 }
 
@@ -311,14 +311,14 @@ test fn red_control_privilege_does_not_select_the_architecture() -> Bool {
     capabilities: host_container_capable_plus_sudo(),
     policy: least_privilege_policy(),
   ) {
-    gunbc.spark.serving_realization.RealizationSelected { realization: r } =>
+    RealizationSelected { realization: r } =>
       match r {
-        gunbc.spark.serving_realization.SystemUnitRealization => false
-        gunbc.spark.serving_realization.UserUnitRealization => true
-        gunbc.spark.serving_realization.RootlessContainerRealization => true
+        SystemUnitRealization => false
+        UserUnitRealization => true
+        RootlessContainerRealization => true
       }
-    gunbc.spark.serving_realization.NoRealizationAdmitted { first: _, more: _ } => false
-    gunbc.spark.serving_realization.RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
+    NoRealizationAdmitted { first: _, more: _ } => false
+    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
   }
 }
 
@@ -338,14 +338,14 @@ test fn w_user_unit_is_structurally_inadmissible_under_a_separated_service_ident
     capabilities: host_user_unit_capable(),
     policy: least_privilege_policy(),
   ) {
-    gunbc.spark.serving_realization.RealizationSelected { realization: r } =>
+    RealizationSelected { realization: r } =>
       match r {
-        gunbc.spark.serving_realization.UserUnitRealization => false
-        gunbc.spark.serving_realization.SystemUnitRealization => true
-        gunbc.spark.serving_realization.RootlessContainerRealization => true
+        UserUnitRealization => false
+        SystemUnitRealization => true
+        RootlessContainerRealization => true
       }
-    gunbc.spark.serving_realization.NoRealizationAdmitted { first: _, more: _ } => true
-    gunbc.spark.serving_realization.RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => true
+    NoRealizationAdmitted { first: _, more: _ } => true
+    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => true
   }
 }
 
@@ -367,14 +367,14 @@ test fn w_user_unit_is_admissible_when_the_intent_does_not_require_separation() 
     capabilities: host_user_unit_capable(),
     policy: least_privilege_policy(),
   ) {
-    gunbc.spark.serving_realization.RealizationSelected { realization: r } =>
+    RealizationSelected { realization: r } =>
       match r {
-        gunbc.spark.serving_realization.UserUnitRealization => true
-        gunbc.spark.serving_realization.SystemUnitRealization => false
-        gunbc.spark.serving_realization.RootlessContainerRealization => false
+        UserUnitRealization => true
+        SystemUnitRealization => false
+        RootlessContainerRealization => false
       }
-    gunbc.spark.serving_realization.NoRealizationAdmitted { first: _, more: _ } => false
-    gunbc.spark.serving_realization.RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
+    NoRealizationAdmitted { first: _, more: _ } => false
+    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
   }
 }
 

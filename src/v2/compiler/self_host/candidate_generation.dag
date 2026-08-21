@@ -133,7 +133,7 @@ fn mint_artifact_from_rust_emission_candidate(
     behavioral_probe: BehavioralProbeUnbound,
     realized_closure: realized_closure
   ) {
-    v2.std.optional.Present { value: receipt } =>
+    Present { value: receipt } =>
       outcome_accepted(
         value: ProvenancedRustArtifact {
           source: candidate.source,
@@ -141,7 +141,7 @@ fn mint_artifact_from_rust_emission_candidate(
           producer_receipt: receipt
         }
       )
-    v2.std.optional.Absent =>
+    Absent =>
       outcome_rejected(
         d: v2.std.diagnostic.Diagnostic {
           reason: ^direct_rust_door_producer_receipt_refused,
@@ -211,19 +211,19 @@ fn observe_provenanced_rust_emission_from_ingest(
 ) -> ProvenancedRustEmissionObservation {
   let lm = dag_language_model()
   match assemble_program_from_ingest(ingest: ingest, admission: admission, lm: lm) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => AssemblyRejected { diagnostics: d }
+    Rejected { diagnostics: d } => AssemblyRejected { diagnostics: d }
     Accepted { value: resolved, diagnostics: _ } =>
       match infer(tree: resolved) {
-        v2.std.diagnostic.Rejected { diagnostics: d } => InferenceRejected { diagnostics: d }
+        Rejected { diagnostics: d } => InferenceRejected { diagnostics: d }
         Accepted { value: inferred, diagnostics: _ } =>
           match generate_rust_emission_candidate(inferred: inferred, target: target) {
-            v2.std.diagnostic.Rejected { diagnostics: d } => EmissionRejected { diagnostics: d }
+            Rejected { diagnostics: d } => EmissionRejected { diagnostics: d }
             Accepted { value: candidate, diagnostics: _ } =>
               match mint_artifact_from_rust_emission_candidate(
                 candidate: candidate,
                 module_path: module_path
               ) {
-                v2.std.diagnostic.Rejected { diagnostics: d } => ProducerReceiptRejected { diagnostics: d }
+                Rejected { diagnostics: d } => ProducerReceiptRejected { diagnostics: d }
                 Accepted { value: artifact, diagnostics: _ } =>
                   ArtifactProduced { artifact: artifact }
               }
@@ -268,7 +268,7 @@ fn advance_written_provenanced_rust_artifact_cargo_green(
     prior: written.artifact.producer_receipt,
     cargo_green: cargo_green
   ) {
-    v2.std.optional.Present { value: receipt } =>
+    Present { value: receipt } =>
       optional_present(
         value: WrittenProvenancedRustArtifact {
           artifact: ProvenancedRustArtifact {
@@ -279,7 +279,7 @@ fn advance_written_provenanced_rust_artifact_cargo_green(
           write: written.write
         }
       )
-    v2.std.optional.Absent => optional_absent()
+    Absent => optional_absent()
   }
 }
 

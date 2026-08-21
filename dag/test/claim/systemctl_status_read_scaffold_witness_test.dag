@@ -34,7 +34,7 @@ test fn witness_dissolution_trigger_declared_on_capture_note() -> Bool {
 
 test fn witness_status_tail_scaffold_binds_dissolution_trigger() -> Bool {
   match live_deploy_unit_status_tail_scaffold {
-    std.disposition.Scaffold {
+    Scaffold {
       dissolves_to: SingleAuthority,
       bind: DeclarationRef { module_path: m, decl_name: n, field: WholeDeclaration },
     } =>

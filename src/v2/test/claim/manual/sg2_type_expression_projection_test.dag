@@ -23,7 +23,7 @@ fn sg2_project_instantiation_emitted() -> v2.std.node.Node {
     projection: v2.extdeps.languages.rust.rust_type_expression_projection()
   ) {
     Accepted { value: emitted, diagnostics: _ } => emitted
-    v2.std.diagnostic.Rejected { diagnostics: _ } => sg2_fail_node()
+    Rejected { diagnostics: _ } => sg2_fail_node()
   }
 }
 
@@ -39,7 +39,7 @@ fn sg2_project_arrow_emitted() -> v2.std.node.Node {
     projection: v2.extdeps.languages.rust.rust_type_expression_projection()
   ) {
     Accepted { value: emitted, diagnostics: _ } => emitted
-    v2.std.diagnostic.Rejected { diagnostics: _ } => sg2_fail_node()
+    Rejected { diagnostics: _ } => sg2_fail_node()
   }
 }
 
@@ -50,7 +50,7 @@ fn sg2_project_conj_emitted() -> v2.std.node.Node {
     projection: v2.extdeps.languages.rust.rust_type_expression_projection()
   ) {
     Accepted { value: emitted, diagnostics: _ } => emitted
-    v2.std.diagnostic.Rejected { diagnostics: _ } => sg2_fail_node()
+    Rejected { diagnostics: _ } => sg2_fail_node()
   }
 }
 
@@ -61,7 +61,7 @@ test fn sg2_binary_fn_projection_accepts() -> v2.std.logic.Bool {
     projection: v2.extdeps.languages.rust.rust_type_expression_projection()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -72,7 +72,7 @@ test fn sg2_arrow_malformed_projection_rejects() -> v2.std.logic.Bool {
     projection: v2.extdeps.languages.rust.rust_type_expression_projection()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -82,7 +82,7 @@ fn sg2_serialize_accepts(emitted: v2.std.node.Node) -> v2.std.logic.Bool {
     emitted: emitted
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -92,7 +92,7 @@ fn sg2_serialized_text(emitted: v2.std.node.Node) -> String {
     emitted: emitted
   ) {
     Accepted { value: source, diagnostics: _ } => source.carried
-    v2.std.diagnostic.Rejected { diagnostics: _ } => sg2_fail_text
+    Rejected { diagnostics: _ } => sg2_fail_text
   }
 }
 
@@ -156,7 +156,7 @@ fn sg2_wire_decode_accepts(emitted: v2.std.node.Node) -> v2.std.logic.Bool {
     projection: v2.extdeps.languages.rust.rust_type_expression_projection()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -170,7 +170,7 @@ fn sg2_rust_add_projection_absent() -> v2.std.logic.Bool {
 test fn sg2_rust_add_translate_fallback_accepts() -> v2.std.logic.Bool {
   match v2.compiler.translate.translate(tree: v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree, target: v2.test.manual.rust_add_emit_translate.rust_add_target_model) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -232,9 +232,9 @@ test fn witness_sg2_fold_row_delimiter_discriminates_holds() -> v2.std.logic.Boo
         connective: v2.std.node.Arrow
       ) {
         Accepted { value: _, diagnostics: _ } => false
-        v2.std.diagnostic.Rejected { diagnostics: _ } => true
+        Rejected { diagnostics: _ } => true
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

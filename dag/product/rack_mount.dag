@@ -114,8 +114,8 @@ type MountAdmission {
 
 fn admit_mount(acc: MountAdmission, rack: extdeps.rack.types.RackCatalogRow, m: ChassisMount) -> MountAdmission {
   match acc.refusal {
-    v2.std.optional.Present { value: r } => MountAdmission { admitted: acc.admitted, refusal: v2.std.optional.Present { value: r } }
-    v2.std.optional.Absent =>
+    Present { value: r } => MountAdmission { admitted: acc.admitted, refusal: v2.std.optional.Present { value: r } }
+    Absent =>
       if m.lowest_unit < 1 {
         MountAdmission { admitted: acc.admitted, refusal: v2.std.optional.Present { value: MountBelowFirstUnit { lowest_unit: m.lowest_unit } } }
       } else if mount_top_unit(m: m) > rack_unit_count(u: rack.rack_units) {
@@ -126,8 +126,8 @@ fn admit_mount(acc: MountAdmission, rack: extdeps.rack.types.RackCatalogRow, m: 
       } else {
         let conflict = fold(acc.admitted, init: none, f: (found, other) =>
           match found {
-            v2.std.optional.Present { value: r } => v2.std.optional.Present { value: r }
-            v2.std.optional.Absent =>
+            Present { value: r } => v2.std.optional.Present { value: r }
+            Absent =>
               if product.rack_mount.asset_eq(a: other.asset, b: m.asset) {
                 v2.std.optional.Present { value: AssetMountedTwice { asset: m.asset } }
               } else if mounts_collide(a: other, b: m) {
@@ -143,8 +143,8 @@ fn admit_mount(acc: MountAdmission, rack: extdeps.rack.types.RackCatalogRow, m: 
               }
           })
         match conflict {
-          v2.std.optional.Present { value: r } => MountAdmission { admitted: acc.admitted, refusal: v2.std.optional.Present { value: r } }
-          v2.std.optional.Absent => MountAdmission { admitted: concat(acc.admitted, [m]), refusal: none }
+          Present { value: r } => MountAdmission { admitted: acc.admitted, refusal: v2.std.optional.Present { value: r } }
+          Absent => MountAdmission { admitted: concat(acc.admitted, [m]), refusal: none }
         }
       }
   }
@@ -160,8 +160,8 @@ fn rack_instance(identity: product.placement_supply.RackIdentity, catalog: extde
   let admitted = fold(mounts, init: MountAdmission { admitted: [], refusal: none }, f: (acc, m) =>
     admit_mount(acc: acc, rack: catalog, m: m))
   match admitted.refusal {
-    v2.std.optional.Present { value: r } => MountRefused { cause: r }
-    v2.std.optional.Absent => MountReady { value: RackInstance { identity: identity, catalog: catalog, mounts: mounts } }
+    Present { value: r } => MountRefused { cause: r }
+    Absent => MountReady { value: RackInstance { identity: identity, catalog: catalog, mounts: mounts } }
   }
 }
 

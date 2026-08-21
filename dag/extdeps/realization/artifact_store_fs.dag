@@ -36,7 +36,7 @@ type ArtifactFsListResult
 
 func artifact_fs_put(store_root: String, key: std.content_hash.ContentHash, payload: String) -> ArtifactFsPutResult {
   match artifact_store_scratch_write_admissible(store_root: store_root) {
-    std.access.Deny { refusal: refusal } => ArtifactFsPutRefused {
+    Deny { refusal: refusal } => ArtifactFsPutRefused {
       verb: Write,
       target: absolute_path_position(path: store_root),
       frame: artifact_store_scratch_frame,
@@ -54,7 +54,7 @@ func artifact_fs_put(store_root: String, key: std.content_hash.ContentHash, payl
 
 func artifact_fs_get(store_root: String, key: std.content_hash.ContentHash) -> ArtifactFsLookup {
   match artifact_store_scratch_read_admissible(store_root: store_root) {
-    std.access.Deny { refusal: refusal } => ArtifactFsRefused {
+    Deny { refusal: refusal } => ArtifactFsRefused {
       verb: Read,
       target: absolute_path_position(path: store_root),
       frame: artifact_store_scratch_frame,
@@ -72,7 +72,7 @@ func artifact_fs_get(store_root: String, key: std.content_hash.ContentHash) -> A
 
 func artifact_fs_delete(store_root: String, key: std.content_hash.ContentHash) -> ArtifactFsDeleteResult {
   match artifact_store_scratch_write_admissible(store_root: store_root) {
-    std.access.Deny { refusal: refusal } => ArtifactFsDeleteRefused {
+    Deny { refusal: refusal } => ArtifactFsDeleteRefused {
       verb: Write,
       target: absolute_path_position(path: store_root),
       frame: artifact_store_scratch_frame,
@@ -90,7 +90,7 @@ func artifact_fs_delete(store_root: String, key: std.content_hash.ContentHash) -
 
 func artifact_fs_list(store_root: String) -> ArtifactFsListResult {
   match artifact_store_scratch_read_admissible(store_root: store_root) {
-    std.access.Deny { refusal: refusal } => ArtifactFsListRefused {
+    Deny { refusal: refusal } => ArtifactFsListRefused {
       verb: Read,
       target: absolute_path_position(path: store_root),
       frame: artifact_store_scratch_frame,

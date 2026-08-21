@@ -527,7 +527,7 @@ fn mark_excluded(frontier: v2.lens.affected_set.ReExecFrontier, key: v2.lens.aff
 
       match v2.std.collection.map_get(decisions, key) {
         Accepted { value: opt, diagnostics: _ } => match opt {
-          v2.std.optional.Present { value: decision } =>
+          Present { value: decision } =>
             match decision {
               Rerun =>
                 ChangedSubgraphFrontier {
@@ -540,14 +540,14 @@ fn mark_excluded(frontier: v2.lens.affected_set.ReExecFrontier, key: v2.lens.aff
                   decisions: map_insert(decisions, key, Excluded { first: first, rest: list_snoc_item(xs: rest, item: proof) })
                 }
             }
-          v2.std.optional.Absent =>
+          Absent =>
             ChangedSubgraphFrontier {
               boundary_exclusions: boundary_exclusions,
               decisions: map_insert(decisions, key, Excluded { first: proof, rest: [] })
             }
         }
 
-        v2.std.diagnostic.Rejected { diagnostics: d } => mark_whole_dag_diagnostics(diagnostics: d)
+        Rejected { diagnostics: d } => mark_whole_dag_diagnostics(diagnostics: d)
       }
   }
 }
@@ -676,7 +676,7 @@ fn seed_edit_fold_acc_live(
             ),
             pending: fold_pending(acc: acc, next: ad)
           }
-        v2.std.diagnostic.Rejected { diagnostics: nds } =>
+        Rejected { diagnostics: nds } =>
           AffectedFoldAcc {
             dag: acc.dag,
             frontier: mark_whole_dag_diagnostics(diagnostics: nds),
@@ -691,7 +691,7 @@ fn seed_edit_fold_acc_live(
             frontier: mark_whole_dag(reason: boundary_reason),
             pending: fold_pending(acc: acc, next: ad)
           }
-        v2.std.diagnostic.Rejected { diagnostics: nds } =>
+        Rejected { diagnostics: nds } =>
           AffectedFoldAcc {
             dag: acc.dag,
             frontier: mark_whole_dag_diagnostics(diagnostics: nds),
@@ -879,7 +879,7 @@ fn seed_affected_set_fold_acc_live(
                     edit: edit
                   )
               }
-            v2.std.diagnostic.Rejected { diagnostics: nds } =>
+            Rejected { diagnostics: nds } =>
               fail_affected_set_with_diagnostics(
                 acc: AffectedSetActive {
                   dag: active_dag,
@@ -956,7 +956,7 @@ fn canonical_boundary_exclusion_receipt(node: v2.std.node.Node, h: v2.std.node.H
       } else {
         BoundaryUnknown { reason: ^affected_set_reason_boundary_purity_unproven }
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       BoundaryUnknown { reason: ^affected_set_reason_boundary_purity_unproven }
   }
 }
@@ -976,7 +976,7 @@ fn canonical_boundary_hash_receipt(dag: v2.lens.affected_set.Dag, path: v2.std.n
       } else {
         HashChanged
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       HashUnknown { reason: ^affected_set_reason_boundary_path_unresolved }
   }
 }
@@ -987,7 +987,7 @@ fn connective_to_dimension_family(connective: v2.std.node.Connective) -> v2.lens
     Conj => ^canonical_tag_conj
     Disj => ^canonical_tag_disj
     Arrow => ^canonical_tag_arrow
-    v2.std.node.Cardinality => ^canonical_tag_cardinality
+    Cardinality => ^canonical_tag_cardinality
     Instantiation => ^canonical_tag_instantiation
   }
 }
@@ -995,10 +995,10 @@ fn connective_to_dimension_family(connective: v2.std.node.Connective) -> v2.lens
 fn behavior_to_dimension_family(behavior: v2.std.node.Behavior) -> v2.lens.affected_set.AffectedDimension {
   match behavior {
     Value => ^canonical_tag_value
-    v2.std.node.Transform => ^canonical_tag_transform
+    Transform => ^canonical_tag_transform
     Branch => ^canonical_tag_branch
     Loop => ^canonical_tag_loop
-    v2.std.node.Bind => ^canonical_tag_bind
+    Bind => ^canonical_tag_bind
     Match => ^canonical_tag_match
   }
 }
@@ -1032,14 +1032,14 @@ fn union_dimension_lists(left: List<v2.lens.affected_set.AffectedDimension>, rig
 
 fn list_to_changed_dimension_receipt(dims: List<v2.lens.affected_set.AffectedDimension>) -> v2.lens.affected_set.ChangedDimensionReceipt {
   match list_at_optional(xs: dims, index: 0) {
-    v2.std.optional.Present { value: first } =>
+    Present { value: first } =>
       match list_tail(xs: dims) {
         TailFound { tail: rest } =>
           ChangedDimensions { first: first, rest: rest }
         TailAbsent =>
           ChangedDimensions { first: first, rest: [] }
       }
-    v2.std.optional.Absent =>
+    Absent =>
       ChangedDimensionsUnknown { reason: ^affected_set_reason_changed_dimension_unresolved }
   }
 }
@@ -1061,7 +1061,7 @@ fn canonical_changed_dimension_receipt(dag: v2.lens.affected_set.Dag, edit: v2.s
   match subterm_at(root: dag, path: edit.at) {
     Accepted { value: current, diagnostics: _ } =>
       changed_dimension_families_union(before: current, after: edit.replacement)
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       ChangedDimensionsUnknown { reason: ^affected_set_reason_changed_dimension_unresolved }
   }
 }
@@ -1082,7 +1082,7 @@ fn canonical_ancestor_frame_dependencies(frame: v2.lens.application.AncestorFram
           }
         ]
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       FrontierUnknown { reason: ^affected_set_reason_frontier_ancestor_unresolved }
   }
 }
@@ -1153,7 +1153,7 @@ fn canonical_transitive_frontier(dag: v2.lens.affected_set.Dag, edit_dimension: 
   match collect_ancestor_frames(root: dag, steps: edit_dimension.edit.at.steps) {
     Accepted { value: walk, diagnostics: _ } =>
       canonical_region_dependencies(dag: dag, walk: walk)
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       FrontierUnknown { reason: ^affected_set_reason_frontier_path_unresolved }
   }
 }
@@ -1178,7 +1178,7 @@ fn canonical_propagation_receipt(
         } else {
           Propagates
         }
-      v2.std.diagnostic.Rejected { diagnostics: _ } =>
+      Rejected { diagnostics: _ } =>
       Propagates
     }
   }

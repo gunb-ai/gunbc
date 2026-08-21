@@ -155,8 +155,8 @@ test fn a_credential_that_could_not_be_read_is_not_an_unenrolled_one() -> Bool {
 // a stale Secret Manager version rather than as this lane damaging the secret in transit.
 test fn a_credential_keeps_its_own_leading_and_trailing_spaces() -> Bool {
   match classify_credential_read(success: true, error: "", content: " password ") {
-    gunbc.spark.grant_privileged_operation.BootstrapCredentialReady { secret: secret } => secret == " password "
-    gunbc.spark.grant_privileged_operation.BootstrapCredentialNotMaterialized { cause: _ } => false
+    BootstrapCredentialReady { secret: secret } => secret == " password "
+    BootstrapCredentialNotMaterialized { cause: _ } => false
   }
 }
 
@@ -168,13 +168,13 @@ test fn a_credential_keeps_its_own_leading_and_trailing_spaces() -> Bool {
 test fn a_whitespace_only_payload_is_delivered_not_redefined_as_absent() -> Bool {
   let tabs = join([from_code_point(cp: 9), from_code_point(cp: 9)], "")
   match classify_credential_read(success: true, error: "", content: "  ") {
-    gunbc.spark.grant_privileged_operation.BootstrapCredentialReady { secret: a } =>
+    BootstrapCredentialReady { secret: a } =>
       a == "  "
         && match classify_credential_read(success: true, error: "", content: tabs) {
-             gunbc.spark.grant_privileged_operation.BootstrapCredentialReady { secret: b } => b == tabs
-             gunbc.spark.grant_privileged_operation.BootstrapCredentialNotMaterialized { cause: _ } => false
+             BootstrapCredentialReady { secret: b } => b == tabs
+             BootstrapCredentialNotMaterialized { cause: _ } => false
            }
-    gunbc.spark.grant_privileged_operation.BootstrapCredentialNotMaterialized { cause: _ } => false
+    BootstrapCredentialNotMaterialized { cause: _ } => false
   }
 }
 
@@ -189,8 +189,8 @@ test fn a_trailing_line_break_refuses_rather_than_being_stripped() -> Bool {
   let crlf = join([from_code_point(cp: 13), from_code_point(cp: 10)], "")
   fold([join(["password", lf], ""), join(["password", crlf], ""), lf], init: true, f: fn(acc, c) {
     acc && match classify_credential_read(success: true, error: "", content: c) {
-      gunbc.spark.grant_privileged_operation.BootstrapCredentialNotMaterialized { cause: why } => string_contains(why as String, "line break")
-      gunbc.spark.grant_privileged_operation.BootstrapCredentialReady { secret: _ } => false
+      BootstrapCredentialNotMaterialized { cause: why } => string_contains(why as String, "line break")
+      BootstrapCredentialReady { secret: _ } => false
     }
   })
 }
@@ -200,8 +200,8 @@ test fn a_trailing_line_break_refuses_rather_than_being_stripped() -> Bool {
 test fn an_embedded_line_break_refuses_instead_of_being_stripped() -> Bool {
   let content = join(["pass", from_code_point(cp: 10), "word"], "")
   match classify_credential_read(success: true, error: "", content: content) {
-    gunbc.spark.grant_privileged_operation.BootstrapCredentialNotMaterialized { cause: c } => string_contains(c as String, "line break")
-    gunbc.spark.grant_privileged_operation.BootstrapCredentialReady { secret: _ } => false
+    BootstrapCredentialNotMaterialized { cause: c } => string_contains(c as String, "line break")
+    BootstrapCredentialReady { secret: _ } => false
   }
 }
 
@@ -210,8 +210,8 @@ test fn an_embedded_line_break_refuses_instead_of_being_stripped() -> Bool {
 test fn a_bare_carriage_return_refuses() -> Bool {
   let content = join(["password", from_code_point(cp: 13)], "")
   match classify_credential_read(success: true, error: "", content: content) {
-    gunbc.spark.grant_privileged_operation.BootstrapCredentialNotMaterialized { cause: _ } => true
-    gunbc.spark.grant_privileged_operation.BootstrapCredentialReady { secret: _ } => false
+    BootstrapCredentialNotMaterialized { cause: _ } => true
+    BootstrapCredentialReady { secret: _ } => false
   }
 }
 
@@ -222,8 +222,8 @@ test fn a_bare_carriage_return_refuses() -> Bool {
 // facts, and only the first is a failed fetch.
 test fn an_empty_credential_file_is_not_a_blank_password() -> Bool {
   match classify_credential_read(success: true, error: "", content: "") {
-    gunbc.spark.grant_privileged_operation.BootstrapCredentialNotMaterialized { cause: c } => string_contains(c as String, "never a blank password")
-    gunbc.spark.grant_privileged_operation.BootstrapCredentialReady { secret: _ } => false
+    BootstrapCredentialNotMaterialized { cause: c } => string_contains(c as String, "never a blank password")
+    BootstrapCredentialReady { secret: _ } => false
   }
 }
 
@@ -259,8 +259,8 @@ test fn the_environment_carries_a_path_and_not_a_credential() -> Bool {
 // missing or unreadable materialization, the other is a materialization that produced nothing.
 test fn an_unreadable_credential_file_reports_the_read_error() -> Bool {
   match classify_credential_read(success: false, error: "No such file or directory", content: "") {
-    gunbc.spark.grant_privileged_operation.BootstrapCredentialNotMaterialized { cause: c } => string_contains(c as String, "No such file or directory")
-    gunbc.spark.grant_privileged_operation.BootstrapCredentialReady { secret: _ } => false
+    BootstrapCredentialNotMaterialized { cause: c } => string_contains(c as String, "No such file or directory")
+    BootstrapCredentialReady { secret: _ } => false
   }
 }
 

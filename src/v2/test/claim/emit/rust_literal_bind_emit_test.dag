@@ -40,7 +40,7 @@ test fn rust_literal_bind_int_emit_accepts() -> v2.std.logic.Bool {
   match rust_literal_bind_int_emit_from_producer(target: rust_bind_literal_target_model()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_bind_int_literal_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -53,9 +53,9 @@ test fn rust_literal_bind_int_wrong_value_discriminates() -> v2.std.logic.Bool {
           (wrong.carried != canonical.carried) &&
           (dc == v2.std.diagnostic.None) &&
           (dw == v2.std.diagnostic.None)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -66,7 +66,7 @@ test fn rust_literal_bind_bool_emit_accepts() -> v2.std.logic.Bool {
   ) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_bind_bool_literal_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -85,9 +85,9 @@ test fn rust_literal_bind_bool_wrong_value_discriminates() -> v2.std.logic.Bool 
           (wrong.carried != canonical.carried) &&
           (dc == v2.std.diagnostic.None) &&
           (dw == v2.std.diagnostic.None)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -98,7 +98,7 @@ test fn rust_literal_bind_char_emit_accepts() -> v2.std.logic.Bool {
   ) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_bind_char_literal_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -117,9 +117,9 @@ test fn rust_literal_bind_char_wrong_value_discriminates() -> v2.std.logic.Bool 
           (wrong.carried != canonical.carried) &&
           (dc == v2.std.diagnostic.None) &&
           (dw == v2.std.diagnostic.None)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -139,13 +139,13 @@ test fn rust_literal_bind_string_rope_refusal_is_executed() -> v2.std.logic.Bool
         target: rust_bind_literal_target_model(),
         projection: projection
       ) {
-        v2.std.diagnostic.Rejected { diagnostics: d } =>
+        Rejected { diagnostics: d } =>
           (d.head.reason == ^target_value_expression_emit_unsupported_kind) &&
           (pd == v2.std.diagnostic.None) &&
           (rust_literal_emit_string_refusal_note != "")
         Accepted { value: _, diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

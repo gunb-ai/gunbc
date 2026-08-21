@@ -29,7 +29,7 @@ test fn qualified_variant_ctor_head_types_as_coproduct() -> Bool {
 test fn qualified_pattern_head_projects_variant() -> Bool {
   let v = QchNorth { deg: 3 }
   match v {
-    test.claim.qualified_ctor_head_witness_test.QchNorth { deg: d } => d == 3
+    QchNorth { deg: d } => d == 3
     QchSouth => false
   }
 }

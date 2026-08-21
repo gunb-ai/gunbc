@@ -21,16 +21,16 @@ fn rpcl_serialize(expr: v2.std.compilers.target_model.TargetValueExpression, tar
       match serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: tokens) {
         Accepted { value: text, diagnostics: _ } =>
           v2.std.diagnostic.Accepted { value: render_target_text(t: text), diagnostics: v2.std.diagnostic.None }
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn rpcl_emits(expr: v2.std.compilers.target_model.TargetValueExpression, golden: String) -> v2.std.logic.Bool {
   match rpcl_serialize(expr: expr, target: rust_target_model()) {
     Accepted { value: text, diagnostics: _ } => text == golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -86,14 +86,14 @@ fn rpcl_serialize_fixed(token_class: v2.std.node.Symbol) -> v2.std.diagnostic.Ou
   ) {
     Accepted { value: text, diagnostics: _ } =>
       v2.std.diagnostic.Accepted { value: render_target_text(t: text), diagnostics: v2.std.diagnostic.None }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn rpcl_refuses_class(token_class: v2.std.node.Symbol) -> v2.std.logic.Bool {
   match rpcl_serialize_fixed(token_class: token_class) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -110,6 +110,6 @@ test fn rust_production_refuses_unspelled_token_class() -> v2.std.logic.Bool {
     && rpcl_refuses_class(token_class: ^rust_token_never_spelled_anywhere)
     && match rpcl_serialize_fixed(token_class: ^rust_token_closure_nop) {
       Accepted { value: text, diagnostics: _ } => text == ""
-      v2.std.diagnostic.Rejected { diagnostics: _ } => false
+      Rejected { diagnostics: _ } => false
     }
 }

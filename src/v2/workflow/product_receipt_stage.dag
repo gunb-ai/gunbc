@@ -24,9 +24,9 @@ data product_receipt_stage_census_rel: String = "/b4-retention-census.txt"
 
 fn stage_identity_from_hex(hex: String, file_count: Int) -> v2.workflow.product_receipt.ArtifactIdentity {
   match std.content_hash.fnv1a64_structural_hex_digest(hex: hex) {
-    v2.std.optional.Present { value: digest } =>
+    Present { value: digest } =>
       v2.workflow.product_receipt.ArtifactIdentityKnown { digest: digest, file_count: file_count }
-    v2.std.optional.Absent => v2.workflow.product_receipt.ArtifactIdentityAbsent { cause: v2.workflow.product_receipt.ProducerReportedNoArtifact }
+    Absent => v2.workflow.product_receipt.ArtifactIdentityAbsent { cause: v2.workflow.product_receipt.ProducerReportedNoArtifact }
   }
 }
 
@@ -75,31 +75,31 @@ fn stage_admission_cause(reason: v2.std.node.Symbol) -> v2.workflow.product_rece
 // boundary 3 NotExercised -- which is the honest answer, not a failure.
 fn stage_cause_belongs_to_read(cause: v2.workflow.product_receipt.BoundaryRefusalCause) -> v2.std.logic.Bool {
   match cause {
-    v2.workflow.product_receipt.ManifestSourceReadFailed => true
-    v2.workflow.product_receipt.IngestRowShortfall => true
-    v2.workflow.product_receipt.AdmissionReasonUnrecognized { reason: _ } => false
-    v2.workflow.product_receipt.ManifestNotProduced => false
-    v2.workflow.product_receipt.ManifestOverlayNotResolved => false
-    v2.workflow.product_receipt.ManifestPopulationEmpty => false
-    v2.workflow.product_receipt.ManifestCoverageIncomplete => false
-    v2.workflow.product_receipt.ManifestPopulationPartial => false
-    v2.workflow.product_receipt.PopulationDigestMismatch => false
-    v2.workflow.product_receipt.EmitterRejected { causes: _ } => false
-    v2.workflow.product_receipt.EmittedHardRefusalsPresent { count: _ } => false
-    v2.workflow.product_receipt.AssemblyRefused => false
-    v2.workflow.product_receipt.CargoManifestWriteFailed => false
-    v2.workflow.product_receipt.CargoBuildFailed => false
+    ManifestSourceReadFailed => true
+    IngestRowShortfall => true
+    AdmissionReasonUnrecognized { reason: _ } => false
+    ManifestNotProduced => false
+    ManifestOverlayNotResolved => false
+    ManifestPopulationEmpty => false
+    ManifestCoverageIncomplete => false
+    ManifestPopulationPartial => false
+    PopulationDigestMismatch => false
+    EmitterRejected { causes: _ } => false
+    EmittedHardRefusalsPresent { count: _ } => false
+    AssemblyRefused => false
+    CargoManifestWriteFailed => false
+    CargoBuildFailed => false
   }
 }
 
 fn stage_population_digest_identity() -> v2.workflow.product_receipt.ArtifactIdentity {
   match v2.compiler.source_authority.discovered_source_refs_digest_for_refs(refs: v2.test.workflow.host_source_root_ingest_manifest.host_source_root_closure_refs) {
-    v2.compiler.source_authority.DiscoveredSourceRefsDigestFromList { digest: digest } =>
+    DiscoveredSourceRefsDigestFromList { digest: digest } =>
       v2.workflow.product_receipt.ArtifactIdentityKnown {
         digest: digest,
         file_count: v2.test.workflow.host_source_root_ingest_manifest.host_source_root_ingest_coverage_receipt.ingest_read_count
       }
-    v2.compiler.source_authority.DiscoveredSourceRefsDigestUnavailable { cause: _ } =>
+    DiscoveredSourceRefsDigestUnavailable { cause: _ } =>
       v2.workflow.product_receipt.ArtifactIdentityAbsent { cause: v2.workflow.product_receipt.ProducerReportedNoArtifact }
   }
 }
@@ -173,7 +173,7 @@ func product_receipt_candidate(
     admission: v2.test.workflow.host_source_root_ingest_manifest.host_compiler_closure_admission,
     target: v2.extdeps.languages.rust.rust_target_model()
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: ds } =>
+    Rejected { diagnostics: ds } =>
       product_receipt_candidate_refused(
         txn: txn,
         ds: ds,
@@ -408,12 +408,12 @@ func run_product_receipt_stage(txn: String, manifest_identity: String, entry: St
   )
 
   let admission_cause = match admission {
-    v2.compiler.self_host.compiler_closure_emit_driver.ClosureEmitPopulationRefused { reason: reason } => stage_admission_cause(reason: reason)
-    v2.compiler.self_host.compiler_closure_emit_driver.ClosureEmitPopulationAdmitted { ingest: _ } => v2.workflow.product_receipt.ManifestNotProduced
+    ClosureEmitPopulationRefused { reason: reason } => stage_admission_cause(reason: reason)
+    ClosureEmitPopulationAdmitted { ingest: _ } => v2.workflow.product_receipt.ManifestNotProduced
   }
   let admitted = match admission {
-    v2.compiler.self_host.compiler_closure_emit_driver.ClosureEmitPopulationRefused { reason: _ } => false
-    v2.compiler.self_host.compiler_closure_emit_driver.ClosureEmitPopulationAdmitted { ingest: _ } => true
+    ClosureEmitPopulationRefused { reason: _ } => false
+    ClosureEmitPopulationAdmitted { ingest: _ } => true
   }
 
   let population_digest = stage_population_digest_identity()
@@ -449,9 +449,9 @@ func run_product_receipt_stage(txn: String, manifest_identity: String, entry: St
   }
 
   let b2_ok = match b2.standing {
-    v2.workflow.product_receipt.BoundaryCompleted => true
-    v2.workflow.product_receipt.BoundaryRefused { cause: _ } => false
-    v2.workflow.product_receipt.BoundaryNotExercised => false
+    BoundaryCompleted => true
+    BoundaryRefused { cause: _ } => false
+    BoundaryNotExercised => false
   }
 
   let b3 = if !b2_ok {
@@ -473,9 +473,9 @@ func run_product_receipt_stage(txn: String, manifest_identity: String, entry: St
   }
 
   let b3_ok = match b3.standing {
-    v2.workflow.product_receipt.BoundaryCompleted => true
-    v2.workflow.product_receipt.BoundaryRefused { cause: _ } => false
-    v2.workflow.product_receipt.BoundaryNotExercised => false
+    BoundaryCompleted => true
+    BoundaryRefused { cause: _ } => false
+    BoundaryNotExercised => false
   }
 
   let candidate = if b3_ok {
@@ -496,9 +496,9 @@ func run_product_receipt_stage(txn: String, manifest_identity: String, entry: St
   let census_outcome = candidate.census
 
   let b4_ok = match b4.standing {
-    v2.workflow.product_receipt.BoundaryCompleted => true
-    v2.workflow.product_receipt.BoundaryRefused { cause: _ } => false
-    v2.workflow.product_receipt.BoundaryNotExercised => false
+    BoundaryCompleted => true
+    BoundaryRefused { cause: _ } => false
+    BoundaryNotExercised => false
   }
 
   let tail = product_receipt_tail(

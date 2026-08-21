@@ -3,9 +3,9 @@ module test.claim.spark_serving_unit_observation_witness_test
 
 fn digest_of(state: gunbc.spark.serving_observed_members.SparkServingObservedUnitState) -> String {
   match state {
-    gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: d } => d as String
-    gunbc.spark.serving_observed_members.UserUnitStateAbsent => "<absent>"
-    gunbc.spark.serving_observed_members.UserUnitStateUnobserved => "<unobserved>"
+    UserUnitStateObserved { unit_state_digest: d } => d as String
+    UserUnitStateAbsent => "<absent>"
+    UserUnitStateUnobserved => "<unobserved>"
   }
 }
 
@@ -73,17 +73,17 @@ test fn a_unit_differing_only_in_its_trailing_newline_is_drift() -> Bool {
 // -- so a failed read that did not establish absence stays unobserved.
 test fn a_failed_read_that_did_not_establish_absence_stays_unobserved() -> Bool {
   match classify_observed_user_unit(read_succeeded: false, read_stdout: "", file_absent: false) {
-    gunbc.spark.serving_observed_members.UserUnitStateUnobserved => true
-    gunbc.spark.serving_observed_members.UserUnitStateAbsent => false
-    gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: _ } => false
+    UserUnitStateUnobserved => true
+    UserUnitStateAbsent => false
+    UserUnitStateObserved { unit_state_digest: _ } => false
   }
 }
 
 test fn a_read_that_established_absence_observes_absence() -> Bool {
   match classify_observed_user_unit(read_succeeded: false, read_stdout: "", file_absent: true) {
-    gunbc.spark.serving_observed_members.UserUnitStateAbsent => true
-    gunbc.spark.serving_observed_members.UserUnitStateUnobserved => false
-    gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: _ } => false
+    UserUnitStateAbsent => true
+    UserUnitStateUnobserved => false
+    UserUnitStateObserved { unit_state_digest: _ } => false
   }
 }
 
@@ -97,9 +97,9 @@ test fn a_failed_read_and_an_established_absence_are_different_states() -> Bool 
 // An empty successful read is NOT absence either -- an empty file is a file, and it is drift.
 test fn an_empty_successful_read_is_drift_not_absence() -> Bool {
   match classify_observed_user_unit(read_succeeded: true, read_stdout: "", file_absent: false) {
-    gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: _ } => true
-    gunbc.spark.serving_observed_members.UserUnitStateAbsent => false
-    gunbc.spark.serving_observed_members.UserUnitStateUnobserved => false
+    UserUnitStateObserved { unit_state_digest: _ } => true
+    UserUnitStateAbsent => false
+    UserUnitStateUnobserved => false
   }
 }
 
@@ -238,9 +238,9 @@ test fn an_unobserved_enablement_leaves_the_read_content_observed() -> Bool {
     read_stdout: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text()),
     file_absent: false,
   ) {
-    gunbc.spark.serving_observed_members.UserUnitStateObserved { unit_state_digest: d } =>
+    UserUnitStateObserved { unit_state_digest: d } =>
       (d as String) == (spark_serving_user_unit_state_digest() as String)
-    gunbc.spark.serving_observed_members.UserUnitStateUnobserved => false
-    gunbc.spark.serving_observed_members.UserUnitStateAbsent => false
+    UserUnitStateUnobserved => false
+    UserUnitStateAbsent => false
   }
 }

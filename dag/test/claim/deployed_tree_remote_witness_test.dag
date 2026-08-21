@@ -107,7 +107,7 @@ test fn identity_separates_two_instances_on_one_host() -> Bool {
 
 fn exit_is_success(e: std.process.ProcessExit) -> Bool {
   match e {
-    std.process.ExitSuccess => true
+    ExitSuccess => true
     ExitFailure { code: _, reason: _ } => false
   }
 }

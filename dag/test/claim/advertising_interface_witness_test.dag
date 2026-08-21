@@ -17,7 +17,7 @@ test fn w_google_media_rate_is_auction_determined_with_mechanism_citation() -> B
   match google_ads_media_rate {
     AuctionDetermined { mechanism_citation: c } =>
       (c as String) == "support.google.com/google-ads/answer/142918"
-    extdeps.advertising.types.RateUnavailable { cause: _ } => false
+    RateUnavailable { cause: _ } => false
   }
 }
 
@@ -44,25 +44,25 @@ test fn w_meta_media_rate_is_auction_determined() -> Bool {
   match meta_ads_media_rate {
     AuctionDetermined { mechanism_citation: c } =>
       (c as String) == "developers.facebook.com/docs/marketing-api/bidding"
-    extdeps.advertising.types.RateUnavailable { cause: _ } => false
+    RateUnavailable { cause: _ } => false
   }
 }
 
 test fn w_red_meta_minimum_budget_rate_refuses_with_cause() -> Bool {
   match meta_ads_minimum_daily_budget_rate {
     AuctionDetermined { mechanism_citation: _ } => false
-    extdeps.advertising.types.RateUnavailable { cause: _ } => true
+    RateUnavailable { cause: _ } => true
   }
 }
 
 test fn w_red_answer_arm_and_ignorance_arm_stay_distinct() -> Bool {
   let ignorance_discriminates = match synthetic_unavailable_rate {
     AuctionDetermined { mechanism_citation: _ } => false
-    extdeps.advertising.types.RateUnavailable { cause: _ } => true
+    RateUnavailable { cause: _ } => true
   }
   let answer_discriminates = match google_ads_media_rate {
     AuctionDetermined { mechanism_citation: _ } => true
-    extdeps.advertising.types.RateUnavailable { cause: _ } => false
+    RateUnavailable { cause: _ } => false
   }
   ignorance_discriminates && answer_discriminates
 }

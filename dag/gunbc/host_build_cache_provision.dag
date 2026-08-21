@@ -225,12 +225,12 @@ fn provision_build_cache_default_effect(host: product.placement_supply.HostIdent
 
 fn provision_build_cache_routes_through_host_effect_apply() -> Bool {
   match host_build_cache_provision_realize_scaffold {
-    std.disposition.Scaffold {
+    Scaffold {
       dissolves_to: std.disposition.RealizationDispatch,
       bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: n, field: _ },
     } =>
       m == "gunbc.host_effect_realize" && n == "realize_provision_build_cache"
-    std.disposition.Terminal { reason: _ } => false
+    Terminal { reason: _ } => false
   }
 }
 

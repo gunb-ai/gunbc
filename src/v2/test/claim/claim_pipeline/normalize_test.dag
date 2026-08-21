@@ -29,7 +29,7 @@ fn spine_normalize_service_parse_tree() -> v2.std.node.Node {
 test fn spine_normalize_accepts_well_formed_sugar() -> v2.std.logic.Bool {
   match normalize(parse_tree: spine_normalize_service_parse_tree()) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -61,7 +61,7 @@ test fn spine_normalize_dissolves_interior_service_sugar() -> v2.std.logic.Bool 
       fold(normalized.root.children, init: true, f: fn(acc, e) {
         acc && !spine_normalize_child_is_service_sugar_atom(n: e.target)
       })
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

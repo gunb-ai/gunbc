@@ -112,9 +112,9 @@ fn primitive_projection_type_and_bytes_round_trip(value: v2.std.runtime.RuntimeV
         Accepted { value: type_node, diagnostics: _ } =>
           match find_named_child(root: projected, name: ^runtime_primitive_bytes_node_projection) {
             Accepted { value: _, diagnostics: _ } => type_node == expected_type
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
     RuntimeValueNodeUnrepresentable => false
   }
@@ -125,7 +125,7 @@ fn primitive_projection_bytes_edge_present(value: v2.std.runtime.RuntimeValue) -
     RuntimeValueNodeProjected { node: projected } =>
       match find_named_child(root: projected, name: ^runtime_primitive_bytes_node_projection) {
         Accepted { value: _, diagnostics: _ } => true
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
     RuntimeValueNodeUnrepresentable => false
   }

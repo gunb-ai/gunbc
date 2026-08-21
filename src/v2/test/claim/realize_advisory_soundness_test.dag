@@ -15,7 +15,7 @@ test fn witness_sound_bound_carries_margin() -> v2.std.logic.Bool {
   match advisory_soundness_for(o: obs(known: true, derived: 1000, observed: 800)) {
     BoundSound { margin_bytes: m } => m == 200
     BoundUnsound { derived_bytes: _, observed_peak_bytes: _ } => false
-    v2.workflow.realize_advisory_soundness.BoundUnknown { entry: _, subject_function: _ } => false
+    BoundUnknown { entry: _, subject_function: _ } => false
   }
 }
 
@@ -23,7 +23,7 @@ test fn witness_exceedance_is_unsound() -> v2.std.logic.Bool {
   match advisory_soundness_for(o: obs(known: true, derived: 1000, observed: 1001)) {
     BoundUnsound { derived_bytes: d, observed_peak_bytes: p } => d == 1000 && p == 1001
     BoundSound { margin_bytes: _ } => false
-    v2.workflow.realize_advisory_soundness.BoundUnknown { entry: _, subject_function: _ } => false
+    BoundUnknown { entry: _, subject_function: _ } => false
   }
 }
 

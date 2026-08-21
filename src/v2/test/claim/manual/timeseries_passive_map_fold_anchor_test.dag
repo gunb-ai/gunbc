@@ -84,7 +84,7 @@ test fn timeseries_signed_magnitude_capacitor_fold_holds() -> v2.std.logic.Bool 
     Accepted { value: stepped, diagnostics: _ } =>
       charge_micro_count(stepped.charge_microcoulombs) == -1000
         && voltage_count(stepped.voltage.microvolts) == -500
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -98,7 +98,7 @@ test fn timeseries_anchor_capacitor_fold_holds() -> v2.std.logic.Bool {
     Accepted { value: stepped, diagnostics: _ } =>
       charge_micro_count(stepped.charge_microcoulombs) == 2000
         && voltage_count(stepped.voltage.microvolts) == 1000
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -124,7 +124,7 @@ test fn timeseries_anchor_capacitor_fold_chronological_holds() -> v2.std.logic.B
   ) {
     Accepted { value: stepped, diagnostics: _ } =>
       voltage_count(stepped.voltage.microvolts) == 3000
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -141,7 +141,7 @@ test fn timeseries_anchor_capacitor_zero_rating_rejects() -> v2.std.logic.Bool {
     dt: timeseries_anchor_dt,
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -155,7 +155,7 @@ test fn timeseries_anchor_inductor_fold_holds() -> v2.std.logic.Bool {
     Accepted { value: stepped, diagnostics: _ } =>
       flux_micro_count(stepped.flux_microwebers) == 4000
         && current_count(stepped.current.microamperes) == 2000
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

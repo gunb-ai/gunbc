@@ -8,8 +8,8 @@ data subject_host: product.placement_supply.HostIdentity = "srv6" as product.pla
 // witness says so rather than substituting one.
 fn subject_release() -> gunbc.spark_serving_release.SparkServingRelease? {
   match gunbc.spark_serving_desired.spark_serving_desired_admission {
-    gunbc.spark.serving_desired.SparkServingDesiredAdmitted { serving_release: r } => Present { value: r }
-    gunbc.spark.serving_desired.SparkServingDesiredRefused { cause: _ } => none
+    SparkServingDesiredAdmitted { serving_release: r } => Present { value: r }
+    SparkServingDesiredRefused { cause: _ } => none
   }
 }
 
@@ -63,14 +63,14 @@ fn complete_required_store() -> gunbc.ollama_runtime_bundle.ModelStoreObservatio
 
 fn observed_count(p: gunbc.spark_serving_observed_members.SparkServingObservedMemberProjection) -> Int {
   match p {
-    gunbc.spark.serving_observed_members.SparkServingObservedMembers { members: ms, runtime_observed: _, unit_observed: _, registration_observed: _, enablement_observed: _, linger_observed: _ } => length(ms)
+    SparkServingObservedMembers { members: ms, runtime_observed: _, unit_observed: _, registration_observed: _, enablement_observed: _, linger_observed: _ } => length(ms)
   }
 }
 
 fn plan_writes(p: gunbc.spark_serving_converge_plan.SparkServingFullMembershipPlan) -> Int {
   match p {
-    gunbc.spark.serving_converge_plan.SparkServingFullMembershipPlanRefused { cause: _ } => 0 - 1
-    gunbc.spark.serving_converge_plan.SparkServingFullMembershipPlanReady { plan: plan, unit_observed: _, enablement_observed: _, linger_observed: _, observed_members: _ } =>
+    SparkServingFullMembershipPlanRefused { cause: _ } => 0 - 1
+    SparkServingFullMembershipPlanReady { plan: plan, unit_observed: _, enablement_observed: _, linger_observed: _, observed_members: _ } =>
       membership_write_count(plan: plan)
   }
 }
@@ -114,8 +114,8 @@ fn full_plan_refuses(
         serving_release: r,
         projection: test.claim.spark_serving_full_plan_witness_test.project(host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, activity: activity, linger: linger),
       ) {
-        gunbc.spark.serving_converge_plan.SparkServingFullMembershipPlanRefused { cause: c } => string_contains(c, "refused")
-        gunbc.spark.serving_converge_plan.SparkServingFullMembershipPlanReady { plan: _, unit_observed: _ } => false
+        SparkServingFullMembershipPlanRefused { cause: c } => string_contains(c, "refused")
+        SparkServingFullMembershipPlanReady { plan: _, unit_observed: _ } => false
       }
   }
 }
@@ -260,9 +260,9 @@ fn removal_refusing_plan() -> gunbc.membership_reconcile.MembershipPlan<gunbc.sp
 
 test fn a_plan_whose_member_cannot_translate_refuses_the_typed_projection() -> Bool {
   match fleet_converge_spark_serving_typed_actions(plan: removal_refusing_plan(), desired: []) {
-    gunbc.spark.serving_converge_plan.SparkServingTypedActionsRefused { cause: c } =>
+    SparkServingTypedActionsRefused { cause: c } =>
       string_contains(c, "dropped") && string_contains(c, "1 planned member actions")
-    gunbc.spark.serving_converge_plan.SparkServingTypedActionsProjected { rows: _ } => false
+    SparkServingTypedActionsProjected { rows: _ } => false
   }
 }
 
@@ -273,8 +273,8 @@ test fn an_ordinary_linger_plan_still_projects_its_rows() -> Bool {
     plan: spark_serving_linger_membership_plan(host: test.claim.spark_serving_full_plan_witness_test.subject_host, linger_enabled: false),
     desired: [spark_serving_desired_linger_member(host: test.claim.spark_serving_full_plan_witness_test.subject_host)],
   ) {
-    gunbc.spark.serving_converge_plan.SparkServingTypedActionsProjected { rows: rows } => length(scheduled_rows_list(scheduled: rows)) == 1
-    gunbc.spark.serving_converge_plan.SparkServingTypedActionsRefused { cause: _ } => false
+    SparkServingTypedActionsProjected { rows: rows } => length(scheduled_rows_list(scheduled: rows)) == 1
+    SparkServingTypedActionsRefused { cause: _ } => false
   }
 }
 
@@ -310,8 +310,8 @@ test fn a_host_in_exactly_the_desired_state_plans_no_writes() -> Bool {
         serving_release: r,
         projection: observed_exactly_desired(r: r),
       ) {
-        gunbc.spark.serving_converge_plan.SparkServingFullMembershipPlanRefused { cause: _ } => false
-        gunbc.spark.serving_converge_plan.SparkServingFullMembershipPlanReady { plan: plan, unit_observed: observed, enablement_observed: _, linger_observed: _, observed_members: _ } =>
+        SparkServingFullMembershipPlanRefused { cause: _ } => false
+        SparkServingFullMembershipPlanReady { plan: plan, unit_observed: observed, enablement_observed: _, linger_observed: _, observed_members: _ } =>
           membership_write_count(plan: plan) == 0 && observed
       }
   }
@@ -356,8 +356,8 @@ test fn a_runtime_only_drift_changes_exactly_one_member() -> Bool {
           linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
         ),
       ) {
-        gunbc.spark.serving_converge_plan.SparkServingFullMembershipPlanRefused { cause: _ } => false
-        gunbc.spark.serving_converge_plan.SparkServingFullMembershipPlanReady { plan: plan, unit_observed: _, enablement_observed: _, linger_observed: _, observed_members: _ } =>
+        SparkServingFullMembershipPlanRefused { cause: _ } => false
+        SparkServingFullMembershipPlanReady { plan: plan, unit_observed: _, enablement_observed: _, linger_observed: _, observed_members: _ } =>
           membership_write_count(plan: plan) == 1
       }
   }
@@ -380,15 +380,15 @@ fn artifact_verdict(
 
 fn artifact_refusal_cause(v: gunbc.spark.serving_converge_plan.SparkServingPlanArtifactVerdict) -> String {
   match v {
-    gunbc.spark.serving_converge_plan.SparkServingPlanArtifactReady { artifact: _ } => "<ready>"
-    gunbc.spark.serving_converge_plan.SparkServingPlanArtifactRefused { cause: c } => c
+    SparkServingPlanArtifactReady { artifact: _ } => "<ready>"
+    SparkServingPlanArtifactRefused { cause: c } => c
   }
 }
 
 fn artifact_row_count(v: gunbc.spark.serving_converge_plan.SparkServingPlanArtifactVerdict) -> Int {
   match v {
-    gunbc.spark.serving_converge_plan.SparkServingPlanArtifactReady { artifact: a } => length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions))
-    gunbc.spark.serving_converge_plan.SparkServingPlanArtifactRefused { cause: _ } => 0 - 1
+    SparkServingPlanArtifactReady { artifact: a } => length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions))
+    SparkServingPlanArtifactRefused { cause: _ } => 0 - 1
   }
 }
 
@@ -474,28 +474,28 @@ test fn a_unit_only_drift_freezes_exactly_two_rows() -> Bool {
 // only the second is what the publish sequence needs.
 fn runtime_rows(v: gunbc.spark.serving_converge_plan.SparkServingPlanArtifactVerdict) -> Int {
   match v {
-    gunbc.spark.serving_converge_plan.SparkServingPlanArtifactRefused { cause: _ } => 0 - 1
-    gunbc.spark.serving_converge_plan.SparkServingPlanArtifactReady { artifact: a } =>
+    SparkServingPlanArtifactRefused { cause: _ } => 0 - 1
+    SparkServingPlanArtifactReady { artifact: a } =>
       length(filter(scheduled_rows_list(scheduled: a.spark_serving_typed_actions), row =>
         match row.action {
-          gunbc.membership_reconcile.MemberAdded { at: _, to: m } => is_runtime_root(address: m.address)
-          gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: m } => is_runtime_root(address: m.address)
-          gunbc.membership_reconcile.MemberRemoved { at: _, from: m } => is_runtime_root(address: m.address)
-          gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => false
-          gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
+          MemberAdded { at: _, to: m } => is_runtime_root(address: m.address)
+          MemberChanged { at: _, from: _, to: m } => is_runtime_root(address: m.address)
+          MemberRemoved { at: _, from: m } => is_runtime_root(address: m.address)
+          MemberRemovalRefused { from: _, cause: _ } => false
+          MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
         }))
   }
 }
 
 fn is_runtime_root(address: gunbc.spark.serving_membership.SparkServingResourceAddress) -> Bool {
   match address {
-    gunbc.spark.serving_membership.SparkServingRuntimeRootAddress => true
-    gunbc.spark.serving_membership.SparkServingUserUnitAddress => false
-    gunbc.spark.serving_membership.SparkServingUserUnitRegistrationAddress => false
-    gunbc.spark.serving_membership.SparkServingUserUnitEnablementAddress => false
-    gunbc.spark.serving_membership.SparkServingUserUnitActivityAddress => false
-    gunbc.spark.serving_membership.SparkServingModelSlotAddress { slot: _ } => false
-    gunbc.spark.serving_membership.SparkServingLingerAddress => false
+    SparkServingRuntimeRootAddress => true
+    SparkServingUserUnitAddress => false
+    SparkServingUserUnitRegistrationAddress => false
+    SparkServingUserUnitEnablementAddress => false
+    SparkServingUserUnitActivityAddress => false
+    SparkServingModelSlotAddress { slot: _ } => false
+    SparkServingLingerAddress => false
   }
 }
 
@@ -685,7 +685,7 @@ test fn a_disabled_linger_plans_rather_than_refusing() -> Bool {
 
 fn observed_addresses(p: gunbc.spark.serving_observed_members.SparkServingObservedMemberProjection) -> Int {
   match p {
-    gunbc.spark.serving_observed_members.SparkServingObservedMembers { members: ms, runtime_observed: _, unit_observed: _, registration_observed: _, enablement_observed: _, linger_observed: _ } => length(ms)
+    SparkServingObservedMembers { members: ms, runtime_observed: _, unit_observed: _, registration_observed: _, enablement_observed: _, linger_observed: _ } => length(ms)
   }
 }
 
@@ -708,7 +708,7 @@ test fn an_unobserved_enablement_leaves_the_observed_content_intact() -> Bool {
         enablement: gunbc.spark.serving_observed_members.UserUnitManagerUnobserved,
         activity: gunbc.spark.serving_observed_members.UnitActivityUnobserved, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
       ) {
-        gunbc.spark.serving_observed_members.SparkServingObservedMembers { members: _, unit_observed: unit_seen, enablement_observed: enab_seen, linger_observed: _ } =>
+        SparkServingObservedMembers { members: _, unit_observed: unit_seen, enablement_observed: enab_seen, linger_observed: _ } =>
           unit_seen && !enab_seen
       }
   }
@@ -728,7 +728,7 @@ test fn an_unobserved_unit_leaves_the_observed_enablement_intact() -> Bool {
         enablement: gunbc.spark.serving_observed_members.UserUnitManagerEnabled,
         activity: gunbc.spark.serving_observed_members.UnitActivityRunning, linger: gunbc.spark.serving_observed_members.LingerObservedEnabled,
       ) {
-        gunbc.spark.serving_observed_members.SparkServingObservedMembers { members: _, unit_observed: unit_seen, enablement_observed: enab_seen, linger_observed: _ } =>
+        SparkServingObservedMembers { members: _, unit_observed: unit_seen, enablement_observed: enab_seen, linger_observed: _ } =>
           !unit_seen && enab_seen
       }
   }
@@ -1015,14 +1015,14 @@ fn frozen_order(
         serving_release: r,
         projection: test.claim.spark_serving_full_plan_witness_test.project(host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, activity: activity, linger: linger),
       ) {
-        gunbc.spark.serving_converge_plan.SparkServingFullMembershipPlanRefused { cause: _ } => []
-        gunbc.spark.serving_converge_plan.SparkServingFullMembershipPlanReady { plan: p, desired_members: d } =>
+        SparkServingFullMembershipPlanRefused { cause: _ } => []
+        SparkServingFullMembershipPlanReady { plan: p, desired_members: d } =>
           match spark_serving_freeze_execution_schedule(
             plan: p,
             desired_addresses: flat_map(d, m => [m.address]),
           ) {
-            gunbc.spark.serving_execution_schedule.SparkServingScheduleRefused { cause: _ } => []
-            gunbc.spark.serving_execution_schedule.SparkServingScheduleFrozen { schedule: sched } =>
+            SparkServingScheduleRefused { cause: _ } => []
+            SparkServingScheduleFrozen { schedule: sched } =>
               spark_serving_frozen_schedule_order(schedule: sched)
           }
       }

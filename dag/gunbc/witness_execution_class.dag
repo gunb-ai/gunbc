@@ -79,11 +79,11 @@ fn axis_applies(
     EffectAxis => effect_obligation
     InterpreterSubjectAxis => interpreter_subject
     LiveObservationAxis => match disposition {
-      v2.std.optional.Present { value: d } => match d {
+      Present { value: d } => match d {
         ReadsLiveTree => true
         SubstrateInputsOnly => false
       }
-      v2.std.optional.Absent => true
+      Absent => true
     }
     CarriageAxis => true
   }
@@ -109,8 +109,8 @@ fn classify_witness(
 ) -> WitnessExecutionClass {
   let winner = v2.std.algebra.fold_list(xs: declared_class_precedence, empty: v2.std.optional.Absent, cons: fn(acc, axis) {
     match acc {
-      v2.std.optional.Present { value: _ } => acc
-      v2.std.optional.Absent =>
+      Present { value: _ } => acc
+      Absent =>
         match axis_applies(axis: axis, disposition: disposition, effect_obligation: effect_obligation, interpreter_subject: interpreter_subject) {
           true => v2.std.optional.Present { value: axis }
           false => v2.std.optional.Absent
@@ -118,8 +118,8 @@ fn classify_witness(
     }
   })
   match winner {
-    v2.std.optional.Present { value: axis } => class_for_axis(axis: axis, carriage: carriage)
-    v2.std.optional.Absent => class_for_axis(axis: CarriageAxis, carriage: carriage)
+    Present { value: axis } => class_for_axis(axis: axis, carriage: carriage)
+    Absent => class_for_axis(axis: CarriageAxis, carriage: carriage)
   }
 }
 

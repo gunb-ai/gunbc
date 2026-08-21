@@ -13,9 +13,9 @@ module gunbc.fleet_reach_endpoint
 // trap aimed at the network).
 fn spark_endpoint_for_binding(binding: gunbc.dgx_spark_procurement.DgxSparkRouterBinding) -> String? {
   match binding {
-    gunbc.spark.dgx_procurement.SlotAssigned { identity: _, reservation: r, allocation: _ } =>
+    SlotAssigned { identity: _, reservation: r, allocation: _ } =>
       Present { value: render_ipv4_address(addr: r.ipv4_address) as String }
-    gunbc.spark.dgx_procurement.SlotUnassigned { identity: _ } => none
+    SlotUnassigned { identity: _ } => none
   }
 }
 
@@ -25,13 +25,13 @@ fn spark_endpoint_for_binding(binding: gunbc.dgx_spark_procurement.DgxSparkRoute
 fn fleet_probe_endpoint_for(host: String) -> String {
   fold(dgx_spark_router_bindings, init: host, f: fn(acc, b) {
     match b {
-      gunbc.spark.dgx_procurement.SlotAssigned { identity: i, reservation: r, allocation: _ } =>
+      SlotAssigned { identity: i, reservation: r, allocation: _ } =>
         if (i as String) == host {
           render_ipv4_address(addr: r.ipv4_address) as String
         } else {
           acc
         }
-      gunbc.spark.dgx_procurement.SlotUnassigned { identity: _ } => acc
+      SlotUnassigned { identity: _ } => acc
     }
   })
 }

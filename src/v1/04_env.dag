@@ -921,7 +921,7 @@ fn type_ref_measure_binding_authority(env: v1.compiler.infer_env.TypeEnv, name: 
 
 fn variant_arm_type_projection(env: v1.compiler.infer_env.TypeEnv, owner: v1.std.core.Node, name: String) -> v1.std.core.Node? {
   match owner.connective {
-    v1.std.core.Disj =>
+    Disj =>
       match find_child_named(n: owner, name: name, source_indices: env.source_indices) {
         Present { value: arm } =>
           match (arm.children |> count) == 0 {

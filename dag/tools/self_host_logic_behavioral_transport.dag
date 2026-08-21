@@ -187,7 +187,7 @@ fn slb_behavioral_receipt_holds() -> Bool {
   match o.build {
     Observed { value: b } =>
       match b {
-        v2.compiler.self_host.promotion_admission.BuildGreen =>
+        BuildGreen =>
           match o.equivalence {
             Observed { value: e } =>
               match e {
@@ -204,7 +204,7 @@ fn slb_behavioral_receipt_holds() -> Bool {
               }
             ObservationUnavailable { cause: _ } => false
           }
-        v2.compiler.self_host.promotion_admission.BuildFailed { cause: _ } => false
+        BuildFailed { cause: _ } => false
       }
     ObservationUnavailable { cause: _ } => false
   }

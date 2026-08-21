@@ -58,7 +58,7 @@ data go_add_serialize_reject_receipt: v2.std.diagnostic.Outcome<extdeps.communic
 test fn go_add_serialize_reject_receipt_holds() -> Bool {
   match go_add_serialize_reject_receipt {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: d } => d != v2.std.diagnostic.None
+    Rejected { diagnostics: d } => d != v2.std.diagnostic.None
   }
 }
 
@@ -228,7 +228,7 @@ test fn go_add_emit_add_fn_accepts_holds() -> Bool {
   match go_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == go_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -237,7 +237,7 @@ data go_add_compile_inferred_receipt: v2.std.diagnostic.Outcome<v2.compiler.comp
 test fn go_add_compile_inferred_receipt_holds() -> Bool {
   match go_add_compile_inferred_receipt {
     Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

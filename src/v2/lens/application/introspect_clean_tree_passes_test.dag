@@ -22,6 +22,6 @@ data introspect_passing_lens: v2.compiler.compile.CompileLens = v2.compiler.comp
 test fn introspect_clean_tree_passes_claim_holds() -> v2.std.logic.Bool {
   match v2.compiler.compile.apply_compile_lens(lens: introspect_passing_lens, inferred: introspect_tree(), mode: v2.compiler.compile.CompileLensIntrospect) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

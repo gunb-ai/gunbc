@@ -24,7 +24,7 @@ test fn hollow_alias_blocked_via_always_required_lenses_holds() -> v2.std.logic.
     inferred: hollow_alias_ar_tree(),
     lenses: always_required_lenses()
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
+    Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
     Accepted { value: _, diagnostics: _ } => false
   }
 }

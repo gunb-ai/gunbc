@@ -14,7 +14,7 @@ test fn fixture_synthetic_mint_is_fixture_source_produced_only() -> v2.std.logic
   ) {
     Accepted { value: artifact, diagnostics: _ } =>
       synthetic_emitted_artifact_has_fixture_source_produced_only(artifact: artifact)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -39,15 +39,15 @@ test fn fixture_cargo_green_advance_is_not_behaviorally_equivalent() -> v2.std.l
         },
         cargo_green: true
       ) {
-        v2.std.optional.Present { value: cargo_written } =>
+        Present { value: cargo_written } =>
           written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification(
             written: cargo_written
           )
             && !written_synthetic_emitted_artifact_has_fixture_behaviorally_equivalent_qualification(
               written: cargo_written
             )
-        v2.std.optional.Absent => false
+        Absent => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

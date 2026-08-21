@@ -35,7 +35,7 @@ fn find_witness_sibling_accepts(source: v2.std.node.Node, target: v2.std.node.No
     multiplicity_policy: UniqueOnly
   ) {
     Accepted { value: fw, diagnostics: _ } => fw.candidate == target
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -50,7 +50,7 @@ fn find_witness_dispatch_accepts(source: v2.std.node.Node, target: v2.std.node.N
     multiplicity_policy: UniqueOnly
   ) {
     Accepted { value: fw, diagnostics: _ } => fw.candidate == target
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -144,7 +144,7 @@ test data witness_claim_task_id_surfaces_distinct: Bool = match run_test_claim_a
 ) {
   Pass => true
   SemanticMismatch { actual: _, falsification: _ } => false
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
@@ -156,7 +156,7 @@ test data witness_claim_crux_substrate_gap: Bool = match run_test_claim_assert(
 ) {
   Pass => true
   SemanticMismatch { actual: _, falsification: _ } => false
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
@@ -168,7 +168,7 @@ test data witness_claim_matrix_widening_accepts_siblings_and_wrong_core: Bool = 
 ) {
   Pass => true
   SemanticMismatch { actual: _, falsification: _ } => false
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }

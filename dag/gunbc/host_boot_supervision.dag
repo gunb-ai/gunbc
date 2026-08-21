@@ -98,7 +98,7 @@ fn host_boot_loop_cause(
   looped_after_stop: Bool,
 ) -> HostBootLoopCause {
   match signature.error_code {
-    v2.std.optional.Present { value: code } =>
+    Present { value: code } =>
       if supervisor_stopped && looped_after_stop {
         HostSelfResetOnError { code: code }
       } else {
@@ -106,7 +106,7 @@ fn host_boot_loop_cause(
           candidates: [PowerMonForceReset, PhosphorWatchdogPowerOn],
         }
       }
-    v2.std.optional.Absent =>
+    Absent =>
       if supervisor_stopped && looped_after_stop {
         LoopCauseUnobserved
       } else {

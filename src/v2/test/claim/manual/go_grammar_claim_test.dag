@@ -4,14 +4,14 @@ test fn go_grammar_validates_fixture() -> v2.std.logic.Bool {
   let at = v2.std.diagnostic.port_locus(port: ^parse_stage_locus_port)
   match v2.compiler.parse.grammar_validate_for_parse(root: v2.extdeps.languages.go.go_grammar_root(), at: at) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn go_grammar_parse_accepted() -> v2.std.logic.Bool {
   match go_grammar_parse_fixture() {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -22,10 +22,10 @@ fn go_grammar_parse_fixture() -> v2.std.diagnostic.Outcome<v2.std.grammar.ParseT
     file: ^go_parse_fixture_file,
     rules: v2.extdeps.languages.go.go_lex()
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
     Accepted { value: stream, diagnostics: _ } =>
       match v2.compiler.parse.grammar_validate_for_parse(root: v2.extdeps.languages.go.go_grammar_root(), at: at) {
-        v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+        Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
         Accepted { value: validated, diagnostics: _ } =>
           v2.compiler.parse.parse_production_tree(
             tokens: v2.std.compilers.lexing.token_stream_remaining(stream: stream),

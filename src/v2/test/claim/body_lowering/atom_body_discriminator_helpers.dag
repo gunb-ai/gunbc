@@ -107,12 +107,12 @@ fn atom_body_discriminator_walk_spine_to_body(captured: v2.std.node.Node) -> v2.
     TypeNode { connective: Conj } =>
       if count(captured.children) == 1 {
         match list_at_optional(xs: captured.children, index: 0) {
-          v2.std.optional.Present { value: edge } =>
+          Present { value: edge } =>
             match edge.label {
-              v2.std.node.Named { name: _ } => atom_body_discriminator_walk_spine_to_body(captured: edge.target)
+              Named { name: _ } => atom_body_discriminator_walk_spine_to_body(captured: edge.target)
               Positional => captured
             }
-          v2.std.optional.Absent => captured
+          Absent => captured
         }
       } else {
         captured
@@ -127,13 +127,13 @@ fn atom_body_discriminator_module_scope_body(root: v2.std.node.Node) -> v2.std.o
       optional_present(
         value: atom_body_discriminator_walk_spine_to_body(captured: captured)
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => optional_present(value: root)
+    Rejected { diagnostics: _ } => optional_present(value: root)
   }
 }
 
 fn atom_body_discriminator_top_level_arrow_lexeme_optional(edge: v2.std.node.Edge) -> v2.std.optional.Optional<String> {
   match edge.label {
-    v2.std.node.Named { name: sym } =>
+    Named { name: sym } =>
       match edge.target.kind {
         TypeNode { connective: Arrow } =>
           optional_present(value: symbol_lexeme(sym: sym))
@@ -148,8 +148,8 @@ fn atom_body_discriminator_observed_top_level_arrow_lexemes(root: v2.std.node.No
     TypeNode { connective: Conj } =>
       fold(root.children, init: [], f: fn(acc, edge) {
         match atom_body_discriminator_top_level_arrow_lexeme_optional(edge: edge) {
-          v2.std.optional.Absent => acc
-          v2.std.optional.Present { value: lexeme } => list_snoc_item(xs: acc, item: lexeme)
+          Absent => acc
+          Present { value: lexeme } => list_snoc_item(xs: acc, item: lexeme)
         }
       })
     _ => []
@@ -161,10 +161,10 @@ fn atom_body_discriminator_top_level_named_arrow(root: v2.std.node.Node, fn_lexe
     TypeNode { connective: Conj } =>
       fold(root.children, init: v2.std.optional.Absent, f: fn(acc, edge) {
         match acc {
-          v2.std.optional.Present { value: _ } => acc
-          v2.std.optional.Absent =>
+          Present { value: _ } => acc
+          Absent =>
             match edge.label {
-              v2.std.node.Named { name: sym } =>
+              Named { name: sym } =>
                 match symbol_lexeme(sym: sym) == fn_lexeme {
                   true =>
                     match edge.target.kind {
@@ -183,20 +183,20 @@ fn atom_body_discriminator_top_level_named_arrow(root: v2.std.node.Node, fn_lexe
 
 fn atom_body_discriminator_observed_rows(scope: v2.std.node.Node) -> v2.std.optional.Optional<AtomBodyDiscriminatorObservedRows> {
   match atom_body_discriminator_top_level_named_arrow(root: scope, fn_lexeme: "id") {
-    v2.std.optional.Absent => v2.std.optional.Absent
-    v2.std.optional.Present { value: id } =>
+    Absent => v2.std.optional.Absent
+    Present { value: id } =>
       match atom_body_discriminator_top_level_named_arrow(root: scope, fn_lexeme: "zero") {
-        v2.std.optional.Absent => v2.std.optional.Absent
-        v2.std.optional.Present { value: zero } =>
+        Absent => v2.std.optional.Absent
+        Present { value: zero } =>
           match atom_body_discriminator_top_level_named_arrow(root: scope, fn_lexeme: "add") {
-            v2.std.optional.Absent => v2.std.optional.Absent
-            v2.std.optional.Present { value: add } =>
+            Absent => v2.std.optional.Absent
+            Present { value: add } =>
               match atom_body_discriminator_top_level_named_arrow(
                 root: scope,
                 fn_lexeme: "zero_binary"
               ) {
-                v2.std.optional.Absent => v2.std.optional.Absent
-                v2.std.optional.Present { value: zero_binary } =>
+                Absent => v2.std.optional.Absent
+                Present { value: zero_binary } =>
                   optional_present(
                     value: AtomBodyDiscriminatorObservedRows {
                       id: id,
@@ -218,24 +218,24 @@ fn atom_body_discriminator_observe() -> AtomBodyDiscriminatorObservation {
     file: ^atom_body_discriminator_file,
     rules: lm.lex
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => TokenizeRejected { diagnostics: d }
+    Rejected { diagnostics: d } => TokenizeRejected { diagnostics: d }
     Accepted { value: ts, diagnostics: _ } =>
       match v2.compiler.parse.parse_module(tokens: ts, grammar: lm.grammar) {
-        v2.std.diagnostic.Rejected { diagnostics: d } => ParseRejected { diagnostics: d }
+        Rejected { diagnostics: d } => ParseRejected { diagnostics: d }
         Accepted { value: artifact, diagnostics: _ } =>
           match normalize(parse_tree: artifact.tree) {
-            v2.std.diagnostic.Rejected { diagnostics: d } => NormalizeRejected { diagnostics: d }
+            Rejected { diagnostics: d } => NormalizeRejected { diagnostics: d }
             Accepted { value: normalized, diagnostics: _ } =>
               let root = normalized.root
               match atom_body_discriminator_module_scope_body(root: root) {
-                v2.std.optional.Absent =>
+                Absent =>
                   TopLevelIdentityJoinRefused {
                     refusal: atom_body_discriminator_top_level_identity_join_refusal(
                       expected: atom_body_discriminator_expected_arrow_identities,
                       observed: []
                     )
                   }
-                v2.std.optional.Present { value: scope } =>
+                Present { value: scope } =>
                   let observed =
                     atom_body_discriminator_observed_top_level_arrow_lexemes(root: scope)
                   if atom_body_discriminator_top_level_arrow_lexemes_identity_join(
@@ -243,14 +243,14 @@ fn atom_body_discriminator_observe() -> AtomBodyDiscriminatorObservation {
                     observed: observed
                   ) {
                     match atom_body_discriminator_observed_rows(scope: scope) {
-                      v2.std.optional.Absent =>
+                      Absent =>
                         TopLevelIdentityJoinRefused {
                           refusal: atom_body_discriminator_top_level_identity_join_refusal(
                             expected: atom_body_discriminator_expected_arrow_identities,
                             observed: observed
                           )
                         }
-                      v2.std.optional.Present { value: rows } =>
+                      Present { value: rows } =>
                         DiscriminatorObserved { tree: root, rows: rows }
                     }
                   } else {
@@ -270,7 +270,7 @@ fn atom_body_discriminator_observe() -> AtomBodyDiscriminatorObservation {
 fn atom_body_discriminator_arrow_body_optional(arrow: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } => optional_present(value: body)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
+    Rejected { diagnostics: _ } => v2.std.optional.Absent
   }
 }
 
@@ -279,7 +279,7 @@ fn atom_body_discriminator_named_binding_count(domain: v2.std.node.Node) -> Int 
     TypeNode { connective: Conj } =>
       fold(domain.children, init: 0, f: fn(count, edge) {
         match edge.label {
-          v2.std.node.Named { name: _ } => count + 1
+          Named { name: _ } => count + 1
           Positional => count
         }
       })
@@ -291,9 +291,9 @@ fn atom_body_discriminator_parameter_count(arrow: v2.std.node.Node) -> v2.std.op
   match arrow.kind {
     TypeNode { connective: Arrow } =>
       match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
-        v2.std.optional.Present { value: domain } =>
+        Present { value: domain } =>
           optional_present(value: atom_body_discriminator_named_binding_count(domain: domain))
-        v2.std.optional.Absent => v2.std.optional.Absent
+        Absent => v2.std.optional.Absent
       }
     _ => v2.std.optional.Absent
   }
@@ -316,11 +316,11 @@ fn atom_body_discriminator_arrow_row_holds(
   mirror: AtomBodyDiscriminatorMirror
 ) -> v2.std.logic.Bool {
   match atom_body_discriminator_parameter_count(arrow: arrow) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: param_count } =>
+    Absent => false
+    Present { value: param_count } =>
       match atom_body_discriminator_arrow_body_optional(arrow: arrow) {
-        v2.std.optional.Absent => false
-        v2.std.optional.Present { value: body } =>
+        Absent => false
+        Present { value: body } =>
           param_count == expected_param_count
             && atom_body_discriminator_classify_body(target: body, mirror: mirror) == expected_form
       }
@@ -332,8 +332,8 @@ fn atom_body_discriminator_arrow_classifies(
   mirror: AtomBodyDiscriminatorMirror
 ) -> v2.std.optional.Optional<v2.std.node.ArrowBodyForm> {
   match atom_body_discriminator_arrow_body_optional(arrow: arrow) {
-    v2.std.optional.Absent => v2.std.optional.Absent
-    v2.std.optional.Present { value: body } =>
+    Absent => v2.std.optional.Absent
+    Present { value: body } =>
       optional_present(
         value: atom_body_discriminator_classify_body(target: body, mirror: mirror)
       )
@@ -375,57 +375,57 @@ fn atom_body_discriminator_batched_receipt_holds() -> v2.std.logic.Bool {
           arrow: rows.id,
           mirror: AtomBodyDiscriminatorRedNoDirectAtom
         ) {
-          v2.std.optional.Present { value: form } => form == UnsupportedArrowBody
-          v2.std.optional.Absent => false
+          Present { value: form } => form == UnsupportedArrowBody
+          Absent => false
         }
         && match atom_body_discriminator_arrow_classifies(
           arrow: rows.zero,
           mirror: AtomBodyDiscriminatorRedNoDirectAtom
         ) {
-          v2.std.optional.Present { value: form } => form == UnsupportedArrowBody
-          v2.std.optional.Absent => false
+          Present { value: form } => form == UnsupportedArrowBody
+          Absent => false
         }
         && match atom_body_discriminator_arrow_classifies(
           arrow: rows.add,
           mirror: AtomBodyDiscriminatorRedNoDirectAtom
         ) {
-          v2.std.optional.Present { value: form } => form != UnsupportedArrowBody
-          v2.std.optional.Absent => false
+          Present { value: form } => form != UnsupportedArrowBody
+          Absent => false
         }
         && match atom_body_discriminator_arrow_classifies(
           arrow: rows.zero_binary,
           mirror: AtomBodyDiscriminatorRedNoDirectAtom
         ) {
-          v2.std.optional.Present { value: form } => form != UnsupportedArrowBody
-          v2.std.optional.Absent => false
+          Present { value: form } => form != UnsupportedArrowBody
+          Absent => false
         }
         && match atom_body_discriminator_arrow_classifies(
           arrow: rows.id,
           mirror: AtomBodyDiscriminatorRedNoComputationBody
         ) {
-          v2.std.optional.Present { value: form } => form == DirectAtomBody
-          v2.std.optional.Absent => false
+          Present { value: form } => form == DirectAtomBody
+          Absent => false
         }
         && match atom_body_discriminator_arrow_classifies(
           arrow: rows.zero,
           mirror: AtomBodyDiscriminatorRedNoComputationBody
         ) {
-          v2.std.optional.Present { value: form } => form == DirectAtomBody
-          v2.std.optional.Absent => false
+          Present { value: form } => form == DirectAtomBody
+          Absent => false
         }
         && match atom_body_discriminator_arrow_classifies(
           arrow: rows.add,
           mirror: AtomBodyDiscriminatorRedNoComputationBody
         ) {
-          v2.std.optional.Present { value: form } => form == UnsupportedArrowBody
-          v2.std.optional.Absent => false
+          Present { value: form } => form == UnsupportedArrowBody
+          Absent => false
         }
         && match atom_body_discriminator_arrow_classifies(
           arrow: rows.zero_binary,
           mirror: AtomBodyDiscriminatorRedNoComputationBody
         ) {
-          v2.std.optional.Present { value: form } => form == UnsupportedArrowBody
-          v2.std.optional.Absent => false
+          Present { value: form } => form == UnsupportedArrowBody
+          Absent => false
         }
   }
 }

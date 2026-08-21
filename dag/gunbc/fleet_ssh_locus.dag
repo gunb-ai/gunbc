@@ -104,7 +104,7 @@ func prepare_fleet_ssh_agent_context(attempt_raw: String) -> FleetSshContextPrep
           }
         Present { value: sock } =>
           match materialize_agent_public_selector(attempt: attempt, key: fleet_automation_ssh_key) {
-            gunbc.fleet_ssh_credential_verify.AgentSelectorRefused { cause: cause } =>
+            AgentSelectorRefused { cause: cause } =>
               FleetSshContextRefused { cause: cause }
             AgentSelectorMaterialized { selector: selector } =>
               match verify_fleet_ssh_agent_credential(
@@ -113,13 +113,13 @@ func prepare_fleet_ssh_agent_context(attempt_raw: String) -> FleetSshContextPrep
                 expected_key: fleet_automation_ssh_key,
                 expected_fingerprint: fleet_automation_ssh_key_fingerprint as std.types.NonEmptyStr,
               ) {
-                gunbc.fleet_ssh_credential_verify.FleetSshCredentialIdentityMismatch { expected_line: e, observed_line: o } =>
+                FleetSshCredentialIdentityMismatch { expected_line: e, observed_line: o } =>
                   FleetSshContextRefused {
                     cause: fleet_ssh_credential_verification_refusal_reason(
                       verification: gunbc.fleet_ssh_credential_verify.FleetSshCredentialIdentityMismatch { expected_line: e, observed_line: o },
                     ),
                   }
-                gunbc.fleet_ssh_credential_verify.FleetSshCredentialDerivationRefused { cause: cause } =>
+                FleetSshCredentialDerivationRefused { cause: cause } =>
                   FleetSshContextRefused {
                     cause: fleet_ssh_credential_verification_refusal_reason(
                       verification: gunbc.fleet_ssh_credential_verify.FleetSshCredentialDerivationRefused { cause: cause },

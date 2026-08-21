@@ -77,12 +77,12 @@ type CargoScanState
 
 fn cargo_message_string_value(v: extdeps.languages.json.emit.JsonValue) -> String? {
   match v {
-    extdeps.languages.json.emit.JsonString { value: s } => Present { value: s }
-    extdeps.languages.json.emit.JsonNull => none
-    extdeps.languages.json.emit.JsonBool { value: _ } => none
-    extdeps.languages.json.emit.JsonNumber { lexeme: _ } => none
-    extdeps.languages.json.emit.JsonArray { elements: _ } => none
-    extdeps.languages.json.emit.JsonObject { members: _ } => none
+    JsonString { value: s } => Present { value: s }
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonNumber { lexeme: _ } => none
+    JsonArray { elements: _ } => none
+    JsonObject { members: _ } => none
   }
 }
 
@@ -194,38 +194,38 @@ fn cargo_message_artifact_hit(
       }
     JsonMemberFound { value: exe } =>
       match exe {
-        extdeps.languages.json.emit.JsonNull =>
+        JsonNull =>
           CargoScanning {
             hits: [CargoArtifactHitWithoutExecutable],
             line_number: line_number
           }
-        extdeps.languages.json.emit.JsonString { value: path } =>
+        JsonString { value: path } =>
           CargoScanning {
             hits: [CargoArtifactHitExecutable { path: path, line_number: line_number }],
             line_number: line_number
           }
-        extdeps.languages.json.emit.JsonBool { value: _ } =>
+        JsonBool { value: _ } =>
           CargoScanRefused {
             selection: CargoArtifactExecutableNotAString {
               target_name: target_name,
               line_number: line_number
             }
           }
-        extdeps.languages.json.emit.JsonNumber { lexeme: _ } =>
+        JsonNumber { lexeme: _ } =>
           CargoScanRefused {
             selection: CargoArtifactExecutableNotAString {
               target_name: target_name,
               line_number: line_number
             }
           }
-        extdeps.languages.json.emit.JsonArray { elements: _ } =>
+        JsonArray { elements: _ } =>
           CargoScanRefused {
             selection: CargoArtifactExecutableNotAString {
               target_name: target_name,
               line_number: line_number
             }
           }
-        extdeps.languages.json.emit.JsonObject { members: _ } =>
+        JsonObject { members: _ } =>
           CargoScanRefused {
             selection: CargoArtifactExecutableNotAString {
               target_name: target_name,

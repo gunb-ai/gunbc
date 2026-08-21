@@ -355,12 +355,12 @@ fn native_id_from_entity_result(result: extdeps.languages.json.emit.JsonValue, e
   match extdeps.languages.json.parse.json_object_unique_member(v: result, key: entity_key) {
     JsonMemberFound { value: entity } =>
       match entity {
-        extdeps.languages.json.emit.JsonObject { members: _ } =>
+        JsonObject { members: _ } =>
           match extdeps.languages.json.parse.json_object_unique_member(
             v: entity,
             key: extdeps.llm.codex_app_server.codex_entity_id_key as String,
           ) {
-            extdeps.languages.json.parse.JsonMemberFound { value: extdeps.languages.json.emit.JsonString { value: id } } =>
+            JsonMemberFound { value: extdeps.languages.json.emit.JsonString { value: id } } =>
               if id == "" {
                 none
               } else {
@@ -429,18 +429,18 @@ fn supervised_rpc_from_id_response(
 
 fn serialize_supervised_rpc_error(err: extdeps.languages.json.emit.JsonValue) -> String {
   match err {
-    extdeps.languages.json.emit.JsonObject { members: _ } => "structured error" as String
-    extdeps.languages.json.emit.JsonNull => "unstructured error" as String
-    extdeps.languages.json.emit.JsonBool { value: _ } => "unstructured error" as String
-    extdeps.languages.json.emit.JsonNumber { lexeme: _ } => "unstructured error" as String
-    extdeps.languages.json.emit.JsonString { value: _ } => "unstructured error" as String
-    extdeps.languages.json.emit.JsonArray { elements: _ } => "unstructured error" as String
+    JsonObject { members: _ } => "structured error" as String
+    JsonNull => "unstructured error" as String
+    JsonBool { value: _ } => "unstructured error" as String
+    JsonNumber { lexeme: _ } => "unstructured error" as String
+    JsonString { value: _ } => "unstructured error" as String
+    JsonArray { elements: _ } => "unstructured error" as String
   }
 }
 
 fn supervised_turn_terminal_from_notification(parsed: extdeps.languages.json.emit.JsonValue) -> SupervisedTurnTerminalSignal {
   match extdeps.languages.json.parse.json_object_unique_member(v: parsed, key: "method") {
-    extdeps.languages.json.parse.JsonMemberFound { value: extdeps.languages.json.emit.JsonString { value: method } } =>
+    JsonMemberFound { value: extdeps.languages.json.emit.JsonString { value: method } } =>
       if method == "turn/completed" {
         SupervisedTurnTerminalCompleted
       } else if method == "turn/failed" {
@@ -540,12 +540,12 @@ fn absorb_supervised_turn_line(
 
 fn json_rpc_id_as_int(v: extdeps.languages.json.emit.JsonValue) -> Int? {
   match v {
-    extdeps.languages.json.emit.JsonNumber { lexeme: l } => parse_int(s: l as String)
-    extdeps.languages.json.emit.JsonNull => none
-    extdeps.languages.json.emit.JsonBool { value: _ } => none
-    extdeps.languages.json.emit.JsonString { value: _ } => none
-    extdeps.languages.json.emit.JsonArray { elements: _ } => none
-    extdeps.languages.json.emit.JsonObject { members: _ } => none
+    JsonNumber { lexeme: l } => parse_int(s: l as String)
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonString { value: _ } => none
+    JsonArray { elements: _ } => none
+    JsonObject { members: _ } => none
   }
 }
 

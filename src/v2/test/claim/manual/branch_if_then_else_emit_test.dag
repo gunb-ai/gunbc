@@ -21,7 +21,7 @@ fn branch_if_then_else_emit_producer_tree() -> v2.std.diagnostic.Outcome<v2.comp
         value: branch_if_then_else_emit_inferred_tree_for(root: root),
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -32,7 +32,7 @@ fn branch_if_then_else_emit_swapped_producer_tree() -> v2.std.diagnostic.Outcome
         value: branch_if_then_else_emit_inferred_tree_for(root: root),
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -63,9 +63,9 @@ test fn branch_if_then_else_emit_holds() -> v2.std.logic.Bool {
       match branch_if_then_else_emit_from_producer(target: dag_pick_target_model()) {
         Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -75,9 +75,9 @@ test fn branch_if_then_else_emit_swapped_arms_discriminates() -> v2.std.logic.Bo
       match branch_if_then_else_emit_swapped_from_producer(target: dag_pick_target_model()) {
         Accepted { value: swapped, diagnostics: ds } =>
           (swapped != canonical) && (dc == v2.std.diagnostic.None) && (ds == v2.std.diagnostic.None)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

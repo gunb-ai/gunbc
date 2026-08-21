@@ -28,7 +28,7 @@ fn native_agreement_divergence_from_run<Subj>(
           native_value: "?"
         }
       }
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } =>
+    BuildFailed { actual: _, diagnostic: _ } =>
       v2.std.optional.Present {
         value: v2.std.native_agreement.NativeAgreementDivergence {
           member_id: member_id,

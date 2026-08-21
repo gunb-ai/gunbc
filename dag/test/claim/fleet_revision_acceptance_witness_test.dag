@@ -296,7 +296,7 @@ test fn only_a_successful_conclusion_admits_and_the_others_are_named() -> Bool {
   ) {
     RequiredCiRefused { cause: CiConclusionNotSuccess { observed: c } } =>
       match c {
-        extdeps.github.workflow_runs.Failure => true
+        Failure => true
         _ => false
       }
     _ => false
@@ -316,7 +316,7 @@ test fn only_a_successful_conclusion_admits_and_the_others_are_named() -> Bool {
     ) {
       RequiredCiRefused { cause: CiConclusionNotSuccess { observed: c2 } } =>
         match c2 {
-          extdeps.github.workflow_runs.Cancelled => true
+          Cancelled => true
           _ => false
         }
       _ => false

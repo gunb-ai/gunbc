@@ -18,7 +18,7 @@ test fn peak_resident_measured_holds() -> Bool {
   peak > 0
     && byte_size_count(account.space) == peak
     && match account.basis {
-      std.realization_schedule.Measured => true
+      Measured => true
       Predicted => false
     }
 }

@@ -6,7 +6,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 fn pbf_graft_module_root(root: v2.std.node.Node) -> v2.std.node.Node {
   match module_header_containment_graft(root: root) {
     Accepted { value: grafted, diagnostics: _ } => grafted
-    v2.std.diagnostic.Rejected { diagnostics: _ } => root
+    Rejected { diagnostics: _ } => root
   }
 }
 
@@ -94,7 +94,7 @@ fn pbf_cross_file_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.no
 
 fn pbf_cross_file_import_resolves() -> v2.std.logic.Bool {
   match pbf_cross_file_roots() {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: admitted_roots, diagnostics: _ } =>
     match resolve_with_admission_policy(
       lm: dag_language_model_surface_empty_prelude(),
@@ -116,7 +116,7 @@ fn pbf_cross_file_import_resolves() -> v2.std.logic.Bool {
       policy: ImportScoped
     ) {
       Accepted { value: _, diagnostics: _ } => true
-      v2.std.diagnostic.Rejected { diagnostics: _ } => false
+      Rejected { diagnostics: _ } => false
     }
   }
 }
@@ -140,14 +140,14 @@ fn pbf_unbound_atom_tree() -> v2.std.node.Node {
 
 fn pbf_resolve_unbound_symbol_rejects() -> v2.std.logic.Bool {
   match admit_normalized_tree(root: pbf_unbound_atom_tree(), diagnostics: v2.std.diagnostic.None) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: admitted_tree, diagnostics: _ } =>
   match v2.compiler.resolve.resolve(
     tree: admitted_tree,
     lm: dag_language_model_surface_empty_prelude()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
   }
 }
@@ -207,7 +207,7 @@ fn pbf_ambiguous_import_roots() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compi
 
 fn pbf_ambiguous_export_rejects() -> v2.std.logic.Bool {
   match pbf_ambiguous_import_roots() {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: admitted, diagnostics: _ } =>
     match resolve_with_admission_policy(
       lm: dag_language_model_surface_empty_prelude(),
@@ -235,7 +235,7 @@ fn pbf_ambiguous_export_rejects() -> v2.std.logic.Bool {
       policy: ImportScoped
     ) {
       Accepted { value: _, diagnostics: _ } => false
-      v2.std.diagnostic.Rejected { diagnostics: _ } => true
+      Rejected { diagnostics: _ } => true
     }
   }
 }

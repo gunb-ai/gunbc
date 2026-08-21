@@ -59,9 +59,9 @@ fn emit_host_run_failed_diagnostic() -> v2.std.diagnostic.Diagnostic {
 
 fn host_exit_failure_outcome(exit: v2.std.host_run.HostExit) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match exit.outcome {
-    v2.std.diagnostic.Accepted { value: v2.std.witness.Violates { diagnostic: d }, diagnostics: v2.std.diagnostic.None } =>
+    Accepted { value: v2.std.witness.Violates { diagnostic: d }, diagnostics: v2.std.diagnostic.None } =>
       v2.std.diagnostic.outcome_rejected(d: d)
-    v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
+    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
     _ => v2.std.diagnostic.outcome_rejected(d: emit_host_exit_not_ok_diagnostic())
   }
 }
@@ -321,7 +321,7 @@ fn run_host_process_with_cache(
   let _inputs = fixture_inputs
   let transport = row.transport
   match v2.compiler.build_transport_admission.build_transport_admissible(transport: transport) {
-    std.access.Deny { refusal: refusal } =>
+    Deny { refusal: refusal } =>
       v2.std.diagnostic.outcome_rejected(d: emit_host_transport_outside_grant_diagnostic())
     Permit =>
       run_host_process_admitted(
@@ -497,12 +497,12 @@ fn run_test_claim_emit_vs_eval_verdict(
           )
         )
       }
-    v2.std.diagnostic.Rejected { diagnostics: ds } =>
+    Rejected { diagnostics: ds } =>
       v2.std.verdict.verdict_build_failed(
         actual: expected,
         diagnostic: ds.head
       )
-    v2.std.diagnostic.Accepted { value: _, diagnostics: v2.std.diagnostic.Some { diagnostics: ds } } =>
+    Accepted { value: _, diagnostics: v2.std.diagnostic.Some { diagnostics: ds } } =>
       v2.std.verdict.verdict_build_failed(
         actual: expected,
         diagnostic: ds.head
@@ -524,7 +524,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_run(
   match run_outcome {
     Accepted { value: host_receipt, diagnostics: _ } =>
       match host_receipt.logical_run {
-        v2.std.diagnostic.Accepted {
+        Accepted {
           value: v2.std.host_run.HostLogicalRun { stdout: stdout },
           diagnostics: v2.std.diagnostic.None
         } =>
@@ -537,7 +537,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_run(
                 host_actual: host_actual,
                 expected: expected
               )
-            v2.std.diagnostic.Rejected { diagnostics: ds } =>
+            Rejected { diagnostics: ds } =>
               v2.std.verdict.verdict_run_failed(
                 actual: v2.std.diagnostic.Rejected { diagnostics: ds },
                 diagnostic: ds.head
@@ -549,7 +549,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_run(
             diagnostic: emit_host_run_failed_diagnostic()
           )
       }
-    v2.std.diagnostic.Rejected { diagnostics: ds } =>
+    Rejected { diagnostics: ds } =>
       v2.std.verdict.Deferred {
         actual: v2.std.diagnostic.Rejected { diagnostics: ds },
         diagnostic: emit_host_emit_vs_eval_deferred_diagnostic(at: at)
@@ -583,7 +583,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_source(
         expected: expected,
         at: at
       )
-    v2.std.diagnostic.Rejected { diagnostics: ds } =>
+    Rejected { diagnostics: ds } =>
       v2.std.verdict.verdict_build_failed(
         actual: v2.std.diagnostic.Rejected { diagnostics: ds },
         diagnostic: emit_host_build_failed_diagnostic(at: at)
@@ -621,7 +621,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_source_cached(
         expected: expected,
         at: at
       )
-    v2.std.diagnostic.Rejected { diagnostics: ds } =>
+    Rejected { diagnostics: ds } =>
       v2.std.verdict.verdict_build_failed(
         actual: v2.std.diagnostic.Rejected { diagnostics: ds },
         diagnostic: emit_host_build_failed_diagnostic(at: at)

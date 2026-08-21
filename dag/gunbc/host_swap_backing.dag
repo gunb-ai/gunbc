@@ -61,9 +61,9 @@ fn swap_cap_verdict_qualified_by_backing(
   backing: std.upsert_decision.ObservationVerdict,
 ) -> std.upsert_decision.ObservationVerdict {
   match backing {
-    std.upsert_decision.Converged => cap
-    std.upsert_decision.Absent => std.upsert_decision.Absent
-    std.upsert_decision.Drifted => std.upsert_decision.Drifted
+    Converged => cap
+    Absent => std.upsert_decision.Absent
+    Drifted => std.upsert_decision.Drifted
     Conflict => Conflict
     Inaccessible => Inaccessible
     UnknownRefused => UnknownRefused
@@ -81,9 +81,9 @@ fn swap_cap_verdict_backing_blind_widen_sketch(
 
 fn observation_verdict_is_converged(v: std.upsert_decision.ObservationVerdict) -> Bool {
   match v {
-    std.upsert_decision.Converged => true
-    std.upsert_decision.Absent => false
-    std.upsert_decision.Drifted => false
+    Converged => true
+    Absent => false
+    Drifted => false
     Conflict => false
     Inaccessible => false
     UnknownRefused => false

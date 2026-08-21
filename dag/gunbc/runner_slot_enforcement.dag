@@ -54,7 +54,7 @@ fn reconcile_runner_slot(
 
 fn runner_slot_evidence_from_reconciliation(r: std.realization_reconcile.Reconciliation<RunnerSlotApplyEffect, RunnerSlotEnforcement>) -> RunnerSlotEnforcement {
   match r {
-    std.realization_reconcile.Converged { evidence: e, applied: _ } => e
+    Converged { evidence: e, applied: _ } => e
     NotConverged { reason: why, applied: _ } => RunnerSlotUnenforced { reason: why }
   }
 }

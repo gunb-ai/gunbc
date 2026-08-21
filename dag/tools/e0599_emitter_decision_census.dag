@@ -178,8 +178,8 @@ fn e0599_receiver_is_deref_wrapped(receiver_expr: String) -> Bool {
 
 fn e0599_receiver_last_segment(receiver_expr: String) -> String {
   match receiver_expr |> split(delimiter: ".") |> last {
-    v2.std.optional.Present { value: seg } => seg
-    v2.std.optional.Absent => ""
+    Present { value: seg } => seg
+    Absent => ""
   }
 }
 
@@ -254,8 +254,8 @@ fn e0599_row_for_operation(operation: E0599LoweringOperation) -> v2.std.optional
 fn e0599_cause_for(method: String, receiver_expr: String) -> E0599RequirementCause {
   let operation = e0599_lowering_operation_for(method: method, receiver_expr: receiver_expr)
   match e0599_row_for_operation(operation: operation) {
-    v2.std.optional.Present { value: row } => row.cause
-    v2.std.optional.Absent =>
+    Present { value: row } => row.cause
+    Absent =>
       UnresolvedCause {
         method: method,
         receiver_expr: receiver_expr,
@@ -281,25 +281,25 @@ fn e0599_classification_line(method: String, receiver_expr: String) -> String {
   let operation = e0599_lowering_operation_for(method: method, receiver_expr: receiver_expr)
   let cause = e0599_cause_for(method: method, receiver_expr: receiver_expr)
   let source_construct = match e0599_row_for_operation(operation: operation) {
-    v2.std.optional.Present { value: row } => row.source_construct
-    v2.std.optional.Absent => ""
+    Present { value: row } => row.source_construct
+    Absent => ""
   }
   let ownership_alternative = match e0599_row_for_operation(operation: operation) {
-    v2.std.optional.Present { value: row } => row.ownership_alternative
-    v2.std.optional.Absent => ""
+    Present { value: row } => row.ownership_alternative
+    Absent => ""
   }
   let required_trait = match e0599_row_for_operation(operation: operation) {
-    v2.std.optional.Present { value: row } => row.required_trait
-    v2.std.optional.Absent => ""
+    Present { value: row } => row.required_trait
+    Absent => ""
   }
   let emitter_authority = match e0599_row_for_operation(operation: operation) {
-    v2.std.optional.Present { value: row } => row.emitter_authority
-    v2.std.optional.Absent => ""
+    Present { value: row } => row.emitter_authority
+    Absent => ""
   }
   let external_authority = match e0599_row_for_operation(operation: operation) {
-    v2.std.optional.Present { value: row } =>
+    Present { value: row } =>
       concat(row.authority.crate_name, concat(" ", concat(row.authority.crate_version, concat(" ", row.authority.impl_site))))
-    v2.std.optional.Absent => ""
+    Absent => ""
   }
   concat(
     e0599_lowering_operation_label(operation: operation),
@@ -319,12 +319,12 @@ fn e0599_classify_tuple_line(line: String) -> std.error_primitives.Result<String
     std.error_primitives.Err { value: MalformedCensusLine { line: line, field_count: field_count } }
   } else {
     let method = match parts |> first {
-      v2.std.optional.Present { value: v } => v
-      v2.std.optional.Absent => ""
+      Present { value: v } => v
+      Absent => ""
     }
     let receiver_expr = match parts |> skip(n: 1) |> first {
-      v2.std.optional.Present { value: v } => v
-      v2.std.optional.Absent => ""
+      Present { value: v } => v
+      Absent => ""
     }
     std.error_primitives.Ok { value: e0599_classification_line(method: method, receiver_expr: receiver_expr) }
   }

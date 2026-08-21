@@ -129,24 +129,24 @@ fn multiply_evaluations(a: CostEvaluation, b: CostEvaluation) -> CostEvaluation 
 
 fn evaluate_size_expr(size: v2.lens.cost.expr.SizeExpr, env: CostValuationEnv) -> CostEvaluation {
   match size {
-    v2.lens.cost.expr.SizeConst { value: v } => ExactCost { value: v }
+    SizeConst { value: v } => ExactCost { value: v }
     SizeOf { variable: v } =>
       match env_lookup(env: env, variable: v) {
-        v2.std.optional.Present { value: n } => ExactCost { value: n }
-        v2.std.optional.Absent => unbound_size(variable: v)
+        Present { value: n } => ExactCost { value: n }
+        Absent => unbound_size(variable: v)
       }
     SizeLength { of: v } =>
       match env_lookup(env: env, variable: v) {
-        v2.std.optional.Present { value: n } => ExactCost { value: n }
-        v2.std.optional.Absent => unbound_size(variable: v)
+        Present { value: n } => ExactCost { value: n }
+        Absent => unbound_size(variable: v)
       }
-    v2.lens.cost.expr.SizeAdd { left: l, right: r } =>
+    SizeAdd { left: l, right: r } =>
       combine_evaluation(
         a: evaluate_size_expr(size: l, env: env),
         b: evaluate_size_expr(size: r, env: env),
         op: nat_add
       )
-    v2.lens.cost.expr.SizeMax { left: l, right: r } =>
+    SizeMax { left: l, right: r } =>
       combine_evaluation(
         a: evaluate_size_expr(size: l, env: env),
         b: evaluate_size_expr(size: r, env: env),
@@ -228,25 +228,25 @@ fn evaluate_cost_log(
 
 fn evaluate_cost_expr_in_env(expr: v2.lens.cost.expr.CostExpr, env: CostValuationEnv) -> CostEvaluation {
   match expr {
-    v2.lens.cost.expr.CostConst { value: v } => ExactCost { value: v }
-    v2.lens.cost.expr.CostAdd { left: l, right: r } =>
+    CostConst { value: v } => ExactCost { value: v }
+    CostAdd { left: l, right: r } =>
       combine_evaluation(
         a: evaluate_cost_expr_in_env(expr: l, env: env),
         b: evaluate_cost_expr_in_env(expr: r, env: env),
         op: nat_add
       )
-    v2.lens.cost.expr.CostMul { left: l, right: r } =>
+    CostMul { left: l, right: r } =>
       multiply_evaluations(
         a: evaluate_cost_expr_in_env(expr: l, env: env),
         b: evaluate_cost_expr_in_env(expr: r, env: env)
       )
-    v2.lens.cost.expr.CostMax { left: l, right: r } =>
+    CostMax { left: l, right: r } =>
       combine_evaluation(
         a: evaluate_cost_expr_in_env(expr: l, env: env),
         b: evaluate_cost_expr_in_env(expr: r, env: env),
         op: v2.std.nat.nat_max
       )
-    v2.lens.cost.expr.CostSum { binder: bi, upper: u, body: bd } =>
+    CostSum { binder: bi, upper: u, body: bd } =>
       match evaluate_size_expr(size: u, env: env) {
         ExactCost { value: n } =>
           evaluate_summation(
@@ -259,7 +259,7 @@ fn evaluate_cost_expr_in_env(expr: v2.lens.cost.expr.CostExpr, env: CostValuatio
           )
         CostEvaluationRefused { causes: c } => CostEvaluationRefused { causes: c }
       }
-    v2.lens.cost.expr.CostLog { base: b, argument: a } =>
+    CostLog { base: b, argument: a } =>
       evaluate_cost_log(base: b, argument: a, env: env)
     CostEffect { operation: op } =>
       refuse(
@@ -317,8 +317,8 @@ fn duplicate_binding_refusal(
     empty: v2.std.optional.Absent,
     cons: fn(acc, item) {
       match acc {
-        v2.std.optional.Absent => v2.std.optional.Present { value: refuse_duplicate(variable: item) }
-        v2.std.optional.Present { value: v } =>
+        Absent => v2.std.optional.Present { value: refuse_duplicate(variable: item) }
+        Present { value: v } =>
           v2.std.optional.Present {
             value: combine_evaluation(
               a: v,
@@ -340,8 +340,8 @@ fn evaluate_cost_expr(
   match duplicate_binding_refusal(
     duplicates: scan_bindings(bindings: bindings).duplicates
   ) {
-    v2.std.optional.Present { value: refusal } => refusal
-    v2.std.optional.Absent =>
+    Present { value: refusal } => refusal
+    Absent =>
       evaluate_cost_expr_in_env(
         expr: expr,
         env: CostValuationEnv { bindings: bindings }

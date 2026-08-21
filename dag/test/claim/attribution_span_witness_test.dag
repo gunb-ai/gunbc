@@ -21,7 +21,7 @@ fn unattributed_widths(r: std.attribution.AttributionResult) -> List<std.nat.Nat
       map(
         filter(ss, s => match s { std.attribution.Unattributed { parent: _, interval: _ } => true, _ => false }),
         s => match s {
-          std.attribution.Unattributed { parent: _, interval: i } =>
+          Unattributed { parent: _, interval: i } =>
             nanosecond_count(n: interval_high(interval: i)) - nanosecond_count(n: interval_low(interval: i))
           _ => 0
         }

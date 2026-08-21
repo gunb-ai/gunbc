@@ -11,6 +11,6 @@ test fn source_bridged_pipeline_bridge_resolves_add_source() -> v2.std.logic.Boo
     file: ^source_bridged_pipeline_bridge_test_file
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

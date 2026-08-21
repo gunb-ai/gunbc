@@ -117,7 +117,7 @@ fn branch_allocate_literal(node: v2.std.node.Node, _env: v2.std.runtime.Evaluati
         } else {
           v2.std.diagnostic.outcome_rejected(d: branch_runtime_diagnostic(n: node))
         }
-      v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+      Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
   } else if node == branch_kw_true_node() {
     v2.std.diagnostic.outcome_accepted(value: branch_bool_value(is_true: true))
@@ -138,12 +138,12 @@ fn branch_call_primitive(
 
 fn branch_nth_child_target(node: v2.std.node.Node, wanted: Int) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match v2.std.collection.list_at_optional(xs: node.children, index: wanted) {
-    v2.std.optional.Present { value: child } =>
+    Present { value: child } =>
       match child {
         Edge { label: _, target: arm } =>
           v2.std.diagnostic.outcome_accepted(value: extdeps.vendor.arm.arm)
       }
-    v2.std.optional.Absent =>
+    Absent =>
       v2.std.diagnostic.outcome_rejected(d: branch_runtime_diagnostic(n: node))
   }
 }
@@ -323,14 +323,14 @@ fn branch_run_passes(run: v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRu
         Pass => true
         _ => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn branch_source_pipeline_admits_holds() -> v2.std.logic.Bool {
   match v2.test.complexity_gate.table_fixture_branch_subject_producer.table_fixture_pick_if_arrow_with_body() {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -343,7 +343,7 @@ test fn branch_source_driven_pick_true_executes_holds() -> v2.std.logic.Bool {
           expected: branch_literal_one_node()
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -356,7 +356,7 @@ test fn branch_source_driven_pick_false_executes_holds() -> v2.std.logic.Bool {
           expected: branch_literal_two_node()
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -369,7 +369,7 @@ test fn branch_condition_perturbation_red_holds() -> v2.std.logic.Bool {
           expected: branch_literal_two_node()
         )
       ) == false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -391,10 +391,10 @@ test fn branch_direct_runtime_true_holds() -> v2.std.logic.Bool {
               branch_runtime_int_is_one(value: actual)
             _ => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
     }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -407,7 +407,7 @@ test fn branch_swapped_arms_red_holds() -> v2.std.logic.Bool {
           expected: branch_literal_one_node()
         )
       ) == false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -420,7 +420,7 @@ test fn branch_fixture_producer_holds() -> v2.std.logic.Bool {
           expected: branch_literal_one_node()
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

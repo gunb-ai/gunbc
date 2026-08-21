@@ -132,13 +132,13 @@ fn atom_collect_init(n: v2.std.node.Node) -> AtomCollectState {
 
 fn atom_collect_step(acc: AtomCollectState, _edge: v2.std.node.Edge, child: AtomCollectState) -> AtomCollectState {
   let atoms = match v2.std.grammar.node_atom_identity_optional(node: child.node) {
-    v2.std.optional.Present { value: sym } =>
+    Present { value: sym } =>
       if v2.std.algebra.contains(xs: acc.atoms, item: sym, eq: v2.lens.production_qualification_origin_probe.symbol_eq) {
         acc.atoms
       } else {
         v2.std.algebra.list_snoc_item(xs: acc.atoms, item: sym)
       }
-    v2.std.optional.Absent => acc.atoms
+    Absent => acc.atoms
   }
   AtomCollectState { node: acc.node, atoms: atoms }
 }
@@ -150,13 +150,13 @@ fn atom_collect_algebra() -> v2.std.node.NodeFold<AtomCollectState> {
 fn atom_identities_in_node(node: v2.std.node.Node) -> List<v2.std.node.Symbol> {
   let from_descendants = v2.std.node.fold_node(n: node, algebra: v2.lens.production_qualification_origin_probe.atom_collect_algebra()).atoms
   match v2.std.grammar.node_atom_identity_optional(node: node) {
-    v2.std.optional.Present { value: sym } =>
+    Present { value: sym } =>
       if v2.std.algebra.contains(xs: from_descendants, item: sym, eq: v2.lens.production_qualification_origin_probe.symbol_eq) {
         from_descendants
       } else {
         v2.std.algebra.list_snoc_item(xs: from_descendants, item: sym)
       }
-    v2.std.optional.Absent => from_descendants
+    Absent => from_descendants
   }
 }
 
@@ -189,11 +189,11 @@ fn callee_text_from_call_node(node: v2.std.node.Node) -> List<String> {
     match v2.std.node_query.call_callee_target(node: node) {
       Accepted { value: callee_node, diagnostics: _ } =>
         match v2.std.grammar.node_atom_identity_optional(node: callee_node) {
-          v2.std.optional.Present { value: sym } =>
+          Present { value: sym } =>
             [v2.std.compilers.lexing.symbol_lexeme(sym: sym)]
-          v2.std.optional.Absent => empty_string_list
+          Absent => empty_string_list
         }
-      v2.std.diagnostic.Rejected { diagnostics: _ } => empty_string_list
+      Rejected { diagnostics: _ } => empty_string_list
     }
   } else {
     empty_string_list

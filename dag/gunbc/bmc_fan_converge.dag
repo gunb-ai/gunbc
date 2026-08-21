@@ -1332,7 +1332,7 @@ fn bmc_fan_observe_only_with_credential(
         durability_evidence: target.durability_evidence,
       )
       match classified.decision {
-        std.upsert_decision.Refuse { reason: reason } =>
+        Refuse { reason: reason } =>
           exit_failure(reason: concat("BMC fan read-only classification refused: ", reason))
         Noop =>
           match target.projection {
@@ -1354,7 +1354,7 @@ fn bmc_fan_observe_only_with_credential(
                   )
               }
           }
-        std.upsert_decision.Apply { plan: plan } =>
+        Apply { plan: plan } =>
           match bmc_fan_live_thermal_tach_safety_refusal(
             observation: observed,
             intent: fleet_bmc_valid_state,
@@ -1407,7 +1407,7 @@ fn bmc_fan_converge_with_credential(
         durability_evidence: target.durability_evidence,
       )
       match classified.decision {
-        std.upsert_decision.Refuse { reason: reason } =>
+        Refuse { reason: reason } =>
           exit_failure(reason: concat("BMC fan convergence refused: ", reason))
         Noop =>
           match target.projection {
@@ -1429,7 +1429,7 @@ fn bmc_fan_converge_with_credential(
                   )
               }
           }
-        std.upsert_decision.Apply { plan: plan } =>
+        Apply { plan: plan } =>
           match bmc_fan_live_thermal_tach_safety_refusal(
             observation: observed,
             intent: fleet_bmc_valid_state,

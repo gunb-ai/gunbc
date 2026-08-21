@@ -12,7 +12,7 @@ fn lossless_source(text: String) -> Medium<String> {
 fn fidelity_disposition_node_has_named_kind(root: v2.std.node.Node, name: v2.std.node.Symbol) -> Bool {
   match find_named_child(root: root, name: name) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -67,7 +67,7 @@ fn fidelity_quotient_decode_fidelity(quotient: v2.std.node.Node) -> Outcome<extd
         init: v2.std.diagnostic.Accepted { value: extdeps.communication.medium.Lossless, diagnostics: v2.std.diagnostic.None },
         f: fn(acc, edge) {
           match acc {
-            v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+            Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
             Accepted { value: current_fidelity, diagnostics: ad } =>
               bind_outcome(
                 o: fidelity_disposition_node_decode_fidelity(node: edge.target),
@@ -102,7 +102,7 @@ fn target_fidelity_quotient_optional(target: v2.std.compilers.target_model.Targe
   ) {
     Accepted { value: child, diagnostics: _ } =>
       outcome_accepted(v2.std.optional.Present { value: child })
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       outcome_accepted(v2.std.optional.Absent)
   }
 }
@@ -112,8 +112,8 @@ fn decode_fidelity_from_target(target: v2.std.compilers.target_model.TargetModel
     o: target_fidelity_quotient_optional(target: target),
     f: fn(opt) {
       match opt {
-        v2.std.optional.Absent => outcome_accepted(extdeps.communication.medium.Lossless)
-        v2.std.optional.Present { value: quotient } =>
+        Absent => outcome_accepted(extdeps.communication.medium.Lossless)
+        Present { value: quotient } =>
           fidelity_quotient_decode_fidelity(quotient: quotient)
       }
     }

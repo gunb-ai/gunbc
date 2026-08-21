@@ -53,9 +53,9 @@ fn readback_non_independent_evidence_verdict(
   observed: std.upsert_decision.ObservationVerdict,
 ) -> std.upsert_decision.ObservationVerdict {
   match observed {
-    std.upsert_decision.Converged => UnknownRefused
-    std.upsert_decision.Absent => std.upsert_decision.Absent
-    std.upsert_decision.Drifted => std.upsert_decision.Drifted
+    Converged => UnknownRefused
+    Absent => std.upsert_decision.Absent
+    Drifted => std.upsert_decision.Drifted
     Conflict => Conflict
     Inaccessible => Inaccessible
     UnknownRefused => UnknownRefused
@@ -91,9 +91,9 @@ fn readback_evidence_trusting_widen_sketch(
 
 fn readback_verdict_is_converged(v: std.upsert_decision.ObservationVerdict) -> Bool {
   match v {
-    std.upsert_decision.Converged => true
-    std.upsert_decision.Absent => false
-    std.upsert_decision.Drifted => false
+    Converged => true
+    Absent => false
+    Drifted => false
     Conflict => false
     Inaccessible => false
     UnknownRefused => false

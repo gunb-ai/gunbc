@@ -571,7 +571,7 @@ fn lex_walk_artifact(source: String, file: v2.std.node.Symbol, rules: v2.std.com
 
 fn lex_walk(source: String, file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRuleSet) -> v2.std.diagnostic.Outcome<v2.std.compilers.lexing.TokenStream> {
   match lex_walk_artifact(source: source, file: file, rules: rules) {
-    v2.std.diagnostic.Rejected { diagnostics: ds } =>
+    Rejected { diagnostics: ds } =>
       v2.std.diagnostic.Rejected { diagnostics: ds }
     Accepted { value: artifact, diagnostics: ds } =>
       v2.std.diagnostic.Accepted { value: v2.std.compilers.lexing.lex_artifact_semantic_tokens(artifact: artifact), diagnostics: ds }

@@ -19,11 +19,11 @@ fn tokens_for_rules(surface: v2.std.node.Node, rules: v2.std.node.Node) -> v2.st
         Accepted { value: tokens_root, diagnostics: _ } =>
           match concrete_syntax_token_list_from_node(list_node: tokens_root) {
             Accepted { value: _, diagnostics: _ } => true
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -42,8 +42,8 @@ test fn emission_rules_match_rust_rules_for_generic_surface() -> v2.std.logic.Bo
               surface: surface,
               rules: rust_enum_general_decl_productions_only_translation_rules()
             )
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

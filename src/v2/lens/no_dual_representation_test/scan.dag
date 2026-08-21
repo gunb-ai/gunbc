@@ -136,12 +136,12 @@ fn eq_site_from_conj(node: v2.std.node.Node) -> List<EqNodeSite> {
     TypeNode { connective: Conj } => {
       let kids = node_positional_child_targets(node: node)
       match list_at_optional(xs: kids, index: 0) {
-        v2.std.optional.Present { value: lhs } =>
+        Present { value: lhs } =>
           match list_at_optional(xs: kids, index: 1) {
-            v2.std.optional.Present { value: rhs } => [EqNodeSite { lhs: lhs, rhs: rhs }]
-            v2.std.optional.Absent => empty_eq_node_sites
+            Present { value: rhs } => [EqNodeSite { lhs: lhs, rhs: rhs }]
+            Absent => empty_eq_node_sites
           }
-        v2.std.optional.Absent => empty_eq_node_sites
+        Absent => empty_eq_node_sites
       }
     }
     _ => empty_eq_node_sites
@@ -184,8 +184,8 @@ fn skeleton_is_call(node: v2.std.node.Node) -> v2.std.logic.Bool {
   match node.kind {
     TypeNode { connective: Conj } =>
       match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
-        v2.std.optional.Present { value: callee } => skeleton_is_callee_atom(node: callee)
-        v2.std.optional.Absent => false
+        Present { value: callee } => skeleton_is_callee_atom(node: callee)
+        Absent => false
       }
     _ => false
   }
@@ -193,8 +193,8 @@ fn skeleton_is_call(node: v2.std.node.Node) -> v2.std.logic.Bool {
 
 fn skeleton_callee_target(node: v2.std.node.Node) -> v2.std.node.Node {
   match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
-    v2.std.optional.Present { value: callee } => callee
-    v2.std.optional.Absent => v2.lens.no_dual_representation_test.scan.atom_node(sym: empty_sym)
+    Present { value: callee } => callee
+    Absent => v2.lens.no_dual_representation_test.scan.atom_node(sym: empty_sym)
   }
 }
 
@@ -215,8 +215,8 @@ fn callee_name_from_call(operand: v2.std.node.Node) -> String {
 
 fn first_call_arg_name(operand: v2.std.node.Node) -> String {
   match list_at_optional(xs: skeleton_call_argument_targets(node: operand), index: 0) {
-    v2.std.optional.Present { value: arg } => node_atom_name(n: arg)
-    v2.std.optional.Absent => ""
+    Present { value: arg } => node_atom_name(n: arg)
+    Absent => ""
   }
 }
 
@@ -255,8 +255,8 @@ fn qualified_name_in_module(qname: String, module: String) -> v2.std.logic.Bool 
 
 fn first_param_sym(params: List<v2.std.node.Symbol>) -> v2.std.node.Symbol {
   match list_at_optional(xs: params, index: 0) {
-    v2.std.optional.Present { value: p } => p
-    v2.std.optional.Absent => empty_sym
+    Present { value: p } => p
+    Absent => empty_sym
   }
 }
 

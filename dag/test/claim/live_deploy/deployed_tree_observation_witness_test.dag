@@ -145,11 +145,11 @@ fn nul_join(fields: std.types.List<String>) -> String {
 
 test fn witness_an_empty_status_and_no_ignored_paths_read_as_matching_the_commit() -> Bool {
   match deployed_tree_content_reading(entries_nul: "", ignored_nul: "") {
-    gunbc.live_deploy.deployed_tree_observation.ContentUnreadable { detail: _ } => false
-    gunbc.live_deploy.deployed_tree_observation.ContentRead { state: s } =>
+    ContentUnreadable { detail: _ } => false
+    ContentRead { state: s } =>
       match s {
-        gunbc.live_deploy.deployed_tree_observation.DeployedScopeMatchesCommit => true
-        gunbc.live_deploy.deployed_tree_observation.DeployedScopeDiverged { changed_paths: _ } => false
+        DeployedScopeMatchesCommit => true
+        DeployedScopeDiverged { changed_paths: _ } => false
       }
   }
 }
@@ -159,11 +159,11 @@ test fn witness_a_modified_tracked_path_reads_as_diverged_and_carries_what_was_s
     entries_nul: nul_join([" M dag/gunbc/ci_spec.dag"]),
     ignored_nul: "",
   ) {
-    gunbc.live_deploy.deployed_tree_observation.ContentUnreadable { detail: _ } => false
-    gunbc.live_deploy.deployed_tree_observation.ContentRead { state: s } =>
+    ContentUnreadable { detail: _ } => false
+    ContentRead { state: s } =>
       match s {
-        gunbc.live_deploy.deployed_tree_observation.DeployedScopeMatchesCommit => false
-        gunbc.live_deploy.deployed_tree_observation.DeployedScopeDiverged { changed_paths: body } => body as String == "dag/gunbc/ci_spec.dag"
+        DeployedScopeMatchesCommit => false
+        DeployedScopeDiverged { changed_paths: body } => body as String == "dag/gunbc/ci_spec.dag"
       }
   }
 }
@@ -173,11 +173,11 @@ test fn witness_a_modified_tracked_path_reads_as_diverged_and_carries_what_was_s
 // names, and status lists it like any other difference.
 test fn witness_a_deleted_tracked_path_reads_as_diverged() -> Bool {
   match deployed_tree_content_reading(entries_nul: nul_join([" D dag/gunbc/ci_spec.dag"]), ignored_nul: "") {
-    gunbc.live_deploy.deployed_tree_observation.ContentUnreadable { detail: _ } => false
-    gunbc.live_deploy.deployed_tree_observation.ContentRead { state: s } =>
+    ContentUnreadable { detail: _ } => false
+    ContentRead { state: s } =>
       match s {
-        gunbc.live_deploy.deployed_tree_observation.DeployedScopeMatchesCommit => false
-        gunbc.live_deploy.deployed_tree_observation.DeployedScopeDiverged { changed_paths: _ } => true
+        DeployedScopeMatchesCommit => false
+        DeployedScopeDiverged { changed_paths: _ } => true
       }
   }
 }
@@ -187,22 +187,22 @@ test fn witness_a_deleted_tracked_path_reads_as_diverged() -> Bool {
 // inside the deployed scope reported CONVERGED -- and the sync ships exactly those bytes.
 test fn witness_an_untracked_deployed_path_is_not_converged() -> Bool {
   match deployed_tree_content_reading(entries_nul: nul_join(["?? dag/gunbc/stowaway.dag"]), ignored_nul: "") {
-    gunbc.live_deploy.deployed_tree_observation.ContentUnreadable { detail: _ } => false
-    gunbc.live_deploy.deployed_tree_observation.ContentRead { state: s } =>
+    ContentUnreadable { detail: _ } => false
+    ContentRead { state: s } =>
       match s {
-        gunbc.live_deploy.deployed_tree_observation.DeployedScopeMatchesCommit => false
-        gunbc.live_deploy.deployed_tree_observation.DeployedScopeDiverged { changed_paths: body } => body as String == "dag/gunbc/stowaway.dag"
+        DeployedScopeMatchesCommit => false
+        DeployedScopeDiverged { changed_paths: body } => body as String == "dag/gunbc/stowaway.dag"
       }
   }
 }
 
 test fn witness_an_ignored_deployed_path_is_not_converged() -> Bool {
   match deployed_tree_content_reading(entries_nul: "", ignored_nul: nul_join([".env"])) {
-    gunbc.live_deploy.deployed_tree_observation.ContentUnreadable { detail: _ } => false
-    gunbc.live_deploy.deployed_tree_observation.ContentRead { state: s } =>
+    ContentUnreadable { detail: _ } => false
+    ContentRead { state: s } =>
       match s {
-        gunbc.live_deploy.deployed_tree_observation.DeployedScopeMatchesCommit => false
-        gunbc.live_deploy.deployed_tree_observation.DeployedScopeDiverged { changed_paths: body } => body as String == ".env"
+        DeployedScopeMatchesCommit => false
+        DeployedScopeDiverged { changed_paths: body } => body as String == ".env"
       }
   }
 }
@@ -216,11 +216,11 @@ test fn witness_an_untracked_path_outside_the_deployed_scope_stays_converged() -
     entries_nul: nul_join(["?? target/release/gunbc"]),
     ignored_nul: nul_join(["target/debug/x"]),
   ) {
-    gunbc.live_deploy.deployed_tree_observation.ContentUnreadable { detail: _ } => false
-    gunbc.live_deploy.deployed_tree_observation.ContentRead { state: s } =>
+    ContentUnreadable { detail: _ } => false
+    ContentRead { state: s } =>
       match s {
-        gunbc.live_deploy.deployed_tree_observation.DeployedScopeMatchesCommit => true
-        gunbc.live_deploy.deployed_tree_observation.DeployedScopeDiverged { changed_paths: _ } => false
+        DeployedScopeMatchesCommit => true
+        DeployedScopeDiverged { changed_paths: _ } => false
       }
   }
 }
@@ -229,15 +229,15 @@ test fn witness_an_untracked_path_outside_the_deployed_scope_stays_converged() -
 // worse than the widen because a narrow is silently uncovered.
 test fn witness_a_malformed_status_field_refuses_rather_than_reading_clean() -> Bool {
   match deployed_tree_content_reading(entries_nul: nul_join(["xy"]), ignored_nul: "") {
-    gunbc.live_deploy.deployed_tree_observation.ContentRead { state: _ } => false
-    gunbc.live_deploy.deployed_tree_observation.ContentUnreadable { detail: _ } => true
+    ContentRead { state: _ } => false
+    ContentUnreadable { detail: _ } => true
   }
 }
 
 test fn witness_a_truncated_rename_record_refuses_rather_than_reading_clean() -> Bool {
   match deployed_tree_content_reading(entries_nul: nul_join(["R  dag/b.dag"]), ignored_nul: "") {
-    gunbc.live_deploy.deployed_tree_observation.ContentRead { state: _ } => false
-    gunbc.live_deploy.deployed_tree_observation.ContentUnreadable { detail: _ } => true
+    ContentRead { state: _ } => false
+    ContentUnreadable { detail: _ } => true
   }
 }
 
@@ -303,11 +303,11 @@ test fn witness_right_revision_with_modifications_is_not_converged_and_not_drift
           content: gunbc.live_deploy.deployed_tree_observation.DeployedScopeDiverged { changed_paths: "dag/gunbc/ci_spec.dag" as std.types.NonEmptyStr },
         },
       ) {
-        gunbc.live_deploy.deployed_tree_observation.DeployedTreeModifiedAtRevision { revision: _, changed_paths: body } =>
+        DeployedTreeModifiedAtRevision { revision: _, changed_paths: body } =>
           body as String == "dag/gunbc/ci_spec.dag"
-        gunbc.live_deploy.deployed_tree_observation.DeployedTreeConverged { revision: _ } => false
-        gunbc.live_deploy.deployed_tree_observation.DeployedTreeRevisionDrifted { desired: _, local: _ } => false
-        gunbc.live_deploy.deployed_tree_observation.DeployedTreeStandingUnobserved { cause: _ } => false
+        DeployedTreeConverged { revision: _ } => false
+        DeployedTreeRevisionDrifted { desired: _, local: _ } => false
+        DeployedTreeStandingUnobserved { cause: _ } => false
       }
   }
 }
@@ -323,11 +323,11 @@ test fn witness_a_different_revision_reports_drift_carrying_both_sides() -> Bool
             desired: a,
             obs: gunbc.live_deploy.deployed_tree_observation.DeployedTreeObserved { revision: b, content: gunbc.live_deploy.deployed_tree_observation.DeployedScopeMatchesCommit },
           ) {
-            gunbc.live_deploy.deployed_tree_observation.DeployedTreeRevisionDrifted { desired: d, local: l } =>
+            DeployedTreeRevisionDrifted { desired: d, local: l } =>
               git_object_id_eq(left: d, right: a) && git_object_id_eq(left: l, right: b)
-            gunbc.live_deploy.deployed_tree_observation.DeployedTreeConverged { revision: _ } => false
-            gunbc.live_deploy.deployed_tree_observation.DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
-            gunbc.live_deploy.deployed_tree_observation.DeployedTreeStandingUnobserved { cause: _ } => false
+            DeployedTreeConverged { revision: _ } => false
+            DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
+            DeployedTreeStandingUnobserved { cause: _ } => false
           }
       }
   }
@@ -349,10 +349,10 @@ test fn witness_drift_dominates_modification() -> Bool {
               content: gunbc.live_deploy.deployed_tree_observation.DeployedScopeDiverged { changed_paths: "x" as std.types.NonEmptyStr },
             },
           ) {
-            gunbc.live_deploy.deployed_tree_observation.DeployedTreeRevisionDrifted { desired: _, local: _ } => true
-            gunbc.live_deploy.deployed_tree_observation.DeployedTreeConverged { revision: _ } => false
-            gunbc.live_deploy.deployed_tree_observation.DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
-            gunbc.live_deploy.deployed_tree_observation.DeployedTreeStandingUnobserved { cause: _ } => false
+            DeployedTreeRevisionDrifted { desired: _, local: _ } => true
+            DeployedTreeConverged { revision: _ } => false
+            DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
+            DeployedTreeStandingUnobserved { cause: _ } => false
           }
       }
   }
@@ -365,19 +365,19 @@ test fn witness_unobservable_is_not_converged_and_keeps_its_cause() -> Bool {
     Absent => false
     Present { value: a } =>
       match standing_for(desired: a, obs: gunbc.live_deploy.deployed_tree_observation.DeployedTreeUnobservable { cause: gunbc.live_deploy.deployed_tree_observation.TreeLegNotAttempted { leg: "revision", reason: "ssh refused" } }) {
-        gunbc.live_deploy.deployed_tree_observation.DeployedTreeStandingUnobserved { cause: c } =>
+        DeployedTreeStandingUnobserved { cause: c } =>
           match c {
-            gunbc.live_deploy.deployed_tree_observation.TreeLegNotAttempted { leg: _, reason: why } => why == "ssh refused"
-            gunbc.live_deploy.deployed_tree_observation.TreeCommandFailed { leg: _, exit_code: _, stderr: _ } => false
-            gunbc.live_deploy.deployed_tree_observation.TreeRevisionUndecodable { text: _ } => false
-            gunbc.live_deploy.deployed_tree_observation.TreeStatusUnreadable { detail: _ } => false
+            TreeLegNotAttempted { leg: _, reason: why } => why == "ssh refused"
+            TreeCommandFailed { leg: _, exit_code: _, stderr: _ } => false
+            TreeRevisionUndecodable { text: _ } => false
+            TreeStatusUnreadable { detail: _ } => false
           }
             && !deployed_tree_standing_is_converged(
               standing: standing_for(desired: a, obs: gunbc.live_deploy.deployed_tree_observation.DeployedTreeUnobservable { cause: gunbc.live_deploy.deployed_tree_observation.TreeLegNotAttempted { leg: "revision", reason: "ssh refused" } }),
             )
-        gunbc.live_deploy.deployed_tree_observation.DeployedTreeConverged { revision: _ } => false
-        gunbc.live_deploy.deployed_tree_observation.DeployedTreeRevisionDrifted { desired: _, local: _ } => false
-        gunbc.live_deploy.deployed_tree_observation.DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
+        DeployedTreeConverged { revision: _ } => false
+        DeployedTreeRevisionDrifted { desired: _, local: _ } => false
+        DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
       }
   }
 }
@@ -388,16 +388,16 @@ test fn witness_unobservable_is_not_converged_and_keeps_its_cause() -> Bool {
 // arms, so this stays green only while the distinction is structural.
 test fn witness_never_attempted_and_ran_and_failed_are_different_arms() -> Bool {
   match TreeLegNotAttempted { leg: "revision", reason: "no credential" } {
-    gunbc.live_deploy.deployed_tree_observation.TreeLegNotAttempted { leg: _, reason: _ } =>
+    TreeLegNotAttempted { leg: _, reason: _ } =>
       match TreeCommandFailed { leg: "revision", exit_code: 128, stderr: "not a git repository" } {
-        gunbc.live_deploy.deployed_tree_observation.TreeCommandFailed { leg: _, exit_code: code, stderr: _ } => code == 128
-        gunbc.live_deploy.deployed_tree_observation.TreeLegNotAttempted { leg: _, reason: _ } => false
-        gunbc.live_deploy.deployed_tree_observation.TreeRevisionUndecodable { text: _ } => false
-        gunbc.live_deploy.deployed_tree_observation.TreeStatusUnreadable { detail: _ } => false
+        TreeCommandFailed { leg: _, exit_code: code, stderr: _ } => code == 128
+        TreeLegNotAttempted { leg: _, reason: _ } => false
+        TreeRevisionUndecodable { text: _ } => false
+        TreeStatusUnreadable { detail: _ } => false
       }
-    gunbc.live_deploy.deployed_tree_observation.TreeCommandFailed { leg: _, exit_code: _, stderr: _ } => false
-    gunbc.live_deploy.deployed_tree_observation.TreeRevisionUndecodable { text: _ } => false
-    gunbc.live_deploy.deployed_tree_observation.TreeStatusUnreadable { detail: _ } => false
+    TreeCommandFailed { leg: _, exit_code: _, stderr: _ } => false
+    TreeRevisionUndecodable { text: _ } => false
+    TreeStatusUnreadable { detail: _ } => false
   }
 }
 

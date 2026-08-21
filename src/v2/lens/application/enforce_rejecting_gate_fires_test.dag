@@ -23,7 +23,7 @@ data enforce_rejecting_lens: v2.compiler.compile.CompileLens = v2.compiler.compi
 
 test fn enforce_rejecting_gate_fires_claim_holds() -> v2.std.logic.Bool {
   match v2.compiler.compile.apply_compile_lens(lens: enforce_rejecting_lens, inferred: enforce_reject_tree(), mode: v2.compiler.compile.CompileLensEnforce) {
-    v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
+    Rejected { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
     Accepted { value: _, diagnostics: _ } => false
   }
 }

@@ -173,7 +173,7 @@ fn lbe_run_test_claim_assert_from_emit(
   match lbe_claim_from_testgen_emit(anchor: anchor, label: label, mock: mock) {
     Accepted { value: claim, diagnostics: None } =>
       lbe_run_test_claim_assert_from_mock(claim: claim, mock: mock)
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       v2.std.verdict.SemanticMismatch { actual: v2.std.diagnostic.Rejected { diagnostics: d }, falsification: v2.std.optional.Absent }
   }
 }
@@ -186,7 +186,7 @@ fn lbe_test_claim_run_from_emit(
   match lbe_claim_from_testgen_emit(anchor: anchor, label: label, mock: mock) {
     Accepted { value: claim, diagnostics: None } =>
       lbe_run_via_test_claim(claim: claim)
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       v2.compiler.eval.TestClaimRun {
         cache: lbe_rejected_emit_cache_receipt(label: label, mock: mock, expected: d),
         verdict: v2.std.verdict.SemanticMismatch { actual: v2.std.diagnostic.Rejected { diagnostics: d }, falsification: v2.std.optional.Absent }
@@ -219,7 +219,7 @@ data witness_lbe_conj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from
 ) {
   Pass => true
   SemanticMismatch { actual: _, falsification: _ } => false
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
@@ -231,7 +231,7 @@ data witness_lbe_disj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from
 ) {
   Pass => true
   SemanticMismatch { actual: _, falsification: _ } => false
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
@@ -243,7 +243,7 @@ data witness_lbe_transform_snapshot_pass: Bool = match lbe_run_test_claim_assert
 ) {
   Pass => true
   SemanticMismatch { actual: _, falsification: _ } => false
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }

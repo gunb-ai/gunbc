@@ -23,16 +23,16 @@ fn health(version_stdout: String, generate_stdout: String) -> gunbc.spark.servin
 
 fn defect_wire(h: gunbc.spark.serving_terminal_health.SparkServingTerminalHealth) -> String {
   match h {
-    gunbc.spark.serving_terminal_health.ServingConverged { reported_version: _, served_model: _ } => "<converged>"
-    gunbc.spark.serving_terminal_health.ServingHealthUnobserved { cause: _ } => "<unobserved>"
-    gunbc.spark.serving_terminal_health.ResourcesConvergedButServingUnhealthy { defect: d } =>
+    ServingConverged { reported_version: _, served_model: _ } => "<converged>"
+    ServingHealthUnobserved { cause: _ } => "<unobserved>"
+    ResourcesConvergedButServingUnhealthy { defect: d } =>
       match d {
-        gunbc.spark.serving_terminal_health.HealthVersionDisagrees { observed: _ } => "version-disagrees"
-        gunbc.spark.serving_terminal_health.HealthVersionUndecodable { detail: _ } => "version-undecodable"
-        gunbc.spark.serving_terminal_health.HealthGenerationUndecodable { detail: _ } => "generation-undecodable"
-        gunbc.spark.serving_terminal_health.HealthGenerationIncomplete => "generation-incomplete"
-        gunbc.spark.serving_terminal_health.HealthGenerationWrongModel { observed: _ } => "generation-wrong-model"
-        gunbc.spark.serving_terminal_health.HealthGenerationUnexpectedText { observed: _ } => "generation-unexpected-text"
+        HealthVersionDisagrees { observed: _ } => "version-disagrees"
+        HealthVersionUndecodable { detail: _ } => "version-undecodable"
+        HealthGenerationUndecodable { detail: _ } => "generation-undecodable"
+        HealthGenerationIncomplete => "generation-incomplete"
+        HealthGenerationWrongModel { observed: _ } => "generation-wrong-model"
+        HealthGenerationUnexpectedText { observed: _ } => "generation-unexpected-text"
       }
   }
 }

@@ -51,7 +51,7 @@ fn qn_fold_step(acc: QnFoldStatus, edge: v2.std.node.Edge, child: QnFoldStatus) 
         QnFoldError { diag: d } => QnFoldError { diag: d }
         QnFoldDone { qn: child_qn } =>
           match edge.label {
-            v2.std.node.Named { name: ename } =>
+            Named { name: ename } =>
               if ename == ^fold_list_node_head {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: _ } } =>

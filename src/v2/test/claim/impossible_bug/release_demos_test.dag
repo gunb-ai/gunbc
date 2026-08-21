@@ -7,7 +7,7 @@ fn release_complexity_claim_catches() -> v2.std.logic.Bool {
   match test_claim_expected_outcome(c: v2.test.impossible_bug.suboptimal_complexity.claim_overcost_against_structural_bound_violates) {
     Accepted { value: v2.std.diagnostic.Rejected { diagnostics: expected }, diagnostics: None } =>
       match expected.head {
-        v2.std.diagnostic.Diagnostic { reason: reason, at: _, correction: _ } =>
+        Diagnostic { reason: reason, at: _, correction: _ } =>
           match impossible_bug_class_from_diagnostic_reason(reason: reason) {
               Accepted { value: SuboptimalComplexity, diagnostics: None } => true
               _ => false
@@ -21,7 +21,7 @@ fn release_idempotency_claim_catches() -> v2.std.logic.Bool {
   match test_claim_expected_outcome(c: v2.test.impossible_bug.idempotency_contract.claim_nonidempotent_in_idempotent_position_caught) {
     Accepted { value: v2.std.diagnostic.Rejected { diagnostics: expected }, diagnostics: None } =>
       match expected.head {
-        v2.std.diagnostic.Diagnostic { reason: reason, at: _, correction: _ } =>
+        Diagnostic { reason: reason, at: _, correction: _ } =>
           match impossible_bug_class_from_diagnostic_reason(reason: reason) {
               Accepted { value: IdempotencyContract, diagnostics: None } => true
               _ => false
@@ -35,7 +35,7 @@ fn release_transport_target_contract_drift_catches() -> v2.std.logic.Bool {
   match test_claim_expected_outcome(c: v2.test.impossible_bug.transport_type_drift.claim_target_contract_drift_impossible) {
     Accepted { value: v2.std.diagnostic.Rejected { diagnostics: expected }, diagnostics: None } =>
       match expected.head {
-        v2.std.diagnostic.Diagnostic { reason: reason, at: _, correction: _ } =>
+        Diagnostic { reason: reason, at: _, correction: _ } =>
           (falsification_target_contract_drift == test_claim_input(c: v2.test.impossible_bug.transport_type_drift.claim_target_contract_drift_impossible))
             && match impossible_bug_class_from_diagnostic_reason(reason: reason) {
               Accepted { value: TransportTypeDrift, diagnostics: None } => true
@@ -50,7 +50,7 @@ fn release_transport_wire_contract_drift_catches() -> v2.std.logic.Bool {
   match test_claim_expected_outcome(c: claim_wire_contract_drift_impossible) {
     Accepted { value: v2.std.diagnostic.Rejected { diagnostics: expected }, diagnostics: None } =>
       match expected.head {
-        v2.std.diagnostic.Diagnostic { reason: reason, at: _, correction: _ } =>
+        Diagnostic { reason: reason, at: _, correction: _ } =>
           (falsification_wire_contract_drift == test_claim_input(c: claim_wire_contract_drift_impossible))
             && match impossible_bug_class_from_diagnostic_reason(reason: reason) {
               Accepted { value: TransportTypeDrift, diagnostics: None } => true

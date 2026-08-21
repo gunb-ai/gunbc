@@ -86,8 +86,8 @@ fn compose_explicit_walk_attempt_id(explicit: String) -> WalkAttemptId? {
 
 fn render_git_object_id_wire(oid: extdeps.git.object_store.GitObjectId) -> String {
   match oid {
-    extdeps.git.object_store.GitSha1ObjectId { digest: _ } => concat("sha1:", git_object_id_wire_hex(oid: oid) as String)
-    extdeps.git.object_store.GitSha256ObjectId { digest: _ } => concat("sha256:", git_object_id_wire_hex(oid: oid) as String)
+    GitSha1ObjectId { digest: _ } => concat("sha1:", git_object_id_wire_hex(oid: oid) as String)
+    GitSha256ObjectId { digest: _ } => concat("sha256:", git_object_id_wire_hex(oid: oid) as String)
   }
 }
 

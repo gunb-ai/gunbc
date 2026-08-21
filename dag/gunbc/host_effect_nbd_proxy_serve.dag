@@ -270,9 +270,9 @@ fn host_effect_nbd_proxy_serve_apply(
           websocat_unit as String,
         ),
       }
-    std.upsert_decision.Refuse { reason: why } =>
+    Refuse { reason: why } =>
       NbdProxyServeApplyRefused { reason: why as String }
-    std.upsert_decision.Apply { plan: gunbc.session_lease.Start } =>
+    Apply { plan: gunbc.session_lease.Start } =>
       match host_effect_nbd_proxy_serve_start_units(binding: binding, transport: transport) {
         Absent =>
           NbdProxyServeApplyConverged {
@@ -286,7 +286,7 @@ fn host_effect_nbd_proxy_serve_apply(
             reason: concat("nbd-proxy-serve: systemd-run transient start failed; fail-closed: ", why),
           }
       }
-    std.upsert_decision.Apply { plan: gunbc.session_lease.DrainMatchingStaleThenStart } =>
+    Apply { plan: gunbc.session_lease.DrainMatchingStaleThenStart } =>
       match host_effect_nbd_proxy_serve_drain_stale_units(binding: binding, transport: transport) {
         Present { value: why } =>
           NbdProxyServeApplyRefused {
@@ -318,9 +318,9 @@ fn host_effect_nbd_proxy_serve_apply_with_observation(
   match host_effect_nbd_proxy_serve_apply_classification(binding: binding, obs: obs).decision {
     Noop =>
       NbdProxyServeApplyConverged { stdout: "NbdProxyServeSessionReceipt: verdict=Converged" }
-    std.upsert_decision.Refuse { reason: why } =>
+    Refuse { reason: why } =>
       NbdProxyServeApplyRefused { reason: why as String }
-    std.upsert_decision.Apply { plan: gunbc.session_lease.Start } =>
+    Apply { plan: gunbc.session_lease.Start } =>
       match host_effect_nbd_proxy_serve_start_units(binding: binding, transport: transport) {
         Absent =>
           NbdProxyServeApplyConverged { stdout: "NbdProxyServeSessionReceipt: verdict=Absent plan=Start" }
@@ -329,7 +329,7 @@ fn host_effect_nbd_proxy_serve_apply_with_observation(
             reason: concat("nbd-proxy-serve: systemd-run transient start failed; fail-closed: ", why),
           }
       }
-    std.upsert_decision.Apply { plan: gunbc.session_lease.DrainMatchingStaleThenStart } =>
+    Apply { plan: gunbc.session_lease.DrainMatchingStaleThenStart } =>
       match host_effect_nbd_proxy_serve_drain_stale_units(binding: binding, transport: transport) {
         Present { value: why } =>
           NbdProxyServeApplyRefused {

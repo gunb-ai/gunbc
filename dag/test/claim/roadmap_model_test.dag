@@ -105,7 +105,7 @@ test fn witness_node_unsigned_box_clean() -> Bool {
   }
   match node_status_drift(rn: rn, committed_box: false, merged: [5491]) {
     Clean => true
-    gunbc.roadmap_status.Drifted => false
+    Drifted => false
     Underivable => false
   }
 }

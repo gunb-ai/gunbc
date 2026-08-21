@@ -65,14 +65,14 @@ test fn call_carrier_value_not_callee_reference() -> v2.std.logic.Bool {
 test fn call_carrier_callee_target_matches() -> v2.std.logic.Bool {
   match v2.std.node_query.call_callee_target(node: call_carrier_call_node()) {
     Accepted { value: callee, diagnostics: _ } => callee == call_carrier_callee_ref()
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn call_carrier_callee_target_rejects_non_call() -> v2.std.logic.Bool {
   match v2.std.node_query.call_callee_target(node: call_carrier_callee_free_transform()) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -80,12 +80,12 @@ test fn call_carrier_arguments_match() -> v2.std.logic.Bool {
   let args = v2.std.node_query.call_argument_targets(node: call_carrier_call_node())
   let arity_two = count(args) == 2
   let first_is_x = match v2.std.collection.list_at_optional(xs: args, index: 0) {
-    v2.std.optional.Present { value: a0 } => a0 == call_carrier_arg_x()
-    v2.std.optional.Absent => false
+    Present { value: a0 } => a0 == call_carrier_arg_x()
+    Absent => false
   }
   let second_is_y = match v2.std.collection.list_at_optional(xs: args, index: 1) {
-    v2.std.optional.Present { value: a1 } => a1 == call_carrier_arg_y()
-    v2.std.optional.Absent => false
+    Present { value: a1 } => a1 == call_carrier_arg_y()
+    Absent => false
   }
   arity_two && first_is_x && second_is_y
 }

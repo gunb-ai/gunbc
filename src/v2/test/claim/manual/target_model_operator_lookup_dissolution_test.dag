@@ -31,7 +31,7 @@ test fn operator_lookup_known_op_accepts() -> v2.std.logic.Bool {
     canonical_op: v2.std.compilers.target_model.canonical_operation_op_add()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -45,7 +45,7 @@ test fn operator_lookup_empty_catalog_rejects_miss() -> v2.std.logic.Bool {
     canonical_op: v2.std.compilers.target_model.canonical_operation_op_add()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^target_operator_realization_catalog_miss
+    Rejected { diagnostics: d } => d.head.reason == ^target_operator_realization_catalog_miss
   }
 }
 
@@ -55,7 +55,7 @@ test fn operator_catalog_with_malformed_row_skips_accepts_valid() -> v2.std.logi
     canonical_op: v2.std.compilers.target_model.canonical_operation_op_add()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

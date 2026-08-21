@@ -16,12 +16,12 @@ fn infer_transform_subtract_fixture() -> v2.std.node.Node {
 
 fn infer_transform_witness_resolved_add_arrow() -> v2.std.optional.Optional<v2.std.node.Node> {
   match wave1_gate1_normalized_add_module() {
-    v2.std.optional.Absent => v2.std.optional.Absent
-    v2.std.optional.Present { value: tree } =>
+    Absent => v2.std.optional.Absent
+    Present { value: tree } =>
       match v2.compiler.resolve.resolve(tree: tree, lm: dag_language_model()) {
         Accepted { value: resolved, diagnostics: _ } =>
           wave1_gate1_find_arrow_in_module(root: resolved)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
+        Rejected { diagnostics: _ } => v2.std.optional.Absent
       }
   }
 }
@@ -33,17 +33,17 @@ fn infer_transform_witness_add_body(arrow: v2.std.node.Node) -> v2.std.optional.
         ComputationNode { behavior: v2.std.node.Transform } => v2.std.optional.Present { value: body }
         _ => v2.std.optional.Absent
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
+    Rejected { diagnostics: _ } => v2.std.optional.Absent
   }
 }
 
 fn infer_transform_add_vertical_discriminating_holds() -> v2.std.logic.Bool {
   match infer_transform_witness_resolved_add_arrow() {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: arrow } =>
+    Absent => false
+    Present { value: arrow } =>
       match infer_transform_witness_add_body(arrow: arrow) {
-        v2.std.optional.Absent => false
-        v2.std.optional.Present { value: body } =>
+        Absent => false
+        Present { value: body } =>
           match infer(tree: arrow) {
             Accepted { value: tree, diagnostics: _ } =>
               match inferred_facts_witness_for_node(tree: tree, node: body) {
@@ -56,7 +56,7 @@ fn infer_transform_add_vertical_discriminating_holds() -> v2.std.logic.Bool {
                     }
                 Violates { diagnostic: _ } => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
       }
   }

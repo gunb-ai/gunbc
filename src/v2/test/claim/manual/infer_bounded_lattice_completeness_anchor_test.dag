@@ -143,7 +143,7 @@ test data anchor_module_partial_only_consumer_gate_accepts: v2.std.logic.Bool = 
   partials: [anchor_partial_bounded_lattice_instance]
 ) {
   Accepted { value: _, diagnostics: _ } => true
-  v2.std.diagnostic.Rejected { diagnostics: _ } => false
+  Rejected { diagnostics: _ } => false
 }
 
 data anchor_instance_gate_rejects_partial: v2.std.diagnostic.Outcome<v2.std.node.Node> = v2.std.bounded_lattice_completeness.infer_bounded_lattice_instance_gate(instance: anchor_partial_bounded_lattice_instance)
@@ -159,7 +159,7 @@ data anchor_infer_rejects_consumer_tree: v2.std.diagnostic.Outcome<v2.compiler.i
 
 fn anchor_infer_consumer_tree_is_rejected() -> v2.std.logic.Bool {
   match anchor_infer_rejects_consumer_tree {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
     _ => false
   }
 }

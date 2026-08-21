@@ -30,8 +30,8 @@ fn floor_discovery_record_disposition_refusal(
   reason: String
 ) -> FloorDiscoveryWalkState {
   match state.disposition_refusal {
-    v2.std.optional.Present { value: _ } => state
-    v2.std.optional.Absent => FloorDiscoveryWalkState {
+    Present { value: _ } => state
+    Absent => FloorDiscoveryWalkState {
       rows: state.rows,
       walk_failures: state.walk_failures,
       walk_failure_path: state.walk_failure_path,
@@ -49,8 +49,8 @@ fn floor_discovery_record_walk_failure(
     rows: state.rows,
     walk_failures: state.walk_failures + 1,
     walk_failure_path: match state.walk_failure_path {
-      v2.std.optional.Present { value: _ } => state.walk_failure_path
-      v2.std.optional.Absent => optional_present(value: path)
+      Present { value: _ } => state.walk_failure_path
+      Absent => optional_present(value: path)
     },
     sidecar_violations: state.sidecar_violations,
     disposition_refusal: state.disposition_refusal
@@ -59,12 +59,12 @@ fn floor_discovery_record_walk_failure(
 
 fn floor_discovery_walk_failure_refusal_reason(path_opt: v2.std.optional.Optional<String>) -> String {
   match path_opt {
-    v2.std.optional.Present { value: path } => concat(
+    Present { value: path } => concat(
       "filesystem operation failed during floor discovery walk at ",
       path,
       " (typed refusal, never empty roster)"
     )
-    v2.std.optional.Absent => "filesystem operation failed during floor discovery walk (typed refusal, never empty roster)"
+    Absent => "filesystem operation failed during floor discovery walk (typed refusal, never empty roster)"
   }
 }
 
@@ -212,8 +212,8 @@ fn floor_discovery_disposition_fold_line(
   line: String
 ) -> FloorDiscoveryDispositionFoldState {
   match state.refusal {
-    v2.std.optional.Present { value: _ } => state
-    v2.std.optional.Absent => {
+    Present { value: _ } => state
+    Absent => {
       if !floor_discovery_line_is_disposition_row(line: line) {
         state
       } else if !string_contains(s: line, pattern: "LiveTreeDisposition") {
@@ -229,7 +229,7 @@ fn floor_discovery_disposition_fold_line(
         }
       } else {
         match floor_discovery_disposition_row_variant(line: line) {
-          v2.std.optional.Present { value: disposition } => {
+          Present { value: disposition } => {
             if state.declared {
               FloorDiscoveryDispositionFoldState {
                 refusal: optional_present(
@@ -249,7 +249,7 @@ fn floor_discovery_disposition_fold_line(
               }
             }
           }
-          v2.std.optional.Absent => FloorDiscoveryDispositionFoldState {
+          Absent => FloorDiscoveryDispositionFoldState {
             refusal: optional_present(
               value: floor_discovery_malformed_disposition_reason(
                 entry_path: entry_path,
@@ -285,10 +285,10 @@ fn floor_discovery_resolve_entry_live_tree(
     }
   )
   match folded.refusal {
-    v2.std.optional.Present { value: reason } => EntryLiveTreeDispositionRefused { reason: reason }
-    v2.std.optional.Absent => match folded.disposition {
-      v2.std.optional.Present { value: disposition } => EntryLiveTreeResolved { disposition: disposition }
-      v2.std.optional.Absent => EntryLiveTreeResolved { disposition: ReadsLiveTree }
+    Present { value: reason } => EntryLiveTreeDispositionRefused { reason: reason }
+    Absent => match folded.disposition {
+      Present { value: disposition } => EntryLiveTreeResolved { disposition: disposition }
+      Absent => EntryLiveTreeResolved { disposition: ReadsLiveTree }
     }
   }
 }
@@ -610,8 +610,8 @@ fn floor_discovery_finalize(state: FloorDiscoveryWalkState) -> FloorDiscoveryPro
     }
   } else {
     match state.disposition_refusal {
-      v2.std.optional.Present { value: reason } => FloorDiscoveryRefused { reason: reason }
-      v2.std.optional.Absent =>
+      Present { value: reason } => FloorDiscoveryRefused { reason: reason }
+      Absent =>
         if length(xs: state.sidecar_violations) > 0 {
           FloorDiscoveryRefused {
             reason: floor_discovery_sidecar_refusal_reason(violations: state.sidecar_violations)

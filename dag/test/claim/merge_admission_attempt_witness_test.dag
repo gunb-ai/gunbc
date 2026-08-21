@@ -97,12 +97,12 @@ test fn synthetic_changed_roster_receipt_refuses_against_live_roster() -> Bool {
       merge_target_commit_sha: base_commit_fx,
       current_roster_hash: current_gate_roster_hash,
     ) {
-      gunbc.merge_admission.MergeDeniedStaleRoster => true
-      gunbc.merge_admission.MergeAdmitted => false
-      gunbc.merge_admission.MergeDeniedStaleBase => false
-      gunbc.merge_admission.MergeDeniedNotSuccess => false
-      gunbc.merge_admission.MergeDeniedWrongAttempt => false
-      gunbc.merge_admission.MergeDeniedSubjectMismatch => false
+      MergeDeniedStaleRoster => true
+      MergeAdmitted => false
+      MergeDeniedStaleBase => false
+      MergeDeniedNotSuccess => false
+      MergeDeniedWrongAttempt => false
+      MergeDeniedSubjectMismatch => false
     }
 }
 
@@ -114,12 +114,12 @@ test fn synthetic_changed_roster_receipt_admits_when_revision_is_current() -> Bo
     merge_target_commit_sha: base_commit_fx,
     current_roster_hash: synthetic_changed_roster_hash(),
   ) {
-    gunbc.merge_admission.MergeAdmitted => true
-    gunbc.merge_admission.MergeDeniedStaleBase => false
-    gunbc.merge_admission.MergeDeniedStaleRoster => false
-    gunbc.merge_admission.MergeDeniedNotSuccess => false
-    gunbc.merge_admission.MergeDeniedWrongAttempt => false
-    gunbc.merge_admission.MergeDeniedSubjectMismatch => false
+    MergeAdmitted => true
+    MergeDeniedStaleBase => false
+    MergeDeniedStaleRoster => false
+    MergeDeniedNotSuccess => false
+    MergeDeniedWrongAttempt => false
+    MergeDeniedSubjectMismatch => false
   }
 }
 
@@ -139,12 +139,12 @@ test fn current_roster_receipt_admits_against_live_roster() -> Bool {
     merge_target_commit_sha: base_commit_fx,
     current_roster_hash: current_gate_roster_hash,
   ) {
-    gunbc.merge_admission.MergeAdmitted => true
-    gunbc.merge_admission.MergeDeniedStaleBase => false
-    gunbc.merge_admission.MergeDeniedStaleRoster => false
-    gunbc.merge_admission.MergeDeniedNotSuccess => false
-    gunbc.merge_admission.MergeDeniedWrongAttempt => false
-    gunbc.merge_admission.MergeDeniedSubjectMismatch => false
+    MergeAdmitted => true
+    MergeDeniedStaleBase => false
+    MergeDeniedStaleRoster => false
+    MergeDeniedNotSuccess => false
+    MergeDeniedWrongAttempt => false
+    MergeDeniedSubjectMismatch => false
   }
 }
 

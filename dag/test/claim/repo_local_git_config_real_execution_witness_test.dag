@@ -16,7 +16,7 @@ test fn repo_local_git_config_actuator_sets_local_bindings_by_real_execution() -
     && count(observed_before) == 0
     && cleaned.success
     && match reconciled {
-      std.realization_reconcile.Converged { evidence: e, applied: bindings } =>
+      Converged { evidence: e, applied: bindings } =>
         e.upserts_applied == 2
           && repo_local_git_config_converged_observed(bindings: bindings)
       NotConverged { reason: _, applied: _ } => false

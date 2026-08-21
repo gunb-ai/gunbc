@@ -53,13 +53,13 @@ fn non_empty_contains_reason(d: v2.std.diagnostic.NonEmptyDiagnostics, reason: v
 fn gate_accepts(o: v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>>) -> v2.std.logic.Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn gate_red_synthetic_machine_shape_call() -> v2.std.logic.Bool {
   match v2.lens.machine_shape.machine_shape_compile_gate(node: machine_shape_literal_fixture()) {
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       test.claim.machine_shape_construction_wall.non_empty_contains_reason(d: d, reason: ^machine_shape_unsanctioned_construction)
     Accepted { value: _, diagnostics: _ } => false
   }

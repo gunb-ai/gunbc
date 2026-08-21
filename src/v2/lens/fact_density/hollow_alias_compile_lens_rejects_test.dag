@@ -25,7 +25,7 @@ test fn hollow_alias_compile_lens_rejects_holds() -> v2.std.logic.Bool {
     inferred: hollow_alias_cl_tree(),
     mode: CompileLensEnforce
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
+    Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
     Accepted { value: _, diagnostics: _ } => false
   }
 }

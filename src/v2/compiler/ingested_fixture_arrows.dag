@@ -36,8 +36,8 @@ fn ingested_find_arrow_in_module(root: v2.std.node.Node) -> v2.std.optional.Opti
     _ =>
       fold(root.children, init: v2.std.optional.Absent, f: fn(acc, e) {
         match acc {
-          v2.std.optional.Present { value: _ } => acc
-          v2.std.optional.Absent => v2.compiler.ingested_fixture_arrows.ingested_find_arrow_in_module(root: e.target)
+          Present { value: _ } => acc
+          Absent => v2.compiler.ingested_fixture_arrows.ingested_find_arrow_in_module(root: e.target)
         }
       })
   }
@@ -68,7 +68,7 @@ fn ingested_arrow_from_source(source: String, file: v2.std.node.Symbol) -> Outco
     o: v2.compiler.ingested_fixture_arrows.ingested_resolved_module_from_source(source: source, file: file),
     f: fn(resolved) {
       match v2.compiler.ingested_fixture_arrows.ingested_find_arrow_in_module(root: resolved) {
-        v2.std.optional.Present { value: arrow } =>
+        Present { value: arrow } =>
           if well_formed(n: arrow) {
             outcome_accepted(value: arrow)
           } else {
@@ -79,7 +79,7 @@ fn ingested_arrow_from_source(source: String, file: v2.std.node.Symbol) -> Outco
               )
             )
           }
-        v2.std.optional.Absent =>
+        Absent =>
           outcome_rejected(
             d: ingested_fixture_diagnostic(
               reason: ^ingested_fixture_reason_arrow_missing,

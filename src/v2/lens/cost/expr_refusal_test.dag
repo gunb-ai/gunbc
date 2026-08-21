@@ -54,7 +54,7 @@ test fn valid_log_base_two_projects_log_cost() -> v2.std.logic.Bool {
       argument: size_of(variable: expr_refusal_log_variable)
     )
   ) {
-    v2.lens.cost.LogCost { variable: v } => v.source == expr_refusal_log_leaf
+    LogCost { variable: v } => v.source == expr_refusal_log_leaf
     _ => false
   }
 }
@@ -65,7 +65,7 @@ test fn cost_effect_projects_unmodeled_effect_refusal() -> v2.std.logic.Bool {
   ) {
     UnknownCost { diagnostic: d } => d.reason == ^cost_expr_refusal_unmodeled_effect
     LinearCost { variable: _ } => false
-    v2.lens.cost.LogCost { variable: _ } => false
+    LogCost { variable: _ } => false
     _ => false
   }
 }

@@ -41,27 +41,27 @@ fn list_contains_string(items: List<String>, needle: String) -> Bool {
 
 fn decode_json_string_array(v: extdeps.languages.json.emit.JsonValue) -> JsonStringListDecode {
   match v {
-    extdeps.languages.json.emit.JsonArray { elements: elems } =>
+    JsonArray { elements: elems } =>
       fold(elems, init: JsonStringListOk { values: [] }, f: fn(acc, head) {
         match acc {
           JsonStringListFail => JsonStringListFail
           JsonStringListOk { values: vs } =>
             match head {
-              extdeps.languages.json.emit.JsonString { value: s } =>
+              JsonString { value: s } =>
                 JsonStringListOk { values: v2.std.algebra.list_snoc_item(xs: vs, item: s) }
-              extdeps.languages.json.emit.JsonNull => JsonStringListFail
-              extdeps.languages.json.emit.JsonBool { value: _ } => JsonStringListFail
-              extdeps.languages.json.emit.JsonNumber { lexeme: _ } => JsonStringListFail
-              extdeps.languages.json.emit.JsonArray { elements: _ } => JsonStringListFail
-              extdeps.languages.json.emit.JsonObject { members: _ } => JsonStringListFail
+              JsonNull => JsonStringListFail
+              JsonBool { value: _ } => JsonStringListFail
+              JsonNumber { lexeme: _ } => JsonStringListFail
+              JsonArray { elements: _ } => JsonStringListFail
+              JsonObject { members: _ } => JsonStringListFail
             }
         }
       })
-    extdeps.languages.json.emit.JsonNull => JsonStringListFail
-    extdeps.languages.json.emit.JsonBool { value: _ } => JsonStringListFail
-    extdeps.languages.json.emit.JsonNumber { lexeme: _ } => JsonStringListFail
-    extdeps.languages.json.emit.JsonString { value: _ } => JsonStringListFail
-    extdeps.languages.json.emit.JsonObject { members: _ } => JsonStringListFail
+    JsonNull => JsonStringListFail
+    JsonBool { value: _ } => JsonStringListFail
+    JsonNumber { lexeme: _ } => JsonStringListFail
+    JsonString { value: _ } => JsonStringListFail
+    JsonObject { members: _ } => JsonStringListFail
   }
 }
 

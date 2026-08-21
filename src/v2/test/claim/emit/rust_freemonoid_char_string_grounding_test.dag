@@ -31,7 +31,7 @@ fn fmc_projected_node() -> v2.std.node.Node {
     projection: rust_type_expression_projection()
   ) {
     Accepted { value: emitted, diagnostics: _ } => emitted
-    v2.std.diagnostic.Rejected { diagnostics: _ } => fmc_freemonoid_char_source_node()
+    Rejected { diagnostics: _ } => fmc_freemonoid_char_source_node()
   }
 }
 
@@ -42,7 +42,7 @@ test fn fmc_projection_accepts() -> v2.std.logic.Bool {
     projection: rust_type_expression_projection()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

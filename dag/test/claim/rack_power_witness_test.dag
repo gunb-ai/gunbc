@@ -33,11 +33,11 @@ fn pf(percent: Int) -> product.rack_power.DeclaredPowerFactor? {
 
 fn budget(rack: product.rack_mount.RackInstance?, loads: List<product.rack_power.AssetLoad>, percent: Int) -> product.rack_power.PowerBudget? {
   match rack {
-    v2.std.optional.Absent => none
-    v2.std.optional.Present { value: r } =>
+    Absent => none
+    Present { value: r } =>
       match pf(percent: percent) {
-        v2.std.optional.Absent => none
-        v2.std.optional.Present { value: factor } =>
+        Absent => none
+        Present { value: factor } =>
           match rack_power_budget(rack: r, feed: feed(), loads: loads, power_factor: factor) {
             PowerRefused { cause: _ } => none
             PowerReady { value: b } => v2.std.optional.Present { value: b }
@@ -48,11 +48,11 @@ fn budget(rack: product.rack_mount.RackInstance?, loads: List<product.rack_power
 
 fn refusal_of(rack: product.rack_mount.RackInstance?, loads: List<product.rack_power.AssetLoad>, percent: Int) -> product.rack_power.PowerRefusal? {
   match rack {
-    v2.std.optional.Absent => none
-    v2.std.optional.Present { value: r } =>
+    Absent => none
+    Present { value: r } =>
       match pf(percent: percent) {
-        v2.std.optional.Absent => none
-        v2.std.optional.Present { value: factor } =>
+        Absent => none
+        Present { value: factor } =>
           match rack_power_budget(rack: r, feed: feed(), loads: loads, power_factor: factor) {
             PowerReady { value: _ } => none
             PowerRefused { cause: c } => v2.std.optional.Present { value: c }
@@ -74,8 +74,8 @@ test fn two_measured_hosts_inside_the_rating_produce_a_budget() -> Bool {
     loads: [product.rack_power.ObservedRealPower { asset: host_a(), draw: watt(400) }, product.rack_power.ObservedRealPower { asset: host_b(), draw: watt(400) }],
     percent: 95,
   ) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: b } =>
+    Absent => false
+    Present { value: b } =>
       watt_count(w: budget_real_load(b: b)) == 800
         && volt_ampere_count(v: budget_apparent_load(b: b)) == 0
         && budget_outlets_used(b: b) == 2
@@ -88,11 +88,11 @@ test fn two_measured_hosts_inside_the_rating_produce_a_budget() -> Bool {
 // does not. A module that quietly assumed unity would admit both.
 test fn the_declared_power_factor_decides_a_marginal_load() -> Bool {
   match budget(rack: two_host_rack(), loads: [product.rack_power.ObservedRealPower { asset: host_a(), draw: watt(1700) }, product.rack_power.ObservedRealPower { asset: host_b(), draw: watt(0) }], percent: 100) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: _ } =>
+    Absent => false
+    Present { value: _ } =>
       match refusal_of(rack: two_host_rack(), loads: [product.rack_power.ObservedRealPower { asset: host_a(), draw: watt(1700) }, product.rack_power.ObservedRealPower { asset: host_b(), draw: watt(0) }], percent: 90) {
-        v2.std.optional.Absent => false
-        v2.std.optional.Present { value: c } =>
+        Absent => false
+        Present { value: c } =>
           match c {
             FeedCapacityExceeded { real_load: r, apparent_load: _, capacity: cap } =>
               watt_count(w: r) == 1700 && volt_ampere_count(v: cap) == 1800
@@ -116,8 +116,8 @@ test fn a_nameplate_load_is_counted_as_apparent_power_unconverted() -> Bool {
     loads: [product.rack_power.DeclaredApparentPower { asset: host_a(), draw: volt_ampere(1000) }, product.rack_power.ObservedRealPower { asset: host_b(), draw: watt(400) }],
     percent: 50,
   ) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: b } =>
+    Absent => false
+    Present { value: b } =>
       volt_ampere_count(v: budget_apparent_load(b: b)) == 1000 && watt_count(w: budget_real_load(b: b)) == 400
   }
 }
@@ -126,8 +126,8 @@ test fn a_nameplate_load_is_counted_as_apparent_power_unconverted() -> Bool {
 // rack from reporting comfortable headroom.
 test fn an_unobserved_load_refuses_rather_than_counting_as_zero() -> Bool {
   match refusal_of(rack: two_host_rack(), loads: [product.rack_power.ObservedRealPower { asset: host_a(), draw: watt(400) }, product.rack_power.LoadUnobserved { asset: host_b() }], percent: 95) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: c } =>
+    Absent => false
+    Present { value: c } =>
       match c {
         LoadNotObserved { asset: a } => (a as String) == "srv-chassis-2"
         PowerFactorOutOfRange { supplied: _ } => false
@@ -149,8 +149,8 @@ test fn two_rows_for_one_asset_do_not_stand_in_for_the_other() -> Bool {
     loads: [product.rack_power.ObservedRealPower { asset: host_a(), draw: watt(400) }, product.rack_power.ObservedRealPower { asset: host_a(), draw: watt(400) }],
     percent: 95,
   ) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: c } =>
+    Absent => false
+    Present { value: c } =>
       match c {
         MountedAssetHasNoLoad { asset: a } => (a as String) == "srv-chassis-2"
         LoadDeclaredTwice { asset: a } => (a as String) == "srv-chassis-1"
@@ -175,8 +175,8 @@ test fn a_load_for_an_unmounted_asset_refuses() -> Bool {
     ],
     percent: 95,
   ) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: c } =>
+    Absent => false
+    Present { value: c } =>
       match c {
         LoadDeclaredForUnmountedAsset { asset: a } => (a as String) == "srv-chassis-99"
         PowerFactorOutOfRange { supplied: _ } => false

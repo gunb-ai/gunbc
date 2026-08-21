@@ -23,7 +23,7 @@ data scopeexit_provider: std.materialization_ladder.CacheProvider = provider_row
 
 fn test_store() -> std.artifact_store.ArtifactStore {
   match store_over_provider(provider: byte_bounded_provider) {
-    std.artifact_store.StoreReady { store: s } => s
+    StoreReady { store: s } => s
     StoreRefusedRetention { provider_id: _, declared: _, cause: _ } => std.artifact_store.ArtifactStore { budget: byte_size(count: 0), next_ordinal: 1, rows: [] }
   }
 }
@@ -87,14 +87,14 @@ fn legacy_toolchain_identity(
 // caller supplied 100 — the contradiction the split exists to make unwritable.
 test fn store_budget_is_derived_from_the_provider_not_the_caller() -> Bool {
   match store_over_provider(provider: byte_bounded_provider) {
-    std.artifact_store.StoreReady { store: s } => s.budget == byte_size(count: 100)
+    StoreReady { store: s } => s.budget == byte_size(count: 100)
     StoreRefusedRetention { provider_id: _, declared: _, cause: _ } => false
   }
 }
 
 test fn scope_released_provider_is_refused_with_the_scope_cause() -> Bool {
   match store_over_provider(provider: scopeexit_provider) {
-    std.artifact_store.StoreReady { store: _ } => false
+    StoreReady { store: _ } => false
     StoreRefusedRetention { provider_id: pid, declared: _, cause: c } =>
       (pid == "scoped-provider-test") && (c == ProviderScopeReleased)
   }
@@ -114,7 +114,7 @@ test fn entry_capped_provider_is_refused_for_the_unit_not_the_ceiling() -> Bool 
     })
   )
   match store_over_provider(provider: entry_capped) {
-    std.artifact_store.StoreReady { store: _ } => false
+    StoreReady { store: _ } => false
     StoreRefusedRetention { provider_id: _, declared: _, cause: c } => c == CapacityUnitMismatch
   }
 }
@@ -131,7 +131,7 @@ test fn unobserved_byte_value_is_refused_rather_than_defaulted() -> Bool {
     })
   )
   match store_over_provider(provider: value_unknown) {
-    std.artifact_store.StoreReady { store: _ } => false
+    StoreReady { store: _ } => false
     StoreRefusedRetention { provider_id: _, declared: _, cause: c } => c == CapacityValueUnobserved
   }
 }
@@ -151,7 +151,7 @@ test fn refuse_new_store_provider_is_not_realized_as_lru() -> Bool {
     })
   )
   match store_over_provider(provider: refuses_new) {
-    std.artifact_store.StoreReady { store: _ } => false
+    StoreReady { store: _ } => false
     StoreRefusedRetention { provider_id: _, declared: _, cause: c } => c == RefuseNewStoreUnsupported
   }
 }
@@ -273,8 +273,8 @@ data witness_sha256_hex: String = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b9
 
 test fn resolved_build_context_identity_refuses_sha256_observed_tool() -> Bool {
   let sha256_identity = match sha256_hex_digest(hex: test.claim.artifact_store_witness.witness_sha256_hex) {
-    v2.std.optional.Present { value: digest } => as_content_hash_cryptographic(digest: digest)
-    v2.std.optional.Absent =>
+    Present { value: digest } => as_content_hash_cryptographic(digest: digest)
+    Absent =>
       as_content_hash_structural(structural: content_hash_atom(value: "witness-setup-failed"))
   }
   let context = extdeps.realization.emit_on_demand_host.ResolvedBuildContext {

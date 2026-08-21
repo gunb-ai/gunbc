@@ -196,8 +196,8 @@ fn copied_port_derived_registry_rows() -> List<v2.std.algebra.CopiedPortFact> {
     empty: std.algebra.Empty,
     cons: fn(acc, cite) {
       match derive_copied_port_fact(combiner: cite.combiner, arrow: cite.arrow) {
-        v2.std.optional.Absent => acc
-        v2.std.optional.Present { value: row } => copied_port_fact_list_prepend(row: row, xs: acc)
+        Absent => acc
+        Present { value: row } => copied_port_fact_list_prepend(row: row, xs: acc)
       }
     }
   )

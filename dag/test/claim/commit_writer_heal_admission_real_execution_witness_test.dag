@@ -60,7 +60,7 @@ test fn clean_staged_index_admits_by_real_execution() -> Bool {
   with_witness_repo(scenario: repo => {
     let gated = commit_writer_heal_admission_gate(repo: repo, writer: HealAutocommit)
     match gated {
-      std.process.ExitSuccess => true
+      ExitSuccess => true
       ExitFailure { code: _, reason: _ } => false
     }
   })
@@ -74,7 +74,7 @@ test fn unmerged_index_with_no_markers_refuses_by_real_execution() -> Bool {
     let unmerged = git.Core.LsFilesUnmergedInRepo(repo: repo, path: "unclaimed.txt")
     let gated = commit_writer_heal_admission_gate(repo: repo, writer: HealAutocommit)
     let gate_refused = match gated {
-      std.process.ExitSuccess => false
+      ExitSuccess => false
       ExitFailure { code: _, reason: _ } => true
     }
     let variant_refused = match observe_complete_staged_commit(repo: repo, writer: HealAutocommit) {
@@ -101,7 +101,7 @@ test fn unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution()
     let staged = git.Core.AddAllInRepo(repo: repo).exit_code
     let gated = commit_writer_heal_admission_gate(repo: repo, writer: HealAutocommit)
     let gate_refused = match gated {
-      std.process.ExitSuccess => false
+      ExitSuccess => false
       ExitFailure { code: _, reason: _ } => true
     }
     let variant_refused = match observe_complete_staged_commit(repo: repo, writer: HealAutocommit) {
@@ -123,7 +123,7 @@ test fn space_and_tab_named_paths_admit_by_real_execution() -> Bool {
     let staged = git.Core.AddAllInRepo(repo: repo).exit_code
     let gated = commit_writer_heal_admission_gate(repo: repo, writer: HealAutocommit)
     let gate_admitted = match gated {
-      std.process.ExitSuccess => true
+      ExitSuccess => true
       ExitFailure { code: _, reason: _ } => false
     }
     space_written && tab_written && staged == 0 && gate_admitted

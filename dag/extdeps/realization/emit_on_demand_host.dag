@@ -136,8 +136,8 @@ fn observed_tool_identity(
     ObservedToolIdentityMissing { tool_name: tool_name }
   } else if count(matching) == 1 {
     match matching |> first {
-      v2.std.optional.Present { value: row } => ObservedToolIdentityFound { row: row }
-      v2.std.optional.Absent => ObservedToolIdentityMissing { tool_name: tool_name }
+      Present { value: row } => ObservedToolIdentityFound { row: row }
+      Absent => ObservedToolIdentityMissing { tool_name: tool_name }
     }
   } else {
     ObservedToolIdentityDuplicate { tool_name: tool_name, count: count(matching) }

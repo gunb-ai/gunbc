@@ -30,15 +30,15 @@ fn native_only_matches_expected(source: String, expected_octet: v2.std.integer.I
           ) {
             Accepted { value: receipt, diagnostics: _ } =>
               match receipt.logical_run {
-                v2.std.diagnostic.Accepted { value: v2.std.host_run.HostLogicalRun { stdout: stdout }, diagnostics: v2.std.diagnostic.None } =>
+                Accepted { value: v2.std.host_run.HostLogicalRun { stdout: stdout }, diagnostics: v2.std.diagnostic.None } =>
                   native_only_stdout_matches(stdout: stdout, expected_octet: expected_octet)
                 _ => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

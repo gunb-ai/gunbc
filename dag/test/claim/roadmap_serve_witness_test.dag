@@ -14,7 +14,7 @@ fn selects(method: std.types.HttpMethod, path: String, want: gunbc.roadmap_serve
   match serve_select_route(table: live_table_or_empty(), method: method, path: path) {
     SelectedDynamic { handler: h, params: _ } => h == want
     SelectedStatic { route: _ } => false
-    extdeps.http.server.MethodNotAllowed { allowed: _ } => false
+    MethodNotAllowed { allowed: _ } => false
     NoRouteMatched => false
   }
 }
@@ -69,7 +69,7 @@ fn lab_link_selects_something(path: String) -> Bool {
   match serve_select_route(table: live_table_or_empty(), method: GET, path: path) {
     SelectedDynamic { handler: _, params: _ } => true
     SelectedStatic { route: _ } => true
-    extdeps.http.server.MethodNotAllowed { allowed: _ } => false
+    MethodNotAllowed { allowed: _ } => false
     NoRouteMatched => false
   }
 }
@@ -84,14 +84,14 @@ test fn witness_dispatch_param_bound() -> Bool {
     SelectedDynamic { handler: _, params: ps } =>
       path_param_value(params: ps, name: "node_id") == "2-cd-transport"
     SelectedStatic { route: _ } => false
-    extdeps.http.server.MethodNotAllowed { allowed: _ } => false
+    MethodNotAllowed { allowed: _ } => false
     NoRouteMatched => false
   }
 }
 
 test fn witness_dispatch_get_folds_405() -> Bool {
   match serve_select_route(table: live_table_or_empty(), method: GET, path: "/dispatch/x") {
-    extdeps.http.server.MethodNotAllowed { allowed: ms } => count(ms) == 1 && any(ms, m => m == std.types.POST)
+    MethodNotAllowed { allowed: ms } => count(ms) == 1 && any(ms, m => m == std.types.POST)
     SelectedStatic { route: _ } => false
     SelectedDynamic { handler: _, params: _ } => false
     NoRouteMatched => false

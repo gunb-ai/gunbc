@@ -4,7 +4,7 @@ module test.claim.walk_plan_stage_fixture_hand_rust_witness
 
 test fn walk_plan_stage_fixture_hand_rust_scaffold_is_seed_retained() -> Bool {
   match gunbc.walk_plan_stage_fixture_scaffold.walk_plan_stage_fixture_hand_rust_scaffold {
-    std.disposition.Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
     _ => false
   }
 }

@@ -123,7 +123,7 @@ test fn wedged_slot_requests_incarnation_replace() -> Bool {
     reach: HostReachAdmitted,
     allow_replace: true,
   ) {
-    gunbc.runner_connectivity_recovery.RunnerIncarnationReplace { slot: _, from: _, cause: RemoteRegistrationOfflineWhileLocalAlive } => true
+    RunnerIncarnationReplace { slot: _, from: _, cause: RemoteRegistrationOfflineWhileLocalAlive } => true
     RunnerConnectedNoop { local: _, remote: _ } => false
     RunnerRepairRefused { slot: _, cause: _ } => false
   }
@@ -169,7 +169,7 @@ test fn remotely_busy_slot_refuses_restart() -> Bool {
     allow_replace: true,
   ) {
     RunnerRepairRefused { slot: _, cause: RunnerRemotelyBusy } => true
-    gunbc.runner_connectivity_recovery.RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
+    RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
     RunnerConnectedNoop { local: _, remote: _ } => false
   }
 }
@@ -184,7 +184,7 @@ test fn stale_observation_refuses_restart() -> Bool {
     allow_replace: true,
   ) {
     RunnerRepairRefused { slot: _, cause: gunbc.runner_connectivity_recovery.ObservationStale { observed_at: _, act_at: _ } } => true
-    gunbc.runner_connectivity_recovery.RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
+    RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
     RunnerConnectedNoop { local: _, remote: _ } => false
   }
 }
@@ -228,7 +228,7 @@ test fn degraded_fleet_allows_only_canary_replace() -> Bool {
   action_is_replace(action: canary_action)
     && match sibling_action {
          RunnerRepairRefused { slot: _, cause: CanaryAwaitingVerification } => true
-         gunbc.runner_connectivity_recovery.RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
+         RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
          RunnerConnectedNoop { local: _, remote: _ } => false
        }
 }
@@ -263,7 +263,7 @@ test fn srv3_reach_refused_while_srv1_continues() -> Bool {
     allow_replace: true,
   ) {
     RunnerRepairRefused { slot: _, cause: HostReachAdmissionRefused { reason: _ } } => true
-    gunbc.runner_connectivity_recovery.RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
+    RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
     RunnerConnectedNoop { local: _, remote: _ } => false
   }
     && action_is_replace(
@@ -403,7 +403,7 @@ test fn fleet_plan_enforces_per_host_replace_cap() -> Bool {
            match action {
              RunnerRepairRefused { slot: _, cause: HostReplacementCapExceeded { host: _, cap: _ } } =>
                true
-             gunbc.runner_connectivity_recovery.RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
+             RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
              RunnerConnectedNoop { local: _, remote: _ } => false
            }
          Absent => false
@@ -440,7 +440,7 @@ test fn offline_with_recent_broker_progress_refuses_replace() -> Bool {
     allow_replace: true,
   ) {
     RunnerRepairRefused { slot: _, cause: BrokerProgressStillRecent { silence_seconds: _ } } => true
-    gunbc.runner_connectivity_recovery.RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
+    RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
     RunnerConnectedNoop { local: _, remote: _ } => false
   }
 }
@@ -457,7 +457,7 @@ test fn reobservation_refuses_when_act_at_advances_after_decision_receipt() -> B
     allow_replace: true,
   ) {
     RunnerRepairRefused { slot: _, cause: ReobservationRefused { reason: _ } } => true
-    gunbc.runner_connectivity_recovery.RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
+    RunnerIncarnationReplace { slot: _, from: _, cause: _ } => false
     RunnerConnectedNoop { local: _, remote: _ } => false
   }
 }

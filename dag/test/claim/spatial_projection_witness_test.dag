@@ -25,18 +25,18 @@ fn box(frame: std.coordinate_frame.CoordinateFrameIdentity, x0: Int, y0: Int, x1
 
 fn placed(name: String, frame: std.coordinate_frame.CoordinateFrameIdentity, x0: Int, y0: Int, x1: Int, y1: Int, low: Int, high: Int) -> product.spatial_world.PlacedSpace? {
   match test.claim.spatial_projection_witness.box(frame: frame, x0: x0, y0: y0, x1: x1, y1: y1, low: low, high: high) {
-    v2.std.optional.Absent => none
-    v2.std.optional.Present { value: s } => v2.std.optional.Present { value: product.spatial_world.PlacedSpace { identity: (name as product.placement_supply.RoomIdentity), space: s } }
+    Absent => none
+    Present { value: s } => v2.std.optional.Present { value: product.spatial_world.PlacedSpace { identity: (name as product.placement_supply.RoomIdentity), space: s } }
   }
 }
 
 fn world_of(a: product.spatial_world.PlacedSpace?, b: product.spatial_world.PlacedSpace?) -> product.spatial_world.World? {
   match a {
-    v2.std.optional.Absent => none
-    v2.std.optional.Present { value: pa } =>
+    Absent => none
+    Present { value: pa } =>
       match b {
-        v2.std.optional.Absent => none
-        v2.std.optional.Present { value: pb } =>
+        Absent => none
+        Present { value: pb } =>
           match world(rooms: [pa, pb]) {
             WorldRefused { cause: _ } => none
             WorldReady { value: w } => v2.std.optional.Present { value: w }
@@ -75,8 +75,8 @@ fn stacked() -> product.spatial_world.World? {
 // reason.
 fn notched() -> product.spatial_world.World? {
   match test.claim.spatial_projection_witness.l_shape() {
-    v2.std.optional.Absent => none
-    v2.std.optional.Present { value: l } =>
+    Absent => none
+    Present { value: l } =>
       test.claim.spatial_projection_witness.world_of(
         a: v2.std.optional.Present { value: product.spatial_world.PlacedSpace { identity: ("l-room" as product.placement_supply.RoomIdentity), space: l } },
         b: test.claim.spatial_projection_witness.placed(name: "notch-room", frame: test.claim.spatial_projection_witness.site(), x0: 1600, y0: 1600, x1: 2900, y1: 2900, low: 0, high: 2400),
@@ -104,11 +104,11 @@ fn l_shape() -> std.orthogonal_topology.EnclosedSpace? {
 
 fn scene_of(w: product.spatial_world.World?, kind: std.planar_projection.ProjectionKind) -> product.spatial_projection.ProjectedScene? {
   match w {
-    v2.std.optional.Absent => none
-    v2.std.optional.Present { value: world_value } =>
+    Absent => none
+    Present { value: world_value } =>
       match test.claim.spatial_projection_witness.view_of(kind: kind, source: test.claim.spatial_projection_witness.site()) {
-        v2.std.optional.Absent => none
-        v2.std.optional.Present { value: v } =>
+        Absent => none
+        Present { value: v } =>
           match project_world(w: world_value, v: v) {
             SceneRefused { cause: _ } => none
             SceneReady { value: s } => v2.std.optional.Present { value: s }
@@ -153,8 +153,8 @@ fn first_room(s: product.spatial_projection.ProjectedScene) -> product.spatial_p
 // is the difference between the two.
 test fn every_projected_room_keeps_the_identity_the_world_gave_it() -> Bool {
   match scene_of(w: side_by_side(), kind: PlanFromAbove) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: s } =>
+    Absent => false
+    Present { value: s } =>
       names_are(actual: fold(scene_rooms(s: s), init: [], f: (acc, r) => concat(acc, [(r.identity as String)])), first: "kitchen", second: "hall")
   }
 }
@@ -163,11 +163,11 @@ test fn every_projected_room_keeps_the_identity_the_world_gave_it() -> Bool {
 // a later edit from projecting only the floor and calling the result a room.
 test fn a_room_contributes_every_corner_of_its_prism() -> Bool {
   match scene_of(w: side_by_side(), kind: PlanFromAbove) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: s } =>
+    Absent => false
+    Present { value: s } =>
       match first_room(s: s) {
-        v2.std.optional.Absent => false
-        v2.std.optional.Present { value: r } => length(r.corner_images) == 8
+        Absent => false
+        Present { value: r } => length(r.corner_images) == 8
       }
   }
 }
@@ -177,11 +177,11 @@ test fn a_room_contributes_every_corner_of_its_prism() -> Bool {
 // farthest point of the room.
 test fn a_plan_collapses_a_rooms_height_into_a_depth_range() -> Bool {
   match scene_of(w: side_by_side(), kind: PlanFromAbove) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: s } =>
+    Absent => false
+    Present { value: s } =>
       match first_room(s: s) {
-        v2.std.optional.Absent => false
-        v2.std.optional.Present { value: r } => r.nearest == (0 - 2400) && r.farthest == 0
+        Absent => false
+        Present { value: r } => r.nearest == (0 - 2400) && r.farthest == 0
       }
   }
 }
@@ -191,8 +191,8 @@ test fn a_plan_collapses_a_rooms_height_into_a_depth_range() -> Bool {
 // useless in the common case.
 test fn a_plan_of_adjacent_rooms_orders_without_refusing() -> Bool {
   match scene_of(w: side_by_side(), kind: PlanFromAbove) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: s } => names_are(actual: ordered_names(s: s), first: "kitchen", second: "hall")
+    Absent => false
+    Present { value: s } => names_are(actual: ordered_names(s: s), first: "kitchen", second: "hall")
   }
 }
 
@@ -200,8 +200,8 @@ test fn a_plan_of_adjacent_rooms_orders_without_refusing() -> Bool {
 // correct: the lower storey is farther from an overhead camera and is drawn first.
 test fn a_plan_of_stacked_rooms_draws_the_lower_storey_first() -> Bool {
   match scene_of(w: stacked(), kind: PlanFromAbove) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: s } => names_are(actual: ordered_names(s: s), first: "ground", second: "upper")
+    Absent => false
+    Present { value: s } => names_are(actual: ordered_names(s: s), first: "ground", second: "upper")
   }
 }
 
@@ -213,8 +213,8 @@ test fn a_plan_of_stacked_rooms_draws_the_lower_storey_first() -> Bool {
 // pair; until one exists, refusing is the only answer that cannot be wrong.
 test fn overlapping_page_boxes_at_one_depth_refuse_to_be_ordered() -> Bool {
   match scene_of(w: notched(), kind: PlanFromAbove) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: s } =>
+    Absent => false
+    Present { value: s } =>
       match painter_order(s: s) {
         SceneReady { value: _ } => false
         SceneRefused { cause: c } =>
@@ -231,8 +231,8 @@ test fn overlapping_page_boxes_at_one_depth_refuse_to_be_ordered() -> Bool {
 // depth, so they order rather than refusing.
 test fn an_elevation_of_adjacent_rooms_orders_without_refusing() -> Bool {
   match scene_of(w: side_by_side(), kind: ElevationFromSouth) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: s } => names_are(actual: ordered_names(s: s), first: "kitchen", second: "hall")
+    Absent => false
+    Present { value: s } => names_are(actual: ordered_names(s: s), first: "kitchen", second: "hall")
   }
 }
 
@@ -243,11 +243,11 @@ test fn a_world_in_another_frame_has_no_projection() -> Bool {
     a: test.claim.spatial_projection_witness.placed(name: "kitchen", frame: other_site(), x0: 0, y0: 0, x1: 3000, y1: 4000, low: 0, high: 2400),
     b: test.claim.spatial_projection_witness.placed(name: "hall", frame: other_site(), x0: 4000, y0: 0, x1: 6000, y1: 4000, low: 0, high: 2400),
   ) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: w } =>
+    Absent => false
+    Present { value: w } =>
       match test.claim.spatial_projection_witness.view_of(kind: PlanFromAbove, source: test.claim.spatial_projection_witness.site()) {
-        v2.std.optional.Absent => false
-        v2.std.optional.Present { value: v } =>
+        Absent => false
+        Present { value: v } =>
           match project_world(w: w, v: v) {
             SceneReady { value: _ } => false
             SceneRefused { cause: c } =>

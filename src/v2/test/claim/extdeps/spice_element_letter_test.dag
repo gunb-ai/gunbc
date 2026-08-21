@@ -58,11 +58,11 @@ test fn w_an_unanticipated_name_emits_rather_than_vanishing() -> v2.std.logic.Bo
 // node, and the deck would simulate cleanly while describing a different circuit.
 test fn w_an_inadmissible_name_is_refused_not_repaired() -> v2.std.logic.Bool {
   match spice_identifier(spelling: "pg cond") {
-    v2.std.optional.Present { value: _ } => false
-    v2.std.optional.Absent =>
+    Present { value: _ } => false
+    Absent =>
       match spice_identifier(spelling: "pg_cond") {
-        v2.std.optional.Present { value: v } => (v as String) == "pg_cond"
-        v2.std.optional.Absent => false
+        Present { value: v } => (v as String) == "pg_cond"
+        Absent => false
       }
   }
 }

@@ -55,13 +55,13 @@ fn spark_serving_resource_fact_eq(a: SparkServingResourceFact, b: SparkServingRe
 // resources sharing one membership key and its drift would be unattributable.
 fn spark_serving_address_establishes(address: gunbc.spark.serving_membership.SparkServingResourceAddress) -> SparkServingResourceFact {
   match address {
-    gunbc.spark.serving_membership.SparkServingRuntimeRootAddress => RuntimeClosurePresent
-    gunbc.spark.serving_membership.SparkServingUserUnitAddress => UnitFilePresent
-    gunbc.spark.serving_membership.SparkServingUserUnitRegistrationAddress => UnitKnownToManager
-    gunbc.spark.serving_membership.SparkServingUserUnitEnablementAddress => UnitEnabled
-    gunbc.spark.serving_membership.SparkServingUserUnitActivityAddress => UnitActive
-    gunbc.spark.serving_membership.SparkServingModelSlotAddress { slot: slot } => ModelPresentInSlot { slot: slot as String }
-    gunbc.spark.serving_membership.SparkServingLingerAddress => LingerEnabledForAccount
+    SparkServingRuntimeRootAddress => RuntimeClosurePresent
+    SparkServingUserUnitAddress => UnitFilePresent
+    SparkServingUserUnitRegistrationAddress => UnitKnownToManager
+    SparkServingUserUnitEnablementAddress => UnitEnabled
+    SparkServingUserUnitActivityAddress => UnitActive
+    SparkServingModelSlotAddress { slot: slot } => ModelPresentInSlot { slot: slot as String }
+    SparkServingLingerAddress => LingerEnabledForAccount
   }
 }
 
@@ -96,18 +96,18 @@ type SparkServingRequirement {
 
 fn spark_serving_address_requires(address: gunbc.spark.serving_membership.SparkServingResourceAddress) -> std.types.List<SparkServingRequirement> {
   match address {
-    gunbc.spark.serving_membership.SparkServingRuntimeRootAddress => []
-    gunbc.spark.serving_membership.SparkServingUserUnitAddress =>
+    SparkServingRuntimeRootAddress => []
+    SparkServingUserUnitAddress =>
       [SparkServingRequirement { fact: RuntimeClosurePresent, kind: v2.std.dependency.ResourceDependsOn }]
-    gunbc.spark.serving_membership.SparkServingUserUnitRegistrationAddress =>
+    SparkServingUserUnitRegistrationAddress =>
       [SparkServingRequirement { fact: UnitFilePresent, kind: v2.std.dependency.ResourceDependsOn }]
-    gunbc.spark.serving_membership.SparkServingUserUnitEnablementAddress =>
+    SparkServingUserUnitEnablementAddress =>
       [SparkServingRequirement { fact: UnitKnownToManager, kind: v2.std.dependency.ResourceDependsOn }]
-    gunbc.spark.serving_membership.SparkServingUserUnitActivityAddress =>
+    SparkServingUserUnitActivityAddress =>
       [SparkServingRequirement { fact: UnitKnownToManager, kind: v2.std.dependency.ResourceDependsOn }]
-    gunbc.spark.serving_membership.SparkServingModelSlotAddress { slot: _ } =>
+    SparkServingModelSlotAddress { slot: _ } =>
       [SparkServingRequirement { fact: UnitActive, kind: v2.std.dependency.BarrierBefore }]
-    gunbc.spark.serving_membership.SparkServingLingerAddress => []
+    SparkServingLingerAddress => []
   }
 }
 
@@ -135,11 +135,11 @@ fn spark_serving_schedule_rows(
 ) -> SparkServingScheduleRowProjection {
   let removals = filter(plan.actions, a =>
     match a {
-      gunbc.membership_reconcile.MemberAdded { at: _, to: _ } => false
-      gunbc.membership_reconcile.MemberChanged { at: _, from: _, to: _ } => false
-      gunbc.membership_reconcile.MemberRemoved { at: _, from: _ } => true
-      gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => false
-      gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
+      MemberAdded { at: _, to: _ } => false
+      MemberChanged { at: _, from: _, to: _ } => false
+      MemberRemoved { at: _, from: _ } => true
+      MemberRemovalRefused { from: _, cause: _ } => false
+      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
     }
   )
   if length(removals) > 0 {
@@ -153,11 +153,11 @@ fn spark_serving_schedule_rows(
     SparkServingScheduleRowsProjected {
       rows: flat_map(plan.actions, a =>
         match a {
-          gunbc.membership_reconcile.MemberAdded { at: at, to: to } => [SparkServingScheduledRow { at: at, address: to.address }]
-          gunbc.membership_reconcile.MemberChanged { at: at, from: _, to: to } => [SparkServingScheduledRow { at: at, address: to.address }]
-          gunbc.membership_reconcile.MemberRemoved { at: _, from: _ } => []
-          gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => []
-          gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
+          MemberAdded { at: at, to: to } => [SparkServingScheduledRow { at: at, address: to.address }]
+          MemberChanged { at: at, from: _, to: to } => [SparkServingScheduledRow { at: at, address: to.address }]
+          MemberRemoved { at: _, from: _ } => []
+          MemberRemovalRefused { from: _, cause: _ } => []
+          MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
         }
       ),
     }
@@ -335,18 +335,18 @@ fn spark_serving_freeze_execution_schedule(
             scheduled: [],
             eq: spark_serving_schedule_subject_eq,
           ) {
-            v2.workflow.scheduler.SchedulerPlanComplete { layers: _, scheduled: scheduled } =>
+            SchedulerPlanComplete { layers: _, scheduled: scheduled } =>
               SparkServingScheduleFrozen {
                 schedule: SparkServingFrozenExecutionSchedule { ordered: scheduled },
               }
-            v2.workflow.scheduler.SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: remaining, layers: _ } =>
+            SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: remaining, layers: _ } =>
               SparkServingScheduleRefused {
                 cause: join([
                   "spark serving execution schedule refused: ", to_string(length(remaining)),
                   " row(s) unscheduled at the fixed point — the prerequisite graph is cyclic",
                 ], ""),
               }
-            v2.workflow.scheduler.SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: remaining, layers: _ } =>
+            SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: remaining, layers: _ } =>
               SparkServingScheduleRefused {
                 cause: join([
                   "spark serving execution schedule refused: no runnable frontier with ",

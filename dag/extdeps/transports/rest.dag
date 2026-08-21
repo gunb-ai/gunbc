@@ -154,8 +154,8 @@ fn rest_exchange_fixture_lookup(
     RestFixtureAbsent { invocation: invocation }
   } else if scan.count == 1 {
     match scan.observation {
-      v2.std.optional.Present { value } => RestFixtureFound { observation: value }
-      v2.std.optional.Absent => RestFixtureAbsent { invocation: invocation }
+      Present { value } => RestFixtureFound { observation: value }
+      Absent => RestFixtureAbsent { invocation: invocation }
     }
   } else {
     RestFixtureAmbiguous { invocation: invocation, count: scan.count }

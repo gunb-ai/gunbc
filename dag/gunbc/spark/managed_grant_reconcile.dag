@@ -35,13 +35,13 @@ fn spark_managed_grant_standing_from_outcome(
   outcome: gunbc.spark.managed_access_bootstrap.SparkGrantOutcome,
 ) -> SparkManagedGrantStanding {
   match outcome {
-    gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: l } =>
+    GrantEnumerated { listing: l } =>
       if string_contains(l, spark_managed_grant_sudoers_command(grant: grant) as String) {
         GrantHeld { grant: grant }
       } else {
         GrantNotHeld { grant: grant }
       }
-    gunbc.spark.managed_access_bootstrap.GrantAbsent { detail: d } =>
+    GrantAbsent { detail: d } =>
       if spark_grant_listing_reports_no_passwordless_grant(detail: d) {
         GrantNotHeld { grant: grant }
       } else {
@@ -50,7 +50,7 @@ fn spark_managed_grant_standing_from_outcome(
           cause: join(["sudo -n -l failed for a reason other than the password demand: ", d], "") as std.types.NonEmptyStr,
         }
       }
-    gunbc.spark.managed_access_bootstrap.GrantProbeRefused { cause: c } =>
+    GrantProbeRefused { cause: c } =>
       GrantStandingUnobserved {
         grant: grant,
         cause: join(["the grant probe leg never ran: ", c], "") as std.types.NonEmptyStr,
@@ -104,8 +104,8 @@ fn spark_managed_grants_converged(outcome: gunbc.spark.managed_access_bootstrap.
 // whose second run differs from its first is not a reconcile.
 fn spark_managed_grant_dropin_name(grant: gunbc.spark.managed_access_bootstrap.SparkManagedGrant) -> std.types.NonEmptyStr {
   match grant {
-    gunbc.spark.managed_access_bootstrap.EnableLingerForOwnAccount => "gunbc-enable-linger" as std.types.NonEmptyStr
-    gunbc.spark.managed_access_bootstrap.RebootThisHost => "gunbc-reboot" as std.types.NonEmptyStr
+    EnableLingerForOwnAccount => "gunbc-enable-linger" as std.types.NonEmptyStr
+    RebootThisHost => "gunbc-reboot" as std.types.NonEmptyStr
   }
 }
 

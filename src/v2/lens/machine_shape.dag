@@ -10,11 +10,11 @@ data machine_shape_authority_module: String = "std.machine_shape"
 fn node_callee_symbol(n: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   if node_is_call(node: n) {
     match list_at_optional(xs: node_positional_child_targets(node: n), index: 0) {
-      v2.std.optional.Present { value: callee } => match callee.kind {
+      Present { value: callee } => match callee.kind {
         TypeNode { connective: Atom { identity: sym } } => optional_present(value: sym)
         _ => optional_absent()
       }
-      v2.std.optional.Absent => optional_absent()
+      Absent => optional_absent()
     }
   } else {
     optional_absent()
@@ -38,8 +38,8 @@ fn qualified_name_is_witness_module(qn: v2.std.qualified_name.QualifiedName) -> 
 
 fn module_allows_machine_shape_literal(qn: v2.std.optional.Optional<v2.std.qualified_name.QualifiedName>) -> v2.std.logic.Bool {
   match qn {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: qn0 } =>
+    Absent => false
+    Present { value: qn0 } =>
       qualified_name_is_authority_home(qn: qn0)
         || qualified_name_is_catalog_fill_home(qn: qn0)
         || qualified_name_is_witness_module(qn: qn0)
@@ -48,16 +48,16 @@ fn module_allows_machine_shape_literal(qn: v2.std.optional.Optional<v2.std.quali
 
 fn module_qn_from_node(n: v2.std.node.Node, inherited: v2.std.optional.Optional<v2.std.qualified_name.QualifiedName>) -> v2.std.optional.Optional<v2.std.qualified_name.QualifiedName> {
   match parse_production_emitted_identity_optional(node: n) {
-    v2.std.optional.Present { value: id } =>
+    Present { value: id } =>
       if id == ^dag_surface_module {
         match qualified_name_from_module_node(root: n) {
           Accepted { value: qn, diagnostics: _ } => optional_present(value: qn)
-          v2.std.diagnostic.Rejected { diagnostics: _ } => inherited
+          Rejected { diagnostics: _ } => inherited
         }
       } else {
         inherited
       }
-    v2.std.optional.Absent => inherited
+    Absent => inherited
   }
 }
 
@@ -74,13 +74,13 @@ fn local_machine_shape_findings(n: v2.std.node.Node, module_qn: v2.std.optional.
     []
   } else {
     match v2.lens.machine_shape.node_callee_symbol(n: n) {
-      v2.std.optional.Present { value: sym } =>
+      Present { value: sym } =>
         if sym == ^MachineShape {
           [machine_shape_unsanctioned_construction_diagnostic(n: n)]
         } else {
           []
         }
-      v2.std.optional.Absent => []
+      Absent => []
     }
   }
 }

@@ -59,7 +59,7 @@ fn spark_apply_converged(report: SparkApplyReport) -> Bool {
       fold(concat([f], m), init: true, f: fn(acc, step) {
         match step.outcome {
           ApplyConverged { detail: _ } => acc
-          gunbc.spark.managed_access_apply.ApplyRefused { cause: _ } => false
+          ApplyRefused { cause: _ } => false
         }
       })
   }
@@ -74,7 +74,7 @@ fn spark_apply_first_refusal(report: SparkApplyReport) -> String? {
           Present { value: _ } => acc
           Absent => match step.outcome {
             ApplyConverged { detail: _ } => none
-            gunbc.spark.managed_access_apply.ApplyRefused { cause: c } => Present { value: join([step.effect_label, ": ", c], "") }
+            ApplyRefused { cause: c } => Present { value: join([step.effect_label, ": ", c], "") }
           }
         }
       })
@@ -92,7 +92,7 @@ fn spark_apply_report_text(report: SparkApplyReport) -> String {
 fn apply_outcome_label(outcome: SparkApplyOutcome) -> String {
   match outcome {
     ApplyConverged { detail: d } => join(["converged ", d], "")
-    gunbc.spark.managed_access_apply.ApplyRefused { cause: c } => join(["REFUSED ", c], "")
+    ApplyRefused { cause: c } => join(["REFUSED ", c], "")
   }
 }
 
@@ -379,9 +379,9 @@ func spark_managed_access_apply_wet(attempt_raw: String, host: String) -> std.pr
   let now = clock_now_probed_at()
   let token_source = gunbc.auth.access_token_source.GcloudPrintToken
   match resolve_spark_administrator_credential(token_source: token_source) {
-    gunbc.spark.credential_workflow.SparkAdministratorCredentialRefused { reason: reason } =>
+    SparkAdministratorCredentialRefused { reason: reason } =>
       exit_failure(reason: reason as String)
-    gunbc.spark.credential_workflow.SparkAdministratorCredentialResolved { credential: administrator } =>
+    SparkAdministratorCredentialResolved { credential: administrator } =>
       run_with_materialized_fleet_ssh_binding(
         attempt_raw: attempt_raw,
         token_source: token_source,

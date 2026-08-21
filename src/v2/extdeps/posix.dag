@@ -44,7 +44,7 @@ fn make_process_id(value: v2.std.integer.Int, at: v2.std.diagnostic.Locus) -> Ou
   match refine(base: value, by: process_id_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
       v2.std.diagnostic.Accepted { value: ProcessId { refined: refined }, diagnostics: diagnostics }
-    v2.std.diagnostic.Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
@@ -52,7 +52,7 @@ fn make_exit_code(value: v2.std.integer.Int, at: v2.std.diagnostic.Locus) -> Out
   match refine(base: value, by: exit_code_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
       v2.std.diagnostic.Accepted { value: ExitCode { refined: refined }, diagnostics: diagnostics }
-    v2.std.diagnostic.Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 
@@ -60,7 +60,7 @@ fn make_signal_num(value: v2.std.integer.Int, at: v2.std.diagnostic.Locus) -> Ou
   match refine(base: value, by: signal_num_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
       v2.std.diagnostic.Accepted { value: SignalNum { refined: refined }, diagnostics: diagnostics }
-    v2.std.diagnostic.Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
+    Rejected { diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }
   }
 }
 

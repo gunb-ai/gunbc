@@ -37,7 +37,7 @@ fn gcp_token_smoke_script() -> String {
         None => source.carried
         Some { diagnostics: _ } => bmc_token_smoke_emit_refused_poison
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => bmc_token_smoke_emit_refused_poison
+    Rejected { diagnostics: _ } => bmc_token_smoke_emit_refused_poison
   }
 }
 

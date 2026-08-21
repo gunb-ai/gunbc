@@ -83,7 +83,7 @@ fn memo_amort_single_root_content_hash(ingest: v2.compiler.source_authority.Sour
         false =>
           memo_amort_not_single_root_rejection()
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
@@ -94,7 +94,7 @@ test fn memo_amort_parse_one_file_holds() -> v2.std.logic.Bool {
     lm: v2.extdeps.languages.dag.dag_language_model()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -104,7 +104,7 @@ fn memo_amort_parse_two_files_holds() -> v2.std.logic.Bool {
     lm: v2.extdeps.languages.dag.dag_language_model()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -120,11 +120,11 @@ fn witness_parse_table_memo_hit_path_content_hash_stable() -> v2.std.logic.Bool 
           match memo_amort_single_root_content_hash(ingest: memo_amort_ingest_one_file) {
             Accepted { value: hash_empty, diagnostics: _ } =>
               hash_miss == hash_hit && hash_miss != hash_empty
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -144,6 +144,6 @@ test fn empty_ingest_assembles_to_empty_roots_without_prepare() -> v2.std.logic.
     lm: v2.extdeps.languages.dag.dag_language_model()
   ) {
     Accepted { value: roots, diagnostics: _ } => v2.std.algebra.length(xs: roots) == 0
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

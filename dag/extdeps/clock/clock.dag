@@ -59,7 +59,7 @@ fn clock_unix_millis_read() -> ClockUnixMillisRead {
       ClockUnixMillisRefused {
         detail: concat("clock unix millis reading is not an integer: ", result.unix_millis)
       }
-    v2.std.optional.Present { value: n } =>
+    Present { value: n } =>
       if n < 0 {
         ClockUnixMillisRefused {
           detail: concat("clock unix millis reading is negative: ", result.unix_millis)

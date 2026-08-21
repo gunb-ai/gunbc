@@ -81,7 +81,7 @@ test fn scaffold_disposition_census_oracle_exhausts_all_four_states() -> Bool {
   })
     && any(xs: scaffold_disposition_census_expected_rows, predicate: fn(r) {
       match r.expected_state {
-        test.fixture.scaffold_disposition_census.expected_classification.Terminal => true
+        Terminal => true
         _ => false
       }
     })
@@ -102,7 +102,7 @@ test fn scaffold_disposition_census_oracle_exhausts_all_four_states() -> Bool {
 test fn scaffold_disposition_census_terminal_rows_are_distinct_from_refused_rows() -> Bool {
   v2.std.algebra.count_where(xs: scaffold_disposition_census_expected_rows, predicate: fn(r) {
     match r.expected_state {
-      test.fixture.scaffold_disposition_census.expected_classification.Terminal => true
+      Terminal => true
       _ => false
     }
   }) == 2

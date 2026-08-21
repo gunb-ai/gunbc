@@ -35,8 +35,8 @@ test fn nullary_bool_uses_enum_copy_derive_binding() -> v2.std.logic.Bool {
       ) {
         Accepted { value: lines, diagnostics: _ } =>
           !is_empty(xs: lines) && lines_use_enum_copy_binding(lines: lines)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

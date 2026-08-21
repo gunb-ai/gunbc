@@ -46,7 +46,7 @@ fn depth_edge_dispatch_algebra() -> v2.std.node.NodeFoldTopDown<Int, Int> {
     init: fn(_, depth) { depth },
     child_context: fn(_, depth, e) {
       match e.label {
-        v2.std.node.Named { name: lbl } =>
+        Named { name: lbl } =>
           if lbl == ^topdown_right_child { depth + 2 } else { depth + 1 }
         Positional => depth + 1
       }

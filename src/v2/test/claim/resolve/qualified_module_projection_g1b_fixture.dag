@@ -9,7 +9,7 @@ fn consumer() -> v2.test.resolve.qualified_module_projection_provider.ProviderTy
 
 fn pattern_consumer(x: v2.test.resolve.qualified_module_projection_provider.ProviderEnum) -> Int {
   match x {
-    v2.test.resolve.qualified_module_projection_provider.TagA => 0
-    v2.test.resolve.qualified_module_projection_provider.TagB => 1
+    TagA => 0
+    TagB => 1
   }
 }

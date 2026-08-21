@@ -64,10 +64,10 @@ fn admit_normalized_roots(
     empty: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, root) {
       match acc {
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
         Accepted { value: admitted, diagnostics: _ } =>
           match admit_normalized_tree(root: root, diagnostics: diagnostics) {
-            v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+            Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
             Accepted { value: one, diagnostics: _ } =>
               v2.std.diagnostic.Accepted {
                 value: list_snoc_item(xs: admitted, item: one),
@@ -77,7 +77,7 @@ fn admit_normalized_roots(
       }
     }
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     Accepted { value: all, diagnostics: _ } =>
       v2.std.diagnostic.Accepted { value: all, diagnostics: diagnostics }
   }

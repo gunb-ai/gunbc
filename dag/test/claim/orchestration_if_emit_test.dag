@@ -206,7 +206,7 @@ test fn orch_if_streq_empty_then_holds() -> Bool {
   match v2.compiler.emit_orchestration.orch_emit_step(s: orch_if_streq_empty_then_intent(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == orch_if_streq_empty_then_golden()) && (dg == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -214,7 +214,7 @@ test fn orch_if_streq_empty_then_has_teeth_holds() -> Bool {
   match v2.compiler.emit_orchestration.orch_emit_step(s: orch_if_streq_empty_then_perturbed_intent(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: _ } =>
       source.carried != orch_if_streq_empty_then_golden()
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -222,7 +222,7 @@ test fn orch_if_streq_else_holds() -> Bool {
   match v2.compiler.emit_orchestration.orch_emit_step(s: orch_if_streq_else_intent(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == orch_if_streq_else_golden()) && (dg == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -230,7 +230,7 @@ test fn orch_if_exit_zero_negated_holds() -> Bool {
   match v2.compiler.emit_orchestration.orch_emit_step(s: orch_if_exit_zero_negated_intent(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == orch_if_exit_zero_negated_golden()) && (dg == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -238,7 +238,7 @@ test fn orch_if_run_redirect_ignore_fail_holds() -> Bool {
   match v2.compiler.emit_orchestration.orch_emit_step(s: orch_if_run_redirect_ignore_fail_intent(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == orch_if_run_redirect_ignore_fail_golden()) && (dg == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -246,7 +246,7 @@ test fn orch_if_log_matches_holds() -> Bool {
   match v2.compiler.emit_orchestration.orch_emit_step(s: orch_if_log_matches_intent(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == orch_if_log_matches_golden()) && (dg == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -254,7 +254,7 @@ test fn orch_if_and_tests_holds() -> Bool {
   match v2.compiler.emit_orchestration.orch_emit_step(s: orch_if_and_tests_intent(), medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == orch_if_and_tests_golden()) && (dg == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

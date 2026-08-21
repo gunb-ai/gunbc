@@ -29,7 +29,7 @@ fn sdtr_unwired_target_refuses() -> v2.std.logic.Bool {
     target: cpp_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 

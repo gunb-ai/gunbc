@@ -10,14 +10,14 @@ test fn scaffold_note_declares_scaffold_not_live_instrument() -> Bool {
 
 test fn scaffold_manifest_state_verdict_query_is_scaffold_disposition() -> Bool {
   match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict_query_scaffold {
-    std.disposition.Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
+    Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
     _ => false
   }
 }
 
 test fn scaffold_lifecycle_row_well_formed_query_is_scaffold_disposition() -> Bool {
   match gunbc.stage0_rust_source_lifecycle_scaffold.lifecycle_row_well_formed_query_scaffold {
-    std.disposition.Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
+    Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
     _ => false
   }
 }
@@ -48,13 +48,13 @@ test fn scaffold_host_observation_hand_rust_receipt_is_bounded() -> Bool {
     && (expected |> all(e => named |> any(n => n == e)))
     && gunbc.stage0_rust_host_observation.stage0_rust_observation_seed_growth_justification.owning_dissolution_lane as String == "v1-hand-queue-drain"
     && match gunbc.stage0_rust_host_observation.stage0_cargo_manifest_parser_seed_scaffold {
-      std.disposition.Scaffold { dissolves_to: std.disposition.RealizationDispatch, bind: bind } =>
+      Scaffold { dissolves_to: std.disposition.RealizationDispatch, bind: bind } =>
         bind.module_path == "v1_compiler.cli_run"
           && bind.decl_name == "parse_stage0_cargo_manifest_bin_paths"
       _ => false
     }
     && match gunbc.stage0_rust_host_observation.stage0_cargo_manifest_projection_seed_scaffold {
-      std.disposition.Scaffold { dissolves_to: std.disposition.RealizationDispatch, bind: bind } =>
+      Scaffold { dissolves_to: std.disposition.RealizationDispatch, bind: bind } =>
         bind.module_path == "v1_compiler.v1_interpreter"
           && bind.decl_name == "eval_builtin_inner"
       _ => false
@@ -172,14 +172,14 @@ test fn scaffold_observed_ratchet_red_control_newly_unclassified_reds() -> Bool 
       }
     }
   ) {
-    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedNewlyUnclassified { count: _ } } => true
+    ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedNewlyUnclassified { count: _ } } => true
     _ => false
   }
 }
 
 test fn scaffold_observed_ratchet_red_control_hand_maintained_growth_reds() -> Bool {
   match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_source_lifecycle_scaffold.witness_hand_maintained_growth_observation()) {
-    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedHandMaintainedGrew { prior: _, current: _ } } => true
+    ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedHandMaintainedGrew { prior: _, current: _ } } => true
     _ => false
   }
 }
@@ -190,7 +190,7 @@ test fn scaffold_observed_derives_newly_unclassified_from_path_evidence_red_cont
       extra_path: "src/v1/stage0/src/synthetic_untracked.rs"
     )
   ) {
-    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedNewlyUnclassified { count: _ } } => true
+    ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedNewlyUnclassified { count: _ } } => true
     _ => false
   }
 }
@@ -233,7 +233,7 @@ test fn scaffold_observed_cargo_path_untracked_reds() -> Bool {
       }
     }
   ) {
-    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.ObservedCargoPathUntracked { path: _ } } => true
+    ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.ObservedCargoPathUntracked { path: _ } } => true
     _ => false
   }
 }
@@ -251,7 +251,7 @@ test fn scaffold_observed_cargo_role_does_not_supply_lifecycle_disposition() -> 
       }
     }
   ) {
-    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused {
+    ManifestStateScaffoldRefused {
       cause: gunbc.stage0_rust_source_lifecycle_scaffold.CargoTargetMissingLifecycleDisposition { path: path }
     } => path == "src/v1/stage0/src/synthetic_cargo_bin.rs"
     _ => false
@@ -260,7 +260,7 @@ test fn scaffold_observed_cargo_role_does_not_supply_lifecycle_disposition() -> 
 
 test fn scaffold_observed_git_refusal_surfaces_typed_cause() -> Bool {
   match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_host_observation.GitObservationRefused { detail: "git unavailable" }) {
-    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.HostGitObservationRefused { detail: detail } } => detail == "git unavailable"
+    ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.HostGitObservationRefused { detail: detail } } => detail == "git unavailable"
     _ => false
   }
 }
@@ -269,7 +269,7 @@ test fn scaffold_observed_manifest_read_refusal_surfaces_typed_cause() -> Bool {
   match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(
     observation: gunbc.stage0_rust_host_observation.RustManifestReadRefused { detail: "manifest unreadable" }
   ) {
-    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.HostManifestReadRefused { detail: detail } } => detail == "manifest unreadable"
+    ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.HostManifestReadRefused { detail: detail } } => detail == "manifest unreadable"
     _ => false
   }
 }
@@ -278,7 +278,7 @@ test fn scaffold_observed_manifest_parse_refusal_surfaces_typed_cause() -> Bool 
   match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(
     observation: gunbc.stage0_rust_host_observation.RustManifestParseRefused { detail: "manifest malformed" }
   ) {
-    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.HostManifestParseRefused { detail: detail } } => detail == "manifest malformed"
+    ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.HostManifestParseRefused { detail: detail } } => detail == "manifest malformed"
     _ => false
   }
 }
@@ -310,7 +310,7 @@ test fn scaffold_residue_red_control_empty_dissolve_on_reds() -> Bool {
 
 test fn scaffold_observed_duplicate_tracked_paths_reds() -> Bool {
   match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_source_lifecycle_scaffold.witness_duplicate_tracked_observation()) {
-    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedDuplicateExactPaths { count: _ } } => true
+    ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedDuplicateExactPaths { count: _ } } => true
     _ => false
   }
 }
@@ -465,7 +465,7 @@ test fn scaffold_standing_unclassified_reds_on_derived_unclassified_tracked() ->
       planted_path: standing_unclassified_planted_path
     )
   ) {
-    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedUnclassifiedTracked { count: count } } => count == 1
+    ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedUnclassifiedTracked { count: count } } => count == 1
     _ => false
   }
 }
@@ -476,7 +476,7 @@ test fn scaffold_same_planted_path_when_new_reaches_the_newly_arm_instead() -> B
       extra_path: standing_unclassified_planted_path
     )
   ) {
-    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedNewlyUnclassified { count: count } } => count == 1
+    ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedNewlyUnclassified { count: count } } => count == 1
     _ => false
   }
 }

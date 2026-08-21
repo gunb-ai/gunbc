@@ -10,9 +10,9 @@ test fn add_body_table_fixture_arrow_accepts() -> v2.std.logic.Bool {
               ComputationNode { behavior: _ } => true
               _ => false
             }
-          v2.std.diagnostic.Rejected { diagnostics: _ } => false
+          Rejected { diagnostics: _ } => false
         }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -97,9 +97,9 @@ test fn add_body_edge_targets_binary_transform() -> v2.std.logic.Bool {
             ComputationNode { behavior: v2.std.node.Transform } => true
             _ => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

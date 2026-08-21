@@ -106,7 +106,7 @@ fn witness_wrong_method_not_allowed() -> Bool {
   match serve_gunbhub_request(
     req: gunbc.gunbhub_serve.GunbhubServeRequest { method: POST, path: "/" }
   ) {
-    gunbc.gunbhub_serve.MethodNotAllowed => true
+    MethodNotAllowed => true
     _ => false
   }
 }
@@ -115,7 +115,7 @@ fn witness_repo_path_wrong_method_not_allowed() -> Bool {
   match serve_gunbhub_request(
     req: gunbc.gunbhub_serve.GunbhubServeRequest { method: POST, path: "/README.md" }
   ) {
-    gunbc.gunbhub_serve.MethodNotAllowed => true
+    MethodNotAllowed => true
     _ => false
   }
 }
@@ -142,7 +142,7 @@ fn witness_hostile_page_rejected_before_response() -> Bool {
     RenderRejectedBeforeServe { reason: _ } => true
     Served { response: _ } => false
     RouteNotFound => false
-    gunbc.gunbhub_serve.MethodNotAllowed => false
+    MethodNotAllowed => false
   }
 }
 

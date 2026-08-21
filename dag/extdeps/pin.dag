@@ -127,9 +127,9 @@ fn admit_subject_projected_pin_integrity<Subject>(
       }
     ExactPin =>
       match compare_content_hash(left: expected_identity, right: observed_identity) {
-        std.content_hash.ContentHashEqual =>
+        ContentHashEqual =>
           SubjectProjectedPinIntegrityAdmitted { pin: pin }
-        std.content_hash.ContentHashDifferent =>
+        ContentHashDifferent =>
           SubjectProjectedPinRefused {
             subject: pin.subject,
             cause: ObservedIdentityMismatch {
@@ -137,7 +137,7 @@ fn admit_subject_projected_pin_integrity<Subject>(
               observed: observed_identity,
             },
           }
-        std.content_hash.ContentHashCrossFamilyIncomparable =>
+        ContentHashCrossFamilyIncomparable =>
           SubjectProjectedPinRefused {
             subject: pin.subject,
             cause: CrossFamilyIdentityIncomparable {
@@ -199,9 +199,9 @@ fn admit_pin_integrity<Subject>(
       }
     ExactPin =>
       match compare_content_hash(left: pin.expected_identity, right: observed_identity) {
-        std.content_hash.ContentHashEqual =>
+        ContentHashEqual =>
           PinIntegrityAdmitted { pin: pin }
-        std.content_hash.ContentHashDifferent =>
+        ContentHashDifferent =>
           PinRefused {
             subject: pin.subject,
             cause: ObservedIdentityMismatch {
@@ -209,7 +209,7 @@ fn admit_pin_integrity<Subject>(
               observed: observed_identity,
             },
           }
-        std.content_hash.ContentHashCrossFamilyIncomparable =>
+        ContentHashCrossFamilyIncomparable =>
           PinRefused {
             subject: pin.subject,
             cause: CrossFamilyIdentityIncomparable {
@@ -226,9 +226,9 @@ data pin_value_eq_note: String = "The bundle member the reconcile hands to gunbc
 fn pin_value_eq<Subject>(a: extdeps.pin.Pin<extdeps.coverage.Subject>, b: extdeps.pin.Pin<extdeps.coverage.Subject>) -> Bool {
   (a.version == b.version)
     && match compare_content_hash(left: a.expected_identity, right: b.expected_identity) {
-      std.content_hash.ContentHashEqual => true
-      std.content_hash.ContentHashDifferent => false
-      std.content_hash.ContentHashCrossFamilyIncomparable => false
+      ContentHashEqual => true
+      ContentHashDifferent => false
+      ContentHashCrossFamilyIncomparable => false
     }
     && (a.selection == b.selection)
 }

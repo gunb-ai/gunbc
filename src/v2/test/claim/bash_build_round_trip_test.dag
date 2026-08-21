@@ -21,7 +21,7 @@ fn bash_build_round_trip_emit_matches_golden(
   match target_serialize_source_from_model(target: target, emitted: emitted) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == golden) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -40,7 +40,7 @@ fn bash_build_round_trip_via_emit_matches_golden(
         None => source.carried == golden
         Some { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

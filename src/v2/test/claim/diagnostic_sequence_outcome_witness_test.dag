@@ -25,7 +25,7 @@ fn diagnostic_b() -> v2.std.diagnostic.Diagnostic {
 test fn witness_sequence_outcome_empty_accepts() -> Bool {
   match sequence_outcome(xs: [], policy: short_circuit_policy) {
     Accepted { value: vs, diagnostics: None } => vs.length() == 0
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -36,7 +36,7 @@ test fn witness_sequence_outcome_collects_values() -> Bool {
   ) {
     Accepted { value: vs, diagnostics: None } =>
       (vs.length() == 2) && (vs.first() == 1) && (vs.skip(n: 1).first() == 2)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -50,7 +50,7 @@ test fn witness_sequence_outcome_short_circuits_on_reject() -> Bool {
     policy: short_circuit_policy
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -61,7 +61,7 @@ test fn witness_sequence_outcome_accumulate_collects_both_values() -> Bool {
   ) {
     Accepted { value: vs, diagnostics: None } =>
       (vs.length() == 2) && (vs.first() == 1) && (vs.skip(n: 1).first() == 2)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -71,7 +71,7 @@ test fn witness_sequence_outcome_accumulate_merges_two_rejections() -> Bool {
     policy: accumulate_policy
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: d } => d.tail.length() > 0
+    Rejected { diagnostics: d } => d.tail.length() > 0
   }
 }
 
@@ -81,7 +81,7 @@ test fn witness_sequence_outcome_short_circuit_does_not_merge_second_reject() ->
     policy: short_circuit_policy
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: d } => d.tail.length() == 0
+    Rejected { diagnostics: d } => d.tail.length() == 0
   }
 }
 

@@ -26,7 +26,7 @@ test fn orch_tier2_fresh_standup_cmdsubst_assign_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == fresh_standup_cmdsubst_assign_golden()) && (dg == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -48,7 +48,7 @@ test fn orch_tier2_fresh_standup_procedure_call_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == fresh_standup_decide_verdict_call_golden()) && (dg == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -70,7 +70,7 @@ test fn orch_tier2_fresh_standup_read_pin_call_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == fresh_standup_read_pin_call_golden()) && (dg == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -89,7 +89,7 @@ test fn orch_tier2_fresh_standup_verdict_absent_let_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == fresh_standup_verdict_absent_let_golden()) && (dg == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -108,7 +108,7 @@ test fn orch_tier2_fresh_standup_effective_var_let_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == fresh_standup_effective_var_let_golden()) && (dg == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -127,7 +127,7 @@ test fn orch_tier2_fresh_standup_dag_pin_empty_let_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == fresh_standup_dag_pin_empty_let_golden()) && (dg == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -162,7 +162,7 @@ test fn orch_tier2_procedure_definition_band_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == decide_verdict_procedure_partial_golden()) && (dg == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -173,6 +173,6 @@ test fn orch_tier2_cmdsubst_assign_has_teeth_holds() -> Bool {
   ) {
     Accepted { value: src, diagnostics: _ } =>
       src.carried != "dag_pin=\"$(converge_read_gunbc_host_pin \"$ctrl_pin\")\""
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

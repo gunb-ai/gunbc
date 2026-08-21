@@ -79,8 +79,8 @@ test fn witness_census_RED_planted_duplicate_identity_refuses_exactly_once() -> 
 
 fn first_declared_axis() -> gunbc.witness_execution_class.ClassificationAxis {
   match declared_class_precedence.first() {
-    v2.std.optional.Present { value: axis } => axis
-    v2.std.optional.Absent => CarriageAxis
+    Present { value: axis } => axis
+    Absent => CarriageAxis
   }
 }
 

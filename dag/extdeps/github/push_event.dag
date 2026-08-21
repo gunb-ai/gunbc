@@ -54,7 +54,7 @@ fn push_before_from_event_json(text: String) -> PushBeforeObservation {
           PushBeforeMalformed { detail: "push event payload root is not a JSON object" }
         JsonMemberFound { value: v } =>
           match v {
-            extdeps.languages.json.emit.JsonString { value: sha } =>
+            JsonString { value: sha } =>
               if sha == "" {
                 PushBeforeAbsent { detail: "push event before member is empty" }
               } else if sha == extdeps.git.hooks.zero_sha {

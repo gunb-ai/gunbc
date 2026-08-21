@@ -119,13 +119,13 @@ test fn interval_min_not_above_max_for_all_standard_types() -> v2.std.logic.Bool
 
 fn signedness_eq(a: std.integer.Signedness, b: std.integer.Signedness) -> v2.std.logic.Bool {
   match a {
-    v2.std.integer.Signed => match b {
-      v2.std.integer.Signed => true
-      v2.std.integer.Unsigned => false
+    Signed => match b {
+      Signed => true
+      Unsigned => false
     }
-    v2.std.integer.Unsigned => match b {
-      v2.std.integer.Signed => false
-      v2.std.integer.Unsigned => true
+    Unsigned => match b {
+      Signed => false
+      Unsigned => true
     }
   }
 }
@@ -146,7 +146,7 @@ test fn from_node_round_trips_all_standard_types() -> v2.std.logic.Bool {
       let node = integer_interval_spec_node(spec: integer_standard_integer_type_interval_spec(standard_integer_type: t))
       acc && match integer_standard_integer_type_from_node(node: node) {
         Accepted { value: decoded, diagnostics: _ } => standard_integer_type_eq(a: decoded, b: t)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
     }
   )

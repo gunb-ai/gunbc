@@ -61,8 +61,8 @@ fn spark_bootstrap_credential_lease(
 // from the remedy for "the enrolled one was rejected".
 fn lease_secret_resource(lease: OperatorBootstrapCredentialLease) -> String? {
   match lease.administrator {
-    gunbc.spark.bootstrap_credential.CredentialMaterializationPending => none
-    gunbc.spark.bootstrap_credential.CredentialMaterialized { ref: r } => Present { value: secret_ref_secret_resource(ref: r) }
+    CredentialMaterializationPending => none
+    CredentialMaterialized { ref: r } => Present { value: secret_ref_secret_resource(ref: r) }
   }
 }
 
@@ -221,8 +221,8 @@ data spark_grant_credential_path_env: std.types.NonEmptyStr = "GUNBC_SPARK_BOOTS
 // fetching a different secret than the lease authorized is unwritable rather than merely unlikely.
 fn lease_secret_version_resource(lease: OperatorBootstrapCredentialLease) -> String? {
   match lease.administrator {
-    gunbc.spark.bootstrap_credential.CredentialMaterializationPending => none
-    gunbc.spark.bootstrap_credential.CredentialMaterialized { ref: r } => Present { value: secret_ref_version_resource(ref: r) }
+    CredentialMaterializationPending => none
+    CredentialMaterialized { ref: r } => Present { value: secret_ref_version_resource(ref: r) }
   }
 }
 
@@ -230,8 +230,8 @@ fn lease_secret_version_resource(lease: OperatorBootstrapCredentialLease) -> Str
 // cannot name different versions.
 fn lease_secret_access_url(lease: OperatorBootstrapCredentialLease) -> String? {
   match lease.administrator {
-    gunbc.spark.bootstrap_credential.CredentialMaterializationPending => none
-    gunbc.spark.bootstrap_credential.CredentialMaterialized { ref: r } => Present { value: secret_ref_access_url(ref: r) }
+    CredentialMaterializationPending => none
+    CredentialMaterialized { ref: r } => Present { value: secret_ref_access_url(ref: r) }
   }
 }
 
@@ -345,8 +345,8 @@ func run_privileged_step(
   uses net: std.resources.Network
 {
   match lease.administrator {
-    gunbc.spark.bootstrap_credential.CredentialMaterializationPending => CredentialNotEnrolled { lease: lease }
-    gunbc.spark.bootstrap_credential.CredentialMaterialized { ref: _ } =>
+    CredentialMaterializationPending => CredentialNotEnrolled { lease: lease }
+    CredentialMaterialized { ref: _ } =>
       match read_bootstrap_credential() {
         BootstrapCredentialNotMaterialized { cause: why } =>
           CredentialNotMaterialized { lease: lease, cause: why }

@@ -180,8 +180,8 @@ fn demand_row_matches_complete_discovery(
         false
       } else {
         match matching.first() {
-          v2.std.optional.Absent => false
-          v2.std.optional.Present { value: discovery } =>
+          Absent => false
+          Present { value: discovery } =>
             match discovery {
               DiscoveryIncomplete { entry: _, cause: _ } => false
               DiscoveryComplete { entry: _, module_path: _, declarations } =>
@@ -241,12 +241,12 @@ test fn commit_check_demand_canonical_roster_refuses_empty_or_truncated_discover
         DemandMissing { check: _, cause: _ } => true
         DemandQualified { rows: _ } => false
         DemandAmbiguous { check: _, cause: _ } => false
-        gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+        DemandIncomplete { check: _, cause: _ } => false
         DemandRosterAmbiguous { cause: _ } => false
       }
     DemandQualified { rows: _ } => false
     DemandAmbiguous { check: _, cause: _ } => false
-    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
     DemandRosterAmbiguous { cause: _ } => false
   }
 }
@@ -270,7 +270,7 @@ test fn commit_check_demand_all_six_file_grain_rows_expand_complete_discoveries(
           )
       DemandMissing { check: _, cause: _ } => false
       DemandAmbiguous { check: _, cause: _ } => false
-      gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+      DemandIncomplete { check: _, cause: _ } => false
       DemandRosterAmbiguous { cause: _ } => false
     }
 }
@@ -316,12 +316,12 @@ test fn commit_check_demand_named_multi_function_is_exact_and_permutation_invari
             )
         DemandMissing { check: _, cause: _ } => false
         DemandAmbiguous { check: _, cause: _ } => false
-        gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+        DemandIncomplete { check: _, cause: _ } => false
         DemandRosterAmbiguous { cause: _ } => false
       }
     DemandMissing { check: _, cause: _ } => false
     DemandAmbiguous { check: _, cause: _ } => false
-    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
     DemandRosterAmbiguous { cause: _ } => false
   }
 }
@@ -342,7 +342,7 @@ test fn commit_check_demand_gate_and_fmt_rows_stay_typed_and_empty() -> Bool {
         && commit_check_kind_eq(a: rows.skip(n: 1).first().check, b: fmt)
     DemandMissing { check: _, cause: _ } => false
     DemandAmbiguous { check: _, cause: _ } => false
-    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
     DemandRosterAmbiguous { cause: _ } => false
   }
 }
@@ -362,7 +362,7 @@ test fn commit_check_demand_unowned_discovery_is_roster_ambiguous() -> Bool {
     DemandQualified { rows: _ } => false
     DemandMissing { check: _, cause: _ } => false
     DemandAmbiguous { check: _, cause: _ } => false
-    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
   }
 }
 
@@ -385,7 +385,7 @@ test fn commit_check_demand_absent_named_declaration_is_missing() -> Bool {
       commit_check_kind_eq(a: failed, b: check)
     DemandQualified { rows: _ } => false
     DemandAmbiguous { check: _, cause: _ } => false
-    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
     DemandRosterAmbiguous { cause: _ } => false
   }
 }
@@ -410,7 +410,7 @@ test fn commit_check_demand_empty_complete_discovery_is_missing() -> Bool {
         && cause == ("complete witness discovery contains no declarations" as std.types.NonEmptyStr)
     DemandQualified { rows: _ } => false
     DemandAmbiguous { check: _, cause: _ } => false
-    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
     DemandRosterAmbiguous { cause: _ } => false
   }
 }
@@ -439,7 +439,7 @@ test fn commit_check_demand_duplicate_discovery_entry_is_ambiguous() -> Bool {
       commit_check_kind_eq(a: failed, b: check)
     DemandQualified { rows: _ } => false
     DemandMissing { check: _, cause: _ } => false
-    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
     DemandRosterAmbiguous { cause: _ } => false
   }
 }
@@ -476,7 +476,7 @@ test fn commit_check_demand_duplicate_module_is_ambiguous() -> Bool {
         || commit_check_kind_eq(a: failed, b: second)
     DemandQualified { rows: _ } => false
     DemandMissing { check: _, cause: _ } => false
-    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
     DemandRosterAmbiguous { cause: _ } => false
   }
 }
@@ -500,7 +500,7 @@ test fn commit_check_demand_duplicate_declaration_is_ambiguous() -> Bool {
       commit_check_kind_eq(a: failed, b: check)
     DemandQualified { rows: _ } => false
     DemandMissing { check: _, cause: _ } => false
-    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
     DemandRosterAmbiguous { cause: _ } => false
   }
 }
@@ -519,7 +519,7 @@ test fn commit_check_demand_incomplete_discovery_stays_incomplete() -> Bool {
       }
     ]
   ) {
-    gunbc.commit_workflow.DemandIncomplete { check: failed, cause } =>
+    DemandIncomplete { check: failed, cause } =>
       commit_check_kind_eq(a: failed, b: check)
         && cause == ("source scan refused" as std.types.NonEmptyStr)
     DemandQualified { rows: _ } => false
@@ -569,7 +569,7 @@ test fn commit_check_demand_overlapping_output_membership_is_ambiguous() -> Bool
     DemandAmbiguous { check: _, cause: _ } => true
     DemandQualified { rows: _ } => false
     DemandMissing { check: _, cause: _ } => false
-    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
     DemandRosterAmbiguous { cause: _ } => false
   }
 }
@@ -625,7 +625,7 @@ test fn commit_check_demand_rejects_non_whole_discovery() -> Bool {
     DemandAmbiguous { check: _, cause: _ } => true
     DemandQualified { rows: _ } => false
     DemandMissing { check: _, cause: _ } => false
-    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
     DemandRosterAmbiguous { cause: _ } => false
   }
 }
@@ -652,7 +652,7 @@ test fn commit_check_demand_rejects_wrong_module_discovery() -> Bool {
     DemandAmbiguous { check: _, cause: _ } => true
     DemandQualified { rows: _ } => false
     DemandMissing { check: _, cause: _ } => false
-    gunbc.commit_workflow.DemandIncomplete { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
     DemandRosterAmbiguous { cause: _ } => false
   }
 }

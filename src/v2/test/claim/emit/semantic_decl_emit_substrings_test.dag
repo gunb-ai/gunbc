@@ -27,6 +27,6 @@ test fn emit_eq_golden() -> v2.std.logic.Bool {
     target: rust_target_model()
   ) {
     Accepted { value: m, diagnostics: _ } => m.carried == golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

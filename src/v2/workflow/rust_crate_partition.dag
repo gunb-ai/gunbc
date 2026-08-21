@@ -458,10 +458,10 @@ fn assignment_has_scc_split(
             match v2.std.collection.map_get(assignment, right) {
               Accepted { value: v2.std.optional.Present { value: right_unit }, diagnostics: _ } =>
                 left_unit != right_unit
-              v2.std.diagnostic.Rejected { diagnostics: _ } => false
+              Rejected { diagnostics: _ } => false
               Accepted { value: v2.std.optional.Absent, diagnostics: _ } => false
             }
-          v2.std.diagnostic.Rejected { diagnostics: _ } => false
+          Rejected { diagnostics: _ } => false
           Accepted { value: v2.std.optional.Absent, diagnostics: _ } => false
         }
       }

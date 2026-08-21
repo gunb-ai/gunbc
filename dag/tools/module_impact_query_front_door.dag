@@ -83,7 +83,7 @@ fn render_standing(reading: v2.lens.module_impact_query.ImpactReading) -> String
   match reading.standing {
     ExactForGraphSubject => "ExactForGraphSubject"
     ProvisionalForObservedPool => "ProvisionalForObservedPool — observed pool only; pool independence not established"
-    v2.lens.module_impact_query.Incomplete { causes: _ } => "Incomplete — see causes below"
+    Incomplete { causes: _ } => "Incomplete — see causes below"
     PoolIndependentProjectionUnavailable { trigger: _ } =>
       "PoolIndependentProjectionUnavailable — the observed pool may contain SPURIOUS as well as missing edges, so this reading is neither an upper nor a lower bound. Trigger: P2a pool-independent dependency projection (namespace lane)."
   }

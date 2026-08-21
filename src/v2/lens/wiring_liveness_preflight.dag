@@ -38,8 +38,8 @@ fn first_dead_wire(
 ) -> v2.std.optional.Optional<FrontierWiringObligation> {
   fold(obligations, init: optional_absent(), f: fn(acc, obligation) {
     match acc {
-      v2.std.optional.Present { value: v } => optional_present(value: v)
-      v2.std.optional.Absent =>
+      Present { value: v } => optional_present(value: v)
+      Absent =>
         if obligation_is_wired(dependence: dependence, obligation: obligation) {
           optional_absent()
         } else {
@@ -69,11 +69,11 @@ fn preflight_reexec_frontier(
 ) -> v2.lens.affected_set.ReExecFrontier {
   let dependence = frontier_slice_dependence(dependencies: dependencies)
   match frontier {
-    v2.lens.affected_set.FailClosed { reason: reason } => v2.lens.affected_set.FailClosed { reason: reason }
+    FailClosed { reason: reason } => v2.lens.affected_set.FailClosed { reason: reason }
     ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } =>
       match first_dead_wire(dependence: dependence, obligations: obligations) {
-        v2.std.optional.Absent => frontier
-        v2.std.optional.Present { value: dead } =>
+        Absent => frontier
+        Present { value: dead } =>
           v2.lens.affected_set.FailClosed { reason: dead_wire_reason(obligation: dead, dependence: dependence) }
       }
   }

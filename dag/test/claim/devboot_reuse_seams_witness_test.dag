@@ -40,8 +40,8 @@ test fn a_record_holding_exactly_this_subject_matches() -> Bool {
     Absent => false
     Present { value: subject } =>
       match stored_subject_match(record_text: render_build_subject(subject: subject), subject: subject) {
-        gunbc.devboot.outcome.SubjectMatches => true
-        gunbc.devboot.outcome.SubjectDiffers => false
+        SubjectMatches => true
+        SubjectDiffers => false
       }
   }
 }
@@ -55,8 +55,8 @@ test fn a_record_whose_subject_extends_this_one_refuses() -> Bool {
         record_text: concat(render_build_subject(subject: subject), "cargo_config.0=target.linker=lld\n"),
         subject: subject,
       ) {
-        gunbc.devboot.outcome.SubjectMatches => false
-        gunbc.devboot.outcome.SubjectDiffers => true
+        SubjectMatches => false
+        SubjectDiffers => true
       }
   }
 }
@@ -70,8 +70,8 @@ test fn a_record_for_a_different_profile_refuses() -> Bool {
         Absent => false
         Present { value: dev } =>
           match stored_subject_match(record_text: render_build_subject(subject: dev), subject: released) {
-            gunbc.devboot.outcome.SubjectMatches => false
-            gunbc.devboot.outcome.SubjectDiffers => true
+            SubjectMatches => false
+            SubjectDiffers => true
           }
       }
   }
@@ -83,8 +83,8 @@ test fn an_empty_record_refuses() -> Bool {
     Absent => false
     Present { value: subject } =>
       match stored_subject_match(record_text: "", subject: subject) {
-        gunbc.devboot.outcome.SubjectMatches => false
-        gunbc.devboot.outcome.SubjectDiffers => true
+        SubjectMatches => false
+        SubjectDiffers => true
       }
   }
 }

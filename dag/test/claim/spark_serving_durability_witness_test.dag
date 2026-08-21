@@ -44,11 +44,11 @@ test fn a_serving_converged_host_that_never_rebooted_is_not_durable() -> Bool {
   )
   !spark_serving_durability_is_proven(verdict: v)
     && match v {
-         gunbc.spark.serving_durability.RebootNotEstablished { host: _, boot_id: b } => (b as String) == test.claim.spark_serving_durability_witness_test.boot_a
-         gunbc.spark.serving_durability.DurabilityProven { host: _, before: _, after: _ } => false
-         gunbc.spark.serving_durability.SurvivedRebootUnconverged { host: _, pending_action_count: _ } => false
-         gunbc.spark.serving_durability.SurvivedRebootNotServing { host: _, cause: _ } => false
-         gunbc.spark.serving_durability.DurabilityUnobserved { host: _, cause: _ } => false
+         RebootNotEstablished { host: _, boot_id: b } => (b as String) == test.claim.spark_serving_durability_witness_test.boot_a
+         DurabilityProven { host: _, before: _, after: _ } => false
+         SurvivedRebootUnconverged { host: _, pending_action_count: _ } => false
+         SurvivedRebootNotServing { host: _, cause: _ } => false
+         DurabilityUnobserved { host: _, cause: _ } => false
        }
 }
 
@@ -63,11 +63,11 @@ test fn a_rebooted_host_that_needs_actions_failed_durability_not_the_reboot() ->
     serving_healthy: false,
     health_cause: "unit inactive" as std.types.NonEmptyStr,
   ) {
-    gunbc.spark.serving_durability.SurvivedRebootUnconverged { host: _, pending_action_count: n } => n == 1
-    gunbc.spark.serving_durability.DurabilityProven { host: _, before: _, after: _ } => false
-    gunbc.spark.serving_durability.SurvivedRebootNotServing { host: _, cause: _ } => false
-    gunbc.spark.serving_durability.RebootNotEstablished { host: _, boot_id: _ } => false
-    gunbc.spark.serving_durability.DurabilityUnobserved { host: _, cause: _ } => false
+    SurvivedRebootUnconverged { host: _, pending_action_count: n } => n == 1
+    DurabilityProven { host: _, before: _, after: _ } => false
+    SurvivedRebootNotServing { host: _, cause: _ } => false
+    RebootNotEstablished { host: _, boot_id: _ } => false
+    DurabilityUnobserved { host: _, cause: _ } => false
   }
 }
 
@@ -81,11 +81,11 @@ test fn a_rebooted_converged_host_that_does_not_serve_is_not_durable() -> Bool {
     serving_healthy: false,
     health_cause: "generation probe produced no output" as std.types.NonEmptyStr,
   ) {
-    gunbc.spark.serving_durability.SurvivedRebootNotServing { host: _, cause: c } => string_contains(c as String, "no output")
-    gunbc.spark.serving_durability.DurabilityProven { host: _, before: _, after: _ } => false
-    gunbc.spark.serving_durability.SurvivedRebootUnconverged { host: _, pending_action_count: _ } => false
-    gunbc.spark.serving_durability.RebootNotEstablished { host: _, boot_id: _ } => false
-    gunbc.spark.serving_durability.DurabilityUnobserved { host: _, cause: _ } => false
+    SurvivedRebootNotServing { host: _, cause: c } => string_contains(c as String, "no output")
+    DurabilityProven { host: _, before: _, after: _ } => false
+    SurvivedRebootUnconverged { host: _, pending_action_count: _ } => false
+    RebootNotEstablished { host: _, boot_id: _ } => false
+    DurabilityUnobserved { host: _, cause: _ } => false
   }
 }
 
@@ -95,14 +95,14 @@ test fn a_rebooted_converged_host_that_does_not_serve_is_not_durable() -> Bool {
 test fn an_unread_boot_identity_is_unobserved_and_never_unchanged() -> Bool {
   let missing = spark_serving_boot_identity_from_probe(probe: none)
   match spark_serving_reboot_transition(before: missing, after: test.claim.spark_serving_durability_witness_test.reading(id: test.claim.spark_serving_durability_witness_test.boot_b)) {
-    gunbc.spark.serving_durability.RebootTransitionUnobserved { cause: c } => string_contains(c as String, "pre-reboot")
-    gunbc.spark.serving_durability.BootIdentityUnchanged { boot_id: _ } => false
-    gunbc.spark.serving_durability.BootIdentityChanged { before: _, after: _ } => false
+    RebootTransitionUnobserved { cause: c } => string_contains(c as String, "pre-reboot")
+    BootIdentityUnchanged { boot_id: _ } => false
+    BootIdentityChanged { before: _, after: _ } => false
   }
     && match spark_serving_reboot_transition(before: test.claim.spark_serving_durability_witness_test.reading(id: test.claim.spark_serving_durability_witness_test.boot_a), after: missing) {
-         gunbc.spark.serving_durability.RebootTransitionUnobserved { cause: c } => string_contains(c as String, "post-reboot")
-         gunbc.spark.serving_durability.BootIdentityUnchanged { boot_id: _ } => false
-         gunbc.spark.serving_durability.BootIdentityChanged { before: _, after: _ } => false
+         RebootTransitionUnobserved { cause: c } => string_contains(c as String, "post-reboot")
+         BootIdentityUnchanged { boot_id: _ } => false
+         BootIdentityChanged { before: _, after: _ } => false
        }
 }
 
@@ -111,8 +111,8 @@ test fn an_unread_boot_identity_is_unobserved_and_never_unchanged() -> Bool {
 // this transaction exists to establish -- the worst possible direction for this defect to fail in.
 test fn an_empty_boot_id_is_a_failed_read_not_a_changed_boot() -> Bool {
   match spark_serving_boot_identity_from_probe(probe: Present { value: test.claim.spark_serving_durability_witness_test.ok(out: "\n") }) {
-    gunbc.spark.serving_durability.BootIdentityUnobserved { cause: c } => string_contains(c as String, "failed read")
-    gunbc.spark.serving_durability.BootIdentityObserved { boot_id: _ } => false
+    BootIdentityUnobserved { cause: c } => string_contains(c as String, "failed read")
+    BootIdentityObserved { boot_id: _ } => false
   }
 }
 

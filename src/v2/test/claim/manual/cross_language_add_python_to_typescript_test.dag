@@ -45,10 +45,10 @@ test fn cross_language_emit_inhabitant_neutralization_fails_closed() -> v2.std.l
   match v2.compiler.infer.infer(tree: v2.extdeps.languages.python.python_emitted_add_fn_node()) {
     Accepted { value: inferred, diagnostics: _ } =>
       match v2.compiler.emit.emit(tree: inferred, target: v2.extdeps.languages.typescript.ts_target_model()) {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => true
+        Rejected { diagnostics: _ } => true
         Accepted { value: _, diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -61,13 +61,13 @@ test fn cross_language_emit_inhabitant_neutralization_refuses_underived_holds() 
       match v2.compiler.infer.infer(tree: neutralized) {
         Accepted { value: inferred, diagnostics: _ } =>
           match v2.compiler.emit.emit(tree: inferred, target: v2.extdeps.languages.typescript.ts_target_model()) {
-            v2.std.diagnostic.Rejected { diagnostics: d } =>
+            Rejected { diagnostics: d } =>
               d.head.reason == ^infer_grounding_not_derived
             Accepted { value: _, diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -85,9 +85,9 @@ test fn cross_language_add_python_to_typescript_chain_status_holds() -> v2.std.l
 
             && cross_language_compile_on_real_tree_refuses_underived_holds(parse_tree: python_parse_tree)
             && v2.test.manual.typescript_effect_io_emit.ts_effect_io_emit_holds()
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -97,7 +97,7 @@ fn cross_language_compile_on_real_tree_refuses_underived_holds(parse_tree: v2.st
     source_model: v2.extdeps.languages.python.python_target_model(),
     target_model: v2.extdeps.languages.typescript.ts_target_model()
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       d.head.reason == ^infer_grounding_not_derived
     Accepted { value: _, diagnostics: _ } => false
   }

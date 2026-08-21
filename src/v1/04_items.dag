@@ -59,7 +59,7 @@ fn inferred_to_outputs(inferred: v1.std.core.InferredNode?, span: std.types.Sour
   else { match inferred.value {
     CompilerError { message: _, span: _ } => []
     TypeVariable { id: _ } => []
-    v1.std.core.Resolved { node: rt } =>
+    Resolved { node: rt } =>
         let has_structure = rt.connective != NoConnective
         if has_structure {
           let is_product = rt.connective == v1.std.core.Conj

@@ -31,14 +31,14 @@ test fn witness_seed_growth_roster_well_formed_gate_holds() -> Bool {
 
 test fn seed_growth_admission_join_is_scaffold_until_diff_population() -> Bool {
   match seed_growth_admission_join_scaffold {
-    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
+    Scaffold { dissolves_to: _, bind: _ } => true
     _ => false
   }
 }
 
 test fn seed_growth_g0_census_host_is_scaffold_until_modeled_producer() -> Bool {
   match seed_growth_g0_census_host_scaffold {
-    std.disposition.Scaffold { dissolves_to: _, bind: bind } =>
+    Scaffold { dissolves_to: _, bind: bind } =>
       bind.module_path == "gunbc.rust_item_identity"
         && bind.decl_name == "rust_item_host_observation_scaffold_note"
     _ => false

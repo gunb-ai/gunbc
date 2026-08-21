@@ -81,14 +81,14 @@ fn bounds_are_the_executed_pair(
   match verdict_against_declared_minimum(observations: observations) {
     PrerequisiteConsistentUpperBound { highest_refusal: r, lowest_acceptance: a } =>
       match r {
-        v2.std.optional.Present { value: rv } =>
+        Present { value: rv } =>
           match a {
-            v2.std.optional.Present { value: av } =>
+            Present { value: av } =>
               same_firmware_version(a: rv, b: asrock_altrad8ud_bios_310_push_refused_at_bmc_207.gating_version)
                 && same_firmware_version(a: av, b: asrock_altrad8ud_bios_310_push_accepted_at_bmc_322.gating_version)
-            v2.std.optional.Absent => false
+            Absent => false
           }
-        v2.std.optional.Absent => false
+        Absent => false
       }
     _ => false
   }
@@ -124,13 +124,13 @@ test fn an_acceptance_only_history_reports_no_refusal_bound() -> Bool {
   ) {
     PrerequisiteConsistentUpperBound { highest_refusal: r, lowest_acceptance: a } =>
       match r {
-        v2.std.optional.Absent =>
+        Absent =>
           match a {
-            v2.std.optional.Present { value: av } =>
+            Present { value: av } =>
               same_firmware_version(a: av, b: asrock_altrad8ud_bios_310_push_accepted_at_bmc_322.gating_version)
-            v2.std.optional.Absent => false
+            Absent => false
           }
-        v2.std.optional.Present { value: _ } => false
+        Present { value: _ } => false
       }
     _ => false
   }

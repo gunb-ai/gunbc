@@ -182,8 +182,8 @@ fn group_blocks(g: gunbc.roadmap_model.SectionGroup, merged: List<Int>) -> List<
 
 fn element_blocks(e: gunbc.roadmap_model.SectionElement, merged: List<Int>) -> List<std.markdown.MarkdownBlock> {
   match e {
-    gunbc.roadmap_model.Prose { prose } => [std.markdown.ParagraphBlock { inlines: [std.markdown.TextInline { text: prose.content }] }]
-    gunbc.roadmap_model.Group { group } => group_blocks(g: group, merged: merged)
+    Prose { prose } => [std.markdown.ParagraphBlock { inlines: [std.markdown.TextInline { text: prose.content }] }]
+    Group { group } => group_blocks(g: group, merged: merged)
   }
 }
 

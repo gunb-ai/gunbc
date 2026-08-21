@@ -246,8 +246,8 @@ fn spark_pxe_firmware_enablement_intervention() -> std.human_intervention.HumanI
 fn spark_pxe_firmware_gaps(config: SparkUefiPxeConfiguration) -> std.types.List<SparkPxeFirmwareGap> {
   concat(
     match config.secure_boot {
-      extdeps.systems.nvidia_dgx_spark_pxe.SecureBootDisabledForPxe => []
-      extdeps.systems.nvidia_dgx_spark_pxe.BootloaderEnrolledForPxe { bootloader: b } =>
+      SecureBootDisabledForPxe => []
+      BootloaderEnrolledForPxe { bootloader: b } =>
         if b == spark_pxe_bootloader_filename { [] } else { [SecureBootBlocksPxe] }
     },
     concat(
@@ -300,8 +300,8 @@ fn spark_unattended_image_boot(
     tftp_initrd: spark_pxe_tftp_relative_path(p: extdeps.systems.nvidia_dgx_spark_pxe.TftpInitrdImage, image: image_kind),
     http_install_image: spark_pxe_http_install_image_path(image: image_kind),
     kernel_cmdline: match image_kind {
-      extdeps.systems.nvidia_dgx_spark_pxe.FastOsRecoveryTarball => spark_fastos_unattended_kernel_cmdline(http_image_root: http_image_root)
-      extdeps.systems.nvidia_dgx_spark_pxe.DgxOsIsoImage => spark_dgx_os_unattended_kernel_cmdline(http_image_root: http_image_root)
+      FastOsRecoveryTarball => spark_fastos_unattended_kernel_cmdline(http_image_root: http_image_root)
+      DgxOsIsoImage => spark_dgx_os_unattended_kernel_cmdline(http_image_root: http_image_root)
     },
   }
 }

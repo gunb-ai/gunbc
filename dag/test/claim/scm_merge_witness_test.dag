@@ -24,15 +24,15 @@ type Fixture {
 
 fn store_or_empty(outcome: gunbc.scm.object_store.StoreOutcome) -> gunbc.scm.object_store.ObjectStore {
   match outcome {
-    gunbc.scm.object_store.Stored { store: store, identity: _ } => store
-    gunbc.scm.object_store.LocatorCollision { identity: _, existing: _, incoming: _ } => gunbc.scm.object_store.empty_store()
+    Stored { store: store, identity: _ } => store
+    LocatorCollision { identity: _, existing: _, incoming: _ } => gunbc.scm.object_store.empty_store()
   }
 }
 
 fn identity_or(outcome: gunbc.scm.object_store.StoreOutcome, fallback: gunbc.scm.object_store.ObjectId) -> gunbc.scm.object_store.ObjectId {
   match outcome {
-    gunbc.scm.object_store.Stored { store: _, identity: identity } => identity
-    gunbc.scm.object_store.LocatorCollision { identity: _, existing: _, incoming: _ } => fallback
+    Stored { store: _, identity: identity } => identity
+    LocatorCollision { identity: _, existing: _, incoming: _ } => fallback
   }
 }
 
@@ -50,8 +50,8 @@ fn fixture_with(edges: std.types.List<v2.std.node.Edge>) -> Fixture {
 
 fn fallback_id() -> gunbc.scm.object_store.ObjectId {
   match gunbc.scm.object_store.store_node(store: gunbc.scm.object_store.empty_store(), n: merge_witness_leaf(name: ^fallback)) {
-    gunbc.scm.object_store.Stored { store: _, identity: identity } => identity
-    gunbc.scm.object_store.LocatorCollision { identity: identity, existing: _, incoming: _ } => identity
+    Stored { store: _, identity: identity } => identity
+    LocatorCollision { identity: identity, existing: _, incoming: _ } => identity
   }
 }
 
@@ -71,17 +71,17 @@ fn remove_f_proposal() -> gunbc.scm.merge.Proposal {
 
 fn outcome_is_merged(o: gunbc.scm.merge.MergeOutcome) -> Bool {
   match o {
-    gunbc.scm.merge.Merged { store: _, commit: _, roles: _ } => true
-    gunbc.scm.merge.MergeRolesContested { role: _, alternatives: _ } => false
-    gunbc.scm.merge.MergeRefused { cause: _ } => false
+    Merged { store: _, commit: _, roles: _ } => true
+    MergeRolesContested { role: _, alternatives: _ } => false
+    MergeRefused { cause: _ } => false
   }
 }
 
 fn merged_roles(o: gunbc.scm.merge.MergeOutcome) -> std.types.List<gunbc.scm.merge.ResolvedRole> {
   match o {
-    gunbc.scm.merge.Merged { store: _, commit: _, roles: roles } => roles
-    gunbc.scm.merge.MergeRolesContested { role: _, alternatives: _ } => []
-    gunbc.scm.merge.MergeRefused { cause: _ } => []
+    Merged { store: _, commit: _, roles: roles } => roles
+    MergeRolesContested { role: _, alternatives: _ } => []
+    MergeRefused { cause: _ } => []
   }
 }
 
@@ -96,19 +96,19 @@ fn refusal_locates(
   usage_site: v2.std.node.Symbol,
 ) -> Bool {
   match o {
-    gunbc.scm.merge.Merged { store: _, commit: _, roles: _ } => false
-    gunbc.scm.merge.MergeRolesContested { role: _, alternatives: _ } => false
-    gunbc.scm.merge.MergeRefused { cause: cause } =>
+    Merged { store: _, commit: _, roles: _ } => false
+    MergeRolesContested { role: _, alternatives: _ } => false
+    MergeRefused { cause: cause } =>
       match cause {
-        gunbc.scm.merge.RequiredDependencyRemoved { dependency: dep, removed_role: removed } =>
+        RequiredDependencyRemoved { dependency: dep, removed_role: removed } =>
           ((dep.dependent as String) == (dependent as String))
             && ((dep.required as String) == (required as String))
             && ((dep.usage_site as String) == (usage_site as String))
             && ((removed as String) == (required as String))
-        gunbc.scm.merge.TargetRootMissing { identity: _ } => false
-        gunbc.scm.merge.TargetChildMissing { role: _, identity: _ } => false
-        gunbc.scm.merge.BindingLocatorCollision { role: _, identity: _ } => false
-        gunbc.scm.merge.DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: _ } => false
+        TargetRootMissing { identity: _ } => false
+        TargetChildMissing { role: _, identity: _ } => false
+        BindingLocatorCollision { role: _, identity: _ } => false
+        DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: _ } => false
       }
   }
 }
@@ -120,10 +120,10 @@ fn role_holds_target_object(roles: std.types.List<gunbc.scm.merge.ResolvedRole>,
     } else {
       if (r.role as String) == (role as String) {
         match r.value {
-          gunbc.scm.merge.PreservedFromTarget { object: object } =>
+          PreservedFromTarget { object: object } =>
             gunbc.scm.object_store.object_id_eq(left: object, right: expected)
-          gunbc.scm.merge.ProvidedByProposal { object: _ } => false
-          gunbc.scm.merge.RemovedByProposal => false
+          ProvidedByProposal { object: _ } => false
+          RemovedByProposal => false
         }
       } else {
         false
@@ -136,9 +136,9 @@ fn role_absent_from_result(roles: std.types.List<gunbc.scm.merge.ResolvedRole>, 
   fold(roles, init: true, f: fn(ok, r) {
     if (r.role as String) == (role as String) {
       match r.value {
-        gunbc.scm.merge.RemovedByProposal => ok
-        gunbc.scm.merge.PreservedFromTarget { object: _ } => false
-        gunbc.scm.merge.ProvidedByProposal { object: _ } => false
+        RemovedByProposal => ok
+        PreservedFromTarget { object: _ } => false
+        ProvidedByProposal { object: _ } => false
       }
     } else {
       ok
@@ -223,17 +223,17 @@ test fn the_arm_a_dependency_row_is_actually_read() -> Bool {
     ],
   )
   match out {
-    gunbc.scm.merge.MergeRefused { cause: cause } =>
+    MergeRefused { cause: cause } =>
       match cause {
-        gunbc.scm.merge.DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: kind } =>
+        DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: kind } =>
           (kind as String) == (^barrier_before as String)
-        gunbc.scm.merge.RequiredDependencyRemoved { dependency: _, removed_role: _ } => false
-        gunbc.scm.merge.TargetRootMissing { identity: _ } => false
-        gunbc.scm.merge.TargetChildMissing { role: _, identity: _ } => false
-        gunbc.scm.merge.BindingLocatorCollision { role: _, identity: _ } => false
+        RequiredDependencyRemoved { dependency: _, removed_role: _ } => false
+        TargetRootMissing { identity: _ } => false
+        TargetChildMissing { role: _, identity: _ } => false
+        BindingLocatorCollision { role: _, identity: _ } => false
       }
-    gunbc.scm.merge.Merged { store: _, commit: _, roles: _ } => false
-    gunbc.scm.merge.MergeRolesContested { role: _, alternatives: _ } => false
+    Merged { store: _, commit: _, roles: _ } => false
+    MergeRolesContested { role: _, alternatives: _ } => false
   }
 }
 
@@ -420,17 +420,17 @@ test fn an_unsupported_dependency_kind_refuses() -> Bool {
     proposals: [],
   )
   match out {
-    gunbc.scm.merge.MergeRefused { cause: cause } =>
+    MergeRefused { cause: cause } =>
       match cause {
-        gunbc.scm.merge.DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: kind } =>
+        DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: kind } =>
           (kind as String) == (^placement_depends_on as String)
-        gunbc.scm.merge.RequiredDependencyRemoved { dependency: _, removed_role: _ } => false
-        gunbc.scm.merge.TargetRootMissing { identity: _ } => false
-        gunbc.scm.merge.TargetChildMissing { role: _, identity: _ } => false
-        gunbc.scm.merge.BindingLocatorCollision { role: _, identity: _ } => false
+        RequiredDependencyRemoved { dependency: _, removed_role: _ } => false
+        TargetRootMissing { identity: _ } => false
+        TargetChildMissing { role: _, identity: _ } => false
+        BindingLocatorCollision { role: _, identity: _ } => false
       }
-    gunbc.scm.merge.Merged { store: _, commit: _, roles: _ } => false
-    gunbc.scm.merge.MergeRolesContested { role: _, alternatives: _ } => false
+    Merged { store: _, commit: _, roles: _ } => false
+    MergeRolesContested { role: _, alternatives: _ } => false
   }
 }
 
@@ -438,17 +438,17 @@ test fn an_unsupported_dependency_kind_refuses() -> Bool {
 // requires f = F2, another requires f absent: two distinct requested states, so two alternatives.
 fn contested_alternative_count(o: gunbc.scm.merge.MergeOutcome) -> Int {
   match o {
-    gunbc.scm.merge.MergeRolesContested { role: _, alternatives: alternatives } => length(alternatives)
-    gunbc.scm.merge.Merged { store: _, commit: _, roles: _ } => 0
-    gunbc.scm.merge.MergeRefused { cause: _ } => 0
+    MergeRolesContested { role: _, alternatives: alternatives } => length(alternatives)
+    Merged { store: _, commit: _, roles: _ } => 0
+    MergeRefused { cause: _ } => 0
   }
 }
 
 fn contested_at_role(o: gunbc.scm.merge.MergeOutcome, role: v2.std.node.Symbol) -> Bool {
   match o {
-    gunbc.scm.merge.MergeRolesContested { role: at, alternatives: _ } => (at as String) == (role as String)
-    gunbc.scm.merge.Merged { store: _, commit: _, roles: _ } => false
-    gunbc.scm.merge.MergeRefused { cause: _ } => false
+    MergeRolesContested { role: at, alternatives: _ } => (at as String) == (role as String)
+    Merged { store: _, commit: _, roles: _ } => false
+    MergeRefused { cause: _ } => false
   }
 }
 

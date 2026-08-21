@@ -18,14 +18,14 @@ data mismatched_backend_locator: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoR
 fn is_refused(a: std.access.AccessDecision) -> Bool {
   match a {
     Permit => false
-    std.access.Deny { refusal: refusal } => true
+    Deny { refusal: refusal } => true
   }
 }
 
 fn is_admitted(a: std.access.AccessDecision) -> Bool {
   match a {
     Permit => true
-    std.access.Deny { refusal: refusal } => false
+    Deny { refusal: refusal } => false
   }
 }
 
@@ -63,7 +63,7 @@ test fn effect_io_host_hermetic_refusal_is_located() -> Bool {
     env: effect_io_host_envelope(mode: std.execution_mode.Hermetic, backend: HttpResourceBackend),
     locator: sample_locator
   ) {
-    std.access.Deny { refusal: refusal } =>
+    Deny { refusal: refusal } =>
       refusal.location.profile == "EffectRequest"
         && refusal.location.subject == effect_io_host_frame.name
         && refusal.location.action == "write"

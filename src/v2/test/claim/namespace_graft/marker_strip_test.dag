@@ -89,15 +89,15 @@ fn ms_lookup_pair_eq(
   path: v2.std.qualified_name.QualifiedName
 ) -> v2.std.logic.Bool {
   match v2.std.symbol_index.symbol_index_lookup(index: marked, qualified_path: path) {
-    v2.std.optional.Present { value: marked_node } =>
+    Present { value: marked_node } =>
       match v2.std.symbol_index.symbol_index_lookup(index: stripped, qualified_path: path) {
-        v2.std.optional.Present { value: stripped_node } => marked_node == stripped_node
-        v2.std.optional.Absent => false
+        Present { value: stripped_node } => marked_node == stripped_node
+        Absent => false
       }
-    v2.std.optional.Absent =>
+    Absent =>
       match v2.std.symbol_index.symbol_index_lookup(index: stripped, qualified_path: path) {
-        v2.std.optional.Present { value: _ } => false
-        v2.std.optional.Absent => true
+        Present { value: _ } => false
+        Absent => true
       }
   }
 }

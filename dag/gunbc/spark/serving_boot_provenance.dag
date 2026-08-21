@@ -119,11 +119,11 @@ fn spark_serving_classify_boot_provenance(
               }
             Present { value: up } =>
               match checked_int_magnitude(a: entered_us) {
-                std.checked_arithmetic.CheckedNatOverflow { cause: _ } =>
+                CheckedNatOverflow { cause: _ } =>
                   BootProvenanceUnobserved {
                     cause: "ActiveEnterTimestampMonotonic is not representable as a microsecond count" as std.types.NonEmptyStr,
                   }
-                std.checked_arithmetic.CheckedNatReady { value: entered_nat } => {
+                CheckedNatReady { value: entered_nat } => {
                   let entered = microsecond(count: entered_nat)
                   let window_us = microsecond_count(spark_serving_boot_start_window())
                   if microsecond_count(entered) <= window_us {
@@ -156,8 +156,8 @@ fn spark_serving_uptime_microseconds(stdout: String) -> std.measure.Microsecond?
                 none
               } else {
                 match checked_int_magnitude(a: n * 1000000) {
-                  std.checked_arithmetic.CheckedNatOverflow { cause: _ } => none
-                  std.checked_arithmetic.CheckedNatReady { value: scaled } => Present { value: microsecond(count: scaled) }
+                  CheckedNatOverflow { cause: _ } => none
+                  CheckedNatReady { value: scaled } => Present { value: microsecond(count: scaled) }
                 }
               }
           }

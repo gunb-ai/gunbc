@@ -12,7 +12,7 @@ fn program_partition_node_list_is_duplicate_free(xs: std.types.List<v2.std.node.
     empty: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, member) {
       match acc {
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
         Accepted { value: seen, diagnostics: _ } =>
           if program_partition_node_list_member_seen(seen: seen, needle: member) {
             v2.std.diagnostic.Rejected {
@@ -34,7 +34,7 @@ fn program_partition_node_list_is_duplicate_free(xs: std.types.List<v2.std.node.
     }
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -46,9 +46,9 @@ test fn program_partition_body_canonical_closure_enumeration_is_duplicate_free()
           program_partition_node_list_is_duplicate_free(
             xs: v2.std.node.node_subtree_nodes(root: body)
           )
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -65,13 +65,13 @@ test fn program_partition_body_fail_closed_facts_closure_fold_accepts() -> v2.st
             Accepted { value: partition, diagnostics: _ } =>
               match v2.compiler.program_partition.facts_closure_fold(partition: partition) {
                 Accepted { value: _, diagnostics: _ } => true
-                v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                Rejected { diagnostics: _ } => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -93,13 +93,13 @@ test fn program_partition_body_emit_accepts_and_differs_from_whole() -> v2.std.l
                     && (whole_d == v2.std.diagnostic.None)
                     && (body_source != whole_source)
                     && (whole_source.carried == v2.extdeps.languages.typescript.ts_source_text)
-                v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                Rejected { diagnostics: _ } => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -119,17 +119,17 @@ test fn program_partition_whole_program_emit_matches_direct() -> v2.std.logic.Bo
                 && (partition_d == v2.std.diagnostic.None)
                 && (direct_source == partition_source)
                 && (direct_source.carried == v2.extdeps.languages.typescript.ts_source_text)
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn program_partition_section_adapter_unavailable_rejects() -> v2.std.logic.Bool {
   match v2.compiler.program_partition.program_segment_from_section_unavailable() {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }

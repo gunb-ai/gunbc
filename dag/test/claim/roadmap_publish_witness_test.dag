@@ -428,8 +428,8 @@ test fn a_receipt_round_trips_its_outcome_and_its_subject() -> Bool {
   match publication_receipt_decode(
     receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
   ) {
-    gunbc.roadmap_publish.ReceiptUndecodable { reason: _ } => false
-    gunbc.roadmap_publish.ReceiptDecoded { receipt } =>
+    ReceiptUndecodable { reason: _ } => false
+    ReceiptDecoded { receipt } =>
       receipt.subject.node_id == "some-node"
         && receipt.subject.attempt_key == "a7"
         && receipt.subject.repository.owner == "gunb-ai"
@@ -447,8 +447,8 @@ test fn a_bound_receipt_preserves_the_pull_request_binding() -> Bool {
   match publication_receipt_decode(
     receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
   ) {
-    gunbc.roadmap_publish.ReceiptUndecodable { reason: _ } => false
-    gunbc.roadmap_publish.ReceiptDecoded { receipt } =>
+    ReceiptUndecodable { reason: _ } => false
+    ReceiptDecoded { receipt } =>
       match receipt.outcome {
         ReceiptBound { pr_number, url, draft } =>
           pr_number == 22
@@ -470,8 +470,8 @@ test fn a_diverged_receipt_preserves_the_head_that_was_offered() -> Bool {
   match publication_receipt_decode(
     receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: diverged_outcome(), head: fixture_expected),
   ) {
-    gunbc.roadmap_publish.ReceiptUndecodable { reason: _ } => false
-    gunbc.roadmap_publish.ReceiptDecoded { receipt } =>
+    ReceiptUndecodable { reason: _ } => false
+    ReceiptDecoded { receipt } =>
       match receipt.outcome {
         ReceiptHeadDiverged { pr_number, pr_head, url: _ } =>
           pr_number == 22
@@ -492,13 +492,13 @@ test fn a_receipt_records_the_head_that_was_asked_about() -> Bool {
   match publication_receipt_decode(
     receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_expected),
   ) {
-    gunbc.roadmap_publish.ReceiptUndecodable { reason: _ } => false
-    gunbc.roadmap_publish.ReceiptDecoded { receipt: r1 } =>
+    ReceiptUndecodable { reason: _ } => false
+    ReceiptDecoded { receipt: r1 } =>
       match publication_receipt_decode(
         receipt: test.claim.roadmap_publish_witness_test.receipt_for(outcome: bound_outcome(), head: fixture_older),
       ) {
-        gunbc.roadmap_publish.ReceiptUndecodable { reason: _ } => false
-        gunbc.roadmap_publish.ReceiptDecoded { receipt: r2 } =>
+        ReceiptUndecodable { reason: _ } => false
+        ReceiptDecoded { receipt: r2 } =>
           publication_receipt_outcome_key(outcome: r1.outcome) == publication_receipt_outcome_key(outcome: r2.outcome)
             && (r1.subject.expected_head as String) != (r2.subject.expected_head as String)
       }
@@ -523,8 +523,8 @@ fn doctored_bound_receipt_carrying_a_stray_head() -> String {
 
 test fn a_bound_receipt_binds_the_subject_head_and_no_other() -> Bool {
   match publication_receipt_decode(receipt: doctored_bound_receipt_carrying_a_stray_head()) {
-    gunbc.roadmap_publish.ReceiptUndecodable { reason: _ } => false
-    gunbc.roadmap_publish.ReceiptDecoded { receipt } =>
+    ReceiptUndecodable { reason: _ } => false
+    ReceiptDecoded { receipt } =>
       (receipt.subject.expected_head as String) == (fixture_expected as String)
         && (receipt.subject.expected_head as String) != (fixture_older as String)
         && publication_receipt_outcome_key(outcome: receipt.outcome) == "publication-bound"
@@ -548,8 +548,8 @@ test fn a_foreign_schema_refuses_rather_than_decoding() -> Bool {
   match publication_receipt_decode(
     receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"outcome\": \{\"kind\": \"publication-bound\"\}\}",
   ) {
-    gunbc.roadmap_publish.ReceiptDecoded { receipt: _ } => false
-    gunbc.roadmap_publish.ReceiptUndecodable { reason: r } =>
+    ReceiptDecoded { receipt: _ } => false
+    ReceiptUndecodable { reason: r } =>
       string_contains(s: r, pattern: publication_receipt_schema as String)
   }
 }
@@ -560,8 +560,8 @@ test fn a_v1_receipt_refuses_rather_than_decoding_without_its_binding() -> Bool 
   match publication_receipt_decode(
     receipt: "\{\"schema\": \"roadmap-publication-receipt/v1\", \"outcome\": \"publication-bound\", \"detail\": \"d\", \"repository\": \"r\", \"branch\": \"b\", \"expected_head\": \"h\"\}",
   ) {
-    gunbc.roadmap_publish.ReceiptDecoded { receipt: _ } => false
-    gunbc.roadmap_publish.ReceiptUndecodable { reason: r } =>
+    ReceiptDecoded { receipt: _ } => false
+    ReceiptUndecodable { reason: r } =>
       string_contains(s: r, pattern: publication_receipt_schema as String)
   }
 }
@@ -570,8 +570,8 @@ test fn an_outcome_kind_this_emitter_never_writes_refuses() -> Bool {
   match publication_receipt_decode(
     receipt: "\{\"schema\": \"roadmap-publication-receipt/v2\", \"subject\": \{\"node_id\": \"n\", \"attempt_key\": \"a\", \"repository\": \{\"owner\": \"o\", \"name\": \"r\", \"full_name\": \"o/r\", \"private\": false, \"default_branch\": \"main\"\}, \"branch\": \"b\", \"expected_base\": \"main\", \"expected_head\": \"h\"\}, \"outcome\": \{\"kind\": \"published-ok\"\}\}",
   ) {
-    gunbc.roadmap_publish.ReceiptDecoded { receipt: _ } => false
-    gunbc.roadmap_publish.ReceiptUndecodable { reason: r } => string_contains(s: r, pattern: "published-ok")
+    ReceiptDecoded { receipt: _ } => false
+    ReceiptUndecodable { reason: r } => string_contains(s: r, pattern: "published-ok")
   }
 }
 
@@ -579,8 +579,8 @@ test fn a_bound_outcome_missing_its_pull_request_number_refuses() -> Bool {
   match publication_receipt_decode(
     receipt: "\{\"schema\": \"roadmap-publication-receipt/v2\", \"subject\": \{\"node_id\": \"n\", \"attempt_key\": \"a\", \"repository\": \{\"owner\": \"o\", \"name\": \"r\", \"full_name\": \"o/r\", \"private\": false, \"default_branch\": \"main\"\}, \"branch\": \"b\", \"expected_base\": \"main\", \"expected_head\": \"h\"\}, \"outcome\": \{\"kind\": \"publication-bound\", \"pr_head\": \"h\", \"url\": \"u\", \"draft\": false\}\}",
   ) {
-    gunbc.roadmap_publish.ReceiptDecoded { receipt: _ } => false
-    gunbc.roadmap_publish.ReceiptUndecodable { reason: r } =>
+    ReceiptDecoded { receipt: _ } => false
+    ReceiptUndecodable { reason: r } =>
       string_contains(s: r, pattern: "publication-bound")
         && string_contains(s: r, pattern: "pr_number")
   }
@@ -617,8 +617,8 @@ test fn an_ambiguous_binding_round_trips_its_pull_request_numbers() -> Bool {
       ),
     ),
   ) {
-    gunbc.roadmap_publish.ReceiptUndecodable { reason: _ } => false
-    gunbc.roadmap_publish.ReceiptDecoded { receipt } =>
+    ReceiptUndecodable { reason: _ } => false
+    ReceiptDecoded { receipt } =>
       match receipt.outcome {
         ReceiptBindingAmbiguous { pr_numbers } =>
           count(pr_numbers) == 2
@@ -648,8 +648,8 @@ test fn a_subject_against_a_non_default_base_still_round_trips_its_repository() 
     receipt: publication_receipt_of(subject: subject, outcome: bound_outcome()),
   )
   match publication_receipt_decode(receipt: text) {
-    gunbc.roadmap_publish.ReceiptUndecodable { reason: _ } => false
-    gunbc.roadmap_publish.ReceiptDecoded { receipt } =>
+    ReceiptUndecodable { reason: _ } => false
+    ReceiptDecoded { receipt } =>
       receipt.subject.repository.default_branch == "main"
         && (receipt.subject.expected_base as String) == "release-2026-08"
         && receipt.subject.repository.full_name == "gunb-ai/gunbc"
@@ -669,15 +669,15 @@ test fn a_receipt_missing_its_subject_refuses() -> Bool {
   match publication_receipt_decode(
     receipt: "\{\"schema\": \"roadmap-publication-receipt/v2\", \"outcome\": \{\"kind\": \"branch-not-published\", \"remote_branches_seen\": 0\}\}",
   ) {
-    gunbc.roadmap_publish.ReceiptDecoded { receipt: _ } => false
-    gunbc.roadmap_publish.ReceiptUndecodable { reason: r } => string_contains(s: r, pattern: "subject")
+    ReceiptDecoded { receipt: _ } => false
+    ReceiptUndecodable { reason: r } => string_contains(s: r, pattern: "subject")
   }
 }
 
 test fn a_receipt_that_is_not_json_refuses() -> Bool {
   match publication_receipt_decode(receipt: "not a receipt") {
-    gunbc.roadmap_publish.ReceiptDecoded { receipt: _ } => false
-    gunbc.roadmap_publish.ReceiptUndecodable { reason: r } =>
+    ReceiptDecoded { receipt: _ } => false
+    ReceiptUndecodable { reason: r } =>
       string_contains(s: r, pattern: "complete JSON value")
   }
 }

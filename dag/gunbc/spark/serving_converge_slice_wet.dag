@@ -227,9 +227,9 @@ fn spark_serving_replan_rows(
       linger: if linger_enabled { gunbc.spark.serving_observed_members.LingerObservedEnabled } else { gunbc.spark.serving_observed_members.LingerObservedDisabled },
     ),
   ) {
-    gunbc.spark.serving_converge_plan.SparkServingPlanArtifactRefused { cause: why } =>
+    SparkServingPlanArtifactRefused { cause: why } =>
       SparkServingReplanRowsRefused { cause: why }
-    gunbc.spark.serving_converge_plan.SparkServingPlanArtifactReady { artifact: replanned } =>
+    SparkServingPlanArtifactReady { artifact: replanned } =>
       SparkServingReplanRowsReady {
         rows: scheduled_rows_list(scheduled: replanned.spark_serving_typed_actions),
       }
@@ -295,13 +295,13 @@ fn spark_serving_replan_row_wire(
   action: gunbc.membership_reconcile.MemberAction<gunbc.spark.serving_membership.SparkServingMember, gunbc.spark.serving_membership.SparkServingMemberAt>,
 ) -> String {
   match action {
-    gunbc.membership_reconcile.MemberAdded { at: at, to: to } =>
+    MemberAdded { at: at, to: to } =>
       join([at, "=absent->", to.state_digest as String], "")
-    gunbc.membership_reconcile.MemberChanged { at: at, from: from, to: to } =>
+    MemberChanged { at: at, from: from, to: to } =>
       join([at, "=", from.state_digest as String, "->", to.state_digest as String], "")
-    gunbc.membership_reconcile.MemberRemoved { at: at, from: _ } => join([at, "=removal"], "")
-    gunbc.membership_reconcile.MemberRemovalRefused { from: _, cause: _ } => "removal-refused"
-    gunbc.membership_reconcile.MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "duplicate-key-refused"
+    MemberRemoved { at: at, from: _ } => join([at, "=removal"], "")
+    MemberRemovalRefused { from: _, cause: _ } => "removal-refused"
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "duplicate-key-refused"
   }
 }
 
@@ -325,9 +325,9 @@ fn spark_serving_converge_slice_exec_verdict(
       claimed_bundle_hex: bundle_hex,
       transport: transport,
     ) {
-      gunbc.spark.serving_converge_apply.SparkServingFrozenRemoteExecRefused { reason: why } =>
+      SparkServingFrozenRemoteExecRefused { reason: why } =>
         join(["wet-apply-refused ", why], "")
-      gunbc.spark.serving_converge_apply.SparkServingFrozenRemoteExecConvergedNoop =>
+      SparkServingFrozenRemoteExecConvergedNoop =>
         spark_serving_terminal_health_verdict(
           context: context,
           host: host,
@@ -343,9 +343,9 @@ fn spark_serving_converge_slice_exec_verdict(
           ], "")
         } else {
               match spark_serving_probe_linger(transport: transport) {
-                gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } =>
+                TypedArgvExecRefused { reason: why } =>
                   join(["wet-applied-readback-refused ", why], "")
-                gunbc.typed_argv_exec.TypedArgvExecConverged { result: post } =>
+                TypedArgvExecConverged { result: post } =>
                   if post.success == false {
                     join([
                       "wet-applied-readback-refused exit=", to_string(post.exit_code),
@@ -381,7 +381,7 @@ fn spark_serving_converge_slice_wet_host_report(
   let endpoint = fleet_probe_endpoint_for(host: host as String)
   let transport = fleet_locus_transport(context: context, host: host)
   match spark_serving_probe_linger(transport: transport) {
-    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: probe_refusal } =>
+    TypedArgvExecRefused { reason: probe_refusal } =>
       spark_serving_converge_slice_host_line(
         host: host,
         endpoint: endpoint,
@@ -391,7 +391,7 @@ fn spark_serving_converge_slice_wet_host_report(
         apply_command_count: 0,
         verdict: join(["observation-refused ", probe_refusal], ""),
       )
-    gunbc.typed_argv_exec.TypedArgvExecConverged { result: probe } =>
+    TypedArgvExecConverged { result: probe } =>
       if probe.success == false {
         spark_serving_converge_slice_host_line(
           host: host,
@@ -431,7 +431,7 @@ fn spark_serving_converge_slice_wet_host_report(
                 linger: if linger_enabled { gunbc.spark.serving_observed_members.LingerObservedEnabled } else { gunbc.spark.serving_observed_members.LingerObservedDisabled },
               ),
             ) {
-              gunbc.spark.serving_converge_plan.SparkServingPlanArtifactRefused { cause: why } =>
+              SparkServingPlanArtifactRefused { cause: why } =>
                 spark_serving_converge_slice_host_line(
                   host: host,
                   endpoint: endpoint,
@@ -441,7 +441,7 @@ fn spark_serving_converge_slice_wet_host_report(
                   apply_command_count: 0,
                   verdict: why,
                 )
-              gunbc.spark.serving_converge_plan.SparkServingPlanArtifactReady { artifact: artifact } =>
+              SparkServingPlanArtifactReady { artifact: artifact } =>
                 match fleet_converge_plan_artifact_hash(artifact: artifact) {
                   Absent =>
                     spark_serving_converge_slice_host_line(
@@ -458,7 +458,7 @@ fn spark_serving_converge_slice_wet_host_report(
                       artifact: artifact,
                       claimed_bundle_hex: hex as String,
                     ) {
-                      gunbc.spark.serving_converge_apply.SparkServingFrozenApplyRefused { reason: why } =>
+                      SparkServingFrozenApplyRefused { reason: why } =>
                         spark_serving_converge_slice_host_line(
                           host: host,
                           endpoint: endpoint,
@@ -529,7 +529,7 @@ func spark_serving_converge_slice_wet() -> std.process.ProcessExit
                 Present { value: context } => {
                   let execute_apply = spark_converge_execute_apply_from_env()
                   match spark_converge_target_selection(execute_apply: execute_apply) {
-                    gunbc.fleet_multi_principal_probe.SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+                    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
                     SparkConvergeTargetSingle { host: only } =>
                       spark_serving_converge_slice_emit_receipt(
                         context: context,
@@ -539,7 +539,7 @@ func spark_serving_converge_slice_wet() -> std.process.ProcessExit
                         hosts: [only],
                         execute_apply: execute_apply,
                       )
-                    gunbc.fleet_multi_principal_probe.SparkConvergeTargetAllObserveOnly =>
+                    SparkConvergeTargetAllObserveOnly =>
                       spark_serving_converge_slice_emit_receipt(
                         context: context,
                         now: now,
@@ -640,7 +640,7 @@ data spark_serving_converge_ci_attempt_raw: String = "spark-serving-converge-ci"
 
 func spark_serving_converge_slice_ci_wet() -> std.process.ProcessExit {
   match prepare_fleet_ssh_agent_context(attempt_raw: spark_serving_converge_ci_attempt_raw) {
-    gunbc.fleet_ssh_locus.FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)
+    FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)
     FleetSshContextReady { context: context, receipt: context_receipt } =>
       spark_serving_converge_slice_ci_with_context(context: context, context_receipt: context_receipt)
   }
@@ -653,7 +653,7 @@ func spark_serving_converge_slice_ci_with_context(
   let now = clock_now_probed_at()
   let execute_apply = spark_converge_execute_apply_from_env()
   match spark_converge_target_selection(execute_apply: execute_apply) {
-    gunbc.fleet_multi_principal_probe.SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
     SparkConvergeTargetSingle { host: only } =>
       spark_serving_converge_slice_emit_receipt(
         context: context,
@@ -663,7 +663,7 @@ func spark_serving_converge_slice_ci_with_context(
         hosts: [only],
         execute_apply: execute_apply,
       )
-    gunbc.fleet_multi_principal_probe.SparkConvergeTargetAllObserveOnly =>
+    SparkConvergeTargetAllObserveOnly =>
       spark_serving_converge_slice_emit_receipt(
         context: context,
         now: now,

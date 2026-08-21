@@ -8,9 +8,9 @@ fn wave1_gate1_d_table_fixture_arrow_accepts(o: v2.std.diagnostic.Outcome<v2.std
     Accepted { value: arrow, diagnostics: _ } =>
       match find_arrow_body_child(root: arrow) {
         Accepted { value: _, diagnostics: _ } => true
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

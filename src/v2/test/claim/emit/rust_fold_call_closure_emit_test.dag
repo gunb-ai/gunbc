@@ -33,7 +33,7 @@ test fn rust_fold_call_emit_canonical_accepts() -> v2.std.logic.Bool {
   ) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_fold_call_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -56,9 +56,9 @@ test fn rust_fold_call_emit_swap_discriminates() -> v2.std.logic.Bool {
           (canonical.carried == rust_fold_call_source_text) &&
           (dc == v2.std.diagnostic.None) &&
           (ds == v2.std.diagnostic.None)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

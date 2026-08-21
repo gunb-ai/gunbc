@@ -27,8 +27,8 @@ fn named_fact_count(children: List<v2.std.node.Edge>) -> v2.std.nat.Nat {
 
 fn density_fact(named_facts: v2.std.nat.Nat) -> SourceSpecReadFact {
   match named_facts {
-    v2.std.nat.Zero => NoFact
-    v2.std.nat.Succ { prev: p } => NamedFieldFacts { density: v2.std.cardinality.NonZeroNat { prev: p } }
+    Zero => NoFact
+    Succ { prev: p } => NamedFieldFacts { density: v2.std.cardinality.NonZeroNat { prev: p } }
   }
 }
 

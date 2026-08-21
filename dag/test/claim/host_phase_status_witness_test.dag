@@ -35,7 +35,7 @@ test fn witness_no_producer_derives_unknown_not_converged() -> Bool {
   match host_phase_verdict_from(observation: none) {
     UnknownRefused => true
     Converged => false
-    std.upsert_decision.Absent => false
+    Absent => false
     Drifted => false
     Conflict => false
     Inaccessible => false

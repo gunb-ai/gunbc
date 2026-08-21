@@ -93,11 +93,11 @@ func main() -> std.process.ProcessExit {
     current_roster_hash: current_gate_roster_hash,
   )
   match verdict {
-    gunbc.merge_admission.MergeAdmitted => std.process.ExitSuccess
-    gunbc.merge_admission.MergeDeniedStaleBase => denied_exit(verdict: verdict)
-    gunbc.merge_admission.MergeDeniedStaleRoster => denied_exit(verdict: verdict)
-    gunbc.merge_admission.MergeDeniedNotSuccess => denied_exit(verdict: verdict)
-    gunbc.merge_admission.MergeDeniedWrongAttempt => denied_exit(verdict: verdict)
-    gunbc.merge_admission.MergeDeniedSubjectMismatch => denied_exit(verdict: verdict)
+    MergeAdmitted => std.process.ExitSuccess
+    MergeDeniedStaleBase => denied_exit(verdict: verdict)
+    MergeDeniedStaleRoster => denied_exit(verdict: verdict)
+    MergeDeniedNotSuccess => denied_exit(verdict: verdict)
+    MergeDeniedWrongAttempt => denied_exit(verdict: verdict)
+    MergeDeniedSubjectMismatch => denied_exit(verdict: verdict)
   }
 }

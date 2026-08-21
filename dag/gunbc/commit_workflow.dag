@@ -1915,7 +1915,7 @@ fn witness_seam_lists_eq(left: List<std.realization_schedule.WitnessSeam>, right
 fn witness_cost_basis_eq(a: std.realization_schedule.WitnessCostBasis, b: std.realization_schedule.WitnessCostBasis) -> Bool {
   match a {
     MeasuredAtExactSubject { clock, duration, receipt } => match b {
-      std.realization_schedule.MeasuredAtExactSubject {
+      MeasuredAtExactSubject {
         clock: clock2,
         duration: duration2,
         receipt: receipt2
@@ -1927,7 +1927,7 @@ fn witness_cost_basis_eq(a: std.realization_schedule.WitnessCostBasis, b: std.re
     }
     EstimatedFromSiblingClass { clock, source_witness, basis } => match b {
       MeasuredAtExactSubject { clock: _, duration: _, receipt: _ } => false
-      std.realization_schedule.EstimatedFromSiblingClass {
+      EstimatedFromSiblingClass {
         clock: clock2,
         source_witness: source_witness2,
         basis: basis2
@@ -1975,7 +1975,7 @@ fn witness_span_eq(a: std.realization_schedule.WitnessSpan, b: std.realization_s
     SpanEnrolled { seams, cost_basis, envelope } => match b {
       SpanUndeclared => false
       SpanSeams { seams: _ } => false
-      std.realization_schedule.SpanEnrolled {
+      SpanEnrolled {
         seams: other_seams,
         cost_basis: other_basis,
         envelope: other_envelope

@@ -45,15 +45,15 @@ test fn a_mount_occupies_an_interval_derived_from_the_cited_chassis() -> Bool {
 // It is the aperture, not the rack's external height, which no cited row carries.
 test fn one_mounted_fixture_leaves_the_rest_of_the_rack_free() -> Bool {
   match test.claim.rack_mount_witness.rack_of(mounts: [rosewill_4u_asset()]) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: r } => free_units(r: r) == 14 && micrometer_count(m: rack_mounting_aperture_height(r: r)) == 800100
+    Absent => false
+    Present { value: r } => free_units(r: r) == 14 && micrometer_count(m: rack_mounting_aperture_height(r: r)) == 800100
   }
 }
 
 test fn two_hosts_stack_without_colliding() -> Bool {
   match test.claim.rack_mount_witness.rack_of(mounts: [rosewill_4u_asset(), second_rosewill_4u_asset(lowest: 5)]) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: r } => free_units(r: r) == 10
+    Absent => false
+    Present { value: r } => free_units(r: r) == 10
   }
 }
 

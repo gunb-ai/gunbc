@@ -45,7 +45,7 @@ fn resolve_decl_fact_by_qualified_name(
 
 fn skeleton_marshal_atom_lexeme_optional(node: v2.std.node.Node) -> SkeletonMarshalAtomLexeme? {
   match node.kind {
-    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } } =>
+    TypeNode { connective: v2.std.node.Atom { identity: sym } } =>
       v2.std.optional.Present { value: v2.std.compilers.lexing.symbol_lexeme(sym: sym) }
     TypeNode { connective: v2.std.node.Conj } =>
       fold(
@@ -53,8 +53,8 @@ fn skeleton_marshal_atom_lexeme_optional(node: v2.std.node.Node) -> SkeletonMars
         init: v2.std.optional.Absent,
         f: fn(acc, nested) {
           match acc {
-            v2.std.optional.Present { value: _ } => acc
-            v2.std.optional.Absent => skeleton_marshal_atom_lexeme_optional(node: nested)
+            Present { value: _ } => acc
+            Absent => skeleton_marshal_atom_lexeme_optional(node: nested)
           }
         }
       )
@@ -81,7 +81,7 @@ fn node_skeleton_marshal_atom_lexemes(node: v2.std.node.Node) -> std.types.List<
     }
   )
   match node.kind {
-    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } } =>
+    TypeNode { connective: v2.std.node.Atom { identity: sym } } =>
       std.algebra.Cons { head: v2.std.compilers.lexing.symbol_lexeme(sym: sym), tail: child_lexemes }
     _ => child_lexemes
   }
@@ -160,7 +160,7 @@ type AtomLexemeCensus {
 
 fn skeleton_edge_is_construction_spelling(e: v2.std.node.Edge) -> Bool {
   match e.label {
-    v2.std.node.Named { name: nm } => nm == ^record_construction_spelling
+    Named { name: nm } => nm == ^record_construction_spelling
     Positional => false
   }
 }
@@ -169,7 +169,7 @@ fn skeleton_atom_lexeme_census_fold(n: v2.std.node.Node) -> AtomLexemeCensus {
   let alg: v2.std.node.NodeFold<AtomLexemeCensus> = v2.std.node.NodeFold {
       init: fn(n0) {
         match n0.kind {
-          v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } } =>
+          TypeNode { connective: v2.std.node.Atom { identity: s } } =>
             AtomLexemeCensus {
               all_atom_lexemes: [v2.std.compilers.lexing.symbol_lexeme(sym: s)],
               construction_spelling_lexemes: Empty,

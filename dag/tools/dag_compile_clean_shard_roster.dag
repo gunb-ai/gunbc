@@ -58,7 +58,7 @@ fn compile_clean_module_shard_roster_from(
       CompileCleanModuleShardRosterBuilt {
         shards: map(rows, row => compile_clean_module_shard_from_decl(decl: row.value))
       }
-    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
       CompileCleanModuleShardRosterDuplicatePath {
         path: k,
         first: f.value,
@@ -121,7 +121,7 @@ fn witness_roster_nonempty_on_fixture_facts() -> Bool {
 fn witness_roster_build_admits_on_fixture_facts() -> Bool {
   match compile_clean_shard_roster_build_from(decl_facts: compile_clean_shard_roster_mechanism_fixture_facts) {
     KeyedRosterBuilt { rows: _ } => true
-    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
   }
 }
 
@@ -130,7 +130,7 @@ fn witness_roster_build_refuses_synthetic_duplicate_facts() -> Bool {
     decl_facts: compile_clean_shard_roster_mechanism_fixture_duplicate_facts
   ) {
     KeyedRosterBuilt { rows: _ } => false
-    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
       k == "dag/fixture/alpha.dag"
         && f.value.module == "fixture.alpha"
         && d.value.module == "fixture.alpha_reexport"

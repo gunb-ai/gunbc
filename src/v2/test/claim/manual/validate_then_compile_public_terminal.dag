@@ -59,7 +59,7 @@ fn claim_empty_lenses_matches_compile_core_outcome(
   actual: v2.std.diagnostic.Outcome<v2.compiler.compile.Validated<v2.compiler.compile.CompileOutput>>
 ) -> Bool {
   match actual {
-    v2.std.diagnostic.Rejected { diagnostics: r } =>
+    Rejected { diagnostics: r } =>
       r.head.reason != ^compile_lens_gate_rejected
     Accepted { value: v, diagnostics: _ } => match v.value {
       TranslateResult { source: _ } => true
@@ -72,7 +72,7 @@ fn claim_rejecting_lens_is_compile_lens_gate_rejected(
   actual: v2.std.diagnostic.Outcome<v2.compiler.compile.Validated<v2.compiler.compile.CompileOutput>>
 ) -> Bool {
   match actual {
-    v2.std.diagnostic.Rejected { diagnostics: r } =>
+    Rejected { diagnostics: r } =>
       r.head.reason == ^compile_lens_gate_rejected
     Accepted { value: _, diagnostics: _ } => false
   }

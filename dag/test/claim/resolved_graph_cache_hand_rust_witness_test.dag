@@ -6,7 +6,7 @@ data resolved_graph_cache_hand_rust_witness_note: String = "HAND-RUST checkable 
 
 test fn resolved_graph_cache_hand_rust_scaffold_is_seed_retained() -> Bool {
   match gunbc.resolved_graph_cache_hand_rust_scaffold.resolved_graph_cache_hand_rust_scaffold {
-    std.disposition.Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
     _ => false
   }
 }

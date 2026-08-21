@@ -229,9 +229,9 @@ fn type_decl_emit_row_forward_identity_holds(emitted: v2.std.node.Node) -> v2.st
         start_lhs: ^dag_production_type_decl
       ) {
         Accepted { value: recovered, diagnostics: _ } => recovered == emitted
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -264,9 +264,9 @@ fn type_decl_parse_from_emitted_source_holds(emitted: v2.std.node.Node) -> v2.st
     Accepted { value: source, diagnostics: _ } =>
       match type_decl_reparse_emitted_from_source(source: source) {
         Accepted { value: recovered, diagnostics: _ } => recovered == emitted
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -282,9 +282,9 @@ fn type_decl_source_text_emit_round_trip_with_rules(rules: v2.std.node.Node, sou
     Accepted { value: node, diagnostics: _ } =>
       match type_decl_emit_source_text_with_rules(emitted: node, rules: rules) {
         Accepted { value: emitted_text, diagnostics: _ } => emitted_text == source
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -295,7 +295,7 @@ fn type_decl_perturbed_rules_for_point_source() -> v2.std.diagnostic.Outcome<v2.
   ) {
     Accepted { value: pixel_row, diagnostics: _ } =>
       v2.std.diagnostic.outcome_accepted(value: type_decl_translation_rules_with_row(row: pixel_row))
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -307,7 +307,7 @@ fn type_decl_perturbed_row_breaks_source_roundtrip_holds() -> v2.std.logic.Bool 
           rules: perturbed_rules,
           source: type_decl_point_source_text
         )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -323,9 +323,9 @@ fn type_decl_derived_row_preserves_emitted_holds(emitted: v2.std.node.Node) -> v
     Accepted { value: row, diagnostics: _ } =>
       match v2.std.node_query.find_named_child(root: row, name: ^grammar_relation_field_emitted) {
         Accepted { value: row_emitted, diagnostics: _ } => row_emitted == emitted
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -334,9 +334,9 @@ fn type_decl_emit_derive_idempotent_holds(emitted: v2.std.node.Node) -> v2.std.l
     Accepted { value: row1, diagnostics: _ } =>
       match v2.compiler.translate.grammar_relation_row_for_emitted(rules: type_decl_rules(), emitted: emitted) {
         Accepted { value: row2, diagnostics: _ } => row1 == row2
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -405,11 +405,11 @@ fn type_decl_emit_structural_not_fixture_lookup_holds() -> v2.std.logic.Bool {
             emitted: type_decl_point_emitted()
           ) {
             Accepted { value: selected, diagnostics: _ } => selected == perturbed_row
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -418,16 +418,16 @@ fn type_decl_forward_class_spine_ambiguous_rejects_holds() -> v2.std.logic.Bool 
     Accepted { value: frontier, diagnostics: _ } =>
       match v2.compiler.ingest.grammar_relation_row_forward_selection(frontier: frontier, rules: type_decl_rules()) {
         Accepted { value: _, diagnostics: _ } => false
-        v2.std.diagnostic.Rejected { diagnostics: _ } => true
+        Rejected { diagnostics: _ } => true
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn type_decl_emit_source_text_matches_golden_holds(emitted: v2.std.node.Node, golden: String) -> v2.std.logic.Bool {
   match type_decl_emit_source_text(emitted: emitted) {
     Accepted { value: text, diagnostics: _ } => text == golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -436,9 +436,9 @@ fn type_decl_point_pixel_emit_distinct_holds() -> v2.std.logic.Bool {
     Accepted { value: point_text, diagnostics: _ } =>
       match type_decl_emit_source_text(emitted: type_decl_pixel_emitted()) {
         Accepted { value: pixel_text, diagnostics: _ } => point_text != pixel_text
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

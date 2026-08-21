@@ -43,18 +43,18 @@ fn healthz_projection_of_doc(doc: extdeps.languages.json.emit.JsonValue) -> Stri
 
 fn healthz_surface_projection(body: String) -> String? {
   match extdeps.languages.json.parse.parse_json(s: extdeps.languages.json.grammar.json_text_trim_trailing_lf(body: body)) {
-    v2.std.optional.Absent => none
-    v2.std.optional.Present { value: doc } => healthz_projection_of_doc(doc: doc)
+    Absent => none
+    Present { value: doc } => healthz_projection_of_doc(doc: doc)
   }
 }
 
 fn roadmap_site_healthz_surface_is_current(bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle, observed_body: String) -> Bool {
   match healthz_surface_projection(body: observed_body) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: observed } =>
+    Absent => false
+    Present { value: observed } =>
       match healthz_surface_projection(body: bundle.healthz_body) {
-        v2.std.optional.Absent => false
-        v2.std.optional.Present { value: expected } => observed == expected
+        Absent => false
+        Present { value: expected } => observed == expected
       }
   }
 }

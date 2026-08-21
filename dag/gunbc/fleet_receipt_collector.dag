@@ -46,15 +46,15 @@ fn parse_converge_receipt_line(line: String) -> gunbc.fleet_converge_cli.Converg
                             reason: none,
                           },
                         }
-                      gunbc.host_converge.Absent => none
+                      Absent => none
                     }
-                  gunbc.host_converge.Absent => none
+                  Absent => none
                 }
-              gunbc.host_converge.Absent => none
+              Absent => none
             }
-          gunbc.host_converge.Absent => none
+          Absent => none
         }
-      gunbc.host_converge.Absent => none
+      Absent => none
     }
   } else {
     none
@@ -74,7 +74,7 @@ fn receipt_field(tokens: List<String>, key: String) -> String? {
 fn receipt_field_or_empty(tokens: List<String>, key: String) -> String {
   match receipt_field(tokens: tokens, key: key) {
     Present { value: v } => v
-    gunbc.host_converge.Absent => ""
+    Absent => ""
   }
 }
 
@@ -112,7 +112,7 @@ fn collect_host_receipt(host: String) -> gunbc.fleet_receipt_collector.Collected
       ReceiptAbsent {
         host: host,
         cause: match c {
-          gunbc.fleet_reach_endpoint.PrincipalUnobserved { note: n } => join(["principal unobserved (no SSH attempted): ", n], "")
+          PrincipalUnobserved { note: n } => join(["principal unobserved (no SSH attempted): ", n], "")
           EndpointUnobserved { note: n } => join(["endpoint unobserved (no SSH attempted): ", n], "")
         },
       }
@@ -135,7 +135,7 @@ fn collect_host_receipt(host: String) -> gunbc.fleet_receipt_collector.Collected
 fn receipt_first_line(raw: String) -> String? {
   match split(s: raw, delimiter: "\n").first() {
     Present { value: l } => if std.algebra.trim(s: l) == "" { none } else { Present { value: std.algebra.trim(s: l) } }
-    gunbc.host_converge.Absent => none
+    Absent => none
   }
 }
 
@@ -155,14 +155,14 @@ fn classify_receipt_stdout(host: String, raw: String) -> gunbc.fleet_receipt_col
             VerdictConverged =>
               match converge_revision_observed_hex(raw: raw) {
                 Present { value: _ } => ReceiptCollected { host: host, receipt: receipt }
-                gunbc.host_converge.Absent => ReceiptConvergedUnbacked { host: host, line: line }
+                Absent => ReceiptConvergedUnbacked { host: host, line: line }
               }
-            gunbc.host_converge.Drifted => ReceiptCollected { host: host, receipt: receipt }
-            gunbc.host_converge.Absent => ReceiptCollected { host: host, receipt: receipt }
+            Drifted => ReceiptCollected { host: host, receipt: receipt }
+            Absent => ReceiptCollected { host: host, receipt: receipt }
           }
-        gunbc.host_converge.Absent => ReceiptUnparseable { host: host, line: line }
+        Absent => ReceiptUnparseable { host: host, line: line }
       }
-    gunbc.host_converge.Absent => ReceiptAbsent { host: host, cause: "receipt file empty" }
+    Absent => ReceiptAbsent { host: host, cause: "receipt file empty" }
   }
 }
 
@@ -183,7 +183,7 @@ fn converge_revision_observed_hex(raw: String) -> String? {
     if match tokens.first() { Present { value: t } => t == "converge-revision" gunbc.host_converge.Absent => false } {
       match receipt_field(tokens: tokens, key: "observed=") {
         Present { value: hex } => Present { value: hex }
-        gunbc.host_converge.Absent => acc
+        Absent => acc
       }
     } else {
       acc

@@ -2466,33 +2466,33 @@ data roadmap_acceptance_history_note: String = "roadmap_acceptance_event_history
 
 fn roadmap_acceptance_receipts_from_carrier_text(text: String) -> RoadmapAcceptanceReceiptsProjection {
   match load_roadmap_acceptance_event_history_from_carrier_text(text: text) {
-    gunbc.roadmap_acceptance_history_carrier.RoadmapAcceptanceEventHistoryLoaded { events: events } =>
+    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
       RoadmapAcceptanceReceiptsProjected {
         receipts: project_live_acceptance_receipts(history: events),
       }
-    gunbc.roadmap_acceptance_history_carrier.RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
       RoadmapAcceptanceReceiptsProjectionRefused { detail: detail }
   }
 }
 
 fn roadmap_acceptance_receipts() -> RoadmapAcceptanceReceiptsProjection {
   match roadmap_acceptance_event_history_load() {
-    gunbc.roadmap_acceptance_history_carrier.RoadmapAcceptanceEventHistoryLoaded { events: events } =>
+    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
       RoadmapAcceptanceReceiptsProjected {
         receipts: project_live_acceptance_receipts(history: events),
       }
-    gunbc.roadmap_acceptance_history_carrier.RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
       RoadmapAcceptanceReceiptsProjectionRefused { detail: detail }
   }
 }
 
 fn roadmap_acceptance_history_integrity_verdict_on_authority() -> gunbc.roadmap_model.AcceptanceHistoryIntegrityVerdict {
   match roadmap_acceptance_event_history_load() {
-    gunbc.roadmap_acceptance_history_carrier.RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
       gunbc.roadmap_model.AcceptanceHistoryIntegrityRefusedPriorHistoryObservation {
         detail: concat("current history load refused: ", detail),
       }
-    gunbc.roadmap_acceptance_history_carrier.RoadmapAcceptanceEventHistoryLoaded { events: current } =>
+    RoadmapAcceptanceEventHistoryLoaded { events: current } =>
       acceptance_history_integrity_verdict_from_prior_observation(
         observation: current_roadmap_acceptance_history_prior_observation(current_history: current),
         history: current,
@@ -2502,11 +2502,11 @@ fn roadmap_acceptance_history_integrity_verdict_on_authority() -> gunbc.roadmap_
 
 fn roadmap_acceptance_history_integrity_holds() -> Bool {
   match roadmap_acceptance_history_integrity_verdict_on_authority() {
-    gunbc.roadmap_model.AcceptanceHistoryIntegrityHolds => true
-    gunbc.roadmap_model.AcceptanceHistoryIntegrityRefusedReplay => false
-    gunbc.roadmap_model.AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: _ } => false
-    gunbc.roadmap_model.AcceptanceHistoryIntegrityRefusedPriorPrefix { index: _ } => false
-    gunbc.roadmap_model.AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: _ } => false
+    AcceptanceHistoryIntegrityHolds => true
+    AcceptanceHistoryIntegrityRefusedReplay => false
+    AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation { receipt: _ } => false
+    AcceptanceHistoryIntegrityRefusedPriorPrefix { index: _ } => false
+    AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: _ } => false
   }
 }
 

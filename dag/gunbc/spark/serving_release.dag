@@ -454,10 +454,10 @@ fn plan_row_verdict_admitted(row: SparkServingPlanRow) -> SparkServingPlanVerdic
 
 fn privilege_verdict(shortfall: gunbc.spark.serving_realization.EscalationShortfall) -> SparkServingPlanVerdict {
   match shortfall {
-    gunbc.spark.serving_realization.NoNewPrivilegeRequired => ServingReadyToApply
-    gunbc.spark.serving_realization.NewPrivilegeRequired { first: f, more: _ } => ServingBlockedOnPrivilege { first_missing: f }
-    gunbc.spark.serving_realization.ShortfallUndecidable { cause: c } => ServingBlockedOnObservation { cause: c }
-    gunbc.spark.serving_realization.ShortfallEvidenceMismatch { cause: c } => ServingEvidenceMismatch { cause: c }
+    NoNewPrivilegeRequired => ServingReadyToApply
+    NewPrivilegeRequired { first: f, more: _ } => ServingBlockedOnPrivilege { first_missing: f }
+    ShortfallUndecidable { cause: c } => ServingBlockedOnObservation { cause: c }
+    ShortfallEvidenceMismatch { cause: c } => ServingEvidenceMismatch { cause: c }
   }
 }
 

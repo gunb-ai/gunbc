@@ -3,6 +3,6 @@ module v2.test.claim_pipeline.infer
 test fn spine_infer_accepts_resolved_tree() -> v2.std.logic.Bool {
   match v2.compiler.infer.infer(tree: v2.test.manual.infer_ground_add.fixture_add_resolved_tree()) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

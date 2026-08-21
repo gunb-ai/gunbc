@@ -22,12 +22,12 @@ data codex_runtime_provision_argv_note: String = "The observe/read-back argv bui
 
 fn provision_codex_runtime_routes_through_host_effect_apply() -> Bool {
   match host_codex_runtime_provision_realize_scaffold {
-    std.disposition.Scaffold {
+    Scaffold {
       dissolves_to: RealizationDispatch,
       bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
     } =>
       m == "gunbc.host_effect_realize" && n == "realize_provision_codex_runtime"
-    std.disposition.Terminal { reason: _ } => false
+    Terminal { reason: _ } => false
   }
 }
 

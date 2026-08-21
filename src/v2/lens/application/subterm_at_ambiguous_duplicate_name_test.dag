@@ -32,7 +32,7 @@ test fn subterm_at_ambiguous_duplicate_name_claim_holds() -> v2.std.logic.Bool {
     root: ambiguous_duplicate_name_root,
     path: v2.std.node.Path { steps: [^ambiguous_dup_step] }
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }

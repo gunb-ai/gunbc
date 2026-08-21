@@ -13,9 +13,9 @@ fn pa_admitted(o: v2.compiler.self_host.promotion_admission.PromotionOutcome) ->
 
 fn pa_artifact(hex: String) -> v2.compiler.self_host.generation.GeneratedArtifactIdentity {
   match sha512_hex_digest(hex: hex) {
-    v2.std.optional.Present { value: d } =>
+    Present { value: d } =>
       v2.compiler.self_host.generation.ArtifactMaterialized { digest: v2.compiler.self_host.generation.observed_artifact_digest(observed: d) }
-    v2.std.optional.Absent => v2.compiler.self_host.generation.ArtifactNotMaterialized
+    Absent => v2.compiler.self_host.generation.ArtifactNotMaterialized
   }
 }
 

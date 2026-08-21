@@ -52,9 +52,9 @@ test fn witness_a_process_stating_the_trees_revision_is_bound() -> Bool {
     Absent => false
     Present { value: t } =>
       match deployed_release_binding(observation: t, identity: process_saying(hex: hex_a, surface: probe_surface())) {
-        gunbc.live_deploy.release_binding.ReleaseBoundToTree { revision: r } => (git_object_id_wire_hex(oid: r) as String) == hex_a
-        gunbc.live_deploy.release_binding.ReleaseMixed { tree_revision: _, process_revision: _ } => false
-        gunbc.live_deploy.release_binding.ReleaseBindingUnobserved { cause: _ } => false
+        ReleaseBoundToTree { revision: r } => (git_object_id_wire_hex(oid: r) as String) == hex_a
+        ReleaseMixed { tree_revision: _, process_revision: _ } => false
+        ReleaseBindingUnobserved { cause: _ } => false
       }
   }
 }
@@ -65,10 +65,10 @@ test fn witness_a_process_stating_another_revision_is_mixed_and_names_both() -> 
     Absent => false
     Present { value: t } =>
       match deployed_release_binding(observation: t, identity: process_saying(hex: hex_b, surface: probe_surface())) {
-        gunbc.live_deploy.release_binding.ReleaseMixed { tree_revision: tr, process_revision: pr } =>
+        ReleaseMixed { tree_revision: tr, process_revision: pr } =>
           (git_object_id_wire_hex(oid: tr) as String) == hex_a && (pr as String) == hex_b
-        gunbc.live_deploy.release_binding.ReleaseBoundToTree { revision: _ } => false
-        gunbc.live_deploy.release_binding.ReleaseBindingUnobserved { cause: _ } => false
+        ReleaseBoundToTree { revision: _ } => false
+        ReleaseBindingUnobserved { cause: _ } => false
       }
   }
 }
@@ -87,9 +87,9 @@ test fn witness_modifications_do_not_change_the_binding() -> Bool {
         },
         identity: process_saying(hex: hex_a, surface: probe_surface()),
       ) {
-        gunbc.live_deploy.release_binding.ReleaseBoundToTree { revision: _ } => true
-        gunbc.live_deploy.release_binding.ReleaseMixed { tree_revision: _, process_revision: _ } => false
-        gunbc.live_deploy.release_binding.ReleaseBindingUnobserved { cause: _ } => false
+        ReleaseBoundToTree { revision: _ } => true
+        ReleaseMixed { tree_revision: _, process_revision: _ } => false
+        ReleaseBindingUnobserved { cause: _ } => false
       }
   }
 }
@@ -99,9 +99,9 @@ test fn witness_an_unreadable_tree_makes_the_binding_undecidable() -> Bool {
     observation: gunbc.live_deploy.deployed_tree_observation.DeployedTreeUnobservable { cause: gunbc.live_deploy.deployed_tree_observation.TreeLegNotAttempted { leg: "revision", reason: "ssh refused" } },
     identity: process_saying(hex: hex_a, surface: probe_surface()),
   ) {
-    gunbc.live_deploy.release_binding.ReleaseBindingUnobserved { cause: c } => string_contains(s: c, pattern: "ssh refused")
-    gunbc.live_deploy.release_binding.ReleaseBoundToTree { revision: _ } => false
-    gunbc.live_deploy.release_binding.ReleaseMixed { tree_revision: _, process_revision: _ } => false
+    ReleaseBindingUnobserved { cause: c } => string_contains(s: c, pattern: "ssh refused")
+    ReleaseBoundToTree { revision: _ } => false
+    ReleaseMixed { tree_revision: _, process_revision: _ } => false
   }
 }
 
@@ -114,9 +114,9 @@ test fn witness_a_process_stating_no_identity_makes_the_binding_undecidable() ->
         observation: t,
         identity: gunbc.running_release_identity.RunningReleaseUnidentified { cause: gunbc.running_release_identity.ReleaseRevisionAbsent },
       ) {
-        gunbc.live_deploy.release_binding.ReleaseBindingUnobserved { cause: _ } => true
-        gunbc.live_deploy.release_binding.ReleaseBoundToTree { revision: _ } => false
-        gunbc.live_deploy.release_binding.ReleaseMixed { tree_revision: _, process_revision: _ } => false
+        ReleaseBindingUnobserved { cause: _ } => true
+        ReleaseBoundToTree { revision: _ } => false
+        ReleaseMixed { tree_revision: _, process_revision: _ } => false
       }
   }
 }

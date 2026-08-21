@@ -41,12 +41,12 @@ type ResidualReapAction
 
 fn unit_is_inactive_for_reap(s: extdeps.systemd.SystemdUnitActiveState) -> Bool {
   match s {
-    extdeps.systemd.Active => false
+    Active => false
     Activating => false
     Deactivating => false
     Reloading => false
-    extdeps.systemd.Inactive => true
-    extdeps.systemd.Failed => true
+    Inactive => true
+    Failed => true
   }
 }
 

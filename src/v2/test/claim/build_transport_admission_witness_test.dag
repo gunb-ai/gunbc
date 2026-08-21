@@ -8,7 +8,7 @@ data build_transport_admission_witness_note: String = "Discriminating witnesses 
 
 test fn emit_host_access_decision_seed_transport_is_declared_scaffold() -> Bool {
   match v2.compiler.emit_host.emit_host_access_decision_seed_transport_scaffold {
-    std.disposition.Scaffold { dissolves_to: _, bind: bind } =>
+    Scaffold { dissolves_to: _, bind: bind } =>
       bind.module_path == "v1_compiler.v1_interpreter"
         && bind.decl_name == "require_permitted_transport"
         && string_contains(
@@ -85,14 +85,14 @@ data contained_arg_transport: v2.std.host_transport.HostTransportDescriptor = tr
 fn is_admitted(a: std.access.AccessDecision) -> Bool {
   match a {
     Permit => true
-    std.access.Deny { refusal: refusal } => false
+    Deny { refusal: refusal } => false
   }
 }
 
 fn is_refused(a: std.access.AccessDecision) -> Bool {
   match a {
     Permit => false
-    std.access.Deny { refusal: refusal } => true
+    Deny { refusal: refusal } => true
   }
 }
 
@@ -110,7 +110,7 @@ test fn build_transport_refuses_absolute_write() -> Bool {
 
 test fn build_transport_refusal_is_located() -> Bool {
   match build_transport_admissible(transport: escaping_transport) {
-    std.access.Deny { refusal: refusal } =>
+    Deny { refusal: refusal } =>
       refusal.location.profile == "EffectRequest"
         && refusal.location.action == "write"
         && refusal.location.object == "../etc/passwd"

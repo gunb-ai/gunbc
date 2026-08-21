@@ -248,7 +248,7 @@ test fn direct_duplicate_boundary_literal_reaches_typed_counted_refusal() -> Boo
     capability: Present { value: current_capability() },
     evidence: [matching_evidence()],
   ) {
-    std.state_durability.StateDurabilityRefused {
+    StateDurabilityRefused {
       cause: DurabilityRequirementDuplicate {
         boundary: boundary,
         count: count,
@@ -309,7 +309,7 @@ test fn positive_measure_count_build_executes_positive_arm() -> Bool {
 
 test fn caller_asserted_definitions_cannot_buy_durable_qualification() -> Bool {
   match durable_verdict(evidence: [matching_evidence()]) {
-    std.state_durability.StateDurabilityRefused {
+    StateDurabilityRefused {
       cause: DurabilityDefinitionLinkageUnavailable {
         realization: realization,
         capability: capability,
@@ -342,7 +342,7 @@ test fn realization_identity_change_invalidates_old_receipt() -> Bool {
     },
     evidence: [],
   ) {
-    std.state_durability.StateDurabilityRefused {
+    StateDurabilityRefused {
       cause: DurabilityCapabilityAdmissionMismatch {
         expected_realization: _,
         observed_realization: _,
@@ -371,7 +371,7 @@ test fn capability_definition_change_invalidates_old_receipt() -> Bool {
     },
     evidence: [],
   ) {
-    std.state_durability.StateDurabilityRefused {
+    StateDurabilityRefused {
       cause: DurabilityCapabilityAdmissionMismatch {
         expected_realization: _,
         observed_realization: _,

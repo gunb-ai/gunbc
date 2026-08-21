@@ -187,10 +187,10 @@ fn ci_subject_detail_text(subject: std.observation.ObservationSubject) -> String
 
 fn ci_outcome_text(o: std.observation.ObservationOutcome) -> String {
   match o {
-    std.observation.Done => "done"
-    std.observation.Refused { diagnostic: d } => concat("refused: ", d)
-    std.observation.Failed { error: e, output: _ } => concat("failed: ", e)
-    std.observation.TimedOut { basis: k, budget: b, elapsed: e } =>
+    Done => "done"
+    Refused { diagnostic: d } => concat("refused: ", d)
+    Failed { error: e, output: _ } => concat("failed: ", e)
+    TimedOut { basis: k, budget: b, elapsed: e } =>
       concat(
         "timed out after ",
         concat(
@@ -204,7 +204,7 @@ fn ci_outcome_text(o: std.observation.ObservationOutcome) -> String {
           )
         )
       )
-    std.observation.Skipped { reason: r } => concat("skipped: ", r)
+    Skipped { reason: r } => concat("skipped: ", r)
     Final { shown_failures: n } => concat("finished with ", concat(to_string(n), " problems shown"))
   }
 }
@@ -225,7 +225,7 @@ fn ci_event_line_at_attention(event: std.observation.ObservationEvent, attention
   match event.transition {
     Begin =>
       RenderedLine { glyph: presentation.glyph, text: concat("started ", subject), attention: attention }
-    std.observation.Step { k: k, n: n } =>
+    Step { k: k, n: n } =>
       RenderedLine {
         glyph: presentation.glyph,
         text: concat(subject, concat(": ", concat(to_string(k), concat(" of ", to_string(n))))),

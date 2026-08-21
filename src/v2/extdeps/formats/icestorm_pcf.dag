@@ -66,11 +66,11 @@ fn pcf_emit(c: PcfConstraints) -> PcfEmission {
     empty: optional_present(value: ""),
     cons: fn(acc, s) {
       match acc {
-        v2.std.optional.Absent => optional_absent()
-        v2.std.optional.Present { value: text } =>
+        Absent => optional_absent()
+        Present { value: text } =>
           match pcf_statement_line(s: s) {
-            v2.std.optional.Absent => optional_absent()
-            v2.std.optional.Present { value: line } =>
+            Absent => optional_absent()
+            Present { value: line } =>
               if text == "" {
                 optional_present(value: line)
               } else {
@@ -80,7 +80,7 @@ fn pcf_emit(c: PcfConstraints) -> PcfEmission {
       }
     }
   ) {
-    v2.std.optional.Present { value: text } => PcfEmitted { source: pcf_text_concat(left: text, right: "\n") }
-    v2.std.optional.Absent => PcfEmissionRefused { reason: "a port or pin name is not spellable in a physical constraint file" }
+    Present { value: text } => PcfEmitted { source: pcf_text_concat(left: text, right: "\n") }
+    Absent => PcfEmissionRefused { reason: "a port or pin name is not spellable in a physical constraint file" }
   }
 }

@@ -83,6 +83,6 @@ test fn substitute_at_depth_three_claim_holds() -> v2.std.logic.Bool {
     replacement: depth_three_replacement_leaf
   ) {
     Accepted { value: n, diagnostics: _ } => n == depth_three_expected_root
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

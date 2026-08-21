@@ -86,7 +86,7 @@ fn workflow_run_event_required_string_at(v: extdeps.languages.json.emit.JsonValu
       WorkflowRunEventTextFailed { observation: o }
     WorkflowRunEventMemberFound { value: found } =>
       match found {
-        extdeps.languages.json.emit.JsonString { value: s } =>
+        JsonString { value: s } =>
           if s == "" {
             WorkflowRunEventTextFailed {
               observation: WorkflowRunEventMemberMalformed { member: key, detail: "member is the empty string" }
@@ -94,7 +94,7 @@ fn workflow_run_event_required_string_at(v: extdeps.languages.json.emit.JsonValu
           } else {
             WorkflowRunEventTextFound { text: s }
           }
-        extdeps.languages.json.emit.JsonNumber { lexeme: _ } =>
+        JsonNumber { lexeme: _ } =>
           WorkflowRunEventTextFailed {
             observation: WorkflowRunEventMemberMalformed { member: key, detail: "member is a number, expected a string" }
           }
@@ -126,9 +126,9 @@ fn workflow_run_event_numeric_identity_at(v: extdeps.languages.json.emit.JsonVal
       WorkflowRunEventTextFailed { observation: o }
     WorkflowRunEventMemberFound { value: found } =>
       match found {
-        extdeps.languages.json.emit.JsonNumber { lexeme: l } =>
+        JsonNumber { lexeme: l } =>
           WorkflowRunEventTextFound { text: l as String }
-        extdeps.languages.json.emit.JsonString { value: s } =>
+        JsonString { value: s } =>
           if s == "" {
             WorkflowRunEventTextFailed {
               observation: WorkflowRunEventMemberMalformed { member: key, detail: "run id is the empty string" }

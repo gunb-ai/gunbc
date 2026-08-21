@@ -171,7 +171,7 @@ test fn w_change_projects_to_effect_replace_with_both_sides() -> Bool {
                EffectAdd { to: _ } => false
                EffectRemove { from: _ } => false
              })
-    gunbc.membership_reconcile.ApplyRefused { refusals: _ } => false
+    ApplyRefused { refusals: _ } => false
   }
 }
 
@@ -183,7 +183,7 @@ test fn w_effects_refuses_wholesale_on_any_refusal() -> Bool {
     observed: [tm_owned(mid: "o", ver: "1"), tm_ensured(mid: "e", ver: "1")],
   )
   match gunbc.membership_reconcile.membership_effects(plan: plan) {
-    gunbc.membership_reconcile.ApplyRefused { refusals: rs } =>
+    ApplyRefused { refusals: rs } =>
       count(rs) == 1
         && any(rs, r =>
              r.member.mid == "e"
@@ -197,7 +197,7 @@ test fn w_effects_ready_when_no_refusal() -> Bool {
   match gunbc.membership_reconcile.membership_effects(plan: plan) {
     EffectsReady { effects: es } =>
       count(es) == 1 && effects_has_teardown(es: es, mid: "o")
-    gunbc.membership_reconcile.ApplyRefused { refusals: _ } => false
+    ApplyRefused { refusals: _ } => false
   }
 }
 
@@ -305,7 +305,7 @@ test fn w_duplicate_plain_key_refuses_with_roster_cause() -> Bool {
     }
   )
     && match gunbc.membership_reconcile.membership_effects(plan: plan) {
-      gunbc.membership_reconcile.ApplyRefused { refusals: rs } =>
+      ApplyRefused { refusals: rs } =>
         count(rs) == 1
           && any(rs, r =>
                r.member.mid == "dup"

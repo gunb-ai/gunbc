@@ -13,11 +13,11 @@ test fn inhabitant_neutralization_python_to_ts_cross_language_compile_refuses_un
         source_model: python_target_model(),
         target_model: ts_target_model()
       ) {
-        v2.std.diagnostic.Rejected { diagnostics: d } =>
+        Rejected { diagnostics: d } =>
           d.head.reason == ^infer_grounding_not_derived
         Accepted { value: _, diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -29,11 +29,11 @@ test fn inhabitant_neutralization_python_to_go_cross_language_compile_refuses_un
         source_model: python_target_model(),
         target_model: go_target_model()
       ) {
-        v2.std.diagnostic.Rejected { diagnostics: d } =>
+        Rejected { diagnostics: d } =>
           d.head.reason == ^infer_grounding_not_derived
         Accepted { value: _, diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -45,11 +45,11 @@ test fn inhabitant_neutralization_python_to_go_discriminates_on_real_tree() -> v
         source_model: python_target_model(),
         target_model: go_target_model()
       ) {
-        v2.std.diagnostic.Rejected { diagnostics: d } =>
+        Rejected { diagnostics: d } =>
           d.head.reason == ^infer_grounding_not_derived
         Accepted { value: _, diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -67,12 +67,12 @@ test fn inhabitant_neutralization_python_to_go_translate_rejects() -> v2.std.log
       match infer(tree: neutralized) {
         Accepted { value: inferred, diagnostics: _ } =>
           match translate(tree: inferred, target: go_target_model()) {
-            v2.std.diagnostic.Rejected { diagnostics: _ } => true
+            Rejected { diagnostics: _ } => true
             Accepted { value: _, diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -85,11 +85,11 @@ test fn inhabitant_neutralization_python_to_go_emit_rejects() -> v2.std.logic.Bo
       match infer(tree: neutralized) {
         Accepted { value: inferred, diagnostics: _ } =>
           match v2.compiler.emit.emit(tree: inferred, target: go_target_model()) {
-            v2.std.diagnostic.Rejected { diagnostics: _ } => true
+            Rejected { diagnostics: _ } => true
             Accepted { value: _, diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

@@ -3,14 +3,14 @@ module test.claim.spark_serving_model_materialization_witness
 
 fn step_identities() -> std.types.List<String> {
   match spark_serving_materialize_model_artifact_steps() {
-    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => []
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => []
     SparkServingInstallRemoteCommandsPresent { steps: sts } => map(sts, st => st.identity as String)
   }
 }
 
 fn step_argvs() -> std.types.List<std.types.List<String>> {
   match spark_serving_materialize_model_artifact_steps() {
-    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => []
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => []
     SparkServingInstallRemoteCommandsPresent { steps: sts } =>
       remote_operations_argv_only(operations: map(sts, st => st.operation))
   }
@@ -129,7 +129,7 @@ test fn the_materializer_never_shells_out_to_ollama_pull() -> Bool {
 // body; this sequence must not, or there are two authorities for one file.
 test fn the_materialization_does_not_own_the_probes_request_body() -> Bool {
   match spark_serving_materialize_model_artifact_steps() {
-    gunbc.spark.serving_converge_realize.SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
     SparkServingInstallRemoteCommandsPresent { steps: steps } =>
       !any(steps, s => (s.identity as String) == "write-health-request-body")
   }

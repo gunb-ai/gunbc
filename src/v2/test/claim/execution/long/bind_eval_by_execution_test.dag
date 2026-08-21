@@ -71,7 +71,7 @@ fn bind_allocate_literal(node: v2.std.node.Node, _env: v2.std.runtime.Evaluation
         } else {
           v2.std.diagnostic.outcome_rejected(d: bind_runtime_diagnostic(n: node))
         }
-      v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+      Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
   } else {
     v2.std.diagnostic.outcome_rejected(d: bind_runtime_diagnostic(n: node))
@@ -251,14 +251,14 @@ fn bind_run_passes(run: v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaimRun<
         Pass => true
         _ => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn bind_source_pipeline_admits_holds() -> v2.std.logic.Bool {
   match v2.test.complexity_gate.table_fixture_bind_subject_producer.table_fixture_bind_arrow_with_body() {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -271,7 +271,7 @@ test fn bind_source_driven_executes_holds() -> v2.std.logic.Bool {
           expected: bind_literal_one_node()
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -293,10 +293,10 @@ test fn bind_direct_runtime_holds() -> v2.std.logic.Bool {
               bind_runtime_int_is_one(value: actual)
             _ => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
     }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -309,7 +309,7 @@ test fn bind_value_perturbation_red_holds() -> v2.std.logic.Bool {
           expected: bind_literal_two_node()
         )
       ) == false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -322,7 +322,7 @@ test fn bind_fixture_producer_holds() -> v2.std.logic.Bool {
           expected: bind_literal_one_node()
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -335,7 +335,7 @@ test fn bind_fixture_wrong_value_red_holds() -> v2.std.logic.Bool {
           expected: bind_literal_one_node()
         )
       ) == false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -348,7 +348,7 @@ test fn bind_census_ingested_executes_holds() -> v2.std.logic.Bool {
           expected: bind_literal_one_node()
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -361,7 +361,7 @@ test fn bind_census_ingested_wrong_value_red_holds() -> v2.std.logic.Bool {
           expected: bind_literal_one_node()
         )
       ) == false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

@@ -311,13 +311,13 @@ func admit_fleet_desired_from_floor_event_wet() -> ProcessExit {
             }
           }
       }
-    extdeps.github.workflow_run_event.WorkflowRunEventMemberAbsent { member: m } =>
+    WorkflowRunEventMemberAbsent { member: m } =>
       std.process.exit_failure(reason: concat("fleet_desired_admission: floor run event payload is missing a required member: ", m))
-    extdeps.github.workflow_run_event.WorkflowRunEventMemberMalformed { member: m, detail: d } =>
+    WorkflowRunEventMemberMalformed { member: m, detail: d } =>
       std.process.exit_failure(reason: join(["fleet_desired_admission: floor run event member ", m, " is malformed: ", d], ""))
-    extdeps.github.workflow_run_event.WorkflowRunEventMalformed { detail: d } =>
+    WorkflowRunEventMalformed { detail: d } =>
       std.process.exit_failure(reason: concat("fleet_desired_admission: floor run event payload is malformed: ", d))
-    extdeps.github.workflow_run_event.WorkflowRunEventPayloadReadRefused { path: p, cause: c } =>
+    WorkflowRunEventPayloadReadRefused { path: p, cause: c } =>
       std.process.exit_failure(reason: join(["fleet_desired_admission: floor run event payload could not be read at ", p, ": ", c], ""))
   }
 }

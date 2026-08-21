@@ -25,7 +25,7 @@ fn retention_diagnostic() -> v2.std.diagnostic.Diagnostic {
 
 fn is_rejected(o: v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree>) -> v2.std.logic.Bool {
   match o {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
@@ -67,7 +67,7 @@ test fn an_unrelated_diagnostic_does_not_refuse_RED() -> v2.std.logic.Bool {
 test fn the_production_retention_producer_is_refused_by_the_door() -> v2.std.logic.Bool {
   match body_lower_wrapper_retained_shell(shell: v2.test.claim.normalized_tree_admission.probe_shell()) {
     Accepted { value: v, diagnostics: d } => v2.test.claim.normalized_tree_admission.is_rejected(o: admit_normalized_tree(root: v, diagnostics: d))
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -82,7 +82,7 @@ test fn plural_admission_does_not_duplicate_shared_diagnostics_RED() -> v2.std.l
       diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: v2.test.claim.normalized_tree_admission.unrelated_diagnostic(), tail: [] }
     }
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
       diagnostics_eq(
         a: d,
@@ -100,7 +100,7 @@ test fn plural_admission_refuses_a_retained_batch() -> v2.std.logic.Bool {
       diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: retention_diagnostic(), tail: [] }
     }
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }

@@ -23,7 +23,7 @@ fn rust_match_emit_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.comp
         value: rust_match_emit_inferred_tree_for(root: root),
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -34,7 +34,7 @@ fn rust_match_emit_swapped_producer_inferred_tree() -> v2.std.diagnostic.Outcome
         value: rust_match_emit_inferred_tree_for(root: root),
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -60,7 +60,7 @@ test fn rust_match_emit_one_or_two_accepts() -> v2.std.logic.Bool {
   match rust_match_emit_from_tree(target: rust_match_target_model_staging()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_match_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -70,7 +70,7 @@ test fn rust_match_emit_swapped_arms_discriminates() -> v2.std.logic.Bool {
       (source.carried == rust_match_emit_swapped_source_text) &&
       (source.carried != rust_match_source_text) &&
       (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

@@ -92,7 +92,7 @@ test fn effect_io_pure_absent_lookup_is_fail_closed_holds() -> v2.std.logic.Bool
     handler: read_handler,
     request: effect_io_pure_read_request(args: read_args)
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
@@ -108,7 +108,7 @@ test fn effect_io_host_read_fail_closed_holds() -> v2.std.logic.Bool {
     handler: read_handler,
     request: effect_io_pure_read_request(args: read_args)
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }

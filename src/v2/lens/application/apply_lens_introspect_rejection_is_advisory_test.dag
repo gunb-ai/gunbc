@@ -27,7 +27,7 @@ fn apply_lens_mode_gate_rejects_enforce() -> v2.std.logic.Bool {
     inferred: apply_lens_mode_tree(),
     mode: v2.compiler.compile.CompileLensEnforce
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
+    Rejected { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
     Accepted { value: _, diagnostics: _ } => false
   }
 }
@@ -55,7 +55,7 @@ fn apply_lens_mode_gate_is_advisory_in_introspect() -> v2.std.logic.Bool {
     Accepted { value: w, diagnostics: od } =>
       introspect_witness_violates_reason_matches(w: w) &&
       introspect_diagnostics_head_reason_matches(od: od)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

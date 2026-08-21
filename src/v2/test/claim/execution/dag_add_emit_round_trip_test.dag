@@ -100,7 +100,7 @@ data dag_add_emit_receipt: v2.std.diagnostic.Outcome<Medium<String>> = anchor_da
 
 fn dag_add_coercion_quality_is_faithful(q: v2.std.coercion.CoercionQuality) -> v2.std.logic.Bool {
   match q {
-    v2.std.coercion.Exact => true
+    Exact => true
     Identity => true
     Widened => false
   }
@@ -115,9 +115,9 @@ test fn dag_add_emit_matches_serialize_holds() -> v2.std.logic.Bool {
       match dag_add_emit_receipt {
         Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -127,7 +127,7 @@ test fn dag_add_grammar_inverse_holds() -> v2.std.logic.Bool {
     emitted: dag_add_emitted_root
   ) {
     Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -141,7 +141,7 @@ test fn dag_add_ingest_via_coerce_matches_canonical() -> v2.std.logic.Bool {
       (result.target == dag_fixture_emitted_add_fn)
         && dag_add_coercion_quality_is_faithful(q: result.quality)
         && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -152,7 +152,7 @@ test fn dag_add_domain_coerce_accepts_holds() -> v2.std.logic.Bool {
     target: dag_add_target_model
   ) {
     Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -165,14 +165,14 @@ test fn dag_add_domain_translate_accepts_holds() -> v2.std.logic.Bool {
     target: dag_add_target_model
   ) {
     Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn dag_add_translate_accepts_holds() -> v2.std.logic.Bool {
   match translate_emitted_node(tree: dag_add_inferred_tree, target: dag_add_target_model) {
     Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

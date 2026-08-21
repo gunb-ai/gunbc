@@ -898,10 +898,10 @@ fn spark_plan_demand(
 ) -> DemandProjection {
   fold(selected, init: DemandDerived { cells: no_access_demand }, f: (acc, sel) =>
     match acc {
-      gunbc.spark.bootstrap_provision.DemandIncomplete { step: st, operation: o, cause: c } => gunbc.spark.bootstrap_provision.DemandIncomplete { step: st, operation: o, cause: c }
+      DemandIncomplete { step: st, operation: o, cause: c } => gunbc.spark.bootstrap_provision.DemandIncomplete { step: st, operation: o, cause: c }
       DemandDerived { cells: got } =>
         match spark_demand_for_selected(selected: sel, executor: executor, context: context) {
-          gunbc.spark.bootstrap_provision.DemandIncomplete { step: st, operation: o, cause: c } => gunbc.spark.bootstrap_provision.DemandIncomplete { step: st, operation: o, cause: c }
+          DemandIncomplete { step: st, operation: o, cause: c } => gunbc.spark.bootstrap_provision.DemandIncomplete { step: st, operation: o, cause: c }
           DemandDerived { cells: more } =>
             DemandDerived { cells: fold(more, init: got, f: (inner, c) => inner |> list_push(c)) }
         }

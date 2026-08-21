@@ -606,7 +606,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
 
 fn witness_exclusion_row_is_offline(row: gunbc.ci_layer_roots.WitnessExclusionRow) -> Bool {
   match row.classification {
-    std.witness_admission.OfflineLocalRecipe => true
+    OfflineLocalRecipe => true
     DiscoverySelection => false
     FalsifierSelfHostWet => false
     FalsifierRehomedBinWet => false
@@ -627,7 +627,7 @@ fn witness_exclusion_row_is_fixture(row: gunbc.ci_layer_roots.WitnessExclusionRo
     FalsifierSubstrateLongLane => false
     BinWitnessWet => false
     QuarantineProbeExpectRed => false
-    std.witness_admission.OfflineLocalRecipe => false
+    OfflineLocalRecipe => false
     NoConsumer => false
   }
 }
@@ -640,7 +640,7 @@ fn witness_exclusion_row_is_discovery_selection(row: gunbc.ci_layer_roots.Witnes
     FalsifierSubstrateLongLane => false
     BinWitnessWet => false
     QuarantineProbeExpectRed => false
-    std.witness_admission.OfflineLocalRecipe => false
+    OfflineLocalRecipe => false
     FixtureExplicitRoster => false
     NoConsumer => false
   }
@@ -654,7 +654,7 @@ fn witness_exclusion_row_is_rehomed_bin_wet(row: gunbc.ci_layer_roots.WitnessExc
     DiscoverySelection => false
     FalsifierSelfHostWet => false
     QuarantineProbeExpectRed => false
-    std.witness_admission.OfflineLocalRecipe => false
+    OfflineLocalRecipe => false
     FixtureExplicitRoster => false
     NoConsumer => false
   }
@@ -668,7 +668,7 @@ fn witness_exclusion_row_is_substrate_long_lane(row: gunbc.ci_layer_roots.Witnes
     DiscoverySelection => false
     FalsifierSelfHostWet => false
     QuarantineProbeExpectRed => false
-    std.witness_admission.OfflineLocalRecipe => false
+    OfflineLocalRecipe => false
     FixtureExplicitRoster => false
     NoConsumer => false
   }
@@ -682,7 +682,7 @@ fn witness_exclusion_row_is_bin_witness_wet(row: gunbc.ci_layer_roots.WitnessExc
     FalsifierRehomedBinWet => false
     FalsifierSubstrateLongLane => false
     QuarantineProbeExpectRed => false
-    std.witness_admission.OfflineLocalRecipe => false
+    OfflineLocalRecipe => false
     FixtureExplicitRoster => false
     NoConsumer => false
   }
@@ -696,7 +696,7 @@ fn witness_exclusion_row_is_known_red(row: gunbc.ci_layer_roots.WitnessExclusion
     FalsifierRehomedBinWet => false
     FalsifierSubstrateLongLane => false
     BinWitnessWet => false
-    std.witness_admission.OfflineLocalRecipe => false
+    OfflineLocalRecipe => false
     FixtureExplicitRoster => false
     NoConsumer => false
   }
@@ -710,7 +710,7 @@ fn witness_exclusion_row_is_falsifier_wet(row: gunbc.ci_layer_roots.WitnessExclu
     DiscoverySelection => false
     BinWitnessWet => false
     QuarantineProbeExpectRed => false
-    std.witness_admission.OfflineLocalRecipe => false
+    OfflineLocalRecipe => false
     FixtureExplicitRoster => false
     NoConsumer => false
   }
@@ -725,7 +725,7 @@ fn witness_exclusion_row_is_no_consumer(row: gunbc.ci_layer_roots.WitnessExclusi
     FalsifierSubstrateLongLane => false
     BinWitnessWet => false
     QuarantineProbeExpectRed => false
-    std.witness_admission.OfflineLocalRecipe => false
+    OfflineLocalRecipe => false
     FixtureExplicitRoster => false
   }
 }

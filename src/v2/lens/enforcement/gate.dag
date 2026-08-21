@@ -114,7 +114,7 @@ fn scope_leg(intent: v2.lens.enforcement.standing_intent.StandingIntent, s: v2.l
         LegHolds
       } else {
         match intent.default_mode {
-          v2.lens.enforcement.vocab.Blocking => LegFails { reason: "blocking intent narrowed by a reason not on the allow-list" }
+          Blocking => LegFails { reason: "blocking intent narrowed by a reason not on the allow-list" }
           AuditOnly => LegHolds
           Advisory => LegHolds
         }
@@ -193,7 +193,7 @@ fn intent_family_holds(intent: v2.lens.enforcement.standing_intent.StandingInten
 
 fn contract_internally_consistent(c: v2.lens.enforcement.contract.LensContract, receipts: List<v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt>) -> v2.std.logic.Bool {
   match c.mode {
-    v2.lens.enforcement.vocab.Blocking => match find_receipt(cid: c.entry.lens_id, receipts: receipts) {
+    Blocking => match find_receipt(cid: c.entry.lens_id, receipts: receipts) {
       ReceiptFound { value: r } => consumer_is_live(k: r.consumer_enrolled)
       ReceiptAbsent => false
     }

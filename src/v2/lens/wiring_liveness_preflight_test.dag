@@ -45,7 +45,7 @@ fn wlp_dead_obligation() -> v2.lens.wiring_liveness_preflight.FrontierWiringObli
 
 fn wlp_is_failclosed(frontier: v2.lens.affected_set.ReExecFrontier) -> v2.std.logic.Bool {
   match frontier {
-    v2.lens.affected_set.FailClosed { reason: _ } => true
+    FailClosed { reason: _ } => true
     ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } => false
   }
 }

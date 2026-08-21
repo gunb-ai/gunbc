@@ -350,7 +350,7 @@ fn scheduler_first_readiness_layer<S>(layers: std.types.List<v2.std.dependency.R
 fn runnable_frontier_from_layers<S>(layers: std.types.List<v2.std.dependency.ReadinessLayer<S>>) -> RunnableFrontier<S> {
   match scheduler_first_readiness_layer(layers: layers) {
     Holds { value: layer } => RunnableFrontier { ready: layer.ready }
-    v2.std.witness.Violates { diagnostic: _ } => RunnableFrontier { ready: [] }
+    Violates { diagnostic: _ } => RunnableFrontier { ready: [] }
   }
 }
 

@@ -90,16 +90,16 @@ fn parallel_executor_step_plan_from_dependencies(
 
 fn executor_plan_from_scheduler_plan(scheduler_plan: v2.workflow.scheduler.SchedulerPlan<v2.std.node.Node>) -> ExecutorRunPlan {
   match scheduler_plan {
-    v2.workflow.scheduler.SchedulerPlanComplete { layers: layers, scheduled: scheduled_nodes } => ExecutorRunComplete {
+    SchedulerPlanComplete { layers: layers, scheduled: scheduled_nodes } => ExecutorRunComplete {
       batches: executor_batches_for_layers(layers: layers),
       scheduled: scheduled_nodes
     }
-    v2.workflow.scheduler.SchedulerPlanRunnable { frontier: frontier, scheduled: scheduled_nodes, remaining: remaining, layers: _ } => ExecutorRunRunnable {
+    SchedulerPlanRunnable { frontier: frontier, scheduled: scheduled_nodes, remaining: remaining, layers: _ } => ExecutorRunRunnable {
       batch: executor_batch_for_frontier(frontier: frontier),
       scheduled: scheduled_nodes,
       remaining: remaining
     }
-    v2.workflow.scheduler.SchedulerPlanBlocked { evidence: evidence, scheduled: scheduled_nodes, remaining: remaining, layers: layers } => ExecutorRunBlocked {
+    SchedulerPlanBlocked { evidence: evidence, scheduled: scheduled_nodes, remaining: remaining, layers: layers } => ExecutorRunBlocked {
       evidence: ExecutorSchedulerBlocked { evidence: evidence },
       batches: executor_batches_for_layers(layers: layers),
       scheduled: scheduled_nodes,

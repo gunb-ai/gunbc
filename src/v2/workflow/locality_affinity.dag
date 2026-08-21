@@ -30,7 +30,7 @@ fn affinity_collect_step(expected: std.content_hash.ContentHash, acc: AffinityCo
         OperandFlow { edge: e, operand: op, footprint: f } =>
           if op == expected {
             match fp {
-              v2.std.optional.Present { value: prior } =>
+              Present { value: prior } =>
                 if std.measure.measure_le(a: prior, b: f) && std.measure.measure_le(a: f, b: prior) {
                   AffinityCollectOk {
                     footprint: fp,
@@ -41,7 +41,7 @@ fn affinity_collect_step(expected: std.content_hash.ContentHash, acc: AffinityCo
                     cause: AffinityFootprintMismatch { operand: expected, expected: prior, found: f }
                   }
                 }
-              v2.std.optional.Absent =>
+              Absent =>
                 AffinityCollectOk {
                   footprint: optional_present(value: f),
                   consumers: list_add_distinct_hash(xs: cs, v: content_hash(n: e.dependent))
@@ -59,8 +59,8 @@ fn affinity_collect_step(expected: std.content_hash.ContentHash, acc: AffinityCo
 fn find_fitting_level(levels: List<std.machine_shape.MemoryLevel>, footprint: std.measure.ByteSize) -> v2.std.optional.Optional<std.machine_shape.LevelId> {
   fold(levels, init: optional_absent(), f: fn(found, level) {
     match found {
-      v2.std.optional.Present { value: _ } => found
-      v2.std.optional.Absent => if std.measure.measure_le(a: footprint, b: level.capacity) {
+      Present { value: _ } => found
+      Absent => if std.measure.measure_le(a: footprint, b: level.capacity) {
         optional_present(value: level.id)
       } else {
         optional_absent()
@@ -79,14 +79,14 @@ fn derive_affinity(operand: std.content_hash.ContentHash, flows: List<v2.workflo
         AffinityRefused { operand: operand, cause: AffinityInsufficientConsumers { operand: operand } }
       } else {
         match fp {
-          v2.std.optional.Present { value: footprint } =>
+          Present { value: footprint } =>
             match find_fitting_level(levels: domain.memory, footprint: footprint) {
-              v2.std.optional.Present { value: level_id } =>
+              Present { value: level_id } =>
                 AffinityClaim { operand: operand, level: level_id, footprint: footprint, consumers: cs }
-              v2.std.optional.Absent =>
+              Absent =>
                 AffinityRefused { operand: operand, cause: AffinityNoFittingLevel { operand: operand, footprint: footprint } }
             }
-          v2.std.optional.Absent =>
+          Absent =>
             AffinityRefused { operand: operand, cause: AffinityFootprintUnresolved { operand: operand } }
         }
       }

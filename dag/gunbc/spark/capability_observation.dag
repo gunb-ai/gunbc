@@ -87,25 +87,25 @@ type SparkCapabilityObservation {
 // way, and it is applied at the carrier rather than left to each probe author to remember.
 fn admitted_capability_outcome(observation: SparkCapabilityObservation) -> CapabilityObservationOutcome {
   match observation.outcome {
-    gunbc.spark.capability_observation.CapabilityPresent { evidence: e } =>
+    CapabilityPresent { evidence: e } =>
       match observation.probe_effect {
-        gunbc.readback_independence.ProbeInert => gunbc.spark.capability_observation.CapabilityPresent { evidence: e }
-        gunbc.readback_independence.ProbeMayEstablish { mechanism: m } => CapabilityObservationRefused {
+        ProbeInert => gunbc.spark.capability_observation.CapabilityPresent { evidence: e }
+        ProbeMayEstablish { mechanism: m } => CapabilityObservationRefused {
           first: join(["a positive readback is not evidence here: performing the probe may have established the subject via ", m as String], "") as std.types.NonEmptyStr,
           more: [],
         }
-        gunbc.readback_independence.ProbeAnswersWithoutSubject { mechanism: m } => CapabilityObservationRefused {
+        ProbeAnswersWithoutSubject { mechanism: m } => CapabilityObservationRefused {
           first: join(["a positive readback is not evidence here: the probe answers positively with no subject present via ", m as String], "") as std.types.NonEmptyStr,
           more: [],
         }
-        gunbc.readback_independence.ProbeEffectUnknown { reason: r } => CapabilityObservationRefused {
+        ProbeEffectUnknown { reason: r } => CapabilityObservationRefused {
           first: join(["a positive readback is not evidence here: the probe's effect on the subject is unclassified -- ", r as String], "") as std.types.NonEmptyStr,
           more: [],
         }
       }
     CapabilityAbsent { evidence: e } => CapabilityAbsent { evidence: e }
     CapabilityObservationRefused { first: f, more: m } => CapabilityObservationRefused { first: f, more: m }
-    gunbc.spark.capability_observation.CapabilityUnobserved => gunbc.spark.capability_observation.CapabilityUnobserved
+    CapabilityUnobserved => gunbc.spark.capability_observation.CapabilityUnobserved
   }
 }
 
@@ -126,13 +126,13 @@ fn observation_for(
 ) -> CapabilityObservationOutcome {
   fold(observations, init: gunbc.spark.capability_observation.CapabilityUnobserved, f: fn(acc, o) {
     match acc {
-      gunbc.spark.capability_observation.CapabilityUnobserved =>
+      CapabilityUnobserved =>
         if (o.subject.host as String) == (host as String)
           && (o.subject.principal as String) == (principal as String)
           && spark_capability_label(capability: o.capability) == spark_capability_label(capability: capability) {
           admitted_capability_outcome(observation: o)
         } else { acc }
-      gunbc.spark.capability_observation.CapabilityPresent { evidence: _ } => acc
+      CapabilityPresent { evidence: _ } => acc
       CapabilityAbsent { evidence: _ } => acc
       CapabilityObservationRefused { first: _, more: _ } => acc
     }
@@ -141,10 +141,10 @@ fn observation_for(
 
 fn capability_outcome_label(outcome: CapabilityObservationOutcome) -> String {
   match outcome {
-    gunbc.spark.capability_observation.CapabilityPresent { evidence: e } => join(["present ", e as String], "")
+    CapabilityPresent { evidence: e } => join(["present ", e as String], "")
     CapabilityAbsent { evidence: e } => join(["absent ", e as String], "")
     CapabilityObservationRefused { first: f, more: _ } => join(["observation-refused ", f as String], "")
-    gunbc.spark.capability_observation.CapabilityUnobserved => "unobserved"
+    CapabilityUnobserved => "unobserved"
   }
 }
 

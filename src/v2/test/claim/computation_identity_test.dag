@@ -26,7 +26,7 @@ test fn witness_materialize_share_is_structural() -> v2.std.logic.Bool {
     StructurallyIdentical => materialize_share_grade_permits_share()
     NormalizedIdentical { normalizer: _ } => false
     ExtensionallyIdentical { bound: _ } => false
-    std.computation_identity.IdentityUnknown { cause: _ } => false
+    IdentityUnknown { cause: _ } => false
   }
 }
 

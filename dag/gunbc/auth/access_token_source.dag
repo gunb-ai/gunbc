@@ -43,7 +43,7 @@ fn gcloud_access_ensure_classification(
             plan: gunbc.auth.access_token_source.GoogleCloudInteractiveAuthenticationRequired {},
           },
         }
-      std.upsert_decision.Absent =>
+      Absent =>
         std.upsert_decision.UpsertClassification {
           verdict: UnknownRefused,
           decision: std.upsert_decision.Refuse {

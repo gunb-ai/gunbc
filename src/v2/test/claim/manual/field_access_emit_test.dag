@@ -100,9 +100,9 @@ test fn field_access_emit_holds() -> v2.std.logic.Bool {
       match v2.compiler.emit.emit(tree: field_access_inferred_tree, target: v2.test.manual.field_access_emit.field_access_target_model) {
         Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -112,13 +112,13 @@ test fn field_access_grammar_inverse_holds() -> v2.std.logic.Bool {
     emitted: field_access_emitted_root
   ) {
     Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn field_access_coercion_quality_is_faithful(q: v2.std.coercion.CoercionQuality) -> v2.std.logic.Bool {
   match q {
-    v2.std.coercion.Exact => true
+    Exact => true
     Identity => true
     Widened => false
   }
@@ -134,7 +134,7 @@ test fn field_access_ingest_via_coerce_matches_canonical() -> v2.std.logic.Bool 
       (result.target == dag_fixture_emitted_field_access_fn)
         && field_access_coercion_quality_is_faithful(q: result.quality)
         && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

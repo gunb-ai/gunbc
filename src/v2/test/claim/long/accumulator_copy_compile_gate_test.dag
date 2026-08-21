@@ -18,13 +18,13 @@ type NormalizedProbe
 fn normalized_of(source: String) -> NormalizedProbe {
   let lm = dag_language_model()
   match v2.compiler.tokenize.tokenize(text: source, file: ^compile_gate_witness_file, rules: lm.lex) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => ProbeStageRejected { stage: "tokenize" }
+    Rejected { diagnostics: _ } => ProbeStageRejected { stage: "tokenize" }
     Accepted { value: stream, diagnostics: _ } =>
       match v2.compiler.parse.parse(tokens: stream, grammar: lm.grammar) {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => ProbeStageRejected { stage: "parse" }
+        Rejected { diagnostics: _ } => ProbeStageRejected { stage: "parse" }
         Accepted { value: parse_tree, diagnostics: _ } =>
           match normalize(parse_tree: parse_tree) {
-            v2.std.diagnostic.Rejected { diagnostics: _ } => ProbeStageRejected { stage: "normalize" }
+            Rejected { diagnostics: _ } => ProbeStageRejected { stage: "normalize" }
             Accepted { value: normalized, diagnostics: _ } =>
               ProbeNormalized { root: normalized }
           }
@@ -47,7 +47,7 @@ test fn gate_red_quadratic_rejects() -> v2.std.logic.Bool {
     ProbeStageRejected { stage: _ } => false
     ProbeNormalized { root: root } =>
       match accumulator_copy_compile_gate(node: root) {
-        v2.std.diagnostic.Rejected { diagnostics: d } =>
+        Rejected { diagnostics: d } =>
           v2.test.long.accumulator_copy_compile_gate.non_empty_contains_reason(d: d, reason: ^accumulator_copy_poly2_suspect)
         Accepted { value: _, diagnostics: _ } => false
       }
@@ -59,7 +59,7 @@ test fn gate_green_identity_accepts_clean() -> v2.std.logic.Bool {
     ProbeStageRejected { stage: _ } => false
     ProbeNormalized { root: root } =>
       match accumulator_copy_compile_gate(node: root) {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
         Accepted { value: _, diagnostics: d } =>
           match d {
             None => true
@@ -74,7 +74,7 @@ test fn gate_refusal_ledger_counted_not_gating() -> v2.std.logic.Bool {
     ProbeStageRejected { stage: _ } => false
     ProbeNormalized { root: root } =>
       match accumulator_copy_compile_gate(node: root) {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
         Accepted { value: _, diagnostics: d } =>
           match d {
             None => false
@@ -108,7 +108,7 @@ test fn door_root_roster_runs_and_passes_clean_tree() -> v2.std.logic.Bool {
     lenses: [],
     mode: v2.compiler.compile.TranslateTo { target: compile_gate_target_stub }
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       !v2.test.long.accumulator_copy_compile_gate.non_empty_contains_reason(d: d, reason: ^accumulator_copy_poly2_suspect)
     Accepted { value: _, diagnostics: _ } => true
   }

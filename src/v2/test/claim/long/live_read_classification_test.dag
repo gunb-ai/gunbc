@@ -232,8 +232,8 @@ test fn g2_unknown_path_pattern_fail_closed_touched() -> v2.std.logic.Bool {
 
 test fn g2_fn_arrow_marshal_host_scaffold_receipt_is_checkable() -> v2.std.logic.Bool {
   match v2.std.fn_index.fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger {
-    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
-    std.disposition.Terminal { reason: _ } => false
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
   }
 }
 

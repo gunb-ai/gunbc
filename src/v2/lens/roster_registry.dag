@@ -54,7 +54,7 @@ fn declaration_refs_from_registration(r: gunbc.roster_registry.RosterRegistratio
   match r.membership {
     ByContainment => [r.roster]
     ByDerivation { predicate: p } => [r.roster, p]
-    gunbc.roster_registry.DeclaredFrontier { reason: _, dissolution: _ } => [r.roster]
+    DeclaredFrontier { reason: _, dissolution: _ } => [r.roster]
   }
 }
 

@@ -51,14 +51,14 @@ fn pdp_renderer_executes(target: v2.std.compilers.target_model.TargetModel) -> v
       match render(target_model_type_atom_node(identity: ^pdp_decl)) {
         Accepted { value: scaffold, diagnostics: _ } =>
           match list_at_optional(xs: scaffold.prefix, index: 0) {
-            v2.std.optional.Present { value: token } =>
+            Present { value: token } =>
               match token {
                 FixedToken { token_class: tc } => tc == pdp_marker_token_class()
                 _ => false
               }
-            v2.std.optional.Absent => false
+            Absent => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
   }
 }
@@ -70,7 +70,7 @@ fn pdp_after_value_semantics(support: v2.std.compilers.target_model.ProducedDecl
   ) {
     Accepted { value: augmented, diagnostics: _ } =>
       pdp_renderer_executes(target: augmented)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -91,7 +91,7 @@ fn pdp_after_use_site_ownership(support: v2.std.compilers.target_model.ProducedD
   ) {
     Accepted { value: augmented, diagnostics: _ } =>
       pdp_renderer_executes(target: augmented)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

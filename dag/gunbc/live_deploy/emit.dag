@@ -64,7 +64,7 @@ fn bash_intent_command_or_poison(intent: v2.std.node.Node) -> String {
         None => source
         Some { diagnostics: _ } => live_deploy_systemd_retirement_emit_refused_poison
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => live_deploy_systemd_retirement_emit_refused_poison
+    Rejected { diagnostics: _ } => live_deploy_systemd_retirement_emit_refused_poison
   }
 }
 
@@ -104,7 +104,7 @@ fn emit_pipeline_or_poison(p: v2.std.orchestration.Pipeline, refused: String) ->
         None => source.carried
         Some { diagnostics: _ } => refused
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => refused
+    Rejected { diagnostics: _ } => refused
   }
 }
 
@@ -811,7 +811,7 @@ fn live_deploy_apply_script_for(spec: gunbc.live_deploy.spec.DeploymentSpec, rev
             p: apply_intent_from_effects(spec: spec, effects: es, access: access, revision: revision),
             refused: live_deploy_apply_emit_refused_poison
           )
-        gunbc.membership_reconcile.ApplyRefused { refusals: rs } =>
+        ApplyRefused { refusals: rs } =>
           live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "APPLY")
       }
   }
@@ -839,7 +839,7 @@ fn live_deploy_retract_script_with_scoped_removal(spec: gunbc.live_deploy.spec.D
             p: retract_intent_from_effects(spec: spec, effects: es, access: access),
             refused: live_deploy_retract_emit_refused_poison
           )
-        gunbc.membership_reconcile.ApplyRefused { refusals: rs } =>
+        ApplyRefused { refusals: rs } =>
           live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "RETRACT")
       }
   }

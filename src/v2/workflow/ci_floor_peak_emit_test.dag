@@ -72,7 +72,7 @@ test fn ci_floor_peak_pre_emit_has_teeth_holds() -> Bool {
   match orch_emit_pipeline(p: ci_floor_peak_pre_perturbed_pipeline(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: _ } =>
       source.carried != ci_floor_peak_pre_golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -87,6 +87,6 @@ test fn ci_floor_peak_pre_reset_if_has_teeth_holds() -> Bool {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried != "if echo reset > \"$d/memory.peak\" 2>/dev/null; then echo \"[calibration] floor_peak_pre reset=ok scope=floor cgroup=$d\"; fi")
         && (dg == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

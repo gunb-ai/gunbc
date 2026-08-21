@@ -1293,7 +1293,7 @@ fn type_node_has_closure_unbound_generic_atom(n: v1.std.core.Node, generic_param
     match n.inferred.value {
       TypeVariable { id: tv } =>
         if !type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { return true }
-      extdeps.tools.Resolved { node: rt } =>
+      Resolved { node: rt } =>
         if type_node_has_closure_unbound_generic_atom(n: rt, generic_param_names: generic_param_names, env: env, source_indices: source_indices) { return true }
       _ => ()
     }
@@ -1313,7 +1313,7 @@ fn type_node_has_unbound_type_variable(n: v1.std.core.Node, generic_param_names:
     match n.inferred.value {
       TypeVariable { id: tv } =>
         if !type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { return true }
-      extdeps.tools.Resolved { node: rt } =>
+      Resolved { node: rt } =>
         if type_node_has_unbound_type_variable(n: rt, generic_param_names: generic_param_names, source_indices: source_indices) { return true }
       _ => ()
     }
@@ -1716,7 +1716,7 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: v1.std.core.
                         rust_serde_error_policy(message: "wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)")
                       Present { value: inf } =>
                         match inf {
-                          extdeps.tools.Resolved { node } =>
+                          Resolved { node } =>
                             if v1.compiler.emit_core_support.is_data_def_item(item: node) {
                               resolve_wire_serde_policy_for_coproduct_seen(
                                 wire_contract_item: Present { value: node },
@@ -1742,7 +1742,7 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: v1.std.core.
                     rust_serde_error_policy(message: "wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)")
                   Present { value: inf } =>
                     match inf {
-                      extdeps.tools.Resolved { node } =>
+                      Resolved { node } =>
                         if v1.compiler.emit_core_support.is_data_def_item(item: node) {
                           resolve_wire_serde_policy_for_coproduct_seen(
                             wire_contract_item: Present { value: node },
@@ -3182,6 +3182,22 @@ fn reference_derived_candidate_authored(module_source: String, name: String, typ
     || reference_derived_variant_induced_parent_spelled(module_source: module_source, enum_name: name, type_summaries: type_summaries, variant_to_enum: variant_to_enum)
 }
 
+// The authored prefix of a dotted reference IS its provider module: re-looking the bare
+// leaf up in the bare-keyed registry is last-write-wins across the whole pool, so a
+// v1.std.core.Node reference resolved to v2.std.node and the synthesized use-line
+// imported the wrong Node. The registry is consulted only for a genuinely bare name.
+fn reference_provider_module(name: String, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>) -> String {
+  let leaf = v1.std.core.qualified_last_segment(name: name)
+  if leaf != name {
+    v1.std.core.qualified_module_prefix(name: name)
+  } else {
+    match map_get(registry, name) {
+      Present { value: info } => info.module_name
+      Absent => ""
+    }
+  }
+}
+
 fn reference_derived_use_lines(items: std.types.List<v1.std.core.Node>, unlisted_type_names: std.types.List<String>, this_module_name: String, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, local_type_names: std.types.List<String>, already_imported_names: std.types.List<String>, export_sets: std.types.Map<String, std.types.Map<String, Bool>>, typed_modules: std.types.List<v1.compiler.infer_items.TypedModule>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>, module_index: ModuleIndex) -> std.types.List<String> {
   {
     let module_source = match typed_modules |> filter(tm => v1.std.core.authored_name_at(source_indices: source_indices, node: tm.module) == this_module_name) |> first {
@@ -3198,7 +3214,6 @@ fn reference_derived_use_lines(items: std.types.List<v1.std.core.Node>, unlisted
         reference_derived_candidate_authored(module_source: module_source, name: name, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
           || emitter_attested_anon_heads |> any(h => h == name))
       |> filter(name => !reference_is_host_realized_builtin(name: name))
-      |> map(name => v1.std.core.qualified_last_segment(name: name))
     let local_decl_names = items |> flat_map(item =>
       let nm = v1.std.core.authored_name_at(source_indices: source_indices, node: item)
       if nm == "" { [] } else { [nm] }
@@ -3206,31 +3221,21 @@ fn reference_derived_use_lines(items: std.types.List<v1.std.core.Node>, unlisted
     let already = concat(already_imported_names, concat(local_type_names, local_decl_names))
       |> fold(init: empty_map(), f: (acc, nm) => map_insert(acc, nm, true))
     let unlisted = candidates |> flat_map(name =>
-      if v1.compiler.infer_types.emit_map_has(m: already, key: name) || is_kernel_type(name: name) {
+      let leaf = v1.std.core.qualified_last_segment(name: name)
+      let provider = reference_provider_module(name: name, registry: registry)
+      if v1.compiler.infer_types.emit_map_has(m: already, key: leaf) || is_kernel_type(name: leaf) {
         []
-      } else {
-        match map_get(registry, name) {
-          Present { value: info } =>
-            if info.module_name != this_module_name
-              && provider_proven_exports_symbol(name: name, provider_module: info.module_name, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-            { [name] } else { [] }
-          Absent => []
-        }
-      }
+      } else if provider != "" && provider != this_module_name
+        && provider_proven_exports_symbol(name: leaf, provider_module: provider, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+      { [name] } else { [] }
     )
-    let providers = v1.compiler.emit_core_support.unique_strings(items: unlisted |> flat_map(name =>
-      match map_get(registry, name) {
-        Present { value: info } => [info.module_name]
-        Absent => []
-      }
-    ))
+    let providers = v1.compiler.emit_core_support.unique_strings(items: unlisted
+      |> map(name => reference_provider_module(name: name, registry: registry))
+      |> filter(m => m != ""))
     providers |> flat_map(provider =>
-      let names = unlisted |> filter(name =>
-        match map_get(registry, name) {
-          Present { value: info } => info.module_name == provider
-          Absent => false
-        }
-      )
+      let names = unlisted
+        |> filter(name => reference_provider_module(name: name, registry: registry) == provider)
+        |> map(name => v1.std.core.qualified_last_segment(name: name))
       let block = emit_specific_import_block(import_module: provider, mod_name: v1.compiler.emit_core_support.module_to_filename(name: provider), filtered_names: names, emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
       let block_lines = if block == "" { [] } else { block |> split(delimiter: "\n") }
       let emitted_here = block_lines |> flat_map(l => imported_names_in_use_line(line: l))
@@ -5936,7 +5941,7 @@ fn v1_fn_body_equality_bound_param_names(
 // a spelling, so reading it as one is correct; it is the OPERANDS that must be resolved by type.
 fn is_equality_comparison(op: std.syntax.BinOp) -> Bool {
   match op {
-    std.syntax.Eq => true
+    Eq => true
     Ne => true
     _ => false
   }
@@ -6319,7 +6324,7 @@ fn emit_rust_unit_discarding_optional_typed(texpr: v1.std.core.Node, registry: s
   match texpr.expr_data {
     ExprLiteral { value: v } =>
       match v {
-        std.syntax.LitNull => "()"
+        LitNull => "()"
         _ => v1.compiler.emit.emit_error_expr(message: "unit-discard: optional literal with unexpected value shape", target: v1.compiler.artifact.Rust)
       }
     ExprRecordLit { parent_enum: _ } =>
@@ -6704,7 +6709,7 @@ fn all_arms_are_string_lit(arms: std.types.List<v1.std.core.Node>) -> Bool {
     match v1.std.core.arm_pattern(n: arm) {
       LitPattern { value: v } =>
         match v { LitStr { value: _ } => true  _ => false }
-      extdeps.cron.schedule_model.Wildcard => true
+      Wildcard => true
       _ => false
     }
   ) && arms |> count > 0
@@ -6716,7 +6721,7 @@ fn has_string_lit_with_bind(arms: std.types.List<v1.std.core.Node>) -> Bool {
     _ => false
   })
   let has_bind = arms |> any(arm => match v1.std.core.arm_pattern(n: arm) {
-    v2.std.node.Bind { declaration: _ } => true
+    Bind { declaration: _ } => true
     _ => false
   })
   has_lit && has_bind
@@ -6724,11 +6729,11 @@ fn has_string_lit_with_bind(arms: std.types.List<v1.std.core.Node>) -> Bool {
 
 fn emit_pattern(pattern: v1.std.core.MatchPattern, path_prefix: std.types.List<String>, shared_types: std.types.Set<String>, scrut_type: String, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match pattern {
-    v2.std.node.Bind { declaration: declaration } => v1.compiler.emit.emit_ident(name: declaration.name, target: v1.compiler.artifact.Rust)
+    Bind { declaration: declaration } => v1.compiler.emit.emit_ident(name: declaration.name, target: v1.compiler.artifact.Rust)
     LitPattern { value: v } => v1.compiler.emit.rust_literal_for_pattern(value: v)
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
       emit_variant_pattern(name: n, parent_enum: parent_enum, field_bindings: fbs, path_prefix: path_prefix, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
-    extdeps.cron.schedule_model.Wildcard => "_"
+    Wildcard => "_"
   }
 }
 
@@ -7001,7 +7006,7 @@ fn box_bound_fields_for_pattern(pattern: v1.std.core.MatchPattern, shared_types:
             []
           } else {
             match fb_pat {
-              extdeps.cron.schedule_model.Wildcard => []
+              Wildcard => []
               _ =>
                 if rust_record_field_needs_box(scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: bare_n, field_name: fb_name) {
                   [fb_name]
@@ -7060,11 +7065,11 @@ fn analyze_rc_match(scrutinee: v1.std.core.Node, arms: std.types.List<v1.std.cor
 
 fn emit_pattern_rc_aware(pattern: v1.std.core.MatchPattern, path_prefix: std.types.List<String>, rc_analysis: RcPatternAnalysis, shared_types: std.types.Set<String>, scrut_type: String, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
   match pattern {
-    v2.std.node.Bind { declaration: declaration } => v1.compiler.emit.emit_ident(name: declaration.name, target: v1.compiler.artifact.Rust)
+    Bind { declaration: declaration } => v1.compiler.emit.emit_ident(name: declaration.name, target: v1.compiler.artifact.Rust)
     LitPattern { value: v } => v1.compiler.emit.rust_literal_for_pattern(value: v)
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
       emit_variant_pattern_rc_aware(name: n, parent_enum: parent_enum, field_bindings: fbs, path_prefix: path_prefix, rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
-    extdeps.cron.schedule_model.Wildcard => "_"
+    Wildcard => "_"
   }
 }
 
@@ -7172,8 +7177,8 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
 
 fn match_pattern_is_irrefutable(pattern: v1.std.core.MatchPattern) -> Bool {
   match pattern {
-    v2.std.node.Bind { declaration: _ } => true
-    extdeps.cron.schedule_model.Wildcard => true
+    Bind { declaration: _ } => true
+    Wildcard => true
     _ => false
   }
 }
@@ -7878,7 +7883,7 @@ fn emit_rust_expr_string_interp(expr: v1.std.core.Node, registry: std.types.Map<
   match expr.expr_data {
     ExprStringInterp =>
       let ps = expr.children |> map(child => match child.expr_data {
-        v1.std.core.ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
+        ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
         _ => v1.std.core.Interpolation { expr: v1.std.core.arg_value(n: child) }
       })
       emit_typed_string_interp(parts: ps, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
@@ -9057,7 +9062,7 @@ fn freemonoid_cons_binding(cons_arm: v1.std.core.Node, field: String, source_ind
       match fbs |> filter(fb => v1.std.core.field_binding_name_at(n: fb, source_indices: source_indices) == field) |> first {
         Present { value: fb } =>
           match v1.std.core.field_binding_pattern(n: fb) {
-            v2.std.node.Bind { declaration: declaration } => declaration.name
+            Bind { declaration: declaration } => declaration.name
             _ => "_"
           }
         Absent => "_"
@@ -9083,15 +9088,15 @@ fn parent_enum_is_freemonoid(p: String?) -> Bool {
 
 fn freemonoid_catchall_arm(arms: std.types.List<v1.std.core.Node>) -> v1.std.core.Node? {
   arms |> filter(arm => match v1.std.core.arm_pattern(n: arm) {
-    extdeps.cron.schedule_model.Wildcard => true
-    v2.std.node.Bind { declaration: _ } => true
+    Wildcard => true
+    Bind { declaration: _ } => true
     _ => false
   }) |> first
 }
 
 fn freemonoid_catchall_bind_name(arm: v1.std.core.Node) -> String {
   match v1.std.core.arm_pattern(n: arm) {
-    v2.std.node.Bind { declaration: declaration } => declaration.name
+    Bind { declaration: declaration } => declaration.name
     _ => ""
   }
 }
@@ -10022,7 +10027,7 @@ fn is_optional_typed_expr(e: v1.std.core.Node) -> Bool {
 
 fn is_string_comparison(op: std.syntax.BinOp, left: v1.std.core.Node, right: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match op {
-    std.syntax.Eq => is_string_typed_expr(e: left, source_indices: source_indices) && is_string_typed_expr(e: right, source_indices: source_indices)
+    Eq => is_string_typed_expr(e: left, source_indices: source_indices) && is_string_typed_expr(e: right, source_indices: source_indices)
     Ne => is_string_typed_expr(e: left, source_indices: source_indices) && is_string_typed_expr(e: right, source_indices: source_indices)
     _ => false
   }
@@ -10055,10 +10060,10 @@ fn emit_typed_string_interp(parts: std.types.List<v1.std.core.StringPart>, regis
 
 fn typed_interp_format_part(part: v1.std.core.StringPart, registry: std.types.Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: std.types.Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, has_interpolations: Bool) -> v1.compiler.emit.InterpPart {
   match part {
-    v1.std.core.Text { value: v } =>
+    Text { value: v } =>
       let escaped = if has_interpolations { v1.compiler.emit.escape_rust_interp_text(s: v) } else { v1.compiler.emit_core_support.escape_string_literal_body(s: v) }
       v1.compiler.emit.InterpPart { format_segment: escaped, arg_expr: "" }
-    extdeps.github.expressions.Interpolation { expr: e } =>
+    Interpolation { expr: e } =>
       v1.compiler.emit.InterpPart { format_segment: "{}", arg_expr: emit_typed_expr(texpr: e, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024) }
   }
 }
@@ -10397,7 +10402,7 @@ fn emit_service_new_method(name: String, fallback_transport: v1.std.core.Node, o
   else { fs }
   let from_config = match v1.std.core.service_config_endpoint(n: service_item, source_indices: source_indices) {
     Present { value: ep } => match ep.expr_data {
-      v1.std.core.ExprLiteral { value: LitStr { value: s } } => s
+      ExprLiteral { value: LitStr { value: s } } => s
       _ => ""
     }
     Absent => ""
@@ -10408,7 +10413,7 @@ fn emit_service_new_method(name: String, fallback_transport: v1.std.core.Node, o
     let from_fallback = if fallback_is_rest {
       match v1.std.core.transport_base_url(t: fallback_transport, source_indices: source_indices) {
         Present { value: bu } => match bu.expr_data {
-          v1.std.core.ExprLiteral { value: LitStr { value: s } } => s
+          ExprLiteral { value: LitStr { value: s } } => s
           _ => ""
         }
         Absent => ""
@@ -10442,7 +10447,7 @@ fn emit_auth_source_ctor(source_expr: v1.std.core.Node, source_indices: std.type
       if variant == "EnvVar" {
         match source_expr.children |> first {
           Present { value: fi } => match v1.std.core.field_init_node_value(n: fi).expr_data {
-            v1.std.core.ExprLiteral { value: LitStr { value: env_name } } =>
+            ExprLiteral { value: LitStr { value: env_name } } =>
               concat("        auth_token: std::env::var(\"", env_name, "\").expect(\"missing credential: ", env_name, "\"),\n")
             _ => "        auth_token: compile_error!(\"EnvVar.name must be a string literal\"),\n"
           }
@@ -10502,7 +10507,7 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: v1.std.core.Node, m
     let first_mock = mock_props |> first
     match first_mock {
       Present { value: mp } => match v1.compiler.emit.emit_data_value_json(value: v1.std.core.field_init_node_value(n: mp), source_indices: source_indices) {
-        v1.compiler.emit.Refused { reason: r } => concat(log_line, "\ncompile_error!(\"", v1.compiler.emit_core_support.escape_string_literal_body(s: r), "\");")
+        Refused { reason: r } => concat(log_line, "\ncompile_error!(\"", v1.compiler.emit_core_support.escape_string_literal_body(s: r), "\");")
         Emitted { json: mock_json } => {
         let is_multi_field_conj = inferred.connective == v1.std.core.Conj && inferred.children |> count > 1
         if is_multi_field_conj {
@@ -10662,21 +10667,21 @@ fn emit_rest_http_method(transport: v1.std.core.Node, source_indices: std.types.
 fn emit_rest_url_line(transport: v1.std.core.Node, op_name: String, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
   match v1.std.core.transport_path_template(t: transport, source_indices: source_indices) {
     Present { value: path_node } => match path_node.expr_data {
-      v1.std.core.ExprLiteral { value: LitStr { value: path_str } } =>
+      ExprLiteral { value: LitStr { value: path_str } } =>
         concat("let url = format!(\"{}", v1.compiler.emit_core_support.escape_string_literal_body(s: path_str), "\", self.base_url);")
       ExprStringInterp => {
         let parts = path_node.children |> map(child => match child.expr_data {
-          v1.std.core.ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
+          ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
           _ => v1.std.core.Interpolation { expr: v1.std.core.arg_value(n: child) }
         })
         let fmt_segments = parts |> map(p => match p {
-          v1.std.core.Text { value: v } => v1.compiler.emit.escape_rust_interp_text(s: v)
-          extdeps.github.expressions.Interpolation { expr: _ } => "{}"
+          Text { value: v } => v1.compiler.emit.escape_rust_interp_text(s: v)
+          Interpolation { expr: _ } => "{}"
         })
         let fmt_str = fmt_segments |> join(separator: "")
         let args = parts |> flat_map(p => match p {
-          v1.std.core.Text { value: _ } => []
-          extdeps.github.expressions.Interpolation { expr: e } => {
+          Text { value: _ } => []
+          Interpolation { expr: e } => {
             let var_name = v1.compiler.emit.emit_ident(name: v1.std.core.expr_var_name_at(texpr: e, source_indices: source_indices), target: v1.compiler.artifact.Rust)
             let is_opt = is_optional_typed_expr(e: e)
             if is_opt {
@@ -10720,7 +10725,7 @@ fn emit_rest_auth_line(transport: v1.std.core.Node, service_item: v1.std.core.No
         ExprCall { call_semantics: _, descent_evidence: _ } =>
           let header_name = match auth.children |> first {
             Present { value: arg_node } => match v1.std.core.arg_value(n: arg_node).expr_data {
-              v1.std.core.ExprLiteral { value: LitStr { value: s } } => s
+              ExprLiteral { value: LitStr { value: s } } => s
               _ => v1.compiler.emit.emit_simple_expr(expr: v1.std.core.arg_value(n: arg_node), target: v1.compiler.artifact.Rust, source_indices: source_indices)
             }
             Absent => "x-api-key"
@@ -10807,7 +10812,7 @@ fn has_response_prefix(name: String) -> Bool {
 fn child_from_key(ch: v1.std.core.Node, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String? {
   match ch.properties |> filter(p => v1.std.core.field_init_node_name_at(n: p, source_indices: source_indices) == "from_key") |> first {
     Present { value: prop } => match v1.std.core.field_init_node_value(n: prop).expr_data {
-      v1.std.core.ExprLiteral { value: LitStr { value: s } } => Present { value: s }
+      ExprLiteral { value: LitStr { value: s } } => Present { value: s }
       _ => none
     }
     Absent => none
@@ -11150,21 +11155,21 @@ fn emit_shell_call(op_name: String, transport: v1.std.core.Node, registry: std.t
 
 fn emit_shell_argv_element(arg: v1.std.core.Node, optional_params: std.types.Map<String, Bool>, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
   match arg.expr_data {
-    v1.std.core.ExprLiteral { value: LitStr { value: s } } =>
+    ExprLiteral { value: LitStr { value: s } } =>
       concat("\"", v1.compiler.emit_core_support.escape_string_literal_body(s: s), "\"")
     ExprStringInterp => {
       let parts = arg.children |> map(child => match child.expr_data {
-        v1.std.core.ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
+        ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
         _ => v1.std.core.Interpolation { expr: v1.std.core.arg_value(n: child) }
       })
       let fmt_segments = parts |> map(p => match p {
-        v1.std.core.Text { value: v } => v1.compiler.emit.escape_rust_interp_text(s: v)
-        extdeps.github.expressions.Interpolation { expr: _ } => "{}"
+        Text { value: v } => v1.compiler.emit.escape_rust_interp_text(s: v)
+        Interpolation { expr: _ } => "{}"
       })
       let fmt_str = fmt_segments |> join(separator: "")
       let args = parts |> flat_map(p => match p {
-        v1.std.core.Text { value: _ } => []
-        extdeps.github.expressions.Interpolation { expr: e } => {
+        Text { value: _ } => []
+        Interpolation { expr: e } => {
           let name = v1.std.core.expr_var_name_at(texpr: e, source_indices: source_indices)
           let var_name = v1.compiler.emit.emit_ident(name: name, target: v1.compiler.artifact.Rust)
           let is_opt = is_optional_typed_expr(e: e) || match map_get(optional_params, name) {
@@ -11461,7 +11466,7 @@ fn emit_data_def_body(type_node: v1.std.core.Node, value: v1.std.core.Node, regi
     }
   } else if v1.compiler.emit.has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) {
     match v1.compiler.emit.emit_data_value_json(value: value, source_indices: scope.type_env.source_indices) {
-      v1.compiler.emit.Refused { reason: r } => concat("            compile_error!(\"", v1.compiler.emit_core_support.escape_string_literal_body(s: r), "\")")
+      Refused { reason: r } => concat("            compile_error!(\"", v1.compiler.emit_core_support.escape_string_literal_body(s: r), "\")")
       Emitted { json: json_str } => concat("            serde_json::from_value(serde_json::json!(", json_str, "))\n",
         "                .expect(\"valid data definition\")")
     }
@@ -11626,9 +11631,9 @@ fn extract_literal_string(expr: v1.std.core.Node) -> String? {
   match expr.expr_data {
     ExprLiteral { value: v } => match v {
       LitStr { value: s } => Present { value: s }
-      std.syntax.LitInt { value: i } => Present { value: v1.compiler.emit_core_support.to_string(value: i) }
-      std.syntax.LitFloat { value: f } => Present { value: f }
-      std.syntax.LitBool { value: b } => Present { value: if b { "true" } else { "false" } }
+      LitInt { value: i } => Present { value: v1.compiler.emit_core_support.to_string(value: i) }
+      LitFloat { value: f } => Present { value: f }
+      LitBool { value: b } => Present { value: if b { "true" } else { "false" } }
       _ => none
     }
     _ => none
@@ -11656,7 +11661,7 @@ fn fold_constant_default_expr(expr: v1.std.core.Node, registry: std.types.Map<St
         let var_name = v1.std.core.authored_name_at(source_indices: source_indices, node: expr)
         match v1.compiler.emit.lookup_item(registry: registry, name: var_name) {
           Present { value: info } => match info.kind {
-            v2.std.decl_index.DataItem =>
+            DataItem =>
               match map_get(data_body_index, var_name) {
                 Present { value: body } => fold_constant_default_expr(expr: body, registry: registry, data_body_index: data_body_index, source_indices: source_indices, depth: depth + 1)
                 Absent => none
@@ -11745,11 +11750,11 @@ fn cli_default_literal_value(expr: v1.std.core.Node) -> String? {
   match expr.expr_data {
     ExprLiteral { value: v } => match v {
       LitStr { value: s } => Present { value: s }
-      std.syntax.LitInt { value: i } => Present { value: v1.compiler.emit_core_support.to_string(value: i) }
-      std.syntax.LitFloat { value: f } => Present { value: f }
-      std.syntax.LitBool { value: b } => Present { value: if b { v1.compiler.emit.emit_keyword(key: "true", target: v1.compiler.artifact.Rust) } else { v1.compiler.emit.emit_keyword(key: "false", target: v1.compiler.artifact.Rust) } }
-      std.syntax.LitNull => none
-      std.syntax.LitSymbol { value: s } => Present { value: s }
+      LitInt { value: i } => Present { value: v1.compiler.emit_core_support.to_string(value: i) }
+      LitFloat { value: f } => Present { value: f }
+      LitBool { value: b } => Present { value: if b { v1.compiler.emit.emit_keyword(key: "true", target: v1.compiler.artifact.Rust) } else { v1.compiler.emit.emit_keyword(key: "false", target: v1.compiler.artifact.Rust) } }
+      LitNull => none
+      LitSymbol { value: s } => Present { value: s }
     }
     _ => none
   }

@@ -448,7 +448,7 @@ test fn red_two_projections_for_one_subject_refuse_rather_than_last_wins() -> Bo
   match projection_for_subject(subject: bash_subject(), projections: doubled) {
     ProjectionAmbiguous { subject: s } => declaration_ref_eq(a: s, b: bash_subject())
     ProjectionResolved { projection: _ } => false
-    std.language_target_identity.ProjectionAbsent { subject: _ } => false
+    ProjectionAbsent { subject: _ } => false
   }
 }
 
@@ -463,7 +463,7 @@ test fn red_duplicate_projection_fails_the_integrity_wall() -> Bool {
 
 test fn green_absent_projection_reports_its_subject() -> Bool {
   match projection_for_subject(subject: unregistered_subject(), projections: [bash_projection()]) {
-    std.language_target_identity.ProjectionAbsent { subject: s } => declaration_ref_eq(a: s, b: unregistered_subject())
+    ProjectionAbsent { subject: s } => declaration_ref_eq(a: s, b: unregistered_subject())
     ProjectionResolved { projection: _ } => false
     ProjectionAmbiguous { subject: _ } => false
   }

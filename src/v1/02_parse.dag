@@ -326,7 +326,7 @@ fn parse_string_literal_value(tokens: TokenStream) -> StringLitResult {
   match tok {
     Present { value: t } =>
       match t.shape {
-        v1.std.core.ShLitStr =>
+        ShLitStr =>
           StringLitResult { value: t.text, tokens: token_stream_advance(stream: tokens, n: 1), err: none }
         _ =>
           StringLitResult { value: "", tokens: tokens, err: Present { value: parse_error(msg: "expected string literal", span: token_span(tok: tok)) } }
@@ -341,7 +341,7 @@ fn parse_int_literal_value(tokens: TokenStream) -> IntLitResult {
   match tok {
     Present { value: t } =>
       match t.shape {
-        v1.std.core.ShLitInt =>
+        ShLitInt =>
           let n_opt = parse_int(s: t.text)
           match n_opt {
             Present { value: n } =>
@@ -510,49 +510,49 @@ fn tok_is_keyword_name(tok: v1.std.core.Token?) -> Bool {
 
 fn shape_display_name(shape: v1.std.core.TokenShape) -> String {
   match shape {
-    v1.std.core.ShKeyword => "keyword"
-    v1.std.core.ShLBrace => "LBrace"
-    v1.std.core.ShRBrace => "RBrace"
-    v1.std.core.ShLParen => "LParen"
-    v1.std.core.ShRParen => "RParen"
-    v1.std.core.ShLBracket => "LBracket"
-    v1.std.core.ShRBracket => "RBracket"
-    v1.std.core.ShLt => "Lt"
-    v1.std.core.ShGt => "Gt"
-    v1.std.core.ShLe => "Le"
-    v1.std.core.ShGe => "Ge"
-    v1.std.core.ShFatArrow => "FatArrow"
-    v1.std.core.ShArrow => "Arrow"
-    v1.std.core.ShColon => "Colon"
-    v1.std.core.ShComma => "Comma"
-    v1.std.core.ShDot => "Dot"
-    v1.std.core.ShDotDot => "DotDot"
-    v1.std.core.ShEq => "Eq"
-    v1.std.core.ShEqEq => "EqEq"
-    v1.std.core.ShNe => "Ne"
-    v1.std.core.ShPlus => "Plus"
-    v1.std.core.ShMinus => "Minus"
-    v1.std.core.ShStar => "Star"
-    v1.std.core.ShSlash => "Slash"
-    v1.std.core.ShPercent => "Percent"
-    v1.std.core.ShBang => "Bang"
-    v1.std.core.ShAnd => "And"
-    v1.std.core.ShOr => "Or"
-    v1.std.core.ShQuestion => "Question"
-    v1.std.core.ShNullCoalesce => "NullCoalesce"
-    v1.std.core.ShCaret => "Caret"
-    v1.std.core.ShPipe => "Pipe"
-    v1.std.core.ShPipeArrow => "PipeArrow"
-    v1.std.core.ShLitStr => "LitStr"
-    v1.std.core.ShLitInt => "LitInt"
-    v1.std.core.ShLitFloat => "LitFloat"
-    v1.std.core.ShIdent => "Ident"
-    v1.std.core.ShStrBegin => "StrBegin"
-    v1.std.core.ShStrMid => "StrMid"
-    v1.std.core.ShStrEnd => "StrEnd"
-    v1.std.core.ShNewline => "Newline"
-    v1.std.core.ShEof => "Eof"
-    v1.std.core.ShUnknown => "Unknown"
+    ShKeyword => "keyword"
+    ShLBrace => "LBrace"
+    ShRBrace => "RBrace"
+    ShLParen => "LParen"
+    ShRParen => "RParen"
+    ShLBracket => "LBracket"
+    ShRBracket => "RBracket"
+    ShLt => "Lt"
+    ShGt => "Gt"
+    ShLe => "Le"
+    ShGe => "Ge"
+    ShFatArrow => "FatArrow"
+    ShArrow => "Arrow"
+    ShColon => "Colon"
+    ShComma => "Comma"
+    ShDot => "Dot"
+    ShDotDot => "DotDot"
+    ShEq => "Eq"
+    ShEqEq => "EqEq"
+    ShNe => "Ne"
+    ShPlus => "Plus"
+    ShMinus => "Minus"
+    ShStar => "Star"
+    ShSlash => "Slash"
+    ShPercent => "Percent"
+    ShBang => "Bang"
+    ShAnd => "And"
+    ShOr => "Or"
+    ShQuestion => "Question"
+    ShNullCoalesce => "NullCoalesce"
+    ShCaret => "Caret"
+    ShPipe => "Pipe"
+    ShPipeArrow => "PipeArrow"
+    ShLitStr => "LitStr"
+    ShLitInt => "LitInt"
+    ShLitFloat => "LitFloat"
+    ShIdent => "Ident"
+    ShStrBegin => "StrBegin"
+    ShStrMid => "StrMid"
+    ShStrEnd => "StrEnd"
+    ShNewline => "Newline"
+    ShEof => "Eof"
+    ShUnknown => "Unknown"
   }
 }
 
@@ -764,11 +764,11 @@ fn eat(tokens: TokenStream, expected: ExpectedToken) -> EatResult {
 
 fn parser_result_base_var(expr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
   match expr.expr_data {
-    v1.std.core.ExprFieldAccess =>
+    ExprFieldAccess =>
       match expr.children |> first {
         Present { value: base } =>
           match base.expr_data {
-            v1.std.core.ExprVar { binding_kind: _ } => Present { value: v1.std.core.expr_var_name_at(texpr: base, source_indices: source_indices) }
+            ExprVar { binding_kind: _ } => Present { value: v1.std.core.expr_var_name_at(texpr: base, source_indices: source_indices) }
             _ => none
           }
         Absent => none
@@ -799,7 +799,7 @@ fn parser_helper_state_arg_expr(call_node: v1.std.core.Node, source_indices: Map
 
 fn parser_progress_flag_var(expr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
   match expr.expr_data {
-    v1.std.core.ExprFieldAccess =>
+    ExprFieldAccess =>
       let field = v1.std.core.field_access_field_at(texpr: expr, source_indices: source_indices)
       if field == "consumed" || field == "changed" {
         parser_result_base_var(expr: expr, source_indices: source_indices)
@@ -824,7 +824,7 @@ fn parser_helper_identity(callee: String) -> ParserHelperIdentity? {
 
 fn parser_passthrough_state_expr(expr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.Node? {
   match expr.expr_data {
-    v1.std.core.ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       match parser_helper_identity(callee: v1.std.core.expr_call_func_at(texpr: expr, source_indices: source_indices)) {
         Present { value: ParserHelperSkipNewlines } =>
           parser_helper_state_arg_expr(call_node: expr, source_indices: source_indices)
@@ -843,7 +843,7 @@ fn parser_passthrough_state_expr(expr: v1.std.core.Node, source_indices: Map<Str
 
 fn parser_result_witness(expr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> ParserResultWitness {
   match expr.expr_data {
-    v1.std.core.ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       match v1.std.core.expr_call_func_at(texpr: expr, source_indices: source_indices) {
         "advance" => ParserWitnessAdvance
         "expect" => ParserWitnessExpect
@@ -1067,17 +1067,17 @@ fn parsed_occurrence_role_for_node(
   match requested {
     ParsedOccurrenceUnclassified =>
       match node.expr_data {
-        v1.std.core.ExprLet =>
+        ExprLet =>
           ParsedOccurrenceDeclaration { category: std.occurrence_identity.LexicalValueOccurrence }
-        v1.std.core.ExprVar { binding_kind: _ } =>
+        ExprVar { binding_kind: _ } =>
           ParsedOccurrenceReference { category: std.occurrence_identity.LexicalValueOccurrence }
-        v1.std.core.ExprFieldAccess { summary: _ } =>
+        ExprFieldAccess { summary: _ } =>
           ParsedOccurrenceReference { category: std.occurrence_identity.FieldOccurrence }
-        v1.std.core.ExprMethodCall { method_semantics: _ } =>
+        ExprMethodCall { method_semantics: _ } =>
           ParsedOccurrenceReference { category: std.occurrence_identity.MethodOccurrence }
-        v1.std.core.ExprCall { call_semantics: _, descent_evidence: _ } =>
+        ExprCall { call_semantics: _, descent_evidence: _ } =>
           ParsedOccurrenceReference { category: std.occurrence_identity.CallableOccurrence }
-        v1.std.core.NoExprData =>
+        NoExprData =>
           match node.body {
             Present { value: _ } =>
               match node.type_annotation {
@@ -1177,7 +1177,7 @@ fn stamp_parsed_node_children(
   role: ParsedOccurrenceRole
 ) -> ParsedNodeListStampResult {
   match node.expr_data {
-    v1.std.core.ExprCall { call_semantics: _, descent_evidence: _ } =>
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
       stamp_parsed_node_list_with_head_role(
         nodes: node.children,
         ancestors: ancestors,
@@ -1185,14 +1185,14 @@ fn stamp_parsed_node_children(
         head_role: ParsedOccurrenceReference { category: std.occurrence_identity.CallableOccurrence },
         tail_role: ParsedOccurrenceUnclassified
       )
-    v1.std.core.ExprLet =>
+    ExprLet =>
       stamp_parsed_node_list(
         nodes: node.children,
         ancestors: ancestors,
         ctx: ctx,
         role: ParsedOccurrenceUnclassified
       )
-    v1.std.core.ExprLambda =>
+    ExprLambda =>
       stamp_parsed_node_list_with_head_role(
         nodes: node.children,
         ancestors: ancestors,
@@ -1659,26 +1659,26 @@ fn parse_item_by_form(tokens: TokenStream, ctx: ParseContext, form: std.syntax.I
   if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
   let tokens = r.tokens
   match form.body_kind {
-    std.syntax.TypeBody => {
+    TypeBody => {
       let prefix = parse_item_prefix(tokens: tokens, ctx: ctx, form: form)
       if has_err(err: prefix.err) { return ItemResult { item: dummy, tokens: prefix.tokens, ctx: prefix.ctx, err: prefix.err } }
       parse_type_body_from_prefix(prefix: prefix, start_span: start_span)
     }
-    std.syntax.ExprBody => {
+    ExprBody => {
       let prefix = parse_item_prefix(tokens: tokens, ctx: ctx, form: form)
       if has_err(err: prefix.err) { return ItemResult { item: dummy, tokens: prefix.tokens, ctx: prefix.ctx, err: prefix.err } }
       parse_fn_body_from_prefix(prefix: prefix, start_span: start_span)
     }
-    std.syntax.BlockBody => {
+    BlockBody => {
       let prefix = parse_item_prefix(tokens: tokens, ctx: ctx, form: form)
       if has_err(err: prefix.err) { return ItemResult { item: dummy, tokens: prefix.tokens, ctx: prefix.ctx, err: prefix.err } }
       parse_block_body_from_prefix(prefix: prefix, start_span: start_span)
     }
-    std.syntax.ServiceBody => parse_service_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
-    std.syntax.ResourceBody => parse_resource_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
-    std.syntax.ValueBody => parse_data_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
+    ServiceBody => parse_service_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
+    ResourceBody => parse_resource_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
+    ValueBody => parse_data_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
     AliasBody => parse_alias_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
-    std.syntax.NoBody => {
+    NoBody => {
       let prefix = parse_item_prefix(tokens: tokens, ctx: ctx, form: form)
       if has_err(err: prefix.err) { return ItemResult { item: dummy, tokens: prefix.tokens, ctx: prefix.ctx, err: prefix.err } }
       parse_no_body_from_prefix(prefix: prefix, start_span: start_span)
@@ -2876,7 +2876,7 @@ fn parse_rest_fields(tokens: TokenStream, ctx: ParseContext, base_url: v1.std.co
       parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: Present { value: r3.expr }, headers: headers)
     } else if fname == v1.std.core.transport_headers_key {
       let h = match r3.expr.expr_data {
-        v1.std.core.ExprRecordLit => r3.expr.children
+        ExprRecordLit => r3.expr.children
         _ => return TransportResult { transport: dummy, tokens: tokens, ctx: ctx, err: Present { value: v1.std.core.make_error_node(diagnostic: v1.std.core.InternalError { message: "transport headers must be a record literal { \"Name\": value, ... }", span: token_span(tok: token_stream_first(stream: tokens)) }, module_name: "") } }
       }
       parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: h)
@@ -3147,20 +3147,20 @@ fn modifier_to_prop(name: String, span: std.types.SourceSpan) -> v1.std.core.Nod
 
 fn modifiers_to_props(modifiers: List<v1.std.core.OperationModifier>, span: std.types.SourceSpan) -> List<v1.std.core.Node> {
   modifiers |> map(m => match m {
-    v1.std.core.Idempotent => modifier_to_prop(name: "idempotent", span: span)
-    v1.std.core.Readonly => modifier_to_prop(name: "readonly", span: span)
-    v1.std.core.Hermetic => modifier_to_prop(name: "hermetic", span: span)
+    Idempotent => modifier_to_prop(name: "idempotent", span: span)
+    Readonly => modifier_to_prop(name: "readonly", span: span)
+    Hermetic => modifier_to_prop(name: "hermetic", span: span)
   })
 }
 
 fn status_expr_to_str(expr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   match expr.expr_data {
-    v1.std.core.ExprLiteral { value: v } => match v {
-      std.syntax.LitInt { value: n } => int_to_string(value: n)
-      std.syntax.LitStr { value: s } => s
+    ExprLiteral { value: v } => match v {
+      LitInt { value: n } => int_to_string(value: n)
+      LitStr { value: s } => s
       _ => "_"
     }
-    v1.std.core.ExprVar { binding_kind: _ } => v1.std.core.expr_var_name_at(texpr: expr, source_indices: source_indices)
+    ExprVar { binding_kind: _ } => v1.std.core.expr_var_name_at(texpr: expr, source_indices: source_indices)
     _ => "_"
   }
 }
@@ -4259,7 +4259,7 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: v1.std.core.Node, mi
     }
     Present { value: v1.std.core.ShLBrace } => {
       match lhs.expr_data {
-        v1.std.core.ExprVar { binding_kind: _ } => {
+        ExprVar { binding_kind: _ } => {
           let n = v1.std.core.expr_var_name_at(texpr: lhs, source_indices: ctx.source_indices)
           if is_uppercase_start(name: n) && 14 <= min_bp {
             PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
@@ -4273,7 +4273,7 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: v1.std.core.Node, mi
             }
           }
         }
-        v1.std.core.ExprFieldAccess { summary: _ } => {
+        ExprFieldAccess { summary: _ } => {
           let last_seg = v1.std.core.field_access_field_at(texpr: lhs, source_indices: ctx.source_indices)
           if is_uppercase_start(name: last_seg) && 14 <= min_bp {
             PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
@@ -4358,8 +4358,8 @@ fn try_constraint_annotations(tokens: TokenStream, ctx: ParseContext) -> Constra
 
 fn make_call_expr(lhs: v1.std.core.Node, args: List<v1.std.core.Node>, span: std.types.SourceSpan, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.Node {
   match lhs.expr_data {
-    v1.std.core.ExprVar { binding_kind: _ } => v1.std.core.make_named_expr_node(name: v1.std.core.expr_var_name_at(texpr: lhs, source_indices: source_indices), expr_data: v1.std.core.ExprCall { call_semantics: none, descent_evidence: none }, children: args, inferred: none, span: lhs.span, name_span: v1.std.core.node_name_span(n: lhs))
-    v1.std.core.ExprFieldAccess { summary: _ } => v1.std.core.make_named_expr_node(name: v1.std.core.field_access_field_at(texpr: lhs, source_indices: source_indices), expr_data: v1.std.core.ExprMethodCall { method_semantics: none }, children: concat([first(lhs.children).value], args), inferred: none, span: lhs.span, name_span: v1.std.core.node_name_span(n: lhs))
+    ExprVar { binding_kind: _ } => v1.std.core.make_named_expr_node(name: v1.std.core.expr_var_name_at(texpr: lhs, source_indices: source_indices), expr_data: v1.std.core.ExprCall { call_semantics: none, descent_evidence: none }, children: args, inferred: none, span: lhs.span, name_span: v1.std.core.node_name_span(n: lhs))
+    ExprFieldAccess { summary: _ } => v1.std.core.make_named_expr_node(name: v1.std.core.field_access_field_at(texpr: lhs, source_indices: source_indices), expr_data: v1.std.core.ExprMethodCall { method_semantics: none }, children: concat([first(lhs.children).value], args), inferred: none, span: lhs.span, name_span: v1.std.core.node_name_span(n: lhs))
     _ => v1.std.core.make_named_expr_node(name: "<expr>", expr_data: v1.std.core.ExprCall { call_semantics: none, descent_evidence: none }, children: args, inferred: none, span: lhs.span, name_span: v1.std.core.no_span())
   }
 }
@@ -4932,7 +4932,7 @@ fn parse_for(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
 
 fn field_access_chain_span(texpr: v1.std.core.Node) -> std.types.SourceSpan {
   match texpr.expr_data {
-    v1.std.core.ExprFieldAccess { summary: _ } =>
+    ExprFieldAccess { summary: _ } =>
       let base_span = field_access_chain_span(texpr: v1.std.core.field_access_base(texpr: texpr))
       let chain_end = match texpr.ident_span { Present { value: is } => is.end  Absent => texpr.span.end }
       std.types.SourceSpan { file: base_span.file, start: base_span.start, end: chain_end }
@@ -5146,7 +5146,7 @@ fn collect_lambda_idents(tokens: TokenStream, ctx: ParseContext, acc: List<Parse
 fn interp_body_error_message(err: v1.std.core.ErrorNode?) -> String {
   let inner = match err {
     Present { value: e } => match e.diagnostic {
-      v1.std.core.ParseError { message: m, span: _ } => concat(m, " — ")
+      ParseError { message: m, span: _ } => concat(m, " — ")
       _ => ""
     }
     Absent => ""

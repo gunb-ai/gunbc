@@ -81,7 +81,7 @@ test fn witness_qualified_name_node_resolves_holds() -> v2.std.logic.Bool {
     n: qmpr_qualified_ref
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -99,7 +99,7 @@ test fn witness_qualified_name_node_miss_red_holds() -> v2.std.logic.Bool {
     n: qmpr_qualified_ref
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 

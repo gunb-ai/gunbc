@@ -86,10 +86,10 @@ fn environment(
 
 fn outcome_tag(o: gunbc.spark_provisioning.SparkProvisioningOutcome) -> String {
   match o {
-    gunbc.spark.provisioning.SparkProvisioned { receipt: _ } => "provisioned"
-    gunbc.spark.provisioning.SparkProvisioningInterrupted { phase: _, cause: _ } => "interrupted"
-    gunbc.spark.provisioning.SparkProvisioningHumanInterventionRequired { intervention: _ } => "human"
-    gunbc.spark.provisioning.SparkProvisioningRefused { phase: _, cause: _ } => "refused"
+    SparkProvisioned { receipt: _ } => "provisioned"
+    SparkProvisioningInterrupted { phase: _, cause: _ } => "interrupted"
+    SparkProvisioningHumanInterventionRequired { intervention: _ } => "human"
+    SparkProvisioningRefused { phase: _, cause: _ } => "refused"
   }
 }
 
@@ -162,9 +162,9 @@ test fn spark_completion_requires_observation_never_intent() -> Bool {
 
 fn update_tag(d: extdeps.systems.nvidia_dgx_spark_setup.InitialUpdateDisposition) -> String {
   match d {
-    extdeps.systems.nvidia_dgx_spark_setup.InitialUpdateAppliedDuringSetup => "applied"
-    extdeps.systems.nvidia_dgx_spark_setup.InitialUpdateDeferredToOperator => "deferred"
-    extdeps.systems.nvidia_dgx_spark_setup.InitialUpdateBehaviorUnobserved => "unobserved"
+    InitialUpdateAppliedDuringSetup => "applied"
+    InitialUpdateDeferredToOperator => "deferred"
+    InitialUpdateBehaviorUnobserved => "unobserved"
   }
 }
 
@@ -180,13 +180,13 @@ test fn spark_receipt_software_comes_from_the_device() -> Bool {
   let documented = update_tag(d: dgx_spark_documented_initial_update)
 
   match outcome {
-    gunbc.spark.provisioning.SparkProvisioned { receipt: receipt } => {
+    SparkProvisioned { receipt: receipt } => {
       let observed = update_tag(d: receipt.initial_update)
       observed == "applied" && documented == "unobserved" && observed != documented
     }
-    gunbc.spark.provisioning.SparkProvisioningInterrupted { phase: _, cause: _ } => false
-    gunbc.spark.provisioning.SparkProvisioningHumanInterventionRequired { intervention: _ } => false
-    gunbc.spark.provisioning.SparkProvisioningRefused { phase: _, cause: _ } => false
+    SparkProvisioningInterrupted { phase: _, cause: _ } => false
+    SparkProvisioningHumanInterventionRequired { intervention: _ } => false
+    SparkProvisioningRefused { phase: _, cause: _ } => false
   }
 }
 
@@ -211,16 +211,16 @@ test fn spark_outcome_arms_stay_distinct() -> Bool {
 
 fn burden_tag(d: gunbc.spark_provisioning.HumanBurdenDerivation) -> String {
   match d {
-    gunbc.spark.provisioning.BurdenDerived { burden: _ } => "derived"
-    gunbc.spark.provisioning.BurdenUndecidable { cause: _ } => "undecidable"
+    BurdenDerived { burden: _ } => "derived"
+    BurdenUndecidable { cause: _ } => "undecidable"
   }
 }
 
 fn burden_count_at(d: gunbc.spark_provisioning.HumanBurdenDerivation, frequency: std.human_intervention.HumanInterventionFrequency) -> Int {
   match d {
-    gunbc.spark.provisioning.BurdenDerived { burden: burden } =>
+    BurdenDerived { burden: burden } =>
       human_intervention_count_at(burden: burden, frequency: frequency)
-    gunbc.spark.provisioning.BurdenUndecidable { cause: _ } => 0 - 1
+    BurdenUndecidable { cause: _ } => 0 - 1
   }
 }
 
@@ -268,10 +268,10 @@ test fn spark_burden_is_not_a_property_of_the_strategy_red_control() -> Bool {
 
 fn selection_tag(env: gunbc.spark_provisioning.SparkProvisioningEnvironment) -> String {
   match select_spark_strategy(a: oobe_strategy(), b: pxe_strategy(), env: env, credentials: fixture_credentials()) {
-    gunbc.spark.provisioning.StrategySelectionUndecidable { cause: _ } => "undecidable"
-    gunbc.spark.provisioning.StrategySelected { strategy: strategy } => match strategy {
-      gunbc.spark.provisioning.FactoryOobe { bootstrap: _ } => "oobe"
-      gunbc.spark.provisioning.PxeAutoinstall { environment: _, image: _, install_spec: _ } => "pxe"
+    StrategySelectionUndecidable { cause: _ } => "undecidable"
+    StrategySelected { strategy: strategy } => match strategy {
+      FactoryOobe { bootstrap: _ } => "oobe"
+      PxeAutoinstall { environment: _, image: _, install_spec: _ } => "pxe"
     }
   }
 }
@@ -326,8 +326,8 @@ test fn spark_credentials_are_carried_never_derived() -> Bool {
 // reference from a credential no producer has materialized.
 fn credential_secret_name(standing: gunbc.spark_bootstrap_credential.SparkCredentialStanding) -> String {
   match standing {
-    gunbc.spark.bootstrap_credential.CredentialMaterialized { ref: r } => r.secret as String
-    gunbc.spark.bootstrap_credential.CredentialMaterializationPending => "<pending>"
+    CredentialMaterialized { ref: r } => r.secret as String
+    CredentialMaterializationPending => "<pending>"
   }
 }
 
@@ -338,20 +338,20 @@ test fn spark_production_credentials_are_pending() -> Bool {
   credential_secret_name(standing: spark_credentials_pending.hotspot_password) == "<pending>"
     && credential_secret_name(standing: spark_credentials_pending.administrator_password) == "<pending>"
     && match spark_credentials_standing(c: spark_credentials_pending) {
-         gunbc.spark.bootstrap_credential.BootstrapCredentialsMaterialized => false
-         gunbc.spark.bootstrap_credential.BootstrapCredentialsNotMaterialized => true
+         BootstrapCredentialsMaterialized => false
+         BootstrapCredentialsNotMaterialized => true
        }
     && match spark_credentials_standing(c: fixture_credentials()) {
-         gunbc.spark.bootstrap_credential.BootstrapCredentialsMaterialized => true
-         gunbc.spark.bootstrap_credential.BootstrapCredentialsNotMaterialized => false
+         BootstrapCredentialsMaterialized => true
+         BootstrapCredentialsNotMaterialized => false
        }
 }
 
 fn strategy_carries_no_second_credential_copy(s: gunbc.spark_provisioning.SparkProvisioningStrategy) -> Bool {
   match s {
-    gunbc.spark.provisioning.FactoryOobe { bootstrap: bootstrap } =>
+    FactoryOobe { bootstrap: bootstrap } =>
       (bootstrap.access_point_identity.ssid as String) == "spark-a3ee"
-    gunbc.spark.provisioning.PxeAutoinstall { environment: _, image: _, install_spec: _ } => true
+    PxeAutoinstall { environment: _, image: _, install_spec: _ } => true
   }
 }
 
@@ -366,8 +366,8 @@ test fn spark_bootstrap_ssids_are_established_aliases() -> Bool {
 
 fn completion_evidence_tag(e: std.human_intervention.InterventionCompletionEvidence) -> String {
   match e {
-    std.human_intervention.DischargedAt { evidence: _ } => "discharged-at"
-    std.human_intervention.NoDischargeSiteModeled => "no-discharge-site"
+    DischargedAt { evidence: _ } => "discharged-at"
+    NoDischargeSiteModeled => "no-discharge-site"
   }
 }
 
@@ -420,8 +420,8 @@ fn sensitive_use() -> gunbc.spark_bootstrap_credential.SensitiveBrowserInputUse 
 
 fn admission_tag(obs: gunbc.spark_bootstrap_credential.SensitiveRunObservation) -> String {
   match admit_sensitive_browser_input(use: sensitive_use(), observation: obs) {
-    gunbc.spark.bootstrap_credential.SensitiveInputAdmitted { use: _ } => "admitted"
-    gunbc.spark.bootstrap_credential.SensitiveInputRefused { cause: _, evidence_disposition: d } =>
+    SensitiveInputAdmitted { use: _ } => "admitted"
+    SensitiveInputRefused { cause: _, evidence_disposition: d } =>
       match d { gunbc.spark.bootstrap_credential.EvidenceBundleDestroyed => "refused-destroyed"  gunbc.spark.bootstrap_credential.EvidenceBundleRetained => "refused-retained" }
   }
 }

@@ -24,9 +24,9 @@ fn node_occurrence_id_from_shared(
   occurrence: std.occurrence_identity.NodeOccurrenceIdentity
 ) -> NodeOccurrenceId {
   match occurrence {
-    std.occurrence_identity.OccurrenceSynthetic =>
+    OccurrenceSynthetic =>
       SyntheticOccurrence
-    std.occurrence_identity.OccurrenceMinted { id: id } =>
+    OccurrenceMinted { id: id } =>
       MintedOccurrence { id: id }
   }
 }

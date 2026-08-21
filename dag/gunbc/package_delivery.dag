@@ -37,9 +37,9 @@ fn codex_admit_npm_integrity(
   integrity: extdeps.npm.NpmRegistryIntegrity,
 ) -> gunbc.package_delivery.CodexNpmIntegrityAdmission {
   match integrity {
-    extdeps.npm.NpmRegistrySha512Integrity { digest } =>
+    NpmRegistrySha512Integrity { digest } =>
       CodexNpmIntegrityAdmitted { digest: digest }
-    extdeps.npm.NpmRegistrySha1Integrity { digest } =>
+    NpmRegistrySha1Integrity { digest } =>
       CodexNpmIntegritySha1Unsupported { digest: digest }
   }
 }
@@ -94,9 +94,9 @@ fn observe_package_archive_at_path(
   path: std.types.FilePath,
 ) -> gunbc.package_delivery.PackageArchiveDigestObservation {
   match sha512sum_observe_file(path: path) {
-    extdeps.tools.sha512sum.Sha512FileObserved { digest } =>
+    Sha512FileObserved { digest } =>
       PackageArchiveDigestObserved { locator: locator, observed: digest }
-    extdeps.tools.sha512sum.Sha512FileObservationRefused { cause } =>
+    Sha512FileObservationRefused { cause } =>
       PackageArchiveDigestObservationRefused { locator: locator, cause: cause }
   }
 }
@@ -265,22 +265,22 @@ fn codex_registry_artifacts_from_nodes(
     nodes,
     init: [],
     f: (acc, node) => match node.selection {
-      extdeps.npm.NpmRegistrySelected { artifact } => acc |> list_push(artifact)
-      extdeps.npm.NpmRootProject { manifest_identity: _ } => acc
+      NpmRegistrySelected { artifact } => acc |> list_push(artifact)
+      NpmRootProject { manifest_identity: _ } => acc
     },
   )
 }
 
 fn admit_codex_package_lock_text(text: String) -> gunbc.package_delivery.CodexPackageLockAdmission {
   match npm_decode_package_lock_text(text: text) {
-    extdeps.npm.NpmPackageLockParseRefused { cause } =>
+    NpmPackageLockParseRefused { cause } =>
       CodexPackageLockParseFailed { cause: cause }
-    extdeps.npm.NpmPackageLockParsed { manager: _, nodes, unsupported, graph } =>
+    NpmPackageLockParsed { manager: _, nodes, unsupported, graph } =>
       if count(unsupported) > 0 {
         CodexPackageLockUnsupportedNodes { unsupported: unsupported }
       } else {
         match admit_codex_package_lock_graph(raw_graph: graph) {
-          extdeps.package.PackageLockGraphAdmitted { graph: admitted } =>
+          PackageLockGraphAdmitted { graph: admitted } =>
             CodexPackageLockAdmitted {
               graph: admitted,
               nodes: nodes,
@@ -332,15 +332,15 @@ fn codex_wrapper_lookup(
 ) -> gunbc.package_delivery.CodexWrapperLookup {
   let key = extdeps.npm.NpmRelativeLockPath { key: codex_wrapper_lock_path_key }
   match package_lock_lookup_node(graph: graph, key: key) {
-    extdeps.package.PackageLockNodeAbsent { key: _ } =>
+    PackageLockNodeAbsent { key: _ } =>
       CodexWrapperAbsent { key: codex_wrapper_lock_path_key }
-    extdeps.package.PackageLockNodeDuplicate { key: _, count } =>
+    PackageLockNodeDuplicate { key: _, count } =>
       CodexWrapperDuplicate { key: codex_wrapper_lock_path_key, count: count }
-    extdeps.package.PackageLockNodeUnique { node } =>
+    PackageLockNodeUnique { node } =>
       match node.selection {
-        extdeps.npm.NpmRegistrySelected { artifact } =>
+        NpmRegistrySelected { artifact } =>
           CodexWrapperUnique { node: node, artifact: artifact }
-        extdeps.npm.NpmRootProject { manifest_identity: _ } =>
+        NpmRootProject { manifest_identity: _ } =>
           CodexWrapperWrongForm { key: codex_wrapper_lock_path_key }
       }
   }
@@ -556,18 +556,18 @@ fn codex_target_package_lookup(
     Present { value: path_key } => {
       let key = extdeps.npm.NpmRelativeLockPath { key: path_key }
       match package_lock_lookup_node(graph: graph, key: key) {
-        extdeps.package.PackageLockNodeAbsent { key: _ } =>
+        PackageLockNodeAbsent { key: _ } =>
           CodexTargetPackageAbsent { key: path_key }
-        extdeps.package.PackageLockNodeDuplicate { key: _, count } =>
+        PackageLockNodeDuplicate { key: _, count } =>
           CodexTargetPackageDuplicate { key: path_key, count: count }
-        extdeps.package.PackageLockNodeUnique { node } =>
+        PackageLockNodeUnique { node } =>
           match node.selection {
-            extdeps.npm.NpmRootProject { manifest_identity: _ } =>
+            NpmRootProject { manifest_identity: _ } =>
               CodexTargetPackageWrongMetadata {
                 key: path_key,
                 cause: "platform lock-node is root project, not registry artifact" as std.types.NonEmptyStr,
               }
-            extdeps.npm.NpmRegistrySelected { artifact } =>
+            NpmRegistrySelected { artifact } =>
               CodexTargetPackageUnique { node: node, artifact: artifact }
           }
       }
@@ -786,8 +786,8 @@ fn select_codex_exact_target_closure(
 
 fn lock_path_key_rel(key: extdeps.npm.NpmLockPathKey) -> std.types.NonEmptyStr? {
   match key {
-    extdeps.npm.NpmRootLockPath => none
-    extdeps.npm.NpmRelativeLockPath { key: rel } => Present { value: rel }
+    NpmRootLockPath => none
+    NpmRelativeLockPath { key: rel } => Present { value: rel }
   }
 }
 
@@ -922,17 +922,17 @@ fn observe_admitted_package_set_identity(
     none
   } else {
     match sha512sum_observe_file(path: path as std.types.FilePath) {
-      extdeps.tools.sha512sum.Sha512FileObserved { digest } =>
+      Sha512FileObserved { digest } =>
         Present { value: as_content_hash_sha512(digest: digest) }
-      extdeps.tools.sha512sum.Sha512FileObservationRefused { cause: _ } => none
+      Sha512FileObservationRefused { cause: _ } => none
     }
   }
 }
 
 fn observe_file_sha512(path: std.types.FilePath) -> std.content_hash.Sha512Digest? {
   match sha512sum_observe_file(path: path) {
-    extdeps.tools.sha512sum.Sha512FileObserved { digest } => Present { value: digest }
-    extdeps.tools.sha512sum.Sha512FileObservationRefused { cause: _ } => none
+    Sha512FileObserved { digest } => Present { value: digest }
+    Sha512FileObservationRefused { cause: _ } => none
   }
 }
 
@@ -1129,14 +1129,14 @@ fn observe_package_materialized_tree(
           }
         } else {
           match sha512sum_observe_file(path: path as std.types.FilePath) {
-            extdeps.tools.sha512sum.Sha512FileObserved { digest } =>
+            Sha512FileObserved { digest } =>
               PackageMaterializedTreeObserved {
                 receipt: gunbc.package_delivery.PackageMaterializedTreeReceipt {
                   entries: entries,
                   tree_identity: as_content_hash_sha512(digest: digest),
                 },
               }
-            extdeps.tools.sha512sum.Sha512FileObservationRefused { cause: digest_cause } =>
+            Sha512FileObservationRefused { cause: digest_cause } =>
               PackageMaterializedTreeObservationRefused { cause: digest_cause }
           }
         }
@@ -1170,11 +1170,11 @@ fn sort_json_members_by_key(members: std.types.List<extdeps.languages.json.emit.
 
 fn canonicalize_json_value(v: extdeps.languages.json.emit.JsonValue) -> extdeps.languages.json.emit.JsonValue? {
   match v {
-    extdeps.languages.json.emit.JsonNull => Present { value: extdeps.languages.json.emit.JsonNull }
-    extdeps.languages.json.emit.JsonBool { value: b } => Present { value: extdeps.languages.json.emit.JsonBool { value: b } }
-    extdeps.languages.json.emit.JsonNumber { lexeme: l } => Present { value: extdeps.languages.json.emit.JsonNumber { lexeme: l } }
-    extdeps.languages.json.emit.JsonString { value: s } => Present { value: extdeps.languages.json.emit.JsonString { value: s } }
-    extdeps.languages.json.emit.JsonArray { elements } => {
+    JsonNull => Present { value: extdeps.languages.json.emit.JsonNull }
+    JsonBool { value: b } => Present { value: extdeps.languages.json.emit.JsonBool { value: b } }
+    JsonNumber { lexeme: l } => Present { value: extdeps.languages.json.emit.JsonNumber { lexeme: l } }
+    JsonString { value: s } => Present { value: extdeps.languages.json.emit.JsonString { value: s } }
+    JsonArray { elements } => {
       let mapped = fold(
         elements,
         init: Present { value: [] as std.types.List<extdeps.languages.json.emit.JsonValue> },
@@ -1192,7 +1192,7 @@ fn canonicalize_json_value(v: extdeps.languages.json.emit.JsonValue) -> extdeps.
         Present { value: els } => Present { value: extdeps.languages.json.emit.JsonArray { elements: els } }
       }
     }
-    extdeps.languages.json.emit.JsonObject { members } => {
+    JsonObject { members } => {
       if json_object_keys_unique(members: members) == false {
         none
       } else {
@@ -1293,7 +1293,7 @@ fn protocol_schema_process_file_for_bundle(
               false
             } else {
               match sha512sum_observe_file(path: canon_path) {
-                extdeps.tools.sha512sum.Sha512FileObserved { digest } =>
+                Sha512FileObserved { digest } =>
                   append_text_to_file(
                     path: manifest_path,
                     extra: concat(
@@ -1301,7 +1301,7 @@ fn protocol_schema_process_file_for_bundle(
                       concat("\t", concat(digest.hex as String, "\n")),
                     ),
                   )
-                extdeps.tools.sha512sum.Sha512FileObservationRefused { cause: _ } => false
+                Sha512FileObservationRefused { cause: _ } => false
               }
             }
           }
@@ -1373,9 +1373,9 @@ fn observe_protocol_schema_identity(
                 none
               } else {
                 match sha512sum_observe_file(path: manifest_path as std.types.FilePath) {
-                  extdeps.tools.sha512sum.Sha512FileObserved { digest } =>
+                  Sha512FileObserved { digest } =>
                     Present { value: as_content_hash_sha512(digest: digest) }
-                  extdeps.tools.sha512sum.Sha512FileObservationRefused { cause: _ } => none
+                  Sha512FileObservationRefused { cause: _ } => none
                 }
               }
             }
@@ -1470,9 +1470,9 @@ fn observe_codex_runtime_bundle_receipt_identity(
         none
       } else {
         match sha512sum_observe_file(path: path as std.types.FilePath) {
-          extdeps.tools.sha512sum.Sha512FileObserved { digest } =>
+          Sha512FileObserved { digest } =>
             Present { value: as_content_hash_sha512(digest: digest) }
-          extdeps.tools.sha512sum.Sha512FileObservationRefused { cause: _ } => none
+          Sha512FileObservationRefused { cause: _ } => none
         }
       }
     }
@@ -3053,16 +3053,16 @@ fn acquire_and_admit_ollama_release_archive(
       path: dest as std.types.NonEmptyStr,
       expected_digest: binary_release.digest.hex,
     ) {
-      extdeps.tools.sha256sum.Sha256Matches =>
+      Sha256Matches =>
         SparkServingOllamaArchiveAdmitted {
           local_path: dest,
           digest_hex: binary_release.digest.hex,
         }
-      extdeps.tools.sha256sum.Sha256Mismatch =>
+      Sha256Mismatch =>
         SparkServingOllamaArchiveIntegrityRefused {
           cause: "ollama release archive sha256 mismatch" as std.types.NonEmptyStr,
         }
-      extdeps.tools.sha256sum.Sha256VerifyInfraFailure { reason } =>
+      Sha256VerifyInfraFailure { reason } =>
         SparkServingOllamaArchiveIntegrityRefused { cause: reason }
     }
   }

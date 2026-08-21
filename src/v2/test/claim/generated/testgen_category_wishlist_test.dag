@@ -143,7 +143,7 @@ fn dispatched_refinement_preservation_generator() -> v2.std.diagnostic.Outcome<v
         },
         diagnostics: d,
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 

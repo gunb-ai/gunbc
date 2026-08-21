@@ -182,12 +182,12 @@ func bmc_netboot_provision(plan: BmcNetbootServePlan) -> std.process.ProcessExit
     init: mk,
     f: (acc, file) => match acc {
       ExitFailure { code: _, reason: _ } => acc
-      std.process.ExitSuccess => bmc_netboot_stage_file(plan: plan, file: file)
+      ExitSuccess => bmc_netboot_stage_file(plan: plan, file: file)
     }
   )
   let serve = match staged {
     ExitFailure { code: _, reason: _ } => staged
-    std.process.ExitSuccess => bmc_netboot_run_bmc(plan: plan, argv: bmc_netboot_serve_command_local(plan: plan).argv)
+    ExitSuccess => bmc_netboot_run_bmc(plan: plan, argv: bmc_netboot_serve_command_local(plan: plan).argv)
   }
   serve
 }

@@ -11,7 +11,7 @@ test fn spice_resistor_projects_resistor_passive_topology_holds() -> v2.std.logi
     value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1000" }
   }
   match passive_spec_from_component(component: component) {
-    v2.std.optional.Present { value: ResistorPassive { topology: topo } } => topo.name == "1"
+    Present { value: ResistorPassive { topology: topo } } => topo.name == "1"
     _ => false
   }
 }
@@ -24,7 +24,7 @@ test fn spice_capacitor_projects_capacitor_passive_arm_holds() -> v2.std.logic.B
     value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1e-6" }
   }
   match passive_spec_from_component(component: component) {
-    v2.std.optional.Present { value: CapacitorPassive { topology: _ } } => true
+    Present { value: CapacitorPassive { topology: _ } } => true
     _ => false
   }
 }
@@ -37,7 +37,7 @@ test fn spice_inductor_projects_inductor_passive_arm_holds() -> v2.std.logic.Boo
     value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1e-3" }
   }
   match passive_spec_from_component(component: component) {
-    v2.std.optional.Present { value: InductorPassive { topology: _ } } => true
+    Present { value: InductorPassive { topology: _ } } => true
     _ => false
   }
 }
@@ -50,7 +50,7 @@ test fn passive_topology_preserves_component_name_holds() -> v2.std.logic.Bool {
     value: v2.extdeps.formats.spice.SpiceValue { lexeme: "47" }
   }
   match passive_topology_from_component(component: component) {
-    v2.std.optional.Present { value: topo } => topo.name == "r9"
-    v2.std.optional.Absent => false
+    Present { value: topo } => topo.name == "r9"
+    Absent => false
   }
 }

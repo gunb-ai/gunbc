@@ -32,12 +32,12 @@ fn witness_semantic_mismatch_discriminates_from_host_failures() -> v2.std.logic.
   match semantic {
     SemanticMismatch { actual: _, falsification: _ } => true
     Pass => false
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
     && match build {
-      v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => true
+      BuildFailed { actual: _, diagnostic: _ } => true
       Pass => false
       SemanticMismatch { actual: _, falsification: _ } => false
       RunFailed { actual: _, diagnostic: _ } => false
@@ -47,7 +47,7 @@ fn witness_semantic_mismatch_discriminates_from_host_failures() -> v2.std.logic.
       RunFailed { actual: _, diagnostic: _ } => true
       Pass => false
       SemanticMismatch { actual: _, falsification: _ } => false
-      v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+      BuildFailed { actual: _, diagnostic: _ } => false
       Deferred { actual: _, diagnostic: _ } => false
     }
 }

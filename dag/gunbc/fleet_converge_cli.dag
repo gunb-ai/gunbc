@@ -128,7 +128,7 @@ fn converge_provider_runtime_codex_receipt(host: String) -> ConvergeCliReceipt? 
             evidence: gunbc.host_effect.host_effect_identity_evidence,
             transport: gunbc.host_effect.LocalShell,
           ) {
-            std.realization_reconcile.Converged { evidence: _, applied: _ } =>
+            Converged { evidence: _, applied: _ } =>
               ConvergeCliReceipt {
                 host: host,
                 applied: 1,
@@ -354,7 +354,7 @@ fn converge_cli_receipt_for_host(host_converge: gunbc.host_converge.HostConverge
   match gunbc.fleet_converge_apply.converge_apply_for_host(host_converge: host_converge, transport: gunbc.host_effect.LocalShell) {
     Present { value: r } =>
       match r {
-        std.realization_reconcile.Converged { evidence: _, applied: _ } =>
+        Converged { evidence: _, applied: _ } =>
           ConvergeCliReceipt {
             host: host_converge.identity as String,
             applied: host_converge.knobs.length(),

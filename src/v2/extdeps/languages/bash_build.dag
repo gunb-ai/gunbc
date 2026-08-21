@@ -109,7 +109,7 @@ fn bash_build_command_words_from_lits_suffix(
   index: Int
 ) -> v2.std.node.Node {
   match list_at_optional(xs: lits, index: index) {
-    v2.std.optional.Present { value: lit } =>
+    Present { value: lit } =>
       bash_build_command_words_from_lits_suffix(
         lits: lits,
         accumulated: bash_build_command_words_pair(
@@ -339,7 +339,7 @@ fn bash_build_word_list_from_nodes_suffix(
   index: Int
 ) -> v2.std.node.Node {
   match list_at_optional(xs: words, index: index) {
-    v2.std.optional.Present { value: word } =>
+    Present { value: word } =>
       bash_build_word_list_from_nodes_suffix(
         words: words,
         accumulated: bash_build_command_words_pair(left: accumulated, right: word),
@@ -391,7 +391,7 @@ fn bash_build_stmt_list_from_nodes_suffix(
   index: Int
 ) -> v2.std.node.Node {
   match list_at_optional(xs: stmts, index: index) {
-    v2.std.optional.Present { value: stmt } =>
+    Present { value: stmt } =>
       bash_build_stmt_list_from_nodes_suffix(
         stmts: stmts,
         accumulated: bash_build_stmt_list_pair(left: accumulated, right: stmt),

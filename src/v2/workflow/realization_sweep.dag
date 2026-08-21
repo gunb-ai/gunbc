@@ -106,7 +106,7 @@ fn sweep_rows(ingest: v2.compiler.source_authority.SourceRootIngest, admission: 
 
 fn sweep_rows_with_identities(ingest: v2.compiler.source_authority.SourceRootIngest, admission: v2.compiler.name_resolve.Admission, entry: String, identities: List<String>) -> List<v2.workflow.realization_sweep.RealizationSweepRow> {
   match entry_witness_source(ingest: ingest, entry: entry) {
-    v2.std.optional.Absent =>
+    Absent =>
       [v2.workflow.realization_sweep.RealizationSweepRow {
         entry: entry,
         function: "",
@@ -114,7 +114,7 @@ fn sweep_rows_with_identities(ingest: v2.compiler.source_authority.SourceRootIng
         cause: "realization_sweep_entry_witness_absent",
         located: entry
       }]
-    v2.std.optional.Present { value: _entry_source } => {
+    Present { value: _entry_source } => {
       let names = identities
       if length(xs: names) == 0 {
         fold_list(
@@ -146,7 +146,7 @@ fn sweep_rows_with_identities(ingest: v2.compiler.source_authority.SourceRootIng
       )
       fold_list(xs: names, empty: SweepPairState { index: 0, out: [] }, cons: fn(st, name) {
         let row = match list_at_optional(xs: attempts, index: st.index) {
-          v2.std.optional.Absent =>
+          Absent =>
             v2.workflow.realization_sweep.RealizationSweepRow {
               entry: entry,
               function: name,
@@ -154,7 +154,7 @@ fn sweep_rows_with_identities(ingest: v2.compiler.source_authority.SourceRootIng
               cause: "realization_sweep_attempt_row_missing",
               located: entry
             }
-          v2.std.optional.Present { value: a } =>
+          Present { value: a } =>
             v2.workflow.realization_sweep.RealizationSweepRow {
               entry: entry,
               function: name,

@@ -7,6 +7,6 @@ test fn lens_testgen_shadow_ci_run_receipt_holds() -> v2.std.logic.Bool {
   match testgen_run_receipt_outcome(profile_ref: ^testgen_default_profile_ref) {
     Accepted { value: receipt, diagnostics: _ } =>
       testgen_run_receipt_carries_profile_roster(receipt: receipt)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

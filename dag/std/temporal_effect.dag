@@ -146,9 +146,9 @@ fn decision_for_held_lease_verdict(
   pending_step_id: std.types.NonEmptyStr,
 ) -> std.upsert_decision.UpsertDecision<NextStepApplyPlan> {
   match verdict {
-    std.upsert_decision.Converged => Noop
-    std.upsert_decision.Absent => std.upsert_decision.Apply { plan: ApplyAtStep { step_id: pending_step_id } }
-    std.upsert_decision.Drifted => std.upsert_decision.Apply {
+    Converged => Noop
+    Absent => std.upsert_decision.Apply { plan: ApplyAtStep { step_id: pending_step_id } }
+    Drifted => std.upsert_decision.Apply {
       plan: DrainThenStartAtStep { step_id: pending_step_id, lease_key: lease.epoch.lease_key },
     }
     Conflict => std.upsert_decision.Refuse { reason: "foreign lease holder on scoped resource" as std.types.NonEmptyStr }
@@ -163,8 +163,8 @@ fn next_step_plan_from_apply_decision(
 ) -> NextStepPlan {
   match decision {
     Noop => PlanNoop { step_id: pending_step_id }
-    std.upsert_decision.Refuse { reason: r } => PlanRefuse { step_id: pending_step_id, reason: r }
-    std.upsert_decision.Apply { plan: p } => match p {
+    Refuse { reason: r } => PlanRefuse { step_id: pending_step_id, reason: r }
+    Apply { plan: p } => match p {
       ApplyAtStep { step_id: s } => PlanApply { step_id: s }
       DrainThenStartAtStep { step_id: s, lease_key: k } => PlanDrainThenStart {
         step_id: s,

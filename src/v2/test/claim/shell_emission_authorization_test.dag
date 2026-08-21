@@ -23,7 +23,7 @@ test fn foreign_executor_authorizes_regardless_of_window() -> v2.std.logic.Bool 
   match auth {
     Authorized { justification: ForeignExecutorMandated { capability: _ } } => true
     Authorized { justification: _ } => false
-    v2.std.execution_surface.Refused { cause: _ } => false
+    Refused { cause: _ } => false
   }
 }
 
@@ -37,7 +37,7 @@ test fn bootstrap_window_with_absent_gate_authorizes() -> v2.std.logic.Bool {
   match auth {
     Authorized { justification: BootstrapProvisioned { window: _, site: _ } } => true
     Authorized { justification: _ } => false
-    v2.std.execution_surface.Refused { cause: _ } => false
+    Refused { cause: _ } => false
   }
 }
 
@@ -54,8 +54,8 @@ test fn bootstrap_window_with_unknown_availability_refuses() -> v2.std.logic.Boo
     roster: empty_roster()
   )
   match auth {
-    v2.std.execution_surface.Refused { cause: UnknownAvailability { gate: _ } } => true
-    v2.std.execution_surface.Refused { cause: _ } => false
+    Refused { cause: UnknownAvailability { gate: _ } } => true
+    Refused { cause: _ } => false
     Authorized { justification: _ } => false
   }
 }
@@ -68,8 +68,8 @@ test fn steady_state_without_roster_entry_refuses() -> v2.std.logic.Bool {
     roster: empty_roster()
   )
   match auth {
-    v2.std.execution_surface.Refused { cause: RuntimePresentRequiresTypedRealization { capability: _ } } => true
-    v2.std.execution_surface.Refused { cause: _ } => false
+    Refused { cause: RuntimePresentRequiresTypedRealization { capability: _ } } => true
+    Refused { cause: _ } => false
     Authorized { justification: _ } => false
   }
 }
@@ -92,7 +92,7 @@ test fn steady_state_with_matching_roster_entry_authorizes() -> v2.std.logic.Boo
     Authorized { justification: RosterException { roster_key: k, dissolution: _ } } =>
       k == "live_deploy_apply"
     Authorized { justification: _ } => false
-    v2.std.execution_surface.Refused { cause: _ } => false
+    Refused { cause: _ } => false
   }
 }
 
@@ -111,8 +111,8 @@ test fn steady_state_roster_entry_for_other_site_still_refuses() -> v2.std.logic
     roster: roster
   )
   match auth {
-    v2.std.execution_surface.Refused { cause: RuntimePresentRequiresTypedRealization { capability: _ } } => true
-    v2.std.execution_surface.Refused { cause: _ } => false
+    Refused { cause: RuntimePresentRequiresTypedRealization { capability: _ } } => true
+    Refused { cause: _ } => false
     Authorized { justification: _ } => false
   }
 }

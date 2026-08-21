@@ -92,7 +92,7 @@ fn spark_serving_desired_release_admission() -> SparkServingDesiredAdmission {
     architecture: OllamaLinuxArm64,
     model: spark_serving_desired_model_ref,
   ) {
-    extdeps.ollama.capability.OllamaPlatformSupportApplicable =>
+    OllamaPlatformSupportApplicable =>
       SparkServingDesiredAdmitted {
         serving_release: gunbc.spark.serving_release.SparkServingRelease {
           runtime: gunbc.spark.serving_release.RuntimeArtifactIdentity {
@@ -101,11 +101,11 @@ fn spark_serving_desired_release_admission() -> SparkServingDesiredAdmission {
           model: spark_serving_desired_model_artifact(),
         },
       }
-    extdeps.ollama.capability.OllamaPlatformSupportUnmet { cause: c } =>
+    OllamaPlatformSupportUnmet { cause: c } =>
       SparkServingDesiredRefused { cause: c }
-    extdeps.ollama.capability.OllamaPlatformSupportUnobserved { cause: c } =>
+    OllamaPlatformSupportUnobserved { cause: c } =>
       SparkServingDesiredRefused { cause: c }
-    extdeps.ollama.capability.OllamaPlatformSupportUncatalogued { cause: c } =>
+    OllamaPlatformSupportUncatalogued { cause: c } =>
       SparkServingDesiredRefused { cause: c }
   }
 }

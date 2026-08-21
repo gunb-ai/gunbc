@@ -61,6 +61,6 @@ test fn substitute_at_depth_two_claim_holds() -> v2.std.logic.Bool {
     replacement: substitute_replacement_leaf
   ) {
     Accepted { value: n, diagnostics: _ } => n == substitute_expected_root
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

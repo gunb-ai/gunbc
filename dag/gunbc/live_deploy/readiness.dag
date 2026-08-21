@@ -272,7 +272,7 @@ fn show_healthz_read_for_deploy(
 ) -> std.realization_reconcile.ShowEffectiveRead<gunbc.roadmap_site_surface_types.HealthzEffectiveRead> {
   let verdict = gunbc.host_effect_realize.host_effect_privilege_verdict(access: access, fixture_actor: Absent)
   match verdict {
-    std.access.Deny { refusal: _ } =>
+    Deny { refusal: _ } =>
       std.realization_reconcile.ReadObserved {
         value: gunbc.roadmap_site_surface_types.HealthzProbeRefused {
           probe_error: gunbc.ci_deploy_access.deploy_access_decision_reason(d: verdict),
@@ -436,7 +436,7 @@ fn capture_unit_diagnosis(
 ) -> String {
   let verdict = gunbc.host_effect_realize.host_effect_privilege_verdict(access: access, fixture_actor: Absent)
   match verdict {
-    std.access.Deny { refusal: _ } =>
+    Deny { refusal: _ } =>
       concat("unit diagnosis capture failed: ", gunbc.ci_deploy_access.deploy_access_decision_reason(d: verdict))
     Permit =>
       gunbc.systemctl_status_read.unit_status_capture_text(
@@ -535,7 +535,7 @@ fn last_probe_from_attempt(
 ) -> String {
   match attempt {
     NotConverged { reason: why, applied: _ } => why
-    std.realization_reconcile.Converged { evidence: _, applied: _ } => "converged"
+    Converged { evidence: _, applied: _ } => "converged"
   }
 }
 

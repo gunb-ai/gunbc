@@ -30,11 +30,11 @@ test fn ensure_known_absence_applies_only_with_authority_and_plan() -> Bool {
     plan: gunbc.ensure.EnsurePlanAvailable { plan: "provision-rust-toolchain" },
   )
   match permitted {
-    std.upsert_decision.Apply { plan } => plan == "provision-rust-toolchain"
+    Apply { plan } => plan == "provision-rust-toolchain"
     _ => false
   }
     && match observe_only {
-      std.upsert_decision.Refuse { reason } => string_contains(s: reason as String, pattern: "cargo absent")
+      Refuse { reason } => string_contains(s: reason as String, pattern: "cargo absent")
       _ => false
     }
 }
@@ -47,7 +47,7 @@ test fn ensure_inaccessible_never_mutates() -> Bool {
     mismatch_reason: "unknown",
     plan: gunbc.ensure.EnsurePlanAvailable { plan: "would-mutate" },
   ) {
-    std.upsert_decision.Refuse { reason } =>
+    Refuse { reason } =>
       string_contains(s: reason as String, pattern: "transport refused")
     _ => false
   }
@@ -67,12 +67,12 @@ test fn ensure_readback_is_the_convergence_authority() -> Bool {
     mismatch_reason: "identity mismatch",
   )
   match green {
-    std.realization_reconcile.Converged { evidence, applied } =>
+    Converged { evidence, applied } =>
       evidence == "gunbc-help-identity" && applied
     NotConverged { reason: _, applied: _ } => false
   }
     && match red {
-      std.realization_reconcile.Converged { evidence: _, applied: _ } => false
+      Converged { evidence: _, applied: _ } => false
       NotConverged { reason, applied } =>
         applied && reason == "identity mismatch"
     }

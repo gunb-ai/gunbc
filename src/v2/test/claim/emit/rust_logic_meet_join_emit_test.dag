@@ -18,7 +18,7 @@ fn meet_join_emit_source_equals(root: v2.std.node.Node, target: v2.std.compilers
   match v2.compiler.emit.emit(tree: meet_join_emit_tree_for(root: root), target: target) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == expected) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -31,7 +31,7 @@ fn meet_join_emit_discriminates(
   match v2.compiler.emit.emit(tree: meet_join_emit_tree_for(root: root), target: target) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == expected) && (source.carried != wrong) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

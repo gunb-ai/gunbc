@@ -75,7 +75,7 @@ fn lifecycle_carrier_diagnostic(carrier: v2.std.node.Node) -> v2.std.diagnostic.
 // fields ever reach the walk.
 fn field_lifecycle_violation(carrier: v2.std.node.Node, edge: v2.std.node.Edge) -> v2.std.optional.Optional<v2.std.diagnostic.Diagnostic> {
   match edge.label {
-    v2.std.node.Named { name: nm } =>
+    Named { name: nm } =>
       if type_is_bare_string(target: edge.target) && name_is_lifecycle_field(name: nm) {
         optional_present(value: lifecycle_carrier_diagnostic(carrier: carrier))
       } else {
@@ -100,7 +100,7 @@ fn carrier_first_lifecycle_violation(carrier: v2.std.node.Node) -> v2.std.option
 // fold_node into O(n^2).
 fn lifecycle_carrier_gate(node: v2.std.node.Node) -> Outcome<Witness<v2.std.node.Node>> {
   match carrier_first_lifecycle_violation(carrier: node) {
-    v2.std.optional.Present { value: d } => outcome_rejected(d)
-    v2.std.optional.Absent => outcome_accepted(value: v2.std.witness.Holds { value: node })
+    Present { value: d } => outcome_rejected(d)
+    Absent => outcome_accepted(value: v2.std.witness.Holds { value: node })
   }
 }

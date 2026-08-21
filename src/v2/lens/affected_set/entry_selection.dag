@@ -148,7 +148,7 @@ fn file_paths_for_frontier_nodes(
     fold(decls, init: paths, f: fn(acc, decl) {
       if decl.output == node {
         match module_path_for_decl(decl: decl, modules: modules) {
-          v2.std.optional.Present { value: path } =>
+          Present { value: path } =>
             if path_excluded_by_substrings(path: path, exclude_substrings: exclude_substrings) {
               acc
             } else if contains(xs: acc, item: path, eq: v2.lens.affected_set.entry_selection.string_eq) {
@@ -156,7 +156,7 @@ fn file_paths_for_frontier_nodes(
             } else {
               list_snoc_item(xs: acc, item: path)
             }
-          v2.std.optional.Absent => acc
+          Absent => acc
         }
       } else {
         acc

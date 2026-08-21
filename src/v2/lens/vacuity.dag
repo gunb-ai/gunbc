@@ -269,10 +269,10 @@ data vacuity_bool_witness_fn_decl_collection_ceiling_note: String = "THIRD, BROA
 fn vacuity_witness_ingest_source_text(source_text: String, file: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   let lm = dag_language_model()
   match v2.compiler.tokenize.tokenize(text: source_text, file: file, rules: lm.lex) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     Accepted { value: ts, diagnostics: _ } =>
       match v2.compiler.parse.parse_module(tokens: ts, grammar: lm.grammar) {
-        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: artifact, diagnostics: _ } =>
           normalize(parse_tree: artifact.tree)
       }
@@ -292,24 +292,24 @@ fn vacuity_collect_fn_decls(root: v2.std.node.Node, acc: List<v2.std.node.Node>)
 
 fn vacuity_fn_decl_name_optional(fn_decl: v2.std.node.Node) -> v2.std.node.Symbol? {
   match body_lower_unwrap_captured(shell: fn_decl) {
-    v2.std.optional.Absent => optional_absent()
-    v2.std.optional.Present { value: captured } =>
+    Absent => optional_absent()
+    Present { value: captured } =>
       body_lower_fn_decl_ident_from_captured(captured: captured)
   }
 }
 
 fn vacuity_fn_decl_named(fn_decl: v2.std.node.Node, name: v2.std.node.Symbol) -> v2.std.logic.Bool {
   match vacuity_fn_decl_name_optional(fn_decl: fn_decl) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: sym } => sym == name
+    Absent => false
+    Present { value: sym } => sym == name
   }
 }
 
 fn vacuity_find_fn_decl_by_name(decls: List<v2.std.node.Node>, name: v2.std.node.Symbol) -> v2.std.node.Node? {
   fold(decls, init: optional_absent(), f: fn(acc, decl) {
     match acc {
-      v2.std.optional.Present { value: _ } => acc
-      v2.std.optional.Absent =>
+      Present { value: _ } => acc
+      Absent =>
         if vacuity_fn_decl_named(fn_decl: decl, name: name) {
           optional_present(value: decl)
         } else {
@@ -338,16 +338,16 @@ fn vacuity_stmt_seq_is_single_statement(stmt_seq: v2.std.node.Node) -> v2.std.lo
     false
   } else {
     match sugar_sequence_pair_optional(node: stmt_seq) {
-      v2.std.optional.Absent => false
-      v2.std.optional.Present { value: pair } => is_empty_conj_root(n: pair.right)
+      Absent => false
+      Present { value: pair } => is_empty_conj_root(n: pair.right)
     }
   }
 }
 
 fn vacuity_transform_operator_symbol_optional(transform: v2.std.node.Node) -> v2.std.node.Symbol? {
   match list_at_optional(xs: node_positional_child_targets(node: transform), index: 0) {
-    v2.std.optional.Absent => optional_absent()
-    v2.std.optional.Present { value: op_node } =>
+    Absent => optional_absent()
+    Present { value: op_node } =>
       match op_node.kind {
         TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
         _ => optional_absent()
@@ -357,26 +357,26 @@ fn vacuity_transform_operator_symbol_optional(transform: v2.std.node.Node) -> v2
 
 fn vacuity_transform_is_equality(transform: v2.std.node.Node) -> v2.std.logic.Bool {
   match vacuity_transform_operator_symbol_optional(transform: transform) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: id } => id == ^dag_token_eq_eq
+    Absent => false
+    Present { value: id } => id == ^dag_token_eq_eq
   }
 }
 
 fn vacuity_operand_provenance_from_node(node: v2.std.node.Node) -> TestClaimOperandProvenance {
   match dag_canonical_literal_from_node(node: node) {
     Accepted { value: _, diagnostics: _ } => LiteralOracle
-    v2.std.diagnostic.Rejected { diagnostics: _ } => OperandProvenanceUnknown
+    Rejected { diagnostics: _ } => OperandProvenanceUnknown
   }
 }
 
 fn vacuity_bool_witness_body_evidence(transform: v2.std.node.Node) -> VacuityEvidence {
   if vacuity_transform_is_equality(transform: transform) {
     match list_at_optional(xs: node_positional_child_targets(node: transform), index: 1) {
-      v2.std.optional.Absent => Unknown
-      v2.std.optional.Present { value: lhs } =>
+      Absent => Unknown
+      Present { value: lhs } =>
         match list_at_optional(xs: node_positional_child_targets(node: transform), index: 2) {
-          v2.std.optional.Absent => Unknown
-          v2.std.optional.Present { value: rhs } =>
+          Absent => Unknown
+          Present { value: rhs } =>
             classify_vacuity_same_eval_record(
               record: VacuityEvidenceRecord {
                 subject: EqualityOperands,
@@ -395,15 +395,15 @@ fn vacuity_bool_witness_body_evidence(transform: v2.std.node.Node) -> VacuityEvi
 
 fn vacuity_bool_witness_fn_body_evidence(fn_decl: v2.std.node.Node) -> VacuityEvidence {
   match vacuity_fn_body_from_decl(fn_decl: fn_decl) {
-    v2.std.optional.Absent => Unknown
-    v2.std.optional.Present { value: body } =>
+    Absent => Unknown
+    Present { value: body } =>
       match vacuity_stmt_seq_from_body(body: body) {
-        v2.std.optional.Absent => Unknown
-        v2.std.optional.Present { value: stmt_seq } =>
+        Absent => Unknown
+        Present { value: stmt_seq } =>
           if vacuity_stmt_seq_is_single_statement(stmt_seq: stmt_seq) {
             match body_lower_try_infix_transform(node: stmt_seq) {
-              v2.std.optional.Absent => Unknown
-              v2.std.optional.Present { value: transform } =>
+              Absent => Unknown
+              Present { value: transform } =>
                 vacuity_bool_witness_body_evidence(transform: transform)
             }
           } else {
@@ -419,14 +419,14 @@ fn vacuity_bool_witness_evidence(witness: v2.std.verification.BoolWitness) -> Va
     source_text: source_text,
     file: vacuity_bool_witness_file_anchor
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => Unknown
+    Rejected { diagnostics: _ } => Unknown
     Accepted { value: module_root, diagnostics: _ } =>
       match vacuity_find_fn_decl_by_name(
         decls: vacuity_collect_fn_decls(root: module_root.root, acc: std.algebra.Empty),
         name: witness.function
       ) {
-        v2.std.optional.Absent => Unknown
-        v2.std.optional.Present { value: fn_decl } => vacuity_bool_witness_fn_body_evidence(fn_decl: fn_decl)
+        Absent => Unknown
+        Present { value: fn_decl } => vacuity_bool_witness_fn_body_evidence(fn_decl: fn_decl)
       }
   }
 }

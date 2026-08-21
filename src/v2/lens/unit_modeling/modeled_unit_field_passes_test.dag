@@ -23,7 +23,7 @@ data modeled_unit_field_input: v2.std.node.Node = v2.std.node.Node {
 test fn modeled_unit_field_passes_holds() -> v2.std.logic.Bool {
   match unit_modeling_gate(node: modeled_unit_field_input) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

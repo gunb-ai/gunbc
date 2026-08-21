@@ -64,8 +64,8 @@ fn module_domain_segments(module: v2.std.qualified_name.QualifiedName) -> List<S
 
 fn module_domain_prefix_ok(module: v2.std.qualified_name.QualifiedName) -> Bool {
   match module_domain_segments(module: module) |> first {
-    v2.std.optional.Present { value: head } => head == expected_bridge_family_domain_segment()
-    v2.std.optional.Absent => false
+    Present { value: head } => head == expected_bridge_family_domain_segment()
+    Absent => false
   }
 }
 

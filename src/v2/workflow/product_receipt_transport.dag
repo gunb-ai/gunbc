@@ -94,9 +94,9 @@ func run_product_receipt_for_entry(entry: String) -> std.process.ProcessExit {
     bin_name: "discover_source_root_ingest"
   )
   match tools.host_prelude.witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {
-    tools.host_prelude.WitnessBinRefused { bin_name: _, path: _, reason: _ } =>
+    WitnessBinRefused { bin_name: _, path: _, reason: _ } =>
       std.process.exit_failure(reason: "discover_source_root_ingest is not built")
-    tools.host_prelude.WitnessBinReady { path: _ } =>
+    WitnessBinReady { path: _ } =>
       if run_seven_boundary_product_receipt_ready(root: root.path, entry: entry) {
         std.process.ExitSuccess
       } else {

@@ -13,7 +13,7 @@ fn structural_red_control_mint_site_probe() -> v2.std.logic.Bool {
     workspace_dir: "/tmp/structural_red_control_mint_site_probe"
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
   mint_ok
 }

@@ -24,7 +24,7 @@ test fn module_binding_host_manifest_is_populated() -> v2.std.logic.Bool {
 
 test fn module_binding_host_agrees_with_parse_oracle() -> v2.std.logic.Bool {
   match module_storage_bindings_from_ingest(ingest: module_binding_oracle_ingest_from_manifest()) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: oracle, diagnostics: _ } =>
       if length(xs: oracle) == 0 {
         false
@@ -46,8 +46,8 @@ test fn module_binding_host_resolves_a_known_compiler_module() -> v2.std.logic.B
     index: host_module_bindings,
     file_path: "src/v2/compiler/source_authority.dag"
   ) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: qn } =>
+    Absent => false
+    Present { value: qn } =>
       qualified_name_to_dotted_string(qn: qn) == "v2.compiler.source_authority"
   }
 }

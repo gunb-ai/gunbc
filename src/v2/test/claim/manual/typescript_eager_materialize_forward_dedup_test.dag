@@ -85,9 +85,9 @@ fn ts_arc1_forward_row_many_without_dedup_red_body() -> v2.std.logic.Bool {
             rules: ts_arc1_rules_with_duplicate_spine_rows()
           ) {
             Accepted { value: _, diagnostics: _ } => false
-            v2.std.diagnostic.Rejected { diagnostics: _ } => true
+            Rejected { diagnostics: _ } => true
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
     Violates { diagnostic: _ } => false
   }
@@ -104,9 +104,9 @@ fn ts_arc1_forward_row_dedup_cutover_green_body() -> v2.std.logic.Bool {
           ) {
             Accepted { value: emitted, diagnostics: d } =>
               (d == v2.std.diagnostic.None) && (emitted == ts_task_type_alias_emitted())
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
     Violates { diagnostic: _ } => false
   }

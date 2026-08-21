@@ -57,8 +57,8 @@ test fn witness_text_routes_include_health_and_artifacts() -> Bool {
 
 test fn witness_readback_shell_marked_scaffold() -> Bool {
   match roadmap_site_readback_script_scaffold {
-    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
-    std.disposition.Terminal { reason: _ } => false
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
   }
 }
 

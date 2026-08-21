@@ -5,7 +5,7 @@ data ci_floor_on_success_materialization_receipt_hand_rust_witness_note: String 
 
 test fn scaffold_is_seed_retained_on_path_authority() -> Bool {
   match gunbc.ci_materialization.ci_floor_on_success_materialization_receipt_claim_executor_seed_disposition {
-    std.disposition.Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
     _ => false
   }
 }

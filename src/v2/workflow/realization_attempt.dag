@@ -78,8 +78,8 @@ fn first_arrow_in(root: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.nod
     _ =>
       fold(root.children, init: v2.std.optional.Absent, f: fn(acc, e) {
         match acc {
-          v2.std.optional.Present { value: _ } => acc
-          v2.std.optional.Absent => first_arrow_in(root: e.target)
+          Present { value: _ } => acc
+          Absent => first_arrow_in(root: e.target)
         }
       })
   }
@@ -88,14 +88,14 @@ fn first_arrow_in(root: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.nod
 fn collect_arrows(root: v2.std.node.Node, acc: List<v2.std.node.Node>) -> List<v2.std.node.Node> {
   fold(root.children, init: acc, f: fn(inner, e) {
     match e.label {
-      v2.std.node.Named { name: decl_name } =>
+      Named { name: decl_name } =>
         match first_arrow_in(root: e.target) {
-          v2.std.optional.Present { value: arrow } =>
+          Present { value: arrow } =>
             concat(inner, [node_synthetic(
               kind: v2.std.node.TypeNode { connective: Conj },
               children: [v2.std.node.Edge { label: v2.std.node.Named { name: decl_name }, target: arrow }]
             )])
-          v2.std.optional.Absent => inner
+          Absent => inner
         }
       _ => inner
     }
@@ -136,7 +136,7 @@ fn capture_test_markers(source: String) -> MarkedSource {
 fn attempt_entry_source(entry: String, source: String) -> v2.workflow.realization_attempt.EntryRealizationAttempt {
   let marked = capture_test_markers(source: source)
   match v2.compiler.ingested_fixture_arrows.ingested_resolved_module_from_source(source: marked.unmarked, file: ^realization_attempt_entry_file) {
-    v2.std.diagnostic.Rejected { diagnostics: ds } =>
+    Rejected { diagnostics: ds } =>
       attempt_refused_at(
         entry: entry,
         phase: PhaseFrontend,
@@ -155,7 +155,7 @@ fn attempt_entry_source(entry: String, source: String) -> v2.workflow.realizatio
               arrow_count: length(xs: arrows),
               standing: V2TranslateSerialized { emitted_nonempty: !(medium.carried == "") }
             }
-          v2.std.diagnostic.Rejected { diagnostics: ds } =>
+          Rejected { diagnostics: ds } =>
             v2.workflow.realization_attempt.EntryRealizationAttempt {
               entry: entry,
               arrow_count: length(xs: arrows),
@@ -216,14 +216,14 @@ data attempt_assembled_note: String = "The CANONICAL closure attempt (operator s
 fn decl_edges_named(root: v2.std.node.Node, fn_name: v2.std.node.Symbol, acc: List<v2.std.node.Node>) -> List<v2.std.node.Node> {
   let here = fold(root.children, init: acc, f: fn(inner, e) {
     match e.label {
-      v2.std.node.Named { name: n } =>
+      Named { name: n } =>
         if n == fn_name {
           match first_arrow_in(root: e.target) {
-            v2.std.optional.Present { value: _ } => concat(inner, [node_synthetic(
+            Present { value: _ } => concat(inner, [node_synthetic(
               kind: v2.std.node.TypeNode { connective: Conj },
               children: [v2.std.node.Edge { label: v2.std.node.Named { name: n }, target: e.target }]
             )])
-            v2.std.optional.Absent => inner
+            Absent => inner
           }
         } else { inner }
       _ => inner
@@ -259,14 +259,14 @@ fn attempt_joined(program: v2.std.node.Node, fn_name: v2.std.node.Symbol, entry:
     attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_ambiguous)
   } else {
     match list_at_optional(xs: joined, index: 0) {
-      v2.std.optional.Absent => attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_absent)
-      v2.std.optional.Present { value: decl } =>
+      Absent => attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_absent)
+      Present { value: decl } =>
         match infer(tree: decl) {
-          v2.std.diagnostic.Rejected { diagnostics: ds } =>
+          Rejected { diagnostics: ds } =>
             attempt_refused_at(entry: entry, phase: PhaseInfer, cause: first_located_cause(ds: ds), located: first_located_file(ds: ds))
           Accepted { value: inferred, diagnostics: _ } =>
             match compile_inferred(inferred: inferred, mode: v2.compiler.compile.TranslateTo { target: rust_target_model_staging() }) {
-              v2.std.diagnostic.Rejected { diagnostics: ds } =>
+              Rejected { diagnostics: ds } =>
                 attempt_refused_at(entry: entry, phase: PhaseTranslate, cause: first_located_cause(ds: ds), located: first_located_file(ds: ds))
               Accepted { value: out, diagnostics: _ } =>
                 match out {
@@ -292,7 +292,7 @@ fn attempt_assembled(
   entry: String
 ) -> v2.workflow.realization_attempt.EntryRealizationAttempt {
   match assemble_program_from_ingest(ingest: ingest, admission: admission, lm: dag_language_model()) {
-    v2.std.diagnostic.Rejected { diagnostics: ds } => {
+    Rejected { diagnostics: ds } => {
       let cause = first_located_cause(ds: ds)
       attempt_refused_at(entry: entry, phase: phase_for_reason(reason: cause, fallback: PhaseResolve), cause: cause, located: first_located_file(ds: ds))
     }
@@ -325,8 +325,8 @@ fn capture_markers_ingest(ingest: v2.compiler.source_authority.SourceRootIngest)
 fn entry_witness_source(ingest: v2.compiler.source_authority.SourceRootIngest, entry: String) -> v2.std.optional.Optional<String> {
   fold_list(xs: ingest, empty: v2.std.optional.Absent, cons: fn(acc, r) {
     match acc {
-      v2.std.optional.Present { value: _ } => acc
-      v2.std.optional.Absent =>
+      Present { value: _ } => acc
+      Absent =>
         match r.artifact.file_path == entry {
           true => v2.std.optional.Present { value: r.source.carried }
           false => v2.std.optional.Absent
@@ -346,7 +346,7 @@ fn attempt_closure_rows(
   entry: String
 ) -> List<v2.workflow.realization_attempt.EntryRealizationAttempt> {
   match assemble_program_from_ingest(ingest: capture_markers_ingest(ingest: ingest), admission: admission, lm: dag_language_model()) {
-    v2.std.diagnostic.Rejected { diagnostics: ds } => {
+    Rejected { diagnostics: ds } => {
       let cause = first_located_cause(ds: ds)
       let phase = phase_for_reason(reason: cause, fallback: PhaseResolve)
       let located = first_located_file(ds: ds)

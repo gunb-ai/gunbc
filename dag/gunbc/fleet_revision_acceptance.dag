@@ -205,7 +205,7 @@ fn accept_required_ci_workflow_run<E>(event: WorkflowRunEvent, evidence: E) -> R
           RequiredCiRefused { cause: CiActivityNotCompleted { observed: event.activity } }
         } else {
           match event.conclusion {
-            extdeps.github.workflow_runs.Success =>
+            Success =>
               match decode_event_revision(event: event) {
                 RevisionDecoded { revision: oid } =>
                   RequiredCiAdmitted {

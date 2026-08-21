@@ -25,7 +25,7 @@ fn rust_body_add_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compil
         value: rust_body_add_inferred_tree_for(root: root),
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -36,7 +36,7 @@ fn rust_body_add_producer_swapped_inferred_tree() -> v2.std.diagnostic.Outcome<v
         value: rust_body_add_inferred_tree_for(root: root),
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -91,7 +91,7 @@ test fn rust_body_add_emit_add_fn_accepts_holds() -> v2.std.logic.Bool {
   match rust_body_add_emit_from_tree(target: rust_target_model_staging()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -101,7 +101,7 @@ test fn rust_body_add_emit_operand_swap_discriminates() -> v2.std.logic.Bool {
       (source.carried == rust_body_add_swapped_source_text) &&
       (source.carried != rust_source_text) &&
       (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -111,13 +111,13 @@ test fn rust_body_add_emit_catalog_minus_discriminates() -> v2.std.logic.Bool {
       (source.carried == rust_body_add_minus_source_text) &&
       (source.carried != rust_source_text) &&
       (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn rust_body_add_emit_missing_catalog_rejects() -> v2.std.logic.Bool {
   match rust_body_add_emit_from_tree(target: rust_body_add_missing_catalog_target_model()) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }

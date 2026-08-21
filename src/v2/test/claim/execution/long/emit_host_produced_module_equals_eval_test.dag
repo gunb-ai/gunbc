@@ -11,9 +11,9 @@ fn produced_add_module_source() -> v2.std.diagnostic.Outcome<extdeps.communicati
       match v2.compiler.ingested_fixture_arrows.ingested_add_decl_node(fn_name: ^rust_binding_fn_add2) {
         Accepted { value: d2, diagnostics: _ } =>
           v2.compiler.emit_produced.emit_produced_module(decls: [d1, d2], target: v2.extdeps.languages.rust.rust_target_model_staging())
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -30,7 +30,7 @@ fn produced_module_run(
 fn produced_module_source_matches(golden: String) -> v2.std.logic.Bool {
   match produced_add_module_source() {
     Accepted { value: medium, diagnostics: _ } => medium.carried == golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

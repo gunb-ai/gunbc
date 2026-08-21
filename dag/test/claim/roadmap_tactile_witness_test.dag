@@ -221,7 +221,7 @@ test fn witness_button_reports_dispatch_acceptance() -> Bool {
 
 fn fragment_is_sound_toggle(c: std.markup.Fragment) -> Bool {
   match c {
-    std.markup.Element { tag: t, attributes: a, children: _ } =>
+    Element { tag: t, attributes: a, children: _ } =>
       t == "button"
         && fold(a, init: false, f: (found, at) =>
           found || (at.name == "class" && at.value == sound_toggle_class))
@@ -234,7 +234,7 @@ fn fragment_is_sound_toggle(c: std.markup.Fragment) -> Bool {
 fn header_subtree_has_sound_toggle(f: std.markup.Fragment) -> Bool {
   fragment_is_sound_toggle(c: f)
     || (match f {
-      std.markup.Element { tag: _, attributes: _, children } =>
+      Element { tag: _, attributes: _, children } =>
         fold(children, init: false, f: (acc, c) => acc || header_subtree_has_sound_toggle(f: c))
       FragmentText { content: _ } => false
       RawNode { content: _ } => false
@@ -243,7 +243,7 @@ fn header_subtree_has_sound_toggle(f: std.markup.Fragment) -> Bool {
 
 fn header_has_sound_toggle(h: std.markup.Fragment) -> Bool {
   match h {
-    std.markup.Element { tag, attributes: _, children } =>
+    Element { tag, attributes: _, children } =>
       tag == "header"
         && fold(children, init: false, f: (acc, c) => acc || header_subtree_has_sound_toggle(f: c))
     FragmentText { content: _ } => false

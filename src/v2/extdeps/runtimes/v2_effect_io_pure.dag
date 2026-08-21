@@ -161,9 +161,9 @@ fn effect_io_pure_store_lookup(
     match v2.std.collection.map_get(m: store.entries, key: locator.identity) {
       Accepted { value: opt, diagnostics: None } =>
         match opt {
-          v2.std.optional.Present { value: payload } =>
+          Present { value: payload } =>
             v2.std.diagnostic.Accepted { value: payload, diagnostics: v2.std.diagnostic.None }
-          v2.std.optional.Absent =>
+          Absent =>
             outcome_rejected(
               d: v2.std.diagnostic.Diagnostic {
                 reason: ^effect_io_pure_resource_absent,
@@ -172,7 +172,7 @@ fn effect_io_pure_store_lookup(
               }
             )
         }
-      v2.std.diagnostic.Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
+      Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
     }
   } else {
     outcome_rejected(

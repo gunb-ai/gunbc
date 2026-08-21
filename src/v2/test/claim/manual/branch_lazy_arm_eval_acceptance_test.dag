@@ -70,7 +70,7 @@ fn lazy_arm_kw_false() -> v2.std.node.Node {
 fn lazy_arm_int_literal_from_lexeme(lexeme: String) -> v2.std.node.Node {
   match v2.extdeps.languages.dag.dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence) {
     Accepted { value: n, diagnostics: _ } => n
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^lazy_arm_lit_lexeme_invalid } },
         occurrence_id: SyntheticOccurrence,
@@ -133,10 +133,10 @@ fn lazy_arm_touch_from_env(env: v2.std.runtime.EvaluationEnvironment) -> Int {
   match v2.std.collection.map_get(m: env.bindings, key: lazy_arm_touch_key()) {
     Accepted { value: opt, diagnostics: _ } =>
       match opt {
-        v2.std.optional.Present { value: v } => lazy_arm_int_from_runtime(value: v)
-        v2.std.optional.Absent => 0
+        Present { value: v } => lazy_arm_int_from_runtime(value: v)
+        Absent => 0
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => 0
+    Rejected { diagnostics: _ } => 0
   }
 }
 
@@ -176,7 +176,7 @@ fn lazy_arm_allocate_literal(node: v2.std.node.Node, env: v2.std.runtime.Evaluat
         } else {
           v2.std.diagnostic.outcome_rejected(d: lazy_arm_diagnostic(n: node))
         }
-      v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+      Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
   } else {
     match node.kind {
@@ -223,11 +223,11 @@ fn lazy_arm_runtime_bool_false(value: v2.std.runtime.RuntimeValue) -> v2.std.log
 
 fn lazy_arm_nth_child_target(node: v2.std.node.Node, wanted: Int) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match v2.std.collection.list_at_optional(xs: node.children, index: wanted) {
-    v2.std.optional.Present { value: child } =>
+    Present { value: child } =>
       match child {
         Edge { label: _, target: arm } => v2.std.diagnostic.outcome_accepted(value: extdeps.vendor.arm.arm)
       }
-    v2.std.optional.Absent => v2.std.diagnostic.outcome_rejected(d: lazy_arm_diagnostic(n: node))
+    Absent => v2.std.diagnostic.outcome_rejected(d: lazy_arm_diagnostic(n: node))
   }
 }
 
@@ -449,7 +449,7 @@ fn lazy_arm_run_passes(run: v2.std.diagnostic.Outcome<v2.compiler.eval.TestClaim
         Pass => true
         _ => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -486,12 +486,12 @@ test fn lazy_arm_counted_literal_rejects_second_touch_holds() -> v2.std.logic.Bo
       match lazy_arm_bind_value(key: lazy_arm_counted_slot_key(), value: v, env: env) {
         Accepted { value: touched, diagnostics: _ } =>
           match lazy_arm_allocate_literal(node: lazy_arm_counted(), env: touched) {
-            v2.std.diagnostic.Rejected { diagnostics: _ } => true
+            Rejected { diagnostics: _ } => true
             Accepted { value: _, diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

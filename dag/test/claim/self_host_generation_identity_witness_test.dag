@@ -11,9 +11,9 @@ data gi_artifact_moved_hex: String = "f316fd8378b70362bcac957857fd6dd68292084d75
 // derived from bytes nobody observed.
 fn gi_artifact(hex: String) -> v2.compiler.self_host.generation.GeneratedArtifactIdentity {
   match sha512_hex_digest(hex: hex) {
-    v2.std.optional.Present { value: d } =>
+    Present { value: d } =>
       v2.compiler.self_host.generation.ArtifactMaterialized { digest: v2.compiler.self_host.generation.observed_artifact_digest(observed: d) }
-    v2.std.optional.Absent => v2.compiler.self_host.generation.ArtifactNotMaterialized
+    Absent => v2.compiler.self_host.generation.ArtifactNotMaterialized
   }
 }
 

@@ -142,15 +142,15 @@ fn spark_serving_health_from_captures(
     }
   } else {
     match spark_serving_parse_version_json(stdout: version_stdout) {
-      gunbc.spark.serving_readback_parse.SparkServingReadbackAbsent =>
+      SparkServingReadbackAbsent =>
         ResourcesConvergedButServingUnhealthy {
           defect: HealthVersionUndecodable { detail: "version member absent" as std.types.NonEmptyStr },
         }
-      gunbc.spark.serving_readback_parse.SparkServingReadbackRefused { cause: c } =>
+      SparkServingReadbackRefused { cause: c } =>
         ResourcesConvergedButServingUnhealthy {
           defect: HealthVersionUndecodable { detail: c },
         }
-      gunbc.spark.serving_readback_parse.SparkServingReadbackPresent { value: reported } =>
+      SparkServingReadbackPresent { value: reported } =>
         if !ollama_reported_version_matches_release(version: reported, rel: ollama_required_release) {
           ResourcesConvergedButServingUnhealthy {
             defect: HealthVersionDisagrees { observed: reported as std.types.NonEmptyStr },
@@ -177,15 +177,15 @@ fn spark_serving_health_from_generation(
   generate_stdout: String,
 ) -> SparkServingTerminalHealth {
   match spark_serving_parse_generate_done(stdout: generate_stdout) {
-    gunbc.spark.serving_readback_parse.SparkServingReadbackAbsent =>
+    SparkServingReadbackAbsent =>
       ResourcesConvergedButServingUnhealthy {
         defect: HealthGenerationUndecodable { detail: "done member absent" as std.types.NonEmptyStr },
       }
-    gunbc.spark.serving_readback_parse.SparkServingReadbackRefused { cause: c } =>
+    SparkServingReadbackRefused { cause: c } =>
       ResourcesConvergedButServingUnhealthy {
         defect: HealthGenerationUndecodable { detail: c },
       }
-    gunbc.spark.serving_readback_parse.SparkServingReadbackPresent { value: done_word } =>
+    SparkServingReadbackPresent { value: done_word } =>
       if done_word != "true" {
         ResourcesConvergedButServingUnhealthy { defect: HealthGenerationIncomplete }
       } else {
@@ -202,15 +202,15 @@ fn spark_serving_health_from_completed_generation(
   generate_stdout: String,
 ) -> SparkServingTerminalHealth {
   match spark_serving_parse_generate_member(stdout: generate_stdout, member: "model") {
-    gunbc.spark.serving_readback_parse.SparkServingReadbackAbsent =>
+    SparkServingReadbackAbsent =>
       ResourcesConvergedButServingUnhealthy {
         defect: HealthGenerationUndecodable { detail: "model member absent" as std.types.NonEmptyStr },
       }
-    gunbc.spark.serving_readback_parse.SparkServingReadbackRefused { cause: c } =>
+    SparkServingReadbackRefused { cause: c } =>
       ResourcesConvergedButServingUnhealthy {
         defect: HealthGenerationUndecodable { detail: c },
       }
-    gunbc.spark.serving_readback_parse.SparkServingReadbackPresent { value: served_model } =>
+    SparkServingReadbackPresent { value: served_model } =>
       if served_model != ollama_model_ref_wire(ref: spark_serving_desired_model_ref) {
         ResourcesConvergedButServingUnhealthy {
           defect: HealthGenerationWrongModel { observed: served_model as std.types.NonEmptyStr },
@@ -231,15 +231,15 @@ fn spark_serving_health_from_served_model(
   generate_stdout: String,
 ) -> SparkServingTerminalHealth {
   match spark_serving_parse_generate_member(stdout: generate_stdout, member: "response") {
-    gunbc.spark.serving_readback_parse.SparkServingReadbackAbsent =>
+    SparkServingReadbackAbsent =>
       ResourcesConvergedButServingUnhealthy {
         defect: HealthGenerationUndecodable { detail: "response member absent" as std.types.NonEmptyStr },
       }
-    gunbc.spark.serving_readback_parse.SparkServingReadbackRefused { cause: c } =>
+    SparkServingReadbackRefused { cause: c } =>
       ResourcesConvergedButServingUnhealthy {
         defect: HealthGenerationUndecodable { detail: c },
       }
-    gunbc.spark.serving_readback_parse.SparkServingReadbackPresent { value: text } =>
+    SparkServingReadbackPresent { value: text } =>
       if trim(s: text) != (spark_serving_health_expected_response as String) {
         ResourcesConvergedButServingUnhealthy {
           defect: HealthGenerationUnexpectedText { observed: text as std.types.NonEmptyStr },

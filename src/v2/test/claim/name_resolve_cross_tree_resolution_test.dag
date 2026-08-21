@@ -6,7 +6,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 fn ct_graft_module_root(root: v2.std.node.Node) -> v2.std.node.Node {
   match module_header_containment_graft(root: root) {
     Accepted { value: grafted, diagnostics: _ } => grafted
-    v2.std.diagnostic.Rejected { diagnostics: _ } => root
+    Rejected { diagnostics: _ } => root
   }
 }
 
@@ -302,7 +302,7 @@ fn ct_dag_to_v2_index() -> v2.std.cross_tree.resolution.SourceRootIndex {
 
 test fn witness_dag_same_tree_import_resolves_holds() -> v2.std.logic.Bool {
   match ct_dag_same_tree_roots() {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: admitted, diagnostics: _ } =>
     match resolve_with_admission_policy(
       lm: dag_language_model_surface_empty_prelude(),
@@ -313,14 +313,14 @@ test fn witness_dag_same_tree_import_resolves_holds() -> v2.std.logic.Bool {
       policy: ImportScoped
     ) {
       Accepted { value: _, diagnostics: _ } => true
-      v2.std.diagnostic.Rejected { diagnostics: _ } => false
+      Rejected { diagnostics: _ } => false
     }
   }
 }
 
 test fn witness_v2_same_tree_import_resolves_holds() -> v2.std.logic.Bool {
   match ct_v2_same_tree_roots() {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: admitted, diagnostics: _ } =>
     match resolve_with_admission_policy(
       lm: dag_language_model_surface_empty_prelude(),
@@ -331,14 +331,14 @@ test fn witness_v2_same_tree_import_resolves_holds() -> v2.std.logic.Bool {
       policy: ImportScoped
     ) {
       Accepted { value: _, diagnostics: _ } => true
-      v2.std.diagnostic.Rejected { diagnostics: _ } => false
+      Rejected { diagnostics: _ } => false
     }
   }
 }
 
 test fn witness_cross_tree_v2_to_dag_grounded_resolves_holds() -> v2.std.logic.Bool {
   match ct_cross_tree_roots() {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: admitted, diagnostics: _ } =>
     match resolve_with_admission_policy(
       lm: dag_language_model_surface_empty_prelude(),
@@ -349,14 +349,14 @@ test fn witness_cross_tree_v2_to_dag_grounded_resolves_holds() -> v2.std.logic.B
       policy: ImportScoped
     ) {
       Accepted { value: _, diagnostics: _ } => true
-      v2.std.diagnostic.Rejected { diagnostics: _ } => false
+      Rejected { diagnostics: _ } => false
     }
   }
 }
 
 test fn witness_cross_tree_dag_to_v2_grounded_denied_holds() -> v2.std.logic.Bool {
   match ct_dag_to_v2_roots() {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: admitted, diagnostics: _ } =>
     match resolve_with_admission_policy(
       lm: dag_language_model_surface_empty_prelude(),
@@ -367,7 +367,7 @@ test fn witness_cross_tree_dag_to_v2_grounded_denied_holds() -> v2.std.logic.Boo
       policy: ImportScoped
     ) {
       Accepted { value: _, diagnostics: _ } => false
-      v2.std.diagnostic.Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r } =>
         (r.head.reason == ^resolve_cross_tree_import_denied)
           && locus_eq(
             a: r.head.at,

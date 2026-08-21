@@ -50,11 +50,11 @@ fn assess_missing_translation_rule_refuses() -> DirectRustDoorAdmission {
   ) {
     Accepted { value: _, diagnostics: _ } =>
       v2.compiler.self_host.v2_emitter_direct_rust_door_contract.refused(failure: MissingRuleAcceptedDespiteGap)
-    v2.std.diagnostic.Rejected { diagnostics: r } =>
+    Rejected { diagnostics: r } =>
       match translate_diagnostic_reason_from_symbol(sym: r.head.reason) {
-        v2.std.optional.Present { value: TargetBundleMalformed } => DirectRustDoorEstablished
-        v2.std.optional.Present { value: _ } => v2.compiler.self_host.v2_emitter_direct_rust_door_contract.refused(failure: MissingRuleWrongDiagnostic)
-        v2.std.optional.Absent => v2.compiler.self_host.v2_emitter_direct_rust_door_contract.refused(failure: MissingRuleDiagnosticAbsent)
+        Present { value: TargetBundleMalformed } => DirectRustDoorEstablished
+        Present { value: _ } => v2.compiler.self_host.v2_emitter_direct_rust_door_contract.refused(failure: MissingRuleWrongDiagnostic)
+        Absent => v2.compiler.self_host.v2_emitter_direct_rust_door_contract.refused(failure: MissingRuleDiagnosticAbsent)
       }
   }
 }

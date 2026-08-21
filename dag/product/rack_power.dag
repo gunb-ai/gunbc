@@ -133,8 +133,8 @@ fn scan_loads_against_rack(r: product.rack_mount.RackInstance, loads: List<Asset
   let assets = mounted_assets(r: r)
   let orphaned = fold(loads, init: none, f: (found, l) =>
     match found {
-      v2.std.optional.Present { value: c } => v2.std.optional.Present { value: c }
-      v2.std.optional.Absent =>
+      Present { value: c } => v2.std.optional.Present { value: c }
+      Absent =>
         if !contains_asset(assets: assets, wanted: asset_load_subject(l: l)) {
           v2.std.optional.Present { value: LoadDeclaredForUnmountedAsset { asset: asset_load_subject(l: l) } }
         } else {
@@ -142,12 +142,12 @@ fn scan_loads_against_rack(r: product.rack_mount.RackInstance, loads: List<Asset
         }
     })
   match orphaned {
-    v2.std.optional.Present { value: c } => v2.std.optional.Present { value: c }
-    v2.std.optional.Absent =>
+    Present { value: c } => v2.std.optional.Present { value: c }
+    Absent =>
       fold(assets, init: none, f: (found, a) =>
         match found {
-          v2.std.optional.Present { value: c } => v2.std.optional.Present { value: c }
-          v2.std.optional.Absent =>
+          Present { value: c } => v2.std.optional.Present { value: c }
+          Absent =>
             let n = count_loads_for(loads: loads, wanted: a)
             if n == 0 {
               v2.std.optional.Present { value: MountedAssetHasNoLoad { asset: a } }
@@ -173,8 +173,8 @@ type LoadTotals {
 
 fn add_load(acc: LoadTotals, l: AssetLoad) -> LoadTotals {
   match acc.refusal {
-    v2.std.optional.Present { value: c } => LoadTotals { real_load: acc.real_load, apparent_load: acc.apparent_load, refusal: v2.std.optional.Present { value: c } }
-    v2.std.optional.Absent =>
+    Present { value: c } => LoadTotals { real_load: acc.real_load, apparent_load: acc.apparent_load, refusal: v2.std.optional.Present { value: c } }
+    Absent =>
       match l {
         LoadUnobserved { asset: a } =>
           LoadTotals { real_load: acc.real_load, apparent_load: acc.apparent_load, refusal: v2.std.optional.Present { value: LoadNotObserved { asset: a } } }
@@ -222,13 +222,13 @@ fn rack_power_budget(
   power_factor: DeclaredPowerFactor,
 ) -> PowerConstruction<PowerBudget> {
   match scan_loads_against_rack(r: rack, loads: loads) {
-    v2.std.optional.Present { value: c } => PowerRefused { cause: c }
-    v2.std.optional.Absent =>
+    Present { value: c } => PowerRefused { cause: c }
+    Absent =>
       let totals = fold(loads, init: LoadTotals { real_load: watt(0), apparent_load: volt_ampere(0), refusal: none }, f: (acc, l) =>
         add_load(acc: acc, l: l))
       match totals.refusal {
-        v2.std.optional.Present { value: c } => PowerRefused { cause: c }
-        v2.std.optional.Absent =>
+        Present { value: c } => PowerRefused { cause: c }
+        Absent =>
           let required = length(mounted_assets(r: rack))
           if required > feed_outlet_count(f: feed) {
             PowerRefused { cause: OutletsExhausted { required: required, available: feed_outlet_count(f: feed) } }

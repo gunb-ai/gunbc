@@ -161,7 +161,7 @@ fn floor_discovery_request_bind(
 
 fn floor_discovery_execution_mode_identity(mode: std.execution_mode.ExecutionMode) -> String {
   match mode {
-    std.execution_mode.Hermetic => "Hermetic"
+    Hermetic => "Hermetic"
     Wet => "Wet"
     Record => "Record"
   }

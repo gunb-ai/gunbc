@@ -10,18 +10,18 @@ type SparkServingReadbackField
 
 fn spark_serving_json_member_string(lookup: extdeps.languages.json.parse.JsonMemberLookup) -> String? {
   match lookup {
-    extdeps.languages.json.parse.JsonMemberFound { value: v } =>
+    JsonMemberFound { value: v } =>
       match v {
-        extdeps.languages.json.emit.JsonString { value: s } => Present { value: s }
-        extdeps.languages.json.emit.JsonNull => none
-        extdeps.languages.json.emit.JsonBool { value: _ } => none
-        extdeps.languages.json.emit.JsonNumber { lexeme: _ } => none
-        extdeps.languages.json.emit.JsonArray { elements: _ } => none
-        extdeps.languages.json.emit.JsonObject { members: _ } => none
+        JsonString { value: s } => Present { value: s }
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: _ } => none
+        JsonArray { elements: _ } => none
+        JsonObject { members: _ } => none
       }
-    extdeps.languages.json.parse.JsonMemberAbsent => none
-    extdeps.languages.json.parse.JsonMemberDuplicated { count: _ } => none
-    extdeps.languages.json.parse.JsonMemberNotAnObject => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -30,7 +30,7 @@ fn spark_serving_readback_field_from_member_lookup(
   member: String,
 ) -> SparkServingReadbackField {
   match lookup {
-    extdeps.languages.json.parse.JsonMemberFound { value: v } =>
+    JsonMemberFound { value: v } =>
       match spark_serving_json_member_string(lookup: extdeps.languages.json.parse.JsonMemberFound { value: v }) {
         Present { value: s } => SparkServingReadbackPresent { value: s }
         Absent =>
@@ -38,17 +38,17 @@ fn spark_serving_readback_field_from_member_lookup(
             cause: join(["ollama response member ", member, " is not a JSON string"], "") as std.types.NonEmptyStr,
           }
       }
-    extdeps.languages.json.parse.JsonMemberAbsent =>
+    JsonMemberAbsent =>
       SparkServingReadbackRefused {
         cause: join(["ollama response member ", member, " is absent"], "") as std.types.NonEmptyStr,
       }
-    extdeps.languages.json.parse.JsonMemberDuplicated { count: n } =>
+    JsonMemberDuplicated { count: n } =>
       SparkServingReadbackRefused {
         cause: join([
           "ollama response member ", member, " is duplicated (count=", to_string(n), ")",
         ], "") as std.types.NonEmptyStr,
       }
-    extdeps.languages.json.parse.JsonMemberNotAnObject =>
+    JsonMemberNotAnObject =>
       SparkServingReadbackRefused {
         cause: "ollama response body is not a JSON object" as std.types.NonEmptyStr,
       }
@@ -78,42 +78,42 @@ fn spark_serving_parse_version_json(stdout: String) -> SparkServingReadbackField
 // response as undecodable -- a refusal caused by the reader rather than by the response.
 fn spark_serving_json_member_bool(lookup: extdeps.languages.json.parse.JsonMemberLookup) -> SparkServingReadbackField {
   match lookup {
-    extdeps.languages.json.parse.JsonMemberFound { value: v } =>
+    JsonMemberFound { value: v } =>
       match v {
-        extdeps.languages.json.emit.JsonBool { value: b } =>
+        JsonBool { value: b } =>
           SparkServingReadbackPresent { value: if b { "true" } else { "false" } }
-        extdeps.languages.json.emit.JsonString { value: _ } =>
+        JsonString { value: _ } =>
           SparkServingReadbackRefused {
             cause: "ollama response member done is a string, not a boolean" as std.types.NonEmptyStr,
           }
-        extdeps.languages.json.emit.JsonNull =>
+        JsonNull =>
           SparkServingReadbackRefused {
             cause: "ollama response member done is null" as std.types.NonEmptyStr,
           }
-        extdeps.languages.json.emit.JsonNumber { lexeme: _ } =>
+        JsonNumber { lexeme: _ } =>
           SparkServingReadbackRefused {
             cause: "ollama response member done is a number, not a boolean" as std.types.NonEmptyStr,
           }
-        extdeps.languages.json.emit.JsonArray { elements: _ } =>
+        JsonArray { elements: _ } =>
           SparkServingReadbackRefused {
             cause: "ollama response member done is an array, not a boolean" as std.types.NonEmptyStr,
           }
-        extdeps.languages.json.emit.JsonObject { members: _ } =>
+        JsonObject { members: _ } =>
           SparkServingReadbackRefused {
             cause: "ollama response member done is an object, not a boolean" as std.types.NonEmptyStr,
           }
       }
-    extdeps.languages.json.parse.JsonMemberAbsent =>
+    JsonMemberAbsent =>
       SparkServingReadbackRefused {
         cause: "ollama /api/generate response carried no done member, so completion was not stated" as std.types.NonEmptyStr,
       }
-    extdeps.languages.json.parse.JsonMemberDuplicated { count: n } =>
+    JsonMemberDuplicated { count: n } =>
       SparkServingReadbackRefused {
         cause: join([
           "ollama /api/generate response member done is duplicated (count=", to_string(n), ")",
         ], "") as std.types.NonEmptyStr,
       }
-    extdeps.languages.json.parse.JsonMemberNotAnObject =>
+    JsonMemberNotAnObject =>
       SparkServingReadbackRefused {
         cause: "ollama /api/generate response body is not a JSON object" as std.types.NonEmptyStr,
       }
@@ -155,7 +155,7 @@ fn spark_serving_model_wire_matches(want_wire: String, observed: String) -> Bool
 
 fn spark_serving_model_object_matches_ref(obj: extdeps.languages.json.emit.JsonValue, want_wire: String) -> Bool {
   match obj {
-    extdeps.languages.json.emit.JsonObject { members: _ } =>
+    JsonObject { members: _ } =>
       let name = spark_serving_json_member_string(
         lookup: json_object_unique_member(v: obj, key: "name"),
       )
@@ -175,11 +175,11 @@ fn spark_serving_model_object_matches_ref(obj: extdeps.languages.json.emit.JsonV
             Absent => false
           }
       }
-    extdeps.languages.json.emit.JsonNull => false
-    extdeps.languages.json.emit.JsonBool { value: _ } => false
-    extdeps.languages.json.emit.JsonNumber { lexeme: _ } => false
-    extdeps.languages.json.emit.JsonString { value: _ } => false
-    extdeps.languages.json.emit.JsonArray { elements: _ } => false
+    JsonNull => false
+    JsonBool { value: _ } => false
+    JsonNumber { lexeme: _ } => false
+    JsonString { value: _ } => false
+    JsonArray { elements: _ } => false
   }
 }
 
@@ -240,13 +240,13 @@ fn spark_serving_tags_model_fold_step(
     SparkServingTagsModelFoldEmpty =>
       if spark_serving_model_object_matches_ref(obj: element, want_wire: want_wire) {
         match element {
-          extdeps.languages.json.emit.JsonObject { members: _ } =>
+          JsonObject { members: _ } =>
             spark_serving_tags_model_fold_from_matched_object(element: element)
-          extdeps.languages.json.emit.JsonNull => spark_serving_tags_model_fold_not_object_refused()
-          extdeps.languages.json.emit.JsonBool { value: _ } => spark_serving_tags_model_fold_not_object_refused()
-          extdeps.languages.json.emit.JsonNumber { lexeme: _ } => spark_serving_tags_model_fold_not_object_refused()
-          extdeps.languages.json.emit.JsonString { value: _ } => spark_serving_tags_model_fold_not_object_refused()
-          extdeps.languages.json.emit.JsonArray { elements: _ } => spark_serving_tags_model_fold_not_object_refused()
+          JsonNull => spark_serving_tags_model_fold_not_object_refused()
+          JsonBool { value: _ } => spark_serving_tags_model_fold_not_object_refused()
+          JsonNumber { lexeme: _ } => spark_serving_tags_model_fold_not_object_refused()
+          JsonString { value: _ } => spark_serving_tags_model_fold_not_object_refused()
+          JsonArray { elements: _ } => spark_serving_tags_model_fold_not_object_refused()
         }
       } else {
         SparkServingTagsModelFoldEmpty
@@ -301,9 +301,9 @@ fn spark_serving_parse_tags_json(stdout: String) -> SparkServingTagsReadbackFiel
       }
     Present { value: doc } =>
       match json_object_unique_member(v: doc, key: "models") {
-        extdeps.languages.json.parse.JsonMemberFound { value: v } =>
+        JsonMemberFound { value: v } =>
           match v {
-            extdeps.languages.json.emit.JsonArray { elements: els } =>
+            JsonArray { elements: els } =>
               match spark_serving_tags_model_search(elements: els, want_wire: want_wire) {
                 SparkServingTagsModelSearchOk { repository: repo, digest: digest } =>
                   SparkServingTagsReadbackFields {
@@ -331,7 +331,7 @@ fn spark_serving_parse_tags_json(stdout: String) -> SparkServingTagsReadbackFiel
                 },
               }
           }
-        extdeps.languages.json.parse.JsonMemberAbsent =>
+        JsonMemberAbsent =>
           SparkServingTagsReadbackFields {
             model_name: SparkServingReadbackRefused {
               cause: "ollama /api/tags member models is absent" as std.types.NonEmptyStr,
@@ -343,7 +343,7 @@ fn spark_serving_parse_tags_json(stdout: String) -> SparkServingTagsReadbackFiel
               cause: "ollama /api/tags member models is absent" as std.types.NonEmptyStr,
             },
           }
-        extdeps.languages.json.parse.JsonMemberDuplicated { count: n } =>
+        JsonMemberDuplicated { count: n } =>
           SparkServingTagsReadbackFields {
             model_name: SparkServingReadbackRefused {
               cause: join([
@@ -361,7 +361,7 @@ fn spark_serving_parse_tags_json(stdout: String) -> SparkServingTagsReadbackFiel
               ], "") as std.types.NonEmptyStr,
             },
           }
-        extdeps.languages.json.parse.JsonMemberNotAnObject =>
+        JsonMemberNotAnObject =>
           SparkServingTagsReadbackFields {
             model_name: SparkServingReadbackRefused {
               cause: "ollama /api/tags body is not a JSON object" as std.types.NonEmptyStr,

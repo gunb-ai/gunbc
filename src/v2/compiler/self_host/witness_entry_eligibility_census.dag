@@ -97,16 +97,16 @@ fn census_disposition_for_entry(entry: String) -> v2.std.witness_execution_routi
 
 fn census_disposition_column_for_entry(entry: String) -> String {
   match census_disposition_for_entry(entry: entry) {
-    v2.std.witness_execution_routing.NativeRouted => "NativeRouted"
-    v2.std.witness_execution_routing.InterpretedRetained { reason: _, dissolution: _ } => "InterpretedRetained"
+    NativeRouted => "NativeRouted"
+    InterpretedRetained { reason: _, dissolution: _ } => "InterpretedRetained"
     EmitIneligible { cause: _, detail: _ } => "EmitIneligible"
   }
 }
 
 fn census_reason_column_for_entry(entry: String) -> String {
   match census_disposition_for_entry(entry: entry) {
-    v2.std.witness_execution_routing.NativeRouted => "NativeRouted"
-    v2.std.witness_execution_routing.InterpretedRetained { reason: reason, dissolution: _ } =>
+    NativeRouted => "NativeRouted"
+    InterpretedRetained { reason: reason, dissolution: _ } =>
       match reason {
         BulkFlipPendingCensusIncomplete => "BulkFlipPendingCensusIncomplete"
         HostFedCeiling => "HostFedCeiling"
@@ -118,7 +118,7 @@ fn census_reason_column_for_entry(entry: String) -> String {
     EmitIneligible { cause: cause, detail: _ } =>
       match cause {
         LongLaneScheduled => "LongLaneScheduled"
-        v2.std.witness_execution_routing.OfflineLocalRecipe => "OfflineLocalRecipe"
+        OfflineLocalRecipe => "OfflineLocalRecipe"
         HostEffectTransportMissing => "HostEffectTransportMissing"
         ReadsLiveTreeCarrier => "ReadsLiveTreeCarrier"
         EvalBudgetExceeded => "EvalBudgetExceeded"

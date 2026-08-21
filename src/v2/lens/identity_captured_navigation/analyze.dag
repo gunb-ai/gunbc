@@ -375,20 +375,20 @@ fn identity_captured_navigation_findings(root: v2.std.node.Node, span_index: v2.
 fn finding_is_suspect(f: Finding) -> Bool {
   match f {
     Suspect { violation: _ } => true
-    v2.lens.identity_captured_navigation.Unclassifiable { at: _, cause: _ } => false
+    Unclassifiable { at: _, cause: _ } => false
   }
 }
 
 fn finding_is_refusal(f: Finding) -> Bool {
   match f {
     Suspect { violation: _ } => false
-    v2.lens.identity_captured_navigation.Unclassifiable { at: _, cause: _ } => true
+    Unclassifiable { at: _, cause: _ } => true
   }
 }
 
 fn finding_refusal_cause(f: Finding) -> Optional<v2.std.node.Symbol> {
   match f {
     Suspect { violation: _ } => Absent
-    v2.lens.identity_captured_navigation.Unclassifiable { at: _, cause: c } => Present { value: c }
+    Unclassifiable { at: _, cause: c } => Present { value: c }
   }
 }

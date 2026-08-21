@@ -45,7 +45,7 @@ test fn doc_graph_bind_identities_unique() -> Bool {
 test fn doc_graph_bind_keyed_build_admits_live_incomings() -> Bool {
   match hand_authored_doc_binds_construct() {
     KeyedRosterBuilt { rows: _ } => true
-    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
   }
 }
 
@@ -62,7 +62,7 @@ test fn doc_graph_duplicate_bind_key_red_control() -> Bool {
     key_eq: hand_authored_bind_key_eq,
   ) {
     KeyedRosterBuilt { rows: _ } => false
-    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: _, duplicate: _ } => k == "plan/synthetic-duplicate-identity-control"
+    KeyedRosterBuildDuplicateKey { key: k, first: _, duplicate: _ } => k == "plan/synthetic-duplicate-identity-control"
   }
 }
 
@@ -103,7 +103,7 @@ test fn doc_graph_bind_two_branch_union_disjoint_keys_admits() -> Bool {
     key_eq: hand_authored_bind_key_eq,
   ) {
     KeyedRosterBuilt { rows: _ } => true
-    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
   }
 }
 
@@ -114,7 +114,7 @@ test fn doc_graph_bind_two_branch_union_overlap_refuses_red_control() -> Bool {
     key_eq: hand_authored_bind_key_eq,
   ) {
     KeyedRosterBuilt { rows: _ } => false
-    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
       k == "plan/synthetic-union-branch-a"
         && f.value.slug == "synthetic-union-branch-a"
         && d.value.slug == "synthetic-union-branch-a"

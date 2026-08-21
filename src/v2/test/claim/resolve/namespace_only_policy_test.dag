@@ -47,7 +47,7 @@ fn policy_pilot_resolve(
     identity: identity
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -89,7 +89,7 @@ fn policy_pilot_resolve_rejects_with_reason(
     identity: identity
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == reason
+    Rejected { diagnostics: d } => d.head.reason == reason
   }
 }
 

@@ -55,9 +55,9 @@ fn refinement_widening_value_sets_hold(algebra: v2.std.node.Node) -> Bool {
       match find_named_child(root: algebra, name: ^refinement_widening_field_candidate_value_set) {
         Accepted { value: candidate_value_set, diagnostics: None } =>
           v2.std.integer_value_set.integer_value_set_strictly_contains(container: candidate_value_set, contained: source_value_set)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -67,9 +67,9 @@ fn refinement_widening_is_strict_coarsening(algebra: v2.std.node.Node) -> Bool {
       match find_named_child(root: algebra, name: ^refinement_widening_field_candidate_value_set) {
         Accepted { value: candidate_value_set, diagnostics: None } =>
           v2.std.integer_value_set.integer_value_set_strictly_contains(container: source_value_set, contained: candidate_value_set)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -89,11 +89,11 @@ fn refinement_widening_bundle_holds(
                 && (bundled_source_facts == source_facts)
                 && (source_facts != candidate)
                 && refinement_widening_value_sets_hold(algebra: algebra)
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

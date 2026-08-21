@@ -92,7 +92,7 @@ fn gha_fold_flow_labels_emitted_from_list_suffix_witness(
   index: Int
 ) -> v2.std.witness.Witness<v2.std.node.Node> {
   match v2.std.collection.list_at_optional(xs: labels, index: index) {
-    v2.std.optional.Present { value: label } =>
+    Present { value: label } =>
       gha_fold_flow_labels_emitted_from_list_suffix_witness(
         labels: labels,
         accumulated: gha_fold_flow_labels_pair_emitted(
@@ -101,7 +101,7 @@ fn gha_fold_flow_labels_emitted_from_list_suffix_witness(
         ),
         index: index + 1
       )
-    v2.std.optional.Absent => v2.std.witness.Holds { value: accumulated }
+    Absent => v2.std.witness.Holds { value: accumulated }
   }
 }
 
@@ -240,9 +240,9 @@ fn gha_fold_step_list_emitted_from_suffix_witness(
   index: Int
 ) -> v2.std.witness.Witness<v2.std.node.Node> {
   match v2.std.collection.list_at_optional(xs: job.steps, index: index) {
-    v2.std.optional.Present { value: step } =>
+    Present { value: step } =>
       match v2.extdeps.github.gha_fold_pilot_emit.gha_fold_pilot_emit_step(step: step) {
-        v2.std.optional.Present { value: emit } =>
+        Present { value: emit } =>
           match gha_fold_step_tail_emitted_from_emit(emit: emit) {
             Holds { value: tail } =>
               gha_fold_step_list_emitted_from_suffix_witness(
@@ -252,12 +252,12 @@ fn gha_fold_step_list_emitted_from_suffix_witness(
               )
             Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
           }
-        v2.std.optional.Absent =>
+        Absent =>
           v2.std.witness.Violates {
             diagnostic: gha_fold_unsupported_variant_diagnostic(variant: ^gha_fold_unsupported_step_kind)
           }
       }
-    v2.std.optional.Absent => v2.std.witness.Holds { value: accumulated }
+    Absent => v2.std.witness.Holds { value: accumulated }
   }
 }
 
@@ -269,7 +269,7 @@ fn gha_fold_step_list_emitted_witness(job: extdeps.github.actions.Job) -> v2.std
   ) {
     Holds { value: first } =>
       match v2.extdeps.github.gha_fold_pilot_emit.gha_fold_pilot_emit_step(step: first) {
-        v2.std.optional.Present { value: emit } =>
+        Present { value: emit } =>
           match gha_fold_step_head_emitted_from_emit(emit: emit) {
             Holds { value: head } =>
               gha_fold_step_list_emitted_from_suffix_witness(
@@ -279,7 +279,7 @@ fn gha_fold_step_list_emitted_witness(job: extdeps.github.actions.Job) -> v2.std
               )
             Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }
           }
-        v2.std.optional.Absent =>
+        Absent =>
           v2.std.witness.Violates {
             diagnostic: gha_fold_unsupported_variant_diagnostic(variant: ^gha_fold_unsupported_step_kind)
           }

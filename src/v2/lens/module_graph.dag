@@ -190,22 +190,22 @@ fn extend_adjacency_for_dependency_edge(
   module_to_path: Map<String, String>
 ) -> Map<String, List<String>> {
   match map_lookup_where_rejected_unreachable(m: module_to_path, key: edge.target_module) {
-    v2.std.optional.Present { value: imported_path } =>
+    Present { value: imported_path } =>
       match map_lookup_where_rejected_unreachable(m: acc, key: edge.path) {
-        v2.std.optional.Present { value: existing } =>
+        Present { value: existing } =>
           map_insert(
             m: acc,
             key: edge.path,
             value: snoc_unseen_list(acc: existing, item: imported_path)
           )
-        v2.std.optional.Absent =>
+        Absent =>
           map_insert(
             m: acc,
             key: edge.path,
             value: list_snoc_item(xs: no_paths, item: imported_path)
           )
       }
-    v2.std.optional.Absent => acc
+    Absent => acc
   }
 }
 
@@ -276,18 +276,18 @@ fn import_closure_bfs_walk(
   adjacency: Map<String, List<String>>
 ) -> FreeMonoid<String> {
   match state.queue |> first {
-    v2.std.optional.Present { value: importer } =>
+    Present { value: importer } =>
       let rest = state.queue |> skip(1)
       let neighbors = match map_lookup_where_rejected_unreachable(m: adjacency, key: importer) {
-        v2.std.optional.Present { value: paths } => paths
-        v2.std.optional.Absent => no_paths
+        Present { value: paths } => paths
+        Absent => no_paths
       }
       let next = bfs_absorb_neighbors(
         state: ImportClosureBfsState { reached: state.reached, queue: rest },
         neighbors: neighbors
       )
       import_closure_bfs_walk(state: next, adjacency: adjacency)
-    v2.std.optional.Absent => state.reached
+    Absent => state.reached
   }
 }
 

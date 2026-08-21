@@ -38,7 +38,7 @@ data witness_v4_evaluator_semantics_fail_closed: Bool = match v2_eval_call_primi
   args: [],
   env: v2_eval_empty_environment()
 ) {
-  v2.std.diagnostic.Rejected { diagnostics: _ } => true
+  Rejected { diagnostics: _ } => true
   _ => false
 }
 
@@ -46,7 +46,7 @@ data witness_v4_evaluator_transfer_fail_closed: Bool = match v2_eval_transfer(
   control: v2.std.runtime.Suspend { continuation: v2_eval_empty_frame() },
   frame: v2_eval_empty_frame()
 ) {
-  v2.std.diagnostic.Rejected { diagnostics: _ } => true
+  Rejected { diagnostics: _ } => true
   _ => false
 }
 

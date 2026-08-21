@@ -101,7 +101,7 @@ fn derived_cause_is_keyless_with_method(shape: std.effects.EffectShape<std.effec
             _ => false
           }
         PostAlways => false
-        std.effects.CreateIfAbsent { key_source: key_source } => false
+        CreateIfAbsent { key_source: key_source } => false
       }
     _ => false
   }
@@ -113,7 +113,7 @@ fn derived_cause_is_post_always(shape: std.effects.EffectShape<std.effects.KeySo
       match cause {
         PostAlways => true
         KeylessFallback { method: m } => false
-        std.effects.CreateIfAbsent { key_source: key_source } => false
+        CreateIfAbsent { key_source: key_source } => false
       }
     _ => false
   }

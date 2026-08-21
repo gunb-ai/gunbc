@@ -272,7 +272,7 @@ fn deploy_access_check(access: DeployAccess, actor: DeployAccessActor) -> std.ac
 fn deploy_access_decision_reason(d: std.access.AccessDecision) -> String {
   match d {
     Permit => ""
-    std.access.Deny { refusal: refusal } => access_refusal_reason(refusal: refusal)
+    Deny { refusal: refusal } => access_refusal_reason(refusal: refusal)
   }
 }
 

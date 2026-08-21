@@ -9,7 +9,7 @@ type CensusConstructionCount {
 
 fn census_edge_is_construction(e: v2.std.node.Edge) -> v2.std.logic.Bool {
   match e.label {
-    v2.std.node.Named { name: nm } => nm == ^record_construction_spelling
+    Named { name: nm } => nm == ^record_construction_spelling
     Positional => false
   }
 }
@@ -22,7 +22,7 @@ fn census_construction_fold(n: v2.std.node.Node, target: v2.std.node.Symbol) -> 
   let alg: v2.std.node.NodeFold<CensusConstructionCount> = v2.std.node.NodeFold {
       init: fn(n0) {
         match n0.kind {
-          v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } } =>
+          TypeNode { connective: v2.std.node.Atom { identity: s } } =>
             CensusConstructionCount { constructions: 0, self_is_target_atom: census_spelling_names_target(spelling: s as String, target: target) }
           _ => CensusConstructionCount { constructions: 0, self_is_target_atom: false }
         }

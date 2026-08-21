@@ -22,11 +22,11 @@ func srv3_os_install_actuator_toolchain_ensure() -> std.process.ProcessExit
 
 fn os_install_actuator_toolchain_ensure_routes_through_host_effect_apply() -> Bool {
   match os_install_actuator_toolchain_ensure_dissolution_trigger {
-    std.disposition.Scaffold {
+    Scaffold {
       dissolves_to: RealizationDispatch,
       bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
     } =>
       m == "gunbc.host_effect_realize" && n == "realize_os_install_actuator_toolchain_ensure"
-    std.disposition.Terminal { reason: _ } => false
+    Terminal { reason: _ } => false
   }
 }

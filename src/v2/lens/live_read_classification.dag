@@ -44,10 +44,10 @@ fn carrier_homes_in_closure(
 
 fn carrier_home_kind_to_g1_carrier(home: v2.std.live_read.LiveReadCarrierHome) -> v2.std.live_read.LiveReadCarrier {
   match home.kind {
-    v2.std.live_read.FilesystemReadCarrier =>
+    FilesystemReadCarrier =>
       v2.std.live_read.FilesystemReadPath { path_pattern: v2.std.live_read.UnknownPath }
-    v2.std.live_read.ModuleDeclarationFactsCarrier => v2.std.live_read.ModuleDeclarationFactsScan
-    v2.std.live_read.DeclFactsReflectionCarrier =>
+    ModuleDeclarationFactsCarrier => v2.std.live_read.ModuleDeclarationFactsScan
+    DeclFactsReflectionCarrier =>
       v2.std.live_read.DeclFactsReflection { home: home.module }
   }
 }
@@ -184,19 +184,19 @@ fn path_pattern_from_lexeme(text: String, param_names: std.types.List<String>) -
 
 fn path_pattern_eq(a: v2.std.live_read.PathPattern, b: v2.std.live_read.PathPattern) -> Bool {
   match a {
-    v2.std.live_read.LiteralPath { path: pa } =>
+    LiteralPath { path: pa } =>
       match b {
-        v2.std.live_read.LiteralPath { path: pb } => string_eq(a: pa, b: pb)
+        LiteralPath { path: pb } => string_eq(a: pa, b: pb)
         _ => false
       }
-    v2.std.live_read.ParamRef { name: na } =>
+    ParamRef { name: na } =>
       match b {
-        v2.std.live_read.ParamRef { name: nb } => string_eq(a: na, b: nb)
+        ParamRef { name: nb } => string_eq(a: na, b: nb)
         _ => false
       }
-    v2.std.live_read.UnknownPath =>
+    UnknownPath =>
       match b {
-        v2.std.live_read.UnknownPath => true
+        UnknownPath => true
         _ => false
       }
   }
@@ -204,19 +204,19 @@ fn path_pattern_eq(a: v2.std.live_read.PathPattern, b: v2.std.live_read.PathPatt
 
 fn live_read_carrier_eq(a: v2.std.live_read.LiveReadCarrier, b: v2.std.live_read.LiveReadCarrier) -> Bool {
   match a {
-    v2.std.live_read.FilesystemReadPath { path_pattern: pa } =>
+    FilesystemReadPath { path_pattern: pa } =>
       match b {
-        v2.std.live_read.FilesystemReadPath { path_pattern: pb } => path_pattern_eq(a: pa, b: pb)
+        FilesystemReadPath { path_pattern: pb } => path_pattern_eq(a: pa, b: pb)
         _ => false
       }
-    v2.std.live_read.ModuleDeclarationFactsScan =>
+    ModuleDeclarationFactsScan =>
       match b {
-        v2.std.live_read.ModuleDeclarationFactsScan => true
+        ModuleDeclarationFactsScan => true
         _ => false
       }
-    v2.std.live_read.DeclFactsReflection { home: ha } =>
+    DeclFactsReflection { home: ha } =>
       match b {
-        v2.std.live_read.DeclFactsReflection { home: hb } => string_eq(a: ha, b: hb)
+        DeclFactsReflection { home: hb } => string_eq(a: ha, b: hb)
         _ => false
       }
   }
@@ -243,14 +243,14 @@ fn carrier_for_callee_text(
 ) -> v2.std.live_read.LiveReadCarrier {
   if string_eq(a: callee_text, b: "filesystem_read") {
     match list_head(xs: args) {
-      v2.std.algebra.HeadFound { value: arg } =>
+      HeadFound { value: arg } =>
         v2.std.live_read.FilesystemReadPath {
           path_pattern: path_pattern_from_lexeme(
             text: symbol_lexeme(sym: arg),
             param_names: param_names
           )
         }
-      v2.std.algebra.HeadAbsent => v2.std.live_read.FilesystemReadPath { path_pattern: v2.std.live_read.UnknownPath }
+      HeadAbsent => v2.std.live_read.FilesystemReadPath { path_pattern: v2.std.live_read.UnknownPath }
     }
   } else if string_eq(a: callee_text, b: "module_declaration_facts")
     || string_eq(a: callee_text, b: "module_declaration_facts_live") {
@@ -265,7 +265,7 @@ fn carrier_for_callee_text(
 fn positional_child_targets(node: v2.std.node.Node) -> std.types.List<v2.std.node.Node> {
   fold(node.children, init: empty_node_list, f: fn(acc, e) {
     match e.label {
-      v2.std.node.Positional => list_snoc_item(xs: acc, item: e.target)
+      Positional => list_snoc_item(xs: acc, item: e.target)
       Named { name: _ } => acc
     }
   })
@@ -283,7 +283,7 @@ fn arg_symbols_from_nodes(nodes: std.types.List<v2.std.node.Node>) -> std.types.
 fn carriers_from_call_node(node: v2.std.node.Node, param_names: std.types.List<String>) -> std.types.List<v2.std.live_read.LiveReadCarrier> {
   let targets = positional_child_targets(node: node)
   match list_head(xs: targets) {
-    v2.std.algebra.HeadFound { value: callee_node } =>
+    HeadFound { value: callee_node } =>
       match node_atom_identity_optional(node: callee_node) {
         Present { value: callee } =>
           let callee_text = symbol_lexeme(sym: callee)
@@ -297,14 +297,14 @@ fn carriers_from_call_node(node: v2.std.node.Node, param_names: std.types.List<S
           }
         Absent => empty_carrier_list
       }
-    v2.std.algebra.HeadAbsent => empty_carrier_list
+    HeadAbsent => empty_carrier_list
   }
 }
 
 fn tail_nodes(xs: std.types.List<v2.std.node.Node>) -> std.types.List<v2.std.node.Node> {
   match list_tail(xs: xs) {
-    v2.std.algebra.TailFound { tail: t } => t
-    v2.std.algebra.TailAbsent => empty_node_list
+    TailFound { tail: t } => t
+    TailAbsent => empty_node_list
   }
 }
 
@@ -425,8 +425,8 @@ fn call_reachable_decls_go(
   reached: std.types.List<v2.std.fn_index.FnArrowDecl>
 ) -> std.types.List<v2.std.fn_index.FnArrowDecl> {
   match list_head(xs: seeds) {
-    v2.std.algebra.HeadAbsent => reached
-    v2.std.algebra.HeadFound { value: seed } =>
+    HeadAbsent => reached
+    HeadFound { value: seed } =>
       let rest = tail_decls(xs: seeds)
       if decl_in_list(decl: seed, xs: reached) {
         call_reachable_decls_go(
@@ -460,8 +460,8 @@ fn call_reachable_decls_go(
 
 fn tail_decls(xs: std.types.List<v2.std.fn_index.FnArrowDecl>) -> std.types.List<v2.std.fn_index.FnArrowDecl> {
   match list_tail(xs: xs) {
-    v2.std.algebra.TailFound { tail: t } => t
-    v2.std.algebra.TailAbsent => empty_decl_list
+    TailFound { tail: t } => t
+    TailAbsent => empty_decl_list
   }
 }
 
@@ -679,8 +679,8 @@ fn g2_facts_cover_reachable_carrier_homes(
 
 fn classification_is_local_read(c: v2.std.live_read.LiveReadClassification) -> Bool {
   match c {
-    v2.std.live_read.LocalRead => true
-    v2.std.live_read.RuntimeRead { carriers: _ } => false
+    LocalRead => true
+    RuntimeRead { carriers: _ } => false
   }
 }
 
@@ -688,8 +688,8 @@ data partial_subject_never_decides_law: String = "PARTIAL POSITIVE EVIDENCE IS N
 
 fn classification_diagnostic_label(c: v2.std.live_read.LiveReadClassification) -> String {
   match c {
-    v2.std.live_read.LocalRead => "LocalRead"
-    v2.std.live_read.RuntimeRead { carriers: _ } => "RuntimeRead"
+    LocalRead => "LocalRead"
+    RuntimeRead { carriers: _ } => "RuntimeRead"
   }
 }
 
@@ -698,9 +698,9 @@ fn live_read_selection_projection_for_subject(
   classification: v2.std.live_read.LiveReadClassification
 ) -> v2.std.live_read.LiveReadSelectionProjection {
   match subject {
-    v2.std.live_read.WholeTreeFactSubject =>
+    WholeTreeFactSubject =>
       v2.std.live_read.LiveReadSelectionClassified { classification: classification }
-    v2.std.live_read.PartialFactSubject { cause: cause } =>
+    PartialFactSubject { cause: cause } =>
       v2.std.live_read.LiveReadSelectionRefused {
         cause: concat(
           concat(
@@ -804,8 +804,8 @@ fn live_read_classification(
 
 fn classification_is_local(classification: v2.std.live_read.LiveReadClassification) -> Bool {
   match classification {
-    v2.std.live_read.LocalRead => true
-    v2.std.live_read.RuntimeRead { carriers: _ } => false
+    LocalRead => true
+    RuntimeRead { carriers: _ } => false
   }
 }
 
@@ -815,15 +815,15 @@ fn classification_has_runtime_read(classification: v2.std.live_read.LiveReadClas
 
 fn classification_has_corpus_scan_carrier(classification: v2.std.live_read.LiveReadClassification) -> Bool {
   match classification {
-    v2.std.live_read.LocalRead => false
-    v2.std.live_read.RuntimeRead { carriers: carriers } =>
+    LocalRead => false
+    RuntimeRead { carriers: carriers } =>
       any(
         xs: carriers,
         predicate: fn(carrier) {
           match carrier {
-            v2.std.live_read.ModuleDeclarationFactsScan => true
-            v2.std.live_read.DeclFactsReflection { home: _ } => true
-            v2.std.live_read.FilesystemReadPath { path_pattern: _ } => false
+            ModuleDeclarationFactsScan => true
+            DeclFactsReflection { home: _ } => true
+            FilesystemReadPath { path_pattern: _ } => false
           }
         }
       )
@@ -832,15 +832,15 @@ fn classification_has_corpus_scan_carrier(classification: v2.std.live_read.LiveR
 
 fn classification_has_filesystem_read_carrier(classification: v2.std.live_read.LiveReadClassification) -> Bool {
   match classification {
-    v2.std.live_read.LocalRead => false
-    v2.std.live_read.RuntimeRead { carriers: carriers } =>
+    LocalRead => false
+    RuntimeRead { carriers: carriers } =>
       any(
         xs: carriers,
         predicate: fn(carrier) {
           match carrier {
-            v2.std.live_read.FilesystemReadPath { path_pattern: _ } => true
-            v2.std.live_read.ModuleDeclarationFactsScan => false
-            v2.std.live_read.DeclFactsReflection { home: _ } => false
+            FilesystemReadPath { path_pattern: _ } => true
+            ModuleDeclarationFactsScan => false
+            DeclFactsReflection { home: _ } => false
           }
         }
       )
@@ -852,14 +852,14 @@ fn classification_has_literal_path(
   path: String
 ) -> Bool {
   match classification {
-    v2.std.live_read.LocalRead => false
-    v2.std.live_read.RuntimeRead { carriers: carriers } =>
+    LocalRead => false
+    RuntimeRead { carriers: carriers } =>
       any(xs: carriers, predicate: fn(carrier) {
         match carrier {
-          v2.std.live_read.FilesystemReadPath { path_pattern: v2.std.live_read.LiteralPath { path: p } } => string_eq(a: p, b: path)
-          v2.std.live_read.FilesystemReadPath { path_pattern: _ } => false
-          v2.std.live_read.ModuleDeclarationFactsScan => false
-          v2.std.live_read.DeclFactsReflection { home: _ } => false
+          FilesystemReadPath { path_pattern: v2.std.live_read.LiteralPath { path: p } } => string_eq(a: p, b: path)
+          FilesystemReadPath { path_pattern: _ } => false
+          ModuleDeclarationFactsScan => false
+          DeclFactsReflection { home: _ } => false
         }
       })
   }
@@ -867,13 +867,13 @@ fn classification_has_literal_path(
 
 fn runtime_read_carrier_module_names(classification: v2.std.live_read.LiveReadClassification) -> std.types.List<String> {
   match classification {
-    v2.std.live_read.LocalRead => empty_string_list
-    v2.std.live_read.RuntimeRead { carriers: carriers } =>
+    LocalRead => empty_string_list
+    RuntimeRead { carriers: carriers } =>
       fold_list(xs: carriers, empty: empty_string_list, cons: fn(acc, carrier) {
         match carrier {
-          v2.std.live_read.FilesystemReadPath { path_pattern: _ } => acc
-          v2.std.live_read.ModuleDeclarationFactsScan => acc
-          v2.std.live_read.DeclFactsReflection { home: home } =>
+          FilesystemReadPath { path_pattern: _ } => acc
+          ModuleDeclarationFactsScan => acc
+          DeclFactsReflection { home: home } =>
             if contains(xs: acc, item: home, eq: string_eq) {
               acc
             } else {
@@ -892,8 +892,8 @@ fn runtime_read_touched_by_path_g1(
     false
   } else {
     match classification {
-      v2.std.live_read.LocalRead => false
-      v2.std.live_read.RuntimeRead { carriers: _ } => true
+      LocalRead => false
+      RuntimeRead { carriers: _ } => true
     }
   }
 }
@@ -903,9 +903,9 @@ fn filesystem_path_carrier_touched(
   touched_path: String
 ) -> Bool {
   match path_pattern {
-    v2.std.live_read.LiteralPath { path: p } => v2.lens.module_graph.path_matches_touched(closure_path: p, touched_path: touched_path)
-    v2.std.live_read.UnknownPath => true
-    v2.std.live_read.ParamRef { name: _ } => true
+    LiteralPath { path: p } => v2.lens.module_graph.path_matches_touched(closure_path: p, touched_path: touched_path)
+    UnknownPath => true
+    ParamRef { name: _ } => true
   }
 }
 
@@ -914,10 +914,10 @@ fn live_read_carrier_touched_by_path(
   touched_path: String
 ) -> Bool {
   match carrier {
-    v2.std.live_read.FilesystemReadPath { path_pattern: pa } =>
+    FilesystemReadPath { path_pattern: pa } =>
       filesystem_path_carrier_touched(path_pattern: pa, touched_path: touched_path)
-    v2.std.live_read.ModuleDeclarationFactsScan => true
-    v2.std.live_read.DeclFactsReflection { home: _ } => true
+    ModuleDeclarationFactsScan => true
+    DeclFactsReflection { home: _ } => true
   }
 }
 
@@ -929,8 +929,8 @@ fn runtime_read_touched_by_path_g2(
     false
   } else {
     match classification {
-      v2.std.live_read.LocalRead => false
-      v2.std.live_read.RuntimeRead { carriers: carriers } =>
+      LocalRead => false
+      RuntimeRead { carriers: carriers } =>
         any(xs: carriers, predicate: fn(carrier) {
           live_read_carrier_touched_by_path(carrier: carrier, touched_path: touched_path)
         })
@@ -974,8 +974,8 @@ fn decls_with_qualified_name(qualified: String, decls: std.types.List<v2.std.fn_
 
 fn tail_module_facts(xs: std.types.List<v2.lens.module_graph.ModuleDeclarationFact>) -> std.types.List<v2.lens.module_graph.ModuleDeclarationFact> {
   match list_tail(xs: xs) {
-    v2.std.algebra.TailFound { tail: t } => t
-    v2.std.algebra.TailAbsent => empty_module_declaration_fact_list
+    TailFound { tail: t } => t
+    TailAbsent => empty_module_declaration_fact_list
   }
 }
 
@@ -988,27 +988,27 @@ fn bind_g2_root(
 ) -> G2RootBinding {
   let module_matches = module_facts_for_path(path: entry_path, nodes: nodes)
   match list_head(xs: module_matches) {
-    v2.std.algebra.HeadAbsent => G2RootUnbound {
+    HeadAbsent => G2RootUnbound {
       cause: concat("no module declaration fact names entry path ", entry_path)
     }
-    v2.std.algebra.HeadFound { value: first_module } =>
+    HeadFound { value: first_module } =>
       match list_head(xs: tail_module_facts(xs: module_matches)) {
-        v2.std.algebra.HeadFound { value: _ } => G2RootUnbound {
+        HeadFound { value: _ } => G2RootUnbound {
           cause: concat("more than one module declaration fact names entry path ", entry_path)
         }
-        v2.std.algebra.HeadAbsent => {
+        HeadAbsent => {
           let qualified = concat(concat(first_module.module, "."), fn_name)
           let decl_matches = decls_with_qualified_name(qualified: qualified, decls: decls)
           match list_head(xs: decl_matches) {
-            v2.std.algebra.HeadAbsent => G2RootUnbound {
+            HeadAbsent => G2RootUnbound {
               cause: concat("no fn-arrow declaration is named ", qualified)
             }
-            v2.std.algebra.HeadFound { value: first_decl } =>
+            HeadFound { value: first_decl } =>
               match list_head(xs: tail_decls(xs: decl_matches)) {
-                v2.std.algebra.HeadFound { value: _ } => G2RootUnbound {
+                HeadFound { value: _ } => G2RootUnbound {
                   cause: concat("more than one fn-arrow declaration is named ", qualified)
                 }
-                v2.std.algebra.HeadAbsent => G2RootBound {
+                HeadAbsent => G2RootBound {
                   entry_path: entry_path,
                   entry_module: first_module.module,
                   decl: first_decl

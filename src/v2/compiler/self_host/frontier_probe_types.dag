@@ -178,8 +178,8 @@ fn frontier_survey_commit_tree_binding_holds(
     false
   } else {
     match extdeps.git.object_store.git_object_id_from_untagged_hex(hex: result.tree) {
-      v2.std.optional.Present { value: observed } => extdeps.git.object_store.git_object_id_eq(left: observed, right: tree)
-      v2.std.optional.Absent => false
+      Present { value: observed } => extdeps.git.object_store.git_object_id_eq(left: observed, right: tree)
+      Absent => false
     }
   }
 }

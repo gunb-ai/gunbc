@@ -9,18 +9,18 @@ fn bash_fold_serialize_emit_from_node(emitted: v2.std.node.Node, target: v2.std.
         None => v2.std.diagnostic.Accepted { value: source.carried, diagnostics: v2.std.diagnostic.None }
         Some { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn bash_fold_built_stmt_production_binding(stmt: v2.std.node.Node) -> v2.std.node.Symbol {
   match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 0) {
-    v2.std.optional.Present { value: tag } =>
+    Present { value: tag } =>
       match tag.kind {
         TypeNode { connective: Atom { identity: binding } } => binding
         _ => ^bash_production_fold_unsupported
       }
-    v2.std.optional.Absent => ^bash_production_fold_unsupported
+    Absent => ^bash_production_fold_unsupported
   }
 }
 
@@ -70,13 +70,13 @@ fn bash_fold_serialize_stmts_semi(stmts: List<v2.std.node.Node>) -> v2.std.diagn
 
 fn bash_fold_flatten_stmt_list(list_node: v2.std.node.Node) -> List<v2.std.node.Node> {
   match list_at_optional(xs: node_positional_child_targets(node: list_node), index: 0) {
-    v2.std.optional.Present { value: first } =>
+    Present { value: first } =>
       match list_at_optional(xs: node_positional_child_targets(node: list_node), index: 1) {
-        v2.std.optional.Present { value: second } =>
+        Present { value: second } =>
           concat(bash_fold_flatten_stmt_list(list_node: first), [second])
-        v2.std.optional.Absent => [first]
+        Absent => [first]
       }
-    v2.std.optional.Absent => []
+    Absent => []
   }
 }
 
@@ -86,9 +86,9 @@ fn bash_fold_serialize_stmt_list_semi(list_node: v2.std.node.Node) -> v2.std.dia
 
 fn bash_fold_serialize_with_redir_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
   match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
-    v2.std.optional.Present { value: inner } =>
+    Present { value: inner } =>
       match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
-        v2.std.optional.Present { value: redir_tag } =>
+        Present { value: redir_tag } =>
           match redir_tag.kind {
             TypeNode { connective: Atom { identity: redir_binding } } =>
               bind_outcome(
@@ -120,7 +120,7 @@ fn bash_fold_serialize_with_redir_node(stmt: v2.std.node.Node) -> v2.std.diagnos
                     )
                   } else if redir_binding == ^bash_production_fold_redir_to_file {
                     match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 3) {
-                      v2.std.optional.Present { value: path_node } =>
+                      Present { value: path_node } =>
                         bind_outcome(
                           o: bash_fold_serialize_word_node(word: path_node),
                           f: fn(path_spelling) {
@@ -133,7 +133,7 @@ fn bash_fold_serialize_with_redir_node(stmt: v2.std.node.Node) -> v2.std.diagnos
                             )
                           }
                         )
-                      v2.std.optional.Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+                      Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
                     }
                   } else {
                     bash_fold_serialize_refused(variant: ^bash_fold_serialize_redir_binding_unsupported)
@@ -142,15 +142,15 @@ fn bash_fold_serialize_with_redir_node(stmt: v2.std.node.Node) -> v2.std.diagnos
               )
             _ => bash_fold_serialize_refused(variant: ^bash_fold_serialize_node_shape_refused)
           }
-        v2.std.optional.Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+        Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
       }
-    v2.std.optional.Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
   }
 }
 
 fn bash_fold_serialize_word_node(word: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
   match list_at_optional(xs: node_positional_child_targets(node: word), index: 0) {
-    v2.std.optional.Present { value: kind_node } =>
+    Present { value: kind_node } =>
       match kind_node.kind {
         TypeNode { connective: Atom { identity: kind } } =>
           if kind == ^bash_fold_word_kind_lit {
@@ -173,7 +173,7 @@ fn bash_fold_serialize_word_node(word: v2.std.node.Node) -> v2.std.diagnostic.Ou
             )
           } else if kind == ^bash_fold_word_kind_cmdsubst {
             match list_at_optional(xs: node_positional_child_targets(node: word), index: 1) {
-              v2.std.optional.Present { value: body } =>
+              Present { value: body } =>
                 bind_outcome(
                   o: bash_fold_serialize_node(stmt: body),
                   f: fn(body_spelling) {
@@ -183,7 +183,7 @@ fn bash_fold_serialize_word_node(word: v2.std.node.Node) -> v2.std.diagnostic.Ou
                     )
                   }
                 )
-              v2.std.optional.Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+              Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
             }
           } else if kind == ^bash_build_refused_empty_word_list {
             v2.std.diagnostic.Rejected {
@@ -198,7 +198,7 @@ fn bash_fold_serialize_word_node(word: v2.std.node.Node) -> v2.std.diagnostic.Ou
           }
         _ => bash_fold_serialize_refused(variant: ^bash_fold_serialize_node_shape_refused)
       }
-    v2.std.optional.Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
   }
 }
 
@@ -242,11 +242,11 @@ fn bash_fold_serialize_command_node(stmt: v2.std.node.Node) -> v2.std.diagnostic
 
 fn bash_fold_serialize_assign_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
   match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
-    v2.std.optional.Present { value: name_node } =>
+    Present { value: name_node } =>
       match name_node.kind {
         TypeNode { connective: Atom { identity: name } } =>
           match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
-            v2.std.optional.Present { value: value } =>
+            Present { value: value } =>
               bind_outcome(
                 o: bash_fold_serialize_word_node(word: value),
                 f: fn(value_spelling) {
@@ -259,17 +259,17 @@ fn bash_fold_serialize_assign_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.
                   )
                 }
               )
-            v2.std.optional.Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+            Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
           }
         _ => bash_fold_serialize_refused(variant: ^bash_fold_serialize_node_shape_refused)
       }
-    v2.std.optional.Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
   }
 }
 
 fn bash_fold_serialize_exit_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
   match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
-    v2.std.optional.Present { value: code_node } =>
+    Present { value: code_node } =>
       match code_node.kind {
         TypeNode { connective: Atom { identity: code } } =>
           bash_fold_serialize_emit_from_node(
@@ -278,15 +278,15 @@ fn bash_fold_serialize_exit_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Ou
           )
         _ => bash_fold_serialize_refused(variant: ^bash_fold_serialize_node_shape_refused)
       }
-    v2.std.optional.Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
   }
 }
 
 fn bash_fold_serialize_and_then_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
   match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
-    v2.std.optional.Present { value: left } =>
+    Present { value: left } =>
       match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
-        v2.std.optional.Present { value: right } =>
+        Present { value: right } =>
           bind_outcome(
             o: bash_fold_serialize_node(stmt: left),
             f: fn(left_spelling) {
@@ -305,17 +305,17 @@ fn bash_fold_serialize_and_then_node(stmt: v2.std.node.Node) -> v2.std.diagnosti
               )
             }
           )
-        v2.std.optional.Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+        Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
       }
-    v2.std.optional.Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
   }
 }
 
 fn bash_fold_serialize_or_else_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
   match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
-    v2.std.optional.Present { value: left } =>
+    Present { value: left } =>
       match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
-        v2.std.optional.Present { value: right } =>
+        Present { value: right } =>
           bind_outcome(
             o: bash_fold_serialize_node(stmt: left),
             f: fn(left_spelling) {
@@ -334,17 +334,17 @@ fn bash_fold_serialize_or_else_node(stmt: v2.std.node.Node) -> v2.std.diagnostic
               )
             }
           )
-        v2.std.optional.Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+        Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
       }
-    v2.std.optional.Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
   }
 }
 
 fn bash_fold_serialize_pipe_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
   match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
-    v2.std.optional.Present { value: left } =>
+    Present { value: left } =>
       match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
-        v2.std.optional.Present { value: right } =>
+        Present { value: right } =>
           bind_outcome(
             o: bash_fold_serialize_node(stmt: left),
             f: fn(left_spelling) {
@@ -362,17 +362,17 @@ fn bash_fold_serialize_pipe_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Ou
               )
             }
           )
-        v2.std.optional.Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+        Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
       }
-    v2.std.optional.Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
   }
 }
 
 fn bash_fold_serialize_if_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
   match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
-    v2.std.optional.Present { value: cond } =>
+    Present { value: cond } =>
       match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
-        v2.std.optional.Present { value: body } =>
+        Present { value: body } =>
           bind_outcome(
             o: bash_fold_serialize_node(stmt: cond),
             f: fn(cond_spelling) {
@@ -395,15 +395,15 @@ fn bash_fold_serialize_if_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Outc
               )
             }
           )
-        v2.std.optional.Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+        Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
       }
-    v2.std.optional.Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
   }
 }
 
 fn bash_fold_serialize_subshell_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
   match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
-    v2.std.optional.Present { value: body } =>
+    Present { value: body } =>
       bind_outcome(
         o: bash_fold_serialize_stmt_list_semi(list_node: body),
         f: fn(body_spelling) {
@@ -413,13 +413,13 @@ fn bash_fold_serialize_subshell_node(stmt: v2.std.node.Node) -> v2.std.diagnosti
           )
         }
       )
-    v2.std.optional.Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
   }
 }
 
 fn bash_fold_serialize_negation_node(stmt: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
   match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
-    v2.std.optional.Present { value: inner } =>
+    Present { value: inner } =>
       bind_outcome(
         o: bash_fold_serialize_node(stmt: inner),
         f: fn(inner_spelling) {
@@ -429,7 +429,7 @@ fn bash_fold_serialize_negation_node(stmt: v2.std.node.Node) -> v2.std.diagnosti
           )
         }
       )
-    v2.std.optional.Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
   }
 }
 

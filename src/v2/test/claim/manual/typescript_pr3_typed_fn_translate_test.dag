@@ -106,13 +106,13 @@ data typescript_pr3_compile_inferred_receipt: v2.std.diagnostic.Outcome<v2.compi
 test fn typescript_pr3_emit_receipt_decided() -> Bool {
   match typescript_pr3_emit_receipt {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 test fn typescript_pr3_compile_inferred_receipt_decided() -> Bool {
   match typescript_pr3_compile_inferred_receipt {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 

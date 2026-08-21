@@ -50,21 +50,21 @@ fn bisect_through_normalize() -> v2.std.diagnostic.Outcome<v2.compiler.normalize
 test fn bisect_tokenize_terminates() -> v2.std.logic.Bool {
   match bisect_through_tokenize() {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
 test fn bisect_parse_terminates() -> v2.std.logic.Bool {
   match bisect_through_parse() {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
 test fn bisect_normalize_terminates() -> v2.std.logic.Bool {
   match bisect_through_normalize() {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -89,7 +89,7 @@ fn bisect_through_grammar_validate() -> v2.std.diagnostic.Outcome<v2.std.grammar
 test fn bisect_grammar_validate_terminates() -> v2.std.logic.Bool {
   match bisect_through_grammar_validate() {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -103,9 +103,9 @@ fn bisect_parse_module_add_parse_accepts() -> v2.std.logic.Bool {
     Accepted { value: token_stream, diagnostics: _ } =>
       match v2.compiler.parse.parse(tokens: token_stream, grammar: lm.grammar) {
         Accepted { value: _, diagnostics: _ } => true
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -123,13 +123,13 @@ fn bisect_parse_module_add_resolve_accepts() -> v2.std.logic.Bool {
             Accepted { value: normalized, diagnostics: _ } =>
               match v2.compiler.resolve.resolve(tree: normalized, lm: lm) {
                 Accepted { value: _, diagnostics: _ } => true
-                v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                Rejected { diagnostics: _ } => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -143,9 +143,9 @@ fn bisect_parse_module_truncated_rejects() -> v2.std.logic.Bool {
     Accepted { value: token_stream, diagnostics: _ } =>
       match v2.compiler.parse.parse(tokens: token_stream, grammar: lm.grammar) {
         Accepted { value: _, diagnostics: _ } => false
-        v2.std.diagnostic.Rejected { diagnostics: _ } => true
+        Rejected { diagnostics: _ } => true
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -161,11 +161,11 @@ fn bisect_parse_module_add_well_formed_after_normalize() -> v2.std.logic.Bool {
         Accepted { value: parsed, diagnostics: _ } =>
           match v2.compiler.normalize.normalize(parse_tree: parsed) {
             Accepted { value: normalized, diagnostics: _ } => v2.std.node.well_formed(n: normalized.root)
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -181,11 +181,11 @@ fn bisect_parse_module_add_normalize_accepts() -> v2.std.logic.Bool {
         Accepted { value: parsed, diagnostics: _ } =>
           match v2.compiler.normalize.normalize(parse_tree: parsed) {
             Accepted { value: _, diagnostics: _ } => true
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -216,13 +216,13 @@ fn bisect_resolve_accepts_text(text: String) -> v2.std.logic.Bool {
             Accepted { value: normalized, diagnostics: _ } =>
               match v2.compiler.resolve.resolve(tree: normalized, lm: lm) {
                 Accepted { value: _, diagnostics: _ } => true
-                v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                Rejected { diagnostics: _ } => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

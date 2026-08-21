@@ -22,7 +22,7 @@ fn ts_sg2_project_instantiation_emitted() -> v2.std.node.Node {
     projection: v2.extdeps.languages.typescript.ts_type_expression_projection()
   ) {
     Accepted { value: emitted, diagnostics: _ } => emitted
-    v2.std.diagnostic.Rejected { diagnostics: _ } => ts_sg2_fail_node()
+    Rejected { diagnostics: _ } => ts_sg2_fail_node()
   }
 }
 
@@ -38,7 +38,7 @@ fn ts_sg2_project_arrow_emitted() -> v2.std.node.Node {
     projection: v2.extdeps.languages.typescript.ts_type_expression_projection()
   ) {
     Accepted { value: emitted, diagnostics: _ } => emitted
-    v2.std.diagnostic.Rejected { diagnostics: _ } => ts_sg2_fail_node()
+    Rejected { diagnostics: _ } => ts_sg2_fail_node()
   }
 }
 
@@ -49,7 +49,7 @@ fn ts_sg2_project_conj_emitted() -> v2.std.node.Node {
     projection: v2.extdeps.languages.typescript.ts_type_expression_projection()
   ) {
     Accepted { value: emitted, diagnostics: _ } => emitted
-    v2.std.diagnostic.Rejected { diagnostics: _ } => ts_sg2_fail_node()
+    Rejected { diagnostics: _ } => ts_sg2_fail_node()
   }
 }
 
@@ -60,7 +60,7 @@ fn ts_sg2_project_disj_emitted() -> v2.std.node.Node {
     projection: v2.extdeps.languages.typescript.ts_type_expression_projection()
   ) {
     Accepted { value: emitted, diagnostics: _ } => emitted
-    v2.std.diagnostic.Rejected { diagnostics: _ } => ts_sg2_fail_node()
+    Rejected { diagnostics: _ } => ts_sg2_fail_node()
   }
 }
 
@@ -71,7 +71,7 @@ test fn ts_sg2_binary_fn_projection_accepts() -> v2.std.logic.Bool {
     projection: v2.extdeps.languages.typescript.ts_type_expression_projection()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -82,7 +82,7 @@ test fn ts_sg2_arrow_malformed_projection_rejects() -> v2.std.logic.Bool {
     projection: v2.extdeps.languages.typescript.ts_type_expression_projection()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -92,7 +92,7 @@ fn ts_sg2_serialize_accepts(emitted: v2.std.node.Node) -> v2.std.logic.Bool {
     emitted: emitted
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -102,7 +102,7 @@ fn ts_sg2_serialized_text(emitted: v2.std.node.Node) -> String {
     emitted: emitted
   ) {
     Accepted { value: source, diagnostics: _ } => source.carried
-    v2.std.diagnostic.Rejected { diagnostics: _ } => ts_sg2_fail_text
+    Rejected { diagnostics: _ } => ts_sg2_fail_text
   }
 }
 
@@ -139,7 +139,7 @@ test fn ts_sg2_arrow_positional_wire_shape() -> v2.std.logic.Bool {
   match v2.std.compilers.target_model.target_type_expr_arrow_wire_shape(node: v2.extdeps.languages.typescript.ts_sg2_arrow_xy_emitted()) {
     Accepted { value: v2.std.compilers.target_model.TargetTypeExprArrowPositionalWire, diagnostics: _ } => true
     Accepted { value: v2.std.compilers.target_model.TargetTypeExprArrowLabeledWire, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -147,14 +147,14 @@ test fn ts_sg2_arrow_labeled_wire_shape() -> v2.std.logic.Bool {
   match v2.std.compilers.target_model.target_type_expr_arrow_wire_shape(node: v2.extdeps.languages.typescript.ts_sg2_arrow_labeled_xy_emitted()) {
     Accepted { value: v2.std.compilers.target_model.TargetTypeExprArrowLabeledWire, diagnostics: _ } => true
     Accepted { value: v2.std.compilers.target_model.TargetTypeExprArrowPositionalWire, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn ts_sg2_arrow_mixed_wire_rejects() -> v2.std.logic.Bool {
   match v2.std.compilers.target_model.target_type_expr_arrow_wire_shape(node: v2.extdeps.languages.typescript.ts_sg2_arrow_mixed_wire_emitted()) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -164,17 +164,17 @@ test fn ts_sg2_arrow_mixed_wire_decode_rejects() -> v2.std.logic.Bool {
     projection: v2.extdeps.languages.typescript.ts_type_expression_projection()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
 test fn ts_sg2_arrow_mixed_wire_labeled_accessors_reject() -> v2.std.logic.Bool {
   match v2.std.compilers.target_model.target_type_expr_arrow_labeled_codomain(node: v2.extdeps.languages.typescript.ts_sg2_arrow_mixed_wire_emitted()) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       match v2.std.compilers.target_model.target_type_expr_arrow_labeled_param_slots(node: v2.extdeps.languages.typescript.ts_sg2_arrow_mixed_wire_emitted()) {
         Accepted { value: _, diagnostics: _ } => false
-        v2.std.diagnostic.Rejected { diagnostics: _ } => true
+        Rejected { diagnostics: _ } => true
       }
   }
 }
@@ -193,7 +193,7 @@ fn ts_sg2_wire_decode_accepts(emitted: v2.std.node.Node) -> v2.std.logic.Bool {
     projection: v2.extdeps.languages.typescript.ts_type_expression_projection()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

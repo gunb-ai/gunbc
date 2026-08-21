@@ -461,7 +461,7 @@ test fn reconcile_observation_missing_when_no_observed() -> Bool {
     expected_pin: witness_citation_pin,
     observed: none,
   ) {
-    std.citation.ObservationMissing => true
+    ObservationMissing => true
     _ => false
   }
 }

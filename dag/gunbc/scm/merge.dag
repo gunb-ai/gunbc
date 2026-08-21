@@ -246,8 +246,8 @@ type MergeOutcome
 
 fn edge_label_role(label: v2.std.node.EdgeLabel) -> v2.std.node.Symbol? {
   match label {
-    v2.std.node.Named { name: name } => Present { value: name }
-    v2.std.node.Positional => none
+    Named { name: name } => Present { value: name }
+    Positional => none
   }
 }
 
@@ -402,11 +402,11 @@ fn normalize_requirement(store: gunbc.scm.object_store.ObjectStore, req: Require
       Normalized { store: store, desired: DesiredBindingAbsent }
     RequireBinding { role: role, value: value } =>
       match gunbc.scm.object_store.store_node(store: store, n: value) {
-        gunbc.scm.object_store.LocatorCollision { identity: identity, existing: _, incoming: _ } =>
+        LocatorCollision { identity: identity, existing: _, incoming: _ } =>
           NormalizeRefused {
             cause: BindingLocatorCollision { role: role, identity: identity },
           }
-        gunbc.scm.object_store.Stored { store: store, identity: identity } =>
+        Stored { store: store, identity: identity } =>
           Normalized {
             store: store,
             desired: DesiredBindingPresent { object: identity },
@@ -565,12 +565,12 @@ fn root_edge_step(store: gunbc.scm.object_store.ObjectStore, acc: MergeRootAcc, 
 
 fn root_edge_for(store: gunbc.scm.object_store.ObjectStore, acc: MergeRootAcc, role: v2.std.node.Symbol, object: gunbc.scm.object_store.ObjectId) -> MergeRootAcc {
   match gunbc.scm.checkout.checkout_object(store: store, identity: object) {
-    gunbc.scm.checkout.CheckoutRefused { cause: _ } =>
+    CheckoutRefused { cause: _ } =>
       MergeRootAcc {
         edges: acc.edges,
         refusal: Present { value: TargetChildMissing { role: role, identity: object } },
       }
-    gunbc.scm.checkout.CheckedOut { program: program } =>
+    CheckedOut { program: program } =>
       MergeRootAcc {
         edges: concat(acc.edges, [v2.std.node.Edge { label: v2.std.node.Named { name: role }, target: program }]),
         refusal: none,
@@ -665,11 +665,11 @@ fn finish_merge(
             store: applied.store,
             n: root_node_of(edges: built.edges),
           ) {
-            gunbc.scm.object_store.LocatorCollision { identity: identity, existing: _, incoming: _ } =>
+            LocatorCollision { identity: identity, existing: _, incoming: _ } =>
               MergeRefused {
                 cause: BindingLocatorCollision { role: ^commit_root, identity: identity },
               }
-            gunbc.scm.object_store.Stored { store: store, identity: identity } =>
+            Stored { store: store, identity: identity } =>
               Merged {
                 store: store,
                 commit: gunbc.scm.checkout.Commit { root: identity },

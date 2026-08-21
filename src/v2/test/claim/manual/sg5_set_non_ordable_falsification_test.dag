@@ -7,7 +7,7 @@ test fn sg5_set_non_ordable_projection_rejects() -> v2.std.logic.Bool {
     projection: v2.extdeps.languages.rust.rust_type_expression_projection()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 

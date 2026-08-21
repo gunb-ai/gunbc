@@ -202,15 +202,15 @@ fn requirement_refusal(
   requirement: ServingRequirement,
 ) -> ServingRequirementRefusal? {
   match gunbc.spark_serving_realization.observation_for(capabilities: capabilities, requirement: requirement) {
-    gunbc.spark.serving_realization.CapabilityPresent { evidence: _ } => none
-    gunbc.spark.serving_realization.CapabilityRefused { cause: why } => Present {
+    CapabilityPresent { evidence: _ } => none
+    CapabilityRefused { cause: why } => Present {
       value: ServingRequirementRefusal {
         realization_label: realization_label(realization: realization),
         requirement: requirement,
         cause: why,
       }
     }
-    gunbc.spark.serving_realization.CapabilityUnobserved => Present {
+    CapabilityUnobserved => Present {
       value: ServingRequirementRefusal {
         realization_label: realization_label(realization: realization),
         requirement: requirement,
@@ -325,15 +325,15 @@ fn admit_realization(
 // what re-inventing an existing concept buys.
 fn list_head_of(xs: std.types.List<ServingRequirementRefusal>) -> ServingRequirementRefusal? {
   match v2.std.algebra.list_head(xs: xs) {
-    v2.std.algebra.HeadFound { value: v } => Present { value: v }
-    v2.std.algebra.HeadAbsent => none
+    HeadFound { value: v } => Present { value: v }
+    HeadAbsent => none
   }
 }
 
 fn list_tail_of(xs: std.types.List<ServingRequirementRefusal>) -> std.types.List<ServingRequirementRefusal> {
   match v2.std.algebra.list_tail(xs: xs) {
-    v2.std.algebra.TailFound { tail: t } => t
-    v2.std.algebra.TailAbsent => xs
+    TailFound { tail: t } => t
+    TailAbsent => xs
   }
 }
 
@@ -694,7 +694,7 @@ fn subject_owner(subject: MutationSubject) -> SystemPrincipal {
   match subject {
     SystemUnitRegistry => RootPrincipal
     PackageDatabase => RootPrincipal
-    gunbc.spark.serving_realization.GroupMembership => RootPrincipal
+    GroupMembership => RootPrincipal
     LingerState => RootPrincipal
     UserUnitRegistry { owner: o } => o
     ModelArtifactStore { owner: o } => o
@@ -937,13 +937,13 @@ fn escalation_shortfall(
         }
       } else {
       match compare_content_hash(left: ok, right: expected_credential) {
-        std.content_hash.ContentHashDifferent => ShortfallEvidenceMismatch {
+        ContentHashDifferent => ShortfallEvidenceMismatch {
           cause: "grant population was observed under a different credential than the one this plan authorizes" as std.types.NonEmptyStr,
         }
-        std.content_hash.ContentHashCrossFamilyIncomparable => ShortfallEvidenceMismatch {
+        ContentHashCrossFamilyIncomparable => ShortfallEvidenceMismatch {
           cause: "grant population credential identity is not comparable with the expected credential" as std.types.NonEmptyStr,
         }
-        std.content_hash.ContentHashEqual => {
+        ContentHashEqual => {
       let missing = fold(
         realization_escalated_commands(realization: realization, target: target),
         init: [],
@@ -953,10 +953,10 @@ fn escalation_shortfall(
         },
       )
       match v2.std.algebra.list_head(missing) {
-        v2.std.algebra.HeadAbsent => NoNewPrivilegeRequired
-        v2.std.algebra.HeadFound { value: f } => match v2.std.algebra.list_tail(missing) {
-          v2.std.algebra.TailAbsent => NewPrivilegeRequired { first: f, more: [] }
-          v2.std.algebra.TailFound { tail: t } => NewPrivilegeRequired { first: f, more: t }
+        HeadAbsent => NoNewPrivilegeRequired
+        HeadFound { value: f } => match v2.std.algebra.list_tail(missing) {
+          TailAbsent => NewPrivilegeRequired { first: f, more: [] }
+          TailFound { tail: t } => NewPrivilegeRequired { first: f, more: t }
         }
       }
         }

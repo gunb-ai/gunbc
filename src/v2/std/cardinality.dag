@@ -133,7 +133,7 @@ fn loop_measure_node(n: v2.std.node.Node) -> Witness<v2.std.node.Node> {
         match loop_bound_measure_target(children: n.children) {
           Found { target: measure } => v2.std.witness.Holds { value: measure }
           Ambiguous => v2.std.witness.Violates { diagnostic: loop_bound_ambiguous_diagnostic(n: n) }
-          v2.std.optional.Absent => v2.std.witness.Violates { diagnostic: loop_bound_undeclared_diagnostic(n: n) }
+          Absent => v2.std.witness.Violates { diagnostic: loop_bound_undeclared_diagnostic(n: n) }
         }
       }
     }
@@ -172,7 +172,7 @@ fn connective_multiplicity(c: v2.std.node.Connective) -> Multiplicity {
     Conj => Bounded
     Disj => Bounded
     Arrow => Bounded
-    v2.std.node.Cardinality => RequiresTerminationProof
+    Cardinality => RequiresTerminationProof
     Instantiation => Bounded
   }
 }
@@ -180,10 +180,10 @@ fn connective_multiplicity(c: v2.std.node.Connective) -> Multiplicity {
 fn behavior_multiplicity(b: v2.std.node.Behavior) -> Multiplicity {
   match b {
     Value => Bounded
-    v2.std.node.Transform => Bounded
+    Transform => Bounded
     Branch => Bounded
     Loop => RequiresTerminationProof
-    v2.std.node.Bind => Bounded
+    Bind => Bounded
     Match => Bounded
   }
 }
@@ -227,8 +227,8 @@ fn measure_descent_some(e: std.termination.DescentEvidence) -> v2.std.optional.O
 fn measure_descent_fact_for(registry: List<MeasureDescentFact>, s: v2.std.node.Symbol) -> v2.std.optional.Optional<std.termination.DescentEvidence> {
   fold(registry, init: v2.std.optional.Absent, f: fn(acc, row) {
     match acc {
-      v2.std.optional.Present { value: _ } => acc
-      v2.std.optional.Absent =>
+      Present { value: _ } => acc
+      Absent =>
         if row.measure == s {
           measure_descent_some(e: row.evidence)
         } else {
@@ -240,8 +240,8 @@ fn measure_descent_fact_for(registry: List<MeasureDescentFact>, s: v2.std.node.S
 
 fn measure_descent_evidence_for_symbol(registry: List<MeasureDescentFact>, s: v2.std.node.Symbol) -> std.termination.DescentEvidence {
   match measure_descent_fact_for(registry: registry, s: s) {
-    v2.std.optional.Present { value: e } => e
-    v2.std.optional.Absent => DescentUnknown
+    Present { value: e } => e
+    Absent => DescentUnknown
   }
 }
 
@@ -278,7 +278,7 @@ fn measure_dimension_rows(registry: List<MeasureDescentFact>, measure: v2.std.no
           })
         Disj => measure_dimension_unknown_rows()
         Arrow => measure_dimension_unknown_rows()
-        v2.std.node.Cardinality => measure_dimension_unknown_rows()
+        Cardinality => measure_dimension_unknown_rows()
         Instantiation => measure_dimension_unknown_rows()
       }
     ComputationNode { behavior: _ } => measure_dimension_unknown_rows()
@@ -302,8 +302,8 @@ fn ranking_dimension_some(d: RankingDimension) -> v2.std.optional.Optional<Ranki
 fn first_strict_dimension(rows: List<MeasureDimensionEvidence>) -> v2.std.optional.Optional<RankingDimension> {
   fold(rows, init: v2.std.optional.Absent, f: fn(acc, row) {
     match acc {
-      v2.std.optional.Present { value: _ } => acc
-      v2.std.optional.Absent =>
+      Present { value: _ } => acc
+      Absent =>
         if dimension_row_is_strict(row: row) {
           ranking_dimension_some(d: row.dimension)
         } else {
@@ -334,8 +334,8 @@ fn non_strict_dimensions_after_first(rows: List<MeasureDimensionEvidence>) -> Li
 
 fn lexicographic_multiplicity(rows: List<MeasureDimensionEvidence>) -> Multiplicity {
   match first_strict_dimension(rows: rows) {
-    v2.std.optional.Absent => RequiresTerminationProof
-    v2.std.optional.Present { value: strict_dim } =>
+    Absent => RequiresTerminationProof
+    Present { value: strict_dim } =>
       ProvenTermination {
         proof: TerminationProof {
           non_increasing: non_strict_dimensions_after_first(rows: rows),
@@ -376,10 +376,10 @@ fn node_multiplicity(n: v2.std.node.Node) -> Multiplicity {
     ComputationNode { behavior: b } =>
       match b {
         Value => behavior_multiplicity(b: b)
-        v2.std.node.Transform => behavior_multiplicity(b: b)
+        Transform => behavior_multiplicity(b: b)
         Branch => behavior_multiplicity(b: b)
         Loop => loop_multiplicity(n: n)
-        v2.std.node.Bind => behavior_multiplicity(b: b)
+        Bind => behavior_multiplicity(b: b)
         Match => behavior_multiplicity(b: b)
       }
   }

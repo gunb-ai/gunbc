@@ -184,8 +184,8 @@ fn shoelace_double_area(l: std.orthogonal_geometry.OrthogonalLoop2) -> std.check
 // reason it does in std.euclidean_geometry: no declared quantum means no unit to check against.
 fn metric_frame_is_millimetre(registry: std.spatial_frame.SpatialFrameRegistry, identity: std.coordinate_frame.CoordinateFrameIdentity) -> Bool {
   match frame_length_scale(r: registry, identity: identity) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: sc } => scales_agree(a: sc, b: Milli)
+    Absent => false
+    Present { value: sc } => scales_agree(a: sc, b: Milli)
   }
 }
 
@@ -233,7 +233,7 @@ fn space_height_millimetres(registry: std.spatial_frame.SpatialFrameRegistry, s:
   match space_height(registry: registry, s: s) {
     ExtentFrameUnregistered { identity: f } =>
       std.orthogonal_geometry.OrthogonalRefused { cause: std.orthogonal_geometry.MillimetreFrameRequiredForMetric { frame: f } }
-    std.spatial_frame.ExtentInFrame { length: l } =>
+    ExtentInFrame { length: l } =>
       match frame_length_as_millimeter(l: l) {
         LengthProjected { value: mm } => std.orthogonal_geometry.OrthogonalReady { value: mm }
         LengthProjectionRefused { cause: _ } =>
@@ -550,8 +550,8 @@ fn shared_wall_region(a: ShellWall, b: ShellWall) -> WallOverlap? {
 // which is now the single place that rule is written.
 fn walls_are_shared(a: ShellWall, b: ShellWall) -> Bool {
   match shared_wall_region(a: a, b: b) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: _ } => true
+    Absent => false
+    Present { value: _ } => true
   }
 }
 
@@ -584,12 +584,12 @@ type ComplexAccum {
 
 fn admit_space(acc: ComplexAccum, s: EnclosedSpace) -> ComplexAccum {
   match acc.refusal {
-    v2.std.optional.Present { value: r } => ComplexAccum { admitted: acc.admitted, refusal: v2.std.optional.Present { value: r } }
-    v2.std.optional.Absent =>
+    Present { value: r } => ComplexAccum { admitted: acc.admitted, refusal: v2.std.optional.Present { value: r } }
+    Absent =>
       let conflict = fold(acc.admitted, init: none, f: (found, other) =>
         match found {
-          v2.std.optional.Present { value: r } => v2.std.optional.Present { value: r }
-          v2.std.optional.Absent =>
+          Present { value: r } => v2.std.optional.Present { value: r }
+          Absent =>
             match spaces_interpenetrate(a: other, b: s) {
               OrthogonalRefused { cause: c } => v2.std.optional.Present { value: c }
               OrthogonalReady { value: overlaps } =>
@@ -597,8 +597,8 @@ fn admit_space(acc: ComplexAccum, s: EnclosedSpace) -> ComplexAccum {
             }
         })
       match conflict {
-        v2.std.optional.Present { value: r } => ComplexAccum { admitted: acc.admitted, refusal: v2.std.optional.Present { value: r } }
-        v2.std.optional.Absent => ComplexAccum { admitted: concat([s], acc.admitted), refusal: none }
+        Present { value: r } => ComplexAccum { admitted: acc.admitted, refusal: v2.std.optional.Present { value: r } }
+        Absent => ComplexAccum { admitted: concat([s], acc.admitted), refusal: none }
       }
   }
 }
@@ -606,8 +606,8 @@ fn admit_space(acc: ComplexAccum, s: EnclosedSpace) -> ComplexAccum {
 fn space_complex(spaces: List<EnclosedSpace>) -> std.orthogonal_geometry.OrthogonalConstruction<SpaceComplex> {
   let acc = fold(spaces, init: ComplexAccum { admitted: [], refusal: none }, f: (a, s) => admit_space(acc: a, s: s))
   match acc.refusal {
-    v2.std.optional.Present { value: r } => std.orthogonal_geometry.OrthogonalRefused { cause: r }
-    v2.std.optional.Absent => std.orthogonal_geometry.OrthogonalReady { value: SpaceComplex { spaces: spaces } }
+    Present { value: r } => std.orthogonal_geometry.OrthogonalRefused { cause: r }
+    Absent => std.orthogonal_geometry.OrthogonalReady { value: SpaceComplex { spaces: spaces } }
   }
 }
 

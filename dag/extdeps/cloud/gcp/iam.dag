@@ -95,12 +95,12 @@ fn gcp_condition_eq(a: IamCondition?, b: IamCondition?) -> Bool {
     Absent =>
       match b {
         Absent => true
-        v2.std.optional.Present { value: _ } => false
+        Present { value: _ } => false
       }
-    v2.std.optional.Present { value: ca } =>
+    Present { value: ca } =>
       match b {
         Absent => false
-        v2.std.optional.Present { value: cb } => ca.title == cb.title && ca.expression == cb.expression
+        Present { value: cb } => ca.title == cb.title && ca.expression == cb.expression
       }
   }
 }

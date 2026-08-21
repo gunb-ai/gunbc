@@ -29,7 +29,7 @@ test fn witness_retained_rows_carry_typed_reason_and_trigger() -> v2.std.logic.B
     init: true,
     f: fn(acc, row) {
       acc && match row.disposition {
-        v2.std.witness_execution_routing.InterpretedRetained { reason: _, dissolution: _ } => true
+        InterpretedRetained { reason: _, dissolution: _ } => true
         _ => false
       }
     }

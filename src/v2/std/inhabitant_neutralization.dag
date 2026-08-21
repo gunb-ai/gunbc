@@ -54,11 +54,11 @@ fn inhabitant_facts_node_from_inhabitant(inhabitant: v2.std.node.Node) -> v2.std
     f: fn(acc, edge) {
       match acc {
         Accepted { value: _, diagnostics: _ } => acc
-        v2.std.diagnostic.Rejected { diagnostics: _ } =>
+        Rejected { diagnostics: _ } =>
           match v2.std.node_query.find_named_child(root: edge.target, name: ^facts_field_std_projection) {
             Accepted { value: _, diagnostics: _ } =>
               v2.std.diagnostic.Accepted { value: edge.target, diagnostics: v2.std.diagnostic.None }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => acc
+            Rejected { diagnostics: _ } => acc
           }
       }
     }
@@ -73,9 +73,9 @@ fn inhabitant_std_projection_symbol(inhabitant: v2.std.node.Node) -> v2.std.diag
         o: v2.std.node_query.find_named_child(root: facts, name: ^facts_field_std_projection),
         f: fn(atom_node) {
           match v2.std.grammar.node_atom_identity_optional(node: atom_node) {
-            v2.std.optional.Present { value: sym } =>
+            Present { value: sym } =>
               v2.std.diagnostic.Accepted { value: sym, diagnostics: v2.std.diagnostic.None }
-            v2.std.optional.Absent =>
+            Absent =>
               v2.std.diagnostic.outcome_rejected(
                 inhabitant_neutralization_std_projection_missing_diagnostic(node: inhabitant)
               )
@@ -90,14 +90,14 @@ fn inhabitant_type_atom_symbol(inhabitant: v2.std.node.Node) -> v2.std.diagnosti
   match v2.std.node_query.find_named_child(root: inhabitant, name: ^inhabitant_field_atom) {
     Accepted { value: atom_node, diagnostics: _ } =>
       match v2.std.grammar.node_atom_identity_optional(node: atom_node) {
-        v2.std.optional.Present { value: sym } =>
+        Present { value: sym } =>
           v2.std.diagnostic.Accepted { value: sym, diagnostics: v2.std.diagnostic.None }
-        v2.std.optional.Absent =>
+        Absent =>
           v2.std.diagnostic.outcome_rejected(
             inhabitant_neutralization_type_atom_missing_diagnostic(node: inhabitant)
           )
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       v2.std.diagnostic.outcome_rejected(
         inhabitant_neutralization_type_atom_missing_diagnostic(node: inhabitant)
       )
@@ -111,16 +111,16 @@ fn inhabitant_surface_spelling_symbol(inhabitant: v2.std.node.Node) -> v2.std.di
       match v2.std.node_query.find_named_child(root: facts, name: ^facts_field_surface_spelling) {
         Accepted { value: atom_node, diagnostics: _ } =>
           match v2.std.grammar.node_atom_identity_optional(node: atom_node) {
-            v2.std.optional.Present { value: sym } =>
+            Present { value: sym } =>
               v2.std.diagnostic.Accepted { value: sym, diagnostics: v2.std.diagnostic.None }
-            v2.std.optional.Absent =>
+            Absent =>
               v2.std.diagnostic.outcome_rejected(
                 inhabitant_neutralization_surface_spelling_missing_diagnostic(
                   node: inhabitant
                 )
               )
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } =>
+        Rejected { diagnostics: _ } =>
           v2.std.diagnostic.outcome_rejected(
             inhabitant_neutralization_surface_spelling_missing_diagnostic(node: inhabitant)
           )
@@ -158,19 +158,19 @@ fn inhabitant_aligns_with_selection_policy(candidate: v2.std.node.Node, selectio
                           match inhabitant_width_node(inhabitant: selection) {
                             Accepted { value: selection_width, diagnostics: _ } =>
                               candidate_width == selection_width
-                            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                            Rejected { diagnostics: _ } => false
                           }
-                        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                        Rejected { diagnostics: _ } => false
                       }
                     }
-                  v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                  Rejected { diagnostics: _ } => false
                 }
-              v2.std.diagnostic.Rejected { diagnostics: _ } => false
+              Rejected { diagnostics: _ } => false
             }
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -195,7 +195,7 @@ fn target_inhabitant_selection_policy_fold_step(
       } else {
         acc
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => acc
+    Rejected { diagnostics: _ } => acc
   }
 }
 
@@ -248,7 +248,7 @@ fn target_inhabitant_fold_step(
       } else {
         acc
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => acc
+    Rejected { diagnostics: _ } => acc
   }
 }
 
@@ -319,7 +319,7 @@ fn neutralize_edges_for_target(
     init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
     f: fn(acc, edge) {
       match acc {
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
         Accepted { value: rebuilt_edges, diagnostics: ad } =>
           v2.std.diagnostic.bind_outcome(
             o: neutralize_node_for_target(node: edge.target, target: target),
@@ -345,7 +345,7 @@ fn neutralize_node_for_target(
   match inhabitant_facts_node_from_inhabitant(inhabitant: node) {
     Accepted { value: _, diagnostics: _ } =>
       neutralize_inhabitant_node(inhabitant: node, target: target)
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       v2.std.diagnostic.bind_outcome(
         o: neutralize_edges_for_target(edges: node.children, target: target),
         f: fn(children) {

@@ -145,10 +145,10 @@ fn observation_refused() -> gunbc.spark_serving_release.SparkServingObservation 
 
 fn reconcile_arm(observation: gunbc.spark_serving_release.SparkServingObservation, prereqs: std.types.List<gunbc.spark_serving_release.SparkServingPrerequisite>) -> String {
   match reconcile_spark_serving(desired: occ_srv5(), observation: observation, prerequisites: prereqs) {
-    gunbc.spark.serving_release.SparkServingAlreadyConverged { converged_release: _ } => "converged"
-    gunbc.spark.serving_release.SparkServingInstallRequired { subject: _, desired_release: _ } => "install"
-    gunbc.spark.serving_release.SparkServingDeltaRequired { plan_subject: _ } => "delta"
-    gunbc.spark.serving_release.SparkServingRefused { first: _, more: _ } => "refused"
+    SparkServingAlreadyConverged { converged_release: _ } => "converged"
+    SparkServingInstallRequired { subject: _, desired_release: _ } => "install"
+    SparkServingDeltaRequired { plan_subject: _ } => "delta"
+    SparkServingRefused { first: _, more: _ } => "refused"
   }
 }
 
@@ -502,10 +502,10 @@ test fn w_a_refusal_taken_on_another_host_does_not_block_this_one() -> Bool {
 
 fn spark_apply_refusal_subject(observation: gunbc.spark_serving_release.SparkServingObservation) -> String {
   match reconcile_spark_serving(desired: occ_srv5(), observation: observation, prerequisites: grounded_prereqs) {
-    gunbc.spark.serving_release.SparkServingRefused { first: f, more: _ } => f.subject as String
-    gunbc.spark.serving_release.SparkServingAlreadyConverged { converged_release: _ } => "converged"
-    gunbc.spark.serving_release.SparkServingInstallRequired { subject: _, desired_release: _ } => "install"
-    gunbc.spark.serving_release.SparkServingDeltaRequired { plan_subject: _ } => "delta"
+    SparkServingRefused { first: f, more: _ } => f.subject as String
+    SparkServingAlreadyConverged { converged_release: _ } => "converged"
+    SparkServingInstallRequired { subject: _, desired_release: _ } => "install"
+    SparkServingDeltaRequired { plan_subject: _ } => "delta"
   }
 }
 

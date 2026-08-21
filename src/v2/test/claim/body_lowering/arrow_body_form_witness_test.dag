@@ -56,7 +56,7 @@ fn arrow_body_form_zero_arrow_fixture() -> v2.std.optional.Optional<v2.std.node.
           body: zero_lit
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
+    Rejected { diagnostics: _ } => v2.std.optional.Absent
   }
 }
 
@@ -73,10 +73,10 @@ fn abf_admitted_add_arrow_tree() -> v2.std.diagnostic.Outcome<v2.compiler.normal
 test fn arrow_body_form_eval_value_vertical_holds() -> Bool {
   let lm = dag_language_model()
   match arrow_body_form_zero_arrow_fixture() {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: zero_arrow } =>
+    Absent => false
+    Present { value: zero_arrow } =>
       match abf_admitted_add_arrow_tree() {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
         Accepted { value: admitted_tree, diagnostics: _ } =>
           match v2.compiler.resolve.resolve(tree: admitted_tree, lm: lm) {
             Accepted { value: add_arrow, diagnostics: _ } =>
@@ -92,7 +92,7 @@ test fn arrow_body_form_eval_value_vertical_holds() -> Bool {
                   right_lex: "3",
                   expected: 5
                 )
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
       }
   }
@@ -235,22 +235,22 @@ test fn arrow_body_form_value_body_refused_eval_entry_holds() -> Bool {
 
 test fn arrow_body_form_atom_body_admits_eval_through_call_holds() -> Bool {
   match arrow_body_form_eval_int_literal_optional(lexeme: "7") {
-    v2.std.optional.Present { value: arg } =>
+    Present { value: arg } =>
       arrow_body_form_eval_call_does_not_reject_unsupported_callee(
         call: arrow_body_form_eval_unary_call_node(
           callee: arrow_body_form_id_arrow_fixture(),
           arg: arg
         )
       )
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }
 
 test fn arrow_body_form_transform_body_admits_eval_through_call_holds() -> Bool {
   match arrow_body_form_eval_int_literal_optional(lexeme: "2") {
-    v2.std.optional.Present { value: left } =>
+    Present { value: left } =>
       match arrow_body_form_eval_int_literal_optional(lexeme: "3") {
-        v2.std.optional.Present { value: right } =>
+        Present { value: right } =>
           arrow_body_form_eval_call_does_not_reject_unsupported_callee(
             call: arrow_body_form_eval_binary_call_node(
               callee: dag_add_arrow_with_body_node(),
@@ -258,21 +258,21 @@ test fn arrow_body_form_transform_body_admits_eval_through_call_holds() -> Bool 
               right: right
             )
           )
-        v2.std.optional.Absent => false
+        Absent => false
       }
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }
 
 test fn arrow_body_form_match_body_refused_eval_entry_holds() -> Bool {
   match arrow_body_form_eval_int_literal_optional(lexeme: "1") {
-    v2.std.optional.Present { value: arg } =>
+    Present { value: arg } =>
       !arrow_body_form_eval_call_does_not_reject_unsupported_callee(
         call: arrow_body_form_eval_unary_call_node(
           callee: dag_match_arrow_with_body_node(),
           arg: arg
         )
       )
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }

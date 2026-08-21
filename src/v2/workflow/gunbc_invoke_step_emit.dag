@@ -115,8 +115,8 @@ fn gunbc_invoke_root_relative_shell(rel: String) -> String {
 
 fn gunbc_invoke_word_shell(w: gunbc.cli_invoke.InvocationWord) -> String {
   match w {
-    gunbc.cli_invoke.LiteralWord { spelling: s } => s
-    gunbc.cli_invoke.RootRelativeWord { rel: r } => gunbc_invoke_root_relative_shell(rel: r)
+    LiteralWord { spelling: s } => s
+    RootRelativeWord { rel: r } => gunbc_invoke_root_relative_shell(rel: r)
   }
 }
 
@@ -147,9 +147,9 @@ fn gunbc_invoke_root_stamp_step() -> v2.std.orchestration.PipelineStep {
 
 fn gunbc_invoke_receipt_steps(receipt_rel: String?) -> std.types.List<v2.std.orchestration.PipelineStep> {
   match receipt_rel {
-    v2.std.optional.Present { value: rel } =>
+    Present { value: rel } =>
       [gunbc_invoke_do(command: concat("cat ", gunbc_invoke_root_relative_shell(rel: rel)))]
-    v2.std.optional.Absent => []
+    Absent => []
   }
 }
 
@@ -221,10 +221,10 @@ fn gunbc_invoke_step_emit_pipeline(p: v2.std.orchestration.Pipeline) -> String {
   match v2.compiler.emit_orchestration.orch_emit_pipeline(p: p, medium: v2.extdeps.languages.bash_orchestration_emit.bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: d } =>
       match d {
-        v2.std.diagnostic.None => source.carried
-        v2.std.diagnostic.Some { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
+        None => source.carried
+        Some { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
+    Rejected { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
   }
 }
 

@@ -15,9 +15,9 @@ fn coercion_widening_rust_integer_value_set_from_inhabitant(inhabitant: v2.std.n
       match find_named_child(root: facts, name: ^rust_facts_field_range) {
         Accepted { value: range, diagnostics: None } =>
           integer_interval_value_set_node(interval: range)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
+        Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
+    Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
   }
 }
 
@@ -36,9 +36,9 @@ fn coercion_widening_python_integer_value_set_from_inhabitant(inhabitant: v2.std
           } else {
             coercion_widening_unknown_value_set_node()
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
+        Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
+    Rejected { diagnostics: _ } => coercion_widening_unknown_value_set_node()
   }
 }
 

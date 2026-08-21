@@ -59,13 +59,13 @@ fn receipt_text_at(v: extdeps.languages.json.emit.JsonValue, key: String) -> Rec
       ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "enclosing value is not a JSON object" } }
     JsonMemberFound { value: found } =>
       match found {
-        extdeps.languages.json.emit.JsonString { value: s } =>
+        JsonString { value: s } =>
           if s == "" {
             ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is the empty string" } }
           } else {
             ReceiptTextFound { text: s }
           }
-        extdeps.languages.json.emit.JsonNumber { lexeme: _ } =>
+        JsonNumber { lexeme: _ } =>
           ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is a number, expected a string" } }
         JsonNull =>
           ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is null" } }
@@ -93,9 +93,9 @@ fn receipt_array_at(v: extdeps.languages.json.emit.JsonValue, key: String) -> Re
     JsonMemberFound { value: found } =>
       match found {
         JsonArray { elements: es } => ReceiptElementsFound { elements: es }
-        extdeps.languages.json.emit.JsonString { value: _ } =>
+        JsonString { value: _ } =>
           ReceiptElementsFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is a string, expected an array" } }
-        extdeps.languages.json.emit.JsonNumber { lexeme: _ } =>
+        JsonNumber { lexeme: _ } =>
           ReceiptElementsFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is a number, expected an array" } }
         JsonNull =>
           ReceiptElementsFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is null, expected an array" } }
@@ -214,11 +214,11 @@ fn floor_component_failure_mode_tag(m: FloorComponentFailureMode) -> String {
 
 fn floor_component_outcome_tag(o: std.observation.ObservationOutcome) -> String {
   match o {
-    std.observation.Done => "done"
-    std.observation.Refused { diagnostic: _ } => "refused"
-    std.observation.Failed { error: _, output: _ } => "failed"
-    std.observation.TimedOut { basis: _, budget: _, elapsed: _ } => "timed_out"
-    std.observation.Skipped { reason: _ } => "skipped"
+    Done => "done"
+    Refused { diagnostic: _ } => "refused"
+    Failed { error: _, output: _ } => "failed"
+    TimedOut { basis: _, budget: _, elapsed: _ } => "timed_out"
+    Skipped { reason: _ } => "skipped"
     Final { shown_failures: _ } => "final"
   }
 }
@@ -313,8 +313,8 @@ fn receipt_numeric_member_at(v: extdeps.languages.json.emit.JsonValue, key: Stri
       ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "enclosing value is not a JSON object" } }
     JsonMemberFound { value: found } =>
       match found {
-        extdeps.languages.json.emit.JsonNumber { lexeme: l } => ReceiptTextFound { text: l as String }
-        extdeps.languages.json.emit.JsonString { value: _ } =>
+        JsonNumber { lexeme: l } => ReceiptTextFound { text: l as String }
+        JsonString { value: _ } =>
           ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is a string, expected a number" } }
         JsonNull =>
           ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is null" } }
@@ -337,13 +337,13 @@ fn receipt_summary_required_string_at(v: extdeps.languages.json.emit.JsonValue, 
       ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component is not a JSON object" } }
     JsonMemberFound { value: found } =>
       match found {
-        extdeps.languages.json.emit.JsonString { value: sv } =>
+        JsonString { value: sv } =>
           if sv == "" {
             ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component member is the empty string" } }
           } else {
             ReceiptTextFound { text: sv }
           }
-        extdeps.languages.json.emit.JsonNumber { lexeme: _ } =>
+        JsonNumber { lexeme: _ } =>
           ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component member is a number, expected a string" } }
         JsonNull =>
           ReceiptTextFailed { decoding: ReceiptMemberMalformed { member: key, detail: "component member is null" } }
@@ -391,9 +391,9 @@ fn component_outcome_read_of_tag(tag: String, component: extdeps.languages.json.
           ReceiptValueFailed { decoding: _ } => ComponentOutcomeUnmodelled { detail: "failed outcome carries no output member" }
           ReceiptValueFound { value: raw } =>
             match raw {
-              extdeps.languages.json.emit.JsonString { value: out } =>
+              JsonString { value: out } =>
                 ComponentOutcomeRecovered { read: ComponentConcluded { outcome: std.observation.Failed { error: e as std.types.NonEmptyStr, output: out } } }
-              extdeps.languages.json.emit.JsonNumber { lexeme: _ } => ComponentOutcomeUnmodelled { detail: "failed outcome output is a number, expected a string" }
+              JsonNumber { lexeme: _ } => ComponentOutcomeUnmodelled { detail: "failed outcome output is a number, expected a string" }
               JsonNull => ComponentOutcomeUnmodelled { detail: "failed outcome output is null, expected a string" }
               JsonBool { value: _ } => ComponentOutcomeUnmodelled { detail: "failed outcome output is a bool, expected a string" }
               JsonArray { elements: _ } => ComponentOutcomeUnmodelled { detail: "failed outcome output is an array, expected a string" }
@@ -541,12 +541,12 @@ fn summary_outcome_is_unsuccessful(s: ComponentAlertSummary) -> Bool {
     ComponentNotConcluded => true
     ComponentConcluded { outcome: o } =>
       match o {
-        std.observation.Done => false
+        Done => false
         Final { shown_failures: n } => n != 0
-        std.observation.Refused { diagnostic: _ } => true
-        std.observation.Failed { error: _, output: _ } => true
-        std.observation.Skipped { reason: _ } => true
-        std.observation.TimedOut { basis: _, budget: _, elapsed: _ } => true
+        Refused { diagnostic: _ } => true
+        Failed { error: _, output: _ } => true
+        Skipped { reason: _ } => true
+        TimedOut { basis: _, budget: _, elapsed: _ } => true
       }
   }
 }

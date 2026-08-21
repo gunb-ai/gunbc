@@ -19,10 +19,10 @@ fn corrupted_under_a_correct_root() -> gunbc.ollama_runtime_bundle.RuntimeMateri
 // is INCOMPLETE -- not absent, and not unobservable.
 test fn a_corrupted_extraction_under_a_correct_root_is_incomplete() -> Bool {
   match corrupted_under_a_correct_root() {
-    gunbc.ollama_runtime_bundle.RuntimeMaterializationIncomplete { identity: _, first_defect: _, further_defects: _ } => true
-    gunbc.ollama_runtime_bundle.RuntimeMaterializationAbsent => false
-    gunbc.ollama_runtime_bundle.RuntimeMaterializationComplete { identity: _ } => false
-    gunbc.ollama_runtime_bundle.RuntimeMaterializationObservationRefused { cause: _ } => false
+    RuntimeMaterializationIncomplete { identity: _, first_defect: _, further_defects: _ } => true
+    RuntimeMaterializationAbsent => false
+    RuntimeMaterializationComplete { identity: _ } => false
+    RuntimeMaterializationObservationRefused { cause: _ } => false
   }
 }
 

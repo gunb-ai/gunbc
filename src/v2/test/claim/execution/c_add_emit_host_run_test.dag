@@ -61,11 +61,11 @@ test fn c_add_emit_host_green_run_holds() -> v2.std.logic.Bool {
           match runtime_value_parse(target: c_target_model(), stdout: stdout) {
             Accepted { value: _, diagnostics: _ } =>
               stdout.bytes == emit_host_octets_byte_string(octets: v2.test.execution.c_add_emit_host_run.c_expected_add_stdout_octets())
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
         _ => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -83,13 +83,13 @@ test fn c_add_emit_host_inject_fault_refuses_holds() -> v2.std.logic.Bool {
           match receipt.logical_run {
             Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
               match runtime_value_parse(target: c_target_model(), stdout: stdout) {
-                v2.std.diagnostic.Rejected { diagnostics: _ } => true
+                Rejected { diagnostics: _ } => true
                 Accepted { value: _, diagnostics: _ } =>
                   stdout.bytes != emit_host_octets_byte_string(octets: v2.test.execution.c_add_emit_host_run.c_expected_add_stdout_octets())
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
   }
 }
@@ -103,10 +103,10 @@ test fn c_add_emit_host_nonzero_exit_refuses_holds() -> v2.std.logic.Bool {
   ) {
     Accepted { value: receipt, diagnostics: _ } =>
       match receipt.logical_run {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => true
+        Rejected { diagnostics: _ } => true
         Accepted { value: _, diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -121,12 +121,12 @@ test fn c_add_emit_host_byte_width_mismatch_refuses_holds() -> v2.std.logic.Bool
       match receipt.logical_run {
         Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
           match runtime_value_parse(target: c_target_model(), stdout: stdout) {
-            v2.std.diagnostic.Rejected { diagnostics: _ } => true
+            Rejected { diagnostics: _ } => true
             Accepted { value: _, diagnostics: _ } => false
           }
         _ => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

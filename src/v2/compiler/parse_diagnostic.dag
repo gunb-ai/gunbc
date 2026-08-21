@@ -98,7 +98,7 @@ fn grammar_choice_ambiguity_rows_append_parse_stage(
   d: ParseStageDiagnostic
 ) -> FreeMonoid<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
   match parse_stage_evidence_row_optional(d: d) {
-    v2.std.optional.Present { value: row } => list_snoc_item(xs: acc, item: row)
+    Present { value: row } => list_snoc_item(xs: acc, item: row)
     Absent => acc
   }
 }

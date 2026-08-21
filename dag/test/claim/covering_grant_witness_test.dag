@@ -91,7 +91,7 @@ test fn admit_effect_projection_admits_covered() -> Bool {
     target: filesystem_position(path: ["repo", "x"])
   ) {
     Permit => true
-    std.access.Deny { refusal: refusal } => false
+    Deny { refusal: refusal } => false
   }
 }
 
@@ -101,7 +101,7 @@ test fn admit_effect_projection_refuses_uncovered() -> Bool {
     verb: Read,
     target: filesystem_position(path: ["elsewhere"])
   ) {
-    std.access.Deny { refusal: refusal } => refusal.location.object == "elsewhere"
+    Deny { refusal: refusal } => refusal.location.object == "elsewhere"
     Permit => false
   }
 }

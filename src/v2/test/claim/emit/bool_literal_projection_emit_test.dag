@@ -120,9 +120,9 @@ fn blp_emit(
       ) {
         Accepted { value: text, diagnostics: _ } =>
           v2.std.diagnostic.Accepted { value: render_target_text(t: text), diagnostics: v2.std.diagnostic.None }
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -133,7 +133,7 @@ fn blp_emits(bool_form: v2.std.compilers.target_model.TargetBoolLiteralShape, go
     catalog: v2.extdeps.languages.rust.rust_operator_realizations_catalog_node()
   ) {
     Accepted { value: text, diagnostics: _ } => text == golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -152,7 +152,7 @@ fn blp_production_emits(
   match blp_emit(target: target, projection: projection, catalog: catalog) {
     Accepted { value: text, diagnostics: d } =>
       (text == bool_literal_true_lower_golden) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -185,7 +185,7 @@ test fn production_c_bool_literal_pins_spelling_while_known_invalid_under_c17() 
         catalog: c_operator_realizations_catalog_node()
       )
         && match v2.extdeps.languages.c_bool_literal_emit.c_bool_literal_stdbool_preamble_emit_disposition {
-          std.disposition.Scaffold { dissolves_to: RealizationDispatch, bind: _ } => true
+          Scaffold { dissolves_to: RealizationDispatch, bind: _ } => true
           _ => false
         }
     _ => false
@@ -197,8 +197,8 @@ test fn dag_source_bool_form_recognizes_dag_token() -> v2.std.logic.Bool {
     id: ^dag_token_kw_true,
     source_bool_form: blp_dag_source_bool_form()
   ) {
-    v2.std.optional.Present { value: b } => b
-    v2.std.optional.Absent => false
+    Present { value: b } => b
+    Absent => false
   }
 }
 
@@ -207,8 +207,8 @@ test fn dag_token_unrecognized_without_source_projection() -> v2.std.logic.Bool 
     id: ^dag_token_kw_true,
     source_bool_form: blp_canonical_only_bool_form()
   ) {
-    v2.std.optional.Present { value: _ } => false
-    v2.std.optional.Absent => true
+    Present { value: _ } => false
+    Absent => true
   }
 }
 
@@ -217,8 +217,8 @@ test fn rust_spelling_token_is_not_dag_source_bool_literal() -> v2.std.logic.Boo
     id: ^rust_token_kw_true,
     source_bool_form: blp_dag_source_bool_form()
   ) {
-    v2.std.optional.Present { value: _ } => false
-    v2.std.optional.Absent => true
+    Present { value: _ } => false
+    Absent => true
   }
 }
 
@@ -236,6 +236,6 @@ test fn dag_source_atom_projects_to_canonical_bool_literal() -> v2.std.logic.Boo
           TargetValueExprBoolLiteral => true
           _ => false
         }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

@@ -71,7 +71,7 @@ test fn witness_red_control_service_not_ready_reason_surfaces_on_blocked_apply()
     NotConverged { reason: why, applied: _ } =>
       string_contains(s: why, pattern: "ServiceNotReady")
         && string_contains(s: why, pattern: "health probe never succeeded")
-    std.realization_reconcile.Converged { evidence: _, applied: _ } => false
+    Converged { evidence: _, applied: _ } => false
   }
 }
 

@@ -295,7 +295,7 @@ fn fragment_text_labels(frag: std.markup.Fragment) -> List<std.types.NonEmptyStr
         [c as std.types.NonEmptyStr]
       }
     RawNode { content: _ } => []
-    std.markup.Element { tag: _, attributes: _, children: kids } =>
+    Element { tag: _, attributes: _, children: kids } =>
       fold(kids, init: [], f: fn(acc, k) {
         concat(acc, fragment_text_labels(frag: k))
       })

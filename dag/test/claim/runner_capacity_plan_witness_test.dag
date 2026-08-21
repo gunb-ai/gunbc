@@ -13,7 +13,7 @@ test fn seven_requested_with_five_observed_plans_exactly_two_additions_per_host(
     PlanReady { hosts: _ } =>
       runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 2
         && runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 2
-    gunbc.runner_capacity_plan.PlanRefused { reason: _ } => false
+    PlanRefused { reason: _ } => false
   }
 }
 
@@ -23,7 +23,7 @@ test fn roster_unavailable_refuses_runner_capacity_plan() -> Bool {
     srv4_width: 7,
     roster: gunbc.fleet_runner_connectivity.RosterReadUnavailable { reason: "503" }
   ) {
-    gunbc.runner_capacity_plan.PlanRefused { reason: _ } => true
+    PlanRefused { reason: _ } => true
     PlanReady { hosts: _ } => false
   }
 }

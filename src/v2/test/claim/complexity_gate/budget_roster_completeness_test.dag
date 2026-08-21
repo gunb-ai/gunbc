@@ -29,7 +29,7 @@ fn complexity_budget_row_dominates(row: v2.test.complexity_gate.subject_complexi
           b: complexity_lens(n: body)
         )
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

@@ -43,7 +43,7 @@ test fn emit_backward_selects_canonical_row_holds() -> v2.std.logic.Bool {
   ) {
     Accepted { value: row, diagnostics: _ } =>
       row == emit_ingest_canonical_row()
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -56,9 +56,9 @@ test fn ingest_forward_selects_canonical_emitted_holds() -> v2.std.logic.Bool {
       ) {
         Accepted { value: emitted, diagnostics: _ } =>
           emitted == emit_ingest_canonical_emitted()
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -76,11 +76,11 @@ test fn emit_then_ingest_selector_identity_holds() -> v2.std.logic.Bool {
           ) {
             Accepted { value: recovered, diagnostics: _ } =>
               recovered == emit_ingest_canonical_emitted()
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -98,11 +98,11 @@ test fn ingest_then_emit_selector_identity_holds() -> v2.std.logic.Bool {
           ) {
             Accepted { value: row, diagnostics: _ } =>
               row == emit_ingest_canonical_row()
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -134,9 +134,9 @@ test fn same_grammar_parse_ingest_bridge_holds() -> v2.std.logic.Bool {
       ) {
         Accepted { value: recovered, diagnostics: _ } =>
           recovered == emit_ingest_canonical_emitted()
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

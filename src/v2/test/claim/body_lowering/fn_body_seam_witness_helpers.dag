@@ -10,10 +10,10 @@ fn fn_body_seam_parsed_add_module() -> v2.std.optional.Optional<v2.std.node.Node
     file: ^fn_body_seam_add_probe_file,
     rules: lm.lex
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
+    Rejected { diagnostics: _ } => v2.std.optional.Absent
     Accepted { value: ts, diagnostics: _ } =>
       match v2.compiler.parse.parse_module(tokens: ts, grammar: lm.grammar) {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
+        Rejected { diagnostics: _ } => v2.std.optional.Absent
         Accepted { value: artifact, diagnostics: _ } => v2.std.optional.Present { value: artifact.tree }
       }
   }
@@ -22,29 +22,29 @@ fn fn_body_seam_parsed_add_module() -> v2.std.optional.Optional<v2.std.node.Node
 fn fn_body_seam_find_production_under_children(root: v2.std.node.Node, emitted: v2.std.node.Symbol) -> v2.std.optional.Optional<v2.std.node.Node> {
   fold(root.children, init: v2.std.optional.Absent, f: fn(acc, e) {
     match acc {
-      v2.std.optional.Present { value: _ } => acc
-      v2.std.optional.Absent => fn_body_seam_find_production(root: e.target, emitted: emitted)
+      Present { value: _ } => acc
+      Absent => fn_body_seam_find_production(root: e.target, emitted: emitted)
     }
   })
 }
 
 fn fn_body_seam_find_production(root: v2.std.node.Node, emitted: v2.std.node.Symbol) -> v2.std.optional.Optional<v2.std.node.Node> {
   match parse_production_emitted_identity_optional(node: root) {
-    v2.std.optional.Present { value: id } =>
+    Present { value: id } =>
       if id == emitted {
         optional_present(value: root)
       } else {
         fn_body_seam_find_production_under_children(root: root, emitted: emitted)
       }
-    v2.std.optional.Absent =>
+    Absent =>
       fn_body_seam_find_production_under_children(root: root, emitted: emitted)
   }
 }
 
 fn fn_body_seam_add_fn_body_shell() -> v2.std.optional.Optional<v2.std.node.Node> {
   match fn_body_seam_parsed_add_module() {
-    v2.std.optional.Absent => v2.std.optional.Absent
-    v2.std.optional.Present { value: tree } =>
+    Absent => v2.std.optional.Absent
+    Present { value: tree } =>
       fn_body_seam_find_production(root: tree, emitted: ^dag_surface_fn_body)
   }
 }
@@ -65,10 +65,10 @@ fn fn_body_seam_tree_has_transform(root: v2.std.node.Node) -> v2.std.logic.Bool 
 
 fn wave1_gate1_a1_fn_body_seam_shell_lowers_identity_holds() -> v2.std.logic.Bool {
   match fn_body_seam_add_fn_body_shell() {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: shell } =>
+    Absent => false
+    Present { value: shell } =>
       match body_lower_fn_body_shell(shell: shell) {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
         Accepted { value: lowered, diagnostics: _ } =>
           fn_body_seam_tree_has_transform(root: lowered)
       }
@@ -94,11 +94,11 @@ fn wave1_gate1_a1_fn_body_seam_red_invalid_shell_wrapper_retained_holds() -> v2.
 
 fn wave1_gate1_a1_fn_body_seam_red_premature_fn_decl_shell_is_not_normalize_authority_holds() -> v2.std.logic.Bool {
   match fn_body_seam_add_fn_body_shell() {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: fn_decl_body_shell } =>
+    Absent => false
+    Present { value: fn_decl_body_shell } =>
       match body_lower_fn_body_shell(shell: fn_decl_body_shell) {
         Accepted { value: _, diagnostics: _ } => true
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
   }
 }
@@ -110,24 +110,24 @@ fn wave1_gate1_a1_fn_body_seam_normalize_still_yields_arrow_transform_holds() ->
     file: ^fn_body_seam_add_probe_file,
     rules: lm.lex
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: ts, diagnostics: _ } =>
       match v2.compiler.parse.parse_module(tokens: ts, grammar: lm.grammar) {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
         Accepted { value: artifact, diagnostics: _ } =>
           match normalize(parse_tree: artifact.tree) {
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
             Accepted { value: tree, diagnostics: _ } =>
               match v2.compiler.ingested_fixture_arrows.ingested_find_arrow_in_module(root: tree.root) {
-                v2.std.optional.Absent => false
-                v2.std.optional.Present { value: arrow } =>
+                Absent => false
+                Present { value: arrow } =>
                   match find_arrow_body_child(root: arrow) {
                     Accepted { value: body, diagnostics: _ } =>
                       match body.kind {
                         ComputationNode { behavior: v2.std.node.Transform } => true
                         _ => false
                       }
-                    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                    Rejected { diagnostics: _ } => false
                   }
               }
           }

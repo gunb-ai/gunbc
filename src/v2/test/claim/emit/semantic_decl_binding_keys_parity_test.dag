@@ -16,13 +16,13 @@ fn binding_pair_matches(binding: v2.std.node.Symbol) -> v2.std.logic.Bool {
                 binding: binding
               ) {
                 Accepted { value: live, diagnostics: _ } => decoded == live
-                v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                Rejected { diagnostics: _ } => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

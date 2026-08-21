@@ -22,9 +22,9 @@ test fn v0_9_6_gpt_oss_support_refuses_as_too_old() -> Bool {
     runtime_version: Present { value: ollama_v0_9_6_semantic_version },
     model: witness_gpt_oss_ref,
   ) {
-    extdeps.ollama.capability.OllamaModelSupportUnmet { model_wire: _, observed: _, minimum: _ } => true
-    extdeps.ollama.capability.OllamaModelSupportApplicable => false
-    extdeps.ollama.capability.OllamaModelSupportUncatalogued { model_wire: _ } => false
+    OllamaModelSupportUnmet { model_wire: _, observed: _, minimum: _ } => true
+    OllamaModelSupportApplicable => false
+    OllamaModelSupportUncatalogued { model_wire: _ } => false
     _ => false
   }
 }
@@ -41,9 +41,9 @@ test fn v0_11_0_floor_satisfies_gpt_oss_support() -> Bool {
     runtime_version: Present { value: ollama_gpt_oss_feature_introduction_floor },
     model: witness_gpt_oss_ref,
   ) {
-    extdeps.ollama.capability.OllamaModelSupportApplicable => true
-    extdeps.ollama.capability.OllamaModelSupportUnmet { model_wire: _, observed: _, minimum: _ } => false
-    extdeps.ollama.capability.OllamaModelSupportUncatalogued { model_wire: _ } => false
+    OllamaModelSupportApplicable => true
+    OllamaModelSupportUnmet { model_wire: _, observed: _, minimum: _ } => false
+    OllamaModelSupportUncatalogued { model_wire: _ } => false
     _ => false
   }
 }
@@ -53,9 +53,9 @@ test fn uncatalogued_model_refuses_support() -> Bool {
     runtime_version: Present { value: ollama_gpt_oss_feature_introduction_floor },
     model: extdeps.ollama.api.OllamaModelRef { name: "unknown-model" as std.types.NonEmptyStr, tag: "latest" as std.types.NonEmptyStr },
   ) {
-    extdeps.ollama.capability.OllamaModelSupportUncatalogued { model_wire: _ } => true
-    extdeps.ollama.capability.OllamaModelSupportApplicable => false
-    extdeps.ollama.capability.OllamaModelSupportUnmet { model_wire: _, observed: _, minimum: _ } => false
+    OllamaModelSupportUncatalogued { model_wire: _ } => true
+    OllamaModelSupportApplicable => false
+    OllamaModelSupportUnmet { model_wire: _, observed: _, minimum: _ } => false
     _ => false
   }
 }
@@ -67,8 +67,8 @@ test fn pinned_release_satisfies_gb10_platform_pair() -> Bool {
     architecture: OllamaLinuxArm64,
     model: witness_gpt_oss_ref,
   ) {
-    extdeps.ollama.capability.OllamaPlatformSupportApplicable => true
-    extdeps.ollama.capability.OllamaPlatformSupportUncatalogued { cause: _ } => false
+    OllamaPlatformSupportApplicable => true
+    OllamaPlatformSupportUncatalogued { cause: _ } => false
     _ => false
   }
 }
@@ -80,8 +80,8 @@ test fn v0_11_0_floor_release_refuses_gb10_platform_catalog() -> Bool {
     architecture: OllamaLinuxArm64,
     model: witness_gpt_oss_ref,
   ) {
-    extdeps.ollama.capability.OllamaPlatformSupportUncatalogued { cause: _ } => true
-    extdeps.ollama.capability.OllamaPlatformSupportApplicable => false
+    OllamaPlatformSupportUncatalogued { cause: _ } => true
+    OllamaPlatformSupportApplicable => false
     _ => false
   }
 }
@@ -112,8 +112,8 @@ test fn jetpack5_release_refuses_gb10_platform_catalog() -> Bool {
     architecture: OllamaLinuxArm64,
     model: witness_gpt_oss_ref,
   ) {
-    extdeps.ollama.capability.OllamaPlatformSupportUncatalogued { cause: _ } => true
-    extdeps.ollama.capability.OllamaPlatformSupportApplicable => false
+    OllamaPlatformSupportUncatalogued { cause: _ } => true
+    OllamaPlatformSupportApplicable => false
     _ => false
   }
 }
@@ -128,7 +128,7 @@ test fn unobserved_nvidia_driver_refuses_requirement() -> Bool {
     observed: none,
     minimum: ollama_gb10_minimum_nvidia_driver,
   ) {
-    extdeps.ollama.gpu_support.OllamaNvidiaDriverRequirementUnobserved { cause: _ } => true
+    OllamaNvidiaDriverRequirementUnobserved { cause: _ } => true
     _ => false
   }
 }
@@ -141,8 +141,8 @@ test fn full_admission_refuses_when_driver_unobserved() -> Bool {
     model: witness_gpt_oss_ref,
     observed_nvidia_driver: none,
   ) {
-    extdeps.ollama.capability.OllamaRuntimeAdmissionUnobserved { cause: _ } => true
-    extdeps.ollama.capability.OllamaRuntimeAdmissionApplicable => false
+    OllamaRuntimeAdmissionUnobserved { cause: _ } => true
+    OllamaRuntimeAdmissionApplicable => false
     _ => false
   }
 }
@@ -157,7 +157,7 @@ test fn full_admission_succeeds_when_driver_observed() -> Bool {
       value: extdeps.ollama.gpu_support.OllamaNvidiaDriverVersion { major: 550 },
     },
   ) {
-    extdeps.ollama.capability.OllamaRuntimeAdmissionApplicable => true
+    OllamaRuntimeAdmissionApplicable => true
     _ => false
   }
 }
@@ -172,22 +172,22 @@ test fn full_admission_refuses_when_driver_too_old() -> Bool {
       value: extdeps.ollama.gpu_support.OllamaNvidiaDriverVersion { major: 549 },
     },
   ) {
-    extdeps.ollama.capability.OllamaRuntimeAdmissionUnmet { cause: _ } => true
-    extdeps.ollama.capability.OllamaRuntimeAdmissionApplicable => false
+    OllamaRuntimeAdmissionUnmet { cause: _ } => true
+    OllamaRuntimeAdmissionApplicable => false
     _ => false
   }
 }
 
 test fn desired_spark_serving_admission_succeeds_for_pinned_pair() -> Bool {
   match spark_serving_desired_admission {
-    gunbc.spark.serving_desired.SparkServingDesiredAdmitted { serving_release: _ } => true
-    gunbc.spark.serving_desired.SparkServingDesiredRefused { cause: _ } => false
+    SparkServingDesiredAdmitted { serving_release: _ } => true
+    SparkServingDesiredRefused { cause: _ } => false
   }
 }
 
 test fn desired_spark_serving_fleet_is_ready_for_pinned_pair() -> Bool {
   match spark_serving_fleet_desired {
-    gunbc.spark.serving_desired.SparkServingFleetDesiredReady { occurrences: occs } => length(xs: occs) == 2
-    gunbc.spark.serving_desired.SparkServingFleetDesiredRefused { cause: _ } => false
+    SparkServingFleetDesiredReady { occurrences: occs } => length(xs: occs) == 2
+    SparkServingFleetDesiredRefused { cause: _ } => false
   }
 }

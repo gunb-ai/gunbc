@@ -40,7 +40,7 @@ test fn module_storage_duplicate_module_insert_refuses() -> v2.std.logic.Bool {
     index: msb_singleton_index,
     binding: msb_produced_duplicate_binding
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
@@ -50,15 +50,15 @@ test fn module_storage_distinct_module_insert_accepts() -> v2.std.logic.Bool {
     index: msb_singleton_index,
     binding: msb_produced_other_binding
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: _ } => true
   }
 }
 
 test fn module_storage_produced_module_has_no_storage() -> v2.std.logic.Bool {
   match module_storage_binding_file_path(binding: msb_produced_binding) {
-    v2.std.optional.Present { value: _ } => false
-    v2.std.optional.Absent =>
+    Present { value: _ } => false
+    Absent =>
       module_storage_binding_module_dotted(binding: msb_produced_binding) == "v2.std.msb_fixture"
   }
 }
@@ -68,8 +68,8 @@ test fn module_storage_produced_module_answers_absent_for_path_lookup() -> v2.st
     index: msb_singleton_index,
     file_path: "src/v2/std/msb_fixture.dag"
   ) {
-    v2.std.optional.Present { value: _ } => false
-    v2.std.optional.Absent => true
+    Present { value: _ } => false
+    Absent => true
   }
 }
 
@@ -95,15 +95,15 @@ data msb_parsed_index: v2.compiler.source_authority.ModuleStorageIndex = std.alg
 
 test fn module_storage_parsed_module_has_storage() -> v2.std.logic.Bool {
   match module_storage_binding_file_path(binding: msb_parsed_binding) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: p } => p == msb_parsed_path
+    Absent => false
+    Present { value: p } => p == msb_parsed_path
   }
 }
 
 test fn module_storage_parsed_module_resolves_path_to_module() -> v2.std.logic.Bool {
   match module_storage_module_for_path(index: msb_parsed_index, file_path: msb_parsed_path) {
-    v2.std.optional.Absent => false
-    v2.std.optional.Present { value: qn } =>
+    Absent => false
+    Present { value: qn } =>
       qualified_name_to_dotted_string(qn: qn) == "v2.std.msb_parsed_fixture"
   }
 }

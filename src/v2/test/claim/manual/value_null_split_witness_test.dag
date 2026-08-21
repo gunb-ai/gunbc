@@ -7,15 +7,15 @@ data value_null_split_phase_a_note: String = "Phase A witnesses (keen-ferret-250
 
 test fn optional_absent_matches_absent_pattern() -> Bool {
   match optional_absent() {
-    v2.std.optional.Absent => true
-    v2.std.optional.Present { value: _ } => false
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
 test fn optional_present_matches_present_pattern() -> Bool {
   match optional_present(value: 42) {
-    v2.std.optional.Present { value: v } => v == 42
-    v2.std.optional.Absent => false
+    Present { value: v } => v == 42
+    Absent => false
   }
 }
 
@@ -23,7 +23,7 @@ test fn map_get_miss_is_absent_not_present() -> Bool {
   match v2.std.collection.map_get(empty_map(), "missing") {
     Accepted { value: v2.std.optional.Absent, diagnostics: _ } => true
     Accepted { value: v2.std.optional.Present { value: _ }, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -32,7 +32,7 @@ test fn map_get_hit_is_present() -> Bool {
   match v2.std.collection.map_get(m, "k") {
     Accepted { value: v2.std.optional.Present { value: v }, diagnostics: _ } => v == 7
     Accepted { value: v2.std.optional.Absent, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

@@ -37,6 +37,6 @@ test fn fact_bundle_compile_lens_passes_holds() -> v2.std.logic.Bool {
     mode: v2.compiler.compile.CompileLensEnforce
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

@@ -66,7 +66,7 @@ data witness_diagnostic_assert_match_pass: Bool = match run_test_claim_assert(
 ) {
   Pass => true
   SemanticMismatch { actual: _, falsification: _ } => false
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
@@ -78,7 +78,7 @@ data witness_diagnostic_assert_mismatch_fail: Bool = match run_test_claim_assert
 ) {
   Pass => false
   SemanticMismatch { actual: _, falsification: _ } => true
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => true
+    BuildFailed { actual: _, diagnostic: _ } => true
     RunFailed { actual: _, diagnostic: _ } => true
   Deferred { actual: _, diagnostic: _ } => false
 }
@@ -94,7 +94,7 @@ data witness_diagnostic_assert_accepted_fail: Bool = match run_test_claim_assert
 ) {
   Pass => false
   SemanticMismatch { actual: _, falsification: _ } => true
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => true
+    BuildFailed { actual: _, diagnostic: _ } => true
     RunFailed { actual: _, diagnostic: _ } => true
   Deferred { actual: _, diagnostic: _ } => false
 }
@@ -102,7 +102,7 @@ data witness_diagnostic_assert_accepted_fail: Bool = match run_test_claim_assert
 data witness_aggregate_empty_fail: Bool = match aggregate_verdicts(rs: empty_node_verdicts(), at: diag_assert_node()) {
   Pass => false
   SemanticMismatch { actual: _, falsification: _ } => true
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => true
+    BuildFailed { actual: _, diagnostic: _ } => true
     RunFailed { actual: _, diagnostic: _ } => true
   Deferred { actual: _, diagnostic: _ } => false
 }
@@ -117,7 +117,7 @@ fn deferred_verdict() -> Verdict<TestClaimEvalSubject<v2.std.node.Node>, v2.std.
 data witness_aggregate_deferred_blocks_pass: Bool = match aggregate_verdicts(rs: [Pass, deferred_verdict()], at: diag_assert_node()) {
   Pass => false
   SemanticMismatch { actual: _, falsification: _ } => false
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => true
 }

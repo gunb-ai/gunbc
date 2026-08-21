@@ -178,7 +178,7 @@ test fn w_an_established_capability_requires_an_admitted_stackup() -> Bool {
       match establish_stackup_capability(a: a) {
         CapabilityEstablished { authority: r } => r.decl_name == "four_layer"
         CapabilityPending { owed: _ } => false
-        product.pcb.world.CapabilityRefused { cause: _ } => false
+        CapabilityRefused { cause: _ } => false
       }
   }
 }
@@ -194,7 +194,7 @@ test fn w_the_established_authority_comes_from_admission() -> Bool {
         && match establish_stackup_capability(a: a) {
           CapabilityEstablished { authority: r } => r.decl_name == "single_layer"
           CapabilityPending { owed: _ } => false
-          product.pcb.world.CapabilityRefused { cause: _ } => false
+          CapabilityRefused { cause: _ } => false
         }
   }
 }

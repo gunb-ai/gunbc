@@ -50,7 +50,7 @@ fn assemble_rejection_cause_from_parse_stage(
     match non_empty_grammar_choice_ambiguity_rows_from_parse_stage(
       d: v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics { head: d.head, tail: Empty }
     ) {
-      v2.std.optional.Present { value: overlap_evidence } =>
+      Present { value: overlap_evidence } =>
         v2.compiler.self_host.frontier_probe_types.MaskedAssembleRefusal {
           overlap_evidence: overlap_evidence,
           remaining_chain: non_empty_symbol_chain_from_parse_stage_head(
@@ -58,7 +58,7 @@ fn assemble_rejection_cause_from_parse_stage(
             tail: list_tail_or_empty_parse_stage(tail: d.tail)
           )
         }
-      v2.std.optional.Absent =>
+      Absent =>
         v2.compiler.self_host.frontier_probe_types.MaskedAssembleRefusalWithoutEvidence {
           remaining_chain: non_empty_symbol_chain_from_parse_stage_head(
             head: list_head_value_or_self_parse_stage(head: d.head, tail: d.tail),
@@ -68,13 +68,13 @@ fn assemble_rejection_cause_from_parse_stage(
     }
   } else if d.head.diagnostic.reason == ^resolve_module_not_found {
     match diagnostic_module_root_missing_qn_optional(d: d.head.diagnostic) {
-      v2.std.optional.Present { value: requested } => v2.compiler.self_host.frontier_probe_types.AssembleMissingModule { requested: requested }
-      v2.std.optional.Absent => MissingModuleIdentityUnavailable
+      Present { value: requested } => v2.compiler.self_host.frontier_probe_types.AssembleMissingModule { requested: requested }
+      Absent => MissingModuleIdentityUnavailable
     }
   } else {
     match non_empty_grammar_choice_ambiguity_rows_from_parse_stage(d: d) {
-      v2.std.optional.Present { value: rows } => v2.compiler.self_host.frontier_probe_types.GrammarChoiceOverlap { rows: rows }
-      v2.std.optional.Absent => v2.compiler.self_host.frontier_probe_types.OtherAssembleRefusal { reason: d.head.diagnostic.reason }
+      Present { value: rows } => v2.compiler.self_host.frontier_probe_types.GrammarChoiceOverlap { rows: rows }
+      Absent => v2.compiler.self_host.frontier_probe_types.OtherAssembleRefusal { reason: d.head.diagnostic.reason }
     }
   }
 }
@@ -108,8 +108,8 @@ fn frontier_probe_first_non_overlap_residue_diagnostic_optional(
       empty: optional_absent(),
       cons: fn(acc, diag) {
         match acc {
-          v2.std.optional.Present { value: _ } => acc
-          v2.std.optional.Absent =>
+          Present { value: _ } => acc
+          Absent =>
             if diagnostic_reason_is_overlap_residue(d: diag) {
               optional_absent()
             } else {
@@ -123,8 +123,8 @@ fn frontier_probe_first_non_overlap_residue_diagnostic_optional(
 
 fn frontier_probe_assemble_located_reason_from_diagnostics(d: v2.std.diagnostic.NonEmptyDiagnostics) -> v2.std.node.Symbol {
   match frontier_probe_first_non_overlap_residue_diagnostic_optional(d: d) {
-    v2.std.optional.Present { value: diag } => diag.reason
-    v2.std.optional.Absent => d.head.reason
+    Present { value: diag } => diag.reason
+    Absent => d.head.reason
   }
 }
 
@@ -278,8 +278,8 @@ fn assemble_rejection_cause_from_diagnostics(
     }
   } else if d.head.reason == ^resolve_module_not_found {
     match diagnostic_module_root_missing_qn_optional(d: d.head) {
-      v2.std.optional.Present { value: requested } => v2.compiler.self_host.frontier_probe_types.AssembleMissingModule { requested: requested }
-      v2.std.optional.Absent => MissingModuleIdentityUnavailable
+      Present { value: requested } => v2.compiler.self_host.frontier_probe_types.AssembleMissingModule { requested: requested }
+      Absent => MissingModuleIdentityUnavailable
     }
   } else {
     v2.compiler.self_host.frontier_probe_types.OtherAssembleRefusal { reason: d.head.reason }
@@ -339,8 +339,8 @@ fn frontier_probe_assemble_detail_from_rejection_with_overlap_stage(
   overlap_residue_stage: v2.std.optional.Optional<v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics>
 ) -> v2.compiler.self_host.frontier_probe_types.FrontierProbeAssembleDetail {
   match overlap_residue_stage {
-    v2.std.optional.Absent => frontier_probe_assemble_detail_from_rejection(d: d)
-    v2.std.optional.Present { value: stage } =>
+    Absent => frontier_probe_assemble_detail_from_rejection(d: d)
+    Present { value: stage } =>
       v2.compiler.self_host.frontier_probe_types.AssembleRejectionDetail {
         rejection_chain: non_empty_symbol_chain_from_non_empty_diagnostics(d: d),
         cause: assemble_rejection_cause_from_parse_stage(

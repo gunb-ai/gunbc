@@ -50,7 +50,7 @@ fn orch_while_cond_model_text() -> String {
         None => source.authority_source_text
         Some { diagnostics: _ } => ""
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
+    Rejected { diagnostics: _ } => ""
   }
 }
 
@@ -61,7 +61,7 @@ fn orch_while_body_model_text() -> String {
         None => source.authority_source_text
         Some { diagnostics: _ } => ""
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
+    Rejected { diagnostics: _ } => ""
   }
 }
 
@@ -161,7 +161,7 @@ test fn orch_while_locate_pipeline_matches_golden_holds() -> Bool {
   ) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == orch_while_locate_golden) && (dg == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -185,7 +185,7 @@ test fn orch_while_step_matches_golden_holds() -> Bool {
   ) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == orch_while_locate_golden) && (dg == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -220,7 +220,7 @@ test fn orch_while_raw_while_perturbation_changes_bytes_holds() -> Bool {
   ) {
     Accepted { value: source, diagnostics: _ } =>
       source.carried != orch_while_locate_golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -232,7 +232,7 @@ test fn orch_while_path_kind_discriminates_regular_directory_missing_holds() -> 
     }
   ) {
     Accepted { value: source, diagnostics: _ } => source.authority_source_text
-    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
+    Rejected { diagnostics: _ } => ""
   }
   let directory = match bash_path_predicate_target_model(
     predicate: std.path_intent.PathEntryKind {
@@ -241,7 +241,7 @@ test fn orch_while_path_kind_discriminates_regular_directory_missing_holds() -> 
     }
   ) {
     Accepted { value: source, diagnostics: _ } => source.authority_source_text
-    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
+    Rejected { diagnostics: _ } => ""
   }
   let missing = match bash_path_predicate_target_model(
     predicate: std.path_intent.PathEntryKind {
@@ -250,7 +250,7 @@ test fn orch_while_path_kind_discriminates_regular_directory_missing_holds() -> 
     }
   ) {
     Accepted { value: source, diagnostics: _ } => source.authority_source_text
-    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
+    Rejected { diagnostics: _ } => ""
   }
   (regular == "[ -f \"$d/memory.peak\" ]")
     && (directory == "[ -d \"$d/memory.peak\" ]")

@@ -10,14 +10,14 @@ test fn witness_srv3_admission_binds_local_shell_not_ssh() -> Bool {
     && req.executing_principal == ("briansrls" as std.types.NonEmptyStr)
     && req.required_operations.length() == 4
     && match req.required_operations[0] {
-      v2.std.optional.Present { value: op } =>
+      Present { value: op } =>
         match op {
           PrivOpRunnerRootDirectoryCreate {} => true
           PrivOpSystemdUnitInstall {} => false
           PrivOpSystemdDaemonReload {} => false
           PrivOpSystemdUnitStart {} => false
         }
-      v2.std.optional.Absent {} => false
+      Absent {} => false
     }
 }
 

@@ -70,8 +70,8 @@ fn world_room_count(w: World) -> std.integer.Int { length(w.rooms) }
 fn find_room(rooms: List<PlacedSpace>, identity: product.placement_supply.RoomIdentity) -> PlacedSpace? {
   fold(rooms, init: none, f: (acc, r) =>
     match acc {
-      v2.std.optional.Present { value: found } => v2.std.optional.Present { value: found }
-      v2.std.optional.Absent => if product.spatial_world.room_identity_eq(a: r.identity, b: identity) { v2.std.optional.Present { value: r } } else { none }
+      Present { value: found } => v2.std.optional.Present { value: found }
+      Absent => if product.spatial_world.room_identity_eq(a: r.identity, b: identity) { v2.std.optional.Present { value: r } } else { none }
     })
 }
 
@@ -83,8 +83,8 @@ type DuplicateScan {
 fn first_duplicate_identity(rooms: List<PlacedSpace>) -> product.placement_supply.RoomIdentity? {
   let scanned = fold(rooms, init: DuplicateScan { seen: [], duplicate: none }, f: (acc, r) =>
     match acc.duplicate {
-      v2.std.optional.Present { value: d } => DuplicateScan { seen: acc.seen, duplicate: v2.std.optional.Present { value: d } }
-      v2.std.optional.Absent =>
+      Present { value: d } => DuplicateScan { seen: acc.seen, duplicate: v2.std.optional.Present { value: d } }
+      Absent =>
         let already = fold(acc.seen, init: false, f: (hit, s) => hit || product.spatial_world.room_identity_eq(a: s, b: r.identity))
         if already {
           DuplicateScan { seen: acc.seen, duplicate: v2.std.optional.Present { value: r.identity } }
@@ -104,8 +104,8 @@ fn room_spaces(rooms: List<PlacedSpace>) -> List<std.orthogonal_topology.Enclose
 // A world therefore cannot exist in which two rooms share an identity or occupy the same volume.
 fn world(rooms: List<PlacedSpace>) -> WorldConstruction<World> {
   match first_duplicate_identity(rooms: rooms) {
-    v2.std.optional.Present { value: d } => WorldRefused { cause: DuplicateRoomIdentity { identity: d } }
-    v2.std.optional.Absent =>
+    Present { value: d } => WorldRefused { cause: DuplicateRoomIdentity { identity: d } }
+    Absent =>
       match space_complex(spaces: room_spaces(rooms: rooms)) {
         OrthogonalRefused { cause: c } => WorldRefused { cause: WorldGeometryRefused { cause: c } }
         OrthogonalReady { value: _ } => WorldReady { value: World { rooms: rooms } }
@@ -180,18 +180,18 @@ fn replace_identity(rooms: List<PlacedSpace>, identity: product.placement_supply
 // compare-and-swap discipline exists for.
 fn apply_hunk(acc: ApplyAcc, hunk: std.change.KeyedDiffHunk<product.placement_supply.RoomIdentity, std.orthogonal_topology.EnclosedSpace>) -> ApplyAcc {
   match acc.refusal {
-    v2.std.optional.Present { value: r } => ApplyAcc { rooms: acc.rooms, refusal: v2.std.optional.Present { value: r } }
-    v2.std.optional.Absent =>
+    Present { value: r } => ApplyAcc { rooms: acc.rooms, refusal: v2.std.optional.Present { value: r } }
+    Absent =>
       match hunk {
         KeyedDiffAddedHunk { hunk_key: key, to: to } =>
           match product.spatial_world.find_room(rooms: acc.rooms, identity: key) {
-            v2.std.optional.Present { value: _ } => ApplyAcc { rooms: acc.rooms, refusal: v2.std.optional.Present { value: VariantTargetAlreadyPresent { identity: key } } }
-            v2.std.optional.Absent => ApplyAcc { rooms: concat(acc.rooms, [PlacedSpace { identity: key, space: to }]), refusal: none }
+            Present { value: _ } => ApplyAcc { rooms: acc.rooms, refusal: v2.std.optional.Present { value: VariantTargetAlreadyPresent { identity: key } } }
+            Absent => ApplyAcc { rooms: concat(acc.rooms, [PlacedSpace { identity: key, space: to }]), refusal: none }
           }
         KeyedDiffRemovedHunk { hunk_key: key, from: from } =>
           match product.spatial_world.find_room(rooms: acc.rooms, identity: key) {
-            v2.std.optional.Absent => ApplyAcc { rooms: acc.rooms, refusal: v2.std.optional.Present { value: VariantTargetMissing { identity: key } } }
-            v2.std.optional.Present { value: current } =>
+            Absent => ApplyAcc { rooms: acc.rooms, refusal: v2.std.optional.Present { value: VariantTargetMissing { identity: key } } }
+            Present { value: current } =>
               if space_eq(a: current.space, b: from) {
                 ApplyAcc { rooms: without_identity(rooms: acc.rooms, identity: key), refusal: none }
               } else {
@@ -200,8 +200,8 @@ fn apply_hunk(acc: ApplyAcc, hunk: std.change.KeyedDiffHunk<product.placement_su
           }
         KeyedDiffModifiedHunk { hunk_key: key, from: from, to: to } =>
           match product.spatial_world.find_room(rooms: acc.rooms, identity: key) {
-            v2.std.optional.Absent => ApplyAcc { rooms: acc.rooms, refusal: v2.std.optional.Present { value: VariantTargetMissing { identity: key } } }
-            v2.std.optional.Present { value: current } =>
+            Absent => ApplyAcc { rooms: acc.rooms, refusal: v2.std.optional.Present { value: VariantTargetMissing { identity: key } } }
+            Present { value: current } =>
               if space_eq(a: current.space, b: from) {
                 ApplyAcc { rooms: replace_identity(rooms: acc.rooms, identity: key, space: to), refusal: none }
               } else {
@@ -220,7 +220,7 @@ fn realize_variant(v: WorldVariant) -> WorldConstruction<World> {
   let applied = fold(v.delta.hunks, init: ApplyAcc { rooms: v.base.rooms, refusal: none }, f: (acc, h) =>
     apply_hunk(acc: acc, hunk: h))
   match applied.refusal {
-    v2.std.optional.Present { value: r } => WorldRefused { cause: r }
-    v2.std.optional.Absent => world(rooms: applied.rooms)
+    Present { value: r } => WorldRefused { cause: r }
+    Absent => world(rooms: applied.rooms)
   }
 }

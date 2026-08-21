@@ -203,7 +203,7 @@ fn fold_call_emit_matches(arrow: v2.std.node.Node, expected: List<v2.std.compile
   match fold_call_emit_body_tokens(arrow: arrow) {
     Accepted { value: tokens, diagnostics: d } =>
       fold_call_tokens_equal(left: tokens, right: expected) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -228,9 +228,9 @@ test fn fold_call_swap_discriminates() -> v2.std.logic.Bool {
       match fold_call_emit_body_tokens(arrow: fold_call_swapped_arrow()) {
         Accepted { value: swapped, diagnostics: _ } =>
           !fold_call_tokens_equal(left: canonical, right: swapped)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

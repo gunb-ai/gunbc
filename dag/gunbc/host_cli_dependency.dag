@@ -48,16 +48,16 @@ fn first_absent_codex_wet_materialization_host_cli_dependency() -> HostCliDepend
     empty: none,
     cons: fn(acc, requirement) {
       match acc {
-        v2.std.optional.Present { value: found } => v2.std.optional.Present { value: found }
-        v2.std.optional.Absent =>
+        Present { value: found } => v2.std.optional.Present { value: found }
+        Absent =>
           match cli_tool_for_enrollment_requirement(requirement: requirement) {
-            v2.std.optional.Present { value: tool } =>
+            Present { value: tool } =>
               match observe_host_cli_dependency(tool: tool) {
                 HostCliDependencyAbsent { tool: t, hint: h } =>
                   v2.std.optional.Present { value: HostCliDependencyAbsent { tool: t, hint: h } }
                 HostCliDependencyPresent => none
               }
-            v2.std.optional.Absent =>
+            Absent =>
               v2.std.optional.Present {
                 value: HostCliDependencyAbsent {
                   tool: requirement.tool,

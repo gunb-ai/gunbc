@@ -54,20 +54,20 @@ fn deployed_release_binding(
   identity: gunbc.running_release_identity.RunningReleaseIdentity,
 ) -> DeployedReleaseBinding {
   match observation {
-    gunbc.live_deploy.deployed_tree_observation.DeployedTreeUnobservable { cause: c } =>
+    DeployedTreeUnobservable { cause: c } =>
       ReleaseBindingUnobserved {
         cause: join([
           "the deployed tree was not observed, so no binding is decidable: ",
           deployed_tree_unobservable_text(cause: c),
         ], ""),
       }
-    gunbc.live_deploy.deployed_tree_observation.DeployedTreeObserved { revision: tree_revision, content: _ } =>
+    DeployedTreeObserved { revision: tree_revision, content: _ } =>
       match identity {
-        gunbc.running_release_identity.RunningReleaseUnidentified { cause: _ } =>
+        RunningReleaseUnidentified { cause: _ } =>
           ReleaseBindingUnobserved {
             cause: "the running process did not state a readable release identity, so no binding is decidable",
           }
-        gunbc.running_release_identity.RunningReleaseIdentified { observation: obs } =>
+        RunningReleaseIdentified { observation: obs } =>
           if (obs.revision as String) == (git_object_id_wire_hex(oid: tree_revision) as String) {
             ReleaseBoundToTree { revision: tree_revision }
           } else {

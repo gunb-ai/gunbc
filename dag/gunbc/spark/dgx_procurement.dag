@@ -170,7 +170,7 @@ fn host_identity_is_reserved(identity: product.placement_supply.HostIdentity) ->
 fn envelope_reports_success(envelope: extdeps.systems.nvidia_fleet_lifecycle.FleetLifecycleEnvelope) -> Bool {
   match envelope.status {
     StatusOk => envelope.rc == 0
-    std.symbols.StatusWarning => false
+    StatusWarning => false
     StatusError => false
   }
 }
@@ -274,18 +274,18 @@ fn admit_dgx_spark_deployment(
   router_binding: DgxSparkRouterBinding,
 ) -> DgxSparkAdmissionOutcome {
   match selection {
-    gunbc.fleet_lifecycle_observation.ObservationMissing { subject: _ } =>
+    ObservationMissing { subject: _ } =>
       DgxSparkDeploymentRefused {
         reason: DeploymentAdmissionNoEvidence { requested_identity: identity }
       }
-    gunbc.fleet_lifecycle_observation.ObservationAmbiguous { subject: _, candidate_count: n } =>
+    ObservationAmbiguous { subject: _, candidate_count: n } =>
       DgxSparkDeploymentRefused {
         reason: DeploymentAdmissionAmbiguousEvidence {
           requested_identity: identity,
           candidate_count: n,
         }
       }
-    gunbc.fleet_lifecycle_observation.ObservationUnique { observation: o } =>
+    ObservationUnique { observation: o } =>
       admit_selected_dgx_spark_observation(
         identity: identity,
         catalog: catalog,
@@ -394,16 +394,16 @@ fn admit_dgx_spark_pair_deployments(
             DgxSparkPairRefused { reason: PairHardwareIdentityUnobserved { identity: second.identity } }
           Present { value: second_hw } =>
             match compare_hardware_identity(left: first_hw, right: second_hw) {
-              gunbc.fleet_lifecycle_observation.HardwareIdentitiesDistinct =>
+              HardwareIdentitiesDistinct =>
                 DgxSparkPairAdmitted { first: first, second: second }
-              gunbc.fleet_lifecycle_observation.HardwareIdentitiesSame =>
+              HardwareIdentitiesSame =>
                 DgxSparkPairRefused {
                   reason: PairHardwareIdentityNotDistinct {
                     first: first.identity,
                     second: second.identity,
                   }
                 }
-              gunbc.fleet_lifecycle_observation.HardwareIdentitiesIncomparable =>
+              HardwareIdentitiesIncomparable =>
                 DgxSparkPairRefused {
                   reason: PairHardwareIdentityIncomparable {
                     first: first.identity,

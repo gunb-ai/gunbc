@@ -159,7 +159,7 @@ fn coercion_identity_from_target_model(
                     },
                     diagnostics: fw_d
                   }
-                v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+                Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
               }
             }
           )
@@ -237,7 +237,7 @@ fn coercion_wrap_find_witness_rejection(
         },
         diagnostics: v2.std.diagnostic.None
       }
-    v2.std.diagnostic.Rejected { diagnostics: coerce_r } =>
+    Rejected { diagnostics: coerce_r } =>
       v2.std.diagnostic.Rejected {
         diagnostics: non_empty_diagnostics_append(a: upstream, b: coerce_r)
       }
@@ -297,11 +297,11 @@ fn coercion_fold_exact_structural(
         },
         diagnostics: fw_d
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } =>
+    Rejected { diagnostics: r } =>
       match coercion_wrap_find_witness_rejection(source: source, upstream: r) {
         Accepted { value: wrapped, diagnostics: _ } =>
           v2.std.diagnostic.Rejected { diagnostics: wrapped }
-        v2.std.diagnostic.Rejected { diagnostics: wrap_r } => v2.std.diagnostic.Rejected { diagnostics: wrap_r }
+        Rejected { diagnostics: wrap_r } => v2.std.diagnostic.Rejected { diagnostics: wrap_r }
       }
   }
 }
@@ -342,7 +342,7 @@ fn coercion_fold_refinement_widening(
         },
         diagnostics: fw_d
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } =>
+    Rejected { diagnostics: r } =>
       match coercion_wrap_find_witness_rejection_with_refinement_algebra(
         source: source,
         upstream: r,
@@ -350,7 +350,7 @@ fn coercion_fold_refinement_widening(
       ) {
         Accepted { value: wrapped, diagnostics: _ } =>
           v2.std.diagnostic.Rejected { diagnostics: wrapped }
-        v2.std.diagnostic.Rejected { diagnostics: wrap_r } => v2.std.diagnostic.Rejected { diagnostics: wrap_r }
+        Rejected { diagnostics: wrap_r } => v2.std.diagnostic.Rejected { diagnostics: wrap_r }
       }
   }
 }

@@ -178,7 +178,7 @@ func run_prose_row_introduction_gate_body() -> std.process.ProcessExit {
 // again, so there is never a second refusal authority to disagree with the first.
 fn prose_row_failure_reason(exit: std.process.ProcessExit) -> String {
   match exit {
-    std.process.ExitSuccess => ""
+    ExitSuccess => ""
     ExitFailure { code: _, reason: reason } => reason
   }
 }

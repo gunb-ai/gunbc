@@ -32,7 +32,7 @@ test fn atom_lookup_in_catalog_known_carrier_accepts() -> v2.std.logic.Bool {
     source_carrier: v2.std.compilers.target_model.symbol_kernel_type_node()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -42,7 +42,7 @@ test fn atom_lookup_in_catalog_unknown_carrier_rejects_miss() -> v2.std.logic.Bo
     source_carrier: atom_lookup_dissolution_probe_node()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_lookup_miss
+    Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_lookup_miss
   }
 }
 
@@ -53,7 +53,7 @@ test fn atom_lookup_in_catalog_node_non_conj_rejects_decode_invalid() -> v2.std.
     host_target_model: v2.extdeps.languages.typescript.ts_sg2_type_expr_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_catalog_row_decode_invalid
+    Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_catalog_row_decode_invalid
   }
 }
 
@@ -77,7 +77,7 @@ test fn atom_catalog_with_malformed_row_skips_accepts_valid() -> v2.std.logic.Bo
     host_target_model: v2.extdeps.languages.typescript.ts_sg2_type_expr_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

@@ -24,14 +24,14 @@ func observe_host_short_wet() -> std.types.NonEmptyStr?
     command: extdeps.exec.command.ArgvCommand { argv: ["hostname", "-s"] },
     transport: extdeps.exec.command.LocalExec,
   ) {
-    extdeps.shell.exec.ProcessOutputPresent { text: t } =>
+    ProcessOutputPresent { text: t } =>
       if trim(s: t) == "" {
         none
       } else {
         Present { value: trim(s: t) as std.types.NonEmptyStr }
       }
-    extdeps.shell.exec.ProcessOutputAbsent => none
-    extdeps.shell.exec.ProcessRefused { exit_code: _, stderr: _ } => none  }
+    ProcessOutputAbsent => none
+    ProcessRefused { exit_code: _, stderr: _ } => none  }
 }
 
 func observe_generation_store_wet() -> Int?
@@ -108,9 +108,9 @@ func fleet_converge_plan_wet() -> std.process.ProcessExit
             transport: extdeps.exec.command.LocalExec,
           )
           match mkdir {
-            std.process.ExitFailure { code: _, reason: why } =>
+            ExitFailure { code: _, reason: why } =>
               std.process.exit_failure(reason: concat("fleet_converge_plan: mkdir refused: ", why))
-            std.process.ExitSuccess => {
+            ExitSuccess => {
               let w_plan = extdeps.filesystem.filesystem_io.Filesystem.Write(path: gunbc.fleet_converge_plan.fleet_converge_plan_body_path, content: artifact.plan_body)
               let w_base = extdeps.filesystem.filesystem_io.Filesystem.Write(
                 path: gunbc.fleet_converge_plan.fleet_converge_plan_baseline_hex_path,

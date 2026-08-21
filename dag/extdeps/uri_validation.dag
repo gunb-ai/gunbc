@@ -26,7 +26,7 @@ fn validate_href(url: String) -> HrefValidation {
     RelativeHref => SafeHref { url: url }
     HrefScheme { scheme } =>
       match scheme {
-        extdeps.uri.Http => SafeHref { url: url }
+        Http => SafeHref { url: url }
         Https => SafeHref { url: url }
         Mailto => SafeHref { url: url }
         Javascript => RejectedHref { reason: DangerousScheme { scheme: JavascriptScheme } }
@@ -34,7 +34,7 @@ fn validate_href(url: String) -> HrefValidation {
         Vbscript => RejectedHref { reason: DangerousScheme { scheme: VbscriptScheme } }
         File => RejectedHref { reason: SchemeNotAllowlisted }
         Ftp => RejectedHref { reason: SchemeNotAllowlisted }
-        extdeps.uri.Tftp => RejectedHref { reason: SchemeNotAllowlisted }
+        Tftp => RejectedHref { reason: SchemeNotAllowlisted }
       }
     UnknownHref => RejectedHref { reason: SchemeNotAllowlisted }
   }
@@ -49,7 +49,7 @@ fn find_first_rejected_url(node: std.markup.Fragment) -> RejectedUrl? {
   match node {
     FragmentText { content: _ } => Absent
     RawNode { content: _ } => Absent
-    std.markup.Element { tag: _, attributes, children } => {
+    Element { tag: _, attributes, children } => {
       let from_attr = fold(attributes,
         init: Absent,
         f: (acc, a) => match acc {

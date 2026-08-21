@@ -24,7 +24,7 @@ fn is_suspect(o: Optional<v2.lens.complexity_accumulator_copy.Finding>) -> Bool 
     Present { value: f } =>
       match f {
         Poly2Suspect { at: _, cost: _ } => true
-        v2.lens.complexity_accumulator_copy.Unclassifiable { at: _, cause: _ } => false
+        Unclassifiable { at: _, cause: _ } => false
       }
     Absent => false
   }
@@ -35,7 +35,7 @@ fn refuses_with(o: Optional<v2.lens.complexity_accumulator_copy.Finding>, cause:
     Present { value: f } =>
       match f {
         Poly2Suspect { at: _, cost: _ } => false
-        v2.lens.complexity_accumulator_copy.Unclassifiable { at: _, cause: c } => c == cause
+        Unclassifiable { at: _, cause: c } => c == cause
       }
     Absent => false
   }

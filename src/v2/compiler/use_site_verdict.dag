@@ -48,8 +48,8 @@ fn use_site_verdict_move_field_of(children: List<v2.std.node.Edge>) -> UseSiteVe
         TypeNode { connective: Atom { identity: f } } => MoveField { field: f }
         _ => Unclassified
       }
-    v2.std.node.Absent => Unclassified
-    v2.std.node.Ambiguous => Unclassified
+    Absent => Unclassified
+    Ambiguous => Unclassified
   }
 }
 
@@ -74,8 +74,8 @@ fn use_site_verdict_of_node(target: v2.std.node.Node) -> UseSiteVerdict {
 fn use_site_verdict_lookup(node: v2.std.node.Node) -> UseSiteVerdictLookup {
   match named_edge_target_lookup(children: node.children, name: use_site_verdict_edge) {
     Found { target: t } => VerdictFound { verdict: use_site_verdict_of_node(target: t) }
-    v2.std.node.Absent => VerdictAbsent
-    v2.std.node.Ambiguous => VerdictAmbiguous
+    Absent => VerdictAbsent
+    Ambiguous => VerdictAmbiguous
   }
 }
 

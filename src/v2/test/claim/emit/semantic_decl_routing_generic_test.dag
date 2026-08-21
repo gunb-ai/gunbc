@@ -45,21 +45,21 @@ fn semantic_pair_record() -> v2.std.node.Node {
 fn semantic_generic_emit_text(name: v2.std.node.Symbol, params: List<v2.std.node.Symbol>, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
   match emit_semantic_type_decl(name: name, params: params, node: node, target: rust_target_model()) {
     Accepted { value: medium, diagnostics: _ } => v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn semantic_witness_matches(golden: String) -> v2.std.logic.Bool {
   match semantic_generic_emit_text(name: ^Witness, params: [^C], node: semantic_witness_coproduct()) {
     Accepted { value: text, diagnostics: _ } => text == golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn semantic_pair_matches(golden: String) -> v2.std.logic.Bool {
   match semantic_generic_emit_text(name: ^Pair, params: [^K, ^V], node: semantic_pair_record()) {
     Accepted { value: text, diagnostics: _ } => text == golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

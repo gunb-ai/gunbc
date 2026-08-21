@@ -718,7 +718,7 @@ fn verification_receipt_string_member(
       }
     JsonMemberFound { value: v } =>
       match v {
-        extdeps.languages.json.emit.JsonString { value: sv } => VerificationReceiptMemberRead { value: sv }
+        JsonString { value: sv } => VerificationReceiptMemberRead { value: sv }
         _ =>
           VerificationReceiptMemberUnreadable {
             reason: join(["verification receipt ", key, " is not a JSON string"], ""),
@@ -731,7 +731,7 @@ fn verification_receipt_int_member(doc: extdeps.languages.json.emit.JsonValue, k
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: v } =>
       match v {
-        extdeps.languages.json.emit.JsonNumber { lexeme: lx } => parse_int(s: lx as String)
+        JsonNumber { lexeme: lx } => parse_int(s: lx as String)
         _ => none
       }
     _ => none
@@ -752,9 +752,9 @@ fn verification_receipt_string_array_member(
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: v } =>
       match v {
-        extdeps.languages.json.emit.JsonArray { elements } => {
+        JsonArray { elements } => {
           let parsed = map(elements, e => match e {
-            extdeps.languages.json.emit.JsonString { value: s } => Present { value: s }
+            JsonString { value: s } => Present { value: s }
             _ => none
           })
           let readable = filter(parsed, x => match x {
@@ -1072,7 +1072,7 @@ fn verification_executions_decode(doc: extdeps.languages.json.emit.JsonValue) ->
   match json_object_unique_member(v: doc, key: "executions") {
     JsonMemberFound { value: executions_value } =>
       match executions_value {
-        extdeps.languages.json.emit.JsonArray { elements } => {
+        JsonArray { elements } => {
           let parsed = map(
             elements,
             e => verification_validation_execution_decode(doc: e),
@@ -1241,7 +1241,7 @@ fn verification_receipt_decode_document(doc: extdeps.languages.json.emit.JsonVal
                                 match json_object_unique_member(v: doc, key: "executions") {
                                   JsonMemberFound { value: executions_value } =>
                                     match executions_value {
-                                      extdeps.languages.json.emit.JsonArray { elements } => {
+                                      JsonArray { elements } => {
                                         let parsed = map(
                                           elements,
                                           e => verification_validation_execution_decode(doc: e),

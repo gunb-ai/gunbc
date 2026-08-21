@@ -59,20 +59,20 @@ data ng_pre_graft_root: v2.std.node.Node = ng_pre_graft_module_root(
 fn ng_outcome_accepted(out: v2.std.diagnostic.Outcome<v2.std.node.Node>) -> v2.std.logic.Bool {
   match out {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn ng_qn_eq(out: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>, expected: v2.std.qualified_name.QualifiedName) -> v2.std.logic.Bool {
   match out {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: actual, diagnostics: _ } => actual == expected
   }
 }
 
 data ng_grafted_root: v2.std.node.Node = match module_header_containment_graft(root: ng_pre_graft_root) {
   Accepted { value: grafted, diagnostics: _ } => grafted
-  v2.std.diagnostic.Rejected { diagnostics: _ } => ng_pre_graft_root
+  Rejected { diagnostics: _ } => ng_pre_graft_root
 }
 
 test fn namespace_graft_shape_accepts_well_formed_module_holds() -> v2.std.logic.Bool {
@@ -107,16 +107,16 @@ test fn namespace_graft_body_edges_survive_holds() -> v2.std.logic.Bool {
                   match find_named_child(root: innermost, name: ^NgPilotFn) {
                     Accepted { value: _, diagnostics: _ } =>
                       qualified_name_to_dotted_string(qn: module_qn) == "v2.test.namespace_graft.alpha"
-                    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                    Rejected { diagnostics: _ } => false
                   }
-                v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                Rejected { diagnostics: _ } => false
               }
             }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -125,12 +125,12 @@ fn namespace_graft_walk_spine_to_body(captured: v2.std.node.Node) -> v2.std.node
     TypeNode { connective: Conj } =>
       if count(captured.children) == 1 {
         match list_at_optional(xs: captured.children, index: 0) {
-          v2.std.optional.Present { value: edge } =>
+          Present { value: edge } =>
             match edge.label {
-              v2.std.node.Named { name: _ } => namespace_graft_walk_spine_to_body(captured: edge.target)
+              Named { name: _ } => namespace_graft_walk_spine_to_body(captured: edge.target)
               Positional => captured
             }
-          v2.std.optional.Absent => captured
+          Absent => captured
         }
       } else {
         captured
@@ -150,7 +150,7 @@ fn namespace_graft_grafted_tree_has_no_metadata_edges(node: v2.std.node.Node) ->
             false
           } else {
             match edge.label {
-              v2.std.node.Named { name: sym } =>
+              Named { name: sym } =>
                 if namespace_graft_is_metadata_edge(name: sym) {
                   false
                 } else {

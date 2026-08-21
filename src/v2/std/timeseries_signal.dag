@@ -311,7 +311,7 @@ fn capacitor_fold_step(
         }
         diagnostics: v2.std.diagnostic.None
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -333,7 +333,7 @@ fn fold_capacitor_transient(
             current: current,
             dt: dt,
           )
-        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
       }
     }
   )
@@ -382,6 +382,6 @@ fn inductor_fold_step(
         }
         diagnostics: v2.std.diagnostic.None
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }

@@ -511,7 +511,7 @@ fn mint_v2_interpreted_receipt_with_seed_closure_refuses(
     behavioral_probe: BehavioralProbeBound { entry: "fabricated", function: "fabricated" },
     realized_closure: cssl_harness_realized_closure
   ) {
-    v2.std.optional.Absent => true
-    v2.std.optional.Present { value: _ } => false
+    Absent => true
+    Present { value: _ } => false
   }
 }

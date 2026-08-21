@@ -262,7 +262,7 @@ func run_shell_commands(commands: std.types.List<extdeps.exec.command.ArgvComman
     init: std.process.ExitSuccess,
     f: (acc, c) => match acc {
       ExitFailure { code: _, reason: _ } => acc
-      std.process.ExitSuccess => run_shell_command(command: c, transport: transport)
+      ExitSuccess => run_shell_command(command: c, transport: transport)
     }
   )
 }

@@ -137,7 +137,7 @@ fn graph_reach_unreachable_diagnostic(
           at: node_locus(node: root),
           correction: v2.std.diagnostic.Suggested { node: repaired }
         }
-      v2.std.diagnostic.Rejected { diagnostics: _ } =>
+      Rejected { diagnostics: _ } =>
         v2.std.diagnostic.Diagnostic {
           reason: reason,
           at: node_locus(node: root),

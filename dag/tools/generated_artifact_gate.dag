@@ -41,7 +41,7 @@ data generated_artifact_drift_failure_receipt_note: String = "The loudness half:
 
 fn generated_artifact_drift_failure_reason(exit: std.process.ProcessExit) -> String {
   match exit {
-    std.process.ExitSuccess => ""
+    ExitSuccess => ""
     ExitFailure { code: _, reason: reason } => reason
   }
 }

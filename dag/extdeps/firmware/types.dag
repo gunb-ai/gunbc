@@ -200,8 +200,8 @@ fn highest_refused_version(
         PushAcceptedByTarget => acc
         PushRefusedByTarget { diagnostic: _ } =>
           match acc {
-            v2.std.optional.Absent => v2.std.optional.Present { value: observation.gating_version }
-            v2.std.optional.Present { value: current } =>
+            Absent => v2.std.optional.Present { value: observation.gating_version }
+            Present { value: current } =>
               v2.std.optional.Present {
                 value: higher_version(a: current, b: observation.gating_version),
               }
@@ -223,8 +223,8 @@ fn lowest_accepted_version(
         PushRefusedByTarget { diagnostic: _ } => acc
         PushAcceptedByTarget =>
           match acc {
-            v2.std.optional.Absent => v2.std.optional.Present { value: observation.gating_version }
-            v2.std.optional.Present { value: current } =>
+            Absent => v2.std.optional.Present { value: observation.gating_version }
+            Present { value: current } =>
               v2.std.optional.Present {
                 value: lower_version(a: current, b: observation.gating_version),
               }
@@ -328,8 +328,8 @@ fn firmware_release_applicability(
     NoFirmwarePrerequisite => FirmwareApplicable
     RequiresMinimumTargetFirmware { target: t, minimum: m } =>
       match observed {
-        v2.std.optional.Absent => FirmwarePrerequisiteUnobserved { target: t, minimum: m }
-        v2.std.optional.Present { value: v } =>
+        Absent => FirmwarePrerequisiteUnobserved { target: t, minimum: m }
+        Present { value: v } =>
           if firmware_semantic_version_at_least(observed: v, minimum: m) {
             FirmwareApplicable
           } else {

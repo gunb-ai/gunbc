@@ -248,25 +248,25 @@ test fn receipt_decode_separates_refusal_from_undecodable() -> Bool {
     validation_summary: "gunbc run --claim-run",
   })
   match dispatch_environment_receipt_decode(receipt: refused) {
-    gunbc.roadmap_dispatch_environment.ReceiptDecoded { status } =>
+    ReceiptDecoded { status } =>
       match status {
-        gunbc.roadmap_dispatch_environment.ReceiptRefused => true
+        ReceiptRefused => true
         ReceiptAdmitted => false
       }
-    gunbc.roadmap_dispatch_environment.ReceiptUndecodable { reason: _ } => false
+    ReceiptUndecodable { reason: _ } => false
   }
     && match dispatch_environment_receipt_decode(receipt: foreign) {
-      gunbc.roadmap_dispatch_environment.ReceiptDecoded { status: _ } => false
-      gunbc.roadmap_dispatch_environment.ReceiptUndecodable { reason } =>
+      ReceiptDecoded { status: _ } => false
+      ReceiptUndecodable { reason } =>
         string_contains(s: reason, pattern: "known status")
     }
     && match dispatch_environment_receipt_decode(receipt: admitted) {
-      gunbc.roadmap_dispatch_environment.ReceiptDecoded { status } =>
+      ReceiptDecoded { status } =>
         match status {
           ReceiptAdmitted => true
-          gunbc.roadmap_dispatch_environment.ReceiptRefused => false
+          ReceiptRefused => false
         }
-      gunbc.roadmap_dispatch_environment.ReceiptUndecodable { reason: _ } => false
+      ReceiptUndecodable { reason: _ } => false
     }
 }
 

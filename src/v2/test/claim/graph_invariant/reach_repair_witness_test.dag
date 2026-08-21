@@ -84,7 +84,7 @@ test fn witness_apply_correction_reruns_satisfied() -> v2.std.logic.Bool {
         },
         target: rr_dangling()
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -103,7 +103,7 @@ test fn witness_wrong_correction_stays_violated() -> v2.std.logic.Bool {
         },
         target: rr_dangling()
       ) == false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -124,9 +124,9 @@ test fn witness_apply_edit_emits_corrected_source() -> v2.std.logic.Bool {
       ) {
         Accepted { value: authority_after, diagnostics: _ } =>
           patch.after == authority_after && patch.before != patch.after
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

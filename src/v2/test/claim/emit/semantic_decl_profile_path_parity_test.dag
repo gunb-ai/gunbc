@@ -20,17 +20,17 @@ test fn bundle_node_profile_matches_target_emission_profile() -> v2.std.logic.Bo
                     Accepted { value: direct_kw, diagnostics: _ } =>
                       match v2.test.emit.semantic_decl_profile_path_parity.lex_literal(rules: emission_lex, token_class: ^rust_token_kw_enum) {
                         Accepted { value: emission_kw, diagnostics: _ } => direct_kw == emission_kw
-                        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                        Rejected { diagnostics: _ } => false
                       }
-                    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                    Rejected { diagnostics: _ } => false
                   }
-                v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                Rejected { diagnostics: _ } => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -43,12 +43,12 @@ test fn target_emission_lex_matches_live_for_kw_enum() -> v2.std.logic.Bool {
             Accepted { value: decoded, diagnostics: _ } =>
               match v2.test.emit.semantic_decl_profile_path_parity.lex_literal(rules: rust_decl_general_lex(), token_class: ^rust_token_kw_enum) {
                 Accepted { value: live, diagnostics: _ } => decoded == live
-                v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                Rejected { diagnostics: _ } => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

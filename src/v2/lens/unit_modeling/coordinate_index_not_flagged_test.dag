@@ -23,7 +23,7 @@ data coordinate_field_input: v2.std.node.Node = v2.std.node.Node {
 test fn coordinate_index_not_flagged_holds() -> v2.std.logic.Bool {
   match unit_modeling_gate(node: coordinate_field_input) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

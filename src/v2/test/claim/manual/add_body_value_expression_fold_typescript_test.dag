@@ -143,7 +143,7 @@ fn add_body_fold_tokens_accept_arrow(
   match add_body_fold_body_tokens_for_arrow(arrow: arrow, target: target) {
     Accepted { value: tokens, diagnostics: d } =>
       add_body_fold_tokens_equal(left: tokens, right: expected) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -155,7 +155,7 @@ test fn add_body_ts_fold_add_body_tokens_holds() -> v2.std.logic.Bool {
         target: ts_target_model(),
         expected: ts_add_return_body_tokens()
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -174,9 +174,9 @@ test fn add_body_ts_fold_operand_swap_discriminates() -> v2.std.logic.Bool {
             target: ts_target_model(),
             expected: add_body_fold_operand_swap_body_tokens()
           )
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -188,7 +188,7 @@ test fn add_body_ts_fold_catalog_minus_discriminates() -> v2.std.logic.Bool {
         target: add_body_fold_target_model_minus_catalog(),
         expected: add_body_fold_catalog_minus_body_tokens()
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -199,9 +199,9 @@ test fn add_body_ts_fold_missing_catalog_rejects() -> v2.std.logic.Bool {
         arrow: arrow,
         target: add_body_fold_target_model_missing_operator_catalog()
       ) {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => true
+        Rejected { diagnostics: _ } => true
         Accepted { value: _, diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

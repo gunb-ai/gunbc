@@ -89,7 +89,7 @@ func host_toolchain_ensure(host: product.placement_supply.HostIdentity, kind: Ho
         transport: reach.access.transport,
         fixture_actor: none,
       ) {
-        std.realization_reconcile.Converged { evidence: _, applied: _ } => std.process.ExitSuccess
+        Converged { evidence: _, applied: _ } => std.process.ExitSuccess
         NotConverged { reason: why, applied: _ } => std.process.exit_failure(reason: why)
       }
     ReachTargetAbsent =>
@@ -108,11 +108,11 @@ func host_toolchain_ensure(host: product.placement_supply.HostIdentity, kind: Ho
 
 fn host_toolchain_ensure_routes_through_host_effect_apply() -> Bool {
   match host_toolchain_ensure_apply_dispatch_scaffold {
-    std.disposition.Scaffold {
+    Scaffold {
       dissolves_to: std.disposition.RealizationDispatch,
       bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: n, field: _ },
     } =>
       m == "gunbc.host_effect_realize" && n == "host_effect_apply_gated"
-    std.disposition.Terminal { reason: _ } => false
+    Terminal { reason: _ } => false
   }
 }

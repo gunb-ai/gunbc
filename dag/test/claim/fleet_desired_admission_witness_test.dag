@@ -82,7 +82,7 @@ test fn an_undecodable_desired_ref_refuses_without_writing_over_it() -> Bool {
     cause: FleetDesiredRefUndecodable { advertised: "not-a-sha refs/fleet/desired" },
   }) {
     AdmissionActionAuthorized { action: _ } => false
-    gunbc.fleet_desired_admission.AdmissionRefused { cause: c } =>
+    AdmissionRefused { cause: c } =>
       string_contains(s: c, pattern: "must not be written over")
         && string_contains(s: c, pattern: "not-a-sha refs/fleet/desired")
         && !string_contains(s: c, pattern: "could not be observed")
@@ -222,7 +222,7 @@ fn observed_input(current_hex: String, relation: DeployRevisionRelation) -> Flee
 // a blind overwrite wearing a compare-and-swap's name.
 test fn a_descendant_candidate_authorizes_an_advance_carrying_the_observed_prior() -> Bool {
   match action_for(input: observed_input(current_hex: fixture_prior_hex, relation: DeployedIsAncestor)) {
-    gunbc.fleet_desired_admission.AdmissionRefused { cause: _ } => false
+    AdmissionRefused { cause: _ } => false
     AdmissionActionAuthorized { action: a } =>
       match a {
         FleetDesiredRemoteAdvance { accepted: to, expected_prior: prior } =>
@@ -240,7 +240,7 @@ test fn a_descendant_candidate_authorizes_an_advance_carrying_the_observed_prior
 // converged fleet report as a broken one on every floor run.
 test fn an_already_converged_fleet_authorizes_a_no_op_rather_than_refusing() -> Bool {
   match action_for(input: observed_input(current_hex: fixture_candidate_hex, relation: SameRevision)) {
-    gunbc.fleet_desired_admission.AdmissionRefused { cause: _ } => false
+    AdmissionRefused { cause: _ } => false
     AdmissionActionAuthorized { action: a } =>
       match a {
         FleetDesiredAlreadyConvergedAction { revision: r } =>
@@ -256,7 +256,7 @@ test fn an_already_converged_fleet_authorizes_a_no_op_rather_than_refusing() -> 
 // dressed as an advance.
 test fn a_superseded_candidate_authorizes_a_no_op_and_never_an_advance() -> Bool {
   match action_for(input: observed_input(current_hex: fixture_candidate_hex, relation: CandidateIsAncestor)) {
-    gunbc.fleet_desired_admission.AdmissionRefused { cause: _ } => false
+    AdmissionRefused { cause: _ } => false
     AdmissionActionAuthorized { action: a } =>
       match a {
         FleetDesiredSupersededAction { accepted: _, current: _ } => true
@@ -275,7 +275,7 @@ test fn an_unobservable_prior_refuses_rather_than_authorizing_a_creation() -> Bo
     cause: FleetDesiredRefUnobserved { cause: "ls-remote refused: network unreachable" },
   }) {
     AdmissionActionAuthorized { action: _ } => false
-    gunbc.fleet_desired_admission.AdmissionRefused { cause: c } => string_contains(s: c, pattern: "fleet_desired_admission: ")
+    AdmissionRefused { cause: c } => string_contains(s: c, pattern: "fleet_desired_admission: ")
   }
 }
 
@@ -296,7 +296,7 @@ test fn an_unobservable_prior_refuses_rather_than_authorizing_a_creation() -> Bo
 test fn an_absent_ref_refuses_because_creation_needs_a_mint_authority() -> Bool {
   match action_for(input: FleetDesiredRefAbsentInput { accepted: accepted_fixture() }) {
     AdmissionActionAuthorized { action: _ } => false
-    gunbc.fleet_desired_admission.AdmissionRefused { cause: c } => string_contains(s: c, pattern: "mint the fleet root")
+    AdmissionRefused { cause: c } => string_contains(s: c, pattern: "mint the fleet root")
   }
 }
 

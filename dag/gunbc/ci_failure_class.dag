@@ -105,7 +105,7 @@ type FloorOutcome
 
 fn classify_floor_exit(e: std.process.ProcessExit) -> FloorOutcome {
   match e {
-    std.process.ExitSuccess => NoFailure
+    ExitSuccess => NoFailure
     ExitFailure { code: _, reason: r } => FloorFailed { class: classify_failure_reason(reason: r) }
   }
 }

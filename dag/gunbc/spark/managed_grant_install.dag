@@ -132,9 +132,9 @@ fn spark_grant_install_plan(grant: gunbc.spark.managed_access_bootstrap.SparkMan
     content: spark_managed_grant_sudoers_content(grant: grant),
     allowed_scope: gunbc.file_access.FileTreeScope { root_path: spark_managed_principal_home(login: principal) },
   ) {
-    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: why } =>
+    TypedRemoteFileWriteAdmissionRefused { cause: why } =>
       SparkGrantInstallRefused { grant: grant, cause: why }
-    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: w } => {
+    TypedRemoteFileWriteAdmitted { write: w } => {
       let cleanup_phase = CleanupGrantStaging {
         staged_path: staged as std.types.NonEmptyStr,
         inner_staging_path: typed_remote_file_staging_path(write: w) as std.types.NonEmptyStr,
@@ -325,11 +325,11 @@ func spark_grant_install_execute(
       grant: g, stage: staged_step, validate: validate_cmd, install: install_cmd, cleanup: cleanup_step,
     } =>
       match administrator {
-        gunbc.spark.bootstrap_credential.CredentialMaterializationPending =>
+        CredentialMaterializationPending =>
           SparkGrantInstallAwaitingOperatorCredential {
             host: host, grant: g, principal: principal,
           }
-        gunbc.spark.bootstrap_credential.CredentialMaterialized { ref: _ } => {
+        CredentialMaterialized { ref: _ } => {
           let lease = spark_bootstrap_credential_lease(
             host: host,
             administrator: administrator,
@@ -415,11 +415,11 @@ fn spark_grant_install_from_privileged(
   cleanup: gunbc.remote_operation.RemoteStepStanding,
 ) -> SparkGrantInstallOutcome {
   if any(outcomes, o => match o {
-    gunbc.spark.grant_privileged_operation.CredentialNotEnrolled { lease: _ } => true
-    gunbc.spark.grant_privileged_operation.CredentialNotMaterialized { lease: _, cause: _ } => false
-    gunbc.spark.grant_privileged_operation.CredentialRejected { lease: _ } => false
-    gunbc.spark.grant_privileged_operation.PrivilegedCommandFailed { command: _, exit_code: _, stderr: _ } => false
-    gunbc.spark.grant_privileged_operation.PrivilegedCommandSucceeded { command: _ } => false
+    CredentialNotEnrolled { lease: _ } => true
+    CredentialNotMaterialized { lease: _, cause: _ } => false
+    CredentialRejected { lease: _ } => false
+    PrivilegedCommandFailed { command: _, exit_code: _, stderr: _ } => false
+    PrivilegedCommandSucceeded { command: _ } => false
   }) {
     SparkGrantInstallAwaitingOperatorCredential { host: host, grant: grant, principal: principal }
   } else {
@@ -442,12 +442,12 @@ func spark_grant_read_back(
 {
   let outcome = spark_grant_probe_outcome(context: context, host: host)
   match spark_managed_grant_standing_from_outcome(grant: grant, outcome: outcome) {
-    gunbc.spark.managed_grant_reconcile.GrantHeld { grant: _ } => GrantReadbackConfirmed
-    gunbc.spark.managed_grant_reconcile.GrantNotHeld { grant: _ } =>
+    GrantHeld { grant: _ } => GrantReadbackConfirmed
+    GrantNotHeld { grant: _ } =>
       GrantReadbackDisagreed {
         standing: "the install reported success and the grantee's own sudo enumeration does not name the command" as std.types.NonEmptyStr,
       }
-    gunbc.spark.managed_grant_reconcile.GrantStandingUnobserved { grant: _, cause: c } =>
+    GrantStandingUnobserved { grant: _, cause: c } =>
       GrantReadbackDisagreed {
         standing: join(["the grant could not be re-observed after installing it: ", c as String], "") as std.types.NonEmptyStr,
       }
@@ -620,9 +620,9 @@ fn spark_grant_install_cleanup_completed(outcome: SparkGrantInstallOutcome) -> B
     SparkGrantInstallNotAttempted { host: _, grant: _, cause: _ } => true
     SparkGrantInstallExecuted { host: _, grant: _, standings: _, privileged: _, readback: _, cleanup: c } =>
       match c {
-        gunbc.remote_operation.RemoteStepCompleted { identity: _, execution: _ } => true
-        gunbc.remote_operation.RemoteStepFailed { identity: _, execution: _ } => false
-        gunbc.remote_operation.RemoteStepUnattempted { identity: _ } => false
+        RemoteStepCompleted { identity: _, execution: _ } => true
+        RemoteStepFailed { identity: _, execution: _ } => false
+        RemoteStepUnattempted { identity: _ } => false
       }
   }
 }
@@ -649,8 +649,8 @@ func spark_grant_probe_outcome(
       principal: spark_managed_executor_login as std.types.NonEmptyStr,
     ),
   ) {
-    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } => gunbc.spark.managed_access_bootstrap.GrantProbeRefused { cause: why }
-    gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } =>
+    TypedArgvExecRefused { reason: why } => gunbc.spark.managed_access_bootstrap.GrantProbeRefused { cause: why }
+    TypedArgvExecConverged { result: r } =>
       if r.success {
         gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: r.stdout }
       } else {
@@ -666,11 +666,11 @@ func spark_grant_install_ci_wet() -> std.process.ProcessExit
   uses net: std.resources.Network
 {
   match prepare_fleet_ssh_agent_context(attempt_raw: spark_grant_install_ci_attempt_raw) {
-    gunbc.fleet_ssh_locus.FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)
+    FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)
     FleetSshContextReady { context: context, receipt: context_receipt } =>
       match spark_converge_target_selection(execute_apply: true) {
-        gunbc.fleet_multi_principal_probe.SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
-        gunbc.fleet_multi_principal_probe.SparkConvergeTargetAllObserveOnly =>
+        SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+        SparkConvergeTargetAllObserveOnly =>
           exit_failure(
             reason: "spark_grant_install_ci_wet: SPARK_CONVERGE_TARGET names no host, and installing sudoers must never fan out across the fleet from an unset variable",
           )

@@ -19,7 +19,7 @@ fn empty_string_list() -> List<String> {
 
 test fn branded_list_first_content_hash_method_nonempty() -> Bool {
   match hash_list().first() {
-    v2.std.optional.Present { value: h } =>
+    Present { value: h } =>
       match h {
         std.content_hash.Fnv1a64(left) =>
           match content_hash_of_value(value: "a" as std.types.NonEmptyStr) {
@@ -32,34 +32,34 @@ test fn branded_list_first_content_hash_method_nonempty() -> Bool {
         Sha1Hash(_) => false
         Sha512Hash(_) => false
       }
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }
 
 test fn branded_list_first_content_hash_method_empty() -> Bool {
   match empty_hash_list().first() {
-    v2.std.optional.Present { value: _ } => false
-    v2.std.optional.Absent => true
+    Present { value: _ } => false
+    Absent => true
   }
 }
 
 test fn branded_list_first_string_method_nonempty() -> Bool {
   match string_list().first() {
-    v2.std.optional.Present { value: s } => s == "hello"
-    v2.std.optional.Absent => false
+    Present { value: s } => s == "hello"
+    Absent => false
   }
 }
 
 test fn branded_list_first_string_method_empty() -> Bool {
   match test.claim.branded_list_first_optional_witness.empty_string_list().first() {
-    v2.std.optional.Present { value: _ } => false
-    v2.std.optional.Absent => true
+    Present { value: _ } => false
+    Absent => true
   }
 }
 
 test fn branded_list_first_content_hash_pipe_nonempty() -> Bool {
   match hash_list() |> first {
-    v2.std.optional.Present { value: h } =>
+    Present { value: h } =>
       match h {
         std.content_hash.Fnv1a64(left) =>
           match content_hash_of_value(value: "a" as std.types.NonEmptyStr) {
@@ -72,27 +72,27 @@ test fn branded_list_first_content_hash_pipe_nonempty() -> Bool {
         Sha1Hash(_) => false
         Sha512Hash(_) => false
       }
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }
 
 test fn branded_list_first_content_hash_pipe_empty() -> Bool {
   match empty_hash_list() |> first {
-    v2.std.optional.Present { value: _ } => false
-    v2.std.optional.Absent => true
+    Present { value: _ } => false
+    Absent => true
   }
 }
 
 test fn branded_list_first_string_pipe_nonempty() -> Bool {
   match string_list() |> first {
-    v2.std.optional.Present { value: s } => s == "hello"
-    v2.std.optional.Absent => false
+    Present { value: s } => s == "hello"
+    Absent => false
   }
 }
 
 test fn branded_list_first_string_pipe_empty() -> Bool {
   match test.claim.branded_list_first_optional_witness.empty_string_list() |> first {
-    v2.std.optional.Present { value: _ } => false
-    v2.std.optional.Absent => true
+    Present { value: _ } => false
+    Absent => true
   }
 }

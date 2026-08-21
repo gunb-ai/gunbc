@@ -4,7 +4,7 @@ module v2.extdeps.formats.spice_passive_projection
 fn passive_terminal_from_node_ref(node: v2.extdeps.formats.spice.NodeRef) -> v2.std.timeseries_signal.PotentialReference {
   match node {
     Ground => GroundReference
-    v2.extdeps.formats.spice.Named { node: NamedNode { name } } => v2.std.timeseries_signal.NodeReference { name: name as String as v2.std.timeseries_signal.CircuitNodeName }
+    Named { node: NamedNode { name } } => v2.std.timeseries_signal.NodeReference { name: name as String as v2.std.timeseries_signal.CircuitNodeName }
   }
 }
 
@@ -44,7 +44,7 @@ fn passive_topology_from_component(component: v2.extdeps.formats.spice.Component
 
 fn passive_spec_from_component(component: v2.extdeps.formats.spice.Component) -> v2.std.optional.Optional<v2.std.timeseries_signal.PassiveComponentSpec> {
   match passive_topology_from_component(component: component) {
-    v2.std.optional.Present { value: topology } => match component {
+    Present { value: topology } => match component {
       Resistor { name: _, n_plus: _, n_minus: _, value: _ } => v2.std.optional.Present {
         value: v2.std.timeseries_signal.ResistorPassive { topology: topology }
       }
@@ -56,6 +56,6 @@ fn passive_spec_from_component(component: v2.extdeps.formats.spice.Component) ->
       }
       _ => v2.std.optional.Absent
     }
-    v2.std.optional.Absent => v2.std.optional.Absent
+    Absent => v2.std.optional.Absent
   }
 }

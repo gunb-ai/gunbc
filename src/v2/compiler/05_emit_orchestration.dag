@@ -209,19 +209,19 @@ fn orch_emit_run_spelling(r: v2.std.orchestration.Run, medium: v2.std.orchestrat
     o: orch_emit_run_core(r: r, medium: medium),
     f: fn(core) {
       match r.redirect {
-        v2.std.optional.Absent =>
+        Absent =>
           match r.capture {
-            v2.std.optional.Absent => outcome_accepted(core)
-            v2.std.optional.Present { value: cap } =>
+            Absent => outcome_accepted(core)
+            Present { value: cap } =>
               orch_emit_apply_capture(stmt: core, capture: cap, medium: medium)
           }
-        v2.std.optional.Present { value: redir } =>
+        Present { value: redir } =>
           bind_outcome(
             o: orch_emit_run_with_redir(stmt: core, redir: redir),
             f: fn(with_redir) {
               match r.capture {
-                v2.std.optional.Absent => outcome_accepted(with_redir)
-                v2.std.optional.Present { value: cap } =>
+                Absent => outcome_accepted(with_redir)
+                Present { value: cap } =>
                   orch_emit_apply_capture(stmt: with_redir, capture: cap, medium: medium)
               }
             }
@@ -322,7 +322,7 @@ fn orch_emit_predicate(p: v2.std.orchestration.Predicate, medium: v2.std.orchest
           )
         }
       )
-    v2.std.orchestration.Not { inner: inner } =>
+    Not { inner: inner } =>
       bind_outcome(
         o: orch_emit_predicate(p: inner, medium: medium),
         f: fn(spelling) {
@@ -332,7 +332,7 @@ fn orch_emit_predicate(p: v2.std.orchestration.Predicate, medium: v2.std.orchest
           )
         }
       )
-    v2.std.orchestration.And { lhs: lhs, rhs: rhs } =>
+    And { lhs: lhs, rhs: rhs } =>
       bind_outcome(
         o: orch_emit_predicate(p: lhs, medium: medium),
         f: fn(left) {
@@ -347,7 +347,7 @@ fn orch_emit_predicate(p: v2.std.orchestration.Predicate, medium: v2.std.orchest
           )
         }
       )
-    v2.std.orchestration.Or { lhs: lhs, rhs: rhs } =>
+    Or { lhs: lhs, rhs: rhs } =>
       bind_outcome(
         o: orch_emit_predicate(p: lhs, medium: medium),
         f: fn(left) {
@@ -452,8 +452,8 @@ fn orch_pipeline_needs_block_body(then_: v2.std.orchestration.Pipeline, else_: v
     true
   } else {
     match else_ {
-      v2.std.optional.Absent => false
-      v2.std.optional.Present { value: else_pipeline } => length(xs: else_pipeline.steps) > 1
+      Absent => false
+      Present { value: else_pipeline } => length(xs: else_pipeline.steps) > 1
     }
   }
 }
@@ -483,7 +483,7 @@ fn orch_emit_if_step(
         f: fn(then_medium) {
           let then_body = orch_if_arm_body_or_noop(carried: then_medium.carried)
           match else_ {
-            v2.std.optional.Absent =>
+            Absent =>
               bind_outcome(
                 o: if block_body {
                   medium.realize_if_block(cond_spelling, then_body)
@@ -498,7 +498,7 @@ fn orch_emit_if_step(
                   )
                 }
               )
-            v2.std.optional.Present { value: else_pipeline } =>
+            Present { value: else_pipeline } =>
               bind_outcome(
                 o: orch_emit_pipeline(p: else_pipeline, medium: medium),
                 f: fn(else_medium) {
@@ -621,17 +621,17 @@ fn orch_emit_step(s: v2.std.orchestration.PipelineStep, medium: v2.std.orchestra
         )
       }
     Exit { status: st } => orch_emit_exit_step(status: st)
-    v2.std.orchestration.If { cond: c, then_: t, else_: e } =>
+    If { cond: c, then_: t, else_: e } =>
       orch_emit_if_step(cond: c, then_: t, else_: e, medium: medium)
     For { binder: _, over: _, body: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_step_for_unsupported))
-    v2.std.orchestration.While { cond: c, body: b } =>
+    While { cond: c, body: b } =>
       orch_emit_while_step(cond: c, body: b, medium: medium)
     Retry { body: b, escalations: e, on_exhausted: x } =>
       orch_emit_retry(body: b, escalations: e, on_exhausted: x, medium: medium)
-    v2.std.orchestration.Let { name: n, value: v } =>
+    Let { name: n, value: v } =>
       orch_emit_let_step(name: n, value: v, medium: medium)
-    v2.std.orchestration.Call { callee: c, args: a } =>
+    Call { callee: c, args: a } =>
       orch_emit_call_step(callee: c, args: a, medium: medium)
   }
 }
@@ -660,17 +660,17 @@ fn orch_retry_step_run(s: v2.std.orchestration.PipelineStep) -> v2.std.diagnosti
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
     Exit { status: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
-    v2.std.orchestration.If { cond: _, then_: _, else_: _ } =>
+    If { cond: _, then_: _, else_: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
     For { binder: _, over: _, body: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
-    v2.std.orchestration.While { cond: _, body: _ } =>
+    While { cond: _, body: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
     Retry { body: _, escalations: _, on_exhausted: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
-    v2.std.orchestration.Let { name: _, value: _ } =>
+    Let { name: _, value: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
-    v2.std.orchestration.Call { callee: _, args: _ } =>
+    Call { callee: _, args: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
   }
 }
@@ -704,13 +704,13 @@ fn orch_emit_retry_run(
   medium: v2.std.orchestration_emit.OrchestrationEmitMedium
 ) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   match redirect {
-    v2.std.optional.Present { value: _ } =>
+    Present { value: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_redirect_present))
-    v2.std.optional.Absent =>
+    Absent =>
       match capture {
-        v2.std.optional.Present { value: _ } =>
+        Present { value: _ } =>
           outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_capture_present))
-        v2.std.optional.Absent =>
+        Absent =>
           orch_emit_run(
             r: v2.std.orchestration.Run { command: command, env: env, redirect: v2.std.optional.Absent, capture: v2.std.optional.Absent },
             medium: medium
@@ -988,7 +988,7 @@ fn orch_emit_retry(
             }
           )
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }

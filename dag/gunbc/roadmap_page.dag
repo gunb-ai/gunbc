@@ -311,7 +311,7 @@ fn script_inline_text(children: List<std.markup.Fragment>) -> String {
   fold(children, init: "", f: (acc, c) => match c {
     FragmentText { content } => concat(acc, content)
     RawNode { content } => concat(acc, content)
-    std.markup.Element { tag: _, attributes: _, children: _ } => acc
+    Element { tag: _, attributes: _, children: _ } => acc
   })
 }
 
@@ -323,7 +323,7 @@ fn collect_script_violations(node: std.markup.Fragment, known_src: String) -> Li
   match node {
     FragmentText { content: _ } => []
     RawNode { content: _ } => []
-    std.markup.Element { tag, attributes, children } =>
+    Element { tag, attributes, children } =>
       if tag == "script" {
         let inline = script_inline_text(children: children)
         let src = script_src_attr(attributes: attributes)
@@ -509,8 +509,8 @@ fn group_markup(g: gunbc.roadmap_model.SectionGroup, merged: List<Int>) -> List<
 
 fn element_markup(e: gunbc.roadmap_model.SectionElement, merged: List<Int>) -> List<std.markup.Fragment> {
   match e {
-    gunbc.roadmap_model.Prose { prose } => [ el_class("p", "prose", markdown_inlines_to_fragments(inlines: parse_inline_markdown_minimal(text: prose.content))) ]
-    gunbc.roadmap_model.Group { group } => group_markup(g: group, merged: merged)
+    Prose { prose } => [ el_class("p", "prose", markdown_inlines_to_fragments(inlines: parse_inline_markdown_minimal(text: prose.content))) ]
+    Group { group } => group_markup(g: group, merged: merged)
   }
 }
 
@@ -538,8 +538,8 @@ fn group_statuses(g: gunbc.roadmap_model.SectionGroup, merged: List<Int>) -> Lis
 
 fn section_statuses(s: gunbc.roadmap_document.RoadmapSection, merged: List<Int>) -> List<String> {
   fold(s.elements, init: [], f: (acc, e) => match e {
-    gunbc.roadmap_model.Prose { prose: _ } => acc
-    gunbc.roadmap_model.Group { group } => concat(acc, group_statuses(g: group, merged: merged))
+    Prose { prose: _ } => acc
+    Group { group } => concat(acc, group_statuses(g: group, merged: merged))
   })
 }
 

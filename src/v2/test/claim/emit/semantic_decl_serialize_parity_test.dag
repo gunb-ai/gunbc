@@ -116,21 +116,21 @@ test fn same_tokens_decoded_bindings_match_live_bindings() -> v2.std.logic.Bool 
                               ) {
                                 Accepted { value: live_medium, diagnostics: _ } =>
                                   decoded_medium.carried == live_medium.carried
-                                v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                                Rejected { diagnostics: _ } => false
                               }
-                            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                            Rejected { diagnostics: _ } => false
                           }
-                        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                        Rejected { diagnostics: _ } => false
                       }
-                    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                    Rejected { diagnostics: _ } => false
                   }
-                v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                Rejected { diagnostics: _ } => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -172,21 +172,21 @@ test fn same_tokens_decoded_lex_matches_live_lex() -> v2.std.logic.Bool {
                               ) {
                                 Accepted { value: live_medium, diagnostics: _ } =>
                                   decoded_medium.carried == live_medium.carried
-                                v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                                Rejected { diagnostics: _ } => false
                               }
-                            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                            Rejected { diagnostics: _ } => false
                           }
-                        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                        Rejected { diagnostics: _ } => false
                       }
-                    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                    Rejected { diagnostics: _ } => false
                   }
-                v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                Rejected { diagnostics: _ } => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -209,13 +209,13 @@ test fn decoded_lex_live_bindings_match_live_target() -> v2.std.logic.Bool {
                 )
               ) {
                 Accepted { value: live_lex_text, diagnostics: _ } => decoded_lex_text == live_lex_text
-                v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                Rejected { diagnostics: _ } => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -231,13 +231,13 @@ test fn decoded_row_profile_matches_golden() -> v2.std.logic.Bool {
                 target: bool_serialize_target(lex: decoded_lex, bindings: decoded_bindings)
               ) {
                 Accepted { value: t, diagnostics: _ } => t == bool_golden
-                v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                Rejected { diagnostics: _ } => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -249,14 +249,14 @@ test fn live_rebuilt_target_matches_golden() -> v2.std.logic.Bool {
     )
   ) {
     Accepted { value: t, diagnostics: _ } => t == bool_golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn live_via_bool_serialize_target_matches_golden() -> v2.std.logic.Bool {
   match bool_text_with_target(target: rust_enum_general_decl_structural_target_model()) {
     Accepted { value: t, diagnostics: _ } => t == bool_golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -281,13 +281,13 @@ test fn generic_row_profile_matches_golden() -> v2.std.logic.Bool {
                 target: target
               ) {
                 Accepted { value: t, diagnostics: _ } => t == bool_golden
-                v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                Rejected { diagnostics: _ } => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

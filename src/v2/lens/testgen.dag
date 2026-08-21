@@ -327,7 +327,7 @@ fn refinement_preservation_subject_nonempty_list_base() -> v2.std.diagnostic.Out
         },
         diagnostics: v2.std.diagnostic.None,
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -364,7 +364,7 @@ fn testgen_scheduled_refinement_preservation_generators() -> v2.std.diagnostic.O
         value: [generator],
         diagnostics: d,
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
 
@@ -496,7 +496,7 @@ fn testgen_emit_algebra_law_claim(
           },
           diagnostics: v2.std.diagnostic.None,
         }
-      v2.std.diagnostic.Rejected { diagnostics: d } =>
+      Rejected { diagnostics: d } =>
         v2.std.diagnostic.Rejected { diagnostics: d }
     }
   }
@@ -512,7 +512,7 @@ fn algebra_law_manual_claim_case(anchor: v2.std.verification.ManualAnchorKey) ->
         },
         diagnostics: v2.std.diagnostic.None,
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
@@ -948,7 +948,7 @@ fn witness_validity_outcome_node(o: v2.std.diagnostic.Outcome<v2.std.witness.Str
           diagnostics: v2.std.diagnostic.None
         }
       })
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       bind_outcome(o: witness_validity_non_empty_diagnostics_node(d: d), f: fn(dn) {
         v2.std.diagnostic.Accepted {
           value: v2.std.node.Node {
@@ -1061,7 +1061,7 @@ fn append_nat_obligation_if_law_matches(
 ) -> v2.std.diagnostic.Outcome<v2.std.nat.NatAlgebraLawObligation> {
   match found {
     Accepted { value: _, diagnostics: None } => found
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       if obligation.law == law {
         v2.std.diagnostic.Accepted { value: obligation, diagnostics: v2.std.diagnostic.None }
       } else {
@@ -1177,7 +1177,7 @@ fn append_nat_algebra_law_schedule_row_if_anchor_matches(
 ) -> v2.std.diagnostic.Outcome<NatAlgebraLawScheduleRow> {
   match found {
     Accepted { value: _, diagnostics: _ } => found
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       bind_outcome(
         o: nat_algebra_law_schedule_row_from_obligation(obligation: obligation),
         f: fn(row) {
@@ -1641,7 +1641,7 @@ fn all_generators_carry_provenance(gens: List<Generator<TestgenConcept>>) -> Boo
 fn outcome_generators_carry_provenance(o: v2.std.diagnostic.Outcome<List<Generator<TestgenConcept>>>) -> Bool {
   match o {
     Accepted { value: gens, diagnostics: d } => all_generators_carry_provenance(gens: gens)
-    v2.std.diagnostic.Rejected { diagnostics: d } => false
+    Rejected { diagnostics: d } => false
   }
 }
 
@@ -1686,7 +1686,7 @@ fn testgen_scheduled_generators_outcome() -> v2.std.diagnostic.Outcome<List<Gene
 fn testgen_scheduled_generators_roster_holds() -> Bool {
   match testgen_scheduled_generators_outcome() {
     Accepted { value: gens, diagnostics: _ } => length(xs: gens) > 0
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -1757,7 +1757,7 @@ fn testgen_run_receipt_carries_profile_roster(receipt: TestgenRunReceipt) -> Boo
           profile_ref: receipt.profile_ref
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -1816,7 +1816,7 @@ fn manual_test_claim_for_manual_anchor(key: v2.std.verification.ManualAnchorKey)
             label: refinement_label_nonempty_list_base,
             subject: subject
           )
-        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
       }
   }
 }
@@ -1924,7 +1924,7 @@ fn testgen_concept_for_manual_claim(claim: v2.std.verification.TestClaim) -> v2.
             },
             diagnostics: v2.std.diagnostic.None,
           }
-        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
       }
     ManualClaimAnchor { manual_anchor: manual_anchor } =>
       match algebra_law_subject_for_manual_anchor(anchor: manual_anchor) {
@@ -1935,7 +1935,7 @@ fn testgen_concept_for_manual_claim(claim: v2.std.verification.TestClaim) -> v2.
             },
             diagnostics: v2.std.diagnostic.None,
           }
-        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
       }
   }
 }
@@ -1944,10 +1944,10 @@ fn bootstrap_claim_generator_for_manual_anchor(
   key: v2.std.verification.ManualAnchorKey
 ) -> v2.std.diagnostic.Outcome<Generator<TestgenConcept>> {
   match manual_test_claim_for_manual_anchor(key: key) {
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     Accepted { value: claim, diagnostics: d0 } =>
       match testgen_concept_for_manual_claim(claim: claim) {
-        v2.std.diagnostic.Rejected { diagnostics: r } =>
+        Rejected { diagnostics: r } =>
           v2.std.diagnostic.Rejected { diagnostics: rejected_with_pending(pending: d0, rejected: r) }
         Accepted { value: slot, diagnostics: d1 } =>
           v2.std.diagnostic.Accepted {

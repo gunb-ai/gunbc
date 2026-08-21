@@ -104,7 +104,7 @@ fn dag_node_surface_leaf_mix(node: v1.std.core.Node) -> String {
 
 fn literal_value_fingerprint(value: std.syntax.LiteralValue) -> String {
   match value {
-    std.syntax.LitStr { value: v } => concat("LitStr:", v)
+    LitStr { value: v } => concat("LitStr:", v)
     LitInt { value: v } => concat("LitInt:", to_string(value: v))
     LitFloat { value: v } => concat("LitFloat:", v)
     LitBool { value: v } => concat("LitBool:", to_string(value: v))

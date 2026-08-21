@@ -7,8 +7,8 @@ type Witness<C>
 
 fn witness_from_optional<T>(opt: v2.std.optional.Optional<T>, absent: v2.std.diagnostic.Diagnostic) -> Witness<T> {
   match opt {
-    v2.std.optional.Present { value: v } => Holds { value: v }
-    v2.std.optional.Absent => Violates { diagnostic: absent }
+    Present { value: v } => Holds { value: v }
+    Absent => Violates { diagnostic: absent }
   }
 }
 

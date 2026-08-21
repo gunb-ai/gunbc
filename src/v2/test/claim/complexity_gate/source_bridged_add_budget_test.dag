@@ -31,6 +31,6 @@ test fn table_fixture_add_budget_claim_holds() -> v2.std.logic.Bool {
     Accepted { value: body, diagnostics: _ } =>
       table_fixture_add_cost_lens_holds(body: body)
         && table_fixture_add_tightened_budget_fails_dominance(body: body, row: row)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

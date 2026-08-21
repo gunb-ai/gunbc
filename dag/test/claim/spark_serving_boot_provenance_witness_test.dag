@@ -20,11 +20,11 @@ test fn a_unit_active_early_in_the_boot_was_started_by_the_manager() -> Bool {
     active_enter: test.claim.spark_serving_boot_provenance_witness_test.ok(out: "4200000\n"),
     uptime: uptime(secs: "259200"),
   ) {
-    gunbc.spark.serving_boot_provenance.UnitStartedByManagerAtBoot { active_enter_monotonic: e, uptime: u } =>
+    UnitStartedByManagerAtBoot { active_enter_monotonic: e, uptime: u } =>
       microsecond_count(e) == 4200000 && microsecond_count(u) == 259200000000
-    gunbc.spark.serving_boot_provenance.UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
-    gunbc.spark.serving_boot_provenance.UnitNotActiveAtAll => false
-    gunbc.spark.serving_boot_provenance.BootProvenanceUnobserved { cause: _ } => false
+    UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitNotActiveAtAll => false
+    BootProvenanceUnobserved { cause: _ } => false
   }
 }
 
@@ -37,10 +37,10 @@ test fn a_unit_started_hours_into_the_boot_does_not_establish_durability() -> Bo
     active_enter: test.claim.spark_serving_boot_provenance_witness_test.ok(out: "7200000000"),
     uptime: uptime(secs: "259200"),
   ) {
-    gunbc.spark.serving_boot_provenance.UnitStartedAfterBoot { active_enter_monotonic: e, uptime: _ } => microsecond_count(e) == 7200000000
-    gunbc.spark.serving_boot_provenance.UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
-    gunbc.spark.serving_boot_provenance.UnitNotActiveAtAll => false
-    gunbc.spark.serving_boot_provenance.BootProvenanceUnobserved { cause: _ } => false
+    UnitStartedAfterBoot { active_enter_monotonic: e, uptime: _ } => microsecond_count(e) == 7200000000
+    UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitNotActiveAtAll => false
+    BootProvenanceUnobserved { cause: _ } => false
   }
 }
 
@@ -64,10 +64,10 @@ test fn only_the_boot_started_arm_establishes_durability() -> Bool {
 // as a probe that did not.
 test fn a_zero_timestamp_is_an_inactive_unit_not_an_unobserved_one() -> Bool {
   match spark_serving_classify_boot_provenance(active_enter: test.claim.spark_serving_boot_provenance_witness_test.ok(out: "0\n"), uptime: uptime(secs: "100")) {
-    gunbc.spark.serving_boot_provenance.UnitNotActiveAtAll => true
-    gunbc.spark.serving_boot_provenance.BootProvenanceUnobserved { cause: _ } => false
-    gunbc.spark.serving_boot_provenance.UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
-    gunbc.spark.serving_boot_provenance.UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitNotActiveAtAll => true
+    BootProvenanceUnobserved { cause: _ } => false
+    UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
   }
 }
 
@@ -78,10 +78,10 @@ test fn a_failed_probe_is_unobserved_and_not_a_durability_verdict() -> Bool {
     active_enter: bad(err: "Failed to connect to bus"),
     uptime: uptime(secs: "100"),
   ) {
-    gunbc.spark.serving_boot_provenance.BootProvenanceUnobserved { cause: c } => string_contains(c as String, "Failed to connect to bus")
-    gunbc.spark.serving_boot_provenance.UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
-    gunbc.spark.serving_boot_provenance.UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
-    gunbc.spark.serving_boot_provenance.UnitNotActiveAtAll => false
+    BootProvenanceUnobserved { cause: c } => string_contains(c as String, "Failed to connect to bus")
+    UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitNotActiveAtAll => false
   }
 }
 
@@ -92,10 +92,10 @@ test fn an_unreadable_uptime_refuses_rather_than_deciding() -> Bool {
     active_enter: test.claim.spark_serving_boot_provenance_witness_test.ok(out: "4200000"),
     uptime: bad(err: "cat: /proc/uptime: Permission denied"),
   ) {
-    gunbc.spark.serving_boot_provenance.BootProvenanceUnobserved { cause: c } => string_contains(c as String, "Permission denied")
-    gunbc.spark.serving_boot_provenance.UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
-    gunbc.spark.serving_boot_provenance.UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
-    gunbc.spark.serving_boot_provenance.UnitNotActiveAtAll => false
+    BootProvenanceUnobserved { cause: c } => string_contains(c as String, "Permission denied")
+    UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitNotActiveAtAll => false
   }
 }
 
@@ -106,19 +106,19 @@ test fn the_boot_window_is_the_boundary_that_decides() -> Bool {
     active_enter: test.claim.spark_serving_boot_provenance_witness_test.ok(out: to_string(microsecond_count(spark_serving_boot_start_window()))),
     uptime: uptime(secs: "100"),
   ) {
-    gunbc.spark.serving_boot_provenance.UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } =>
+    UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } =>
       match spark_serving_classify_boot_provenance(
         active_enter: test.claim.spark_serving_boot_provenance_witness_test.ok(out: to_string(microsecond_count(spark_serving_boot_start_window()) + 1)),
         uptime: uptime(secs: "100"),
       ) {
-        gunbc.spark.serving_boot_provenance.UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => true
-        gunbc.spark.serving_boot_provenance.UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
-        gunbc.spark.serving_boot_provenance.UnitNotActiveAtAll => false
-        gunbc.spark.serving_boot_provenance.BootProvenanceUnobserved { cause: _ } => false
+        UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => true
+        UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
+        UnitNotActiveAtAll => false
+        BootProvenanceUnobserved { cause: _ } => false
       }
-    gunbc.spark.serving_boot_provenance.UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
-    gunbc.spark.serving_boot_provenance.UnitNotActiveAtAll => false
-    gunbc.spark.serving_boot_provenance.BootProvenanceUnobserved { cause: _ } => false
+    UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
+    UnitNotActiveAtAll => false
+    BootProvenanceUnobserved { cause: _ } => false
   }
 }
 

@@ -77,7 +77,7 @@ fn is_exec_refused(o: gunbc.roadmap_belt_actuate.BeltExecOutcome) -> Bool {
 
 fn is_spawn_failed(o: gunbc.roadmap_belt_actuate.BeltSpawnOutcome) -> Bool {
   match o {
-    gunbc.roadmap_belt_actuate.SpawnFailed { node_id: _, step: _, detail: _, provider: _ } => true
+    SpawnFailed { node_id: _, step: _, detail: _, provider: _ } => true
     Spawned { node_id: _, session_name: _, provider: _ } => false
   }
 }

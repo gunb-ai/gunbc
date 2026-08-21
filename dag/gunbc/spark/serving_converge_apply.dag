@@ -92,13 +92,13 @@ func spark_serving_run_operation(
   uses net: std.resources.Network
 {
   match operation {
-    gunbc.remote_operation.RemoteArgv { argv: argv } =>
+    RemoteArgv { argv: argv } =>
       gunbc.remote_operation.RemoteArgvExecution {
         outcome: run_typed_argv_transport(argv: argv, transport: transport),
       }
-    gunbc.remote_operation.RemoteFileBytes { write: w, mode: m } =>
+    RemoteFileBytes { write: w, mode: m } =>
       match transport {
-        gunbc.host_effect.FleetSsh { target: t, context: ctx } =>
+        FleetSsh { target: t, context: ctx } =>
           gunbc.remote_operation.RemoteFileExecution {
             outcome: converge_typed_remote_file(
               target: t,
@@ -114,7 +114,7 @@ func spark_serving_run_operation(
               reason: "file write requires an anchored FleetSsh transport; LocalShell carries no remote target",
             },
           }
-        gunbc.host_effect.SshShell { ssh_host: h } =>
+        SshShell { ssh_host: h } =>
           gunbc.remote_operation.RemoteFileExecution {
             outcome: gunbc.typed_remote_file_write.TypedRemoteFileConvergenceRefused {
               step: "transport",
@@ -124,7 +124,7 @@ func spark_serving_run_operation(
               ], ""),
             },
           }
-        gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+        EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
           gunbc.remote_operation.RemoteFileExecution {
             outcome: gunbc.typed_remote_file_write.TypedRemoteFileConvergenceRefused {
               step: "transport",
@@ -203,9 +203,9 @@ func spark_serving_run_step_sequence(
 fn spark_serving_step_sequence_failed(standings: std.types.List<gunbc.remote_operation.RemoteStepStanding>) -> Bool {
   fold(standings, init: false, f: fn(acc, st) {
     match st {
-      gunbc.remote_operation.RemoteStepFailed { identity: _, execution: _ } => true
-      gunbc.remote_operation.RemoteStepCompleted { identity: _, execution: _ } => acc
-      gunbc.remote_operation.RemoteStepUnattempted { identity: _ } => acc
+      RemoteStepFailed { identity: _, execution: _ } => true
+      RemoteStepCompleted { identity: _, execution: _ } => acc
+      RemoteStepUnattempted { identity: _ } => acc
     }
   })
 }

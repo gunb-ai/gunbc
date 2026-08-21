@@ -40,7 +40,7 @@ test fn rejecting_lens_blocks_before_compile_claim_holds() -> v2.std.logic.Bool 
     lenses: [v2.test.lens_application.rejecting_lens_blocks_before_compile.rejecting_lens],
     mode: v2.compiler.compile.TranslateTo { target: rejecting_lens_target_model_stub }
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: r } =>
+    Rejected { diagnostics: r } =>
       v2.test.lens_application.empty_required_lenses_skip_gate.non_empty_diagnostics_contain_reason(d: r, reason: ^compile_lens_gate_rejected)
     Accepted { value: _, diagnostics: _ } => false
   }

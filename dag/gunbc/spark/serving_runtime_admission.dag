@@ -25,10 +25,10 @@ fn spark_serving_observed_nvidia_driver_from_field(
   field: gunbc.spark.serving_readback_parse.SparkServingReadbackField,
 ) -> extdeps.ollama.gpu_support.OllamaNvidiaDriverVersion? {
   match field {
-    gunbc.spark.serving_readback_parse.SparkServingReadbackPresent { value: v } =>
+    SparkServingReadbackPresent { value: v } =>
       ollama_nvidia_driver_version_from_wire_text(raw: v)
-    gunbc.spark.serving_readback_parse.SparkServingReadbackAbsent => none
-    gunbc.spark.serving_readback_parse.SparkServingReadbackRefused { cause: _ } => none
+    SparkServingReadbackAbsent => none
+    SparkServingReadbackRefused { cause: _ } => none
   }
 }
 
@@ -42,9 +42,9 @@ fn spark_serving_runtime_admission_refusal_cause(
     model: spark_serving_desired_model_ref,
     observed_nvidia_driver: spark_serving_observed_nvidia_driver_from_field(field: nvidia_driver),
   ) {
-    extdeps.ollama.capability.OllamaRuntimeAdmissionApplicable => none
-    extdeps.ollama.capability.OllamaRuntimeAdmissionUnmet { cause: c } => Present { value: c }
-    extdeps.ollama.capability.OllamaRuntimeAdmissionUnobserved { cause: c } => Present { value: c }
-    extdeps.ollama.capability.OllamaRuntimeAdmissionUncatalogued { cause: c } => Present { value: c }
+    OllamaRuntimeAdmissionApplicable => none
+    OllamaRuntimeAdmissionUnmet { cause: c } => Present { value: c }
+    OllamaRuntimeAdmissionUnobserved { cause: c } => Present { value: c }
+    OllamaRuntimeAdmissionUncatalogued { cause: c } => Present { value: c }
   }
 }

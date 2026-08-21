@@ -54,7 +54,7 @@ fn empty_canonical_symbol_set() -> Set<v2.std.node.Symbol> {
 
 fn try_edge_declared_binding(e: v2.std.node.Edge) -> DeclaredBinding? {
   match e.label {
-    v2.std.node.Named { name: sym } => v2.std.optional.optional_present(value: DeclaredBinding { name: sym })
+    Named { name: sym } => v2.std.optional.optional_present(value: DeclaredBinding { name: sym })
     Positional => v2.std.optional.optional_absent()
   }
 }
@@ -63,7 +63,7 @@ fn direct_atom_binding_fold(base: Map<v2.std.node.Symbol, v2.std.node.Symbol>) -
   v2.std.node.NodeFold {
     init: fn(n0) {
       match n0.kind {
-        v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } } =>
+        TypeNode { connective: v2.std.node.Atom { identity: sym } } =>
           v2.std.collection.map_insert(base, sym, sym)
         _ => base
       }
@@ -79,8 +79,8 @@ fn harvest_conj_named_bindings(root: v2.std.node.Node, acc: Map<v2.std.node.Symb
     TypeNode { connective: v2.std.node.Conj } =>
       fold(root.children, init: acc, f: fn(a, e) {
         match try_edge_declared_binding(e: e) {
-          v2.std.optional.Present { value: b } => v2.std.collection.map_insert(a, b.name, b.name)
-          v2.std.optional.Absent => a
+          Present { value: b } => v2.std.collection.map_insert(a, b.name, b.name)
+          Absent => a
         }
       })
     _ => acc
@@ -115,12 +115,12 @@ fn add_arrow_domain_named_params(n: v2.std.node.Node, acc: Map<v2.std.node.Symbo
     TypeNode { connective: v2.std.node.Arrow } =>
       if count(n.children) >= 1 {
         match first(n.children) {
-          v2.std.optional.Present { value: e0 } =>
+          Present { value: e0 } =>
             harvest_direct_atom_binding(
               root: e0.target,
               acc: harvest_conj_named_bindings(root: e0.target, acc: acc)
             )
-          v2.std.optional.Absent => acc
+          Absent => acc
         }
       } else {
         acc
@@ -134,9 +134,9 @@ fn add_bind_atom_binder(n: v2.std.node.Node, acc: Map<v2.std.node.Symbol, v2.std
     ComputationNode { behavior: v2.std.node.Bind } =>
       if count(n.children) == 3 {
         match first(n.children) {
-          v2.std.optional.Present { value: e0 } =>
+          Present { value: e0 } =>
             harvest_direct_atom_binding(root: e0.target, acc: acc)
-          v2.std.optional.Absent => acc
+          Absent => acc
         }
       } else {
         acc
@@ -221,9 +221,9 @@ fn lookup_chain(s: Scope, name: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome
     ScopeFrame { locals: m, outer: o } =>
       match v2.std.collection.map_get(m, name) {
         Accepted { value: opt, diagnostics: d_here } => match opt {
-          v2.std.optional.Present { value: v } =>
+          Present { value: v } =>
             v2.std.diagnostic.Accepted { value: v2.std.optional.optional_present(value: v), diagnostics: d_here }
-          v2.std.optional.Absent =>
+          Absent =>
             match lookup_chain(s: o, name: name) {
               Accepted { value: found, diagnostics: d_outer } =>
                 v2.std.diagnostic.Accepted {
@@ -241,8 +241,8 @@ fn lookup_chain(s: Scope, name: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome
     ScopeRoot { module: mod } =>
       match v2.std.collection.map_get(mod.bindings, name) {
         Accepted { value: opt, diagnostics: d } => match opt {
-          v2.std.optional.Present { value: v } => v2.std.diagnostic.Accepted { value: v2.std.optional.optional_present(value: v), diagnostics: d }
-          v2.std.optional.Absent => v2.std.diagnostic.Accepted { value: v2.std.optional.optional_absent(), diagnostics: d }
+          Present { value: v } => v2.std.diagnostic.Accepted { value: v2.std.optional.optional_present(value: v), diagnostics: d }
+          Absent => v2.std.diagnostic.Accepted { value: v2.std.optional.optional_absent(), diagnostics: d }
         }
         Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
       }
@@ -294,7 +294,7 @@ fn symbol_index_lookup_position(ctx: ResolveContext) -> v2.std.qualified_name.Qu
 
 fn symbol_index_node_identity(node: v2.std.node.Node, fallback: v2.std.node.Symbol) -> v2.std.node.Symbol {
   match node.kind {
-    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } } => sym
+    TypeNode { connective: v2.std.node.Atom { identity: sym } } => sym
     _ => fallback
   }
 }
@@ -344,7 +344,7 @@ fn try_resolve_qualified_name_node(ctx: ResolveContext, n: v2.std.node.Node) -> 
     Accepted { value: path, diagnostics: pending } =>
       if v2.std.algebra.length(xs: path) > 1 {
         match v2.std.symbol_index.symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
-          v2.std.optional.Present { value: resolved_node } =>
+          Present { value: resolved_node } =>
             v2.std.optional.optional_present(
               value: v2.std.diagnostic.Accepted {
                 value: canonical_atom(
@@ -357,7 +357,7 @@ fn try_resolve_qualified_name_node(ctx: ResolveContext, n: v2.std.node.Node) -> 
                 diagnostics: pending
               }
             )
-          v2.std.optional.Absent =>
+          Absent =>
             v2.std.optional.optional_present(
               value: v2.std.diagnostic.Rejected {
                 diagnostics: v2.std.diagnostic.rejected_with_pending(
@@ -379,12 +379,12 @@ fn resolve_atom(ctx: ResolveContext, n: v2.std.node.Node, identity: v2.std.node.
   } else {
     match lookup_chain(s: ctx.scope, name: identity) {
       Accepted { value: found, diagnostics: pending } => match found {
-        v2.std.optional.Present { value: canonical } =>
+        Present { value: canonical } =>
           v2.std.diagnostic.Accepted {
             value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
             diagnostics: pending
           }
-        v2.std.optional.Absent =>
+        Absent =>
           match lookup_symbol_index_atom_identity(ctx: ctx, name: identity) {
             SymbolIndexAtomHit { canonical: canonical } =>
               v2.std.diagnostic.Accepted {
@@ -449,7 +449,7 @@ fn resolve_transform_operator_child(
   n: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match n.kind {
-    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } =>
+    TypeNode { connective: v2.std.node.Atom { identity: id } } =>
       resolve_surface_operator_atom(ctx: ctx, n: n, identity: id)
     _ => resolve_node(ctx: ctx, n: n)
   }
@@ -533,7 +533,7 @@ fn resolve_node(
   n: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match n.kind {
-    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } =>
+    TypeNode { connective: v2.std.node.Atom { identity: id } } =>
       resolve_atom(ctx: ctx, n: n, identity: id)
     TypeNode { connective: v2.std.node.Arrow } =>
       match resolve_edges_first_outer_then_inner(
@@ -558,8 +558,8 @@ fn resolve_node(
       resolve_transform_children(ctx: ctx, n: n)
     TypeNode { connective: v2.std.node.Conj } =>
       match try_resolve_qualified_name_node(ctx: ctx, n: n) {
-        v2.std.optional.Present { value: outcome } => outcome
-        v2.std.optional.Absent => resolve_children_homogeneous_scope(ctx: ctx, n: n)
+        Present { value: outcome } => outcome
+        Absent => resolve_children_homogeneous_scope(ctx: ctx, n: n)
       }
     TypeNode { connective: _ } =>
       resolve_children_homogeneous_scope(ctx: ctx, n: n)
@@ -585,7 +585,7 @@ fn resolve_child_edge(
   e: v2.std.node.Edge
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Edge> {
   match e.label {
-    v2.std.node.Named { name: sym } =>
+    Named { name: sym } =>
       if ctx.under_module_root
         && resolve_preserve_module_root_named_edge(name: sym, target: e.target) {
         v2.std.diagnostic.Accepted { value: e, diagnostics: v2.std.diagnostic.None }
@@ -632,12 +632,12 @@ fn domain_root_has_named_bindings(root: v2.std.node.Node) -> Bool {
           acc
         } else {
           match try_edge_declared_binding(e: e) {
-            v2.std.optional.Present { value: _ } => true
-            v2.std.optional.Absent => false
+            Present { value: _ } => true
+            Absent => false
           }
         }
       })
-    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: _ } } => true
+    TypeNode { connective: v2.std.node.Atom { identity: _ } } => true
     _ => false
   }
 }
@@ -647,8 +647,8 @@ fn arrow_domain_has_named_bindings(n: v2.std.node.Node) -> Bool {
     TypeNode { connective: v2.std.node.Arrow } =>
       if count(n.children) >= 1 {
         match first(n.children) {
-          v2.std.optional.Present { value: e0 } => domain_root_has_named_bindings(root: e0.target)
-          v2.std.optional.Absent => false
+          Present { value: e0 } => domain_root_has_named_bindings(root: e0.target)
+          Absent => false
         }
       } else {
         false
@@ -782,7 +782,7 @@ fn resolve_edges_first_outer_then_inner(
 
 fn resolve_bind_binder_target(t: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match t.kind {
-    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } =>
+    TypeNode { connective: v2.std.node.Atom { identity: id } } =>
       v2.std.diagnostic.Accepted { value: canonical_atom(identity: id, occurrence_id: t.occurrence_id), diagnostics: v2.std.diagnostic.None }
     _ =>
       v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: malformed_tree_diagnostic(n: t)) }

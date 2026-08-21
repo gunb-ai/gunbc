@@ -79,7 +79,7 @@ fn gcloud_stderr_auth_deficit(stderr: String) -> GcloudAuthDeficit? {
     init: none,
     f: (selected, row) =>
       match selected {
-        v2.std.optional.Present { value: _ } => selected
+        Present { value: _ } => selected
         Absent => gcloud_auth_deficit_for_pattern(stderr: stderr, row: row)
       },
   )

@@ -29,11 +29,11 @@ fn corpus_scan_add(a: CorpusScan, b: CorpusScan) -> CorpusScan {
 fn scan_dag_file(path: String, lm: v2.std.language_model.LanguageModel) -> CorpusScan {
   let text = filesystem_read(path: path).content
   match v2.compiler.tokenize.tokenize(text: text, file: ^mandatory_tag_corpus_file, rules: lm.lex) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       CorpusScan { module_count: 1, finding_count: 0, stage_reject_count: 1, walk_failure_count: 0 }
     Accepted { value: ts, diagnostics: _ } =>
       match v2.compiler.parse.parse_module(tokens: ts, grammar: lm.grammar) {
-        v2.std.diagnostic.Rejected { diagnostics: _ } =>
+        Rejected { diagnostics: _ } =>
           CorpusScan { module_count: 1, finding_count: 0, stage_reject_count: 1, walk_failure_count: 0 }
         Accepted { value: artifact, diagnostics: _ } =>
           CorpusScan {

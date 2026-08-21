@@ -68,7 +68,7 @@ test fn passing_verification_exits_success() -> Bool {
   match verification_process_exit(
     outcome: gunbc.roadmap_verify.VerificationPassed { node_id: "n", validations_run: 1 },
   ) {
-    std.process.ExitSuccess => true
+    ExitSuccess => true
     ExitFailure { code: _, reason: _ } => false
   }
 }
@@ -82,7 +82,7 @@ test fn refusal_and_failure_and_unbound_all_exit_failure() -> Bool {
     },
   ) {
     ExitFailure { code: _, reason: _ } => true
-    std.process.ExitSuccess => false
+    ExitSuccess => false
   }
   let failed = match verification_process_exit(
     outcome: gunbc.roadmap_verify.VerificationFailed {
@@ -92,13 +92,13 @@ test fn refusal_and_failure_and_unbound_all_exit_failure() -> Bool {
     },
   ) {
     ExitFailure { code: _, reason: _ } => true
-    std.process.ExitSuccess => false
+    ExitSuccess => false
   }
   let unbound = match verification_process_exit(
     outcome: gunbc.roadmap_verify.VerificationUnbound { node_id: "n" },
   ) {
     ExitFailure { code: _, reason: _ } => true
-    std.process.ExitSuccess => false
+    ExitSuccess => false
   }
   refused && failed && unbound
 }

@@ -167,7 +167,7 @@ func merge_target_refresh() -> MergeTargetRefresh {
                   )
                   if merge_freshness_verdict_is_consumed_to_block() {
                     match verdict {
-                      gunbc.merge_admission.MergeAdmitted => MergeTargetRefreshed
+                      MergeAdmitted => MergeTargetRefreshed
                       _ => MergeTargetRefreshRefused { cause: RefreshVerdictDenied { verdict: merge_admission_verdict_label(v: verdict) } }
                     }
                   } else {

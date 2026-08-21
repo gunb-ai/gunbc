@@ -227,7 +227,7 @@ func materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> K
       if back.success {
         let materialized_identity = std.content_hash.content_hash_of_value(value: back.content as std.types.NonEmptyStr)
         match std.content_hash.compare_content_hash(left: registry_identity, right: materialized_identity) {
-          std.content_hash.ContentHashEqual => {
+          ContentHashEqual => {
             let anchor = known_hosts_anchor_seal(
               path: path,
               registry_identity: registry_identity,
@@ -254,7 +254,7 @@ func materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> K
               KnownHostsReady { anchor: anchor, receipt: receipt }
             }
           }
-          std.content_hash.ContentHashDifferent => KnownHostsRefused {
+          ContentHashDifferent => KnownHostsRefused {
             first: join([
               "known-hosts materialization refused: the bytes read back from ", path as String,
               " do not hash-equal the enrollment registry (registry ",
@@ -265,7 +265,7 @@ func materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> K
             ], ""),
             more: [],
           }
-          std.content_hash.ContentHashCrossFamilyIncomparable => KnownHostsRefused {
+          ContentHashCrossFamilyIncomparable => KnownHostsRefused {
             first: "known-hosts materialization refused: registry and materialized identities are in different hash families and are therefore incomparable, so agreement was not established",
             more: [],
           }
@@ -589,10 +589,10 @@ fn portable_remote_words(raws: std.types.List<String>) -> PortableRemoteWords? {
   match admitted {
     Absent => none
     Present { value: ws } => match v2.std.algebra.list_head(ws) {
-      v2.std.algebra.HeadAbsent => none
-      v2.std.algebra.HeadFound { value: h } => match v2.std.algebra.list_tail(ws) {
-        v2.std.algebra.TailFound { tail: t } => Present { value: PortableRemoteWords { first: h, more: t } }
-        v2.std.algebra.TailAbsent => Present { value: PortableRemoteWords { first: h, more: [] } }
+      HeadAbsent => none
+      HeadFound { value: h } => match v2.std.algebra.list_tail(ws) {
+        TailFound { tail: t } => Present { value: PortableRemoteWords { first: h, more: t } }
+        TailAbsent => Present { value: PortableRemoteWords { first: h, more: [] } }
       }
     }
   }

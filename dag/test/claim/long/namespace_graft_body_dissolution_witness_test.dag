@@ -83,12 +83,12 @@ fn normalized_root_node(t: v2.compiler.normalized_tree.NormalizedTree) -> v2.std
 
 fn tree_contains_atom(n: v2.std.node.Node, sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   match v2.std.grammar.node_atom_identity_optional(node: n) {
-    v2.std.optional.Present { value: id } =>
+    Present { value: id } =>
       match id == sym {
         true => true
         false => children_contain_atom(n: n, sym: sym)
       }
-    v2.std.optional.Absent => children_contain_atom(n: n, sym: sym)
+    Absent => children_contain_atom(n: n, sym: sym)
   }
 }
 
@@ -121,8 +121,8 @@ test fn witness_type_only_module_dissolution_refuses_RED() -> v2.std.logic.Bool 
 test fn witness_lowered_body_module_still_grafts() -> v2.std.logic.Bool {
   normalize_accepts(source: lowered_body_source)
     && (match normalized_tree_optional(source: lowered_body_source) {
-      v2.std.optional.Present { value: n } => tree_contains_atom(n: n, sym: ^list_append)
-      v2.std.optional.Absent => false
+      Present { value: n } => tree_contains_atom(n: n, sym: ^list_append)
+      Absent => false
     })
 }
 

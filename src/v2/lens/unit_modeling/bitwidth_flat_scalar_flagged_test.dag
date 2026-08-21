@@ -22,7 +22,7 @@ data bitwidth_flat_scalar_input: v2.std.node.Node = v2.std.node.Node {
 
 test fn bitwidth_flat_scalar_flagged_holds() -> v2.std.logic.Bool {
   match unit_modeling_gate(node: bitwidth_flat_scalar_input) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }

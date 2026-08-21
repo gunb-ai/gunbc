@@ -128,8 +128,8 @@ fn emit_call_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.inferred_
 
 fn emit_call_eval_composed_facts(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   match v2.test.emit.rust_call_emit.rust_call_facts_miss(key: key) {
-    v2.std.optional.Present { value: f } => v2.std.optional.optional_present(value: f)
-    v2.std.optional.Absent => v2.std.optional.optional_present(value: emit_call_eval_generic_facts(node: key))
+    Present { value: f } => v2.std.optional.optional_present(value: f)
+    Absent => v2.std.optional.optional_present(value: emit_call_eval_generic_facts(node: key))
   }
 }
 
@@ -175,7 +175,7 @@ fn emit_call_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<v2.std.node
   match run.verdict {
     Pass => true
     SemanticMismatch { actual: _, falsification: _ } => false
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
@@ -185,7 +185,7 @@ fn emit_call_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimRu
   match run.verdict {
     SemanticMismatch { actual: _, falsification: _ } => true
     Pass => false
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
@@ -202,7 +202,7 @@ test fn rust_emit_host_call_eval_subgraph_holds() -> v2.std.logic.Bool {
   ) {
     Accepted { value: v, diagnostics: d } =>
       (v == emit_call_eval_octet_value(n: 7)) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

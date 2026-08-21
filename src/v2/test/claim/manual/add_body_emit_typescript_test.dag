@@ -310,7 +310,7 @@ fn add_body_ts_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler
         value: add_body_ts_inferred_tree_for(root: root),
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -321,7 +321,7 @@ fn add_body_ts_producer_swapped_inferred_tree() -> v2.std.diagnostic.Outcome<v2.
         value: add_body_ts_inferred_tree_for(root: root),
         diagnostics: d
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -347,7 +347,7 @@ test fn add_body_ts_emit_add_fn_accepts_holds() -> v2.std.logic.Bool {
   match add_body_ts_emit_from_producer_tree(target: ts_target_model()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == ts_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -357,7 +357,7 @@ test fn add_body_ts_emit_operand_swap_discriminates() -> v2.std.logic.Bool {
       (source.carried == add_body_ts_emit_operand_swap_source_text) &&
       (source.carried != ts_source_text) &&
       (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -367,7 +367,7 @@ test fn add_body_ts_emit_catalog_minus_discriminates() -> v2.std.logic.Bool {
       (source.carried == add_body_ts_emit_catalog_minus_source_text) &&
       (source.carried != ts_source_text) &&
       (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -375,7 +375,7 @@ test fn add_body_ts_emit_missing_catalog_rejects() -> v2.std.logic.Bool {
   match add_body_ts_emit_from_producer_tree(
     target: add_body_ts_target_model_missing_operator_catalog()
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }

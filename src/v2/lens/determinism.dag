@@ -42,8 +42,8 @@ data determinism_root_registry: std.types.List<DeterminismRoot> = [
 fn determinism_root_for_symbol(registry: std.types.List<DeterminismRoot>, s: v2.std.node.Symbol) -> v2.std.optional.Optional<DeterminismRoot> {
   fold(registry, init: v2.std.optional.optional_absent(), f: fn(acc, row) {
     match acc {
-      v2.std.optional.Present { value: _ } => acc
-      v2.std.optional.Absent => if row.signature == s { v2.std.optional.optional_present(value: row) } else { v2.std.optional.optional_absent() }
+      Present { value: _ } => acc
+      Absent => if row.signature == s { v2.std.optional.optional_present(value: row) } else { v2.std.optional.optional_absent() }
     }
   })
 }
@@ -51,11 +51,11 @@ fn determinism_root_for_symbol(registry: std.types.List<DeterminismRoot>, s: v2.
 fn node_callee_symbol(n: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   if v2.std.node_query.node_is_call(node: n) {
     match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: n), index: 0) {
-      v2.std.optional.Present { value: callee } => match callee.kind {
-        v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } } => v2.std.optional.optional_present(value: sym)
+      Present { value: callee } => match callee.kind {
+        TypeNode { connective: v2.std.node.Atom { identity: sym } } => v2.std.optional.optional_present(value: sym)
         _ => v2.std.optional.optional_absent()
       }
-      v2.std.optional.Absent => v2.std.optional.optional_absent()
+      Absent => v2.std.optional.optional_absent()
     }
   } else {
     v2.std.optional.optional_absent()
@@ -64,11 +64,11 @@ fn node_callee_symbol(n: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.no
 
 fn local_determinism_axis(n: v2.std.node.Node) -> std.determinism.Determinism {
   match node_callee_symbol(n: n) {
-    v2.std.optional.Present { value: sym } => match determinism_root_for_symbol(registry: determinism_root_registry, s: sym) {
-      v2.std.optional.Present { value: root } => std.determinism.NonDeterministic { source: root.source }
-      v2.std.optional.Absent => std.determinism.Deterministic
+    Present { value: sym } => match determinism_root_for_symbol(registry: determinism_root_registry, s: sym) {
+      Present { value: root } => std.determinism.NonDeterministic { source: root.source }
+      Absent => std.determinism.Deterministic
     }
-    v2.std.optional.Absent => std.determinism.Deterministic
+    Absent => std.determinism.Deterministic
   }
 }
 
@@ -104,8 +104,8 @@ fn determinism_leak_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnos
 fn determinism_contract_witness(signature: v2.std.node.Symbol, n: v2.std.node.Node) -> v2.std.witness.Witness<v2.std.determinism.DeterminismFact> {
   let fact = determinism_fact_for_node(signature: signature, n: n)
   match fact.classification {
-    std.determinism.NonDeterministic { source: _ } => v2.std.witness.Violates { diagnostic: determinism_leak_diagnostic(n: n) }
-    std.determinism.Deterministic => v2.std.witness.Holds { value: fact }
+    NonDeterministic { source: _ } => v2.std.witness.Violates { diagnostic: determinism_leak_diagnostic(n: n) }
+    Deterministic => v2.std.witness.Holds { value: fact }
   }
 }
 
@@ -113,8 +113,8 @@ data compile_gate_law: String = "INTERIM CONTAINMENT, mechanically preventive fo
 
 fn local_determinism_findings(n: v2.std.node.Node) -> std.types.List<v2.std.diagnostic.Diagnostic> {
   match local_determinism_axis(n: n) {
-    std.determinism.NonDeterministic { source: _ } => [determinism_leak_diagnostic(n: n)]
-    std.determinism.Deterministic => []
+    NonDeterministic { source: _ } => [determinism_leak_diagnostic(n: n)]
+    Deterministic => []
   }
 }
 

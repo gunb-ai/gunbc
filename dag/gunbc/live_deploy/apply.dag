@@ -45,7 +45,7 @@ fn live_deploy_fold(
     fixture_host: fixture_host
   )
   match gate {
-    std.access.Deny { refusal: _ } =>
+    Deny { refusal: _ } =>
       live_deploy_mutation_denied(
         target: target,
         effect: effect,
@@ -127,12 +127,12 @@ fn live_deploy_apply_readiness_gate_with_readiness(
       match readiness {
         NotConverged { reason: why, applied: _ } =>
           match mutation {
-            std.realization_reconcile.Converged { evidence: _, applied: intent } =>
+            Converged { evidence: _, applied: intent } =>
               std.realization_reconcile.NotConverged { reason: why, applied: intent }
             NotConverged { reason: _, applied: intent } =>
               std.realization_reconcile.NotConverged { reason: why, applied: intent }
           }
-        std.realization_reconcile.Converged { evidence: _, applied: _ } => mutation
+        Converged { evidence: _, applied: _ } => mutation
       }
     }
   }
@@ -186,12 +186,12 @@ fn live_deploy_apply_via_transport(
       match digest {
         NotConverged { reason: why, applied: _ } =>
           match gated {
-            std.realization_reconcile.Converged { evidence: _, applied: intent } =>
+            Converged { evidence: _, applied: intent } =>
               std.realization_reconcile.NotConverged { reason: why, applied: intent }
             NotConverged { reason: _, applied: intent } =>
               std.realization_reconcile.NotConverged { reason: why, applied: intent }
           }
-        std.realization_reconcile.Converged { evidence: _, applied: _ } => gated
+        Converged { evidence: _, applied: _ } => gated
       }
     }
   }
@@ -236,7 +236,7 @@ fn live_deploy_access_preflight_for(access: gunbc.ci_deploy_access.DeployAccess)
           },
           applied: intent,
         }
-      std.access.Deny { refusal: _ } =>
+      Deny { refusal: _ } =>
         std.realization_reconcile.NotConverged {
           reason: gunbc.ci_deploy_access.deploy_access_decision_reason(d: gate),
           applied: gunbc.host_effect.HostEffectIntent {
@@ -293,7 +293,7 @@ fn live_deploy_reconciliation_exit(r: std.realization_reconcile.Reconciliation<g
   } else {
     match r {
       NotConverged { reason: why, applied: _ } => std.process.exit_failure(reason: why)
-      std.realization_reconcile.Converged { evidence: _, applied: _ } => std.process.ExitSuccess
+      Converged { evidence: _, applied: _ } => std.process.ExitSuccess
     }
   }
 }

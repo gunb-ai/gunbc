@@ -120,7 +120,7 @@ fn bash_fold_direct_serialize_matches_golden(emitted: v2.std.node.Node, target: 
   match target_serialize_source_from_model(target: target, emitted: emitted) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == golden) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -526,7 +526,7 @@ test fn bash_fold_with_redir_redir_to_file_var_holds() -> v2.std.logic.Bool {
 test fn bash_fold_heredoc_holds() -> v2.std.logic.Bool {
   match bash_emit_heredoc(path_spelling: "'out'", delimiter: "EOF", body: "hello") {
     Accepted { value: folded, diagnostics: _ } => folded == bash_fold_heredoc_golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -638,14 +638,14 @@ test fn bash_fold_negation_subshell_false_holds() -> v2.std.logic.Bool {
     inner: bash_build_subshell_from_stmts(stmts: [bash_build_command_from_lits(lits: ["false"])])
   ) {
     Accepted { value: folded, diagnostics: _ } => folded == bash_fold_negation_golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn bash_fold_negation_subshell_rawline_holds() -> v2.std.logic.Bool {
   match bash_emit_negation_spelling(inner_spelling: "(do_verify\nmore)") {
     Accepted { value: folded, diagnostics: _ } => folded == bash_fold_negation_raw_golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -677,7 +677,7 @@ test fn bash_fold_env_prefixed_lit_t_holds() -> v2.std.logic.Bool {
     command_spelling: "'true'"
   ) {
     Accepted { value: folded, diagnostics: _ } => folded == bash_fold_env_prefixed_golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

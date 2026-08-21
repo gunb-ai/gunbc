@@ -48,7 +48,7 @@ fn emit_fold_eval_diagnostic(reason: v2.std.node.Symbol, node: v2.std.node.Node)
 
 fn emit_fold_eval_nth_positional_target(node: v2.std.node.Node, wanted: Int) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match v2.std.collection.list_at_optional(xs: node.children, index: wanted) {
-    v2.std.optional.Present { value: child } =>
+    Present { value: child } =>
       match child {
         Edge { label: Positional, target: t } => v2.std.diagnostic.outcome_accepted(value: test.claim.pcb_footprint_witness.t)
         Edge { label: _, target: _ } =>
@@ -56,7 +56,7 @@ fn emit_fold_eval_nth_positional_target(node: v2.std.node.Node, wanted: Int) -> 
             d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_child_miss, node: node)
           )
       }
-    v2.std.optional.Absent =>
+    Absent =>
       v2.std.diagnostic.outcome_rejected(
         d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_child_miss, node: node)
       )
@@ -74,11 +74,11 @@ fn emit_fold_eval_closure_operator_is_sub(closure: v2.std.node.Node) -> v2.std.l
                 TypeNode { connective: Atom { identity: id } } => id == ^dag_token_minus
                 _ => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
         _ => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -148,7 +148,7 @@ fn emit_fold_eval_call_primitive(
       } else {
         v2.std.diagnostic.outcome_accepted(value: emit_fold_eval_octet_value(n: 7))
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -248,7 +248,7 @@ fn emit_fold_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<v2.std.node
   match run.verdict {
     Pass => true
     SemanticMismatch { actual: _, falsification: _ } => false
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
@@ -258,7 +258,7 @@ fn emit_fold_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimRu
   match run.verdict {
     SemanticMismatch { actual: _, falsification: _ } => true
     Pass => false
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }

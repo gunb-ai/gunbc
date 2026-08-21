@@ -18,8 +18,8 @@ test fn host_dependency_absent_wire_is_stable() -> Bool {
 
 test fn host_cli_dependency_failure_receipt_absent_on_present() -> Bool {
   match host_cli_dependency_failure_receipt(observation: HostCliDependencyPresent) {
-    v2.std.optional.Absent => true
-    v2.std.optional.Present { value: _ } => false
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
@@ -34,7 +34,7 @@ test fn host_cli_dependency_failure_receipt_present_on_absent() -> Bool {
       hint: "apt install npm",
     },
   ) {
-    v2.std.optional.Present { value: got } => got == wire
-    v2.std.optional.Absent => false
+    Present { value: got } => got == wire
+    Absent => false
   }
 }

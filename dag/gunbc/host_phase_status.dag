@@ -43,9 +43,9 @@ fn host_phase_verdict_gate_accepts(
     Present { value: _ } => true
     Absent =>
       match verdict {
-        std.upsert_decision.Converged => false
-        std.upsert_decision.Absent => true
-        std.upsert_decision.Drifted => true
+        Converged => false
+        Absent => true
+        Drifted => true
         Conflict => true
         Inaccessible => true
         UnknownRefused => true
@@ -172,9 +172,9 @@ fn observation_verdict_eq(a: std.upsert_decision.ObservationVerdict, b: std.upse
 
 fn observation_verdict_rank(v: std.upsert_decision.ObservationVerdict) -> Int {
   match v {
-    std.upsert_decision.Converged => 0
-    std.upsert_decision.Absent => 1
-    std.upsert_decision.Drifted => 2
+    Converged => 0
+    Absent => 1
+    Drifted => 2
     Conflict => 3
     Inaccessible => 4
     UnknownRefused => 5
@@ -250,9 +250,9 @@ fn host_phase_observation_coverage_count(enrollments: List<gunbc.host_assimilati
 
 fn host_phase_cell_is_converged(c: HostPhaseCellStatus) -> Bool {
   match host_phase_cell_verdict(c: c) {
-    std.upsert_decision.Converged => true
-    std.upsert_decision.Absent => false
-    std.upsert_decision.Drifted => false
+    Converged => true
+    Absent => false
+    Drifted => false
     Conflict => false
     Inaccessible => false
     UnknownRefused => false

@@ -5,7 +5,7 @@ data dag_compile_clean_failure_receipt_note: String = "The loudness half: the fl
 
 fn dag_compile_clean_failure_reason(exit: std.process.ProcessExit) -> String {
   match exit {
-    std.process.ExitSuccess => ""
+    ExitSuccess => ""
     ExitFailure { code: _, reason: reason } => reason
   }
 }

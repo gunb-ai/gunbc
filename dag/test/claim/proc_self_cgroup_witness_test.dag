@@ -281,7 +281,7 @@ test fn cgroup_locate_body_preserves_ascent_holds() -> Bool {
 
 test fn nearest_ancestor_predicate_uses_regular_file_peak_holds() -> Bool {
   match nearest_ancestor_while_predicate(spec: cgroup_locate_spec) {
-    std.path_intent.And { lhs: _, rhs: std.path_intent.And { lhs: _, rhs: std.path_intent.Not { inner: std.path_intent.PathEntryKind { path: _, kind: std.filesystem.types.RegularFile } } } } => true
+    And { lhs: _, rhs: std.path_intent.And { lhs: _, rhs: std.path_intent.Not { inner: std.path_intent.PathEntryKind { path: _, kind: std.filesystem.types.RegularFile } } } } => true
     _ => false
   }
 }

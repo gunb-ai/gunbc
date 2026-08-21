@@ -257,7 +257,7 @@ fn stage_emission_equality(
           right: fw.candidate
         }
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       v2.std.witness.Violates { diagnostic: d.head }
   }
 }

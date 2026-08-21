@@ -66,23 +66,23 @@ test fn replace_action_projects_five_step_repair_sequence() -> Bool {
          RepairExecute { slot: _, steps: steps } =>
            list_length(items: steps) == 5
              && match steps.first() {
-                  gunbc.runner_connectivity_repair_plan.ObserveRunnerLocalState { slot: _ } => true
+                  ObserveRunnerLocalState { slot: _ } => true
                   _ => false
                 }
              && match steps.skip(n: 1).first() {
-                  gunbc.runner_connectivity_repair_plan.ObserveGitHubRunnerRegistration { slot: _ } => true
+                  ObserveGitHubRunnerRegistration { slot: _ } => true
                   _ => false
                 }
              && match steps.skip(n: 2).first() {
-                  gunbc.runner_connectivity_repair_plan.ReplaceRunnerIncarnation { slot: _, from: _, unit: _ } => true
+                  ReplaceRunnerIncarnation { slot: _, from: _, unit: _ } => true
                   _ => false
                 }
              && match steps.skip(n: 3).first() {
-                  gunbc.runner_connectivity_repair_plan.ObserveRunnerLocalState { slot: _ } => true
+                  ObserveRunnerLocalState { slot: _ } => true
                   _ => false
                 }
              && match steps.skip(n: 4).first() {
-                  gunbc.runner_connectivity_repair_plan.ObserveGitHubRunnerRegistration { slot: _ } => true
+                  ObserveGitHubRunnerRegistration { slot: _ } => true
                   _ => false
                 }
          RepairNoop { reason: _ } => false

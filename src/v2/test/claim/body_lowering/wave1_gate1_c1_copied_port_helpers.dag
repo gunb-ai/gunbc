@@ -7,41 +7,41 @@ fn wave1_gate1_c1_derived_indices_match_retired_registry_holds() -> v2.std.logic
   match derive_copied_port_index_from_arrow(
     arrow: copied_port_citation_list_append.arrow
   ) {
-    v2.std.optional.Present { value: append_idx } =>
+    Present { value: append_idx } =>
       match derive_copied_port_index_from_arrow(
         arrow: copied_port_citation_list_snoc_item.arrow
       ) {
-        v2.std.optional.Present { value: snoc_idx } =>
+        Present { value: snoc_idx } =>
           match derive_copied_port_index_from_arrow(
             arrow: copied_port_citation_map_merge.arrow
           ) {
-            v2.std.optional.Present { value: merge_idx } =>
+            Present { value: merge_idx } =>
               (append_idx == 0)
               && (snoc_idx == 0)
               && (merge_idx == 1)
               && match copied_port_index_of(combiner: ^list_append) {
-                v2.std.optional.Present { value: lookup } => lookup == append_idx
-                v2.std.optional.Absent => false
+                Present { value: lookup } => lookup == append_idx
+                Absent => false
               }
-            v2.std.optional.Absent => false
+            Absent => false
           }
-        v2.std.optional.Absent => false
+        Absent => false
       }
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }
 
 fn wave1_gate1_c1_unpriceable_combiner_refuses_holds() -> v2.std.logic.Bool {
   match copied_port_index_of(combiner: ^wave1_gate1_c1_unpriceable_combiner) {
-    v2.std.optional.Absent => true
-    v2.std.optional.Present { value: _ } => false
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
 fn wave1_gate1_c1_unregistered_combiner_lookup_refuses_holds() -> v2.std.logic.Bool {
   match copied_port_index_of(combiner: ^mystery_unpriceable_combiner_xyz) {
-    v2.std.optional.Absent => true
-    v2.std.optional.Present { value: _ } => false
+    Absent => true
+    Present { value: _ } => false
   }
 }
 

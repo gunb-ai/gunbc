@@ -3,7 +3,7 @@ module test.claim.infer_occurrence_binding_scaffold_witness_test
 
 test fn infer_occurrence_binding_v1_adapter_scaffold_is_seed_retained() -> Bool {
   match gunbc.infer_occurrence_binding_scaffold.infer_occurrence_binding_v1_adapter_scaffold {
-    std.disposition.Scaffold {
+    Scaffold {
       dissolves_to: SingleAuthority,
       bind: DeclarationRef {
         module_path: "std.occurrence_binding",

@@ -48,7 +48,7 @@ fn refusal_label(o: product.fabric.budget.MoneyOutcome) -> std.types.NonEmptyStr
       match r {
         CurrencyMismatch { account: _, account_currency: _, presented_currency: _ } => "currency-mismatch"
         StaleLeaseGeneration { reference: _, presented: _ } => "stale-generation"
-        product.fabric.budget.LedgerRefused { account: _, refusal: lr } =>
+        LedgerRefused { account: _, refusal: lr } =>
           match lr {
             ExceedsAppropriation { requested: _, committed: _, ceiling: _ } => "exceeds-appropriation"
             UnknownEncumbrance { reference: _ } => "unknown-encumbrance"
@@ -245,7 +245,7 @@ test fn the_currency_refusal_is_distinct_from_a_ceiling_refusal() -> Bool {
       match r {
         CurrencyMismatch { account: _, account_currency: ac, presented_currency: pc } =>
           ac == std.currency.Usd && pc == std.currency.Eur
-        product.fabric.budget.LedgerRefused { account: _, refusal: _ } => false
+        LedgerRefused { account: _, refusal: _ } => false
         StaleLeaseGeneration { reference: _, presented: _ } => false
       }
   }

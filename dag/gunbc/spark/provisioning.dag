@@ -224,10 +224,10 @@ fn post_setup_observation_gap(observation: PostSetupObservation) -> std.types.No
         SetupSurfaceUnobserved => Present { value: "post-OOBE setup surface not observed" }
         SetupSurfaceIncomplete => Present { value: "post-OOBE setup surface observed incomplete" }
         SetupSurfaceCompleted => match observation.software {
-          extdeps.systems.nvidia_dgx_spark_setup.InitialUpdateBehaviorUnobserved =>
+          InitialUpdateBehaviorUnobserved =>
             Present { value: "initial software baseline not observed on the device" }
-          extdeps.systems.nvidia_dgx_spark_setup.InitialUpdateAppliedDuringSetup => Absent
-          extdeps.systems.nvidia_dgx_spark_setup.InitialUpdateDeferredToOperator => Absent
+          InitialUpdateAppliedDuringSetup => Absent
+          InitialUpdateDeferredToOperator => Absent
         }
       }
     }
@@ -270,7 +270,7 @@ fn classify_spark_progress(
         phase: phase,
         cause: PrerequisiteNotYetReached { prerequisite: p }
       }
-    gunbc.spark.provisioning.ProgressAwaitingHuman { intervention: i } =>
+    ProgressAwaitingHuman { intervention: i } =>
       SparkProvisioningHumanInterventionRequired { intervention: i }
     ProgressDeviceRejectedField { field: f } =>
       SparkProvisioningRefused { phase: phase, cause: InstallerRejectedField { field: f } }
@@ -330,9 +330,9 @@ fn factory_oobe_human_burden(
         cause: "bootstrap controller standing unknown: whether a machine can drive the OOBE association has not been established, and guessing either way prices a burden that may not exist."
       }
     BootstrapControllerReady => match spark_credentials_standing(c: credentials) {
-      gunbc.spark.bootstrap_credential.BootstrapCredentialsMaterialized =>
+      BootstrapCredentialsMaterialized =>
         BurdenDerived { burden: std.human_intervention.ProvisioningHumanBurden { interventions: [] } }
-      gunbc.spark.bootstrap_credential.BootstrapCredentialsNotMaterialized =>
+      BootstrapCredentialsNotMaterialized =>
         BurdenDerived {
           burden: std.human_intervention.ProvisioningHumanBurden {
             interventions: [spark_credential_materialization_intervention()]

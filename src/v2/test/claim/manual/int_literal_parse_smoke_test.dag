@@ -9,8 +9,8 @@ fn int_literal_smoke_first_int_token_lexeme(source_text: String) -> v2.std.optio
     Accepted { value: stream, diagnostics: _ } =>
       fold(token_stream_all(stream: stream), init: optional_absent(), f: fn(acc, tok) {
         match acc {
-          v2.std.optional.Present { value: _ } => acc
-          v2.std.optional.Absent =>
+          Present { value: _ } => acc
+          Absent =>
             if tok.class == ^dag_token_int_literal {
               optional_present(value: tok.lexeme)
             } else {
@@ -18,18 +18,18 @@ fn int_literal_smoke_first_int_token_lexeme(source_text: String) -> v2.std.optio
             }
         }
       })
-    v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
+    Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
 test fn int_literal_loop_token_lexeme_builds_holds() -> v2.std.logic.Bool {
   match int_literal_smoke_first_int_token_lexeme(source_text: v2.compiler.ingested_fixture_arrows.ingested_loop_module_source) {
-    v2.std.optional.Present { value: lexeme } =>
+    Present { value: lexeme } =>
       match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence) {
         Accepted { value: _, diagnostics: _ } => true
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }
 
@@ -40,27 +40,27 @@ test fn int_literal_from_token_lexeme_holds() -> v2.std.logic.Bool {
   match v2.compiler.tokenize.tokenize(text: "1", file: ^int_literal_smoke_file, rules: lm.lex) {
     Accepted { value: stream, diagnostics: _ } =>
       match v2.std.compilers.lexing.token_stream_first(stream: stream) {
-        v2.std.optional.Present { value: tok } =>
+        Present { value: tok } =>
           match dag_int_literal_node_from_lexeme(lexeme: tok.lexeme, occurrence_id: SyntheticOccurrence) {
             Accepted { value: _, diagnostics: _ } => true
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.optional.Absent => false
+        Absent => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn int_literal_string_to_digits_holds() -> v2.std.logic.Bool {
   match integer_string_to_decimal_digits_optional(s: "1") {
-    v2.std.optional.Present { value: _ } => true
+    Present { value: _ } => true
     _ => false
   }
 }
 
 test fn int_literal_magnitude_node_holds() -> v2.std.logic.Bool {
   match integer_string_to_decimal_digits_optional(s: "1") {
-    v2.std.optional.Present { value: digits } => {
+    Present { value: digits } => {
       let _node = integer_decimal_magnitude_node(magnitude: decimal_digits_to_magnitude(digits: digits))
       true
     }
@@ -71,7 +71,7 @@ test fn int_literal_magnitude_node_holds() -> v2.std.logic.Bool {
 test fn int_literal_node_from_lexeme_one_holds() -> v2.std.logic.Bool {
   match dag_int_literal_node_from_lexeme(lexeme: "1", occurrence_id: SyntheticOccurrence) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -80,8 +80,8 @@ test fn int_literal_magnitude_int_from_node_holds() -> v2.std.logic.Bool {
     Accepted { value: node, diagnostics: _ } =>
       match dag_int_literal_magnitude_int_from_node(node: node) {
         Accepted { value: _, diagnostics: _ } => true
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

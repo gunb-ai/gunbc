@@ -134,9 +134,9 @@ type ModelArtifactAgreement
 
 fn compare_model_artifact(desired: ModelArtifact, loaded: ModelArtifact) -> ModelArtifactAgreement {
   match compare_content_hash(left: desired.identity, right: loaded.identity) {
-    std.content_hash.ContentHashEqual => ArtifactIdentical
-    std.content_hash.ContentHashDifferent => ArtifactDiffers { desired: desired.identity, loaded: loaded.identity }
-    std.content_hash.ContentHashCrossFamilyIncomparable => ArtifactIncomparable {
+    ContentHashEqual => ArtifactIdentical
+    ContentHashDifferent => ArtifactDiffers { desired: desired.identity, loaded: loaded.identity }
+    ContentHashCrossFamilyIncomparable => ArtifactIncomparable {
       cause: "desired and loaded model identities are in different hash families, so agreement was not established" as std.types.NonEmptyStr,
     }
   }
@@ -151,9 +151,9 @@ fn model_label_collision(left: ModelArtifact, right: ModelArtifact) -> Bool {
 
 fn model_artifact_same(left: ModelArtifact, right: ModelArtifact) -> Bool {
   match compare_content_hash(left: left.identity, right: right.identity) {
-    std.content_hash.ContentHashEqual => true
-    std.content_hash.ContentHashDifferent => false
-    std.content_hash.ContentHashCrossFamilyIncomparable => false
+    ContentHashEqual => true
+    ContentHashDifferent => false
+    ContentHashCrossFamilyIncomparable => false
   }
 }
 

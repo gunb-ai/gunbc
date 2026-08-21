@@ -94,7 +94,7 @@ fn emit_field_eval_diagnostic(reason: v2.std.node.Symbol, node: v2.std.node.Node
 
 fn emit_field_eval_field_index_from_transform(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Int> {
   match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: node), index: 2) {
-    v2.std.optional.Present { value: field_node } =>
+    Present { value: field_node } =>
       match field_node.kind {
         TypeNode { connective: Atom { identity: id } } =>
           if id == ^dag_binding_rec_v {
@@ -111,7 +111,7 @@ fn emit_field_eval_field_index_from_transform(node: v2.std.node.Node) -> v2.std.
             d: emit_field_eval_diagnostic(reason: ^emit_field_eval_field_miss, node: node)
           )
       }
-    v2.std.optional.Absent =>
+    Absent =>
       v2.std.diagnostic.outcome_rejected(
         d: emit_field_eval_diagnostic(reason: ^emit_field_eval_field_miss, node: node)
       )
@@ -128,9 +128,9 @@ fn emit_field_eval_call_primitive(
       if field_index == 0 {
         if v2.std.algebra.length(xs: args) == 2 {
           match v2.std.collection.list_at_optional(xs: args, index: 0) {
-            v2.std.optional.Present { value: base } =>
+            Present { value: base } =>
               v2.std.diagnostic.outcome_accepted(value: base)
-            v2.std.optional.Absent =>
+            Absent =>
               v2.std.diagnostic.outcome_rejected(
                 d: emit_field_eval_diagnostic(reason: ^emit_field_eval_args_bad, node: node)
               )
@@ -143,7 +143,7 @@ fn emit_field_eval_call_primitive(
       } else {
         v2.std.diagnostic.outcome_accepted(value: emit_field_eval_octet_value(n: 0))
       }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -273,7 +273,7 @@ fn emit_field_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<v2.std.nod
   match run.verdict {
     Pass => true
     SemanticMismatch { actual: _, falsification: _ } => false
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
@@ -283,7 +283,7 @@ fn emit_field_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimR
   match run.verdict {
     SemanticMismatch { actual: _, falsification: _ } => true
     Pass => false
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
@@ -296,9 +296,9 @@ test fn emit_host_field_access_equals_eval_holds() -> v2.std.logic.Bool {
         && match emit_field_eval_alt_descent_producer_tree() {
           Accepted { value: alt, diagnostics: _ } =>
             emit_field_eval_verdict_is_pass(run: emit_field_eval_run(tree: alt))
-          v2.std.diagnostic.Rejected { diagnostics: _ } => false
+          Rejected { diagnostics: _ } => false
         }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -311,7 +311,7 @@ test fn emit_host_field_access_wrong_fixture_refuses_holds() -> v2.std.logic.Boo
           target: v2.extdeps.languages.rust_test.rust_field_access_target_model_staging()
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

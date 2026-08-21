@@ -39,7 +39,7 @@ test fn modeled_unit_field_admitted_via_always_required_lenses_holds() -> v2.std
     lenses: always_required_lenses()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

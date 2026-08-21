@@ -401,7 +401,7 @@ fn host_converge_slice1_prove_tasks_reapply_noop(unit: std.types.NonEmptyStr, kn
       Present { value: limit } =>
         match host_converge_slice1_tasks_verdict(limit: limit, knob: knob) {
           VerdictConverged => none
-          gunbc.host_converge.Drifted =>
+          Drifted =>
             Present {
               value: "host_converge_slice1: tasks reapply-noop failed — still drifted after second apply; fail-closed",
             }
@@ -437,7 +437,7 @@ fn host_converge_slice1_converge_unit_tasks(host: product.placement_supply.HostI
                     ),
                   }
               }
-            gunbc.host_converge.Drifted =>
+            Drifted =>
               match host_converge_slice1_tasks_guard(unit: unit, target_value: knob.desired) {
                 HostConvergeSlice1TasksUnsafe { unit: _, current_count: cc, target_count: tc } =>
                   HostConvergeSlice1UnitRefused {
@@ -477,7 +477,7 @@ fn host_converge_slice1_converge_unit_tasks(host: product.placement_supply.HostI
                                       ),
                                     }
                                 }
-                              gunbc.host_converge.Drifted =>
+                              Drifted =>
                                 HostConvergeSlice1UnitRefused { unit: unit, reason: "host_converge_slice1: tasks independent read-back after apply still drifted; fail-closed" }
                               Absent =>
                                 HostConvergeSlice1UnitRefused { unit: unit, reason: "host_converge_slice1: tasks read-back after apply returned Absent verdict; fail-closed" }

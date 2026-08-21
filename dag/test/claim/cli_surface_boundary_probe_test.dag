@@ -81,7 +81,7 @@ fn argument_texts(arguments: std.types.List<v2.std.compilers.cli_surface.CliArgu
           v2.std.algebra.list_snoc_item(xs: acc, item: v2.std.compilers.cli_surface.cli_argument_text(argument: argument))
         }
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => std.algebra.Empty
+    Rejected { diagnostics: _ } => std.algebra.Empty
   }
 }
 
@@ -127,7 +127,7 @@ fn grouping_flat_text(arguments: std.types.List<v2.std.compilers.cli_surface.Cli
     binding_spellings: v2.std.collection.empty_map()
   ) {
     Accepted { value: text, diagnostics: _ } => v2.std.compilers.target_model.render_target_text(t: text)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => ""
+    Rejected { diagnostics: _ } => ""
   }
 }
 
@@ -149,7 +149,7 @@ test fn keystone_flat_text_is_nonempty() -> Bool {
   ) {
     Accepted { value: text, diagnostics: _ } =>
       v2.std.compilers.target_model.render_target_text(t: text) == "--color=never"
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -171,7 +171,7 @@ test fn a_bound_fragment_with_no_spelling_refuses() -> Bool {
     lex: probe_lex_rules(),
     binding_spellings: v2.std.collection.empty_map()
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }

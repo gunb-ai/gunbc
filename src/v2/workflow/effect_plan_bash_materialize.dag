@@ -89,13 +89,13 @@ fn effect_plan_bash_argv_nul_index(
   index: Int
 ) -> v2.std.optional.Optional<Int> {
   match list_at_optional(xs: argv, index: index) {
-    v2.std.optional.Present { value: argument } =>
+    Present { value: argument } =>
       if string_contains(s: argument, pattern: "\u{0000}") {
         optional_present(value: index)
       } else {
         effect_plan_bash_argv_nul_index(argv: argv, index: index + 1)
       }
-    v2.std.optional.Absent => optional_absent()
+    Absent => optional_absent()
   }
 }
 
@@ -136,13 +136,13 @@ fn effect_plan_bash_encode_invocation(
   ) {
     ArgvMaterialized { argv: argv } =>
       match effect_plan_bash_argv_nul_index(argv: argv, index: 0) {
-        v2.std.optional.Present { value: argument_index } =>
+        Present { value: argument_index } =>
           effect_plan_bash_refuse(
             step_index: step_index,
             operation: v2.std.optional.Present { value: at },
             cause: ArgumentContainsNul { argument_index: argument_index }
           )
-        v2.std.optional.Absent =>
+        Absent =>
           EffectPlanBashEncodingAccepted {
             encoding: EffectPlanBashEncoded {
               statement: effect_plan_bash_command_from_argv(
@@ -171,7 +171,7 @@ fn effect_plan_bash_encode_step(
         bound: bound,
         step_index: step_index
       )
-    v2.std.effect_plan.If { cond: _, then_: _, else_: _ } =>
+    If { cond: _, then_: _, else_: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: v2.std.optional.Absent,
@@ -179,7 +179,7 @@ fn effect_plan_bash_encode_step(
           kind: UnsupportedIf
         }
       )
-    v2.std.effect_plan.For { binder: _, over: _, body: _ } =>
+    For { binder: _, over: _, body: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: v2.std.optional.Absent,
@@ -187,7 +187,7 @@ fn effect_plan_bash_encode_step(
           kind: UnsupportedFor
         }
       )
-    v2.std.effect_plan.While { cond: _, body: _ } =>
+    While { cond: _, body: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: v2.std.optional.Absent,
@@ -195,7 +195,7 @@ fn effect_plan_bash_encode_step(
           kind: UnsupportedWhile
         }
       )
-    v2.std.effect_plan.Retry { body: _, escalations: _, on_exhausted: _ } =>
+    Retry { body: _, escalations: _, on_exhausted: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: v2.std.optional.Absent,
@@ -203,7 +203,7 @@ fn effect_plan_bash_encode_step(
           kind: UnsupportedRetry
         }
       )
-    v2.std.effect_plan.Let { name: _, value: _ } =>
+    Let { name: _, value: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: v2.std.optional.Absent,
@@ -211,7 +211,7 @@ fn effect_plan_bash_encode_step(
           kind: UnsupportedLet
         }
       )
-    v2.std.effect_plan.Call { callee: _, args: _ } =>
+    Call { callee: _, args: _ } =>
       effect_plan_bash_refuse(
         step_index: step_index,
         operation: v2.std.optional.Absent,
@@ -340,8 +340,8 @@ fn effect_plan_bash_operation_label(
   operation: v2.std.optional.Optional<v2.std.operation_argv.OperationRef>
 ) -> String {
   match operation {
-    v2.std.optional.Present { value: at } => concat(" at ", operation_argv_ref_label(at: at))
-    v2.std.optional.Absent => ""
+    Present { value: at } => concat(" at ", operation_argv_ref_label(at: at))
+    Absent => ""
   }
 }
 
@@ -370,7 +370,7 @@ fn effect_plan_bash_materialize(
           match bash_fold_serialize_node(stmt: statement) {
             Accepted { value: source, diagnostics: _ } =>
               EffectPlanBashMaterialized { source: source }
-            v2.std.diagnostic.Rejected { diagnostics: diagnostics } =>
+            Rejected { diagnostics: diagnostics } =>
               EffectPlanBashMaterializationRefused {
                 refusal: EffectPlanBashRefusal {
                   step_index: -1,

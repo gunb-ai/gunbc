@@ -49,7 +49,7 @@ fn plan_has_change_for_address(
 ) -> Bool {
   any(plan.actions, a =>
     match a {
-      gunbc.membership_reconcile.MemberChanged { at: _, from: f, to: t } =>
+      MemberChanged { at: _, from: f, to: t } =>
         f.address == address
           && t.address == address
           && f.state_digest == from_digest
@@ -72,7 +72,7 @@ fn plan_has_refused_address(
 ) -> Bool {
   any(plan.actions, a =>
     match a {
-      gunbc.membership_reconcile.MemberRemovalRefused { from: m, cause: _ } => m.address == address
+      MemberRemovalRefused { from: m, cause: _ } => m.address == address
       _ => false
     }
   )
@@ -82,23 +82,23 @@ data w_noop_note: String = "Already-correct host converging to ZERO effects is t
 
 test fn w_spark_serving_desired_release_admits_for_admission_backed_witnesses() -> Bool {
   match gunbc.spark_serving_desired.spark_serving_desired_release_admission() {
-    gunbc.spark.serving_desired.SparkServingDesiredAdmitted { serving_release: _ } => true
-    gunbc.spark.serving_desired.SparkServingDesiredRefused { cause: _ } => false
+    SparkServingDesiredAdmitted { serving_release: _ } => true
+    SparkServingDesiredRefused { cause: _ } => false
   }
 }
 
 test fn w_spark_serving_noop_when_converged() -> Bool {
   match gunbc.spark_serving_desired.spark_serving_desired_release_admission() {
-    gunbc.spark.serving_desired.SparkServingDesiredAdmitted { serving_release: r } =>
+    SparkServingDesiredAdmitted { serving_release: r } =>
       let occ = gunbc.spark_serving_desired.spark_serving_occurrence(host: test.claim.spark_serving_membership_witness_test.w_host(), serving_release: r)
       let desired = gunbc.spark_serving_membership.spark_serving_desired_members(occurrence: occ, serving_release: r)
       let plan = gunbc.spark_serving_membership.spark_serving_membership_reconcile(desired: desired, observed: desired)
       gunbc.spark_serving_membership.spark_serving_membership_noop(plan: plan)
         && match gunbc.spark_serving_membership.spark_serving_membership_effects(plan: plan) {
-          gunbc.membership_reconcile.EffectsReady { effects: es } => count(es) == 0
-          gunbc.membership_reconcile.ApplyRefused { refusals: _ } => false
+          EffectsReady { effects: es } => count(es) == 0
+          ApplyRefused { refusals: _ } => false
         }
-    gunbc.spark.serving_desired.SparkServingDesiredRefused { cause: _ } => false
+    SparkServingDesiredRefused { cause: _ } => false
   }
 }
 
@@ -107,8 +107,8 @@ test fn w_spark_serving_noop_when_converged_synthetic_fixture() -> Bool {
   let plan = gunbc.spark_serving_membership.spark_serving_membership_reconcile(desired: [m], observed: [m])
   gunbc.spark_serving_membership.spark_serving_membership_noop(plan: plan)
     && match gunbc.spark_serving_membership.spark_serving_membership_effects(plan: plan) {
-      gunbc.membership_reconcile.EffectsReady { effects: es } => count(es) == 0
-      gunbc.membership_reconcile.ApplyRefused { refusals: _ } => false
+      EffectsReady { effects: es } => count(es) == 0
+      ApplyRefused { refusals: _ } => false
     }
 }
 
@@ -147,13 +147,13 @@ test fn w_spark_serving_runtime_upgrade_is_change_not_remove_add() -> Bool {
 
 test fn w_spark_serving_added_when_runtime_absent() -> Bool {
   match gunbc.spark_serving_desired.spark_serving_desired_release_admission() {
-    gunbc.spark.serving_desired.SparkServingDesiredAdmitted { serving_release: r } =>
+    SparkServingDesiredAdmitted { serving_release: r } =>
       let occ = gunbc.spark_serving_desired.spark_serving_occurrence(host: test.claim.spark_serving_membership_witness_test.w_host(), serving_release: r)
       let desired = gunbc.spark_serving_membership.spark_serving_desired_members(occurrence: occ, serving_release: r)
       let plan = gunbc.spark_serving_membership.spark_serving_membership_reconcile(desired: desired, observed: [])
       gunbc.membership_reconcile.membership_write_count(plan: plan) == count(desired)
         && gunbc.membership_reconcile.membership_removal_count(plan: plan) == 0
-    gunbc.spark.serving_desired.SparkServingDesiredRefused { cause: _ } => false
+    SparkServingDesiredRefused { cause: _ } => false
   }
 }
 
@@ -238,35 +238,35 @@ test fn w_spark_serving_change_projects_effect_replace() -> Bool {
     observed: [test.claim.spark_serving_membership_witness_test.w_runtime_member(state: "v1" as std.types.NonEmptyStr, ownership: gunbc.ownership.Owned)],
   )
   match gunbc.spark_serving_membership.spark_serving_membership_effects(plan: plan) {
-    gunbc.membership_reconcile.EffectsReady { effects: es } =>
+    EffectsReady { effects: es } =>
       count(es) == 1
         && any(es, e =>
              match e {
-               gunbc.membership_reconcile.EffectReplace { from: f, to: t } =>
+               EffectReplace { from: f, to: t } =>
                  f.address == gunbc.spark_serving_membership.SparkServingRuntimeRootAddress
                    && f.state_digest == ("v1" as std.types.NonEmptyStr)
                    && t.state_digest == ("v2" as std.types.NonEmptyStr)
-               gunbc.membership_reconcile.EffectAdd { to: _ } => false
-               gunbc.membership_reconcile.EffectRemove { from: _ } => false
+               EffectAdd { to: _ } => false
+               EffectRemove { from: _ } => false
              })
-    gunbc.membership_reconcile.ApplyRefused { refusals: _ } => false
+    ApplyRefused { refusals: _ } => false
   }
 }
 
 test fn w_spark_serving_model_slot_address_is_primary() -> Bool {
   match gunbc.spark_serving_desired.spark_serving_desired_release_admission() {
-    gunbc.spark.serving_desired.SparkServingDesiredAdmitted { serving_release: r } =>
+    SparkServingDesiredAdmitted { serving_release: r } =>
       let occ = gunbc.spark_serving_desired.spark_serving_occurrence(host: test.claim.spark_serving_membership_witness_test.w_host(), serving_release: r)
       let desired = gunbc.spark_serving_membership.spark_serving_desired_members(occurrence: occ, serving_release: r)
       any(
         desired,
         m =>
           match m.address {
-            gunbc.spark.serving_membership.SparkServingModelSlotAddress { slot: slot } =>
+            SparkServingModelSlotAddress { slot: slot } =>
               slot == gunbc.spark_serving_membership.spark_serving_primary_model_slot
             _ => false
           },
       )
-    gunbc.spark.serving_desired.SparkServingDesiredRefused { cause: _ } => false
+    SparkServingDesiredRefused { cause: _ } => false
   }
 }

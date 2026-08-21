@@ -13,7 +13,7 @@ fn fold_iteration_measure_atom() -> v2.std.node.Node {
 fn fold_call_head_symbol(fold_call: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   match v2.std.node_query.find_named_child(root: fold_call, name: ^grammar_sequence_left_node_projection) {
     Accepted { value: head, diagnostics: _ } => v2.std.grammar.node_atom_identity_optional(node: head)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
+    Rejected { diagnostics: _ } => v2.std.optional.Absent
   }
 }
 
@@ -41,7 +41,7 @@ fn step_fn_iteration_body(fn_literal: v2.std.node.Node) -> v2.std.optional.Optio
 fn fold_seq_child(node: v2.std.node.Node, name: v2.std.node.Symbol) -> v2.std.optional.Optional<v2.std.node.Node> {
   match v2.std.node_query.find_named_child(root: node, name: name) {
     Accepted { value: child, diagnostics: _ } => v2.std.optional.Present { value: child }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.Absent
+    Rejected { diagnostics: _ } => v2.std.optional.Absent
   }
 }
 
@@ -49,17 +49,17 @@ data step_fn_carrier_binder_note: String = "The step fn's FIRST param is the fol
 
 fn step_fn_carrier_binder_symbol(fn_literal: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   match fold_seq_child(node: fn_literal, name: ^grammar_sequence_right_node_projection) {
-    v2.std.optional.Absent => v2.std.optional.Absent
-    v2.std.optional.Present { value: after_kw_fn } =>
+    Absent => v2.std.optional.Absent
+    Present { value: after_kw_fn } =>
       match fold_seq_child(node: after_kw_fn, name: ^grammar_sequence_right_node_projection) {
-        v2.std.optional.Absent => v2.std.optional.Absent
-        v2.std.optional.Present { value: after_lparen } =>
+        Absent => v2.std.optional.Absent
+        Present { value: after_lparen } =>
           match fold_seq_child(node: after_lparen, name: ^grammar_sequence_left_node_projection) {
-            v2.std.optional.Absent => v2.std.optional.Absent
-            v2.std.optional.Present { value: params } =>
+            Absent => v2.std.optional.Absent
+            Present { value: params } =>
               match fold_seq_child(node: params, name: ^grammar_sequence_left_node_projection) {
-                v2.std.optional.Absent => v2.std.optional.Absent
-                v2.std.optional.Present { value: first_param } => v2.std.grammar.node_atom_identity_optional(node: first_param)
+                Absent => v2.std.optional.Absent
+                Present { value: first_param } => v2.std.grammar.node_atom_identity_optional(node: first_param)
               }
           }
       }
@@ -137,28 +137,28 @@ type FoldCallLowering
 // that does so is v2.compiler.body_lowering_fold body_lower_try_fold_loop.
 fn fold_call_lowering(fold_call: v2.std.node.Node) -> FoldCallLowering {
   match fold_call_head_symbol(fold_call: fold_call) {
-    v2.std.optional.Absent =>
+    Absent =>
       FoldCallNotAFold { diagnostic: fold_lowering_not_a_fold_call_diagnostic(n: fold_call) }
-    v2.std.optional.Present { value: head } =>
+    Present { value: head } =>
       if fold_family_head(sym: head) {
         match fold_call_step_fn(fold_call: fold_call) {
-          v2.std.optional.Absent =>
+          Absent =>
             FoldCallStepFormUnresolved {
               diagnostic: fold_lowering_step_form_unresolved_diagnostic(n: fold_call)
             }
-          v2.std.optional.Present { value: fn_literal } =>
+          Present { value: fn_literal } =>
             match step_fn_iteration_body(fn_literal: fn_literal) {
-              v2.std.optional.Absent =>
+              Absent =>
                 FoldCallStepShapeInvalid {
                   diagnostic: fold_lowering_shape_invalid_diagnostic(n: fold_call)
                 }
-              v2.std.optional.Present { value: body } =>
+              Present { value: body } =>
                 match step_fn_carrier_binder_symbol(fn_literal: fn_literal) {
-                  v2.std.optional.Absent =>
+                  Absent =>
                     FoldCallStepShapeInvalid {
                       diagnostic: fold_lowering_shape_invalid_diagnostic(n: fold_call)
                     }
-                  v2.std.optional.Present { value: carrier } =>
+                  Present { value: carrier } =>
                     FoldCallLowered {
                       seam_loop: fold_call_seam_loop(body: body, carrier: carrier)
                     }

@@ -14,7 +14,7 @@ fn gate_plan_refuses(plan: EffectPlan<v2.workflow.effect_plan_bash_materialize.B
 
 test fn ci_v1_compiler_tests_compile_gate_shell_emit_is_scaffold_holds() -> Bool {
   match ci_v1_compiler_tests_compile_gate_shell_emit_scaffold {
-    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
+    Scaffold { dissolves_to: _, bind: _ } => true
     _ => false
   }
 }

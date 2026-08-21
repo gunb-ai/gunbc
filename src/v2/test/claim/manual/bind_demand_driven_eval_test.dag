@@ -30,7 +30,7 @@ fn bind_eval_one_value() -> v2.std.runtime.RuntimeValue {
 fn bind_eval_lit_one() -> v2.std.node.Node {
   match v2.extdeps.languages.dag.dag_int_literal_node_from_lexeme(lexeme: "1", occurrence_id: v2.std.node.SyntheticOccurrence) {
     Accepted { value: n, diagnostics: _ } => n
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^bind_eval_lit_one_lexeme_invalid } },
         occurrence_id: v2.std.node.SyntheticOccurrence,
@@ -76,10 +76,10 @@ fn bind_eval_touch_from_env(env: v2.std.runtime.EvaluationEnvironment, key: v2.s
   match v2.std.collection.map_get(m: env.bindings, key: key) {
     Accepted { value: opt, diagnostics: _ } =>
       match opt {
-        v2.std.optional.Present { value: v } => bind_eval_int_from_runtime(value: v)
-        v2.std.optional.Absent => 0
+        Present { value: v } => bind_eval_int_from_runtime(value: v)
+        Absent => 0
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => 0
+    Rejected { diagnostics: _ } => 0
   }
 }
 
@@ -100,7 +100,7 @@ fn bind_eval_allocate_literal(node: v2.std.node.Node, env: v2.std.runtime.Evalua
         } else {
           v2.std.diagnostic.outcome_rejected(d: bind_eval_diagnostic(n: node))
         }
-      v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+      Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     }
   } else {
     match node.kind {
@@ -296,7 +296,7 @@ fn bind_eval_run_passes(run: v2.std.diagnostic.Outcome<v2.compiler.eval.TestClai
         Pass => true
         _ => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -325,7 +325,7 @@ test fn bind_eval_divergent_value_rejects_holds() -> v2.std.logic.Bool {
         Pass => false
         _ => true
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -400,7 +400,7 @@ test fn bind_eval_unbound_reference_refuses_holds() -> v2.std.logic.Bool {
     context: bind_eval_context(),
     inputs: v2.compiler.eval.inputs_root_only(root: ref_node)
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       d.head.reason == ^eval_rejected_runtime_binding_lookup_miss
     Accepted { value: _, diagnostics: _ } => false
   }
@@ -422,7 +422,7 @@ test fn bind_eval_unbound_reference_default_algebra_refuses_holds() -> v2.std.lo
     context: bind_eval_default_context(),
     inputs: v2.compiler.eval.inputs_root_only(root: ref_node)
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       d.head.reason == ^eval_rejected_runtime_binding_lookup_miss
     Accepted { value: _, diagnostics: _ } => false
   }

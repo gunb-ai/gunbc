@@ -158,7 +158,7 @@ fn lens_module_gate_surface_for_lens_id(id: v2.lens.registry.LensIdV0, module: S
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.ComplexityLowering => LensInvariantSurface {
+    ComplexityLowering => LensInvariantSurface {
       module: module,
       projection: ProjectionTermChain,
       verdict_authority: VerdictLensVerdict,
@@ -193,7 +193,7 @@ fn lens_module_gate_surface_for_lens_id(id: v2.lens.registry.LensIdV0, module: S
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.WitnessCostLocality => LensInvariantSurface {
+    WitnessCostLocality => LensInvariantSurface {
       module: module,
       projection: ProjectionImportGraph,
       verdict_authority: VerdictLensVerdict,
@@ -256,7 +256,7 @@ fn lens_module_gate_surface_for_lens_id(id: v2.lens.registry.LensIdV0, module: S
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.IdenticalVariantPayload => LensInvariantSurface {
+    IdenticalVariantPayload => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictLensVerdict,
@@ -284,7 +284,7 @@ fn lens_module_gate_surface_for_lens_id(id: v2.lens.registry.LensIdV0, module: S
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.InterfaceSummary => LensInvariantSurface {
+    InterfaceSummary => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictFidelityVerdict,
@@ -305,7 +305,7 @@ fn lens_module_gate_surface_for_lens_id(id: v2.lens.registry.LensIdV0, module: S
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.LiveReadClassification => LensInvariantSurface {
+    LiveReadClassification => LensInvariantSurface {
       module: module,
       projection: ProjectionModuleGraph,
       verdict_authority: VerdictFidelityVerdict,
@@ -389,7 +389,7 @@ fn lens_module_gate_surface_for_lens_id(id: v2.lens.registry.LensIdV0, module: S
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.Determinism => LensInvariantSurface {
+    Determinism => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictDeterminismFact,
@@ -466,7 +466,7 @@ fn lens_module_gate_surface_for_lens_id(id: v2.lens.registry.LensIdV0, module: S
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.Coverage => LensInvariantSurface {
+    Coverage => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictLensVerdict,
@@ -487,7 +487,7 @@ fn lens_module_gate_surface_for_lens_id(id: v2.lens.registry.LensIdV0, module: S
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.Grounding => LensInvariantSurface {
+    Grounding => LensInvariantSurface {
       module: module,
       projection: ProjectionDocGraph,
       verdict_authority: VerdictGroundingVerdict,
@@ -515,7 +515,7 @@ fn lens_module_gate_surface_for_lens_id(id: v2.lens.registry.LensIdV0, module: S
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
-    v2.lens.registry.MachineShape => LensInvariantSurface {
+    MachineShape => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictLensVerdict,

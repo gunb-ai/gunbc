@@ -157,8 +157,8 @@ test fn stop_chip_is_styled() -> Bool {
 
 test fn stop_fingerprint_scaffold_is_discharged() -> Bool {
   return match dispatch_tmux_process_fingerprint_observation_dissolution_trigger {
-    std.disposition.Scaffold { dissolves_to: _, bind: _ } => false
-    std.disposition.Terminal { reason: r } => string_contains(s: r as String, pattern: "DISSOLVED")
+    Scaffold { dissolves_to: _, bind: _ } => false
+    Terminal { reason: r } => string_contains(s: r as String, pattern: "DISSOLVED")
   }
 }
 

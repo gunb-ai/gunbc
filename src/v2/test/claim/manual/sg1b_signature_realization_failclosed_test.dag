@@ -40,7 +40,7 @@ test fn sg1b_fc_boundary_site_with_children_rejects_decode_invalid() -> v2.std.l
     source_carrier: sg1b_fc_probe_node()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^target_function_boundary_site_decode_invalid
+    Rejected { diagnostics: d } => d.head.reason == ^target_function_boundary_site_decode_invalid
   }
 }
 
@@ -50,7 +50,7 @@ test fn sg1b_fc_boundary_site_nullary_accepts() -> v2.std.logic.Bool {
     source_carrier: sg1b_fc_probe_node()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -61,7 +61,7 @@ test fn sg1b_fc_atom_catalog_non_conj_rejects_decode_invalid() -> v2.std.logic.B
     host_target_model: v2.extdeps.languages.rust.rust_sg2_type_expr_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_catalog_row_decode_invalid
+    Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_catalog_row_decode_invalid
   }
 }
 
@@ -73,7 +73,7 @@ test fn sg1b_fc_signature_catalog_non_conj_rejects_decode_invalid() -> v2.std.lo
     host_target_model: v2.extdeps.languages.rust.rust_sg2_type_expr_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^target_function_signature_realization_row_decode_invalid
+    Rejected { diagnostics: d } => d.head.reason == ^target_function_signature_realization_row_decode_invalid
   }
 }
 

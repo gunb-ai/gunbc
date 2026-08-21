@@ -352,7 +352,7 @@ fn integer_magnitude_upper_bound(magnitude: DecimalMagnitude) -> IntegerInterval
 
 fn integer_machine_interval_spec(signedness: std.integer.Signedness, width_bits: Int) -> IntegerIntervalSpec {
   match signedness {
-    std.integer.Signed =>
+    Signed =>
       integer_interval(
         inclusive_min: integer_concrete_bound(
           sign: IntegerBoundNegative,
@@ -362,7 +362,7 @@ fn integer_machine_interval_spec(signedness: std.integer.Signedness, width_bits:
           magnitude: decimal_nonzero_sub_one(m: integer_pow2_magnitude(exponent: width_bits - 1))
         )
       )
-    std.integer.Unsigned =>
+    Unsigned =>
       integer_interval(
         inclusive_min: integer_concrete_zero(),
         inclusive_max: integer_magnitude_upper_bound(
@@ -395,7 +395,7 @@ fn integer_standard_integer_type_from_node(node: v2.std.node.Node) -> v2.std.dia
     cons: fn(acc, candidate) {
       match acc {
         Accepted { value: _, diagnostics: _ } => acc
-        v2.std.diagnostic.Rejected { diagnostics: _ } =>
+        Rejected { diagnostics: _ } =>
           if node == integer_interval_spec_node(spec: integer_standard_integer_type_interval_spec(standard_integer_type: candidate)) {
             v2.std.diagnostic.Accepted { value: candidate, diagnostics: v2.std.diagnostic.None }
           } else {
@@ -413,8 +413,8 @@ fn integer_pointer_width_bound_compare(
   right_endpoint: IntegerRangeEndpoint
 ) -> std.algebra.Ordering {
   match left_signedness {
-    std.integer.Signed => match right_signedness {
-      std.integer.Signed => match left_endpoint {
+    Signed => match right_signedness {
+      Signed => match left_endpoint {
         IntegerRangeInclusiveMin => match right_endpoint {
           IntegerRangeInclusiveMin => Equal
           IntegerRangeInclusiveMax => Less
@@ -424,11 +424,11 @@ fn integer_pointer_width_bound_compare(
           IntegerRangeInclusiveMax => Equal
         }
       }
-      std.integer.Unsigned => Less
+      Unsigned => Less
     }
-    std.integer.Unsigned => match right_signedness {
-      std.integer.Signed => Greater
-      std.integer.Unsigned => match left_endpoint {
+    Unsigned => match right_signedness {
+      Signed => Greater
+      Unsigned => match left_endpoint {
         IntegerRangeInclusiveMin => match right_endpoint {
           IntegerRangeInclusiveMin => Equal
           IntegerRangeInclusiveMax => Less
@@ -447,11 +447,11 @@ fn integer_concrete_zero_compare_to_pointer_width(
   right_endpoint: IntegerRangeEndpoint
 ) -> std.algebra.Ordering {
   match right_signedness {
-    std.integer.Signed => match right_endpoint {
+    Signed => match right_endpoint {
       IntegerRangeInclusiveMin => Greater
       IntegerRangeInclusiveMax => Less
     }
-    std.integer.Unsigned => match right_endpoint {
+    Unsigned => match right_endpoint {
       IntegerRangeInclusiveMin => Equal
       IntegerRangeInclusiveMax => Less
     }
@@ -464,11 +464,11 @@ fn integer_concrete_bound_compare_to_pointer_width(
   right_endpoint: IntegerRangeEndpoint
 ) -> std.algebra.Ordering {
   match right_signedness {
-    std.integer.Signed => match right_endpoint {
+    Signed => match right_endpoint {
       IntegerRangeInclusiveMin => Greater
       IntegerRangeInclusiveMax => Less
     }
-    std.integer.Unsigned => match right_endpoint {
+    Unsigned => match right_endpoint {
       IntegerRangeInclusiveMin => match left_sign {
         IntegerBoundNegative => Less
         IntegerBoundNonNegative => Greater
@@ -602,9 +602,9 @@ fn integer_interval_spec_node_contains(container: v2.std.node.Node, contained: v
             container: integer_standard_integer_type_interval_spec(standard_integer_type: decoded_container),
             contained: decoded_contained
           )
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 fn integer_interval(
@@ -710,8 +710,8 @@ fn integer_bound_sign_node(sign: IntegerBoundSign) -> v2.std.node.Node {
 
 fn integer_signedness_node(signedness: std.integer.Signedness) -> v2.std.node.Node {
   match signedness {
-    std.integer.Signed => integer_inhabitant_atom(id: ^integer_tag_signed)
-    std.integer.Unsigned => integer_inhabitant_atom(id: ^integer_tag_unsigned)
+    Signed => integer_inhabitant_atom(id: ^integer_tag_signed)
+    Unsigned => integer_inhabitant_atom(id: ^integer_tag_unsigned)
   }
 }
 
@@ -1025,7 +1025,7 @@ fn integer_string_to_decimal_digits_step(
     CharAbsent => optional_present(value: acc)
     CharFound { value: c } =>
       match integer_char_code_to_decimal_digit_optional(c: c) {
-        v2.std.optional.Present { value: d } =>
+        Present { value: d } =>
           match v2.std.text.string_tail(s: s) {
             TailFound { tail: rest } =>
               integer_string_to_decimal_digits_step(
@@ -1034,7 +1034,7 @@ fn integer_string_to_decimal_digits_step(
               )
             TailAbsent => optional_absent()
           }
-        v2.std.optional.Absent => optional_absent()
+        Absent => optional_absent()
       }
   }
 }
@@ -1063,13 +1063,13 @@ fn integer_decimal_magnitude_to_int(m: DecimalMagnitude) -> Int {
 
 fn integer_lexeme_to_int_optional(lexeme: String) -> v2.std.optional.Optional<Int> {
   match integer_string_to_decimal_digits_optional(s: lexeme) {
-    v2.std.optional.Present { value: digits } =>
+    Present { value: digits } =>
       optional_present(
         value: integer_decimal_magnitude_to_int(
           m: decimal_digits_to_magnitude(digits: digits)
         )
       )
-    v2.std.optional.Absent => optional_absent()
+    Absent => optional_absent()
   }
 }
 
@@ -1122,8 +1122,8 @@ fn integer_int_to_signed_i32_le_bytes(value: Int) -> List<std.bit.Byte> {
 
 fn integer_byte_bit_at(b: std.bit.Byte, shift: Int) -> Int {
   match list_at_optional(xs: b.bits, index: shift) {
-    v2.std.optional.Present { value: bit } => if bit { 1 } else { 0 }
-    v2.std.optional.Absent => 0
+    Present { value: bit } => if bit { 1 } else { 0 }
+    Absent => 0
   }
 }
 
@@ -1208,32 +1208,32 @@ fn integer_fold_list_node_digits_optional(node: v2.std.node.Node) -> v2.std.opti
     match find_named_child(root: node, name: ^fold_list_node_head) {
       Accepted { value: head_node, diagnostics: _ } =>
         match integer_decimal_digit_from_node_optional(node: head_node) {
-          v2.std.optional.Present { value: digit } =>
+          Present { value: digit } =>
             match find_named_child(root: node, name: ^fold_list_node_tail) {
               Accepted { value: tail_node, diagnostics: _ } =>
                 match integer_fold_list_node_digits_optional(node: tail_node) {
-                  v2.std.optional.Present { value: tail_digits } =>
+                  Present { value: tail_digits } =>
                     optional_present(value: std.algebra.Cons { head: digit, tail: tail_digits })
-                  v2.std.optional.Absent => optional_absent()
+                  Absent => optional_absent()
                 }
-              v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
+              Rejected { diagnostics: _ } => optional_absent()
             }
-          v2.std.optional.Absent => optional_absent()
+          Absent => optional_absent()
         }
-      v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
+      Rejected { diagnostics: _ } => optional_absent()
     }
   }
 }
 
 fn integer_decimal_magnitude_node_to_int(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Int> {
   match integer_fold_list_node_digits_optional(node: node) {
-    v2.std.optional.Present { value: digits } =>
+    Present { value: digits } =>
       outcome_accepted(
         value: integer_decimal_magnitude_to_int(
           m: decimal_digits_to_magnitude(digits: digits)
         )
       )
-    v2.std.optional.Absent =>
+    Absent =>
       outcome_rejected(
         d: integer_standard_integer_type_decode_invalid_diagnostic(source_carrier: node)
       )
@@ -1243,13 +1243,13 @@ fn integer_decimal_magnitude_node_to_int(node: v2.std.node.Node) -> v2.std.diagn
 fn integer_signed_i32_le_bytes_to_int(bytes: List<std.bit.Byte>) -> v2.std.diagnostic.Outcome<Int> {
   if length(xs: bytes) == 4 {
     match list_at_optional(xs: bytes, index: 0) {
-      v2.std.optional.Present { value: b0 } =>
+      Present { value: b0 } =>
         match list_at_optional(xs: bytes, index: 1) {
-          v2.std.optional.Present { value: b1 } =>
+          Present { value: b1 } =>
             match list_at_optional(xs: bytes, index: 2) {
-              v2.std.optional.Present { value: b2 } =>
+              Present { value: b2 } =>
                 match list_at_optional(xs: bytes, index: 3) {
-                  v2.std.optional.Present { value: b3 } =>
+                  Present { value: b3 } =>
                     outcome_accepted(
                       value: integer_signed_i32_le_bytes_to_int_value(
                         b0: integer_u8_from_byte(b: b0),
@@ -1258,16 +1258,16 @@ fn integer_signed_i32_le_bytes_to_int(bytes: List<std.bit.Byte>) -> v2.std.diagn
                         b3: integer_u8_from_byte(b: b3)
                       )
                     )
-                  v2.std.optional.Absent =>
+                  Absent =>
                     outcome_rejected(d: integer_signed_i32_le_decode_invalid_diagnostic())
                 }
-              v2.std.optional.Absent =>
+              Absent =>
                 outcome_rejected(d: integer_signed_i32_le_decode_invalid_diagnostic())
             }
-          v2.std.optional.Absent =>
+          Absent =>
             outcome_rejected(d: integer_signed_i32_le_decode_invalid_diagnostic())
         }
-      v2.std.optional.Absent =>
+      Absent =>
         outcome_rejected(d: integer_signed_i32_le_decode_invalid_diagnostic())
     }
   } else {

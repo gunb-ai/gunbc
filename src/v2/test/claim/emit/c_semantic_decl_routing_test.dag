@@ -46,14 +46,14 @@ fn cdr_variant_edge_payload(name: v2.std.node.Symbol, fields: List<v2.std.node.E
 fn cdr_emit_text(name: v2.std.node.Symbol, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<String> {
   match emit_semantic_type_decl(name: name, params: std.algebra.Empty, node: node, target: c_target_model()) {
     Accepted { value: medium, diagnostics: _ } => v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
 fn cdr_matches(name: v2.std.node.Symbol, node: v2.std.node.Node, golden: String) -> v2.std.logic.Bool {
   match cdr_emit_text(name: name, node: node) {
     Accepted { value: text, diagnostics: _ } => text == golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -117,7 +117,7 @@ test fn c_semantic_non_int_field_refuses() -> v2.std.logic.Bool {
     target: c_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -141,7 +141,7 @@ test fn c_semantic_generic_struct_refuses() -> v2.std.logic.Bool {
     target: c_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -153,14 +153,14 @@ test fn c_semantic_generic_tagged_union_refuses() -> v2.std.logic.Bool {
     target: c_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
 test fn c_semantic_unsupported_shape_refuses() -> v2.std.logic.Bool {
   match cdr_emit_text(name: ^Bogus, node: cdr_arrow_type()) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 

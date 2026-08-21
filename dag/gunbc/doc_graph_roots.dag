@@ -1670,9 +1670,9 @@ fn hand_authored_doc_binds_construct() -> std.keyed_roster.KeyedRosterBuild<Stri
 
 fn hand_authored_doc_binds_population() -> HandAuthoredDocBindsPopulation {
   match hand_authored_doc_binds_construct() {
-    std.keyed_roster.KeyedRosterBuilt { rows: rows } =>
+    KeyedRosterBuilt { rows: rows } =>
       HandAuthoredDocBindsBuilt { binds: map(rows, row => row.value) }
-    std.keyed_roster.KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
       HandAuthoredDocBindsDuplicateKey {
         key: k,
         first: f.value,

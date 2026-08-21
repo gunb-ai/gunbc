@@ -20,13 +20,13 @@ fn measured_infer_eval_harness_source() -> std.types.NonEmptyStr {
 fn infer_wall_harness_revision(probe: gunbc.guarantee_measurement.GuaranteeProbeId) -> gunbc.guarantee_measurement.MeasurementRevision {
   let harness_source = measured_infer_eval_harness_source()
   match gunbc.guarantee_probe_corpus.active_v2_infer_eval_probe_row(probe: probe) {
-    v2.std.optional.Present { value: row } =>
+    Present { value: row } =>
       gunbc.guarantee_probe_corpus.v2_infer_eval_harness_revision(
         probe: probe,
         expectation: row.expectation,
         harness_source: harness_source,
       )
-    v2.std.optional.Absent =>
+    Absent =>
       gunbc.guarantee_probe_corpus.v2_infer_eval_harness_revision(
         probe: probe,
         expectation: gunbc.guarantee_probe_corpus.ExpectAcceptedCounted { diagnostic_class: "infer-harness-row-absent" as std.types.NonEmptyStr },
@@ -133,10 +133,10 @@ fn wall_derived_grounding(node: v2.std.node.Node) -> v2.std.constraints.Canonica
 
 fn wall_grounding_for_node_refused(root: v2.std.node.Node) -> Bool {
   match infer(tree: root) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match canonical_grounding_for_node(tree: tree, node: root) {
-        v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^infer_grounding_not_derived
+        Rejected { diagnostics: r } => r.head.reason == ^infer_grounding_not_derived
         Accepted { value: _, diagnostics: _ } => false
       }
   }
@@ -144,7 +144,7 @@ fn wall_grounding_for_node_refused(root: v2.std.node.Node) -> Bool {
 
 fn wall_resolved_type_refused(root: v2.std.node.Node) -> Bool {
   match infer(tree: root) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match inferred_facts_witness_for_node(tree: tree, node: root) {
         Violates { diagnostic: _ } => false
@@ -159,7 +159,7 @@ fn wall_resolved_type_refused(root: v2.std.node.Node) -> Bool {
 
 fn wall_infer_counts_frontier(root: v2.std.node.Node) -> Bool {
   match infer(tree: root) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
       match d {
         Some { diagnostics: nds } => nds.head.reason == ^infer_grounding_not_derived
@@ -173,7 +173,7 @@ test fn wall_construction_authority_refuses_self_evidence() -> Bool {
     node: wall_conj_node(),
     derived_type: wall_conj_node()
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: r } => r.head.reason == ^grounding_evidence_is_source
+    Rejected { diagnostics: r } => r.head.reason == ^grounding_evidence_is_source
     Accepted { value: _, diagnostics: _ } => false
   }
 }
@@ -183,7 +183,7 @@ test fn wall_construction_authority_accepts_derived_type() -> Bool {
     node: wall_conj_node(),
     derived_type: wall_derived_type_node()
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: g, diagnostics: _ } =>
       (g.node == wall_conj_node())
         && (g.witness.structural.evidence == wall_derived_type_node())
@@ -245,13 +245,13 @@ fn wall_frontier_observation_matches_infer(nes: v2.std.diagnostic.NonEmptyDiagno
 test fn wall_frontier_receipt_joins_corpus_identity() -> Bool {
   let root = wall_value_node()
   match infer(tree: root) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
       match d {
         None => false
         Some { diagnostics: nes } =>
           match gunbc.guarantee_probe_corpus.active_v2_infer_eval_probe_row(probe: gunbc.guarantee_probe_corpus.v2_frontier_red_probe) {
-            v2.std.optional.Present { value: row } =>
+            Present { value: row } =>
               wall_resolved_type_refused(root: root)
                 && nes.head.reason == ^infer_grounding_not_derived
                 && gunbc.guarantee_probe_corpus.receipt_matches_v2_infer_eval_probe_row(
@@ -281,7 +281,7 @@ test fn wall_frontier_receipt_joins_corpus_identity() -> Bool {
                   ReceiptPathUnknown { receipt_path: _ } => false
                   ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
                 }
-            v2.std.optional.Absent => false
+            Absent => false
           }
       }
   }
@@ -290,10 +290,10 @@ test fn wall_frontier_receipt_joins_corpus_identity() -> Bool {
 test fn wall_frontier_derived_green_receipt_joins_corpus_identity() -> Bool {
   let root = dag_pick_if_body_fixture
   match infer(tree: root) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
       match gunbc.guarantee_probe_corpus.active_v2_infer_eval_probe_row(probe: gunbc.guarantee_probe_corpus.v2_frontier_green_probe) {
-        v2.std.optional.Present { value: row } =>
+        Present { value: row } =>
           d == v2.std.diagnostic.None
             && gunbc.guarantee_probe_corpus.observation_is_clean(o: gunbc.guarantee_probe_corpus.probe_observation_from_accepted_infer_diagnostics(diagnostics: d))
             && gunbc.guarantee_probe_corpus.receipt_matches_v2_infer_eval_probe_row(
@@ -318,7 +318,7 @@ test fn wall_frontier_derived_green_receipt_joins_corpus_identity() -> Bool {
               ReceiptPathUnknown { receipt_path: _ } => false
               ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
             }
-        v2.std.optional.Absent => false
+        Absent => false
       }
   }
 }

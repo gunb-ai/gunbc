@@ -8,7 +8,7 @@ type BlNamedChildLookup
 fn bl_named_child_lookup(root: v2.std.node.Node, name: v2.std.node.Symbol) -> BlNamedChildLookup {
   match v2.std.node_query.find_named_child(root: root, name: name) {
     Accepted { value: target, diagnostics: _ } => BlNamedChildFound { target: target }
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       if d.head.reason == ^named_child_missing {
         BlNamedChildMissing
       } else if d.head.reason == ^named_child_ambiguous {
@@ -102,7 +102,7 @@ fn infer_bounded_lattice_instance_gate(instance: v2.std.node.Node) -> v2.std.dia
 fn infer_edge_consumes_bounded_lattice_partial(edge: v2.std.node.Edge, partials: std.types.List<v2.std.node.Node>) -> v2.std.logic.Bool {
   if v2.std.algebra.any(xs: partials, predicate: fn(p) { edge.target == p }) {
     match edge.label {
-      v2.std.node.Named { name: sym } =>
+      Named { name: sym } =>
         sym == ^algebra_edge
           || sym == ^inhabitant_edge
           || sym == ^lattice_field_meet
@@ -121,7 +121,7 @@ fn infer_bounded_lattice_consumer_gate(
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match fold(consumer.children, init: v2.std.diagnostic.outcome_accepted(value: consumer), f: fn(acc, e) {
     match acc {
-      v2.std.diagnostic.Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r } =>
         if infer_edge_consumes_bounded_lattice_partial(edge: e, partials: partials) {
           v2.std.diagnostic.Rejected {
             diagnostics: v2.std.diagnostic.non_empty_diagnostics_append(
@@ -150,7 +150,7 @@ fn infer_bounded_lattice_consumer_gate(
         }
     }
   }) {
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     Accepted { value: _, diagnostics: d } =>
       v2.std.diagnostic.Accepted { value: consumer, diagnostics: d }
   }

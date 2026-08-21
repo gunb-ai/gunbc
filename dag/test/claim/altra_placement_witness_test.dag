@@ -45,8 +45,8 @@ test fn w_the_reference_plan_refuses_because_envelopes_are_outstanding() -> Bool
     Absent => false
     Present { value: p } =>
       match admit_placement(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p) {
-        product.altra_motherboard.placement.PlacementAdmitted { plan: _ } => false
-        product.altra_motherboard.placement.PlacementRefused { causes: cs } => count_tagged(cs: cs, wanted: "EnvelopeMissing") > 0
+        PlacementAdmitted { plan: _ } => false
+        PlacementRefused { causes: cs } => count_tagged(cs: cs, wanted: "EnvelopeMissing") > 0
       }
   }
 }

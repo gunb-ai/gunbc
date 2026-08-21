@@ -195,7 +195,7 @@ fn rust_call_emit_matches(arrow: v2.std.node.Node, authority: String) -> v2.std.
   match rust_call_emit_from_arrow(arrow: arrow, authority: authority) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == authority) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

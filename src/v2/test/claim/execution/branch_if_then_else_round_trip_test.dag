@@ -116,7 +116,7 @@ data branch_if_then_else_emit_receipt: v2.std.diagnostic.Outcome<Medium<String>>
 
 fn branch_if_then_else_coercion_quality_is_faithful(q: v2.std.coercion.CoercionQuality) -> v2.std.logic.Bool {
   match q {
-    v2.std.coercion.Exact => true
+    Exact => true
     Identity => true
     Widened => false
   }
@@ -131,9 +131,9 @@ test fn branch_if_then_else_emit_matches_serialize_holds() -> v2.std.logic.Bool 
       match branch_if_then_else_emit_receipt {
         Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -143,7 +143,7 @@ test fn branch_if_then_else_grammar_inverse_holds() -> v2.std.logic.Bool {
     emitted: branch_if_then_else_emitted_root
   ) {
     Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -157,7 +157,7 @@ test fn branch_if_then_else_ingest_via_coerce_matches_canonical() -> v2.std.logi
       (result.target == dag_fixture_emitted_pick_fn)
         && branch_if_then_else_coercion_quality_is_faithful(q: result.quality)
         && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

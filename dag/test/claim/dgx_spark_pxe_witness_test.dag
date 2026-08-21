@@ -58,7 +58,7 @@ test fn w_unattended_boot_model_uses_uefi_pxe_not_http_boot() -> Bool {
     http_image_root: witness_http_root,
     isolation: gunbc.spark.dgx_pxe_boot.ProxyDhcpPxeOnly,
   ).network_chain.boot_mode {
-    extdeps.provisioning.network_boot.UefiPxe { tftp_root: _ } => true
+    UefiPxe { tftp_root: _ } => true
     _ => false
   }
 }
@@ -75,12 +75,12 @@ test fn w_admitted_boot_dhcp_direction_matches_proven_isolation() -> Bool {
     isolation: Present { value: gunbc.spark.dgx_pxe_boot.ProxyDhcpPxeOnly },
     firmware_config: Present { value: synthetic_ready_firmware_config() },
   ) {
-    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootAdmitted { boot: b } =>
+    SparkUnattendedPxeBootAdmitted { boot: b } =>
       match b.network_chain.dhcp_direction {
-        extdeps.provisioning.network_boot.ProxyDhcp => true
+        ProxyDhcp => true
         NativeDhcpBootOptions => false
       }
-    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootRefused { reason: _ } => false
+    SparkUnattendedPxeBootRefused { reason: _ } => false
   }
     && match admit_spark_unattended_pxe_boot(
       image_kind: extdeps.systems.nvidia_dgx_spark_pxe.FastOsRecoveryTarball,
@@ -93,12 +93,12 @@ test fn w_admitted_boot_dhcp_direction_matches_proven_isolation() -> Bool {
       isolation: Present { value: gunbc.spark.dgx_pxe_boot.IsolatedProvisioningSegment },
       firmware_config: Present { value: synthetic_ready_firmware_config() },
     ) {
-      gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootAdmitted { boot: b } =>
+      SparkUnattendedPxeBootAdmitted { boot: b } =>
         match b.network_chain.dhcp_direction {
           NativeDhcpBootOptions => true
-          extdeps.provisioning.network_boot.ProxyDhcp => false
+          ProxyDhcp => false
         }
-      gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootRefused { reason: _ } => false
+      SparkUnattendedPxeBootRefused { reason: _ } => false
     }
 }
 
@@ -110,9 +110,9 @@ test fn w_red_network_standing_without_observation_is_unobserved() -> Bool {
     http_endpoint: none,
     isolation: none,
   ) {
-    gunbc.spark.dgx_pxe_boot.PxeNetworkUnobserved => true
-    gunbc.spark.dgx_pxe_boot.PxeNetworkGapped { gaps: _ } => false
-    gunbc.spark.dgx_pxe_boot.PxeNetworkReady { dhcp_authority: _, tftp_endpoint: _, http_endpoint: _, isolation: _ } => false
+    PxeNetworkUnobserved => true
+    PxeNetworkGapped { gaps: _ } => false
+    PxeNetworkReady { dhcp_authority: _, tftp_endpoint: _, http_endpoint: _, isolation: _ } => false
   }
 }
 
@@ -143,14 +143,14 @@ test fn w_network_standing_ready_when_all_observations_and_isolation_present() -
     http_endpoint: Present { value: witness_http_endpoint },
     isolation: Present { value: gunbc.spark.dgx_pxe_boot.ProxyDhcpPxeOnly },
   ) {
-    gunbc.spark.dgx_pxe_boot.PxeNetworkReady {
+    PxeNetworkReady {
       dhcp_authority: _,
       tftp_endpoint: _,
       http_endpoint: _,
       isolation: gunbc.spark.dgx_pxe_boot.ProxyDhcpPxeOnly,
     } => true
-    gunbc.spark.dgx_pxe_boot.PxeNetworkGapped { gaps: _ } => false
-    gunbc.spark.dgx_pxe_boot.PxeNetworkUnobserved => false
+    PxeNetworkGapped { gaps: _ } => false
+    PxeNetworkUnobserved => false
   }
 }
 
@@ -162,9 +162,9 @@ test fn w_red_reachability_without_isolation_not_ready() -> Bool {
     http_endpoint: Present { value: witness_http_endpoint },
     isolation: none,
   ) {
-    gunbc.spark.dgx_pxe_boot.PxeNetworkGapped { gaps: gs } => list_length(items: gs) == 1
-    gunbc.spark.dgx_pxe_boot.PxeNetworkReady { dhcp_authority: _, tftp_endpoint: _, http_endpoint: _, isolation: _ } => false
-    gunbc.spark.dgx_pxe_boot.PxeNetworkUnobserved => false
+    PxeNetworkGapped { gaps: gs } => list_length(items: gs) == 1
+    PxeNetworkReady { dhcp_authority: _, tftp_endpoint: _, http_endpoint: _, isolation: _ } => false
+    PxeNetworkUnobserved => false
   }
 }
 
@@ -177,12 +177,12 @@ test fn w_firmware_intervention_instruction_derives_bootloader_authority() -> Bo
       nic_pxe_boot_enabled: true,
     },
   ) {
-    gunbc.spark.dgx_pxe_boot.SparkPxeFirmwareHumanInterventionRequired { intervention: i } =>
+    SparkPxeFirmwareHumanInterventionRequired { intervention: i } =>
       string_contains(
         s: i.instruction,
         pattern: spark_pxe_bootloader_filename as String,
       )
-    gunbc.spark.dgx_pxe_boot.SparkPxeFirmwareReady => false
+    SparkPxeFirmwareReady => false
   }
 }
 
@@ -195,9 +195,9 @@ test fn w_firmware_standing_refuses_secure_boot_default_without_enrollment() -> 
       nic_pxe_boot_enabled: true,
     },
   ) {
-    gunbc.spark.dgx_pxe_boot.SparkPxeFirmwareHumanInterventionRequired { intervention: i } =>
+    SparkPxeFirmwareHumanInterventionRequired { intervention: i } =>
       i.frequency == std.human_intervention.DeviceOnce && i.identity == "spark-pxe-firmware-enablement"
-    gunbc.spark.dgx_pxe_boot.SparkPxeFirmwareReady => false
+    SparkPxeFirmwareReady => false
   }
     && match evaluate_spark_pxe_firmware_standing(
       config: gunbc.dgx_spark_pxe_boot.SparkUefiPxeConfiguration {
@@ -207,8 +207,8 @@ test fn w_firmware_standing_refuses_secure_boot_default_without_enrollment() -> 
         nic_pxe_boot_enabled: true,
       },
     ) {
-      gunbc.spark.dgx_pxe_boot.SparkPxeFirmwareReady => true
-      gunbc.spark.dgx_pxe_boot.SparkPxeFirmwareHumanInterventionRequired { intervention: _ } => false
+      SparkPxeFirmwareReady => true
+      SparkPxeFirmwareHumanInterventionRequired { intervention: _ } => false
     }
 }
 
@@ -224,9 +224,9 @@ test fn w_red_admission_without_observation_refuses() -> Bool {
     isolation: none,
     firmware_config: none,
   ) {
-    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootRefused { reason: gunbc.spark.dgx_pxe_boot.NetworkObservationAbsent } => true
-    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootRefused { reason: _ } => false
-    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootAdmitted { boot: _ } => false
+    SparkUnattendedPxeBootRefused { reason: gunbc.spark.dgx_pxe_boot.NetworkObservationAbsent } => true
+    SparkUnattendedPxeBootRefused { reason: _ } => false
+    SparkUnattendedPxeBootAdmitted { boot: _ } => false
   }
 }
 
@@ -242,9 +242,9 @@ test fn w_red_admission_without_firmware_config_refuses() -> Bool {
     isolation: Present { value: gunbc.spark.dgx_pxe_boot.ProxyDhcpPxeOnly },
     firmware_config: none,
   ) {
-    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootRefused { reason: gunbc.spark.dgx_pxe_boot.FirmwareConfigurationAbsent } => true
-    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootRefused { reason: _ } => false
-    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootAdmitted { boot: _ } => false
+    SparkUnattendedPxeBootRefused { reason: gunbc.spark.dgx_pxe_boot.FirmwareConfigurationAbsent } => true
+    SparkUnattendedPxeBootRefused { reason: _ } => false
+    SparkUnattendedPxeBootAdmitted { boot: _ } => false
   }
 }
 
@@ -260,14 +260,14 @@ test fn w_admission_with_ready_standings_succeeds() -> Bool {
     isolation: Present { value: gunbc.spark.dgx_pxe_boot.ProxyDhcpPxeOnly },
     firmware_config: Present { value: synthetic_ready_firmware_config() },
   ) {
-    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootAdmitted { boot: b } =>
+    SparkUnattendedPxeBootAdmitted { boot: b } =>
       b.image_kind == extdeps.systems.nvidia_dgx_spark_pxe.FastOsRecoveryTarball
         && b.tftp_kernel == "fastos/vmlinuz"
         && match b.network_chain.dhcp_direction {
-          extdeps.provisioning.network_boot.ProxyDhcp => true
+          ProxyDhcp => true
           NativeDhcpBootOptions => false
         }
-    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootRefused { reason: _ } => false
+    SparkUnattendedPxeBootRefused { reason: _ } => false
   }
 }
 
@@ -291,10 +291,10 @@ test fn w_red_admission_with_network_gap_refuses_before_firmware() -> Bool {
     isolation: Present { value: gunbc.spark.dgx_pxe_boot.ProxyDhcpPxeOnly },
     firmware_config: Present { value: synthetic_ready_firmware_config() },
   ) {
-    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootRefused { reason: gunbc.spark.dgx_pxe_boot.UnattendedPxeBootNetworkStandingIncomplete { gaps: gs } } =>
+    SparkUnattendedPxeBootRefused { reason: gunbc.spark.dgx_pxe_boot.UnattendedPxeBootNetworkStandingIncomplete { gaps: gs } } =>
       list_length(items: gs) == 1
-    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootRefused { reason: _ } => false
-    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootAdmitted { boot: _ } => false
+    SparkUnattendedPxeBootRefused { reason: _ } => false
+    SparkUnattendedPxeBootAdmitted { boot: _ } => false
   }
 }
 
@@ -317,11 +317,11 @@ test fn w_red_admission_with_firmware_gap_refuses() -> Bool {
       }
     },
   ) {
-    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootRefused {
+    SparkUnattendedPxeBootRefused {
       reason: gunbc.spark.dgx_pxe_boot.UnattendedPxeBootFirmwareHumanInterventionRequired { intervention: i }
     } =>
       i.frequency == std.human_intervention.DeviceOnce
-    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootRefused { reason: _ } => false
-    gunbc.spark.dgx_pxe_boot.SparkUnattendedPxeBootAdmitted { boot: _ } => false
+    SparkUnattendedPxeBootRefused { reason: _ } => false
+    SparkUnattendedPxeBootAdmitted { boot: _ } => false
   }
 }

@@ -91,13 +91,13 @@ fn multi_principal_host_block(context: gunbc.fleet_known_hosts_anchor.FleetSshEx
 fn multi_principal_reach_line_agent_backed(host: String, principal: String) -> String {
   let target = join([principal, "@", gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for(host: host)], "")
   match gunbc.typed_argv_exec.typed_argv_probe_over_ssh(host: target as std.types.NonEmptyStr, argv: ["hostname"]) {
-    gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } =>
+    TypedArgvExecConverged { result: r } =>
       if r.success {
         join(["reach host=", host, " principal=", principal, " auth=accepted command=executed hostname=", std.algebra.trim(s: r.stdout), "\n"], "")
       } else {
         join(["reach host=", host, " principal=", principal, " auth-or-command=refused stderr=", std.algebra.trim(s: r.stderr), " stdout=", std.algebra.trim(s: r.stdout), "\n"], "")
       }
-    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } =>
+    TypedArgvExecRefused { reason: why } =>
       join(["reach host=", host, " principal=", principal, " probe-refused cause=", why, "\n"], "")
   }
 }
@@ -105,13 +105,13 @@ fn multi_principal_reach_line_agent_backed(host: String, principal: String) -> S
 fn multi_principal_sudo_line_agent_backed(host: String, principal: String) -> String {
   let target = join([principal, "@", gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for(host: host)], "")
   match gunbc.typed_argv_exec.typed_argv_probe_over_ssh(host: target as std.types.NonEmptyStr, argv: ["sudo", "-n", "-l"]) {
-    gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } =>
+    TypedArgvExecConverged { result: r } =>
       if r.success {
         join(["sudo  host=", host, " principal=", principal, " sudo-n-l=listed grants=", std.algebra.trim(s: r.stdout), "\n"], "")
       } else {
         join(["sudo  host=", host, " principal=", principal, " sudo-n-l=refused stderr=", std.algebra.trim(s: r.stderr), "\n"], "")
       }
-    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } =>
+    TypedArgvExecRefused { reason: why } =>
       join(["sudo  host=", host, " principal=", principal, " probe-refused cause=", why, "\n"], "")
   }
 }
@@ -156,7 +156,7 @@ func probe_agent_credential_verification(attempt: gunbc.fleet_known_hosts_anchor
       }
     Present { value: sock } =>
       match gunbc.fleet_ssh_credential_verify.materialize_agent_public_selector(attempt: attempt, key: gunbc.fleet_ssh_access.fleet_automation_ssh_key) {
-        gunbc.fleet_ssh_credential_verify.AgentSelectorRefused { cause: cause } => gunbc.fleet_ssh_credential_verify.FleetSshCredentialDerivationRefused { cause: cause }
+        AgentSelectorRefused { cause: cause } => gunbc.fleet_ssh_credential_verify.FleetSshCredentialDerivationRefused { cause: cause }
         AgentSelectorMaterialized { selector: selector } =>
           gunbc.fleet_ssh_credential_verify.verify_fleet_ssh_agent_credential(
             agent_socket: sock,
@@ -171,8 +171,8 @@ func probe_agent_credential_verification(attempt: gunbc.fleet_known_hosts_anchor
 fn agent_backed_probe_success(host: String, principal: String, argv: std.types.List<String>) -> Bool {
   let target = join([principal, "@", gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for(host: host)], "")
   match gunbc.typed_argv_exec.typed_argv_probe_over_ssh(host: target as std.types.NonEmptyStr, argv: argv) {
-    gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } => r.success
-    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: _ } => false
+    TypedArgvExecConverged { result: r } => r.success
+    TypedArgvExecRefused { reason: _ } => false
   }
 }
 
@@ -408,9 +408,9 @@ fn spark_grant_report_refusal(report: SparkGrantReport) -> String? {
         match acc {
           Present { value: _ } => acc
           Absent => match row.outcome {
-            gunbc.spark.managed_access_bootstrap.GrantProbeRefused { cause: c } => Present { value: join(["host=", row.host, " principal=", row.principal, " probe-refused cause=", c], "") }
-            gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: _ } => none
-            gunbc.spark.managed_access_bootstrap.GrantAbsent { detail: _ } => none
+            GrantProbeRefused { cause: c } => Present { value: join(["host=", row.host, " principal=", row.principal, " probe-refused cause=", c], "") }
+            GrantEnumerated { listing: _ } => none
+            GrantAbsent { detail: _ } => none
           }
         }
       })
@@ -430,9 +430,9 @@ fn spark_grant_row_text(row: SparkGrantRow) -> String {
 
 fn spark_grant_row_listing_text(row: SparkGrantRow) -> String {
   match row.outcome {
-    gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: l } => join(["grant host=", row.host, " principal=", row.principal, " enumerated:\n", l, "\n"], "")
-    gunbc.spark.managed_access_bootstrap.GrantAbsent { detail: d } => join(["grant host=", row.host, " principal=", row.principal, " NO-PASSWORDLESS-GRANT ", d, "\n"], "")
-    gunbc.spark.managed_access_bootstrap.GrantProbeRefused { cause: c } => join(["grant host=", row.host, " principal=", row.principal, " probe-refused cause=", c, "\n"], "")
+    GrantEnumerated { listing: l } => join(["grant host=", row.host, " principal=", row.principal, " enumerated:\n", l, "\n"], "")
+    GrantAbsent { detail: d } => join(["grant host=", row.host, " principal=", row.principal, " NO-PASSWORDLESS-GRANT ", d, "\n"], "")
+    GrantProbeRefused { cause: c } => join(["grant host=", row.host, " principal=", row.principal, " probe-refused cause=", c, "\n"], "")
   }
 }
 
@@ -449,10 +449,10 @@ fn spark_exact_grant_report(context: gunbc.fleet_known_hosts_anchor.FleetSshExec
     spark_exact_grant_row(context: context, host: h, principal: spark_operator_bootstrap_login),
   ])
   match list_head(rows) {
-    v2.std.algebra.HeadAbsent => GrantProbeNotAttempted { cause: "no standing hosts are declared" }
-    v2.std.algebra.HeadFound { value: f } => match v2.std.algebra.list_tail(rows) {
-      v2.std.algebra.TailAbsent => GrantsObserved { first: f, more: [] }
-      v2.std.algebra.TailFound { tail: t } => GrantsObserved { first: f, more: t }
+    HeadAbsent => GrantProbeNotAttempted { cause: "no standing hosts are declared" }
+    HeadFound { value: f } => match v2.std.algebra.list_tail(rows) {
+      TailAbsent => GrantsObserved { first: f, more: [] }
+      TailFound { tail: t } => GrantsObserved { first: f, more: t }
     }
   }
 }
@@ -513,11 +513,11 @@ fn principal_observation(
 
 fn spark_standing_line(standing: gunbc.spark_managed_access_bootstrap.SparkManagedAccessStanding) -> String {
   match standing {
-    gunbc.spark.managed_access_bootstrap.ManagedAccessGrounded { occurrence: o } =>
+    ManagedAccessGrounded { occurrence: o } =>
       join(["standing host=", o.host as String, " managed-access=GROUNDED\n"], "")
-    gunbc.spark.managed_access_bootstrap.ManagedAccessBootstrapRequired { host: h, missing: _, bootstrap_transport: _ } =>
+    ManagedAccessBootstrapRequired { host: h, missing: _, bootstrap_transport: _ } =>
       join(["standing host=", h as String, " managed-access=BOOTSTRAP-REQUIRED (human bootstrap observed, managed executor absent)\n"], "")
-    gunbc.spark.managed_access_bootstrap.ManagedAccessUnobserved { host: h } =>
+    ManagedAccessUnobserved { host: h } =>
       join(["standing host=", h as String, " managed-access=UNOBSERVED (no reachable principal, so no transport to bootstrap through)\n"], "")
   }
 }
@@ -532,9 +532,9 @@ fn spark_authorization_lines(standing: gunbc.spark_managed_access_bootstrap.Spar
       let effects = join(map(gunbc.spark_managed_access_bootstrap.spark_bootstrap_plan_effects(plan: plan), e =>
         join(["  effect ", gunbc.spark_managed_access_bootstrap.spark_bootstrap_effect_label(effect: e), "\n"], "")), "")
       match gunbc.spark_managed_access_bootstrap.authorize_spark_bootstrap(plan: plan) {
-        gunbc.spark.managed_access_bootstrap.BootstrapProceedsUnprivileged { plan: _ } =>
+        BootstrapProceedsUnprivileged { plan: _ } =>
           join(["authorization host=", plan.host as String, " UNPRIVILEGED\n", effects], "")
-        gunbc.spark.managed_access_bootstrap.OperatorBootstrapCredentialRequired { host: h, first_privileged: f, more_privileged: m, secret_purpose: p } =>
+        OperatorBootstrapCredentialRequired { host: h, first_privileged: f, more_privileged: m, secret_purpose: p } =>
           join([
             "authorization host=", h as String, " OPERATOR-CREDENTIAL-REQUIRED privileged_effects=",
             to_string(1 + length(m)), "\n  purpose ", p as String, "\n", effects,
@@ -574,9 +574,9 @@ fn spark_standing_unobserved_host(standings: std.types.List<gunbc.spark_managed_
     match acc {
       Present { value: _ } => acc
       Absent => match standing {
-        gunbc.spark.managed_access_bootstrap.ManagedAccessUnobserved { host: h } => Present { value: h as String }
-        gunbc.spark.managed_access_bootstrap.ManagedAccessGrounded { occurrence: _ } => none
-        gunbc.spark.managed_access_bootstrap.ManagedAccessBootstrapRequired { host: _, missing: _, bootstrap_transport: _ } => none
+        ManagedAccessUnobserved { host: h } => Present { value: h as String }
+        ManagedAccessGrounded { occurrence: _ } => none
+        ManagedAccessBootstrapRequired { host: _, missing: _, bootstrap_transport: _ } => none
       }
     }
   })
@@ -602,13 +602,13 @@ func spark_managed_access_standing_for_attempt(
   uses net: std.resources.Network
 {
   match probe_agent_credential_verification(attempt: attempt) {
-    gunbc.fleet_ssh_credential_verify.FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed } =>
+    FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed } =>
       std.process.exit_failure(
         reason: gunbc.fleet_ssh_credential_verify.fleet_ssh_credential_verification_refusal_reason(
           verification: gunbc.fleet_ssh_credential_verify.FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed },
         ),
       )
-    gunbc.fleet_ssh_credential_verify.FleetSshCredentialDerivationRefused { cause: cause } =>
+    FleetSshCredentialDerivationRefused { cause: cause } =>
       std.process.exit_failure(
         reason: gunbc.fleet_ssh_credential_verify.fleet_ssh_credential_verification_refusal_reason(
           verification: gunbc.fleet_ssh_credential_verify.FleetSshCredentialDerivationRefused { cause: cause },

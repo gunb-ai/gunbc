@@ -46,7 +46,7 @@ fn gap4_ingest_probe_step(
     Gap4IngestProbeSourceReadFailed => state
     Gap4IngestProbePending =>
       match v2.compiler.tokenize.tokenize(text: read.source.carried, file: read.compilation_unit, rules: lm.lex) {
-        v2.std.diagnostic.Rejected { diagnostics: d } =>
+        Rejected { diagnostics: d } =>
           Gap4IngestProbeFound {
             path: read.artifact.file_path,
             reason: d.head.reason,
@@ -59,7 +59,7 @@ fn gap4_ingest_probe_step(
           }
         Accepted { value: ts, diagnostics: _ } =>
           match v2.compiler.parse.parse_module(tokens: ts, grammar: lm.grammar) {
-            v2.std.diagnostic.Rejected { diagnostics: d } =>
+            Rejected { diagnostics: d } =>
               gap4_probe_found_from_parse_reject(
                 path: read.artifact.file_path,
                 reason: d.head.reason,
@@ -67,7 +67,7 @@ fn gap4_ingest_probe_step(
               )
             Accepted { value: artifact, diagnostics: _ } =>
               match v2.compiler.normalize.normalize(parse_tree: artifact.tree) {
-                v2.std.diagnostic.Rejected { diagnostics: d } =>
+                Rejected { diagnostics: d } =>
                   Gap4IngestProbeFound {
                     path: read.artifact.file_path,
                     reason: d.head.reason,
@@ -202,7 +202,7 @@ test fn compiler_closure_scoped_ingest_parses_holds() -> v2.std.logic.Bool {
         Accepted { value: roots, diagnostics: _ } =>
           (v2.test.workflow.host_source_root_ingest_manifest.host_source_root_ingest_coverage_receipt.ingest_read_count > 0)
             && (v2.std.algebra.length(xs: roots) == v2.test.workflow.host_source_root_ingest_manifest.host_source_root_ingest_coverage_receipt.ingest_read_count)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
   }
 }

@@ -69,7 +69,7 @@ test fn witness_read_principal_host_effect_apply_typed_argv_holds() -> Bool {
     evidence: host_effect_read_evidence,
     transport: LocalShell,
   ) {
-    std.realization_reconcile.Converged { evidence: _, applied: _ } => false
+    Converged { evidence: _, applied: _ } => false
     NotConverged { reason: reason, applied: _ } =>
       string_contains(s: reason, pattern: "hermetic effective-principal observation unavailable")
   }

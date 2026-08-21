@@ -93,11 +93,11 @@ fn c_emit_host_green_holds() -> v2.std.logic.Bool {
           match v2.compiler.emit_host.runtime_value_parse(target: v2.extdeps.languages.c.c_target_model(), stdout: stdout) {
             Accepted { value: _, diagnostics: _ } =>
               stdout.bytes == v2.compiler.emit_host.emit_host_octets_byte_string(octets: tools.emit_host_transport.c_expected_add_stdout_octets())
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
         _ => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -115,13 +115,13 @@ fn c_emit_host_inject_fault_refuses_holds() -> v2.std.logic.Bool {
           match receipt.logical_run {
             Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
               match v2.compiler.emit_host.runtime_value_parse(target: v2.extdeps.languages.c.c_target_model(), stdout: stdout) {
-                v2.std.diagnostic.Rejected { diagnostics: _ } => true
+                Rejected { diagnostics: _ } => true
                 Accepted { value: _, diagnostics: _ } =>
                   stdout.bytes != v2.compiler.emit_host.emit_host_octets_byte_string(octets: tools.emit_host_transport.c_expected_add_stdout_octets())
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
   }
 }

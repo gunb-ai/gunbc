@@ -19,7 +19,7 @@ module v2.compiler.self_host.compiler_closure_emit_driver
 fn closure_emit_driver_locus_file(refs: std.types.List<v2.compiler.source_authority.SourceRef>) -> v2.std.node.Symbol {
   match refs {
     Empty => v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: "<empty-closure-ref-population>")
-    std.algebra.Cons { head: head, tail: _ } => v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: head.path)
+    Cons { head: head, tail: _ } => v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: head.path)
   }
 }
 
@@ -74,11 +74,11 @@ fn closure_emit_population_admission(
           }
         } else {
           match v2.compiler.source_authority.source_root_ingest_build_from_source_refs(refs: refs) {
-            v2.compiler.source_authority.SourceRootIngestBuildReadFailed { result: _ } =>
+            SourceRootIngestBuildReadFailed { result: _ } =>
               ClosureEmitPopulationRefused {
                 reason: ^closure_emit_driver_source_read_failed
               }
-            v2.compiler.source_authority.SourceRootIngestBuildOk { ingest: ingest } =>
+            SourceRootIngestBuildOk { ingest: ingest } =>
               if v2.std.algebra.length(xs: ingest) != receipt.ingest_read_count {
                 ClosureEmitPopulationRefused {
                   reason: ^closure_emit_driver_ingest_row_shortfall

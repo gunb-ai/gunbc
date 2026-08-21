@@ -59,6 +59,6 @@ test fn apply_lens_enforce_projection_claim_holds() -> v2.std.logic.Bool {
   ) {
     Accepted { value: result, diagnostics: _ } =>
       result.output == ^projection_section_symbol && result.projected == ^projection_projected_symbol
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

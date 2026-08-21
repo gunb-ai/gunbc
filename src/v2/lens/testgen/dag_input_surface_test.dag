@@ -79,7 +79,7 @@ test fn bootstrap_generator_has_conj_dag_input_surface() -> v2.std.logic.Bool {
         g.classification == v2.std.verification.TestClassification { tier: Tier1, layer: v2.std.verification.Unit } &&
         g.anchor == manual_claim_anchor(anchor: ManualLbeConjDagSurface) &&
         language_behavior_generator_uses_conj_dag_input(g: g)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

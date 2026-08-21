@@ -333,7 +333,7 @@ fn witness_a_rejected_tap_carries_its_typed_causes() -> Bool {
     CapabilitySupported { receipt } => false
     CapabilityQualifiedAgainstProvisionalRequirement { receipt, pending } => false
     CapabilityUnavailable { obstacle } => false
-    gunbc.capability_binding.CapabilityUnobserved => false
+    CapabilityUnobserved => false
   }
 }
 
@@ -407,7 +407,7 @@ fn witness_every_obstacle_reaches_unavailable_with_its_own_typed_cause() -> Bool
          CapabilitySupported { receipt } => false
          CapabilityQualifiedAgainstProvisionalRequirement { receipt, pending } => false
          CapabilityDegraded { missing, alternative } => false
-         gunbc.capability_binding.CapabilityUnobserved => false
+         CapabilityUnobserved => false
        }
 }
 
@@ -434,7 +434,7 @@ fn degraded_alternative_module(s: gunbc.capability_binding.BindingStreamState) -
     CapabilitySupported { receipt } => ""
     CapabilityQualifiedAgainstProvisionalRequirement { receipt, pending } => ""
     CapabilityUnavailable { obstacle } => ""
-    gunbc.capability_binding.CapabilityUnobserved => ""
+    CapabilityUnobserved => ""
   }
 }
 

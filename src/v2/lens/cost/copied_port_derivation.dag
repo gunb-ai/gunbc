@@ -35,13 +35,13 @@ fn arrow_domain_param_nodes(arrow: v2.std.node.Node) -> List<v2.std.node.Node> {
               TypeNode { connective: Conj } =>
                 fold(e.target.children, init: acc, f: fn(a, de) {
                   match de.label {
-                    v2.std.node.Named { name: _ } => std.algebra.Cons { head: de.target, tail: a }
+                    Named { name: _ } => std.algebra.Cons { head: de.target, tail: a }
                     Positional => a
                   }
                 })
               _ => acc
             }
-          v2.std.node.Named { name: _ } => acc
+          Named { name: _ } => acc
         }
       })
     _ => std.algebra.Empty
@@ -85,14 +85,14 @@ fn derive_copied_port_index_from_arrow(arrow: v2.std.node.Node) -> v2.std.option
         _ => v2.std.optional.Absent
       }
     Ambiguous => v2.std.optional.Absent
-    v2.std.optional.Absent => v2.std.optional.Absent
+    Absent => v2.std.optional.Absent
   }
 }
 
 fn derive_copied_port_fact(combiner: v2.std.node.Symbol, arrow: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.algebra.CopiedPortFact> {
   match derive_copied_port_index_from_arrow(arrow: arrow) {
-    v2.std.optional.Absent => v2.std.optional.Absent
-    v2.std.optional.Present { value: idx } =>
+    Absent => v2.std.optional.Absent
+    Present { value: idx } =>
       v2.std.optional.Present {
         value: v2.std.algebra.CopiedPortFact {
           combiner: combiner,
@@ -116,8 +116,8 @@ fn copied_port_index_from_registry(rows: List<v2.std.algebra.CopiedPortFact>, co
     empty: v2.std.optional.Absent,
     cons: fn(acc, row) {
       match acc {
-        v2.std.optional.Present { value: _ } => acc
-        v2.std.optional.Absent =>
+        Present { value: _ } => acc
+        Absent =>
           if row_matches_combiner(row: row, combiner: combiner) {
             some_copied_port_index(idx: row.copied_port_index)
           } else {

@@ -140,7 +140,7 @@ fn family_crate_member_run(
             && stdout.bytes == emit_host_octets_byte_string(octets: [0, expected_octet, 0, 0, 0])
         _ => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -169,7 +169,7 @@ fn family_crate_member_run_with_target(
             && stdout.bytes == emit_host_octets_byte_string(octets: [0, expected_octet, 0, 0, 0])
         _ => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -206,8 +206,8 @@ fn family_crate_meet_join_member_agreement(
     subgraph: subgraph,
     member_id: member_id
   ) {
-    v2.std.optional.Absent => true
-    v2.std.optional.Present { value: _ } => false
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
@@ -235,8 +235,8 @@ fn family_crate_complement_member_agreement(
     workspace: workspace,
     source: source
   ) {
-    v2.std.optional.Absent => true
-    v2.std.optional.Present { value: _ } => false
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
@@ -244,8 +244,8 @@ fn optional_divergence_to_list(
   opt: v2.std.optional.Optional<v2.std.native_agreement.NativeAgreementDivergence>
 ) -> List<v2.std.native_agreement.NativeAgreementDivergence> {
   match opt {
-    v2.std.optional.Absent => []
-    v2.std.optional.Present { value: d } => [d]
+    Absent => []
+    Present { value: d } => [d]
   }
 }
 
@@ -296,7 +296,7 @@ fn family_crate_pr_native_agreement_divergences() -> List<v2.std.native_agreemen
           )
         )
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => [family_crate_emit_family_rejected_divergence()]
+    Rejected { diagnostics: _ } => [family_crate_emit_family_rejected_divergence()]
   }
 }
 
@@ -315,9 +315,9 @@ fn family_crate_member_run_refused(
     Accepted { value: receipt, diagnostics: _ } =>
       match receipt.logical_run {
         Accepted { value: _, diagnostics: _ } => false
-        v2.std.diagnostic.Rejected { diagnostics: _ } => true
+        Rejected { diagnostics: _ } => true
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -408,7 +408,7 @@ test fn family_crate_one_build_members_warm_holds() -> Bool {
           source: source,
           member_id: "absent_member"
         )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -448,7 +448,7 @@ test fn family_crate_member_change_cold_rebuild_holds() -> Bool {
             expect_compile_skipped: true,
             expected_octet: 1
           )
-      v2.std.diagnostic.Rejected { diagnostics: _ } => false
+      Rejected { diagnostics: _ } => false
     }
   }
 }
@@ -490,7 +490,7 @@ test fn family_crate_dispatch_change_cold_rebuild_holds() -> Bool {
           expect_compile_skipped: true,
           expected_octet: 0
         )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

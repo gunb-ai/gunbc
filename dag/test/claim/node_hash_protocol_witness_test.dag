@@ -72,7 +72,7 @@ fn expected_childless_connective_digest(c: v2.std.node.Connective) -> String {
     Conj => "c56b5515d62d08bf"
     Disj => "d18c6b0885dc88e2"
     Arrow => "cddb68d14dfd306e"
-    v2.std.node.Cardinality => "dbe6cb930047e16f"
+    Cardinality => "dbe6cb930047e16f"
     Instantiation => "4d19a656f5ebd992"
     Atom { identity: _ } => "8a32b46ce830ef4c"
   }
@@ -81,10 +81,10 @@ fn expected_childless_connective_digest(c: v2.std.node.Connective) -> String {
 fn expected_childless_behavior_digest(b: v2.std.node.Behavior) -> String {
   match b {
     Value => "985af5d2060f85ca"
-    v2.std.node.Transform => "1381ca3dff032667"
+    Transform => "1381ca3dff032667"
     Branch => "b3d4fb128d8a0e0f"
     Loop => "c61f8557ca6645ac"
-    v2.std.node.Bind => "662cad8d0032d8ee"
+    Bind => "662cad8d0032d8ee"
     Match => "9b19b7f9a41ec60a"
   }
 }

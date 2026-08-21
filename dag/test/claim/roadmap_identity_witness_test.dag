@@ -30,14 +30,14 @@ test fn resolution_is_exactly_one_not_first_pick() -> Bool {
   all(roadmap_active_identities(), r =>
     match resolve_slug(slug: record_slug(r: r)) {
       IdentityResolved { identity } => (identity as String) == record_identity(r: r)
-      gunbc.roadmap_identity.IdentityUnknown { slug: _ } => false
+      IdentityUnknown { slug: _ } => false
       IdentityAmbiguous { slug: _, matches: _ } => false
     })
 }
 
 test fn an_unknown_slug_is_unknown_not_a_plausible_first_row() -> Bool {
   match resolve_slug(slug: "no-such-roadmap-node") {
-    gunbc.roadmap_identity.IdentityUnknown { slug } => slug == "no-such-roadmap-node"
+    IdentityUnknown { slug } => slug == "no-such-roadmap-node"
     IdentityResolved { identity: _ } => false
     IdentityAmbiguous { slug: _, matches: _ } => false
   }

@@ -38,15 +38,15 @@ test fn test_module_hygiene_file_grain_expand_refuses_empty_test_decls() -> Bool
 
 test fn test_module_hygiene_failure_receipt_companion_derives_suffix() -> Bool {
   match failure_receipt_companion(function: "witness_holds") {
-    v2.std.optional.Present { value: companion } => companion == "witness_failure_receipt"
-    v2.std.optional.Absent => false
+    Present { value: companion } => companion == "witness_failure_receipt"
+    Absent => false
   }
 }
 
 test fn test_module_hygiene_failure_receipt_companion_absent_on_non_witness() -> Bool {
   match failure_receipt_companion(function: "ordinary_fn") {
-    v2.std.optional.Absent => true
-    v2.std.optional.Present { value: _ } => false
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
@@ -54,15 +54,15 @@ test fn codex_wet_enrolled_witnesses_resolve_failure_receipt_companion() -> Bool
   match failure_receipt_companion(
     function: "materialize_codex_runtime_bundle_produces_native_executable_holds",
   ) {
-    v2.std.optional.Present { value: materialize } =>
+    Present { value: materialize } =>
       materialize == "materialize_codex_runtime_bundle_produces_native_executable_failure_receipt"
-    v2.std.optional.Absent => false
+    Absent => false
   }
     && match failure_receipt_companion(
       function: "press_account_trip_yields_standing_or_typed_refusal_never_turn_started_holds",
     ) {
-      v2.std.optional.Present { value: press } =>
+      Present { value: press } =>
         press == "press_account_trip_yields_standing_or_typed_refusal_never_turn_started_failure_receipt"
-      v2.std.optional.Absent => false
+      Absent => false
     }
 }

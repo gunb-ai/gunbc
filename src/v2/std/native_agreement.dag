@@ -31,8 +31,8 @@ fn runtime_value_discriminant_octet(value: v2.std.runtime.RuntimeValue) -> v2.st
 
 fn runtime_value_octet_label(value: v2.std.runtime.RuntimeValue) -> String {
   match runtime_value_discriminant_octet(value: value) {
-    v2.std.optional.Present { value: octet } => octet_display(octet: octet)
-    v2.std.optional.Absent => "?"
+    Present { value: octet } => octet_display(octet: octet)
+    Absent => "?"
   }
 }
 
@@ -62,7 +62,7 @@ fn native_agreement_failure_receipt(
   divergences: List<NativeAgreementDivergence>
 ) -> String {
   match first_native_agreement_divergence(divergences: divergences) {
-    v2.std.optional.Present { value: d } => format_native_agreement_divergence(d: d)
-    v2.std.optional.Absent => ""
+    Present { value: d } => format_native_agreement_divergence(d: d)
+    Absent => ""
   }
 }

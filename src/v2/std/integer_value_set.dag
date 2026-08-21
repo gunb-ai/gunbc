@@ -70,7 +70,7 @@ fn integer_value_set_from_node(value_set: v2.std.node.Node) -> v2.std.diagnostic
                     d: integer_value_set_decode_invalid_diagnostic(source_carrier: value_set)
                   )
                 }
-              v2.std.diagnostic.Rejected { diagnostics: _ } =>
+              Rejected { diagnostics: _ } =>
                 v2.std.diagnostic.Accepted { value: IntegerValueSetUnbounded, diagnostics: v2.std.diagnostic.None }
             }
           } else {
@@ -93,7 +93,7 @@ fn integer_value_set_from_node(value_set: v2.std.node.Node) -> v2.std.diagnostic
                     )
                   }
                 }
-              v2.std.diagnostic.Rejected { diagnostics: _ } =>
+              Rejected { diagnostics: _ } =>
                 v2.std.diagnostic.Rejected {
                   diagnostics: diagnostics_singleton(
                     d: integer_value_set_decode_invalid_diagnostic(source_carrier: value_set)
@@ -114,7 +114,7 @@ fn integer_value_set_from_node(value_set: v2.std.node.Node) -> v2.std.diagnostic
             )
           }
         }
-      v2.std.diagnostic.Rejected { diagnostics: _ } =>
+      Rejected { diagnostics: _ } =>
         v2.std.diagnostic.Rejected {
           diagnostics: diagnostics_singleton(
             d: integer_value_set_decode_invalid_diagnostic(source_carrier: value_set)
@@ -149,9 +149,9 @@ fn integer_value_set_contains(container: v2.std.node.Node, contained: v2.std.nod
             container: decoded_container,
             contained: decoded_contained
           )
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

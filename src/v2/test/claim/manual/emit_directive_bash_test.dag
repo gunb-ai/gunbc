@@ -41,7 +41,7 @@ test fn emit_directive_bash_error_emits_echo_stderr_holds() -> Bool {
   match v2.test.manual.emit_directive_bash.emit_directive_bash_emit(d: emit_directive_error_example) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == emit_directive_error_expected) && (dg == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -50,9 +50,9 @@ test fn emit_directive_bash_severity_invariant_holds() -> Bool {
     Accepted { value: se, diagnostics: _ } =>
       match v2.test.manual.emit_directive_bash.emit_directive_bash_emit(d: emit_directive_warning_example) {
         Accepted { value: sw, diagnostics: _ } => se.carried == sw.carried
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -62,9 +62,9 @@ test fn emit_directive_bash_message_flows_holds() -> Bool {
       match v2.test.manual.emit_directive_bash.emit_directive_bash_emit(d: emit_directive_other_example) {
         Accepted { value: s2, diagnostics: _ } =>
           (s2.carried == emit_directive_other_expected) && (s1.carried != s2.carried)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -83,6 +83,6 @@ test fn emit_directive_bash_to_stdout_wrong_ne_correct_holds() -> Bool {
     Accepted { value: w, diagnostics: _ } =>
       (w.carried == emit_directive_error_to_stdout_wrong_expected)
         && (w.carried != emit_directive_error_expected)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

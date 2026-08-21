@@ -10,13 +10,13 @@ fn lex_pair_matches(token_class: v2.std.node.Symbol) -> v2.std.logic.Bool {
             Accepted { value: decoded, diagnostics: _ } =>
               match lex_rules_literal_for_class(rules: rust_decl_general_lex(), token_class: token_class) {
                 Accepted { value: live, diagnostics: _ } => decoded == live
-                v2.std.diagnostic.Rejected { diagnostics: _ } => false
+                Rejected { diagnostics: _ } => false
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

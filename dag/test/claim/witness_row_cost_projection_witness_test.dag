@@ -83,11 +83,11 @@ fn two_events_project_one_exact_tsv_row_holds() -> Bool {
         witness_wall_ms_count(wall: row.warm) == 120 &&
         row.warm == witness_cost_warm(eval: eval_wall, resolve: resolve) &&
         match row.outcome {
-          std.observation.Done => true
-          std.observation.Refused { diagnostic: _ } => false
-          std.observation.Failed { error: _, output: _ } => false
-          std.observation.TimedOut { basis: _, budget: _, elapsed: _ } => false
-          std.observation.Skipped { reason: _ } => false
+          Done => true
+          Refused { diagnostic: _ } => false
+          Failed { error: _, output: _ } => false
+          TimedOut { basis: _, budget: _, elapsed: _ } => false
+          Skipped { reason: _ } => false
           Final { shown_failures: _ } => false
         }
       )
@@ -179,21 +179,21 @@ fn refused_outcome_distinct_from_failed_in_projection_holds() -> Bool {
       count(rows) == 2 &&
       fold(rows, init: false, f: (acc, row) =>
         acc || match row.outcome {
-          std.observation.Refused { diagnostic: d } => d == ("typed refuse" as std.types.NonEmptyStr)
-          std.observation.Failed { error: _, output: _ } => false
-          std.observation.Done => false
-          std.observation.TimedOut { basis: _, budget: _, elapsed: _ } => false
-          std.observation.Skipped { reason: _ } => false
+          Refused { diagnostic: d } => d == ("typed refuse" as std.types.NonEmptyStr)
+          Failed { error: _, output: _ } => false
+          Done => false
+          TimedOut { basis: _, budget: _, elapsed: _ } => false
+          Skipped { reason: _ } => false
           Final { shown_failures: _ } => false
         }
       ) &&
       fold(rows, init: false, f: (acc, row) =>
         acc || match row.outcome {
-          std.observation.Failed { error: e, output: _ } => e == ("boom" as std.types.NonEmptyStr)
-          std.observation.Refused { diagnostic: _ } => false
-          std.observation.Done => false
-          std.observation.TimedOut { basis: _, budget: _, elapsed: _ } => false
-          std.observation.Skipped { reason: _ } => false
+          Failed { error: e, output: _ } => e == ("boom" as std.types.NonEmptyStr)
+          Refused { diagnostic: _ } => false
+          Done => false
+          TimedOut { basis: _, budget: _, elapsed: _ } => false
+          Skipped { reason: _ } => false
           Final { shown_failures: _ } => false
         }
       )
@@ -376,21 +376,21 @@ fn native_seed_events_preserve_order_outcome_and_perturbation_holds() -> Bool {
       ) == 26 &&
       fold(rows, init: false, f: (acc, row) =>
         acc || match row.outcome {
-          std.observation.Refused { diagnostic: d } => d == ("typed refusal" as std.types.NonEmptyStr)
-          std.observation.Done => false
-          std.observation.Failed { error: _, output: _ } => false
-          std.observation.TimedOut { basis: _, budget: _, elapsed: _ } => false
-          std.observation.Skipped { reason: _ } => false
+          Refused { diagnostic: d } => d == ("typed refusal" as std.types.NonEmptyStr)
+          Done => false
+          Failed { error: _, output: _ } => false
+          TimedOut { basis: _, budget: _, elapsed: _ } => false
+          Skipped { reason: _ } => false
           Final { shown_failures: _ } => false
         }
       ) &&
       fold(rows, init: false, f: (acc, row) =>
         acc || match row.outcome {
-          std.observation.Failed { error: e, output: _ } => e == ("runtime failure" as std.types.NonEmptyStr)
-          std.observation.Done => false
-          std.observation.Refused { diagnostic: _ } => false
-          std.observation.TimedOut { basis: _, budget: _, elapsed: _ } => false
-          std.observation.Skipped { reason: _ } => false
+          Failed { error: e, output: _ } => e == ("runtime failure" as std.types.NonEmptyStr)
+          Done => false
+          Refused { diagnostic: _ } => false
+          TimedOut { basis: _, budget: _, elapsed: _ } => false
+          Skipped { reason: _ } => false
           Final { shown_failures: _ } => false
         }
       ) &&
@@ -470,14 +470,14 @@ fn seed_timed_out_event_carries_the_pair_and_is_not_failed_holds() -> Bool {
       count(rows) == 1 &&
       fold(rows, init: false, f: (acc, row) =>
         acc || match row.outcome {
-          std.observation.TimedOut { basis: k, budget: b, elapsed: e } =>
+          TimedOut { basis: k, budget: b, elapsed: e } =>
             clock_basis_eq(a: k, b: WallClock) &&
             !clock_basis_eq(a: k, b: CpuClock) &&
             millisecond_count(m: b) == 900000 && millisecond_count(m: e) == 900001
-          std.observation.Done => false
-          std.observation.Refused { diagnostic: _ } => false
-          std.observation.Failed { error: _, output: _ } => false
-          std.observation.Skipped { reason: _ } => false
+          Done => false
+          Refused { diagnostic: _ } => false
+          Failed { error: _, output: _ } => false
+          Skipped { reason: _ } => false
           Final { shown_failures: _ } => false
         }
       )
@@ -503,11 +503,11 @@ fn timed_out_red_control_is_neither_done_nor_failed_holds() -> Bool {
     WitnessCostProjectionComplete { rows: rows } =>
       fold(rows, init: true, f: (acc, row) =>
         acc && match row.outcome {
-          std.observation.Done => false
-          std.observation.Failed { error: _, output: _ } => false
-          std.observation.Refused { diagnostic: _ } => false
-          std.observation.TimedOut { basis: _, budget: _, elapsed: _ } => true
-          std.observation.Skipped { reason: _ } => false
+          Done => false
+          Failed { error: _, output: _ } => false
+          Refused { diagnostic: _ } => false
+          TimedOut { basis: _, budget: _, elapsed: _ } => true
+          Skipped { reason: _ } => false
           Final { shown_failures: _ } => false
         }
       )

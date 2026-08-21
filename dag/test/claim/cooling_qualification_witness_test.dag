@@ -49,12 +49,12 @@ test fn cooler_with_a_different_retention_is_a_discriminating_refusal() -> Bool 
   ) {
     CoolingCatalogRefused { host: _, cause: cause } =>
       match cause {
-        product.cooling_qualification.CoolerMountDoesNotMatchProcessorMount {
+        CoolerMountDoesNotMatchProcessorMount {
           cooler_mount: _,
           processor_mount: _,
         } => true
         BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => false
-        product.cooling_qualification.CoolerDesignPowerBelowProcessorTdp {
+        CoolerDesignPowerBelowProcessorTdp {
           cooler_max_design_power: _,
           processor_tdp: _,
         } => false
@@ -90,11 +90,11 @@ test fn baseboard_absent_from_supported_population_is_refused() -> Bool {
     CoolingCatalogRefused { host: _, cause: cause } =>
       match cause {
         BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => true
-        product.cooling_qualification.CoolerMountDoesNotMatchProcessorMount {
+        CoolerMountDoesNotMatchProcessorMount {
           cooler_mount: _,
           processor_mount: _,
         } => false
-        product.cooling_qualification.CoolerDesignPowerBelowProcessorTdp {
+        CoolerDesignPowerBelowProcessorTdp {
           cooler_max_design_power: _,
           processor_tdp: _,
         } => false
@@ -128,11 +128,11 @@ test fn design_power_one_watt_below_tdp_is_refused() -> Bool {
   ) {
     CoolingCatalogRefused { host: _, cause: cause } =>
       match cause {
-        product.cooling_qualification.CoolerDesignPowerBelowProcessorTdp {
+        CoolerDesignPowerBelowProcessorTdp {
           cooler_max_design_power: _,
           processor_tdp: _,
         } => true
-        product.cooling_qualification.CoolerMountDoesNotMatchProcessorMount {
+        CoolerMountDoesNotMatchProcessorMount {
           cooler_mount: _,
           processor_mount: _,
         } => false
@@ -301,14 +301,14 @@ test fn cross_platform_socket_at_the_same_contact_count_is_refused() -> Bool {
   ) {
     CoolingCatalogRefused { host: _, cause: cause } =>
       match cause {
-        product.cooling_qualification.CoolerMountDoesNotMatchProcessorMount {
+        CoolerMountDoesNotMatchProcessorMount {
           cooler_mount: cm,
           processor_mount: pm,
         } =>
           cm.designation == pm.designation
             && cm.platform_owner != pm.platform_owner
         BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => false
-        product.cooling_qualification.CoolerDesignPowerBelowProcessorTdp {
+        CoolerDesignPowerBelowProcessorTdp {
           cooler_max_design_power: _,
           processor_tdp: _,
         } => false

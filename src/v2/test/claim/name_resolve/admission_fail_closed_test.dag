@@ -6,7 +6,7 @@ test fn resolve_module_not_found_preserves_missing_module_identity() -> v2.std.l
   fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
   match subject_module_root_for_name(roots: roots, name: missing) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       match d.head.at {
         Textual { file: module_file, extent: _ } =>
           (d.head.reason == ^resolve_module_not_found)
@@ -70,7 +70,7 @@ fn fc_with_roots(
   f: fn(FreeMonoid<NormalizedTree>) -> v2.std.logic.Bool
 ) -> v2.std.logic.Bool {
   match o {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: roots, diagnostics: _ } => f(roots)
   }
 }
@@ -161,7 +161,7 @@ test fn resolve_duplicate_module_roots_is_rejected() -> v2.std.logic.Bool {
     }
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
   })
 }
@@ -179,7 +179,7 @@ test fn resolve_subject_name_not_in_roots_is_rejected() -> v2.std.logic.Bool {
     }
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
   })
 }
@@ -189,7 +189,7 @@ test fn validate_module_roots_threads_accepted_projection_diagnostics() -> v2.st
   match validate_module_roots(roots: roots) {
     Accepted { value: _, diagnostics: d } =>
       diagnostics_eq(a: d, b: v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
   })
 }
@@ -198,7 +198,7 @@ test fn validate_module_roots_merges_pending_before_duplicate_reject() -> v2.std
   fc_with_roots(o: fc_duplicate_roots(), f: fn(roots) {
   match validate_module_roots(roots: roots) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
   })
 }
@@ -207,7 +207,7 @@ test fn validate_module_roots_malformed_root_is_rejected() -> v2.std.logic.Bool 
   fc_with_roots(o: fc_malformed_subject_roots(), f: fn(roots) {
   match validate_module_roots(roots: roots) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
   })
 }
@@ -225,7 +225,7 @@ test fn resolve_malformed_subject_root_is_rejected() -> v2.std.logic.Bool {
     }
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
   })
 }
@@ -291,7 +291,7 @@ test fn resolve_dual_imports_do_not_collide_on_header_metadata() -> v2.std.logic
     policy: ImportScoped
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
   })
 }
@@ -321,9 +321,9 @@ test fn resolve_with_admission_threads_validate_diagnostics_on_accept() -> v2.st
       ) {
         Accepted { value: _, diagnostics: resolve_diag } =>
           diagnostics_eq(a: resolve_diag, b: validate_diag)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
   })
 }

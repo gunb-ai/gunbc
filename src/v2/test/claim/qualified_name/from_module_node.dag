@@ -21,13 +21,13 @@ fn fmn_bool_atom(b: v2.std.logic.Bool) -> v2.std.node.Node {
 fn fmn_outcome_accepted(out: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>) -> v2.std.logic.Bool {
   match out {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn fmn_value_eq(out: v2.std.diagnostic.Outcome<v2.std.qualified_name.QualifiedName>, expected: v2.std.qualified_name.QualifiedName) -> v2.std.logic.Bool {
   match out {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: actual, diagnostics: _ } => actual == expected
   }
 }

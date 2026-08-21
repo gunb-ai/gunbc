@@ -6,7 +6,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 fn inhabitant_neutralization_python_int_std_projection_holds() -> v2.std.logic.Bool {
   match inhabitant_std_projection_symbol(inhabitant: python_int_inhabitant_node()) {
     Accepted { value: proj, diagnostics: _ } => proj == ^std_projection_additive_numeric
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -16,7 +16,7 @@ fn inhabitant_neutralization_ts_target_lookup_holds() -> v2.std.logic.Bool {
     target: ts_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -25,7 +25,7 @@ fn inhabitant_neutralization_go_int64_std_projection_holds() -> v2.std.logic.Boo
     inhabitant: go_int64_additive_numeric_inhabitant_node()
   ) {
     Accepted { value: proj, diagnostics: _ } => proj == ^std_projection_additive_numeric
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -34,7 +34,7 @@ fn inhabitant_neutralization_go_int_additive_numeric_std_projection_holds() -> v
     inhabitant: go_int_additive_numeric_inhabitant_node()
   ) {
     Accepted { value: proj, diagnostics: _ } => proj == ^std_projection_additive_numeric
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -44,7 +44,7 @@ fn inhabitant_neutralization_go_int_additive_numeric_target_lookup_holds() -> v2
     target: go_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -55,7 +55,7 @@ fn inhabitant_neutralization_go_additive_numeric_lookup_tiebreak_selects_platfor
   ) {
     Accepted { value: selected, diagnostics: _ } =>
       selected == go_int_additive_numeric_inhabitant_node()
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -66,7 +66,7 @@ test fn inhabitant_neutralization_go_additive_numeric_lookup_policy_flip_selects
   ) {
     Accepted { value: selected, diagnostics: _ } =>
       selected == go_int64_additive_numeric_inhabitant_node()
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -77,7 +77,7 @@ test fn inhabitant_neutralization_go_platform_std_projection_lookup_baseline_hol
   ) {
     Accepted { value: selected, diagnostics: _ } =>
       selected == go_int_inhabitant_node()
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -87,7 +87,7 @@ test fn inhabitant_neutralization_go_unqualified_std_projection_lookup_rejects_h
     target: go_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -100,13 +100,13 @@ fn inhabitant_neutralization_go_int64_to_ts_emit_refuses_underived_holds() -> v2
       match infer(tree: neutralized) {
         Accepted { value: inferred, diagnostics: _ } =>
           match v2.compiler.emit.emit(tree: inferred, target: ts_target_model()) {
-            v2.std.diagnostic.Rejected { diagnostics: d } =>
+            Rejected { diagnostics: d } =>
               d.head.reason == ^infer_grounding_not_derived
             Accepted { value: _, diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -116,7 +116,7 @@ fn inhabitant_neutralization_neutralize_python_to_go_holds() -> v2.std.logic.Boo
     target: go_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -140,13 +140,13 @@ test fn inhabitant_neutralization_emit_after_neutralize_refuses_underived_holds(
       match infer(tree: neutralized) {
         Accepted { value: inferred, diagnostics: _ } =>
           match v2.compiler.emit.emit(tree: inferred, target: ts_target_model()) {
-            v2.std.diagnostic.Rejected { diagnostics: d } =>
+            Rejected { diagnostics: d } =>
               d.head.reason == ^infer_grounding_not_derived
             Accepted { value: _, diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -154,10 +154,10 @@ fn inhabitant_neutralization_raw_emit_still_fails_closed() -> v2.std.logic.Bool 
   match infer(tree: python_emitted_add_fn_node()) {
     Accepted { value: inferred, diagnostics: _ } =>
       match v2.compiler.emit.emit(tree: inferred, target: ts_target_model()) {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => true
+        Rejected { diagnostics: _ } => true
         Accepted { value: _, diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -174,13 +174,13 @@ fn inhabitant_neutralization_same_flavor_python_emit_refuses_underived_holds() -
       match infer(tree: neutralized) {
         Accepted { value: inferred, diagnostics: _ } =>
           match v2.compiler.emit.emit(tree: inferred, target: python_target_model()) {
-            v2.std.diagnostic.Rejected { diagnostics: d } =>
+            Rejected { diagnostics: d } =>
               d.head.reason == ^infer_grounding_not_derived
             Accepted { value: _, diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

@@ -46,7 +46,7 @@ fn seed_self_verify_same_artifact_refuses() -> v2.std.logic.Bool {
     claim: same,
     check: same
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^bootstrap_self_verify_same_artifact
+    Rejected { diagnostics: d } => d.head.reason == ^bootstrap_self_verify_same_artifact
     Accepted { value: _, diagnostics: _ } => false
   }
 }
@@ -62,7 +62,7 @@ fn seed_self_verify_planted_divergence_refuses() -> v2.std.logic.Bool {
       digest: ^seed_honesty_perturbed_digest
     )
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^bootstrap_self_verify_diverged
+    Rejected { diagnostics: d } => d.head.reason == ^bootstrap_self_verify_diverged
     Accepted { value: _, diagnostics: _ } => false
   }
 }
@@ -81,7 +81,7 @@ fn seed_self_verify_provenance_mismatch_refuses() -> v2.std.logic.Bool {
       pin: ^seed_honesty_closing_contract_hash_pin
     )
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^bootstrap_self_verify_provenance_mismatch
+    Rejected { diagnostics: d } => d.head.reason == ^bootstrap_self_verify_provenance_mismatch
     Accepted { value: _, diagnostics: _ } => false
   }
 }
@@ -100,7 +100,7 @@ fn seed_self_verify_distinct_equal_artifacts_hold() -> v2.std.logic.Bool {
     Accepted { value: receipt, diagnostics: None } =>
       !(receipt.claim.output == receipt.check.output)
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

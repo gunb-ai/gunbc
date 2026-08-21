@@ -59,10 +59,10 @@ fn ctd_emit_decl_source() -> extdeps.communication.medium.Medium<String> {
             carried: concat(concat(point.carried, bool_decl.carried), "\n"),
             fidelity: extdeps.communication.medium.Lossless
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } =>
+        Rejected { diagnostics: _ } =>
           extdeps.communication.medium.Medium { carried: "", fidelity: extdeps.communication.medium.Lossless }
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       extdeps.communication.medium.Medium { carried: "", fidelity: extdeps.communication.medium.Lossless }
   }
 }
@@ -83,11 +83,11 @@ test fn c_type_decl_emit_host_green_run_holds() -> v2.std.logic.Bool {
           match runtime_value_parse(target: c_type_decl_target_model(), stdout: stdout) {
             Accepted { value: _, diagnostics: _ } =>
               stdout.bytes == emit_host_octets_byte_string(octets: ctd_expected_stdout_octets())
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
         _ => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -105,13 +105,13 @@ test fn c_type_decl_emit_host_inject_fault_refuses_holds() -> v2.std.logic.Bool 
           match receipt.logical_run {
             Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
               match runtime_value_parse(target: c_type_decl_target_model(), stdout: stdout) {
-                v2.std.diagnostic.Rejected { diagnostics: _ } => true
+                Rejected { diagnostics: _ } => true
                 Accepted { value: _, diagnostics: _ } =>
                   stdout.bytes != emit_host_octets_byte_string(octets: ctd_expected_stdout_octets())
               }
-            v2.std.diagnostic.Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => false
           }
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
   }
 }

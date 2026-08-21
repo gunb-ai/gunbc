@@ -30,20 +30,20 @@ data deployed_tree_report_vantage: std.types.FilePath = "." as std.types.FilePat
 
 fn deployed_tree_standing_line(standing: gunbc.live_deploy.deployed_tree_observation.DeployedTreeStanding) -> String {
   match standing {
-    gunbc.live_deploy.deployed_tree_observation.DeployedTreeConverged { revision: r } =>
+    DeployedTreeConverged { revision: r } =>
       join(["deployed-tree host=", deployed_tree_report_host as String,
             " CONVERGED revision=", git_object_id_wire_hex(oid: r) as String,
             " -- the deployed tree is the admitted revision and every path in the deployed scope realizes it"], "")
-    gunbc.live_deploy.deployed_tree_observation.DeployedTreeRevisionDrifted { desired: d, local: l } =>
+    DeployedTreeRevisionDrifted { desired: d, local: l } =>
       join(["deployed-tree host=", deployed_tree_report_host as String,
             " REVISION-DRIFTED desired=", git_object_id_wire_hex(oid: d) as String,
             " local=", git_object_id_wire_hex(oid: l) as String,
             " -- both sides named because a catch-up needs the prior"], "")
-    gunbc.live_deploy.deployed_tree_observation.DeployedTreeModifiedAtRevision { revision: r, changed_paths: body } =>
+    DeployedTreeModifiedAtRevision { revision: r, changed_paths: body } =>
       join(["deployed-tree host=", deployed_tree_report_host as String,
             " MODIFIED-AT-REVISION revision=", git_object_id_wire_hex(oid: r) as String,
             " -- the revision agrees and the bytes do not; git status reports: ", body as String], "")
-    gunbc.live_deploy.deployed_tree_observation.DeployedTreeStandingUnobserved { cause: c } =>
+    DeployedTreeStandingUnobserved { cause: c } =>
       join(["deployed-tree host=", deployed_tree_report_host as String,
             " UNOBSERVED -- ", deployed_tree_unobservable_text(cause: c)], "")
   }
@@ -54,10 +54,10 @@ fn deployed_tree_standing_line(standing: gunbc.live_deploy.deployed_tree_observa
 // one place guaranteed to be read as a green.
 fn deployed_tree_standing_is_publication_converged(standing: gunbc.live_deploy.deployed_tree_observation.DeployedTreeStanding) -> Bool {
   match standing {
-    gunbc.live_deploy.deployed_tree_observation.DeployedTreeConverged { revision: _ } => true
-    gunbc.live_deploy.deployed_tree_observation.DeployedTreeRevisionDrifted { desired: _, local: _ } => false
-    gunbc.live_deploy.deployed_tree_observation.DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
-    gunbc.live_deploy.deployed_tree_observation.DeployedTreeStandingUnobserved { cause: _ } => false
+    DeployedTreeConverged { revision: _ } => true
+    DeployedTreeRevisionDrifted { desired: _, local: _ } => false
+    DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
+    DeployedTreeStandingUnobserved { cause: _ } => false
   }
 }
 
@@ -119,7 +119,7 @@ func deployed_tree_report_ci_wet() -> std.process.ProcessExit
   uses net: std.resources.Network
 {
   match prepare_fleet_ssh_agent_context(attempt_raw: deployed_tree_report_attempt_raw) {
-    gunbc.fleet_ssh_locus.FleetSshContextRefused { cause: c } =>
+    FleetSshContextRefused { cause: c } =>
       exit_failure(reason: join(["deployed tree report refused before any ssh leg: ", c], ""))
     FleetSshContextReady { context: context, receipt: receipt } =>
       deployed_tree_report_for_context(context: context, context_receipt: receipt)

@@ -125,7 +125,7 @@ fn mechanical_reverification_execution_for_run(run: v2.compiler.eval.TestClaimRu
   match run.verdict {
     Pass => completed_lens_ci_execution()
     SemanticMismatch { actual: _, falsification: _ } => Failed
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => Failed
+    BuildFailed { actual: _, diagnostic: _ } => Failed
     RunFailed { actual: _, diagnostic: _ } => Failed
     Deferred { actual: _, diagnostic: _ } => ReportUnavailable
   }

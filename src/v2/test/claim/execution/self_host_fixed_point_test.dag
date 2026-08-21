@@ -243,7 +243,7 @@ test fn self_host_fixed_point_fails_closed_until_regen_byte_pair() -> v2.std.log
     source_models: self_host_fixture_source_models_unready(),
     reference_stage1: stage_emission_leaf()
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^self_host_runner_not_realized
+    Rejected { diagnostics: d } => d.head.reason == ^self_host_runner_not_realized
     Accepted { value: _, diagnostics: _ } => false
   }
 }
@@ -255,7 +255,7 @@ test fn self_host_fixed_point_validate_accepts_matching_regen_bytes() -> v2.std.
     reference_stage1: stage_reference_emitted()
   ) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -265,7 +265,7 @@ test fn self_host_fixed_point_validate_rejects_perturbed_regen_bytes() -> v2.std
     source_models: self_host_fixture_source_models_perturbed_regen(),
     reference_stage1: stage_reference_emitted()
   ) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^self_host_fixpoint_digest_mismatch
+    Rejected { diagnostics: d } => d.head.reason == ^self_host_fixpoint_digest_mismatch
     Accepted { value: _, diagnostics: _ } => false
   }
 }

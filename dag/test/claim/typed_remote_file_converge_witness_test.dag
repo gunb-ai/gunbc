@@ -13,22 +13,22 @@ fn subject_write() -> gunbc.typed_remote_file_write.TypedRemoteFileWrite? {
     content: subject_content,
     allowed_scope: unit_dir_scope,
   ) {
-    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: w } => Present { value: w }
-    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: _ } => none
+    TypedRemoteFileWriteAdmitted { write: w } => Present { value: w }
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => none
   }
 }
 
 fn converged(c: gunbc.typed_remote_file_write.TypedRemoteFileConvergence) -> Bool {
   match c {
-    gunbc.typed_remote_file_write.TypedRemoteFileConverged { path: _, mode: _ } => true
-    gunbc.typed_remote_file_write.TypedRemoteFileConvergenceRefused { step: _, reason: _ } => false
+    TypedRemoteFileConverged { path: _, mode: _ } => true
+    TypedRemoteFileConvergenceRefused { step: _, reason: _ } => false
   }
 }
 
 fn refusal_step(c: gunbc.typed_remote_file_write.TypedRemoteFileConvergence) -> String {
   match c {
-    gunbc.typed_remote_file_write.TypedRemoteFileConverged { path: _, mode: _ } => "converged"
-    gunbc.typed_remote_file_write.TypedRemoteFileConvergenceRefused { step: s, reason: _ } => s
+    TypedRemoteFileConverged { path: _, mode: _ } => "converged"
+    TypedRemoteFileConvergenceRefused { step: s, reason: _ } => s
   }
 }
 
@@ -180,12 +180,12 @@ test fn a_comparison_that_could_not_run_refuses_separately_from_a_difference() -
 // situations whose remedies differ.
 test fn the_difference_and_the_error_do_not_render_the_same_reason() -> Bool {
   let differ = match test.claim.typed_remote_file_converge_witness_test.classify(exit_code: 1, stderr: "") {
-    gunbc.typed_remote_file_write.TypedRemoteFileConverged { path: _, mode: _ } => ""
-    gunbc.typed_remote_file_write.TypedRemoteFileConvergenceRefused { step: _, reason: r } => r
+    TypedRemoteFileConverged { path: _, mode: _ } => ""
+    TypedRemoteFileConvergenceRefused { step: _, reason: r } => r
   }
   let errored = match test.claim.typed_remote_file_converge_witness_test.classify(exit_code: 2, stderr: "boom") {
-    gunbc.typed_remote_file_write.TypedRemoteFileConverged { path: _, mode: _ } => ""
-    gunbc.typed_remote_file_write.TypedRemoteFileConvergenceRefused { step: _, reason: r } => r
+    TypedRemoteFileConverged { path: _, mode: _ } => ""
+    TypedRemoteFileConvergenceRefused { step: _, reason: r } => r
   }
   differ != errored
     && string_contains(differ, "are not the declared content")
@@ -202,7 +202,7 @@ test fn a_path_outside_the_scope_is_never_admitted() -> Bool {
     content: subject_content,
     allowed_scope: unit_dir_scope,
   ) {
-    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: _ } => false
-    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: _ } => true
+    TypedRemoteFileWriteAdmitted { write: _ } => false
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => true
   }
 }

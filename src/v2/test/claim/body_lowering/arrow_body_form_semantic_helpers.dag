@@ -61,7 +61,7 @@ fn arrow_body_form_semantic_unary_int_if_body_admits_holds(
       } else {
         false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -77,7 +77,7 @@ fn arrow_body_form_semantic_nullary_int_if_body_admits_holds(
       } else {
         false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -100,7 +100,7 @@ fn arrow_body_form_semantic_binary_int_if_body_admits_holds(
       } else {
         false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -111,7 +111,7 @@ fn arrow_body_form_eval_int_type_node() -> v2.std.node.Node {
 fn arrow_body_form_eval_int_literal_optional(lexeme: String) -> v2.std.optional.Optional<v2.std.node.Node> {
   match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence) {
     Accepted { value: node, diagnostics: _ } => optional_present(value: node)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => optional_absent()
+    Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
@@ -120,7 +120,7 @@ fn arrow_body_form_eval_runtime_int_equals(value: v2.std.runtime.RuntimeValue, n
     RuntimePrimitive { value: p } =>
       match integer_signed_i32_le_bytes_to_int(bytes: p.bytes) {
         Accepted { value: magnitude, diagnostics: _ } => magnitude == n
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
     _ => false
   }
@@ -190,7 +190,7 @@ fn arrow_body_form_eval_int_result_equals_for_call(call: v2.std.node.Node, expec
 
 fn arrow_body_form_eval_unary_int_holds(callee: v2.std.node.Node, arg_lex: String, expected: v2.std.integer.Int) -> Bool {
   match arrow_body_form_eval_int_literal_optional(lexeme: arg_lex) {
-    v2.std.optional.Present { value: arg } =>
+    Present { value: arg } =>
       arrow_body_form_eval_int_result_equals_for_call(
         call: arrow_body_form_eval_unary_call_node(callee: callee, arg: arg),
         expected: expected
@@ -213,9 +213,9 @@ fn arrow_body_form_eval_binary_int_holds(
   expected: v2.std.integer.Int
 ) -> Bool {
   match arrow_body_form_eval_int_literal_optional(lexeme: left_lex) {
-    v2.std.optional.Present { value: left } =>
+    Present { value: left } =>
       match arrow_body_form_eval_int_literal_optional(lexeme: right_lex) {
-        v2.std.optional.Present { value: right } =>
+        Present { value: right } =>
           arrow_body_form_eval_int_result_equals_for_call(
             call: arrow_body_form_eval_binary_call_node(callee: callee, left: left, right: right),
             expected: expected
@@ -229,6 +229,6 @@ fn arrow_body_form_eval_binary_int_holds(
 fn arrow_body_form_eval_call_does_not_reject_unsupported_callee(call: v2.std.node.Node) -> Bool {
   match arrow_body_form_eval_call_outcome_for_call(call: call) {
     Accepted { value: _, diagnostics: None } => true
-    v2.std.diagnostic.Rejected { diagnostics: ds } => ds.head.reason != ^eval_rejected_unsupported_callee
+    Rejected { diagnostics: ds } => ds.head.reason != ^eval_rejected_unsupported_callee
   }
 }

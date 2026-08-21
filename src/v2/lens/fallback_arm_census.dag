@@ -71,22 +71,22 @@ fn classify_fallback_arm(input: FallbackArmClassifyInput) -> FallbackArmClass {
 
 fn pattern_node_is_planted_wildcard(pattern: v2.std.node.Node) -> v2.std.logic.Bool {
   match v2.std.grammar.node_atom_identity_optional(node: pattern) {
-    v2.std.optional.Present { value: id } => id == fallback_planted_wildcard
-    v2.std.optional.Absent => false
+    Present { value: id } => id == fallback_planted_wildcard
+    Absent => false
   }
 }
 
 fn body_node_marks_refuses(body: v2.std.node.Node) -> v2.std.logic.Bool {
   match v2.std.grammar.node_atom_identity_optional(node: body) {
-    v2.std.optional.Present { value: id } => id == fallback_body_refuses
-    v2.std.optional.Absent => false
+    Present { value: id } => id == fallback_body_refuses
+    Absent => false
   }
 }
 
 fn body_node_marks_answers(body: v2.std.node.Node) -> v2.std.logic.Bool {
   match v2.std.grammar.node_atom_identity_optional(node: body) {
-    v2.std.optional.Present { value: id } => id == fallback_body_answers
-    v2.std.optional.Absent => false
+    Present { value: id } => id == fallback_body_answers
+    Absent => false
   }
 }
 
@@ -108,10 +108,10 @@ fn classify_planted_arm(
               interim_declared: interim_declared
             }
           )
-        v2.std.diagnostic.Rejected { diagnostics: _ } =>
+        Rejected { diagnostics: _ } =>
           ClassifierUnknown { cause: fallback_unknown_undecidable_body }
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: _ } =>
       ClassifierUnknown { cause: fallback_unknown_not_wildcard }
   }
 }
@@ -174,13 +174,13 @@ fn classify_last_arm_of_planted_match(
   interim_declared: v2.std.logic.Bool
 ) -> FallbackArmClass {
   match last_list_node(xs: match_positional_arms(match_node: match_node)) {
-    v2.std.optional.Present { value: arm } =>
+    Present { value: arm } =>
       classify_planted_arm(
         arm: arm,
         scrutinee_closed_total: scrutinee_closed_total,
         interim_declared: interim_declared
       )
-    v2.std.optional.Absent => ClassifierUnknown { cause: fallback_unknown_not_wildcard }
+    Absent => ClassifierUnknown { cause: fallback_unknown_not_wildcard }
   }
 }
 

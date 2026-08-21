@@ -31,7 +31,7 @@ fn argv_of(invocation: extdeps.tools.jq.JqInvocation) -> std.types.List<String> 
         empty: std.algebra.Empty,
         cons: fn(acc, a) { v2.std.algebra.list_snoc_item(xs: acc, item: v2.std.compilers.cli_surface.cli_argument_text(argument: a)) }
       )
-    v2.std.diagnostic.Rejected { diagnostics: _ } => std.algebra.Empty
+    Rejected { diagnostics: _ } => std.algebra.Empty
   }
 }
 
@@ -93,7 +93,7 @@ test fn unlowered_bindings_refuse() -> Bool {
     output_encoding: extdeps.tools.jq.JqRawOutput,
     exit_policy: extdeps.tools.jq.JqProgramExit,
   }) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
@@ -106,7 +106,7 @@ test fn unlowered_file_input_refuses() -> Bool {
     output_encoding: extdeps.tools.jq.JqRawOutput,
     exit_policy: extdeps.tools.jq.JqProgramExit,
   }) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
@@ -120,7 +120,7 @@ test fn unlowered_file_input_refuses() -> Bool {
 // alone distinguishes correct routing from total loss.
 test fn stdin_survives_lowering_into_the_process_plan() -> Bool {
   match extdeps.tools.jq.jq_invocation_process_plan(invocation: sensor_invocation()) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: plan, diagnostics: _ } =>
       match extdeps.tools.jq.jq_admitted_plan_input(plan: plan) {
         JqProcessNoStdin => false
@@ -131,7 +131,7 @@ test fn stdin_survives_lowering_into_the_process_plan() -> Bool {
 
 test fn stdin_reaches_the_plan_without_entering_the_argument_vector() -> Bool {
   match extdeps.tools.jq.jq_invocation_process_plan(invocation: sensor_invocation()) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: plan, diagnostics: _ } =>
       v2.std.algebra.fold_list(
         xs: v2.std.compilers.cli_surface.cli_surface_arguments(surface: extdeps.tools.jq.jq_admitted_plan_surface(plan: plan)),
@@ -235,7 +235,7 @@ fn classifies_as(
     output_encoding: extdeps.tools.jq.JqRawOutput,
     exit_policy: policy,
   }) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: plan, diagnostics: _ } =>
       outcome_matches(
         outcome: extdeps.tools.jq.jq_classify_observation(plan: plan, observation: observation),

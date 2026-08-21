@@ -64,28 +64,28 @@ fn tdc_unknown_atom_node() -> v2.std.node.Node {
 
 fn tdc_elem_shape_is_payload_coproduct(elem: v2.std.node.Node) -> v2.std.logic.Bool {
   match repr_grounding_derive_elem_shape(elem: elem) {
-    std.trait_derive_shape.ReprDeriveElemPayloadCoproduct => true
+    ReprDeriveElemPayloadCoproduct => true
     _ => false
   }
 }
 
 fn tdc_elem_shape_is_unknown(elem: v2.std.node.Node) -> v2.std.logic.Bool {
   match repr_grounding_derive_elem_shape(elem: elem) {
-    std.trait_derive_shape.ReprDeriveElemUnknown => true
+    ReprDeriveElemUnknown => true
     _ => false
   }
 }
 
 fn tdc_elem_shape_is_nullary_enum_copy(elem: v2.std.node.Node) -> v2.std.logic.Bool {
   match repr_grounding_derive_elem_shape(elem: elem) {
-    std.trait_derive_shape.ReprDeriveElemNullaryEnumCopy => true
+    ReprDeriveElemNullaryEnumCopy => true
     _ => false
   }
 }
 
 fn tdc_elem_shape_is_kernel_string(elem: v2.std.node.Node) -> v2.std.logic.Bool {
   match repr_grounding_derive_elem_shape(elem: elem) {
-    std.trait_derive_shape.ReprDeriveElemKernelString => true
+    ReprDeriveElemKernelString => true
     _ => false
   }
 }
@@ -100,8 +100,8 @@ fn tdc_collection_requirement_gate_is_incomplete(
   ) {
     Present { value: gate } =>
       match gate {
-        v2.compiler.trait_derive_completeness.TraitDeriveCompletenessIncomplete => true
-        v2.compiler.trait_derive_completeness.TraitDeriveCompletenessSatisfied => false
+        TraitDeriveCompletenessIncomplete => true
+        TraitDeriveCompletenessSatisfied => false
       }
     Absent => false
   }
@@ -127,13 +127,13 @@ fn tdc_binding_is(binding: v2.std.node.Symbol, expected: v2.std.node.Symbol) -> 
 fn tdc_coproduct_binding_accepted(coproduct: v2.std.node.Node) -> v2.std.node.Symbol {
   match rust_trait_derive_surface_binding_for_coproduct(coproduct: coproduct) {
     Accepted { value: binding, diagnostics: _ } => binding
-    v2.std.diagnostic.Rejected { diagnostics: _ } => ^tdc_impossible_coproduct_binding
+    Rejected { diagnostics: _ } => ^tdc_impossible_coproduct_binding
   }
 }
 
 fn tdc_coproduct_binding_rejected(coproduct: v2.std.node.Node) -> v2.std.logic.Bool {
   match rust_trait_derive_surface_binding_for_coproduct(coproduct: coproduct) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }

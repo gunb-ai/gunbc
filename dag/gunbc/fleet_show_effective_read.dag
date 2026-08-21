@@ -374,7 +374,7 @@ fn show_effective_read_cannot_converge(read: std.realization_reconcile.ShowEffec
   match read {
     ReadAbsent { reason: _ } => true
     ReadObserved { value: CapUnbounded } => true
-    std.realization_reconcile.ReadObserved { value: CapEffective { bytes: _ } } => false
+    ReadObserved { value: CapEffective { bytes: _ } } => false
   }
 }
 

@@ -24,9 +24,9 @@ test fn spine_resolve_accepts_normalized_tree() -> v2.std.logic.Bool {
     Accepted { value: normalized, diagnostics: _ } =>
       match v2.compiler.resolve.resolve(tree: normalized, lm: v2.extdeps.languages.dag.dag_language_model_void()) {
         Accepted { value: _, diagnostics: _ } => true
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -59,8 +59,8 @@ test fn spine_resolve_rejects_noncanonical_root_atom() -> v2.std.logic.Bool {
     Accepted { value: normalized, diagnostics: _ } =>
       match v2.compiler.resolve.resolve(tree: normalized, lm: v2.extdeps.languages.dag.dag_language_model_surface_empty_prelude()) {
         Accepted { value: _, diagnostics: _ } => false
-        v2.std.diagnostic.Rejected { diagnostics: _ } => true
+        Rejected { diagnostics: _ } => true
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

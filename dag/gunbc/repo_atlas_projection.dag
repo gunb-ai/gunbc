@@ -113,7 +113,7 @@ data repo_atlas_cell_order_note: String = "The accumulator carries an ORDERED in
 fn atlas_accumulate_cell(acc: AtlasCellAccumulator, identity: v2.lens.module_impact_query.ModuleIdentity) -> AtlasCellAccumulator {
   let index = atlas_cell_index(identity: identity)
   match v2.lens.module_graph.map_lookup_where_rejected_unreachable(m: acc.occupants, key: index) {
-    v2.std.optional.Present { value: existing } => AtlasCellAccumulator {
+    Present { value: existing } => AtlasCellAccumulator {
       order: acc.order,
       occupants: map_insert(
         m: acc.occupants,
@@ -121,7 +121,7 @@ fn atlas_accumulate_cell(acc: AtlasCellAccumulator, identity: v2.lens.module_imp
         value: concat(existing, [identity])
       )
     }
-    v2.std.optional.Absent => AtlasCellAccumulator {
+    Absent => AtlasCellAccumulator {
       order: concat([index], acc.order),
       occupants: map_insert(m: acc.occupants, key: index, value: [identity])
     }
@@ -137,8 +137,8 @@ fn atlas_cells_of_modules(identities: List<v2.lens.module_impact_query.ModuleIde
   map(v2.std.algebra.list_reverse(xs: acc.order), index => RepoAtlasCell {
     address: atlas_address_of_index(index: index),
     occupants: match v2.lens.module_graph.map_lookup_where_rejected_unreachable(m: acc.occupants, key: index) {
-      v2.std.optional.Present { value: occupants } => occupants
-      v2.std.optional.Absent => []
+      Present { value: occupants } => occupants
+      Absent => []
     }
   })
 }
@@ -152,8 +152,8 @@ type AtlasIdentityDedup {
 
 fn atlas_dedup_step(acc: AtlasIdentityDedup, n: v2.lens.module_graph.ModuleDeclarationFact) -> AtlasIdentityDedup {
   match v2.lens.module_graph.map_lookup_where_rejected_unreachable(m: acc.seen, key: n.module) {
-    v2.std.optional.Present { value: _ } => acc
-    v2.std.optional.Absent => AtlasIdentityDedup {
+    Present { value: _ } => acc
+    Absent => AtlasIdentityDedup {
       order: concat([v2.lens.module_impact_query.ModuleIdentity { name: n.module }], acc.order),
       seen: map_insert(m: acc.seen, key: n.module, value: true)
     }
@@ -254,8 +254,8 @@ fn atlas_status_refusal(entry: extdeps.git.GitDiffStatusEntry) -> AtlasOverlayRe
 fn atlas_first_refusal(entries: List<extdeps.git.GitDiffStatusEntry>) -> AtlasOverlayRefusalCause? {
   fold(entries, init: v2.std.optional.Absent, f: (acc, e) =>
     match acc {
-      v2.std.optional.Present { value: cause } => v2.std.optional.Present { value: cause }
-      v2.std.optional.Absent => atlas_status_refusal(entry: e)
+      Present { value: cause } => v2.std.optional.Present { value: cause }
+      Absent => atlas_status_refusal(entry: e)
     })
 }
 
@@ -307,14 +307,14 @@ fn atlas_project_entry(
 ) -> AtlasProjectionAccumulator {
   let with_old = if atlas_status_carries_departed_old_path(status: entry.status) {
     match entry.old_path {
-      v2.std.optional.Present { value: old } => AtlasProjectionAccumulator {
+      Present { value: old } => AtlasProjectionAccumulator {
         marks_rev: acc.marks_rev,
         unprojected_rev: concat(
           [DepartedPathPriorIdentityUnavailable { path: old, status: entry.status }],
           acc.unprojected_rev
         )
       }
-      v2.std.optional.Absent => acc
+      Absent => acc
     }
   } else {
     acc
@@ -360,8 +360,8 @@ fn atlas_project_diff(
       AtlasChangeOverlayRefused { cause: DiffObservationTruncated }
     GitDiffNameStatusComplete { entries: entries } =>
       match atlas_first_refusal(entries: entries) {
-        v2.std.optional.Present { value: cause } => AtlasChangeOverlayRefused { cause: cause }
-        v2.std.optional.Absent => {
+        Present { value: cause } => AtlasChangeOverlayRefused { cause: cause }
+        Absent => {
           let acc = fold(
             entries,
             init: AtlasProjectionAccumulator { marks_rev: [], unprojected_rev: [] },

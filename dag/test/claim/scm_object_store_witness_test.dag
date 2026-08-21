@@ -108,7 +108,7 @@ type Put {
 
 fn put_node(store: gunbc.scm.object_store.ObjectStore, n: v2.std.node.Node) -> Put {
   match gunbc.scm.object_store.store_node(store: store, n: n) {
-    gunbc.scm.object_store.Stored { store: s, identity: i } => Put { store: s, identity: i, collided: false }
+    Stored { store: s, identity: i } => Put { store: s, identity: i, collided: false }
     LocatorCollision { identity: i, existing: _, incoming: _ } =>
       Put { store: gunbc.scm.object_store.empty_store(), identity: i, collided: true }
   }

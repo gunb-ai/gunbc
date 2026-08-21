@@ -1342,7 +1342,7 @@ fn target_semantic_decl_field_surface_from_edge(
   projection: TargetSemanticDeclSurfaceProjection
 ) -> Outcome<v2.std.node.Node> {
   match edge.label {
-    v2.std.node.Named { name: fname } =>
+    Named { name: fname } =>
       match edge.target.kind {
         TypeNode { connective: Atom { identity: tid } } =>
           if projection.field_type_permit_only_int && tid != ^Int {
@@ -1839,7 +1839,7 @@ fn target_semantic_decl_tagged_union_variant_surface_from_edge(
   projection: TargetSemanticDeclSurfaceProjection
 ) -> Outcome<v2.std.node.Node> {
   match edge.label {
-    v2.std.node.Named { name: vname } =>
+    Named { name: vname } =>
       if coproduct_variant_edge_has_payload(edge: edge) {
         bind_outcome(
           o: target_semantic_decl_field_surfaces(
@@ -1898,7 +1898,7 @@ fn target_semantic_decl_variant_surface_from_edge(
   projection: TargetSemanticDeclSurfaceProjection
 ) -> Outcome<v2.std.node.Node> {
   match edge.label {
-    v2.std.node.Named { name: vname } =>
+    Named { name: vname } =>
       if coproduct_variant_edge_has_payload(edge: edge) {
         bind_outcome(
           o: target_semantic_decl_field_surfaces(

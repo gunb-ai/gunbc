@@ -9,7 +9,7 @@ fn witness_wrapper_retained_diagnostics_inhabit_coproduct() -> v2.std.logic.Bool
     Accepted { value: _, diagnostics: Some { diagnostics: ne } } =>
       ne.head.reason == ^body_lowering_reason_wrapper_retained_emitted
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

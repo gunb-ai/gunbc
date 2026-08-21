@@ -142,7 +142,7 @@ test fn bash_program_serialize_set_e_has_teeth_holds() -> v2.std.logic.Bool {
   match bash_emit_program(statements: bash_program_fold_sample_specials(), set_e: true) {
     Accepted { value: folded, diagnostics: _ } =>
       folded != bash_program_fold_sample_no_set_e_golden
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

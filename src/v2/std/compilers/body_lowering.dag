@@ -66,11 +66,11 @@ fn lower_match(scrutinee: v2.std.node.Node, arms: List<v2.std.node.Node>) -> v2.
 
 fn lower_block_body_atoms(atoms: List<v2.std.node.Node>, witness: v2.std.node.Node) -> Outcome<v2.std.node.Node> {
   match list_at_optional(xs: atoms, index: 0) {
-    v2.std.optional.Present { value: left } =>
+    Present { value: left } =>
       match list_at_optional(xs: atoms, index: 1) {
-        v2.std.optional.Present { value: operator } =>
+        Present { value: operator } =>
           match list_at_optional(xs: atoms, index: 2) {
-            v2.std.optional.Present { value: right } =>
+            Present { value: right } =>
               if count(atoms) == 3 {
                 outcome_accepted(value: lower_binary_infix(left: left, operator: operator, right: right))
               } else {
@@ -78,17 +78,17 @@ fn lower_block_body_atoms(atoms: List<v2.std.node.Node>, witness: v2.std.node.No
                   d: body_lowering_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: witness)
                 )
               }
-            v2.std.optional.Absent =>
+            Absent =>
               outcome_rejected(
                 d: body_lowering_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: witness)
               )
           }
-        v2.std.optional.Absent =>
+        Absent =>
           outcome_rejected(
             d: body_lowering_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: witness)
           )
       }
-    v2.std.optional.Absent =>
+    Absent =>
       outcome_rejected(
         d: body_lowering_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: witness)
       )

@@ -29,7 +29,7 @@ fn planted_artifact(
     behavioral_probe: BehavioralProbeUnbound,
     realized_closure: closure
   ) {
-    v2.std.optional.Present { value: receipt } =>
+    Present { value: receipt } =>
       v2.compiler.self_host.candidate_generation.ArtifactProduced {
         artifact: v2.compiler.self_host.candidate_generation.ProvenancedRustArtifact {
           source: extdeps.communication.medium.Medium { carried: source_text, fidelity: extdeps.communication.medium.Lossless },
@@ -37,7 +37,7 @@ fn planted_artifact(
           producer_receipt: receipt
         }
       }
-    v2.std.optional.Absent => planted_emission_rejected()
+    Absent => planted_emission_rejected()
   }
 }
 
@@ -233,8 +233,8 @@ test fn v2_producer_with_seed_reachable_closure_is_unmintable() -> v2.std.logic.
       emitter_module_paths: ["v1.compiler.emit_rust"]
     }
   ) {
-    v2.std.optional.Absent => true
-    v2.std.optional.Present { value: _ } => false
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
@@ -363,8 +363,8 @@ fn probe_mint_succeeds(
   probe: v2.compiler.self_host.emitter_producer_provenance.BehavioralProbeBinding
 ) -> v2.std.logic.Bool {
   match probe_mint(qualifications: qualifications, probe: probe) {
-    v2.std.optional.Present { value: _ } => true
-    v2.std.optional.Absent => false
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
@@ -394,15 +394,15 @@ test fn behavioral_advance_refuses_an_unbound_probe_even_when_told_true() -> v2.
     qualifications: cargo_green_qualifications,
     probe: BehavioralProbeUnbound
   ) {
-    v2.std.optional.Present { value: receipt } =>
+    Present { value: receipt } =>
       match advance_producer_emission_receipt_behavioral_equivalent(
         prior: receipt,
         behavioral_equivalent: true
       ) {
-        v2.std.optional.Absent => true
-        v2.std.optional.Present { value: _ } => false
+        Absent => true
+        Present { value: _ } => false
       }
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }
 
@@ -414,14 +414,14 @@ test fn behavioral_advance_still_reachable_with_a_bound_probe() -> v2.std.logic.
       function: "behavioral_advance_still_reachable_with_a_bound_probe"
     }
   ) {
-    v2.std.optional.Present { value: receipt } =>
+    Present { value: receipt } =>
       match advance_producer_emission_receipt_behavioral_equivalent(
         prior: receipt,
         behavioral_equivalent: true
       ) {
-        v2.std.optional.Present { value: _ } => true
-        v2.std.optional.Absent => false
+        Present { value: _ } => true
+        Absent => false
       }
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }

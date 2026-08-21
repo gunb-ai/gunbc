@@ -73,14 +73,14 @@ data ordinary_string_field_input: v2.std.node.Node = v2.std.node.Node {
 
 test fn raw_dissolve_on_string_field_is_rejected() -> v2.std.logic.Bool {
   match lifecycle_carrier_gate(node: raw_dissolve_on_field_input) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
 test fn raw_dissolution_trigger_nonempty_str_field_is_rejected() -> v2.std.logic.Bool {
   match lifecycle_carrier_gate(node: raw_dissolution_trigger_nonempty_input) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
@@ -88,13 +88,13 @@ test fn raw_dissolution_trigger_nonempty_str_field_is_rejected() -> v2.std.logic
 test fn typed_dissolution_condition_field_is_accepted() -> v2.std.logic.Bool {
   match lifecycle_carrier_gate(node: typed_dissolution_field_input) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn ordinary_string_field_is_accepted() -> v2.std.logic.Bool {
   match lifecycle_carrier_gate(node: ordinary_string_field_input) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

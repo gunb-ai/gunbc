@@ -206,8 +206,8 @@ type DeployedTreeLegOutcome
 
 fn deployed_tree_leg(locus: DeployedTreeLocus, argv: std.types.List<String>) -> DeployedTreeLegOutcome {
   match run_typed_argv_transport(argv: argv, transport: deployed_tree_locus_transport(locus: locus)) {
-    gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } => DeployedTreeLegRan { result: r }
-    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } => DeployedTreeLegNotAttempted { reason: why }
+    TypedArgvExecConverged { result: r } => DeployedTreeLegRan { result: r }
+    TypedArgvExecRefused { reason: why } => DeployedTreeLegNotAttempted { reason: why }
   }
 }
 

@@ -10,18 +10,18 @@ fn export_fingerprint_for_gate(module_path: std.types.NonEmptyStr) -> std.conten
     module_path: module_path,
     pool_roots: firewall_fixture_roots
   ) {
-    v2.std.optional.Present { value: summary } =>
+    Present { value: summary } =>
       fold(summary.exports, init: optional_absent(), f: fn(found, entry) {
         match found {
-          v2.std.optional.Present { value: _ } => found
-          v2.std.optional.Absent =>
+          Present { value: _ } => found
+          Absent =>
             match entry.name == "firewall_gate" {
               true => v2.std.optional.Present { value: std.interface_summary.export_entry_fingerprint(entry: entry) }
               false => found
             }
         }
       })
-    v2.std.optional.Absent => v2.std.optional.Absent
+    Absent => v2.std.optional.Absent
   }
 }
 
@@ -33,12 +33,12 @@ fn body_only_edit_preserves_export_fingerprint() -> v2.std.logic.Bool {
     module_path: "v2.test.fixture.interface_summary.firewall_body_v2"
   )
   match v1 {
-    v2.std.optional.Present { value: fp1 } =>
+    Present { value: fp1 } =>
       match v2 {
-        v2.std.optional.Present { value: fp2 } => fp1 == fp2
-        v2.std.optional.Absent => false
+        Present { value: fp2 } => fp1 == fp2
+        Absent => false
       }
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }
 
@@ -50,12 +50,12 @@ fn signature_edit_changes_export_fingerprint() -> v2.std.logic.Bool {
     module_path: "v2.test.fixture.interface_summary.firewall_sig_variant"
   )
   match baseline {
-    v2.std.optional.Present { value: fp1 } =>
+    Present { value: fp1 } =>
       match variant {
-        v2.std.optional.Present { value: fp2 } => fp1 != fp2
-        v2.std.optional.Absent => false
+        Present { value: fp2 } => fp1 != fp2
+        Absent => false
       }
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }
 
@@ -69,8 +69,8 @@ test fn interface_summary_firewall_signature_edit_is_red() -> v2.std.logic.Bool 
 
 test fn export_signature_facts_host_scaffold_receipt_cites_dissolution_authorities() -> v2.std.logic.Bool {
   match export_signature_facts_host_scaffold_dissolution_trigger {
-    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
-    std.disposition.Terminal { reason: _ } => false
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
   }
 }
 
@@ -87,7 +87,7 @@ test fn interface_summary_import_unresolved_refuses_module_key_hashes() -> v2.st
     edges: edges,
     summaries: std.algebra.Empty
   ) {
-    v2.std.optional.Absent => true
-    v2.std.optional.Present { value: _ } => false
+    Absent => true
+    Present { value: _ } => false
   }
 }

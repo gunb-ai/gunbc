@@ -37,7 +37,7 @@ fn partition_witness_entry_routing_roster(
             interpreted_retained: part.interpreted_retained,
             emit_ineligible: part.emit_ineligible
           }
-        v2.std.witness_execution_routing.InterpretedRetained { reason: _, dissolution: _ } =>
+        InterpretedRetained { reason: _, dissolution: _ } =>
           WitnessEntryRoutingPartition {
             native_routed: part.native_routed,
             interpreted_retained: std.algebra.Cons { head: row, tail: part.interpreted_retained },

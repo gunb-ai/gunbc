@@ -139,12 +139,12 @@ test fn witness_sleep_second_carrier_projection_paces_poll() -> Bool {
 
 test fn witness_sleep_flat_scalar_dissolution_trigger_tracked() -> Bool {
   match extdeps.tools.sleep.sleep_delay_seconds_flat_scalar_dissolution_trigger {
-    std.disposition.Scaffold {
+    Scaffold {
       dissolves_to: std.disposition.RealizationDispatch,
       bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: n, field: std.decl_ref.WholeDeclaration },
     } =>
       m == "extdeps.tools.sleep" && n == "sleep_delay_seconds_second_carrier_projection"
-    std.disposition.Terminal { reason: _ } => false
+    Terminal { reason: _ } => false
   }
 }
 

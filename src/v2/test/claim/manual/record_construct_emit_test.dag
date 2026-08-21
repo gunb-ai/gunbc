@@ -98,9 +98,9 @@ test fn record_construct_emit_holds() -> v2.std.logic.Bool {
       match v2.compiler.emit.emit(tree: record_construct_inferred_tree, target: v2.test.manual.record_construct_emit.record_construct_target_model) {
         Accepted { value: source, diagnostics: d } =>
           (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
-        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -110,13 +110,13 @@ test fn record_construct_grammar_inverse_holds() -> v2.std.logic.Bool {
     emitted: record_construct_emitted_root
   ) {
     Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn record_construct_coercion_quality_is_faithful(q: v2.std.coercion.CoercionQuality) -> v2.std.logic.Bool {
   match q {
-    v2.std.coercion.Exact => true
+    Exact => true
     Identity => true
     Widened => false
   }
@@ -132,7 +132,7 @@ test fn record_construct_ingest_via_coerce_matches_canonical() -> v2.std.logic.B
       (result.target == dag_fixture_emitted_rec_fn)
         && record_construct_coercion_quality_is_faithful(q: result.quality)
         && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

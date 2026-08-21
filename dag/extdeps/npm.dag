@@ -333,12 +333,12 @@ fn npm_json_string_member(v: extdeps.languages.json.emit.JsonValue, key: String)
   match json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value } =>
       match value {
-        extdeps.languages.json.emit.JsonString { value: s } => Present { value: s }
-        extdeps.languages.json.emit.JsonNull => none
-        extdeps.languages.json.emit.JsonBool { value: _ } => none
-        extdeps.languages.json.emit.JsonNumber { lexeme: _ } => none
-        extdeps.languages.json.emit.JsonArray { elements: _ } => none
-        extdeps.languages.json.emit.JsonObject { members: _ } => none
+        JsonString { value: s } => Present { value: s }
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: _ } => none
+        JsonArray { elements: _ } => none
+        JsonObject { members: _ } => none
       }
     JsonMemberAbsent => none
     JsonMemberDuplicated { count: _ } => none
@@ -365,7 +365,7 @@ fn npm_json_boolean_member(v: extdeps.languages.json.emit.JsonValue, key: String
   match json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value } =>
       match value {
-        extdeps.languages.json.emit.JsonBool { value: b } => NpmBooleanMemberObserved { value: b }
+        JsonBool { value: b } => NpmBooleanMemberObserved { value: b }
         other => NpmBooleanMemberWrongType { observed: other }
       }
     JsonMemberAbsent => NpmBooleanMemberAbsent
@@ -407,7 +407,7 @@ fn npm_json_string_list_member_observation(
   match json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value } =>
       match value {
-        extdeps.languages.json.emit.JsonArray { elements } => {
+        JsonArray { elements } => {
           let acc = fold(
             elements,
             init: NpmStringListFoldOk { values: [] },
@@ -416,7 +416,7 @@ fn npm_json_string_list_member_observation(
                 NpmStringListFoldBadElement { observed: observed }
               NpmStringListFoldOk { values: xs } =>
                 match el {
-                  extdeps.languages.json.emit.JsonString { value: s } =>
+                  JsonString { value: s } =>
                     if s == "" {
                       NpmStringListFoldOk { values: xs }
                     } else {
@@ -755,7 +755,7 @@ fn npm_decode_package_lock_text(text: String) -> NpmPackageLockParse {
       match json_object_unique_member(v: doc, key: "lockfileVersion") {
         JsonMemberFound { value: ver_v } =>
           match ver_v {
-            extdeps.languages.json.emit.JsonNumber { lexeme: lx } =>
+            JsonNumber { lexeme: lx } =>
               match parse_int(s: lx as String) {
                 Present { value: observed } =>
                   match npm_decode_package_lock_format(observed: observed) {
@@ -767,7 +767,7 @@ fn npm_decode_package_lock_text(text: String) -> NpmPackageLockParse {
                       match json_object_unique_member(v: doc, key: "packages") {
                         JsonMemberFound { value: pkgs_v } =>
                           match pkgs_v {
-                            extdeps.languages.json.emit.JsonObject { members } => {
+                            JsonObject { members } => {
                               let decoded = fold(
                                 members,
                                 init: NpmLockDecodeAcc { accepted: [], unsupported: [] },
@@ -827,23 +827,23 @@ fn npm_decode_package_lock_text(text: String) -> NpmPackageLockParse {
                                 },
                               }
                             }
-                            extdeps.languages.json.emit.JsonNull =>
+                            JsonNull =>
                               NpmPackageLockParseRefused {
                                 cause: "packages member is not an object" as std.types.NonEmptyStr,
                               }
-                            extdeps.languages.json.emit.JsonBool { value: _ } =>
+                            JsonBool { value: _ } =>
                               NpmPackageLockParseRefused {
                                 cause: "packages member is not an object" as std.types.NonEmptyStr,
                               }
-                            extdeps.languages.json.emit.JsonString { value: _ } =>
+                            JsonString { value: _ } =>
                               NpmPackageLockParseRefused {
                                 cause: "packages member is not an object" as std.types.NonEmptyStr,
                               }
-                            extdeps.languages.json.emit.JsonNumber { lexeme: _ } =>
+                            JsonNumber { lexeme: _ } =>
                               NpmPackageLockParseRefused {
                                 cause: "packages member is not an object" as std.types.NonEmptyStr,
                               }
-                            extdeps.languages.json.emit.JsonArray { elements: _ } =>
+                            JsonArray { elements: _ } =>
                               NpmPackageLockParseRefused {
                                 cause: "packages member is not an object" as std.types.NonEmptyStr,
                               }
@@ -867,23 +867,23 @@ fn npm_decode_package_lock_text(text: String) -> NpmPackageLockParse {
                     cause: "lockfileVersion is not an integer" as std.types.NonEmptyStr,
                   }
               }
-            extdeps.languages.json.emit.JsonNull =>
+            JsonNull =>
               NpmPackageLockParseRefused {
                 cause: "lockfileVersion is not a number" as std.types.NonEmptyStr,
               }
-            extdeps.languages.json.emit.JsonBool { value: _ } =>
+            JsonBool { value: _ } =>
               NpmPackageLockParseRefused {
                 cause: "lockfileVersion is not a number" as std.types.NonEmptyStr,
               }
-            extdeps.languages.json.emit.JsonString { value: _ } =>
+            JsonString { value: _ } =>
               NpmPackageLockParseRefused {
                 cause: "lockfileVersion is not a number" as std.types.NonEmptyStr,
               }
-            extdeps.languages.json.emit.JsonArray { elements: _ } =>
+            JsonArray { elements: _ } =>
               NpmPackageLockParseRefused {
                 cause: "lockfileVersion is not a number" as std.types.NonEmptyStr,
               }
-            extdeps.languages.json.emit.JsonObject { members: _ } =>
+            JsonObject { members: _ } =>
               NpmPackageLockParseRefused {
                 cause: "lockfileVersion is not a number" as std.types.NonEmptyStr,
               }

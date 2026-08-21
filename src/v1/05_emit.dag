@@ -30,11 +30,11 @@ fn derive_module_imports(items: std.types.List<v1.std.core.Node>, import_rules: 
 
   import_rules |> filter(rule =>
     match rule.trigger {
-      std.languages.TypeUsageTrigger { type_name: t } => type_names |> any(n => n == t)
-      std.languages.TraitImplTrigger { trait_name: _ } => false
-      std.languages.DeriveMacroTrigger { macro_name: _ } => false
-      std.languages.ContainerUsageTrigger { container: c } => type_names |> any(n => n == c)
-      std.languages.AsyncUsageTrigger => has_async
+      TypeUsageTrigger { type_name: t } => type_names |> any(n => n == t)
+      TraitImplTrigger { trait_name: _ } => false
+      DeriveMacroTrigger { macro_name: _ } => false
+      ContainerUsageTrigger { container: c } => type_names |> any(n => n == c)
+      AsyncUsageTrigger => has_async
     }
   ) |> map(rule => rule.import_path)
   |> filter(path => path != "")
@@ -88,20 +88,20 @@ fn emit_simple_expr(expr: v1.std.core.Node, target: v1.compiler.artifact.RenderT
       }
     ExprStringInterp =>
       let ps = expr.children |> map(child => match child.expr_data {
-        v1.std.core.ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
+        ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
         _ => v1.std.core.Interpolation { expr: v1.std.core.arg_value(n: child) }
       })
       emit_simple_string_interp(parts: ps, target: target, source_indices: source_indices)
     ExprListLit =>
       match target {
-        v1.compiler.artifact.Go => emit_error_expr(message: "list literal in simple expr not yet supported for Go", target: target)
+        Go => emit_error_expr(message: "list literal in simple expr not yet supported for Go", target: target)
         _ =>
           let el_strs = expr.children |> map(e => emit_simple_expr(expr: e, target: target, source_indices: source_indices))
           concat("[", el_strs |> join(separator: ", "), "]")
       }
     ExprRecordLit { parent_enum: _ } =>
       match target {
-        v1.compiler.artifact.Go => emit_error_expr(message: "record literal in simple expr not yet supported for Go", target: target)
+        Go => emit_error_expr(message: "record literal in simple expr not yet supported for Go", target: target)
         _ =>
           let field_strs = expr.children |> map(f =>
             concat("\"", v1.std.core.field_init_node_name_at(n: f, source_indices: source_indices), "\": ",
@@ -119,11 +119,11 @@ fn emit_simple_string_interp(parts: std.types.List<v1.std.core.StringPart>, targ
   match interp.style {
     FormatArgs { placeholder: ph } =>
       let fmt_parts = parts |> map(p => match p {
-        v1.std.core.Text { value: v } =>
+        Text { value: v } =>
           let base = v1.compiler.emit_core_support.escape_string_literal_body(s: v)
           let escaped = if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
           InterpPart { format_segment: escaped, arg_expr: "" }
-        extdeps.github.expressions.Interpolation { expr: e } =>
+        Interpolation { expr: e } =>
           InterpPart { format_segment: ph, arg_expr: emit_simple_expr(expr: e, target: target, source_indices: source_indices) }
       })
       let fmt_str = fmt_parts |> map(p => p.format_segment) |> join(separator: "")
@@ -138,10 +138,10 @@ fn emit_simple_string_interp(parts: std.types.List<v1.std.core.StringPart>, targ
       }
     InlineExpr =>
       let segments = parts |> map(p => match p {
-        v1.std.core.Text { value: v } =>
+        Text { value: v } =>
           let base = v1.compiler.emit_core_support.escape_string_literal_body(s: v)
           if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
-        extdeps.github.expressions.Interpolation { expr: e } =>
+        Interpolation { expr: e } =>
           concat("{", emit_simple_expr(expr: e, target: target, source_indices: source_indices), "}")
       })
       v1.compiler.emit_core_support.apply_type_template1(template: interp.format_template, arg0: segments |> join(separator: ""))
@@ -305,11 +305,11 @@ fn emit_data_value_json(value: v1.std.core.Node, source_indices: std.types.Map<S
   match value.expr_data {
     ExprLiteral { value: v } => match v {
       LitStr { value: s } => Emitted { json: concat("\"", v1.compiler.emit_core_support.escape_json_string(s: s), "\"") }
-      std.syntax.LitSymbol { value: s } => Emitted { json: concat("\"", v1.compiler.emit_core_support.escape_json_string(s: s), "\"") }
-      std.syntax.LitInt { value: i } => Emitted { json: v1.compiler.emit_core_support.to_string(value: i) }
-      std.syntax.LitFloat { value: f } => Emitted { json: f }
-      std.syntax.LitBool { value: b } => Emitted { json: if b { "true" } else { "false" } }
-      std.syntax.LitNull => Emitted { json: "null" }
+      LitSymbol { value: s } => Emitted { json: concat("\"", v1.compiler.emit_core_support.escape_json_string(s: s), "\"") }
+      LitInt { value: i } => Emitted { json: v1.compiler.emit_core_support.to_string(value: i) }
+      LitFloat { value: f } => Emitted { json: f }
+      LitBool { value: b } => Emitted { json: if b { "true" } else { "false" } }
+      LitNull => Emitted { json: "null" }
     }
     ExprListLit => {
       let accum = value.children |> fold(init: FragmentsAccumulated { pieces: [] }, f: (acc, e) =>
@@ -359,14 +359,14 @@ fn to_camel(name: String) -> String {
 
 fn apply_naming_case(name: String, case_style: v1.compiler.languages.NamingCase) -> String {
   match case_style {
-    std.languages.PascalCase => {
+    PascalCase => {
       let parts = name |> split(delimiter: "_")
       let pascal_parts = parts |> map(p => v1.compiler.emit_core_support.capitalize_first(s: p))
       pascal_parts |> join(separator: "")
     }
-    v1.compiler.languages.SnakeCase => v1.compiler.emit_core_support.to_snake(name: name)
-    std.languages.CamelCase => to_camel(name: name)
-    std.serialization.AsAuthored => name
+    SnakeCase => v1.compiler.emit_core_support.to_snake(name: name)
+    CamelCase => to_camel(name: name)
+    AsAuthored => name
   }
 }
 
@@ -382,14 +382,14 @@ fn test_file_path(module_name: String, target: v1.compiler.artifact.RenderTarget
 
 fn reserved_prefix(target: v1.compiler.artifact.RenderTarget) -> String {
   match v1.compiler.emit_core_support.language_spec(target: target).reserved_words.strategy {
-    std.languages.PrefixEscape { prefix: prefix } => prefix
+    PrefixEscape { prefix: prefix } => prefix
     _ => ""
   }
 }
 
 fn reserved_suffix(target: v1.compiler.artifact.RenderTarget) -> String {
   match v1.compiler.emit_core_support.language_spec(target: target).reserved_words.strategy {
-    std.languages.SuffixEscape { suffix: suffix } => suffix
+    SuffixEscape { suffix: suffix } => suffix
     _ => ""
   }
 }
@@ -431,11 +431,11 @@ fn is_null_coalesce(op: std.syntax.BinOp) -> Bool {
 fn rust_literal_for_pattern(value: std.syntax.LiteralValue) -> String {
   match value {
     LitStr { value: s } => emit_string_literal(s: s, suffix: "")
-    std.syntax.LitSymbol { value: s } => emit_string_literal(s: s, suffix: ".to_string()")
-    std.syntax.LitInt { value: i } => v1.compiler.emit_core_support.to_string(value: i)
-    std.syntax.LitFloat { value: f } => f
-    std.syntax.LitBool { value: b } => if b { emit_keyword(key: "true", target: v1.compiler.artifact.Rust) } else { emit_keyword(key: "false", target: v1.compiler.artifact.Rust) }
-    std.syntax.LitNull => emit_keyword(key: "null", target: v1.compiler.artifact.Rust)
+    LitSymbol { value: s } => emit_string_literal(s: s, suffix: ".to_string()")
+    LitInt { value: i } => v1.compiler.emit_core_support.to_string(value: i)
+    LitFloat { value: f } => f
+    LitBool { value: b } => if b { emit_keyword(key: "true", target: v1.compiler.artifact.Rust) } else { emit_keyword(key: "false", target: v1.compiler.artifact.Rust) }
+    LitNull => emit_keyword(key: "null", target: v1.compiler.artifact.Rust)
   }
 }
 
@@ -452,11 +452,11 @@ fn emit_literal(value: std.syntax.LiteralValue, target: v1.compiler.artifact.Ren
         Absent => emit_error_expr(message: "missing TypeCheckpoint for String literal suffix", target: target)
       }
       emit_string_literal(s: s, suffix: suffix)
-    std.syntax.LitInt { value: i } => v1.compiler.emit_core_support.to_string(value: i)
-    std.syntax.LitFloat { value: f } => f
-    std.syntax.LitBool { value: b } => if b { emit_keyword(key: "true", target: target) } else { emit_keyword(key: "false", target: target) }
-    std.syntax.LitNull => emit_keyword(key: "null", target: target)
-    std.syntax.LitSymbol { value: s } =>
+    LitInt { value: i } => v1.compiler.emit_core_support.to_string(value: i)
+    LitFloat { value: f } => f
+    LitBool { value: b } => if b { emit_keyword(key: "true", target: target) } else { emit_keyword(key: "false", target: target) }
+    LitNull => emit_keyword(key: "null", target: target)
+    LitSymbol { value: s } =>
       let suffix = match v1.compiler.coercion.literal_suffix(target: target, dag_name: "Symbol", decl_file: "") {
         Present { value: sfx } => sfx
         Absent => match v1.compiler.coercion.literal_suffix(target: target, dag_name: "String", decl_file: "") {
@@ -1362,7 +1362,7 @@ fn emit_unified_tco_match(
       let arm_list = v1.std.core.match_arm_nodes(texpr: frame.expr)
       let scrut_str = emit_unified_typed_expr(texpr: s, target: target, registry: registry, scope: frame.scope, depth: frame.depth, fuel: 1024, render_pattern: render_pattern)
       match target {
-        v1.compiler.artifact.Go => emit_tco_match_go(scrutinee_str: scrut_str, arms: arm_list, depth: frame.depth, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, render_pattern: render_pattern, render_init_stmts: render_init_stmts)
+        Go => emit_tco_match_go(scrutinee_str: scrut_str, arms: arm_list, depth: frame.depth, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, render_pattern: render_pattern, render_init_stmts: render_init_stmts)
         _ =>
           let arm_strs = arm_list |> map(arm =>
             emit_unified_tco_match_arm(arm: arm, fn_name: fn_name, params: params,
@@ -1558,22 +1558,22 @@ fn apply_char_sanitization(name: String, rule: v1.compiler.languages.CharSanitiz
 fn emit_ident(name: String, target: v1.compiler.artifact.RenderTarget) -> String {
   let spec = v1.compiler.emit_core_support.language_spec(target: target)
   let converted = match spec.naming_case {
-    v1.compiler.languages.SnakeCase => v1.compiler.emit_core_support.to_snake(name: name)
-    std.languages.CamelCase => to_camel(name: name)
-    std.languages.PascalCase => v1.compiler.emit_core_support.capitalize_first(s: to_camel(name: name))
-    std.serialization.AsAuthored => name
+    SnakeCase => v1.compiler.emit_core_support.to_snake(name: name)
+    CamelCase => to_camel(name: name)
+    PascalCase => v1.compiler.emit_core_support.capitalize_first(s: to_camel(name: name))
+    AsAuthored => name
   }
   let sanitized = apply_char_sanitization(name: converted, rule: spec.char_sanitization)
   let is_reserved = spec.reserved_words.keywords |> any(r => r == sanitized)
   if is_reserved {
     match spec.reserved_words.strategy {
-      std.languages.PrefixEscape { prefix: p } => concat(p, sanitized)
-      std.languages.SuffixEscape { suffix: s } => emit_suffix_escape_ident(converted: sanitized, suffix: s, keywords: spec.reserved_words.keywords)
-      std.languages.NoEscape => sanitized
+      PrefixEscape { prefix: p } => concat(p, sanitized)
+      SuffixEscape { suffix: s } => emit_suffix_escape_ident(converted: sanitized, suffix: s, keywords: spec.reserved_words.keywords)
+      NoEscape => sanitized
     }
   } else {
     match spec.reserved_words.strategy {
-      std.languages.SuffixEscape { suffix: s } => emit_suffix_escape_ident(converted: sanitized, suffix: s, keywords: spec.reserved_words.keywords)
+      SuffixEscape { suffix: s } => emit_suffix_escape_ident(converted: sanitized, suffix: s, keywords: spec.reserved_words.keywords)
       _ => sanitized
     }
   }
@@ -1587,13 +1587,13 @@ fn emit_export_ident(name: String, target: v1.compiler.artifact.RenderTarget) ->
       let is_reserved = spec.reserved_words.keywords |> any(r => r == result)
       if is_reserved {
         match spec.reserved_words.strategy {
-          std.languages.SuffixEscape { suffix: s } => emit_suffix_escape_ident(converted: result, suffix: s, keywords: spec.reserved_words.keywords)
-          std.languages.PrefixEscape { prefix: p } => concat(p, result)
-          std.languages.NoEscape => result
+          SuffixEscape { suffix: s } => emit_suffix_escape_ident(converted: result, suffix: s, keywords: spec.reserved_words.keywords)
+          PrefixEscape { prefix: p } => concat(p, result)
+          NoEscape => result
         }
       } else {
         match spec.reserved_words.strategy {
-          std.languages.SuffixEscape { suffix: s } => emit_suffix_escape_ident(converted: result, suffix: s, keywords: spec.reserved_words.keywords)
+          SuffixEscape { suffix: s } => emit_suffix_escape_ident(converted: result, suffix: s, keywords: spec.reserved_words.keywords)
           _ => result
         }
       }
@@ -1691,7 +1691,7 @@ fn emit_expr_field_access_shared(expr: v1.std.core.Node, target: v1.compiler.art
 
 fn extract_string_interp_parts(expr: v1.std.core.Node) -> std.types.List<v1.std.core.StringPart> {
   expr.children |> map(child => match child.expr_data {
-    v1.std.core.ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
+    ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
     _ => v1.std.core.Interpolation { expr: v1.std.core.arg_value(n: child) }
   })
 }
@@ -1816,7 +1816,7 @@ fn emit_shared_expr(
       let body = v1.std.core.lambda_body(texpr: texpr)
       let raw_body = recurse(body)
       let final_body = match target {
-        v1.compiler.artifact.Go =>
+        Go =>
           if go_lambda_emits_statement_body(body: body) { raw_body } else { concat("return ", raw_body) }
         _ => raw_body
       }
@@ -1997,10 +1997,10 @@ fn emit_typed_block_join(
 
 fn method_template_emit_for_target(target: v1.compiler.artifact.RenderTarget) -> std.types.Map<String, String>? {
   match target {
-    v1.compiler.artifact.Rust => Present { value: extdeps.languages.rust.emit.rust_method_templates() }
-    v1.compiler.artifact.Python => Present { value: extdeps.languages.python.emit.python_method_templates_flat() }
-    v1.compiler.artifact.Go => Present { value: extdeps.languages.go.emit.go_method_templates_flat() }
-    v2.lens.affected_set.Dag => none
+    Rust => Present { value: extdeps.languages.rust.emit.rust_method_templates() }
+    Python => Present { value: extdeps.languages.python.emit.python_method_templates_flat() }
+    Go => Present { value: extdeps.languages.go.emit.go_method_templates_flat() }
+    Dag => none
   }
 }
 
@@ -2031,11 +2031,11 @@ fn emit_typed_string_interp_unified(parts: std.types.List<v1.std.core.StringPart
   match interp.style {
     FormatArgs { placeholder: ph } =>
       let fmt_parts = parts |> map(p => match p {
-        v1.std.core.Text { value: v } =>
+        Text { value: v } =>
           let base = v1.compiler.emit_core_support.escape_string_literal_body(s: v)
           let escaped = if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
           InterpPart { format_segment: escaped, arg_expr: "" }
-        extdeps.github.expressions.Interpolation { expr: e } =>
+        Interpolation { expr: e } =>
           InterpPart { format_segment: ph, arg_expr: recurse(e) }
       })
       let fmt_str = fmt_parts |> map(p => p.format_segment) |> join(separator: "")
@@ -2048,10 +2048,10 @@ fn emit_typed_string_interp_unified(parts: std.types.List<v1.std.core.StringPart
       }
     InlineExpr =>
       let segments = parts |> map(p => match p {
-        v1.std.core.Text { value: v } =>
+        Text { value: v } =>
           let base = v1.compiler.emit_core_support.escape_string_literal_body(s: v)
           if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
-        extdeps.github.expressions.Interpolation { expr: e } =>
+        Interpolation { expr: e } =>
           concat("{", recurse(e), "}")
       })
       v1.compiler.emit_core_support.apply_type_template1(template: interp.format_template, arg0: segments |> join(separator: ""))
@@ -2116,7 +2116,7 @@ fn emit_typed_call_unified(func: String, args: std.types.List<v1.std.core.Node>,
   let all_args = concat(arg_strs, extra_args)
   let args_str = all_args |> join(separator: ", ")
   let call_str = match target {
-    v1.compiler.artifact.Go =>
+    Go =>
       if is_go_v2rt_free_function(name: func) { emit_go_v2rt_free_call(func: func, arg_strs: all_args) }
       else { concat(emit_export_ident(name: func, target: target), "(", args_str, ")") }
     _ => concat(emit_export_ident(name: func, target: target), "(", args_str, ")")
@@ -2190,11 +2190,11 @@ fn emit_typed_method_call_unified(receiver: v1.std.core.Node, method: String, ar
 
 fn emit_unified_pattern(pattern: v1.std.core.MatchPattern, target: v1.compiler.artifact.RenderTarget, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
   match pattern {
-    v2.std.node.Bind { declaration: declaration } => emit_ident(name: declaration.name, target: target)
+    Bind { declaration: declaration } => emit_ident(name: declaration.name, target: target)
     LitPattern { value: v } => emit_literal(value: v, target: target)
     VariantPattern { name: n, parent_enum: pe, field_bindings: fbs } =>
       emit_unified_variant_pattern(name: n, parent_enum: pe, field_bindings: fbs, target: target, source_indices: source_indices)
-    extdeps.cron.schedule_model.Wildcard => "_"
+    Wildcard => "_"
   }
 }
 
@@ -2220,7 +2220,7 @@ fn emit_unified_variant_pattern(name: String, parent_enum: String?, field_bindin
       }
     Absent =>
       match target {
-        v1.compiler.artifact.Go => go_variant_case_type(name: name, parent_enum: parent_enum)
+        Go => go_variant_case_type(name: name, parent_enum: parent_enum)
         _ =>
           if field_bindings |> count > 0 {
             emit_error_expr(message: "variant patterns with field bindings are not supported for this target", target: target)
@@ -2247,7 +2247,7 @@ fn emit_match_arm_line(
   let es = spec.expression_semantics
   let pat = v1.std.core.arm_pattern(n: arm)
   let case_kw = match pat {
-    extdeps.cron.schedule_model.Wildcard => match es.wildcard_case {
+    Wildcard => match es.wildcard_case {
       Present { value: wc } => wc
       Absent => concat(bs.case_keyword, render_pattern(pat))
     }
@@ -2293,7 +2293,7 @@ fn emit_typed_match_go(scrutinee_str: String, arms: std.types.List<v1.std.core.N
 
 fn emit_typed_match_unified(scrutinee_str: String, arms: std.types.List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, depth: Int, recurse: fn(v1.std.core.Node, Int) -> String, render_pattern: fn(v1.std.core.MatchPattern) -> String, source_indices: std.types.Map<String, v1.std.core.NewlineIndex>) -> String {
   match target {
-    v1.compiler.artifact.Go => emit_typed_match_go(scrutinee_str: scrutinee_str, arms: arms, depth: depth, recurse: recurse, render_pattern: render_pattern, source_indices: source_indices)
+    Go => emit_typed_match_go(scrutinee_str: scrutinee_str, arms: arms, depth: depth, recurse: recurse, render_pattern: render_pattern, source_indices: source_indices)
     _ =>
       let bs = v1.compiler.emit_core_support.language_spec(target: target).block_syntax
       let case_depth = if bs.significant_whitespace { depth + 1 } else { depth }

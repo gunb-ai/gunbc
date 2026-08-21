@@ -123,8 +123,8 @@ fn emit_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.inferred_tree.
 
 fn emit_eval_composed_facts(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   match v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree.facts.lookup(node) {
-    v2.std.optional.Present { value: f } => v2.std.optional.optional_present(value: f)
-    v2.std.optional.Absent => v2.std.optional.optional_present(value: emit_eval_generic_facts(node: node))
+    Present { value: f } => v2.std.optional.optional_present(value: f)
+    Absent => v2.std.optional.optional_present(value: emit_eval_generic_facts(node: node))
   }
 }
 
@@ -169,7 +169,7 @@ fn emit_eval_verdict_is_pass(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node
   match run.verdict {
     Pass => true
     SemanticMismatch { actual: _, falsification: _ } => false
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
@@ -179,7 +179,7 @@ fn emit_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimRun<v2.
   match run.verdict {
     SemanticMismatch { actual: _, falsification: _ } => true
     Pass => false
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }

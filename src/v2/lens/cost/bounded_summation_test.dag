@@ -23,7 +23,7 @@ fn bounded_unit_summation_expr() -> v2.lens.cost.expr.CostExpr {
 
 fn bounded_summation_is_representable() -> v2.std.logic.Bool {
   match bounded_unit_summation_expr() {
-    v2.lens.cost.expr.CostSum { binder: _, upper: _, body: _ } => true
+    CostSum { binder: _, upper: _, body: _ } => true
     _ => false
   }
 }

@@ -11,8 +11,8 @@ test fn a_listing_naming_only_linger_puts_reboot_in_the_install_set() -> Bool {
   let missing = spark_managed_grants_to_install(outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_before })
   missing.length() == 1
     && any(missing, m => match m {
-         gunbc.spark.managed_access_bootstrap.RebootThisHost => true
-         gunbc.spark.managed_access_bootstrap.EnableLingerForOwnAccount => false
+         RebootThisHost => true
+         EnableLingerForOwnAccount => false
        })
 }
 
@@ -106,8 +106,8 @@ test fn a_held_grant_reports_held_rather_than_silence() -> Bool {
     grant: gunbc.spark.managed_access_bootstrap.EnableLingerForOwnAccount,
     outcome: gunbc.spark.managed_access_bootstrap.GrantEnumerated { listing: srv6_listing_before },
   ) {
-    gunbc.spark.managed_grant_reconcile.GrantHeld { grant: _ } => true
-    gunbc.spark.managed_grant_reconcile.GrantNotHeld { grant: _ } => false
-    gunbc.spark.managed_grant_reconcile.GrantStandingUnobserved { grant: _, cause: _ } => false
+    GrantHeld { grant: _ } => true
+    GrantNotHeld { grant: _ } => false
+    GrantStandingUnobserved { grant: _, cause: _ } => false
   }
 }

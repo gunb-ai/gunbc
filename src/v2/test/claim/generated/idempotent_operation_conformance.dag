@@ -133,7 +133,7 @@ fn idempotent_operation_generated_run(row: v2.std.diagnostic.Outcome<v2.std.veri
         value: idempotent_operation_run_via_test_claim(claim: claim),
         diagnostics: v2.std.diagnostic.None
       }
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
@@ -144,11 +144,11 @@ fn idempotent_operation_run_non_pass(row: v2.std.diagnostic.Outcome<v2.compiler.
       match run.verdict {
         Pass => false
         SemanticMismatch { actual: _, falsification: _ } => true
-        v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => true
+        BuildFailed { actual: _, diagnostic: _ } => true
         RunFailed { actual: _, diagnostic: _ } => true
         Deferred { actual: _, diagnostic: _ } => true
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 
@@ -184,7 +184,7 @@ data generated_label_only_idempotent_skip: v2.std.diagnostic.Outcome<v2.std.veri
 
 fn generated_label_only_skip_is_rejected() -> v2.std.logic.Bool {
   match generated_label_only_idempotent_skip {
-    v2.std.diagnostic.Rejected { diagnostics: d } => d.head.reason == ^idempotent_operation_tautology_skip
+    Rejected { diagnostics: d } => d.head.reason == ^idempotent_operation_tautology_skip
     Accepted { value: _, diagnostics: _ } => false
   }
 }

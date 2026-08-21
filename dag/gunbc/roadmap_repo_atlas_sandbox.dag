@@ -245,7 +245,7 @@ fn atlas_standing_text(standing: v2.lens.module_impact_query.ImpactStanding) -> 
   match standing {
     ExactForGraphSubject => "exact for the graph subject"
     ProvisionalForObservedPool => "provisional — relative to the observed pool"
-    v2.lens.module_impact_query.Incomplete { causes: causes } =>
+    Incomplete { causes: causes } =>
       concat("incomplete — ", concat(to_string(causes.length()), " cause(s) recorded"))
     PoolIndependentProjectionUnavailable { trigger: _ } =>
       "pool-independent projection unavailable"
@@ -406,8 +406,8 @@ fn repo_atlas_observed_subject(observation: gunbc.repo_atlas_projection.AtlasCha
     AtlasComparisonUnavailable { cause: _ } => AtlasSubjectUnobserved
     AtlasComparisonObserved { comparison: comparison, diff: _ } =>
       match git_sha1_object_id(hex: comparison.head) {
-        v2.std.optional.Present { value: id } => gunbc.repo_atlas_projection.AtlasSubjectRevision { revision: id }
-        v2.std.optional.Absent => AtlasSubjectUnobserved
+        Present { value: id } => gunbc.repo_atlas_projection.AtlasSubjectRevision { revision: id }
+        Absent => AtlasSubjectUnobserved
       }
   }
 }

@@ -86,8 +86,8 @@ data srv3_os_install_actuate_credential_debt_marker: std.disposition.Disposition
 
 fn srv3_os_install_actuate_credential_resolution_is_wired() -> Bool {
   match srv3_os_install_actuate_credential_debt_marker {
-    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
-    std.disposition.Terminal { reason: _ } => false
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
   }
 }
 

@@ -11,6 +11,6 @@ test fn infer_transform_non_add_remains_frontier_holds() -> v2.std.logic.Bool {
         Holds { value: facts } => !inferred_facts_grounding_derived(facts: facts)
         Violates { diagnostic: _ } => false
       }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }

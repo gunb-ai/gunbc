@@ -452,7 +452,7 @@ fn emit_go_data_def(name: String, type_node: v1.std.core.Node, value: v1.std.cor
 fn go_export_ident(name: String) -> String {
 
   match v1.compiler.emit_core_support.language_spec(target: v1.compiler.artifact.Go).visibility {
-    v1.compiler.languages.CaseVisibility { export_case: ec } => {
+    CaseVisibility { export_case: ec } => {
       let result = v1.compiler.emit.apply_naming_case(name: name, case_style: ec)
       if extdeps.languages.go.emit.go_reserved |> any(r => r == result) {
         concat(result, extdeps.languages.go.emit.go_reserved_escape_suffix)

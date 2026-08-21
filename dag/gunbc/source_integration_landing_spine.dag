@@ -491,9 +491,9 @@ fn landing_alternative_for_choice(
         xs: options.additional_options,
         index: index,
       ) {
-        v2.std.optional.Present { value: option } =>
+        Present { value: option } =>
           v2.std.optional.Present { value: option.alternative }
-        v2.std.optional.Absent => v2.std.optional.Absent
+        Absent => v2.std.optional.Absent
       }
   }
 }
@@ -514,7 +514,7 @@ fn landing_resolve_question(
         choice: selected.identity.choice,
       )
       match alternative {
-        v2.std.optional.Present { value } =>
+        Present { value } =>
           LandingChoiceAdvanced {
             continuation: gunbc.source_integration_landing_spine.LandingChoiceContinuation {
               prior: prior,
@@ -524,7 +524,7 @@ fn landing_resolve_question(
               ),
             },
           }
-        v2.std.optional.Absent =>
+        Absent =>
           LandingChoiceNotOffered {
             prior: prior,
             choice: selected.identity.choice,

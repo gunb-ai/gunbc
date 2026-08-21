@@ -173,13 +173,13 @@ test fn extdeps_react_composite_element_declares_key_and_ref_holds() -> v2.std.l
 
 test fn extdeps_react_fragment_arm_declares_key_holds() -> v2.std.logic.Bool {
   match react_probe_react_element_fragment() {
-    v2.extdeps.frameworks.react.Fragment { key: k, children: _ } =>
+    Fragment { key: k, children: _ } =>
       match k {
         KeyAbsent => true
         KeyPresent { key_ref: _ } => false
       }
-    v2.extdeps.frameworks.react.Host { host: _ } => false
-    v2.extdeps.frameworks.react.Composite { composite: _ } => false
+    Host { host: _ } => false
+    Composite { composite: _ } => false
   }
 }
 
@@ -189,12 +189,12 @@ test fn extdeps_react_element_children_are_list_create_element_child_holds() -> 
       match react_probe_composite_element_with_typed_children() {
         ReactCompositeElement { component_ref: _, key: _, ref: _, props: _, children: composite_children } =>
           match react_probe_react_element_fragment_with_typed_children() {
-            v2.extdeps.frameworks.react.Fragment { key: _, children: fragment_children } =>
+            Fragment { key: _, children: fragment_children } =>
               length(xs: host_children) == 1
                 && length(xs: composite_children) == 1
                 && length(xs: fragment_children) == 1
-            v2.extdeps.frameworks.react.Host { host: _ } => false
-            v2.extdeps.frameworks.react.Composite { composite: _ } => false
+            Host { host: _ } => false
+            Composite { composite: _ } => false
           }
         _ => false
       }
@@ -204,12 +204,12 @@ test fn extdeps_react_element_children_are_list_create_element_child_holds() -> 
 
 test fn extdeps_react_create_element_child_element_arm_wraps_react_element_holds() -> v2.std.logic.Bool {
   match react_probe_create_element_child_element() {
-    v2.extdeps.frameworks.react.Element { element: el } =>
+    Element { element: el } =>
       match el {
-        v2.extdeps.frameworks.react.Host { host: _ } => true
-        v2.extdeps.frameworks.react.Composite { composite: _ } => false
-        v2.extdeps.frameworks.react.Fragment { key: _, children: _ } => false
+        Host { host: _ } => true
+        Composite { composite: _ } => false
+        Fragment { key: _, children: _ } => false
       }
-    v2.extdeps.frameworks.react.Text { text_value_ref: _ } => false
+    Text { text_value_ref: _ } => false
   }
 }

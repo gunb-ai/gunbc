@@ -328,11 +328,11 @@ fn spark_serving_write_user_unit_operation() -> SparkServingInstallRemoteCommand
     content: spark_serving_desired_user_unit_text(),
     allowed_scope: gunbc.file_access.FileTreeScope { root_path: spark_serving_executor_home as std.types.NonEmptyStr },
   ) {
-    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: why } =>
+    TypedRemoteFileWriteAdmissionRefused { cause: why } =>
       SparkServingInstallRemoteCommandsRefused {
         reason: join(["spark_serving_converge_realize: WriteUserUnitFile refused — ", why as String], ""),
       }
-    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: w } =>
+    TypedRemoteFileWriteAdmitted { write: w } =>
       match portable_remote_words(
         raws: ["mkdir", "-p", spark_serving_user_unit_dir() as String],
       ) {
@@ -528,13 +528,13 @@ fn spark_serving_admit_typed_file_step(
     content: content,
     allowed_scope: gunbc.file_access.FileTreeScope { root_path: spark_serving_executor_home as std.types.NonEmptyStr },
   ) {
-    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmissionRefused { cause: why } =>
+    TypedRemoteFileWriteAdmissionRefused { cause: why } =>
       SparkServingInstallRemoteCommandsRefused {
         reason: join([
           "spark_serving_converge_realize: ", identity as String, " refused — ", why as String,
         ], ""),
       }
-    gunbc.typed_remote_file_write.TypedRemoteFileWriteAdmitted { write: w } =>
+    TypedRemoteFileWriteAdmitted { write: w } =>
       SparkServingInstallRemoteCommandsPresent {
         steps: [
           spark_serving_step(
@@ -570,35 +570,35 @@ fn realize_spark_serving_install_effect_command(
   executor_login: std.types.NonEmptyStr,
 ) -> SparkServingInstallRemoteCommandsVerdict {
   match effect {
-    gunbc.spark.serving_realization.EnableLingerForOwnAccount =>
+    EnableLingerForOwnAccount =>
       spark_serving_enable_linger_remote_argv(login: executor_login)
-    gunbc.spark.serving_realization.ReloadUserManager => spark_serving_reload_user_manager_remote_argv()
-    gunbc.spark.serving_realization.EnableUserUnit => spark_serving_enable_user_unit_remote_argv()
-    gunbc.spark.serving_realization.StartUserUnit => spark_serving_start_user_unit_remote_argv()
-    gunbc.spark.serving_realization.WriteSystemUnitFile =>
+    ReloadUserManager => spark_serving_reload_user_manager_remote_argv()
+    EnableUserUnit => spark_serving_enable_user_unit_remote_argv()
+    StartUserUnit => spark_serving_start_user_unit_remote_argv()
+    WriteSystemUnitFile =>
       SparkServingInstallRemoteCommandsRefused {
         reason: "spark_serving_converge_realize: WriteSystemUnitFile is not implemented in the Spark serving slice",
       }
-    gunbc.spark.serving_realization.ReloadSystemManager =>
+    ReloadSystemManager =>
       SparkServingInstallRemoteCommandsRefused {
         reason: "spark_serving_converge_realize: ReloadSystemManager is not implemented in the Spark serving slice",
       }
-    gunbc.spark.serving_realization.EnableSystemUnit =>
+    EnableSystemUnit =>
       SparkServingInstallRemoteCommandsRefused {
         reason: "spark_serving_converge_realize: EnableSystemUnit is not implemented in the Spark serving slice",
       }
-    gunbc.spark.serving_realization.WriteUserUnitFile => spark_serving_write_user_unit_operation()
-    gunbc.spark.serving_realization.InstallRuntimePackage =>
+    WriteUserUnitFile => spark_serving_write_user_unit_operation()
+    InstallRuntimePackage =>
       SparkServingInstallRemoteCommandsRefused {
         reason: "spark_serving_converge_realize: InstallRuntimePackage is not implemented in the Spark serving slice",
       }
-    gunbc.spark.serving_realization.InstallOwnedRuntimeClosure => spark_serving_install_owned_runtime_closure_steps()
-    gunbc.spark.serving_realization.MaterializeModelArtifact => spark_serving_materialize_model_artifact_steps()
-    gunbc.spark.serving_realization.GrantContainerRuntimeAccess =>
+    InstallOwnedRuntimeClosure => spark_serving_install_owned_runtime_closure_steps()
+    MaterializeModelArtifact => spark_serving_materialize_model_artifact_steps()
+    GrantContainerRuntimeAccess =>
       SparkServingInstallRemoteCommandsRefused {
         reason: "spark_serving_converge_realize: GrantContainerRuntimeAccess is not implemented in the Spark serving slice",
       }
-    gunbc.spark.serving_realization.RunContainerAsOwnUser =>
+    RunContainerAsOwnUser =>
       SparkServingInstallRemoteCommandsRefused {
         reason: "spark_serving_converge_realize: RunContainerAsOwnUser is not implemented in the Spark serving slice",
       }

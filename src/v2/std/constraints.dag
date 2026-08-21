@@ -142,7 +142,7 @@ fn solve_constraints(policy: ConstraintSolvePolicy) -> Outcome<CanonicalGroundin
             },
             diagnostics: fw_d
           )
-        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+        Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     }
   )

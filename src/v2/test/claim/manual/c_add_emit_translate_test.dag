@@ -111,7 +111,7 @@ test fn c_add_emit_add_fn_accepts_holds() -> v2.std.logic.Bool {
   match c_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == c_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -122,13 +122,13 @@ test fn c_add_serialize_source_matches_authority_holds() -> v2.std.logic.Bool {
   ) {
     Accepted { value: authority, diagnostics: d } =>
       (authority.carried == c_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
 test fn c_add_serialize_rejects_missing_translation_rules_holds() -> v2.std.logic.Bool {
   match c_add_serialize_reject_receipt {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
@@ -141,7 +141,7 @@ test fn c_add_emit_wrong_node_refuses_holds() -> v2.std.logic.Bool {
   match v2.compiler.emit.emit(tree: wrong_tree, target: c_add_target_model) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried != c_source_text) && (d == v2.std.diagnostic.None)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
   }
 }
 

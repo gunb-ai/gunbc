@@ -4,12 +4,12 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 test fn design_witness_realize_carries_scaffold() -> Bool {
   match gunbc.host_codex_runtime_provision.host_codex_runtime_provision_realize_scaffold {
-    std.disposition.Scaffold {
+    Scaffold {
       dissolves_to: std.disposition.RealizationDispatch,
       bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: n, field: _ },
     } =>
       m == "gunbc.host_effect_realize" && n == "realize_provision_codex_runtime"
-    std.disposition.Terminal { reason: _ } => false
+    Terminal { reason: _ } => false
   }
 }
 

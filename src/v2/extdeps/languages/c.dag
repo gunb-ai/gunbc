@@ -152,12 +152,12 @@ fn c_include_closure_grow_once(
   closed
     |> fold(init: closed, f: fn(acc, dep_id) {
       match v2.std.compilers.compilation_unit.partition_unit_by_id(units: units, unit_id: dep_id) {
-        v2.std.optional.Present { value: dep_unit } =>
+        Present { value: dep_unit } =>
           dep_unit.deps
             |> fold(init: acc, f: fn(inner, next) {
               c_include_closure_snoc_unique(items: inner, item: next)
             })
-        v2.std.optional.Absent => acc
+        Absent => acc
       }
     })
     |> sort_by(id => id)
@@ -312,8 +312,8 @@ fn c_type_owner_for_symbol_in_module(
     empty: v2.std.optional.Absent,
     cons: fn(acc, owner) {
       match acc {
-        v2.std.optional.Present { value: _ } => acc
-        v2.std.optional.Absent =>
+        Present { value: _ } => acc
+        Absent =>
           match (owner.module == member_module) && (owner.identity == sym) {
             true => v2.std.optional.Present { value: owner }
             false => v2.std.optional.Absent
@@ -354,8 +354,8 @@ fn c_type_owner_for_symbol(
     member_module: home_module,
     sym: sym
   ) {
-    v2.std.optional.Present { value: owner } => CTypeOwnerFound { owner: owner }
-    v2.std.optional.Absent => c_type_owner_singleton_match(owners: owners, sym: sym)
+    Present { value: owner } => CTypeOwnerFound { owner: owner }
+    Absent => c_type_owner_singleton_match(owners: owners, sym: sym)
   }
 }
 
@@ -368,8 +368,8 @@ fn c_type_definition_for_owner(
     empty: v2.std.optional.Absent,
     cons: fn(acc, row) {
       match acc {
-        v2.std.optional.Present { value: _ } => acc
-        v2.std.optional.Absent =>
+        Present { value: _ } => acc
+        Absent =>
           match v2.std.compilers.compilation_unit.type_definition_row_identity(row: row) == owner.identity {
             true => v2.std.optional.Present { value: c_type_definition_body(row: row) }
             false => v2.std.optional.Absent
@@ -386,7 +386,7 @@ fn c_by_value_type_edges(
   owners
     |> fold(init: [], f: fn(acc, owner) {
       match c_type_definition_for_owner(module_dag: module_dag, owner: owner) {
-        v2.std.optional.Present { value: defn } =>
+        Present { value: defn } =>
           c_type_atoms_by_value_in_node(node: defn)
             |> fold(init: acc, f: fn(inner, sym) {
               match c_type_owner_for_symbol(
@@ -406,7 +406,7 @@ fn c_by_value_type_edges(
                 CTypeOwnerAmbiguous { identity: _ } => inner
               }
             })
-        v2.std.optional.Absent => acc
+        Absent => acc
       }
     })
 }
@@ -418,15 +418,15 @@ fn c_by_value_type_identity_resolution_refusal(
   owners
     |> fold(init: v2.std.optional.Absent, f: fn(acc, owner) {
       match acc {
-        v2.std.optional.Present { value: _ } => acc
-        v2.std.optional.Absent =>
+        Present { value: _ } => acc
+        Absent =>
           match c_type_definition_for_owner(module_dag: module_dag, owner: owner) {
-            v2.std.optional.Present { value: defn } =>
+            Present { value: defn } =>
               c_type_atoms_by_value_in_node(node: defn)
                 |> fold(init: v2.std.optional.Absent, f: fn(inner_acc, sym) {
                   match inner_acc {
-                    v2.std.optional.Present { value: _ } => inner_acc
-                    v2.std.optional.Absent =>
+                    Present { value: _ } => inner_acc
+                    Absent =>
                       match c_type_owner_for_symbol(
                         owners: owners,
                         home_module: owner.module,
@@ -439,7 +439,7 @@ fn c_by_value_type_identity_resolution_refusal(
                       }
                   }
                 })
-            v2.std.optional.Absent => v2.std.optional.Absent
+            Absent => v2.std.optional.Absent
           }
       }
     })
@@ -454,12 +454,12 @@ fn c_by_value_edge_crosses_units(
   assignment: Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId>
 ) -> v2.std.logic.Bool {
   match v2.std.compilers.compilation_unit.module_unit_id(assignment: assignment, module: edge.from.module) {
-    v2.std.optional.Present { value: from_unit } =>
+    Present { value: from_unit } =>
       match v2.std.compilers.compilation_unit.module_unit_id(assignment: assignment, module: edge.to.module) {
-        v2.std.optional.Present { value: to_unit } => from_unit != to_unit
-        v2.std.optional.Absent => false
+        Present { value: to_unit } => from_unit != to_unit
+        Absent => false
       }
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }
 
@@ -500,8 +500,8 @@ fn c_dfs_by_value_type_cycle(
           edges
             |> fold(init: v2.std.optional.Absent, f: fn(acc, edge) {
               match acc {
-                v2.std.optional.Present { value: _ } => acc
-                v2.std.optional.Absent =>
+                Present { value: _ } => acc
+                Absent =>
                   match c_type_owner_eq(left: edge.from, right: current) {
                     true =>
                       c_dfs_by_value_type_cycle(
@@ -527,8 +527,8 @@ fn c_find_by_value_type_cycle_detail(
   owners
     |> fold(init: v2.std.optional.Absent, f: fn(acc, owner) {
       match acc {
-        v2.std.optional.Present { value: _ } => acc
-        v2.std.optional.Absent =>
+        Present { value: _ } => acc
+        Absent =>
           c_dfs_by_value_type_cycle(
             edges: edges,
             assignment: assignment,
@@ -564,8 +564,8 @@ fn c_partition_by_value_type_cycle_cause(
     module_dag: module_dag,
     owners: owners
   ) {
-    v2.std.optional.Present { value: detail } => v2.std.optional.Present { value: detail }
-    v2.std.optional.Absent =>
+    Present { value: detail } => v2.std.optional.Present { value: detail }
+    Absent =>
       c_by_value_type_cycle_detail_after_resolution(
         module_dag: module_dag,
         assignment: assignment,
@@ -584,8 +584,8 @@ fn c_validate_partition_r4(
     assignment: assignment,
     units: units
   ) {
-    v2.std.optional.Absent => v2.std.compilers.compilation_unit.PartitionR4Valid
-    v2.std.optional.Present { value: detail } =>
+    Absent => v2.std.compilers.compilation_unit.PartitionR4Valid
+    Present { value: detail } =>
       v2.std.compilers.compilation_unit.PartitionR4Refused {
         cause: v2.std.compilers.compilation_unit.ByValueTypeCycle { detail: detail },
       }
@@ -1173,7 +1173,7 @@ fn c_produced_decl_diagnostic(reason: v2.std.node.Symbol, node: v2.std.node.Node
 
 fn c_produced_one_param_tokens(edge: v2.std.node.Edge) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match edge.label {
-    v2.std.node.Named { name: pname } =>
+    Named { name: pname } =>
       v2.std.diagnostic.bind_outcome(
         o: c_produced_type_tokens(type_node: edge.target),
         f: fn(type_toks) {
@@ -1238,9 +1238,9 @@ fn c_produced_signature_from_name_and_arrow(
   arrow: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: arrow), index: 0) {
-    v2.std.optional.Present { value: domain } =>
+    Present { value: domain } =>
       match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: arrow), index: 1) {
-        v2.std.optional.Present { value: codomain } =>
+        Present { value: codomain } =>
           v2.std.diagnostic.bind_outcome(
             o: c_produced_type_tokens(type_node: codomain),
             f: fn(ret_toks) {
@@ -1269,12 +1269,12 @@ fn c_produced_signature_from_name_and_arrow(
               )
             }
           )
-        v2.std.optional.Absent =>
+        Absent =>
           v2.std.diagnostic.outcome_rejected(
             d: c_produced_decl_diagnostic(reason: ^c_produced_signature_codomain_missing, node: arrow)
           )
       }
-    v2.std.optional.Absent =>
+    Absent =>
       v2.std.diagnostic.outcome_rejected(
         d: c_produced_decl_diagnostic(reason: ^c_produced_signature_domain_missing, node: arrow)
       )
@@ -1285,9 +1285,9 @@ fn c_produced_decl_render(decl: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v
   match decl.kind {
     TypeNode { connective: v2.std.node.Conj } =>
       match v2.std.collection.list_at_optional(xs: decl.children, index: 0) {
-        v2.std.optional.Present { value: decl_edge } =>
+        Present { value: decl_edge } =>
           match decl_edge.label {
-            v2.std.node.Named { name: fn_name } =>
+            Named { name: fn_name } =>
               v2.std.diagnostic.bind_outcome(
                 o: c_produced_signature_from_name_and_arrow(
                   fn_name: fn_name,
@@ -1311,7 +1311,7 @@ fn c_produced_decl_render(decl: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v
                 d: c_produced_decl_diagnostic(reason: ^c_produced_decl_unnamed, node: decl)
               )
           }
-        v2.std.optional.Absent =>
+        Absent =>
           v2.std.diagnostic.outcome_rejected(
             d: c_produced_decl_diagnostic(reason: ^c_produced_decl_empty, node: decl)
           )

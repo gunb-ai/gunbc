@@ -40,7 +40,7 @@ fn coercion_outcome_node_projection(actual: v2.std.diagnostic.Outcome<v2.std.coe
   match actual {
     Accepted { value: r, diagnostics: ad } =>
       v2.std.diagnostic.Accepted { value: r.target, diagnostics: ad }
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -75,7 +75,7 @@ test data witness_cross_target_python_to_rust_i32_rejects: Bool = match run_test
 ) {
   Pass => true
   SemanticMismatch { actual: _, falsification: _ } => false
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
@@ -126,7 +126,7 @@ fn quality_is_widened(q: v2.std.coercion.CoercionQuality) -> Bool {
   match q {
     Widened => true
     Identity => false
-    v2.std.coercion.Exact => false
+    Exact => false
   }
 }
 
@@ -135,7 +135,7 @@ test fn witness_cross_target_rust_i32_to_python_int_accepts() -> Bool {
   match outcome {
     Accepted { value: r, diagnostics: _ } =>
       (r.target == python_int_inhabitant_node()) && quality_is_widened(q: r.quality)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -181,7 +181,7 @@ test data witness_cross_target_python_to_rust_i32_would_lose_information: Bool =
 ) {
   Pass => true
   SemanticMismatch { actual: _, falsification: _ } => false
-    v2.std.verdict.BuildFailed { actual: _, diagnostic: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }

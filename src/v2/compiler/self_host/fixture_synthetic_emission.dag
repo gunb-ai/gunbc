@@ -194,7 +194,7 @@ fn advance_written_synthetic_emitted_artifact_cargo_green(
     prior: written.artifact.fixture_receipt,
     cargo_green: cargo_green
   ) {
-    v2.std.optional.Present { value: receipt } =>
+    Present { value: receipt } =>
       optional_present(
         value: WrittenSyntheticEmittedArtifact {
           artifact: SyntheticEmittedArtifact {
@@ -205,7 +205,7 @@ fn advance_written_synthetic_emitted_artifact_cargo_green(
           write: written.write
         }
       )
-    v2.std.optional.Absent => optional_absent()
+    Absent => optional_absent()
   }
 }
 

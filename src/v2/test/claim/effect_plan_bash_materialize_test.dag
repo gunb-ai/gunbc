@@ -91,9 +91,9 @@ fn operation_locus_is(
   operation: String
 ) -> Bool {
   match locus {
-    v2.std.optional.Present { value: at } =>
+    Present { value: at } =>
       at.path == path && at.service == service && at.operation == operation
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }
 
@@ -105,7 +105,7 @@ test fn effect_plan_bash_two_declared_operations_encode_and_emit_through_carrier
     ]
   )
   let encoded = match v2.workflow.effect_plan_bash_materialize.effect_plan_bash_encode(plan: plan) {
-    v2.workflow.effect_plan_bash_materialize.EffectPlanBashEncodingAccepted {
+    EffectPlanBashEncodingAccepted {
       encoding: v2.workflow.effect_plan_bash_materialize.EffectPlanBashEncoded { statement: _ }
     } => true
     _ => false
@@ -311,7 +311,7 @@ test fn effect_plan_bash_RED_undeclared_duplicate_and_unbound_inputs_discriminat
           operation: "ShowProperty"
         )
         && match refusal.cause {
-          v2.workflow.effect_plan_bash_materialize.OperationArgvRefused { cause: v2.std.operation_argv.UndeclaredInputBound { name: name } } => name == "bin"
+          OperationArgvRefused { cause: v2.std.operation_argv.UndeclaredInputBound { name: name } } => name == "bin"
           _ => false
         }
     _ => false
@@ -326,7 +326,7 @@ test fn effect_plan_bash_RED_undeclared_duplicate_and_unbound_inputs_discriminat
           operation: "ShowProperty"
         )
         && match refusal.cause {
-          v2.workflow.effect_plan_bash_materialize.OperationArgvRefused { cause: v2.std.operation_argv.DuplicateInputBinding { name: name } } => name == "unit"
+          OperationArgvRefused { cause: v2.std.operation_argv.DuplicateInputBinding { name: name } } => name == "unit"
           _ => false
         }
     _ => false
@@ -341,7 +341,7 @@ test fn effect_plan_bash_RED_undeclared_duplicate_and_unbound_inputs_discriminat
           operation: "ShowProperty"
         )
         && match refusal.cause {
-          v2.workflow.effect_plan_bash_materialize.OperationArgvRefused { cause: v2.std.operation_argv.DeclaredInputUnbound { name: name } } => name == "property"
+          OperationArgvRefused { cause: v2.std.operation_argv.DeclaredInputUnbound { name: name } } => name == "property"
           _ => false
         }
     _ => false
@@ -370,7 +370,7 @@ test fn effect_plan_bash_RED_unsupported_argv_expression_preserves_operation_loc
           operation: "DiffUnified0"
         )
         && match refusal.cause {
-          v2.workflow.effect_plan_bash_materialize.OperationArgvRefused {
+          OperationArgvRefused {
             cause: v2.std.operation_argv.ArgvExpressionUnsupported { detail: _ }
           } => true
           _ => false

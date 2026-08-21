@@ -45,8 +45,8 @@ fn probe_refusal_reason(coverage: v2.compiler.source_authority.SourceRootCoverag
     refs: probe_refs,
     receipt: probe_receipt(coverage: coverage)
   ) {
-    v2.compiler.self_host.compiler_closure_emit_driver.ClosureEmitPopulationRefused { reason: reason } => reason
-    v2.compiler.self_host.compiler_closure_emit_driver.ClosureEmitPopulationAdmitted { ingest: _ } => ^probe_admitted_unexpectedly
+    ClosureEmitPopulationRefused { reason: reason } => reason
+    ClosureEmitPopulationAdmitted { ingest: _ } => ^probe_admitted_unexpectedly
   }
 }
 

@@ -283,15 +283,15 @@ fn authorize_spark_bootstrap(plan: SparkBootstrapPlan) -> SparkBootstrapAuthoriz
 
 fn list_head_of_effects(effects: std.types.List<SparkBootstrapEffect>) -> SparkBootstrapEffect? {
   match list_head(effects) {
-    v2.std.algebra.HeadFound { value: e } => Present { value: e }
-    v2.std.algebra.HeadAbsent => none
+    HeadFound { value: e } => Present { value: e }
+    HeadAbsent => none
   }
 }
 
 fn list_tail_of_effects(effects: std.types.List<SparkBootstrapEffect>) -> std.types.List<SparkBootstrapEffect> {
   match list_tail(effects) {
-    v2.std.algebra.TailFound { tail: t } => t
-    v2.std.algebra.TailAbsent => []
+    TailFound { tail: t } => t
+    TailAbsent => []
   }
 }
 

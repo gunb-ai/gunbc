@@ -59,7 +59,7 @@ test fn witness_field_access_wet_falsifier_consumer_holds() -> v2.std.logic.Bool
     function: "emit_on_demand_field_access_grain_keys_differ_holds",
     excluded_from_discovery: true
   ) {
-    std.witness_admission.OfflineLocalRecipe => true
+    OfflineLocalRecipe => true
     _ => false
   }
 }
@@ -123,7 +123,7 @@ test fn witness_complement_wet_falsifier_consumer_holds() -> v2.std.logic.Bool {
     function: "emit_on_demand_complement_grain_keys_differ_holds",
     excluded_from_discovery: true
   ) {
-    std.witness_admission.OfflineLocalRecipe => true
+    OfflineLocalRecipe => true
     _ => false
   }
 }
@@ -134,7 +134,7 @@ test fn witness_offline_execution_lane_consumer_holds() -> v2.std.logic.Bool {
     function: "synthetic_optin_exec_witness",
     excluded_from_discovery: true
   ) {
-    std.witness_admission.OfflineLocalRecipe => true
+    OfflineLocalRecipe => true
     _ => false
   }
 }

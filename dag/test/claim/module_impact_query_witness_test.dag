@@ -125,7 +125,7 @@ test fn witness_pool_independence_unavailable_forbids_an_exact_standing() -> Boo
       }
     ExactForGraphSubject => false
     ProvisionalForObservedPool => false
-    v2.lens.module_impact_query.Incomplete { causes: _ } => false
+    Incomplete { causes: _ } => false
   }
 }
 
@@ -133,7 +133,7 @@ test fn witness_clean_pool_without_established_independence_is_only_provisional(
   match chain_reading(seeds: [mod_c], admissions: unrelated_admission_only).standing {
     ProvisionalForObservedPool => true
     ExactForGraphSubject => false
-    v2.lens.module_impact_query.Incomplete { causes: _ } => false
+    Incomplete { causes: _ } => false
     PoolIndependentProjectionUnavailable { trigger: _ } => false
   }
 }
@@ -142,7 +142,7 @@ test fn witness_exact_standing_requires_established_pool_independence() -> Bool 
   match chain_reading(seeds: [mod_c], admissions: pool_independence_established).standing {
     ExactForGraphSubject => true
     ProvisionalForObservedPool => false
-    v2.lens.module_impact_query.Incomplete { causes: _ } => false
+    Incomplete { causes: _ } => false
     PoolIndependentProjectionUnavailable { trigger: _ } => false
   }
 }
@@ -207,7 +207,7 @@ test fn witness_pool_mismatch_forbids_an_exact_standing() -> Bool {
     admissions: pool_independence_established
   )
   match reading.standing {
-    v2.lens.module_impact_query.Incomplete { causes } => v2.std.algebra.count_where(xs: causes, predicate: fn(_) { true }) == 1
+    Incomplete { causes } => v2.std.algebra.count_where(xs: causes, predicate: fn(_) { true }) == 1
     ExactForGraphSubject => false
     ProvisionalForObservedPool => false
     PoolIndependentProjectionUnavailable { trigger: _ } => false

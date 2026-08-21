@@ -604,7 +604,7 @@ fn publication_receipt_member(doc: extdeps.languages.json.emit.JsonValue, key: S
       }
     JsonMemberFound { value: v } =>
       match v {
-        extdeps.languages.json.emit.JsonString { value: s } => ReceiptMemberRead { value: s }
+        JsonString { value: s } => ReceiptMemberRead { value: s }
         _ =>
           ReceiptMemberUnreadable {
             reason: join(["publication receipt ", key, " member is not a string"], ""),
@@ -624,7 +624,7 @@ fn publication_receipt_int_member(doc: extdeps.languages.json.emit.JsonValue, ke
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: v } =>
       match v {
-        extdeps.languages.json.emit.JsonNumber { lexeme: lx } => parse_int(s: lx as String)
+        JsonNumber { lexeme: lx } => parse_int(s: lx as String)
         _ => none
       }
     _ => none
@@ -635,7 +635,7 @@ fn publication_receipt_bool_member(doc: extdeps.languages.json.emit.JsonValue, k
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: v } =>
       match v {
-        extdeps.languages.json.emit.JsonBool { value: b } => Present { value: b }
+        JsonBool { value: b } => Present { value: b }
         _ => none
       }
     _ => none
@@ -650,7 +650,7 @@ fn publication_receipt_int_array_member(doc: extdeps.languages.json.emit.JsonVal
       match v {
         JsonArray { elements } => {
           let parsed = map(elements, e => match e {
-            extdeps.languages.json.emit.JsonNumber { lexeme: lx } => parse_int(s: lx as String)
+            JsonNumber { lexeme: lx } => parse_int(s: lx as String)
             _ => none
           })
           let readable = filter(parsed, n => match n {

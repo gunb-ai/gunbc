@@ -143,9 +143,9 @@ fn scheduler_contains_noise_frontier() -> v2.workflow.scheduler.RunnableFrontier
 
 fn scheduler_layers_reuse_dependency_fold() -> Bool {
   match scheduler_plan(graph_node: scheduler_fixture_graph) {
-    v2.workflow.scheduler.SchedulerPlanComplete { layers: layers, scheduled: _ } => layers == topological_layers(graph_node: scheduler_fixture_graph)
-    v2.workflow.scheduler.SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
-    v2.workflow.scheduler.SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
+    SchedulerPlanComplete { layers: layers, scheduled: _ } => layers == topological_layers(graph_node: scheduler_fixture_graph)
+    SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
+    SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
   }
 }
 
@@ -175,9 +175,9 @@ fn scheduler_missing_prerequisite_blocks_with_evidence() -> Bool {
     dependencies: scheduler_missing_prerequisite_dependencies,
     scheduled: []
   ) {
-    v2.workflow.scheduler.SchedulerPlanComplete { layers: _, scheduled: _ } => false
-    v2.workflow.scheduler.SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
-    v2.workflow.scheduler.SchedulerPlanBlocked { evidence: v2.workflow.scheduler.SchedulerNoRunnableFrontier {}, scheduled: scheduled, remaining: remaining, layers: layers } => scheduled == [] && remaining == [scheduler_build_node] && layers == []
+    SchedulerPlanComplete { layers: _, scheduled: _ } => false
+    SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
+    SchedulerPlanBlocked { evidence: v2.workflow.scheduler.SchedulerNoRunnableFrontier {}, scheduled: scheduled, remaining: remaining, layers: layers } => scheduled == [] && remaining == [scheduler_build_node] && layers == []
   }
 }
 
@@ -187,9 +187,9 @@ fn scheduler_step_plan_exposes_runnable_state() -> Bool {
     dependencies: scheduler_fixture_dependencies,
     scheduled: []
   ) {
-    v2.workflow.scheduler.SchedulerPlanComplete { layers: _, scheduled: _ } => false
-    v2.workflow.scheduler.SchedulerPlanRunnable { frontier: frontier, scheduled: scheduled, remaining: remaining, layers: layers } => frontier.ready == [scheduler_build_node, scheduler_test_node] && scheduled == [scheduler_build_node, scheduler_test_node] && remaining == [scheduler_emit_node] && layers == [v2.std.dependency.ReadinessLayer { ready: [scheduler_build_node, scheduler_test_node] }]
-    v2.workflow.scheduler.SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
+    SchedulerPlanComplete { layers: _, scheduled: _ } => false
+    SchedulerPlanRunnable { frontier: frontier, scheduled: scheduled, remaining: remaining, layers: layers } => frontier.ready == [scheduler_build_node, scheduler_test_node] && scheduled == [scheduler_build_node, scheduler_test_node] && remaining == [scheduler_emit_node] && layers == [v2.std.dependency.ReadinessLayer { ready: [scheduler_build_node, scheduler_test_node] }]
+    SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
   }
 }
 
@@ -199,9 +199,9 @@ fn scheduler_full_plan_completes_all_work() -> Bool {
     dependencies: scheduler_fixture_dependencies,
     scheduled: []
   ) {
-    v2.workflow.scheduler.SchedulerPlanComplete { layers: layers, scheduled: scheduled } => scheduled == [scheduler_build_node, scheduler_test_node, scheduler_emit_node] && layers == [v2.std.dependency.ReadinessLayer { ready: [scheduler_build_node, scheduler_test_node] }, v2.std.dependency.ReadinessLayer { ready: [scheduler_emit_node] }]
-    v2.workflow.scheduler.SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
-    v2.workflow.scheduler.SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
+    SchedulerPlanComplete { layers: layers, scheduled: scheduled } => scheduled == [scheduler_build_node, scheduler_test_node, scheduler_emit_node] && layers == [v2.std.dependency.ReadinessLayer { ready: [scheduler_build_node, scheduler_test_node] }, v2.std.dependency.ReadinessLayer { ready: [scheduler_emit_node] }]
+    SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
+    SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
   }
 }
 
@@ -211,9 +211,9 @@ fn scheduler_all_scheduled_completes_without_blocking() -> Bool {
     dependencies: scheduler_fixture_dependencies,
     scheduled: scheduler_fixture_nodes
   ) {
-    v2.workflow.scheduler.SchedulerPlanComplete { layers: layers, scheduled: scheduled } => scheduled == scheduler_fixture_nodes && layers == []
-    v2.workflow.scheduler.SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
-    v2.workflow.scheduler.SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
+    SchedulerPlanComplete { layers: layers, scheduled: scheduled } => scheduled == scheduler_fixture_nodes && layers == []
+    SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
+    SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
   }
 }
 
@@ -223,9 +223,9 @@ fn scheduler_mixed_runnable_then_blocked_reports_remaining() -> Bool {
     dependencies: scheduler_mixed_runnable_blocked_dependencies,
     scheduled: []
   ) {
-    v2.workflow.scheduler.SchedulerPlanComplete { layers: _, scheduled: _ } => false
-    v2.workflow.scheduler.SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
-    v2.workflow.scheduler.SchedulerPlanBlocked { evidence: v2.workflow.scheduler.SchedulerNoRunnableFrontier {}, scheduled: scheduled, remaining: remaining, layers: layers } => scheduled == [scheduler_build_node, scheduler_emit_node] && remaining == [scheduler_test_node] && layers == [v2.std.dependency.ReadinessLayer { ready: [scheduler_build_node, scheduler_emit_node] }]
+    SchedulerPlanComplete { layers: _, scheduled: _ } => false
+    SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
+    SchedulerPlanBlocked { evidence: v2.workflow.scheduler.SchedulerNoRunnableFrontier {}, scheduled: scheduled, remaining: remaining, layers: layers } => scheduled == [scheduler_build_node, scheduler_emit_node] && remaining == [scheduler_test_node] && layers == [v2.std.dependency.ReadinessLayer { ready: [scheduler_build_node, scheduler_emit_node] }]
   }
 }
 

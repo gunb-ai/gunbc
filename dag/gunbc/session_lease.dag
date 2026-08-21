@@ -75,9 +75,9 @@ fn decision_for_process_port_verdict(
   verdict: std.upsert_decision.ObservationVerdict,
 ) -> std.upsert_decision.UpsertDecision<ProcessLeasePlan> {
   match verdict {
-    std.upsert_decision.Converged => std.upsert_decision.Noop
-    std.upsert_decision.Absent => std.upsert_decision.Apply { plan: Start }
-    std.upsert_decision.Drifted => std.upsert_decision.Apply { plan: DrainMatchingStaleThenStart }
+    Converged => std.upsert_decision.Noop
+    Absent => std.upsert_decision.Apply { plan: Start }
+    Drifted => std.upsert_decision.Apply { plan: DrainMatchingStaleThenStart }
     Conflict => std.upsert_decision.Refuse { reason: "foreign process owns port" as std.types.NonEmptyStr }
     Inaccessible => std.upsert_decision.Refuse { reason: "port inaccessible or wrong listen port" as std.types.NonEmptyStr }
     UnknownRefused => std.upsert_decision.Refuse { reason: "port observation refused" as std.types.NonEmptyStr }

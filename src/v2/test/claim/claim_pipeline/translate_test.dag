@@ -3,7 +3,7 @@ module v2.test.claim_pipeline.translate
 test fn spine_translate_accepts_rust_add_inferred_tree() -> v2.std.logic.Bool {
   match v2.compiler.translate.translate(tree: v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree, target: v2.extdeps.languages.rust.rust_target_model()) {
     Accepted { value: _, diagnostics: _ } => true
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

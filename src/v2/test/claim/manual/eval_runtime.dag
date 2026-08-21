@@ -232,7 +232,7 @@ fn eval_empty_environment() -> v2.std.runtime.EvaluationEnvironment {
 }
 
 data witness_eval_add_accepts_five: Bool = match eval_actual() {
-  v2.std.diagnostic.Accepted { value: RuntimePrimitive { value: p }, diagnostics: None } =>
+  Accepted { value: RuntimePrimitive { value: p }, diagnostics: None } =>
     (p.primitive_type == eval_i64_node()) && (count(p.bytes) == 5)
   _ => false
 }
@@ -242,7 +242,7 @@ data witness_eval_call_primitive_rejects_bad_args: Bool = match eval_call_primit
   args: [],
   _env: eval_empty_environment()
 ) {
-  v2.std.diagnostic.Rejected { diagnostics: _ } => true
+  Rejected { diagnostics: _ } => true
   _ => false
 }
 

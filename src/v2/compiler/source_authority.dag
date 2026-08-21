@@ -598,7 +598,7 @@ fn source_root_ingest_from_source_refs(refs: List<SourceRef>) -> v2.std.diagnost
   match source_root_ingest_build_from_source_refs(refs: refs) {
     SourceRootIngestBuildReadFailed { result: r } =>
       match source_ref_read_result_to_outcome(result: r) {
-        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: _, diagnostics: _ } =>
           v2.std.diagnostic.outcome_rejected(
             d: source_ref_read_failed_diagnostic(
@@ -761,7 +761,7 @@ fn source_ir_artifact_provenance_from_model(
   lm: v2.std.language_model.LanguageModel
 ) -> v2.std.diagnostic.Outcome<SourceIrArtifactProvenance> {
   match source_read.artifact.kind {
-    v2.std.artifact.SourceFile =>
+    SourceFile =>
       v2.std.diagnostic.bind_outcome(
         o: v2.compiler.tokenize.tokenize(
           text: source_read.source.carried,
@@ -813,7 +813,7 @@ fn module_storage_binding_from_provenance(
           source_root: source_root
         }
       )
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }
@@ -843,7 +843,7 @@ fn module_storage_binding_from_read_prepared(
   residue: v2.std.diagnostic.Diagnostics
 ) -> v2.std.diagnostic.Outcome<ModuleStorageBinding> {
   match source_read.artifact.kind {
-    v2.std.artifact.SourceFile =>
+    SourceFile =>
       v2.std.diagnostic.bind_outcome(
         o: v2.compiler.tokenize.tokenize(
           text: source_read.source.carried,
@@ -878,7 +878,7 @@ fn module_storage_binding_from_read_with_model(
   lm: v2.std.language_model.LanguageModel
 ) -> v2.std.diagnostic.Outcome<ModuleStorageBinding> {
   match v2.compiler.parse.prepare_grammar(grammar: lm.grammar) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     Accepted { value: prepared, diagnostics: residue } =>
       module_storage_binding_from_read_prepared(
         source_read: source_read,
@@ -947,11 +947,11 @@ fn module_storage_fold_step(
         prepared: prepared,
         residue: residue
       ) {
-        v2.std.diagnostic.Rejected { diagnostics: d } =>
+        Rejected { diagnostics: d } =>
           ModuleStorageFoldFailed { diagnostics: d }
         Accepted { value: binding, diagnostics: _ } =>
           match module_storage_index_insert(index: acc, binding: binding) {
-            v2.std.diagnostic.Rejected { diagnostics: d } =>
+            Rejected { diagnostics: d } =>
               ModuleStorageFoldFailed { diagnostics: d }
             Accepted { value: next, diagnostics: _ } =>
               ModuleStorageFoldOk { bindings: next }
@@ -992,7 +992,7 @@ fn module_storage_bindings_from_ingest_with_model(
     Empty => v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty)
     _ =>
       match v2.compiler.parse.prepare_grammar(grammar: lm.grammar) {
-        v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: prepared, diagnostics: residue } =>
           module_storage_bindings_from_ingest_prepared(
             ingest: ingest,
@@ -1093,11 +1093,11 @@ fn module_storage_agreement_for_binding(
   host: ModuleStorageIndex
 ) -> ModuleStorageAgreement {
   match module_storage_binding_file_path(binding: oracle_binding) {
-    v2.std.optional.Absent => ModuleStorageAgrees
-    v2.std.optional.Present { value: p } =>
+    Absent => ModuleStorageAgrees
+    Present { value: p } =>
       match module_storage_module_for_path(index: host, file_path: p) {
-        v2.std.optional.Absent => ModuleStorageUncovered { path: p }
-        v2.std.optional.Present { value: host_module } =>
+        Absent => ModuleStorageUncovered { path: p }
+        Present { value: host_module } =>
           if host_module == module_storage_binding_module(binding: oracle_binding) {
             ModuleStorageAgrees
           } else {
@@ -1142,16 +1142,16 @@ fn module_storage_module_for_path(
     empty: v2.std.optional.optional_absent(),
     cons: fn(found, binding) {
       match found {
-        v2.std.optional.Present { value: v } => v2.std.optional.optional_present(value: v)
-        v2.std.optional.Absent =>
+        Present { value: v } => v2.std.optional.optional_present(value: v)
+        Absent =>
           match module_storage_binding_file_path(binding: binding) {
-            v2.std.optional.Present { value: p } =>
+            Present { value: p } =>
               if p == file_path {
                 v2.std.optional.optional_present(value: module_storage_binding_module(binding: binding))
               } else {
                 v2.std.optional.optional_absent()
               }
-            v2.std.optional.Absent => v2.std.optional.optional_absent()
+            Absent => v2.std.optional.optional_absent()
           }
       }
     }
@@ -1167,8 +1167,8 @@ fn module_storage_path_for_module(
     empty: v2.std.optional.optional_absent(),
     cons: fn(found, binding) {
       match found {
-        v2.std.optional.Present { value: v } => v2.std.optional.optional_present(value: v)
-        v2.std.optional.Absent =>
+        Present { value: v } => v2.std.optional.optional_present(value: v)
+        Absent =>
           if module_storage_binding_module(binding: binding) == module {
             module_storage_binding_file_path(binding: binding)
           } else {
@@ -1191,7 +1191,7 @@ fn source_ir_node_artifact_provenance_from_model(
           artifact: prov.artifact
         }
       )
-    v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
+    Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
 
@@ -1227,7 +1227,7 @@ fn node_artifact_provenance_fold_step(
           NodeArtifactProvenanceFoldOk {
             provenance: v2.std.algebra.list_snoc_item(xs: acc, item: row)
           }
-        v2.std.diagnostic.Rejected { diagnostics: d } =>
+        Rejected { diagnostics: d } =>
           NodeArtifactProvenanceFoldFailed { diagnostics: d }
       }
   }

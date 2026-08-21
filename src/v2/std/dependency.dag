@@ -150,7 +150,7 @@ type DependencyFoldState {
 fn classify_named_edge_usage(parent: v2.std.node.Node, sym: v2.std.node.Symbol) -> DependencyKind {
   if sym == ^dependency_binds_to_edge {
     match parent.kind {
-      v2.std.node.ComputationNode { behavior: v2.std.node.Bind } => Contains
+      ComputationNode { behavior: v2.std.node.Bind } => Contains
       _ => BindsTo
     }
   } else if sym == ^dependency_module_import_edge {
@@ -164,8 +164,8 @@ fn classify_named_edge_usage(parent: v2.std.node.Node, sym: v2.std.node.Symbol) 
 
 fn classify_node_edge_usage(parent: v2.std.node.Node, edge: v2.std.node.Edge) -> DependencyKind {
   match edge.label {
-    v2.std.node.Named { name: sym } => classify_named_edge_usage(parent: parent, sym: sym)
-    v2.std.node.Positional => Contains
+    Named { name: sym } => classify_named_edge_usage(parent: parent, sym: sym)
+    Positional => Contains
   }
 }
 

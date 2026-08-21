@@ -109,7 +109,7 @@ fn advisory_report_diagnostic(report: v2.std.report.Report) -> v2.std.diagnostic
 fn find_child_by_name(root: v2.std.node.Node, name: v2.std.node.Symbol) -> Outcome<v2.std.node.Node> {
   match find_named_child(root: root, name: name) {
     Accepted { value: child, diagnostics: d } => v2.std.diagnostic.Accepted { value: child, diagnostics: d }
-    v2.std.diagnostic.Rejected { diagnostics: diags } =>
+    Rejected { diagnostics: diags } =>
       if diags.head.reason == ^named_child_ambiguous {
         outcome_rejected(d: path_ambiguous_diagnostic(at: root))
       } else {
@@ -148,7 +148,7 @@ type PathSplit {
 }
 
 fn split_path_steps(root: v2.std.node.Node, steps: List<v2.std.node.Symbol>) -> Outcome<PathSplit> {
-  if is_empty(xs: steps) {
+  if v2.std.algebra.is_empty(xs: steps) {
     outcome_rejected(d: path_unresolvable_diagnostic(at: root))
   } else {
     outcome_accepted(value: fold_list(
@@ -179,7 +179,7 @@ fn rebuild_node_with_child(root: v2.std.node.Node, name: v2.std.node.Symbol, chi
         init: std.algebra.Empty,
         f: fn(current_acc, edge) {
           match edge.label {
-            v2.std.node.Named { name: edge_name } =>
+            Named { name: edge_name } =>
               let next_edge = match edge_name == name {
                 true => replace_edge_target(e: edge, replacement: child)
                 false => edge
@@ -253,7 +253,7 @@ fn thread_substitution_up(frames: List<AncestorFrame>, rebuilt_child: v2.std.nod
 }
 
 fn substitute_at(root: v2.std.node.Node, path: v2.std.node.Path, replacement: v2.std.node.Node) -> Outcome<v2.std.node.Node> {
-  if is_empty(xs: path.steps) {
+  if v2.std.algebra.is_empty(xs: path.steps) {
     outcome_accepted(value: replacement)
   } else {
     bind_outcome(
@@ -403,7 +403,7 @@ fn reports_to_non_empty_diagnostics(
   reports: List<v2.std.report.Report>,
   at: v2.std.node.Node
 ) -> Outcome<v2.std.diagnostic.NonEmptyDiagnostics> {
-  if is_empty(xs: reports) {
+  if v2.std.algebra.is_empty(xs: reports) {
     outcome_rejected(d: advisory_reports_empty_diagnostic(at: at))
   } else {
     outcome_accepted(value: fold_list(
@@ -444,7 +444,7 @@ fn apply_advisory_lens(
       match config {
         LensIntrospect => outcome_accepted(value: reports)
         LensEnforce { budget: _ } =>
-          if is_empty(xs: reports) {
+          if v2.std.algebra.is_empty(xs: reports) {
             outcome_accepted(value: reports)
           } else {
             bind_outcome(

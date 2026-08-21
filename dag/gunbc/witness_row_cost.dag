@@ -51,8 +51,8 @@ fn witness_row_cost_verdict(
   basis: v2.std.optional.Optional<gunbc.witness_row_cost.WitnessRowCostDatedBasis>,
 ) -> gunbc.witness_row_cost.WitnessRowCostVerdict {
   match basis {
-    v2.std.optional.Absent => BasisAbsent
-    v2.std.optional.Present { value: b } =>
+    Absent => BasisAbsent
+    Present { value: b } =>
       if !clock_basis_eq(a: observed_clock, b: b.clock) {
         BasisClockMismatch { observed: observed_clock, basis: b.clock }
       } else if witness_row_cost_exceeds_basis(observed: observed, basis: b.eval) {
@@ -95,8 +95,8 @@ fn witness_row_cost_receipt_row_wall_eval_ms(row: gunbc.witness_row_cost.Witness
 
 fn witness_row_cost_receipt_row_migration_verdict(row: gunbc.witness_row_cost.WitnessCostReceiptRow) -> v2.std.optional.Optional<gunbc.witness_row_cost.MigrationDisclosureVerdict> {
   match witness_row_cost_receipt_row_wall_eval_ms(row: row) {
-    v2.std.optional.Absent => v2.std.optional.Absent
-    v2.std.optional.Present { value: observed } =>
+    Absent => v2.std.optional.Absent
+    Present { value: observed } =>
       v2.std.optional.Present { value: witness_row_cost_migration_verdict(observed: observed) }
   }
 }
@@ -104,9 +104,9 @@ fn witness_row_cost_receipt_row_migration_verdict(row: gunbc.witness_row_cost.Wi
 fn witness_row_cost_mandatory_migration_rows(rows: List<gunbc.witness_row_cost.WitnessCostReceiptRow>) -> List<gunbc.witness_row_cost.WitnessCostReceiptRow> {
   filter(rows, row =>
     match witness_row_cost_receipt_row_migration_verdict(row: row) {
-      v2.std.optional.Present { value: MandatoryMigration { observed: _, threshold: _ } } => true
-      v2.std.optional.Present { value: BelowMigrationThreshold } => false
-      v2.std.optional.Absent => false
+      Present { value: MandatoryMigration { observed: _, threshold: _ } } => true
+      Present { value: BelowMigrationThreshold } => false
+      Absent => false
     }
   )
 }
@@ -171,7 +171,7 @@ fn witness_cost_concluded_outcome(event: std.observation.ObservationEvent) -> v2
   match event.transition {
     Concluded { outcome: o } => v2.std.optional.Present { value: o }
     Begin => v2.std.optional.Absent
-    std.observation.Step { k: _, n: _ } => v2.std.optional.Absent
+    Step { k: _, n: _ } => v2.std.optional.Absent
   }
 }
 
@@ -181,11 +181,11 @@ type WitnessCostEventRole
 
 fn witness_cost_event_role(event: std.observation.ObservationEvent) -> v2.std.optional.Optional<gunbc.witness_row_cost.WitnessCostEventRole> {
   match witness_cost_concluded_outcome(event: event) {
-    v2.std.optional.Absent => v2.std.optional.Absent
-    v2.std.optional.Present { value: _ } =>
+    Absent => v2.std.optional.Absent
+    Present { value: _ } =>
       match witness_cost_subject_entry(subject: event.subject) {
-        v2.std.optional.Absent => v2.std.optional.Absent
-        v2.std.optional.Present { value: _ } =>
+        Absent => v2.std.optional.Absent
+        Present { value: _ } =>
           match observation_subject_grain(subject: event.subject) {
             DeclarationGrain => v2.std.optional.Present { value: DeclarationWitness }
             RunGrain => witness_cost_entry_resolve_role_if_shaped(subject: event.subject)
@@ -200,14 +200,14 @@ fn witness_cost_event_role(event: std.observation.ObservationEvent) -> v2.std.op
 
 fn witness_cost_entry_resolve_role_if_shaped(subject: std.observation.ObservationSubject) -> v2.std.optional.Optional<gunbc.witness_row_cost.WitnessCostEventRole> {
   match observation_subject_declaration(subject: subject) {
-    v2.std.optional.Present { value: _ } => v2.std.optional.Absent
-    v2.std.optional.Absent =>
+    Present { value: _ } => v2.std.optional.Absent
+    Absent =>
       match observation_subject_module_path(subject: subject) {
-        v2.std.optional.Present { value: _ } => v2.std.optional.Absent
-        v2.std.optional.Absent =>
+        Present { value: _ } => v2.std.optional.Absent
+        Absent =>
           match observation_subject_phase_name(subject: subject) {
-            v2.std.optional.Absent => v2.std.optional.Absent
-            v2.std.optional.Present { value: n } =>
+            Absent => v2.std.optional.Absent
+            Present { value: n } =>
               match n == ("resolve" as std.types.NonEmptyStr) {
                 true => v2.std.optional.Present { value: EntryResolveParent }
                 false => v2.std.optional.Absent
@@ -220,18 +220,18 @@ fn witness_cost_entry_resolve_role_if_shaped(subject: std.observation.Observatio
 fn witness_cost_count_resolve_for_entry(events: List<std.observation.ObservationEvent>, entry: std.types.NonEmptyStr) -> std.nat.Nat {
   fold(events, init: 0, f: (acc, event) =>
     match witness_cost_event_role(event: event) {
-      v2.std.optional.Present { value: EntryResolveParent } =>
+      Present { value: EntryResolveParent } =>
         match witness_cost_subject_entry(subject: event.subject) {
-          v2.std.optional.Present { value: p } =>
+          Present { value: p } =>
             if p == entry {
               acc + 1
             } else {
               acc
             }
-          v2.std.optional.Absent => acc
+          Absent => acc
         }
-      v2.std.optional.Present { value: DeclarationWitness } => acc
-      v2.std.optional.Absent => acc
+      Present { value: DeclarationWitness } => acc
+      Absent => acc
     }
   )
 }
@@ -243,22 +243,22 @@ fn witness_cost_count_declaration_for_entry(
 ) -> std.nat.Nat {
   fold(events, init: 0, f: (acc, event) =>
     match witness_cost_event_role(event: event) {
-      v2.std.optional.Present { value: DeclarationWitness } =>
+      Present { value: DeclarationWitness } =>
         match witness_cost_subject_entry(subject: event.subject) {
-          v2.std.optional.Present { value: p } =>
+          Present { value: p } =>
             match witness_cost_subject_declaration(subject: event.subject) {
-              v2.std.optional.Present { value: d } =>
+              Present { value: d } =>
                 if p == entry && d == declaration {
                   acc + 1
                 } else {
                   acc
                 }
-              v2.std.optional.Absent => acc
+              Absent => acc
             }
-          v2.std.optional.Absent => acc
+          Absent => acc
         }
-      v2.std.optional.Present { value: EntryResolveParent } => acc
-      v2.std.optional.Absent => acc
+      Present { value: EntryResolveParent } => acc
+      Absent => acc
     }
   )
 }
@@ -270,18 +270,18 @@ fn witness_cost_unique_resolve_wall(
   if witness_cost_count_resolve_for_entry(events: events, entry: entry) == 1 {
     fold(events, init: v2.std.optional.Absent, f: (acc, event) =>
       match witness_cost_event_role(event: event) {
-        v2.std.optional.Present { value: EntryResolveParent } =>
+        Present { value: EntryResolveParent } =>
           match witness_cost_subject_entry(subject: event.subject) {
-            v2.std.optional.Present { value: p } =>
+            Present { value: p } =>
               if p == entry {
                 witness_cost_measured_wall(wall: observation_wall(event: event))
               } else {
                 acc
               }
-            v2.std.optional.Absent => acc
+            Absent => acc
           }
-        v2.std.optional.Present { value: DeclarationWitness } => acc
-        v2.std.optional.Absent => acc
+        Present { value: DeclarationWitness } => acc
+        Absent => acc
       }
     )
   } else {
@@ -310,11 +310,11 @@ fn witness_cost_project_one_witness(
   event: std.observation.ObservationEvent,
 ) -> gunbc.witness_row_cost.WitnessCostProjection {
   match witness_cost_subject_entry(subject: event.subject) {
-    v2.std.optional.Absent =>
+    Absent =>
       WitnessCostProjectionRefused {
         cause: "declaration-grain witness event missing EntrySegment" as std.types.NonEmptyStr
       }
-    v2.std.optional.Present { value: entry } => {
+    Present { value: entry } => {
       let n = witness_cost_count_resolve_for_entry(events: events, entry: entry)
       if n == 0 {
         WitnessCostProjectionRefused {
@@ -326,23 +326,23 @@ fn witness_cost_project_one_witness(
         }
       } else {
         match witness_cost_unique_resolve_wall(events: events, entry: entry) {
-          v2.std.optional.Absent =>
+          Absent =>
             WitnessCostProjectionRefused {
               cause: "parent resolve wall MeasuredUnavailable (refuse; never fabricate)" as std.types.NonEmptyStr
             }
-          v2.std.optional.Present { value: resolve } =>
+          Present { value: resolve } =>
             match witness_cost_measured_wall(wall: observation_wall(event: event)) {
-              v2.std.optional.Absent =>
+              Absent =>
                 WitnessCostProjectionRefused {
                   cause: "witness eval wall MeasuredUnavailable (refuse; never fabricate)" as std.types.NonEmptyStr
                 }
-              v2.std.optional.Present { value: eval_wall } =>
+              Present { value: eval_wall } =>
                 match witness_cost_subject_declaration(subject: event.subject) {
-                  v2.std.optional.Absent =>
+                  Absent =>
                     WitnessCostProjectionRefused {
                       cause: "declaration-grain witness missing DeclarationSegment" as std.types.NonEmptyStr
                     }
-                  v2.std.optional.Present { value: decl } =>
+                  Present { value: decl } =>
                     if witness_cost_count_declaration_for_entry(
                       events: events,
                       entry: entry,
@@ -353,11 +353,11 @@ fn witness_cost_project_one_witness(
                       }
                     } else {
                       match witness_cost_concluded_outcome(event: event) {
-                        v2.std.optional.Absent =>
+                        Absent =>
                           WitnessCostProjectionRefused {
                             cause: "declaration-grain witness is not Concluded" as std.types.NonEmptyStr
                           }
-                        v2.std.optional.Present { value: outcome } =>
+                        Present { value: outcome } =>
                           WitnessCostProjectionComplete {
                             rows: [
                               WitnessCostReceiptRow {
@@ -400,11 +400,11 @@ fn witness_cost_check_unique_resolve_parent(
   event: std.observation.ObservationEvent,
 ) -> gunbc.witness_row_cost.WitnessCostProjection {
   match witness_cost_subject_entry(subject: event.subject) {
-    v2.std.optional.Absent =>
+    Absent =>
       WitnessCostProjectionRefused {
         cause: "entry resolve parent missing EntrySegment" as std.types.NonEmptyStr
       }
-    v2.std.optional.Present { value: entry } => {
+    Present { value: entry } => {
       let n = witness_cost_count_resolve_for_entry(events: events, entry: entry)
       match n == 1 {
         true => WitnessCostProjectionComplete { rows: [] }
@@ -424,17 +424,17 @@ fn project_witness_cost_receipt(events: List<std.observation.ObservationEvent>) 
         WitnessCostProjectionRefused { cause: c }
       WitnessCostProjectionComplete { rows: _ } =>
         match witness_cost_event_role(event: event) {
-          v2.std.optional.Present { value: DeclarationWitness } =>
+          Present { value: DeclarationWitness } =>
             witness_cost_append_projection(
               left: acc,
               right: witness_cost_project_one_witness(events: events, event: event)
             )
-          v2.std.optional.Present { value: EntryResolveParent } =>
+          Present { value: EntryResolveParent } =>
             witness_cost_append_projection(
               left: acc,
               right: witness_cost_check_unique_resolve_parent(events: events, event: event)
             )
-          v2.std.optional.Absent =>
+          Absent =>
             WitnessCostProjectionRefused {
               cause: "malformed or non-concluded witness timing event (refuse; never drop)" as std.types.NonEmptyStr
             }

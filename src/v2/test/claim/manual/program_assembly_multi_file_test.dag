@@ -6,7 +6,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 fn pa_graft_module_root(root: v2.std.node.Node) -> v2.std.node.Node {
   match module_header_containment_graft(root: root) {
     Accepted { value: grafted, diagnostics: _ } => grafted
-    v2.std.diagnostic.Rejected { diagnostics: _ } => root
+    Rejected { diagnostics: _ } => root
   }
 }
 
@@ -134,7 +134,7 @@ fn pa_cross_file_admission() -> v2.compiler.name_resolve.Admission {
 
 test fn program_assembly_cross_file_import_assembles_holds() -> Bool {
   match pa_cross_file_roots() {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: admitted_roots, diagnostics: _ } =>
     match assemble_program_from_module_roots(
       roots: admitted_roots,
@@ -142,14 +142,14 @@ test fn program_assembly_cross_file_import_assembles_holds() -> Bool {
       lm: dag_language_model_surface_empty_prelude()
     ) {
       Accepted { value: _, diagnostics: _ } => true
-      v2.std.diagnostic.Rejected { diagnostics: _ } => false
+      Rejected { diagnostics: _ } => false
     }
   }
 }
 
 test fn program_assembly_duplicate_module_roots_rejects() -> Bool {
   match pa_duplicate_module_roots() {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
     Accepted { value: admitted_roots, diagnostics: _ } =>
     match assemble_program_from_module_roots(
       roots: admitted_roots,
@@ -157,7 +157,7 @@ test fn program_assembly_duplicate_module_roots_rejects() -> Bool {
       lm: dag_language_model_surface_empty_prelude()
     ) {
       Accepted { value: _, diagnostics: _ } => false
-      v2.std.diagnostic.Rejected { diagnostics: _ } => true
+      Rejected { diagnostics: _ } => true
     }
   }
 }
@@ -206,7 +206,7 @@ test fn program_assembly_ingest_non_source_file_rejects() -> Bool {
     lm: dag_language_model_surface_empty_prelude()
   ) {
     Accepted { value: _, diagnostics: _ } => false
-    v2.std.diagnostic.Rejected { diagnostics: d } =>
+    Rejected { diagnostics: d } =>
       d.head.reason == ^source_authority_read_artifact_not_source_file
   }
 }

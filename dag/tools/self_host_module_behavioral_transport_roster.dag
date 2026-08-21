@@ -295,8 +295,8 @@ fn module_behavioral_transport_config_for(module_path: String) -> v2.std.optiona
     empty: v2.std.optional.Absent,
     cons: fn(acc, cfg) {
       match acc {
-        v2.std.optional.Present { value: _ } => acc
-        v2.std.optional.Absent => module_behavioral_transport_config_if_matches(module_path: module_path, cfg: cfg)
+        Present { value: _ } => acc
+        Absent => module_behavioral_transport_config_if_matches(module_path: module_path, cfg: cfg)
       }
     }
   )
@@ -304,7 +304,7 @@ fn module_behavioral_transport_config_for(module_path: String) -> v2.std.optiona
 
 fn compiler_module_behavioral_receipt_for(module_path: String) -> v2.std.logic.Bool {
   match module_behavioral_transport_config_for(module_path: module_path) {
-    v2.std.optional.Present { value: cfg } => cssl_seed_linked_behavioral_receipt(
+    Present { value: cfg } => cssl_seed_linked_behavioral_receipt(
       source_rel: cfg.module_path,
       shim_lib_rel: cfg.shim_lib_rel,
       shim_writes: cfg.shim_writes,
@@ -313,6 +313,6 @@ fn compiler_module_behavioral_receipt_for(module_path: String) -> v2.std.logic.B
       claim_runs: cfg.claim_runs,
       run_closure_assembly: cfg.run_closure_assembly
     )
-    v2.std.optional.Absent => false
+    Absent => false
   }
 }

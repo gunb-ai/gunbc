@@ -25,7 +25,7 @@ fn sequence_left_symbol(cap: v2.std.node.Node) -> Optional<v2.std.node.Symbol> {
 
 fn find_capture(root: v2.std.node.Node, emitted: v2.std.node.Symbol) -> Optional<v2.std.node.Node> {
   match v2.extdeps.languages.dag.parse_subtree_find_production_captured(root: root, emitted: emitted) {
-    v2.extdeps.languages.dag.ParseSubtreeFound { captured: c } => Present { value: c }
+    ParseSubtreeFound { captured: c } => Present { value: c }
     ParseSubtreeAbsent => Absent
   }
 }
@@ -824,22 +824,22 @@ fn accumulator_copy_report(root: v2.std.node.Node) -> AccumulatorCopyReport {
 
 fn finding_is_suspect(f: v2.lens.complexity_accumulator_copy.Finding) -> Bool {
   match f {
-    v2.lens.complexity_accumulator_copy.Poly2Suspect { at: _, cost: _ } => true
-    v2.lens.complexity_accumulator_copy.Unclassifiable { at: _, cause: _ } => false
+    Poly2Suspect { at: _, cost: _ } => true
+    Unclassifiable { at: _, cause: _ } => false
   }
 }
 
 fn finding_is_refusal(f: v2.lens.complexity_accumulator_copy.Finding) -> Bool {
   match f {
-    v2.lens.complexity_accumulator_copy.Poly2Suspect { at: _, cost: _ } => false
-    v2.lens.complexity_accumulator_copy.Unclassifiable { at: _, cause: _ } => true
+    Poly2Suspect { at: _, cost: _ } => false
+    Unclassifiable { at: _, cause: _ } => true
   }
 }
 
 fn finding_refusal_cause(f: v2.lens.complexity_accumulator_copy.Finding) -> Optional<v2.std.node.Symbol> {
   match f {
-    v2.lens.complexity_accumulator_copy.Poly2Suspect { at: _, cost: _ } => Absent
-    v2.lens.complexity_accumulator_copy.Unclassifiable { at: _, cause: c } => Present { value: c }
+    Poly2Suspect { at: _, cost: _ } => Absent
+    Unclassifiable { at: _, cause: c } => Present { value: c }
   }
 }
 
