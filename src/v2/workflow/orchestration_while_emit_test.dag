@@ -94,7 +94,7 @@ data orch_while_locate_intent: PipelineStep = While {
   cond: ExitZero {
     run: Run {
       command: orch_while_cond_command,
-      env: [],
+      env: Empty,
       redirect: Absent,
       capture: Absent
     }
@@ -104,7 +104,7 @@ data orch_while_locate_intent: PipelineStep = While {
       Do {
         run: Run {
           command: orch_while_body_command,
-          env: [],
+          env: Empty,
           redirect: Absent,
           capture: Absent
         }
@@ -118,7 +118,7 @@ data orch_while_locate_perturbed_intent: PipelineStep = While {
   cond: ExitZero {
     run: Run {
       command: concat(orch_while_cond_command, " # perturbed"),
-      env: [],
+      env: Empty,
       redirect: Absent,
       capture: Absent
     }
@@ -128,7 +128,7 @@ data orch_while_locate_perturbed_intent: PipelineStep = While {
       Do {
         run: Run {
           command: orch_while_body_command,
-          env: [],
+          env: Empty,
           redirect: Absent,
           capture: Absent
         }
@@ -142,7 +142,7 @@ data orch_while_locate_body_perturbed_intent: PipelineStep = While {
   cond: ExitZero {
     run: Run {
       command: orch_while_cond_command,
-      env: [],
+      env: Empty,
       redirect: Absent,
       capture: Absent
     }
@@ -152,7 +152,7 @@ data orch_while_locate_body_perturbed_intent: PipelineStep = While {
       Do {
         run: Run {
           command: concat(orch_while_body_command, " # perturbed"),
-          env: [],
+          env: Empty,
           redirect: Absent,
           capture: Absent
         }
@@ -169,7 +169,7 @@ test fn orch_while_locate_pipeline_matches_golden_holds() -> Bool {
         Do {
           run: Run {
             command: orch_while_assign_cgroup_dir_command,
-            env: [],
+            env: Empty,
             redirect: Absent,
             capture: Absent
           }
@@ -193,7 +193,7 @@ test fn orch_while_step_matches_golden_holds() -> Bool {
         Do {
           run: Run {
             command: orch_while_assign_cgroup_dir_command,
-            env: [],
+            env: Empty,
             redirect: Absent,
             capture: Absent
           }
@@ -218,7 +218,7 @@ test fn orch_while_raw_while_perturbation_changes_bytes_holds() -> Bool {
       cond: ExitZero {
         run: Run {
           command: concat(orch_while_cond_command, " # raw-while"),
-          env: [],
+          env: Empty,
           redirect: Absent,
           capture: Absent
         }
@@ -228,7 +228,7 @@ test fn orch_while_raw_while_perturbation_changes_bytes_holds() -> Bool {
           Do {
             run: Run {
               command: orch_while_body_command,
-              env: [],
+              env: Empty,
               redirect: Absent,
               capture: Absent
             }

@@ -169,7 +169,7 @@ fn family_crate_bound_subject(module_path: String) -> Bool {
   length(
     xs: fold(
       native_routing_frontier_roster,
-      init: [],
+      init: Empty,
       f: fn(acc, row) {
         if (row.subject.module_path == module_path)
           && (row.agreement_entry == "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag") {
