@@ -297,6 +297,22 @@ fn fleet_desired_authorized_push_cas_request(expected: GitRemoteRefExpectation, 
 // positive word rather than as nothing, and it matches over the closed sum instead of over the
 // lease's hex-or-empty text — the two renderings answer to the same authority but not to the
 // same reader.
+// WHAT `judge` IS, AND THE THREE THINGS IT IS NOT -- because an absent field reads as "not a
+// subject", which is how this class propagates. The judge is the revision of the CHECKED-OUT TREE
+// this process was built from. It is NOT the workflow transport: for a workflow_run event GitHub
+// takes the .yml from the DEFAULT BRANCH regardless of any `ref:` on the checkout, so `ref:`
+// governs repository CONTENT and never which workflow file orchestrates the run. It is also not the
+// candidate, and not the subject the required floor judged.
+//
+// TODAY ALL OF THESE COINCIDE AND THAT IS EXACTLY THE HAZARD. With no `ref:`, the checkout and
+// GITHUB_SHA are both the default-branch tip, so judge == transport by accident of configuration.
+// The moment the checkout is pinned to the candidate they DIVERGE -- the judge becomes the
+// candidate while the transport stays main's -- and a receipt naming only the judge would then
+// invite the reader to conclude every byte involved came from the candidate. That inference is
+// false and would be UNFALSIFIABLE from the receipt, so the gap is named here BEFORE the pinning
+// lands rather than after it makes the receipt misleading. The transport sha, the candidate, and
+// the floor receipt's subject are separate fields the decision receipt should carry; recording
+// them is scoped to the pinning change, where the divergence becomes real.
 fn fleet_desired_receipt_expected_phrase(expected: GitRemoteRefExpectation) -> String {
   match expected {
     RemoteRefMustBeAbsent => "absent"
