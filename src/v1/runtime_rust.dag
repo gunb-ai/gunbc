@@ -158,8 +158,8 @@ fn rt_string_ops() -> String {
 
 fn rt_collection_ops() -> String {
   concat(
-    "pub fn lookup<V: Clone>(table: &HashMap<String, V>, key: String) -> Option<V> {\n",
-    "    table.get(&key).cloned()\n",
+    "pub fn lookup<K: std::cmp::Eq + std::hash::Hash, V: Clone>(m: &HashMap<K, V>, key: K) -> Option<V> {\n",
+    "    m.get(&key).cloned()\n",
     "}\n\n",
     "pub fn index_by<V: Clone, F: Fn(&V) -> String>(list: Vec<V>, key_fn: F) -> HashMap<String, V> {\n",
     "    let mut map = HashMap::new();\n",
