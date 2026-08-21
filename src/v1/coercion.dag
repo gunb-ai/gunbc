@@ -4,7 +4,9 @@ import v1.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 
 import v1.std.core { qualified_last_segment, Node, Resolved }
 
-import std.coercion { TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax }
+import std.coercion {
+  TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax, TypeRealizationDecision
+}
 
 import std.types { container_template_algebra, canonical_container_names }
 
@@ -124,11 +126,38 @@ fn decl_file_declares_structurally(dag_name: String, decl_file: String) -> Bool 
   }
 }
 
-fn lookup_checkpoint(target: RenderTarget, dag_name: String, decl_file: String) -> TypeCheckpoint? {
-  if decl_file_declares_structurally(dag_name: dag_name, decl_file: decl_file) {
-    none
+data type_realization_decision_note: String = "The DeclarationRef -> target-realization query the map-key-alias-hop and derive-set-narrowing lanes are both blocked on (v1.compiler.trait_derive_emit map_key_alias_hop_gap_note): generalizes decl_file_declares_structurally's single Hash row into one derived decision any declaration-identity-aware consumer can call directly, instead of re-deriving Present/Absent and re-discovering the structural gate per call site. Keyed on (dag_name, decl_file) rather than a minted std.decl_ref.DeclarationRef: decl_file is already threaded to every production call site (type_reference_identity_note above) and module_storage_binding_authority_note (v2.compiler.source_authority) establishes file<->module as the LIVE 1:1 binding this tree enforces today, so decl_file is a faithful identity key for this decision without a new module_path lookup -- a real cost (a corpus-wide file->module_path index is not yet exposed to .dag land; data_initializer_identity.rs module_path_for_type_decl_node is the one host precedent and it is Rust-internal) that buys nothing this decision needs, since decl_name + decl_file already discriminate every specimen the gap note names (Hash vs Int/Nat, same-spelling-different-declaration). Adopting the full std.decl_ref.DeclarationRef triple is deferred to the first consumer that needs the human-readable module_path rather than identity equality (DESIGN section 6 pricing discipline), and this note is that deferral's record. Refused is a genuinely NEW answer this decision introduces -- no existing lookup_checkpoint call site can regress into it, because lookup_checkpoint below preserves its exact prior decl_file==\"\" fallback rather than routing that case through this decision."
+
+fn type_realization_decision(
+  target: RenderTarget, dag_name: String, decl_file: String
+) -> TypeRealizationDecision {
+  if decl_file == "" {
+    Refused { cause: "declaration identity unknown: empty decl_file" }
+  } else if decl_file_declares_structurally(dag_name: dag_name, decl_file: decl_file) {
+    Structural
   } else {
+    match target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first {
+      Present { value: cp } => Realized { checkpoint: cp }
+      Absent => Structural
+    }
+  }
+}
+
+data type_realization_decision_native_numeric_gap_note: String = "KNOWN GAP, not yet closed: this decision answers Structural for Nat/Int declared at their genuine native modules (dag/std/nat.dag, dag/std/integer.dag, the kernel), which is WRONG -- those two realize natively as i64 in the Rust target. That fact is a third, separate positive roster (numeric_realization_declaring_modules / decl_file_realizes_natively / rust_seed_host_numeric_alias, v1.compiler.emit_rust:449-461) this decision does not yet consult. It cannot import that roster: emit_rust already imports v1.compiler.coercion (coerce_primitive_type, is_copy, lookup_checkpoint, type_reference_decl_file), so the reverse import closes a cycle DESIGN section 3 forbids. A local mirror of the roster was rejected (smart-ram-730, adhoc-2ea6fb98-a3f review, 2026-08-21): structural_declaration_modules_for's own precedent is a RELOCATION out of emit_rust that left no copy behind (checkpoint_table_bypasses_identity_note's negative-gate half), not a pattern of keeping two rosters -- so the correct fix is completing that relocation for the positive-form counterpart too: move numeric_realization_declaring_modules / decl_file_realizes_natively / rust_seed_host_numeric_alias into this module beside target_checkpoints and structural_declaration_modules_for, with emit_rust importing them back exactly as it already imports lookup_checkpoint. This is emit_rust's sole-write territory (05_emit_rust.dag, unlike 04_emit_info.dag); swift-moth-294 AGREED to the relocation and authorized this module's PR to carry the three-line deletion from theirs (msg_502982ac, 2026-08-21), verifying independently that the precedent is a genuine move (emit_rust's only remaining mention of structural_declaration_modules_for is inside a prose note, not a live definition) and that the cycle is real. SEQUENCED behind gunbc#8716: both PRs regenerate the same stage0 mirror (v1_compiler_emit_rust.rs, and this relocation also v1_compiler_coercion.rs) at FILE grain, so opening this before #8716 merges would hand either PR a mirror conflict neither authority edit caused. The relocation PR must also update structural_declaration_gate_note below, whose text currently says the positive roster lives IN V1.COMPILER.EMIT_RUST -- true today, falsified the moment the move lands, and rewritten then to describe one module holding both halves rather than two. TRIGGER: this note and the Structural-for-native-numeric gap it names both retire the moment that relocation lands. Until then, the same-spelling-different-decl_file discriminating witness (Nat at dag/std/nat.dag vs Nat at src/v2/std/nat.dag) is demonstrated for the STRUCTURAL side only (both answer Structural today for different reasons -- one for lack of a checkpoint row, one because it will realize as i64 once this gap closes) and is NOT yet demonstrated on a Realized answer for the native module. That property is claimed complete only after this note is deleted."
+
+data lookup_checkpoint_preserves_empty_identity_fallback_note: String = "decl_file == \"\" is NOT routed through type_realization_decision's Refused arm here: dozens of production call sites across v1.compiler.emit_rust and v1.compiler.emit already pass an empty decl_file expecting the bare-name table answer (the behavior type_reference_identity_note documents and depends on), and widening this function's refusal to cover them is an unmeasured, unowned behavior change across files this module does not write. type_realization_decision is the strict, honestly-refusing primitive for a NEW caller that has never before answered this question (the alias-hop arm this pair of functions exists to unblock); lookup_checkpoint stays byte-behavior-identical to its prior definition for every existing caller, now expressed as a thin derivation of the same decision so there is one authority underneath both answers, not two."
+
+data lookup_checkpoint_dual_authority_residue_note: String = "DECLARED RESIDUE (DESIGN section 3, dual authority with a stated end, not a silent fork): this cut does NOT supersede lookup_checkpoint's existing decl_file==\"\" bypass -- it narrows it. The tree now answers 'what does this name realize as' two ways: type_realization_decision, which refuses on unknown identity and is the authority every NEW caller (the alias-hop arm in v1.compiler.trait_derive_emit, derive-set narrowing) must use; and lookup_checkpoint's decl_file==\"\" arm, which still answers from the bare-name table alone for every EXISTING caller across v1.compiler.emit_rust and v1.compiler.emit that has never supplied identity. The residue population is exactly those existing call sites, not counted here (a corpus-wide count is a separate, costed measurement, not asserted by this note). TRIGGER: this residue retires when those call sites are threaded with decl_file (the same identity-threading type_reference_identity_note already did for the sites that DO supply it) and measured to still answer correctly under type_realization_decision -- at which point decl_file==\"\" stops being a legitimate steady state for a production call site and lookup_checkpoint's bypass arm deletes, leaving type_realization_decision as the sole authority. Until then this is a declared, bounded narrowing, not a completed supersession."
+
+fn lookup_checkpoint(target: RenderTarget, dag_name: String, decl_file: String) -> TypeCheckpoint? {
+  if decl_file == "" {
     target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first
+  } else {
+    match type_realization_decision(target: target, dag_name: dag_name, decl_file: decl_file) {
+      Realized { checkpoint: cp } => Present { value: cp }
+      Structural => none
+      Refused { cause: _ } => none
+    }
   }
 }
 
