@@ -15,13 +15,13 @@ The obvious repair -- observe the host, feed the apply pole, stop being degenera
 - **Why the member cannot be taught:** DeploymentSpec carries WHERE (topology, stable addresses); CandidateRelease carries WHAT (revision, expected surface identity). That separation is correct. Making members candidate-sensitive is exactly what would make MemberChanged reachable -- which activates EffectReplace, which the emitter deliberately models as impossible and answers with a loud poison rather than guessing. Replacement behaviour would have to be defined for every member kind first. That is a substantial modelling project, not a step.
 - **Receipt for the blindness:** tree_sync_was_a_host_singleton_note already records that the sync transport files are not paths in DeploymentArtifactStep, so a claim over declared members could not see them.
 
-## THE CLOSER: bind tree-sync to revision standing
+## SUPERSEDED: bind tree-sync to revision standing
 
-The drift question is answered by REVISIONS, not by member presence, and the authority already exists and already refuses correctly. fleet_desired_observe fleet_revision_standing decides the cell three ways; fleet_converge_cli converge_cli_receipt_join_revision MEETS it into the receipt verdict so a knob run that never observed the revision cannot render converged. What is missing is only that nothing ACTS on the drifted arm.
+**This section proposed the shallow closer and it is WRONG. It is rewritten here rather than deleted, because it was the reasoning that survived one refutation and then failed a second, and a record that shows only the surviving answer teaches nothing about how the wrong one looked defensible.** What it said: the drift question is answered by revisions, the authority already exists and already refuses correctly, so the only missing piece is that nothing ACTS on the drifted arm -- needing no member work, no observed provider, no new decision model, riding srv1's existing enrolled converge step.
 
-- The catch-up realization exists: tree-sync in gunbc.live_deploy.emit and gunbc.live_deploy.spec, preserved through the deploy-workflow root cut.
-- Its safe form is a compare-and-swap, and the inputs are already in the verdict: RevisionDrifted carries BOTH desired and local, and the converge_cli carrier note states that is precisely why -- a catch-up needs the prior.
-- It needs no member work, no observed provider, and no new decision model. srv1 is already an enrolled fleet-converge host at mode=apply, so it rides an existing step.
+Two later findings each independently kill it. **First, revision standing is one axis and not deployed-tree convergence:** the tree-sync leg copies the working tree and selected .git state separately, so a target whose HEAD equals the desired revision while its tracked bytes do not is representable, and RevisionConverged reports it as converged. **Second, and worse, a tree-only catch-up is not merely incomplete but actively unsafe** -- it moves local HEAD to the desired revision and thereby flips the belt's admission gate from refusing to admitting while the installed binary is still the old one, which the section below records in full.
+
+What survives from it is exactly one observation, and it is still true: RevisionDrifted carries BOTH desired and local, and the converge_cli carrier note says that is precisely why -- a catch-up needs the prior. That local value is a compare-and-swap BASELINE. It is not the deployment truth, and treating it as the whole answer was the error.
 
 ## STANDING: retract must never take a host observation
 
