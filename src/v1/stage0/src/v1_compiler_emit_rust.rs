@@ -19648,6 +19648,15 @@ pub fn concrete_peel_optional_ctor_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn record_lit_shared_layer_carrier_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE VALUE POSITION, ASKED OF THE CARRIER -- the other half of rust_field_carrier_final_type, and the same defect one position over. The wrap decision below keyed membership on rc_name, a NAME derived from authored_name_at or from the literal's authored spelling, against a shared_types set keyed on BARE leaf names. A record literal written with a namespace-QUALIFIED spelling -- `v2.lens.complexity_accumulator_copy.LetBinding { .. }`, which is how that module authors it -- therefore missed the set and emitted a bare struct value where every consumer holds Rc. MEASURED: repairing the DECLARATION position alone (the field-carrier cut) moved four record-literal sites in v2_lens_complexity_accumulator_copy_analyze.rs from agreeing-with-a-wrong-declaration to `expected Rc<LetBinding>, found LetBinding`, so declaration and value are not two defects but one missing authority read from two ends. The disjunct added here asks rust_carrier_is_at_shared_layer of the literal's own resolved carrier, which decides from leaf identity plus machine-scalar realization plus sharing membership rather than from the authored text. The name test is KEPT beside it rather than replaced: for a variant literal the layer belongs to the parent ENUM and only its NAME is in hand at this point, with no Node to ask -- so the two arms cover different inputs and neither subsumes the other. RUNG (DESIGN 4b): mitigatable, the same ceiling rust_carrier_is_at_shared_layer already declares and for the same reason -- the variant arm still keys on a name, so two declarations sharing a spelling and differing in sharing are still conflated, and the next rung is the modeled layer transition that predicate names.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn emit_rust_expr_record_lit(
     expr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -19739,8 +19748,13 @@ pub fn emit_rust_expr_record_lit(
                     }
                 },
             };
-            if ((rc_name.clone() != "".to_string())
+            if (((rc_name.clone() != "".to_string())
                 && v1_rt::set_contains(&shared_types, rc_name.clone()))
+                || rust_carrier_is_at_shared_layer(
+                    expanded_rt.clone(),
+                    si.clone(),
+                    shared_types.clone(),
+                ))
             {
                 rust_shared_wrap_ctor(raw.clone())
             } else {
