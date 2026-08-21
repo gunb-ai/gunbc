@@ -97,7 +97,7 @@ data rust_hash_set_supplemental_generic_bound_contract_coverage_disposition: Rus
     decl_name: "RequiredTraitWitness",
     field: WholeDeclaration
   },
-  dissolution: Scaffold {
+  dissolution: std.disposition.Scaffold {
     dissolves_to: SingleAuthority,
     bind: std.decl_ref.DeclarationRef {
       module_path: "v2.std.compilers.target_model",

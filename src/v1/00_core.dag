@@ -37,11 +37,11 @@ type FieldSummary {
 }
 
 type InferredNode
-  = Resolved { node: Node }
+  = Resolved { node: v1.std.core.Node }
   | CompilerError { message: String, span: std.types.SourceSpan }
   | TypeVariable { id: String }
 
-fn inferred_to_node(inferred: InferredNode) -> Node? {
+fn inferred_to_node(inferred: InferredNode) -> v1.std.core.Node? {
   match inferred {
     Resolved { node: n } => Present { value: n }
     CompilerError { message: _, span: _ } => none
@@ -57,7 +57,7 @@ fn is_compiler_error(inferred: InferredNode) -> Bool {
   }
 }
 
-fn has_inferred(n: Node) -> Bool {
+fn has_inferred(n: v1.std.core.Node) -> Bool {
   n.inferred != none
 }
 
@@ -74,8 +74,8 @@ type CallSemantics
 
 type MethodSemantics
   = PlainMethodSemantics
-  | AlgebraMethodSemantics { method_def: Node, fold_accumulator_type: Node?, size_effect: std.algebra.CollectionSizeEffect?, cost_shape: std.algebra.CostShape?, algebra_template: std.algebra.AlgebraFieldTemplate? }
-  | ServiceMethodSemantics { service_name: String, op_params: List<Node> }
+  | AlgebraMethodSemantics { method_def: v1.std.core.Node, fold_accumulator_type: v1.std.core.Node?, size_effect: std.algebra.CollectionSizeEffect?, cost_shape: std.algebra.CostShape?, algebra_template: std.algebra.AlgebraFieldTemplate? }
+  | ServiceMethodSemantics { service_name: String, op_params: List<v1.std.core.Node> }
 
 type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError | CensusHeadsBodyStripped
 
@@ -104,16 +104,16 @@ type ExprData
   | ExprReturn
 
 type MatchPattern
-  = Bind { declaration: Node }
+  = Bind { declaration: v1.std.core.Node }
   | LitPattern { value: std.syntax.LiteralValue }
-  | VariantPattern { name: String, parent_enum: String?, field_bindings: List<Node> }
+  | VariantPattern { name: String, parent_enum: String?, field_bindings: List<v1.std.core.Node> }
   | Wildcard
 
 type UnaryOpKind = Not | Neg
 
 type StringPart
   = Text { value: String }
-  | Interpolation { expr: Node }
+  | Interpolation { expr: v1.std.core.Node }
 
 type OperationModifier = Idempotent | Readonly | Hermetic
 
@@ -453,8 +453,8 @@ fn make_error_node(diagnostic: CompilerDiagnostic, module_name: String) -> Error
 
 type DeclaredFuncSig {
   name: String
-  params: List<Node>
-  inferred: Node?
+  params: List<v1.std.core.Node>
+  inferred: v1.std.core.Node?
   is_async: Bool
   output_provenance: List<Map<String, std.induction.SubValueRelation>>
   variant_provenance: Map<String, Map<String, Map<String, std.induction.SubValueRelation>>>
@@ -469,17 +469,17 @@ type Node {
   ident: Int?
   span: std.types.SourceSpan
   ident_span: std.types.SourceSpan?
-  children: List<Node>
+  children: List<v1.std.core.Node>
   connective: Connective
 
-  params: List<Node>
+  params: List<v1.std.core.Node>
   inferred: InferredNode?
   return_cardinality: Cardinality
-  uses: List<Node>
-  body: Node?
-  transport: Node?
-  properties: List<Node>
-  type_annotation: Node?
+  uses: List<v1.std.core.Node>
+  body: v1.std.core.Node?
+  transport: v1.std.core.Node?
+  properties: List<v1.std.core.Node>
+  type_annotation: v1.std.core.Node?
   is_self_recursive: Bool
   has_non_tail_self_call: Bool
 
@@ -491,16 +491,16 @@ fn default_ident_span(name: String, span: std.types.SourceSpan) -> std.types.Sou
   if name == "" { none } else { Present { value: span } }
 }
 
-fn node_name_span(n: Node) -> std.types.SourceSpan {
+fn node_name_span(n: v1.std.core.Node) -> std.types.SourceSpan {
   match n.ident_span { Present { value: s } => s  Absent => n.span }
 }
 
-fn empty_node_list() -> List<Node> {
+fn empty_node_list() -> List<v1.std.core.Node> {
   []
 }
 
-fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: std.types.SourceSpan) -> Node {
-  Node {
+fn make_expr_node(expr_data: ExprData, children: List<v1.std.core.Node>, inferred: InferredNode?, span: std.types.SourceSpan) -> v1.std.core.Node {
+  v1.std.core.Node {
     name: "", span: span, ident_span: none, children: children,
     connective: NoConnective,
 
@@ -511,8 +511,8 @@ fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredN
   }
 }
 
-fn make_named_expr_node(name: String, expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
-  Node {
+fn make_named_expr_node(name: String, expr_data: ExprData, children: List<v1.std.core.Node>, inferred: InferredNode?, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> v1.std.core.Node {
+  v1.std.core.Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children,
     connective: NoConnective,
 
@@ -523,7 +523,7 @@ fn make_named_expr_node(name: String, expr_data: ExprData, children: List<Node>,
   }
 }
 
-fn make_pattern_binder_declaration_node(name: String, span: std.types.SourceSpan) -> Node {
+fn make_pattern_binder_declaration_node(name: String, span: std.types.SourceSpan) -> v1.std.core.Node {
   make_named_expr_node(
     name: name,
     expr_data: NoExprData,
@@ -534,8 +534,8 @@ fn make_pattern_binder_declaration_node(name: String, span: std.types.SourceSpan
   )
 }
 
-fn make_expr_error_node(kind: ExprErrorKind, message: String, span: std.types.SourceSpan) -> Node {
-  Node {
+fn make_expr_error_node(kind: ExprErrorKind, message: String, span: std.types.SourceSpan) -> v1.std.core.Node {
+  v1.std.core.Node {
     name: "", span: span, ident_span: none, children: [], connective: NoConnective,
 
     params: [], inferred: Present { value: CompilerError { message: message, span: span } },
@@ -546,9 +546,9 @@ fn make_expr_error_node(kind: ExprErrorKind, message: String, span: std.types.So
   }
 }
 
-fn make_arg_node(name: String?, value: Node, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
+fn make_arg_node(name: String?, value: v1.std.core.Node, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> v1.std.core.Node {
   let arg_name = match name { Present { value: n } => n  Absent => "" }
-  Node {
+  v1.std.core.Node {
     name: arg_name, span: span, ident_span: default_ident_span(name: arg_name, span: name_span), children: [value], connective: NoConnective,
 
     params: [], inferred: none, return_cardinality: Required,
@@ -558,9 +558,9 @@ fn make_arg_node(name: String?, value: Node, span: std.types.SourceSpan, name_sp
   }
 }
 
-fn make_arm_node(pattern: MatchPattern, guard: Node?, body: Node, span: std.types.SourceSpan) -> Node {
+fn make_arm_node(pattern: MatchPattern, guard: v1.std.core.Node?, body: v1.std.core.Node, span: std.types.SourceSpan) -> v1.std.core.Node {
   let children = match guard { Present { value: g } => [g, body]  Absent => [body] }
-  Node {
+  v1.std.core.Node {
     name: "", span: span, ident_span: none, children: children, connective: NoConnective,
 
     params: [], inferred: none, return_cardinality: Required,
@@ -571,8 +571,8 @@ fn make_arm_node(pattern: MatchPattern, guard: Node?, body: Node, span: std.type
   }
 }
 
-fn make_resource_use_node(name: String, resource: Node, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
-  Node {
+fn make_resource_use_node(name: String, resource: v1.std.core.Node, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> v1.std.core.Node {
+  v1.std.core.Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: [resource], connective: NoConnective,
 
     params: [], inferred: none, return_cardinality: Required,
@@ -582,17 +582,17 @@ fn make_resource_use_node(name: String, resource: Node, span: std.types.SourceSp
   }
 }
 
-fn resource_use_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+fn resource_use_name_at(n: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
 
-fn resource_use_resource(n: Node) -> Node {
+fn resource_use_resource(n: v1.std.core.Node) -> v1.std.core.Node {
   match n.children |> first {
     Present { value: v } => v
     Absent => make_expr_error_node(kind: InternalExprError, message: "malformed resource-use: missing resource", span: n.span)
   }
 }
 
-fn make_field_init_node(name: String, value: Node, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
-  Node {
+fn make_field_init_node(name: String, value: v1.std.core.Node, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> v1.std.core.Node {
+  v1.std.core.Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: [value], connective: NoConnective,
 
     params: [], inferred: none, return_cardinality: Required,
@@ -602,8 +602,8 @@ fn make_field_init_node(name: String, value: Node, span: std.types.SourceSpan, n
   }
 }
 
-fn make_field_binding_node(field_name: String, binding: MatchPattern, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
-  Node {
+fn make_field_binding_node(field_name: String, binding: MatchPattern, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> v1.std.core.Node {
+  v1.std.core.Node {
     name: field_name, span: span, ident_span: default_ident_span(name: field_name, span: name_span), children: [], connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
@@ -612,14 +612,14 @@ fn make_field_binding_node(field_name: String, binding: MatchPattern, span: std.
   }
 }
 
-fn field_binding_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+fn field_binding_name_at(n: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
 
-fn field_binding_pattern(n: Node) -> MatchPattern {
+fn field_binding_pattern(n: v1.std.core.Node) -> MatchPattern {
   match n.match_pattern { Present { value: p } => p  Absent => Wildcard }
 }
 
-fn make_text_part_node(text: String, span: std.types.SourceSpan) -> Node {
-  Node {
+fn make_text_part_node(text: String, span: std.types.SourceSpan) -> v1.std.core.Node {
+  v1.std.core.Node {
     name: "", span: span, ident_span: none, children: [], connective: NoConnective,
 
     params: [], inferred: none, return_cardinality: Required,
@@ -630,8 +630,8 @@ fn make_text_part_node(text: String, span: std.types.SourceSpan) -> Node {
   }
 }
 
-fn make_interp_part_node(expr: Node, span: std.types.SourceSpan) -> Node {
-  Node {
+fn make_interp_part_node(expr: v1.std.core.Node, span: std.types.SourceSpan) -> v1.std.core.Node {
+  v1.std.core.Node {
     name: "", span: span, ident_span: none, children: [expr], connective: NoConnective,
 
     params: [], inferred: none, return_cardinality: Required,
@@ -641,9 +641,9 @@ fn make_interp_part_node(expr: Node, span: std.types.SourceSpan) -> Node {
   }
 }
 
-fn make_param_node(name: String, type_expr: Node, default_value: Node?, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
+fn make_param_node(name: String, type_expr: v1.std.core.Node, default_value: v1.std.core.Node?, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> v1.std.core.Node {
   let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
-  Node {
+  v1.std.core.Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children, connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
@@ -652,9 +652,9 @@ fn make_param_node(name: String, type_expr: Node, default_value: Node?, span: st
   }
 }
 
-fn make_resolved_param_node(name: String, type_expr: Node, default_value: Node?, properties: List<Node>, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
+fn make_resolved_param_node(name: String, type_expr: v1.std.core.Node, default_value: v1.std.core.Node?, properties: List<v1.std.core.Node>, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> v1.std.core.Node {
   let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
-  Node {
+  v1.std.core.Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children, connective: NoConnective,
     params: [], inferred: Present { value: Resolved { node: type_expr } }, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: properties,
@@ -663,11 +663,11 @@ fn make_resolved_param_node(name: String, type_expr: Node, default_value: Node?,
   }
 }
 
-fn param_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+fn param_node_name_at(n: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
 
-fn generic_param_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+fn generic_param_name_at(n: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
 
-fn authored_name_at(source_indices: Map<String, NewlineIndex>, node: Node) -> String {
+fn authored_name_at(source_indices: Map<String, NewlineIndex>, node: v1.std.core.Node) -> String {
   match node.ident_span {
     Present { value: span } =>
       match map_get(source_indices, span.file) {
@@ -685,39 +685,39 @@ fn authored_name_at(source_indices: Map<String, NewlineIndex>, node: Node) -> St
   }
 }
 
-fn find_child_named(n: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn find_child_named(n: v1.std.core.Node, name: String, source_indices: Map<String, NewlineIndex>) -> v1.std.core.Node? {
   match n.children |> filter(c => authored_name_at(source_indices: source_indices, node: c) == name) |> first {
     Present { value: ch } => Present { value: ch }
     Absent => none
   }
 }
 
-fn has_child_named(n: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn has_child_named(n: v1.std.core.Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
   n.children |> any(c => authored_name_at(source_indices: source_indices, node: c) == name)
 }
 
-fn param_node_type_expr(n: Node) -> Node {
+fn param_node_type_expr(n: v1.std.core.Node) -> v1.std.core.Node {
   match n.children |> first {
     Present { value: v } => v
     Absent => make_expr_error_node(kind: InternalExprError, message: "malformed param: missing type_expr", span: n.span)
   }
 }
 
-fn param_node_default_value(n: Node) -> Node? {
+fn param_node_default_value(n: v1.std.core.Node) -> v1.std.core.Node? {
   if n.children |> count > 1 {
     n.children |> skip(1) |> first
   } else { none }
 }
 
-fn param_node_span(n: Node) -> std.types.SourceSpan { n.span }
+fn param_node_span(n: v1.std.core.Node) -> std.types.SourceSpan { n.span }
 
-fn make_field_node(name: String, type_expr: Node, cardinality: Cardinality, default_value: Node?, from_key: String?, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
+fn make_field_node(name: String, type_expr: v1.std.core.Node, cardinality: Cardinality, default_value: v1.std.core.Node?, from_key: String?, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> v1.std.core.Node {
   let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
   let props = match from_key {
-    Present { value: fk } => [make_field_init_node(name: "from_key", value: Node { name: fk, span: no_span(), ident_span: default_ident_span(name: fk, span: no_span()), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, span: no_span(), name_span: no_span())]
+    Present { value: fk } => [make_field_init_node(name: "from_key", value: v1.std.core.Node { name: fk, span: no_span(), ident_span: default_ident_span(name: fk, span: no_span()), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, span: no_span(), name_span: no_span())]
     Absent => []
   }
-  Node {
+  v1.std.core.Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children, connective: NoConnective,
     params: [], inferred: none, return_cardinality: cardinality,
     uses: [], body: none, transport: none, properties: concat(props, type_expr.properties),
@@ -726,34 +726,34 @@ fn make_field_node(name: String, type_expr: Node, cardinality: Cardinality, defa
   }
 }
 
-fn field_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+fn field_node_name_at(n: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
 
-fn field_node_type_expr(n: Node) -> Node {
+fn field_node_type_expr(n: v1.std.core.Node) -> v1.std.core.Node {
   match n.children |> first {
     Present { value: v } => v
     Absent => make_expr_error_node(kind: InternalExprError, message: "malformed field: missing type_expr", span: n.span)
   }
 }
 
-fn field_node_cardinality(n: Node) -> Cardinality { n.return_cardinality }
+fn field_node_cardinality(n: v1.std.core.Node) -> Cardinality { n.return_cardinality }
 
-fn field_node_default_value(n: Node) -> Node? {
+fn field_node_default_value(n: v1.std.core.Node) -> v1.std.core.Node? {
   if n.children |> count > 1 {
     n.children |> skip(1) |> first
   } else { none }
 }
 
-fn field_node_from_key(n: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+fn field_node_from_key(n: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> String? {
   match find_property(props: n.properties, prop_name: "from_key", source_indices: source_indices) {
     Present { value: p } => Present { value: authored_name_at(source_indices: source_indices, node: p) }
     Absent => none
   }
 }
 
-fn field_node_span(n: Node) -> std.types.SourceSpan { n.span }
+fn field_node_span(n: v1.std.core.Node) -> std.types.SourceSpan { n.span }
 
-fn make_variant_node(name: String, fields: List<Node>, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
-  Node {
+fn make_variant_node(name: String, fields: List<v1.std.core.Node>, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> v1.std.core.Node {
+  v1.std.core.Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: fields, connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
@@ -762,9 +762,9 @@ fn make_variant_node(name: String, fields: List<Node>, span: std.types.SourceSpa
   }
 }
 
-fn variant_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
-fn variant_node_fields(n: Node) -> List<Node> { n.children }
-fn variant_node_span(n: Node) -> std.types.SourceSpan { n.span }
+fn variant_node_name_at(n: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+fn variant_node_fields(n: v1.std.core.Node) -> List<v1.std.core.Node> { n.children }
+fn variant_node_span(n: v1.std.core.Node) -> std.types.SourceSpan { n.span }
 
 type ChildRole {
   name: String
@@ -920,45 +920,45 @@ fn is_property_contraction(func_name: String) -> Bool {
   }
 }
 
-fn expr_child_at(texpr: Node, index: Int, role: String) -> Node {
+fn expr_child_at(texpr: v1.std.core.Node, index: Int, role: String) -> v1.std.core.Node {
   match texpr.children |> skip(index) |> first {
     Present { value: v } => v
     Absent => make_expr_error_node(kind: InternalExprError, message: concat("malformed node: missing ", role), span: texpr.span)
   }
 }
 
-fn arg_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+fn arg_name_at(n: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> String? {
   let name = authored_name_at(source_indices: source_indices, node: n)
   if name == "" { none } else { Present { value: name } }
 }
 
-fn arg_value(n: Node) -> Node {
+fn arg_value(n: v1.std.core.Node) -> v1.std.core.Node {
   match n.children |> first {
     Present { value: v } => v
     Absent => make_expr_error_node(kind: InternalExprError, message: "malformed arg: missing value", span: n.span)
   }
 }
 
-fn arm_pattern(n: Node) -> MatchPattern {
+fn arm_pattern(n: v1.std.core.Node) -> MatchPattern {
   match n.match_pattern { Present { value: p } => p  Absent => Wildcard }
 }
 
-fn arm_guard(n: Node) -> Node? {
+fn arm_guard(n: v1.std.core.Node) -> v1.std.core.Node? {
   if (n.children |> count) == 2 { n.children |> first } else { none }
 }
 
-fn arm_body(n: Node) -> Node {
+fn arm_body(n: v1.std.core.Node) -> v1.std.core.Node {
   match n.children |> last {
     Present { value: v } => v
     Absent => make_expr_error_node(kind: InternalExprError, message: "malformed arm: missing body", span: n.span)
   }
 }
 
-fn field_init_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn field_init_node_name_at(n: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> String {
   authored_name_at(source_indices: source_indices, node: n)
 }
 
-fn field_init_node_value(n: Node) -> Node {
+fn field_init_node_value(n: v1.std.core.Node) -> v1.std.core.Node {
   match n.children |> first {
     Present { value: v } => v
     Absent => make_expr_error_node(kind: InternalExprError, message: "malformed field-init: missing value", span: n.span)
@@ -975,7 +975,7 @@ fn decl_ref_coords_label(coords: DeclRefCoords) -> String {
 }
 
 fn call_named_arg_string_optional(
-  call: Node,
+  call: v1.std.core.Node,
   arg_name: String,
   source_indices: Map<String, NewlineIndex>
 ) -> String? {
@@ -992,7 +992,7 @@ fn call_named_arg_string_optional(
 }
 
 fn decl_ref_coords_from_call_expr(
-  expr: Node,
+  expr: v1.std.core.Node,
   source_indices: Map<String, NewlineIndex>
 ) -> DeclRefCoords? {
   if expr_call_func_at(texpr: expr, source_indices: source_indices) != "decl_ref" {
@@ -1019,7 +1019,7 @@ fn decl_ref_coords_from_call_expr(
 }
 
 fn collect_decl_ref_coords_from_list(
-  exprs: List<Node>,
+  exprs: List<v1.std.core.Node>,
   source_indices: Map<String, NewlineIndex>
 ) -> List<DeclRefCoords> {
   flat_map(
@@ -1032,7 +1032,7 @@ fn collect_decl_ref_coords_from_list(
   )
 }
 
-fn fn_admit_callers(n: Node, source_indices: Map<String, NewlineIndex>) -> List<DeclRefCoords>? {
+fn fn_admit_callers(n: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> List<DeclRefCoords>? {
   match n.properties |> filter(p => p.name == "admit_callers") |> first {
     Present { value: p } =>
       Present {
@@ -1045,23 +1045,23 @@ fn fn_admit_callers(n: Node, source_indices: Map<String, NewlineIndex>) -> List<
   }
 }
 
-fn if_condition(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "if condition") }
-fn if_then_branch(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "if then-branch") }
-fn if_else_branch(texpr: Node) -> Node? { texpr.children |> skip(2) |> first }
+fn if_condition(texpr: v1.std.core.Node) -> v1.std.core.Node { expr_child_at(texpr: texpr, index: 0, role: "if condition") }
+fn if_then_branch(texpr: v1.std.core.Node) -> v1.std.core.Node { expr_child_at(texpr: texpr, index: 1, role: "if then-branch") }
+fn if_else_branch(texpr: v1.std.core.Node) -> v1.std.core.Node? { texpr.children |> skip(2) |> first }
 
-fn match_scrutinee(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "match scrutinee") }
-fn match_arm_nodes(texpr: Node) -> List<Node> { texpr.children |> skip(1) }
+fn match_scrutinee(texpr: v1.std.core.Node) -> v1.std.core.Node { expr_child_at(texpr: texpr, index: 0, role: "match scrutinee") }
+fn match_arm_nodes(texpr: v1.std.core.Node) -> List<v1.std.core.Node> { texpr.children |> skip(1) }
 
-fn binop_left(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "binop left") }
-fn binop_right(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "binop right") }
+fn binop_left(texpr: v1.std.core.Node) -> v1.std.core.Node { expr_child_at(texpr: texpr, index: 0, role: "binop left") }
+fn binop_right(texpr: v1.std.core.Node) -> v1.std.core.Node { expr_child_at(texpr: texpr, index: 1, role: "binop right") }
 
-fn unaryop_operand(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "unaryop operand") }
+fn unaryop_operand(texpr: v1.std.core.Node) -> v1.std.core.Node { expr_child_at(texpr: texpr, index: 0, role: "unaryop operand") }
 
-fn expr_var_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+fn expr_var_name_at(texpr: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
 
-fn field_access_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "field access base") }
-fn field_access_field_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
-fn expr_field_access_summary(texpr: Node) -> FieldSummary? {
+fn field_access_base(texpr: v1.std.core.Node) -> v1.std.core.Node { expr_child_at(texpr: texpr, index: 0, role: "field access base") }
+fn field_access_field_at(texpr: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+fn expr_field_access_summary(texpr: v1.std.core.Node) -> FieldSummary? {
   match texpr.expr_data { ExprFieldAccess { summary: s } => s  _ => none }
 }
 
@@ -1070,7 +1070,7 @@ type FieldAccessSpine {
   dotted: String
 }
 
-fn field_access_spine(texpr: Node, source_indices: Map<String, NewlineIndex>) -> FieldAccessSpine? {
+fn field_access_spine(texpr: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> FieldAccessSpine? {
   match texpr.expr_data {
     ExprVar { binding_kind: _ } =>
       let name = expr_var_name_at(texpr: texpr, source_indices: source_indices)
@@ -1088,48 +1088,48 @@ fn field_access_spine(texpr: Node, source_indices: Map<String, NewlineIndex>) ->
   }
 }
 
-fn expr_call_func_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+fn expr_call_func_at(texpr: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
 
-fn expr_call_descent_evidence(texpr: Node) -> List<std.induction.SubValueRelation>? {
+fn expr_call_descent_evidence(texpr: v1.std.core.Node) -> List<std.induction.SubValueRelation>? {
   match texpr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: de } => de
     _ => none
   }
 }
 
-fn method_receiver(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "method receiver") }
-fn method_arg_nodes(texpr: Node) -> List<Node> { texpr.children |> skip(1) }
-fn expr_method_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
-fn expr_method_call_semantics(texpr: Node) -> MethodSemantics? {
+fn method_receiver(texpr: v1.std.core.Node) -> v1.std.core.Node { expr_child_at(texpr: texpr, index: 0, role: "method receiver") }
+fn method_arg_nodes(texpr: v1.std.core.Node) -> List<v1.std.core.Node> { texpr.children |> skip(1) }
+fn expr_method_name_at(texpr: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+fn expr_method_call_semantics(texpr: v1.std.core.Node) -> MethodSemantics? {
   match texpr.expr_data { ExprMethodCall { method_semantics: ms } => ms  _ => none }
 }
 
-fn lambda_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "lambda body") }
-fn lambda_param_names_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> List<String> { texpr.children |> skip(1) |> map(n => authored_name_at(source_indices: source_indices, node: n)) }
+fn lambda_body(texpr: v1.std.core.Node) -> v1.std.core.Node { expr_child_at(texpr: texpr, index: 0, role: "lambda body") }
+fn lambda_param_names_at(texpr: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> List<String> { texpr.children |> skip(1) |> map(n => authored_name_at(source_indices: source_indices, node: n)) }
 
-fn let_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "let value") }
-fn let_body(texpr: Node) -> Node? { texpr.children |> skip(1) |> first }
-fn let_binding_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+fn let_value(texpr: v1.std.core.Node) -> v1.std.core.Node { expr_child_at(texpr: texpr, index: 0, role: "let value") }
+fn let_body(texpr: v1.std.core.Node) -> v1.std.core.Node? { texpr.children |> skip(1) |> first }
+fn let_binding_name_at(texpr: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
 
-fn cast_expr(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "cast expr") }
-fn cast_target(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "cast target") }
+fn cast_expr(texpr: v1.std.core.Node) -> v1.std.core.Node { expr_child_at(texpr: texpr, index: 0, role: "cast expr") }
+fn cast_target(texpr: v1.std.core.Node) -> v1.std.core.Node { expr_child_at(texpr: texpr, index: 1, role: "cast target") }
 
-fn foreach_collection(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "foreach collection") }
-fn foreach_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "foreach body") }
-fn foreach_variable_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+fn foreach_collection(texpr: v1.std.core.Node) -> v1.std.core.Node { expr_child_at(texpr: texpr, index: 0, role: "foreach collection") }
+fn foreach_body(texpr: v1.std.core.Node) -> v1.std.core.Node { expr_child_at(texpr: texpr, index: 1, role: "foreach body") }
+fn foreach_variable_at(texpr: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
 
-fn index_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "index base") }
-fn index_expr(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "index expression") }
+fn index_base(texpr: v1.std.core.Node) -> v1.std.core.Node { expr_child_at(texpr: texpr, index: 0, role: "index base") }
+fn index_expr(texpr: v1.std.core.Node) -> v1.std.core.Node { expr_child_at(texpr: texpr, index: 1, role: "index expression") }
 
-fn slice_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "slice base") }
-fn slice_start(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "slice start") }
-fn slice_end(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 2, role: "slice end") }
+fn slice_base(texpr: v1.std.core.Node) -> v1.std.core.Node { expr_child_at(texpr: texpr, index: 0, role: "slice base") }
+fn slice_start(texpr: v1.std.core.Node) -> v1.std.core.Node { expr_child_at(texpr: texpr, index: 1, role: "slice start") }
+fn slice_end(texpr: v1.std.core.Node) -> v1.std.core.Node { expr_child_at(texpr: texpr, index: 2, role: "slice end") }
 
-fn return_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "return value") }
+fn return_value(texpr: v1.std.core.Node) -> v1.std.core.Node { expr_child_at(texpr: texpr, index: 0, role: "return value") }
 
-fn block_stmts(texpr: Node) -> List<Node> { texpr.children }
+fn block_stmts(texpr: v1.std.core.Node) -> List<v1.std.core.Node> { texpr.children }
 
-fn record_lit_type_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+fn record_lit_type_name_at(texpr: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> String? {
   let name = authored_name_at(source_indices: source_indices, node: texpr)
   if name == "" { none } else { Present { value: name } }
 }
@@ -1149,8 +1149,8 @@ data transport_headers_key: String = "headers"
 data transport_auth_basic_key: String = "auth_basic"
 data transport_tls_key: String = "tls"
 
-fn make_transport_node(properties: List<Node>, children: List<Node>, body: Node?, span: std.types.SourceSpan) -> Node {
-  Node {
+fn make_transport_node(properties: List<v1.std.core.Node>, children: List<v1.std.core.Node>, body: v1.std.core.Node?, span: std.types.SourceSpan) -> v1.std.core.Node {
+  v1.std.core.Node {
     name: "", span: span, ident_span: none, children: children, connective: NoConnective,
 
     params: [], inferred: none, return_cardinality: Required,
@@ -1160,11 +1160,11 @@ fn make_transport_node(properties: List<Node>, children: List<Node>, body: Node?
   }
 }
 
-fn local_transport_node(span: std.types.SourceSpan) -> Node {
+fn local_transport_node(span: std.types.SourceSpan) -> v1.std.core.Node {
   make_transport_node(properties: [], children: [], body: none, span: span)
 }
 
-fn rest_transport_node(base_url: Node, auth_props: List<Node>, headers: List<Node>, method: Node?, path: Node?, query: Node?, request_body: Node?, response_format: Node?, span: std.types.SourceSpan) -> Node {
+fn rest_transport_node(base_url: v1.std.core.Node, auth_props: List<v1.std.core.Node>, headers: List<v1.std.core.Node>, method: v1.std.core.Node?, path: v1.std.core.Node?, query: v1.std.core.Node?, request_body: v1.std.core.Node?, response_format: v1.std.core.Node?, span: std.types.SourceSpan) -> v1.std.core.Node {
   let zero_span = no_span()
   let url_field = make_field_init_node(name: transport_url_key, value: base_url, span: zero_span, name_span: zero_span)
   let method_props = match method {
@@ -1191,15 +1191,15 @@ fn rest_transport_node(base_url: Node, auth_props: List<Node>, headers: List<Nod
   make_transport_node(properties: props, children: [], body: none, span: span)
 }
 
-fn shell_transport_node(argv: List<Node>, env: List<Node>, stdin: Node?, span: std.types.SourceSpan) -> Node {
-  let shell_marker = Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+fn shell_transport_node(argv: List<v1.std.core.Node>, env: List<v1.std.core.Node>, stdin: v1.std.core.Node?, span: std.types.SourceSpan) -> v1.std.core.Node {
+  let shell_marker = v1.std.core.Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let zero_span = no_span()
   let stdin_props = match stdin {
     Present { value: s } => [make_field_init_node(name: transport_stdin_key, value: s, span: zero_span, name_span: zero_span)]
     Absent => []
   }
   let all_props = concat(env, stdin_props)
-  Node {
+  v1.std.core.Node {
     name: "", span: span, ident_span: none, children: argv, connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: Present { value: shell_marker }, transport: none, properties: all_props,
@@ -1208,7 +1208,7 @@ fn shell_transport_node(argv: List<Node>, env: List<Node>, stdin: Node?, span: s
   }
 }
 
-fn file_transport_node(base_path: Node, verb: Node?, span: std.types.SourceSpan) -> Node {
+fn file_transport_node(base_path: v1.std.core.Node, verb: v1.std.core.Node?, span: std.types.SourceSpan) -> v1.std.core.Node {
   let path_field = make_field_init_node(name: transport_path_key, value: base_path, span: no_span(), name_span: no_span())
   let props = match verb {
     Present { value: verb_expr } =>
@@ -1218,21 +1218,21 @@ fn file_transport_node(base_path: Node, verb: Node?, span: std.types.SourceSpan)
   make_transport_node(properties: props, children: [], body: none, span: span)
 }
 
-fn find_property(props: List<Node>, prop_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn find_property(props: List<v1.std.core.Node>, prop_name: String, source_indices: Map<String, NewlineIndex>) -> v1.std.core.Node? {
   match props |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == prop_name) |> first() {
     Present { value: fi } => Present { value: field_init_node_value(n: fi) }
     Absent => none
   }
 }
 
-fn find_property_string(props: List<Node>, prop_name: String, source_indices: Map<String, NewlineIndex>) -> String? {
+fn find_property_string(props: List<v1.std.core.Node>, prop_name: String, source_indices: Map<String, NewlineIndex>) -> String? {
   match find_property(props: props, prop_name: prop_name, source_indices: source_indices) {
     Present { value: n } => expr_literal_string_optional(expr: n)
     Absent => none
   }
 }
 
-fn expr_literal_int_optional(expr: Node) -> Int? {
+fn expr_literal_int_optional(expr: v1.std.core.Node) -> Int? {
   match expr.expr_data {
     ExprLiteral { value: lit } =>
       match lit {
@@ -1248,7 +1248,7 @@ fn expr_literal_int_optional(expr: Node) -> Int? {
   }
 }
 
-fn expr_literal_string_optional(expr: Node) -> String? {
+fn expr_literal_string_optional(expr: v1.std.core.Node) -> String? {
   match expr.expr_data {
     ExprLiteral { value: lit } =>
       match lit {
@@ -1259,7 +1259,7 @@ fn expr_literal_string_optional(expr: Node) -> String? {
   }
 }
 
-fn expr_literal_symbol_optional(expr: Node) -> String? {
+fn expr_literal_symbol_optional(expr: v1.std.core.Node) -> String? {
   match expr.expr_data {
     ExprLiteral { value: lit } =>
       match lit {
@@ -1270,7 +1270,7 @@ fn expr_literal_symbol_optional(expr: Node) -> String? {
   }
 }
 
-fn expr_is_any_literal(expr: Node) -> Bool {
+fn expr_is_any_literal(expr: v1.std.core.Node) -> Bool {
   match expr.expr_data {
     ExprLiteral { value: lit } =>
       match lit {
@@ -1282,7 +1282,7 @@ fn expr_is_any_literal(expr: Node) -> Bool {
   }
 }
 
-fn record_lit_expr_optional(expr: Node) -> Node? {
+fn record_lit_expr_optional(expr: v1.std.core.Node) -> v1.std.core.Node? {
   match expr.expr_data {
     ExprRecordLit { parent_enum: _ } => Present { value: expr }
     _ => none
@@ -1290,10 +1290,10 @@ fn record_lit_expr_optional(expr: Node) -> Node? {
 }
 
 fn record_lit_named_field_value_optional(
-  record_expr: Node,
+  record_expr: v1.std.core.Node,
   field: String,
   source_indices: Map<String, NewlineIndex>
-) -> Node? {
+) -> v1.std.core.Node? {
   match record_lit_expr_optional(expr: record_expr) {
     Present { value: record } =>
       match record.children
@@ -1306,18 +1306,18 @@ fn record_lit_named_field_value_optional(
   }
 }
 
-fn transport_base_path(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn transport_base_path(t: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> v1.std.core.Node? {
   find_property(props: t.properties, prop_name: transport_path_key, source_indices: source_indices)
 }
 
-fn transport_has_argv(t: Node) -> Bool { t.children |> count > 0 }
+fn transport_has_argv(t: v1.std.core.Node) -> Bool { t.children |> count > 0 }
 
-fn is_rest_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_url(t: t, source_indices: source_indices) != none }
-fn is_shell_transport(t: Node) -> Bool { t.body != none }
-fn is_file_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_path(t: t, source_indices: source_indices) != none }
-fn is_local_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { !is_rest_transport(t: t, source_indices: source_indices) && !is_shell_transport(t: t) && !is_file_transport(t: t, source_indices: source_indices) }
+fn is_rest_transport(t: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_url(t: t, source_indices: source_indices) != none }
+fn is_shell_transport(t: v1.std.core.Node) -> Bool { t.body != none }
+fn is_file_transport(t: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_path(t: t, source_indices: source_indices) != none }
+fn is_local_transport(t: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> Bool { !is_rest_transport(t: t, source_indices: source_indices) && !is_shell_transport(t: t) && !is_file_transport(t: t, source_indices: source_indices) }
 
-fn field_init_operation_modifier(field_init: Node, source_indices: Map<String, NewlineIndex>) -> OperationModifier? {
+fn field_init_operation_modifier(field_init: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> OperationModifier? {
   let fi_name = field_init_node_name_at(n: field_init, source_indices: source_indices)
   if fi_name == "idempotent" { Present { value: Idempotent } }
   else if fi_name == "readonly" { Present { value: Readonly } }
@@ -1333,46 +1333,46 @@ fn operation_modifier_name(modifier: OperationModifier) -> String {
   }
 }
 
-fn transport_base_url(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn transport_base_url(t: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> v1.std.core.Node? {
   find_property(props: t.properties, prop_name: transport_url_key, source_indices: source_indices)
 }
 
-fn transport_auth_token(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn transport_auth_token(t: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> v1.std.core.Node? {
   find_property(props: t.properties, prop_name: transport_auth_token_key, source_indices: source_indices)
 }
 
-fn transport_auth_header_name(t: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+fn transport_auth_header_name(t: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> String? {
   find_property_string(props: t.properties, prop_name: transport_auth_header_key, source_indices: source_indices)
 }
 
-fn transport_has_auth(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn transport_has_auth(t: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   match find_property(props: t.properties, prop_name: transport_auth_token_key, source_indices: source_indices) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
-fn transport_method(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn transport_method(t: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> v1.std.core.Node? {
   find_property(props: t.properties, prop_name: transport_method_key, source_indices: source_indices)
 }
 
-fn transport_path_template(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn transport_path_template(t: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> v1.std.core.Node? {
   find_property(props: t.properties, prop_name: transport_path_template_key, source_indices: source_indices)
 }
 
-fn transport_query(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn transport_query(t: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> v1.std.core.Node? {
   find_property(props: t.properties, prop_name: transport_query_key, source_indices: source_indices)
 }
 
-fn transport_request_body(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn transport_request_body(t: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> v1.std.core.Node? {
   find_property(props: t.properties, prop_name: transport_body_key, source_indices: source_indices)
 }
 
-fn transport_stdin(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn transport_stdin(t: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> v1.std.core.Node? {
   find_property(props: t.properties, prop_name: transport_stdin_key, source_indices: source_indices)
 }
 
-fn transport_response_format(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn transport_response_format(t: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> v1.std.core.Node? {
   find_property(props: t.properties, prop_name: transport_response_format_key, source_indices: source_indices)
 }
 
@@ -1385,31 +1385,31 @@ fn is_config_reserved_key(name: String) -> Bool {
     || name == transport_auth_basic_key || name == transport_tls_key
 }
 
-fn transport_auth_basic(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn transport_auth_basic(t: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> v1.std.core.Node? {
   find_property(props: t.properties, prop_name: transport_auth_basic_key, source_indices: source_indices)
 }
 
-fn transport_tls_posture(t: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+fn transport_tls_posture(t: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> String? {
   match find_property(props: t.properties, prop_name: transport_tls_key, source_indices: source_indices) {
     Present { value: n } => Present { value: authored_name_at(source_indices: source_indices, node: n) }
     Absent => Absent
   }
 }
 
-fn transport_headers(t: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+fn transport_headers(t: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> List<v1.std.core.Node> {
   t.properties |> filter(p =>
     !is_config_reserved_key(name: field_init_node_name_at(n: p, source_indices: source_indices))
   )
 }
 
-fn transport_env(t: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+fn transport_env(t: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> List<v1.std.core.Node> {
   t.properties |> filter(p =>
     !is_config_reserved_key(name: field_init_node_name_at(n: p, source_indices: source_indices))
   )
 }
 
-fn map_children(node: Node, transform: fn(Node) -> Node) -> Node {
-  Node {
+fn map_children(node: v1.std.core.Node, transform: fn(v1.std.core.Node) -> v1.std.core.Node) -> v1.std.core.Node {
+  v1.std.core.Node {
     name: node.name, ident: node.ident, span: node.span, ident_span: node.ident_span,
     children: node.children |> map(child => transform(child)),
     connective: node.connective,
@@ -1423,7 +1423,7 @@ fn map_children(node: Node, transform: fn(Node) -> Node) -> Node {
   }
 }
 
-fn expr_has_self_call(texpr: Node, fn_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn expr_has_self_call(texpr: v1.std.core.Node, fn_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
   match texpr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       if expr_call_func_at(texpr: texpr, source_indices: source_indices) == fn_name { true }
@@ -1432,7 +1432,7 @@ fn expr_has_self_call(texpr: Node, fn_name: String, source_indices: Map<String, 
   }
 }
 
-fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn expr_has_non_tail_self_call(texpr: v1.std.core.Node, fn_name: String, in_tail: Bool, source_indices: Map<String, NewlineIndex>) -> Bool {
   match texpr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       if expr_call_func_at(texpr: texpr, source_indices: source_indices) == fn_name {
@@ -1486,7 +1486,7 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, sour
   }
 }
 
-fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node?) -> List<Node> {
+fn service_config_properties(endpoint: v1.std.core.Node, auth: v1.std.core.Node?, auth_input: v1.std.core.Node?, auth_source: v1.std.core.Node?, rate_limit: v1.std.core.Node?, retry: v1.std.core.Node?) -> List<v1.std.core.Node> {
   let zero_span = no_span()
   let ep_prop = [make_field_init_node(name: "svc_endpoint", value: endpoint, span: zero_span, name_span: zero_span)]
   let auth_prop = match auth {
@@ -1512,36 +1512,36 @@ fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, aut
   concat(ep_prop, auth_prop, auth_input_prop, auth_source_prop, rate_prop, retry_prop)
 }
 
-fn has_service_config(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn has_service_config(n: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   n.properties |> any(p => field_init_node_name_at(n: p, source_indices: source_indices) == "svc_endpoint")
 }
 
-fn service_config_endpoint(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn service_config_endpoint(n: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> v1.std.core.Node? {
   find_property(props: n.properties, prop_name: "svc_endpoint", source_indices: source_indices)
 }
 
-fn service_config_auth(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn service_config_auth(n: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> v1.std.core.Node? {
   find_property(props: n.properties, prop_name: "svc_auth", source_indices: source_indices)
 }
 
-fn service_config_rate_limit(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn service_config_rate_limit(n: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> v1.std.core.Node? {
   find_property(props: n.properties, prop_name: "svc_rate_limit", source_indices: source_indices)
 }
 
-fn service_config_retry(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn service_config_retry(n: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> v1.std.core.Node? {
   find_property(props: n.properties, prop_name: "svc_retry", source_indices: source_indices)
 }
 
-fn service_config_auth_input(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn service_config_auth_input(n: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> v1.std.core.Node? {
   find_property(props: n.properties, prop_name: "svc_auth_input", source_indices: source_indices)
 }
 
-fn service_config_auth_source(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn service_config_auth_source(n: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> v1.std.core.Node? {
   find_property(props: n.properties, prop_name: "svc_auth_source", source_indices: source_indices)
 }
 
-fn module_node(name: String, imports: List<Node>, items: List<Node>, span: std.types.SourceSpan) -> Node {
-  Node {
+fn module_node(name: String, imports: List<v1.std.core.Node>, items: List<v1.std.core.Node>, span: std.types.SourceSpan) -> v1.std.core.Node {
+  v1.std.core.Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: items, connective: NoConnective,
 
     params: imports, inferred: none, return_cardinality: Required,
@@ -1551,11 +1551,11 @@ fn module_node(name: String, imports: List<Node>, items: List<Node>, span: std.t
   }
 }
 
-fn import_node(module_path: String, is_all: Bool, specific_names: List<Node>, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
+fn import_node(module_path: String, is_all: Bool, specific_names: List<v1.std.core.Node>, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> v1.std.core.Node {
   let wildcard_marker = if is_all {
-    Present { value: Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } }
+    Present { value: v1.std.core.Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } }
   } else { none }
-  Node {
+  v1.std.core.Node {
     name: module_path, span: span, ident_span: Present { value: name_span }, children: specific_names, connective: NoConnective,
 
     params: [], inferred: none, return_cardinality: Required,
@@ -1565,39 +1565,39 @@ fn import_node(module_path: String, is_all: Bool, specific_names: List<Node>, sp
   }
 }
 
-fn import_is_all(n: Node) -> Bool {
+fn import_is_all(n: v1.std.core.Node) -> Bool {
   n.body != none
 }
 
-fn import_specific_names_at(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+fn import_specific_names_at(n: v1.std.core.Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
   n.children |> map(c => authored_name_at(source_indices: source_indices, node: c))
 }
 
-fn module_imports(n: Node) -> List<Node> {
+fn module_imports(n: v1.std.core.Node) -> List<v1.std.core.Node> {
   n.params
 }
 
-fn module_items(n: Node) -> List<Node> {
+fn module_items(n: v1.std.core.Node) -> List<v1.std.core.Node> {
   n.children
 }
 
-fn leaf_node_with_span(name: String, span: std.types.SourceSpan) -> Node {
-  Node { name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+fn leaf_node_with_span(name: String, span: std.types.SourceSpan) -> v1.std.core.Node {
+  v1.std.core.Node { name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn kernel_span(name: String) -> std.types.SourceSpan {
   std.types.SourceSpan { file: concat("<kernel:", name, ">"), start: 0, end: string_length(s: name) }
 }
 
-data unit_type: Node = Node { name: "Unit", span: kernel_span(name: "Unit"), ident_span: Present { value: kernel_span(name: "Unit") }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data bool_type: Node = Node { name: "Bool", span: kernel_span(name: "Bool"), ident_span: Present { value: kernel_span(name: "Bool") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data string_type: Node = Node { name: "String", span: kernel_span(name: "String"), ident_span: Present { value: kernel_span(name: "String") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data hash_type: Node = Node { name: "Hash", span: kernel_span(name: "Hash"), ident_span: Present { value: kernel_span(name: "Hash") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data int_type: Node = Node { name: "Int", span: kernel_span(name: "Int"), ident_span: Present { value: kernel_span(name: "Int") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data float_type: Node = Node { name: "Float", span: kernel_span(name: "Float"), ident_span: Present { value: kernel_span(name: "Float") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data none_type: Node = Node { name: "None", span: kernel_span(name: "None"), ident_span: Present { value: kernel_span(name: "None") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data unit_type: v1.std.core.Node = v1.std.core.Node { name: "Unit", span: kernel_span(name: "Unit"), ident_span: Present { value: kernel_span(name: "Unit") }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data bool_type: v1.std.core.Node = v1.std.core.Node { name: "Bool", span: kernel_span(name: "Bool"), ident_span: Present { value: kernel_span(name: "Bool") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data string_type: v1.std.core.Node = v1.std.core.Node { name: "String", span: kernel_span(name: "String"), ident_span: Present { value: kernel_span(name: "String") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data hash_type: v1.std.core.Node = v1.std.core.Node { name: "Hash", span: kernel_span(name: "Hash"), ident_span: Present { value: kernel_span(name: "Hash") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data int_type: v1.std.core.Node = v1.std.core.Node { name: "Int", span: kernel_span(name: "Int"), ident_span: Present { value: kernel_span(name: "Int") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data float_type: v1.std.core.Node = v1.std.core.Node { name: "Float", span: kernel_span(name: "Float"), ident_span: Present { value: kernel_span(name: "Float") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data none_type: v1.std.core.Node = v1.std.core.Node { name: "None", span: kernel_span(name: "None"), ident_span: Present { value: kernel_span(name: "None") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 data tuple_type_name: String = "Tuple"
-data error_type: Node = Node { name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: CompilerError { message: "unresolved type", span: no_span() } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: ExprError { kind: SemanticExprError, message: "unresolved type" } }
+data error_type: v1.std.core.Node = v1.std.core.Node { name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: CompilerError { message: "unresolved type", span: no_span() } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: ExprError { kind: SemanticExprError, message: "unresolved type" } }
 
 fn make_file_span(file: String, start: Int, end: Int) -> std.types.SourceSpan {
   std.types.SourceSpan { file: file, start: start, end: end }
@@ -1772,12 +1772,12 @@ fn pre_intern_tokens(tokens: List<Token>, table: InternTable) -> InternTable {
   )
 }
 
-fn with_optional_cardinality(n: Node) -> Node {
-  Node { name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
+fn with_optional_cardinality(n: v1.std.core.Node) -> v1.std.core.Node {
+  v1.std.core.Node { name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
 }
 
-fn with_required_cardinality(n: Node) -> Node {
-  Node { name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
+fn with_required_cardinality(n: v1.std.core.Node) -> v1.std.core.Node {
+  v1.std.core.Node { name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
 }
 
 fn join_optional_cardinality(left: Cardinality, right: Cardinality) -> Cardinality {
@@ -1785,7 +1785,7 @@ fn join_optional_cardinality(left: Cardinality, right: Cardinality) -> Cardinali
   if merge_optional { CardOptional } else { right }
 }
 
-fn preserve_outer_optional_cardinality(outer: Node, inner: Node) -> Node {
+fn preserve_outer_optional_cardinality(outer: v1.std.core.Node, inner: v1.std.core.Node) -> v1.std.core.Node {
   let joined = join_optional_cardinality(outer.return_cardinality, inner.return_cardinality)
   let needs_restore = joined == CardOptional && inner.return_cardinality != CardOptional
   if needs_restore { with_optional_cardinality(n: inner) } else { inner }
