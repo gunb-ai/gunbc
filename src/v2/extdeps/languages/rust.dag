@@ -243,7 +243,6 @@ import v2.std.compilers.target_model {
   TargetRepresentationParameterSlot,
   TargetCapabilityElementEligibility,
   TargetCapabilityEligibilityRow,
-  TargetCapabilityEligibilityTable,
   TargetCapabilityRequirement,
   target_collection_set_carrier_node,
   TargetCollectionReprBTreeSet,

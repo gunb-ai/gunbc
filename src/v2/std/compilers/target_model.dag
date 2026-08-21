@@ -9565,9 +9565,6 @@ type TargetCapabilityElementEligibility {
   kernel_atoms: List<Symbol>
 }
 
-type TargetCapabilityEligibilityTable =
-  Map<TargetCapabilityKey, TargetCapabilityElementEligibility>
-
 type TargetCapabilityEligibilityRow {
   capability_key: TargetCapabilityKey
   eligibility: TargetCapabilityElementEligibility
@@ -10543,10 +10540,6 @@ fn target_collection_fallback_from_node(node: Node) -> Outcome<Diagnostic> {
   )
 }
 
-fn target_capability_eligibility_empty() -> TargetCapabilityEligibilityTable {
-  empty_map()
-}
-
 fn target_capability_eligibility_row_from_node(
   node: Node
 ) -> Outcome<TargetCapabilityEligibilityRow> {
@@ -10586,6 +10579,10 @@ fn target_capability_eligibility_row_from_node(
   )
 }
 
+fn target_capability_eligibility_no_rows() -> List<TargetCapabilityEligibilityRow> {
+  []
+}
+
 fn target_capability_eligibility_from_node(
   node: Node
 ) -> Outcome<List<TargetCapabilityEligibilityRow>> {
@@ -10598,24 +10595,17 @@ fn target_capability_eligibility_from_node(
       bind_outcome(
         o: fold_list(
           xs: rows,
-          empty: outcome_accepted(target_capability_eligibility_empty()),
+          empty: outcome_accepted(target_capability_eligibility_no_rows()),
           cons: fn(acc, row) {
             match acc {
               Rejected { diagnostics: r } => Rejected { diagnostics: r }
-              Accepted { value: table, diagnostics: _ } =>
-                match map_lookup(m: table, key: row.capability_key) {
+              Accepted { value: seen, diagnostics: _ } =>
+                match target_capability_eligibility_lookup(rows: seen, key: row.capability_key) {
                   Present { value: _ } =>
                     outcome_rejected(
                       target_capability_eligibility_duplicate_diagnostic(at: node)
                     )
-                  Absent =>
-                    outcome_accepted(
-                      map_insert(
-                        m: table,
-                        key: row.capability_key,
-                        value: row.eligibility
-                      )
-                    )
+                  Absent => outcome_accepted(list_append(left: seen, right: [row]))
                 }
             }
           }
