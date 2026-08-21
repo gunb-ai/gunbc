@@ -1,7 +1,7 @@
 module gunbc.fleet_main_revision
 
-import std.types { String, NonEmptyStr, Bool }
-import extdeps.git.object_store { GitObjectId, git_object_id_eq }
+import std.types { String, NonEmptyStr, Bool, Int }
+import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_object_id_from_untagged_hex }
 import extdeps.git.publication_transport {
   GitRemoteRefExpectation,
   RemoteRefMustBeAbsent,
@@ -151,6 +151,96 @@ type FleetRevisionRelationObservation
       accepted: GitObjectId,
       cause: NonEmptyStr,
     }
+
+// THE ANCESTRY OBSERVATION, SPLIT SO THE DECIDABLE HALF IS ACTUALLY TESTABLE.
+//
+// This fold is PURE: it takes the wire facts a merge-base probe returns and produces the
+// subject-bound relation. The effect that obtains those facts lives at the workflow edge, and the
+// split is not tidiness -- git.Inspect.MergeBase carries no mock_response, so ANY witness that
+// reaches it refuses under the hermetic floor envelope rather than running. Folding the decision
+// into the effect would therefore make the entire ancestry policy unwitnessable, and the tree has
+// already paid for that lesson once (stage0_rust_host_observation_live_witness_test records a
+// single unmocked operation taking down a 105-row batch). Here the policy is hermetic and total,
+// and only the reading of two commits is not.
+//
+// EXIT 1 AND EXIT 128 ARE THE WHOLE REASON THIS TAKES AN EXIT CODE. `git merge-base` exits 1 when
+// the pair genuinely shares no merge base -- unrelated histories, a FACT about the pair -- and 128
+// when a ref is invalid or this is not a repository, which is a failure to look. Both are
+// `exit_success = false`. A consumer holding only that Bool must either refuse both, discarding a
+// real answer, or admit both, which reads an unreadable repository as proof that two revisions are
+// unrelated and then refuses an advance that should have been admitted. The distinction was always
+// declared on the operation and was simply never surfaced.
+//
+// A MERGE BASE THAT IS NEITHER ENDPOINT MEANS THE HISTORIES DIVERGED, and it folds to
+// UnrelatedHistories to match the semantics the existing probe fold already assigns that variant
+// (gunbc.live_deploy.revision deploy_revision_relation_from_probes: neither-is-ancestor yields
+// UnrelatedHistories). Reusing that vocabulary rather than minting a Diverged variant keeps one
+// authority for "how do these two revisions relate"; the name is the deploy lane's, and it means
+// neither-is-an-ancestor rather than share-no-history.
+data merge_base_exit_ok: Int = 0
+
+data merge_base_exit_no_merge_base: Int = 1
+
+fn fleet_revision_relation_from_merge_base(
+  current: GitObjectId,
+  accepted: GitObjectId,
+  exit_code: Int,
+  base_hex: String,
+  stderr: String,
+) -> FleetRevisionRelationObservation {
+  if git_object_id_eq(left: current, right: accepted) {
+    FleetRevisionRelationObserved { current: current, accepted: accepted, relation: SameRevision }
+  } else {
+    if exit_code == merge_base_exit_no_merge_base {
+      FleetRevisionRelationObserved {
+        current: current,
+        accepted: accepted,
+        relation: UnrelatedHistories,
+      }
+    } else {
+      if exit_code == merge_base_exit_ok {
+        match git_object_id_from_untagged_hex(hex: base_hex) {
+          Present { value: base } =>
+            FleetRevisionRelationObserved {
+              current: current,
+              accepted: accepted,
+              relation: relation_from_merge_base_oid(current: current, accepted: accepted, base: base),
+            }
+          none =>
+            FleetRevisionRelationRefused {
+              current: current,
+              accepted: accepted,
+              cause: concat("git merge-base succeeded but its output is not a decodable object id: ", base_hex),
+            }
+        }
+      } else {
+        FleetRevisionRelationRefused {
+          current: current,
+          accepted: accepted,
+          cause: concat("git merge-base could not answer for this pair: ", stderr),
+        }
+      }
+    }
+  }
+}
+
+// One merge base decides both directions, so no second probe is needed: a commit is an ancestor of
+// another exactly when it IS their merge base.
+fn relation_from_merge_base_oid(
+  current: GitObjectId,
+  accepted: GitObjectId,
+  base: GitObjectId,
+) -> DeployRevisionRelation {
+  if git_object_id_eq(left: base, right: current) {
+    DeployedIsAncestor
+  } else {
+    if git_object_id_eq(left: base, right: accepted) {
+      CandidateIsAncestor
+    } else {
+      UnrelatedHistories
+    }
+  }
+}
 
 type FleetDesiredAdvanceRefusal
   = AdvanceExpectationUnavailable { cause: FleetDesiredExpectationRefusal }

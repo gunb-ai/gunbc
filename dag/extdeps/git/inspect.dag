@@ -1,6 +1,6 @@
 module extdeps.git.inspect
 
-import std.types { Bool, CommitSha, FilePath, GitRef, String }
+import std.types { Bool, CommitSha, FilePath, GitRef, Int, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -102,11 +102,20 @@ service git.Inspect {
     }
   }
 
+  // THE EXIT CODE IS CARRIED BECAUSE THE Bool COLLAPSES AN ANSWER WITH AN ABSENCE OF ONE.
+  // `git merge-base` exits 1 when the two commits genuinely share NO merge base -- unrelated
+  // histories, which is a FACT about the pair -- and 128 when the ref is invalid or this is not a
+  // repository, which is a failure to look. Both render `exit_success = false`, so a consumer
+  // holding only the Bool must either refuse both (losing a real answer) or admit both (treating
+  // an unreadable repository as proof that two revisions are unrelated). The `exit` block below
+  // has always DECLARED the distinction; the output simply never surfaced it, so the declaration
+  // was unreachable by any caller.
   operation MergeBase {
     input { left: GitRef, right: GitRef }
     output {
       sha: CommitSha from "stdout"
       success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
       stderr: String from "stderr"
     }
     readonly
