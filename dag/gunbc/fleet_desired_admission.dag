@@ -127,25 +127,51 @@ fn fleet_desired_floor_green(conclusion: extdeps.github.workflow_runs.WorkflowRu
 // not read, which is the empty-observation narrow with the fleet as the blast radius. The
 // ref exists, so refusing costs nothing real; if a genuine first admission is ever needed
 // it arrives as a distinguished observation, not as this arm guessing.
+// INTERIM ARMS FOR THE TWO VARIANTS gunbc#8701 ADDED, AND THIS IS A COMPILE FIX, NOT THE
+// DESTINATION. #8701 split FleetDesiredRevision two ways into four, which is precisely what the
+// comment above asked for -- it names the deficiency (one variant carrying two states with
+// opposite actuations) and states the remedy as a distinguished observation. The split landed
+// without this consumer being updated to use what it asked for, so the closed-coproduct census
+// refused here and main's floor phase went red for over an hour (first red 05:26 UTC, three
+// minutes after #8701 merged; located precisely, naming both missing variants -- the wall
+// working as designed, one merge too late).
+//
+// WHAT THESE TWO ARMS DO AND DO NOT SETTLE. Undecodable refusing is not a judgement: #8701's own
+// authority says "the ref exists and is garbage -> alarm; never write over it", and refusing with
+// a cause distinct from Unobserved's honors its insistence that the two never fold, because their
+// remedies differ. Absent refusing IS an interim standing in for a decision this consumer cannot
+// currently express -- see the arm's own cause string. Both arms together reproduce this
+// function's pre-#8701 semantics EXACTLY, since both states were previously folded into
+// FleetDesiredUnobserved, which refuses. So this restores the corpus without capturing #8701's
+// benefit: the distinguished observation now exists and is still not acted on.
+//
+// TRIGGER, TWO PARTS, BOTH OWNED BY FLEET CONVERGENCE AND NEITHER BY THIS CHANGE: (1) widen
+// FleetDesiredAdmissionOutcome with a creation variant that does not carry a `from`, and (2)
+// decide whether an unadvertised ref licenses a first admission. This note and the Absent arm
+// retire together the moment both land. A wildcard here would have re-collapsed the exact
+// distinction #8701 was made to draw, which is why there is no wildcard.
 fn fleet_desired_admission_decide(event: extdeps.github.workflow_run_event.WorkflowRunEvent, observed: gunbc.fleet_main_revision.FleetDesiredRevision) -> FleetDesiredAdmissionOutcome {
   match fleet_desired_admission_event_trusted(event: event) {
     Present { value: refusal } => AdmissionRefused { cause: refusal }
     Absent =>
       match observed {
+        FleetDesiredUndecodable { advertised: advertised } =>
+          AdmissionRefused {
+            cause: concat(
+              "fleet_desired_admission: the advertised prior exists but is not a decodable object id, so no advance is authorized (a ref holding something unreadable is never written over -- a retry cannot fix it and a write would destroy it): ",
+              advertised,
+            ),
+          }
+        FleetDesiredAbsent =>
+          AdmissionRefused {
+            cause: "fleet_desired_admission: origin advertises no such ref. gunbc.fleet_main_revision states this is the one observation that licenses CREATION rather than an advance, but FleetDesiredAdmissionOutcome cannot express a creation: AdmissionAdvanceAuthorized structurally requires a `from`, which is exactly what this observation reports does not exist. Refusing here preserves the pre-split behavior of this consumer EXACTLY (before gunbc#8701 this state was folded into FleetDesiredUnobserved, which refuses) and settles nothing.",
+          }
         FleetDesiredUnobserved { cause: why } =>
           AdmissionRefused {
             cause: join([
               "fleet_desired_admission: the admitted prior could not be observed, so no advance is authorized (an unobserved prior is never read as an absent one): ",
               why,
             ], ""),
-          }
-        FleetDesiredAbsent =>
-          AdmissionRefused {
-            cause: "fleet_desired_admission: the admitted prior is ABSENT, and an absent prior authorizes nothing. Advancing here would write a first admission from an arm that cannot tell a genuine first admission from a lost ref; a real first admission arrives as a distinguished observation.",
-          }
-        FleetDesiredUndecodable { advertised: advertised } =>
-          AdmissionRefused {
-            cause: concat("fleet_desired_admission: the admitted prior was advertised but did not decode, so the prior is unknown rather than absent and no advance is authorized: ", advertised),
           }
         FleetDesiredAdmitted { revision: prior } =>
           match extdeps.git.object_store.git_object_id_from_untagged_hex(hex: event.head_sha as String) {
