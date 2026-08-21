@@ -6,7 +6,7 @@ import std.content_hash {
   content_hash_eq_structural
 }
 import std.types { NonEmptyStr }
-import v2.std.algebra { fold_list, length }
+import v2.std.algebra { Empty, fold_list, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -44,6 +44,73 @@ type ProductBoundary
 // causes cannot be projected without leaving the graph is a receipt nobody
 // can read; a closed coproduct is total, renderable by match, and makes an
 // unmodeled cause unwritable rather than spellable as free text.
+// A BARE TOTAL CANNOT BE DIFFERENCED. If a later run reports 35 emitter
+// diagnostics where this one reported 40, a total cannot say whether five
+// were repaired or five changed cause -- so the partition is the
+// measurement and the total is a summary of it.
+//
+// The reason is a String rather than a closed coproduct, and that is the
+// honest shape: these are the EMITTER's diagnostic reasons, an open
+// population this module does not own and must not mint a vocabulary for.
+// A tally of observed reasons is an observation; a closed enum here would
+// be a second, incomplete authority over someone else's diagnostics.
+type DiagnosticCauseTally {
+  reason: String
+  count: Int
+}
+
+fn diagnostic_tally_holds_reason(tally: List<DiagnosticCauseTally>, reason: String) -> Bool {
+  fold_list(
+    xs: tally,
+    empty: false,
+    cons: fn(found, row) { found || (row.reason == reason) }
+  )
+}
+
+fn diagnostic_tally_bump(
+  tally: List<DiagnosticCauseTally>,
+  reason: String
+) -> List<DiagnosticCauseTally> {
+  if diagnostic_tally_holds_reason(tally: tally, reason: reason) {
+    fold_list(
+      xs: tally,
+      empty: Empty,
+      cons: fn(acc, row) {
+        list_snoc_item(
+          xs: acc,
+          item: if row.reason == reason {
+            DiagnosticCauseTally { reason: row.reason, count: row.count + 1 }
+          } else {
+            row
+          }
+        )
+      }
+    )
+  } else {
+    list_snoc_item(xs: tally, item: DiagnosticCauseTally { reason: reason, count: 1 })
+  }
+}
+
+fn diagnostic_tally_total(tally: List<DiagnosticCauseTally>) -> Int {
+  fold_list(xs: tally, empty: 0, cons: fn(total, row) { total + row.count })
+}
+
+fn diagnostic_tally_render(tally: List<DiagnosticCauseTally>) -> String {
+  fold_list(
+    xs: tally,
+    empty: "",
+    cons: fn(text, row) {
+      concat(
+        text,
+        concat(
+          "\n    ",
+          concat(to_string(row.count), concat("  ", row.reason))
+        )
+      )
+    }
+  )
+}
+
 type BoundaryRefusalCause
   = ManifestNotProduced
   | ManifestOverlayNotResolved
@@ -53,7 +120,7 @@ type BoundaryRefusalCause
   | PopulationDigestMismatch
   | ManifestSourceReadFailed
   | IngestRowShortfall
-  | EmitterRejected { diagnostic_count: Int }
+  | EmitterRejected { causes: List<DiagnosticCauseTally> }
   | EmittedHardRefusalsPresent { count: Int }
   | AssemblyRefused
   | CargoManifestWriteFailed
@@ -129,8 +196,14 @@ fn boundary_refusal_cause_label(cause: BoundaryRefusalCause) -> String {
     PopulationDigestMismatch => "population digest mismatch"
     ManifestSourceReadFailed => "source read failed"
     IngestRowShortfall => "ingest row shortfall"
-    EmitterRejected { diagnostic_count: count } =>
-      concat("emitter rejected the admitted population, diagnostics: ", to_string(count))
+    EmitterRejected { causes: causes } =>
+      concat(
+        "emitter rejected the admitted population, diagnostics: ",
+        concat(
+          to_string(diagnostic_tally_total(tally: causes)),
+          diagnostic_tally_render(tally: causes)
+        )
+      )
     EmittedHardRefusalsPresent { count: count } =>
       concat("emitted hard refusals present: ", to_string(count))
     AssemblyRefused => "seed-linked assembly refused"

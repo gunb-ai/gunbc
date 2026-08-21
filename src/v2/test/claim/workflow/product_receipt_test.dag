@@ -17,12 +17,16 @@ import v2.workflow.product_receipt {
   ProductReceipt,
   RefsHashVerified,
   SeedLinkedAssembly,
+  DiagnosticCauseTally,
+  diagnostic_tally_bump,
+  diagnostic_tally_total,
   product_artifact_identity,
   product_receipt_covers_every_boundary_once,
   product_receipt_every_boundary_completed,
   product_receipt_green,
   product_receipt_identity_chain_intact
 }
+import v2.std.algebra { Empty, length }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
@@ -226,4 +230,20 @@ test fn identity_carriage_refuses_a_matching_digest_carried_at_a_different_shape
   product_receipt_every_boundary_completed(receipt: receipt)
     && !product_receipt_identity_chain_intact(receipt: receipt)
     && !product_receipt_green(receipt: receipt)
+}
+
+// A TALLY IS NOT A COUNTER. Bumping the same reason twice must produce ONE
+// row of two, not two rows of one -- otherwise the partition degenerates back
+// into the bare total it exists to replace, while still looking partitioned.
+// The total is asserted alongside so a broken bump cannot green by losing
+// rows in the other direction.
+test fn repeated_reasons_collapse_into_one_row_and_the_total_is_preserved() -> Bool {
+  let tally = diagnostic_tally_bump(
+    tally: diagnostic_tally_bump(
+      tally: diagnostic_tally_bump(tally: Empty, reason: "unsupported_mock_expression"),
+      reason: "grounding_not_derived"
+    ),
+    reason: "unsupported_mock_expression"
+  )
+  (length(xs: tally) == 2) && (diagnostic_tally_total(tally: tally) == 3)
 }

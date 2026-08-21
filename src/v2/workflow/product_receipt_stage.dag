@@ -25,13 +25,14 @@ import v2.compiler.source_authority {
   discovered_source_refs_digest_for_refs
 }
 import v2.extdeps.languages.rust { rust_target_model }
-import v2.std.algebra { length }
+import v2.std.algebra { Empty, fold_list, length }
 import v2.std.logic { Bool }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Present }
 import v2.std.text { String }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
+import v2.std.compilers.lexing { symbol_lexeme }
 import v2.test.workflow.host_source_root_ingest_manifest {
   host_compiler_closure_admission,
   host_source_root_closure_refs,
@@ -56,7 +57,9 @@ import v2.workflow.product_receipt {
   CargoManifestWriteFailed,
   ClosureCandidateEmitted,
   EmittedHardRefusalsPresent,
+  DiagnosticCauseTally,
   EmitterRejected,
+  diagnostic_tally_bump,
   HostDerivesManifest,
   IngestRowShortfall,
   ManifestCoverageIncomplete,
@@ -149,7 +152,7 @@ fn stage_cause_belongs_to_read(cause: BoundaryRefusalCause) -> Bool {
     ManifestCoverageIncomplete => false
     ManifestPopulationPartial => false
     PopulationDigestMismatch => false
-    EmitterRejected { diagnostic_count: _ } => false
+    EmitterRejected { causes: _ } => false
     EmittedHardRefusalsPresent { count: _ } => false
     AssemblyRefused => false
     CargoManifestWriteFailed => false
@@ -204,6 +207,23 @@ fn stage_completed(
   }
 }
 
+// symbol_lexeme is a host-intercepted bridge, so this partition is
+// available to the INTERPRETED transport and would not survive a compiled
+// realization of it unchanged. Stated because the receipt would otherwise
+// look portable across realizations when one of its fields is not.
+fn emitter_diagnostic_causes(ds: NonEmptyDiagnostics) -> List<DiagnosticCauseTally> {
+  fold_list(
+    xs: ds.tail,
+    empty: diagnostic_tally_bump(
+      tally: Empty,
+      reason: symbol_lexeme(sym: ds.head.reason)
+    ),
+    cons: fn(acc, d) {
+      diagnostic_tally_bump(tally: acc, reason: symbol_lexeme(sym: d.reason))
+    }
+  )
+}
+
 type ProductReceiptCandidate {
   observation: BoundaryObservation
   emitted_source: String
@@ -223,7 +243,7 @@ func product_receipt_candidate(
       ProductReceiptCandidate {
         observation: stage_refused(
           boundary: ClosureCandidateEmitted,
-          cause: EmitterRejected { diagnostic_count: 1 + length(xs: ds.tail) },
+          cause: EmitterRejected { causes: emitter_diagnostic_causes(ds: ds) },
           consumed: population_digest
         ),
         emitted_source: ""
@@ -271,7 +291,7 @@ func product_receipt_candidate_materialize(
       ProductReceiptCandidate {
         observation: stage_refused(
           boundary: ClosureCandidateEmitted,
-          cause: EmitterRejected { diagnostic_count: 0 },
+          cause: EmitterRejected { causes: Empty },
           consumed: population_digest
         ),
         emitted_source: emitted_source
