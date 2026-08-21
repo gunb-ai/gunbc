@@ -1,0 +1,110 @@
+module gunbc.workflow_capability_closure
+
+import std.types { String, List, Bool }
+import gunbc.roadmap_execution_contract {
+  ExecutionCapability,
+  execution_capability_label,
+}
+import v2.std.algebra { fold_list, list_snoc_item }
+
+// WHY THIS SITS ABOVE extdeps.github.actions AND NOT INSIDE IT.
+//
+// RunStep { run: String } is a FAITHFUL model of the GitHub wire format -- a step really is an
+// opaque script to GitHub -- so the string is correct as a wire fact and must not be replaced by
+// something richer. The defect is one layer up: product modules construct that wire
+// representation directly for operations whose semantics are known, so a step that NEEDS a
+// toolchain and a step that PROVIDES one are indistinguishable by the time they are Steps.
+//
+// This module therefore models the relationship a step has to the capabilities its job needs,
+// and leaves Step alone (DESIGN §3: cite the upstream spec, keep its shape; the semantic layer
+// is ours, the wire model is theirs).
+//
+// WHY STRUCTURAL AND NOT TEXTUAL. The same consumption is spelled `cargo build` in one workflow
+// and `"$CARGO_BIN" build` in another. No text pattern reliably calls those the same thing --
+// measured: a regex over the second form returned a confident ZERO on a file that invokes cargo
+// twice, because a closing quote sits between the name and the space. A check that cannot see
+// one of the two live spellings is not a weaker check, it is a check whose green means nothing
+// for half the corpus.
+
+type StepCapabilityRole
+  = ProvidesCapability { capability: ExecutionCapability }
+  | ConsumesCapability { capability: ExecutionCapability }
+  | CapabilityNeutral
+
+type CapabilityAnnotatedStep {
+  step_name: String
+  role: StepCapabilityRole
+}
+
+// A consumer with no provider ORDERED BEFORE IT is refused, and the refusal names the step and
+// the capability rather than reporting a bare false.
+type CapabilityClosureVerdict
+  = CapabilityClosureClosed
+  | CapabilityClosureUnprovided {
+      step_name: String,
+      capability_label: String,
+    }
+
+type CapabilityClosureScan {
+  provided: List<String>
+  verdict: CapabilityClosureVerdict
+}
+
+fn capability_label_present(labels: List<String>, wanted: String) -> Bool {
+  fold_list(
+    xs: labels,
+    empty: false,
+    cons: fn(acc, l) { acc || l == wanted },
+  )
+}
+
+// ORDER IS THE POINT, not mere presence. A provider that runs AFTER its consumer is exactly the
+// deploy.yml failure with an extra step: the job contains a toolchain somewhere and the cargo
+// invocation still resolves nothing. So the fold consumes the step list in order and a capability
+// counts as available only once a preceding step has provided it.
+fn workflow_job_capability_closure(steps: List<CapabilityAnnotatedStep>) -> CapabilityClosureVerdict {
+  let scanned = fold_list(
+    xs: steps,
+    empty: CapabilityClosureScan { provided: [], verdict: CapabilityClosureClosed },
+    cons: fn(acc, s) {
+      match acc.verdict {
+        CapabilityClosureUnprovided { step_name: _, capability_label: _ } => acc
+        CapabilityClosureClosed =>
+          match s.role {
+            CapabilityNeutral => acc
+            ProvidesCapability { capability: c } =>
+              CapabilityClosureScan {
+                provided: list_snoc_item(
+                  xs: acc.provided,
+                  item: execution_capability_label(capability: c),
+                ),
+                verdict: acc.verdict,
+              }
+            ConsumesCapability { capability: c } =>
+              if capability_label_present(
+                labels: acc.provided,
+                wanted: execution_capability_label(capability: c),
+              ) {
+                acc
+              } else {
+                CapabilityClosureScan {
+                  provided: acc.provided,
+                  verdict: CapabilityClosureUnprovided {
+                    step_name: s.step_name,
+                    capability_label: execution_capability_label(capability: c),
+                  },
+                }
+              }
+          }
+      }
+    },
+  )
+  scanned.verdict
+}
+
+fn capability_closure_is_closed(v: CapabilityClosureVerdict) -> Bool {
+  match v {
+    CapabilityClosureClosed => true
+    CapabilityClosureUnprovided { step_name: _, capability_label: _ } => false
+  }
+}

@@ -81,6 +81,42 @@ pub enum RegenReceipt {
         changed_paths: Vec<String>,
         candidate_artifact: String,
     },
+    /// A POPULATION REFUSAL HAS NO MEASUREMENT, AND THIS VARIANT HAS NOWHERE TO WRITE ONE.
+    ///
+    /// The refusal happens BEFORE any content comparison, so there is no first generation to have
+    /// a digest of and no comparison to have an answer to. Written as a `FirstGeneration` receipt
+    /// this forced three fabrications into a persisted artifact: two `refused:population` strings
+    /// standing in digest positions, and `first_generation_equal: false` standing where "not
+    /// asked" belonged. The Bool was the load-bearing one, because unlike the string sentinels it
+    /// is INDISTINGUISHABLE from a real answer -- `false` is exactly what an honest unequal
+    /// comparison writes.
+    ///
+    /// It was not merely misleading in place, it CROSSED THE PROCESS BOUNDARY. The receipt file is
+    /// the only carrier between the two passes, `read_receipt` returned the fabricated `false` as
+    /// a `PriorMeasurement`, `PriorReceiptRef` copied it into the fixed-point receipt, and
+    /// `claim_executor` printed it as `referenced_first_generation_equal=false`. A standalone
+    /// `--required-regen-fixed-point` at the same commit passes the cross-tree guard precisely
+    /// BECAUSE the refusal happened at this commit, so the guard admits it rather than catching
+    /// it. The run still reds -- pass 2's real digest cannot equal `refused:population` -- so this
+    /// was diagnostic harm, not fail-open: the operator was told the first generation compared
+    /// unequal when it never compared at all.
+    ///
+    /// "Not asked" was already modelled correctly THREE times in this same file --
+    /// `FirstGeneration::NotMeasured`, the `first_generation_equal()` accessor's documented
+    /// `Option`, and `fixed_point_equal()`'s mirror of it -- so the Bool was a fourth
+    /// representation disagreeing with three correct neighbours, not a missing state (DESIGN §3).
+    /// The fix follows the move this file already made when the flat eight-field record split:
+    /// the variant has no `first_generation_equal` field and no digest fields, so the fabrication
+    /// is UNWRITABLE rather than detectable (DESIGN §4b, structural impossibility). What it
+    /// carries instead is the one thing a refusal actually knows -- why it refused.
+    #[serde(rename = "refused")]
+    Refused {
+        schema: String,
+        commit_sha: String,
+        authority_digest: String,
+        reason: String,
+        candidate_artifact: String,
+    },
     #[serde(rename = "fixed_point")]
     FixedPoint {
         schema: String,
@@ -97,6 +133,7 @@ impl RegenReceipt {
     pub fn commit_sha(&self) -> &str {
         match self {
             RegenReceipt::FirstGeneration { commit_sha, .. } => commit_sha,
+            RegenReceipt::Refused { commit_sha, .. } => commit_sha,
             RegenReceipt::FixedPoint { commit_sha, .. } => commit_sha,
         }
     }
@@ -110,6 +147,7 @@ impl RegenReceipt {
                 first_generation_equal,
                 ..
             } => Some(*first_generation_equal),
+            RegenReceipt::Refused { .. } => None,
             RegenReceipt::FixedPoint { .. } => None,
         }
     }
@@ -118,6 +156,7 @@ impl RegenReceipt {
     pub fn fixed_point_equal(&self) -> Option<bool> {
         match self {
             RegenReceipt::FirstGeneration { .. } => None,
+            RegenReceipt::Refused { .. } => None,
             RegenReceipt::FixedPoint {
                 fixed_point_equal, ..
             } => Some(*fixed_point_equal),
@@ -130,6 +169,9 @@ impl RegenReceipt {
             RegenReceipt::FirstGeneration {
                 candidate_artifact, ..
             } => Some(candidate_artifact),
+            RegenReceipt::Refused {
+                candidate_artifact, ..
+            } => Some(candidate_artifact),
             RegenReceipt::FixedPoint { .. } => None,
         }
     }
@@ -137,31 +179,46 @@ impl RegenReceipt {
     /// The referenced first-pass evidence, present only on `FixedPoint`.
     /// The digest of the tree THIS pass emitted.
     ///
-    /// TOTAL, unlike the accessors above, and the difference is the point: both variants
-    /// measure a candidate digest, so there is no arm that has none and no `Option` to
-    /// misread as "unmeasured". The Option-returning siblings are Option because the other
-    /// variant genuinely does not measure that fact.
+    /// `Some` exactly where a candidate digest was measured. This accessor was TOTAL while the
+    /// only two variants both measured one; `Refused` measures none, so the argument that made it
+    /// total no longer holds and the honest signature follows the same rule its Option-returning
+    /// siblings already state -- Option because the other variant genuinely does not measure that
+    /// fact. Returning a sentinel string here instead would put the fabrication straight back,
+    /// one accessor lower than where it was removed.
     ///
     /// Its consumer is the composed `--required-ci` run, which hands pass 1's digest to the
     /// fixed-point pass IN MEMORY rather than having it re-read the receipt file the previous
     /// process wrote. `run_required_regen_fixed_point` has always taken `pass1_digest:
     /// Option<String>`; before the phases shared a process there was no way to supply it.
-    pub fn candidate_generated_digest(&self) -> &str {
+    pub fn candidate_generated_digest(&self) -> Option<&str> {
         match self {
             RegenReceipt::FirstGeneration {
                 candidate_generated_digest,
                 ..
-            } => candidate_generated_digest,
+            } => Some(candidate_generated_digest),
+            RegenReceipt::Refused { .. } => None,
             RegenReceipt::FixedPoint {
                 candidate_generated_digest,
                 ..
-            } => candidate_generated_digest,
+            } => Some(candidate_generated_digest),
+        }
+    }
+
+    /// Why the pass refused, present only on `Refused`. The refusal reason is the one fact a
+    /// refusal genuinely measured, and carrying it on the receipt is what lets the next pass
+    /// refuse with the ORIGINAL cause instead of inventing a comparison result to stand for it.
+    pub fn refusal_reason(&self) -> Option<&str> {
+        match self {
+            RegenReceipt::FirstGeneration { .. } => None,
+            RegenReceipt::Refused { reason, .. } => Some(reason),
+            RegenReceipt::FixedPoint { .. } => None,
         }
     }
 
     pub fn prior(&self) -> Option<&PriorReceiptRef> {
         match self {
             RegenReceipt::FirstGeneration { .. } => None,
+            RegenReceipt::Refused { .. } => None,
             RegenReceipt::FixedPoint { prior, .. } => Some(prior),
         }
     }
@@ -174,12 +231,16 @@ pub struct RequiredRegenOutcome {
     /// WHETHER PASS ONE ACTUALLY EMITTED, kept OFF the receipt's digest fields on purpose.
     ///
     /// A population refusal happens before any content comparison, so there is no first
-    /// generation to have a digest OF. The receipt still has to carry a `String` in that
-    /// position, and it carries the sentinel `refused:population` — which is why the fixed-point
-    /// handoff must not read the receipt. Reading it there would compare a real pass-two digest
-    /// against sentinel prose and report a determinism failure nobody measured: a fabricated
+    /// generation to have a digest OF. This field carries that distinction for the IN-PROCESS
+    /// handoff; `RegenReceipt::Refused` now carries it across the process boundary, so neither
+    /// route has a digest position for a refusal to fill. The receipt previously did have one and
+    /// filled it with the sentinel `refused:population`, which is why this field was introduced:
+    /// handing the receipt to the fixed-point phase would have compared a real pass-two digest
+    /// against sentinel prose and reported a determinism failure nobody measured -- a fabricated
     /// plausible output (DESIGN §5), and a convincing one, since the message names two digests
-    /// and looks exactly like a genuine mismatch.
+    /// and looks exactly like a genuine mismatch. Both carriers now model it; this one is not
+    /// redundant with the receipt, because the in-process handoff must not have to go through a
+    /// file at all.
     pub first_generation: FirstGeneration,
 }
 
@@ -214,46 +275,45 @@ pub fn run_required_regen(
     let sources = super::regen_input_sources(&workspace)?;
     let authority_digest = authority_digest_from_sources(&sources)?;
 
-    let emitted = compile_stage0(&workspace)?;
-
-    let committed_basenames = committed_generated_basenames(&stage0_src)?;
-    if emitted.is_empty() {
-        return regen_refusal_outcome(
-            &workspace,
-            candidate_dir_rel,
-            receipt_rel,
-            commit_sha,
-            authority_digest,
-            "refusal: emit produced zero files".to_string(),
-        );
-    }
-    let emitted_basenames = generated_basenames_from_emit(&emitted);
-    let population_err = validate_compared_populations(&committed_basenames, &emitted_basenames);
-    if let Some(reason) = population_err {
-        return regen_refusal_outcome(
-            &workspace,
-            candidate_dir_rel,
-            receipt_rel,
-            commit_sha,
-            authority_digest,
-            reason,
-        );
-    }
-
-    let sync = compare_generated_surfaces(&stage0_src, &emitted, &committed_basenames)?;
-    // verify_hand_maintained writes scratch normalize files into candidate_dir; on a clean
-    // tree nothing has created that directory yet (write_emitted_tree does so later), so it
-    // must exist before this call.
-    fs::create_dir_all(&candidate_dir)
-        .map_err(|e| format!("create {}: {e}", candidate_dir.display()))?;
-    let hand = verify_hand_maintained(&emitted, &stage0_src, &candidate_dir)?;
-
-    let committed_digest =
-        tree_digest_for_basenames(&stage0_src, &committed_basenames, "committed")?;
-    let candidate_digest = tree_digest_from_map(&emitted, &committed_basenames)?;
-
-    let first_generation_equal = sync.matches && hand.unverifiable.is_empty();
-    let changed_paths = sync.drifted_paths.clone();
+    // PRODUCTION, THEN ADJUDICATION -- and the order is the whole repair.
+    //
+    // Every refusal below used to return BEFORE the candidate tree was written, so the run that
+    // refuses was exactly the run that destroyed the artifact needed to close it. The population
+    // arm is not a hypothetical: adding a module to the v1 seed closure emits a mirror the
+    // committed tree does not have, which is `emitted_not_committed` by construction on that
+    // module's first commit, and the author's only route to the file they are being told to
+    // commit is this tree.
+    //
+    // THIS IS WHY THE SHARED MEASUREMENT IS SPLIT IN TWO rather than called whole. The extraction
+    // main landed is right -- one producer of the drift fact, shared by the drift gate, the
+    // behavioural receipt and this path -- but it fused emit with adjudication, and a fused
+    // measurement can only refuse before anything is written. `emit_generated_surface` and
+    // `adjudicate_generated_surface` are the two halves; `measure_generated_surface` is still
+    // their composition and still the single entry for every caller that wants the whole answer,
+    // so nothing gained a second producer. This path is the one caller that needs to act BETWEEN
+    // them.
+    //
+    // Writing first is not a relaxation. The gate refuses exactly the same populations it refused
+    // before, with the same typed causes; what changes is that the emitter's product survives the
+    // refusal, because it is emit's output and not a reward for agreeing with the committed tree.
+    // Authority for the ordering: `v2.workflow.required_regen` `required_regen_run`, whose verdict
+    // arms cannot be spelled without the tree they judged.
+    let (emitted, emitted_basenames) = match emit_generated_surface(&workspace)? {
+        // EMIT PRODUCED NOTHING IS NOT A VERDICT ABOUT A TREE. Writing a receipt here would name a
+        // `candidate_artifact` no pass had written, which is the impersonation the receipt split
+        // above exists to end, one field over. `CandidateTreeUnproduced` in
+        // `v2.workflow.required_regen` is the modeled arm and it carries no tree; the host
+        // spelling of an outcome with no tree and no verdict is a refusal of the run itself.
+        GeneratedSurfaceEmit::EmitRefused { reason } => {
+            return Err(format!(
+                "{reason} — no candidate tree produced, nothing to compare"
+            ));
+        }
+        GeneratedSurfaceEmit::Emitted {
+            emitted,
+            emitted_basenames,
+        } => (emitted, emitted_basenames),
+    };
 
     if candidate_dir.exists() {
         fs::remove_dir_all(&candidate_dir)
@@ -262,7 +322,39 @@ pub fn run_required_regen(
     let fresh_src = candidate_dir.join("src");
     write_emitted_tree(&fresh_src, &emitted)?;
     copy_hand_maintained_support(&stage0_src, &fresh_src)?;
-    verify_candidate_tree(&fresh_src, &committed_basenames)?;
+    // Verified against what EMIT produced, not against what is committed. Those two populations
+    // are equal on a clean tree and differ in precisely the case this ordering exists to serve, so
+    // checking the committed population here would re-impose the refusal one line after the write
+    // and fail the producer on the run that needs it. The invariant a producer owes is that its
+    // own product landed whole.
+    verify_candidate_tree(&fresh_src, &emitted_basenames)?;
+
+    let (committed_basenames, sync) =
+        match adjudicate_generated_surface(&stage0_src, &emitted, &emitted_basenames)? {
+            GeneratedSurfaceAdjudicated::Refused { reason } => {
+                return regen_refusal_outcome(
+                    &workspace,
+                    candidate_dir_rel,
+                    receipt_rel,
+                    commit_sha,
+                    authority_digest,
+                    format!(
+                        "{reason} — the produced candidate tree is at {}",
+                        fresh_src.display()
+                    ),
+                );
+            }
+            GeneratedSurfaceAdjudicated::Measured { committed, sync } => (committed, sync),
+        };
+
+    let hand = verify_hand_maintained(&emitted, &stage0_src, &candidate_dir)?;
+
+    let committed_digest =
+        tree_digest_for_basenames(&stage0_src, &committed_basenames, "committed")?;
+    let candidate_digest = tree_digest_from_map(&emitted, &committed_basenames)?;
+
+    let first_generation_equal = sync.matches && hand.unverifiable.is_empty();
+    let changed_paths = sync.drifted_paths.clone();
 
     // Every field here was measured by THIS pass against THIS tree. The old shape also carried
     // `fixed_point_equal: false`, which was not a measurement at all -- the first pass never asks
@@ -429,6 +521,169 @@ pub fn run_required_regen_fixed_point(
     })
 }
 
+/// The emit-and-compare sequence, performed ONCE and in ONE place.
+///
+/// This exists because an earlier revision of this file had two producers of a single fact —
+/// which mirrors drifted. `measure_generated_drift` re-typed the same five calls that
+/// `run_required_regen` performs, and nothing kept the copies in step. The receipt is on the
+/// record: #8618 repaired a defect INSIDE `compare_generated_surfaces` (the committed side was
+/// being normalized, so the comparison was `normalize(normalize(x))` against `normalize(x)` — a
+/// false-positive drift with no reachable green). A repair landing in one of two copies of this
+/// sequence leaves the other answering the old way, and the copies agreeing on the day they are
+/// written is exactly what makes the duplication easy to leave in place.
+///
+/// The two callers genuinely differ, but they differ in their FAILURE POLICY, not in the
+/// measurement: `run_required_regen` routes a refusal to `regen_refusal_outcome`, which writes a
+/// receipt and returns `Ok` carrying failures, while the drift gate wants `Err`. So the refusal
+/// is returned as a value and each caller applies its own policy — one `match` at the call site
+/// rather than a second copy of the five calls above it.
+enum GeneratedSurfaceMeasured {
+    /// The comparison was taken. `emitted` and `committed` are returned because the regen path
+    /// needs them for the candidate tree and its digests, and recomputing them would mean running
+    /// the whole emit twice.
+    Measured {
+        emitted: HashMap<String, String>,
+        committed: Vec<String>,
+        /// Returned rather than recomputed by the caller: it is part of THIS measurement, and a
+        /// caller deriving it again would be a second producer of the same fact one level down.
+        emitted_basenames: Vec<String>,
+        sync: SyncReport,
+    },
+    /// The comparison could NOT be taken. This is ignorance, never "no drift" — see the refusal
+    /// note on `measure_generated_drift`.
+    Refused { reason: String },
+}
+
+/// What the emitter PRODUCED, before anything has been compared to it.
+///
+/// The half of the measurement that exists on its own because one caller must act between the two:
+/// `run_required_regen` writes the candidate tree here, so that a later adjudication refusal
+/// leaves the author holding the mirror it tells them to commit instead of destroying it.
+enum GeneratedSurfaceEmit {
+    Emitted {
+        emitted: HashMap<String, String>,
+        emitted_basenames: Vec<String>,
+    },
+    /// Emit itself produced nothing. Distinct from a comparison that could not be taken: there is
+    /// no candidate to have an opinion about, rather than an opinion that could not be formed.
+    EmitRefused { reason: String },
+}
+
+/// The verdict half: what the committed tree says about a candidate that already exists.
+enum GeneratedSurfaceAdjudicated {
+    Measured {
+        committed: Vec<String>,
+        sync: SyncReport,
+    },
+    /// Ignorance, never "no drift" -- same refusal semantics as `GeneratedSurfaceMeasured`.
+    Refused { reason: String },
+}
+
+fn emit_generated_surface(workspace: &Path) -> Result<GeneratedSurfaceEmit, String> {
+    let emitted = compile_stage0(workspace)?;
+    if emitted.is_empty() {
+        return Ok(GeneratedSurfaceEmit::EmitRefused {
+            reason: "refusal: emit produced zero files".to_string(),
+        });
+    }
+    let emitted_basenames = generated_basenames_from_emit(&emitted);
+    Ok(GeneratedSurfaceEmit::Emitted {
+        emitted,
+        emitted_basenames,
+    })
+}
+
+fn adjudicate_generated_surface(
+    stage0_src: &Path,
+    emitted: &HashMap<String, String>,
+    emitted_basenames: &[String],
+) -> Result<GeneratedSurfaceAdjudicated, String> {
+    let committed = committed_generated_basenames(stage0_src)?;
+    if let Some(reason) = validate_compared_populations(&committed, emitted_basenames) {
+        return Ok(GeneratedSurfaceAdjudicated::Refused { reason });
+    }
+    let sync = compare_generated_surfaces(stage0_src, emitted, &committed)?;
+    Ok(GeneratedSurfaceAdjudicated::Measured { committed, sync })
+}
+
+/// THE COMPOSITION, and still the single entry for every caller that wants the whole answer.
+///
+/// Splitting the two halves above did not create a second producer of anything: emit happens in
+/// exactly one place, adjudication in exactly one place, and this function is their sequence. The
+/// drift gate and the behavioural receipt call it unchanged; only the regen path, which has to
+/// write the candidate BETWEEN them, reaches for the halves.
+fn measure_generated_surface(
+    workspace: &Path,
+    stage0_src: &Path,
+) -> Result<GeneratedSurfaceMeasured, String> {
+    let (emitted, emitted_basenames) = match emit_generated_surface(workspace)? {
+        GeneratedSurfaceEmit::EmitRefused { reason } => {
+            return Ok(GeneratedSurfaceMeasured::Refused { reason })
+        }
+        GeneratedSurfaceEmit::Emitted {
+            emitted,
+            emitted_basenames,
+        } => (emitted, emitted_basenames),
+    };
+    match adjudicate_generated_surface(stage0_src, &emitted, &emitted_basenames)? {
+        GeneratedSurfaceAdjudicated::Refused { reason } => {
+            Ok(GeneratedSurfaceMeasured::Refused { reason })
+        }
+        GeneratedSurfaceAdjudicated::Measured { committed, sync } => {
+            Ok(GeneratedSurfaceMeasured::Measured {
+                emitted,
+                committed,
+                emitted_basenames,
+                sync,
+            })
+        }
+    }
+}
+
+/// The emitted generated surface, keyed by basename.
+///
+/// Routed through the SAME `measure_generated_surface` the drift gate and the regen path use, so
+/// the bytes a behavioural receipt compiles are the bytes the drift gate compared. A second emit
+/// here would be a second producer of the candidate itself -- the one fact a receipt absolutely
+/// cannot afford to have two of.
+pub fn emitted_generated_sources() -> Result<HashMap<String, String>, String> {
+    let workspace = workspace_root();
+    let stage0_src = workspace.join("src/v1/stage0/src");
+    let emitted = match measure_generated_surface(&workspace, &stage0_src)? {
+        GeneratedSurfaceMeasured::Refused { reason } => return Err(reason),
+        GeneratedSurfaceMeasured::Measured { emitted, .. } => emitted,
+    };
+    // KEYED BY BASENAME, and the conversion happens HERE rather than at the call site.
+    //
+    // Emit keys carry a `src/` prefix; everything that joins against a committed mirror keys on
+    // `file_name()`. `generated_basenames_from_emit` already carries the warning that comparing
+    // the two key spaces "made every file mismatch in both directions" -- and a caller of this
+    // function walked straight into it anyway, looking up `std_pareto.rs` in a map keyed by emit
+    // path and getting nothing. It refused rather than reporting equivalence, which is the design
+    // working, but the refusal was about the key space rather than about the candidate.
+    //
+    // Returning the raw map invites that mistake from every future caller. Doing the derivation
+    // once, through the same `emit_path_basename` the population census uses, removes it.
+    let mut out: HashMap<String, String> = HashMap::new();
+    for (path, content) in emitted {
+        if !path.ends_with(".rs") || is_hand_maintained_path(&path) {
+            continue;
+        }
+        let base = emit_path_basename(&path).to_string();
+        // A collision would silently drop one candidate and compare the wrong bytes. The flat
+        // generated surface makes basenames unique, so a duplicate means that assumption has
+        // stopped holding, and a receipt built on a stale assumption is worse than no receipt.
+        if let Some(prior) = out.insert(base.clone(), content) {
+            let _ = prior;
+            return Err(format!(
+                "refusal: two emitted paths share the basename {base}; the generated surface \
+                 is no longer flat and a basename join would compare the wrong candidate"
+            ));
+        }
+    }
+    Ok(out)
+}
+
 struct SyncReport {
     matches: bool,
     drifted_paths: Vec<String>,
@@ -529,14 +784,34 @@ fn validate_compared_populations(committed: &[String], emitted: &[String]) -> Op
             committed_not_emitted.push(name.clone());
         }
     }
-    if !emitted_not_committed.is_empty() || !committed_not_emitted.is_empty() {
-        return Some(format!(
-            "refusal: surface population mismatch — emitted_not_committed={:?} committed_not_emitted={:?}",
-            emitted_not_committed,
-            committed_not_emitted
+    // TWO OPPOSITE STATES, TWO REFUSALS, TWO REMEDIES -- this refused on their union, so a module
+    // being introduced was indistinguishable from the emitter having LOST a surface. Authority for
+    // the split: `v2.workflow.required_regen` `MirrorMissingForEmittedSurface` and
+    // `CommittedMirrorNoLongerEmitted`.
+    //
+    // NEITHER IS ADMITTED, and the first one is where that matters. "An author introduced a module"
+    // and "the emitter invented a surface nobody authored" produce the SAME population, and the
+    // second is what this check exists to catch, so no arm computed from the populations can tell
+    // them apart -- admitting the first would be this same conflation pointing the other way. The
+    // refusal therefore names the fork and leaves the decision with the author; what changed is
+    // that the install branch is now actionable, because the ordering above wrote the bytes before
+    // this check ran instead of discarding them.
+    let mut reasons = Vec::new();
+    if !emitted_not_committed.is_empty() {
+        reasons.push(format!(
+            "refusal: emitted surface has no committed mirror — {emitted_not_committed:?}; if you introduced these modules, install the produced mirror(s) named below and commit them; if you did not, the emitter produced a surface nobody authored and installing it would launder that"
         ));
     }
-    None
+    if !committed_not_emitted.is_empty() {
+        reasons.push(format!(
+            "refusal: committed mirror is no longer emitted — {committed_not_emitted:?}; the emitter stopped producing these surfaces, so either the authority that emitted them was removed on purpose (delete the committed mirror) or it regressed (restore it) — do NOT install anything for this class"
+        ));
+    }
+    if reasons.is_empty() {
+        None
+    } else {
+        Some(reasons.join(" | "))
+    }
 }
 
 fn verify_candidate_tree(
@@ -585,20 +860,18 @@ fn regen_refusal_outcome(
     reason: String,
 ) -> Result<RequiredRegenOutcome, String> {
     let receipt_path = workspace.join(receipt_rel);
-    // A population refusal happens BEFORE any content comparison, so the digests are not
-    // "refused" values of a measurement -- there was no measurement. The sentinel survives in the
-    // RECEIPT, whose fields are `String`, and `first_generation_equal: false` below is likewise
-    // "not asked" rather than "asked and answered no". What no longer survives is the sentinel's
-    // route OUT: the outcome carries `FirstGeneration::NotMeasured`, so the composed coordinator
-    // cannot hand this string to the fixed-point phase.
-    let receipt = RegenReceipt::FirstGeneration {
+    // A population refusal happens BEFORE any content comparison, so there is nothing here that a
+    // digest or an equality could be ABOUT. The previous shape wrote a `FirstGeneration` receipt
+    // and filled the three unmeasured positions with `refused:population`, `refused:population`
+    // and `false`. `Refused` has none of those three fields, so the placeholders are unwritable
+    // rather than merely discouraged, and the receipt carries the refusal's actual content --
+    // its cause. See the variant's own comment for the route the fabricated Bool took off this
+    // machine.
+    let receipt = RegenReceipt::Refused {
         schema: RECEIPT_SCHEMA.to_string(),
         commit_sha,
         authority_digest,
-        committed_generated_digest: "refused:population".to_string(),
-        candidate_generated_digest: "refused:population".to_string(),
-        first_generation_equal: false,
-        changed_paths: Vec::new(),
+        reason: reason.clone(),
         candidate_artifact: candidate_dir_rel.to_string(),
     };
     write_receipt(&receipt_path, &receipt)?;
@@ -959,6 +1232,22 @@ fn read_receipt(path: &Path) -> Result<PriorMeasurement, String> {
                 candidate_artifact,
             })
         }
+        // THE ROUTE THE FABRICATED BOOL USED TO TAKE. Before `Refused` existed, a population
+        // refusal left a `FirstGeneration` receipt on disk and this arm read it as an ordinary
+        // measurement: `first_generation_equal: false` became a `PriorMeasurement`, then a
+        // `PriorReceiptRef`, then `referenced_first_generation_equal=false` on the operator's
+        // terminal -- a comparison result reported for a comparison that never ran. The
+        // cross-tree guard above cannot catch it, because the refusal happened AT this commit,
+        // which is exactly the condition that guard admits. Now the variant carries no such
+        // field, and this arm refuses with the ORIGINAL cause rather than a derived one: what
+        // the operator has to fix is the refusal, not the fixed point.
+        RegenReceipt::Refused { reason, .. } => Err(format!(
+            "refusal: the first-generation pass at this commit REFUSED ({reason}) — there is no \
+             first-generation measurement for the fixed-point pass to reference. Close that \
+             refusal and re-run `claim_executor --required-regen` before asking for the fixed \
+             point. Receipt: {}",
+            path.display()
+        )),
         RegenReceipt::FixedPoint { .. } => Err(format!(
             "refusal: prior receipt {} is a fixed-point receipt, not a first-generation \
              measurement -- the fixed-point pass cannot build on another fixed-point pass. \
@@ -1036,57 +1325,138 @@ mod tests {
         let _ = fs::remove_dir_all(&tmp);
     }
 
-    // THE SENTINEL HAS NO ROUTE TO THE FIXED-POINT PHASE.
+    // THE SENTINEL HAS NO ROUTE TO THE FIXED-POINT PHASE -- ON EITHER CARRIER.
     //
-    // The defect this pins, found in review of gunbc#8647: a population refusal returns `Ok`
-    // with a receipt whose digest fields hold `refused:population`. Before the typed
-    // `FirstGeneration`, the composed coordinator read the receipt, so a refusal handed that
-    // string to phase three, which compared it against a real pass-two digest and reported
-    // `fixed-point refused: pass-1 digest refused:population != pass-2 digest <real>` -- a
-    // determinism failure nobody measured, wearing the exact shape of a real one.
+    // The defect this pins, found in review of gunbc#8647: a population refusal returns `Ok`, and
+    // the receipt it left behind held `refused:population` in both digest positions and
+    // `first_generation_equal: false` where "not asked" belonged. Two carriers cross out of that
+    // function -- the in-process `RequiredRegenOutcome` and the on-disk receipt -- and the typed
+    // `FirstGeneration` closed only the first. The receipt is the one that crosses the PROCESS
+    // boundary, so the fabricated Bool reached a standalone `--required-regen-fixed-point` run
+    // through `read_receipt` and printed as `referenced_first_generation_equal=false`.
     //
-    // RED, stated at what this test can actually reach: making `pass1_digest_for_fixed_point`
-    // answer from the receipt -- `Some(outcome.receipt.candidate_generated_digest())` -- fails
-    // it. What it does NOT reach is the coordinator choosing to bypass the accessor and read the
-    // receipt itself; that is one call site in `claim_executor.rs`, guarded by the comment there
-    // and by review, not by this test. Naming the gap rather than implying the test closes it.
+    // Both halves are asserted here. The in-memory half is the original test, unchanged in
+    // substance: `pass1_digest_for_fixed_point` yields `None` for a refusal, and making it answer
+    // from the receipt fails it. The on-disk half is new and is what this pass adds: the refusal
+    // variant has no Bool and no digest to read, and `read_receipt` refuses a refused prior with
+    // its ORIGINAL cause rather than passing a derived answer along.
     #[test]
     fn a_refused_first_generation_hands_no_digest_to_the_fixed_point() {
-        let sentinel_receipt = || RegenReceipt::FirstGeneration {
+        let refused_receipt = || RegenReceipt::Refused {
             schema: RECEIPT_SCHEMA.to_string(),
             commit_sha: "sha".to_string(),
             authority_digest: "auth".to_string(),
-            committed_generated_digest: "refused:population".to_string(),
-            candidate_generated_digest: "refused:population".to_string(),
-            first_generation_equal: false,
-            changed_paths: Vec::new(),
+            reason: "refusal: emit produced zero files".to_string(),
             candidate_artifact: "cand".to_string(),
         };
 
         let refused = RequiredRegenOutcome {
-            receipt: sentinel_receipt(),
+            receipt: refused_receipt(),
             failures: vec!["refusal: emit produced zero files".to_string()],
             first_generation: FirstGeneration::NotMeasured(
                 "refusal: emit produced zero files".to_string(),
             ),
         };
         assert_eq!(pass1_digest_for_fixed_point(&refused), None);
-        // And the sentinel IS still sitting in the receipt, which is what makes the coproduct
-        // load-bearing rather than decorative: the wrong answer is right there to be read.
+
+        // THE HALF THAT USED TO BE THE GAP. The old test asserted the OPPOSITE of this line --
+        // that the sentinel "IS still sitting in the receipt ... the wrong answer is right there
+        // to be read" -- and called the coproduct load-bearing for keeping the outcome clean
+        // while the receipt stayed fabricated. There is now no digest to read and no equality to
+        // misread; both are absent from the variant rather than absent by convention.
+        assert_eq!(refused.receipt.candidate_generated_digest(), None);
+        assert_eq!(refused.receipt.first_generation_equal(), None);
         assert_eq!(
-            refused.receipt.candidate_generated_digest(),
-            "refused:population"
+            refused.receipt.refusal_reason(),
+            Some("refusal: emit produced zero files")
         );
 
         // POSITIVE CONTROL: ordinary drift is not a refusal. Pass one emitted, the comparison
         // disagreed, and the fixed point still has a subject -- skipping it there would lose a
-        // determinism signal exactly when drift makes it interesting.
+        // determinism signal exactly when drift makes it interesting. Note this control now
+        // carries a REAL digest and a REAL `false`, which is the distinction the whole change is
+        // about: `false` here is an answer, and there is no longer any receipt on which it is not.
         let drifted = RequiredRegenOutcome {
-            receipt: sentinel_receipt(),
+            receipt: RegenReceipt::FirstGeneration {
+                schema: RECEIPT_SCHEMA.to_string(),
+                commit_sha: "sha".to_string(),
+                authority_digest: "auth".to_string(),
+                committed_generated_digest: "committed-digest".to_string(),
+                candidate_generated_digest: "real-digest".to_string(),
+                first_generation_equal: false,
+                changed_paths: vec!["drifted.rs".to_string()],
+                candidate_artifact: "cand".to_string(),
+            },
             failures: vec!["17 file(s) drifted".to_string()],
             first_generation: FirstGeneration::Measured("real-digest".to_string()),
         };
         assert_eq!(pass1_digest_for_fixed_point(&drifted), Some("real-digest"));
+        assert_eq!(
+            drifted.receipt.candidate_generated_digest(),
+            Some("real-digest")
+        );
+        assert_eq!(drifted.receipt.first_generation_equal(), Some(false));
+        assert_eq!(drifted.receipt.refusal_reason(), None);
+    }
+
+    // THE ON-DISK HALF, THROUGH THE REAL READER. `read_receipt` is the function that turned the
+    // fabricated Bool into a `PriorMeasurement`, so the refusal has to be asserted THROUGH it and
+    // not against the variant alone.
+    //
+    // RED: give `RegenReceipt::Refused` a `first_generation_equal: bool` field and let this arm
+    // build a `PriorMeasurement` from it, and this test fails -- which is the whole defect
+    // restored. The positive control beside it is what keeps the refusal from being satisfied by
+    // a reader that refuses everything.
+    #[test]
+    fn read_receipt_refuses_a_refused_prior_with_its_original_cause() {
+        let tmp = temp_dir("required-regen-refused-prior");
+        fs::create_dir_all(&tmp).expect("create tmp");
+        let path = tmp.join("receipt.json");
+
+        write_receipt(
+            &path,
+            &RegenReceipt::Refused {
+                schema: RECEIPT_SCHEMA.to_string(),
+                commit_sha: "sha".to_string(),
+                authority_digest: "auth".to_string(),
+                reason: "refusal: committed mirror is no longer emitted".to_string(),
+                candidate_artifact: "cand".to_string(),
+            },
+        )
+        .expect("write refused receipt");
+
+        // Matched rather than `expect_err` because `PriorMeasurement` is deliberately not `Debug`;
+        // the Ok arm names what went wrong instead of asking the type to print itself.
+        let err = match read_receipt(&path) {
+            Ok(_) => panic!("a refused prior must not read as a first-generation measurement"),
+            Err(e) => e,
+        };
+        assert!(
+            err.contains("refusal: committed mirror is no longer emitted"),
+            "the ORIGINAL cause must survive, not a comparison result standing in for it: {err}"
+        );
+
+        // POSITIVE CONTROL: a real first-generation receipt still reads, with its real answer.
+        write_receipt(
+            &path,
+            &RegenReceipt::FirstGeneration {
+                schema: RECEIPT_SCHEMA.to_string(),
+                commit_sha: "sha".to_string(),
+                authority_digest: "auth".to_string(),
+                committed_generated_digest: "committed-digest".to_string(),
+                candidate_generated_digest: "real-digest".to_string(),
+                first_generation_equal: false,
+                changed_paths: vec!["drifted.rs".to_string()],
+                candidate_artifact: "cand".to_string(),
+            },
+        )
+        .expect("write measured receipt");
+
+        let prior = read_receipt(&path).expect("a measured prior reads");
+        assert_eq!(prior.candidate_generated_digest, "real-digest");
+        assert!(!prior.first_generation_equal);
+
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     // LOCAL RUST RED CONTROL FOR THE DUAL-INPUT REFUSAL — local, NOT enrolled. The Rust suite

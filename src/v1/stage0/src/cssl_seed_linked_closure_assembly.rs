@@ -13,7 +13,6 @@ pub enum AssemblyError {
     MissingEntryFile { path: PathBuf },
     EntryMutated { before: String, after: String },
     MissingEmittedLibRs { path: PathBuf },
-    MissingSeedLibRs { path: PathBuf },
     RefusedDep { module: String, reason: String },
     Io(std::io::Error),
 }
@@ -29,7 +28,6 @@ impl std::fmt::Display for AssemblyError {
                 )
             }
             Self::MissingEmittedLibRs { path } => write!(f, "missing emitted lib.rs {path:?}"),
-            Self::MissingSeedLibRs { path } => write!(f, "missing seed lib.rs {path:?}"),
             Self::RefusedDep { module, reason } => {
                 write!(f, "refused dep assembly for {module}: {reason}")
             }
@@ -74,12 +72,6 @@ fn sha256_hex(path: &Path) -> Result<String, AssemblyError> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-fn seed_has_pub_mod(seed_lib_rs: &Path, module: &str) -> Result<bool, AssemblyError> {
-    let content = fs::read_to_string(seed_lib_rs)?;
-    let needle = format!("pub mod {module};");
-    Ok(content.lines().any(|l| l.trim() == needle))
-}
-
 fn parse_closure_mods(lib_rs: &Path) -> Result<Vec<String>, AssemblyError> {
     let content = fs::read_to_string(lib_rs)?;
     Ok(content
@@ -93,34 +85,6 @@ fn parse_closure_mods(lib_rs: &Path) -> Result<Vec<String>, AssemblyError> {
         .collect())
 }
 
-fn write_compiler_seed_reexport(dest: &Path, seed_mod: &str) -> Result<(), AssemblyError> {
-    let body = format!(
-        "// seed-linked dep shim — auto-derived compiler re-export\n\
-         #![allow(clippy::all, dead_code, unused_imports)]\n\
-         pub use v1_compiler::{seed_mod}::*;\n"
-    );
-    fs::write(dest, body)?;
-    Ok(())
-}
-
-/// Membership in the gunbc-emitted closure: module listed in emitted `src/lib.rs`
-/// and backed by an emitted `src/{module}.rs`. The assembly loop only visits
-/// such modules; `seed lib.rs` `pub mod` presence is an external-oracle fact and
-/// must not trigger seed-replace for closure members (seed stubs may lack
-/// gunbc-emitted type surface — e.g. `ResolvedTree` in `v2_compiler_resolve`).
-fn is_emitted_closure_member(emitted_lib_rs: &Path, module: &str, dest: &Path) -> bool {
-    dest.is_file()
-        && parse_closure_mods(emitted_lib_rs)
-            .map(|mods| mods.iter().any(|m| m == module))
-            .unwrap_or(false)
-}
-
-fn is_compiler_family_module(module: &str) -> bool {
-    module.starts_with("v2_compiler_")
-        || module.starts_with("extdeps_")
-        || module.starts_with("v1_compiler_")
-}
-
 /// The emit-artifact sanitize scaffold is DISSOLVED (2026-07-23): its last rule
 /// (dedupe symbols across `pub use` lines) moved to the emitter's construction
 /// seam (`strip_repeated_use_symbols` in v1.compiler.emit_rust), and the 21-module
@@ -128,16 +92,54 @@ fn is_compiler_family_module(module: &str) -> bool {
 /// raw_dup_pub_use column, measured on the RAW emit before assembly) shows zero
 /// firings. Emit-retained artifacts are now byte-untouched by assembly.
 ///
-/// Assembly arms: entry untouched · compiler seed re-export · bootstrap_inline ·
-/// whole-closure emit-retain default (typed Refused only when closure mod lacks
-/// emitted .rs).
+/// Assembly arms: entry untouched · bootstrap_inline · whole-closure emit-retain
+/// default (typed Refused only when closure mod lacks emitted .rs).
+///
+/// THE COMPILER-SEED-RE-EXPORT ARM IS DELETED, AND WITH IT THE ONLY READ OF THE
+/// COMMITTED SEED `lib.rs`. That arm replaced a closure member's emitted bytes with
+/// `pub use v1_compiler::{mod}::*` when the seed's `lib.rs` text carried a matching
+/// `pub mod` line — a second authority over seed mod-tree membership, decided by
+/// text-parsing a file whose modeled authority is
+/// `v2.compiler.self_host.stage0_crate_layout`. It was ALREADY UNREACHABLE: its guard
+/// required `!is_emitted_closure_member(emitted_lib_rs, module, dest)`, which expanded
+/// to `!(dest.is_file() && parse_closure_mods(emitted_lib_rs).contains(module))` — and
+/// at that point in the loop `module` comes from that same parse of that same file and
+/// `dest.is_file()` has just been asserted, so the negation was false by construction.
+/// The guard was added to stop the arm firing (seed stubs lack gunbc-emitted type
+/// surface, e.g. `ResolvedTree` in `v2_compiler_resolve`); the arm itself was left
+/// standing behind it. Deleting it removes the text-parse rather than regrounding it,
+/// so no second reader of seed mod-tree membership survives here at all.
+///
+/// Verified by execution before deletion: substituting `panic!` for the arm's body left
+/// the module's nine tests byte-identical in outcome (8 passed, 1 pre-existing
+/// environment failure needing release bins, before and after). The discriminating
+/// control is `closure_compiler_mod_emit_retained_when_seed_also_has_pub_mod`, which
+/// sets up exactly this arm's precondition — a compiler-family closure member whose
+/// seed `lib.rs` DOES carry the `pub mod` line — and asserts the emitted bytes survive.
+/// The `repo_root` PARAMETER GOES WITH IT, and that is the point rather than tidying. It
+/// existed solely to derive `repo_root.join("src/v1/stage0/src/lib.rs")`. With it gone,
+/// assembly has no input from which the seed `lib.rs` location is derivable at all: its
+/// remaining paths are the candidate `out_dir`, the entry `.dag`, and the (already unused)
+/// std-bridge dir. So consulting the seed mod tree is not merely refused here — it has no
+/// representation, which is DESIGN 4b's top rung rather than the one below it.
+///
+/// KEEPING THE PARAMETER TO PRESERVE THE CONTROL WAS CONSIDERED AND REJECTED. DESIGN 4b(4)
+/// keeps a class's discriminating control enrolled across a climb, and on that reading the
+/// parameter had to stay so the test could still hand assembly a repo whose seed carries
+/// the line. But 4b(4) protects evidence for a state that remains DESCRIBABLE; at
+/// structural impossibility the invalid state has no constructor, and a control with no
+/// constructible subject is not evidence being preserved — it is a writable path preserved
+/// for the benefit of a check, which is the concession DESIGN 5 names outright. The
+/// evidence is not lost, it is RETARGETED: `closure_compiler_mod_stays_emit_retained` still
+/// asserts, on a constructible subject, that a compiler-family closure member keeps its
+/// emitted bytes and never becomes a `pub use v1_compiler::` re-export. That is the
+/// regression this file must not suffer again, and it is now checked without holding the
+/// door open for it.
 pub fn assemble_seed_linked_closure(
     out_dir: &Path,
     entry_dag: &Path,
-    repo_root: &Path,
     _std_bridge_dir: &Path,
 ) -> Result<(), AssemblyError> {
-    let seed_lib_rs = repo_root.join("src/v1/stage0/src/lib.rs");
     let src_dir = out_dir.join("src");
     let emitted_lib_rs = src_dir.join("lib.rs");
     let entry_mod = dag_entry_rust_module(entry_dag)?;
@@ -150,9 +152,6 @@ pub fn assemble_seed_linked_closure(
         return Err(AssemblyError::MissingEmittedLibRs {
             path: emitted_lib_rs,
         });
-    }
-    if !seed_lib_rs.is_file() {
-        return Err(AssemblyError::MissingSeedLibRs { path: seed_lib_rs });
     }
 
     let entry_hash_before = sha256_hex(&entry_file)?;
@@ -172,14 +171,6 @@ pub fn assemble_seed_linked_closure(
                 module: module.clone(),
                 reason: "closure mod missing emitted .rs file".to_string(),
             });
-        }
-
-        if is_compiler_family_module(&module)
-            && !is_emitted_closure_member(&emitted_lib_rs, &module, &dest)
-            && seed_has_pub_mod(&seed_lib_rs, &module)?
-        {
-            write_compiler_seed_reexport(&dest, &module)?;
-            continue;
         }
 
         // Whole-closure default (cssl_closure_assembly_note): any module in the
@@ -259,22 +250,25 @@ mod tests {
             ],
         )
         .expect("tree");
-        let seed_lib = root.join("seed/src/lib.rs");
         let repo = root.join("repo");
-        fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
-        fs::copy(&seed_lib, repo.join("src/v1/stage0/src/lib.rs")).expect("copy seed");
         let dag = repo.join("src/v2/compiler/01_tokenize.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.tokenize\n").expect("dag");
         let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
-        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
         let kept = fs::read_to_string(out.join("src/std_error_primitives.rs")).expect("read");
         assert!(kept.contains("emitted std_error_primitives"));
     }
 
     #[test]
-    fn closure_compiler_mod_emit_retained_when_seed_also_has_pub_mod() {
+    // REGRESSION CONTROL for the deleted compiler-seed-re-export arm. Its former subject --
+    // a seed `lib.rs` carrying the same `pub mod` line -- is no longer constructible: assembly
+    // takes no repo root, so no input names the seed tree. What remains checkable, and what
+    // the arm actually broke, is that a compiler-family closure member keeps its EMITTED bytes
+    // and never becomes a `pub use v1_compiler::` re-export. `ResolvedTree` is the discriminating
+    // payload: it is the type surface a seed stub would have lacked.
+    fn closure_compiler_mod_stays_emit_retained() {
         let root = temp_fixture_root();
         let out = root.join("out");
         let src = out.join("src");
@@ -290,27 +284,13 @@ mod tests {
         )
         .expect("resolve");
         fs::write(src.join("v2_compiler_infer.rs"), "// entry\n").expect("infer");
-        let seed_src = root.join("seed/src");
-        fs::create_dir_all(&seed_src).expect("seed dir");
-        fs::write(
-            seed_src.join("lib.rs"),
-            "pub mod v2_compiler_resolve;\npub mod v2_compiler_infer;\n",
-        )
-        .expect("seed lib");
-        fs::write(seed_src.join("v2_compiler_resolve.rs"), "// seed stub\n").expect("seed");
         let repo = root.join("repo");
-        fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
-        fs::copy(
-            seed_src.join("lib.rs"),
-            repo.join("src/v1/stage0/src/lib.rs"),
-        )
-        .expect("copy");
         let dag = repo.join("src/v2/compiler/04_infer.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.infer\n").expect("dag");
         let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
-        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
         let kept = fs::read_to_string(src.join("v2_compiler_resolve.rs")).expect("read");
         assert!(
             kept.contains("pub struct ResolvedTree"),
@@ -344,18 +324,12 @@ mod tests {
         )
         .expect("seed lib");
         let repo = root.join("repo");
-        fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
-        fs::copy(
-            seed_src.join("lib.rs"),
-            repo.join("src/v1/stage0/src/lib.rs"),
-        )
-        .expect("copy");
         let dag = repo.join("src/v2/compiler/01_tokenize.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.tokenize\n").expect("dag");
         let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
-        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
         let kept = fs::read_to_string(src.join("v2_compiler_resolve.rs")).expect("read");
         assert!(
             kept.contains("broken_syntax"),
@@ -390,18 +364,12 @@ mod tests {
         let seed_src = root.join("seed/src");
         fs::write(seed_src.join("lib.rs"), "pub mod v2_compiler_tokenize;\n").expect("seed");
         let repo = root.join("repo");
-        fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
-        fs::copy(
-            seed_src.join("lib.rs"),
-            repo.join("src/v1/stage0/src/lib.rs"),
-        )
-        .expect("copy");
         let dag = repo.join("src/v2/compiler/self_host.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.self_host\n").expect("dag");
         let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
-        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
         let kept =
             fs::read_to_string(out.join("src/extdeps_communication_medium.rs")).expect("read");
         assert!(kept.contains("emitted extdeps_communication_medium"));
@@ -419,18 +387,12 @@ mod tests {
         let seed_src = root.join("seed/src");
         fs::write(seed_src.join("lib.rs"), "pub mod v2_compiler_tokenize;\n").expect("seed");
         let repo = root.join("repo");
-        fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
-        fs::copy(
-            seed_src.join("lib.rs"),
-            repo.join("src/v1/stage0/src/lib.rs"),
-        )
-        .expect("copy");
         let dag = repo.join("src/v2/compiler/self_host.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.self_host\n").expect("dag");
         let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
-        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
         let kept = fs::read_to_string(out.join("src/dry_run.rs")).expect("read");
         assert!(kept.contains("emitted dry_run"));
     }
@@ -447,18 +409,12 @@ mod tests {
         let seed_src = root.join("seed/src");
         fs::write(seed_src.join("lib.rs"), "pub mod v2_compiler_tokenize;\n").expect("seed");
         let repo = root.join("repo");
-        fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
-        fs::copy(
-            seed_src.join("lib.rs"),
-            repo.join("src/v1/stage0/src/lib.rs"),
-        )
-        .expect("copy");
         let dag = repo.join("src/v2/compiler/03_name_resolve.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.name_resolve\n").expect("dag");
         let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
-        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
         let kept = fs::read_to_string(out.join("src/gunbc_plans_md_helpers.rs")).expect("read");
         assert!(kept.contains("emitted gunbc_plans_md_helpers"));
     }
@@ -478,18 +434,12 @@ mod tests {
         let seed_src = root.join("seed/src");
         fs::write(seed_src.join("lib.rs"), "pub mod v2_compiler_tokenize;\n").expect("seed");
         let repo = root.join("repo");
-        fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
-        fs::copy(
-            seed_src.join("lib.rs"),
-            repo.join("src/v1/stage0/src/lib.rs"),
-        )
-        .expect("copy");
         let dag = repo.join("src/v2/compiler/05_emit.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.emit\n").expect("dag");
         let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
-        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
         let kept = fs::read_to_string(out.join("src/test_claim_materialization_ladder_witness.rs"))
             .expect("read");
         assert!(kept.contains("emitted test_claim_materialization_ladder_witness"));
@@ -511,18 +461,12 @@ mod tests {
         fs::create_dir_all(&seed_src).expect("seed dir");
         fs::write(seed_src.join("lib.rs"), "pub mod v2_compiler_tokenize;\n").expect("seed");
         let repo = root.join("repo");
-        fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
-        fs::copy(
-            seed_src.join("lib.rs"),
-            repo.join("src/v1/stage0/src/lib.rs"),
-        )
-        .expect("copy");
         let dag = repo.join("src/v2/compiler/01_tokenize.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.tokenize\n").expect("dag");
         let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
-        let err = assemble_seed_linked_closure(&out, &dag, &repo, &bridge).unwrap_err();
+        let err = assemble_seed_linked_closure(&out, &dag, &bridge).unwrap_err();
         match err {
             AssemblyError::RefusedDep { module, reason } => {
                 assert_eq!(module, "not_a_routable_mod");

@@ -50,7 +50,6 @@ import gunbc.heal_push_plan {
 }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
-import gunbc.fleet_main_revision { fleet_desired_ref_name }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.merge_admission_produce {
   ci_repo_root_shell,
@@ -279,7 +278,7 @@ data ci_v1_compiler_tests_compile_gate_note: String = "cargo test -p v1-compiler
 fn ci_retry_body_run(command: String) -> Run {
   Run {
     command: command,
-    env: [],
+    env: Empty,
     redirect: Absent,
     capture: Absent
   }
@@ -287,7 +286,7 @@ fn ci_retry_body_run(command: String) -> Run {
 
 fn ci_retry_exhausted_pipeline() -> Pipeline {
   Pipeline {
-    steps: [Do { run: Run { command: "exit 1", env: [], redirect: Absent, capture: Absent } }],
+    steps: [Do { run: Run { command: "exit 1", env: Empty, redirect: Absent, capture: Absent } }],
     on_failure: FailFast
   }
 }
@@ -1036,32 +1035,39 @@ fn gunbc_ci_authorized_key_enroll_invoke() -> String {
   )
 }
 
-data gunbc_ci_advance_fleet_desired_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "gunbc_ci_advance_fleet_desired_script",
-    field: WholeDeclaration
-  }
-}
+// THE UNGATED FLEET-DESIRED ADVANCE WAS DELETED HERE, and the deletion is the point rather than a
+// tidy-up. What stood here was gunbc_ci_advance_fleet_desired_script, a concat-built shell step
+// that pushed $GITHUB_SHA onto refs/fleet/desired -- with a compare-and-swap on the observed prior
+// on the advance branch, and on the CREATE branch a bare `git push origin "$GITHUB_SHA:$DESIRED_REF"`
+// carrying no lease at all, which is the branch that runs when the ref does not yet exist.
+//
+// The CAS half was correct. The ADMISSION half did not exist: gunbc.fleet_main_revision requires the
+// desired revision to derive from merged, FLOOR-GREEN main and models that gate as
+// admit_fleet_desired_advance, and this script never called it -- so the gate's only caller was its
+// own witness test while the unproven path ran on every push to main. That is exactly the raw-HEAD
+// advance the authority names as its prevented class, and it reached further than the ref:
+// gunbc.roadmap_belt_actuate gates worker dispatch on revision standing, so a desired ref equal to
+// whatever last landed made that gate agree unconditionally and pass in silence.
+//
+// The replacement is gunbc.fleet_desired_admission, whose decision consults the modeled gate with a
+// floor conclusion observed from the floor run's own workflow_run payload, and which renders the
+// authorized push itself so the surrounding shell carries no ref, revision or prior of its own. It
+// is cut at the root rather than kept beside the replacement: two answers to how the fleet's
+// admitted revision advances is the fork DESIGN section 3 forbids, and the weaker one was the live
+// one. Keeping a function that can still render the raw form would leave the unsafe spelling one
+// call site from returning. The script's only other consumers were gunbc.live_deploy_workflow and
+// its witness file, both deleted with the deploy workflow authority.
+//
+// The Scaffold disposition and dissolution trigger that tracked this script's medium-as-string debt
+// went with it -- the replacement's actuation is a model-rendered script, so that debt is re-declared
+// where the remaining shell actually lives, not inherited here.
+//
+// This annotation was itself a merge conflict: the root cut and the admission change each deleted
+// this script and each wrote their own account of why. Two annotations for one deletion is the
+// duplication section 3 forbids, so they are merged here rather than stacked, and the accompanying
+// `data ..._deleted_note: String` row is dropped -- a String declaration whose sole purpose is
+// commentary is the misplaced data section 4c names, and the annotation above already carries it.
 
-data gunbc_ci_advance_fleet_desired_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_advance_fleet_desired_script — concat-built foreign-executor (GitHub Actions run:) CAS ref advance (git ls-remote + push --force-with-lease onto gunbc.fleet_main_revision fleet_desired_ref_name); DISSOLVES WHEN the SCM ref-update realization lands as the typed git.Core CAS service op (membership-diff spine classify_change SCM-ref arm) invoked via host_effect_apply")
-
-fn gunbc_ci_advance_fleet_desired_script() -> String {
-  join([
-    "# ", dissolution_description(condition: gunbc_ci_advance_fleet_desired_shell_emit_dissolution_trigger), "\n",
-    "set -eu\n",
-    "DESIRED_REF=", fleet_desired_ref_name, "\n",
-    "CURRENT=$(git ls-remote origin \"$DESIRED_REF\" | cut -f1)\n",
-    "if [ -z \"$CURRENT\" ]; then\n",
-    "git push origin \"$GITHUB_SHA:$DESIRED_REF\"\n",
-    "echo \"[fleet-desired] created $DESIRED_REF -> $GITHUB_SHA\"\n",
-    "else\n",
-    "git push --force-with-lease=\"$DESIRED_REF:$CURRENT\" origin \"$GITHUB_SHA:$DESIRED_REF\"\n",
-    "echo \"[fleet-desired] advanced $DESIRED_REF: $CURRENT -> $GITHUB_SHA (CAS expected-prior held)\"\n",
-    "fi\n",
-  ], "")
-}
 
 data gunbc_ci_srv1_tasks_observation_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

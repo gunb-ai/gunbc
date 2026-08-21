@@ -6893,6 +6893,20 @@ fn cast_expr_inferred_type_name_uncached(ctx: &InterpContext, expr: Rc<Node>) ->
 
 /// Runtime identity casts mirror `validate_cast`'s `source_name == target_name` arm,
 /// plus String-valued casts to types whose alias chain grounds on `String`.
+///
+/// node://adhoc-897a90b6-a9c item 1: this used to also treat an EMPTY resolved kernel as
+/// grounds for identity -- i.e. answered "the cast target's alias chain could not be resolved
+/// at all" with a value, rather than falling through to `eval_cast`'s existing typed
+/// `TypeError` arm for an unrecognized target name (DESIGN §5, ⊥-as-ignorance rendered as an
+/// answer). Measured by execution (an unconditional counter plus a discriminating
+/// positive/negative-control unit test proving the counter itself was correctly wired, then a
+/// real run of 1507 requested witnesses across every `*cast*`/`*refinement*`-named file in
+/// `dag/test/claim` plus a sixth-sample of the rest): zero hits, `kernel_calls=19` real
+/// resolutions observed. The arm is reachable in principle only when the target AST node is
+/// itself a `CompilerError` node (malformed, missing-child cast target) -- a shape that can
+/// only arise from a resolve-time defect elsewhere, and resolve already refuses before such a
+/// node can reach eval on any real program. Clean deletion per that measurement; the
+/// fallthrough below now answers instead.
 fn cast_identity_result(
     val: &Value,
     ctx: &InterpContext,
@@ -6905,11 +6919,81 @@ fn cast_identity_result(
     }
     if let Value::Str(s) = val {
         let kernel = cast_target_underlying_kernel(ctx, target_node);
-        if kernel.is_empty() || kernel == "String" {
+        if kernel == "String" {
             return Some(Value::Str(s.clone()));
         }
     }
     None
+}
+
+#[cfg(test)]
+mod cast_identity_empty_kernel_tests {
+    //! Regression control for node://adhoc-897a90b6-a9c item 1: a cast target whose alias
+    //! chain cannot be resolved at all (an empty kernel) must NOT be answered with silent Str
+    //! identity. Proves the deletion above by construction: a malformed target node -- exactly
+    //! the shape `expr_child_at`'s fallback produces for a cast missing its target child --
+    //! makes `cast_identity_result` return `None`, so `eval_cast` falls through to its typed
+    //! `TypeError` arm instead of fabricating an answer.
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_std_core::{make_expr_error_node, no_span, ExprErrorKind};
+
+    use super::{cast_identity_result, ExecutionMode, InterpContext, Value};
+
+    fn fresh_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    #[test]
+    fn malformed_cast_target_no_longer_returns_silent_identity() {
+        let ctx = fresh_ctx();
+        // Exactly the node `expr_child_at`/`make_expr_error_node` produce for a cast whose
+        // target child is missing: name "", inferred CompilerError (not Resolved) — the only
+        // shape `cast_target_seed_name_uncached` returns "" for, i.e. an empty kernel.
+        let malformed_target = make_expr_error_node(
+            ExprErrorKind::InternalExprError,
+            "malformed node: missing cast target".to_string(),
+            no_span(),
+        );
+        let val = Value::Str(Rc::from("payload"));
+        let result = cast_identity_result(&val, &ctx, "", malformed_target, "");
+        assert_eq!(
+            result, None,
+            "an unresolvable cast target must fall through to eval_cast's typed TypeError arm, \
+             not return silent Str identity"
+        );
+    }
+
+    #[test]
+    fn well_formed_string_kernel_cast_still_returns_identity() {
+        let ctx = fresh_ctx();
+        // A target node whose own name IS "String" resolves the seed directly (no alias walk
+        // needed), so the kernel is non-empty and lands on the `kernel == "String"` arm. This
+        // is the negative control: it proves the deletion above did not also remove the
+        // legitimate String-kernel identity case.
+        let string_target = make_expr_error_node(
+            ExprErrorKind::InternalExprError,
+            "unused".to_string(),
+            no_span(),
+        );
+        let string_target = Rc::new(crate::v1_std_core::Node {
+            name: "String".to_string(),
+            ..(*string_target).clone()
+        });
+        let val = Value::Str(Rc::from("payload"));
+        let result = cast_identity_result(&val, &ctx, "", string_target, "");
+        assert_eq!(result, Some(Value::Str(Rc::from("payload"))));
+    }
 }
 
 fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
@@ -8346,30 +8430,59 @@ pub enum ArgvRefusalCause {
     BindingMalformed(String),
 }
 
-fn argv_expr_kind_label(node: &Rc<Node>) -> &'static str {
-    match node.expr_data.as_ref() {
-        ExprData::NoExprData => "no-expr",
-        ExprData::ExprLiteral { .. } => "literal",
-        ExprData::ExprError { .. } => "error",
-        ExprData::ExprVar { .. } => "var",
-        ExprData::ExprFieldAccess { .. } => "field-access",
-        ExprData::ExprCall { .. } => "call",
-        ExprData::ExprMethodCall { .. } => "method-call",
-        ExprData::ExprMatch => "match",
-        ExprData::ExprIf => "if",
-        ExprData::ExprLet => "let",
-        ExprData::ExprRecordLit { .. } => "record-literal",
-        ExprData::ExprListLit => "list-literal",
-        ExprData::ExprBinOp { .. } => "binop",
-        ExprData::ExprUnaryOp { .. } => "unary-op",
-        ExprData::ExprLambda => "lambda",
-        ExprData::ExprStringInterp => "string-interpolation",
-        ExprData::ExprBlock => "block",
-        ExprData::ExprCast => "cast",
-        ExprData::ExprForEach => "for-each",
-        ExprData::ExprIndex => "index",
-        ExprData::ExprSlice => "slice",
-        ExprData::ExprReturn => "return",
+/// The AUTHORED name of an `ExprData` form, TOTAL over the closed `.dag` vocabulary
+/// (`v1.core` `ExprData`), and the single such authority in the seed.
+///
+/// It exists so a projection that has no rule for a form can REFUSE BY NAME instead of
+/// substituting a plausible value, and the name it refuses with is the one the `.dag`
+/// declaration uses -- not a second spelling of the same vocabulary. This function replaced
+/// `argv_expr_kind_label`, which returned hyphenated nicknames (`call`, `record-literal`)
+/// for the same members: a refusal naming `call` cannot be grepped back to `ExprCall`, and
+/// two spellings of one closed vocabulary is the DESIGN section 3 nickname at the
+/// diagnostic layer.
+///
+/// The match carries NO catch-all on purpose: a form added to the `.dag` coproduct must
+/// break this compile, which is what keeps the seed's knowledge of the vocabulary equal to
+/// the substrate's rather than merely older than it.
+pub(crate) fn expr_data_form_name(expr_data: &ExprData) -> &'static str {
+    match expr_data {
+        ExprData::NoExprData => "NoExprData",
+        ExprData::ExprLiteral { .. } => "ExprLiteral",
+        ExprData::ExprError { .. } => "ExprError",
+        ExprData::ExprVar { .. } => "ExprVar",
+        ExprData::ExprFieldAccess { .. } => "ExprFieldAccess",
+        ExprData::ExprCall { .. } => "ExprCall",
+        ExprData::ExprMethodCall { .. } => "ExprMethodCall",
+        ExprData::ExprMatch => "ExprMatch",
+        ExprData::ExprIf => "ExprIf",
+        ExprData::ExprLet => "ExprLet",
+        ExprData::ExprRecordLit { .. } => "ExprRecordLit",
+        ExprData::ExprListLit => "ExprListLit",
+        ExprData::ExprBinOp { .. } => "ExprBinOp",
+        ExprData::ExprUnaryOp { .. } => "ExprUnaryOp",
+        ExprData::ExprLambda => "ExprLambda",
+        ExprData::ExprStringInterp => "ExprStringInterp",
+        ExprData::ExprBlock => "ExprBlock",
+        ExprData::ExprCast => "ExprCast",
+        ExprData::ExprForEach => "ExprForEach",
+        ExprData::ExprIndex => "ExprIndex",
+        ExprData::ExprSlice => "ExprSlice",
+        ExprData::ExprReturn => "ExprReturn",
+    }
+}
+
+/// The authored name of a `LiteralValue` form, TOTAL over the closed `.dag` vocabulary
+/// (`std.syntax` `LiteralValue`). Same construction and same reason as
+/// `expr_data_form_name`: no catch-all, so a new literal form stops the compile here.
+pub(crate) fn literal_value_form_name(value: &crate::std_syntax::LiteralValue) -> &'static str {
+    use crate::std_syntax::LiteralValue;
+    match value {
+        LiteralValue::LitStr { .. } => "LitStr",
+        LiteralValue::LitInt { .. } => "LitInt",
+        LiteralValue::LitFloat { .. } => "LitFloat",
+        LiteralValue::LitBool { .. } => "LitBool",
+        LiteralValue::LitNull => "LitNull",
+        LiteralValue::LitSymbol { .. } => "LitSymbol",
     }
 }
 
@@ -8519,7 +8632,8 @@ fn bind_argv_expr(
         ExprData::ExprLiteral { value } => match value.as_ref() {
             LiteralValue::LitStr { value } => Ok(str_value(value.clone())),
             other => Err(ArgvRefusalCause::ArgvExpressionUnsupported(format!(
-                "argv element literal is {other:?}, expected a string literal"
+                "argv element literal is `{}`, expected a string literal",
+                literal_value_form_name(other)
             ))),
         },
         ExprData::ExprVar { .. } => {
@@ -8551,7 +8665,7 @@ fn bind_argv_expr(
         }
         _ => Err(ArgvRefusalCause::ArgvExpressionUnsupported(format!(
             "argv element is a {} expression; materialization binds declared inputs, it does not evaluate expressions",
-            argv_expr_kind_label(node)
+            expr_data_form_name(node.expr_data.as_ref())
         ))),
     }
 }
@@ -8585,7 +8699,7 @@ pub fn materialize_operation_argv(
     if !executable_is_literal {
         return Err(ArgvRefusalCause::ExecutablePositionNotLiteral(format!(
             "argv[0] is a {} expression; the executable must be a literal in the declaration",
-            argv_expr_kind_label(executable)
+            expr_data_form_name(executable.expr_data.as_ref())
         )));
     }
 
@@ -14493,7 +14607,7 @@ fn memo_verify_enabled() -> bool {
     })
 }
 
-fn eval_profile_enabled() -> bool {
+pub fn eval_profile_enabled() -> bool {
     PROFILE_FLAG.with(|c| match c.get() {
         Some(b) => b,
         None => {

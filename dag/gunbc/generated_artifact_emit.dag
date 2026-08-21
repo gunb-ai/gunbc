@@ -3,7 +3,7 @@ module gunbc.generated_artifact_emit
 
 import gunbc.generated_artifact {
   GeneratedArtifact,
-  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, LiveDeployYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact,
+  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact,
   RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
   AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
@@ -12,8 +12,8 @@ import gunbc.generated_artifact {
   artifact_path
 }
 import gunbc.fleet_converge_workflow { expected_fleet_converge_yml }
-import gunbc.live_deploy_workflow { expected_deploy_yml }
-import gunbc.witness_floor_workflow { expected_witness_floor_yml }
+import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml }
+import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused }
 import gunbc.ci_yaml_validate { ci_yml_parses }
 import gunbc.gitignore_emit { expected_gitignore }
 import gunbc.gitattributes_emit { GitattributesGenerated, GitattributesGenerationRefused, expected_gitattributes }
@@ -50,9 +50,12 @@ fn artifact_generated(content: String) -> ArtifactGenerationOutcome {
 
 fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
   match a {
-    WitnessFloorYamlArtifact => artifact_generated(content: expected_witness_floor_yml())
+    WitnessFloorYamlArtifact => match expected_witness_floor_yml() {
+      WitnessFloorGenerated { content } => artifact_generated(content: content)
+      WitnessFloorGenerationRefused => ArtifactGenerationRefused { reason: "witness floor workflow capability closure refused" }
+    }
     FleetConvergeYamlArtifact => artifact_generated(content: expected_fleet_converge_yml())
-    LiveDeployYamlArtifact => artifact_generated(content: expected_deploy_yml())
+    FleetDesiredAdmissionYamlArtifact => artifact_generated(content: expected_fleet_desired_yml())
     GitignoreArtifact => artifact_generated(content: expected_gitignore())
     GitattributesArtifact => match expected_gitattributes() {
       GitattributesGenerated { content } => artifact_generated(content: content)
@@ -84,7 +87,7 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
   match a {
     WitnessFloorYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     FleetConvergeYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
-    LiveDeployYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
+    FleetDesiredAdmissionYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     GitignoreArtifact => true
     GitattributesArtifact => true
     RoadmapArtifact => true

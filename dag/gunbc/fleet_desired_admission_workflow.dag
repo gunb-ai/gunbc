@@ -1,0 +1,306 @@
+module gunbc.fleet_desired_admission_workflow
+
+import extdeps.languages.yaml.types { yaml_string, kv }
+import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import extdeps.github.actions {
+  Workflow, Job, Step, RunStep, UsesStep,
+  WorkflowTrigger, WorkflowRunCompleted,
+  WorkflowPermissions, PermWrite,
+  ConcurrencySpec, ConcurrencyMappingQueueNotMax,
+  checkout_action,
+  github_event_path_env
+}
+import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
+import gunbc.repo_identity { gunbc_default_branch_name }
+import gunbc.merge_admission_produce { ci_repo_root_shell }
+import gunbc.witness_floor_workflow { witness_floor_workflow_name, witness_floor_toolchain_step }
+import gunbc.fleet_desired_admission {
+  fleet_desired_admission_event_payload_path,
+  fleet_desired_admission_authorized_push_path,
+}
+import v2.std.optional { Present }
+import std.types { String }
+
+// THIS WORKFLOW IS THE ADMISSION GATE'S TRIGGER, AND IT IS SEPARATE FROM THE DEPLOY WORKFLOW
+// FOR A REASON THAT IS NOT ORGANISATIONAL.
+//
+// gunbc.fleet_main_revision requires the desired revision to derive from MERGED, FLOOR-GREEN
+// main. The required floor takes about thirty minutes, so at the moment a merge lands there is
+// no floor conclusion for that revision to consult -- a push-triggered advance can only
+// fabricate floor-green or refuse forever. The conclusion becomes observable exactly once, when
+// the floor run completes, and that is a different event from the push. So the admission is a
+// different workflow, keyed to the floor's completion, reading the conclusion GitHub delivers.
+//
+// WHAT THIS REPLACES. deploy.yml previously ended with a step that stamped $GITHUB_SHA onto
+// refs/fleet/desired on every push to main, consulting nothing. The modeled gate
+// (admit_fleet_desired_advance) existed the whole time with its witness test as its only caller.
+// That is not a missing feature, it is a wall standing beside an actuator that walked around it,
+// and the blast radius reaches further than the ref: gunbc.roadmap_belt_actuate gates worker
+// dispatch on revision standing, so a desired ref that always equals whatever last landed makes
+// that gate agree unconditionally and pass in silence.
+//
+// WHY THE JOB STILL RUNS WHEN THE FLOOR IS RED. It refuses, loudly, with the authority's own
+// cause, and the refusal is a visible red check on main saying the fleet did not admit that
+// revision. Skipping the job instead would make a non-admitted revision indistinguishable from
+// an admitted one at a glance, which is the silence DESIGN section 5 forbids. The if_condition
+// below is scope, not a safety gate -- it keeps pull-request floor runs from opening a job whose
+// only possible outcome is a branch refusal, and the model re-checks the branch regardless.
+data fleet_desired_admission_workflow_note: String = "This module emits the fleet-desired admission workflow. See the annotation above it."
+
+data fleet_desired_admission_workflow_job_id: String = "admit"
+
+data fleet_desired_admission_workflow_concurrency_group: String = "gunbc-fleet-desired-admission"
+
+fn fleet_desired_admission_checkout_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout" },
+    id: none,
+    uses: checkout_action,
+    with: Present {
+      value: [kv(key: "fetch-depth", value: yaml_string(s: "0"))]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// The toolchain step above is load-bearing, not boilerplate. deploy.yml runs
+// cargo on this same srv1 self-hosted runner WITHOUT installing one, and has
+// therefore never reached actuation on any observed run -- 30 runs between 2026-08-20T03:55:43Z
+// and 2026-08-20T17:14:32Z, 29 failure and 1 cancelled, zero successes ever. The modeled deploy actuator has
+// never once succeeded. This workflow builds on the same runner, so omitting the
+// step reproduces that defect exactly: the admission job would die before
+// reaching any admission decision, and the fleet ref would silently never
+// advance. It is imported from witness_floor_workflow rather than copied,
+// because it is one fact -- what a self-hosted runner needs before cargo -- with
+// several consumers (DESIGN section 3).
+fn fleet_desired_admission_build_step() -> Step {
+  RunStep {
+    name: Present { value: "Build the admission binary" },
+    id: none,
+    run: "cargo build --release -p v1-compiler --bin gunbc\n",
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// The payload is COPIED to a path the model names rather than read from the environment,
+// because a wet function cannot see an environment variable and inventing an env-read surface
+// inside a webhook reader is the wrong place to mint one. The stale authorized push is deleted
+// in the same step: the decision writes that file only on admission, so removing it first means
+// a refused admission cannot be actuated by a file a previous run left behind.
+fn fleet_desired_admission_stage_payload_step() -> Step {
+  RunStep {
+    name: Present { value: "Stage the floor run event payload" },
+    id: none,
+    run: join([
+      "set -eu\n",
+      "ROOT=", ci_repo_root_shell(), "\n",
+      "mkdir -p \"$ROOT/target\"\n",
+      "rm -f \"$ROOT/", fleet_desired_admission_authorized_push_path, "\"\n",
+      "cp \"$", github_event_path_env, "\" \"$ROOT/", fleet_desired_admission_event_payload_path, "\"\n",
+    ], ""),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// The decision. A refusal exits non-zero here and the job stops before the actuation step, so
+// the ref keeps its previous admitted revision and the cause is in the log, located and typed.
+fn fleet_desired_admission_decide_step() -> Step {
+  RunStep {
+    name: Present { value: "Decide whether the floor admits this revision" },
+    id: none,
+    run: join([
+      "ROOT=", ci_repo_root_shell(), "\n",
+      "\"$ROOT/target/release/gunbc\" run --source-root dag --source-root src/v2",
+      " --entry dag/gunbc/fleet_desired_admission.dag",
+      " --function admit_fleet_desired_from_floor_event_wet\n",
+    ], ""),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// THE ACTUATION CARRIES NO DECISION. It executes the push the model authorized and nothing
+// else -- no ref name, no candidate revision, no expected prior appears in this shell, because
+// all three are operands of the admission and are rendered into the authorized script by the
+// decision that produced them. A shell that cannot name a revision cannot push an unadmitted
+// one. The test -s is not a second gate but a refusal to run an absent or empty authorization:
+// if the previous step somehow exited zero without writing one, this stops rather than
+// treating a missing authorization as permission.
+fn fleet_desired_admission_push_step() -> Step {
+  RunStep {
+    name: Present { value: "Execute the authorized fleet-desired advance" },
+    id: none,
+    run: join([
+      "set -eu\n",
+      "ROOT=", ci_repo_root_shell(), "\n",
+      "test -s \"$ROOT/", fleet_desired_admission_authorized_push_path, "\"\n",
+      "sh \"$ROOT/", fleet_desired_admission_authorized_push_path, "\"\n",
+    ], ""),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// contents: WRITE for the same reason the deploy workflow needs it -- this job pushes
+// refs/fleet/desired. No other grant is taken.
+fn fleet_desired_admission_job() -> Job {
+  Job {
+    id: fleet_desired_admission_workflow_job_id,
+    name: none,
+    runner: gunbc_ci_deploy_srv1_runner_spec(),
+    steps: [
+      fleet_desired_admission_checkout_step(),
+      witness_floor_toolchain_step(),
+      fleet_desired_admission_build_step(),
+      fleet_desired_admission_stage_payload_step(),
+      fleet_desired_admission_decide_step(),
+      fleet_desired_admission_push_step()
+    ],
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: Present {
+      value: join([
+        "github.event.workflow_run.head_branch == '", gunbc_default_branch_name, "'",
+      ], ""),
+    },
+    timeout_minutes: Present { value: 60 },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present {
+      value: WorkflowPermissions {
+        contents: Present { value: PermWrite },
+        pull_requests: none,
+        issues: none,
+        actions: none,
+        id_token: none,
+      }
+    }
+  }
+}
+
+// CONCURRENCY, STATED AS WHAT THE PLATFORM ACTUALLY PROVIDES. An earlier revision of this
+// annotation claimed "queued, never cancelled ... must admit in order", and review 53998 caught
+// that the chosen variant does not provide it. Per the authority
+// (extdeps.languages.yaml.gha_workflow concurrency_queue_max_emission_note), the default group
+// modeled by ConcurrencyMappingQueueNotMax holds at most one running and one PENDING entry, and a
+// newly-arriving entry CANCELS the pending one; multi-entry in-order queueing is what
+// ConcurrencyMappingQueueMax was minted for. Asserting the queue property here was a state-space
+// conflation of "in-order queue" with the platform's pending-replacement default -- a prose claim
+// the emitted bytes do not support.
+//
+// The variant is nonetheless the RIGHT one, and the corrected reason is narrower than the claim it
+// replaces. What this workflow needs is that a RUNNING admission is never interrupted, because a
+// cancellation between the compare-and-swap decision and the push would leave the advance
+// half-observed; the default group gives exactly that, since cancel-in-progress defaults false and
+// only the pending entry is replaceable. Losing a superseded PENDING admission is not a defect but
+// the preferable outcome: the desired ref should track the newest floor-green revision, and
+// admitting each intermediate one in turn would be slower convergence for no gain. Reaching for
+// QueueMax would buy the in-order queue this comment used to claim and then have to justify why the
+// fleet wants to walk through revisions it has already passed.
+//
+// DECLARED GAP -- SEARCH KEY: FleetDesiredAdvanceForwardOnly
+// WHAT ORDERING DOES NOT COVER: THE DESIRED REF CAN MOVE BACKWARD, AND THIS IS ORDINARY RATHER
+// THAN AN EDGE CASE. An earlier revision of this annotation said reaching it "requires deliberately
+// re-running an old floor run". THAT UNDERSTATED IT AND WAS WRONG. The floor's own concurrency
+// group is `witness-floor-${{ github.event.pull_request.number || github.run_id }}`, and on a
+// default-branch push there is no pull-request number, so the group is unique per run -- the floor
+// imposes NO ordering between main pushes. Two merges therefore race by construction:
+//
+//   floor(C1) starts;  floor(C2) starts
+//   floor(C2) finishes first  -> admission advances D -> C2
+//   floor(C1) finishes later  -> observes C2 as prior -> CAS SUCCEEDS -> C2 -> C1, backward
+//
+// --force-with-lease does not prevent this. The lease refuses an UNOBSERVED concurrent write; here
+// the older admission observes the newer prior correctly and overwrites it on purpose. The gate
+// models floor-greenness, not ancestry, so nothing in the decision refuses a backward move.
+//
+// The class stays at mitigatable -- the ref lands on a revision that IS floor-green, so hosts
+// converge to something proven rather than to something unproven, and a host behind it refuses
+// dispatch loudly. But its REACHABILITY is ordinary merge traffic, not operator action, and saying
+// otherwise made a live race read as a curiosity.
+//
+// NEXT-RUNG TRIGGER, and it is blocked on a modelling gap rather than on effort: the admission
+// needs a forward-only operand -- candidate must be a descendant of the observed prior. git.Core
+// models no ancestry read. RevList is the nearest operation and cannot express it: its argv is
+// hardcoded to `{since}..HEAD`, so it answers only HEAD-relative questions, and the discriminating
+// test (is the prior reachable FROM the candidate) needs both endpoints named. Closing this means
+// adding a typed ancestry operation to the git authority, which is a separate change with its own
+// citation duty.
+
+// DECLARED GAP -- SEARCH KEY: FleetDesiredAdmissionJudgeIdentity
+// A SECOND DECLARED GAP: THE IDENTITY OF THE CODE MAKING THE ADMISSION DECISION IS NOT MODELLED.
+// On a workflow_run event GitHub sets the checkout's default ref to the DEFAULT BRANCH HEAD, not to
+// the triggering run's head_sha, and the checkout step below names no ref. So the binary that
+// adjudicates candidate C is built from whatever the default branch happens to be when the
+// admission runs -- call it J -- and J is not necessarily C, nor necessarily admitted, nor
+// necessarily floor-green. The decision is correct about WHICH revision it admits (the candidate
+// comes from the event payload, not from the checkout), but the JUDGE's provenance is an accident
+// of timing.
+//
+// The naive repair -- checking out github.event.workflow_run.head_sha -- is NOT automatically safe:
+// workflow_run is a privileged trigger carrying write credentials, and building the candidate's own
+// code under those credentials is the pattern GitHub's own guidance warns against. The trust wall
+// in gunbc.fleet_desired_admission runs AFTER checkout and compilation, so it cannot protect a step
+// that already executed candidate code. Two honest constructions exist -- build the judge from the
+// currently admitted revision so the authority has an explicit identity, or split trusted validation
+// from candidate execution so the privileged CAS never runs candidate code -- and both are larger
+// than this change. Declared here rather than left to be discovered.
+data fleet_desired_admission_workflow: Workflow = Workflow {
+  name: "fleet-desired",
+  on: [
+    WorkflowRunCompleted { workflows: [witness_floor_workflow_name] }
+  ],
+  concurrency: Present {
+    value: ConcurrencyMappingQueueNotMax {
+      group: fleet_desired_admission_workflow_concurrency_group,
+      cancel_in_progress: none,
+      explicit_single: none
+    }
+  },
+  env: none,
+  permissions: none,
+  jobs: [fleet_desired_admission_job()],
+}
+
+// WHY THESE TWO CLASSES ARE NAMED IN PROSE RATHER THAN CARRIED AS ROWS, since section 4c says a
+// machine-consumed fact belongs in a typed carrier and these are not in one. The intended owner
+// EXISTS AS A PLAN AND NOT AS A MODULE: gunbc.roadmap_authority specifies GuaranteeRequirement
+// (class identity, domain, harm, ceiling with typed reason, next_rung_trigger) with GuaranteePath
+// and GuaranteeMeasurement beside it and the disposition DERIVED rather than stored, as Stage 1b.
+// Grepping the tree finds that vocabulary only in that roadmap prose; no module declares it.
+//
+// So the only way to give these typed owners today is a bespoke registry here, and that is refused
+// on three of this repository's own grounds: it is a second authority for facts Stage 1b exists to
+// own (section 3), it is a representation whose whole future is migration-then-deletion and so
+// fails section 6's survival test, and section 6 forbids a scaffold authorized by its own author.
+// A private registry would make this module look more modeled while trading visible incompleteness
+// for false completion. The annotation is untyped debt that is honest about being debt; that is the
+// least-wrong representation available until the real carrier lands, at which point these two
+// classes move straight into GuaranteeRequirement rows with no interim registry to dissolve first.
+// The SEARCH KEYS above exist so that migration can find them by name rather than by memory.
+fn expected_fleet_desired_yml() -> String {
+  serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_desired_admission_workflow))
+}

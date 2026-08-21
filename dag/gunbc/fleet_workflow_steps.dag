@@ -350,91 +350,12 @@ fn ci_fleet_key_agent_cleanup_step() -> Step {
 
 data ci_native_cache_derive_step_name: String = "Derive native-cache root (rustc-version segment; after setup-rust-toolchain)"
 
-fn ci_native_cache_root_step() -> Step {
-  RunStep {
-    name: Present { value: ci_native_cache_derive_step_name },
-    id: none,
-    run: ci_native_cache_root_script(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
 
 data ci_native_cache_prelude_order_bridge_note: String = "Adjacency-as-proxy ordering witness (not a structural Step-order predicate): ci_native_cache_prelude_order_bridge builds the setup-rust HOME env line immediately followed by the native-cache step name at the emitter's six-space yaml indent. witness_prelude_native_cache_root_step_follows_setup_rust asserts expected_ci_yml/falsifier_yml contain that substring. The real invariant is only that segment derivation runs after setup-rust-toolchain installs rustc; this check over-constrains to textual adjacency and can false-RED on a legitimate step inserted between setup-rust and native-cache, emitter yaml reformatting, or setup-rust gaining fields after HOME — but not false-green if ordering regresses. A hand-rolled match on Step would be the structural alternative; non-fold-residue forbids the wildcard arms that predicate would need (receipt: nfr floor on 14bc815db4). Dissolves when prelude ordering is witnessed without coproduct-residue match arms."
 
-fn ci_prelude_steps_with_checkout(checkout: Step, exact_head_preflight: List<Step>) -> List<Step> {
-  [
-    checkout,
-  ] |> concat(exact_head_preflight) |> concat([
-    ci_isolate_toolchain_step(),
-    UsesStep {
-      name: Present { value: "Setup Rust" },
-      id: none,
-      uses: setup_rust_action,
-      with: Present {
-        value: [
-          kv(key: "components", value: yaml_string(s: "rustfmt")),
-          kv(key: "cache", value: yaml_bool(b: false)),
-          kv(key: "rustflags", value: yaml_string(s: ""))
-        ]
-      },
-      env: Present {
-        value: [kv(key: "HOME", value: yaml_string(s: ci_setup_rust_home()))]
-      },
-      if_condition: none,
-      continue_on_error: none,
-      timeout_minutes: none
-    },
-    ci_native_cache_root_step(),
-    RunStep {
-      name: Present { value: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)" },
-      id: none,
-      run: ci_pin_rustup_default_script(),
-      shell: none,
-      env: none,
-      working_directory: none,
-      if_condition: none,
-      continue_on_error: none,
-      timeout_minutes: none
-    },
-    UsesStep {
-      name: Present { value: "Cache Cargo" },
-      id: none,
-      uses: cache_action,
-      with: Present {
-        value: [
-          kv(key: "path", value: yaml_string(s: ci_cache_path())),
-          kv(key: "key", value: yaml_string(s: ci_cache_key())),
-          kv(key: "restore-keys", value: yaml_string(s: ci_cache_restore_keys()))
-        ]
-      },
-      env: none,
-      if_condition: none,
-      continue_on_error: none,
-      timeout_minutes: none
-    }
-  ])
-}
 
 data ci_release_bins_artifact_name: String = "release-bins"
 
-fn ci_release_bins_pack_step() -> Step {
-  RunStep {
-    name: Present { value: "Pack release bins for cross-job handoff (tar keeps exec bits)" },
-    id: none,
-    run: ci_release_bins_pack_script(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-  }
-}
 
 data gunbc_ci_aux_step_timeout_minutes: Int = 5
 
@@ -488,9 +409,6 @@ data gunbc_ci_release_build_step_timeout_minutes: Int = 45
 data srv1_dashboard_deploy_concurrency_group: String = "srv1-dashboard-deploy"
 data srv1_dashboard_deploy_serialization_note: String = "Blue/green selection is observe-then-mutate, so two deploy jobs may not overlap: both could observe blue active, then the first flips green while the second restarts what has become the active green slot, recreating the outage. Job-grain concurrency serializes the entire cutover with cancel-in-progress=false; QueueNotMax may replace an older pending deployment with the newest main revision, but it never interrupts the one holding the host mutation window."
 
-fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes + gunbc_ci_stage0_partition_compile_gate_timeout_minutes + gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
-}
 
 fn gunbc_ci_fleet_job_backstop_timeout_minutes() -> Int {
   gunbc_ci_prelude_allowance_minutes + (11 * gunbc_ci_aux_step_timeout_minutes) + (2 * gunbc_ci_spark_serving_step_timeout_minutes)
@@ -501,9 +419,6 @@ data gunbc_ci_release_build_step_timeout_minutes: Int = 45
 data srv1_dashboard_deploy_concurrency_group: String = "srv1-dashboard-deploy"
 data srv1_dashboard_deploy_serialization_note: String = "Blue/green selection is observe-then-mutate, so two deploy jobs may not overlap: both could observe blue active, then the first flips green while the second restarts what has become the active green slot, recreating the outage. Job-grain concurrency serializes the entire cutover with cancel-in-progress=false; QueueNotMax may replace an older pending deployment with the newest main revision, but it never interrupts the one holding the host mutation window."
 
-fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes + gunbc_ci_stage0_partition_compile_gate_timeout_minutes + gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
-}
 
 data gunbc_ci_prelude_allowance_minutes: Int = 5
 
@@ -512,6 +427,3 @@ data gunbc_ci_release_build_step_timeout_minutes: Int = 45
 data srv1_dashboard_deploy_concurrency_group: String = "srv1-dashboard-deploy"
 data srv1_dashboard_deploy_serialization_note: String = "Blue/green selection is observe-then-mutate, so two deploy jobs may not overlap: both could observe blue active, then the first flips green while the second restarts what has become the active green slot, recreating the outage. Job-grain concurrency serializes the entire cutover with cancel-in-progress=false; QueueNotMax may replace an older pending deployment with the newest main revision, but it never interrupts the one holding the host mutation window."
 
-fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes + gunbc_ci_stage0_partition_compile_gate_timeout_minutes + gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
-}
