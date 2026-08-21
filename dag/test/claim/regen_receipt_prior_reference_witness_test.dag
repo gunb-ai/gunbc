@@ -1,7 +1,7 @@
 module test.claim.regen_receipt_prior_reference_witness
 
 import std.types { Bool, String, List }
-import gunbc.regen_receipt { RegenReceipt, PriorReceiptRef, FirstGeneration, FixedPoint, prior_reference_is_same_tree }
+import gunbc.regen_receipt { RegenReceipt, PriorReceiptRef, FirstGeneration, FixedPoint, Refused, refusal_reason, prior_reference_is_same_tree }
 
 // WHAT THIS WITNESS COVERS, AND WHAT IT DOES NOT — stated first because the gap is the point.
 //
@@ -79,4 +79,40 @@ test fn a_first_generation_receipt_has_no_cross_tree_reference() -> Bool {
       candidate_artifact: "target/stage0-regen-candidate"
     }
   )
+}
+
+// THE REFUSED VARIANT, AND WHAT THESE TWO WITNESSES CAN AND CANNOT ESTABLISH.
+//
+// The wall itself is the TYPE's shape, not these tests: Refused declares no digest fields and no
+// first_generation_equal, so a refusal has nothing to invent and the invalid receipt has no
+// constructor. That is DESIGN 4b structural impossibility and it needs no witness to hold — an
+// attempt to write the fabricated Bool does not typecheck, so there is no runtime state for an
+// assertion to catch.
+//
+// What these witnesses ARE for is the thing the shape alone does not give: executing evidence
+// that the shape is the one claimed, so a later edit that quietly restores an equality field to
+// this variant has to pass something that runs. They are enrolled where the host's own unit tests
+// currently are not.
+
+fn a_refused_receipt() -> RegenReceipt {
+  Refused {
+    commit_sha: same_tree_sha,
+    authority_digest: "digest-authority",
+    reason: "refusal: committed mirror is no longer emitted",
+    candidate_artifact: "target/stage0-regen-candidate"
+  }
+}
+
+// A refusal carries the one fact it actually measured. Asserted against a DISTINCT literal rather
+// than a Bool, so the witness cannot be satisfied by a constructor that drops the payload and
+// still reports something plausible.
+test fn a_refused_receipt_carries_its_cause() -> Bool {
+  refusal_reason(receipt: a_refused_receipt()) == "refusal: committed mirror is no longer emitted"
+}
+
+// A refusal has no prior reference to be wrong about, so the predicate is vacuously true — the
+// same argument as the FirstGeneration case above, and asserted for the same reason: a predicate
+// that answered false for a variant carrying no reference would refuse every refused pass.
+test fn a_refused_receipt_has_no_cross_tree_reference() -> Bool {
+  prior_reference_is_same_tree(receipt: a_refused_receipt())
 }
