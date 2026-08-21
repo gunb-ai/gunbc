@@ -1633,6 +1633,35 @@ fn v1_emit_type_params_with_clone_bounds(
   }
 }
 
+data v1_emit_type_params_with_clone_and_ord_bounds_note: String = "gunbc dashboard node://adhoc-a9f61ade-340. New sibling of v1_emit_type_params_with_clone_bounds above rather than an edit to it (DESIGN.md S3: that function has two call sites -- the item/struct-derive header and emit_fn_def -- and only the fn-generic call site in emit_fn_def needs an Ord arm; widening the shared renderer would also touch the struct-header call site, which is out of scope for the fn-signature trigger this renders for, see v1_set_union_ord_bound_note in src/v1/trait_bound_witness.dag). Renders identically to v1_emit_type_params_with_clone_bounds when ord_param_names is empty (': Clone' or bare), so the fn-generic call site in emit_fn_def can switch to this renderer unconditionally without changing output for the 25-site Clone-only population; it adds ': Ord' and ': Ord + Clone' arms for the params set_union's rc_set_union<T: Ord + Clone> lowering requires Ord of."
+
+fn v1_emit_type_params_with_clone_and_ord_bounds(
+  params: List<Node>,
+  clone_param_names: List<String>,
+  ord_param_names: List<String>,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  if params |> count == 0 { "" }
+  else {
+    let names = params |> map(p =>
+      let pname = generic_param_name_at(n: p, source_indices: source_indices)
+      let pascal = to_pascal(name: pname)
+      let needs_clone = clone_param_names |> any(c => c == pname)
+      let needs_ord = ord_param_names |> any(c => c == pname)
+      if needs_ord && needs_clone {
+        concat(pascal, ": Ord + Clone")
+      } else if needs_ord {
+        concat(pascal, ": Ord")
+      } else if needs_clone {
+        concat(pascal, ": Clone")
+      } else {
+        pascal
+      }
+    )
+    concat("<", names |> join(separator: ", "), ">")
+  }
+}
+
 fn v1_emit_struct_from_capability_table(
   module_path: String,
   name: String,
