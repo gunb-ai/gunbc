@@ -5,9 +5,9 @@ import gunbc.roadmap_execution_contract { CargoCapability }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep,
   StepCapabilityRole,
-  ProvidesCapability,
-  ConsumesCapability,
-  CapabilityNeutral,
+  capability_neutral,
+  provides_only,
+  consumes_only,
   workflow_job_capability_closure,
   capability_closure_is_closed,
 }
@@ -397,22 +397,22 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
   [
     WitnessFloorBoundStep {
       step: witness_floor_checkout_step(),
-      role: CapabilityNeutral,
+      role: capability_neutral,
       step_name: "Checkout",
     },
     WitnessFloorBoundStep {
       step: witness_floor_toolchain_step(),
-      role: ProvidesCapability { capability: CargoCapability },
+      role: provides_only(capabilities: [CargoCapability]),
       step_name: "Install Rust toolchain",
     },
     WitnessFloorBoundStep {
       step: witness_floor_build_step(),
-      role: ConsumesCapability { capability: CargoCapability },
+      role: consumes_only(capabilities: [CargoCapability]),
       step_name: "Build the witness fold",
     },
     WitnessFloorBoundStep {
       step: witness_floor_run_step(),
-      role: CapabilityNeutral,
+      role: capability_neutral,
       step_name: "All witnesses (one prepared subject, one fold)",
     },
   ]

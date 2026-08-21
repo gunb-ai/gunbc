@@ -8,8 +8,18 @@ import extdeps.github.actions {
   upload_artifact_action, download_artifact_action,
   RunnerSpec, RunsOnExpression,
 }
+import gunbc.roadmap_execution_contract { CargoCapability }
+import gunbc.workflow_capability_closure {
+  CapabilityAnnotatedStep,
+  capability_neutral,
+  consumes_only,
+  workflow_job_capability_closure,
+  capability_closure_is_closed,
+}
+import v2.std.algebra { list_map }
 import gunbc.fleet_workflow_steps {
   ci_prelude_steps,
+  ci_prelude_annotations,
   ci_checkout_step,
   ci_release_build_step,
   ci_release_bins_pack_step,
@@ -51,6 +61,29 @@ data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"se
 
 fn gunbc_fleet_converge_build_job_backstop_timeout_minutes() -> Int {
   gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+}
+
+// The build job is the prelude plus three steps of its own. The release build CONSUMES cargo; the
+// pack and upload steps handle files the build produced and need no toolchain. Annotated here
+// rather than in fleet_workflow_steps because these are this job's steps, not the shared prelude's.
+fn fleet_converge_build_job_annotations() -> List<CapabilityAnnotatedStep> {
+  concat(
+    ci_prelude_annotations(),
+    [
+      CapabilityAnnotatedStep {
+        step_name: "Build release binaries",
+        role: consumes_only(capabilities: [CargoCapability]),
+      },
+      CapabilityAnnotatedStep { step_name: "Pack release bins", role: capability_neutral },
+      CapabilityAnnotatedStep { step_name: "Upload release bins", role: capability_neutral },
+    ],
+  )
+}
+
+fn fleet_converge_build_job_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(steps: fleet_converge_build_job_annotations()),
+  )
 }
 
 fn fleet_converge_build_job() -> Job {
@@ -291,6 +324,16 @@ data fleet_converge_workflow: Workflow = Workflow {
   jobs: [fleet_converge_build_job(), fleet_converge_job()],
 }
 
+// Emission REFUSES rather than reporting. This is the workflow whose build job carries the
+// hand-written cargo resolve circuit, and it is the one a broken prelude ordering would actually
+// break -- so a closure that only tests consult would be specification-without-execution on the
+// exact file it matters for.
+data fleet_converge_capability_closure_refusal: String = "REFUSED gunbc.fleet_converge_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in ci_prelude_bound_steps_with_checkout / fleet_converge_build_job_annotations, or the order of the steps themselves."
+
 fn expected_fleet_converge_yml() -> String {
-  serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_converge_workflow))
+  if fleet_converge_build_job_capability_closure_holds() {
+    serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_converge_workflow))
+  } else {
+    fleet_converge_capability_closure_refusal
+  }
 }
