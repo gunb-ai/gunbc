@@ -1,23 +1,23 @@
 module std.types
 
 
-data kernel_type_set: Map<String, Bool> = {
+data kernel_type_set: std.types.Map<String, std.types.Bool> = {
   "String": true, "Int": true, "Bool": true, "Float": true,
   "Secret": true, "Json": true, "Unit": true, "Bytes": true
 }
 
-fn is_kernel_type(name: String) -> Bool {
+fn is_kernel_type(name: String) -> std.types.Bool {
   match map_get(kernel_type_set, name) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
-data container_type_arity: Map<String, Int> = {
-  "List": 1, "List": 1, "Set": 1, "Map": 2, "Witness": 1
+data container_type_arity: std.types.Map<String, Int> = {
+  "List": 1, "std.types.List": 1, "Set": 1, "Map": 2, "Witness": 1
 }
 
-fn is_container_type(name: String) -> Bool {
+fn is_container_type(name: String) -> std.types.Bool {
   match container_expected_arity(name: name) {
     Present { value: _ } => true
     Absent => false
@@ -47,18 +47,18 @@ fn container_param_name(kind_name: String, index: Int) -> String? {
   }
 }
 
-data ordered_element_collections: Map<String, Bool> = {
+data ordered_element_collections: std.types.Map<String, std.types.Bool> = {
   "List": true,
-  "List": true
+  "std.types.List": true
 }
 
-fn is_ordered_element_collection(name: String) -> Bool {
+fn is_ordered_element_collection(name: String) -> std.types.Bool {
   map_contains_key(ordered_element_collections, name)
 }
 
-data container_template_algebra_rows: Map<String, String> = {
+data container_template_algebra_rows: std.types.Map<String, String> = {
   "List": "FreeMonoid",
-  "List": "FreeMonoid",
+  "std.types.List": "FreeMonoid",
   "list": "FreeMonoid",
   "Set": "PointwisePower",
   "set": "PointwisePower",
@@ -74,9 +74,9 @@ data container_template_algebra_rows: Map<String, String> = {
   "pointwise_power": "PointwisePower"
 }
 
-data container_template_alias_rows: Map<String, String> = {
+data container_template_alias_rows: std.types.Map<String, String> = {
   "List": "FreeMonoid",
-  "List": "FreeMonoid",
+  "std.types.List": "FreeMonoid",
   "list": "FreeMonoid",
   "Set": "PointwisePower",
   "set": "PointwisePower",
@@ -93,7 +93,7 @@ fn container_template_alias_algebra(name: String) -> String? {
 }
 
 fn canonical_container_names() -> List<String> {
-  ["BooleanAlgebra", "FreeMonoid", "List", "List", "Map", "PartialFunction", "Set", "Witness"]
+  ["BooleanAlgebra", "FreeMonoid", "List", "std.types.List", "Map", "PartialFunction", "Set", "Witness"]
 }
 
 type Bool = True | False
@@ -115,9 +115,9 @@ fn list_length<T>(items: List<T>) -> Int {
 
 type CommitSha    = String
 
-data commit_sha_text_holds_note: String = "The located syntax wall for an EXTERNALLY SUPPLIED Git head: lowercase 40-hex. It lives here, beside CommitSha, because that is the one authority every Git-head consumer already names — it was previously homed in std.realization_schedule as scoped_witness_exact_head_text_holds, where a receipt family that has since been deleted happened to be its first caller, and a second consumer (v2.compiler.self_host.frontier_probe_survey) was already importing it across that seam. CommitSha is presently an unvalidated String alias, so this predicate is a validating CHECK a caller must remember to run, not a construction wall. Dissolve-on: CommitSha gains one validating constructor; callers reach the constructor, the invalid state stops being writable, and this predicate deletes."
+data commit_sha_text_holds_note: String = "The located syntax wall for an EXTERNALLY SUPPLIED Git head: lowercase 40-hex. It lives here, beside CommitSha, because that is the one authority every Git-head consumer already names — it was previously homed in std.realization_schedule as scoped_witness_exact_head_text_holds, where a receipt family that has since been deleted happened to be its first caller, and a second consumer (v2.compiler.self_host.frontier_probe_survey) was already importing it across that seam. CommitSha is presently an unvalidated String alias, so this predicate is a validating CHECK a caller must remember to run, not a construction wall. Dissolve-on: std.types.CommitSha gains one validating constructor; callers reach the constructor, the invalid state stops being writable, and this predicate deletes."
 
-fn commit_sha_text_holds(head: String) -> Bool {
+fn commit_sha_text_holds(head: String) -> std.types.Bool {
   head.length() == 40 && all(chars(s: head), cp =>
     (cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 102)
   )
@@ -139,13 +139,13 @@ type NonEmptyStr     = String where non_empty
 type LanguageId      = String where non_empty
 type SecretName      = String where non_empty
 
-type PathSegment   = NonEmptyStr where brand("PathSegment")
+type PathSegment   = std.types.NonEmptyStr where brand("PathSegment")
 
 data path_segment_safety_note: String = "WHAT MAKES A STRING SAFE TO USE AS ONE PATH SEGMENT — the law, held once, so every branded id that becomes a directory name tests the same thing. The brand alone never carried it: a branded NonEmptyStr accepts \"..\", \"a/b\", and an embedded newline, so a value that typechecked as a segment could still escape its parent directory, alias a sibling, or split a line-oriented file written under that name. The refused set is exactly the characters that change what a concatenated path MEANS — `/` and `\\` introduce a level, `.` and `..` navigate, CR and LF terminate a record in every line-oriented format this repo writes, NUL terminates the string at the syscall boundary. Callers REFUSE on false rather than sanitizing, because a sanitized segment silently denotes something other than what the caller named (§5: a failure arm must refuse, never widen). Percent- or hex-encoding is the reversible alternative and is deliberately not offered until a caller needs a segment it cannot rename.
 
-This is a PREDICATE, not a constructor, and that is a modeling choice rather than a limitation worked around. A generic `path_segment(raw) -> PathSegment?` would put the branding cast in this module, and each caller would then re-cast the generic segment into its own brand anyway — two casts and two authorities for one law. Holding the law here and letting each branded id (gunbc.merge_admission_subject.walk_attempt_id is the first) construct itself through it keeps one authority for what is hostile and one constructor per brand, which is what §3 asks for. A generic constructor earns its place when a second caller wants a bare PathSegment rather than a brand of its own; none does today."
+This is a PREDICATE, not a constructor, and that is a modeling choice rather than a limitation worked around. A generic `path_segment(raw) -> std.types.PathSegment?` would put the branding cast in this module, and each caller would then re-cast the generic segment into its own brand anyway — two casts and two authorities for one law. Holding the law here and letting each branded id (gunbc.merge_admission_subject.walk_attempt_id is the first) construct itself through it keeps one authority for what is hostile and one constructor per brand, which is what §3 asks for. A generic constructor earns its place when a second caller wants a bare PathSegment rather than a brand of its own; none does today."
 
-fn path_segment_is_safe(raw: String) -> Bool {
+fn path_segment_is_safe(raw: String) -> std.types.Bool {
   !((raw == "")
     || (raw == ".")
     || (raw == "..")
@@ -155,23 +155,23 @@ fn path_segment_is_safe(raw: String) -> Bool {
     || string_contains(s: raw, pattern: "\x0d")
     || string_contains(s: raw, pattern: "\x00"))
 }
-type GlobSegment   = NonEmptyStr where brand("GlobSegment")
+type GlobSegment   = std.types.NonEmptyStr where brand("GlobSegment")
 
 data rendered_terminal_text_note: String = "TEXT THAT CARRIES NO TERMINAL CONTROL SEQUENCES — the vocabulary two unrelated dependencies meet on so neither has to know the other exists. A terminal-facing tool emits SGR escapes around the values it highlights; a parser reading those values needs them absent. Those are facts about DIFFERENT upstreams, and the wrong fix is for either to mention the other: a note in a CLI's module explaining what a terminal multiplexer strips is a fact filed under the wrong authority, and it stops being true the moment a second capture transport appears (operator, 2026-07-30: 'tmux stripping ansi should be a tmux fact, and codex prompts should be a codex fact, and the interaction should be emergent').\\n\\nSo the brand is the seam. A capture surface that renders a pane PRODUCES RenderedTerminalText; a prompt parser CONSUMES it; and the composition is admissible because the types line up, not because one module was written knowing about the other. A raw stdout pipe cannot inhabit the brand, so feeding one to a parser that requires it is a type error rather than a runtime paste of escape bytes the operator discovers when the far end rejects them.\\n\\nIt lives in std because it is a property of text, not of any one tool — the same reason FilePath is not owned by whichever dependency happens to open files."
 
 type RenderedTerminalText = String where brand("RenderedTerminalText")
 type FilePathParts {
-  segments: List<PathSegment>
+  segments: List<std.types.PathSegment>
 }
 type GlobPattern {
-  segments: List<GlobSegment>
+  segments: List<std.types.GlobSegment>
 }
 type FilePath      = String where non_empty
 
 data file_path_sentinel_scaffold_note: String = "review 45141. FilePath where non_empty made empty-string absent-file sentinels unwritable; interim re-spellings encode absence in a nominally-non_empty carrier (state-space conflation — path promises a real path while sentinel means absent/synthetic). Sites: emit_rust/go/python emit_*_test_file returns TextFile { path: \"<none>\", content: \"\" }, filtered by string_length(content) > 0 not path; 00_core no_span uses SourceSpan.file \"<synthetic>\" for the null span (make_span, which fabricated that file name for CALLER-SUPPLIED offsets, is deleted -- the fileless constructor now takes no offsets, so a located range inside a nonexistent file has no constructor). Preserves pre-wall behavior. dissolve-on: feature:optional-textfile-and-source-span (lift emit carriers to Option<TextFile> and SourceSpan.file to optional FilePath; delete sentinels and content-length filter)."
 
 type SourceSpan {
-  file: FilePath
+  file: std.types.FilePath
   start: Int
   end: Int
 }
@@ -183,21 +183,21 @@ type Duration      = Int where range(min: 0)
 type Milliseconds  = Int where range(min: 0), brand("Milliseconds")
 type Seconds       = Int where range(min: 0), brand("Seconds")
 
-type LogicalTime   = NonEmptyStr where brand("LogicalTime")
+type LogicalTime   = std.types.NonEmptyStr where brand("LogicalTime")
 
-type IntentId     = NonEmptyStr where brand("IntentId")
-type IssueId      = NonEmptyStr where brand("IssueId")
-type RunKey       = NonEmptyStr where brand("RunKey")
-type ArtifactId   = NonEmptyStr where brand("ArtifactId")
-type LeaseToken   = NonEmptyStr where brand("LeaseToken")
-type WorkerId     = NonEmptyStr where brand("WorkerId")
-type CommentId    = NonEmptyStr where brand("CommentId")
-type SignalKey    = NonEmptyStr where brand("SignalKey")
+type IntentId     = std.types.NonEmptyStr where brand("IntentId")
+type IssueId      = std.types.NonEmptyStr where brand("IssueId")
+type RunKey       = std.types.NonEmptyStr where brand("RunKey")
+type ArtifactId   = std.types.NonEmptyStr where brand("ArtifactId")
+type LeaseToken   = std.types.NonEmptyStr where brand("LeaseToken")
+type WorkerId     = std.types.NonEmptyStr where brand("WorkerId")
+type CommentId    = std.types.NonEmptyStr where brand("CommentId")
+type SignalKey    = std.types.NonEmptyStr where brand("SignalKey")
 
-type WorkflowProducerId = NonEmptyStr where brand("WorkflowProducerId")
-type WorkflowObserverId = NonEmptyStr where brand("WorkflowObserverId")
-type WorkflowProverId = NonEmptyStr where brand("WorkflowProverId")
-type WorkflowRunId = NonEmptyStr where brand("WorkflowRunId")
+type WorkflowProducerId = std.types.NonEmptyStr where brand("WorkflowProducerId")
+type WorkflowObserverId = std.types.NonEmptyStr where brand("WorkflowObserverId")
+type WorkflowProverId = std.types.NonEmptyStr where brand("WorkflowProverId")
+type WorkflowRunId = std.types.NonEmptyStr where brand("WorkflowRunId")
 
 type GitRef       = String where non_empty
 
@@ -206,9 +206,9 @@ type DocSourceKind    = Template | Generated | Static
 
 type FermiDepth = Xs | S | M | L | Xl
 
-type TextFilePath   = FilePath
+type TextFilePath   = std.types.FilePath
 
-type BinaryFilePath = FilePath
+type BinaryFilePath = std.types.FilePath
 
 type MimeType = String
 
@@ -221,40 +221,40 @@ type AuthScheme
   | ApiKey
 
 type AccessToken {
-  token: Secret
-  scheme: AuthScheme
-  expires_at: Timestamp?
+  token: std.types.Secret
+  scheme: std.types.AuthScheme
+  expires_at: std.types.Timestamp?
 }
 
 type Credential {
-  token: Secret
-  scheme: AuthScheme
+  token: std.types.Secret
+  scheme: std.types.AuthScheme
   header_name: String?
   source_id: String
   required_scopes: List<String>
   expires_in: Int?
 }
 
-type FilesystemHandle = FilePath where brand("FilesystemHandle")
+type FilesystemHandle = std.types.FilePath where brand("FilesystemHandle")
 type NetworkHandle    = Unit where brand("NetworkHandle")
 type ToolHandle       = String where brand("ToolHandle")
 
 type TransportRequest {
-  method: HttpMethod
+  method: std.types.HttpMethod
   url: String
-  headers: Json
+  headers: std.types.Json
   body: String
 }
 
 type TransportResponse {
   status: Int
-  headers: Json
+  headers: std.types.Json
   body: String
 }
 
 type FileResponse {
   path: String
-  success: Bool
+  success: std.types.Bool
   content: String
 }
 
@@ -266,16 +266,16 @@ type ShellResponse {
 
 type RestResponse {
   status: Int
-  headers: Json
-  body: Json
+  headers: std.types.Json
+  body: std.types.Json
 }
 
 type TestResult {
   name: String
-  ok: Bool
+  ok: std.types.Bool
   stdout: String
   stderr: String
-  duration_ms: Milliseconds
+  duration_ms: std.types.Milliseconds
 }
 
 type Summary {
@@ -286,10 +286,10 @@ type Summary {
 
 type StageResult {
   name: String
-  success: Bool
+  success: std.types.Bool
   stdout: String
   stderr: String
-  skipped: Bool
+  skipped: std.types.Bool
 }
 
 type RenderedTextFile {
@@ -304,19 +304,19 @@ type ToolEntry {
 }
 
 type ToolRegistry {
-  tools: List<ToolEntry>
+  tools: List<std.types.ToolEntry>
 }
 
 type DagTopology {
-  nodes: List<TopologyNode>
-  edges: List<TopologyEdge>
+  nodes: List<std.types.TopologyNode>
+  edges: List<std.types.TopologyEdge>
   subdag_boundaries: List<String>
 }
 
 type TopologyNode {
   id: String
   label: String
-  kind: TopologyNodeKind
+  kind: std.types.TopologyNodeKind
   parent: String?
 }
 
@@ -339,8 +339,8 @@ type PragmaDirective {
 }
 
 type DocSource {
-  path: FilePath
-  kind: DocSourceKind
+  path: std.types.FilePath
+  kind: std.types.DocSourceKind
 }
 
 type ReferenceModel<T>
