@@ -155,7 +155,6 @@ jobs:
         timeout-minutes: 5
       - name: Materialize fleet key in-run (SM versions/1 pinned -> RUNNER_TEMP 0600 -> ssh-agent -> wipe file)
         run: |
-          # 🟡 dissolve-on: gunbc_ci_fleet_key_agent_script — concat-built foreign-executor (GitHub Actions run:) shell materializing the fleet automation key from Secret Manager versions/1 into an in-run ssh-agent; DISSOLVES WHEN the typed secret-materialization effect (SecretRef -> in-run agent, SECRET-VERSION-LIFECYCLE-0 machinery) lands on host_effect_apply and the step becomes an emitted typed effect
           set -euo pipefail
           umask 077
           KEY_FILE="$RUNNER_TEMP/fleet-automation-key"
