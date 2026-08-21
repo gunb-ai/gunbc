@@ -20466,7 +20466,7 @@ fn behavioral_receipt_selftest(source_roots: &[String]) -> Result<bool, String> 
                 // and the arm would pass while the gate had quietly stopped comparing anything.
                 if *nondeterministic_calls != 0 {
                     eprintln!(
-                        "receipt-selftest: arm {arm} EQUIVALENT but the instability probe marked                          {nondeterministic_calls} call(s) unstable in a DETERMINISTIC fixture — the                          probe is producing false positives, so its exclusions cannot be trusted"
+                        "receipt-selftest: arm {arm} EQUIVALENT but the instability probe marked {nondeterministic_calls} call(s) unstable in a DETERMINISTIC fixture — the probe is producing false positives, so its exclusions cannot be trusted"
                     );
                     ok = false;
                 } else {
