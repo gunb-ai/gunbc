@@ -9583,6 +9583,79 @@ fn rust_struct_field_lookup_candidates(struct_name: String, scope: InferScope) -
   unique_strings(items: concat([struct_name], concat(from_template, from_resolve)))
 }
 
+// A DAG arrow-typed RECORD FIELD holds a callable VALUE, exactly as an arrow-typed fn return does
+// (rust_callable_return_wrap), and Rust renders both through callable_type_template as
+// Rc<dyn Fn(..) -> ..>. A dyn trait object defaults to 'static, so a closure stored into such a
+// field must OWN its captures. This position used the generic sharing ctor (Rc::new({0})) instead
+// of the callable row (callable_value_wrap_template, Rc::new(move {0})), so the closure captured
+// every enclosing local BY REFERENCE and rustc refused the coercion: E0597 `<x>` does not live
+// long enough, 27 sites on the 03_ingest closure at d72ffe8708 -- one message, one shape, ten of
+// them in v2_compiler_translate.rs alone, every one of them a lambda at an arrow-typed field.
+//
+// `move` ALONE IS NOT THE FIX, and that is why this carries a capture preamble rather than only
+// swapping the template. A move closure takes OWNERSHIP of its captures, and the shape that
+// produces these sites is a record with SEVERAL arrow fields built from the SAME enclosing
+// locals -- NodeFold { init, step } over one `tree` and one `partials` (v2_compiler_infer.rs
+// 1360/1361 capture `partials` twice and `tree` beside it). Wrapping both in `move` without
+// cloning first moves one local into two closures, which is E0382 in place of E0597: a different
+// refusal, not a repair. Each callable field therefore gets its own `.clone()` of exactly the
+// enclosing locals its body names, and the closure moves those clones.
+//
+// The capture set is DERIVED, never widened to "every local in scope": expr_var_occurrence_names
+// collects the ExprVar occurrences of the lambda subtree and the set is intersected with
+// scope.body_locals -- the strict body-grain binder set (let / match pattern / fn and lambda
+// params, per call_locals_shadow_note in v1.compiler.infer), which is precisely the names that
+// are Rust locals at the emission site. Module fns, variants and census bindings are not locals
+// and are excluded by construction rather than by a name list. A name shadowed by an inner binder
+// can still be collected -- the walk is occurrence-grained, not scope-grained -- which costs one
+// unused Rc clone and a rustc warning at such a site, never a wrong capture: the inner binder
+// shadows the preamble binding in the emitted block exactly as it shadows in the source.
+//
+// The walk is a 17th instance of the seed's self-recursive `children |> flat_map` collector idiom
+// (collect_value_ref_names is its neighbour in this file), and it dissolves with the seed at v2
+// self-host, exactly as explicit_return_conformance_note records for the same class.
+fn expr_var_occurrence_names(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let self_name = match n.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let nm = expr_var_name_at(texpr: n, source_indices: source_indices)
+      if nm != "" { [nm] } else { [] }
+    _ => []
+  }
+  let child_names = n.children |> flat_map(c => expr_var_occurrence_names(n: c, source_indices: source_indices))
+  let body_names = match n.body {
+    Present { value: b } => expr_var_occurrence_names(n: b, source_indices: source_indices)
+    Absent => []
+  }
+  unique_strings(items: concat(self_name, concat(child_names, body_names)))
+}
+
+fn rust_callable_capture_preamble(lambda_node: Node, scope: InferScope) -> String {
+  let names = expr_var_occurrence_names(n: lambda_node, source_indices: scope.type_env.source_indices)
+  let captured = names |> filter(nm => emit_map_has(m: scope.body_locals, key: nm))
+  captured
+    |> map(nm => concat("let ", emit_ident(name: nm, target: Rust), " = ", emit_ident(name: nm, target: Rust), ".clone(); "))
+    |> join(separator: "")
+}
+
+fn rust_callable_field_value_wrap(raw: String, value_node: Node?, scope: InferScope) -> String {
+  let lambda = match value_node {
+    Present { value: vn } => match vn.expr_data {
+      ExprLambda => Present { value: vn }
+      _ => none
+    }
+    Absent => none
+  }
+  match lambda {
+    Absent => rust_shared_wrap_ctor(inner_expr: raw)
+    Present { value: ln } =>
+      match language_spec(target: Rust).callable_value_wrap_template {
+        Present { value: t } =>
+          concat("{ ", rust_callable_capture_preamble(lambda_node: ln, scope: scope), apply_type_template1(template: t, arg0: raw), " }")
+        Absent => rust_shared_wrap_ctor(inner_expr: raw)
+      }
+  }
+}
+
 fn rust_struct_field_type_node(scope: InferScope, struct_name: String, field_name: String) -> Node? {
   match lookup_type_by_name(env: scope.type_env, name: struct_name) {
     Present { value: struct_node } => rust_struct_field_type_node_from_container(container: struct_node, field_name: field_name, source_indices: scope.type_env.source_indices)
@@ -9645,12 +9718,12 @@ fn rust_record_field_needs_box(scope: InferScope, emit_info: EmitGraphInfo, shar
   }
 }
 
-fn wrap_rust_record_field_value(raw: String, scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>, struct_name: String, field_name: String) -> String {
+fn wrap_rust_record_field_value(raw: String, value_node: Node?, scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>, struct_name: String, field_name: String) -> String {
   let is_bounded_lattice_field = struct_name == "BoundedLattice"
   if rust_record_field_needs_fn_rc(scope: scope, struct_name: struct_name, field_name: field_name) {
-    rust_shared_wrap_ctor(inner_expr: raw)
+    rust_callable_field_value_wrap(raw: raw, value_node: value_node, scope: scope)
   } else if is_bounded_lattice_field && (field_name == "meet" || field_name == "join") {
-    rust_shared_wrap_ctor(inner_expr: raw)
+    rust_callable_field_value_wrap(raw: raw, value_node: value_node, scope: scope)
   } else if rust_record_field_needs_box(scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: struct_name, field_name: field_name) {
     concat("Box::new(", raw, ")")
   } else {
@@ -9898,7 +9971,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
               match find_unique_struct_name_by_fields(field_names: single_field_names, type_summaries: emit_info.type_summaries) {
                 Present { value: r_sn } =>
                   if rust_record_field_needs_fn_rc(scope: scope, struct_name: r_sn, field_name: fname0) {
-                    let wrapped_val = wrap_rust_record_field_value(raw: fval0, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: r_sn, field_name: fname0)
+                    let wrapped_val = wrap_rust_record_field_value(raw: fval0, value_node: Present { value: field_init_node_value(n: f) }, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: r_sn, field_name: fname0)
                     let struct_lit = concat(r_sn, " {\n    ", emit_ident(name: fname0, target: Rust), ": ", wrapped_val, ",\n}")
                     if set_contains(shared_types, r_sn) {
                       rust_shared_wrap_ctor(inner_expr: struct_lit)
@@ -10036,7 +10109,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           let field_val = if needs_wrap {
             concat("Some(", val_str, ")")
           } else { val_str }
-          let stored_val = wrap_rust_record_field_value(raw: field_val, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: ctor_name, field_name: f_name)
+          let stored_val = wrap_rust_record_field_value(raw: field_val, value_node: Present { value: f_value }, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: ctor_name, field_name: f_name)
           concat("    ", emit_ident(name: f_name, target: Rust), ": ", stored_val, ",")
         )
         let provided_names = fields |> map(f => field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices))
@@ -10057,7 +10130,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
             if all_defaultable {
               missing |> flat_map(fname =>
                 if is_optional_struct_field(emit_info: emit_info, struct_name: variant_summary_name, field_name: fname) {
-                  let wrapped_none = wrap_rust_record_field_value(raw: "None", scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: ctor_name, field_name: fname)
+                  let wrapped_none = wrap_rust_record_field_value(raw: "None", value_node: none, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: ctor_name, field_name: fname)
                   [concat("    ", emit_ident(name: fname, target: Rust), ": ", wrapped_none, ",")]
                 } else {
                   match map_get(ftm, fname) {
