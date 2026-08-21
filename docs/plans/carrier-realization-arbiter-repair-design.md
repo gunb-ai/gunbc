@@ -181,20 +181,46 @@ and folders a browsing convention — so a probe module outside the seed may imp
 That removes the v1-growth question from step 1 entirely; the only seed edit remains the
 `is_host_text_carrier_type` visibility change disclosed above.
 
-### (b) is NOT zero-touch on `05_emit_rust`, stated plainly
+### There is no visibility change: (b′) is zero-touch on `05_emit_rust` after all
 
-An earlier revision of this document described the emitter as "untouched" under (b). That
-**overstates it**. Making `is_host_text_carrier_type` importable **is a change to
-`v1.compiler.05_emit_rust`**, the load-bearing file this whole lane is about.
+This heading previously read *"(b) is NOT zero-touch on `05_emit_rust`, stated plainly"* and
+disclosed a visibility change on `is_host_text_carrier_type` as the one seed edit step 1 needs.
+**That disclosure was wrong, and it is corrected in the direction of touching less, which is exactly
+the direction a disclosure must not be left wrong in.**
 
-It is a much better change than a second output channel — semantically inert, no control flow
-altered, no byte emitted differently — and that is the honest description, not "untouched". A
-reviewer who finds an undisclosed edit to the load-bearing file is right to discount everything else
-in the document.
+The `.dag` language has **no visibility syntax at all** — corpus-wide there is no `export`, `pub` or
+`private` form; every top-level `fn` in a module is importable by name. `is_host_text_carrier_type`
+is an ordinary top-level `fn`, exactly like `rust_scalar_checkpoint_render_base` — which
+`src/v1/tests/claim/checkpoint_identity_keying_witness_test.dag` **already imports from this same
+module** today. `v1.compiler.05_emit_rust` is likewise already imported by `v1.compiler.compile` and
+`v1.compiler.stage0_crates`.
 
-Worth stating on its own account: **making a pure predicate importable is arguably correct
-independent of this lane.** A predicate that two consumers must agree on should be shareable, and its
-privacy is part of what made the fork possible in the first place.
+So **step 1 requires no edit to `v1.compiler.05_emit_rust`, and no edit to the v1 seed at all.** The
+predicate is imported, not re-derived — the property the ruling actually depended on — and nothing is
+widened to achieve it.
+
+**The lifetime question dissolves with the change that raised it.** It asked whether a widened
+surface survives the repair or is scoped to the census. There is no widened surface: the predicate's
+importability is a property of the language, not a grant this lane made. If the terminal repair
+deletes the spelling-keyed short-circuits and the predicate with them, the census's import fails
+loudly at that point — which is the correct coupling, and is a live dependent rather than residue.
+Recorded rather than dropped, because an unasked question and a dissolved one look identical in six
+weeks.
+
+### The census's executing consumer is its own driver, because the batch it would have used is gone
+
+`src/v1/tests/claim/checkpoint_identity_keying_witness_test.dag` documents its own execution as
+`gunbc.ci_layer_roots` `v1_claim_scoped_witness_entries` → `v1_claim_scoped_witness_batch`, "whose
+source-root envelope is dag plus src/v1". **That batch is deleted** — `ci_layer_roots`
+`v1_claim_scoped_witness_batch_deleted_note` records the deletion (2026-08-15), and
+`witness_fold_src_v1_coverage_gap_note` carries the resulting declared coverage gap.
+
+So a census module cannot inherit that enrollment, and step 1 does not try to. Its executing consumer
+is **its own host driver**, the "local recipe" standing `realization_sweep_survey.rs` already
+occupies for its probe — the driver supplies the `dag` + `src/v1` source-root envelope for the census
+module itself, and separately supplies the subject closure's sources as `SourceFile` **data**. Those
+are two different roles for two different populations and the design keeps them apart deliberately:
+confusing them is how a census ends up measuring its own pool instead of its subject.
 
 ## Step 2 — Four counterfactual crates over one pinned tree
 
