@@ -174,12 +174,36 @@ channel is added to the emit path, acceptance condition 8 is still true by const
 and the calibration control is unchanged and now matters more — a v1-side walk *can* still drift from
 the emitter's control flow, and reproducing the 25 is still what settles it.
 
-**One thing (b′) improves over (b) as ruled:** the census module does **not** have to live in
-`src/v1/`. Import direction is not a layer rule — DESIGN §3 makes acyclicity the only structural law
-and folders a browsing convention — so a probe module outside the seed may import `v1.std.core`,
-`v1.compiler.coercion` and `v1.compiler.05_emit_rust` without adding a module to the frozen seed.
-That removes the v1-growth question from step 1 entirely; the only seed edit remains the
-`is_host_text_carrier_type` visibility change disclosed above.
+**REFUTED BY CI, 2026-08-21 — the census module DOES have to live in `src/v1/`.** This paragraph
+claimed the module need not, on the grounds that import direction is not a layer rule (DESIGN §3
+makes acyclicity the only structural law and folders a browsing convention), and concluded that this
+"removes the v1-growth question from step 1 entirely".
+
+**The premise is true and the conclusion is false.** Import direction is indeed not a layer rule, but
+that is not the constraint that binds. The required floor discovers subjects by **path**, over the
+roots `dag` and `src/v2` (`witness_layer_roots`), and resolves that closure as one program —
+`modules_resolved=3820`. A module authored at `src/v2/workflow/` is therefore swept into discovery
+because of **where it sits**, not because of what imports it, and its `v1.*` imports are unresolvable
+inside that envelope. Measured, on PR #8816:
+
+```
+src/v2/workflow/carrier_realization_census.dag:3:1: error: unresolved import:
+    module 'v1.compiler.compile' not found
+required-ci: floor refused: subject=7b5536161546187e modules_resolved=3820 modules_excluded=4
+```
+
+This is the same structural unresolvability `dag/test/claim/checkpoint_identity_keying_witness_test.dag`
+already documents about itself; I read that precedent and still authored outside `src/v1/`.
+
+The module now lives at `src/v1/tests/claim/carrier_realization_census.dag` and produces
+**byte-identical** results there, so nothing measured is invalidated — only this placement claim is.
+
+**So the v1-growth question is REOPENED, and it is an admission to state rather than one to assume.**
+Step 1 adds one module to the seed tree. Under DESIGN §3's v1 maintenance standing the admission test
+is PURPOSE — *"anything in support of v2 self host is safe"* — and the E0308 board is that program,
+so it reads as admissible. It is recorded here as an open admission, not as a settled one: this
+document does not get to grant itself the exception, and the paragraph it replaces is exactly what
+happens when a design talks a question out of existence instead of answering it.
 
 ### There is no visibility change: (b′) is zero-touch on `05_emit_rust` after all
 
