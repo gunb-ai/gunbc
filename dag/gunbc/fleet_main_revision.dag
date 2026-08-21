@@ -2,6 +2,13 @@ module gunbc.fleet_main_revision
 
 import std.types { String, NonEmptyStr, Bool, Int }
 import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import extdeps.git.inspect {
+  MergeBaseOutcome,
+  MergeBaseReported,
+  NoCommonAncestor,
+  MergeBaseRefused,
+  merge_base_outcome,
+}
 import extdeps.git.publication_transport {
   GitRemoteRefExpectation,
   RemoteRefMustBeAbsent,
@@ -185,10 +192,6 @@ type FleetRevisionRelationObservation {
 // UnrelatedHistories). Reusing that vocabulary rather than minting a Diverged variant keeps one
 // authority for "how do these two revisions relate"; the name is the deploy lane's, and it means
 // neither-is-an-ancestor rather than share-no-history.
-data merge_base_exit_ok: Int = 0
-
-data merge_base_exit_no_merge_base: Int = 1
-
 fn fleet_revision_relation_from_merge_base(
   current: GitObjectId,
   accepted: GitObjectId,
@@ -209,6 +212,30 @@ fn fleet_revision_relation_from_merge_base(
   }
 }
 
+// THE EXIT CODES ARE NOT MATCHED HERE. They are git's fact and extdeps.git.inspect owns them
+// beside the exit table that declares them; this module receives an already-classified
+// MergeBaseOutcome and decides only what that outcome means for a fleet advance. The two local
+// `merge_base_exit_*: Int` rows that used to sit here were an undeclared sum -- a second
+// representation of the operation's own exit table, comparable against any other operation's codes
+// without complaint from anything (raised in review 54373).
+//
+// A DECLARED CONFLATION SURVIVES THIS CHANGE, AND IT IS NOW VISIBLE AT ONE LINE INSTEAD OF NONE.
+// NoCommonAncestor (git looked; these histories never met) and a reported base that is neither
+// endpoint (they diverged from a shared past) both fold to UnrelatedHistories, because that is the
+// vocabulary gunbc.live_deploy.revision owns and its variant means neither-is-an-ancestor. The two
+// states are genuinely different and have opposite remedies: a divergence is a force-push or a
+// rebase and the shared base is the thing an operator reasons from, while no common ancestor at all
+// means the configured revision came from somewhere else entirely -- a wrong remote, a wrong
+// repository -- which no amount of history reading will reconcile. The refusal message on that
+// variant currently asserts "share no ancestry", which is FALSE for the divergent case and that is
+// the overwhelmingly common one.
+//
+// It is left folded rather than split unilaterally because DeployRevisionRelation is the deploy
+// lane's type and a split changes every consumer of it. The distinction is DECIDABLE and the
+// evidence is now in hand rather than discarded upstream -- NoCommonAncestor arrives as its own
+// variant. Next-rung trigger: the deploy lane splitting UnrelatedHistories into a diverged arm
+// carrying the shared base and an unrelated arm carrying none; this call site consumes the split
+// the day it lands, with no new evidence required. Raised to that owner separately.
 fn merge_base_relation(
   current: GitObjectId,
   accepted: GitObjectId,
@@ -219,23 +246,21 @@ fn merge_base_relation(
   if git_object_id_eq(left: current, right: accepted) {
     SameRevision
   } else {
-    if exit_code == merge_base_exit_no_merge_base {
-      UnrelatedHistories
-    } else {
-      if exit_code == merge_base_exit_ok {
-        match git_object_id_from_untagged_hex(hex: base_hex) {
+    match merge_base_outcome(exit_code: exit_code, stdout: base_hex, stderr: stderr) {
+      NoCommonAncestor => UnrelatedHistories
+      MergeBaseReported { stdout: hex } =>
+        match git_object_id_from_untagged_hex(hex: hex) {
           Present { value: base } =>
             relation_from_merge_base_oid(current: current, accepted: accepted, base: base)
           none =>
             RelationUnverifiable {
-              cause: concat("git merge-base succeeded but its output is not a decodable object id: ", base_hex),
+              cause: concat("git merge-base succeeded but its output is not a decodable object id: ", hex),
             }
         }
-      } else {
+      MergeBaseRefused { exit_code: _, stderr: why } =>
         RelationUnverifiable {
-          cause: concat("git merge-base could not answer for this pair: ", stderr),
+          cause: concat("git merge-base could not answer for this pair: ", why),
         }
-      }
     }
   }
 }

@@ -312,6 +312,16 @@ fn fleet_desired_authorized_action_script(action: FleetDesiredAuthorizedAction) 
 // routes each already-classified outcome into the input variant that carries the evidence that
 // outcome has -- and only the observed-current branch reaches git at all, because it is the only
 // one with two revisions to relate.
+//
+// THE RemoteRefMustBeAbsent ARM BELOW IS THE CREATION RETRACTION WORKING, NOT A LEFTOVER OF IT,
+// and it is called out here because the correct action and the tidy-looking action are opposites.
+// Creation is unauthorized, so a reader finishing the retraction by deleting the last mention of
+// the absent expectation would delete that arm -- and an observed-absent remote would then have
+// nowhere to land. Absence remains a real, observable STATE and must be CLASSIFIED in order to
+// REACH its refusal. What the retraction removed is the authorized ACTION downstream; it never
+// removed the ability to say what was seen. Same family as the absent-arm witness: a red or a
+// stray symbol is not evidence of which repair is wanted, and only the policy separates them.
+// (Pinned by nimble-fox-671 while independently verifying the retraction at fa2290eb6c5.)
 fn fleet_desired_advance_input_wet(
   accepted: AcceptedFleetRevision<NonEmptyStr, NonEmptyStr>,
 ) -> FleetDesiredAdvanceInput<NonEmptyStr, NonEmptyStr> {

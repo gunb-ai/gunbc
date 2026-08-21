@@ -185,3 +185,43 @@ service git.Inspect {
     }
   }
 }
+
+// MERGE-BASE EXIT SEMANTICS ARE A FACT OF GIT, SO THEY ARE MODELED HERE BESIDE THE EXIT TABLE THAT
+// DECLARES THEM, and not re-derived by each consumer as bare integers compared with `==`. The
+// operation above already states the contract -- 0, 1, 128 with distinct meanings -- and a consumer
+// that mints its own `merge_base_exit_ok: Int = 0` beside it is holding a second representation of
+// this module's fact: the §2/§3 undeclared sum, free to drift from the exit table the day a fourth
+// code is declared, and free to be compared against the wrong operation's codes with no complaint
+// from anything.
+//
+// THE THREE OUTCOMES ARE NOT A RANKING AND THE MIDDLE ONE IS NOT AN ERROR. Exit 1 is a legitimate
+// ANSWER -- git looked and there is no common ancestor -- which is precisely what lets a consumer
+// distinguish "these histories never met" from "I could not find out", the distinction §5 forbids
+// collapsing. Exit 128 is the refusal: a bad object or a path that is not a repository, where
+// nothing about the two revisions has been established. Rendering 128 as NoCommonAncestor would
+// read an unreadable repository as proof that two revisions are unrelated.
+//
+// THE REPORTED BASE STAYS RAW. Decoding stdout into an object id belongs to the consumer that owns
+// the id type; this module owns what git's exit code MEANS, not how the caller names commits.
+type MergeBaseOutcome
+  = MergeBaseReported { stdout: String }
+  | NoCommonAncestor
+  | MergeBaseRefused { exit_code: Int, stderr: String }
+
+data merge_base_exit_reported: Int = 0
+
+data merge_base_exit_no_common_ancestor: Int = 1
+
+// Total over every integer, deliberately: an undeclared exit code is a REFUSAL carrying the code
+// that produced it, never a fourth silent arm and never a default that resolves to an answer.
+fn merge_base_outcome(exit_code: Int, stdout: String, stderr: String) -> MergeBaseOutcome {
+  if exit_code == merge_base_exit_reported {
+    MergeBaseReported { stdout: stdout }
+  } else {
+    if exit_code == merge_base_exit_no_common_ancestor {
+      NoCommonAncestor
+    } else {
+      MergeBaseRefused { exit_code: exit_code, stderr: stderr }
+    }
+  }
+}
