@@ -101,6 +101,7 @@ func stamp_tested_floor_with_conclusion(conclusion: CheckConclusion) -> Bool {
             pr_number: none,
             tested_head_sha: subject.head_sha,
             tested_base_tree_hash: subject.base_tree_hash,
+            tested_base_commit_sha: subject.base_commit_sha,
             gate_roster_hash: current_gate_roster_hash,
             conclusion: conclusion,
           }
@@ -129,6 +130,7 @@ type MergeTargetRefreshRefusal
   | RefreshTestedSubjectWireMissing
   | RefreshFloorReceiptWireMissing
   | RefreshTargetTreeObservationRefused { cause: String }
+  | RefreshTargetCommitObservationRefused
   | RefreshVerdictDenied { verdict: String }
 
 type MergeTargetRefresh
@@ -142,6 +144,7 @@ fn merge_target_refresh_refusal_label(cause: MergeTargetRefreshRefusal) -> Strin
     RefreshTestedSubjectWireMissing => "tested-subject-wire-missing"
     RefreshFloorReceiptWireMissing => "floor-receipt-wire-missing"
     RefreshTargetTreeObservationRefused { cause: cause } => concat("target-tree-observation-refused cause=", cause)
+    RefreshTargetCommitObservationRefused => "target-commit-observation-refused"
     RefreshVerdictDenied { verdict: verdict } => concat("verdict-denied verdict=", verdict)
   }
 }
@@ -192,11 +195,16 @@ func merge_target_refresh() -> MergeTargetRefresh {
                   MergeTargetTreeHashRefused { ref: _, cause: cause } =>
                     MergeTargetRefreshRefused { cause: RefreshTargetTreeObservationRefused { cause: cause } }
                   MergeTargetTreeHashOk { hash: current_tree } =>
+                    let current_commit = git.Inspect.ResolveRefCommit(ref: merge_admission_merge_base_ref as GitRef)
+                    if !current_commit.success {
+                      MergeTargetRefreshRefused { cause: RefreshTargetCommitObservationRefused }
+                    } else {
                     let verdict = classify_merge_admission_verdict_v2(
                       current_attempt_id: attempt_id,
                       tested_subject: subject,
                       receipt: receipt,
                       merge_target_tree_hash: current_tree,
+                      merge_target_commit_sha: current_commit.sha,
                       current_roster_hash: current_gate_roster_hash
                     )
                     if merge_freshness_verdict_is_consumed_to_block() {
@@ -206,6 +214,7 @@ func merge_target_refresh() -> MergeTargetRefresh {
                       }
                     } else {
                       MergeTargetRefreshed
+                    }
                     }
                 }
             }

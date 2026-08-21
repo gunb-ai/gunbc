@@ -37,6 +37,13 @@ data git_inspect_service_note: String = "Read-only repository-root, revision, an
 // `--exclude-standard` is pinned because without it the command applies no ignore rules at all and would
 // return every untracked path — the opposite of the question. The output is a bare NUL-separated path list,
 // so unlike porcelain v1 it carries no status codes and no rename-source continuation to track.
+// ResolveRefCommit is a SEPARATE operation from ShowTree rather than a format flag on it, and the
+// separation is the point: `%T` and `%H` answer different questions about the same ref. The tree is
+// the CONTENT at that ref; the commit is its identity INCLUDING ancestry, which the tree does not
+// carry -- two commits with byte-identical trees can have different parents and therefore different
+// merge bases. A consumer that needs the merge to be reproducible needs this one, and a consumer
+// that needs to compare content needs the other; collapsing them into one operation with a format
+// argument would let a caller ask for content and be answered with identity.
 service git.Inspect {
   operation Toplevel {
     input {}
@@ -127,6 +134,21 @@ service git.Inspect {
     }
     readonly
     transport shell { argv: ["git", "ls-tree", "-rz", "--name-only", "{ref}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation ResolveRefCommit {
+    input { ref: GitRef }
+    output {
+      sha: CommitSha from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "show", "-s", "--format=%H", "{ref}"] }
     exit {
       0 => Unit
       128 => String "Invalid ref or not a git repository"

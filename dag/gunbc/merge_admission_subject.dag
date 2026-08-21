@@ -28,17 +28,40 @@ fn walk_attempt_id_eq(left: WalkAttemptId, right: WalkAttemptId) -> Bool {
   (left as String) == (right as String)
 }
 
+// THE BASE COMMIT IS A SEPARATE FACT FROM THE BASE TREE, AND OMITTING IT WAS A FALSE-ADMIT HOLE.
+// A three-way merge is a function of head, base, and the MERGE BASE -- and the merge base is fixed
+// by ANCESTRY, which a tree does not carry. So base_tree_hash alone cannot determine the merge
+// result, and an earlier revision of this carrier (and of MergeAdmissionReceiptV2) pinned only the
+// tree.
+//
+// DEMONSTRATED, not argued (2026-08-21, throwaway repo, real git). Let H branch from base B0; let
+// the base then cherry-pick H and revert it, giving B2:
+//
+//   tree(B0) == tree(B2)        YES   -- the revert restored the content exactly
+//   B0 != B2                    YES   -- distinct commits
+//   merge-base(H, B0) = B0            merge H into B0 -> H's file PRESENT
+//   merge-base(H, B2) = H'            merge H into B2 -> H's file ABSENT
+//
+// Same head, same base tree, different base commit, DIFFERENT merge result -- with the PR's own
+// change silently not landing. Every comparison the classifier made would have passed, so this was
+// a false ADMIT: the one direction the wall exists to make impossible.
 type TestedSubject {
   attempt_id: WalkAttemptId
   head_sha: CommitSha
   base_ref: String
   base_tree_hash: GitObjectId
+  base_commit_sha: CommitSha
 }
 
 data tested_subject_note: String = "THE SUBJECT THE FLOOR TESTED, captured by a typed claim subprocess before the ordinary floor — before any substantive floor work — and bound into the receipt by the stamp. The child address space dies before batch 1, structurally reclaiming its evaluator arena while preserving the exact wire bytes. The stamp must NOT re-read HEAD or re-observe the merge target at stamp time: main can advance during a floor that runs for tens of minutes, and a receipt binding post-floor observations would claim the floor tested a tree it never saw. The gate then fetches the CURRENT target and classifies tested_base_tree_hash against it — two base facts with different jobs, never one observation doing both (the deleted single pre-floor fetch was exactly that fusion, and the freshness hole it left is what the old separate gate step's own fresh fetch existed to catch)."
 
 data merge_admission_merge_base_ref: String = gunbc_merge_target_ref as String
-data merge_admission_tested_subject_schema: String = "gunbc.merge_admission_tested_subject.v1"
+// SCHEMA BUMPED v1 -> v2 WITH THE ADDED FIELD, per the rule gunbc.merge_admission_produce
+// wire_exact_arity_note states: "adding a field means bumping the schema tag, not silently
+// appending a line older readers ignore". The arity check below moves 5 -> 6 in the same step, so a
+// stale v1 wire refuses on the tag rather than binding five of its six fields and inventing the
+// sixth.
+data merge_admission_tested_subject_schema: String = "gunbc.merge_admission_tested_subject.v2"
 
 data compose_walk_attempt_id_note: String = "Pure composition of the walk-attempt identity from its parts; the ENV OBSERVATION lives with the wet entry, this fn only joins and refuses. Every part must be nonempty — an empty run id, attempt number, or job name yields Absent, and the caller REFUSES the run rather than substituting a constant: a silent local would make every non-GitHub run one attempt, so the wrong-attempt refusal could never fire off CI, which is exactly the unreachable-arm shape §5 forbids. Non-GitHub execution supplies GUNBC_WALK_ATTEMPT_ID explicitly and it passes through compose_explicit_walk_attempt_id under the same nonempty law."
 
@@ -88,13 +111,14 @@ fn parse_git_object_id_wire(raw: String) -> GitObjectId? {
 }
 
 fn render_tested_subject_wire(subject: TestedSubject) -> String {
-  concat(
-    concat(
-      concat(concat(merge_admission_tested_subject_schema, "\n"), concat(subject.attempt_id as String, "\n")),
-      concat(subject.base_ref, "\n")
-    ),
-    concat(concat(render_git_object_id_wire(oid: subject.base_tree_hash), "\n"), subject.head_sha)
-  )
+  join([
+    merge_admission_tested_subject_schema,
+    subject.attempt_id as String,
+    subject.base_ref,
+    render_git_object_id_wire(oid: subject.base_tree_hash),
+    subject.head_sha,
+    subject.base_commit_sha,
+  ], "\n")
 }
 
 fn receipt_wire_lines(text: String) -> List<String> {
@@ -103,13 +127,15 @@ fn receipt_wire_lines(text: String) -> List<String> {
 
 fn parse_tested_subject_wire(text: String) -> TestedSubject? {
   let lines = receipt_wire_lines(text: text)
-  if !(length(lines) == 5) {
+  if !(length(lines) == 6) {
     none
   } else if !(lines.first() == merge_admission_tested_subject_schema) {
     none
   } else if lines.skip(n: 2).first() == "" {
     none
   } else if lines.skip(n: 4).first() == "" {
+    none
+  } else if lines.skip(n: 5).first() == "" {
     none
   } else {
     match walk_attempt_id(raw: lines.skip(n: 1).first()) {
@@ -123,6 +149,7 @@ fn parse_tested_subject_wire(text: String) -> TestedSubject? {
               base_ref: lines.skip(n: 2).first(),
               base_tree_hash: tree,
               head_sha: lines.skip(n: 4).first(),
+              base_commit_sha: lines.skip(n: 5).first(),
             }
           }
         }
