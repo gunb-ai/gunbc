@@ -3,12 +3,18 @@ module gunbc.fleet_desired_observe
 import std.types { String, Bool, FilePath, GitRef }
 import std.algebra { trim }
 import extdeps.git
+import extdeps.git.inspect
 import extdeps.git.object_store {
   GitObjectId,
   git_object_id_from_untagged_hex,
   git_object_id_eq,
+  git_object_id_wire_hex,
 }
+import gunbc.live_deploy.revision { SameRevision }
+import gunbc.output_policy { OutcomeIsData }
 import gunbc.fleet_main_revision {
+  FleetRevisionRelationObservation,
+  fleet_revision_relation_from_merge_base,
   fleet_desired_ref_name,
   FleetDesiredRevision,
   FleetDesiredAdmitted,
@@ -52,6 +58,58 @@ fn observe_fleet_desired_revision(repo: FilePath) -> FleetDesiredRevision {
     FleetDesiredUnobserved {
       cause: concat("fleet_desired_observe: ls-remote refused: ", read.stderr),
     }
+  }
+}
+
+// THE EFFECTFUL HALF OF THE ANCESTRY OBSERVATION, AND THE SOLE PRODUCTION CONSTRUCTOR OF A
+// MERGE-BASE-DERIVED RELATION.
+//
+// The decidable half is a pure fold in gunbc.fleet_main_revision, and only this function may feed
+// it observed facts. Product code must not author an exit_code, a base hex and a stderr and call
+// that fold as though those had been observed -- the fold stays public because the POLICY has to
+// be witnessable hermetically (git.Inspect.MergeBase carries no mock_response, so any witness
+// reaching it refuses under the hermetic envelope), but authoring its inputs outside an actual
+// probe is fabricating an observation.
+//
+// PRECONDITION, STATED RATHER THAN PARAMETERIZED: git.Inspect.MergeBase takes no repository and
+// runs in the PROCESS WORKING DIRECTORY. This function therefore requires its caller to be
+// executing inside the repository whose history is being compared, which the live admission
+// workflow already is. It deliberately does NOT take a `repo` argument: the operation provides no
+// `git -C`, so a repo parameter would be silently ignored -- a signature promising a capability
+// the transport does not have, which is worse than the honest precondition because it reads as
+// checked.
+//
+// EQUALITY SHORT-CIRCUITS WITHOUT INVOKING GIT. A converged pair is decided from the two oids
+// alone, so the common steady-state case costs no subprocess and cannot be turned into a refusal
+// by a repository that happens to be unreadable.
+//
+// OutcomeIsData, not ExpectSuccess: exit 1 from `git merge-base` means the pair shares no merge
+// base, which is an ANSWER about the pair and not an operational failure. Declaring it a failure
+// is precisely the collapse the exit-code work removes -- `success` is false for both exit 1 and
+// exit 128, so a caller reading only that Bool cannot tell "unrelated" from "could not look".
+fn observe_fleet_revision_relation(
+  current: GitObjectId,
+  accepted: GitObjectId,
+) -> FleetRevisionRelationObservation {
+  if git_object_id_eq(left: current, right: accepted) {
+    FleetRevisionRelationObservation {
+      current: current,
+      accepted: accepted,
+      relation: SameRevision,
+    }
+  } else {
+    let probe = git.Inspect.MergeBase(
+      left: git_object_id_wire_hex(oid: current) as String as GitRef,
+      right: git_object_id_wire_hex(oid: accepted) as String as GitRef,
+      expect: OutcomeIsData,
+    )
+    fleet_revision_relation_from_merge_base(
+      current: current,
+      accepted: accepted,
+      exit_code: probe.exit_code,
+      base_hex: trim(s: probe.sha as String),
+      stderr: probe.stderr,
+    )
   }
 }
 
