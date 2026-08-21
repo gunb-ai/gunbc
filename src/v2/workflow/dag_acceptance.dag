@@ -26,6 +26,7 @@ import v2.compiler.staged_front_end {
 import v2.std.algebra { list_snoc_item }
 import v2.std.collection { List }
 import v2.std.compilers.target_model { TargetModel }
+import std.measure { Millisecond, millisecond, millisecond_count }
 import v2.std.diagnostic { Accepted, Diagnostics, None, NonEmptyDiagnostics, Rejected, Some }
 import v2.std.leaf_model_verification {
   TargetCompileAccepted,
@@ -163,14 +164,16 @@ data acceptance_policy_note: String = "TWO POLICIES, ONE RECEIPT SHAPE. Interact
 
 type StageCostRow {
   obligation: DagStageObligation,
-  required_ms: Int
+  required: Millisecond
 }
 
 type VerifierBudgetLedger
   = VerifierBudgetUnbounded
-  | VerifierBudgetRemainingMs { remaining_ms: Int }
+  | VerifierBudgetTotal { total: Millisecond }
 
-data verifier_budget_subject_note: String = "THE BUDGET FACTS HAVE TWO DIFFERENT SUBJECTS AND THE SAME SYMPTOM. A candidate that blows its declared CPU budget is a fact about the CANDIDATE and lands as a rejection. The verifier running out of budget before a stage starts is a fact about US and lands as StageNotRun VerifierBudgetUnavailable — it must never become a semantic rejection, or a slow machine reads as a bad model. Both numbers here are DECLARED or OBSERVED inputs: required_ms comes from the contract's own cost policy and remaining_ms from the runner's ledger. This module never estimates either, because an invented cost would make the refusal a fabrication rather than a measurement."
+data verifier_budget_measure_note: String = "DURATIONS ARE Millisecond, THE CITED std.measure CARRIER, NOT BARE Int. Two `_ms` scalars can be added and compared with nothing checking that they are the same quantity, and a module that carries its own millisecond scalars is a second representation of duration standing beside std/measure.dag (review 54506 caught exactly that in the first cut).\n\nAND THE LEDGER COUNTS WHAT IT HAS SPENT RATHER THAN WHAT REMAINS, which is a consequence of the same move. Nat is a CommutativeSemiring — it has addition and no subtraction — so a decrementing ledger would have needed an operation its own carrier does not provide. Admission is therefore `spent + required` against the declared total, and a refusal reports all three of required, total and already-spent rather than a single derived remainder, which is strictly more of the fact than the remainder carried."
+
+data verifier_budget_subject_note: String = "THE BUDGET FACTS HAVE TWO DIFFERENT SUBJECTS AND THE SAME SYMPTOM. A candidate that blows its declared CPU budget is a fact about the CANDIDATE and lands as a rejection. The verifier running out of budget before a stage starts is a fact about US and lands as StageNotRun VerifierBudgetUnavailable — it must never become a semantic rejection, or a slow machine reads as a bad model. Every duration here is a DECLARED input: the required cost comes from the contract's own cost policy and the total from the runner's ledger. This module never estimates either, because an invented cost would make the refusal a fabrication rather than a measurement."
 
 type DagAcceptanceContract {
   name: Symbol,
@@ -212,7 +215,11 @@ type StageNotRunReason
   = NotRequiredByContract
   | BlockedByPrerequisite { prerequisite: Symbol }
   | SkippedAfterDecisiveRejection { rejected_obligation: Symbol }
-  | VerifierBudgetUnavailable { required_ms: Int, remaining_ms: Int }
+  | VerifierBudgetUnavailable {
+      required: Millisecond,
+      budget_total: Millisecond,
+      already_spent: Millisecond
+    }
   | ExecutorUnavailable { cause: String }
 
 data stage_not_run_reason_note: String = "BlockedByPrerequisite and SkippedAfterDecisiveRejection are DIFFERENT FACTS and conflating them is the state-space conflation DESIGN section 5 names. Resolve rejected means infer is IMPOSSIBLE — nothing could have run it. Eval rejected leaves TranslateTo entirely possible; a fail-fast policy CHOSE not to pay for it. The first is a property of the candidate, the second a property of our policy, and the remedies differ: one says fix the candidate, the other says re-run under FullLedger."
@@ -311,31 +318,36 @@ fn required_front_end_depth(obligations: List<DagStageObligation>) -> Int {
   })
 }
 
-fn stage_cost_ms(contract: DagAcceptanceContract, obligation: DagStageObligation) -> Int {
-  fold(contract.stage_costs, init: 0, f: fn(acc, row) {
-    if obligation_eq(a: row.obligation, b: obligation) { row.required_ms } else { acc }
+fn no_cost() -> Millisecond {
+  millisecond(count: 0)
+}
+
+fn stage_cost(contract: DagAcceptanceContract, obligation: DagStageObligation) -> Millisecond {
+  fold(contract.stage_costs, init: no_cost(), f: fn(acc, row) {
+    if obligation_eq(a: row.obligation, b: obligation) { row.required } else { acc }
   })
 }
 
-fn ledger_admits(ledger: VerifierBudgetLedger, required_ms: Int) -> Bool {
+fn millisecond_sum(a: Millisecond, b: Millisecond) -> Millisecond {
+  millisecond(count: millisecond_count(m: a) + millisecond_count(m: b))
+}
+
+fn ledger_admits(
+  ledger: VerifierBudgetLedger,
+  spent: Millisecond,
+  required: Millisecond
+) -> Bool {
   match ledger {
     VerifierBudgetUnbounded => true
-    VerifierBudgetRemainingMs { remaining_ms: r } => r >= required_ms
+    VerifierBudgetTotal { total: total } =>
+      !(millisecond_count(m: millisecond_sum(a: spent, b: required)) > millisecond_count(m: total))
   }
 }
 
-fn ledger_remaining_ms(ledger: VerifierBudgetLedger) -> Int {
+fn ledger_total(ledger: VerifierBudgetLedger) -> Millisecond {
   match ledger {
-    VerifierBudgetUnbounded => 0
-    VerifierBudgetRemainingMs { remaining_ms: r } => r
-  }
-}
-
-fn ledger_spend(ledger: VerifierBudgetLedger, required_ms: Int) -> VerifierBudgetLedger {
-  match ledger {
-    VerifierBudgetUnbounded => VerifierBudgetUnbounded
-    VerifierBudgetRemainingMs { remaining_ms: r } =>
-      VerifierBudgetRemainingMs { remaining_ms: r - required_ms }
+    VerifierBudgetUnbounded => no_cost()
+    VerifierBudgetTotal { total: total } => total
   }
 }
 
@@ -349,7 +361,7 @@ type AcceptanceRunState {
   resolved: Optional<Node>,
   inferred: Optional<InferredTree>,
   translations: List<TranslationOutputRow>,
-  ledger: VerifierBudgetLedger,
+  spent: Millisecond,
   first_rejection: Optional<Symbol>
 }
 
@@ -409,8 +421,7 @@ fn front_end_row_for_stage(
   stage: FrontEndStage,
   effective: List<DagStageObligation>,
   admitted: Bool,
-  required_ms: Int,
-  remaining_ms: Int
+  budget_refusal: StageNotRunReason
 ) -> StageExecution {
   let obligation = front_end_stage_obligation(stage: stage)
   if !obligation_member(xs: effective, obligation: obligation) {
@@ -418,7 +429,7 @@ fn front_end_row_for_stage(
   } else if !admitted {
     StageNotRun {
       obligation: obligation,
-      reason: VerifierBudgetUnavailable { required_ms: required_ms, remaining_ms: remaining_ms }
+      reason: budget_refusal
     }
   } else {
     match front_end_step_for_stage(run: run, stage: stage) {
@@ -454,14 +465,14 @@ fn front_end_stage_order() -> List<FrontEndStage> {
   [FrontEndTokenize, FrontEndParse, FrontEndNormalize, FrontEndResolve]
 }
 
-fn front_end_declared_cost_ms(
+fn front_end_declared_cost(
   contract: DagAcceptanceContract,
   effective: List<DagStageObligation>
-) -> Int {
-  fold(front_end_stage_order(), init: 0, f: fn(acc, stage) {
+) -> Millisecond {
+  fold(front_end_stage_order(), init: no_cost(), f: fn(acc, stage) {
     let obligation = front_end_stage_obligation(stage: stage)
     if obligation_member(xs: effective, obligation: obligation) {
-      acc + stage_cost_ms(contract: contract, obligation: obligation)
+      millisecond_sum(a: acc, b: stage_cost(contract: contract, obligation: obligation))
     } else {
       acc
     }
@@ -556,7 +567,7 @@ fn state_with_row(state: AcceptanceRunState, row: StageExecution) -> AcceptanceR
     resolved: state.resolved,
     inferred: state.inferred,
     translations: state.translations,
-    ledger: state.ledger,
+    spent: state.spent,
     first_rejection: acceptance_first_rejection(prior: state.first_rejection, row: row)
   }
 }
@@ -614,7 +625,7 @@ fn state_with_inferred(state: AcceptanceRunState, inferred: InferredTree) -> Acc
     resolved: state.resolved,
     inferred: optional_present(value: inferred),
     translations: state.translations,
-    ledger: state.ledger,
+    spent: state.spent,
     first_rejection: state.first_rejection
   }
 }
@@ -628,18 +639,18 @@ fn state_with_translation(
     resolved: state.resolved,
     inferred: state.inferred,
     translations: list_snoc_item(xs: state.translations, item: row),
-    ledger: state.ledger,
+    spent: state.spent,
     first_rejection: state.first_rejection
   }
 }
 
-fn state_with_ledger(state: AcceptanceRunState, ledger: VerifierBudgetLedger) -> AcceptanceRunState {
+fn state_with_spent(state: AcceptanceRunState, spent: Millisecond) -> AcceptanceRunState {
   AcceptanceRunState {
     rows: state.rows,
     resolved: state.resolved,
     inferred: state.inferred,
     translations: state.translations,
-    ledger: ledger,
+    spent: spent,
     first_rejection: state.first_rejection
   }
 }
@@ -869,7 +880,8 @@ fn declined_reason(
   contract: DagAcceptanceContract,
   state: AcceptanceRunState,
   obligation: DagStageObligation,
-  required_ms: Int
+  required: Millisecond,
+  ledger: VerifierBudgetLedger
 ) -> Optional<StageNotRunReason> {
   match unsatisfied_prerequisite(rows: state.rows, obligation: obligation) {
     Present { value: p } => optional_present(value: BlockedByPrerequisite { prerequisite: p })
@@ -877,14 +889,11 @@ fn declined_reason(
       match fail_fast_skip_reason(contract: contract, state: state) {
         Present { value: r } => optional_present(value: r)
         Absent =>
-          if ledger_admits(ledger: state.ledger, required_ms: required_ms) {
+          if ledger_admits(ledger: ledger, spent: state.spent, required: required) {
             optional_absent()
           } else {
             optional_present(
-              value: VerifierBudgetUnavailable {
-                required_ms: required_ms,
-                remaining_ms: ledger_remaining_ms(ledger: state.ledger)
-              }
+              value: budget_refusal(ledger: ledger, spent: state.spent, required: required)
             )
           }
       }
@@ -933,14 +942,20 @@ fn attempt_obligation(
   env: AcceptanceEnvironment,
   obligation: DagStageObligation
 ) -> AcceptanceRunState {
-  let required_ms = stage_cost_ms(contract: contract, obligation: obligation)
-  match declined_reason(contract: contract, state: state, obligation: obligation, required_ms: required_ms) {
+  let required = stage_cost(contract: contract, obligation: obligation)
+  match declined_reason(
+    contract: contract,
+    state: state,
+    obligation: obligation,
+    required: required,
+    ledger: env.budget
+  ) {
     Present { value: reason } =>
       state_with_row(state: state, row: StageNotRun { obligation: obligation, reason: reason })
     Absent =>
-      state_with_ledger(
+      state_with_spent(
         state: execute_obligation(state: state, env: env, obligation: obligation),
-        ledger: ledger_spend(ledger: state.ledger, required_ms: required_ms)
+        spent: millisecond_sum(a: state.spent, b: required)
       )
   }
 }
@@ -977,27 +992,39 @@ fn front_end_rows(
         stage: stage,
         effective: effective,
         admitted: true,
-        required_ms: 0,
-        remaining_ms: 0
+        budget_refusal: NotRequiredByContract
       )
     )
   })
 }
 
+fn budget_refusal(
+  ledger: VerifierBudgetLedger,
+  spent: Millisecond,
+  required: Millisecond
+) -> StageNotRunReason {
+  VerifierBudgetUnavailable {
+    required: required,
+    budget_total: ledger_total(ledger: ledger),
+    already_spent: spent
+  }
+}
+
 fn budget_refused_rows(
   contract: DagAcceptanceContract,
   effective: List<DagStageObligation>,
-  remaining_ms: Int
+  ledger: VerifierBudgetLedger
 ) -> List<StageExecution> {
   fold(effective, init: no_rows(), f: fn(acc, o) {
     list_snoc_item(
       xs: acc,
       item: StageNotRun {
         obligation: o,
-        reason: VerifierBudgetUnavailable {
-          required_ms: stage_cost_ms(contract: contract, obligation: o),
-          remaining_ms: remaining_ms
-        }
+        reason: budget_refusal(
+          ledger: ledger,
+          spent: no_cost(),
+          required: stage_cost(contract: contract, obligation: o)
+        )
       }
     )
   })
@@ -1018,7 +1045,7 @@ fn acceptance_rows_admitted(
   candidate: DagCandidate,
   env: AcceptanceEnvironment,
   effective: List<DagStageObligation>,
-  front_end_cost_ms: Int
+  front_end_cost: Millisecond
 ) -> List<StageExecution> {
   let run = run_front_end_to(
     source: candidate.source,
@@ -1036,7 +1063,7 @@ fn acceptance_rows_admitted(
       resolved: front_end_run_resolved(run: run),
       inferred: optional_absent(),
       translations: no_translations(),
-      ledger: ledger_spend(ledger: env.budget, required_ms: front_end_cost_ms),
+      spent: front_end_cost,
       first_rejection: rows_first_rejection(rows: initial_rows)
     },
     f: fn(state, o) {
@@ -1051,21 +1078,17 @@ fn acceptance_rows(
   env: AcceptanceEnvironment
 ) -> List<StageExecution> {
   let effective = effective_obligations(contract: contract)
-  let front_end_cost_ms = front_end_declared_cost_ms(contract: contract, effective: effective)
-  if ledger_admits(ledger: env.budget, required_ms: front_end_cost_ms) {
+  let front_end_cost = front_end_declared_cost(contract: contract, effective: effective)
+  if ledger_admits(ledger: env.budget, spent: no_cost(), required: front_end_cost) {
     acceptance_rows_admitted(
       contract: contract,
       candidate: candidate,
       env: env,
       effective: effective,
-      front_end_cost_ms: front_end_cost_ms
+      front_end_cost: front_end_cost
     )
   } else {
-    budget_refused_rows(
-      contract: contract,
-      effective: effective,
-      remaining_ms: ledger_remaining_ms(ledger: env.budget)
-    )
+    budget_refused_rows(contract: contract, effective: effective, ledger: env.budget)
   }
 }
 
