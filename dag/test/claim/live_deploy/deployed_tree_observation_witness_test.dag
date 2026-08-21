@@ -108,8 +108,16 @@ test fn witness_the_observation_cannot_write_the_hosts_index() -> Bool {
       w => w == "--no-optional-locks")
 }
 
-// The materialization must name the revision it loads and the index it writes; a read-tree that wrote
-// the DEFAULT index would corrupt the deployed repo rather than observe it.
+// The materialization must name the revision it loads and bind the index it writes.
+//
+// TWO OF THE THREE ASSERTIONS ARE ABOUT WORDS THAT MUST NOT BE THERE, AND BOTH ABSENCES ARE SILENT
+// FAILURES IF LOST. `--index-output` is NOT a substitute for the env binding: it redirects where
+// entries are written but still LOCKS the real index, so a host carrying a `.git/index.lock` -- the
+// normal case on srv1, where a worktree registration lands per dispatch -- would refuse outright. It
+// is asserted ABSENT so the cheaper-looking flag cannot be reintroduced by someone tidying the argv.
+// And without `--no-sparse-checkout`, sparse configuration can set skip-worktree bits in the temporary
+// index, so a MISSING tracked path reads as intentionally absent rather than as drift -- a false clean
+// on exactly the failure this observation exists to catch.
 test fn witness_the_index_is_materialized_from_the_revision_into_a_named_file() -> Bool {
   let argv = deployed_tree_read_tree_argv(
     repo: probe_repo(),
@@ -119,12 +127,7 @@ test fn witness_the_index_is_materialized_from_the_revision_into_a_named_file() 
   argv == probe_read_tree_words()
     && any(argv, w => w == "read-tree")
     && any(argv, w => w == join(["GIT_INDEX_FILE=", probe_index_path], ""))
-    // --index-output is NOT a substitute: it still locks the real index, so a host with an existing
-    // .git/index.lock -- the normal case on srv1 -- would refuse. Asserted as an absence so the
-    // cheaper-looking flag cannot be reintroduced silently.
     && !any(argv, w => w == join(["--index-output=", probe_index_path], ""))
-    // Without --no-sparse-checkout, sparse config can set skip-worktree bits and a MISSING tracked
-    // path reads as intentionally absent -- a false clean on the exact failure this catches.
     && any(argv, w => w == "--no-sparse-checkout")
 }
 
