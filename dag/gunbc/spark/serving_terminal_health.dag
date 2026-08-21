@@ -2,6 +2,7 @@ module gunbc.spark.serving_terminal_health
 
 import std.types { String, List, Bool, NonEmptyStr }
 import std.algebra { trim }
+import std.measure { Second, second, second_count }
 import gunbc.spark.serving_readback_parse {
   SparkServingReadbackField,
   SparkServingReadbackAbsent,
@@ -109,14 +110,26 @@ fn spark_serving_health_request_body() -> String {
 // built from the cited endpoint model, and the request body is referenced by path rather than
 // inlined. `--max-time` bounds the generation so a wedged server fails the probe at a known deadline
 // instead of hanging the convergence that called it.
-data spark_serving_health_generate_timeout_seconds: String = "120"
+fn spark_serving_health_generate_timeout() -> Second {
+  second(count: 120)
+}
 
-data spark_serving_health_version_timeout_seconds: String = "10"
+fn spark_serving_health_generate_timeout_word() -> String {
+  to_string(second_count(spark_serving_health_generate_timeout()))
+}
+
+fn spark_serving_health_version_timeout() -> Second {
+  second(count: 10)
+}
+
+fn spark_serving_health_version_timeout_word() -> String {
+  to_string(second_count(spark_serving_health_version_timeout()))
+}
 
 fn spark_serving_health_version_probe_argv() -> List<String> {
   [
     "curl", "-fsS",
-    "--max-time", spark_serving_health_version_timeout_seconds,
+    "--max-time", spark_serving_health_version_timeout_word(),
     spark_serving_local_api_version_url(),
   ]
 }
@@ -124,7 +137,7 @@ fn spark_serving_health_version_probe_argv() -> List<String> {
 fn spark_serving_health_generate_probe_argv() -> List<String> {
   [
     "curl", "-fsS",
-    "--max-time", spark_serving_health_generate_timeout_seconds,
+    "--max-time", spark_serving_health_generate_timeout_word(),
     "-X", "POST",
     "-H", "Content-Type:application/json",
     "--data", join(["@", spark_serving_health_request_body_path() as String], ""),
