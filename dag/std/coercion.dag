@@ -37,6 +37,14 @@ type TypeCheckpoint {
 // the next name whose reference spelling collides with its own declaration cannot reach the
 // ambiguity, because there is no longer a single field for it to be ambiguous in (DESIGN section 4b
 // -- construction, not a wall over a state that stays writable).
+//
+// ON THE NAME `target_type`, WHICH IS NARROWER THAN IT READS. It now means the REFERENCE-position
+// spelling and nothing broader -- it is not the general answer to "what is this type in the target",
+// because that question no longer has a single answer here. The name survives only because renaming
+// it to reference_type reaches every target table; it is the same one-name-two-meanings shape this
+// split removed from the field's VALUE, still standing in its NAME. A reader must not take
+// target_type for the universal spelling, and a new consumer must decide which of the two questions
+// it is asking rather than reaching for the familiar name.
 
 // TypeCheckpoint (above) is cited to the target LANGUAGE reference and states how a spelling
 // renders. TypeRealizationDecision is the gunbc-corpus fact answering which of a named
