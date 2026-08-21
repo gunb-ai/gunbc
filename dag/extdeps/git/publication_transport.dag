@@ -91,8 +91,27 @@ fn git_remote_ref_cas_refspec(request: GitRemoteRefCasRequest) -> NonEmptyStr {
   concat(git_object_id_wire_hex(oid: request.new_oid) as String, concat(":", request.ref_name as String))
 }
 
-// PushRefUpdateWithLease -- the compare-and-swap publication. `lease` and `refspec` arrive pre-rendered from
-// git_remote_ref_lease_word / git_remote_ref_cas_refspec so this template stays literal.
+// PushRefUpdateWithLease -- the compare-and-swap publication. `lease` and `refspec` are meant to
+// come from git_remote_ref_lease_word / git_remote_ref_cas_refspec over ONE
+// GitRemoteRefCasRequest, which is what keeps this template literal.
+//
+// THE ROW DOES NOT ENFORCE THAT, AND AN EARLIER REVISION OF THIS COMMENT SAID THEY "ARRIVE
+// PRE-RENDERED" AS THOUGH IT DID. The inputs are three independent NonEmptyStr, so nothing at
+// this boundary requires the lease and the refspec to have been derived from the same request,
+// or from those functions at all: a caller can pair a lease naming one ref with a refspec
+// moving another, and the transport will run it (raised in side-chat review, 2026-08-21).
+//
+// RUNG: mitigatable, and this row is a WIRE CAPABILITY rather than a safe operation. The
+// invariant is real and is currently carried by nothing -- there are no consumers yet, so
+// nothing is misled today, which is the only reason this is not a defect in production.
+// NEXT TRIGGER: the first production consumer, which must reach this row through one binder
+//   push_remote_ref_compare_and_swap(request) ->
+//     PushRefUpdateWithLease(remote: request.remote,
+//                            lease: git_remote_ref_lease_word(request),
+//                            refspec: git_remote_ref_cas_refspec(request))
+// and no gunbc consumer may supply `lease` or `refspec` independently. The binder lands with
+// that consumer rather than here, because a binder with no caller is the unconsumed capability
+// this PR already removed once.
 //
 // THIS OPERATION DOES NOT DISTINGUISH A REFUSED LEASE FROM A FAILED PUSH, and the distinction
 // is real: a refused lease is an ANSWER -- the remote moved under us, the caller's observed
