@@ -96,26 +96,55 @@ fn fleet_desired_advance_expectation(observed: FleetDesiredRevision) -> FleetDes
   }
 }
 
-// The admission gate: the ref advances ONLY when the candidate revision's floor is
-// green. The advance is a compare-and-swap naming the expected prior (git update-ref
-// <ref> <new> <old> — the MemberChanged `from` side, per the reconcile spine's CAS
-// ruling), so a concurrent admission refuses instead of silently overwriting. A prior
-// of none is the first admission (ref creation).
+// THE ADMISSION GATE, AND WHY IT NAMES AN EXPECTATION RATHER THAN A PRIOR OID.
+//
+// Two independent facts must hold before the desired ref moves, and neither implies the
+// other: the candidate revision's floor is green (the revision is PROVEN), and the ref's
+// current state was OBSERVED (the write is SAFE to attempt). Admitting on the first alone
+// is how an unproven revision bricks the fleet; admitting on the second alone is how a
+// concurrent admission gets silently overwritten.
+//
+// The prior was a `GitObjectId?`, and that Option was the same collapse the observation
+// type above was split to remove, surviving one layer down. `none` there meant BOTH "origin
+// advertises no such ref, so create it" and "we could not observe the ref" -- and the arm
+// took the SAME action for both, so a transport failure rendered as a ref CREATION. That is
+// the empty-observation narrow with an actuator on the end of it. The gate therefore consumes
+// the decision, not a raw oid: FleetDesiredExpectationDecision has already refused the two
+// observations that license nothing, so no unobservable state can reach an admitted advance.
+//
+// AdvanceAdmitted carries a GitRemoteRefExpectation because that is precisely what the
+// compare-and-swap consumes (git.PublicationTransport PushRefUpdateWithLease). Note the
+// earlier revision of this comment cited `git update-ref <ref> <new> <old>`: that is the
+// WRONG OPERATION, and wrongly in the direction that fails by succeeding -- refs/fleet/desired
+// lives on origin and is read with ls-remote, so update-ref would move a LOCAL ref, exit 0,
+// and leave the fleet's desired state untouched while reporting an advance.
+//
+// REFUSAL ORDERING IS DELIBERATE AND UNDER TEST: an unproven candidate is refused as
+// unproven even when the expectation is ALSO unavailable. The floor fact is intrinsic to the
+// candidate and is not fixed by retrying the network, so reporting the transport cause there
+// would send the reader to the wrong remedy.
+type FleetDesiredAdvanceRefusal
+  = AdvanceFloorNotGreen
+  | AdvanceExpectationUnavailable { cause: FleetDesiredExpectationRefusal }
+
 type FleetDesiredAdvance
-  = AdvanceAdmitted { from: GitObjectId?, to: GitObjectId }
-  | AdvanceRefused { cause: String }
+  = AdvanceAdmitted { expected: GitRemoteRefExpectation, to: GitObjectId }
+  | AdvanceRefused { cause: FleetDesiredAdvanceRefusal }
 
 fn admit_fleet_desired_advance(
   candidate: GitObjectId,
   floor_green: Bool,
-  current: GitObjectId?,
+  expectation: FleetDesiredExpectationDecision,
 ) -> FleetDesiredAdvance {
   if floor_green {
-    AdvanceAdmitted { from: current, to: candidate }
-  } else {
-    AdvanceRefused {
-      cause: "fleet_main_revision: candidate revision's floor is not green; the desired ref never advances onto an unproven revision (raw-HEAD simultaneous fleet-bricking is the prevented class)",
+    match expectation {
+      FleetDesiredExpectationReady { expectation: e } =>
+        AdvanceAdmitted { expected: e, to: candidate }
+      FleetDesiredExpectationRefused { cause: c } =>
+        AdvanceRefused { cause: AdvanceExpectationUnavailable { cause: c } }
     }
+  } else {
+    AdvanceRefused { cause: AdvanceFloorNotGreen }
   }
 }
 

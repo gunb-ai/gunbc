@@ -2,15 +2,26 @@ module test.claim.fleet_main_revision_witness
 
 import std.types { Bool, String }
 import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
+import extdeps.git.publication_transport {
+  GitRemoteRefExpectation,
+  RemoteRefMustBeAbsent,
+  RemoteRefMustEqual,
+}
 import gunbc.fleet_main_revision {
   fleet_desired_ref_name,
   FleetDesiredRevision,
   FleetDesiredAdmitted,
+  FleetDesiredAbsent,
+  FleetDesiredUndecodable,
   FleetDesiredUnobserved,
   fleet_desired_revision_target,
+  fleet_desired_advance_expectation,
   FleetDesiredAdvance,
   AdvanceAdmitted,
   AdvanceRefused,
+  FleetDesiredAdvanceRefusal,
+  AdvanceFloorNotGreen,
+  AdvanceExpectationUnavailable,
   admit_fleet_desired_advance,
   converge_target_revision,
 }
@@ -22,18 +33,29 @@ fn fixture_rev(hex_char: String) -> GitObjectId? {
   git_sha1_object_id(hex: join([hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char], ""))
 }
 
-// RED — the load-bearing admission law: a revision whose floor is not green NEVER
-// advances the desired ref, whatever the current ref state.
+// A revision whose floor is not green NEVER advances the desired ref, whatever the ref's
+// observed state. Both licensing observations are exercised, because an admission law that
+// held only for the create case would leave the far more common advance case ungoverned.
 test fn advance_refused_without_floor_green() -> Bool {
   match fixture_rev(hex_char: "a") {
     Present { value: cand } =>
-      match admit_fleet_desired_advance(candidate: cand, floor_green: false, current: none) {
+      match admit_fleet_desired_advance(
+        candidate: cand,
+        floor_green: false,
+        expectation: fleet_desired_advance_expectation(observed: FleetDesiredAbsent),
+      ) {
         AdvanceRefused { cause: _ } => true
         _ => false
       }
         && match fixture_rev(hex_char: "b") {
           Present { value: cur } =>
-            match admit_fleet_desired_advance(candidate: cand, floor_green: false, current: Present { value: cur }) {
+            match admit_fleet_desired_advance(
+              candidate: cand,
+              floor_green: false,
+              expectation: fleet_desired_advance_expectation(
+                observed: FleetDesiredAdmitted { revision: cur },
+              ),
+            ) {
               AdvanceRefused { cause: _ } => true
               _ => false
             }
@@ -43,31 +65,97 @@ test fn advance_refused_without_floor_green() -> Bool {
   }
 }
 
-// The admitted advance is a CAS carrying the expected prior — first admission carries
-// from=none (ref creation), a subsequent one carries the exact prior revision.
-test fn admitted_advance_is_cas_carrying_expected_prior() -> Bool {
+// An admitted advance carries the LEASE, and the lease must be the one the observation
+// licensed -- not a defaulted or remembered one. The oid identity is asserted on the advance
+// arm, because an expectation naming the wrong prior is a push that refuses forever, and one
+// naming absent-when-present is a push that CLOBBERS. Both are silent at this layer if only
+// the variant is checked.
+test fn an_admitted_advance_carries_the_lease_the_observation_licensed() -> Bool {
   match fixture_rev(hex_char: "a") {
     Present { value: cand } =>
-      match admit_fleet_desired_advance(candidate: cand, floor_green: true, current: none) {
-        AdvanceAdmitted { from: f, to: _ } =>
-          match f {
-            Present { value: _ } => false
-            _ => true
+      match admit_fleet_desired_advance(
+        candidate: cand,
+        floor_green: true,
+        expectation: fleet_desired_advance_expectation(observed: FleetDesiredAbsent),
+      ) {
+        AdvanceAdmitted { expected: e, to: _ } =>
+          match e {
+            RemoteRefMustBeAbsent => true
+            _ => false
           }
         _ => false
       }
         && match fixture_rev(hex_char: "b") {
           Present { value: cur } =>
-            match admit_fleet_desired_advance(candidate: cand, floor_green: true, current: Present { value: cur }) {
-              AdvanceAdmitted { from: f2, to: _ } =>
-                match f2 {
-                  Present { value: _ } => true
+            match admit_fleet_desired_advance(
+              candidate: cand,
+              floor_green: true,
+              expectation: fleet_desired_advance_expectation(
+                observed: FleetDesiredAdmitted { revision: cur },
+              ),
+            ) {
+              AdvanceAdmitted { expected: e2, to: _ } =>
+                match e2 {
+                  RemoteRefMustEqual { oid: prior } => prior == cur
                   _ => false
                 }
               _ => false
             }
           _ => false
         }
+    _ => false
+  }
+}
+
+// THE ROW THE OPTION-SHAPED PRIOR MADE UNWRITABLE. A green floor is NOT sufficient: an
+// unobservable ref licenses nothing, so a proven revision with a refused observation is still
+// refused. Under `current: GitObjectId?` this case was indistinguishable from FleetDesiredAbsent
+// -- both arrived as `none` and both took the create arm -- so a transport failure actuated a
+// ref CREATION and no test could have separated them.
+test fn a_proven_revision_with_an_unobservable_ref_is_still_refused() -> Bool {
+  match fixture_rev(hex_char: "a") {
+    Present { value: cand } =>
+      match admit_fleet_desired_advance(
+        candidate: cand,
+        floor_green: true,
+        expectation: fleet_desired_advance_expectation(
+          observed: FleetDesiredUnobserved { cause: "ls-remote refused" },
+        ),
+      ) {
+        AdvanceRefused { cause: AdvanceExpectationUnavailable { cause: _ } } => true
+        _ => false
+      }
+        && match admit_fleet_desired_advance(
+          candidate: cand,
+          floor_green: true,
+          expectation: fleet_desired_advance_expectation(
+            observed: FleetDesiredUndecodable { advertised: "not-a-sha" },
+          ),
+        ) {
+          AdvanceRefused { cause: AdvanceExpectationUnavailable { cause: _ } } => true
+          _ => false
+        }
+    _ => false
+  }
+}
+
+// The refusal ORDERING is a claim, not an accident: when the candidate is unproven AND the ref
+// is unobservable, the reported cause is the floor -- the fact intrinsic to the candidate, which
+// no retry fixes. Reporting the transport cause here would send a reader to retry the network
+// for a revision that was never going to be admitted.
+test fn an_unproven_candidate_reports_the_floor_not_the_transport() -> Bool {
+  match fixture_rev(hex_char: "a") {
+    Present { value: cand } =>
+      match admit_fleet_desired_advance(
+        candidate: cand,
+        floor_green: false,
+        expectation: fleet_desired_advance_expectation(
+          observed: FleetDesiredUnobserved { cause: "ls-remote refused" },
+        ),
+      ) {
+        AdvanceRefused { cause: AdvanceFloorNotGreen } => true
+        _ => false
+      }
     _ => false
   }
 }
