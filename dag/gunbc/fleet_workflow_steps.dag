@@ -44,6 +44,8 @@ import gunbc.ci_spec {
   ci_release_bins_pack_script, ci_release_bins_unpack_verify_script,
   ci_release_bins_archive_name,
   gunbc_ci_fleet_key_agent_script,
+  gunbc_ci_spark_admin_credential_script,
+  gunbc_ci_spark_admin_credential_cleanup_script,
   gunbc_ci_fleet_key_agent_cleanup_script,
 }
 import gunbc.fleet_host_key_enrollment { probe_identity_secret_access_requirement }
@@ -298,6 +300,40 @@ fn ci_fleet_key_agent_step() -> Step {
   }
 }
 
+// MATERIALIZED ONLY FOR THE MODE THAT NEEDS IT. The credential is fetched when the run is going to
+// install a grant and not otherwise: a job that only observes has no business holding an
+// administrator password, and gating the fetch on the mode keeps the blast radius of a leak equal to
+// the set of runs that genuinely required privilege.
+fn ci_spark_admin_credential_step(if_condition: String) -> Step {
+  RunStep {
+    name: Present { value: "Materialize the spark administrator credential in-run (SM versions/1 pinned -> RUNNER_TEMP 0600; PATH exported, credential not)" },
+    id: none,
+    run: gunbc_ci_spark_admin_credential_script(),
+    shell: none,
+    env: Present {
+      value: [kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}"))]
+    },
+    working_directory: none,
+    if_condition: Present { value: if_condition },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn ci_spark_admin_credential_cleanup_step() -> Step {
+  RunStep {
+    name: Present { value: "Remove the in-run administrator credential (never outlives the job)" },
+    id: none,
+    run: gunbc_ci_spark_admin_credential_cleanup_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
 fn ci_fleet_key_agent_cleanup_step() -> Step {
   RunStep {
     name: Present { value: "Kill the in-run ssh-agent (key never outlives the job)" },
@@ -322,6 +358,18 @@ data ci_release_bins_artifact_name: String = "release-bins"
 
 
 data gunbc_ci_aux_step_timeout_minutes: Int = 5
+
+data gunbc_ci_spark_serving_step_timeout_minutes: Duration = 60
+
+data gunbc_ci_spark_serving_step_timeout_note: String = "Spark serving converge/observe step budget, raised from the shared aux 5m (operator authorization 2026-08-19). STATED AS AN ENVELOPE, NOT A MEASUREMENT, because the neighbouring gates in this module earn their numbers and this one cannot yet. What IS modeled: the ollama runtime archive at 1542416321 bytes, cited on extdeps.ollama.binary_release. What is NOT: the model blob closure has no modeled byte size at all — the desired model is identified by its manifest digest rather than a size — and throughput from the executor to a spark target has never been measured. So a cold install downloads a ~1.5GB runtime plus a model of unmodeled size over a link of unmeasured bandwidth, and no honest derivation produces a minute count from that. 5m was not a considered budget for this step, it was the shared aux default, and it cannot cover a cold install under any plausible bandwidth.
+
+WHAT IS OBSERVED, and why this is not a hypothetical envelope: run 32213195686 (2026-08-19T03:49:56Z, read-only spark_observe) reports state=absent for BOTH spark targets — on srv6 the user unit is-active exits 4, the api/version and api/tags probes exit 7 against a refused connection, and the runtime receipt file does not exist. So the first canary is a guaranteed cold install of the full closure rather than a converged no-op, and the step budget has to cover acquisition of an unmodeled model closure on a host observed to hold none of it. The 5m default would have killed that install mid-download every time, and because publication is split from acquisition it would have done so silently-safely — dying in the attempt workspace, publishing nothing, and looking like a timeout rather than a budget defect.
+
+Why the step needed its own constant rather than a bump to gunbc_ci_aux_step_timeout_minutes: that value is multiplied by the step count in the fleet job backstop, so raising it would inflate every unrelated aux step and the job cap together — a per-site cost paid fleet-wide to fix one step.
+
+STEADY STATE IS SECONDS, NOT MINUTES. A converged host plans zero rows and the slice returns without transferring anything; this envelope is paid only on a cold or drifted target. A run that approaches it is therefore evidence about the install path, not a budget to raise again.
+
+DISSOLVE-ON: the first successful srv6 canary produces the measurement this envelope stands in for — replace the number with that receipt, dated and cited to its run id, per the rule the v1-compiler test-targets gate states one constant down (raising a budget needs a measurement, not a round number)."
 
 data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 15
 
@@ -363,7 +411,7 @@ data srv1_dashboard_deploy_serialization_note: String = "Blue/green selection is
 
 
 fn gunbc_ci_fleet_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_prelude_allowance_minutes + (13 * gunbc_ci_aux_step_timeout_minutes)
+  gunbc_ci_prelude_allowance_minutes + (11 * gunbc_ci_aux_step_timeout_minutes) + (2 * gunbc_ci_spark_serving_step_timeout_minutes)
 }
 
 data gunbc_ci_release_build_step_timeout_minutes: Int = 45

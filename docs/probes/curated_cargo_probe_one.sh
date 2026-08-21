@@ -62,6 +62,14 @@
 #               1 = line-stop refuse (HARNESS_REFUSE or EMIT_REFUSE; HARNESS_REFUSE sets
 #                   residual_histogram instrument_down:1; SAME_BASE_REFUSE below shares this code);
 #               2 = usage error.
+#   STALE-BINARY (2026-08-21, royal-stag-736 found it, bright-moth-92 fixed it here): the probe
+#   previously rebuilt gunbc/cssl_assemble only when the file was ABSENT, so a base->head loop in a
+#   single dispatch silently re-used the base tree's binary for the head pass and reported a FALSE
+#   IDENTICAL — "my fix changed nothing", with no failure arm. Both binaries are now keyed on
+#   `git rev-parse HEAD` via a `<binary>.tree` stamp and rebuilt on a key miss. Set GUNBC=/path to
+#   pin a binary deliberately; an externally pinned binary carrying no stamp rebuilds rather than
+#   being trusted. This is the binary-side twin of PROBE_EXPECT_BASE_SHA below: that pins the TREE,
+#   this pins the COMPILER, and a confident number needs both.
 #   SAME-BASE REFUSAL (2026-08-19, smart-ram-730): a measurement being compared against a prior
 #   baseline is only meaningful if both were taken at the same tree. PROBE_EXPECT_BASE_SHA=<sha> —
 #   when set, refuses BEFORE any build work if `git rev-parse HEAD` in ROOT does not match, naming
@@ -127,13 +135,32 @@ STD_SEED_LINK="${CSSL_STD_SEED_LINK:-0}"
 
 GUNBC="${GUNBC:-$ROOT/target/release/gunbc}"
 CSSL_ASSEMBLE="${CSSL_ASSEMBLE:-$ROOT/target/release/cssl_assemble}"
-if [[ ! -x "$GUNBC" ]]; then
+
+# The binary is a function of the tree it was built from, so it is KEYED on that tree.
+# `-x` alone asks "does a binary exist", which is a different question and the wrong one:
+# a base->head loop inside one dispatch leaves base's binary in place, and the head pass
+# then emits with the PRE-FIX compiler while reporting head's SHA. That reads as "the fix
+# changed nothing" — a false identical, with no failure arm anywhere.
+# Rebuilding on a key miss is a cache doing its job, not a fallback: the answer computed is
+# the correct one for the checked-out tree. An unreadable or absent stamp is a miss.
+probe_binary_tree_key() { git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo "no-git"; }
+probe_binary_is_current() {
+  local bin="$1"
+  [[ -x "$bin" ]] || return 1
+  [[ -f "$bin.tree" ]] || return 1
+  [[ "$(cat "$bin.tree" 2>/dev/null)" == "$(probe_binary_tree_key)" ]] || return 1
+}
+probe_stamp_binary() { probe_binary_tree_key > "$1.tree"; }
+
+if ! probe_binary_is_current "$GUNBC"; then
   CTRL_BUILD_WRAP_CARGO=0 cargo build --release -p v1-compiler --bin gunbc >/dev/null
   GUNBC="$ROOT/target/release/gunbc"
+  probe_stamp_binary "$GUNBC"
 fi
-if [[ "$STD_SEED_LINK" == "1" && ! -x "$CSSL_ASSEMBLE" ]]; then
+if [[ "$STD_SEED_LINK" == "1" ]] && ! probe_binary_is_current "$CSSL_ASSEMBLE"; then
   CTRL_BUILD_WRAP_CARGO=0 cargo build --release -p v1-compiler --bin cssl_assemble >/dev/null
   CSSL_ASSEMBLE="$ROOT/target/release/cssl_assemble"
+  probe_stamp_binary "$CSSL_ASSEMBLE"
 fi
 export GUNBC
 

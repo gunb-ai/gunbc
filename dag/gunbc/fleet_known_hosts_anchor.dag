@@ -553,9 +553,31 @@ type PortableRemoteWord sole_constructor {
   value: NonEmptyStr
 }
 
+// THE ALPHABET, AND THE ONE CHARACTER ADDED TO IT WITH ITS ARGUMENT WRITTEN DOWN.
+//
+// Letters, digits, and `. _ - / @ : =` were the original set. COMMA (44) is added, and the argument
+// is specific rather than convenient: in POSIX sh a comma is an ORDINARY character. It plays no part
+// in word splitting (IFS is space/tab/newline), none in pathname expansion (the glob metacharacters
+// are `*`, `?`, `[`), and none in any expansion form. The one context where a comma is meaningful is
+// BRACE EXPANSION, which is a bash extension and requires `{` and `}` -- neither of which is in this
+// alphabet, and neither of which is being added. So a comma admitted here cannot be interpreted by
+// the far-side shell however that shell is configured; it arrives as a literal character in a word.
+//
+// WHAT FORCED IT, because a widening deserves a cause rather than a preference. `nvidia-smi
+// --query-gpu=driver_version --format=csv,noheader` is upstream's syntax for asking one value
+// without a header, and the comma is inside a single word. The alternative spellings are worse in
+// exactly the way this wall exists to prevent: piping through `tail -n +2` puts a shell pipe on the
+// far side, which is the class already refused. So the choice was between admitting one inert
+// character and routing a real query through a shell -- and the probe had been silently unrunnable
+// for as long as it has existed, refused at the transport with nobody able to see why.
+//
+// WHAT IS NOT WIDENED: every shell metacharacter stays out. `; & | < > ( ) $ \` ' " * ? [ ] { } ~ !`
+// and whitespace are all still refused, and the discriminating witness asserts that a brace-bearing
+// word is still rejected -- so this is one character, argued, not a relaxation of the wall.
 fn portable_remote_word_char_allowed(cp: Int) -> Bool {
   (cp >= 97 && cp <= 122) || (cp >= 65 && cp <= 90) || (cp >= 48 && cp <= 57)
     || cp == 46 || cp == 95 || cp == 45 || cp == 47 || cp == 64 || cp == 58 || cp == 61
+    || cp == 44
 }
 
 fn portable_remote_word_text_ok(text: String, i: Int, len: Int) -> Bool {

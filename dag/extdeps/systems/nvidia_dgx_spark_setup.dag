@@ -10,7 +10,7 @@ import extdeps.uri { Uri, Https }
 // that one models the HARDWARE the vendor ships and this one models the SETUP SURFACE
 // the vendor exposes; they version independently (a firmware/OOBE revision changes the
 // surface without changing a single hardware row). Nothing here is an operator decision,
-// a fleet fact, or an observation of srv5/srv6 — those live in gunbc.spark_provisioning.
+// a fleet fact, or an observation of srv5/srv6 — those live in gunbc.spark.provisioning.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -97,7 +97,7 @@ data dgx_spark_oobe_fields: List<OobeSetupField> = [
 //
 // Hostname assignment is in the universe and not in the list — a measured absence in the
 // cited page rather than an omission here. It is carried because the page's silence is a
-// fact worth stating, not because anything upstream needs it: gunbc.spark_provisioning
+// fact worth stating, not because anything upstream needs it: gunbc.spark.provisioning
 // models no hostname at all (an OS hostname is presentation and converges later through
 // the ordinary apply path), so this member is the predicate's negative case and nothing
 // more.

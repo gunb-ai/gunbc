@@ -1,0 +1,188 @@
+module test.claim.live_deploy.release_binding_witness
+
+import std.types { String, NonEmptyStr, Bool, CommitSha }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex }
+import extdeps.git
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import gunbc.running_release_identity {
+  RunningReleaseIdentity,
+  RunningReleaseIdentified,
+  RunningReleaseUnidentified,
+  RunningReleaseObservation,
+  ReleaseRevisionAbsent,
+}
+import gunbc.live_deploy.deployed_tree_observation {
+  DeployedTreeObservation,
+  DeployedTreeObserved,
+  DeployedTreeUnobservable,
+  DeployedScopeMatchesCommit,
+  DeployedScopeDiverged,
+}
+import gunbc.live_deploy.release_binding {
+  DeployedReleaseBinding,
+  ReleaseBoundToTree,
+  ReleaseMixed,
+  ReleaseBindingUnobserved,
+  deployed_release_binding,
+  release_binding_holds,
+  release_binding_line,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data hex_a: String = "8a472fff9e9000600e33cc3559ecfad4ba55e3a3"
+data hex_b: String = "1111111111111111111111111111111111111111"
+
+// The surface digest is irrelevant to the binding -- it is carried because the observation record
+// requires it, and every witness holds it FIXED so that any difference a witness reports is the
+// revision and never the surface.
+fn probe_surface() -> Fnv1a64Structural {
+  Fnv1a64Structural { digest: "0123456789abcdef" as Fnv1a64StructuralDigestHex }
+}
+
+fn oid(hex: String) -> GitObjectId? {
+  git_object_id_from_untagged_hex(hex: hex)
+}
+
+fn tree_at(hex: String) -> DeployedTreeObservation? {
+  match oid(hex: hex) {
+    Absent => none
+    Present { value: o } =>
+      Present { value: DeployedTreeObserved { revision: o, content: DeployedScopeMatchesCommit } }
+  }
+}
+
+fn process_saying(hex: String, surface: Fnv1a64Structural) -> RunningReleaseIdentity {
+  RunningReleaseIdentified {
+    observation: RunningReleaseObservation {
+      revision: hex as CommitSha,
+      surface_bundle_identity: surface,
+    },
+  }
+}
+
+// The two hexes must decode and differ, or every witness below passes on the wrong reason.
+test fn witness_the_probe_revisions_decode_and_differ() -> Bool {
+  match oid(hex: hex_a) {
+    Absent => false
+    Present { value: a } =>
+      match oid(hex: hex_b) {
+        Absent => false
+        Present { value: b } =>
+          (git_object_id_wire_hex(oid: a) as String) != (git_object_id_wire_hex(oid: b) as String)
+      }
+  }
+}
+
+test fn witness_a_process_stating_the_trees_revision_is_bound() -> Bool {
+  match tree_at(hex: hex_a) {
+    Absent => false
+    Present { value: t } =>
+      match deployed_release_binding(observation: t, identity: process_saying(hex: hex_a, surface: probe_surface())) {
+        ReleaseBoundToTree { revision: r } => (git_object_id_wire_hex(oid: r) as String) == hex_a
+        ReleaseMixed { tree_revision: _, process_revision: _ } => false
+        ReleaseBindingUnobserved { cause: _ } => false
+      }
+  }
+}
+
+// THE STATE NOTHING ELSE IN THE TREE CAN SEE: tree at one revision, process stating another.
+test fn witness_a_process_stating_another_revision_is_mixed_and_names_both() -> Bool {
+  match tree_at(hex: hex_a) {
+    Absent => false
+    Present { value: t } =>
+      match deployed_release_binding(observation: t, identity: process_saying(hex: hex_b, surface: probe_surface())) {
+        ReleaseMixed { tree_revision: tr, process_revision: pr } =>
+          (git_object_id_wire_hex(oid: tr) as String) == hex_a && (pr as String) == hex_b
+        ReleaseBoundToTree { revision: _ } => false
+        ReleaseBindingUnobserved { cause: _ } => false
+      }
+  }
+}
+
+// A MODIFIED TREE DOES NOT DEFEAT THE BINDING. Binding asks which revision the process is
+// interpreting; whether that revision's bytes were since edited is the tree standing's question, and
+// answering it here would fold two orthogonal facts into one verdict.
+test fn witness_modifications_do_not_change_the_binding() -> Bool {
+  match oid(hex: hex_a) {
+    Absent => false
+    Present { value: a } =>
+      match deployed_release_binding(
+        observation: DeployedTreeObserved {
+          revision: a,
+          content: DeployedScopeDiverged { changed_paths: "dag/x.dag" as NonEmptyStr },
+        },
+        identity: process_saying(hex: hex_a, surface: probe_surface()),
+      ) {
+        ReleaseBoundToTree { revision: _ } => true
+        ReleaseMixed { tree_revision: _, process_revision: _ } => false
+        ReleaseBindingUnobserved { cause: _ } => false
+      }
+  }
+}
+
+test fn witness_an_unreadable_tree_makes_the_binding_undecidable() -> Bool {
+  match deployed_release_binding(
+    observation: DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "revision", reason: "ssh refused" } },
+    identity: process_saying(hex: hex_a, surface: probe_surface()),
+  ) {
+    ReleaseBindingUnobserved { cause: c } => string_contains(s: c, pattern: "ssh refused")
+    ReleaseBoundToTree { revision: _ } => false
+    ReleaseMixed { tree_revision: _, process_revision: _ } => false
+  }
+}
+
+// The migration arm: a process that predates the identity channel states no revision.
+test fn witness_a_process_stating_no_identity_makes_the_binding_undecidable() -> Bool {
+  match tree_at(hex: hex_a) {
+    Absent => false
+    Present { value: t } =>
+      match deployed_release_binding(
+        observation: t,
+        identity: RunningReleaseUnidentified { cause: ReleaseRevisionAbsent },
+      ) {
+        ReleaseBindingUnobserved { cause: _ } => true
+        ReleaseBoundToTree { revision: _ } => false
+        ReleaseMixed { tree_revision: _, process_revision: _ } => false
+      }
+  }
+}
+
+// EXACTLY ONE ARM HOLDS, asserted across all three. Unobserved must not admit.
+test fn witness_only_the_bound_arm_holds() -> Bool {
+  match tree_at(hex: hex_a) {
+    Absent => false
+    Present { value: t } =>
+      release_binding_holds(
+        binding: deployed_release_binding(observation: t, identity: process_saying(hex: hex_a, surface: probe_surface())),
+      )
+        && !release_binding_holds(
+          binding: deployed_release_binding(observation: t, identity: process_saying(hex: hex_b, surface: probe_surface())),
+        )
+        && !release_binding_holds(
+          binding: deployed_release_binding(
+            observation: t,
+            identity: RunningReleaseUnidentified { cause: ReleaseRevisionAbsent },
+          ),
+        )
+  }
+}
+
+test fn witness_every_binding_arm_renders_a_distinct_label() -> Bool {
+  match tree_at(hex: hex_a) {
+    Absent => false
+    Present { value: t } => {
+      let bound = release_binding_line(
+        binding: deployed_release_binding(observation: t, identity: process_saying(hex: hex_a, surface: probe_surface())),
+      )
+      let mixed = release_binding_line(
+        binding: deployed_release_binding(observation: t, identity: process_saying(hex: hex_b, surface: probe_surface())),
+      )
+      let unobs = release_binding_line(binding: ReleaseBindingUnobserved { cause: "why" })
+      bound != mixed && bound != unobs && mixed != unobs
+        && string_contains(s: mixed, pattern: hex_a)
+        && string_contains(s: mixed, pattern: hex_b)
+    }
+  }
+}
