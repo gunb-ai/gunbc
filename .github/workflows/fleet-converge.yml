@@ -119,7 +119,7 @@ jobs:
   fleet-converge:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
-    timeout-minutes: 180
+    timeout-minutes: 370
     permissions:
       contents: read
       actions: read
