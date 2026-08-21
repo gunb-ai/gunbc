@@ -1,0 +1,100 @@
+module gunbc.list_membership_operation_gap
+
+import std.types { Bool, Int, List, String }
+import std.decl_ref { DeclarationRef, decl_ref }
+
+// A CALL SHAPE NO DECLARATION SERVES. MEASURED, NOT PROPOSED.
+//
+// Ten call sites perform two-argument membership of an item in a list. No declaration anywhere
+// provides that operation. They resolve instead to the host substring primitive v1_rt::contains,
+// whose declared shape is (String, String) -> Bool, so each site passes a List where a String is
+// declared. The resulting type error is attributed to the CALL rather than to the absent
+// declaration, which is why the class was invisible: it presents as ordinary argument-type noise
+// distributed across unrelated modules.
+//
+// The module is named for the gap because that is what was measured. The name is not a proposal
+// that the gap be filled by adding an operation — see the next block, which is load-bearing.
+//
+// WHAT THIS CARRIER DOES AND DOES NOT ASSERT.
+//
+// It records a measured gap and the evidence that the gap is felt by authors. It does NOT assert
+// that the remedy is to supply a two-argument list-membership operation. Ten call sites wanting
+// an operation is demand, not specification, and reading demand as specification is how an
+// unmodeled convenience acquires a declaration. The remedy may instead be that an existing
+// declared operation covers these sites and its equality capability can be derived, binding them
+// to it; or that no such operation should exist and these sites must REFUSE at resolution with a
+// located missing-capability cause. Which of those is right is part of the held ruling on whether
+// one surface spelling may denote several operations, across both the type and function sides of
+// the kernel/std seam.
+//
+// Recorded separately from the seventeen arity-falsified sites of the three-argument form, and
+// kept separate deliberately: that class is a FALSE REALIZATION CLAIM by an existing roster row,
+// this one is an ABSENT OPERATION. A single repair spanning both would blur the distinction the
+// measurement established.
+
+type ListMembershipGapSite {
+  collection_producer: DeclarationRef
+  element_type: String
+  occurrences: Int
+  argument_shape: MembershipArgumentShape
+}
+
+// The shape actually written at the call site. PositionalPair is the plain two-argument form.
+// NamedItemWithoutEquality is one site that spells the three-argument declaration's `item:`
+// parameter name while supplying no `eq:` — reaching for the modeled operation and landing short
+// of it, which is evidence the gap is felt by authors rather than merely inferred by this census.
+type MembershipArgumentShape
+  = PositionalPair
+  | NamedItemWithoutEquality
+
+// Rows are keyed on the declaration that PRODUCES the collection, because that is the grain at
+// which the missing operation is supplied: one declaration serves every occurrence over its
+// result. Where the collection is a function parameter rather than a declaration, the row names
+// the enclosing function — the parameter has no declaration of its own to cite.
+data list_membership_gap_sites: List<ListMembershipGapSite> = [
+  {
+    collection_producer: decl_ref(module_path: "gunbc.publication_policy", decl_name: "known_publication_roots"),
+    element_type: "String",
+    occurrences: 1,
+    argument_shape: PositionalPair,
+  },
+  {
+    collection_producer: decl_ref(module_path: "gunbc.session_auto_publish", decl_name: "write_set_refusals"),
+    element_type: "String",
+    occurrences: 1,
+    argument_shape: PositionalPair,
+  },
+  {
+    collection_producer: decl_ref(module_path: "extdeps.unicode.blocks", decl_name: "zero_width_codepoints"),
+    element_type: "Int",
+    occurrences: 1,
+    argument_shape: NamedItemWithoutEquality,
+  },
+  {
+    collection_producer: decl_ref(module_path: "test.claim.attribution_span_witness_test", decl_name: "unattributed_widths"),
+    element_type: "Nat",
+    occurrences: 3,
+    argument_shape: PositionalPair,
+  },
+  {
+    collection_producer: decl_ref(module_path: "test.claim.recorded_observation_envelope_witness_test", decl_name: "active_ids"),
+    element_type: "String",
+    occurrences: 4,
+    argument_shape: PositionalPair,
+  },
+]
+
+data list_membership_gap_occurrence_count: Int = 10
+
+data list_membership_gap_producer_count: Int = 5
+
+// HOW THE POPULATION WAS FOUND, AND THE FLAW IN THE FIRST ATTEMPT AT FINDING IT.
+//
+// The first classification split two-argument call sites by whether the SECOND argument was a
+// string literal, treating a literal as evidence of a substring test. That instrument is unsound
+// and undercounted this class by four: `contains(ids, "occ-coord")` is list membership whose item
+// happens to be a string literal. Classification by the syntax of the argument cannot decide the
+// operation; only the FIRST argument's type can, because that is what distinguishes a collection
+// from a string. The corrected method resolves each first argument to its binding and reads the
+// declared element type, which is what the rows above record.
+data list_membership_gap_method_note: String = "Population found by enumerating every free-function two-argument call spelling this operation, then resolving each first argument to its binding and reading the declared element type. An earlier split by second-argument syntax undercounted by four and is recorded here because the same unsound shortcut is available to anyone re-measuring this class."
