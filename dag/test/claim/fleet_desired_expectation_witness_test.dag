@@ -1,0 +1,105 @@
+module test.claim.fleet_desired_expectation_witness
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+// ONLY AN OBSERVATION MAY LICENSE A WRITE, AND ONLY TWO OBSERVATIONS DO.
+//
+// A compare-and-swap needs a claim about the ref's current state. "The ref is at X" and "origin
+// advertises no such ref" are claims; "the advertisement is garbage" and "ls-remote refused" are
+// not. The refusal rows below are the load-bearing ones: they are what stops a network fault
+// from rendering as a ref CREATION, which is the empty-observation narrow pointed at an actuator.
+//
+// Before the observer split, every one of these four cases was a single FleetDesiredUnobserved,
+// so the two admitting rows could not have been written at all -- there was nothing to
+// distinguish. That is the defect this file exists to hold closed.
+
+data candidate_hex: String = "3333333333333333333333333333333333333333"
+
+fn candidate() -> extdeps.git.object_store.GitObjectId? { extdeps.git.object_store.git_sha1_object_id(hex: candidate_hex) }
+
+fn admits(observed: gunbc.fleet_main_revision.FleetDesiredRevision) -> std.types.Bool {
+  match gunbc.fleet_main_revision.fleet_desired_advance_expectation(observed: observed) {
+    FleetDesiredExpectationReady { expectation: _ } => true
+    FleetDesiredExpectationRefused { cause: _ } => false
+  }
+}
+
+// Positive control: the fixture decodes. Without it a hex typo makes candidate() none, the
+// admitted-observation row below cannot be built, and its failure would look like a modeling
+// error rather than a broken literal.
+test fn the_fixture_object_id_decodes() -> std.types.Bool {
+  match candidate() {
+    Present { value: _ } => true
+    none => false
+  }
+}
+
+// An observed ref licenses an advance FROM the exact oid observed -- not from a remembered or
+// defaulted one. The oid identity is asserted, because an expectation naming the wrong prior is
+// a lease that refuses forever.
+test fn an_observed_ref_leases_the_exact_observed_oid() -> std.types.Bool {
+  match candidate() {
+    Present { value: oid } =>
+      match gunbc.fleet_main_revision.fleet_desired_advance_expectation(observed: gunbc.fleet_main_revision.FleetDesiredAdmitted { revision: oid }) {
+        FleetDesiredExpectationReady { expectation: e } =>
+          match e {
+            RemoteRefMustEqual { oid: leased } => leased == oid
+            RemoteRefMustBeAbsent => false
+          }
+        FleetDesiredExpectationRefused { cause: _ } => false
+      }
+    none => false
+  }
+}
+
+// An absent ref is the ONLY observation that licenses creation. This is the claim that was
+// inexpressible before the split.
+test fn an_absent_ref_is_the_only_licence_to_create() -> std.types.Bool {
+  match gunbc.fleet_main_revision.fleet_desired_advance_expectation(observed: gunbc.fleet_main_revision.FleetDesiredAbsent) {
+    FleetDesiredExpectationReady { expectation: e } =>
+      match e {
+        RemoteRefMustBeAbsent => true
+        RemoteRefMustEqual { oid: _ } => false
+      }
+    FleetDesiredExpectationRefused { cause: _ } => false
+  }
+}
+
+// THE DISCRIMINATING HALF. A refused transport supports no claim about the remote, so it must
+// yield no expectation at all. If this ever admits, a network fault becomes a ref creation.
+test fn a_refused_transport_licenses_nothing() -> std.types.Bool {
+  !admits(observed: gunbc.fleet_main_revision.FleetDesiredUnobserved { cause: "ls-remote refused: connection reset" })
+}
+
+// An undecodable advertisement refuses for a stronger reason than ignorance: the ref EXISTS
+// holding something unreadable. A lease naming any expectation would either fail forever or,
+// if it matched, overwrite a state nobody understood.
+test fn an_undecodable_advertisement_licenses_nothing() -> std.types.Bool {
+  !admits(observed: gunbc.fleet_main_revision.FleetDesiredUndecodable { advertised: "not-a-sha\trefs/fleet/desired" })
+}
+
+// THE REFUSALS MUST STAY DISTINGUISHABLE AT THE SEAM, not merely both refuse. This is the row
+// that would have gone green under the Option shape these replace: `none` and `none` are equal,
+// so a consumer could not tell a corrupt ref (repair it) from an unreachable one (retry it), and
+// would have had to rematch the observation at a second decision site.
+test fn a_refused_transport_names_the_unobserved_cause() -> std.types.Bool {
+  match gunbc.fleet_main_revision.fleet_desired_advance_expectation(observed: gunbc.fleet_main_revision.FleetDesiredUnobserved { cause: "ls-remote refused: connection reset" }) {
+    FleetDesiredExpectationRefused { cause: c } =>
+      match c {
+        FleetDesiredRefUnobserved { cause: _ } => true
+        FleetDesiredRefUndecodable { advertised: _ } => false
+      }
+    FleetDesiredExpectationReady { expectation: _ } => false
+  }
+}
+
+test fn an_undecodable_advertisement_names_the_undecodable_cause_and_keeps_the_line() -> std.types.Bool {
+  match gunbc.fleet_main_revision.fleet_desired_advance_expectation(observed: gunbc.fleet_main_revision.FleetDesiredUndecodable { advertised: "not-a-sha\trefs/fleet/desired" }) {
+    FleetDesiredExpectationRefused { cause: c } =>
+      match c {
+        FleetDesiredRefUndecodable { advertised: line } => line == "not-a-sha\trefs/fleet/desired"
+        FleetDesiredRefUnobserved { cause: _ } => false
+      }
+    FleetDesiredExpectationReady { expectation: _ } => false
+  }
+}

@@ -1,6 +1,5 @@
 module gunbc.fleet_desired_observe
 
-
 // Operator verdict join 1 (2026-08-09): the LIVE half of gunbc.fleet_main_revision.
 // That module models what the desired ref MEANS; until this module landed, nothing on
 // any host actually READ refs/fleet/desired — converge_target_revision had no live
@@ -9,23 +8,26 @@ module gunbc.fleet_desired_observe
 // observation edge: ls-remote the exact ref through the typed git.Core service op
 // (runtime-present site — typed service op, never emitted shell, per the shell→intent
 // routing), decode the advertised object id through the ONE untagged-hex decoder the
-// object-store authority provides, and refuse (typed cause, never a fabricated target)
-// on transport refusal, an unadvertised ref, or an undecodable advertisement.
+// object-store authority provides, and answer with the variant the observation actually
+// supports: absent, undecodable, or unobserved.
+//
+// THESE THREE WERE ONE VARIANT AND ARE NOT ANY MORE. A ref origin does not advertise, an
+// advertisement that will not decode, and an ls-remote that refused all returned
+// FleetDesiredUnobserved with a cause string. The string told a human which had happened and
+// told a CONSUMER nothing, so the only safe reading was "no target", and the first creation of
+// refs/fleet/desired was inexpressible: nothing could say "the remote does not have this ref"
+// as a claim rather than as a failure to look. Exit 0 with an empty advertisement IS that
+// claim, and it is now the only thing that produces it.
 fn observe_fleet_desired_revision(repo: std.types.FilePath) -> gunbc.fleet_main_revision.FleetDesiredRevision {
-  let read = git.Core.LsRemoteRefInRepo(repo: repo, remote: "origin", ref_name: fleet_desired_ref_name)
+  let read = git.Core.LsRemoteRefInRepo(repo: repo, remote: "origin", ref_name: gunbc.fleet_main_revision.fleet_desired_ref_name)
   if read.exit_code == 0 {
-    let line = trim(s: read.advertised)
+    let line = std.algebra.trim(s: read.advertised)
     if line == "" {
-      gunbc.fleet_main_revision.FleetDesiredUnobserved {
-        cause: concat("fleet_desired_observe: origin does not advertise ", fleet_desired_ref_name),
-      }
+      gunbc.fleet_main_revision.FleetDesiredAbsent
     } else {
-      match git_object_id_from_untagged_hex(hex: split(s: line, delimiter: "\t").first()) {
+      match extdeps.git.object_store.git_object_id_from_untagged_hex(hex: split(s: line, delimiter: "\t").first()) {
         Present { value: oid } => gunbc.fleet_main_revision.FleetDesiredAdmitted { revision: oid }
-        Absent =>
-          gunbc.fleet_main_revision.FleetDesiredUnobserved {
-            cause: concat("fleet_desired_observe: advertisement is not a decodable object id: ", line),
-          }
+        Absent => gunbc.fleet_main_revision.FleetDesiredUndecodable { advertised: line }
       }
     }
   } else {
@@ -41,7 +43,7 @@ fn observe_fleet_desired_revision(repo: std.types.FilePath) -> gunbc.fleet_main_
 fn observe_local_tree_revision(repo: std.types.FilePath) -> extdeps.git.object_store.GitObjectId? {
   let read = git.Core.RevParseInRepo(repo: repo, target: "HEAD" as std.types.GitRef)
   if read.exit_code == 0 {
-    git_object_id_from_untagged_hex(hex: trim(s: read.revision))
+    extdeps.git.object_store.git_object_id_from_untagged_hex(hex: std.algebra.trim(s: read.revision))
   } else {
     none
   }
@@ -60,11 +62,11 @@ type FleetRevisionStanding
 
 fn fleet_revision_standing(repo: std.types.FilePath) -> FleetRevisionStanding {
   let observed = observe_fleet_desired_revision(repo: repo)
-  match converge_target_revision(observed: observed) {
+  match gunbc.fleet_main_revision.converge_target_revision(observed: observed) {
     Present { value: desired } =>
       match observe_local_tree_revision(repo: repo) {
         Present { value: local } =>
-          if git_object_id_eq(left: desired, right: local) {
+          if extdeps.git.object_store.git_object_id_eq(left: desired, right: local) {
             RevisionConverged { revision: desired }
           } else {
             RevisionDrifted { desired: desired, local: local }
@@ -77,6 +79,14 @@ fn fleet_revision_standing(repo: std.types.FilePath) -> FleetRevisionStanding {
     Absent =>
       match observed {
         FleetDesiredUnobserved { cause: c } => RevisionUnobserved { cause: c }
+        FleetDesiredAbsent =>
+          RevisionUnobserved {
+            cause: concat("fleet_desired_observe: origin advertises no ", gunbc.fleet_main_revision.fleet_desired_ref_name),
+          }
+        FleetDesiredUndecodable { advertised: line } =>
+          RevisionUnobserved {
+            cause: concat("fleet_desired_observe: advertisement is not a decodable object id: ", line),
+          }
         FleetDesiredAdmitted { revision: _ } =>
           RevisionUnobserved {
             cause: "fleet_desired_observe: admitted revision projected no target (unreachable by construction)",
