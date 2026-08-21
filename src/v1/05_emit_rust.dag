@@ -235,7 +235,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
         let elem_node = child_type_node(ch: elem_child)
         let inner_str = render_rust_type(n: elem_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
         let tn = authored_name_at(source_indices: source_indices, node: n)
-        let base = emit_container(kind: to_snake(name: tn), inner: inner_str, target: Rust)
+        let base = emit_container(name: tn, inner: inner_str, target: Rust)
         render_rust_shared_type_with_optional(n: n, type_name: tn, rendered: base, shared_types: shared_types)
       Absent => render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
     }
@@ -550,10 +550,6 @@ fn rust_applied_type_base(name: String, decl_file: String) -> String {
   rust_named_type_base(name: name, decl_file: decl_file)
 }
 
-fn rust_normalize_witness_type_text(rendered: String) -> String {
-  replace(rendered, "witness<", "Witness<")
-}
-
 fn rust_witness_parent_leaf(parent: String) -> Bool {
   qualified_last_segment(name: parent) == "Witness"
 }
@@ -683,16 +679,6 @@ fn rust_witness_variant_ctor_path(variant_name: String, ctor_name: String, effec
       }
     Absent => ctor_name
   }
-}
-
-fn rust_normalize_partial_function_field_type_text(rendered: String) -> String {
-  replace(
-    replace(
-      replace(rendered, "HashMap<K, V>", "PartialFunction<K, V>"),
-      "Vec<K>", "FreeMonoid<K>"
-    ),
-    "Vec<V>", "FreeMonoid<V>"
-  )
 }
 
 fn is_parametric_opaque_type_by_name(env: TypeEnv, type_name: String) -> Bool {
@@ -1128,7 +1114,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
           }
         } else if node_is_collection(n: n, source_indices: source_indices) && (arg_list |> count == 1) {
           match arg_list |> first {
-            Present { value: inner } => emit_container(kind: to_snake(name: name), inner: inner, target: Rust)
+            Present { value: inner } => emit_container(name: name, inner: inner, target: Rust)
             Absent => concat(base, "<", arg_list |> join(separator: ", "), ">")
           }
         } else {
@@ -5551,16 +5537,11 @@ fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_
   } else {
     render_rust_type(n: rt_child, shared_types: shared_types, source_indices: env.source_indices, emit_info: emit_info)
   }
-  let generic_ty = if struct_name == "PartialFunction" {
-    rust_normalize_partial_function_field_type_text(rendered: rust_normalize_witness_type_text(rendered: ty))
-  } else {
-    ty
-  }
   let final_ty = if needs_box_wrapping(n: rt_child, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
-    concat("Box<", generic_ty, ">")
-  } else if rust_carrier_is_at_shared_layer(n: rt_child, source_indices: env.source_indices, shared_types: shared_types) && !rust_type_is_rc_wrapped(type_name: generic_ty) {
-    wrap_shared_type(target: Rust, inner: generic_ty)
-  } else { generic_ty }
+    concat("Box<", ty, ">")
+  } else if rust_carrier_is_at_shared_layer(n: rt_child, source_indices: env.source_indices, shared_types: shared_types) && !rust_type_is_rc_wrapped(type_name: ty) {
+    wrap_shared_type(target: Rust, inner: ty)
+  } else { ty }
   let needs_serde = struct_needs_serde(name: struct_name, emit_info: emit_info)
   let rename_attr = if !needs_serde { "" } else {
     match child.properties |> filter(p => field_init_node_name_at(n: p, source_indices: env.source_indices) == "from_key") |> first {
@@ -5586,20 +5567,31 @@ fn emit_rust_field_definition(authored: String, final_ty: String, rename_attr: S
   concat(keyword_rename, rename_attr, indent, visibility, emitted, ": ", final_ty, ",")
 }
 
-fn enum_derives(name: String, children: List<Node>, generic_param_names: List<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
+fn enum_derives(name: String, children: List<Node>, has_fn_fields: Bool, generic_param_names: List<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
   v1_emit_enum_derives(
     children: children,
+    has_fn_fields: has_fn_fields,
     map_key_required: set_contains(emit_info.map_key_required_type_names, name),
     generic_param_names: generic_param_names,
     source_indices: source_indices
   )
 }
 
+// Narrowing a coproduct's derive set to Clone is not only a fact about the derive line: a serde
+// ATTRIBUTE has no macro left to consume it once the serde derives are gone, so an orphaned
+// `#[serde(tag = ..)]` or a variant `#[serde(rename = ..)]` becomes "cannot find attribute serde
+// in this scope" -- trading one error for another rather than removing it. The derive decision
+// and the attribute decision are therefore one decision with two renderings, and both read the
+// same has_fn_fields here rather than deriving it twice.
 fn emit_enum_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde, emit_info: EmitGraphInfo) -> String {
-  let derives = enum_derives(name: name, children: children, generic_param_names: generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
-  let variant_lines = children |> map(child => emit_variant_from_child(child: child, enum_name: name, generic_param_names: generic_param_names, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy, emit_info: emit_info))
+  let has_fn_fields = type_has_fn_fields(name: name, emit_info: emit_info)
+  let derives = enum_derives(name: name, children: children, has_fn_fields: has_fn_fields, generic_param_names: generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
+  let effective_serde_policy = if has_fn_fields {
+    rust_serde_policy(enum_attr: "", rename_prefix: none, rename_suffix: none, rename_style: none)
+  } else { serde_policy }
+  let variant_lines = children |> map(child => emit_variant_from_child(child: child, enum_name: name, generic_param_names: generic_param_names, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: effective_serde_policy, emit_info: emit_info))
   let variants_str = variant_lines |> join(separator: "\n")
-  let tag_line = if serde_policy.enum_attr == "" { "" } else { concat(serde_policy.enum_attr, "\n") }
+  let tag_line = if effective_serde_policy.enum_attr == "" { "" } else { concat(effective_serde_policy.enum_attr, "\n") }
   let enum_def = concat(derives, "\n", tag_line, rust_visibility_prefix(), rust_items().enum_keyword, " ", name, type_params, " {\n", variants_str, "\n}")
   let accessor_impl = emit_enum_shared_accessors(name: name, type_params: type_params, generic_param_names: generic_param_names, children: children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
   let supplemental = v1_emit_enum_supplemental_impls(module_path: env.module_path, name: name, children: children, generic_param_names: generic_param_names, source_indices: env.source_indices)

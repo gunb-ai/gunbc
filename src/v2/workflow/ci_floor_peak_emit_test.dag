@@ -43,7 +43,7 @@ fn ci_floor_peak_pre_perturbed_pipeline() -> Pipeline {
           [Do {
             run: Run {
               command: "true",
-              env: [],
+              env: Empty,
               redirect: Absent,
               capture: Absent
             }
@@ -59,7 +59,7 @@ fn ci_floor_peak_pre_reset_perturbed_if() -> PipelineStep {
     cond: ExitZero {
       run: Run {
         command: concat(ci_floor_peak_echo_reset_redirect_command, " # perturbed"),
-        env: [],
+        env: Empty,
         redirect: Absent,
         capture: Absent
       }
@@ -68,7 +68,7 @@ fn ci_floor_peak_pre_reset_perturbed_if() -> PipelineStep {
       steps: [Do {
         run: Run {
           command: ci_floor_peak_pre_reset_ok_command,
-          env: [],
+          env: Empty,
           redirect: Absent,
           capture: Absent
         }
