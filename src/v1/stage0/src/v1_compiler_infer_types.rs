@@ -173,7 +173,7 @@ pub fn canonical_template_name(
 }
 
 pub fn is_declared_container_alias_spelling(name: String) -> bool {
-    match container_template_algebra(qualified_last_segment(name.clone())) {
+    match container_template_alias_algebra(qualified_last_segment(name.clone())) {
         Some(_) => true,
         None => false,
     }

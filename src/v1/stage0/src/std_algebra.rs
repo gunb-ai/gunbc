@@ -231,7 +231,7 @@ pub type FreeMonoid<T> = Vec<T>;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FreeSemigroup<T: Clone> {
     pub head: T,
-    pub tail: Rc<Vec<T>>,
+    pub tail: Rc<FreeMonoid<T>>,
     pub _phantom: std::marker::PhantomData<T>,
 }
 
