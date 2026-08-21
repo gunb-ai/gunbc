@@ -1,0 +1,330 @@
+module test.claim.node_hash_protocol_witness
+
+import std.types { Bool, String }
+import std.occurrence_identity { OccurrenceId }
+
+import v2.std.node {
+  Node,
+  Edge,
+  EdgeLabel,
+  Named,
+  Positional,
+  Symbol,
+  Connective,
+  Behavior,
+  NodeKind,
+  TypeNode,
+  ComputationNode,
+  Atom,
+  Conj,
+  Disj,
+  Arrow,
+  Cardinality,
+  Instantiation,
+  Value,
+  Transform,
+  Branch,
+  Loop,
+  Bind,
+  Match,
+  node_synthetic,
+  node_with_occurrence_id,
+  node_occurrence_minted,
+  content_hash,
+}
+
+// FNV1A64-STRUCTURAL-NODE-PROTOCOL-0 -- the conformance corpus for the node identity rule.
+//
+// WHY THIS EXISTS. `content_hash` decides what two programs ARE: it is the identity behind object
+// locators, commit roots, and every content-addressed comparison in this repository. 106 .dag files
+// call it. Before this file, NOTHING in the corpus tested it. The only witness that touched the
+// identity machinery at all was the SCM store's, and that one is common-mode blind by construction:
+// it compares one consumer against the authority, so both sides move together whenever the shared
+// rule moves. A change to a canonical tag, a combine order, or a canonical child ordering was
+// invisible to the entire corpus.
+//
+// HOW THE EXPECTED VALUES WERE OBTAINED, because this is the whole difference between evidence and a
+// snapshot. They were derived by an INDEPENDENT reference implementation of the declared rule,
+// written in another language from the specification -- not captured by printing what the
+// implementation currently returns. All literals below are frozen hex. Nothing here recomputes them
+// through `content_hash`, `content_hash_of_children`, or `content_hash_step`, so a change to the
+// shared rule turns these RED rather than moving both sides of a comparison together.
+//
+// The rule, as reimplemented independently:
+//   fnv1a64          standard FNV-1a 64 (offset 0xcbf29ce484222325, prime 0x100000001b3)
+//   atom(s)          = hex16(fnv1a64(utf8(s)))
+//   combine(a, b)    = hex16(fnv1a64(utf8(a) ++ 0x00 ++ utf8(b)))   -- the 16-char HEX STRINGS,
+//                      NUL-joined; NOT the raw 64-bit values. A vector captured from the
+//                      implementation would never have revealed this.
+//   node             = fold over CANONICAL children from the kind digest, each step
+//                      combine(combine(acc, label), child)
+//
+// WHAT THIS CORPUS DOES NOT CLAIM, stated here so no reader and no review upgrades it:
+//   - it does not prove injectivity;
+//   - it does not prove collision resistance;
+//   - it does not make fnv1a64 a durable intersubjective identity -- it remains a LOCATOR, which is
+//     why the protocol is named and versioned rather than assumed permanent;
+//   - it does not prove correctness for node constructors that do not yet exist;
+//   - it does not replace the SCM store's commuting-square claim. Different subjects: this guards
+//     the shared authority's declared behaviour, that guards one consumer's agreement with it.
+//     Neither subsumes the other.
+fn digest_of(n: Node) -> String {
+  content_hash(n: n).digest
+}
+
+fn atom_node(identity: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+}
+
+fn ty(c: Connective, children: List<Edge>) -> Node {
+  node_synthetic(kind: TypeNode { connective: c }, children: children)
+}
+
+fn comp(b: Behavior, children: List<Edge>) -> Node {
+  node_synthetic(kind: ComputationNode { behavior: b }, children: children)
+}
+
+fn named(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn positional(target: Node) -> Edge {
+  Edge { label: Positional, target: target }
+}
+
+// ================================================================================================
+// FROZEN VECTORS -- exhaustive over the protocol's closed branches.
+//
+// The expected digest for each arm comes from a MATCH over the coproduct, not a list of claims. That
+// is the point: adding a `Connective` or `Behavior` arm makes these matches non-exhaustive and the
+// module stops compiling until the new arm is given a vector. Coverage of the current protocol is
+// therefore structural rather than a roster someone must remember to extend.
+
+fn expected_childless_connective_digest(c: Connective) -> String {
+  match c {
+    Conj => "c56b5515d62d08bf"
+    Disj => "d18c6b0885dc88e2"
+    Arrow => "cddb68d14dfd306e"
+    Cardinality => "dbe6cb930047e16f"
+    Instantiation => "4d19a656f5ebd992"
+    Atom { identity: _ } => "8a32b46ce830ef4c"
+  }
+}
+
+fn expected_childless_behavior_digest(b: Behavior) -> String {
+  match b {
+    Value => "985af5d2060f85ca"
+    Transform => "1381ca3dff032667"
+    Branch => "b3d4fb128d8a0e0f"
+    Loop => "c61f8557ca6645ac"
+    Bind => "662cad8d0032d8ee"
+    Match => "9b19b7f9a41ec60a"
+  }
+}
+
+fn connective_vector_holds(c: Connective) -> Bool {
+  digest_of(n: ty(c: c, children: [])) == expected_childless_connective_digest(c: c)
+}
+
+fn behavior_vector_holds(b: Behavior) -> Bool {
+  digest_of(n: comp(b: b, children: [])) == expected_childless_behavior_digest(b: b)
+}
+
+// Every Connective arm. The Atom vector uses ^alpha, the symbol its expected value was derived for.
+test fn every_connective_matches_its_frozen_vector() -> Bool {
+  connective_vector_holds(c: Conj)
+    && connective_vector_holds(c: Disj)
+    && connective_vector_holds(c: Arrow)
+    && connective_vector_holds(c: Cardinality)
+    && connective_vector_holds(c: Instantiation)
+    && connective_vector_holds(c: Atom { identity: ^alpha })
+}
+
+// Every Behavior arm.
+test fn every_behavior_matches_its_frozen_vector() -> Bool {
+  behavior_vector_holds(b: Value)
+    && behavior_vector_holds(b: Transform)
+    && behavior_vector_holds(b: Branch)
+    && behavior_vector_holds(b: Loop)
+    && behavior_vector_holds(b: Bind)
+    && behavior_vector_holds(b: Match)
+}
+
+// ================================================================================================
+// EDGE DISCIPLINE VECTORS -- one specimen reaching each of the five branches.
+//
+// The discipline decides the CANONICAL CHILD ORDER, so these are the vectors that pin ordering
+// rather than content. The two composite disciplines are the subtle ones and are worth stating
+// explicitly: Arrow and Loop do NOT simply sort their children. They partition into positional edges
+// (order preserved), then other named edges (SORTED), then the one distinguished edge
+// (^arrow_body_edge / ^loop_bound_edge) pinned LAST regardless of where it was authored or how its
+// name sorts. A fixture that only ever authored children in canonical order would pass against an
+// implementation that did no reordering at all, so each composite specimen below is authored
+// DELIBERATELY OUT OF ORDER.
+
+test fn no_edges_discipline_matches_its_vector() -> Bool {
+  digest_of(n: atom_node(identity: ^alpha)) == "8a32b46ce830ef4c"
+}
+
+test fn labeled_edges_discipline_matches_its_vector() -> Bool {
+  digest_of(n: ty(c: Conj, children: [
+    named(name: ^f, target: atom_node(identity: ^alpha)),
+    named(name: ^g, target: atom_node(identity: ^beta)),
+  ])) == "27b43e6a2a853e35"
+}
+
+test fn positional_edges_discipline_matches_its_vector() -> Bool {
+  digest_of(n: ty(c: Cardinality, children: [
+    positional(target: atom_node(identity: ^alpha)),
+    positional(target: atom_node(identity: ^beta)),
+  ])) == "c579b53fa78cbd3f"
+}
+
+// Authored body-first, then g, then the positional signature, then f -- i.e. every group out of
+// canonical order at once.
+test fn arrow_body_discipline_matches_its_vector() -> Bool {
+  digest_of(n: ty(c: Arrow, children: [
+    named(name: ^arrow_body_edge, target: atom_node(identity: ^body)),
+    named(name: ^g, target: atom_node(identity: ^beta)),
+    positional(target: atom_node(identity: ^sig)),
+    named(name: ^f, target: atom_node(identity: ^alpha)),
+  ])) == "838a07cf36bb337b"
+}
+
+test fn loop_bound_discipline_matches_its_vector() -> Bool {
+  digest_of(n: comp(b: Loop, children: [
+    named(name: ^loop_bound_edge, target: atom_node(identity: ^bound)),
+    named(name: ^g, target: atom_node(identity: ^beta)),
+    positional(target: atom_node(identity: ^body)),
+    named(name: ^f, target: atom_node(identity: ^alpha)),
+  ])) == "e1ea7ccc630cdeeb"
+}
+
+// Parent assembly from child identities, two levels deep.
+test fn nested_assembly_matches_its_vector() -> Bool {
+  digest_of(n: ty(c: Conj, children: [
+    named(name: ^f, target: ty(c: Conj, children: [
+      named(name: ^g, target: atom_node(identity: ^deep)),
+    ])),
+  ])) == "84f0f2e91248ef84"
+}
+
+// ================================================================================================
+// QUOTIENT LAWS -- what the protocol deliberately ERASES.
+//
+// These are why the frozen vectors above mean something. Without them the vectors could be pinning
+// an arbitrary function of the authored representation; with them, the vectors are pinning the
+// canonical quotient. Each law is asserted at TWO depths, because a root-only canonicalizer passes
+// every shallow form of these while remaining wrong one level down -- that exact defect was found in
+// this repository's SCM oracle, so the nested form is not decoration.
+
+fn minted_atom(identity: Symbol, id: Int) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    occurrence_id: node_occurrence_minted(id: OccurrenceId { value: id }),
+  )
+}
+
+// LAW: occurrence provenance is erased. Occurrence ids are graph-scoped allocator output, so two
+// independently-built copies of one program carry different ones and must still be one identity.
+test fn occurrence_provenance_is_erased() -> Bool {
+  digest_of(n: atom_node(identity: ^alpha)) == digest_of(n: minted_atom(identity: ^alpha, id: 41))
+    && digest_of(n: minted_atom(identity: ^alpha, id: 41))
+      == digest_of(n: minted_atom(identity: ^alpha, id: 900))
+}
+
+// LAW: occurrence provenance is erased at DEPTH, not only at the root.
+test fn nested_occurrence_provenance_is_erased() -> Bool {
+  digest_of(n: ty(c: Conj, children: [named(name: ^f, target: atom_node(identity: ^alpha))]))
+    == digest_of(n: ty(c: Conj, children: [named(name: ^f, target: minted_atom(identity: ^alpha, id: 77))]))
+}
+
+// LAW: authored order of NAMED siblings is erased under LabeledEdges. Both orders are one identity,
+// and the frozen vector above pins which identity that is.
+test fn authored_named_sibling_order_is_erased() -> Bool {
+  digest_of(n: ty(c: Conj, children: [
+    named(name: ^f, target: atom_node(identity: ^alpha)),
+    named(name: ^g, target: atom_node(identity: ^beta)),
+  ])) == digest_of(n: ty(c: Conj, children: [
+    named(name: ^g, target: atom_node(identity: ^beta)),
+    named(name: ^f, target: atom_node(identity: ^alpha)),
+  ]))
+}
+
+// LAW: named sibling order is erased at DEPTH. This is the one a root-only canonicalizer fails.
+test fn nested_named_sibling_order_is_erased() -> Bool {
+  digest_of(n: ty(c: Conj, children: [named(name: ^f, target: ty(c: Conj, children: [
+    named(name: ^f, target: atom_node(identity: ^x)),
+    named(name: ^g, target: atom_node(identity: ^y)),
+  ]))])) == digest_of(n: ty(c: Conj, children: [named(name: ^f, target: ty(c: Conj, children: [
+    named(name: ^g, target: atom_node(identity: ^y)),
+    named(name: ^f, target: atom_node(identity: ^x)),
+  ]))]))
+}
+
+// ================================================================================================
+// SENSITIVITY CONTROLS -- what the protocol must NOT erase.
+//
+// The quotient laws above are satisfied by a constant function; these are what rule that out. Each
+// names one dimension the rule claims to preserve and shows two fixtures differing ONLY in that
+// dimension landing on different digests. Together they are the discriminating corpus: a kind-blind,
+// symbol-blind, label-blind, or positional-sorting regression fails somewhere in this set.
+//
+// NOT AN INJECTIVITY PROOF, and the distinction matters. These establish that selected distinctions
+// survive for these fixtures. They do not establish that all distinctions survive for all nodes,
+// which fnv1a64 cannot support anyway -- a 64-bit locator has collisions by counting.
+
+// The kind axis: two Behaviors, nothing else differing.
+test fn behavior_is_not_erased() -> Bool {
+  digest_of(n: comp(b: Transform, children: [])) != digest_of(n: comp(b: Branch, children: []))
+}
+
+// The kind axis across the TypeNode/ComputationNode split.
+test fn node_kind_family_is_not_erased() -> Bool {
+  digest_of(n: ty(c: Conj, children: [])) != digest_of(n: comp(b: Value, children: []))
+}
+
+// The atom symbol axis -- a rule that hashed only the constructor tag would pass everything above.
+test fn atom_symbol_is_not_erased() -> Bool {
+  digest_of(n: atom_node(identity: ^alpha)) != digest_of(n: atom_node(identity: ^beta))
+}
+
+// The edge label axis: same child, same kind, different binding name.
+test fn named_edge_label_is_not_erased() -> Bool {
+  digest_of(n: ty(c: Conj, children: [named(name: ^f, target: atom_node(identity: ^x))]))
+    != digest_of(n: ty(c: Conj, children: [named(name: ^g, target: atom_node(identity: ^x))]))
+}
+
+// The positional order axis. This is the counterpart to the named-order quotient law: named order is
+// erased, positional order is PRESERVED, and a canonicalizer that sorted everything uniformly would
+// satisfy the quotient laws while destroying this. Cardinality takes PositionalEdges.
+test fn positional_order_is_not_erased() -> Bool {
+  digest_of(n: ty(c: Cardinality, children: [
+    positional(target: atom_node(identity: ^a)),
+    positional(target: atom_node(identity: ^b)),
+  ])) != digest_of(n: ty(c: Cardinality, children: [
+    positional(target: atom_node(identity: ^b)),
+    positional(target: atom_node(identity: ^a)),
+  ]))
+}
+
+// The child content axis: identical shape and labels, one differing leaf, so the parent digest must
+// differ. This is what makes the identity structural rather than shape-only.
+test fn child_content_is_not_erased() -> Bool {
+  digest_of(n: ty(c: Conj, children: [named(name: ^f, target: atom_node(identity: ^x))]))
+    != digest_of(n: ty(c: Conj, children: [named(name: ^f, target: atom_node(identity: ^y))]))
+}
+
+// The distinguished-edge position axis: under ArrowBodyEdges the body edge is pinned LAST regardless
+// of authored position, so moving an ORDINARY named edge across it must still change nothing (that
+// is the quotient), while the body edge carrying different content must change the digest.
+test fn arrow_body_content_is_not_erased() -> Bool {
+  digest_of(n: ty(c: Arrow, children: [
+    named(name: ^arrow_body_edge, target: atom_node(identity: ^body)),
+    positional(target: atom_node(identity: ^sig)),
+  ])) != digest_of(n: ty(c: Arrow, children: [
+    named(name: ^arrow_body_edge, target: atom_node(identity: ^other_body)),
+    positional(target: atom_node(identity: ^sig)),
+  ]))
+}
