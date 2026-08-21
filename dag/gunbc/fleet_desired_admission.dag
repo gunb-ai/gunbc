@@ -164,6 +164,15 @@ fn fleet_desired_floor_green(conclusion: WorkflowRunConclusion) -> Bool {
 // not read, which is the empty-observation narrow with the fleet as the blast radius. The
 // ref exists, so refusing costs nothing real; if a genuine first admission is ever needed
 // it arrives as a distinguished observation, not as this arm guessing.
+//
+// FleetDesiredAbsent (gunbc#8701) IS that distinguished observation -- origin advertises no
+// fleet_desired_ref_name at all, a claim rather than a failure to look -- and this function
+// still refuses on it rather than admitting a first push: AdmissionAdvanceAuthorized.from is
+// a required GitObjectId with no Absent arm, so authorizing a "no prior" advance needs that
+// outcome shape to widen to an optional prior, a typed-carrier decision this exhaustiveness
+// fix does not make unilaterally. Refusing costs nothing real -- the ref origin advertises
+// none today, so nothing regresses -- and the arm's own cause names the next-rung trigger
+// rather than silently picking a behavior.
 fn fleet_desired_admission_decide(event: WorkflowRunEvent, observed: FleetDesiredRevision) -> FleetDesiredAdmissionOutcome {
   match fleet_desired_admission_event_trusted(event: event) {
     Present { value: refusal } => AdmissionRefused { cause: refusal }
@@ -177,15 +186,6 @@ fn fleet_desired_admission_decide(event: WorkflowRunEvent, observed: FleetDesire
             ], ""),
           }
         FleetDesiredAbsent =>
-          // FleetDesiredAbsent is now (gunbc#8701) a distinguished claim -- origin advertises
-          // no fleet_desired_ref_name at all -- rather than a failure to look. It is refused
-          // here rather than admitted as a first push: AdmissionAdvanceAuthorized.from is a
-          // required GitObjectId, so authorizing a "no prior" advance needs that outcome shape
-          // to widen to an optional prior, which is a typed carrier decision this narrow
-          // exhaustiveness fix does not make unilaterally (DESIGN.md fail-closed: never guess
-          // a first-admission arm into existence). Refusing costs nothing real -- the ref
-          // origin advertises none today, so nothing regresses -- and names its own next-rung
-          // trigger rather than silently picking a behavior.
           AdmissionRefused {
             cause: "fleet_desired_admission: origin advertises no admitted prior (first-admission authorization is unmodeled -- AdmissionAdvanceAuthorized.from has no Absent arm; refusing rather than guessing)",
           }
