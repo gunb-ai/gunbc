@@ -19461,6 +19461,33 @@ fn plan_grain_selection(
     Ok(None)
 }
 
+/// Does a plan-grain exclusion SURVIVE what the generated-artifact population says about the
+/// mirror? `None` means it does not -- the module is selected after all.
+///
+/// PURE, AND SEPARATED FROM THE ASK FOR ONE REASON: the divergence it decides has an EMPTY
+/// POPULATION today, so nothing in the live corpus executes the branch that matters. An empty
+/// population is not a safe place to leave a behaviour undecided -- the first real member would
+/// settle it by accident, and whoever met it would be debugging a difference nobody had written
+/// down. Pulling the decision out of the loop lets a planted control state the intent and execute
+/// it permanently (DESIGN.md 4b(4): the evidence stays enrolled, it does not retire when the
+/// production population catches up).
+fn exclusion_survives_generated_artifact_population(
+    exclusion: ReceiptExclusion,
+    body: &GeneratedArtifactPathBody,
+) -> Option<ReceiptExclusion> {
+    match body {
+        // A POSITIVE ANSWER: this path is a module mirror, not a generated artifact. Only here is
+        // "no function yields a call" the whole story, so only here is the exclusion a fact.
+        GeneratedArtifactPathBody::NotGenerated => Some(exclusion),
+        // Produced OR Refused: either way the path belongs to the generated-artifact population,
+        // whose subject is BYTES rather than behaviour -- and for that subject a declared function
+        // is not required, because the identity check calls nothing. The differential loop is
+        // where that population's answer is reported (identity, drift, or a generator refusal);
+        // deciding it here would be a second adjudicator of one question.
+        GeneratedArtifactPathBody::Produced(_) | GeneratedArtifactPathBody::Refused(_) => None,
+    }
+}
+
 /// A plan CARRYING AT LEAST ONE CALL. There is no other way to build one.
 ///
 /// The differential used to check this itself -- `if total == 0 { Refused }` -- which is
@@ -21016,13 +21043,10 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
                         // mirror -- and only then is the exclusion a fact.
                         let repo_rel = format!("src/v1/stage0/src/{mirror}");
                         let ctx = generated_artifact_ctx(source_roots, &mut generated_ctx_cell)?;
-                        match generated_artifact_body_for_path(ctx, &repo_rel)? {
-                            GeneratedArtifactPathBody::NotGenerated => exclusions.push(exclusion),
-                            // Produced OR Refused: either way the path belongs to the
-                            // generated-artifact population, and the loop is where that
-                            // population's answer -- identity, drift, or a generator refusal --
-                            // is reported. Deciding it here would be a second adjudicator.
-                            _ => plans.push((mirror, plan, alias)),
+                        let body = generated_artifact_body_for_path(ctx, &repo_rel)?;
+                        match exclusion_survives_generated_artifact_population(exclusion, &body) {
+                            Some(exclusion) => exclusions.push(exclusion),
+                            None => plans.push((mirror, plan, alias)),
                         }
                     }
                 }
@@ -21545,6 +21569,71 @@ mod function_grain_admission_tests {
                  must be excluded AS SUCH -- reporting it as `none of its 0 declared functions \
                  yields a call` sends a reader to close a derivation with no subject: {other:?}"
             ),
+        }
+    }
+
+    /// THE PLANTED CONTROL FOR AN EMPTY POPULATION, and it is planted precisely BECAUSE the
+    /// population is empty. No authority in the corpus today declares zero functions AND owns a
+    /// generated artifact, so nothing live exercises this branch -- which means main and this
+    /// branch disagree about it with no measurement in either direction, and the first real member
+    /// would decide the verdict by accident. This test is the statement of intent, executing:
+    ///
+    ///   such a module is SELECTED, not excluded, because its subject is the artifact's BYTES.
+    ///
+    /// The identity check in the differential loop calls no function, so "declares no function"
+    /// says nothing about whether it can be checked -- and that check is the only drift observer
+    /// those artifacts have had since the floor cut removed the generated-artifact drift gates
+    /// (DESIGN.md names them first in what the cut left unguarded). Excluding here would delete
+    /// it. Per DESIGN.md 4b(4) this control stays enrolled once the population is non-empty; it is
+    /// the evidence that the higher rung is real, not scaffolding for its absence.
+    #[test]
+    fn a_zero_function_authority_owning_a_generated_artifact_is_selected_not_excluded() {
+        let excluded = ReceiptExclusion::NoFunctionDeclared {
+            module_path: "test.module".to_string(),
+        };
+        let survives = exclusion_survives_generated_artifact_population(
+            excluded,
+            &GeneratedArtifactPathBody::Produced("generated bytes".to_string()),
+        );
+        assert!(
+            survives.is_none(),
+            "an artifact-owning authority has a subject -- its bytes -- and excluding it would \
+             delete the only drift observer those artifacts have"
+        );
+    }
+
+    /// The same for a generator that REFUSED: the path still belongs to the artifact population,
+    /// and the loop is where that refusal is reported. Swallowing it here would turn a generator
+    /// failure into a quiet exclusion -- a refusal downgraded to a skip.
+    #[test]
+    fn a_generator_refusal_does_not_become_an_exclusion() {
+        let excluded = ReceiptExclusion::NoFunctionHasACorpus {
+            module_path: "test.module".to_string(),
+            uncovered: vec![("alpha".to_string(), unbounded())],
+        };
+        assert!(exclusion_survives_generated_artifact_population(
+            excluded,
+            &GeneratedArtifactPathBody::Refused("generator said no".to_string()),
+        )
+        .is_none());
+    }
+
+    /// THE OTHER SIDE OF THE SAME CONTROL, without which the two above could be satisfied by never
+    /// excluding anything: an ordinary module mirror answers `NotGenerated`, and there the
+    /// exclusion IS the fact and must survive.
+    #[test]
+    fn an_ordinary_mirror_keeps_its_exclusion() {
+        let excluded = ReceiptExclusion::NoFunctionDeclared {
+            module_path: "test.module".to_string(),
+        };
+        match exclusion_survives_generated_artifact_population(
+            excluded,
+            &GeneratedArtifactPathBody::NotGenerated,
+        ) {
+            Some(ReceiptExclusion::NoFunctionDeclared { module_path }) => {
+                assert_eq!(module_path, "test.module")
+            }
+            other => panic!("a module mirror with no function has no subject at all: {other:?}"),
         }
     }
 
