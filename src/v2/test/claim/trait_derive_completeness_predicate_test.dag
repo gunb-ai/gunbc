@@ -10,29 +10,56 @@ import v2.compiler.trait_derive_completeness {
   trait_derive_int_kernel_type_node
 }
 import std.trait_derive_shape {
-  ReprDeriveAdd,
-  ReprDeriveClone,
   ReprDeriveElemKernelString,
   ReprDeriveElemNullaryEnumCopy,
   ReprDeriveElemPayloadCoproduct,
   ReprDeriveElemUnknown,
-  ReprDeriveOrd,
-  ReprDeriveSerialize,
-  payload_coproduct_derive_traits,
   repr_grounding_derive_completeness_predicate
+}
+import extdeps.languages.rust.capabilities {
+  RustCapability,
+  RustDebug,
+  RustClone,
+  RustCopy,
+  RustPartialEq,
+  RustEq,
+  RustPartialOrd,
+  RustOrd,
+  RustHash,
+  RustSerialize,
+  RustDeserialize,
+  RustAdd,
+  RustSub,
+  RustMul,
+  RustDiv,
+  RustRem,
+  RustNeg,
+  payload_coproduct_derive_traits,
+  rust_capability_shape_table
 }
 import v2.extdeps.languages.rust {
   rust_trait_derive_surface_binding_for_coproduct,
   rust_trait_derive_surface_binding_for_record
 }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic {
+  Accepted,
+  Rejected
+}
 import v2.std.compilers.target_model {
   TargetCapabilityRequirement,
   symbol_kernel_type_node
 }
-import v2.std.algebra { Cons, Empty }
-import v2.std.collection { List, Symbol }
-import v2.std.logic { Bool }
+import v2.std.algebra {
+  Cons,
+  Empty
+}
+import v2.std.collection {
+  List,
+  Symbol
+}
+import v2.std.logic {
+  Bool
+}
 import v2.std.node {
   Atom,
   Conj,
@@ -182,26 +209,26 @@ fn tdc_coproduct_binding_rejected(coproduct: Node) -> Bool {
 }
 
 test fn tdc_string_kernel_satisfies_clone_ord_serde_not_add() -> Bool {
-  repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveClone, elem: symbol_kernel_type_node())
-    && repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveOrd, elem: symbol_kernel_type_node())
-    && repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveSerialize, elem: symbol_kernel_type_node())
-    && repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveAdd, elem: symbol_kernel_type_node()) == false
+  repr_grounding_derive_trait_satisfied(derive_trait: RustClone, elem: symbol_kernel_type_node())
+    && repr_grounding_derive_trait_satisfied(derive_trait: RustOrd, elem: symbol_kernel_type_node())
+    && repr_grounding_derive_trait_satisfied(derive_trait: RustSerialize, elem: symbol_kernel_type_node())
+    && repr_grounding_derive_trait_satisfied(derive_trait: RustAdd, elem: symbol_kernel_type_node()) == false
 }
 
 test fn tdc_int_kernel_satisfies_arith_and_ord() -> Bool {
-  repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveAdd, elem: trait_derive_int_kernel_type_node())
-    && repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveOrd, elem: trait_derive_int_kernel_type_node())
+  repr_grounding_derive_trait_satisfied(derive_trait: RustAdd, elem: trait_derive_int_kernel_type_node())
+    && repr_grounding_derive_trait_satisfied(derive_trait: RustOrd, elem: trait_derive_int_kernel_type_node())
     && repr_grounding_derive_completeness_predicate_for_elem(
       required: Cons {
-        head: ReprDeriveAdd,
-        tail: Cons { head: ReprDeriveClone, tail: Cons { head: ReprDeriveSerialize, tail: Empty } }
+        head: RustAdd,
+        tail: Cons { head: RustClone, tail: Cons { head: RustSerialize, tail: Empty } }
       },
       elem: trait_derive_int_kernel_type_node()
     )
 }
 
 test fn tdc_unknown_atom_refuses_ord_completeness() -> Bool {
-  repr_grounding_derive_trait_satisfied(derive_trait: ReprDeriveOrd, elem: tdc_unknown_atom_node()) == false
+  repr_grounding_derive_trait_satisfied(derive_trait: RustOrd, elem: tdc_unknown_atom_node()) == false
     && tdc_elem_shape_is_unknown(elem: tdc_unknown_atom_node())
     && tdc_collection_requirement_gate_is_incomplete(
       requirement: TargetCapabilityRequirement {
@@ -232,6 +259,7 @@ test fn tdc_unknown_capability_refuses_rather_than_defaulting() -> Bool {
 test fn tdc_payload_coproduct_shape_and_predicate() -> Bool {
   tdc_elem_shape_is_payload_coproduct(elem: tdc_payload_enum_node())
     && repr_grounding_derive_completeness_predicate(
+      rust_capability_shape_table(),
       payload_coproduct_derive_traits(),
       ReprDeriveElemPayloadCoproduct
     )

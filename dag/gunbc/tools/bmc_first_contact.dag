@@ -1,12 +1,24 @@
 module gunbc.tools.bmc_first_contact
 
 
+// `shell.Env.Get` answers `value: String?`, and this func reached it with `as NonEmptyStr`, which
+// does not eliminate the absence: with BMC_HOST unset the Redfish call was dialled at a host whose
+// name was the literal text `Absent`. The compiler now refuses that cast. The absent arm is a loud
+// word rather than a plausible hostname so the resulting connection failure names its own cause
+// instead of reading as an unreachable BMC.
+fn bmc_first_contact_host(value: String?) -> NonEmptyStr {
+  match value {
+    Present { value: host } => host as NonEmptyStr
+    Absent => "bmc-host-env-unset" as NonEmptyStr
+  }
+}
+
 func bmc_first_contact() -> ProcessExit
   uses net: std.resources.Network
 {
   host = shell.Env.Get(name: "BMC_HOST")
   resp = redfish.Http.GetSystem(
-    bmc_host: host.value as NonEmptyStr,
+    bmc_host: bmc_first_contact_host(value: host.value),
     username: openbmc_factory_login.username,
     password: openbmc_factory_login.published_password as Secret
   )

@@ -39,7 +39,7 @@ pub enum TraitBoundWitnessScope {
 pub fn v1_call_forwarding_clone_bound_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "gunbc dashboard node://adhoc-574e999b-39c, Row 1b. A second, structurally distinct trigger from the RC-match one above: a wrapper fn whose body forwards its own arguments directly into ONE callee that emit_fn_def already derived a Clone bound for (structural + RC-match, unioned) is itself missing that bound on its own generated signature, producing rustc E0599/E0308 at the wrapper's own call to a .clone()-emitting path or a bound mismatch at its call site into the callee. Traced to emit_fn_def: the derivation (v1_generic_params_needing_clone_bound plus the RC-match trigger) only ever looks at the function being emitted's OWN body shape -- it has no path to ask 'does my body just hand its args to some other already-bounded function', so a pass-through wrapper (fn(x) { callee(y: x) }) or the higher-order fn(x) { some_call(f: x) } (a body that is itself a lambda directly wrapping one call, as in v2.std.staging's then_outcome/cached_stage) never inherits the callee's requirement. DESIGN.md S5 construction-over-validation: the fact already exists on the callee's own declaration Node (looked up via EmitGraphInfo.fn_decl_items, itself keyed by real per-item AST shape via emit_graph_records_fn_decl, never a text scan of emitted Rust) and on the callee's own already-derived clone_param_names (recomputed via v1_fn_body_derived_clone_param_names, the exact same derivation emit_fn_def runs on itself -- DESIGN.md S2, one derivation reused rather than re-implemented for a second call site). The pure decision core below (v1_call_forwarding_clone_bound_wrapper_param_name) is Node-free and unit-testable with plain string literals: given one callee parameter's resolved type name, the callee's own generic param names and its already-derived clone-bound subset of them, one call argument's resolved type name, and the wrapper's own generic param names, it answers whether that ONE callee parameter is (a) itself a bare occurrence of one of the callee's generic params, (b) that generic param is one the callee needs Clone for, and (c) the actual argument passed at the call site is itself a bare occurrence of one of the WRAPPER's own generic params -- in which case the callee's requirement forwards onto that wrapper param. The Node-consuming extraction wrapper (v1_call_forwarding_clone_bound_param_names) folds this decision over every (callee declared param, call argument) pair -- correlated by callee parameter NAME via call_args_by_name, since no zip/pairwise-fold primitive exists in this corpus (checked: no fn zip/fold2/map2 anywhere under dag/std or src/v1) -- and is wired into emit_fn_def below (05_emit_rust.dag), scoped narrowly per BoundedToDirectSingleCallLambdaBody to a body that IS, directly, either a top-level call expression or a lambda whose own body is directly one top-level call expression -- a body reaching its call through Let/If/Branch/Block first is NOT walked, and a call reached only after a chain of two or more forwarding wrappers is discovered one level at a time as each wrapper is itself re-emitted (recursion is via re-derivation on the callee's own declaration, not a multi-hop walk). That is a declared boundary, not a silent gap: the next-rung trigger is a recursive body walker mirroring emit_rust_expr_if/emit_rust_expr_let's accessor shapes, exactly the same next-rung trigger already named for BoundedToDirectTopLevelMatchBody above, once a real specimen needs either boundary widened.".to_string()
+            "gunbc dashboard node://adhoc-574e999b-39c, Row 1b. A second, structurally distinct trigger from the RC-match one above: a wrapper fn whose body forwards its own arguments directly into ONE callee that emit_fn_def already derived a Clone bound for (structural + RC-match, unioned) is itself missing that bound on its own generated signature, producing rustc E0599/E0308 at the wrapper's own call to a .clone()-emitting path or a bound mismatch at its call site into the callee. Traced to emit_fn_def: the derivation (v1_generic_params_needing_clone_bound plus the RC-match trigger) only ever looks at the function being emitted's OWN body shape -- it has no path to ask 'does my body just hand its args to some other already-bounded function', so a pass-through wrapper (fn(x) { callee(y: x) }) or the higher-order fn(x) { some_call(f: x) } (a body that is itself a lambda directly wrapping one call, as in v2.std.staging's then_outcome/cached_stage) never inherits the callee's requirement. DESIGN.md S5 construction-over-validation: the fact already exists on the callee's own declaration Node (looked up via EmitGraphInfo.fn_decl_items, itself keyed by real per-item AST shape via emit_graph_records_fn_decl, never a text scan of emitted Rust) and on the callee's own already-derived clone_param_names (recomputed via v1_fn_body_derived_clone_param_names, the exact same derivation emit_fn_def runs on itself -- DESIGN.md S2, one derivation reused rather than re-implemented for a second call site). The pure decision core below (v1_call_forwarding_bound_wrapper_param_names) is Node-free and unit-testable with plain string literals: given one callee parameter's resolved type name, the callee's own generic param names and its already-derived bound-earning subset of them (Clone here, PartialEq at the equality call site -- the core is trait-agnostic and takes the subset as callee_bound_param_names), one call argument's resolved type name, and the wrapper's own generic param names, it answers whether that ONE callee parameter is (a) itself a bare occurrence of one of the callee's generic params, (b) that generic param is one the callee needs Clone for, and (c) the actual argument passed at the call site is itself a bare occurrence of one of the WRAPPER's own generic params -- in which case the callee's requirement forwards onto that wrapper param. The Node-consuming extraction wrapper (v1_call_forwarding_clone_bound_param_names) folds this decision over every (callee declared param, call argument) pair -- correlated by callee parameter NAME via call_args_by_name, since no zip/pairwise-fold primitive exists in this corpus (checked: no fn zip/fold2/map2 anywhere under dag/std or src/v1) -- and is wired into emit_fn_def below (05_emit_rust.dag), scoped narrowly per BoundedToDirectSingleCallLambdaBody to a body that IS, directly, either a top-level call expression or a lambda whose own body is directly one top-level call expression -- a body reaching its call through Let/If/Branch/Block first is NOT walked, and a call reached only after a chain of two or more forwarding wrappers is discovered one level at a time as each wrapper is itself re-emitted (recursion is via re-derivation on the callee's own declaration, not a multi-hop walk). That is a declared boundary, not a silent gap: the next-rung trigger is a recursive body walker mirroring emit_rust_expr_if/emit_rust_expr_let's accessor shapes, exactly the same next-rung trigger already named for BoundedToDirectTopLevelMatchBody above, once a real specimen needs either boundary widened.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -80,47 +80,46 @@ pub fn v1_rc_match_scrutinee_clone_bound_param_names(
     }
 }
 
-pub fn v1_union_clone_param_names(
+pub fn v1_union_bound_param_names(
     base: Rc<Vec<String>>,
     extra: Rc<Vec<String>>,
 ) -> Rc<Vec<String>> {
-    v1_rt::concat(
-        base.clone(),
-        Rc::new({
-            let mut __result = Vec::new();
-            for x in extra.clone().iter().cloned() {
-                if !{
-                    let mut __found = false;
-                    for y in base.clone().iter().cloned() {
-                        if (y.clone() == x.clone()) {
-                            __found = true;
-                            break;
-                        }
+    extra
+        .clone()
+        .iter()
+        .cloned()
+        .fold(base.clone(), |acc: Rc<Vec<String>>, x: String| {
+            if {
+                let mut __found = false;
+                for y in acc.clone().iter().cloned() {
+                    if (y.clone() == x.clone()) {
+                        __found = true;
+                        break;
                     }
-                    __found
-                } {
-                    __result.push(x);
                 }
+                __found
+            } {
+                acc.clone()
+            } else {
+                v1_rt::concat(acc.clone(), Rc::new(vec![x.clone()]))
             }
-            __result
-        }),
-    )
+        })
 }
 
 pub fn v1_call_forwarding_compound_type_arg_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Widening of v1_call_forwarding_clone_bound_wrapper_param_names (gunbc dashboard node://adhoc-574e999b-39c, Row 1b), traced against the census's own site list (docs/probes/materialization_carriers_rebaseline_2026-08-19.md S3: v2_std_staging.rs:16,31,44 -- v2.std.staging's cached_stage/then_outcome) rather than assumed in scope. cached_stage<A, B>'s body is fn(x) { resolve_probe(probe: lookup(x), stage: stage, x: x) } -- a body shape ALREADY covered by BoundedToDirectSingleCallLambdaBody (a lambda whose body is one top-level call), so this is not a body-shape gap. The gap is in the bare-name comparison above: resolve_probe's own `probe: CacheProbe<B>` parameter needs Clone on B (resolve_probe is itself in callee_clone_param_names via the census's bind_outcome/resolve_probe E0277 rows), but callee_param_type_name for that param resolves to the bare outer name \"CacheProbe\", which is never itself one of resolve_probe's own generic_param_names (\"A\"/\"B\") -- so the original bare-string check can never fire when the callee's requirement sits on a TYPE ARGUMENT of a compound parameter type rather than being the parameter's whole type. The call argument lookup(x) has the same shape one level up: its resolved type is the compound CacheProbe<B> where B is cached_stage's OWN generic (the wrapper's, not the callee's) -- so the fix pairs the callee parameter's type-argument names against the call argument's resolved type-argument names POSITIONALLY, deliberately narrowed to arity exactly 1 on both sides (checked, not assumed: no zip/fold2/map2 primitive exists anywhere in this corpus -- see v1_call_forwarding_clone_bound_note above -- so an N-ary positional pairing would need one written from scratch, and the only real specimens driving this row are CacheProbe<B>, itself arity 1; DESIGN.md S6 forbids building for a hypothetical arity-2+ case no specimen needs). A specimen with two or more compound type arguments is a declared next-rung trigger for this exact reason, not a silent gap: it falls through to no match (empty list) rather than mis-pairing arguments by position under an unverified arity, which would be worse than the boundary.".to_string()
+            "Widening of v1_call_forwarding_bound_wrapper_param_names (gunbc dashboard node://adhoc-574e999b-39c, Row 1b), traced against the census's own site list (docs/probes/materialization_carriers_rebaseline_2026-08-19.md S3: v2_std_staging.rs:16,31,44 -- v2.std.staging's cached_stage/then_outcome) rather than assumed in scope. cached_stage<A, B>'s body is fn(x) { resolve_probe(probe: lookup(x), stage: stage, x: x) } -- a body shape ALREADY covered by BoundedToDirectSingleCallLambdaBody (a lambda whose body is one top-level call), so this is not a body-shape gap. The gap is in the bare-name comparison above: resolve_probe's own `probe: CacheProbe<B>` parameter needs Clone on B (resolve_probe is itself in callee_bound_param_names via the census's bind_outcome/resolve_probe E0277 rows), but callee_param_type_name for that param resolves to the bare outer name \"CacheProbe\", which is never itself one of resolve_probe's own generic_param_names (\"A\"/\"B\") -- so the original bare-string check can never fire when the callee's requirement sits on a TYPE ARGUMENT of a compound parameter type rather than being the parameter's whole type. The call argument lookup(x) has the same shape one level up: its resolved type is the compound CacheProbe<B> where B is cached_stage's OWN generic (the wrapper's, not the callee's) -- so the fix pairs the callee parameter's type-argument names against the call argument's resolved type-argument names POSITIONALLY, deliberately narrowed to arity exactly 1 on both sides (checked, not assumed: no zip/fold2/map2 primitive exists anywhere in this corpus -- see v1_call_forwarding_clone_bound_note above -- so an N-ary positional pairing would need one written from scratch, and the only real specimens driving this row are CacheProbe<B>, itself arity 1; DESIGN.md S6 forbids building for a hypothetical arity-2+ case no specimen needs). A specimen with two or more compound type arguments is a declared next-rung trigger for this exact reason, not a silent gap: it falls through to no match (empty list) rather than mis-pairing arguments by position under an unverified arity, which would be worse than the boundary.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn v1_call_forwarding_clone_bound_wrapper_param_names(
+pub fn v1_call_forwarding_bound_wrapper_param_names(
     callee_param_type_name: String,
     callee_param_type_arg_names: Rc<Vec<String>>,
     callee_generic_param_names: Rc<Vec<String>>,
-    callee_clone_param_names: Rc<Vec<String>>,
+    callee_bound_param_names: Rc<Vec<String>>,
     arg_type_name: String,
     arg_type_arg_names: Rc<Vec<String>>,
     wrapper_generic_param_names: Rc<Vec<String>>,
@@ -137,7 +136,7 @@ pub fn v1_call_forwarding_clone_bound_wrapper_param_names(
             __found
         } && {
             let mut __found = false;
-            for g in callee_clone_param_names.clone().iter().cloned() {
+            for g in callee_bound_param_names.clone().iter().cloned() {
                 if (g.clone() == callee_param_type_name.clone()) {
                     __found = true;
                     break;
@@ -183,7 +182,7 @@ pub fn v1_call_forwarding_clone_bound_wrapper_param_names(
                                         __found
                                     } && {
                                         let mut __found = false;
-                                        for g in callee_clone_param_names.clone().iter().cloned() {
+                                        for g in callee_bound_param_names.clone().iter().cloned() {
                                             if (g.clone() == callee_arg.clone()) {
                                                 __found = true;
                                                 break;
@@ -218,7 +217,7 @@ pub fn v1_call_forwarding_clone_bound_wrapper_param_names(
                 __result
             })
         };
-        v1_union_clone_param_names(bare_match.clone(), compound_match.clone())
+        v1_union_bound_param_names(bare_match.clone(), compound_match.clone())
     }
 }
 
