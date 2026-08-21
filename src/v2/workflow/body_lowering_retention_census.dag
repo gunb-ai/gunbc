@@ -1,0 +1,296 @@
+module v2.workflow.body_lowering_retention_census
+
+import std.types { NonEmptyStr }
+import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
+import v2.std.algebra { Empty, fold_list, length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.diagnostic {
+  Diagnostic,
+  Diagnostics,
+  NodeLocus,
+  NonEmptyDiagnostics,
+  PortLocus,
+  Textual
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Behavior,
+  Bind,
+  Branch,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Connective,
+  Disj,
+  Instantiation,
+  Loop,
+  Match,
+  MintedOccurrence,
+  Node,
+  NodeKind,
+  NodeOccurrenceId,
+  SyntheticOccurrence,
+  Transform,
+  TypeNode,
+  Value
+}
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.text { String }
+
+// WHY THIS IS NOT "COUNT THE WRAPPER-RETAINED DIAGNOSTICS".
+//
+// body_lowering_reason_wrapper_retained_emitted is ONE reason standing over
+// SEVERAL distinct absent producers: the fold's own note says an out-of-scope
+// emitted identity with no registered producer lands wrapper-retained, and
+// "an emitted identity" is a family, not an instance. A lane pointed at the
+// reason string would repair whichever family it met first and report the
+// count moving, which reads as progress on the population and is progress on
+// one member of it.
+//
+// So the partition key here is the EMITTED PRODUCTION IDENTITY the fold
+// refused to lower, joined with the node's own shape. That is the grain at
+// which a missing producer is a thing someone can go and write.
+
+type RetainedProduction {
+  emitted_production: String
+  node_shape: String
+  child_count: Int
+  occurrence: String
+}
+
+// THREE STATES, NOT A BOOL. "The census was written", "no census was
+// applicable because this run produced no retained population", and "the
+// census could not be written" are different facts with different remedies,
+// and a Bool spelled them as two. The middle one is the common case on every
+// non-refused path, so a true there was reporting a write that never
+// happened -- harmless as a gate today and a lie the moment anything reads
+// the field for what it says. Splitting it is the repository's own
+// state-space-conflation rule applied to a field this lane authored.
+type CensusOutcome
+  = CensusWritten
+  | CensusNotApplicable
+  | CensusWriteFailed
+
+fn census_outcome_admits(outcome: CensusOutcome) -> Bool {
+  match outcome {
+    CensusWritten => true
+    CensusNotApplicable => true
+    CensusWriteFailed => false
+  }
+}
+
+type RetentionFamily {
+  key: String
+  count: Int
+  example_child_count: Int
+}
+
+fn connective_label(c: Connective) -> String {
+  match c {
+    Atom { identity: identity } => concat("Atom:", symbol_lexeme(sym: identity))
+    Conj => "Conj"
+    Disj => "Disj"
+    Arrow => "Arrow"
+    Cardinality => "Cardinality"
+    Instantiation => "Instantiation"
+  }
+}
+
+fn behavior_label(b: Behavior) -> String {
+  match b {
+    Value => "Value"
+    Transform => "Transform"
+    Branch => "Branch"
+    Loop => "Loop"
+    Bind => "Bind"
+    Match => "Match"
+  }
+}
+
+fn node_shape_label(kind: NodeKind) -> String {
+  match kind {
+    TypeNode { connective: c } => concat("Type/", connective_label(c: c))
+    ComputationNode { behavior: b } => concat("Computation/", behavior_label(b: b))
+  }
+}
+
+// An absent production identity is REPORTED, never dropped and never folded
+// into a neighbouring family. A retained node the reader cannot name is a
+// different deficit from a retained node whose producer is simply unwritten,
+// and collapsing them would hide the first inside the second.
+fn emitted_production_label(node: Node) -> String {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: sym } => symbol_lexeme(sym: sym)
+    Absent => "<no production identity on the retained node>"
+  }
+}
+
+fn occurrence_label(occurrence: NodeOccurrenceId) -> String {
+  match occurrence {
+    SyntheticOccurrence => "synthetic"
+    MintedOccurrence { id: _ } => "minted"
+  }
+}
+
+fn retained_production_of(node: Node) -> RetainedProduction {
+  RetainedProduction {
+    emitted_production: emitted_production_label(node: node),
+    node_shape: node_shape_label(kind: node.kind),
+    child_count: length(xs: node.children),
+    occurrence: occurrence_label(occurrence: node.occurrence_id)
+  }
+}
+
+fn retained_production_key(observation: RetainedProduction) -> String {
+  concat(
+    observation.emitted_production,
+    concat("  [", concat(observation.node_shape, "]"))
+  )
+}
+
+// The diagnostic's locus is the ONLY channel by which the retained node
+// reaches a consumer, and only one of its three arms carries a node at all.
+// The other two are reported as unattributable rather than skipped: a census
+// that silently drops the loci it cannot read would understate the population
+// it exists to size.
+fn retained_node_optional(d: Diagnostic) -> Optional<Node> {
+  match d.at {
+    NodeLocus { anchor: anchor } => Present { value: anchor.at }
+    Textual { file: _, extent: _ } => Absent
+    PortLocus { anchor: _ } => Absent
+  }
+}
+
+fn retention_family_holds(families: List<RetentionFamily>, key: String) -> Bool {
+  fold_list(
+    xs: families,
+    empty: false,
+    cons: fn(found, row) { found || (row.key == key) }
+  )
+}
+
+fn retention_family_bump(
+  families: List<RetentionFamily>,
+  observation: RetainedProduction
+) -> List<RetentionFamily> {
+  let key = retained_production_key(observation: observation)
+  if retention_family_holds(families: families, key: key) {
+    fold_list(
+      xs: families,
+      empty: Empty,
+      cons: fn(acc, row) {
+        list_snoc_item(
+          xs: acc,
+          item: if row.key == key {
+            RetentionFamily {
+              key: row.key,
+              count: row.count + 1,
+              example_child_count: row.example_child_count
+            }
+          } else {
+            row
+          }
+        )
+      }
+    )
+  } else {
+    list_snoc_item(
+      xs: families,
+      item: RetentionFamily {
+        key: key,
+        count: 1,
+        example_child_count: observation.child_count
+      }
+    )
+  }
+}
+
+fn retention_families_total(families: List<RetentionFamily>) -> Int {
+  fold_list(xs: families, empty: 0, cons: fn(total, row) { total + row.count })
+}
+
+fn diagnostic_is_wrapper_retained(d: Diagnostic) -> Bool {
+  d.reason == ^body_lowering_reason_wrapper_retained_emitted
+}
+
+fn retention_census_step(
+  families: List<RetentionFamily>,
+  d: Diagnostic
+) -> List<RetentionFamily> {
+  if diagnostic_is_wrapper_retained(d: d) {
+    match retained_node_optional(d: d) {
+      Present { value: node } =>
+        retention_family_bump(
+          families: families,
+          observation: retained_production_of(node: node)
+        )
+      Absent =>
+        retention_family_bump(
+          families: families,
+          observation: RetainedProduction {
+            emitted_production: "<retention reported at a locus carrying no node>",
+            node_shape: "<unattributable>",
+            child_count: 0,
+            occurrence: "<none>"
+          }
+        )
+    }
+  } else {
+    families
+  }
+}
+
+fn retention_census(ds: NonEmptyDiagnostics) -> List<RetentionFamily> {
+  fold_list(
+    xs: ds.tail,
+    empty: retention_census_step(families: Empty, d: ds.head),
+    cons: fn(acc, d) { retention_census_step(families: acc, d: d) }
+  )
+}
+
+fn retention_family_line(row: RetentionFamily) -> String {
+  concat(
+    "\n  ",
+    concat(
+      to_string(row.count),
+      concat(
+        "  ",
+        concat(
+          row.key,
+          concat("  (example arity ", concat(to_string(row.example_child_count), ")"))
+        )
+      )
+    )
+  )
+}
+
+fn retention_census_render(families: List<RetentionFamily>) -> String {
+  concat(
+    "body-lowering wrapper-retained census\n\nfamilies: ",
+    concat(
+      to_string(length(xs: families)),
+      concat(
+        "\nobservations: ",
+        concat(
+          to_string(retention_families_total(families: families)),
+          concat(
+            "\n",
+            concat(
+              fold_list(
+                xs: families,
+                empty: "",
+                cons: fn(text, row) {
+                  concat(text, retention_family_line(row: row))
+                }
+              ),
+              "\n"
+            )
+          )
+        )
+      )
+    )
+  )
+}
