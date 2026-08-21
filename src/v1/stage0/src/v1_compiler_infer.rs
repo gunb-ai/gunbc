@@ -160,8 +160,9 @@ use crate::v1_std_core::CompilerDiagnostic::{
     CallArgumentNameUnknown, CallNamedArgOnFunctionValue, CallPositionalDeficit,
     CallPositionalSurplus, ConstructorCallAdmissionRefused, FieldNotFound,
     FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
-    MethodExistenceUndecided, MethodNotFound, MissingField, ReceiverTypeUnestablished,
-    SoleConstructorViolation, TypeMismatch, UnresolvedType, VariantCollision,
+    MethodExistenceUndecided, MethodNotFound, MissingField, OptionalCastNotEliminated,
+    ReceiverTypeUnestablished, SoleConstructorViolation, TypeMismatch, UnresolvedType,
+    VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -4873,6 +4874,38 @@ pub fn validate_cast(
     }
 }
 
+pub fn optional_cast_diags(
+    source_inferred: Option<Rc<InferredNode>>,
+    target_type: Rc<Node>,
+    span: Rc<SourceSpan>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match source_inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: src_node, .. }) => {
+            let source_name = authored_name_at(source_indices.clone(), src_node.clone());
+            let source_is_optional = ((src_node.return_cardinality.clone()
+                == Cardinality::CardOptional)
+                || (source_name.clone() == "Optional".to_string()));
+            let target_is_optional =
+                (target_type.return_cardinality.clone() == Cardinality::CardOptional);
+            if (source_is_optional.clone() && !target_is_optional.clone()) {
+                Rc::new(vec![make_error_node(
+                    Rc::new(CompilerDiagnostic::OptionalCastNotEliminated {
+                        source_type: v1_rt::concat(source_name.clone(), "?".to_string()),
+                        target_type: authored_name_at(source_indices.clone(), target_type.clone()),
+                        span: span.clone(),
+                    }),
+                    module_name.clone(),
+                )])
+            } else {
+                Rc::new(vec![])
+            }
+        }
+        _ => Rc::new(vec![]),
+    }
+}
+
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
         name: "".to_string(),
@@ -8429,6 +8462,13 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                 Some(d) => Rc::new(vec![d.clone()]),
                 None => Rc::new(vec![]),
             };
+            let cast_optional_diags = optional_cast_diags(
+                inner_typed.inferred.clone(),
+                target_type.clone(),
+                span.clone(),
+                si.clone(),
+                scope.module_name.clone(),
+            );
             let cast_sole_ctor_diags = sole_constructor_construction_diags(
                 target_name.clone(),
                 span.clone(),
@@ -8453,7 +8493,10 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                 typed: cast_texpr.clone(),
                 diagnostics: v1_rt::concat(
                     v1_rt::concat(
-                        v1_rt::concat(inner_diags.clone(), cast_diags.clone()),
+                        v1_rt::concat(
+                            v1_rt::concat(inner_diags.clone(), cast_diags.clone()),
+                            cast_optional_diags.clone(),
+                        ),
                         cast_sole_ctor_diags.clone(),
                     ),
                     cast_refinement_diags.clone(),

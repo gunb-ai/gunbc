@@ -31,7 +31,7 @@ import v1.std.core {
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic, diagnostic_to_span,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
-  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference,
+  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
   resource_use_name_at, resource_use_resource,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
@@ -2972,6 +2972,43 @@ fn validate_cast(source_inferred: InferredNode?, target_name: String, span: Sour
   }
 }
 
+// THE LEAKED-OPTIONAL WALL. A cast does not eliminate absence -- it re-types the node and
+// leaves the value alone, so `reading as String` over a `NonEmptyStr?` rendered the WRAPPER:
+// production receipts on 2026-08-20 carried `probed_at=Present { value: 2026-08-20T21:11:38Z }`
+// from fourteen such sites. `gunbc.clock_read` `probed_at_word` fixed those sites, and
+// `test.claim.probed_at_word_witness_test` recorded the honest rung: reverting any one of them
+// left both witnesses green, because a witness on the rendering authority cannot see who calls it.
+// This is that carrier's declared next-rung trigger. Membership is decidable from the inferred
+// cardinality alone -- no corpus knowledge, no name list -- so it is a wall (DESIGN section 5),
+// and it refuses every cast off an optional source rather than only the text targets that made
+// the defect visible, because the loss is the elimination that never happened, not the target's
+// spelling. A cast whose TARGET is itself optional is not this class: it re-types the carrier
+// with the absence intact, so it is left to validate_cast.
+fn optional_cast_diags(
+  source_inferred: InferredNode?,
+  target_type: Node,
+  span: SourceSpan,
+  source_indices: Map<String, NewlineIndex>,
+  module_name: String
+) -> List<ErrorNode> {
+  match source_inferred {
+    Present { value: Resolved { node: src_node } } =>
+      let source_name = authored_name_at(source_indices: source_indices, node: src_node)
+      let source_is_optional = src_node.return_cardinality == CardOptional || source_name == "Optional"
+      let target_is_optional = target_type.return_cardinality == CardOptional
+      if source_is_optional && !target_is_optional {
+        [make_error_node(
+          diagnostic: OptionalCastNotEliminated {
+            source_type: concat(source_name, "?"),
+            target_type: authored_name_at(source_indices: source_indices, node: target_type),
+            span: span
+          },
+          module_name: module_name)]
+      } else { [] }
+    _ => []
+  }
+}
+
 fn type_variable_node(id: String) -> Node {
   Node { name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
@@ -4631,6 +4668,13 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Present { value: d } => [d]
         Absent => []
       }
+      let cast_optional_diags = optional_cast_diags(
+        source_inferred: inner_typed.inferred,
+        target_type: target_type,
+        span: span,
+        source_indices: si,
+        module_name: scope.module_name
+      )
       let cast_sole_ctor_diags = sole_constructor_construction_diags(type_name: target_name, span: span, scope: scope)
       let cast_refinement_diags = where_refinement_mismatch_diags(
         formal: target_type,
@@ -4642,7 +4686,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let cast_texpr = make_expr_node(expr_data: ExprCast, children: [inner_typed, target_type], inferred: Present { value: Resolved { node: target_type } }, span: span)
       InferResult {
         typed: cast_texpr,
-        diagnostics: concat(concat(concat(inner_diags, cast_diags), cast_sole_ctor_diags), cast_refinement_diags)
+        diagnostics: concat(concat(concat(concat(inner_diags, cast_diags), cast_optional_diags), cast_sole_ctor_diags), cast_refinement_diags)
       }
 
     ExprForEach =>
