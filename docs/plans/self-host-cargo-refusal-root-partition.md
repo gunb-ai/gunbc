@@ -1936,6 +1936,16 @@ as a field, and `PartialFunction<String, …>` (a record of closures, §11.18) i
 type. **Adding the derive is impossible here; the requirement has to go.** So T5b is the same shape
 as T3: a modeling decision (do not serialize a value containing closures), not a repair.
 
+**DECIDED 2026-08-21** (session `tidy-dove-648`): "the requirement has to go" is only half true.
+It holds for process-local realization carriers (`CompiledLexRule`, `PartialFunction`, the
+interpreter family) — extend the already-correct `fn_field_derive_traits()` rule through
+coproducts, where it is currently unwired. It does NOT hold for `ProducedDeclSupport`, which sits
+inside `TargetModel` and should stay fully serializable — there the embedded `render` closure is
+redundant dispatch beside an identity (`scaffold_relation_rule_name`) the record already carries,
+and the fix is to remove the closure, not the record's derives. Full decision, per-declaration
+disposition table, and the two handoffs:
+[`t5b-closure-bearing-serde-debug-decision-2026-08-21.md`](t5b-closure-bearing-serde-debug-decision-2026-08-21.md).
+
 **R1 — the Rc wrap decision is INCONSISTENT, not uniformly over- or under-wrapping.**
 
 ```
@@ -2185,6 +2195,22 @@ It matched only `pub field:` lines at struct-body depth and therefore missed **e
 `ValueRuntimeInterpreter { interpreter: Rc<ValueInterpreter> }` is one level deeper. The hypothesis
 was right and the instrument was wrong, which is the same failure as reading a rustc noun at face
 value: a negative result from an unvalidated scan is not evidence of absence.
+
+**The operator question above is answered** (session `tidy-dove-648`, 2026-08-21): not one answer
+for all twelve declarations. `ProducedDeclSupport` takes the third option named above — keep the
+record serializable, make `render` a named resolvable reference dispatched through the
+`scaffold_relation_rule_name` it already carries — because `TargetModel` is real per-language
+configuration, not a runtime-only carrier. The interpreter-family majority (`RuntimeBehaviorInterpreter`
+and its six payload types, `EffectIoEvalBundle`, `CompiledLexRule`, `PartialFunction`) takes the
+first option, which is not new: `fn_field_derive_traits()` already answers it for the direct-field
+struct case, and it is simply unwired for coproducts (`v1_emit_enum_derives` takes no
+`has_fn_fields` parameter) and for enum-transitive reachability (`build_type_summary`'s enum branch
+hardcodes `field_type_map: empty_map()` in `04_emit_info.dag`, so `type_summary_reaches_fn` cannot
+see through a variant payload the way it already sees through a struct field). `InterpretationStructureWitness`
+and the four remaining `target_model.rs` sites hold no function field of their own and are treated
+as collateral of the above, not independent decisions, pending re-measurement.
+[`t5b-closure-bearing-serde-debug-decision-2026-08-21.md`](t5b-closure-bearing-serde-debug-decision-2026-08-21.md)
+has the full per-declaration table and the two repair handoffs.
 
 ## 16. The finding above the findings: a site count measures where the compiler pointed
 

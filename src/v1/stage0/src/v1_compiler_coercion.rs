@@ -143,6 +143,11 @@ pub fn type_reference_identity_note() -> String {
 pub fn structural_declaration_modules_for(dag_name: String) -> Rc<Vec<String>> {
     match dag_name.clone().as_str() {
         "Hash" => Rc::new(vec!["src/v2/std/node.dag".to_string()]),
+        "String" => Rc::new(vec![
+            "src/v2/std/text.dag".to_string(),
+            "dag/std/string_type.dag".to_string(),
+        ]),
+        "Bool" => Rc::new(vec!["src/v2/std/logic.dag".to_string()]),
         _ => Rc::new(vec![]),
     }
 }
