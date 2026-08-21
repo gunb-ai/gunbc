@@ -3,11 +3,11 @@ module v2.workflow.carrier_realization_census
 import v1.compiler.compile { SourceFile, FrontendResult, front_end_sources }
 import v1.compiler.emit_rust { is_host_text_carrier_type }
 import v1.compiler.emit_core_support { is_type_def_item }
-import v1.compiler.infer_types { is_coproduct_type }
+import v1.compiler.infer_types { is_coproduct_type, child_type_node }
 import v1.compiler.coercion { type_realization_decision, type_reference_decl_file }
 import v1.compiler.artifact { Rust }
 import v1.compiler.resolve { ModuleGraph, ResolvedModule }
-import v1.std.core { Node, NewlineIndex, authored_name_at, module_items, param_node_type_expr, field_node_type_expr }
+import v1.std.core { Node, NewlineIndex, authored_name_at, module_items, param_node_type_expr }
 import std.coercion { TypeRealizationDecision, Realized, Unrealized, Refused }
 import std.types { List, String, Map }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -134,7 +134,7 @@ fn field_rows(
     module_file: module_file,
     enclosing: enclosing,
     position_kind: "declaration_field",
-    n: field_node_type_expr(n: fld),
+    n: child_type_node(ch: fld),
     si: si
   )]))
 }
@@ -156,6 +156,28 @@ fn item_decl_rows(
       concat(acc, field_rows(module_file: module_file, enclosing: enclosing, fields: variant.children, si: si)))
   } else {
     field_rows(module_file: module_file, enclosing: enclosing, fields: item.children, si: si)
+  }
+}
+
+// A FUNCTION's signature parameters -- and only a function's. The body guard is what
+// keeps a `type` declaration's GENERIC parameters out: item.params on a type declaration
+// holds T, M, R, which the first reading duly reported as fn signature parameters.
+fn param_rows(
+  module_file: String,
+  item: Node,
+  si: Map<String, NewlineIndex>
+) -> List<CarrierDecisionRow> {
+  let enclosing = authored_name_at(source_indices: si, node: item)
+  if item.body == none {
+    no_rows()
+  } else {
+    item.params |> fold(init: no_rows(), f: (acc, p) => concat(acc, [decision_row(
+      module_file: module_file,
+      enclosing: enclosing,
+      position_kind: "fn_signature_param",
+      n: param_node_type_expr(n: p),
+      si: si
+    )]))
   }
 }
 

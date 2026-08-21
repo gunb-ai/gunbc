@@ -1,0 +1,21 @@
+--- outcome histogram ---
+    186 Agrees
+      3 DivergesWithExactIdentity
+--- distinct authored_name ---
+     51 String
+     49 fn
+     21 T
+     13 List
+     11 Int
+      7 AlgebraTypeTemplate
+      6 R
+      4 Json
+      4 Bool
+      2 Secret
+      2 Ordering
+      2 M
+--- any divergence rows ---
+std.string_type	string_lex_compare	fn_signature_param	String	dag/std/string_type.dag	String	<structural>	DivergesWithExactIdentity
+std.string_type	string_lex_compare	fn_signature_param	String	dag/std/string_type.dag	String	<structural>	DivergesWithExactIdentity
+std.string_type	string_is_lexicographically_before	fn_signature_param	String	dag/std/string_type.dag	String	<structural>	DivergesWithExactIdentity
+===RUN_END===

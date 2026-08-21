@@ -1,62 +1,75 @@
-# Step-1 census: mechanism proven end to end, instrument KNOWN WRONG, no count published (2026-08-21)
+# Step-1 census: two readings, neither publishable — and the second is the dangerous one (2026-08-21)
 
 **Session:** `royal-dove-436`. **Work item:** `node://adhoc-c735d227-60b`.
 
-**Read this before the TSV beside it.** The first reading of this census is **wrong**, it is published
-here **as** a wrong reading, and **no divergence count from it may be quoted anywhere**. It is kept
-because what it demonstrates is worth more than the number it failed to produce.
+**No divergence count in this directory may be quoted as a result.** Neither reading has passed the
+calibration control. The second reading is recorded because it is *plausible*, and a plausible
+uncalibrated number is the specific hazard this lane was warned about.
 
 ## What IS established, by execution
 
 `gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --entry
-src/v2/workflow/carrier_realization_census.dag --function census_smoke_receipt` runs the whole chain:
-`Filesystem.Read` of the subject sources → `v1.compiler.compile` `front_end_sources` → a walk of the
-resulting v1 tree → both answers per occurrence → TSV out. 271 lines of receipt, produced from
-outside the v1 seed with **no edit to it**.
+src/v2/workflow/carrier_realization_census.dag --function census_smoke_receipt` drives the whole
+chain: `Filesystem.Read` → `v1.compiler.compile` `front_end_sources` → a walk of the resulting v1
+tree → both answers per occurrence → TSV. From **outside** the v1 seed, with **no edit to it**.
 
-That closes the shape question for good: **(b′) works.** A module outside `src/v1` can import
-`v1.compiler.05_emit_rust` `is_host_text_carrier_type`, `v1.compiler.coercion`
-`type_realization_decision` / `type_reference_decl_file`, `v1.compiler.compile` `front_end_sources`,
-and `v1.compiler.trait_derive_emit` `v1_item_field_type_exprs`, and evaluate them over a real subject
-closure. It also re-confirms by execution that there was never a visibility change to make.
+That closes the shape question: **(b′) works**, and it re-confirms by execution that there was never
+a visibility change to make.
 
-## What is WRONG with the reading, named exactly
+## Reading 1 — KNOWN WRONG, grossly
 
-The receipt classifies **every** row `DivergesWithExactIdentity`. That is not a finding; it is two
-defects in the instrument:
+271 rows, **every one** `DivergesWithExactIdentity`. Two instrument defects:
 
-1. **The comparison is malformed.** `legacy_base_of` returns `""` for any occurrence the text-carrier
-   short-circuit does not claim. `""` is not "the legacy answer" — it is "not the text
-   short-circuit". Comparing it against the authority's `<structural>` makes every non-text
-   occurrence a spurious divergence. The legacy base for those occurrences is whatever the
-   checkpoint/container route yields, which this version never computes.
-2. **The occurrence set is wrong.** The `authored_name` column contains `T` (14), `fn` (12), `R` (3),
-   `M` (3) — generic parameter names and the `fn` keyword, not carrier type references.
-   `v1_item_field_type_exprs` over a `type` declaration like `Magma` yields its function-typed
-   children, and `item.params` over a `type` declaration yields its **generic** parameters, not a
-   function signature's parameters. The walk never reached a carrier reference at all.
+1. **Malformed comparison.** `legacy_base_of` returned `""` for any occurrence the text short-circuit
+   did not claim — `""` standing in for "the legacy answer" when it meant "I did not compute one".
+   That is a state-space conflation, and it *answers* instead of refusing: the absorbing-fallback
+   shape (DESIGN §5) relocated into the measuring apparatus.
+2. **Wrong occurrence set.** `authored_name` held `T` (14), `fn` (12), `R` (3), `M` (3) — generic
+   parameter names and the `fn` keyword. `v1_item_field_type_exprs` over a `type` declaration yields
+   its function-typed children, and `item.params` over one yields **generic** parameters. The walk
+   never reached a carrier reference.
 
-## Why this is recorded rather than quietly fixed
+Kept as [`smoke_first_reading_KNOWN_WRONG.tsv`](smoke_first_reading_KNOWN_WRONG.tsv).
 
-**This is the traversal drift the calibration control exists to catch, and it was caught on the first
-reading rather than after publication.** The design named the risk in the abstract — "the walk may
-visit occurrences the emitter never renders, or miss ones it does; a subtly wrong occurrence set
-makes every count wrong while looking perfectly well-formed" — and the very first run produced
-exactly that: 271 well-formed rows, a clean TSV, and a 100% divergence rate that is an artifact of
-the instrument.
+## Reading 2 — plausible, differentiated, and STILL NOT PUBLISHABLE
 
-Had this walked a plausible-looking subset instead of an obviously wrong one, the failure would have
-been a believable number. It is worth stating plainly: **the reason this was caught is that the
-defect was gross, not that the process caught a subtle one.** The calibration control against the
-known 25 is what would catch a subtle one, and it has not run yet.
+Both defects repaired: the outcome is now **structural** (`legacy_claims_text && !authority_realizes`)
+rather than string equality — comparing spellings made `String` equal `String` and the divergence
+being measured compared *equal* — and the occurrence set is type-declaration fields (via
+`child_type_node`) plus function-signature parameters guarded on `item.body != none`.
 
-## Standing constraint, unchanged
+```
+186 Agrees      3 DivergesWithExactIdentity      0 IdentityUnavailable
 
-No count from this census is publishable until its diagnostic-producing
-`DivergesWithExactIdentity` subset **equals the 25 arm-A sites** of
+std.string_type  string_lex_compare                  fn_signature_param  String
+                 dag/std/string_type.dag   legacy=String   authority=<structural>   Diverges
+std.string_type  string_lex_compare                  fn_signature_param  String   (same)
+std.string_type  string_is_lexicographically_before  fn_signature_param  String   (same)
+```
+
+The three divergences are **exactly the mechanism this lane traced**: a `String`-spelled parameter
+whose resolved declaration is `dag/std/string_type.dag` — one of the two modules
+`structural_declaration_modules_for` enrolls — where the short-circuit renders host `String` while
+the authority answers `Unrealized`. Measured per occurrence, from outside the seed.
+
+**And that is precisely why it must not be reported.** The reading is *believable*: real type names
+(`String` 51, `fn` 49, `T` 21, `List` 13, `Int` 11), a sane distribution, no degenerate column, and
+divergences that land on the right mechanism in the right module. Reading 1 was caught because its
+defect was **gross**. Nothing in reading 2's shape would announce a subtle one.
+
+**The open question it cannot answer about itself:** 51 `String` occurrences, 3 divergences. If the
+short-circuit fires on every `String`-spelled reference and the roster enrolls that declaration, why
+do 48 agree? Either their `decl_file` resolves to a module the roster does not enroll — plausible and
+benign — or the walk is reaching them differently from the way the emitter does, which is traversal
+drift producing a believable number. **This census cannot distinguish those two from the inside.**
+
+## The bar, unchanged
+
+No count publishes until the diagnostic-producing `DivergesWithExactIdentity` subset **equals the 25
+arm-A sites** of
 [`../t2_t3_realization_route_2026-08-21/arbiter_arms.tsv`](../t2_t3_realization_route_2026-08-21/arbiter_arms.tsv),
-joined by source declaration + enclosing emitted declaration + operation, never by line. This reading
-does not approach that bar and is not offered as approaching it.
+joined by source declaration + enclosing emitted declaration + operation, never by line. That control
+is now the only thing standing between this instrument and a believable wrong number — including a
+number that looks right.
 
-Next: compute the real legacy base for non-text occurrences, and reach actual carrier type-reference
-nodes rather than generic-parameter and `fn`-keyword nodes.
+Next: run against the 03_ingest closure, and calibrate. Until then, 3 is not a finding.
