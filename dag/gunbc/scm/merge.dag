@@ -199,6 +199,21 @@ type MergeRefusal
   | RequiredDependencyRemoved { dependency: MergeDependency, removed_role: Symbol }
   | DependencyKindUnsupportedForMerge { dependent: Symbol, required: Symbol, kind: Symbol }
 
+// THE ARM NAMES ARE MERGE-QUALIFIED BECAUSE THEY WOULD OTHERWISE BE DUPLICATE TOP-LEVEL
+// DEFINITIONS. gunbc.native_scm_interaction_contract already declares ChoiceRequired and
+// CouldNotLand, as arms of its user-facing NativeScmPrimaryOutcome, with different payloads.
+// The resolver ADMITS duplicate top-level definitions and silently selects one with no
+// diagnostic (measured in #8707), so re-declaring those names does not shadow locally -- it
+// makes the corpus-wide binding for that name arbitrary, which is how a merge-engine change
+// reached unrelated witnesses that never import this module.
+//
+// WHAT IS NOT CLAIMED HERE: that the engine outcome and the presentation outcome are
+// different CONCEPTS. "The merge needs a choice" and "the merge could not land" are the same
+// two facts at two layers, and the contract carrier says it holds no engine. Whether these
+// should be ONE authority with a projection, rather than two shapes with qualified names, is
+// a real section 3 question this change does not settle -- it removes the corpus-wide
+// ambiguity without pretending the layering is resolved.
+//
 // CHOICE IS AN ANSWER, NOT A FAILURE. Two proposals stating different values for one role is a
 // QUESTION the system is not entitled to answer: latest-wins, first-wins and branch-priority-wins are
 // all fabricated plausible output, and each silently discards an authored requirement. Requiring a
@@ -206,8 +221,8 @@ type MergeRefusal
 // the same arm rather than being quietly resolved in favour of either.
 type MergeOutcome
   = Merged { store: ObjectStore, commit: Commit, roles: List<ResolvedRole> }
-  | ChoiceRequired { role: Symbol }
-  | CouldNotLand { cause: MergeRefusal }
+  | MergeChoiceRequired { role: Symbol }
+  | MergeCouldNotLand { cause: MergeRefusal }
 
 fn edge_label_role(label: EdgeLabel) -> Symbol? {
   match label {
@@ -281,7 +296,7 @@ fn upsert_role(roles: List<ResolvedRole>, incoming: ResolvedRole) -> List<Resolv
   }
 }
 
-type ApplyAcc {
+type MergeApplyAcc {
   store: ObjectStore
   roles: List<ResolvedRole>
   authored: List<Symbol>
@@ -299,7 +314,7 @@ fn already_authored(authored: List<Symbol>, role: Symbol) -> Bool {
   })
 }
 
-fn apply_requirement(acc: ApplyAcc, req: Requirement) -> ApplyAcc {
+fn apply_requirement(acc: MergeApplyAcc, req: Requirement) -> MergeApplyAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
@@ -308,7 +323,7 @@ fn apply_requirement(acc: ApplyAcc, req: Requirement) -> ApplyAcc {
         Absent => {
           let role = requirement_role(r: req)
           if already_authored(authored: acc.authored, role: role) {
-            ApplyAcc {
+            MergeApplyAcc {
               store: acc.store,
               roles: acc.roles,
               authored: acc.authored,
@@ -323,10 +338,10 @@ fn apply_requirement(acc: ApplyAcc, req: Requirement) -> ApplyAcc {
   }
 }
 
-fn apply_fresh_requirement(acc: ApplyAcc, req: Requirement, role: Symbol) -> ApplyAcc {
+fn apply_fresh_requirement(acc: MergeApplyAcc, req: Requirement, role: Symbol) -> MergeApplyAcc {
   match req {
     RequireBindingAbsent { role: _ } =>
-      ApplyAcc {
+      MergeApplyAcc {
         store: acc.store,
         roles: upsert_role(
           roles: acc.roles,
@@ -339,7 +354,7 @@ fn apply_fresh_requirement(acc: ApplyAcc, req: Requirement, role: Symbol) -> App
     RequireBinding { role: _, value: value } =>
       match store_node(store: acc.store, n: value) {
         LocatorCollision { identity: identity, existing: _, incoming: _ } =>
-          ApplyAcc {
+          MergeApplyAcc {
             store: acc.store,
             roles: acc.roles,
             authored: acc.authored,
@@ -349,7 +364,7 @@ fn apply_fresh_requirement(acc: ApplyAcc, req: Requirement, role: Symbol) -> App
             },
           }
         Stored { store: store, identity: identity } =>
-          ApplyAcc {
+          MergeApplyAcc {
             store: store,
             roles: upsert_role(
               roles: acc.roles,
@@ -432,12 +447,12 @@ fn validate_dependencies(
   })
 }
 
-type RootAcc {
+type MergeRootAcc {
   edges: List<Edge>
   refusal: MergeRefusal?
 }
 
-fn root_edge_step(store: ObjectStore, acc: RootAcc, r: ResolvedRole) -> RootAcc {
+fn root_edge_step(store: ObjectStore, acc: MergeRootAcc, r: ResolvedRole) -> MergeRootAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
@@ -451,15 +466,15 @@ fn root_edge_step(store: ObjectStore, acc: RootAcc, r: ResolvedRole) -> RootAcc 
   }
 }
 
-fn root_edge_for(store: ObjectStore, acc: RootAcc, role: Symbol, object: ObjectId) -> RootAcc {
+fn root_edge_for(store: ObjectStore, acc: MergeRootAcc, role: Symbol, object: ObjectId) -> MergeRootAcc {
   match checkout_object(store: store, identity: object) {
     CheckoutRefused { cause: _ } =>
-      RootAcc {
+      MergeRootAcc {
         edges: acc.edges,
         refusal: Present { value: TargetChildMissing { role: role, identity: object } },
       }
     CheckedOut { program: program } =>
-      RootAcc {
+      MergeRootAcc {
         edges: concat(acc.edges, [Edge { label: Named { name: role }, target: program }]),
         refusal: none,
       }
@@ -483,11 +498,11 @@ fn merge(
   proposals: List<Proposal>,
 ) -> MergeOutcome {
   match target_roles(store: store, target: target) {
-    TargetUnreadable { cause: cause } => CouldNotLand { cause: cause }
+    TargetUnreadable { cause: cause } => MergeCouldNotLand { cause: cause }
     TargetRead { roles: base } => {
       let applied = fold(
         proposals,
-        init: ApplyAcc {
+        init: MergeApplyAcc {
           store: store,
           roles: base,
           authored: [],
@@ -501,10 +516,10 @@ fn merge(
         },
       )
       match applied.refusal {
-        Present { value: cause } => CouldNotLand { cause: cause }
+        Present { value: cause } => MergeCouldNotLand { cause: cause }
         Absent =>
           match applied.choice {
-            Present { value: role } => ChoiceRequired { role: role }
+            Present { value: role } => MergeChoiceRequired { role: role }
             Absent =>
               finish_merge(
                 applied: applied,
@@ -522,7 +537,7 @@ fn all_proposal_dependencies(proposals: List<Proposal>) -> List<MergeDependency>
 }
 
 fn finish_merge(
-  applied: ApplyAcc,
+  applied: MergeApplyAcc,
   target_dependencies: List<MergeDependency>,
   proposals: List<Proposal>,
 ) -> MergeOutcome {
@@ -532,22 +547,22 @@ fn finish_merge(
     authored: applied.authored,
   )
   match validate_dependencies(roles: applied.roles, deps: deps) {
-    Present { value: cause } => CouldNotLand { cause: cause }
+    Present { value: cause } => MergeCouldNotLand { cause: cause }
     Absent => {
       let built = fold(
         applied.roles,
-        init: RootAcc { edges: [], refusal: none },
+        init: MergeRootAcc { edges: [], refusal: none },
         f: fn(acc, r) { root_edge_step(store: applied.store, acc: acc, r: r) },
       )
       match built.refusal {
-        Present { value: cause } => CouldNotLand { cause: cause }
+        Present { value: cause } => MergeCouldNotLand { cause: cause }
         Absent =>
           match store_node(
             store: applied.store,
             n: root_node_of(edges: built.edges),
           ) {
             LocatorCollision { identity: identity, existing: _, incoming: _ } =>
-              CouldNotLand {
+              MergeCouldNotLand {
                 cause: BindingLocatorCollision { role: ^commit_root, identity: identity },
               }
             Stored { store: store, identity: identity } =>

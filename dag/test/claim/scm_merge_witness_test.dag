@@ -36,8 +36,8 @@ import gunbc.scm.merge {
   MergeDependency,
   MergeOutcome,
   Merged,
-  ChoiceRequired,
-  CouldNotLand,
+  MergeChoiceRequired,
+  MergeCouldNotLand,
   MergeRefusal,
   RequiredDependencyRemoved,
   DependencyKindUnsupportedForMerge,
@@ -49,7 +49,12 @@ import gunbc.scm.merge {
   merge,
 }
 
-fn leaf(name: Symbol) -> Node {
+// NAMES ARE QUALIFIED BECAUSE A TOP-LEVEL DEFINITION IS CORPUS-WIDE. `leaf` and `bind` are
+// the obvious names for these helpers and both are already defined by other witness files.
+// The resolver admits duplicate top-level definitions and silently selects one (#8707), so a
+// generic helper name here is not a local convenience -- it makes the binding for that name
+// arbitrary across every module in a shared scope.
+fn merge_witness_leaf(name: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: name } }, children: [])
 }
 
@@ -57,7 +62,7 @@ fn scope_of(edges: List<Edge>) -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: edges)
 }
 
-fn bind(name: Symbol, target: Node) -> Edge {
+fn merge_witness_bind(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
 }
 
@@ -93,7 +98,7 @@ fn fixture_with(edges: List<Edge>) -> Fixture {
 }
 
 fn fallback_id() -> ObjectId {
-  match store_node(store: empty_store(), n: leaf(name: ^fallback)) {
+  match store_node(store: empty_store(), n: merge_witness_leaf(name: ^fallback)) {
     Stored { store: _, identity: identity } => identity
     LocatorCollision { identity: identity, existing: _, incoming: _ } => identity
   }
@@ -101,7 +106,7 @@ fn fallback_id() -> ObjectId {
 
 fn add_k_proposal(deps: List<MergeDependency>) -> Proposal {
   Proposal {
-    requirements: [RequireBinding { role: ^k, value: leaf(name: ^K) }],
+    requirements: [RequireBinding { role: ^k, value: merge_witness_leaf(name: ^K) }],
     dependencies: deps,
   }
 }
@@ -116,16 +121,16 @@ fn remove_f_proposal() -> Proposal {
 fn outcome_is_merged(o: MergeOutcome) -> Bool {
   match o {
     Merged { store: _, commit: _, roles: _ } => true
-    ChoiceRequired { role: _ } => false
-    CouldNotLand { cause: _ } => false
+    MergeChoiceRequired { role: _ } => false
+    MergeCouldNotLand { cause: _ } => false
   }
 }
 
 fn merged_roles(o: MergeOutcome) -> List<ResolvedRole> {
   match o {
     Merged { store: _, commit: _, roles: roles } => roles
-    ChoiceRequired { role: _ } => []
-    CouldNotLand { cause: _ } => []
+    MergeChoiceRequired { role: _ } => []
+    MergeCouldNotLand { cause: _ } => []
   }
 }
 
@@ -141,8 +146,8 @@ fn refusal_locates(
 ) -> Bool {
   match o {
     Merged { store: _, commit: _, roles: _ } => false
-    ChoiceRequired { role: _ } => false
-    CouldNotLand { cause: cause } =>
+    MergeChoiceRequired { role: _ } => false
+    MergeCouldNotLand { cause: cause } =>
       match cause {
         RequiredDependencyRemoved { dependency: dep, removed_role: removed } =>
           ((dep.dependent as String) == (dependent as String))
@@ -195,8 +200,8 @@ fn role_absent_from_result(roles: List<ResolvedRole>, role: Symbol) -> Bool {
 // and the same usage site. The single varying fact is which source that row requires.
 fn paired_fixture() -> Fixture {
   fixture_with(edges: [
-    bind(name: ^f, target: leaf(name: ^F)),
-    bind(name: ^h, target: leaf(name: ^H)),
+    merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F)),
+    merge_witness_bind(name: ^h, target: merge_witness_leaf(name: ^H)),
   ])
 }
 
@@ -267,7 +272,7 @@ test fn the_arm_a_dependency_row_is_actually_read() -> Bool {
     ],
   )
   match out {
-    CouldNotLand { cause: cause } =>
+    MergeCouldNotLand { cause: cause } =>
       match cause {
         DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: kind } =>
           (kind as String) == (^barrier_before as String)
@@ -277,7 +282,7 @@ test fn the_arm_a_dependency_row_is_actually_read() -> Bool {
         BindingLocatorCollision { role: _, identity: _ } => false
       }
     Merged { store: _, commit: _, roles: _ } => false
-    ChoiceRequired { role: _ } => false
+    MergeChoiceRequired { role: _ } => false
   }
 }
 
@@ -294,11 +299,11 @@ test fn the_arm_a_dependency_row_is_actually_read() -> Bool {
 // never authored, so the row reaches the validator and the mutation bites.
 test fn a_contains_relation_does_not_propagate_a_removal() -> Bool {
   let fx = fixture_with(edges: [
-    bind(name: ^f, target: leaf(name: ^F)),
-    bind(name: ^g, target: leaf(name: ^G)),
+    merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F)),
+    merge_witness_bind(name: ^g, target: merge_witness_leaf(name: ^G)),
   ])
   let g_id = identity_or(
-    outcome: store_node(store: empty_store(), n: leaf(name: ^G)),
+    outcome: store_node(store: empty_store(), n: merge_witness_leaf(name: ^G)),
     fallback: fallback_id(),
   )
   let out = merge(
@@ -321,8 +326,8 @@ test fn a_contains_relation_does_not_propagate_a_removal() -> Bool {
 // rather than Contains. Without this, "Contains did not refuse" could mean the row was never read.
 test fn the_same_row_under_a_supported_kind_refuses() -> Bool {
   let fx = fixture_with(edges: [
-    bind(name: ^f, target: leaf(name: ^F)),
-    bind(name: ^g, target: leaf(name: ^G)),
+    merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F)),
+    merge_witness_bind(name: ^g, target: merge_witness_leaf(name: ^G)),
   ])
   let out = merge(
     store: fx.store,
@@ -344,11 +349,11 @@ test fn the_same_row_under_a_supported_kind_refuses() -> Bool {
 // can reach it. Saying otherwise would credit the claim with catching something it cannot catch.
 test fn an_independent_sibling_is_preserved_exactly() -> Bool {
   let fx = fixture_with(edges: [
-    bind(name: ^f, target: leaf(name: ^F)),
-    bind(name: ^g, target: leaf(name: ^G)),
+    merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F)),
+    merge_witness_bind(name: ^g, target: merge_witness_leaf(name: ^G)),
   ])
   let g_id = identity_or(
-    outcome: store_node(store: empty_store(), n: leaf(name: ^G)),
+    outcome: store_node(store: empty_store(), n: merge_witness_leaf(name: ^G)),
     fallback: fallback_id(),
   )
   let out = merge(
@@ -356,7 +361,7 @@ test fn an_independent_sibling_is_preserved_exactly() -> Bool {
     target: fx.target,
     target_dependencies: [],
     proposals: [Proposal {
-      requirements: [RequireBinding { role: ^f, value: leaf(name: ^F2) }],
+      requirements: [RequireBinding { role: ^f, value: merge_witness_leaf(name: ^F2) }],
       dependencies: [],
     }],
   )
@@ -370,9 +375,9 @@ test fn an_independent_sibling_is_preserved_exactly() -> Bool {
 // coordinated change.
 test fn a_dependency_retargeted_in_the_same_proposal_lands() -> Bool {
   let fx = fixture_with(edges: [
-    bind(name: ^f, target: leaf(name: ^F)),
-    bind(name: ^h, target: leaf(name: ^H)),
-    bind(name: ^k, target: leaf(name: ^K)),
+    merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F)),
+    merge_witness_bind(name: ^h, target: merge_witness_leaf(name: ^H)),
+    merge_witness_bind(name: ^k, target: merge_witness_leaf(name: ^K)),
   ])
   let out = merge(
     store: fx.store,
@@ -385,7 +390,7 @@ test fn a_dependency_retargeted_in_the_same_proposal_lands() -> Bool {
     }],
     proposals: [Proposal {
       requirements: [
-        RequireBinding { role: ^k, value: leaf(name: ^K2) },
+        RequireBinding { role: ^k, value: merge_witness_leaf(name: ^K2) },
         RequireBindingAbsent { role: ^f },
       ],
       dependencies: [MergeDependency {
@@ -451,7 +456,7 @@ test fn arm_b_is_order_independent() -> Bool {
 // never validated against. Widening the classifier is then a deliberate act with its own controls,
 // not a silent consequence of an edge appearing in the population.
 test fn an_unsupported_dependency_kind_refuses() -> Bool {
-  let fx = fixture_with(edges: [bind(name: ^f, target: leaf(name: ^F))])
+  let fx = fixture_with(edges: [merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F))])
   let out = merge(
     store: fx.store,
     target: fx.target,
@@ -464,7 +469,7 @@ test fn an_unsupported_dependency_kind_refuses() -> Bool {
     proposals: [],
   )
   match out {
-    CouldNotLand { cause: cause } =>
+    MergeCouldNotLand { cause: cause } =>
       match cause {
         DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: kind } =>
           (kind as String) == (^placement_depends_on as String)
@@ -474,38 +479,38 @@ test fn an_unsupported_dependency_kind_refuses() -> Bool {
         BindingLocatorCollision { role: _, identity: _ } => false
       }
     Merged { store: _, commit: _, roles: _ } => false
-    ChoiceRequired { role: _ } => false
+    MergeChoiceRequired { role: _ } => false
   }
 }
 
 // TWO PROPOSALS AUTHORING ONE ROLE IS A QUESTION, not a resolution. Present-vs-absent is the same
 // question in a different costume and lands on the same arm.
 test fn one_role_authored_twice_asks() -> Bool {
-  let fx = fixture_with(edges: [bind(name: ^f, target: leaf(name: ^F))])
+  let fx = fixture_with(edges: [merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F))])
   let out = merge(
     store: fx.store,
     target: fx.target,
     target_dependencies: [],
     proposals: [
       Proposal {
-        requirements: [RequireBinding { role: ^f, value: leaf(name: ^F2) }],
+        requirements: [RequireBinding { role: ^f, value: merge_witness_leaf(name: ^F2) }],
         dependencies: [],
       },
       remove_f_proposal(),
     ],
   )
   match out {
-    ChoiceRequired { role: role } => (role as String) == (^f as String)
+    MergeChoiceRequired { role: role } => (role as String) == (^f as String)
     Merged { store: _, commit: _, roles: _ } => false
-    CouldNotLand { cause: _ } => false
+    MergeCouldNotLand { cause: _ } => false
   }
 }
 
 // SILENCE PRESERVES. With no proposals at all, every target role survives holding its own object.
 test fn an_empty_proposal_set_preserves_the_target() -> Bool {
-  let fx = fixture_with(edges: [bind(name: ^f, target: leaf(name: ^F))])
+  let fx = fixture_with(edges: [merge_witness_bind(name: ^f, target: merge_witness_leaf(name: ^F))])
   let f_id = identity_or(
-    outcome: store_node(store: empty_store(), n: leaf(name: ^F)),
+    outcome: store_node(store: empty_store(), n: merge_witness_leaf(name: ^F)),
     fallback: fallback_id(),
   )
   let out = merge(
