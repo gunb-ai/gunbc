@@ -1,0 +1,141 @@
+module test.claim.srv3_websocat_sequence_witness
+
+import std.types { Bool, String, List }
+import gunbc.host_effect_realize {
+  Srv3HostPredicate,
+  Srv3PredicateHolds,
+  Srv3PredicateFails,
+  Srv3PredicateUnobserved,
+  WebsocatWalk,
+  websocat_trace_from_outcomes,
+  websocat_trace_labels,
+}
+import v2.std.algebra { fold_list }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THESE WITNESSES ASSERT WHAT RAN, NOT WHAT CAME BACK.
+//
+// Every other witness over this file checks the returned Srv3HostPredicate. Two real defects hid
+// underneath exactly that: a privileged apt install executing on every ensure of an already-present
+// tool, and four websocat mutations executing regardless of each other's outcome. In both the
+// returned value was correct and the execution was wrong, so a classification witness could not
+// have gone red for either. An action trace can.
+//
+// The trace is derived from websocat_after -- the same transition function the production driver
+// consumes -- so a change to the sequencing reddens these without any host being involved.
+
+fn unobserved(reason: String) -> Srv3HostPredicate {
+  Srv3PredicateUnobserved { reason: reason }
+}
+
+fn labels_equal(actual: List<String>, expected: List<String>) -> Bool {
+  join(actual, ",") == join(expected, ",")
+}
+
+fn trace_of(outcomes: List<Srv3HostPredicate>) -> List<String> {
+  websocat_trace_labels(walk: websocat_trace_from_outcomes(outcomes: outcomes))
+}
+
+// Already present: observe only. No mutation stage is reachable.
+test fn already_installed_runs_observe_only() -> Bool {
+  labels_equal(
+    actual: trace_of(outcomes: [Srv3PredicateHolds]),
+    expected: ["observe-installed"],
+  )
+}
+
+// An unobservable first probe must not lead to an install on a host that was never reached.
+test fn unobservable_observation_runs_observe_only() -> Bool {
+  labels_equal(
+    actual: trace_of(outcomes: [unobserved(reason: "transport refused")]),
+    expected: ["observe-installed"],
+  )
+}
+
+// THE CENTRAL RED. A failed mkdir stops the walk: no download, no chmod, no readback.
+// Before this cut all three ran anyway.
+test fn a_failed_directory_ensure_stops_before_download() -> Bool {
+  labels_equal(
+    actual: trace_of(
+      outcomes: [Srv3PredicateFails, Srv3PredicateHolds, Srv3PredicateFails, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateHolds],
+    ),
+    expected: ["observe-installed", "resolve-curl", "ensure-directory"],
+  )
+}
+
+// An unobservable chown must not be followed by a download either -- Unobserved is not a weaker
+// Fails, it is "the host was never asked", and proceeding would mutate a host in unknown state.
+test fn an_unobservable_ownership_ensure_stops_before_download() -> Bool {
+  labels_equal(
+    actual: trace_of(
+      outcomes: [Srv3PredicateFails, Srv3PredicateHolds, Srv3PredicateHolds, unobserved(reason: "ssh refused"), Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateHolds],
+    ),
+    expected: ["observe-installed", "resolve-curl", "ensure-directory", "ensure-ownership"],
+  )
+}
+
+// A failed download must not be chmod'd or read back -- the previous body chmod'd a file the
+// download had not produced, then re-observed it.
+test fn a_failed_download_stops_before_chmod() -> Bool {
+  labels_equal(
+    actual: trace_of(
+      outcomes: [Srv3PredicateFails, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateFails, Srv3PredicateHolds, Srv3PredicateHolds],
+    ),
+    expected: ["observe-installed", "resolve-curl", "ensure-directory", "ensure-ownership", "download"],
+  )
+}
+
+// THE REGRESSION CONTROL THE MERGED CUT NEEDED AND DID NOT HAVE. The final test -x must not
+// execute after any preceding failure. #8695 moved that readback into an eagerly-built list, so it
+// ran unconditionally, and no witness in the file could see it.
+// EVERY TRACE SUPPLIES SEVEN OUTCOMES, one per stage, and that is load-bearing rather than tidy.
+// An earlier draft supplied six: under a mutation that never stops, the walk then ran out of
+// outcomes at stage six and stopped short of readback anyway, so this test stayed green against
+// exactly the defect it names. Measured -- it was the one witness the never-stop mutation did
+// not redden. The seventh outcome removes the exhaustion crutch, so the only thing that can
+// keep readback out of the trace is the sequencing.
+test fn the_readback_never_runs_after_a_failed_step() -> Bool {
+  fold_list(
+    xs: [
+      trace_of(outcomes: [Srv3PredicateFails, Srv3PredicateFails, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateHolds]),
+      trace_of(outcomes: [Srv3PredicateFails, Srv3PredicateHolds, Srv3PredicateFails, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateHolds]),
+      trace_of(outcomes: [Srv3PredicateFails, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateFails, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateHolds]),
+      trace_of(outcomes: [Srv3PredicateFails, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateFails, Srv3PredicateHolds, Srv3PredicateHolds]),
+      trace_of(outcomes: [Srv3PredicateFails, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateHolds, Srv3PredicateFails, Srv3PredicateHolds]),
+    ],
+    empty: true,
+    cons: fn(acc, labels) {
+      acc && (string_contains(s: join(labels, ","), pattern: "readback") == false)
+    },
+  )
+}
+
+// THE POSITIVE CONTROL, without which every test above passes on a walk that never runs anything.
+test fn a_fully_successful_install_runs_the_complete_chain_then_reads_back() -> Bool {
+  labels_equal(
+    // SEVEN outcomes for seven stages. An earlier draft passed six and could not have reached
+    // readback -- the test would have "passed" by asserting a chain it never walked.
+    actual: trace_of(
+      outcomes: [
+        Srv3PredicateFails,
+        Srv3PredicateHolds,
+        Srv3PredicateHolds,
+        Srv3PredicateHolds,
+        Srv3PredicateHolds,
+        Srv3PredicateHolds,
+        Srv3PredicateHolds,
+      ],
+    ),
+    expected: [
+      "observe-installed",
+      "resolve-curl",
+      "ensure-directory",
+      "ensure-ownership",
+      "download",
+      "ensure-executable-mode",
+      "readback",
+    ],
+  )
+}
