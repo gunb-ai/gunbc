@@ -87,7 +87,24 @@ data fleet_desired_observe_repository_path_note: String = "The repository whose 
 // It also made the observation unwitnessable against a controlled fixture, since a witness cannot
 // relocate its own process.
 
-fn observe_fleet_revision_relation(
+// THE REPOSITORY IS A PARAMETER HERE AND BOUND ONE FUNCTION BELOW, and the split exists because
+// the annotation above made a promise the signature could not keep: it said a witness could point
+// this observation at a fixture repository without relocating its process, while the repository was
+// reachable only as a module-scope constant. Naming the repository on the OPERATION removed the
+// ambient checkout; it did not give a caller any way to say WHICH repository, so the observation
+// remained exactly as unwitnessable as before, now with a note claiming otherwise.
+//
+// This is not a second policy authority and the asymmetry is the point: `_in` owns the whole
+// observation composition and the wrapper owns exactly one fact, which repository production reads.
+// Both reach the same pure fold, so a matrix run against a fixture repository exercises the real
+// observer rather than the merge-base operation alone -- the gap that let git.Inspect.MergeBase be
+// proven by record/replay while the composition above it stayed unproven.
+//
+// The alternative -- record against `.` while launching the recorder from another directory -- is
+// specifically rejected: it makes one identical operation input mean different repositories
+// depending on ambient process state, which is the ambiguity naming the repository removed.
+fn observe_fleet_revision_relation_in(
+  repository_path: String,
   current: GitObjectId,
   accepted: GitObjectId,
 ) -> FleetRevisionRelationObservation {
@@ -99,7 +116,7 @@ fn observe_fleet_revision_relation(
     }
   } else {
     let probe = git.Inspect.MergeBase(
-      repository_path: fleet_desired_observe_repository_path,
+      repository_path: repository_path,
       left: git_object_id_wire_hex(oid: current) as String as GitRef,
       right: git_object_id_wire_hex(oid: accepted) as String as GitRef,
       expect: OutcomeIsData,
@@ -112,6 +129,20 @@ fn observe_fleet_revision_relation(
       stderr: probe.stderr,
     )
   }
+}
+
+// The production binding, and the ONLY place the production repository is named. Note what it does
+// NOT do: it does not re-check equality, re-decode, or re-classify. A wrapper that repeated any of
+// that would be the second authority this split was written to avoid.
+fn observe_fleet_revision_relation(
+  current: GitObjectId,
+  accepted: GitObjectId,
+) -> FleetRevisionRelationObservation {
+  observe_fleet_revision_relation_in(
+    repository_path: fleet_desired_observe_repository_path,
+    current: current,
+    accepted: accepted,
+  )
 }
 
 // The local half of the comparison: what revision THIS host's deployed tree is at.

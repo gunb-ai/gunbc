@@ -206,6 +206,29 @@ fn fleet_desired_admission_job() -> Job {
 
 // CONCURRENCY, AND THE VARIANT CHANGED BECAUSE THIS CHANGE CHANGED WHAT IS SAFE.
 //
+// THAT THE QUEUE IS REAL IS MEASURED, NOT ASSUMED, and the measurement is recorded here because
+// review 54384 asked the question that would have made everything below fiction: `queue: max` is
+// not in GitHub's published workflow syntax, so does the platform CONSUME it or accept and ignore
+// it? Ignored, the guarantee reduces to `cancel-in-progress: false` and this file promises a
+// property nothing enforces -- worse than no guarantee, because it is planned against.
+//
+// THE EXPERIMENT (2026-08-21, throwaway branch, deleted after reading): two workflows identical
+// but for this one key, each fired by the same three rapid pushes, each job sleeping 70s so the
+// pushes genuinely contend. With `queue: max`: four runs, four success, ZERO cancelled -- and one
+// completed, one in_progress and one PENDING were observed coexisting, a state that cannot exist
+// under a depth-one queue. The CONTROL, identical minus the key: TWO OF FOUR CANCELLED while
+// pending. The control is what makes this a measurement rather than an anecdote -- it proves the
+// probe can detect the difference at all, and it independently reproduces the very defect this
+// workflow exists to close (main's own fleet-desired.yml carries bare `group`, and 9 of its runs
+// are cancelled).
+//
+// WHAT IS PROVEN: the key is read, and it moves behaviour in the direction the variant names.
+// WHAT IS NOT, stated so the receipt is not over-read: the 100-pending ceiling, which comes from
+// GitHub's prose about full queues rather than any specification of this key; and the key's
+// stability, since an undocumented field can be withdrawn without deprecation. Next-rung trigger
+// is GitHub publishing `queue` in the workflow-syntax authority, at which point this becomes an
+// ordinary citation and the probe becomes a regression control rather than the grounding itself.
+//
 // Per the authority (extdeps.languages.yaml.gha_workflow concurrency_queue_max_emission_note) the
 // DEFAULT group -- ConcurrencyMappingQueueNotMax -- holds at most one running and one PENDING
 // entry, and a newly-arriving entry CANCELS the pending one. ConcurrencyMappingQueueMax is the

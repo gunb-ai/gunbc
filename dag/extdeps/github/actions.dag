@@ -144,6 +144,25 @@ type CancelInProgressWhenQueueMax
   = QueueMaxCancelInProgressFalse
   | QueueMaxCancelInProgressExpression { expression: String }
 
+// THE `queue` KEY IS NOT IN GITHUB'S PUBLISHED WORKFLOW SYNTAX, AND ITS BEHAVIOUR HERE IS
+// GROUNDED BY OBSERVATION RATHER THAN BY CITATION. That is the honest position and it is stated on
+// the type rather than left for a reader to assume a doc link exists: raised in review 54384, which
+// asked whether GitHub silently ignores the key -- in which case the queueing guarantee reduces to
+// `cancel-in-progress: false` and the emitted yaml promises something the platform never consumes.
+//
+// Established by execution, not by reading: two workflows differing ONLY in this key, three rapid
+// pushes each, same repository and runner pool. With `queue: max` all four runs completed and none
+// was cancelled; without it, two of four were CANCELLED while pending. So the key is consumed and
+// it changes behaviour in exactly the direction the variant names. The measured receipt lives in
+// the observing layer, per the external-upstream rule that an observation this repository produces
+// is a receipt of ours and not a fact authored inside the upstream module: gunbc.fleet_desired_admission_workflow
+// `fleet_desired_queue_max_measured_receipt`.
+//
+// WHAT IS STILL UNGROUNDED, named so it is not mistaken for settled: an undocumented key can change
+// or be withdrawn without a deprecation, and the 100-pending ceiling is read from GitHub's prose
+// about full queues rather than from a specification of this key. Next-rung trigger: GitHub
+// publishing `queue` in the workflow-syntax authority, at which point this note becomes an ordinary
+// citation row and the receipt becomes a regression control rather than the grounding itself.
 type ConcurrencySpec
   = ConcurrencyScalar { group: String }
   | ConcurrencyMappingQueueMax {
