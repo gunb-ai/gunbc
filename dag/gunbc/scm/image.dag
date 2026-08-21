@@ -491,6 +491,11 @@ fn decode_label(edge_value: JsonValue) -> LabelDecode {
   }
 }
 
+// EDGES ACCUMULATE BY PREPEND AND ARE REVERSED ONCE AT THE CONSUMER, and here the order is not
+// merely cosmetic: this list is handed to insert_from_structure, which feeds it to
+// content_hash_of_children. A dropped or doubled reverse would change every derived ObjectId
+// silently, leaving objects unreachable by the identity they were stored under -- so the round-trip
+// claims, not inspection, are what establish this is right.
 type EdgeAcc {
   edges: List<StoredEdge>
   refusal: ImageRefusal?
@@ -522,7 +527,7 @@ fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonVa
                   }
                 Present { value: identity } =>
                   EdgeAcc {
-                    edges: concat(acc.edges, [StoredEdge { label: label, target: identity }]),
+                    edges: concat([StoredEdge { label: label, target: identity }], acc.edges),
                     refusal: acc.refusal,
                   }
               }
@@ -566,12 +571,12 @@ fn decode_object_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
                       decode_edge_step(positions: acc.positions, acc: edge_acc, edge_value: edge_value)
                     }
                   ) {
-                    EdgeAcc { edges: edges, refusal: edge_refusal } =>
+                    EdgeAcc { edges: reversed_edges, refusal: edge_refusal } =>
                       match edge_refusal {
                         Present { value: c } =>
                           DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: c } }
                         Absent =>
-                          match insert_from_structure(store: acc.store, kind: kind, children: edges) {
+                          match insert_from_structure(store: acc.store, kind: kind, children: reverse(reversed_edges)) {
                             LocatorCollision { identity: i, existing: _, incoming: _ } =>
                               DecodeAcc {
                                 store: acc.store,

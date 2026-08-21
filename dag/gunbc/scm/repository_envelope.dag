@@ -180,6 +180,17 @@ fn encode_repository(repo: RepositoryEnvelope) -> JsonValue {
 // Decoding
 // ------------------------------------------------------------------------------------------------
 
+// COMMITS ACCUMULATE BY PREPEND AND ARE REVERSED ONCE AT THE CONSUMER. concat-at-end inside a fold
+// copies the whole accumulator per commit, which is the quadratic shape DESIGN section 6 says is
+// always fixed regardless of the realized n. This stack removed that shape from image.dag and from
+// object_store.dag and then reintroduced it here in the same diff -- caught by review, and the point
+// worth recording is that fixing a cost shape at the sites a review names is not the same as not
+// having the defect: the sweep has to be over every accumulator the change touches, or the rule is
+// applied one grep at a time.
+//
+// The list order is load-bearing -- it is the log order a reader sees, and
+// scm_env_the_root_signature_distinguishes_order is the claim that would go red if the reverse were
+// dropped or applied twice.
 type CommitDecodeAcc {
   commits: List<RepositoryCommit>
   refusal: RepositoryRefusal?
@@ -205,7 +216,7 @@ fn decode_commit_step(positions: DecodePositions, acc: CommitDecodeAcc, value: J
                   CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryImageRefusal { cause: c } } }
                 MemberString { value: message } =>
                   CommitDecodeAcc {
-                    commits: concat(acc.commits, [RepositoryCommit { root: root, message: message }]),
+                    commits: concat([RepositoryCommit { root: root, message: message }], acc.commits),
                     refusal: acc.refusal,
                   }
                 _ =>
@@ -261,12 +272,12 @@ fn decode_repository_body(v: JsonValue) -> RepositoryDecodeOutcome {
                     init: CommitDecodeAcc { commits: [], refusal: none },
                     f: fn(acc, cv) { decode_commit_step(positions: positions, acc: acc, value: cv) }
                   ) {
-                    CommitDecodeAcc { commits: commits, refusal: commit_refusal } =>
+                    CommitDecodeAcc { commits: reversed_commits, refusal: commit_refusal } =>
                       match commit_refusal {
                         Present { value: c } => RepositoryDecodeRefused { cause: c }
                         Absent =>
                           decode_repository_checkout(
-                            v: v, store: store, positions: positions, commits: commits
+                            v: v, store: store, positions: positions, commits: reverse(reversed_commits)
                           )
                       }
                   }

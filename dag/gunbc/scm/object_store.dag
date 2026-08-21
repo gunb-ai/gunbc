@@ -266,6 +266,16 @@ type StoreEdgeAcc {
 // re-enters store_node for each child, and each call canonicalizes its own subject. Canonicalizing
 // only at the root would leave the identical defect one level down.
 //
+// EDGES ACCUMULATE BY PREPEND AND ARE REVERSED ONCE, then handed to insert_from_structure -- which
+// is the SAME assembly this function used to spell out inline. Collapsing the two removes a second
+// copy of the identity rule (DESIGN section 3): there is now one place that turns a kind plus
+// ordered children into a stored record, and store_node and the decoder are both its callers rather
+// than two spellings that agree until one is edited.
+//
+// The reverse is load-bearing and must land exactly once. These children feed
+// content_hash_of_children, so dropping it or doubling it changes every derived ObjectId silently
+// and leaves objects unreachable by the identity they were stored under.
+//
 // THE IDENTITY IS ASSEMBLED FROM CHILD IDENTITIES ALREADY IN HAND, NOT BY RE-WALKING. An earlier
 // revision ended this function with `content_hash(n: canonical)`, which walks the entire subtree a
 // second time -- once by the recursion that stored the children, once by the hash. On a chain that
@@ -299,7 +309,7 @@ fn store_node(store: ObjectStore, n: Node) -> StoreOutcome {
             Stored { store: child_store, identity: child_identity } =>
               StoreEdgeAcc {
                 store: child_store,
-                edges: concat(acc.edges, [StoredEdge { label: edge.label, target: child_identity }]),
+                edges: concat([StoredEdge { label: edge.label, target: child_identity }], acc.edges),
                 collision: none,
               }
           }
@@ -309,17 +319,7 @@ fn store_node(store: ObjectStore, n: Node) -> StoreOutcome {
   match acc.collision {
     Present { value: collision } => collision
     Absent =>
-      insert_derived(
-        store: acc.store,
-        record: ObjectRecord {
-          identity: content_hash_of_children(
-            kind: canonical.kind,
-            children: labeled_children_of_stored(children: acc.edges),
-          ),
-          kind: canonical.kind,
-          children: acc.edges,
-        },
-      )
+      insert_from_structure(store: acc.store, kind: canonical.kind, children: reverse(acc.edges))
   }
 }
 
