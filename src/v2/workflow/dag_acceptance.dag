@@ -186,9 +186,10 @@ type TargetCompileObservation
   = TargetCompileDecided { verdict: TargetCompileVerdict }
   | TargetCompileFailedUnparsed { exit_code: Int, stderr_length: Int }
   | TargetCompilerUnavailable { cause: String }
-  | TargetCompileInvocationRefused { cause: String }
 
-data target_compile_observation_note: String = "THE CANDIDATE-FACING HALF IS NOT MINTED HERE. Whether a target toolchain accepted or rejected a compilation is already modeled: v2.std.leaf_model_verification TargetCompileVerdict, with its accepted arm and its rejected arm carrying a diagnostic code. This observation REUSES it and adds only what a live invocation can be that a modeled expectation cannot — the floor caught the first cut of this file minting a second TargetCompileAccepted beside that authority, which is the section-3 nicknaming violation exactly, and it broke every existing consumer of the real one.\n\nSO: FOUR ARMS, THREE SUBJECTS. Decided is a fact about the CANDIDATE and defers to the existing verdict authority. Unavailable (no toolchain) and InvocationRefused (the call itself refused) are facts about US, and neither may ever read as the toolchain having said no — asserting a verdict over a refusing call is the fabricated-plausible-output failure at the host boundary. FailedUnparsed — the toolchain ran, failed, and produced nothing we could read — is neither: it is IGNORANCE, and rendering ignorance as rejection is the widen DESIGN section 5 forbids, so it gets its own execution arm and its own count."
+data target_compile_invocation_refusal_absent_note: String = "A CALL THAT REFUSES AND A TOOLCHAIN THAT IS ABSENT ARE DIFFERENT SUBJECTS, AND THIS MODEL CARRIES ONLY ONE OF THEM ON PURPOSE. An earlier revision declared both, and review 54507 caught what that cost: nothing produced the invocation-refusal arm, and the row mapping collapsed it onto the same ExecutorUnavailable row as the absent toolchain — a distinction asserted on the input side and erased on the output side, which is the state-space conflation the notes around it warn about, plus a constructor with no producer, which is specification without execution (DESIGN section 5). The surviving arm still refuses rather than fabricating a verdict, so the property that mattered — never assert a verdict over a call that did not answer — is preserved. Next-rung trigger: a transport that surfaces call-level refusal as its own observed fact, at which point the arm returns WITH a producer and WITH its own row, rather than as vocabulary waiting for one."
+
+data target_compile_observation_note: String = "THE CANDIDATE-FACING HALF IS NOT MINTED HERE. Whether a target toolchain accepted or rejected a compilation is already modeled: v2.std.leaf_model_verification TargetCompileVerdict, with its accepted arm and its rejected arm carrying a diagnostic code. This observation REUSES it and adds only what a live invocation can be that a modeled expectation cannot — the floor caught the first cut of this file minting a second TargetCompileAccepted beside that authority, which is the section-3 nicknaming violation exactly, and it broke every existing consumer of the real one.\n\nSO: FOUR ARMS, THREE SUBJECTS. Decided is a fact about the CANDIDATE and defers to the existing verdict authority. Unavailable is a fact about US and may never read as the toolchain having said no — asserting a verdict over a refusing call is the fabricated-plausible-output failure at the host boundary. FailedUnparsed — the toolchain ran, failed, and produced nothing we could read — is neither: it is IGNORANCE, and rendering ignorance as rejection is the widen DESIGN section 5 forbids, so it gets its own execution arm and its own count."
 
 type TargetCompileExecutor {
   compile_target_source: fn(String) -> TargetCompileObservation
@@ -818,11 +819,6 @@ fn target_compile_row(
             cause: TargetCompileFailureUnparsed { exit_code: code, stderr_length: len }
           }
         TargetCompilerUnavailable { cause: cause } =>
-          StageNotRun {
-            obligation: TargetCompileStage { claim: claim },
-            reason: ExecutorUnavailable { cause: cause }
-          }
-        TargetCompileInvocationRefused { cause: cause } =>
           StageNotRun {
             obligation: TargetCompileStage { claim: claim },
             reason: ExecutorUnavailable { cause: cause }

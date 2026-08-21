@@ -7,7 +7,6 @@ import v2.std.leaf_model_verification { TargetCompileAccepted, TargetCompileReje
 import v2.workflow.dag_acceptance {
   TargetCompileDecided,
   TargetCompileFailedUnparsed,
-  TargetCompileInvocationRefused,
   TargetCompileObservation,
   TargetCompilerUnavailable
 }
@@ -29,7 +28,6 @@ fn observation_label(observation: TargetCompileObservation) -> Symbol {
       }
     TargetCompileFailedUnparsed { exit_code: _, stderr_length: _ } => ^observed_failed_unparsed
     TargetCompilerUnavailable { cause: _ } => ^observed_unavailable
-    TargetCompileInvocationRefused { cause: _ } => ^observed_invocation_refused
   }
 }
 
