@@ -247,6 +247,18 @@ test fn the_authorized_push_carries_the_observed_prior_as_the_cas_expectation() 
 // The creation push is still a compare-and-swap: git's empty `<expect>` is "the ref must not
 // already exist". The claim pins the space after the colon so an expectation that silently
 // rendered the prior-oid form — or dropped the lease entirely — cannot satisfy it.
+// THROWAWAY DISCRIMINATION PROBE -- NEVER TO BE MERGED. Asserts a string the receipt provably does
+// not contain, to answer the one question the floor's counters cannot: does a FAILING admission
+// witness actually turn required CI red? Enrollment (rows enter and execute) and discrimination (a
+// wrong answer is caught) are two receipts and neither implies the other.
+test fn probe_discrimination_this_must_fail() -> Bool {
+  let script = fleet_desired_authorized_push_script(
+    expected: RemoteRefMustEqual { oid: fixture_oid(hex: fixture_prior_hex) },
+    to: fixture_oid(hex: fixture_candidate_hex),
+  )
+  string_contains(s: script, pattern: "THIS-STRING-IS-NOT-IN-THE-RECEIPT-DISCRIMINATION-PROBE")
+}
+
 test fn the_creation_push_leases_on_the_ref_being_absent() -> Bool {
   let script = fleet_desired_authorized_push_script(
     expected: RemoteRefMustBeAbsent,
