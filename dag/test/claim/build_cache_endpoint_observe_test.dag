@@ -1,0 +1,323 @@
+module test.claim.build_cache_endpoint_observe
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data endpoint_observe_witness_doc: String = "THE CONTROLS FOR THE PRODUCER THAT WAS MISSING. Every fixture below is READ TEXT in the shape the live commands emit, and every assertion runs the same decode the realize path runs -- gunbc.build_cache_endpoint_observe survey_build_cache_endpoint, then gunbc.build_cache_ensure admit_ensure_build_cache_instance -- so what is witnessed is the decision realization now makes, not a restatement of the fold's arms. The specimen text is authored from the receipts in docs/plans/build-cache-placement-receipt.md and from proc(5); the two host-only controls (that a second observation does not perturb the subject, and that no read starts a server) remain live receipts rather than witnesses here, because a hermetic fixture cannot falsify them.\n\nTHE DISCRIMINATING RED IS witness_unreadable_listener_refuses_rather_than_admitting. A decoder that treated 'ss printed nothing' and 'ss could not be run' as one state would answer 'no listener' to a question it never got an answer to, and the admission would then ADMIT -- writing a unit and restarting it on a host whose current state was never read. That witness and witness_absent_endpoint_is_admitted differ in exactly one input field and must land on opposite arms; if the HostRead coproduct were collapsed to a String, they would both go green on the admitted arm and the wall would be gone."
+
+fn observe_srv1_ci_instance() -> BuildCacheInstance {
+  ci_cache_instance(host: "srv1")
+}
+
+data observe_managed_unit_cgroup_text: String = "0::/system.slice/gunbc-build-cache-ci.service\n"
+data observe_retired_slot_cgroup_text: String = "0::/system.slice/system-actions-runner.slice/actions-runner@srv1-10.service\n"
+data observe_desired_slot_cgroup_text: String = "0::/system.slice/system-actions-runner.slice/actions-runner@srv1-02.service\n"
+
+data observe_ss_listening_text: String = "u_str LISTEN 0 4096 /var/lib/ctrl/sccache-ci/server.sock 3894042 * 0 users:((\"sccache\",pid=3975946,fd=4))\n"
+data observe_ss_two_owners_text: String = "u_str LISTEN 0 4096 /var/lib/ctrl/sccache-ci/server.sock 3894042 * 0 users:((\"sccache\",pid=3975946,fd=4),(\"sccache\",pid=4001122,fd=7))\n"
+data observe_ss_no_owner_column_text: String = "u_str LISTEN 0 4096 /var/lib/ctrl/sccache-ci/server.sock 3894042 * 0\n"
+
+data observe_proc_stat_text: String = "3975946 (sccache) S 1 3975946 3975946 0 -1 4194560 1234 0 0 0 10 5 0 0 20 0 5 0 79870020 2307932160\n"
+data observe_proc_stat_adversarial_comm_text: String = "4242 (sc cache (x) ) S 1 4242 4242 0 -1 4194560 7 0 0 0 1 1 0 0 20 0 5 0 51501010 1024\n"
+data observe_boot_id_text: String = "73c8153e-0e0e-4480-a36c-bc7560c50e8b\n"
+
+fn observe_reads(
+  path_kind: gunbc.build_cache_endpoint_observe.EndpointPathKind,
+  listener_read: gunbc.build_cache_endpoint_observe.HostRead,
+  cgroup_text: String,
+) -> gunbc.build_cache_endpoint_observe.BuildCacheEndpointReads {
+  gunbc.build_cache_endpoint_observe.BuildCacheEndpointReads {
+    boot_id: gunbc.build_cache_endpoint_observe.HostReadText { text: observe_boot_id_text },
+    path_kind: path_kind,
+    listener: gunbc.build_cache_endpoint_observe.listener_of_ss_output(read: listener_read),
+    owner_cgroup: gunbc.build_cache_endpoint_observe.HostReadText { text: cgroup_text },
+    owner_proc_stat: gunbc.build_cache_endpoint_observe.HostReadText { text: observe_proc_stat_text },
+    owner_principal: gunbc.build_cache_endpoint_observe.HostReadText { text: "ghrunner\n" },
+    owner_executable: gunbc.build_cache_endpoint_observe.HostReadText { text: "/usr/local/bin/sccache\n" },
+  }
+}
+
+fn observe_admission(
+  path_kind: gunbc.build_cache_endpoint_observe.EndpointPathKind,
+  listener_read: gunbc.build_cache_endpoint_observe.HostRead,
+  cgroup_text: String,
+) -> EnsureBuildCacheAdmission {
+  let instance = observe_srv1_ci_instance()
+  let survey = gunbc.build_cache_endpoint_observe.survey_build_cache_endpoint(
+    instance: instance,
+    reads: observe_reads(path_kind: path_kind, listener_read: listener_read, cgroup_text: cgroup_text),
+  )
+  admit_ensure_build_cache_instance(
+    desired: instance,
+    placement: survey.placement,
+    observed_path: survey.path,
+    currency: survey.currency,
+  )
+}
+
+fn observe_placement(
+  path_kind: gunbc.build_cache_endpoint_observe.EndpointPathKind,
+  listener_read: gunbc.build_cache_endpoint_observe.HostRead,
+  cgroup_text: String,
+) -> BuildCacheServerPlacement {
+  gunbc.build_cache_endpoint_observe.survey_build_cache_endpoint(
+    instance: observe_srv1_ci_instance(),
+    reads: observe_reads(path_kind: path_kind, listener_read: listener_read, cgroup_text: cgroup_text),
+  ).placement
+}
+
+fn observe_socket_listening_read() -> gunbc.build_cache_endpoint_observe.HostRead {
+  gunbc.build_cache_endpoint_observe.HostReadText { text: observe_ss_listening_text }
+}
+
+fn admission_is_refused_with_placement_unknown(admission: EnsureBuildCacheAdmission) -> Bool {
+  match admission {
+    EnsureBuildCacheRefused { instance: _, reason: r } =>
+      match r {
+        EnsurePlacementUnknown { detail: _ } => true
+        EnsureEndpointOccupied { owner: _ } => false
+        EnsureEndpointPathConflict { detail: _ } => false
+        EnsureEndpointUnobservable { detail: _ } => false
+        EnsureUnlinkRefused { detail: _ } => false
+      }
+    EnsureAlreadyConverged { desired: _, unit: _ } => false
+    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_lines: _ } => false
+  }
+}
+
+test fn witness_managed_unit_owner_is_already_converged() -> Bool {
+  match observe_admission(
+    path_kind: gunbc.build_cache_endpoint_observe.PathKindSocket,
+    listener_read: observe_socket_listening_read(),
+    cgroup_text: observe_managed_unit_cgroup_text,
+  ) {
+    EnsureAlreadyConverged { desired: _, unit: u } => (u as String) == "gunbc-build-cache-ci.service"
+    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_lines: _ } => false
+    EnsureBuildCacheRefused { instance: _, reason: _ } => false
+  }
+}
+
+test fn witness_retired_runner_slot_owner_refuses() -> Bool {
+  match observe_placement(
+    path_kind: gunbc.build_cache_endpoint_observe.PathKindSocket,
+    listener_read: observe_socket_listening_read(),
+    cgroup_text: observe_retired_slot_cgroup_text,
+  ) {
+    ServerRunnerOwned { slot: s, lifecycle: lc } =>
+      match lc {
+        RetiredRunnerSlot => s.slot_index == 10
+        DesiredRunnerSlot => false
+      }
+    ServerManagedUnitOwned { unit: _ } => false
+    ServerUnsupervised { cgroup: _ } => false
+    ServerPlacementAbsent => false
+    ServerPlacementUnknown { detail: _ } => false
+  }
+}
+
+test fn witness_desired_runner_slot_owner_also_refuses() -> Bool {
+  match observe_placement(
+    path_kind: gunbc.build_cache_endpoint_observe.PathKindSocket,
+    listener_read: observe_socket_listening_read(),
+    cgroup_text: observe_desired_slot_cgroup_text,
+  ) {
+    ServerRunnerOwned { slot: s, lifecycle: lc } =>
+      match lc {
+        DesiredRunnerSlot => s.slot_index == 2
+        RetiredRunnerSlot => false
+      }
+    ServerManagedUnitOwned { unit: _ } => false
+    ServerUnsupervised { cgroup: _ } => false
+    ServerPlacementAbsent => false
+    ServerPlacementUnknown { detail: _ } => false
+  }
+}
+
+test fn witness_runner_owned_endpoint_is_not_admitted() -> Bool {
+  match observe_admission(
+    path_kind: gunbc.build_cache_endpoint_observe.PathKindSocket,
+    listener_read: observe_socket_listening_read(),
+    cgroup_text: observe_retired_slot_cgroup_text,
+  ) {
+    EnsureBuildCacheRefused { instance: _, reason: r } =>
+      match r {
+        EnsureEndpointOccupied { owner: o } => o.pid == 3975946
+        EnsureEndpointPathConflict { detail: _ } => false
+        EnsureEndpointUnobservable { detail: _ } => false
+        EnsureUnlinkRefused { detail: _ } => false
+        EnsurePlacementUnknown { detail: _ } => false
+      }
+    EnsureAlreadyConverged { desired: _, unit: _ } => false
+    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_lines: _ } => false
+  }
+}
+
+test fn witness_absent_endpoint_is_admitted() -> Bool {
+  match observe_admission(
+    path_kind: gunbc.build_cache_endpoint_observe.PathKindAbsent,
+    listener_read: gunbc.build_cache_endpoint_observe.HostReadText { text: "" },
+    cgroup_text: observe_managed_unit_cgroup_text,
+  ) {
+    EnsureBuildCacheAdmitted { desired: _, preflight: p, unit_lines: lines } =>
+      match p {
+        EndpointClearForBind => lines.count() > 0
+        EndpointClearedByUnlink { stale_detail: _ } => false
+      }
+    EnsureAlreadyConverged { desired: _, unit: _ } => false
+    EnsureBuildCacheRefused { instance: _, reason: _ } => false
+  }
+}
+
+data unreadable_listener_red_note: String = "THE DISCRIMINATING RED, AND WHAT IT IS DISCRIMINATING AGAINST. This witness and witness_absent_endpoint_is_admitted differ in ONE input: whether the listener read succeeded with empty output or failed. The first must be admitted (nothing is listening, a bind is clear) and the second must refuse (we do not know what is listening). Collapse gunbc.build_cache_endpoint_observe's HostRead coproduct to a bare String -- the shape this producer would have had if the reads were plumbed as text -- and both inputs become the empty string, both witnesses land on the admitted arm, and a host whose state could not be read gets a unit written and restarted on it. That is the empty-observation narrow, and this pair is what keeps it unwritable rather than merely unwritten."
+
+test fn witness_unreadable_listener_refuses_rather_than_admitting() -> Bool {
+  admission_is_refused_with_placement_unknown(
+    admission: observe_admission(
+      path_kind: gunbc.build_cache_endpoint_observe.PathKindAbsent,
+      listener_read: gunbc.build_cache_endpoint_observe.HostReadFailed {
+        detail: "the read exited 127: ss: command not found" as NonEmptyStr,
+      },
+      cgroup_text: observe_managed_unit_cgroup_text,
+    ),
+  )
+}
+
+test fn witness_listener_with_no_owner_column_refuses() -> Bool {
+  admission_is_refused_with_placement_unknown(
+    admission: observe_admission(
+      path_kind: gunbc.build_cache_endpoint_observe.PathKindSocket,
+      listener_read: gunbc.build_cache_endpoint_observe.HostReadText { text: observe_ss_no_owner_column_text },
+      cgroup_text: observe_managed_unit_cgroup_text,
+    ),
+  )
+}
+
+test fn witness_two_owners_refuse_rather_than_pick_the_first() -> Bool {
+  match gunbc.build_cache_endpoint_observe.listener_of_ss_output(
+    read: gunbc.build_cache_endpoint_observe.HostReadText { text: observe_ss_two_owners_text },
+  ) {
+    gunbc.build_cache_endpoint_observe.ListenerAmbiguous { candidate_count: n } => n == 2
+    gunbc.build_cache_endpoint_observe.ListenerOwnerPid { pid: _ } => false
+    gunbc.build_cache_endpoint_observe.ListenerNone => false
+    gunbc.build_cache_endpoint_observe.ListenerUndecided { detail: _ } => false
+  }
+}
+
+test fn witness_empty_ss_output_is_no_listener() -> Bool {
+  match gunbc.build_cache_endpoint_observe.listener_of_ss_output(
+    read: gunbc.build_cache_endpoint_observe.HostReadText { text: "\n" },
+  ) {
+    gunbc.build_cache_endpoint_observe.ListenerNone => true
+    gunbc.build_cache_endpoint_observe.ListenerOwnerPid { pid: _ } => false
+    gunbc.build_cache_endpoint_observe.ListenerAmbiguous { candidate_count: _ } => false
+    gunbc.build_cache_endpoint_observe.ListenerUndecided { detail: _ } => false
+  }
+}
+
+test fn witness_one_owner_yields_its_pid() -> Bool {
+  match gunbc.build_cache_endpoint_observe.listener_of_ss_output(read: observe_socket_listening_read()) {
+    gunbc.build_cache_endpoint_observe.ListenerOwnerPid { pid: p } => p == 3975946
+    gunbc.build_cache_endpoint_observe.ListenerNone => false
+    gunbc.build_cache_endpoint_observe.ListenerAmbiguous { candidate_count: _ } => false
+    gunbc.build_cache_endpoint_observe.ListenerUndecided { detail: _ } => false
+  }
+}
+
+data srv4_stale_socket_refusal_note: String = "srv4's SHAPE, AND THE DECLARED BOUND ON WHAT THIS PRODUCER CAN SAY ABOUT IT. Observed 2026-08-01: a socket file present, no listener, no process, and a bind failing with 'Address in use (os error 98)'. gunbc.build_cache_endpoint_path models that as EndpointStaleSocket and admits an unlink from it -- but only on FOUR established clauses, and this producer can establish three. The unread one is that no open file descriptor anywhere in /proc still resolves to the socket's inode, which needs a glob over /proc that this lane may not emit as shell. So the arm asserted here is the refusal, not the unlink: srv4 stays uncached and LOCATED rather than being unlinked on three quarters of the evidence. Read this witness as the boundary marker it is -- when the typed fd-inode read lands, this assertion flips to EndpointStaleSocket and the unlink becomes reachable, and that flip is the dissolution of the bound rather than a regression."
+
+test fn witness_stale_socket_shape_refuses_with_the_unread_clause_named() -> Bool {
+  match observe_admission(
+    path_kind: gunbc.build_cache_endpoint_observe.PathKindSocket,
+    listener_read: gunbc.build_cache_endpoint_observe.HostReadText { text: "" },
+    cgroup_text: observe_managed_unit_cgroup_text,
+  ) {
+    EnsureBuildCacheRefused { instance: _, reason: r } =>
+      match r {
+        EnsureEndpointUnobservable { detail: _ } => true
+        EnsureEndpointOccupied { owner: _ } => false
+        EnsureEndpointPathConflict { detail: _ } => false
+        EnsureUnlinkRefused { detail: _ } => false
+        EnsurePlacementUnknown { detail: _ } => false
+      }
+    EnsureAlreadyConverged { desired: _, unit: _ } => false
+    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_lines: _ } => false
+  }
+}
+
+test fn witness_non_socket_at_the_endpoint_path_is_a_conflict() -> Bool {
+  match observe_admission(
+    path_kind: gunbc.build_cache_endpoint_observe.PathKindOtherObject { described: "directory" as NonEmptyStr },
+    listener_read: gunbc.build_cache_endpoint_observe.HostReadText { text: "" },
+    cgroup_text: observe_managed_unit_cgroup_text,
+  ) {
+    EnsureBuildCacheRefused { instance: _, reason: r } =>
+      match r {
+        EnsureEndpointPathConflict { detail: d } => string_contains(s: d as String, pattern: "directory")
+        EnsureEndpointOccupied { owner: _ } => false
+        EnsureEndpointUnobservable { detail: _ } => false
+        EnsureUnlinkRefused { detail: _ } => false
+        EnsurePlacementUnknown { detail: _ } => false
+      }
+    EnsureAlreadyConverged { desired: _, unit: _ } => false
+    EnsureBuildCacheAdmitted { desired: _, preflight: _, unit_lines: _ } => false
+  }
+}
+
+test fn witness_stat_type_word_decodes_socket_and_absence() -> Bool {
+  let socket_kind = gunbc.build_cache_endpoint_observe.path_kind_of_stat_read(
+    read: gunbc.build_cache_endpoint_observe.HostReadText { text: "socket\n" },
+    exit_success: true,
+  )
+  let absent_kind = gunbc.build_cache_endpoint_observe.path_kind_of_stat_read(
+    read: gunbc.build_cache_endpoint_observe.HostReadText { text: "" },
+    exit_success: false,
+  )
+  match socket_kind {
+    gunbc.build_cache_endpoint_observe.PathKindSocket =>
+      match absent_kind {
+        gunbc.build_cache_endpoint_observe.PathKindAbsent => true
+        gunbc.build_cache_endpoint_observe.PathKindSocket => false
+        gunbc.build_cache_endpoint_observe.PathKindOtherObject { described: _ } => false
+        gunbc.build_cache_endpoint_observe.PathKindNoFilesystemPath => false
+        gunbc.build_cache_endpoint_observe.PathKindUnreadable { detail: _ } => false
+      }
+    gunbc.build_cache_endpoint_observe.PathKindAbsent => false
+    gunbc.build_cache_endpoint_observe.PathKindOtherObject { described: _ } => false
+    gunbc.build_cache_endpoint_observe.PathKindNoFilesystemPath => false
+    gunbc.build_cache_endpoint_observe.PathKindUnreadable { detail: _ } => false
+  }
+}
+
+data starttime_parse_red_note: String = "THE ADVERSARIAL COMM IS THE POINT OF THIS WITNESS. /proc/PID/stat field 2 is the executable name in parentheses and it may contain spaces AND parentheses, so a decoder that split the whole line on spaces reads the wrong field for exactly the processes whose names are hostile. proc(5) fixes the shape -- fields 3 onward follow the FINAL ')' -- and the second fixture below carries a comm of '(sc cache (x) )' whose naive split lands three tokens off. Both fixtures must yield their own start time, so the witness reds if the parse ever regresses to splitting the line."
+
+test fn witness_starttime_reads_after_the_final_paren() -> Bool {
+  gunbc.build_cache_endpoint_observe.starttime_of_proc_stat_text(text: observe_proc_stat_text) == "79870020"
+    && gunbc.build_cache_endpoint_observe.starttime_of_proc_stat_text(text: observe_proc_stat_adversarial_comm_text) == "51501010"
+}
+
+test fn witness_unreadable_boot_id_leaves_currency_unknown() -> Bool {
+  match gunbc.build_cache_endpoint_observe.currency_of_boot_id_read(
+    read: gunbc.build_cache_endpoint_observe.HostReadFailed { detail: "denied" as NonEmptyStr },
+  ) {
+    ObservationCurrencyUnknown { detail: _ } => true
+    ObservationCurrent { observed_at_boot: _ } => false
+    ObservationStale { detail: _ } => false
+  }
+}
+
+test fn witness_unreachable_host_reaches_placement_unknown_through_the_ordinary_decode() -> Bool {
+  let instance = observe_srv1_ci_instance()
+  let survey = gunbc.build_cache_endpoint_observe.survey_build_cache_endpoint(
+    instance: instance,
+    reads: gunbc.build_cache_endpoint_observe.unreachable_host_reads(
+      detail: "ssh: connect to host srv1 port 22: No route to host" as NonEmptyStr,
+    ),
+  )
+  admission_is_refused_with_placement_unknown(
+    admission: admit_ensure_build_cache_instance(
+      desired: instance,
+      placement: survey.placement,
+      observed_path: survey.path,
+      currency: survey.currency,
+    ),
+  )
+}

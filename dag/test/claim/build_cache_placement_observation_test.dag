@@ -82,8 +82,8 @@ test fn witness_both_runner_lifecycles_refuse_at_the_verdict() -> Bool {
 
 fn refuses(placement: BuildCacheServerPlacement) -> Bool {
   match placement_verdict(catalog_id: sccache_local_id, stats_line: "stats", placement: placement) {
-    ProvisionRefused { cause: _, reason: _ } => true
-    ProvisionConverged { catalog_id: _, stats_line: _ } => false
+    BuildCacheProvisionRefused { cause: _, reason: _ } => true
+    BuildCacheProvisionConverged { catalog_id: _, stats_line: _ } => false
   }
 }
 

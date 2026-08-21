@@ -1,0 +1,595 @@
+module gunbc.build_cache_endpoint_observe
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.nat { Nat }
+import std.disposition { Disposition, SingleAuthority }
+import std.algebra { trim }
+import std.checked_arithmetic { CheckedNat, CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
+import extdeps.network.iproute2_ss {
+  ss_unix_listening_at_path_argv,
+  ss_tcp_listening_on_port_argv,
+  ss_process_column_pid_token,
+}
+import extdeps.cache.sccache { SccacheServerUnixSocket, SccacheServerTcpPort }
+import extdeps.linux.proc_self_cgroup {
+  ProcPidCgroupMembershipRecord,
+  CurrentCgroupObserved,
+  MembershipMissing,
+  MembershipAmbiguous,
+  MembershipMalformed,
+  read_unified_cgroup_membership,
+}
+import gunbc.build_cache_instance {
+  BuildCacheInstance,
+  ProcessIdentity,
+  BuildCacheEndpointObservation,
+  EndpointAbsent,
+  EndpointOwnerObserved,
+  EndpointOwnershipAmbiguous,
+  EndpointObservationUnavailable,
+  EndpointObservationUnavailableReason,
+  ReachRefused,
+  ProcTableUnreadable,
+  EndpointPathUnreadable,
+  EndpointOwnerContext,
+  OwnerInRunnerSlot,
+  OwnerInSystemdUnit,
+  OwnerContextUndecided,
+  RunnerSlotIdentity,
+  RunnerSlotLifecycle,
+  DesiredRunnerSlot,
+  RetiredRunnerSlot,
+  BuildCacheServerPlacement,
+  placement_of_endpoint_observation,
+}
+import gunbc.build_cache_endpoint_path {
+  EndpointPathState,
+  EndpointPathAbsent,
+  EndpointListening,
+  EndpointPathConflict,
+  EndpointPathObservationUnavailable,
+  ObservationCurrency,
+  ObservationCurrent,
+  ObservationStale,
+  ObservationCurrencyUnknown,
+}
+import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+import product.placement_supply { HostIdentity }
+
+data build_cache_endpoint_observe_scope_disposition: Disposition = SingleAuthority
+
+data observe_is_the_missing_producer_note: String = "THIS MODULE IS THE PRODUCER TWO PROVEN-BUT-UNWIRED AUTHORITIES WERE WAITING ON. gunbc.build_cache_ensure admit_ensure_build_cache_instance takes a BuildCacheServerPlacement, an EndpointPathState and an ObservationCurrency; gunbc.build_cache_endpoint_observation could produce none of them and said so in its own body, returning ProcTableUnreadable with the detail 'shell transport available but /proc endpoint-owner walk has no host_effect producer yet'. So the admission was reachable only from tests, and gunbc.host_effect_realize realize_provision_build_cache rendered and restarted the unit unconditionally instead. That is the rung problem the shell-to-dag census C-note names: the refusal a live CI-capacity incident was fixed by is computed by a function no production caller called.\n\nWHAT IS HERE AND WHAT IS NOT. Everything below is a PURE DECODE of read text into the modeled states -- no transport, no effect, no host. The reads themselves are performed by gunbc.host_effect_realize, which is where a transport already exists, and are handed back as BuildCacheEndpointReads. Splitting it that way is not tidiness: it makes every arm of the decode reachable from a fixture, so the discriminating REDs run against specimen text rather than against a host, and it keeps this module free of the effect graph it would otherwise have to import.\n\nEVERY READ IS NON-MUTATING, AND THAT IS A CORRECTNESS PROPERTY RATHER THAN A COURTESY. The one probe that would be easiest to reach for -- sccache --show-stats -- is refused as evidence anywhere in this lane, because extdeps.cache.sccache sccache_stats_query_does_not_spawn_note records by measurement that it prints a full table whether or not any server exists. It therefore cannot establish absence, which is precisely the question the path axis asks. A real compile WOULD establish it and is a mutation. Neither is admissible."
+
+type HostRead
+  = HostReadText { text: String }
+  | HostReadFailed { detail: NonEmptyStr }
+
+data host_read_carries_failure_not_emptiness_note: String = "A FAILED READ IS NOT AN EMPTY READ, and conflating them is the empty-observation narrow DESIGN names beside the absorbing fallback. `ss` printing nothing means no listener; `ss` not running, or being denied, also prints nothing on stdout. If both arrive as the same String the decoder answers 'nothing is listening' to a question it never got an answer to, and the caller then unlinks a socket or starts a unit on that basis. So the runner classifies exit status into these two arms before any text reaches a decoder, and every decode of HostReadFailed lands on an Unavailable/Undecided arm rather than on an absence."
+
+type EndpointListenerRead
+  = ListenerOwnerPid { pid: Nat }
+  | ListenerNone
+  | ListenerAmbiguous { candidate_count: Nat }
+  | ListenerUndecided { detail: NonEmptyStr }
+
+type EndpointPathKind
+  = PathKindSocket
+  | PathKindOtherObject { described: NonEmptyStr }
+  | PathKindAbsent
+  | PathKindNoFilesystemPath
+  | PathKindUnreadable { detail: NonEmptyStr }
+
+data path_kind_no_filesystem_path_note: String = "A TCP ENDPOINT HAS NO PATH, AND THAT IS ITS OWN ARM RATHER THAN PathKindAbsent. Absent means we looked at a path and found nothing there, which licenses a bind; no-path means the question does not apply to this instance's endpoint shape at all. Collapsing them would make the two indistinguishable to a reader deciding whether an unlink could ever be relevant -- and gunbc.build_cache_endpoint_path already refuses a stale-socket unlink over a TCP endpoint positively for the same reason, so answering the path axis with a fabricated 'absent' here would put the contradiction one layer earlier where nothing refuses it."
+
+type BuildCacheEndpointReads {
+  boot_id: HostRead
+  path_kind: EndpointPathKind
+  listener: EndpointListenerRead
+  owner_cgroup: HostRead
+  owner_proc_stat: HostRead
+  owner_principal: HostRead
+  owner_executable: HostRead
+}
+
+type BuildCacheEndpointSurvey {
+  observation: BuildCacheEndpointObservation
+  placement: BuildCacheServerPlacement
+  path: EndpointPathState
+  currency: ObservationCurrency
+}
+
+// --- argv construction ------------------------------------------------------
+
+fn endpoint_listener_argv(instance: BuildCacheInstance) -> List<String> {
+  match instance.endpoint {
+    SccacheServerUnixSocket { path: p } => ss_unix_listening_at_path_argv(path: p)
+    SccacheServerTcpPort { port: n } => ss_tcp_listening_on_port_argv(port: to_string(n))
+  }
+}
+
+data boot_id_path: String = "/proc/sys/kernel/random/boot_id"
+
+fn boot_id_read_argv() -> List<String> {
+  ["cat", boot_id_path]
+}
+
+fn endpoint_path_kind_argv(path: NonEmptyStr) -> List<String> {
+  ["stat", "-c", "%F", "--", path as String]
+}
+
+fn proc_pid_path(pid: Nat, leaf: String) -> String {
+  join(["/proc/", to_string(pid), "/", leaf], "")
+}
+
+fn owner_cgroup_argv(pid: Nat) -> List<String> {
+  ["cat", proc_pid_path(pid: pid, leaf: "cgroup")]
+}
+
+fn owner_proc_stat_argv(pid: Nat) -> List<String> {
+  ["cat", proc_pid_path(pid: pid, leaf: "stat")]
+}
+
+fn owner_principal_argv(pid: Nat) -> List<String> {
+  ["stat", "-c", "%U", "--", proc_pid_path(pid: pid, leaf: "")]
+}
+
+fn owner_executable_argv(pid: Nat) -> List<String> {
+  ["readlink", proc_pid_path(pid: pid, leaf: "exe")]
+}
+
+// --- decoders ---------------------------------------------------------------
+
+fn leading_digits_from(s: String, at: Int, acc: String) -> String {
+  if at >= string_length(s: s) {
+    acc
+  } else {
+    let c = char_at(s: s, pos: at)
+    if c >= "0" && c <= "9" {
+      leading_digits_from(s: s, at: at + 1, acc: concat(acc, c))
+    } else {
+      acc
+    }
+  }
+}
+
+fn leading_digits(s: String) -> String {
+  leading_digits_from(s: s, at: 0, acc: "")
+}
+
+fn nat_from_digits(digits: String, whence: String) -> EndpointListenerRead {
+  if digits == "" {
+    ListenerUndecided {
+      detail: concat("no decimal digits followed ", whence) as NonEmptyStr,
+    }
+  } else {
+    match parse_int(s: digits) {
+      Absent =>
+        ListenerUndecided {
+          detail: concat("the decimal run following ", concat(whence, " does not parse as an integer")) as NonEmptyStr,
+        }
+      Present { value: parsed } =>
+        match checked_int_magnitude(a: parsed) {
+          CheckedNatReady { value: n } => ListenerOwnerPid { pid: n }
+          CheckedNatOverflow { cause: _ } =>
+            ListenerUndecided {
+              detail: concat("the decimal run following ", concat(whence, " does not represent a process id")) as NonEmptyStr,
+            }
+        }
+    }
+  }
+}
+
+data listener_decode_keys_on_the_token_note: String = "THE PID IS FOUND BY THE `pid=` TOKEN, NOT BY A COLUMN OFFSET. ss renders address, state and queue columns at widths that vary with the socket, so counting fields would be a positional citation of a moving target -- the same decay DESIGN section 3 names for file:line citations, arrived at from the wire side. Two or more `pid=` tokens is EndpointOwnershipAmbiguous rather than a first-match pick: a `head -1` here is the fabricated plausible output, because the whole value of this observation is that the endpoint resolves to exactly one owner. A line that arrived with no `pid=` at all is Undecided and not None -- ss annotates ownership only when the caller may see it, so a missing process column is usually a privilege gap, and reading it as 'nobody is listening' would license an unlink against a live server."
+
+fn listener_of_ss_output(read: HostRead) -> EndpointListenerRead {
+  match read {
+    HostReadFailed { detail: d } => ListenerUndecided { detail: d }
+    HostReadText { text: t } => {
+      let parts = t.split(ss_process_column_pid_token as String)
+      let owners = parts.count() - 1
+      if owners == 0 {
+        if trim(t) == "" {
+          ListenerNone
+        } else {
+          ListenerUndecided {
+            detail: "ss listed a listening socket at this endpoint but annotated no owning process; the process column is normally withheld for want of privilege, so this is an unresolved owner rather than an absent one" as NonEmptyStr,
+          }
+        }
+      } else if owners > 1 {
+        match checked_int_magnitude(a: owners) {
+          CheckedNatReady { value: n } => ListenerAmbiguous { candidate_count: n }
+          CheckedNatOverflow { cause: _ } =>
+            ListenerUndecided { detail: "ss reported an uncountable number of endpoint owners" as NonEmptyStr }
+        }
+      } else {
+        match parts.skip(1).first() {
+          Present { value: tail } =>
+            nat_from_digits(digits: leading_digits(trim(tail)), whence: "ss's pid= token")
+          Absent =>
+            ListenerUndecided { detail: "ss output split on pid= yielded no tail to read a process id from" as NonEmptyStr }
+        }
+      }
+    }
+  }
+}
+
+data stat_format_is_the_type_word_note: String = "`stat -c %F` PRINTS THE OBJECT TYPE AS A WORD -- `socket`, `regular file`, `directory`, `symbolic link` -- so the path axis is decided by reading it rather than by a chain of test -e/-S calls. One argv, one round trip, and the non-socket answer arrives NAMED: EndpointPathConflict quotes the word, so an operator sees that the endpoint path is a directory rather than merely that it is not a socket. A nonzero exit is absence, which is the one place in this module where a failed command is a positive reading rather than an unavailability -- and it is safe exactly because stat's failure to stat a path it was asked for by name means no object is there."
+
+data stat_socket_type_word: String = "socket"
+
+fn path_kind_of_stat_read(read: HostRead, exit_success: Bool) -> EndpointPathKind {
+  if exit_success == false {
+    PathKindAbsent
+  } else {
+    match read {
+      HostReadFailed { detail: d } => PathKindUnreadable { detail: d }
+      HostReadText { text: t } => {
+        let word = trim(t)
+        if (word == stat_socket_type_word) {
+          PathKindSocket
+        } else if word == "" {
+          PathKindUnreadable {
+            detail: "stat reported success over the endpoint path and printed no object type" as NonEmptyStr,
+          }
+        } else {
+          PathKindOtherObject { described: word as NonEmptyStr }
+        }
+      }
+    }
+  }
+}
+
+fn currency_of_boot_id_read(read: HostRead) -> ObservationCurrency {
+  match read {
+    HostReadFailed { detail: d } =>
+      ObservationCurrencyUnknown {
+        detail: concat("the host's boot id could not be read, so whether this observation survives a reboot is unknown: ", d as String) as NonEmptyStr,
+      }
+    HostReadText { text: t } => {
+      let b = trim(t)
+      if b == "" {
+        ObservationCurrencyUnknown {
+          detail: "the host's boot id read returned empty text" as NonEmptyStr,
+        }
+      } else {
+        ObservationCurrent { observed_at_boot: b as NonEmptyStr }
+      }
+    }
+  }
+}
+
+data currency_is_read_first_and_never_derived_note: String = "CURRENCY IS THE BOOT ID, READ FROM THE HOST, AND THERE IS NO ObservationStale ARM PRODUCED HERE. This observer performs one read pass, so every fact it returns is as current as that pass; staleness is a property of a CACHED observation replayed later, and nothing in this producer caches. The arm exists on the type for the consumer that will replay one, and producing it here would be inventing an age this pass cannot have. What this producer CAN fail at is knowing the boot id at all, and that is ObservationCurrencyUnknown -- which the unlink admission refuses exactly as it refuses Stale, so an unreadable boot id costs a refusal rather than a race."
+
+// --- cgroup classification --------------------------------------------------
+
+data runner_slot_unit_prefix: String = "actions-runner@"
+data systemd_unit_suffix: String = ".service"
+
+fn cgroup_last_segment_from(segments: List<String>) -> String {
+  match segments.last() {
+    Present { value: s } => s
+    Absent => ""
+  }
+}
+
+fn unit_name_of_cgroup_path(cgroup_path: NonEmptyStr) -> String {
+  let leaf = cgroup_last_segment_from(segments: (cgroup_path as String).split("/"))
+  if leaf.ends_with(systemd_unit_suffix) { leaf } else { "" }
+}
+
+data runner_slot_index_is_decided_against_current_intent_note: String = "THE LIFECYCLE IS A QUESTION ABOUT TODAY'S FLEET, ASKED AT CLASSIFICATION TIME. gunbc.build_cache_instance runner_slot_lifecycle_note fixes the rule -- a slot is retired exactly when it does not appear in the fleet's desired slots now, not when someone remembers it being decommissioned -- so the index parsed out of the cgroup is compared against gunbc_runner_slots_per_host for the host the instance names. That comparison is why the coproduct can carry a slot and a lifecycle together and never half-filled: finding the slot and deciding its lifecycle are the same act (review 46217). A cgroup whose unit looks like a runner slot but whose index does not parse is OwnerContextUndecided, never a fabricated index."
+
+fn runner_slot_index_text(unit_name: String) -> String {
+  let after_at = unit_name.substring(start: string_length(s: runner_slot_unit_prefix), end: string_length(s: unit_name))
+  let instance_token = after_at.substring(start: 0, end: string_length(s: after_at) - string_length(s: systemd_unit_suffix))
+  match instance_token.split("-").last() {
+    Present { value: tail } => tail
+    Absent => ""
+  }
+}
+
+fn runner_slot_lifecycle_for(host: HostIdentity, slot_index: Nat) -> RunnerSlotLifecycle {
+  if slot_index >= 1 && slot_index <= gunbc_runner_slots_per_host(host: host) {
+    DesiredRunnerSlot
+  } else {
+    RetiredRunnerSlot
+  }
+}
+
+fn runner_slot_index_value(index_text: String) -> CheckedNat {
+  match parse_int(s: index_text) {
+    Absent => checked_int_magnitude(a: 0 - 1)
+    Present { value: n } => checked_int_magnitude(a: n)
+  }
+}
+
+fn runner_owner_context(
+  instance: BuildCacheInstance,
+  unit_name: String,
+  cgroup_path: NonEmptyStr,
+) -> EndpointOwnerContext {
+  let index_text = leading_digits(runner_slot_index_text(unit_name: unit_name))
+  if index_text == "" {
+    OwnerContextUndecided {
+      detail: concat("the endpoint owner's cgroup names a runner-slot unit whose slot index does not parse: ", unit_name) as NonEmptyStr,
+      observed_cgroup: cgroup_path,
+    }
+  } else {
+    match runner_slot_index_value(index_text: index_text) {
+      CheckedNatOverflow { cause: _ } =>
+        OwnerContextUndecided {
+          detail: concat("the endpoint owner's cgroup names a runner-slot unit whose slot index is not a cardinal: ", unit_name) as NonEmptyStr,
+          observed_cgroup: cgroup_path,
+        }
+      CheckedNatReady { value: idx } =>
+        OwnerInRunnerSlot {
+          slot: RunnerSlotIdentity { host: instance.identity.host, slot_index: idx },
+          lifecycle: runner_slot_lifecycle_for(host: instance.identity.host, slot_index: idx),
+          observed_cgroup: cgroup_path,
+        }
+    }
+  }
+}
+
+fn owner_context_of_cgroup_path(
+  instance: BuildCacheInstance,
+  cgroup_path: NonEmptyStr,
+) -> EndpointOwnerContext {
+  let unit_name = unit_name_of_cgroup_path(cgroup_path: cgroup_path)
+  if unit_name == "" {
+    OwnerContextUndecided {
+      detail: "the endpoint owner's cgroup ends in no systemd unit, so no supervisor owns it" as NonEmptyStr,
+      observed_cgroup: cgroup_path,
+    }
+  } else if unit_name.starts_with(runner_slot_unit_prefix) {
+    runner_owner_context(instance: instance, unit_name: unit_name, cgroup_path: cgroup_path)
+  } else {
+    OwnerInSystemdUnit { unit: unit_name as NonEmptyStr, observed_cgroup: cgroup_path }
+  }
+}
+
+fn owner_context_of_cgroup_read(
+  instance: BuildCacheInstance,
+  read: HostRead,
+) -> EndpointOwnerContext {
+  match read {
+    HostReadFailed { detail: d } =>
+      OwnerContextUndecided {
+        detail: concat("the endpoint owner's cgroup could not be read: ", d as String) as NonEmptyStr,
+        observed_cgroup: "unread" as NonEmptyStr,
+      }
+    HostReadText { text: t } =>
+      match read_unified_cgroup_membership(content: t) {
+        CurrentCgroupObserved { relative_path: p } =>
+          owner_context_of_cgroup_path(instance: instance, cgroup_path: p)
+        MembershipMissing =>
+          OwnerContextUndecided {
+            detail: "the endpoint owner's /proc/PID/cgroup carries no unified (v2) hierarchy line" as NonEmptyStr,
+            observed_cgroup: "unread" as NonEmptyStr,
+          }
+        MembershipAmbiguous { first: a, second: b } =>
+          OwnerContextUndecided {
+            detail: concat("the endpoint owner reports two unified cgroup paths: ", concat(a as String, concat(" and ", b as String))) as NonEmptyStr,
+            observed_cgroup: a,
+          }
+        MembershipMalformed { cause: _ } =>
+          OwnerContextUndecided {
+            detail: "the endpoint owner's /proc/PID/cgroup did not parse" as NonEmptyStr,
+            observed_cgroup: "unread" as NonEmptyStr,
+          }
+      }
+  }
+}
+
+// --- process identity -------------------------------------------------------
+
+data proc_stat_starttime_note: String = "THE PROCESS START TIME IS FIELD 22 OF /proc/PID/stat, READ FROM AFTER THE LAST `)`. Field 2 is the executable name in parentheses and it may itself contain spaces and parentheses, so splitting the whole line on spaces is wrong for exactly the processes whose names are adversarial. proc(5) fixes the shape: everything after the FINAL `)` is fields 3 onward, separated by single spaces, so starttime is the 20th token of that tail. A tail too short to hold 20 tokens is a refusal, not a zero -- a fabricated start time would make two observations of DIFFERENT processes compare equal, which is the one thing ProcessIdentity exists to prevent."
+
+fn text_after_last(s: String, marker: String) -> String {
+  match s.split(marker).last() {
+    Present { value: tail } => tail
+    Absent => ""
+  }
+}
+
+data proc_stat_starttime_token_index: Int = 19
+
+fn starttime_of_proc_stat_text(text: String) -> String {
+  let tail = trim(text_after_last(s: text, marker: ")"))
+  match tail.split(" ").skip(proc_stat_starttime_token_index).first() {
+    Present { value: tok } => trim(tok)
+    Absent => ""
+  }
+}
+
+type OwnerIdentityOutcome
+  = OwnerIdentityObserved { identity: ProcessIdentity }
+  | OwnerIdentityUnread { detail: NonEmptyStr }
+
+fn owner_identity(
+  pid: Nat,
+  currency: ObservationCurrency,
+  proc_stat: HostRead,
+) -> OwnerIdentityOutcome {
+  match currency {
+    ObservationStale { detail: d } =>
+      OwnerIdentityUnread {
+        detail: concat("a process id is only an identity relative to a boot, and this observation is not current: ", d as String) as NonEmptyStr,
+      }
+    ObservationCurrencyUnknown { detail: d } =>
+      OwnerIdentityUnread {
+        detail: concat("a process id is only an identity relative to a boot, and the boot id is unread: ", d as String) as NonEmptyStr,
+      }
+    ObservationCurrent { observed_at_boot: boot } =>
+      match proc_stat {
+        HostReadFailed { detail: d } =>
+          OwnerIdentityUnread {
+            detail: concat("the endpoint owner's /proc/PID/stat could not be read, so its start time is unknown and its pid is not an identity: ", d as String) as NonEmptyStr,
+          }
+        HostReadText { text: t } => {
+          let start = starttime_of_proc_stat_text(text: t)
+          if start == "" {
+            OwnerIdentityUnread {
+              detail: "the endpoint owner's /proc/PID/stat did not yield a start time field" as NonEmptyStr,
+            }
+          } else {
+            OwnerIdentityObserved {
+              identity: ProcessIdentity { boot_id: boot, pid: pid, start_time: start as NonEmptyStr },
+            }
+          }
+        }
+      }
+  }
+}
+
+fn read_text_or(read: HostRead, fallback: String) -> String {
+  match read {
+    HostReadText { text: t } => {
+      let v = trim(t)
+      if v == "" { fallback } else { v }
+    }
+    HostReadFailed { detail: _ } => fallback
+  }
+}
+
+// --- the two axes -----------------------------------------------------------
+
+fn endpoint_owner_observation(
+  instance: BuildCacheInstance,
+  reads: BuildCacheEndpointReads,
+  currency: ObservationCurrency,
+) -> BuildCacheEndpointObservation {
+  match reads.listener {
+    ListenerNone => EndpointAbsent { instance: instance }
+    ListenerAmbiguous { candidate_count: n } =>
+      EndpointOwnershipAmbiguous { instance: instance, candidate_count: n }
+    ListenerUndecided { detail: d } =>
+      EndpointObservationUnavailable {
+        instance: instance,
+        reason: EndpointPathUnreadable { detail: d },
+      }
+    ListenerOwnerPid { pid: pid } =>
+      match owner_identity(pid: pid, currency: currency, proc_stat: reads.owner_proc_stat) {
+        OwnerIdentityUnread { detail: d } =>
+          EndpointObservationUnavailable {
+            instance: instance,
+            reason: ProcTableUnreadable { detail: d },
+          }
+        OwnerIdentityObserved { identity: who } =>
+          EndpointOwnerObserved {
+            instance: instance,
+            owner: who,
+            executable: read_text_or(read: reads.owner_executable, fallback: "unread") as NonEmptyStr,
+            principal: read_text_or(read: reads.owner_principal, fallback: "unread") as NonEmptyStr,
+            owner_context: owner_context_of_cgroup_read(instance: instance, read: reads.owner_cgroup),
+            memory_limits: none,
+            memory_events: none,
+          }
+      }
+  }
+}
+
+data path_and_owner_are_joined_not_duplicated_note: String = "THE PATH AXIS READS THE SAME LISTENER FACT THE OWNER AXIS DOES, AND THAT IS A JOIN RATHER THAN A SECOND OPINION. gunbc.build_cache_endpoint_path's authority note fixes why the axes are separate: EndpointStaleSocket and EndpointPathAbsent both project to EndpointAbsent on the ownership axis, so ownership cannot carry the distinction actuation needs. What they must never do is disagree about whether a listener exists, which is exactly what would happen if each ran its own probe. So there is ONE listener read and both axes are derived from it -- the owner axis asks who, the path axis asks what is at the path -- and a host where the socket file is present with no listener yields EndpointStaleSocket on one axis and EndpointAbsent on the other by construction rather than by luck.\n\nTHE OBSERVER CONTRACT FOR EndpointStaleSocket IS SATISFIED HERE FOR THREE OF ITS FOUR CLAUSES AND THE FOURTH IS DECLARED. Clause (1), stat says socket: read. Clause (2), no listening entry at the path: read, and by ss's positive endpoint query rather than a name scan. Clause (4), one boot id across the pass: read, and an unreadable one degrades the whole survey to ObservationCurrencyUnknown, which the unlink admission refuses. Clause (3) -- that no /proc/*/fd entry resolves to the socket's inode, catching a process holding it open without listening -- is NOT read, because resolving it needs a glob over /proc, i.e. a shell, i.e. the emitted-shell surface this lane may not grow. The consequence is bounded and it is a refusal rather than a widen: this producer never returns EndpointStaleSocket, it returns EndpointPathObservationUnavailable naming the unread clause, so srv4's stranded socket stays refused-and-located instead of being unlinked on three quarters of the evidence. DISSOLVE-ON: a typed fd-inode operation (the same #5828 typed-argv work this lane's shell dissolution waits on) makes clause (3) readable, at which point this arm returns EndpointStaleSocket and the unlink becomes reachable."
+
+data stale_socket_unread_clause_detail: NonEmptyStr = "the endpoint path holds a socket that nothing is listening on, which is the stale-socket shape; but this observer cannot establish the third clause of the stale-socket contract -- that no open file descriptor anywhere in /proc still resolves to the socket's inode -- because resolving it requires a glob over /proc that this lane may not emit as shell. Refusing rather than unlinking on partial evidence: a process holding the socket open without listening is exactly the case the unread clause catches, and unlinking under it severs a live server"
+
+fn endpoint_path_state(
+  instance: BuildCacheInstance,
+  reads: BuildCacheEndpointReads,
+  observation: BuildCacheEndpointObservation,
+) -> EndpointPathState {
+  match reads.path_kind {
+    PathKindUnreadable { detail: d } =>
+      EndpointPathObservationUnavailable { reason: EndpointPathUnreadable { detail: d } }
+    PathKindOtherObject { described: what } =>
+      EndpointPathConflict {
+        detail: concat(
+          concat("the endpoint path holds a ", what as String),
+          ", not a socket; nothing in this lane created it and removing it would destroy an object of unknown ownership",
+        ) as NonEmptyStr,
+      }
+    PathKindNoFilesystemPath =>
+      match observation {
+        EndpointOwnerObserved {
+          instance: _, owner: o, executable: _, principal: _,
+          owner_context: _, memory_limits: _, memory_events: _,
+        } =>
+          EndpointListening { owner: o }
+        EndpointAbsent { instance: _ } => EndpointPathAbsent
+        EndpointOwnershipAmbiguous { instance: _, candidate_count: _ } =>
+          EndpointPathObservationUnavailable {
+            reason: EndpointPathUnreadable {
+              detail: "the TCP endpoint resolved to more than one listening owner" as NonEmptyStr,
+            },
+          }
+        EndpointObservationUnavailable { instance: _, reason: r } =>
+          EndpointPathObservationUnavailable { reason: r }
+      }
+    PathKindAbsent =>
+      match reads.listener {
+        ListenerNone => EndpointPathAbsent
+        ListenerOwnerPid { pid: _ } =>
+          EndpointPathObservationUnavailable {
+            reason: EndpointPathUnreadable {
+              detail: "a process holds a listen on this endpoint while the path itself does not exist; the two reads disagree and the path state is therefore unread rather than absent" as NonEmptyStr,
+            },
+          }
+        ListenerAmbiguous { candidate_count: _ } =>
+          EndpointPathObservationUnavailable {
+            reason: EndpointPathUnreadable {
+              detail: "the endpoint resolved to more than one listening owner, so no single path state follows from it" as NonEmptyStr,
+            },
+          }
+        ListenerUndecided { detail: d } =>
+          EndpointPathObservationUnavailable { reason: EndpointPathUnreadable { detail: d } }
+      }
+    PathKindSocket =>
+      match observation {
+        EndpointOwnerObserved {
+          instance: _, owner: o, executable: _, principal: _,
+          owner_context: _, memory_limits: _, memory_events: _,
+        } =>
+          EndpointListening { owner: o }
+        EndpointAbsent { instance: _ } =>
+          EndpointPathObservationUnavailable {
+            reason: EndpointPathUnreadable { detail: stale_socket_unread_clause_detail },
+          }
+        EndpointOwnershipAmbiguous { instance: _, candidate_count: _ } =>
+          EndpointPathObservationUnavailable {
+            reason: EndpointPathUnreadable {
+              detail: "the endpoint socket resolved to more than one listening owner; the path is occupied but by whom is unresolved" as NonEmptyStr,
+            },
+          }
+        EndpointObservationUnavailable { instance: _, reason: r } =>
+          EndpointPathObservationUnavailable { reason: r }
+      }
+  }
+}
+
+fn survey_build_cache_endpoint(
+  instance: BuildCacheInstance,
+  reads: BuildCacheEndpointReads,
+) -> BuildCacheEndpointSurvey {
+  let currency = currency_of_boot_id_read(read: reads.boot_id)
+  let observation = endpoint_owner_observation(instance: instance, reads: reads, currency: currency)
+  BuildCacheEndpointSurvey {
+    observation: observation,
+    placement: placement_of_endpoint_observation(observed: observation),
+    path: endpoint_path_state(instance: instance, reads: reads, observation: observation),
+    currency: currency,
+  }
+}
+
+fn unreachable_host_reads(detail: NonEmptyStr) -> BuildCacheEndpointReads {
+  BuildCacheEndpointReads {
+    boot_id: HostReadFailed { detail: detail },
+    path_kind: PathKindUnreadable { detail: detail },
+    listener: ListenerUndecided { detail: detail },
+    owner_cgroup: HostReadFailed { detail: detail },
+    owner_proc_stat: HostReadFailed { detail: detail },
+    owner_principal: HostReadFailed { detail: detail },
+    owner_executable: HostReadFailed { detail: detail },
+  }
+}
+
+data unreachable_is_a_read_state_not_a_short_circuit_note: String = "A HOST THAT COULD NOT BE REACHED PRODUCES A FULL READS RECORD OF FAILURES RATHER THAN AN EARLY RETURN. The temptation is to answer unreachability with one ServerPlacementUnknown at the top of the producer, which is the right verdict and the wrong construction: it puts a second path through the decode that no fixture exercises and that no future arm addition is forced to consider. Feeding the ordinary decode a record whose every field is HostReadFailed reaches the same verdict THROUGH the arms that a live refusal would take, so the unreachable case and the denied-read case are one code path and stay one forever."
