@@ -4216,10 +4216,7 @@ fn emit_parametric_phantom_opaque_struct(item: Node, map_key_required: Bool, sou
   let item_text = authored_name_at(source_indices: source_indices, node: item)
   let type_params = emit_type_params(params: item.params, source_indices: source_indices)
   let generic_names = item_generic_param_names(item: item, source_indices: source_indices)
-  let marker_ty = match generic_names |> first {
-    Present { value: g } => concat("std::marker::PhantomData<", to_pascal(name: g), ">")
-    Absent => "std::marker::PhantomData<()>"
-  }
+  let marker_ty = concat("std::marker::PhantomData<", rust_phantom_marker_inner(unused: generic_names), ">")
   concat(
     concat(rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(base: phantom_opaque_carrier_derive_traits(), map_key_required: map_key_required)), "\n"),
     rust_visibility_prefix(),
