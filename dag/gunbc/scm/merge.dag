@@ -462,6 +462,10 @@ fn role_value_of_desired(desired: DesiredRoleValue) -> RoleValue {
   }
 }
 
+// ONLY THE FIRST AUTHORING RESOLVES THE ROLE. A later competing authoring is recorded as an
+// alternative and must NOT overwrite it: silently taking the last writer is the fabricated winner
+// this outcome type exists to refuse.
+//
 // THE FOLD NO LONGER SHORT-CIRCUITS ON A CONTEST. It records every authored alternative and keeps
 // going, so the contested set is complete and order-independent; the contest is reported after the
 // whole population has been seen. It still short-circuits on a REFUSAL, because a refusal is a
@@ -480,9 +484,6 @@ fn apply_requirement(acc: MergeApplyAcc, req: Requirement) -> MergeApplyAcc {
             refusal: Present { value: cause },
           }
         Normalized { store: store, desired: desired } => {
-          // ONLY THE FIRST AUTHORING RESOLVES THE ROLE. A later competing authoring is recorded as
-          // an alternative and must NOT overwrite it: silently taking the last writer is the
-          // fabricated winner this outcome type exists to refuse.
           let next_roles =
             if already_authored(authored: acc.authored, role: role) {
               acc.roles
