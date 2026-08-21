@@ -1,6 +1,5 @@
 module test.claim.runner_slot_allocation_witness
 
-
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn runner_slot_allocation_wall_holds() -> Bool {
@@ -41,15 +40,15 @@ data widths_are_pinned_on_both_axes_note: String = "MEMORY ADMISSIONS AND COMMIT
 test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool {
   gunbc.runner_slot_allocation.host_memory_admitted_width(host: operator_host_srv1) == 5
     && gunbc.runner_slot_allocation.host_memory_admitted_width(host: operator_host_srv2) == 5
-    && gunbc.runner_slot_allocation.host_memory_admitted_width(host: operator_host_srv3) == 7
-    && gunbc.runner_slot_allocation.host_memory_admitted_width(host: operator_host_srv4) == 7
+    && gunbc.runner_slot_allocation.host_memory_admitted_width(host: operator_host_srv3) == 6
+    && gunbc.runner_slot_allocation.host_memory_admitted_width(host: operator_host_srv4) == 6
 }
 
 test fn runner_slot_allocation_committed_widths_match_memory_admission() -> Bool {
   gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: operator_host_srv1) == 5
     && gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: operator_host_srv2) == 5
-    && gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: operator_host_srv3) == 7
-    && gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: operator_host_srv4) == 7
+    && gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: operator_host_srv3) == 6
+    && gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(host: operator_host_srv4) == 6
 }
 
 test fn runner_slot_allocation_srv4_disk_unconstrained_at_allocation() -> Bool {
@@ -78,7 +77,7 @@ test fn runner_slot_allocation_unknown_host_refuses_a_width() -> Bool {
 }
 
 test fn runner_slot_allocation_memory_high_clears_the_measured_floor() -> Bool {
-  std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_high) > std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_floor_minimum_viable_armed_budget)
+  std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_high) > std.measure.byte_size_count(b: gunbc_floor_minimum_viable_armed_budget)
 }
 
 test fn runner_slot_allocation_enforcement_expected_cap_is_desired_memory_max() -> Bool {
@@ -101,34 +100,43 @@ data srv2_03_readback_refusal_note: String = "SUBJECT C (refusal): gunbc_runner_
 
 data srv2_03_converge_floor_fit_note: String = "SUBJECT D (converge consequence): ANSWERED, not pending. Modeled-budget compliance under the superseded 14GiB/13GiB row is now MEASURED and it failed — an uncensored 15509315584-byte floor peak above that max, plus srv1 pinned at exactly 13.00GiB with 829 and 44803 memory.high events once it was actually converged there. The floor cgroup leaf events at T5 entry remain zero as the baseline they always were, and srv2-03 has no envelope left to enforce because the declaration moved to meet it. Superseded detail retained: converge would first enforce the modeled envelope against the CI floor consumer (gunbc_srv2_03_converge_floor_fit_note). No OOM outcome and no floor byte figure are asserted."
 
-test fn witness_declared_row_pins_14_13_gib_from_floor_peak_calibration() -> Bool {
-  std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_max) == std.measure.byte_size_count(b: std.measure.byte_size(15032385536))
-    && std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_high) == std.measure.byte_size_count(b: std.measure.byte_size(13958643712))
+test fn witness_declared_row_pins_16_15_gib_from_floor_peak_ruling() -> Bool {
+  std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_max) == std.measure.byte_size_count(b: std.measure.byte_size(17179869184))
+    && std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_high) == std.measure.byte_size_count(b: std.measure.byte_size(16106127360))
 }
 
-test fn witness_srv2_03_effective_cap_pins_16_15_gib_and_drifts() -> Bool {
+test fn witness_declared_high_clears_measured_floor_peak() -> Bool {
+  std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_high)
+    >= std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_floor_measured_peak_observation)
+}
+
+test fn witness_floor_peak_input_is_uncensored_not_a_throttle_pin() -> Bool {
+  gunbc.runner_slot_allocation.gunbc_floor_measured_peak_is_uncensored()
+}
+
+test fn witness_RED_binary_unit_reading_would_exceed_the_armed_line() -> Bool {
+  std.measure.byte_size_count(b: std.measure.byte_size(16750372454)) > std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_floor_measured_peak_armed_high)
+}
+
+test fn witness_srv2_03_observation_no_longer_drifts_after_ruling() -> Bool {
   match gunbc.runner_slot_allocation.gunbc_srv2_03_effective_cap_observation {
     RunnerSlotEffectiveCapMeasured { runner_unit: unit, memory_max: max, memory_high: high, probed_at: _ } =>
       unit == "actions-runner@srv2-03.service"
         && std.measure.byte_size_count(b: max) == std.measure.byte_size_count(b: std.measure.byte_size(17179869184))
         && std.measure.byte_size_count(b: high) == std.measure.byte_size_count(b: std.measure.byte_size(16106127360))
-        && gunbc.runner_slot_allocation.runner_slot_effective_memory_max_drifts_from_declaration(effective: max)
-        && gunbc.runner_slot_allocation.runner_slot_effective_memory_high_drifts_from_declaration(effective: high)
+        && !gunbc.runner_slot_allocation.runner_slot_effective_memory_max_drifts_from_declaration(effective: max)
+        && !gunbc.runner_slot_allocation.runner_slot_effective_memory_high_drifts_from_declaration(effective: high)
     _ => false
   }
 }
 
-test fn witness_srv2_03_refuses_effective_readback_as_declaration_authority() -> Bool {
-  gunbc.runner_slot_allocation.gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation(
-    obs: gunbc.runner_slot_allocation.gunbc_srv2_03_effective_cap_observation
-  )
+test fn witness_readback_refusal_stays_witnessed_by_synthetic_drift() -> Bool {
+  gunbc.runner_slot_allocation.gunbc_readback_refusal_stays_witnessed_by_synthetic_drift()
 }
-
 
 test fn witness_srv2_03_floor_leaf_cgroup_events_at_entry_are_zero() -> Bool {
   gunbc.runner_slot_allocation.srv2_03_floor_leaf_cgroup_events_at_entry_are_zero()
 }
-
 
 test fn witness_srv2_03_RED_converged_cap_would_not_refuse_readback_reconciliation() -> Bool {
   !gunbc.runner_slot_allocation.gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation(

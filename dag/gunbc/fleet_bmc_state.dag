@@ -141,7 +141,7 @@ fn bmc_fan_reboot_timing_receipt(
 fn bmc_fan_reboot_activation_evidence(
   receipt: gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt,
   admission: std.state_durability.StateDurabilityAdmission<product.placement_supply.HostIdentity, gunbc.bmc_fan_projection.BmcFanConfigReadbackSubject>,
-) -> StateActivationEvidence<HostIdentity, BmcFanConfigReadbackSubject> {
+) -> StateActivationEvidence<product.placement_supply.HostIdentity, BmcFanConfigReadbackSubject> {
   match redfish_host_power_state_continuity_verdict(
     power_before: receipt.host_power_before,
     power_after: receipt.host_power_after,
@@ -184,7 +184,7 @@ fn bmc_fan_reboot_preservation_outcome(
   receipt: gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt,
   admission: std.state_durability.StateDurabilityAdmission<product.placement_supply.HostIdentity, gunbc.bmc_fan_projection.BmcFanConfigReadbackSubject>,
   timing: BmcFanRebootTimingBuilt,
-) -> StatePreservationOutcome<HostIdentity, BmcFanConfigReadbackSubject> {
+) -> StatePreservationOutcome<product.placement_supply.HostIdentity, BmcFanConfigReadbackSubject> {
   if receipt.bmc_returned {
     std.state_durability.StatePreserved {
       before: std.state_durability.StateBeforeReadbackReceipt {

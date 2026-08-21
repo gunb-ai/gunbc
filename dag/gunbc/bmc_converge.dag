@@ -46,7 +46,7 @@ type BmcFanPolicySuitability
 
 type BmcFanPolicyDurabilityGate
   = BmcFanPolicyDurabilityQualified {
-      qualification: StateDurabilityQualification<HostIdentity, BmcFanConfigReadbackSubject>,
+      qualification: StateDurabilityQualification<product.placement_supply.HostIdentity, BmcFanConfigReadbackSubject>,
     }
   | BmcFanPolicyDurabilityVerdictRefused {
       verdict: std.state_durability.StateDurabilityVerdict<product.placement_supply.HostIdentity, gunbc.bmc_fan_projection.BmcFanConfigReadbackSubject>,
