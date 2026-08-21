@@ -1,5 +1,6 @@
 module gunbc.list_membership_operation_gap
 
+
 // A CALL SHAPE NO DECLARATION SERVES. MEASURED, NOT PROPOSED.
 //
 // Ten call sites perform two-argument membership of an item in a list. No declaration anywhere
@@ -30,7 +31,8 @@ module gunbc.list_membership_operation_gap
 // measurement established.
 
 type ListMembershipGapSite {
-  collection_producer: std.decl_ref.DeclarationRef
+  collection_producer: DeclarationRef
+  index_coverage: CitationIndexCoverage
   element_type: String
   occurrences: Int
   argument_shape: MembershipArgumentShape
@@ -68,33 +70,85 @@ type MembershipArgumentShape
 // the enclosing function — the parameter has no declaration of its own to cite.
 data list_membership_gap_sites: std.types.List<ListMembershipGapSite> = [
   {
-    collection_producer: std.decl_ref.decl_ref(module_path: "gunbc.publication_policy", decl_name: "known_publication_roots"),
+    collection_producer: decl_ref(module_path: "gunbc.publication_policy", decl_name: "known_publication_roots"),
+    index_coverage: CitableThroughDeclIndex,
     element_type: "String",
     occurrences: 1,
     argument_shape: PositionalPair,
   },
   {
-    collection_producer: std.decl_ref.decl_ref(module_path: "gunbc.session_auto_publish", decl_name: "write_set_refusals"),
+    collection_producer: decl_ref(module_path: "gunbc.session_auto_publish", decl_name: "write_set_refusals"),
+    index_coverage: CitableThroughDeclIndex,
     element_type: "String",
     occurrences: 1,
     argument_shape: PositionalPair,
   },
   {
-    collection_producer: std.decl_ref.decl_ref(module_path: "extdeps.unicode.blocks", decl_name: "zero_width_codepoints"),
+    collection_producer: decl_ref(module_path: "extdeps.unicode.blocks", decl_name: "zero_width_codepoints"),
+    index_coverage: CitableThroughDeclIndex,
     element_type: "Int",
     occurrences: 1,
     argument_shape: NamedItemWithoutEquality,
   },
   {
-    collection_producer: std.decl_ref.decl_ref(module_path: "test.claim.attribution_span_witness_test", decl_name: "unattributed_widths"),
+    collection_producer: decl_ref(module_path: "test.claim.attribution_span_witness", decl_name: "unattributed_widths"),
+    index_coverage: OutsideDeclIndexTestWitnessModule,
     element_type: "Nat",
     occurrences: 3,
     argument_shape: PositionalPair,
   },
   {
-    collection_producer: std.decl_ref.decl_ref(module_path: "test.claim.recorded_observation_envelope_witness_test", decl_name: "active_ids"),
+    collection_producer: decl_ref(module_path: "test.claim.recorded_observation_envelope_witness", decl_name: "active_ids"),
+    index_coverage: OutsideDeclIndexTestWitnessModule,
     element_type: "String",
     occurrences: 4,
     argument_shape: PositionalPair,
   },
 ]
+
+// TWO OF THESE FIVE MODULE PATHS WERE FALSE WHEN THIS CARRIER MERGED, and the enrollment below
+// caught them on its first execution. Both named the FILE
+// (`test.claim.attribution_span_witness_test`) where the module declares itself without the `_test`
+// suffix (`test.claim.attribution_span_witness`). A grep for the declaration name passed, because
+// the declaration name was right; nothing checked the module path it was attributed to. Four
+// reviews passed over the false rows, one of which verified the citations by hand.
+//
+// That is the whole argument for enrollment in one specimen: hand-verification and name-level grep
+// both certify a citation whose ADDRESS is wrong, and only resolution asks the question they skip.
+
+// ENROLLMENT PROJECTION — the `collection_producer` refs, exposed so
+// `v2.lens.cited_symbol_resolution` can resolve them. Enrolled in the same change as the sibling
+// instance carrier `gunbc.lambda_argument_typing_gate`, and not after it: two carriers of one shape
+// where only one is enrolled is the exact asymmetry that lens's own widening note was written
+// against — one class of reference enforced and an adjacent one silently exempt.
+data list_membership_gap_empty_declaration_refs: List<DeclarationRef> = []
+
+fn list_membership_gap_declaration_refs_from(
+  sites: List<ListMembershipGapSite>
+) -> List<DeclarationRef> {
+  fold_list(
+    xs: sites,
+    empty: list_membership_gap_empty_declaration_refs,
+    cons: fn(acc, s) { concat(acc, [s.collection_producer]) }
+  )
+}
+
+fn list_membership_gap_citable_sites() -> List<ListMembershipGapSite> {
+  filter(list_membership_gap_sites, s => citation_is_outside_index(coverage: s.index_coverage) == false)
+}
+
+fn list_membership_gap_outside_index_sites() -> List<ListMembershipGapSite> {
+  filter(list_membership_gap_sites, s => citation_is_outside_index(coverage: s.index_coverage))
+}
+
+fn list_membership_gap_declaration_refs() -> List<DeclarationRef> {
+  list_membership_gap_declaration_refs_from(sites: list_membership_gap_citable_sites())
+}
+
+fn list_membership_gap_outside_index_refs() -> List<DeclarationRef> {
+  list_membership_gap_declaration_refs_from(sites: list_membership_gap_outside_index_sites())
+}
+
+fn list_membership_gap_outside_index_count() -> Int {
+  length(xs: list_membership_gap_outside_index_sites())
+}
