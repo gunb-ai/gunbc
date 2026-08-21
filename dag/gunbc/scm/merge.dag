@@ -15,21 +15,8 @@ import v2.std.node {
 
 import v2.std.dependency {
   DependencyKind,
-  Contains,
-  BindsTo,
-  TypeDependsOn,
-  DataDependsOn,
-  EffectDependsOn,
-  ResourceDependsOn,
-  ModuleDependsOn,
-  BarrierBefore,
-  PlacementDependsOn,
-  ModelDependsOn,
-  ProjectionDependsOn,
-  GeneratedFrom,
-  VerifiedBy,
-  PromotedBy,
-  BootstrapDependsOn,
+  DependencyKindClassifier,
+  classify_dependency_kind,
 }
 
 import gunbc.scm.object_store {
@@ -97,75 +84,95 @@ type MergeDependency {
 // DependencyKind means merge's policy is a CLASSIFIER over the real kinds, which is the only part
 // that is genuinely merge-specific.
 //
-// THE EXHAUSTIVE MATCH IS THE ENFORCEMENT. A sixteenth kind added upstream fails to compile here
-// until merge states its policy for it, so "every other kind refuses by name" is a structural
-// property rather than a catch-all arm someone must remember to route through. The earlier local
-// enum had an UnsupportedKind { name: Symbol } escape hatch that would have silently absorbed any
-// new kind under a stringly name -- validation standing where construction was available.
+// THE POLICY IS A CLASSIFIER VALUE, AND THE DISPATCH IS BORROWED, NOT REWRITTEN. An earlier
+// revision answered these three questions with three hand-written 15-arm matches, which is
+// classify_dependency_kind re-implemented three times -- the same section 3 fork this module was
+// already corrected for once, at the dispatch layer instead of the vocabulary layer. What is
+// genuinely merge-specific is the three POLICY VALUES below; the walk from a kind to its entry
+// belongs to v2.std.dependency and is used from there.
+//
+// THE ENFORCEMENT SURVIVES THE CHANGE. A sixteenth kind adds a sixteenth field to
+// DependencyKindClassifier, so these record literals fail to compile until merge states its
+// policy for it -- the same compile-time obligation the matches carried, now owed to one
+// authority rather than restated in three places. The local enum this replaced had an
+// UnsupportedKind { name: Symbol } escape hatch that would have absorbed any new kind under a
+// stringly name -- validation standing where construction was available.
 // CONTAINMENT IS NOT PROPAGATION. This is the single rule the rewrite exists to enforce. The live
 // affected-set closure traverses `Contains` in BOTH directions, so an edit to `f` reaches its
 // container `M` and then every other child of `M` -- pulling in an independent sibling precisely
 // because it shares a container. That is the file model returning through the dependency lens. Here
 // a child-body change never implicates its siblings, and the sibling-preservation claim is the
 // witness that would go red if it ever did.
-fn kind_propagates_removal(kind: DependencyKind) -> Bool {
-  match kind {
-    DataDependsOn => true
-    BindsTo => true
-    Contains => false
-    TypeDependsOn => false
-    EffectDependsOn => false
-    ResourceDependsOn => false
-    ModuleDependsOn => false
-    BarrierBefore => false
-    PlacementDependsOn => false
-    ModelDependsOn => false
-    ProjectionDependsOn => false
-    GeneratedFrom => false
-    VerifiedBy => false
-    PromotedBy => false
-    BootstrapDependsOn => false
+fn merge_removal_propagation_classifier() -> DependencyKindClassifier<Bool> {
+  DependencyKindClassifier {
+    contains: false,
+    binds_to: true,
+    type_depends_on: false,
+    data_depends_on: true,
+    effect_depends_on: false,
+    resource_depends_on: false,
+    module_depends_on: false,
+    barrier_before: false,
+    placement_depends_on: false,
+    model_depends_on: false,
+    projection_depends_on: false,
+    generated_from: false,
+    verified_by: false,
+    promoted_by: false,
+    bootstrap_depends_on: false,
   }
+}
+
+fn merge_supported_kind_classifier() -> DependencyKindClassifier<Bool> {
+  DependencyKindClassifier {
+    contains: true,
+    binds_to: true,
+    type_depends_on: false,
+    data_depends_on: true,
+    effect_depends_on: false,
+    resource_depends_on: false,
+    module_depends_on: false,
+    barrier_before: false,
+    placement_depends_on: false,
+    model_depends_on: false,
+    projection_depends_on: false,
+    generated_from: false,
+    verified_by: false,
+    promoted_by: false,
+    bootstrap_depends_on: false,
+  }
+}
+
+fn merge_kind_name_classifier() -> DependencyKindClassifier<Symbol> {
+  DependencyKindClassifier {
+    contains: ^contains,
+    binds_to: ^binds_to,
+    type_depends_on: ^type_depends_on,
+    data_depends_on: ^data_depends_on,
+    effect_depends_on: ^effect_depends_on,
+    resource_depends_on: ^resource_depends_on,
+    module_depends_on: ^module_depends_on,
+    barrier_before: ^barrier_before,
+    placement_depends_on: ^placement_depends_on,
+    model_depends_on: ^model_depends_on,
+    projection_depends_on: ^projection_depends_on,
+    generated_from: ^generated_from,
+    verified_by: ^verified_by,
+    promoted_by: ^promoted_by,
+    bootstrap_depends_on: ^bootstrap_depends_on,
+  }
+}
+
+fn kind_propagates_removal(kind: DependencyKind) -> Bool {
+  classify_dependency_kind(classifier: merge_removal_propagation_classifier(), kind: kind)
 }
 
 fn kind_is_supported(kind: DependencyKind) -> Bool {
-  match kind {
-    DataDependsOn => true
-    BindsTo => true
-    Contains => true
-    TypeDependsOn => false
-    EffectDependsOn => false
-    ResourceDependsOn => false
-    ModuleDependsOn => false
-    BarrierBefore => false
-    PlacementDependsOn => false
-    ModelDependsOn => false
-    ProjectionDependsOn => false
-    GeneratedFrom => false
-    VerifiedBy => false
-    PromotedBy => false
-    BootstrapDependsOn => false
-  }
+  classify_dependency_kind(classifier: merge_supported_kind_classifier(), kind: kind)
 }
 
 fn kind_name(kind: DependencyKind) -> Symbol {
-  match kind {
-    DataDependsOn => ^data_depends_on
-    BindsTo => ^binds_to
-    Contains => ^contains
-    TypeDependsOn => ^type_depends_on
-    EffectDependsOn => ^effect_depends_on
-    ResourceDependsOn => ^resource_depends_on
-    ModuleDependsOn => ^module_depends_on
-    BarrierBefore => ^barrier_before
-    PlacementDependsOn => ^placement_depends_on
-    ModelDependsOn => ^model_depends_on
-    ProjectionDependsOn => ^projection_depends_on
-    GeneratedFrom => ^generated_from
-    VerifiedBy => ^verified_by
-    PromotedBy => ^promoted_by
-    BootstrapDependsOn => ^bootstrap_depends_on
-  }
+  classify_dependency_kind(classifier: merge_kind_name_classifier(), kind: kind)
 }
 
 // WHERE A ROLE'S VALUE CAME FROM IS PART OF THE ANSWER, NOT AN IMPLEMENTATION DETAIL. The
