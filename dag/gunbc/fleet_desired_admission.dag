@@ -1,6 +1,6 @@
 module gunbc.fleet_desired_admission
 
-import std.types { String, Bool, FilePath }
+import std.types { String, Bool, FilePath, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git.object_store {
@@ -28,7 +28,6 @@ import extdeps.github.workflow_run_event {
   WorkflowRunEventPayloadReadRefused,
   workflow_run_event_from_event_path,
 }
-import std.types { NonEmptyStr }
 import gunbc.fleet_revision_acceptance {
   AcceptedFleetRevision,
   RequiredCiSucceeded,
@@ -45,7 +44,7 @@ import gunbc.fleet_revision_acceptance {
   required_ci_refusal_message,
   default_branch_refusal_message,
 }
-import gunbc.fleet_desired_observe { observe_fleet_revision_relation }
+import gunbc.fleet_desired_observe { observe_fleet_revision_relation, observe_fleet_desired_revision }
 import gunbc.fleet_main_revision {
   FleetDesiredAdvanceInput,
   FleetDesiredExpectationRefusedInput,
@@ -68,7 +67,6 @@ import gunbc.fleet_main_revision {
   FleetDesiredAdmitted,
   FleetDesiredUnobserved,
 }
-import gunbc.fleet_desired_observe { observe_fleet_desired_revision }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
