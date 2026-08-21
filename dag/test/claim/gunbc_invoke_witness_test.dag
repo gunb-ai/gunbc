@@ -5,10 +5,14 @@ import gunbc.cli_invoke {
   claim_executor_run_plan_shell,
   claim_executor_run_plan_transport_argv,
   claim_executor_verify_artifacts_shell,
+  gunbc_run_invocation_words,
+  gunbc_run_transport_argv,
+  invocation_words_bare,
   source_roots_shell_flags,
   SourceRootBare,
   SourceRootRooted
 }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags }
 import gunbc.ci_spec {
   gunbc_ci_spec,
@@ -61,8 +65,11 @@ test fn gunbc_invoke_scheduler_matches_modeled_shell_holds() -> Bool {
   scheduler_invoke(spec: gunbc_ci_spec) == modeled
 }
 
+data gunbc_invoke_deploy_golden_trailing_newline_note: String = "THE GOLDEN IS UNEDITED AND THE ASSERTION MOVED INSTEAD, which is the opposite of the tempting fix and the reason this row exists. gunbc_ci_deploy_invoke_srv1_pre_migration_golden is a hand-frozen byte string authored before the orchestration-emit binding, deliberately independent of the helper so that a helper change cannot green both sides. After the binding it FAILED, and the cheap move -- repaste the new output into the golden -- would have destroyed exactly the independence that makes it worth having: a golden derived from the thing it checks asserts nothing. So the golden keeps its original bytes and the assertion below states the measured relationship instead. MEASURED, not assumed: concat(new output, newline) == the golden, exactly. The migration is byte-preserving for this invocation apart from one trailing newline. WHERE THAT NEWLINE WENT AND WHY IT IS NOT RESTORED: the deleted gunbc_run_shell appended a newline to every invocation it built, so a caller that added a receipt cat after it got the newline as a SEPARATOR and a caller that did not got it as a trailing byte -- one spelling doing two jobs. v2.std.orchestration joins pipeline steps with newlines and emits none after the last, so separation is now structural and the trailing byte simply has no author. Restoring it would mean re-introducing a per-site concat to reproduce an artifact of the mechanism this change deletes, which is DESIGN section 7's warts-for-byte-identity trap. The emitted workflows are unaffected either way: the YAML block-scalar emitter normalizes the block body, and the measured fleet-converge.yml diff carries no whitespace change at any bound step."
+
 test fn gunbc_invoke_deploy_matches_pre_migration_golden_holds() -> Bool {
-  gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage) == gunbc_ci_deploy_invoke_srv1_pre_migration_golden
+  concat(gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage), "\n") ==
+    gunbc_ci_deploy_invoke_srv1_pre_migration_golden
 }
 
 test fn gunbc_invoke_deploy_pre_migration_golden_red_on_wrong_entry_holds() -> Bool {
@@ -114,4 +121,53 @@ test fn gunbc_invoke_verify_artifacts_shell_nonempty_holds() -> Bool {
     && ci_floor_build_verify_script() == claim_executor_verify_artifacts_shell(
       artifact_paths: map(ci_floor_required_artifact_names(), name => artifact_shell_path(name: name))
     )
+}
+
+data gunbc_invoke_word_wall_note: String = "THE EXECUTING EVIDENCE that v2.workflow.gunbc_invoke_step_emit's fail-closed word wall is real rather than declared. The positive control is gunbc_invoke_deploy_matches_pre_migration_golden_holds above -- a hand-frozen golden authored before the migration, so the binding must reproduce bytes it did not author. The discriminating RED is below: an entry carrying a shell metacharacter must NOT reach the emitted command, and the refusal must be a marker that is not valid workflow shell so the committed workflow drift gate goes red. These two stay enrolled after the wall lands; deleting them would recreate specification-without-execution one rung up (DESIGN section 4b, dissolution-on-climb applies to production handling only, never the evidence)."
+
+test fn gunbc_invoke_word_wall_refuses_metacharacter_entry_holds() -> Bool {
+  let refused = gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/evil.dag; rm -rf /",
+    function: "probe_wet",
+    claim_run: false,
+    receipt_rel: none
+  )
+  string_contains(s: refused, pattern: "__GUNBC_INVOKE_EMIT_REFUSED__")
+    && !string_contains(s: refused, pattern: "rm -rf /")
+    && !string_contains(s: refused, pattern: ";")
+    && !string_contains(s: refused, pattern: "target/release/gunbc\" run")
+    && string_contains(s: refused, pattern: "dag/gunbc/evil.dag__rm_-rf_/")
+}
+
+test fn gunbc_invoke_word_wall_admits_ordinary_entry_holds() -> Bool {
+  let admitted = gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/host_reach_identity_probe.dag",
+    function: "probe_fleet_reach_wet",
+    claim_run: false,
+    receipt_rel: "target/fleet-reach-probe-receipt.txt"
+  )
+  !string_contains(s: admitted, pattern: "__GUNBC_INVOKE_EMIT_REFUSED__")
+    && string_contains(s: admitted, pattern: "\"$ROOT/target/release/gunbc\" run --source-root \"$ROOT/dag\"")
+    && string_contains(s: admitted, pattern: "--entry dag/gunbc/host_reach_identity_probe.dag --function probe_fleet_reach_wet")
+    && string_contains(s: admitted, pattern: "cat \"$ROOT/target/fleet-reach-probe-receipt.txt\"")
+}
+
+test fn gunbc_invoke_argv_and_emitted_step_share_one_authority_holds() -> Bool {
+  let argv = gunbc_run_transport_argv(
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/host_reach_identity_probe.dag",
+    function: "probe_fleet_reach_wet",
+    claim_run: false
+  )
+  let words = gunbc_run_invocation_words(
+    source_roots: witness_layer_roots,
+    entry: "dag/gunbc/host_reach_identity_probe.dag",
+    function: "probe_fleet_reach_wet",
+    claim_run: false
+  )
+  argv == invocation_words_bare(words: words)
+    && transport_argv_contains_flag(argv: argv, flag: "--entry")
+    && !transport_argv_contains_flag(argv: argv, flag: "--claim-run")
 }
