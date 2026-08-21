@@ -31,6 +31,9 @@ import gunbc.fleet_main_revision {
   admit_fleet_desired_advance,
 }
 import gunbc.fleet_desired_observe { observe_fleet_desired_revision }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // THIS MODULE IS THE LIVE HALF OF THE ADMISSION GATE, AND IT EXISTS BECAUSE THE GATE HAD
 // NO PRODUCTION CONSUMER. gunbc.fleet_main_revision states the rule in its own header —
@@ -201,6 +204,27 @@ fn fleet_desired_admission_decide(event: WorkflowRunEvent, observed: FleetDesire
       }
   }
 }
+
+// ONE SCAFFOLD OBLIGATION COVERS THE RENDERER AND ITS EXECUTOR, because they are one
+// independently removable unit: the renderer exists solely to feed that executor, both dissolve
+// into the same typed git CAS realization, and neither has a useful life without the other. The
+// predecessor this replaces (`gunbc.ci_spec` `gunbc_ci_advance_fleet_desired_script`) carried the
+// same pair of rows; re-declaring them here is where the remaining shell actually lives.
+//
+// THIS ROW AUTHORIZES NOTHING. `std.disposition.Scaffold` records the temporary construction and
+// its dissolution binding and says nothing about permission — the operator verdict is an external
+// fact bound to the current head, and unmarked debt is not a way to defer it (it is marked debt's
+// violation plus concealment). Declaring the population is what makes the verdict decidable.
+data fleet_desired_authorized_push_shell_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_desired_admission",
+    decl_name: "fleet_desired_authorized_push_script",
+    field: WholeDeclaration
+  }
+}
+
+data fleet_desired_authorized_push_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_desired_authorized_push_script + gunbc.fleet_desired_admission_workflow fleet_desired_admission_push_step — the admitted advance is a model-rendered script executed by `sh`, because extdeps.git.publication_transport PushRefUpdate is shadow-only and models no --force-with-lease, so the compare-and-swap the authority requires has no typed carrier; DISSOLVES WHEN the SCM ref-update realization lands as a typed git CAS service op carrying the expected-prior operand (membership-diff spine classify_change SCM-ref arm) invoked via host_effect_apply, at which point the renderer and the sh step are deleted together")
 
 // The authorized push, rendered from the decision's own operands. --force-with-lease names
 // the observed prior as the expected value, so a concurrent admission refuses at the remote
