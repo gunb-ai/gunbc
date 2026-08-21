@@ -32,10 +32,13 @@ move it, in opposite directions, and they do not cancel:
 
 Re-derived here from scratch; the inherited number was not reused for anything.
 
-## 2. Instrument, and the three defects found in building it
+## 2. Instrument, and the four defects found in building it
 
-The parent's brief named two defects to avoid; both were avoided, and a third was found
-here that invalidates any import-line-only instrument, including the inherited one.
+The parent's brief named two defects to avoid; both were avoided. Two more were found
+after that: the third here, which invalidates any import-line-only instrument including
+the inherited one, and the fourth **by review of this document's own first revision** —
+which is worth stating plainly, because that one had already produced a false escalation
+(§4b) before it was caught.
 
 1. **Module name is not derivable from the path.** Names come from the declared `module`
    line. All 3816 files carry one (checked; zero missing).
