@@ -10114,7 +10114,7 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
     let first_mock = mock_props |> first
     match first_mock {
       Present { value: mp } => match emit_data_value_json(value: field_init_node_value(n: mp), source_indices: source_indices) {
-        Refused { reason: r } => concat(log_line, "\ncompile_error!(\"", r, "\");")
+        Refused { reason: r } => concat(log_line, "\ncompile_error!(\"", escape_string_literal_body(s: r), "\");")
         Emitted { json: mock_json } => {
         let is_multi_field_conj = inferred.connective == Conj && inferred.children |> count > 1
         if is_multi_field_conj {
@@ -11073,7 +11073,7 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
     }
   } else if has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) {
     match emit_data_value_json(value: value, source_indices: scope.type_env.source_indices) {
-      Refused { reason: r } => concat("            compile_error!(\"", r, "\")")
+      Refused { reason: r } => concat("            compile_error!(\"", escape_string_literal_body(s: r), "\")")
       Emitted { json: json_str } => concat("            serde_json::from_value(serde_json::json!(", json_str, "))\n",
         "                .expect(\"valid data definition\")")
     }

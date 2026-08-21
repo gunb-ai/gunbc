@@ -27807,7 +27807,7 @@ pub fn emit_dry_run_branch_from_props(
                 let first_mock = mock_props.clone().first().cloned();
                 match first_mock.clone() {
     Some(mp) => match (*emit_data_value_json(field_init_node_value(mp.clone()), source_indices.clone())).clone() {
-    EmitterOutcome::Refused { reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(log_line.clone(), "\ncompile_error!(\"".to_string()), r.clone()), "\");".to_string()),
+    EmitterOutcome::Refused { reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(log_line.clone(), "\ncompile_error!(\"".to_string()), escape_string_literal_body(r.clone())), "\");".to_string()),
     EmitterOutcome::Emitted { json: mock_json, .. } => {
                     let is_multi_field_conj = ((inferred.connective.clone() == Connective::Conj) && ((inferred.children.clone().len() as i64) > 1));
 if is_multi_field_conj.clone() {
@@ -30376,7 +30376,10 @@ pub fn emit_data_def_body(
                 .clone()
                 {
                     EmitterOutcome::Refused { reason: r, .. } => v1_rt::concat(
-                        v1_rt::concat("            compile_error!(\"".to_string(), r.clone()),
+                        v1_rt::concat(
+                            "            compile_error!(\"".to_string(),
+                            escape_string_literal_body(r.clone()),
+                        ),
                         "\")".to_string(),
                     ),
                     EmitterOutcome::Emitted { json: json_str, .. } => v1_rt::concat(
