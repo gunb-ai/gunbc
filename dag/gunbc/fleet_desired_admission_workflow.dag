@@ -7,7 +7,7 @@ import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, WorkflowRunCompleted,
   WorkflowPermissions, PermWrite,
-  ConcurrencySpec, ConcurrencyMappingQueueNotMax,
+  ConcurrencySpec, ConcurrencyMappingQueueMax, QueueMaxCancelInProgressFalse,
   checkout_action,
   github_event_path_env
 }
@@ -17,7 +17,7 @@ import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.witness_floor_workflow { witness_floor_workflow_name, witness_floor_toolchain_step }
 import gunbc.fleet_desired_admission {
   fleet_desired_admission_event_payload_path,
-  fleet_desired_admission_authorized_push_path,
+  fleet_desired_admission_authorized_action_path,
 }
 import v2.std.optional { Present }
 import std.types { String }
@@ -34,7 +34,8 @@ import std.types { String }
 //
 // WHAT THIS REPLACES. deploy.yml previously ended with a step that stamped $GITHUB_SHA onto
 // refs/fleet/desired on every push to main, consulting nothing. The modeled gate
-// (admit_fleet_desired_advance) existed the whole time with its witness test as its only caller.
+// (gunbc.fleet_main_revision decide_fleet_desired_advance) existed the whole time with its witness
+// test as its only caller.
 // That is not a missing feature, it is a wall standing beside an actuator that walked around it,
 // and the blast radius reaches further than the ref: gunbc.roadmap_belt_actuate gates worker
 // dispatch on revision standing, so a desired ref that always equals whatever last landed makes
@@ -104,7 +105,7 @@ fn fleet_desired_admission_stage_payload_step() -> Step {
       "set -eu\n",
       "ROOT=", ci_repo_root_shell(), "\n",
       "mkdir -p \"$ROOT/target\"\n",
-      "rm -f \"$ROOT/", fleet_desired_admission_authorized_push_path, "\"\n",
+      "rm -f \"$ROOT/", fleet_desired_admission_authorized_action_path, "\"\n",
       "cp \"$", github_event_path_env, "\" \"$ROOT/", fleet_desired_admission_event_payload_path, "\"\n",
     ], ""),
     shell: none,
@@ -137,22 +138,24 @@ fn fleet_desired_admission_decide_step() -> Step {
   }
 }
 
-// THE ACTUATION CARRIES NO DECISION. It executes the push the model authorized and nothing
+// THE ACTUATION CARRIES NO DECISION. It executes the action the model authorized and nothing
 // else -- no ref name, no candidate revision, no expected prior appears in this shell, because
 // all three are operands of the admission and are rendered into the authorized script by the
 // decision that produced them. A shell that cannot name a revision cannot push an unadmitted
 // one. The test -s is not a second gate but a refusal to run an absent or empty authorization:
 // if the previous step somehow exited zero without writing one, this stops rather than
-// treating a missing authorization as permission.
-fn fleet_desired_admission_push_step() -> Step {
+// treating a missing authorization as permission. Two of the three authorized actions mutate no
+// ref at all -- already-converged and superseded -- and they still render a nonempty script, so
+// `test -s` continues to separate "nothing was written" from "nothing was to be done".
+fn fleet_desired_admission_action_step() -> Step {
   RunStep {
     name: Present { value: "Execute the authorized fleet-desired advance" },
     id: none,
     run: join([
       "set -eu\n",
       "ROOT=", ci_repo_root_shell(), "\n",
-      "test -s \"$ROOT/", fleet_desired_admission_authorized_push_path, "\"\n",
-      "sh \"$ROOT/", fleet_desired_admission_authorized_push_path, "\"\n",
+      "test -s \"$ROOT/", fleet_desired_admission_authorized_action_path, "\"\n",
+      "sh \"$ROOT/", fleet_desired_admission_authorized_action_path, "\"\n",
     ], ""),
     shell: none,
     env: none,
@@ -176,7 +179,7 @@ fn fleet_desired_admission_job() -> Job {
       fleet_desired_admission_build_step(),
       fleet_desired_admission_stage_payload_step(),
       fleet_desired_admission_decide_step(),
-      fleet_desired_admission_push_step()
+      fleet_desired_admission_action_step()
     ],
     needs: [],
     env: none,
@@ -201,26 +204,99 @@ fn fleet_desired_admission_job() -> Job {
   }
 }
 
-// CONCURRENCY, STATED AS WHAT THE PLATFORM ACTUALLY PROVIDES. An earlier revision of this
-// annotation claimed "queued, never cancelled ... must admit in order", and review 53998 caught
-// that the chosen variant does not provide it. Per the authority
-// (extdeps.languages.yaml.gha_workflow concurrency_queue_max_emission_note), the default group
-// modeled by ConcurrencyMappingQueueNotMax holds at most one running and one PENDING entry, and a
-// newly-arriving entry CANCELS the pending one; multi-entry in-order queueing is what
-// ConcurrencyMappingQueueMax was minted for. Asserting the queue property here was a state-space
-// conflation of "in-order queue" with the platform's pending-replacement default -- a prose claim
-// the emitted bytes do not support.
+// CONCURRENCY, AND THE VARIANT CHANGED BECAUSE THIS CHANGE CHANGED WHAT IS SAFE.
 //
-// The variant is nonetheless the RIGHT one, and the corrected reason is narrower than the claim it
-// replaces. What this workflow needs is that a RUNNING admission is never interrupted, because a
-// cancellation between the compare-and-swap decision and the push would leave the advance
-// half-observed; the default group gives exactly that, since cancel-in-progress defaults false and
-// only the pending entry is replaceable. Losing a superseded PENDING admission is not a defect but
-// the preferable outcome: the desired ref should track the newest floor-green revision, and
-// admitting each intermediate one in turn would be slower convergence for no gain. Reaching for
-// QueueMax would buy the in-order queue this comment used to claim and then have to justify why the
-// fleet wants to walk through revisions it has already passed.
+// THAT THE QUEUE IS REAL IS MEASURED, NOT ASSUMED, and the measurement is recorded here because
+// review 54384 asked the question that would have made everything below fiction: `queue: max` is
+// not in GitHub's published workflow syntax, so does the platform CONSUME it or accept and ignore
+// it? Ignored, the guarantee reduces to `cancel-in-progress: false` and this file promises a
+// property nothing enforces -- worse than no guarantee, because it is planned against.
 //
+// THE EXPERIMENT (2026-08-21, throwaway branch, deleted after reading): two workflows identical
+// but for this one key, each fired by the same three rapid pushes, each job sleeping 70s so the
+// pushes genuinely contend. With `queue: max`: four runs, four success, ZERO cancelled -- and one
+// completed, one in_progress and one PENDING were observed coexisting, a state that cannot exist
+// under a depth-one queue. The CONTROL, identical minus the key: TWO OF FOUR CANCELLED while
+// pending. The control is what makes this a measurement rather than an anecdote -- it proves the
+// probe can detect the difference at all, and it independently reproduces the very defect this
+// workflow exists to close (main's own fleet-desired.yml carries bare `group`, and 9 of its runs
+// are cancelled).
+//
+// WHAT IS PROVEN: the key is read, and it moves behaviour in the direction the variant names.
+// WHAT IS NOT, stated so the receipt is not over-read: the 100-pending ceiling, which comes from
+// GitHub's prose about full queues rather than any specification of this key; and the key's
+// stability, since an undocumented field can be withdrawn without deprecation. Next-rung trigger
+// is GitHub publishing `queue` in the workflow-syntax authority, at which point this becomes an
+// ordinary citation and the probe becomes a regression control rather than the grounding itself.
+//
+// Per the authority (extdeps.languages.yaml.gha_workflow concurrency_queue_max_emission_note) the
+// DEFAULT group -- ConcurrencyMappingQueueNotMax -- holds at most one running and one PENDING
+// entry, and a newly-arriving entry CANCELS the pending one. ConcurrencyMappingQueueMax is the
+// multi-entry queue, up to a documented cap of 100 pending, with cancel-in-progress forced false.
+//
+// THIS WORKFLOW USED THE DEFAULT, AND THE ARGUMENT FOR IT WAS THAT LOSING A SUPERSEDED PENDING
+// ADMISSION IS PREFERABLE TO WALKING THE FLEET THROUGH REVISIONS IT HAS ALREADY PASSED. That
+// argument was sound, and its premise -- that every entry in the group is an admission which
+// subsumes the pending one -- was false in three separate ways:
+//
+//   A PULL REQUEST'S FLOOR (nimble-fox-671, against origin/main). The trigger named no branches,
+//     so every branch's floor completion created a run that entered this one constant group and
+//     only then skipped on the job-level condition. Observed tally over 131 runs: 77 skipped,
+//     45 cancelled, 6 failure, 3 success -- consistent with routine silent drops.
+//   A RED MAIN FLOOR (nimble-fox-671, against the branch-filter fix). A red floor does not
+//     supersede a green admission; it cancels one and refuses in its place.
+//   A MANUAL DISPATCH OR AN OLDER SUCCESSFUL RERUN ON MAIN (side-chat review). Both carry
+//     head_branch main, both pass the branch filter, neither can advance -- and arrival order is
+//     not revision order.
+//
+// TWO FIXES, AND THEY ARE NOT ALTERNATIVES: THE BRANCH FILTER AND THE QUEUE ANSWER DIFFERENT
+// HALVES. The population splits by whether admissibility is DECIDABLE AT THE TRIGGER GRAIN.
+// A pull request's floor is decidable there -- the platform knows the branch -- so the right move
+// is to REFUSE THE ENTRY, and the trigger now carries `branches`. Widening the queue to hold
+// those instead would have been the absorbing fallback: it cannot compute which entries matter,
+// so it holds them all, the deficit's frequency goes to zero by construction, and the cost is
+// denominated in the corpus of branches rather than in the change.
+//
+// The remaining population -- every main-floor completion -- is NOT decidable at the trigger
+// grain. Whether a run can advance depends on its conclusion, its originating event and its
+// ancestry, and all three are facts this repository reads IN-MODEL, after the run exists. So
+// GitHub's workflow-level concurrency is structurally too early to know whether an arriving entry
+// subsumes a pending one. Queueing there is not a widened container standing in for a decision;
+// it is the honest handling of a question that layer cannot answer, deferred to the layer that
+// can. That is why QueueMax is right for this half and was wrong for the other.
+//
+// WHAT MAKES THE QUEUE SAFE IS THIS CHANGE, WHICH IS WHY THE VARIANT MOVES NOW AND NOT EARLIER.
+// Before forward-only landed, queueing every main completion would have walked the desired ref
+// BACKWARD -- an older admission arriving later observes the newer prior correctly, and
+// --force-with-lease does not refuse a correctly-observed overwrite. Under that model the default
+// group's drop was accidentally protective, and the sound-sounding argument above was collecting
+// the benefit of a defect. decide_fleet_desired_advance now classifies a superseded candidate as
+// a no-op, so every queued entry is harmless by construction: it advances, converges, no-ops, or
+// refuses. The drop was buying safety that is now carried properly, and keeping it is pure loss.
+//
+// CANCEL-IN-PROGRESS IS FORCED FALSE ON THIS VARIANT, which preserves the one property the
+// default group was genuinely providing: a RUNNING admission is never interrupted, so no
+// cancellation can land between the compare-and-swap decision and the push.
+//
+// WHAT THE QUEUE BUYS, STATED AT ITS CEILING RATHER THAN AT ITS INTENT. GitHub: "Up to 100 jobs
+// or workflow runs can be `pending` in the concurrency group. When the queue is full, any
+// additional jobs or workflow runs are canceled." So this buys RETENTION INSTEAD OF
+// PENDING-REPLACEMENT WHILE THE GROUP SITS BELOW 100 PENDING -- not losslessness. And it buys no
+// ordering: pending entries are processed by when they began waiting, which is neither dispatch
+// order nor commit order, and GitHub does not guarantee order at all.
+//
+// Both limits are stated because the alternative was already tried in prose one revision ago:
+// the witness for this mapping was named `..._queues_every_admissible_completion_...`, and
+// "every" is not a property the emitted bytes can witness -- at 100 pending the mechanism cancels
+// and a witness reading the mapping still greens. A name outlives the reasoning that produced it.
+//
+// IF LOSSLESSNESS BECOMES REQUIRED, THE NEXT RUNG IS NOT A BIGGER QUEUE. It is durable
+// reconciliation over (eligible floor-green revisions MINUS recorded admission decisions), which
+// is an event ledger rather than a transport cap. Related but distinct: a NARROWER TERMINAL
+// DESIGN puts concurrency AFTER classification, so only a positive AcceptedFleetRevision enters
+// serialized actuation -- a classification job feeding a serialized actuation job, or the fabric
+// queue. The queue here is the correct interim for both, and a stand-in for neither.
+
 // DECLARED GAP -- SEARCH KEY: FleetDesiredAdvanceForwardOnly
 // WHAT ORDERING DOES NOT COVER: THE DESIRED REF CAN MOVE BACKWARD, AND THIS IS ORDINARY RATHER
 // THAN AN EDGE CASE. An earlier revision of this annotation said reaching it "requires deliberately
@@ -271,13 +347,15 @@ fn fleet_desired_admission_job() -> Job {
 data fleet_desired_admission_workflow: Workflow = Workflow {
   name: "fleet-desired",
   on: [
-    WorkflowRunCompleted { workflows: [witness_floor_workflow_name] }
+    WorkflowRunCompleted {
+      workflows: [witness_floor_workflow_name],
+      branches: [gunbc_default_branch_name],
+    }
   ],
   concurrency: Present {
-    value: ConcurrencyMappingQueueNotMax {
+    value: ConcurrencyMappingQueueMax {
       group: fleet_desired_admission_workflow_concurrency_group,
-      cancel_in_progress: none,
-      explicit_single: none
+      cancel_in_progress: Present { value: QueueMaxCancelInProgressFalse }
     }
   },
   env: none,

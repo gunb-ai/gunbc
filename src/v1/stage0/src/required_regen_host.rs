@@ -761,10 +761,35 @@ fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
     Ok(out)
 }
 
+// ONE AUTHORITY FOR "WHAT THE REGEN COMPARES", read from both sides.
+//
+// `generated_basenames_from_emit` and `committed_generated_basenames` answer the same question
+// about two different populations -- the emit and the committed tree -- and each carried its own
+// copy of the membership rule. That is the fork this whole lane keeps finding: two readers of one
+// fact, which agree until they do not, and here they sat inside the very file whose job is to
+// detect that class. They now share this predicate, so a file cannot be compared on one side and
+// skipped on the other.
+//
+// THE EMITTED-POPULATION MANIFEST NEEDS NO EXCEPTION HERE, AND THAT IS BY CONSTRUCTION RATHER
+// THAN BY LUCK. `emitted_population.rs` (v1.compiler.emit_rust, `emit_emitted_population_manifest`)
+// is the emitter's declaration of what it produced, and it is emitted as a `.rs` of comment lines
+// precisely so that this rule already admits it: it enters the compared population, the drift
+// comparison, the tree digest and candidate verification with nothing named and nothing added.
+// An earlier revision made it a `.txt` and named it in this predicate as an exception. That was
+// refused by execution, not by review -- every compared member is rustfmt-normalized before its
+// digest is taken, so the `.txt` failed to parse as Rust ("expected one of `!` or `::`, found
+// `.`"). The refusal was the right one: the compared population is Rust-shaped end to end, and an
+// artifact that wants its gating has to be Rust.
+fn is_compared_generated_basename(basename: &str) -> bool {
+    basename.ends_with(".rs")
+}
+
 fn generated_basenames_from_emit(emitted: &HashMap<String, String>) -> Vec<String> {
     let mut names: BTreeSet<String> = BTreeSet::new();
     for path in emitted.keys() {
-        if path.ends_with(".rs") && !is_hand_maintained_path(path) {
+        if is_compared_generated_basename(emit_path_basename(path))
+            && !is_hand_maintained_path(path)
+        {
             // Basename, not the emit key: `committed_generated_basenames` keys on
             // `file_name()`, and emit keys carry a `src/` prefix. Comparing the two
             // key spaces made every file mismatch in both directions.
@@ -804,7 +829,9 @@ fn committed_generated_basenames(stage0_src: &Path) -> Result<Vec<String>, Strin
             continue;
         }
         let basename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if basename.ends_with(".rs") && !HAND_MAINTAINED_STAGE0_FILES.contains(&basename) {
+        if is_compared_generated_basename(basename)
+            && !HAND_MAINTAINED_STAGE0_FILES.contains(&basename)
+        {
             names.insert(basename.to_string());
         }
     }

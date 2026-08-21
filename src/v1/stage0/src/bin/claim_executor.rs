@@ -20608,10 +20608,29 @@ fn run_behavioral_receipt_selftest(source_roots: &[String]) -> Result<ExitCode, 
 /// STANDALONE INVOCATION, where an absent subject is a MISUSE rather than a state to report.
 ///
 /// Naming this mode on the command line asserts there is a pull request to check. If the merge
-/// base is the head there is not, so the invocation is answered rather than silently succeeding
-/// -- the composed CI fold, which runs every phase whether or not each has a subject, treats the
-/// same state as a reported skip instead. Same state, two dispositions, because the two callers
-/// assert different things by calling.
+/// base is the head there is not, so the invocation is answered rather than silently succeeding.
+/// This mode has no other caller: the 2026-08-21 operator ruling cut the receipt out of
+/// `--required-ci`, so nothing invokes it automatically and its only route is someone typing it.
+///
+/// A DIFF-SUBJECT GATE CANNOT BE EXERCISED BY THE BRANCH IT PROTECTS, and this paragraph is
+/// carried here because the property is a fact about THIS gate's subject rather than about the
+/// phase that used to run it. It was learned expensively and it survives its enrolment.
+///
+/// The subject is a diff against the merge base. On main the merge base IS the head, so there is
+/// no pull request to check and never was -- which means NO main run, green or otherwise, is
+/// evidence about this gate: comparing a PR's red against main's green compares a run against a
+/// SKIP, not against a pass. Coverage is entirely PR-side by construction. The consequence that
+/// makes it worth writing down: a defect that reds every PR touching one class of authority can
+/// sit indefinitely while main stays green, because the only runs that could have seen it are
+/// the ones a person reads as "my branch is broken". That is not hypothetical -- it is how the
+/// wet-actuator selection defect (gunbc#8704, excluded at selection since) survived.
+///
+/// SO IT BINDS ANY FUTURE PROPOSAL, not just this one. If a diff-subject gate is ever enrolled
+/// in CI again -- this receipt or another -- read this first: it needs a real subject on main
+/// (the PUSH RANGE is one, and is a DIFFERENT subject rather than a stand-in for a PR diff), or
+/// it is accepting PR-only coverage knowingly. What must NOT move is the absent-subject arm:
+/// making it return an answer gives it a deficit frequency of zero by construction, which is the
+/// absorbing fallback wearing the fix's clothes (DESIGN section 5).
 fn run_behavioral_receipt_plan(source_roots: &[String]) -> Result<ExitCode, ExitCode> {
     match behavioral_receipt_plan(source_roots) {
         Ok(ReceiptPlanOutcome::Ran { agreed: true }) => Ok(ExitCode::SUCCESS),
@@ -20633,7 +20652,7 @@ fn run_behavioral_receipt_plan(source_roots: &[String]) -> Result<ExitCode, Exit
     }
 }
 
-/// What the per-PR receipt phase found, as a state rather than a bool.
+/// What the per-PR receipt run found, as a state rather than a bool.
 ///
 /// `NoSubject` exists because "this run has nothing to check" and "this run checked and agreed"
 /// are the two zeros this mode was corrected for once already, one level down. Collapsing them
@@ -20965,7 +20984,7 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
         // and gunbc's artifact emitters write a handful of generated files whose headers say so.
         // This fragment used to ask only the first and refuse when it came back empty, which made
         // the SECOND population permanently unaskable -- any change to the interpreter dispatch
-        // roster or the stage0 crate layout redded this phase with "a missing candidate is
+        // roster or the stage0 crate layout redded this run with "a missing candidate is
         // ignorance", correct as written and with no reachable green.
         //
         // The population is asked FIRST and answers positively. This is deliberately not a

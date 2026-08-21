@@ -3,17 +3,24 @@
 
 pub use crate::std_syntax::BinOp;
 use crate::std_syntax::BinOp::*;
-pub use crate::std_types::container_expected_arity;
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedModule};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::CompilerDiagnostic::ArityMismatch;
+use crate::v1_std_core::CompilerDiagnostic::{ArityMismatch, ContainerSpellingUnrecognized};
 use crate::v1_std_core::Connective::NoConnective;
+use crate::v1_std_core::ContainerSpellingVerdict::{
+    ContainerSpellingDeclared, ContainerSpellingUnknown, NotAContainerSpelling,
+};
 use crate::v1_std_core::ExprData::NoExprData;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved};
-pub use crate::v1_std_core::{authored_name_at, make_error_node, module_items};
+pub use crate::v1_std_core::UnaryOpKind;
+use crate::v1_std_core::UnaryOpKind::*;
 pub use crate::v1_std_core::{
-    CompilerDiagnostic, Connective, ErrorNode, ExprData, InferredNode, NewlineIndex, Node,
+    authored_container_spelling_verdict, authored_name_at, make_error_node, module_items,
+};
+pub use crate::v1_std_core::{
+    CompilerDiagnostic, Connective, ContainerSpellingVerdict, ErrorNode, ExprData, InferredNode,
+    NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -45,8 +52,11 @@ pub fn check_bare_containers(
         let self_diags = if is_expr.clone() {
             Rc::new(vec![])
         } else {
-            match container_expected_arity(nname.clone()) {
-                Some(expected) => {
+            match (*authored_container_spelling_verdict(n.clone(), source_indices.clone())).clone()
+            {
+                ContainerSpellingVerdict::ContainerSpellingDeclared {
+                    arity: expected, ..
+                } => {
                     if (((((n.children.clone().len() as i64) == 0)
                         && ((n.params.clone().len() as i64) == 0))
                         && (n.connective.clone() == Connective::NoConnective))
@@ -65,7 +75,18 @@ pub fn check_bare_containers(
                         Rc::new(vec![])
                     }
                 }
-                None => Rc::new(vec![]),
+                ContainerSpellingVerdict::ContainerSpellingUnknown {
+                    container_leaf: leaf,
+                    ..
+                } => Rc::new(vec![make_error_node(
+                    Rc::new(CompilerDiagnostic::ContainerSpellingUnrecognized {
+                        name: nname.clone(),
+                        container_leaf: leaf.clone(),
+                        span: n.span.clone(),
+                    }),
+                    module_name.clone(),
+                )]),
+                ContainerSpellingVerdict::NotAContainerSpelling => Rc::new(vec![]),
             }
         };
         let child_diags = Rc::new({
