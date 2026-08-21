@@ -156,7 +156,7 @@ test fn lowered_loop_binds_carrier_binder() -> Bool {
             Absent => false
           }
         Ambiguous => false
-        Absent => false
+        v2.std.node.Absent => false
       }
   }
 }
@@ -175,7 +175,7 @@ test fn duplicate_carrier_edge_is_malformed() -> Bool {
             )
           ))
         Ambiguous => false
-        Absent => false
+        v2.std.node.Absent => false
       }
   }
 }
