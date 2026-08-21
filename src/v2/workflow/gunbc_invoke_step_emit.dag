@@ -22,7 +22,6 @@ import v2.std.orchestration {
 }
 import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { Accepted, Rejected, None, Some }
-import std.types { String, List, Bool, Int }
 
 // THE SINGLE ROOT for emitting a `gunbc run` workflow step. Before this module every
 // such step was a per-site concat of a shell string (gunbc.cli_invoke gunbc_run_shell),
