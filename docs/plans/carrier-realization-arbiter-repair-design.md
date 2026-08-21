@@ -395,3 +395,60 @@ it. Two sites either way do not touch the 25.
 - **It does not touch the v1 freeze question.** Every step edits the v1 seed emitter, admissible
   under the DESIGN §3 purpose test only insofar as it serves the v2 self-host program — which the
   E0308 board is, but the admission is the operator's, not this document's.
+
+### The census is permanent, and it is NOT enrolled — declared, not solved
+
+`smart-ram-730` asked whether the census is a permanent lens or a one-measurement instrument,
+because the second is a scaffold and DESIGN §6 lets no scaffold land on author declaration alone.
+
+**It is permanent, by design and not by relabelling.** The question it answers — *does the legacy
+short-circuit still diverge from the identity authority at this occurrence* — does not retire when
+T2/T3 is repaired; it **inverts**. Today the divergence set is the defect population. After the
+repair, the same walk over the same subject must produce an **empty** divergence set, and any row
+reappearing is the regression. That is DESIGN §4b(4) exactly: a climb deletes the redundant
+production machinery (the short-circuit in the six renderers) and **keeps the discriminating
+evidence enrolled**, because deleting the evidence alongside the machinery recreates
+specification-without-execution one rung up. The census carries both halves — the diverging rows are
+the discriminating RED, the `Agrees` rows the accepted positive control.
+
+So no scaffold admission is owed and no dissolution trigger is owed.
+
+**But "permanent" must not be allowed to do the work of "enrolled", and today it cannot.** CI's only
+invocation is `claim_executor --required-ci --source-root dag --source-root src/v2`. `src/v1` is not
+a source root; it is reached only by the `.dag` **parse sweep** (`v1_src_dag_parse`), which parses
+and does not evaluate. A module at `src/v1/tests/claim/` is therefore **parsed and never executed**
+by the required run. Claiming it as an enrolled regression control would be precisely the tier
+DESIGN §6 names — the machinery exists and nothing gates on it — and an inert lens is itself a lie.
+
+Stated at the honest grain instead:
+
+| | |
+|---|---|
+| **rung now** | *mitigatable* — a hand-invoked probe; its evidence is real when run, and runs only when a human runs it |
+| **ceiling** | *mechanically preventable* — a witness the required floor executes on every PR |
+| **next-rung trigger** | an execution route from the required run into `src/v1`, **or** relocation to a home the floor already executes |
+
+Which of those two is right is not decided here, and the second one is now known to be **closed**:
+relocating out of `src/v1` is exactly what CI refused, because the `v1.*` imports are unresolvable
+inside the `dag` + `src/v2` envelope. So the trigger is the first: **`src/v1` becomes an executed
+root, or an execution route reaches it.** That is a CI-scope change affecting every lane, it is not
+this lane's to land, and it is owned by `smart-ram-730`.
+
+**One connection is withdrawn as wrong, and it is recorded here even though it never reached a
+shipped revision of this document** — it was the reasoning behind the trigger, so a reader who
+re-derives the trigger would re-derive the error. Replying to the permanence ruling I named the
+seven-witnesses-in-a-declined-home lane (`royal-tern-339`) as the lane whose answer this trigger
+would consume. It is not, and the difference is mechanism rather than degree: those witnesses live
+inside `src/v2`, which **is** a source root, so they are **discovered and then declined by home
+policy**, and their fix is a move between homes inside an already-discovered root. This census is
+never discovered at all. Same symptom, different mechanism — the surface-versus-mechanism error this
+whole lane exists to measure, committed by me at the level of coordination, and caught by
+`smart-ram-730` only because the connection was stated out loud rather than assumed silently.
+
+For the record, and because it re-sizes the trigger rather than merely relocating it: the objection
+to adding `src/v1` as a root is **not** roster blast radius. The whole `src/v1` tree currently holds
+14 test fns in one file — the checkpoint-identity assertions that an emitter authority note cites
+**by name** and that have never executed — and this census would make it two files. The real open
+question is **resolution**, not population: the floor resolves its roots as one program
+(`modules_resolved=3820`), so whether `v1` and `v2` module namespaces collide when unified is the
+thing to measure. That measurement is a one-command experiment and it belongs to the owner above.
