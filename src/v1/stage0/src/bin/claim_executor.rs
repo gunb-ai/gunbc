@@ -20660,6 +20660,11 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
 
     let emitted = v1_compiler::cli_run::emitted_generated_sources()?;
     let mut all_equivalent = true;
+    // Accumulated as each module is admitted and printed after every verdict, so the denominator
+    // is the SAME partition the admission was decided from. Recomputing it from the plan
+    // afterwards would be a second producer of one fact, and the one that gets reported is the
+    // one that never gated anything.
+    let mut denominators: Vec<String> = Vec::new();
     for (mirror, plan, alias) in &plans {
         let Some(candidate_source) = emitted.get(mirror) else {
             eprintln!(
@@ -20687,6 +20692,15 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
                 continue;
             }
         };
+        denominators.push(format!(
+            "behavioral-receipt: DENOMINATOR {} — {} derived calls over {} of {} declared \
+             functions; the other {} yield no call and are NOT covered by this verdict",
+            plan.module_path,
+            admitted.coverage.calls(),
+            admitted.coverage.covered.len(),
+            plan.parsed_signatures,
+            admitted.coverage.uncovered.len()
+        ));
         match behavioral_differential(
             &workspace,
             &ReceiptCrate::v1_compiler(),
@@ -20721,17 +20735,8 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
     // THE DENOMINATOR, EVERY RUN (operator ruling, 2026-08-20). A green here means the DERIVED
     // CALLS in the selected modules agreed -- never that a module is behaviourally equivalent.
     // Printing a bare PASS is how, inside a week, someone reads this as promotion evidence.
-    for (_m, plan, _a) in &plans {
-        let coverage = function_grain_coverage(plan);
-        eprintln!(
-            "behavioral-receipt: DENOMINATOR {} — {} derived calls over {} of {} declared \
-             functions; the other {} yield no call and are NOT covered by this verdict",
-            plan.module_path,
-            coverage.calls(),
-            coverage.covered.len(),
-            plan.parsed_signatures,
-            coverage.uncovered.len()
-        );
+    for line in &denominators {
+        eprintln!("{line}");
     }
     Ok(ReceiptPlanOutcome::Ran {
         agreed: all_equivalent,
