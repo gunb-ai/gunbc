@@ -718,15 +718,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "quad_with_peer_greens_under_namespace_only_projection"
     ]
   },
-  FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/fold_lowering_test.dag",
-    functions: [
-      "fold_probe_ingest_is_accepted", "fold_callee_name_survives_parse",
-      "fold_collection_name_survives_parse", "fold_call_lowers_to_terminating_loop",
-      "lowered_loop_binds_carrier_binder", "duplicate_carrier_edge_is_malformed",
-      "non_fold_call_refuses", "bodyless_fold_call_refuses_no_loop_fabricated"
-    ]
-  },
   FrozenPathDeferral { entry: "src/v2/test/claim/long/free_monoid_not_diverged_green_test.dag", functions: ["corpus_free_monoid_not_diverged_green_holds"] },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/long/gap4_parse_tokens_remain_test.dag",
