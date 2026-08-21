@@ -5,6 +5,8 @@ import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, 
 import extdeps.github.workflow_runs { WorkflowRunConclusion, Success }
 import extdeps.github.workflow_run_event { WorkflowRunEvent }
 import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, artifact_path }
+import gunbc.repository { gunbc_repository }
+import gunbc.repo_identity { gunbc_default_branch_name }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -57,13 +59,33 @@ type RequiredCiContractIdentity {
 fn required_ci_contract() -> RequiredCiContractIdentity {
   RequiredCiContractIdentity {
     workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
-    repository_full_name: fleet_repository_full_name,
+    repository_full_name: fleet_repository_full_name(),
   }
 }
 
-data fleet_repository_full_name: String = "gunb-ai/gunbc"
+// NEITHER OF THESE IS THIS MODULE'S FACT, AND BOTH WERE SPELLED HERE AS LITERALS.
+//
+// `fleet_repository_full_name = "gunb-ai/gunbc"` and `fleet_default_branch = "main"` were the
+// sixth and seventh nicknames for facts that already have authorities. gunbc.repository exists
+// precisely because five spellings of this repository's identity had accumulated across the tree,
+// and its own note says the answer to five nicknames is not a sixth. gunbc.repo_identity owns the
+// default-branch name and has a perturbation oracle that moves every consumer when it changes --
+// a literal here is invisible to that oracle, which is what makes this class stay hidden: every
+// individual literal looks obviously correct.
+//
+// OBSERVED WHILE DOING THIS, and flagged rather than silently resolved: `gunbc_repository` also
+// carries a `default_branch` field, so the default branch appears to have two homes. They agree
+// today. The branch name is read from gunbc.repo_identity here because that module's note claims
+// the authority for branch facts explicitly and carries the perturbation oracle, while
+// Repository.default_branch is part of the upstream API shape this project instantiates. Whether
+// those should be one row is a real question and not this cut's to settle.
+fn fleet_repository_full_name() -> String {
+  gunbc_repository.full_name
+}
 
-data fleet_default_branch: String = "main"
+fn fleet_default_branch() -> String {
+  gunbc_default_branch_name
+}
 
 data required_ci_completed_activity: String = "completed"
 
@@ -144,19 +166,19 @@ fn accept_required_ci_workflow_run<E>(event: WorkflowRunEvent, evidence: E) -> R
       },
     }
   } else {
-    if event.repository_full_name != fleet_repository_full_name {
+    if event.repository_full_name != fleet_repository_full_name() {
       RequiredCiRefused {
         cause: CiRepositoryNotThisRepository {
           observed: event.repository_full_name,
-          required: fleet_repository_full_name,
+          required: fleet_repository_full_name(),
         },
       }
     } else {
-      if event.head_repository_full_name != fleet_repository_full_name {
+      if event.head_repository_full_name != fleet_repository_full_name() {
         RequiredCiRefused {
           cause: CiHeadRepositoryNotThisRepository {
             observed: event.head_repository_full_name,
-            required: fleet_repository_full_name,
+            required: fleet_repository_full_name(),
           },
         }
       } else {
@@ -191,30 +213,30 @@ fn accept_required_ci_workflow_run<E>(event: WorkflowRunEvent, evidence: E) -> R
 // pair would then be as strong as whichever was called first, which is not a property anyone
 // declared.
 fn observe_default_branch_revision<M>(event: WorkflowRunEvent, evidence: M) -> DefaultBranchAdmission<M> {
-  if event.repository_full_name != fleet_repository_full_name {
+  if event.repository_full_name != fleet_repository_full_name() {
     DefaultBranchRefused {
       cause: BranchRepositoryNotThisRepository {
         observed: event.repository_full_name,
-        required: fleet_repository_full_name,
+        required: fleet_repository_full_name(),
       },
     }
   } else {
-    if event.head_repository_full_name != fleet_repository_full_name {
+    if event.head_repository_full_name != fleet_repository_full_name() {
       DefaultBranchRefused {
         cause: BranchHeadRepositoryNotThisRepository {
           observed: event.head_repository_full_name,
-          required: fleet_repository_full_name,
+          required: fleet_repository_full_name(),
         },
       }
     } else {
       if event.originating_event != default_branch_originating_event {
         DefaultBranchRefused { cause: BranchEventIsNotAPush { observed: event.originating_event } }
       } else {
-        if event.head_branch != fleet_default_branch {
+        if event.head_branch != fleet_default_branch() {
           DefaultBranchRefused {
             cause: BranchIsNotTheDefaultBranch {
               observed: event.head_branch,
-              required: fleet_default_branch,
+              required: fleet_default_branch(),
             },
           }
         } else {
