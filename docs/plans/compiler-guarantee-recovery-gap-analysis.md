@@ -1276,7 +1276,11 @@ enforces end to end.
    production `sole_constructor` type's own emitted mirror is silently forgeable. `extdeps.uri`
    `UriValidatedScalar` (fixed-law mint, no caller-supplied validator) is emitted as a `pub`
    struct with a `pub` field deriving `serde::Deserialize`; both a direct struct literal and
-   `serde_json::from_value` admit every value the `.dag` mint refuses, with a shape-control
+   `serde_json::from_value` admit ONE REPRESENTATIVE FROM EACH of the mint's three refusal partitions —
+   `55296` (surrogate), `-1` (negative), `1114112` (above the Unicode maximum). NOT every value it refuses: the
+   mint refuses whole infinite RANGES, and a finite receipt cannot discharge a universal over them, so three
+   representative points are the evidence actually held (an earlier revision of this row said "every value the
+   `.dag` mint refuses"). With a shape-control
    discriminator proving the harness's `Err` path is real (so the "admits" verdicts are
    load-bearing, not a silent-harness artifact). No production caller is established to have
    exercised this path — mechanism confirmed, no confirmed victim — but it is below floor

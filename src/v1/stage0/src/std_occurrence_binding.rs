@@ -23,11 +23,30 @@ pub fn occurrence_binding_staged_adoption_scaffold_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "N: Clone + serde::Serialize",
+    deserialize = "N: Clone + serde::Deserialize<'de>"
+))]
 pub struct ContainmentPath<N: Clone> {
     pub ancestors: Rc<FreeMonoid<N>>,
     pub terminal: N,
     pub _phantom: std::marker::PhantomData<N>,
+}
+
+impl<N: Clone + std::fmt::Debug> std::fmt::Debug for ContainmentPath<N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ContainmentPath")
+            .field("ancestors", &self.ancestors)
+            .field("terminal", &self.terminal)
+            .finish()
+    }
+}
+
+impl<N: Clone + PartialEq> PartialEq for ContainmentPath<N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.ancestors == other.ancestors && self.terminal == other.terminal
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -49,12 +68,32 @@ pub struct OccurrenceBinding<N: Clone> {
     pub _phantom: std::marker::PhantomData<N>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "N: Clone + serde::Serialize",
+    deserialize = "N: Clone + serde::Deserialize<'de>"
+))]
 pub struct AmbiguousBindingCandidates<N: Clone> {
     pub first: Rc<BindingCandidate<N>>,
     pub second: Rc<BindingCandidate<N>>,
     pub rest: Rc<FreeMonoid<Rc<BindingCandidate<N>>>>,
     pub _phantom: std::marker::PhantomData<N>,
+}
+
+impl<N: Clone + std::fmt::Debug> std::fmt::Debug for AmbiguousBindingCandidates<N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AmbiguousBindingCandidates")
+            .field("first", &self.first)
+            .field("second", &self.second)
+            .field("rest", &self.rest)
+            .finish()
+    }
+}
+
+impl<N: Clone + PartialEq> PartialEq for AmbiguousBindingCandidates<N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.first == other.first && self.second == other.second && self.rest == other.rest
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -72,7 +111,11 @@ pub enum OccurrenceBindingResult<N: Clone> {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "N: Clone + serde::Serialize",
+    deserialize = "N: Clone + serde::Deserialize<'de>"
+))]
 #[serde(tag = "_variant")]
 pub enum OccurrenceBindingFoldState<N: Clone> {
     OccurrenceBindingFoldZero,
@@ -97,6 +140,53 @@ impl<N: Clone> OccurrenceBindingFoldState<N> {
             OccurrenceBindingFoldState::OccurrenceBindingFoldMany { first: __val, .. } => {
                 __val.clone()
             }
+        }
+    }
+}
+
+impl<N: Clone + std::fmt::Debug> std::fmt::Debug for OccurrenceBindingFoldState<N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::OccurrenceBindingFoldZero => f.write_str("OccurrenceBindingFoldZero"),
+            Self::OccurrenceBindingFoldOne { first } => f
+                .debug_struct("OccurrenceBindingFoldOne")
+                .field("first", first)
+                .finish(),
+            Self::OccurrenceBindingFoldMany {
+                first,
+                second,
+                rest_reversed,
+            } => f
+                .debug_struct("OccurrenceBindingFoldMany")
+                .field("first", first)
+                .field("second", second)
+                .field("rest_reversed", rest_reversed)
+                .finish(),
+        }
+    }
+}
+
+impl<N: Clone + PartialEq> PartialEq for OccurrenceBindingFoldState<N> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::OccurrenceBindingFoldZero, Self::OccurrenceBindingFoldZero) => true,
+            (
+                Self::OccurrenceBindingFoldOne { first: a_first },
+                Self::OccurrenceBindingFoldOne { first: b_first },
+            ) => a_first == b_first,
+            (
+                Self::OccurrenceBindingFoldMany {
+                    first: a_first,
+                    second: a_second,
+                    rest_reversed: a_rest_reversed,
+                },
+                Self::OccurrenceBindingFoldMany {
+                    first: b_first,
+                    second: b_second,
+                    rest_reversed: b_rest_reversed,
+                },
+            ) => a_first == b_first && a_second == b_second && a_rest_reversed == b_rest_reversed,
+            _ => false,
         }
     }
 }
