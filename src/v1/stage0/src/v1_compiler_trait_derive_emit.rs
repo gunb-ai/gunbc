@@ -1916,9 +1916,9 @@ pub fn v1_item_clone_bounded_param_names(
     }
 }
 
-pub fn v1_emit_type_params_with_clone_bounds(
+pub fn v1_emit_type_params_with_bounds(
     params: Rc<Vec<Rc<Node>>>,
-    clone_param_names: Rc<Vec<String>>,
+    bounds_by_param: Rc<HashMap<String, Rc<Vec<String>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if ((params.clone().len() as i64) == 0) {
@@ -1931,19 +1931,18 @@ pub fn v1_emit_type_params_with_clone_bounds(
                     __result.push({
                         let pname = generic_param_name_at(p.clone(), source_indices.clone());
                         let pascal = to_pascal(pname.clone());
-                        if {
-                            let mut __found = false;
-                            for c in clone_param_names.clone().iter().cloned() {
-                                if (c.clone() == pname.clone()) {
-                                    __found = true;
-                                    break;
+                        match v1_rt::map_get(&bounds_by_param, pname.clone()) {
+                            Some(traits) => {
+                                if ((traits.clone().len() as i64) == 0) {
+                                    pascal.clone()
+                                } else {
+                                    v1_rt::concat(
+                                        v1_rt::concat(pascal.clone(), ": ".to_string()),
+                                        traits.clone().join(&" + ".to_string()),
+                                    )
                                 }
                             }
-                            __found
-                        } {
-                            v1_rt::concat(pascal.clone(), ": Clone".to_string())
-                        } else {
-                            pascal.clone()
+                            None => pascal.clone(),
                         }
                     });
                 }
@@ -1955,6 +1954,23 @@ pub fn v1_emit_type_params_with_clone_bounds(
             )
         }
     }
+}
+
+pub fn v1_emit_type_params_with_clone_bounds(
+    params: Rc<Vec<Rc<Node>>>,
+    clone_param_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    v1_emit_type_params_with_bounds(
+        params.clone(),
+        clone_param_names.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+            |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| {
+                v1_rt::rc_map_insert(m, n.clone(), Rc::new(vec!["Clone".to_string()]))
+            },
+        ),
+        source_indices.clone(),
+    )
 }
 
 pub fn v1_emit_struct_from_capability_table(

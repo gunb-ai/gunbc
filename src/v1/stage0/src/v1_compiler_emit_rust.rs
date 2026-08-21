@@ -118,17 +118,17 @@ pub use crate::v1_compiler_ownership::{
 pub use crate::v1_compiler_resolve::get_exported_names;
 pub use crate::v1_compiler_runtime_rust::rust_runtime_source;
 pub use crate::v1_compiler_trait_bound_witness::{
-    v1_call_forwarding_clone_bound_wrapper_param_names,
+    v1_call_forwarding_clone_bound_wrapper_param_names, v1_equality_bound_param_name,
     v1_rc_match_scrutinee_clone_bound_param_names, v1_union_clone_param_names,
 };
 pub use crate::v1_compiler_trait_derive_emit::{
     rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible,
     trait_derive_emit_fn_clone_bound_keyed_carrier_module, v1_clone_bounded_type_params,
     v1_clone_impl_required_type_params, v1_emit_enum_derives, v1_emit_enum_supplemental_impls,
-    v1_emit_struct_from_capability_table, v1_emit_type_params_with_clone_bounds,
-    v1_generic_params_needing_clone_bound, v1_item_clone_bounded_param_names,
-    v1_item_clone_undecided_head, v1_item_field_type_exprs, v1_map_key_required_type_names,
-    v1_trait_derive_refuse, v1_with_map_key_requirement,
+    v1_emit_struct_from_capability_table, v1_emit_type_params_with_bounds,
+    v1_emit_type_params_with_clone_bounds, v1_generic_params_needing_clone_bound,
+    v1_item_clone_bounded_param_names, v1_item_clone_undecided_head, v1_item_field_type_exprs,
+    v1_map_key_required_type_names, v1_trait_derive_refuse, v1_with_map_key_requirement,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -14851,6 +14851,98 @@ pub fn v1_fn_body_derived_clone_param_names(
     }
 }
 
+pub fn v1_fn_bounds_by_param(
+    clone_param_names: Rc<Vec<String>>,
+    eq_param_names: Rc<Vec<String>>,
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    {
+        let with_clone = clone_param_names.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+            |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| {
+                v1_rt::rc_map_insert(m, n.clone(), Rc::new(vec!["Clone".to_string()]))
+            },
+        );
+        eq_param_names.clone().iter().cloned().fold(
+            with_clone.clone(),
+            |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| match v1_rt::map_get(&m, n.clone())
+            {
+                Some(traits) => v1_rt::rc_map_insert(
+                    m.clone(),
+                    n.clone(),
+                    v1_rt::concat(traits.clone(), Rc::new(vec!["PartialEq".to_string()])),
+                ),
+                None => v1_rt::rc_map_insert(
+                    m.clone(),
+                    n.clone(),
+                    Rc::new(vec!["PartialEq".to_string()]),
+                ),
+            },
+        )
+    }
+}
+
+pub fn v1_fn_body_equality_bound_param_names(
+    body: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let here = match (*body.expr_data.clone()).clone() {
+            ExprData::ExprBinOp { op, .. } => {
+                if is_equality_comparison(op.clone()) {
+                    v1_equality_bound_param_name(
+                        v1_resolved_type_name_or_empty(
+                            binop_left(body.clone()),
+                            source_indices.clone(),
+                        ),
+                        v1_resolved_type_name_or_empty(
+                            binop_right(body.clone()),
+                            source_indices.clone(),
+                        ),
+                        generic_param_names.clone(),
+                    )
+                } else {
+                    Rc::new(vec![])
+                }
+            }
+            _ => Rc::new(vec![]),
+        };
+        body.children.clone().iter().cloned().fold(
+            here.clone(),
+            |acc: Rc<Vec<String>>, child: Rc<Node>| {
+                v1_union_clone_param_names(
+                    acc,
+                    v1_fn_body_equality_bound_param_names(
+                        child.clone(),
+                        generic_param_names.clone(),
+                        source_indices.clone(),
+                    ),
+                )
+            },
+        )
+    })
+}
+
+pub fn is_equality_comparison(op: BinOp) -> bool {
+    match op.clone() {
+        BinOp::Eq => true,
+        BinOp::Ne => true,
+        _ => false,
+    }
+}
+
+pub fn v1_resolved_type_name_or_empty(
+    e: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match e.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            authored_name_at(source_indices.clone(), rt.clone())
+        }
+        _ => "".to_string(),
+    }
+}
+
 pub fn v1_call_forwarding_clone_bound_param_names(
     generic_param_names: Rc<Vec<String>>,
     body: Rc<Node>,
@@ -15037,11 +15129,19 @@ pub fn emit_fn_def(
                 } else {
                     derived_clone_param_names_with_rc_match.clone()
                 };
-                let needs_clone_bound = ((clone_param_names.clone().len() as i64) > 0);
-                let type_params_str = if needs_clone_bound.clone() {
-                    v1_emit_type_params_with_clone_bounds(
+                let eq_param_names = v1_fn_body_equality_bound_param_names(
+                    body.clone(),
+                    generic_param_names.clone(),
+                    si.clone(),
+                );
+                let bounds_by_param =
+                    v1_fn_bounds_by_param(clone_param_names.clone(), eq_param_names.clone());
+                let needs_bound = (((clone_param_names.clone().len() as i64) > 0)
+                    || ((eq_param_names.clone().len() as i64) > 0));
+                let type_params_str = if needs_bound.clone() {
+                    v1_emit_type_params_with_bounds(
                         type_params.clone(),
-                        clone_param_names.clone(),
+                        bounds_by_param.clone(),
                         si.clone(),
                     )
                 } else {
