@@ -61,6 +61,27 @@ type RetainedProduction {
   occurrence: String
 }
 
+// THREE STATES, NOT A BOOL. "The census was written", "no census was
+// applicable because this run produced no retained population", and "the
+// census could not be written" are different facts with different remedies,
+// and a Bool spelled them as two. The middle one is the common case on every
+// non-refused path, so a true there was reporting a write that never
+// happened -- harmless as a gate today and a lie the moment anything reads
+// the field for what it says. Splitting it is the repository's own
+// state-space-conflation rule applied to a field this lane authored.
+type CensusOutcome
+  = CensusWritten
+  | CensusNotApplicable
+  | CensusWriteFailed
+
+fn census_outcome_admits(outcome: CensusOutcome) -> Bool {
+  match outcome {
+    CensusWritten => true
+    CensusNotApplicable => true
+    CensusWriteFailed => false
+  }
+}
+
 type RetentionFamily {
   key: String
   count: Int

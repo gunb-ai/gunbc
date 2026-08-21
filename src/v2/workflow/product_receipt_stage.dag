@@ -34,6 +34,11 @@ import v2.std.text { String }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.workflow.body_lowering_retention_census {
+  CensusNotApplicable,
+  CensusOutcome,
+  CensusWriteFailed,
+  CensusWritten,
+  census_outcome_admits,
   retention_census,
   retention_census_render
 }
@@ -246,7 +251,7 @@ fn emitter_diagnostic_causes(ds: NonEmptyDiagnostics) -> List<DiagnosticCauseTal
 type ProductReceiptCandidate {
   observation: BoundaryObservation
   emitted_source: String
-  census_written: Bool
+  census: CensusOutcome
 }
 
 func product_receipt_candidate(
@@ -285,7 +290,7 @@ func product_receipt_candidate_refused(
   ds: NonEmptyDiagnostics,
   population_digest: ArtifactIdentity
 ) -> ProductReceiptCandidate {
-  let census = Filesystem.Write(
+  let census_write = Filesystem.Write(
     path: concat(txn, product_receipt_stage_census_rel),
     content: retention_census_render(families: retention_census(ds: ds))
   )
@@ -296,7 +301,7 @@ func product_receipt_candidate_refused(
       consumed: population_digest
     ),
     emitted_source: "",
-    census_written: census.success
+    census: if census_write.success { CensusWritten } else { CensusWriteFailed }
   }
 }
 
@@ -314,7 +319,7 @@ func product_receipt_candidate_materialize(
         consumed: population_digest
       ),
       emitted_source: emitted_source,
-      census_written: true
+      census: CensusNotApplicable
     }
   } else {
     let made = shell.Mkdir.Parents(path: concat(candidate_dir, "/src"))
@@ -330,7 +335,7 @@ func product_receipt_candidate_materialize(
           produced: product_artifact_identity(value: emitted_source, file_count: 1)
         ),
         emitted_source: emitted_source,
-        census_written: true
+        census: CensusNotApplicable
       }
     } else {
       ProductReceiptCandidate {
@@ -340,7 +345,7 @@ func product_receipt_candidate_materialize(
           consumed: population_digest
         ),
         emitted_source: emitted_source,
-        census_written: true
+        census: CensusNotApplicable
       }
     }
   }
@@ -575,12 +580,12 @@ func run_product_receipt_stage(txn: String, manifest_identity: String, entry: St
     ProductReceiptCandidate {
       observation: stage_not_exercised(boundary: ClosureCandidateEmitted),
       emitted_source: "",
-      census_written: true
+      census: CensusNotApplicable
     }
   }
   let b4 = candidate.observation
   let emitted_source = candidate.emitted_source
-  let census_written = candidate.census_written
+  let census_outcome = candidate.census
 
   let b4_ok = match b4.standing {
     BoundaryCompleted => true
@@ -624,7 +629,7 @@ func run_product_receipt_stage(txn: String, manifest_identity: String, entry: St
     content: product_receipt_render(receipt: receipt)
   )
 
-  if !census_written {
+  if !census_outcome_admits(outcome: census_outcome) {
     exit_failure(
       reason: "boundary-4 retention census could not be written; the receipt would understate a population it observed"
     )
