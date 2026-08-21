@@ -6,11 +6,11 @@ import product.placement_supply { HostIdentity }
 import extdeps.ssh.session { SshSessionExecResult }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
-import gunbc.spark.serving_credential_locus {
-  prepare_spark_serving_agent_context,
-  spark_serving_slice_transport,
-  SparkServingContextReady,
-  SparkServingContextRefused,
+import gunbc.fleet_ssh_locus {
+  prepare_fleet_ssh_agent_context,
+  fleet_locus_transport,
+  FleetSshContextReady,
+  FleetSshContextRefused,
 }
 import gunbc.fleet_multi_principal_probe {
   spark_converge_target_selection,
@@ -87,7 +87,7 @@ fn spark_serving_issue_reboot(
 ) -> SparkServingRebootOutcome {
   match run_typed_argv_transport(
     argv: spark_serving_reboot_argv(),
-    transport: spark_serving_slice_transport(context: context, host: host),
+    transport: fleet_locus_transport(context: context, host: host),
   ) {
     TypedArgvExecRefused { reason: why } =>
       SparkServingRebootNotAttempted {
@@ -166,9 +166,9 @@ data spark_serving_reboot_receipt_path: String = "target/spark-serving-reboot-re
 data spark_serving_reboot_ci_attempt_raw: String = "spark-serving-reboot-ci"
 
 func spark_serving_reboot_ci_wet() -> ProcessExit {
-  match prepare_spark_serving_agent_context(attempt_raw: spark_serving_reboot_ci_attempt_raw) {
-    SparkServingContextRefused { cause: cause } => exit_failure(reason: cause)
-    SparkServingContextReady { context: context, receipt: context_receipt } =>
+  match prepare_fleet_ssh_agent_context(attempt_raw: spark_serving_reboot_ci_attempt_raw) {
+    FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)
+    FleetSshContextReady { context: context, receipt: context_receipt } =>
       spark_serving_reboot_with_context(context: context, context_receipt: context_receipt)
   }
 }

@@ -5,10 +5,10 @@ import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at }
-import gunbc.spark.serving_credential_locus {
-  prepare_spark_serving_agent_context,
-  SparkServingContextReady,
-  SparkServingContextRefused,
+import gunbc.fleet_ssh_locus {
+  prepare_fleet_ssh_agent_context,
+  FleetSshContextReady,
+  FleetSshContextRefused,
 }
 import gunbc.fleet_multi_principal_probe {
   spark_converge_target_selection,
@@ -750,9 +750,9 @@ func spark_grant_probe_outcome(
 func spark_grant_install_ci_wet() -> ProcessExit
   uses net: Network
 {
-  match prepare_spark_serving_agent_context(attempt_raw: spark_grant_install_ci_attempt_raw) {
-    SparkServingContextRefused { cause: cause } => exit_failure(reason: cause)
-    SparkServingContextReady { context: context, receipt: context_receipt } =>
+  match prepare_fleet_ssh_agent_context(attempt_raw: spark_grant_install_ci_attempt_raw) {
+    FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)
+    FleetSshContextReady { context: context, receipt: context_receipt } =>
       match spark_converge_target_selection(execute_apply: true) {
         SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
         SparkConvergeTargetAllObserveOnly =>

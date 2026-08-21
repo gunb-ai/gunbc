@@ -70,12 +70,12 @@ import gunbc.fleet_known_hosts_anchor {
 import gunbc.fleet_multi_principal_probe { fleet_ssh_attempt_raw_from_env }
 import gunbc.spark.credential_workflow { run_with_materialized_fleet_ssh_binding }
 import gunbc.auth.access_token_source { GcloudPrintToken }
-import gunbc.spark.serving_credential_locus {
-  SparkServingContextReady,
-  SparkServingContextRefused,
-  prepare_spark_serving_agent_context,
-  spark_serving_slice_transport,
-  spark_serving_slice_locus_label,
+import gunbc.fleet_ssh_locus {
+  FleetSshContextReady,
+  FleetSshContextRefused,
+  prepare_fleet_ssh_agent_context,
+  fleet_locus_transport,
+  fleet_locus_label,
 }
 import gunbc.host_effect_realize { run_typed_argv_transport }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
@@ -107,7 +107,7 @@ import gunbc.typed_remote_file_write {
 }
 import gunbc.remote_operation { RemoteFileBytes, remote_execution_permits_continuation }
 import gunbc.spark.serving_converge_apply { spark_serving_run_operation }
-import gunbc.spark.serving_credential_locus { spark_serving_slice_transport }
+import gunbc.fleet_ssh_locus { fleet_locus_transport }
 import gunbc.spark.managed_access_bootstrap { SparkGrantOutcome, GrantEnumerated, GrantAbsent, GrantProbeRefused }
 import gunbc.spark.managed_grant_reconcile { spark_managed_grant_report }
 import gunbc.spark.serving_boot_provenance {
@@ -256,7 +256,7 @@ fn spark_serving_probe_leg_via_locus(
 ) -> SshSessionExecResult? {
   match run_typed_argv_transport(
     argv: raw_words,
-    transport: spark_serving_slice_transport(context: context, host: host),
+    transport: fleet_locus_transport(context: context, host: host),
   ) {
     TypedArgvExecConverged { result: r } => Present { value: r }
     TypedArgvExecRefused { reason: why } =>
@@ -758,9 +758,9 @@ func spark_serving_observe_with_attempt(attempt_raw: String) -> ProcessExit
 // through the in-run ssh-agent the job already materialized, so the same probe legs run where
 // the fleet actually is. It is READ-ONLY: every word list here is a query.
 func spark_serving_observe_ci_wet() -> ProcessExit {
-  match prepare_spark_serving_agent_context(attempt_raw: spark_serving_observe_ci_attempt_raw) {
-    SparkServingContextRefused { cause: cause } => exit_failure(reason: cause)
-    SparkServingContextReady { context: context, receipt: context_receipt } =>
+  match prepare_fleet_ssh_agent_context(attempt_raw: spark_serving_observe_ci_attempt_raw) {
+    FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)
+    FleetSshContextReady { context: context, receipt: context_receipt } =>
       spark_serving_observe_ci_with_context(context: context, context_receipt: context_receipt)
   }
 }
@@ -782,7 +782,7 @@ func spark_serving_observe_ci_with_context(
     concat(
       [
         join(["spark_serving_observe_ci_wet probed_at=", now as String, "\n"], ""),
-        join(["credential_locus=", spark_serving_slice_locus_label(context: context), "\n"], ""),
+        join(["credential_locus=", fleet_locus_label(context: context), "\n"], ""),
         context_receipt,
       ],
       map(observations, o => join([
@@ -1549,7 +1549,7 @@ func spark_serving_place_health_request_body(
             remote_execution_permits_continuation(
               execution: spark_serving_run_operation(
                 operation: RemoteFileBytes { write: w, mode: RemoteFileModeOwnerReadWrite },
-                transport: spark_serving_slice_transport(context: context, host: host),
+                transport: fleet_locus_transport(context: context, host: host),
               ),
             )
         }

@@ -27,12 +27,12 @@ import gunbc.fleet_multi_principal_probe {
 }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.host_effect { HostEffectTransport }
-import gunbc.spark.serving_credential_locus {
-  SparkServingContextReady,
-  SparkServingContextRefused,
-  prepare_spark_serving_agent_context,
-  spark_serving_slice_transport,
-  spark_serving_slice_locus_label,
+import gunbc.fleet_ssh_locus {
+  FleetSshContextReady,
+  FleetSshContextRefused,
+  prepare_fleet_ssh_agent_context,
+  fleet_locus_transport,
+  fleet_locus_label,
 }
 import gunbc.host_effect_realize { run_typed_argv_transport }
 import gunbc.spark.credential_workflow { run_with_materialized_fleet_ssh_binding }
@@ -473,7 +473,7 @@ fn spark_serving_converge_slice_wet_host_report(
   execute_apply: Bool,
 ) -> SparkServingSliceHostReport {
   let endpoint = fleet_probe_endpoint_for(host: host as String)
-  let transport = spark_serving_slice_transport(context: context, host: host)
+  let transport = fleet_locus_transport(context: context, host: host)
   match spark_serving_probe_linger(transport: transport) {
     TypedArgvExecRefused { reason: probe_refusal } =>
       spark_serving_converge_slice_host_line(
@@ -687,7 +687,7 @@ fn spark_serving_converge_slice_emit_receipt(
                         join([
                           "execute_apply=",
                           if execute_apply { "yes" } else { "no" },
-                          " credential_locus=", spark_serving_slice_locus_label(context: context),
+                          " credential_locus=", fleet_locus_label(context: context),
                           " address_authority=fleet_probe_endpoint_for→dgx_spark_procurement OperatorAllocation\n",
                         ], ""),
                         trust_line,
@@ -733,9 +733,9 @@ fn spark_serving_converge_slice_emit_receipt(
 data spark_serving_converge_ci_attempt_raw: String = "spark-serving-converge-ci"
 
 func spark_serving_converge_slice_ci_wet() -> ProcessExit {
-  match prepare_spark_serving_agent_context(attempt_raw: spark_serving_converge_ci_attempt_raw) {
-    SparkServingContextRefused { cause: cause } => exit_failure(reason: cause)
-    SparkServingContextReady { context: context, receipt: context_receipt } =>
+  match prepare_fleet_ssh_agent_context(attempt_raw: spark_serving_converge_ci_attempt_raw) {
+    FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)
+    FleetSshContextReady { context: context, receipt: context_receipt } =>
       spark_serving_converge_slice_ci_with_context(context: context, context_receipt: context_receipt)
   }
 }

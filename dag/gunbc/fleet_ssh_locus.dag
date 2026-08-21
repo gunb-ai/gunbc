@@ -1,4 +1,22 @@
-module gunbc.spark.serving_credential_locus
+module gunbc.fleet_ssh_locus
+// A FLEET SSH CREDENTIAL LOCUS. Renamed out of `gunbc.spark.serving_credential_locus` because nothing
+// in it was ever about Spark: it admits an attempt identity, finds the agent socket, materializes an
+// attempt-owned public selector, verifies it against `fleet_automation_ssh_key` -- a FLEET credential
+// -- and seals a `FleetSshExecutionContext`. Zero references to serving, models, or endpoints. The
+// spark name was a nickname for a general capability (DESIGN §3), and the cost of leaving it there was
+// concrete rather than aesthetic: `gunbc.live_deploy` needs exactly this preparation to observe a
+// deployed tree over ssh, and its only options while the nickname stood were to import spark from
+// live_deploy (cementing the nickname and inverting the layer) or to author a second preparation
+// beside it (the fork §3 exists to prevent). A rename was the only move that violated nothing.
+//
+// ONE SPARK COUPLING SURVIVES AND IS NAMED RATHER THAN HIDDEN: `fleet_locus_ssh_target` still reads
+// the login principal from `gunbc.spark.serving_desired`. That principal resolves to the fleet
+// automation account and is almost certainly a second instance of the same nickname, but confirming
+// it is a separate reading and the honest state today is a fleet module importing a spark one. The
+// next step is to parameterize the principal at the locus rather than import a default, which turns
+// this edge into an argument and lets each caller name the account it is entitled to -- deliberately
+// NOT done in the same change as the rename, so that a mechanical move stays mechanically verifiable.
+
 
 import std.types { String, Bool, NonEmptyStr }
 import std.resources { Network }
@@ -51,7 +69,7 @@ import std.algebra { trim }
 // With one arm left the coproduct itself was a nickname for `FleetSshExecutionContext`, so it is gone
 // too. The helpers below take the context directly.
 
-fn spark_serving_locus_ssh_target(host: HostIdentity) -> SshTarget {
+fn fleet_locus_ssh_target(host: HostIdentity) -> SshTarget {
   SshTarget {
     endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
     principal: spark_serving_automation_principal_login(),
@@ -59,27 +77,27 @@ fn spark_serving_locus_ssh_target(host: HostIdentity) -> SshTarget {
 }
 
 // One transport, derived. There is no arm that can produce an unanchored one.
-fn spark_serving_slice_transport(
+fn fleet_locus_transport(
   context: FleetSshExecutionContext,
   host: HostIdentity,
 ) -> HostEffectTransport {
-  FleetSsh { target: spark_serving_locus_ssh_target(host: host), context: context }
+  FleetSsh { target: fleet_locus_ssh_target(host: host), context: context }
 }
 
 // The receipt line naming where the credential was held, read off the binding the context carries
 // rather than off a label the caller chose. A run cannot claim an anchored posture it did not obtain,
 // because the string is derived from the sealed value.
-fn spark_serving_slice_locus_label(context: FleetSshExecutionContext) -> String {
+fn fleet_locus_label(context: FleetSshExecutionContext) -> String {
   fleet_ssh_credential_locus_label(binding: context.credential)
 }
 
 // ── Preparing the runner-side context ───────────────────────────────────────────────────────────
 
-type SparkServingContextPreparation =
-    SparkServingContextReady { context: FleetSshExecutionContext, receipt: String }
-  | SparkServingContextRefused { cause: String }
+type FleetSshContextPreparation =
+    FleetSshContextReady { context: FleetSshExecutionContext, receipt: String }
+  | FleetSshContextRefused { cause: String }
 
-fn spark_serving_agent_socket() -> NonEmptyStr? {
+fn fleet_ssh_agent_socket() -> NonEmptyStr? {
   match shell.Env.Get(name: "SSH_AUTH_SOCK" as NonEmptyStr).value {
     Present { value: raw } =>
       if trim(s: raw) == "" { none } else { Present { value: trim(s: raw) as NonEmptyStr } }
@@ -95,29 +113,29 @@ fn spark_serving_agent_socket() -> NonEmptyStr? {
 // stopped materializing the anchor, or an agent holding a different key, produced the same receipt.
 //
 // Each step here is observed and each refusal is typed and located. On any refusal the caller holds
-// no context, and since `spark_serving_slice_transport` is the only way to a transport and it
+// no context, and since `fleet_locus_transport` is the only way to a transport and it
 // requires one, zero SSH legs execute -- a property of the types rather than a discipline.
-func prepare_spark_serving_agent_context(attempt_raw: String) -> SparkServingContextPreparation
+func prepare_fleet_ssh_agent_context(attempt_raw: String) -> FleetSshContextPreparation
   uses net: Network
 {
   match fleet_ssh_attempt_identity(raw: attempt_raw) {
     Absent =>
-      SparkServingContextRefused {
+      FleetSshContextRefused {
         cause: join([
-          "spark serving context refused: attempt identity `", attempt_raw,
+          "fleet ssh context refused: attempt identity `", attempt_raw,
           "` is not a safe path segment, so the anchor and selector have no attempt-owned path",
         ], ""),
       }
     Present { value: attempt } =>
-      match spark_serving_agent_socket() {
+      match fleet_ssh_agent_socket() {
         Absent =>
-          SparkServingContextRefused {
-            cause: "spark serving context refused: SSH_AUTH_SOCK is unset or empty, so there is no named agent to verify the fleet credential against",
+          FleetSshContextRefused {
+            cause: "fleet ssh context refused: SSH_AUTH_SOCK is unset or empty, so there is no named agent to verify the fleet credential against",
           }
         Present { value: sock } =>
           match materialize_agent_public_selector(attempt: attempt, key: fleet_automation_ssh_key) {
             AgentSelectorRefused { cause: cause } =>
-              SparkServingContextRefused { cause: cause }
+              FleetSshContextRefused { cause: cause }
             AgentSelectorMaterialized { selector: selector } =>
               match verify_fleet_ssh_agent_credential(
                 agent_socket: sock,
@@ -126,19 +144,19 @@ func prepare_spark_serving_agent_context(attempt_raw: String) -> SparkServingCon
                 expected_fingerprint: fleet_automation_ssh_key_fingerprint as NonEmptyStr,
               ) {
                 FleetSshCredentialIdentityMismatch { expected_line: e, observed_line: o } =>
-                  SparkServingContextRefused {
+                  FleetSshContextRefused {
                     cause: fleet_ssh_credential_verification_refusal_reason(
                       verification: FleetSshCredentialIdentityMismatch { expected_line: e, observed_line: o },
                     ),
                   }
                 FleetSshCredentialDerivationRefused { cause: cause } =>
-                  SparkServingContextRefused {
+                  FleetSshContextRefused {
                     cause: fleet_ssh_credential_verification_refusal_reason(
                       verification: FleetSshCredentialDerivationRefused { cause: cause },
                     ),
                   }
                 FleetSshCredentialVerified { binding: binding } =>
-                  spark_serving_context_from_verified_binding(
+                  fleet_ssh_context_from_verified_binding(
                     attempt: attempt,
                     binding: binding,
                   )
@@ -151,23 +169,23 @@ func prepare_spark_serving_agent_context(attempt_raw: String) -> SparkServingCon
 // The anchor half, entered only with a verified credential. Deliberately last: materializing a
 // known-hosts file is cheap and harmless, but the ORDER states the priority -- the credential is
 // established before anything about reaching a host is prepared.
-func spark_serving_context_from_verified_binding(
+func fleet_ssh_context_from_verified_binding(
   attempt: FleetSshAttemptIdentity,
   binding: FleetSshCredentialBinding,
-) -> SparkServingContextPreparation
+) -> FleetSshContextPreparation
   uses net: Network
 {
   let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
   match fleet_ssh_execution_context_of(outcome: materialization, credential: binding) {
     Absent =>
-      SparkServingContextRefused {
+      FleetSshContextRefused {
         cause: join([
-          "spark serving context refused before any ssh leg: ",
+          "fleet ssh context refused before any ssh leg: ",
           known_hosts_materialization_receipt(outcome: materialization),
         ], ""),
       }
     Present { value: context } =>
-      SparkServingContextReady {
+      FleetSshContextReady {
         context: context,
         receipt: join([
           "credential ", fleet_ssh_credential_locus_label(binding: binding),

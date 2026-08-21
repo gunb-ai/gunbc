@@ -16,11 +16,11 @@ import gunbc.fleet_multi_principal_probe {
   SparkConvergeTargetAllObserveOnly,
   SparkConvergeTargetRefused,
 }
-import gunbc.spark.serving_credential_locus {
-  prepare_spark_serving_agent_context,
-  SparkServingContextPreparation,
-  SparkServingContextReady,
-  SparkServingContextRefused,
+import gunbc.fleet_ssh_locus {
+  prepare_fleet_ssh_agent_context,
+  FleetSshContextPreparation,
+  FleetSshContextReady,
+  FleetSshContextRefused,
 }
 import gunbc.spark.serving_observe {
   spark_serving_probe_leg_via_locus,
@@ -257,9 +257,9 @@ data spark_serving_durability_receipt_path: String = "target/spark-serving-durab
 data spark_serving_durability_ci_attempt_raw: String = "spark-serving-durability-ci"
 
 func spark_serving_durability_ci_wet() -> ProcessExit {
-  match prepare_spark_serving_agent_context(attempt_raw: spark_serving_durability_ci_attempt_raw) {
-    SparkServingContextRefused { cause: cause } => exit_failure(reason: cause)
-    SparkServingContextReady { context: context, receipt: context_receipt } =>
+  match prepare_fleet_ssh_agent_context(attempt_raw: spark_serving_durability_ci_attempt_raw) {
+    FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)
+    FleetSshContextReady { context: context, receipt: context_receipt } =>
       spark_serving_durability_with_context(context: context, context_receipt: context_receipt)
   }
 }
