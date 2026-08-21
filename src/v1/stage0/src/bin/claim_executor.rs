@@ -18311,13 +18311,15 @@ fn git_stdout(workspace: &Path, args: &[&str]) -> Result<String, String> {
 /// a module that silently produces nothing is indistinguishable from a module that passed, and
 /// that conflation is what makes an unexecuted receipt read as a green one.
 ///
-/// ONE arm, because one arm has a producer. An earlier revision declared three, adding
-/// `NoEmissionChange` (authority moved but emission did not) and `CorpusNotDerivable`. Neither
-/// was ever constructed: the first needs the emission this fragment does not yet compute, and the
-/// second duplicates `ModuleCorpusPlan::refused`, which already carries every refusal with the
-/// function and type that caused it. A declared-but-unconstructed variant is vocabulary claiming
-/// a distinction nothing draws, so both are deleted rather than carried until a producer appears.
+/// Each arm has a producer. An earlier revision declared three, adding `NoEmissionChange`
+/// (authority moved but emission did not) and `CorpusNotDerivable`. Neither was ever constructed:
+/// the first needs the emission this fragment does not yet compute, and the second duplicates
+/// `ModuleCorpusPlan::refused`, which already carries every refusal with the function and type
+/// that caused it. A declared-but-unconstructed variant is vocabulary claiming a distinction
+/// nothing draws, so both were deleted rather than carried until a producer appears.
 /// `NoEmissionChange` returns when the two-build differential lands and can actually observe it.
+/// `NoFunctionsDeclared` is a genuine third arm because `declared_fn_lines == 0` is itself the
+/// producer -- a fact read straight off the authored source, not a placeholder for one.
 #[derive(Debug, Clone, PartialEq)]
 enum ReceiptExclusion {
     /// No emitted mirror in the generated population names this authority, under EITHER header
@@ -18327,6 +18329,16 @@ enum ReceiptExclusion {
     /// is not a Rust module mirror -- a workflow YAML, a fixture -- and named rather than
     /// skipped, because a changed authority that maps to nothing must be visible.
     NoEmittedMirror { module_path: String },
+
+    /// The authority declares zero `fn` lines, so `plan_module_corpus` can only ever derive an
+    /// empty `derivable` set for it -- a fact decidable from the source at selection time, before
+    /// any differential runs. Left unexcluded, `behavioral_differential`'s `total == 0` guard
+    /// refuses every such module on every diff that touches it: a domain that can never hold a
+    /// corpus was being admitted into the domain that requires one. Construction over validation
+    /// (DESIGN.md §5): a module with no functions is excluded here, by the same decidable fact
+    /// that would otherwise make the differential refuse it downstream, rather than being run and
+    /// caught as a runtime `Refused` verdict.
+    NoFunctionsDeclared { module_path: String },
 }
 
 /// The domain a corpus actually enumerated, reported as a DERIVED FACT rather than a label.
@@ -20357,18 +20369,19 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
                 let alias = format!("v1_compiler::{}", mirror.trim_end_matches(".rs"));
                 let node = parse_dag_module_node(&format!("{module_path}.dag"), &source)?;
                 let types = visible_type_decls(&module_path, &source, &modules)?;
-                plans.push((
-                    mirror,
-                    plan_module_corpus(
-                        &module_path,
-                        &source,
-                        &node,
-                        &types,
-                        &declared_anywhere,
-                        &alias,
-                    ),
-                    alias,
-                ))
+                let plan = plan_module_corpus(
+                    &module_path,
+                    &source,
+                    &node,
+                    &types,
+                    &declared_anywhere,
+                    &alias,
+                );
+                if plan.declared_fn_lines == 0 {
+                    exclusions.push(ReceiptExclusion::NoFunctionsDeclared { module_path });
+                } else {
+                    plans.push((mirror, plan, alias))
+                }
             }
         }
     }
@@ -20386,6 +20399,11 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
                  generated population names it as its authority, under either header \
                  convention (the index refuses outright if any generated file is \
                  unindexable, so this is a fact about the corpus and not a lookup miss)"
+            ),
+            ReceiptExclusion::NoFunctionsDeclared { module_path } => eprintln!(
+                "behavioral-receipt: excluded {module_path} — zero declared `fn` lines, so no \
+                 differential corpus can ever be derived for it (a decidable fact about the \
+                 authored source, not a runtime refusal)"
             ),
         }
     }
