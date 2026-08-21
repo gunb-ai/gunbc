@@ -157,7 +157,8 @@ import v2.std.compilers.target_model {
   target_binding_spelling_lookup,
   serialize_type_expr_arrow_param_spelling,
   target_collection_repr_from_node,
-  target_collection_witness_from_node,
+  target_capability_eligibility_from_node,
+  target_capability_requirement_from_node,
   target_collection_fallback_from_node
 }
 import v2.std.compilers.target_model {
@@ -1423,7 +1424,7 @@ fn target_collection_choice_from_node(node: Node) -> Outcome<TargetRepresentatio
                       bind_outcome(
                         o: node_list_from_node(
                           node: constraints_node,
-                          decode_item: target_collection_witness_from_node
+                          decode_item: target_capability_requirement_from_node
                         ),
                         f: fn(constraints) {
                           bind_outcome(
@@ -1528,16 +1529,32 @@ fn target_collection_realization_from_bundle(
                               bind_outcome(
                                 o: target_text_carrier_optional_from_bundle(bundle: bundle),
                                 f: fn(text_carrier) {
-                                  Accepted {
-                                    value: TargetCollectionRealization {
-                                      source_carrier: source_carrier,
-                                      primary: primary,
-                                      alternatives: alternatives,
-                                      fallback_diagnostic: fallback_diagnostic,
-                                      text_carrier: text_carrier
-                                    },
-                                    diagnostics: None
-                                  }
+                                  bind_outcome(
+                                    o: conj_named_child(
+                                      parent: bundle,
+                                      edge_name: ^target_collection_row_field_capability_eligibility
+                                    ),
+                                    f: fn(eligibility_node) {
+                                      bind_outcome(
+                                        o: target_capability_eligibility_from_node(
+                                          node: eligibility_node
+                                        ),
+                                        f: fn(capability_eligibility) {
+                                          Accepted {
+                                            value: TargetCollectionRealization {
+                                              source_carrier: source_carrier,
+                                              primary: primary,
+                                              alternatives: alternatives,
+                                              fallback_diagnostic: fallback_diagnostic,
+                                              text_carrier: text_carrier,
+                                              capability_eligibility: capability_eligibility
+                                            },
+                                            diagnostics: None
+                                          }
+                                        }
+                                      )
+                                    }
+                                  )
                                 }
                               )
                             }
@@ -1607,11 +1624,15 @@ fn project_set_collection_type_node(
       bind_outcome(
         o: collection_realization_from_target(target: target),
         f: fn(row) {
-          match target_collection_select_choice(
-            primary: row.primary,
-            alternatives: row.alternatives,
-            elem: elem
-          ) {
+          bind_outcome(
+            o: target_collection_select_choice(
+              eligibility_table: row.capability_eligibility,
+              primary: row.primary,
+              alternatives: row.alternatives,
+              elem: elem
+            ),
+            f: fn(selected) {
+          match selected {
             Present { value: choice } =>
               bind_outcome(
                 o: translate_type_expression_project(node: elem, target: target, projection: projection),
@@ -1631,6 +1652,8 @@ fn project_set_collection_type_node(
               )
             Absent => outcome_rejected(row.fallback_diagnostic)
           }
+            }
+          )
         }
       )
     Absent =>
@@ -1671,11 +1694,15 @@ fn project_free_monoid_via_vec_choice(
   target: TargetModel,
   projection: TargetTypeExpressionProjection
 ) -> Outcome<Node> {
-  match target_collection_select_choice(
-    primary: row.primary,
-    alternatives: row.alternatives,
-    elem: elem
-  ) {
+  bind_outcome(
+    o: target_collection_select_choice(
+      eligibility_table: row.capability_eligibility,
+      primary: row.primary,
+      alternatives: row.alternatives,
+      elem: elem
+    ),
+    f: fn(selected) {
+  match selected {
     Present { value: choice } =>
       bind_outcome(
         o: translate_type_expression_project(node: elem, target: target, projection: projection),
@@ -1705,6 +1732,8 @@ fn project_free_monoid_via_vec_choice(
       )
     Absent => outcome_rejected(row.fallback_diagnostic)
   }
+    }
+  )
 }
 type TypeExprHeadTail {
   head: Node

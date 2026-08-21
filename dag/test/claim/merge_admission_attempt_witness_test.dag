@@ -74,29 +74,36 @@ fn base_tree_fx() -> GitObjectId {
   merge_admission_witness_git_tree(label: "tree-base-current")
 }
 
-fn base_tree_stale_fx() -> GitObjectId {
-  merge_admission_witness_git_tree(label: "tree-base-stale")
-}
-
 fn roster_fx() -> GateRosterHash {
   merge_admission_witness_gate_roster(label: "roster-current")
 }
 
-fn subject_fx(attempt: WalkAttemptId, tree: GitObjectId, head: CommitSha) -> TestedSubject {
+data base_commit_fx: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data other_base_commit_fx: CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+fn subject_fx(attempt: WalkAttemptId, head: CommitSha) -> TestedSubject {
+  subject_fx_at(attempt: attempt, head: head, base_commit: base_commit_fx)
+}
+
+fn subject_fx_at(attempt: WalkAttemptId, head: CommitSha, base_commit: CommitSha) -> TestedSubject {
   TestedSubject {
     attempt_id: attempt,
     head_sha: head,
     base_ref: "origin/main",
-    base_tree_hash: tree,
+    base_commit_sha: base_commit,
   }
 }
 
-fn receipt_fx(attempt: WalkAttemptId, tree: GitObjectId, head: CommitSha) -> MergeAdmissionReceiptV2 {
+fn receipt_fx(attempt: WalkAttemptId, head: CommitSha) -> MergeAdmissionReceiptV2 {
+  receipt_fx_at(attempt: attempt, head: head, base_commit: base_commit_fx)
+}
+
+fn receipt_fx_at(attempt: WalkAttemptId, head: CommitSha, base_commit: CommitSha) -> MergeAdmissionReceiptV2 {
   MergeAdmissionReceiptV2 {
     attempt_id: attempt,
     pr_number: Present { value: 7470 },
     tested_head_sha: head,
-    tested_base_tree_hash: tree,
+    tested_base_commit_sha: base_commit,
     gate_roster_hash: roster_fx(),
     conclusion: Success,
   }
@@ -105,9 +112,9 @@ fn receipt_fx(attempt: WalkAttemptId, tree: GitObjectId, head: CommitSha) -> Mer
 test fn matching_attempt_and_subject_with_fresh_base_admits() -> Bool {
   match classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
-    receipt: receipt_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
-    merge_target_tree_hash: base_tree_fx(),
+    tested_subject: subject_fx(attempt: attempt_a(), head: head_sha_fx),
+    receipt: receipt_fx(attempt: attempt_a(), head: head_sha_fx),
+    merge_target_commit_sha: base_commit_fx,
     current_roster_hash: roster_fx(),
   ) { MergeAdmitted => true  _ => false }
 }
@@ -123,7 +130,7 @@ fn synthetic_changed_roster_receipt() -> MergeAdmissionReceiptV2 {
     attempt_id: attempt_a(),
     pr_number: Present { value: 7544 },
     tested_head_sha: head_sha_fx,
-    tested_base_tree_hash: base_tree_fx(),
+    tested_base_commit_sha: base_commit_fx,
     gate_roster_hash: synthetic_changed_roster_hash(),
     conclusion: Success,
   }
@@ -133,9 +140,9 @@ test fn synthetic_changed_roster_receipt_refuses_against_live_roster() -> Bool {
   (synthetic_changed_roster_hash() != current_gate_roster_hash)
     && match classify_merge_admission_verdict_v2(
       current_attempt_id: attempt_a(),
-      tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
+      tested_subject: subject_fx(attempt: attempt_a(), head: head_sha_fx),
       receipt: synthetic_changed_roster_receipt(),
-      merge_target_tree_hash: base_tree_fx(),
+      merge_target_commit_sha: base_commit_fx,
       current_roster_hash: current_gate_roster_hash,
     ) {
       MergeDeniedStaleRoster => true
@@ -150,9 +157,9 @@ test fn synthetic_changed_roster_receipt_refuses_against_live_roster() -> Bool {
 test fn synthetic_changed_roster_receipt_admits_when_revision_is_current() -> Bool {
   match classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
+    tested_subject: subject_fx(attempt: attempt_a(), head: head_sha_fx),
     receipt: synthetic_changed_roster_receipt(),
-    merge_target_tree_hash: base_tree_fx(),
+    merge_target_commit_sha: base_commit_fx,
     current_roster_hash: synthetic_changed_roster_hash(),
   ) {
     MergeAdmitted => true
@@ -169,15 +176,15 @@ test fn current_roster_receipt_admits_against_live_roster() -> Bool {
     attempt_id: attempt_a(),
     pr_number: Present { value: 7544 },
     tested_head_sha: head_sha_fx,
-    tested_base_tree_hash: base_tree_fx(),
+    tested_base_commit_sha: base_commit_fx,
     gate_roster_hash: current_gate_roster_hash,
     conclusion: Success,
   }
   match classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
+    tested_subject: subject_fx(attempt: attempt_a(), head: head_sha_fx),
     receipt: receipt,
-    merge_target_tree_hash: base_tree_fx(),
+    merge_target_commit_sha: base_commit_fx,
     current_roster_hash: current_gate_roster_hash,
   ) {
     MergeAdmitted => true
@@ -192,82 +199,129 @@ test fn current_roster_receipt_admits_against_live_roster() -> Bool {
 test fn foreign_attempt_refuses_as_wrong_attempt() -> Bool {
   let v = classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
-    receipt: receipt_fx(attempt: attempt_b(), tree: base_tree_fx(), head: head_sha_fx),
-    merge_target_tree_hash: base_tree_fx(),
+    tested_subject: subject_fx(attempt: attempt_a(), head: head_sha_fx),
+    receipt: receipt_fx(attempt: attempt_b(), head: head_sha_fx),
+    merge_target_commit_sha: base_commit_fx,
     current_roster_hash: roster_fx(),
   )
   match v { MergeDeniedWrongAttempt => merge_admission_verdict_would_block(v: v)  _ => false }
 }
 
+// EVERY OTHER REFUSAL IS STACKED HERE ON PURPOSE, so "precedes" is measured against a receipt that
+// would trip all of them: foreign attempt, a head and base commit that disagree with the captured
+// subject, a base that has moved under the target, a stale roster, and a failing conclusion.
+// tested_base_commit_sha is other_base_commit_fx, NOT base_commit_fx: a receipt carrying the
+// CURRENT base would be fresh, and the stale-base half of the precedence claim would silently
+// vanish while the row stayed green -- which is what a blanket fixture rewrite did to this row
+// before review caught it. Precedence ordering is exactly the property that rots invisibly, since
+// a reordering regression leaves a row like this green unless every dominated arm is really armed.
 test fn wrong_attempt_precedes_every_other_refusal() -> Bool {
   let r = MergeAdmissionReceiptV2 {
     attempt_id: attempt_b(),
     pr_number: none,
     tested_head_sha: other_head_sha_fx,
-    tested_base_tree_hash: base_tree_stale_fx(),
+    tested_base_commit_sha: other_base_commit_fx,
     gate_roster_hash: merge_admission_witness_gate_roster(label: "roster-stale"),
     conclusion: Failure,
   }
   match classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
+    tested_subject: subject_fx(attempt: attempt_a(), head: head_sha_fx),
     receipt: r,
-    merge_target_tree_hash: base_tree_fx(),
+    merge_target_commit_sha: base_commit_fx,
     current_roster_hash: roster_fx(),
   ) { MergeDeniedWrongAttempt => true  _ => false }
 }
+
+// THE ANCESTRY OPERAND'S OWN DISCRIMINATING PAIR, and the second row is the false ADMIT that
+// existed before it. A three-way merge reads the MERGE BASE, which ancestry fixes and a tree does
+// not, so a base that cherry-picks the PR and reverts it returns to the SAME TREE at a DIFFERENT
+// COMMIT, moves the merge base, and changes what the merge produces. Demonstrated in real git:
+// merging the same head into two same-tree base commits yielded trees e5c2c751 and 4b6c9a11, the
+// PR's own file present in one and absent in the other.
+//
+// Each row varies exactly ONE field from the admitting case, and both rows classified MergeAdmitted
+// before the operand existed. A regression dropping either comparison turns that row green while
+// the other stays red, so they cannot both be satisfied by an always-refuse implementation either --
+// matching_attempt_and_subject_with_fresh_base_admits is the positive control they are measured
+// against.
+test fn receipt_base_commit_that_differs_from_the_captured_subject_refuses() -> Bool {
+  let v = classify_merge_admission_verdict_v2(
+    current_attempt_id: attempt_a(),
+    tested_subject: subject_fx_at(attempt: attempt_a(), head: head_sha_fx, base_commit: base_commit_fx),
+    receipt: receipt_fx_at(attempt: attempt_a(), head: head_sha_fx, base_commit: other_base_commit_fx),
+    merge_target_commit_sha: other_base_commit_fx,
+    current_roster_hash: roster_fx(),
+  )
+  match v { MergeDeniedSubjectMismatch => merge_admission_verdict_would_block(v: v)  _ => false }
+}
+
+// a_base_that_moved_to_a_same_tree_commit_refuses_as_stale WAS DRAFTED HERE and is NOT KEPT, because
+// once the tree operand is gone "same tree, different commit" is not a state this model can express
+// -- there is no tree to hold equal. What it asserted reduces exactly to "the base moved, so the
+// receipt is stale", which subject_bound_receipt_on_an_advanced_target_is_stale_not_mismatched below
+// already asserts on the surviving operand. Two rows for one property would be the duplication this
+// change removed from the carrier, re-introduced in the tests.
+//
+// The false admit it was written for is now STRUCTURALLY unreachable rather than merely detected:
+// with no tree comparison, there is no comparison left that a same-tree-different-commit base could
+// pass. The demonstration that motivated it is recorded on TestedSubject in
+// gunbc.merge_admission_subject, where the operand it justifies lives.
 
 data subject_binding_discriminating_note: String = "The two rows below are the ones the receipt could previously LIE past. Before the gate consumed the captured subject, a receipt in the right attempt could restate any head SHA or any base tree and be classified purely on its own say-so; both cases here classified MergeAdmitted under the old signature and are refusals now. They are the discriminating pair for the binding, not decoration: each varies exactly ONE field away from the admitting case above, so a regression that drops either comparison turns that row green while the other stays red."
 
 test fn receipt_head_that_differs_from_the_captured_subject_refuses() -> Bool {
   let v = classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
-    receipt: receipt_fx(attempt: attempt_a(), tree: base_tree_fx(), head: other_head_sha_fx),
-    merge_target_tree_hash: base_tree_fx(),
+    tested_subject: subject_fx(attempt: attempt_a(), head: head_sha_fx),
+    receipt: receipt_fx(attempt: attempt_a(), head: other_head_sha_fx),
+    merge_target_commit_sha: base_commit_fx,
     current_roster_hash: roster_fx(),
   )
   match v { MergeDeniedSubjectMismatch => merge_admission_verdict_would_block(v: v)  _ => false }
 }
 
-test fn receipt_base_tree_that_differs_from_the_captured_subject_refuses() -> Bool {
-  match classify_merge_admission_verdict_v2(
-    current_attempt_id: attempt_a(),
-    tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
-    receipt: receipt_fx(attempt: attempt_a(), tree: base_tree_stale_fx(), head: head_sha_fx),
-    merge_target_tree_hash: base_tree_stale_fx(),
-    current_roster_hash: roster_fx(),
-  ) { MergeDeniedSubjectMismatch => true  _ => false }
-}
+// receipt_base_tree_that_differs_from_the_captured_subject_refuses WAS HERE and is DELETED, not
+// repointed. Its subject was the receipt's base TREE disagreeing with the captured subject's, and
+// the tree operand no longer exists -- a claim whose subject is gone cannot be kept alive by
+// aiming it at a different field, which would be a witness named for one fact asserting another.
+// The property it guarded is subsumed with room to spare by
+// receipt_base_commit_that_differs_from_the_captured_subject_refuses above: a differing commit
+// implies a differing tree, so the commit comparison refuses strictly more than the tree one did.
 
 test fn subject_from_another_attempt_refuses_even_with_a_matching_receipt() -> Bool {
   match classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: subject_fx(attempt: attempt_b(), tree: base_tree_fx(), head: head_sha_fx),
-    receipt: receipt_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
-    merge_target_tree_hash: base_tree_fx(),
+    tested_subject: subject_fx(attempt: attempt_b(), head: head_sha_fx),
+    receipt: receipt_fx(attempt: attempt_a(), head: head_sha_fx),
+    merge_target_commit_sha: base_commit_fx,
     current_roster_hash: roster_fx(),
   ) { MergeDeniedWrongAttempt => true  _ => false }
 }
 
+// THE FALSE-ADMIT ARM'S SURVIVING CONTROL. The receipt is correctly bound to its captured subject
+// and the BASE HAS MOVED, so the answer must be StaleBase (the world moved after a correct
+// measurement) and not SubjectMismatch (the receipt describes something else). Its operand used to
+// be an advanced base TREE; it is now an advanced base COMMIT, which is a strictly stronger subject
+// -- a base that moves to a commit with an identical tree is now caught here, and that is exactly
+// the cherry-pick-then-revert case that classified MergeAdmitted before this change.
 test fn subject_bound_receipt_on_an_advanced_target_is_stale_not_mismatched() -> Bool {
   match classify_merge_admission_verdict_v2(
     current_attempt_id: attempt_a(),
-    tested_subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
-    receipt: receipt_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx),
-    merge_target_tree_hash: base_tree_stale_fx(),
+    tested_subject: subject_fx(attempt: attempt_a(), head: head_sha_fx),
+    receipt: receipt_fx(attempt: attempt_a(), head: head_sha_fx),
+    merge_target_commit_sha: other_base_commit_fx,
     current_roster_hash: roster_fx(),
   ) { MergeDeniedStaleBase => true  _ => false }
 }
 
 test fn wire_v2_roundtrips_all_fields_with_pr() -> Bool {
-  let r = receipt_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx)
+  let r = receipt_fx(attempt: attempt_a(), head: head_sha_fx)
   match parse_receipt_wire_v2(text: render_receipt_wire_v2(receipt: r)) {
     Present { value: parsed } =>
       ((parsed.attempt_id as String) == attempt_a_raw)
         && (parsed.tested_head_sha == head_sha_fx)
-        && git_object_id_eq(left: parsed.tested_base_tree_hash, right: base_tree_fx())
+        && (parsed.tested_base_commit_sha == base_commit_fx)
         && (parsed.gate_roster_hash == roster_fx())
         && match parsed.pr_number { Present { value: n } => n == 7470  Absent => false }
         && match parsed.conclusion { Success => true  _ => false }
@@ -280,7 +334,7 @@ test fn wire_v2_roundtrips_without_pr() -> Bool {
     attempt_id: attempt_a(),
     pr_number: none,
     tested_head_sha: head_sha_fx,
-    tested_base_tree_hash: base_tree_fx(),
+    tested_base_commit_sha: base_commit_fx,
     gate_roster_hash: roster_fx(),
     conclusion: Success,
   }
@@ -307,7 +361,7 @@ test fn v1_wire_refused_by_v2_parser() -> Bool {
 data wire_arity_red_note: String = "Every row below was ACCEPTED by the first cut of these parsers. A trailing line rode along unread (the `>= n` superset), and a malformed seventh line silently became pr_number: none — supplied-but-unreadable collapsing into not-supplied. Each row varies one thing from a wire that parses, so a regression that relaxes arity back to a superset turns exactly that row green."
 
 test fn receipt_wire_with_a_trailing_line_refuses() -> Bool {
-  let good = render_receipt_wire_v2(receipt: receipt_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx))
+  let good = render_receipt_wire_v2(receipt: receipt_fx(attempt: attempt_a(), head: head_sha_fx))
   match parse_receipt_wire_v2(text: concat(good, "\ntrailing")) {
     Present { value: _ } => false
     Absent => true
@@ -319,7 +373,7 @@ test fn receipt_wire_with_a_malformed_pr_line_refuses_the_whole_receipt() -> Boo
     attempt_id: attempt_a(),
     pr_number: none,
     tested_head_sha: head_sha_fx,
-    tested_base_tree_hash: base_tree_fx(),
+    tested_base_commit_sha: base_commit_fx,
     gate_roster_hash: roster_fx(),
     conclusion: Success,
   })
@@ -330,7 +384,7 @@ test fn receipt_wire_with_a_malformed_pr_line_refuses_the_whole_receipt() -> Boo
 }
 
 test fn subject_wire_with_a_trailing_line_refuses() -> Bool {
-  let good = render_tested_subject_wire(subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx))
+  let good = render_tested_subject_wire(subject: subject_fx(attempt: attempt_a(), head: head_sha_fx))
   match parse_tested_subject_wire(text: concat(good, "\ntrailing")) {
     Present { value: _ } => false
     Absent => true
@@ -338,18 +392,18 @@ test fn subject_wire_with_a_trailing_line_refuses() -> Bool {
 }
 
 test fn tested_subject_wire_roundtrips() -> Bool {
-  let subj = subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx)
+  let subj = subject_fx(attempt: attempt_a(), head: head_sha_fx)
   match parse_tested_subject_wire(text: render_tested_subject_wire(subject: subj)) {
     Present { value: parsed } =>
       ((parsed.attempt_id as String) == attempt_a_raw)
         && (parsed.head_sha == head_sha_fx)
         && (parsed.base_ref == "origin/main")
-        && git_object_id_eq(left: parsed.base_tree_hash, right: base_tree_fx())
+        && (parsed.base_commit_sha == base_commit_fx)
     Absent => false
   }
 }
 
-data tested_subject_wire_move_byte_lock_note: String = "MOVE-not-fork control for the gunbc.merge_admission_subject de-fusion: this is the exact five-line byte sequence emitted before the move. A round-trip alone would miss a coordinated writer/reader drift; this literal makes any schema, ordering, object-family prefix, newline, or field-byte change red."
+data tested_subject_wire_move_byte_lock_note: String = "MOVE-not-fork control for the gunbc.merge_admission_subject de-fusion: this is the exact five-line byte sequence the subject wire emits. It was five lines before the tested-ancestry change and is five lines after, but NOT the same five: the base-tree line was replaced by a base-commit line and the schema tag moved v1 -> v2 in the same step, so an unchanged arity is not evidence of an unchanged format here. A round-trip alone would miss a coordinated writer/reader drift; this literal makes any schema, ordering, object-family prefix, newline, or field-byte change red."
 
 data merge_admission_fetch_deadline_evaluation_witness_note: String = "Forces the live stage-2 deadline row to evaluate. A direct Int-to-Seconds cast typechecks but the interpreter cannot evaluate it; that defect reached the first production on-success run and refused refresh_current_target_and_gate before FetchNoTags. Reading the branded scalar here makes the unevaluable authoring shape red in the focused admission witness instead of after the ordinary floor."
 
@@ -357,22 +411,27 @@ test fn merge_admission_fetch_deadline_is_a_usable_duration() -> Bool {
   merge_admission_fetch_stall_deadline_seconds == 240
 }
 
-test fn tested_subject_wire_bytes_are_unchanged_by_subject_defusion() -> Bool {
-  match git_sha1_object_id(hex: "1111111111111111111111111111111111111111") {
-    Absent => false
-    Present { value: pre_defusion_tree } =>
-      render_tested_subject_wire(
-        subject: subject_fx(attempt: attempt_a(), tree: pre_defusion_tree, head: head_sha_fx)
-      ) == concat(
-        "gunbc.merge_admission_tested_subject.v1\n12345-1-ci\norigin/main\nsha1:1111111111111111111111111111111111111111\n",
-        head_sha_fx
-      )
-  }
+// THE PIN MOVED WITH THE FORMAT, AND THAT IS THE POINT OF PINNING IT. This row asserted the exact
+// v1 bytes to prove the defusion MOVE changed no bytes; adding tested ancestry is a deliberate
+// format change, so the expected bytes change with it and the schema tag goes to v2. Updating a
+// golden pin is only legitimate when the change it reports is intended and stated -- here the
+// sixth line and the tag are exactly the intended change, and had either moved WITHOUT the other
+// this row would still be red.
+test fn tested_subject_wire_bytes_are_pinned_including_the_base_commit_line() -> Bool {
+  render_tested_subject_wire(
+    subject: subject_fx(attempt: attempt_a(), head: head_sha_fx)
+  ) == join([
+    "gunbc.merge_admission_tested_subject.v2",
+    "12345-1-ci",
+    "origin/main",
+    head_sha_fx,
+    base_commit_fx,
+  ], "\n")
 }
 
 test fn subject_wire_refused_by_receipt_parser_and_vice_versa() -> Bool {
-  let subj = render_tested_subject_wire(subject: subject_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx))
-  let rec = render_receipt_wire_v2(receipt: receipt_fx(attempt: attempt_a(), tree: base_tree_fx(), head: head_sha_fx))
+  let subj = render_tested_subject_wire(subject: subject_fx(attempt: attempt_a(), head: head_sha_fx))
+  let rec = render_receipt_wire_v2(receipt: receipt_fx(attempt: attempt_a(), head: head_sha_fx))
   match parse_receipt_wire_v2(text: subj) { Present { value: _ } => false  Absent => true }
     && match parse_tested_subject_wire(text: rec) { Present { value: _ } => false  Absent => true }
 }
@@ -463,7 +522,22 @@ test fn attempt_paths_are_attempt_scoped_and_distinct() -> Bool {
     && !(subj == rec_a)
 }
 
-test fn schemas_are_distinct_and_versioned() -> Bool {
+// THE TAGS ARE PINNED EXACTLY, NOT MATCHED LOOSELY, AND THE PIN IS THE POINT. This row asserted
+// `contains ".v2"`, which made it a test of the CURRENT version rather than of versioning -- so
+// bumping the receipt tag to v3 (this change) turned it red for doing exactly what
+// gunbc.merge_admission_produce wire_exact_arity_note REQUIRES on a field addition. Relaxing it to
+// "contains .v" would have removed the red and the meaning together: any tag would pass, including
+// a tag that failed to move when its arity did.
+//
+// Pinning both literals instead makes a bump DELIBERATE and visible: the tags cannot drift silently,
+// and a future field addition that forgets to move its tag turns this row red with the arity change
+// -- which is the pairing the arity note exists to enforce. The two literals are the authority's own
+// declared values, not a measurement copied from the tree.
+//
+// The distinctness conjunct stays and is doing separate work: the subject and receipt wires are
+// parsed by different readers, and a shared tag would let each accept the other's bytes.
+test fn schemas_are_distinct_and_pinned_to_their_declared_versions() -> Bool {
   !(merge_admission_receipt_schema_v2 == merge_admission_tested_subject_schema)
-    && string_contains(s: merge_admission_receipt_schema_v2, pattern: ".v2")
+    && (merge_admission_receipt_schema_v2 == "gunbc.merge_admission_receipt.v3")
+    && (merge_admission_tested_subject_schema == "gunbc.merge_admission_tested_subject.v2")
 }
