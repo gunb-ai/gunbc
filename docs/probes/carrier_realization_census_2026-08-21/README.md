@@ -9,7 +9,7 @@ uncalibrated number is the specific hazard this lane was warned about.
 ## What IS established, by execution
 
 `gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --entry
-src/v2/workflow/carrier_realization_census.dag --function census_smoke_receipt` drives the whole
+src/v1/tests/claim/carrier_realization_census.dag --function census_smoke_receipt` drives the whole
 chain: `Filesystem.Read` → `v1.compiler.compile` `front_end_sources` → a walk of the resulting v1
 tree → both answers per occurrence → TSV. From **outside** the v1 seed, with **no edit to it**.
 
@@ -62,6 +62,59 @@ short-circuit fires on every `String`-spelled reference and the roster enrolls t
 do 48 agree? Either their `decl_file` resolves to a module the roster does not enroll — plausible and
 benign — or the walk is reaching them differently from the way the emitter does, which is traversal
 drift producing a believable number. **This census cannot distinguish those two from the inside.**
+
+## Reading 3 — the self-posed question is CLOSED, and the count was 4, not 3
+
+`smart-ram-730` pointed out the 51-vs-3 question was answerable from a column already emitted, without
+the calibration run: partition the `String` occurrences by resolved `decl_file`. Done:
+
+```
+41  dag/std/types.dag        Agrees
+ 6  dag/std/algebra.dag      Agrees
+ 4  dag/std/string_type.dag  DivergesWithExactIdentity
+```
+
+**Zero counterexamples.** Every occurrence resolving to `dag/std/string_type.dag` — one of the two
+modules `structural_declaration_modules_for` enrolls — diverges. Every occurrence resolving to a
+module the roster does **not** enroll agrees. That is candidate (a), cleanly: the census is consistent
+with itself, and no specimen of traversal drift (same `decl_file`, one diverging and one not) exists
+in this subject. The sub-question closes without the calibration run — which still runs, because it
+answers the strictly larger question of whether the walk reaches what the emitter reaches at all.
+
+**And the count was 4, not 3.** Two corrections, in order:
+
+1. **My first diagnosis was wrong.** I read the stray `` `, not `ProcessExit`. `` on one row as an
+   unescaped tab/newline in a `data … : String` note leaking into the TSV, and added `tsv_escape` to
+   fix it. The escaping change produced **byte-identical output**, which refutes that diagnosis.
+2. **The real cause was the receipt's channel.** Returning the TSV as the entry's *value* put it
+   inside the run harness's own message — `function … returned <value>, not ProcessExit.` — so the
+   **last row of every receipt** carried a harness suffix, and a line-anchored histogram over that
+   output silently dropped it. The receipt was always correct; the reading of it was short by exactly
+   one row, **in the direction that reports fewer findings**.
+
+Fixed by writing the receipt to a **file sidecar**, which is what the design specified in the first
+place and what the first three readings did not do. `tsv_escape` stays as hygiene — a note body
+genuinely containing a tab would still corrupt a row — but it is **not** what fixed this, and is not
+claimed to be.
+
+## Where this module lives, and why that is not a free choice
+
+**CI refuted the placement.** The module was authored at `src/v2/workflow/`, and the required floor
+resolves everything under its `dag` + `src/v2` roots (`modules_resolved=3820`), so it was swept into
+discovery **by path** and every `v1.*` import came back `unresolved import` — the same structural
+unresolvability `dag/test/claim/checkpoint_identity_keying_witness_test.dag` documents for itself.
+
+An earlier revision of the design said a probe module outside the seed may import v1 modules and that
+this "removes the v1-growth question from step 1 entirely". **The first half is true and the second is
+false**: import direction is not a layer rule, but the floor's source-root envelope is a real
+constraint, and anything under `dag` or `src/v2` is inside it. The module now lives at
+`src/v1/tests/claim/carrier_realization_census.dag`, beside the precedent that already imports
+`v1.compiler.emit_rust`, and produces byte-identical results there.
+
+**So the v1-growth question is back, and it is an admission to state rather than assume.** Under
+DESIGN §3's v1 maintenance standing the test is PURPOSE — a change is admitted when it serves the v2
+self-host program — and the E0308 board is that program. That reads as admissible; it is not this
+document's to decide.
 
 ## The bar, unchanged
 

@@ -1,4 +1,4 @@
-module v2.workflow.carrier_realization_census
+module v1.tests.claim.carrier_realization_census
 
 import v1.compiler.compile { SourceFile, FrontendResult, front_end_sources }
 import v1.compiler.emit_rust { is_host_text_carrier_type }
@@ -245,14 +245,26 @@ fn outcome_label(o: CensusOutcome) -> String {
   }
 }
 
+// TSV FIELD ESCAPING, and it is not hygiene -- its absence UNDER-COUNTED the class this
+// census measures. A `data ...: String` note body carrying a tab or newline leaked into the
+// receipt and split one row across fields, so its outcome token no longer terminated the
+// line and a line-anchored histogram scored 3 divergences where there were 4. The corrupted
+// row was still present and still correct; the INSTRUMENT reading it was wrong, and the
+// error direction was toward fewer findings, which is the direction nothing complains about.
+fn tsv_escape(v: String) -> String {
+  replace(replace(v, "\t", "\\t"), "\n", "\\n")
+}
+
 fn census_tsv_header() -> String {
   "module_file\tenclosing_decl\tposition_kind\tauthored_name\tdecl_file\tlegacy_base\tauthority_base\toutcome"
 }
 
 fn census_row_tsv(r: CarrierDecisionRow) -> String {
   concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(
-    r.module_file, "\t"), r.enclosing_decl), "\t"), r.position_kind), "\t"), r.authored_name), "\t"),
-    r.decl_file), "\t"), r.legacy_base), "\t"), r.authority_base), "\t"), outcome_label(o: r.outcome))
+    tsv_escape(v: r.module_file), "\t"), tsv_escape(v: r.enclosing_decl)), "\t"),
+    tsv_escape(v: r.position_kind)), "\t"), tsv_escape(v: r.authored_name)), "\t"),
+    tsv_escape(v: r.decl_file)), "\t"), tsv_escape(v: r.legacy_base)), "\t"),
+    tsv_escape(v: r.authority_base)), "\t"), outcome_label(o: r.outcome))
 }
 
 fn census_tsv(rows: List<CarrierDecisionRow>) -> String {
@@ -280,4 +292,19 @@ data census_smoke_subject_paths: List<String> = [
 
 fn census_smoke_receipt() -> String {
   census_receipt_for_paths(paths: census_smoke_subject_paths)
+}
+
+// SIDECAR RECEIPT AS A FILE, which is what the design specified and what the first
+// readings did not do. Returning the TSV as the entry's value put it inside the run
+// harness's own message -- `function ... returned <value>, not ProcessExit.` -- so the
+// LAST row of every receipt carried a harness suffix, and a line-anchored histogram over
+// that output silently dropped it. The receipt was always correct; the reading of it was
+// short by exactly one row, and short in the direction that reports FEWER findings.
+data census_smoke_receipt_path: String = "target/carrier-realization-census/smoke.tsv"
+
+fn census_write_smoke_receipt() -> Bool {
+  Filesystem.Write(
+    path: census_smoke_receipt_path,
+    content: census_receipt_for_paths(paths: census_smoke_subject_paths)
+  ).success
 }
