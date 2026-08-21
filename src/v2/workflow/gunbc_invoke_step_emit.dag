@@ -22,6 +22,7 @@ import v2.std.orchestration {
   Run
 }
 import v2.std.collection { Absent, Present }
+import v2.std.decl_index { DeclFact, decl_facts }
 import v2.std.diagnostic { Accepted, Rejected, None, Some }
 
 // THE SINGLE ROOT for emitting a `gunbc run` workflow step. Before this module every
@@ -254,6 +255,70 @@ fn gunbc_invoke_step_emit_pipeline(p: Pipeline) -> String {
 
 // The whole-step root every ordinary call site uses: ROOT stamp, one gunbc run
 // invocation, optional receipt cat.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// THE TARGET RESOLUTION WALL. A `gunbc run` step names an entry FILE and a FUNCTION in it,
+// and nothing established that either existed. gunbc#8377 landed two steps whose entry
+// files had been renamed out from under them -- `spark/grant_install.dag` and
+// `spark/serving_durability.dag`, both from one hand-resolved merge conflict -- and they
+// emitted cleanly into the committed `fleet-converge.yml`, where they sat naming modules
+// that cannot answer. The emitter was happy to emit them. That is why the wall belongs
+// HERE and not in a test beside it: a test catches the bad step after it exists, this
+// makes it unproducible.
+//
+// It rides the poison-marker mechanism this module already established for the unsafe-word
+// wall rather than minting a second refusal shape. The marker is not valid workflow shell,
+// so a refused target cannot become a runnable step and the generated-artifact drift check
+// goes red rather than a hand-spelled fallback masking it.
+//
+// RUNG, stated honestly because the enrolment is NOT what it looks like: this is
+// *mechanically preventable*, not structurally guaranteed. It refuses at ARTIFACT
+// GENERATION, which is the only sanctioned route to a matching committed workflow -- hand
+// edits to the emitted YAML are reverted -- so in practice it fires on the machine of
+// whoever introduces the bad entry, at the moment they introduce it, which is strictly
+// earlier than any test could. It is NOT currently gated in CI: the generated-artifact
+// drift gate is unenrolled since the floor cut, which DESIGN records. NEXT-RUNG TRIGGER is
+// that gate's re-add, already a queued item there. An earlier draft of this wall claimed it
+// "runs in --required-regen"; that was FALSE -- --required-regen adjudicates the stage0
+// Rust mirror and emits no workflow YAML -- and it is recorded here because a wall
+// advertising an enrolment it does not have is the inert-mechanism lie, worse than the
+// honest gap it conceals.
+//
+// The roots are the CALLER'S `source_roots`, not a set minted here. The emitter has no
+// business knowing which directories a particular spec's entries live in, and reading the
+// same roots the invocation itself will run under means the wall resolves against exactly
+// the population the step resolves against -- not an approximation of it.
+data gunbc_invoke_unresolved_target_poison_prefix: String = "__GUNBC_INVOKE_EMIT_REFUSED__ v2.workflow.gunbc_invoke_step_emit refused to render a gunbc run step: its target does not resolve. The named entry file declares no such function, or the entry file itself is absent from the declared source roots. This marker is not valid workflow shell, so the committed workflow drift check goes red rather than a step shipping that names a module which cannot answer (DESIGN section 5: refuse, never widen). Unresolved target: "
+
+fn gunbc_run_step_target_resolves(
+  source_roots: List<String>,
+  entry: String,
+  function: String
+) -> Bool {
+  fold(
+    decl_facts(pool_roots: source_roots),
+    init: false,
+    f: (found, fact) => found || (fact.rel_path == entry && fact.name == function)
+  )
+}
+
+// BOTH FAILURE SHAPES REFUSE THROUGH ONE ARM, and that is deliberate rather than lazy. A
+// missing FILE and a present file MISSING THE SYMBOL are the same fact to a consumer --
+// this pair names nothing runnable -- and they have the same remedy, which is to name a
+// pair that exists. What the two shapes DO get separately is discriminating evidence: the
+// witness plants one of each, because a wall that only caught the absent file would have
+// passed gunbc#8377's durability defect, where the file existed and the function did not.
+// The refused pair is rendered through the same sanitizer the unsafe-word wall uses, so no
+// byte of an unresolvable target reaches a runner even in the refusal.
+fn gunbc_invoke_unresolved_target_poison(entry: String, function: String) -> String {
+  concat(
+    gunbc_invoke_unresolved_target_poison_prefix,
+    concat(
+      gunbc_invoke_sanitize_word(word: entry),
+      concat(" :: ", concat(gunbc_invoke_sanitize_word(word: function), "\n"))
+    )
+  )
+}
+
 fn gunbc_run_step_script(
   source_roots: List<String>,
   entry: String,
@@ -261,6 +326,9 @@ fn gunbc_run_step_script(
   claim_run: Bool,
   receipt_rel: String?
 ) -> String {
+  if gunbc_run_step_target_resolves(source_roots: source_roots, entry: entry, function: function) == false {
+    gunbc_invoke_unresolved_target_poison(entry: entry, function: function)
+  } else {
   gunbc_invoke_step_emit_pipeline(
     p: gunbc_run_step_intent(
       prelude: [],
@@ -271,6 +339,7 @@ fn gunbc_run_step_script(
       receipt_rel: receipt_rel
     )
   )
+  }
 }
 
 // Same root with a typed preamble in front of the ROOT stamp.
@@ -282,6 +351,9 @@ fn gunbc_run_step_script_with_prelude(
   claim_run: Bool,
   receipt_rel: String?
 ) -> String {
+  if gunbc_run_step_target_resolves(source_roots: source_roots, entry: entry, function: function) == false {
+    gunbc_invoke_unresolved_target_poison(entry: entry, function: function)
+  } else {
   gunbc_invoke_step_emit_pipeline(
     p: gunbc_run_step_intent(
       prelude: prelude,
@@ -292,6 +364,7 @@ fn gunbc_run_step_script_with_prelude(
       receipt_rel: receipt_rel
     )
   )
+  }
 }
 
 // Same root for a call site that carries env bindings on the invocation itself and
