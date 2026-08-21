@@ -1,12 +1,10 @@
 module gunbc.generic_binder_field_projection_deficit
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { List, NonEmptyStr, String }
 import std.decl_ref {
-  CitableThroughDeclIndex,
   CitationIndexCoverage,
   DeclarationRef,
   OutsideDeclIndexTestWitnessModule,
-  citation_is_outside_index,
   decl_ref
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -51,6 +49,24 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // against the instantiated type. This carrier's dissolution is stated below and its
 // located sites are the population that dissolves with it.
 //
+// WHY THERE IS NO WITNESS BESIDE THIS CARRIER, stated rather than left as an
+// absence for a reader to read as an oversight. The first cut of this module
+// carried a located-ness predicate and a fixture witness folding it. The predicate
+// was validation restating what the carrier's own shape already guarantees: both
+// `projected_field` and the `DeclarationRef` components are `NonEmptyStr`, and the
+// attempt to author the discriminating RED row -- a site with an empty
+// `projected_field` -- was REFUSED at resolve with a type mismatch. The invalid
+// state has no constructor, so the check had nothing left to catch (DESIGN.md §5,
+// construction over validation), and both the predicate and its witness are deleted
+// rather than kept as a green that cannot go red.
+//
+// Nor are these rows registered on `v2.lens.cited_symbol_resolution`'s production
+// pool. That pool consumes only CITABLE refs, and both sites below are
+// `OutsideDeclIndexTestWitnessModule` -- `v2.std.decl_index` `decl_facts` skips test
+// `.dag` files by design -- so registering them would add exactly zero refs to a
+// lens that is itself inert. The coverage disposition is carried on each row where
+// it can be read, which is what `CitationIndexCoverage` exists for.
+//
 // WHAT THIS CARRIER DOES NOT ASSERT: it does not propose the repair's shape, and it
 // does not claim the two sites below are the whole population. They are the sites
 // this measurement located. A census over the corpus would be a different piece of
@@ -89,32 +105,4 @@ fn generic_binder_field_projection_dissolution() -> DissolutionCondition {
   unbound_dissolution(
     description: "v2 inference resolves a generic coproduct's type argument into the arm binder, so a field projection off that binder checks against the instantiated type. At that point the carrier_binder_of / with_duplicate_carrier_edge helpers in v2.test.claim.fold_lowering fold back into their match arms, the annotation that names this deficit deletes with them, and this module deletes with the sites."
   )
-}
-
-fn generic_binder_field_projection_site_is_located(s: GenericBinderProjectionSite) -> Bool {
-  !(s.site.module_path == "") && !(s.site.decl_name == "") && !(s.projected_field == "")
-}
-
-fn generic_binder_field_projection_sites_all_located_in(
-  sites: List<GenericBinderProjectionSite>
-) -> Bool {
-  fold(sites, init: true, f: fn(ok, s) { ok && generic_binder_field_projection_site_is_located(s: s) })
-}
-
-fn generic_binder_field_projection_sites_all_located() -> Bool {
-  generic_binder_field_projection_sites_all_located_in(sites: generic_binder_field_projection_sites)
-}
-
-fn generic_binder_field_projection_site_refs_in(
-  sites: List<GenericBinderProjectionSite>
-) -> List<DeclarationRef> {
-  fold(sites, init: [], f: fn(acc, s) { concat(acc, [s.site]) })
-}
-
-fn generic_binder_field_projection_outside_index_sites() -> List<GenericBinderProjectionSite> {
-  filter(generic_binder_field_projection_sites, s => citation_is_outside_index(coverage: s.index_coverage))
-}
-
-fn generic_binder_field_projection_outside_index_count() -> Int {
-  length(xs: generic_binder_field_projection_outside_index_sites())
 }
