@@ -62,6 +62,8 @@ type CandidateEvalBudget
   = NoDeclaredCandidateBudget
   | CandidateCpuBudgetMs { limit_ms: Int }
 
+data eval_claim_coverage_obligation_note: String = "A COVERAGE OBLIGATION, DECLARED RATHER THAN LEFT AS AN IMPLIED PASS. An Eval claim names the runtime node to evaluate, and there is today no resolution from `evaluate the function named X in this candidate` to that node — so the Eval branch is NOT exercised end to end from a source string anywhere in this repository, and the fail-fast versus full-ledger split is proven at the decision function instead. That is a gap in what is OBSERVED, not a gap in what is modeled, and it is named here so it can be closed rather than rediscovered: the trigger is a candidate-relative entry-point resolution reaching this claim, at which point EvalClaim carries the resolved node and the policy split gets its end-to-end pair."
+
 type EvalClaim {
   identity: Symbol,
   evaluated_function: Symbol,
