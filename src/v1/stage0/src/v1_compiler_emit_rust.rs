@@ -4,6 +4,7 @@
 use self::AliasDeclArityVerdict::*;
 use self::ClosedAliasPeelVerdict::*;
 pub use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
+pub use crate::extdeps_languages_rust_capabilities::phantom_opaque_carrier_derive_traits;
 pub use crate::extdeps_languages_rust_emit::HigherOrderMethodSpec;
 pub use crate::extdeps_languages_rust_emit::{
     rt_bridge_function_names, rt_functions, rt_ref_map_functions, rt_wraps_result,
@@ -30,7 +31,6 @@ use crate::std_syntax::AlgebraFieldKind::*;
 use crate::std_syntax::BinOp::*;
 use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
-pub use crate::std_trait_derive_shape::phantom_opaque_carrier_derive_traits;
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{container_template_algebra, is_container_type, is_kernel_type};
 pub use crate::v1_compiler_artifact::RenderTarget;

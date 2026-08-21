@@ -3,6 +3,16 @@
 
 use self::KeyedMapVerdict::*;
 use self::V1FreeMonoidSupplementalRoute::*;
+pub use crate::extdeps_languages_rust_capabilities::RustCapability;
+use crate::extdeps_languages_rust_capabilities::RustCapability::{
+    RustDebug, RustDeserialize, RustPartialEq, RustSerialize,
+};
+pub use crate::extdeps_languages_rust_capabilities::{
+    derive_traits_union, fn_field_derive_traits, kernel_int_arithmetic_traits,
+    map_key_required_derive_traits, nullary_coproduct_derive_traits,
+    payload_coproduct_derive_traits, record_derive_traits_copy, record_derive_traits_heap,
+    rust_capability_shape_table, symbol_wrapped_ord_carrier_derive_traits,
+};
 pub use crate::extdeps_languages_rust_derive_contracts::RustVecSupplementalGenericBoundRow;
 pub use crate::extdeps_languages_rust_derive_contracts::{
     rust_btree_set_supplemental_generic_bound_rows,
@@ -18,22 +28,15 @@ pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_syntax::BinOp;
 use crate::std_syntax::BinOp::*;
+pub use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape;
 use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape::{
     ReprDeriveElemKernelInt, ReprDeriveElemNullaryEnumCopy, ReprDeriveElemPayloadCoproduct,
     ReprDeriveElemSymbolWrappedOrdCarrier, ReprDeriveElemUnknown,
 };
-use crate::std_trait_derive_shape::ReprGroundingDeriveTrait::{
-    ReprDeriveClone, ReprDeriveDebug, ReprDeriveDeserialize, ReprDerivePartialEq,
-    ReprDeriveSerialize,
-};
 pub use crate::std_trait_derive_shape::{
-    derive_traits_union, fn_field_derive_traits, kernel_int_arithmetic_traits,
-    map_key_required_derive_traits, nullary_coproduct_derive_traits,
-    payload_coproduct_derive_traits, record_derive_traits_copy, record_derive_traits_heap,
     repr_grounding_derive_completeness_predicate, repr_grounding_group_completion_carrier,
-    repr_grounding_supplemental_bool_host_bridge_target, symbol_wrapped_ord_carrier_derive_traits,
+    repr_grounding_supplemental_bool_host_bridge_target,
 };
-pub use crate::std_trait_derive_shape::{ReprGroundingDeriveElemShape, ReprGroundingDeriveTrait};
 pub use crate::std_types::{container_template_algebra, is_container_type};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
@@ -208,9 +211,9 @@ pub fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
 }
 
 pub fn v1_with_map_key_requirement(
-    base: Rc<Vec<ReprGroundingDeriveTrait>>,
+    base: Rc<Vec<RustCapability>>,
     map_key_required: bool,
-) -> Rc<Vec<ReprGroundingDeriveTrait>> {
+) -> Rc<Vec<RustCapability>> {
     if map_key_required.clone() {
         derive_traits_union(base.clone(), map_key_required_derive_traits())
     } else {
@@ -544,16 +547,14 @@ pub fn v1_freemonoid_row_route(
     row: Rc<RustVecSupplementalGenericBoundRow>,
 ) -> Option<V1FreeMonoidSupplementalRoute> {
     match row.derive_trait.clone() {
-        ReprGroundingDeriveTrait::ReprDeriveDebug => {
+        RustCapability::RustDebug => Some(V1FreeMonoidSupplementalRoute::FreeMonoidHandWrittenImpl),
+        RustCapability::RustPartialEq => {
             Some(V1FreeMonoidSupplementalRoute::FreeMonoidHandWrittenImpl)
         }
-        ReprGroundingDeriveTrait::ReprDerivePartialEq => {
-            Some(V1FreeMonoidSupplementalRoute::FreeMonoidHandWrittenImpl)
-        }
-        ReprGroundingDeriveTrait::ReprDeriveSerialize => {
+        RustCapability::RustSerialize => {
             Some(V1FreeMonoidSupplementalRoute::FreeMonoidSerdeBoundAttr)
         }
-        ReprGroundingDeriveTrait::ReprDeriveDeserialize => {
+        RustCapability::RustDeserialize => {
             Some(V1FreeMonoidSupplementalRoute::FreeMonoidSerdeBoundAttr)
         }
         _ => None,
@@ -585,7 +586,7 @@ pub fn v1_freemonoid_unroutable_row_refusal() -> String {
     }
 }
 
-pub fn v1_freemonoid_hand_written_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
+pub fn v1_freemonoid_hand_written_traits() -> Rc<Vec<RustCapability>> {
     Rc::new({
         let mut __result = Vec::new();
         for row in Rc::new({
@@ -613,8 +614,8 @@ pub fn v1_freemonoid_hand_written_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> 
 }
 
 pub fn v1_freemonoid_filter_hand_written(
-    traits: Rc<Vec<ReprGroundingDeriveTrait>>,
-) -> Rc<Vec<ReprGroundingDeriveTrait>> {
+    traits: Rc<Vec<RustCapability>>,
+) -> Rc<Vec<RustCapability>> {
     Rc::new({
         let mut __result = Vec::new();
         for t in traits.clone().iter().cloned() {
@@ -946,7 +947,7 @@ pub fn v1_set_unroutable_row_refusal() -> String {
     }
 }
 
-pub fn v1_set_hand_written_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
+pub fn v1_set_hand_written_traits() -> Rc<Vec<RustCapability>> {
     Rc::new({
         let mut __result = Vec::new();
         for row in Rc::new({
@@ -973,9 +974,7 @@ pub fn v1_set_hand_written_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
     })
 }
 
-pub fn v1_set_filter_hand_written(
-    traits: Rc<Vec<ReprGroundingDeriveTrait>>,
-) -> Rc<Vec<ReprGroundingDeriveTrait>> {
+pub fn v1_set_filter_hand_written(traits: Rc<Vec<RustCapability>>) -> Rc<Vec<RustCapability>> {
     Rc::new({
         let mut __result = Vec::new();
         for t in traits.clone().iter().cloned() {
@@ -996,9 +995,7 @@ pub fn v1_set_filter_hand_written(
     })
 }
 
-pub fn v1_set_required_traits_for(
-    derive_trait: ReprGroundingDeriveTrait,
-) -> Rc<Vec<ReprGroundingDeriveTrait>> {
+pub fn v1_set_required_traits_for(derive_trait: RustCapability) -> Rc<Vec<RustCapability>> {
     Rc::new({
         let mut __result = Vec::new();
         for row in Rc::new({
@@ -1022,7 +1019,7 @@ pub fn v1_set_required_traits_for(
     })
 }
 
-pub fn v1_set_supplemental_bound_spelling_for(derive_trait: ReprGroundingDeriveTrait) -> String {
+pub fn v1_set_supplemental_bound_spelling_for(derive_trait: RustCapability) -> String {
     unique_strings(Rc::new({
         let mut __result = Vec::new();
         for t in v1_set_required_traits_for(derive_trait.clone())
@@ -1041,10 +1038,8 @@ pub fn v1_set_serde_bound_attr(
     set_params: Rc<Vec<String>>,
 ) -> String {
     {
-        let ser_supplement =
-            v1_set_supplemental_bound_spelling_for(ReprGroundingDeriveTrait::ReprDeriveSerialize);
-        let de_supplement =
-            v1_set_supplemental_bound_spelling_for(ReprGroundingDeriveTrait::ReprDeriveDeserialize);
+        let ser_supplement = v1_set_supplemental_bound_spelling_for(RustCapability::RustSerialize);
+        let de_supplement = v1_set_supplemental_bound_spelling_for(RustCapability::RustDeserialize);
         let ser_entries = Rc::new({
             let mut __result = Vec::new();
             for p in generic_param_names.clone().iter().cloned() {
@@ -1120,7 +1115,7 @@ pub fn v1_set_serde_bound_attr(
 }
 
 pub fn v1_set_serde_bound_attr_for_traits(
-    traits: Rc<Vec<ReprGroundingDeriveTrait>>,
+    traits: Rc<Vec<RustCapability>>,
     generic_param_names: Rc<Vec<String>>,
     set_params: Rc<Vec<String>>,
 ) -> String {
@@ -1135,7 +1130,7 @@ pub fn v1_set_serde_bound_attr_for_traits(
                 if !({
                     let mut __found = false;
                     for t in traits.clone().iter().cloned() {
-                        if (t.clone() == ReprGroundingDeriveTrait::ReprDeriveSerialize) {
+                        if (t.clone() == RustCapability::RustSerialize) {
                             __found = true;
                             break;
                         }
@@ -1144,7 +1139,7 @@ pub fn v1_set_serde_bound_attr_for_traits(
                 } && {
                     let mut __found = false;
                     for t in traits.clone().iter().cloned() {
-                        if (t.clone() == ReprGroundingDeriveTrait::ReprDeriveDeserialize) {
+                        if (t.clone() == RustCapability::RustDeserialize) {
                             __found = true;
                             break;
                         }
@@ -1553,7 +1548,7 @@ pub fn v1_set_impl_type_params(
     set_params: Rc<Vec<String>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
     structural_spelling: String,
-    derive_trait: ReprGroundingDeriveTrait,
+    derive_trait: RustCapability,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if ((generic_param_names.clone().len() as i64) == 0) {
@@ -1625,7 +1620,7 @@ pub fn v1_set_enum_debug_impl(
             set_params.clone(),
             field_type_exprs.clone(),
             "std::fmt::Debug".to_string(),
-            ReprGroundingDeriveTrait::ReprDeriveDebug,
+            RustCapability::RustDebug,
             source_indices.clone(),
         );
         let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
@@ -1725,7 +1720,7 @@ pub fn v1_set_enum_partial_eq_impl(
             set_params.clone(),
             field_type_exprs.clone(),
             "PartialEq".to_string(),
-            ReprGroundingDeriveTrait::ReprDerivePartialEq,
+            RustCapability::RustPartialEq,
             source_indices.clone(),
         );
         let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
@@ -1906,7 +1901,11 @@ pub fn v1_emit_struct_derives(
                     symbol_wrapped_ord_carrier_derive_traits(),
                     map_key_required.clone(),
                 );
-                if repr_grounding_derive_completeness_predicate(traits.clone(), shape.clone()) {
+                if repr_grounding_derive_completeness_predicate(
+                    rust_capability_shape_table(),
+                    traits.clone(),
+                    shape.clone(),
+                ) {
                     rust_trait_derive_attr_from_traits(traits.clone())
                 } else {
                     v1_trait_derive_refuse(
@@ -1998,6 +1997,7 @@ pub fn v1_emit_enum_derives(
         match shape.clone() {
             ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy => {
                 if repr_grounding_derive_completeness_predicate(
+                    rust_capability_shape_table(),
                     nullary_traits.clone(),
                     shape.clone(),
                 ) {
@@ -2028,6 +2028,7 @@ pub fn v1_emit_enum_derives(
             }
             ReprGroundingDeriveElemShape::ReprDeriveElemPayloadCoproduct => {
                 if repr_grounding_derive_completeness_predicate(
+                    rust_capability_shape_table(),
                     payload_traits.clone(),
                     shape.clone(),
                 ) {
@@ -3637,6 +3638,7 @@ pub fn v1_emit_struct_from_capability_table(
                 let impl_bodies =
                     if (repr_grounding_group_completion_carrier(module_path.clone(), name.clone())
                         && repr_grounding_derive_completeness_predicate(
+                            rust_capability_shape_table(),
                             kernel_int_arithmetic_traits(),
                             ReprGroundingDeriveElemShape::ReprDeriveElemKernelInt,
                         ))
@@ -3749,6 +3751,7 @@ pub fn v1_emit_enum_supplemental_impls(
                     module_path.clone(),
                     name.clone(),
                 ) && repr_grounding_derive_completeness_predicate(
+                    rust_capability_shape_table(),
                     nullary_coproduct_derive_traits(),
                     ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy,
                 )) {
