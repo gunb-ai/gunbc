@@ -7,10 +7,11 @@ import v1.compiler.infer_types { is_coproduct_type, child_type_node }
 import v1.compiler.coercion { type_realization_decision, type_reference_decl_file }
 import v1.compiler.artifact { Rust }
 import v1.compiler.resolve { ModuleGraph, ResolvedModule }
-import v1.std.core { Node, NewlineIndex, authored_name_at, module_items, param_node_type_expr }
+import v1.std.core { Node, NewlineIndex, authored_name_at, module_items, param_node_type_expr, Resolved }
 import std.coercion { TypeRealizationDecision, Realized, Unrealized, Refused }
 import std.types { List, String, Map }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 
 // The step-1 shadow census: for every type-reference occurrence the v1 emitter would
 // render, compute BOTH the legacy short-circuit answer and the strict identity
@@ -40,6 +41,7 @@ type CarrierDecisionRow {
   decl_file: String
   legacy_base: String
   authority_base: String
+  inference_resolved: Bool
   outcome: CensusOutcome
 }
 
@@ -84,6 +86,19 @@ fn authority_base_of(name: String, decl_file: String) -> String {
   }
 }
 
+// WHICH ARM OF type_reference_decl_file FIRED. The production helper falls back to the
+// reference node's OWN ident_span when n.inferred is not Resolved, and its authority note
+// describes that arm as "when the reference IS the declaration". Those are two different
+// states sharing one arm: a reference that is genuinely its own declaration, and a
+// reference whose inference is simply unavailable. This column separates them, so the
+// census reports which one it actually observed instead of assuming.
+fn reference_inference_resolved(n: Node) -> Bool {
+  match n.inferred {
+    Present { value: Resolved { node: _ } } => true
+    _ => false
+  }
+}
+
 fn outcome_of(claims_text: Bool, realizes: Bool, decl_file: String) -> CensusOutcome {
   if decl_file == "" {
     IdentityUnavailable
@@ -113,6 +128,7 @@ fn decision_row(
     decl_file: decl_file,
     legacy_base: legacy,
     authority_base: authority,
+    inference_resolved: reference_inference_resolved(n: n),
     outcome: outcome_of(
       claims_text: legacy_claims_text(n: n, si: si),
       realizes: authority_realizes(name: name, decl_file: decl_file),
@@ -256,15 +272,25 @@ fn tsv_escape(v: String) -> String {
 }
 
 fn census_tsv_header() -> String {
-  "module_file\tenclosing_decl\tposition_kind\tauthored_name\tdecl_file\tlegacy_base\tauthority_base\toutcome"
+  "module_file\tenclosing_decl\tposition_kind\tauthored_name\tdecl_file\tlegacy_base\tauthority_base\tinference_resolved\toutcome"
+}
+
+fn arm_label(resolved: Bool) -> String {
+  if resolved { "resolved" } else { "fallback" }
 }
 
 fn census_row_tsv(r: CarrierDecisionRow) -> String {
-  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(
-    tsv_escape(v: r.module_file), "\t"), tsv_escape(v: r.enclosing_decl)), "\t"),
-    tsv_escape(v: r.position_kind)), "\t"), tsv_escape(v: r.authored_name)), "\t"),
-    tsv_escape(v: r.decl_file)), "\t"), tsv_escape(v: r.legacy_base)), "\t"),
-    tsv_escape(v: r.authority_base)), "\t"), outcome_label(o: r.outcome))
+  [
+    tsv_escape(v: r.module_file),
+    tsv_escape(v: r.enclosing_decl),
+    tsv_escape(v: r.position_kind),
+    tsv_escape(v: r.authored_name),
+    tsv_escape(v: r.decl_file),
+    tsv_escape(v: r.legacy_base),
+    tsv_escape(v: r.authority_base),
+    arm_label(resolved: r.inference_resolved),
+    outcome_label(o: r.outcome)
+  ] |> join(separator: "\t")
 }
 
 fn census_tsv(rows: List<CarrierDecisionRow>) -> String {
@@ -300,7 +326,7 @@ fn census_smoke_receipt() -> String {
 // LAST row of every receipt carried a harness suffix, and a line-anchored histogram over
 // that output silently dropped it. The receipt was always correct; the reading of it was
 // short by exactly one row, and short in the direction that reports FEWER findings.
-data census_smoke_receipt_path: String = "target/carrier-realization-census/smoke.tsv"
+data census_smoke_receipt_path: String = "target/carrier_realization_smoke.tsv"
 
 fn census_write_smoke_receipt() -> Bool {
   Filesystem.Write(
@@ -354,11 +380,34 @@ data census_calibration_subject_paths: List<String> = [
   "src/v2/std/witness.dag"
 ]
 
-data census_calibration_receipt_path: String = "target/carrier-realization-census/calibration.tsv"
+data census_calibration_receipt_path: String = "target/carrier_realization_calibration.tsv"
 
 fn census_write_calibration_receipt() -> Bool {
   Filesystem.Write(
     path: census_calibration_receipt_path,
     content: census_receipt_for_paths(paths: census_calibration_subject_paths)
   ).success
+}
+
+// THE ENTRY RETURNS ProcessExit, NOT Bool, AND THE REFUSAL THAT FORCED THIS IS CORRECT.
+// A Bool-returning entry is refused by the host: "printing the value and exiting 0 would
+// report success for a run whose outcome is unknown." The refusal is not a nuisance here,
+// it is the thing under measurement working -- the census WROTE its 144KB receipt and the
+// host then DISCARDED the effect rather than let a run whose verdict it could not map
+// leave an artifact behind. A census that reported a divergence count out of a refused
+// run would be reading a receipt the substrate declined to stand behind.
+fn census_run_calibration() -> ProcessExit {
+  if census_write_calibration_receipt() {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "calibration receipt write failed")
+  }
+}
+
+fn census_run_smoke() -> ProcessExit {
+  if census_write_smoke_receipt() {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "smoke receipt write failed")
+  }
 }
