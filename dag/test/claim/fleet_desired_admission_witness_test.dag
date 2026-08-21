@@ -50,7 +50,21 @@ fn decided(event: extdeps.github.workflow_run_event.WorkflowRunEvent, observed: 
 fn is_refused(o: gunbc.fleet_desired_admission.FleetDesiredAdmissionOutcome) -> std.types.Bool {
   match o {
     AdmissionRefused { cause: _ } => true
-    AdmissionAdvanceAuthorized { from: _, to: _ } => false
+    gunbc.fleet_desired_admission.AdmissionAdvanceAuthorized { expected: _, to: _ } => false
+  }
+}
+
+fn expectation_is_prior(expected: extdeps.git.publication_transport.GitRemoteRefExpectation, hex: String) -> std.types.Bool {
+  match expected {
+    extdeps.git.publication_transport.RemoteRefMustEqual { oid: prior } => extdeps.git.object_store.git_object_id_wire_hex(oid: prior) as String == hex
+    extdeps.git.publication_transport.RemoteRefMustBeAbsent => false
+  }
+}
+
+fn expectation_is_absent(expected: extdeps.git.publication_transport.GitRemoteRefExpectation) -> std.types.Bool {
+  match expected {
+    extdeps.git.publication_transport.RemoteRefMustBeAbsent => true
+    extdeps.git.publication_transport.RemoteRefMustEqual { oid: _ } => false
   }
 }
 
@@ -59,9 +73,39 @@ fn is_refused(o: gunbc.fleet_desired_admission.FleetDesiredAdmissionOutcome) -> 
 test fn a_floor_green_default_branch_run_admits_the_candidate() -> std.types.Bool {
   match decided(event: admitting_event(), observed: fixture_prior()) {
     AdmissionRefused { cause: _ } => false
-    AdmissionAdvanceAuthorized { from: f, to: t } =>
-      (extdeps.git.object_store.git_object_id_wire_hex(oid: f) as String == fixture_prior_hex)
+    gunbc.fleet_desired_admission.AdmissionAdvanceAuthorized { expected: e, to: t } =>
+      expectation_is_prior(expected: e, hex: fixture_prior_hex)
         && (extdeps.git.object_store.git_object_id_wire_hex(oid: t) as String == fixture_candidate_hex)
+  }
+}
+
+// THE OTHER WRITE THE AUTHORITY ADMITS, and the one this gate could not express at all until the
+// outcome stopped carrying a bare prior oid. An origin that advertises no such ref is an ANSWER
+// about the remote, so first creation is authorized — and it is authorized as a compare-and-swap
+// expecting absence, never as an unconditional push.
+test fn an_absent_desired_ref_authorizes_a_creation_expecting_absence() -> std.types.Bool {
+  match decided(event: admitting_event(), observed: gunbc.fleet_main_revision.FleetDesiredAbsent) {
+    AdmissionRefused { cause: _ } => false
+    gunbc.fleet_desired_admission.AdmissionAdvanceAuthorized { expected: e, to: t } =>
+      expectation_is_absent(expected: e)
+        && (extdeps.git.object_store.git_object_id_wire_hex(oid: t) as String == fixture_candidate_hex)
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE ARM THAT DID NOT EXIST. An undecodable advertisement means the
+// ref EXISTS holding something unreadable; a write would destroy it and a retry will not fix it.
+// The claim pins the remedy-bearing wording so this cannot be satisfied by the unobserved arm's
+// cause — the two refusals must stay distinguishable, which is why the authority kept them apart.
+test fn an_undecodable_desired_ref_refuses_without_writing_over_it() -> std.types.Bool {
+  match decided(
+    event: admitting_event(),
+    observed: gunbc.fleet_main_revision.FleetDesiredUndecodable { advertised: "not-a-sha refs/fleet/desired" },
+  ) {
+    gunbc.fleet_desired_admission.AdmissionAdvanceAuthorized { expected: _, to: _ } => false
+    AdmissionRefused { cause: c } =>
+      string_contains(s: c, pattern: "a write would destroy it")
+        && string_contains(s: c, pattern: "not-a-sha refs/fleet/desired")
+        && !string_contains(s: c, pattern: "never read as an absent one")
   }
 }
 
@@ -79,7 +123,7 @@ test fn a_floor_red_candidate_is_refused_by_the_modeled_authority() -> std.types
     ),
     observed: fixture_prior(),
   ) {
-    AdmissionAdvanceAuthorized { from: _, to: _ } => false
+    gunbc.fleet_desired_admission.AdmissionAdvanceAuthorized { expected: _, to: _ } => false
     AdmissionRefused { cause: c } =>
       string_contains(s: c, pattern: "raw-HEAD simultaneous fleet-bricking")
         && string_contains(s: c, pattern: "failure")
@@ -159,7 +203,7 @@ test fn an_unobservable_prior_refuses_rather_than_creating_the_ref() -> std.type
     event: admitting_event(),
     observed: gunbc.fleet_main_revision.FleetDesiredUnobserved { cause: "ls-remote refused: network unreachable" },
   ) {
-    AdmissionAdvanceAuthorized { from: _, to: _ } => false
+    gunbc.fleet_desired_admission.AdmissionAdvanceAuthorized { expected: _, to: _ } => false
     AdmissionRefused { cause: c } =>
       string_contains(s: c, pattern: "never read as an absent one")
   }
@@ -169,11 +213,24 @@ test fn an_unobservable_prior_refuses_rather_than_creating_the_ref() -> std.type
 // concurrent admission refuses at the remote instead of overwriting.
 test fn the_authorized_push_carries_the_observed_prior_as_the_cas_expectation() -> std.types.Bool {
   let script = gunbc.fleet_desired_admission.fleet_desired_authorized_push_script(
-    from: fixture_oid(hex: fixture_prior_hex),
+    expected: extdeps.git.publication_transport.RemoteRefMustEqual { oid: fixture_oid(hex: fixture_prior_hex) },
     to: fixture_oid(hex: fixture_candidate_hex),
   )
   string_contains(s: script, pattern: concat("--force-with-lease=refs/fleet/desired:", fixture_prior_hex))
     && string_contains(s: script, pattern: concat(fixture_candidate_hex, ":refs/fleet/desired"))
+}
+
+// The creation push is still a compare-and-swap: git's empty `<expect>` is "the ref must not
+// already exist". The claim pins the space after the colon so an expectation that silently
+// rendered the prior-oid form — or dropped the lease entirely — cannot satisfy it.
+test fn the_creation_push_leases_on_the_ref_being_absent() -> std.types.Bool {
+  let script = gunbc.fleet_desired_admission.fleet_desired_authorized_push_script(
+    expected: extdeps.git.publication_transport.RemoteRefMustBeAbsent,
+    to: fixture_oid(hex: fixture_candidate_hex),
+  )
+  string_contains(s: script, pattern: "--force-with-lease=refs/fleet/desired: ")
+    && string_contains(s: script, pattern: concat(fixture_candidate_hex, ":refs/fleet/desired"))
+    && !string_contains(s: script, pattern: fixture_prior_hex)
 }
 
 // THE EMISSION HALF. The pure decision above proves the gate decides correctly; it proves nothing
