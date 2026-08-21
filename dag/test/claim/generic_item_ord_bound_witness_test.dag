@@ -24,21 +24,31 @@ fn w_non_set_container_stays_bare() -> Bool {
   )
 }
 
+// Two exclude spellings, not a simplifiable one: v1_emit_type_params_with_bounds joins a
+// param's bound list with " + " in insertion order, and this fixture's header already
+// carries a Clone bound on P (confirmed emission: "struct Roster<P: Clone>"). A reintroduced
+// Ord leak could render as "P: Ord + Clone" (caught by the first spelling) or as
+// "P: Clone + Ord" if Ord were appended after the existing Clone bound (caught only by the
+// second). Collapsing to one spelling silently narrows this control back to the ordering
+// that happens to be convenient today.
 fn w_list_container_stays_bare() -> Bool {
   compile_dag_rust_emit_check(
     "module generic_item_ord_witness.list_only\n\ntype Roster<P> {\n  entries: List<P>\n}\n",
     "src/generic_item_ord_witness_list_only.rs",
     ["struct Roster<P: Clone>"],
-    ["P: Ord"]
+    ["P: Ord", "Clone + Ord"]
   )
 }
 
+// Same two-spelling reasoning as w_list_container_stays_bare above: this fixture's header
+// also already carries a Clone bound on P ("struct Holder<P: Clone>"), so a reintroduced
+// Ord leak could land on either side of the existing Clone bound in the joined bound list.
 fn w_bare_field_stays_bare() -> Bool {
   compile_dag_rust_emit_check(
     "module generic_item_ord_witness.bare\n\ntype Holder<P> {\n  tag: P\n}\n",
     "src/generic_item_ord_witness_bare.rs",
     ["struct Holder<P: Clone>"],
-    ["P: Ord"]
+    ["P: Ord", "Clone + Ord"]
   )
 }
 
