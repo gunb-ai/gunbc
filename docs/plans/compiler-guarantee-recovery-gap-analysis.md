@@ -1598,15 +1598,23 @@ than argued.
    this item never enumerated, and it under-counted: `map_response_to_value_json` has TWO distinct arms that skip
    straight to `json_to_value`, one when the operation's return type does not resolve to `Resolved` and a second
    when it resolves but has no children, and the earlier wording named only the first. The arms this item
-   identifies are therefore: the unresolved-return-type skip, the childless-return-type skip, the array-response
-   arm (when the JSON body is an array and the return type has children, the whole array is converted with
-   `json_to_value` and placed into the *first* declared field, so that field's refinement is unchecked and the
-   remaining declared fields are absent entirely), the per-field conversion on the main path, and the `Null` fill
-   when the JSON body has no matching key. A sixth arm — return type authored `List` with no children — is
-   unreachable, because the childless skip above it already returned. Stated as an enumeration rather than a
-   universal, because nothing here establishes that the list is exhaustive; the array arm was itself missed by an
-   earlier revision of this very enumeration, which is the standing evidence for that caveat. (Those three
-   arms are a source-level read only — see "What was NOT executed," below.) **A third,
+   identifies are therefore a control-flow tree, not a flat list, and it is stated as a tree because two successive
+   flat revisions of it were wrong. At the top level: the unresolved-return-type skip; the childless-return-type
+   skip; the array-response arm (JSON body is an array and the return type has children — the whole array is
+   converted with `json_to_value` into the *first* declared field, so that field's refinement is unchecked and
+   every other declared field is absent entirely); and otherwise the per-field loop. A further top-level guard,
+   return type authored `List` with no children, is unreachable because the childless skip above it already
+   returned. Within the per-field loop each declared field independently takes one of five outcomes, all of which
+   reach the field unchecked against its refinement: with a `from` path, pointer found → `json_to_value` of the
+   selected value, pointer absent → `Null`; without a `from` path, field-name key present → `json_to_value` of the
+   selected value, key absent with exactly one declared child → `json_to_value` of the **entire response body**,
+   key absent with multiple declared children → `Null`. The single-child whole-body fallback is the sharpest of
+   these: the sole declared field silently receives the whole response rather than a missing-value marker. An
+   earlier revision of this paragraph asserted a uniform "`Null` fill when the JSON body has no matching key",
+   which is false for exactly that case. Stated as an enumeration rather than a universal, because nothing here
+   establishes that the tree is exhaustive — and that caveat now carries two receipts, the array arm and the
+   single-child fallback, each missed by a prior revision of this same enumeration. (Those three top-level arms, and four of the five per-field outcomes,
+   are a source-level read only — see "What was NOT executed," below.) **A third,
    separate path exists and is unmeasured by this item:** when the operation's response format
    is `Text` rather than `Json`, `decide_rest_exchange` routes to `map_response_to_value`, not
    to `map_response_to_value_json` — a different function this item did not execute a case
@@ -1635,8 +1643,11 @@ than argued.
        and was placed into the `NonEmptyStr`-declared field unchecked.
 
    **What was NOT executed (source-level read, stated as such, not overclaimed):** three of the
-   arms named in 20b's mechanism paragraph above (return-type-did-not-resolve, childless-return-type,
-   and array-response-with-non-empty-declared-fields) and the `Text`-format third path
+   top-level arms named in 20b's mechanism paragraph above (return-type-did-not-resolve, childless-return-type,
+   and array-response-with-non-empty-declared-fields); four of the five per-field outcomes — the probe declares
+   `output { id: NonEmptyStr from "id" }` and supplies an `/id` value in both REST cases, so it executes only the
+   from-path-present-and-pointer-found outcome, leaving pointer-absent, no-from-path-with-key-present,
+   no-from-path-single-child-whole-body, and no-from-path-multi-child-`Null` unexecuted; and the `Text`-format third path
    (`map_response_to_value`) were read from source, not driven by a constructed executing
    case. Named here as source-level evidence only; no rung claim rests on them.
 
