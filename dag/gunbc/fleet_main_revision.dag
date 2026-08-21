@@ -60,22 +60,39 @@ fn fleet_desired_revision_target(d: FleetDesiredRevision) -> GitObjectId? {
 //
 // A compare-and-swap needs a claim about the CURRENT state of the ref it is moving. Only two
 // observations support one: the ref is at a decodable oid, or origin advertises no such ref.
-// Everything else -- a garbage advertisement, a refused ls-remote -- supports NO claim, and the
-// absent answer here is a refusal to actuate rather than a default.
+// Everything else supports NO claim, and refusing is not a default -- it is the answer.
 //
-// The refusal arms are the load-bearing half. Rendering "I could not read the ref" as
-// RemoteRefMustBeAbsent would turn a network fault into a ref CREATION, and rendering it as
-// RemoteRefMustEqual would need an oid nobody observed. Both are the empty-observation narrow
-// pointed at an actuator, so this function returns nothing at all in those cases and the caller
-// stops. An undecodable advertisement refuses for a stronger reason than ignorance: the ref
-// EXISTS holding something unreadable, and a lease naming any expectation would either fail
-// forever or, if it matched, overwrite a state nobody understood.
-fn fleet_desired_advance_expectation(observed: FleetDesiredRevision) -> GitRemoteRefExpectation? {
+// THE REFUSAL CARRIES ITS CAUSE, AND AN EARLIER REVISION OF THIS SEAM DID NOT. It returned
+// `GitRemoteRefExpectation?`, projecting Undecodable and Unobserved to the same `none`. That is
+// safe in the narrow sense that neither authorizes a write, and it is exactly the flattening
+// this module split the type to prevent: the whole reason those two are separate variants is
+// that their remedies differ -- a corrupt advertisement needs repair and will not improve on
+// retry, an unobserved ref needs connectivity or credentials. A consumer holding only `none`
+// cannot choose, so it would have to rematch the original observation, putting a second
+// decision site beside this one. Both arms refusing is what made the flattening look
+// conservative; the defect was that the refusal stopped preserving the remedy (raised in
+// side-chat review, 2026-08-21).
+//
+// Rendering "I could not read the ref" as RemoteRefMustBeAbsent would turn a network fault into
+// a ref CREATION, and rendering it as RemoteRefMustEqual would need an oid nobody observed.
+// Both are the empty-observation narrow pointed at an actuator.
+type FleetDesiredExpectationRefusal
+  = FleetDesiredRefUndecodable { advertised: String }
+  | FleetDesiredRefUnobserved { cause: String }
+
+type FleetDesiredExpectationDecision
+  = FleetDesiredExpectationReady { expectation: GitRemoteRefExpectation }
+  | FleetDesiredExpectationRefused { cause: FleetDesiredExpectationRefusal }
+
+fn fleet_desired_advance_expectation(observed: FleetDesiredRevision) -> FleetDesiredExpectationDecision {
   match observed {
-    FleetDesiredAdmitted { revision: r } => Present { value: RemoteRefMustEqual { oid: r } }
-    FleetDesiredAbsent => Present { value: RemoteRefMustBeAbsent }
-    FleetDesiredUndecodable { advertised: _ } => none
-    FleetDesiredUnobserved { cause: _ } => none
+    FleetDesiredAdmitted { revision: r } =>
+      FleetDesiredExpectationReady { expectation: RemoteRefMustEqual { oid: r } }
+    FleetDesiredAbsent => FleetDesiredExpectationReady { expectation: RemoteRefMustBeAbsent }
+    FleetDesiredUndecodable { advertised: line } =>
+      FleetDesiredExpectationRefused { cause: FleetDesiredRefUndecodable { advertised: line } }
+    FleetDesiredUnobserved { cause: c } =>
+      FleetDesiredExpectationRefused { cause: FleetDesiredRefUnobserved { cause: c } }
   }
 }
 

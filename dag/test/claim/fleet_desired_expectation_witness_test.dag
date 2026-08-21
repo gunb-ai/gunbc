@@ -10,6 +10,10 @@ import gunbc.fleet_main_revision {
   FleetDesiredUndecodable,
   FleetDesiredUnobserved,
   fleet_desired_advance_expectation,
+  FleetDesiredExpectationReady,
+  FleetDesiredExpectationRefused,
+  FleetDesiredRefUndecodable,
+  FleetDesiredRefUnobserved,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -32,8 +36,8 @@ fn candidate() -> GitObjectId? { git_sha1_object_id(hex: candidate_hex) }
 
 fn admits(observed: FleetDesiredRevision) -> Bool {
   match fleet_desired_advance_expectation(observed: observed) {
-    Present { value: _ } => true
-    none => false
+    FleetDesiredExpectationReady { expectation: _ } => true
+    FleetDesiredExpectationRefused { cause: _ } => false
   }
 }
 
@@ -54,12 +58,12 @@ test fn an_observed_ref_leases_the_exact_observed_oid() -> Bool {
   match candidate() {
     Present { value: oid } =>
       match fleet_desired_advance_expectation(observed: FleetDesiredAdmitted { revision: oid }) {
-        Present { value: expectation } =>
-          match expectation {
+        FleetDesiredExpectationReady { expectation: e } =>
+          match e {
             RemoteRefMustEqual { oid: leased } => leased == oid
             RemoteRefMustBeAbsent => false
           }
-        none => false
+        FleetDesiredExpectationRefused { cause: _ } => false
       }
     none => false
   }
@@ -69,12 +73,12 @@ test fn an_observed_ref_leases_the_exact_observed_oid() -> Bool {
 // inexpressible before the split.
 test fn an_absent_ref_is_the_only_licence_to_create() -> Bool {
   match fleet_desired_advance_expectation(observed: FleetDesiredAbsent) {
-    Present { value: expectation } =>
-      match expectation {
+    FleetDesiredExpectationReady { expectation: e } =>
+      match e {
         RemoteRefMustBeAbsent => true
         RemoteRefMustEqual { oid: _ } => false
       }
-    none => false
+    FleetDesiredExpectationRefused { cause: _ } => false
   }
 }
 
@@ -89,4 +93,30 @@ test fn a_refused_transport_licenses_nothing() -> Bool {
 // if it matched, overwrite a state nobody understood.
 test fn an_undecodable_advertisement_licenses_nothing() -> Bool {
   !admits(observed: FleetDesiredUndecodable { advertised: "not-a-sha\trefs/fleet/desired" })
+}
+
+// THE REFUSALS MUST STAY DISTINGUISHABLE AT THE SEAM, not merely both refuse. This is the row
+// that would have gone green under the Option shape these replace: `none` and `none` are equal,
+// so a consumer could not tell a corrupt ref (repair it) from an unreachable one (retry it), and
+// would have had to rematch the observation at a second decision site.
+test fn a_refused_transport_names_the_unobserved_cause() -> Bool {
+  match fleet_desired_advance_expectation(observed: FleetDesiredUnobserved { cause: "ls-remote refused: connection reset" }) {
+    FleetDesiredExpectationRefused { cause: c } =>
+      match c {
+        FleetDesiredRefUnobserved { cause: _ } => true
+        FleetDesiredRefUndecodable { advertised: _ } => false
+      }
+    FleetDesiredExpectationReady { expectation: _ } => false
+  }
+}
+
+test fn an_undecodable_advertisement_names_the_undecodable_cause_and_keeps_the_line() -> Bool {
+  match fleet_desired_advance_expectation(observed: FleetDesiredUndecodable { advertised: "not-a-sha\trefs/fleet/desired" }) {
+    FleetDesiredExpectationRefused { cause: c } =>
+      match c {
+        FleetDesiredRefUndecodable { advertised: line } => line == "not-a-sha\trefs/fleet/desired"
+        FleetDesiredRefUnobserved { cause: _ } => false
+      }
+    FleetDesiredExpectationReady { expectation: _ } => false
+  }
 }
