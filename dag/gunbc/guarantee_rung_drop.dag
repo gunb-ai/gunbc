@@ -1,0 +1,101 @@
+module gunbc.guarantee_rung_drop
+
+import std.types { String, List, Bool }
+import v2.std.algebra { fold_list }
+
+// THE TYPED CARRIER FOR A DESIGN section 4b(3) RUNG DROP.
+//
+// DESIGN section 4b(3) states the obligation: "a change may lower a rung only by declaring
+// previous rung, temporary rung, reason, bounded population, and restoration trigger". Those are
+// five fields of one record. Written as a paragraph they are five facts no consumer can read, and
+// section 4c is explicit that a ruling, a status or a dissolution condition captured as free-form
+// String commentary is misplaced data. This module exists so a rung drop is declared once, in a
+// shape that can be counted, joined and rendered, rather than narrated per site.
+//
+// WHAT IS TYPED AND WHAT IS NOT, stated rather than left to be discovered. The ladder itself is a
+// closed vocabulary and is modeled as one, so an unrepresentable rung cannot be written and a
+// census over rung drops is a fold rather than a text scan. The REASON is a closed coproduct too,
+// because the reasons a rung falls are a small named set and naming them is what lets the same
+// class be recognised twice. The population and the restoration trigger carry cited names as
+// data: a symbol name is a citation (DESIGN section 3 -- cite the symbol), not commentary, and
+// the distinction this module enforces is between a fact a consumer reads and a paragraph it
+// cannot. Irreducible rationale about WHY a particular drop has its shape stays where rationale
+// belongs, in an annotation beside the row.
+
+type GuaranteeRung
+  = OutsideTheLadder
+  | Mitigatable
+  | MechanicallyPreventable
+  | StructurallyGuaranteed
+  | StructurallyImpossible
+
+// LostAsPassenger is the class this carrier was first written for: nothing deleted the subject,
+// something the subject rode on was deleted. A deletion census accounts for what it deleted and
+// never for what was riding on it, so this reason is invisible to the cut that causes it and the
+// carrier it names is the thing whose own re-add will NOT restore the passenger.
+type RungDropReason
+  = LostAsPassenger { carrier: String }
+  | DeletedWithoutReplacement
+  | ReplacementStaged { replacement: String }
+
+type GuaranteeRungDrop {
+  subject: String
+  previous: GuaranteeRung
+  temporary: GuaranteeRung
+  reason: RungDropReason
+  population: List<String>
+  restoration_trigger: String
+}
+
+fn guarantee_rung_label(r: GuaranteeRung) -> String {
+  match r {
+    OutsideTheLadder => "outside the ladder"
+    Mitigatable => "mitigatable"
+    MechanicallyPreventable => "mechanically preventable"
+    StructurallyGuaranteed => "structurally guaranteed"
+    StructurallyImpossible => "structurally impossible"
+  }
+}
+
+fn rung_drop_reason_label(r: RungDropReason) -> String {
+  match r {
+    LostAsPassenger { carrier: c } => concat("lost as a passenger of ", c)
+    DeletedWithoutReplacement => "deleted without replacement"
+    ReplacementStaged { replacement: r2 } => concat("replacement staged: ", r2)
+  }
+}
+
+fn rung_drop_population_render(names: List<String>) -> String {
+  fold_list(
+    xs: names,
+    empty: "",
+    cons: fn(acc, n) { if acc == "" { n } else { concat(acc, concat(", ", n)) } },
+  )
+}
+
+// THE ONE RENDERING, so a refusal arm never restates the row beside it. A gate that spelled its
+// own message would be a second authority for the same fact (DESIGN section 3), and the two would
+// drift in the ordinary way: someone updates the row and the refusal keeps telling the reader
+// something that stopped being true.
+fn rung_drop_refusal_message(d: GuaranteeRungDrop) -> String {
+  concat(
+    concat(d.subject, concat(": RUNG DROP, ", guarantee_rung_label(r: d.previous))),
+    concat(
+      concat(" -> ", concat(guarantee_rung_label(r: d.temporary), concat(" (", rung_drop_reason_label(r: d.reason)))),
+      concat(
+        concat("). Population: ", rung_drop_population_render(names: d.population)),
+        concat(". Restored when: ", concat(d.restoration_trigger, "."))
+      )
+    )
+  )
+}
+
+fn rung_drop_is_off_ladder(d: GuaranteeRungDrop) -> Bool {
+  match d.temporary {
+    OutsideTheLadder => true
+    Mitigatable => false
+    MechanicallyPreventable => false
+    StructurallyGuaranteed => false
+    StructurallyImpossible => false
+  }
+}

@@ -15,6 +15,10 @@ import tools.dag_compile_clean_gate { run_dag_compile_clean_gate }
 import tools.generated_artifact_gate { run_generated_artifact_drift_gate }
 import tools.extdeps_scope_placement_gate { run_extdeps_scope_placement_gate }
 import tools.prose_row_introduction_gate { run_prose_row_introduction_gate }
+import gunbc.guarantee_rung_drop {
+  GuaranteeRungDrop, Mitigatable, OutsideTheLadder, LostAsPassenger,
+  rung_drop_refusal_message,
+}
 
 fn exit_ok(e: ProcessExit) -> Bool {
   match e { ExitSuccess => true  _ => false }
@@ -30,7 +34,7 @@ fn run_spec_gate(g: Gate) -> ProcessExit {
     ExtdepsScopePlacementGate => run_extdeps_scope_placement_gate()
     ProseRowIntroductionGate => run_prose_row_introduction_gate()
     SourceRootIngestGate => exit_failure(
-      reason: "SourceRootIngestGate: UNSCHEDULED since the floor cut (2026-08-15) - see source_root_ingest_gate_lost_as_passenger_rung_drop in this module. It was run via ci_floor_plan v2.workflow.source_root_ingest_gate (slice 3); ci_floor_plan.dag, ci.yml and falsifier.yml are all absent, so this arm names no live route. Everything the gate composes is built; it needs a caller."
+      reason: rung_drop_refusal_message(d: source_root_ingest_gate_rung_drop)
     )
   }
 }
@@ -49,4 +53,50 @@ func main() -> ProcessExit {
   run_gate_list(gates: gunbc_ci_gates)
 }
 
-data source_root_ingest_gate_lost_as_passenger_rung_drop: String = "RUNG-DROP DECLARATION (DESIGN section 4b(3)) against the floor cut of 2026-08-15, filed 2026-08-21 and OWED BY THAT CUT rather than by any change since. SUBJECT: SourceRootIngestGate, the per-PR gate that drives the source-root ingest supply chain. PREVIOUS RUNG: mechanically preventable - the gate executed per PR and refused loudly on an incomplete or empty manifest. TEMPORARY RUNG: outside the ladder entirely, which is the honest grain here. The class is not a guarantee that fell a step, it is an OPERATION that lost its only route, so there is nothing to mitigate because nothing can be attempted; that is the same shape as the regen-cut producer declaration in DESIGN and it is stated this way deliberately rather than reported as a weaker rung. BOUNDED POPULATION: the gate and everything reachable from it - v2.workflow.source_root_ingest_gate, the three .dag transports that construct the producer argv (source_root_ingest_transport, compiler_closure_ingest_transport, module_binding_supply_transport), the fourth invocation in src/v1/stage0/src/bin/discover_owned_data.rs, and the witnesses gunbc.explicit_witness_admission admits under source_root_ingest_gate_admitted_witness together with the ci_layer_roots WitnessExclusionRow files whose declared executing consumer is one of those transports (program_assembly/real_ingest_test.dag, self_host/compiler_closure_emit_from_ingest_test.dag, self_host/compiler_closure_ingest_boundary_witness_test.dag, self_host/crate_layout_witness_test.dag). Those files are excluded from hermetic discovery BY NAME, so the required floor cannot reach them and the transport that was supposed to cannot run: they are inert, not merely unguarded. REASON, and it is a class rather than an oversight: LOST AS A PASSENGER. Nobody deleted this gate. It was re-homed off the per-PR floor onto the falsifier cadence on 2026-07-26 - gunbc.ci_materialization Receipt 6 records the re-homing as what dropped the declared floor resolve count from 3 to 1 - and the cadence was then deleted outright by the floor cut three weeks later. A deletion accounts for what it deleted; it never accounts for what was riding on it. That is why the gate is absent from the cut's own unguarded list in DESIGN, which names the cadence but not the cadence's passengers. WHY THIS IS A DEFECT IN THE DECLARATION AND NOT ONLY AN OMISSION FROM A LIST: the floor cut's restoration trigger is that its paragraph is rewritten as ordinary present tense when the re-add queue closes. An incomplete queue lets that trigger fire while something is still missing, and the rung-drop then reads as discharged when it is not. THIS IS A SCHEDULING GAP, WHICH MAKES IT THE CHEAPEST ITEM ON THAT QUEUE: nothing needs writing. Four invocation sites, the composing gate, the admission roster and a cost receipt that measured the gate twice are all present and believed correct. It needs a caller. COUPLING, STATED SO THE PASSENGER ERROR IS NOT COMMITTED A SECOND TIME: re-adding the falsifier cadence does NOT restore this gate. The cadence is being re-derived from first principles rather than restored, so a re-derived cadence carries whatever its own derivation calls for and nothing inherits by having once ridden along. Closing the cadence row does not close this one. RESTORATION TRIGGER: a live workflow reaches v2.workflow.source_root_ingest_gate, and the ci_layer_roots exclusion rows above name a consumer that executes. Today the two surviving workflows are fleet-converge.yml and witnesses.yml, and witnesses.yml runs claim_executor --required-ci, whose hermetic floor cannot reach the excluded files even in principle. EVIDENCE GRADE, stated because this row is a claim about absence: the invocation sites, the callers, the ci_gates scheduling arm and the three absent files were each read directly; the conclusion that no other scheduler exists rests on the workflow directory containing exactly two files, which is checkable in one command and is the whole basis. No execution was attempted."
+// THE FLOOR CUT OWED THIS DECLARATION AND FILED NONE. Recorded 2026-08-21 against the cut of
+// 2026-08-15, not against any change since.
+//
+// WHY IT WAS MISSED, which is the part worth keeping: nobody deleted this gate. It was re-homed
+// off the per-PR floor onto the falsifier cadence on 2026-07-26 -- gunbc.ci_materialization
+// Receipt 6 records that re-homing as what dropped the declared floor resolve count from 3 to 1 --
+// and the cadence was deleted outright three weeks later. That is why the gate is absent from the
+// cut's own unguarded list in DESIGN, which names the cadence but not the cadence's passengers.
+//
+// WHY THE TEMPORARY RUNG IS OFF THE LADDER RATHER THAN LOW ON IT. The class is not a guarantee
+// that fell a step; it is an OPERATION that lost its only route. There is nothing to mitigate,
+// because nothing can be attempted. Placing it on the ladder would imply a residual guarantee
+// that does not exist. Same shape as the regen-cut producer declaration in DESIGN.
+//
+// WHAT THIS IS NOT: a missing integration. Everything the gate composes is built and believed
+// correct -- four invocation sites, the composing gate, the admission roster, and a cost receipt
+// that measured it twice. It needs a caller, which makes it the cheapest item on the re-add queue.
+//
+// THE COUPLING, so the passenger error is not committed a second time: re-adding the falsifier
+// cadence does NOT restore this gate. The cadence is being re-derived from first principles rather
+// than restored, so nothing inherits by having once ridden along, and closing the cadence row does
+// not close this one.
+//
+// EVIDENCE GRADE, because this is a claim about an absence: the invocation sites, the callers, the
+// scheduling arm below and the three absent files were each read directly. "No other scheduler
+// exists" rests entirely on .github/workflows holding exactly two files, which is checkable in one
+// command and is the whole basis. No execution was attempted. The day a third workflow lands, this
+// row can become false with nobody having touched it.
+data source_root_ingest_gate_rung_drop: GuaranteeRungDrop = GuaranteeRungDrop {
+    subject: "v2.workflow.source_root_ingest_gate",
+    previous: Mitigatable,
+    temporary: OutsideTheLadder,
+    reason: LostAsPassenger { carrier: "the falsifier cadence, deleted by the floor cut of 2026-08-15" },
+    population: [
+      "v2.workflow.source_root_ingest_gate",
+      "v2.workflow.source_root_ingest_transport",
+      "v2.workflow.compiler_closure_ingest_transport",
+      "v2.workflow.module_binding_supply_transport",
+      "src/v1/stage0/src/bin/discover_owned_data.rs",
+      "gunbc.explicit_witness_admission source_root_ingest_gate_admitted_witness",
+      "src/v2/test/claim/program_assembly/real_ingest_test.dag",
+      "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag",
+      "src/v2/test/claim/self_host/compiler_closure_ingest_boundary_witness_test.dag",
+      "src/v2/test/claim/self_host/crate_layout_witness_test.dag"
+    ],
+    restoration_trigger: "a live workflow reaches v2.workflow.source_root_ingest_gate and the gunbc.ci_layer_roots exclusion rows above name a consumer that executes"
+  }
