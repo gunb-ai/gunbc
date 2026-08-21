@@ -10,6 +10,7 @@ import gunbc.witness_floor_workflow { witness_floor_workflow_name }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.fleet_main_revision {
   FleetDesiredRevision, FleetDesiredAdmitted, FleetDesiredUnobserved,
+  FleetDesiredAbsent, FleetDesiredUndecodable,
 }
 import gunbc.fleet_desired_admission {
   FleetDesiredAdmissionOutcome, AdmissionAdvanceAuthorized, AdmissionRefused,
@@ -182,6 +183,48 @@ test fn an_unobservable_prior_refuses_rather_than_creating_the_ref() -> Bool {
     AdmissionAdvanceAuthorized { from: _, to: _ } => false
     AdmissionRefused { cause: c } =>
       string_contains(s: c, pattern: "never read as an absent one")
+  }
+}
+
+// THE TWO ARMS MAIN GAINED WITHOUT EXECUTING COVERAGE.
+//
+// gunbc#8744 restored the corpus by answering the two variants the #8701 split added, and it was
+// correct to land as fast as it did -- main had been refusing during preparation for over two
+// hours, so nothing anywhere was executing. But it was a one-file compile fix, and that leaves the
+// two most dangerous inputs to an ACTUATOR decided by arms nothing runs. A repaired build acquires
+// an untested arm exactly this way: the resolve is green, so the gap looks closed.
+//
+// These rows do not restate the arms. They assert the two causes are DISTINCT, each carrying its
+// own remedy and neither carrying the other's, which is the property the four-way split exists to
+// buy and the one a shared or copied cause would silently give back. Asserting only "refused"
+// would pass against a single collapsed message.
+//
+// Absent refuses for a STRUCTURAL reason worth preserving in a test rather than only in prose:
+// AdmissionAdvanceAuthorized requires a `from`, and this observation reports precisely that no
+// prior exists. That is why the refusal settles no policy about whether absence should license a
+// creation -- it reports what this outcome type cannot express.
+test fn an_absent_ref_refuses_because_the_outcome_cannot_express_a_creation() -> Bool {
+  match decided(event: admitting_event(), observed: FleetDesiredAbsent) {
+    AdmissionAdvanceAuthorized { from: _, to: _ } => false
+    AdmissionRefused { cause: c } =>
+      string_contains(s: c, pattern: "cannot express a creation")
+        && !string_contains(s: c, pattern: "a write would destroy it")
+  }
+}
+
+// Undecodable refuses on stronger grounds than either sibling: the ref EXISTS holding something
+// unreadable, so a retry cannot fix it and a write would destroy it. The advertised line is
+// carried, because it is the only evidence of what was actually on the wire.
+test fn an_undecodable_advertisement_refuses_and_carries_the_line() -> Bool {
+  match decided(
+    event: admitting_event(),
+    observed: FleetDesiredUndecodable { advertised: "refs/fleet/desired not-a-sha" },
+  ) {
+    AdmissionAdvanceAuthorized { from: _, to: _ } => false
+    AdmissionRefused { cause: c } =>
+      string_contains(s: c, pattern: "a write would destroy it")
+        && string_contains(s: c, pattern: "not-a-sha")
+        && !string_contains(s: c, pattern: "cannot express a creation")
   }
 }
 
