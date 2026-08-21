@@ -1,0 +1,508 @@
+module gunbc.scm.merge
+
+import std.types { Bool, Int, List, String }
+
+import v2.std.node {
+  Node,
+  Edge,
+  Symbol,
+  Named,
+  EdgeLabel,
+  TypeNode,
+  Conj,
+  node_synthetic,
+}
+
+import gunbc.scm.object_store {
+  ObjectId,
+  ObjectStore,
+  StoreOutcome,
+  Stored,
+  LocatorCollision,
+  ObjectRecord,
+  StoredEdge,
+  object_id_eq,
+  store_node,
+  find_object,
+}
+
+import gunbc.scm.checkout {
+  Commit,
+  CheckoutOutcome,
+  CheckedOut,
+  CheckoutRefused,
+  checkout_object,
+}
+
+// A REQUIREMENT IS AUTHORED, AND ABSENCE IS ONE OF THE THINGS THAT CAN BE AUTHORED. This is the
+// correction that motivated the rewrite. A dependency-derived frontier can answer "is removing f
+// compatible with everything that depends on f", but it cannot express "the author requested that f
+// be absent" -- that is a stated requirement, not a consequence. Modelling delete as the absence of
+// a positive requirement would make it indistinguishable from silence, and silence means PRESERVE
+// THE TARGET (below), so a delete expressed by omission would be read as "leave f alone" -- the
+// exact inversion of what was asked.
+type Requirement
+  = RequireBinding { role: Symbol, value: Node }
+  | RequireBindingAbsent { role: Symbol }
+
+fn requirement_role(r: Requirement) -> Symbol {
+  match r {
+    RequireBinding { role: role, value: _ } => role
+    RequireBindingAbsent { role: role } => role
+  }
+}
+
+type Proposal {
+  requirements: List<Requirement>
+  dependencies: List<MergeDependency>
+}
+
+// DEPENDENCIES ARE ROLE-GRAIN, NOT NODE-GRAIN, and that is a correctness choice rather than a
+// convenience. `DependencyView` endpoints are Nodes, and a replacement mints a NEW immutable node --
+// so a target-read edge `F1 -> K` says nothing about how `F2` relates to `K` once the binding is
+// replaced. The binding ROLE is the bridge that survives the replacement, so the relation is carried
+// at role grain and the question "does F2 still satisfy what K needed" stays answerable without
+// giving nodes a temporal identity they must not have.
+type MergeDependency {
+  dependent: Symbol
+  required: Symbol
+  kind: MergeDependencyKind
+  usage_site: Symbol
+}
+
+// FIFTEEN DEPENDENCY KINDS ARE NOT ONE CLOSURE ALGEBRA, so this module declares its own total
+// classifier instead of inheriting the affected-set lens's. Only two kinds are supported in this
+// cut; `Contains` is retained for RECONSTRUCTION ONLY and never propagates; every other kind refuses
+// by name rather than falling into a generic reachability rule it was never validated against.
+type MergeDependencyKind
+  = DataDependsOn
+  | BindsTo
+  | Contains
+  | UnsupportedKind { name: Symbol }
+
+// CONTAINMENT IS NOT PROPAGATION. This is the single rule the rewrite exists to enforce. The live
+// affected-set closure traverses `Contains` in BOTH directions, so an edit to `f` reaches its
+// container `M` and then every other child of `M` -- pulling in an independent sibling precisely
+// because it shares a container. That is the file model returning through the dependency lens. Here
+// a child-body change never implicates its siblings, and the sibling-preservation claim is the
+// witness that would go red if it ever did.
+fn kind_propagates_removal(kind: MergeDependencyKind) -> Bool {
+  match kind {
+    DataDependsOn => true
+    BindsTo => true
+    Contains => false
+    UnsupportedKind { name: _ } => false
+  }
+}
+
+fn kind_is_supported(kind: MergeDependencyKind) -> Bool {
+  match kind {
+    DataDependsOn => true
+    BindsTo => true
+    Contains => true
+    UnsupportedKind { name: _ } => false
+  }
+}
+
+fn kind_name(kind: MergeDependencyKind) -> Symbol {
+  match kind {
+    DataDependsOn => ^data_depends_on
+    BindsTo => ^binds_to
+    Contains => ^contains
+    UnsupportedKind { name: name } => name
+  }
+}
+
+// WHERE A ROLE'S VALUE CAME FROM IS PART OF THE ANSWER, NOT AN IMPLEMENTATION DETAIL. The
+// preservation law -- every role outside the implication frontier holds exactly what the target held
+// -- is only checkable if the result says which roles it preserved. Collapsing this to a bare
+// ObjectId would make "preserved the target object" and "recomputed something that happens to hash
+// equal" indistinguishable, and the first is the law while the second is a coincidence.
+type RoleValue
+  = PreservedFromTarget { object: ObjectId }
+  | ProvidedByProposal { object: ObjectId }
+  | RemovedByProposal
+
+type ResolvedRole {
+  role: Symbol
+  value: RoleValue
+}
+
+// THE REFUSAL IS ABOUT AN UNSATISFIED USE, NOT AN INTRINSICALLY ILLEGAL DELETION, and the carrier
+// keeps both sides rather than choosing one location permanently. Deleting `f` is a valid authored
+// request; what fails is that some remaining use still requires it. So the whole dependency is
+// retained -- its `usage_site` is the PRIMARY location, because that is where the repair happens and
+// because ten uses of `f` are ten independently located obligations rather than one opaque "cannot
+// delete" -- and `removed_role` cites the requirement that made the source unavailable. Collapsing
+// this to a single `at:` field would discard exactly the two-sided relation the diagnostic needs, and
+// would not survive the later kinds: an ordering contradiction is located at the relation and a
+// placement violation at the shared resource, neither of which is an endpoint.
+type MergeRefusal
+  = TargetRootMissing { identity: ObjectId }
+  | TargetChildMissing { role: Symbol, identity: ObjectId }
+  | BindingLocatorCollision { role: Symbol, identity: ObjectId }
+  | RequiredDependencyRemoved { dependency: MergeDependency, removed_role: Symbol }
+  | DependencyKindUnsupportedForMerge { dependent: Symbol, required: Symbol, kind: Symbol }
+
+// CHOICE IS AN ANSWER, NOT A FAILURE. Two proposals stating different values for one role is a
+// QUESTION the system is not entitled to answer: latest-wins, first-wins and branch-priority-wins are
+// all fabricated plausible output, and each silently discards an authored requirement. Requiring a
+// role present and requiring it absent is the same question in a different costume, so it lands on
+// the same arm rather than being quietly resolved in favour of either.
+type MergeOutcome
+  = Merged { store: ObjectStore, commit: Commit, roles: List<ResolvedRole> }
+  | ChoiceRequired { role: Symbol }
+  | CouldNotLand { cause: MergeRefusal }
+
+fn edge_label_role(label: EdgeLabel) -> Symbol? {
+  match label {
+    Named { name: name } => Present { value: name }
+    Positional => none
+  }
+}
+
+// SILENCE MEANS PRESERVE THE TARGET, so the target's own bindings are the starting population rather
+// than an afterthought merged in at the end. Reading them at IDENTITY grain is what makes the
+// preservation law mean object reuse: nothing is recomputed for a role no proposal implicates, so
+// "unchanged" is the same object and not a fresh derivation that hashes equal.
+fn target_roles(store: ObjectStore, target: Commit) -> TargetReadOutcome {
+  match find_object(store: store, identity: target.root) {
+    Absent => TargetUnreadable { cause: TargetRootMissing { identity: target.root } }
+    Present { value: record } =>
+      TargetRead {
+        roles: fold(record.children, init: [], f: fn(acc, stored) {
+          match edge_label_role(label: stored.label) {
+            Absent => acc
+            Present { value: role } =>
+              concat(acc, [ResolvedRole {
+                role: role,
+                value: PreservedFromTarget { object: stored.target },
+              }])
+          }
+        }),
+      }
+  }
+}
+
+type TargetReadOutcome
+  = TargetRead { roles: List<ResolvedRole> }
+  | TargetUnreadable { cause: MergeRefusal }
+
+fn role_named(roles: List<ResolvedRole>, role: Symbol) -> ResolvedRole? {
+  fold(roles, init: none, f: fn(found, r) {
+    match found {
+      Present { value: _ } => found
+      Absent => if (r.role as String) == (role as String) { Present { value: r } } else { none }
+    }
+  })
+}
+
+fn role_is_present(roles: List<ResolvedRole>, role: Symbol) -> Bool {
+  match role_named(roles: roles, role: role) {
+    Absent => false
+    Present { value: r } =>
+      match r.value {
+        PreservedFromTarget { object: _ } => true
+        ProvidedByProposal { object: _ } => true
+        RemovedByProposal => false
+      }
+  }
+}
+
+fn replace_role(roles: List<ResolvedRole>, incoming: ResolvedRole) -> List<ResolvedRole> {
+  fold(roles, init: [], f: fn(acc, r) {
+    if (r.role as String) == (incoming.role as String) {
+      concat(acc, [incoming])
+    } else {
+      concat(acc, [r])
+    }
+  })
+}
+
+fn upsert_role(roles: List<ResolvedRole>, incoming: ResolvedRole) -> List<ResolvedRole> {
+  match role_named(roles: roles, role: incoming.role) {
+    Absent => concat(roles, [incoming])
+    Present { value: _ } => replace_role(roles: roles, incoming: incoming)
+  }
+}
+
+type ApplyAcc {
+  store: ObjectStore
+  roles: List<ResolvedRole>
+  authored: List<Symbol>
+  choice: Symbol?
+  refusal: MergeRefusal?
+}
+
+// A ROLE AUTHORED TWICE ACROSS PROPOSALS IS A QUESTION, and it is detected against what was
+// AUTHORED, not against what the role currently holds. Comparing against the current value would
+// make two proposals that both replace a role look like agreement whenever the second happened to
+// restate the first's result, and would make the answer depend on the order they were applied.
+fn already_authored(authored: List<Symbol>, role: Symbol) -> Bool {
+  fold(authored, init: false, f: fn(seen, a) {
+    if seen { true } else { (a as String) == (role as String) }
+  })
+}
+
+fn apply_requirement(acc: ApplyAcc, req: Requirement) -> ApplyAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match acc.choice {
+        Present { value: _ } => acc
+        Absent => {
+          let role = requirement_role(r: req)
+          if already_authored(authored: acc.authored, role: role) {
+            ApplyAcc {
+              store: acc.store,
+              roles: acc.roles,
+              authored: acc.authored,
+              choice: Present { value: role },
+              refusal: none,
+            }
+          } else {
+            apply_fresh_requirement(acc: acc, req: req, role: role)
+          }
+        }
+      }
+  }
+}
+
+fn apply_fresh_requirement(acc: ApplyAcc, req: Requirement, role: Symbol) -> ApplyAcc {
+  match req {
+    RequireBindingAbsent { role: _ } =>
+      ApplyAcc {
+        store: acc.store,
+        roles: upsert_role(
+          roles: acc.roles,
+          incoming: ResolvedRole { role: role, value: RemovedByProposal },
+        ),
+        authored: concat(acc.authored, [role]),
+        choice: none,
+        refusal: none,
+      }
+    RequireBinding { role: _, value: value } =>
+      match store_node(store: acc.store, n: value) {
+        LocatorCollision { identity: identity, existing: _, incoming: _ } =>
+          ApplyAcc {
+            store: acc.store,
+            roles: acc.roles,
+            authored: acc.authored,
+            choice: none,
+            refusal: Present {
+              value: BindingLocatorCollision { role: role, identity: identity },
+            },
+          }
+        Stored { store: store, identity: identity } =>
+          ApplyAcc {
+            store: store,
+            roles: upsert_role(
+              roles: acc.roles,
+              incoming: ResolvedRole {
+                role: role,
+                value: ProvidedByProposal { object: identity },
+              },
+            ),
+            authored: concat(acc.authored, [role]),
+            choice: none,
+            refusal: none,
+          }
+      }
+  }
+}
+
+// A HISTORICAL DEPENDENCY IS NOT ETERNAL. A dependency read from the target for a role that a
+// proposal RE-AUTHORED describes the value the target held, not the value the proposal supplies --
+// so retargeting `k` from `f` to `h` in the same proposal must not leave the old `k -> f` obligation
+// standing. Without this rule the kernel would refuse valid coordinated changes, which is the
+// mirror-image defect of admitting invalid ones and is just as wrong.
+fn effective_dependencies(
+  target_dependencies: List<MergeDependency>,
+  proposal_dependencies: List<MergeDependency>,
+  authored: List<Symbol>,
+) -> List<MergeDependency> {
+  concat(
+    fold(target_dependencies, init: [], f: fn(acc, dep) {
+      if already_authored(authored: authored, role: dep.dependent) {
+        acc
+      } else {
+        concat(acc, [dep])
+      }
+    }),
+    proposal_dependencies,
+  )
+}
+
+// REACHABILITY IDENTIFIES WHAT MUST BE RECONSIDERED; IT DOES NOT AUTHORIZE MODIFICATION. This
+// function only ever REFUSES -- it never edits a role to repair a broken dependency. A frontier that
+// could rewrite its dependents would turn "g is affected by f" into permission to rewrite g, and the
+// authored proposal would stop being the only thing that decides what the result contains.
+fn validate_dependency(roles: List<ResolvedRole>, dep: MergeDependency) -> MergeRefusal? {
+  if kind_is_supported(kind: dep.kind) {
+    if kind_propagates_removal(kind: dep.kind) {
+      if role_is_present(roles: roles, role: dep.dependent) {
+        if role_is_present(roles: roles, role: dep.required) {
+          none
+        } else {
+          Present {
+            value: RequiredDependencyRemoved { dependency: dep, removed_role: dep.required },
+          }
+        }
+      } else {
+        none
+      }
+    } else {
+      none
+    }
+  } else {
+    Present {
+      value: DependencyKindUnsupportedForMerge {
+        dependent: dep.dependent,
+        required: dep.required,
+        kind: kind_name(kind: dep.kind),
+      },
+    }
+  }
+}
+
+fn validate_dependencies(
+  roles: List<ResolvedRole>,
+  deps: List<MergeDependency>,
+) -> MergeRefusal? {
+  fold(deps, init: none, f: fn(found, dep) {
+    match found {
+      Present { value: _ } => found
+      Absent => validate_dependency(roles: roles, dep: dep)
+    }
+  })
+}
+
+type RootAcc {
+  edges: List<Edge>
+  refusal: MergeRefusal?
+}
+
+fn root_edge_step(store: ObjectStore, acc: RootAcc, r: ResolvedRole) -> RootAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match r.value {
+        RemovedByProposal => acc
+        PreservedFromTarget { object: object } =>
+          root_edge_for(store: store, acc: acc, role: r.role, object: object)
+        ProvidedByProposal { object: object } =>
+          root_edge_for(store: store, acc: acc, role: r.role, object: object)
+      }
+  }
+}
+
+fn root_edge_for(store: ObjectStore, acc: RootAcc, role: Symbol, object: ObjectId) -> RootAcc {
+  match checkout_object(store: store, identity: object) {
+    CheckoutRefused { cause: _ } =>
+      RootAcc {
+        edges: acc.edges,
+        refusal: Present { value: TargetChildMissing { role: role, identity: object } },
+      }
+    CheckedOut { program: program } =>
+      RootAcc {
+        edges: concat(acc.edges, [Edge { label: Named { name: role }, target: program }]),
+        refusal: none,
+      }
+  }
+}
+
+// THE COMMIT ROOT IS AN ORDINARY NODE, stored through the ordinary path. It is NOT assembled from
+// child identities by a hash-combine written here: that would be a second identity authority beside
+// v2.std.node content_hash. The consequence is load-bearing rather than incidental -- because
+// store_node canonicalizes named edges, the root identity does not depend on the order roles were
+// visited, so ORDER IS NOT AUTHORITY holds by construction rather than by a sort this module
+// performs and must keep correct.
+fn root_node_of(edges: List<Edge>) -> Node {
+  node_synthetic(kind: TypeNode { connective: Conj }, children: edges)
+}
+
+fn merge(
+  store: ObjectStore,
+  target: Commit,
+  target_dependencies: List<MergeDependency>,
+  proposals: List<Proposal>,
+) -> MergeOutcome {
+  match target_roles(store: store, target: target) {
+    TargetUnreadable { cause: cause } => CouldNotLand { cause: cause }
+    TargetRead { roles: base } => {
+      let applied = fold(
+        proposals,
+        init: ApplyAcc {
+          store: store,
+          roles: base,
+          authored: [],
+          choice: none,
+          refusal: none,
+        },
+        f: fn(acc, p) {
+          fold(p.requirements, init: acc, f: fn(inner, req) {
+            apply_requirement(acc: inner, req: req)
+          })
+        },
+      )
+      match applied.refusal {
+        Present { value: cause } => CouldNotLand { cause: cause }
+        Absent =>
+          match applied.choice {
+            Present { value: role } => ChoiceRequired { role: role }
+            Absent =>
+              finish_merge(
+                applied: applied,
+                target_dependencies: target_dependencies,
+                proposals: proposals,
+              )
+          }
+      }
+    }
+  }
+}
+
+fn all_proposal_dependencies(proposals: List<Proposal>) -> List<MergeDependency> {
+  fold(proposals, init: [], f: fn(acc, p) { concat(acc, p.dependencies) })
+}
+
+fn finish_merge(
+  applied: ApplyAcc,
+  target_dependencies: List<MergeDependency>,
+  proposals: List<Proposal>,
+) -> MergeOutcome {
+  let deps = effective_dependencies(
+    target_dependencies: target_dependencies,
+    proposal_dependencies: all_proposal_dependencies(proposals: proposals),
+    authored: applied.authored,
+  )
+  match validate_dependencies(roles: applied.roles, deps: deps) {
+    Present { value: cause } => CouldNotLand { cause: cause }
+    Absent => {
+      let built = fold(
+        applied.roles,
+        init: RootAcc { edges: [], refusal: none },
+        f: fn(acc, r) { root_edge_step(store: applied.store, acc: acc, r: r) },
+      )
+      match built.refusal {
+        Present { value: cause } => CouldNotLand { cause: cause }
+        Absent =>
+          match store_node(
+            store: applied.store,
+            n: root_node_of(edges: built.edges),
+          ) {
+            LocatorCollision { identity: identity, existing: _, incoming: _ } =>
+              CouldNotLand {
+                cause: BindingLocatorCollision { role: ^commit_root, identity: identity },
+              }
+            Stored { store: store, identity: identity } =>
+              Merged {
+                store: store,
+                commit: Commit { root: identity },
+                roles: applied.roles,
+              }
+          }
+      }
+    }
+  }
+}

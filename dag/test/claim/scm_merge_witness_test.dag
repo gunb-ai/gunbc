@@ -1,0 +1,522 @@
+module test.claim.scm_merge_witness
+
+import std.types { Bool, String, List }
+
+import v2.std.node {
+  Node,
+  Edge,
+  Symbol,
+  Named,
+  TypeNode,
+  Conj,
+  Atom,
+  node_synthetic,
+}
+
+import gunbc.scm.object_store {
+  ObjectStore,
+  ObjectId,
+  StoreOutcome,
+  Stored,
+  LocatorCollision,
+  empty_store,
+  store_node,
+  object_id_eq,
+}
+
+import gunbc.scm.checkout { Commit }
+
+import gunbc.scm.merge {
+  Requirement,
+  RequireBinding,
+  RequireBindingAbsent,
+  Proposal,
+  MergeDependency,
+  MergeDependencyKind,
+  DataDependsOn,
+  BindsTo,
+  Contains,
+  UnsupportedKind,
+  MergeOutcome,
+  Merged,
+  ChoiceRequired,
+  CouldNotLand,
+  MergeRefusal,
+  RequiredDependencyRemoved,
+  DependencyKindUnsupportedForMerge,
+  ResolvedRole,
+  RoleValue,
+  PreservedFromTarget,
+  ProvidedByProposal,
+  RemovedByProposal,
+  merge,
+}
+
+fn leaf(name: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: name } }, children: [])
+}
+
+fn scope_of(edges: List<Edge>) -> Node {
+  node_synthetic(kind: TypeNode { connective: Conj }, children: edges)
+}
+
+fn bind(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+type Fixture {
+  store: ObjectStore
+  target: Commit
+}
+
+fn store_or_empty(outcome: StoreOutcome) -> ObjectStore {
+  match outcome {
+    Stored { store: store, identity: _ } => store
+    LocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+  }
+}
+
+fn identity_or(outcome: StoreOutcome, fallback: ObjectId) -> ObjectId {
+  match outcome {
+    Stored { store: _, identity: identity } => identity
+    LocatorCollision { identity: _, existing: _, incoming: _ } => fallback
+  }
+}
+
+// THE TARGET IS A COMMIT THAT ALREADY EXISTS, and every arm below starts from this same one. Holding
+// the target and the authored operations FIXED across the pair is what makes the pair a
+// discriminator: if the arms differed in more than the dependency edge, an implementation could
+// answer them differently for a reason that has nothing to do with dependency.
+fn fixture_with(edges: List<Edge>) -> Fixture {
+  let outcome = store_node(store: empty_store(), n: scope_of(edges: edges))
+  Fixture {
+    store: store_or_empty(outcome: outcome),
+    target: Commit { root: identity_or(outcome: outcome, fallback: fallback_id()) },
+  }
+}
+
+fn fallback_id() -> ObjectId {
+  match store_node(store: empty_store(), n: leaf(name: ^fallback)) {
+    Stored { store: _, identity: identity } => identity
+    LocatorCollision { identity: identity, existing: _, incoming: _ } => identity
+  }
+}
+
+fn add_k_proposal(deps: List<MergeDependency>) -> Proposal {
+  Proposal {
+    requirements: [RequireBinding { role: ^k, value: leaf(name: ^K) }],
+    dependencies: deps,
+  }
+}
+
+fn remove_f_proposal() -> Proposal {
+  Proposal {
+    requirements: [RequireBindingAbsent { role: ^f }],
+    dependencies: [],
+  }
+}
+
+fn outcome_is_merged(o: MergeOutcome) -> Bool {
+  match o {
+    Merged { store: _, commit: _, roles: _ } => true
+    ChoiceRequired { role: _ } => false
+    CouldNotLand { cause: _ } => false
+  }
+}
+
+fn merged_roles(o: MergeOutcome) -> List<ResolvedRole> {
+  match o {
+    Merged { store: _, commit: _, roles: roles } => roles
+    ChoiceRequired { role: _ } => []
+    CouldNotLand { cause: _ } => []
+  }
+}
+
+// THE ASSERTION CHECKS THE PRIMARY LOCATION, not merely the fact of refusal. A refusal that named
+// the right pair but pointed nowhere useful would satisfy a weaker predicate while failing the thing
+// the diagnostic exists to do, so `usage_site` is asserted alongside the dependent, the requirement
+// and the removed role.
+fn refusal_locates(
+  o: MergeOutcome,
+  dependent: Symbol,
+  required: Symbol,
+  usage_site: Symbol,
+) -> Bool {
+  match o {
+    Merged { store: _, commit: _, roles: _ } => false
+    ChoiceRequired { role: _ } => false
+    CouldNotLand { cause: cause } =>
+      match cause {
+        RequiredDependencyRemoved { dependency: dep, removed_role: removed } =>
+          ((dep.dependent as String) == (dependent as String))
+            && ((dep.required as String) == (required as String))
+            && ((dep.usage_site as String) == (usage_site as String))
+            && ((removed as String) == (required as String))
+        TargetRootMissing { identity: _ } => false
+        TargetChildMissing { role: _, identity: _ } => false
+        BindingLocatorCollision { role: _, identity: _ } => false
+        DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: _ } => false
+      }
+  }
+}
+
+fn role_holds_target_object(roles: List<ResolvedRole>, role: Symbol, expected: ObjectId) -> Bool {
+  fold(roles, init: false, f: fn(found, r) {
+    if found {
+      true
+    } else {
+      if (r.role as String) == (role as String) {
+        match r.value {
+          PreservedFromTarget { object: object } =>
+            object_id_eq(left: object, right: expected)
+          ProvidedByProposal { object: _ } => false
+          RemovedByProposal => false
+        }
+      } else {
+        false
+      }
+    }
+  })
+}
+
+fn role_absent_from_result(roles: List<ResolvedRole>, role: Symbol) -> Bool {
+  fold(roles, init: true, f: fn(ok, r) {
+    if (r.role as String) == (role as String) {
+      match r.value {
+        RemovedByProposal => ok
+        PreservedFromTarget { object: _ } => false
+        ProvidedByProposal { object: _ } => false
+      }
+    } else {
+      ok
+    }
+  })
+}
+
+// THE PAIRED FIXTURE. Target holds `f` and `h`. Both arms author the SAME two operations -- add `k`,
+// require `f` absent -- and carry exactly ONE dependency row with the same kind, the same dependent
+// and the same usage site. The single varying fact is which source that row requires.
+fn paired_fixture() -> Fixture {
+  fixture_with(edges: [
+    bind(name: ^f, target: leaf(name: ^F)),
+    bind(name: ^h, target: leaf(name: ^H)),
+  ])
+}
+
+fn paired_proposals(required: Symbol) -> List<Proposal> {
+  [
+    add_k_proposal(deps: [MergeDependency {
+      dependent: ^k,
+      required: required,
+      kind: DataDependsOn,
+      usage_site: ^u,
+    }]),
+    remove_f_proposal(),
+  ]
+}
+
+// ARM A -- INDEPENDENT. `K` depends on `h`, which survives. Deleting `f` touches nothing `K` needs,
+// so both operations land.
+//
+// ARM A CARRIES A REAL EDGE RATHER THAN AN EMPTY LIST, and that is the correction that makes this
+// pair a discriminator at all. An earlier draft gave Arm A no dependencies, so an implementation
+// whose dependency input is never read would have passed it trivially -- the arm could not tell
+// "no dependency exists" from "dependencies are not consulted". The edge-presence control below
+// proves this row is genuinely in the traversed population.
+test fn independent_add_and_delete_both_land() -> Bool {
+  let fx = paired_fixture()
+  let out = merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: paired_proposals(required: ^h),
+  )
+  outcome_is_merged(o: out) && role_absent_from_result(roles: merged_roles(o: out), role: ^f)
+}
+
+// ARM B -- DEPENDENT. Same target, same two authored operations, same dependency kind, same
+// dependent, same usage site, same row count. The ONLY difference from Arm A is that the row requires
+// `f` instead of `h`. Deleting `f` while `k` still reads it must refuse, located at the use.
+test fn dependent_add_and_delete_refuses() -> Bool {
+  let fx = paired_fixture()
+  let out = merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: paired_proposals(required: ^f),
+  )
+  refusal_locates(o: out, dependent: ^k, required: ^f, usage_site: ^u)
+}
+
+// EDGE-PRESENCE CONTROL. Arm A's row, at the same position in the same fixture, but declared with an
+// unsupported kind. If this refuses, the row Arm A supplies is genuinely read; if Arm A could pass
+// while this one silently merged, the dependency population would be inert and Arm A's green would
+// mean nothing. This is what stops the pair from proving the outcomes through unrelated fixture
+// behaviour while the dependency input goes unconsumed.
+test fn the_arm_a_dependency_row_is_actually_read() -> Bool {
+  let fx = paired_fixture()
+  let out = merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: [
+      add_k_proposal(deps: [MergeDependency {
+        dependent: ^k,
+        required: ^h,
+        kind: UnsupportedKind { name: ^probe_kind },
+        usage_site: ^u,
+      }]),
+      remove_f_proposal(),
+    ],
+  )
+  match out {
+    CouldNotLand { cause: cause } =>
+      match cause {
+        DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: kind } =>
+          (kind as String) == (^probe_kind as String)
+        RequiredDependencyRemoved { dependency: _, removed_role: _ } => false
+        TargetRootMissing { identity: _ } => false
+        TargetChildMissing { role: _, identity: _ } => false
+        BindingLocatorCollision { role: _, identity: _ } => false
+      }
+    Merged { store: _, commit: _, roles: _ } => false
+    ChoiceRequired { role: _ } => false
+  }
+}
+
+// CONTAINMENT IS NOT PROPAGATION -- THE DISCRIMINATING FORM. `g` and `f` share a container and
+// nothing else; a container-based algorithm believes `g` depends on `f` for that reason alone, which
+// is what the `Contains` row states. `f` is then REMOVED. Because containment does not propagate a
+// removal, `g` is untouched and the merge lands.
+//
+// THE ROW HAS TO SURVIVE TO THE VALIDATOR FOR THIS TO MEAN ANYTHING, and an earlier version of this
+// claim did not clear that bar. It stated the row as `dependent: f`, and since the proposal authored
+// `f` the row was discarded by effective_dependencies before validation ever saw it -- so the claim
+// passed because its dependency was thrown away, not because Contains was inert. Mutating Contains
+// to propagate left it green, which is how the hole surfaced. Here `g` is the dependent and `g` is
+// never authored, so the row reaches the validator and the mutation bites.
+test fn a_contains_relation_does_not_propagate_a_removal() -> Bool {
+  let fx = fixture_with(edges: [
+    bind(name: ^f, target: leaf(name: ^F)),
+    bind(name: ^g, target: leaf(name: ^G)),
+  ])
+  let g_id = identity_or(
+    outcome: store_node(store: empty_store(), n: leaf(name: ^G)),
+    fallback: fallback_id(),
+  )
+  let out = merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [MergeDependency {
+      dependent: ^g,
+      required: ^f,
+      kind: Contains,
+      usage_site: ^shared_scope,
+    }],
+    proposals: [remove_f_proposal()],
+  )
+  outcome_is_merged(o: out)
+    && role_holds_target_object(roles: merged_roles(o: out), role: ^g, expected: g_id)
+}
+
+// A SUPPORTED KIND IN THE SAME POSITION DOES REFUSE. Identical to the claim above in every respect --
+// same target, same removal, same dependent, same usage site -- except the kind is DataDependsOn
+// rather than Contains. Without this, "Contains did not refuse" could mean the row was never read.
+test fn the_same_row_under_a_supported_kind_refuses() -> Bool {
+  let fx = fixture_with(edges: [
+    bind(name: ^f, target: leaf(name: ^F)),
+    bind(name: ^g, target: leaf(name: ^G)),
+  ])
+  let out = merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [MergeDependency {
+      dependent: ^g,
+      required: ^f,
+      kind: DataDependsOn,
+      usage_site: ^shared_scope,
+    }],
+    proposals: [remove_f_proposal()],
+  )
+  refusal_locates(o: out, dependent: ^g, required: ^f, usage_site: ^shared_scope)
+}
+
+// A ROLE NO PROPOSAL AUTHORED KEEPS THE TARGET'S OWN OBJECT. This is a regression control on the
+// preservation MECHANISM, and it is deliberately not described as a test of Contains propagation --
+// preservation here is structural (a role nothing authored is never rebuilt), so no frontier decision
+// can reach it. Saying otherwise would credit the claim with catching something it cannot catch.
+test fn an_independent_sibling_is_preserved_exactly() -> Bool {
+  let fx = fixture_with(edges: [
+    bind(name: ^f, target: leaf(name: ^F)),
+    bind(name: ^g, target: leaf(name: ^G)),
+  ])
+  let g_id = identity_or(
+    outcome: store_node(store: empty_store(), n: leaf(name: ^G)),
+    fallback: fallback_id(),
+  )
+  let out = merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: [Proposal {
+      requirements: [RequireBinding { role: ^f, value: leaf(name: ^F2) }],
+      dependencies: [],
+    }],
+  )
+  outcome_is_merged(o: out)
+    && role_holds_target_object(roles: merged_roles(o: out), role: ^g, expected: g_id)
+}
+
+// A DEPENDENCY REPAIRED IN THE SAME PROPOSAL IS NOT A VIOLATION. The target's `k -> f` edge describes
+// the value the target held; a proposal that re-authors `k` to read `h` instead supersedes it.
+// Without this the kernel treats every historical dependency as eternal and refuses valid
+// coordinated change.
+test fn a_dependency_retargeted_in_the_same_proposal_lands() -> Bool {
+  let fx = fixture_with(edges: [
+    bind(name: ^f, target: leaf(name: ^F)),
+    bind(name: ^h, target: leaf(name: ^H)),
+    bind(name: ^k, target: leaf(name: ^K)),
+  ])
+  let out = merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [MergeDependency {
+      dependent: ^k,
+      required: ^f,
+      kind: DataDependsOn,
+      usage_site: ^k_body,
+    }],
+    proposals: [Proposal {
+      requirements: [
+        RequireBinding { role: ^k, value: leaf(name: ^K2) },
+        RequireBindingAbsent { role: ^f },
+      ],
+      dependencies: [MergeDependency {
+        dependent: ^k,
+        required: ^h,
+        kind: DataDependsOn,
+        usage_site: ^k_body,
+      }],
+    }],
+  )
+  outcome_is_merged(o: out)
+}
+
+// ORDER IS NOT AUTHORITY. Both arms answer identically with the proposals swapped -- and both use
+// the SAME paired fixture as the arms themselves, so neither reintroduces the empty-dependency shape
+// that made the original Arm A undiscriminating.
+test fn arm_a_is_order_independent() -> Bool {
+  let fx = paired_fixture()
+  let forward = merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: paired_proposals(required: ^h),
+  )
+  let backward = merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: [remove_f_proposal(), add_k_proposal(deps: [MergeDependency {
+      dependent: ^k,
+      required: ^h,
+      kind: DataDependsOn,
+      usage_site: ^u,
+    }])],
+  )
+  outcome_is_merged(o: forward) && outcome_is_merged(o: backward)
+}
+
+test fn arm_b_is_order_independent() -> Bool {
+  let fx = paired_fixture()
+  let forward = merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: paired_proposals(required: ^f),
+  )
+  let backward = merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: [remove_f_proposal(), add_k_proposal(deps: [MergeDependency {
+      dependent: ^k,
+      required: ^f,
+      kind: DataDependsOn,
+      usage_site: ^u,
+    }])],
+  )
+  refusal_locates(o: forward, dependent: ^k, required: ^f, usage_site: ^u)
+    && refusal_locates(o: backward, dependent: ^k, required: ^f, usage_site: ^u)
+}
+
+// AN UNSUPPORTED KIND REFUSES BY NAME rather than inheriting a generic reachability rule it was
+// never validated against. Widening the classifier is then a deliberate act with its own controls,
+// not a silent consequence of an edge appearing in the population.
+test fn an_unsupported_dependency_kind_refuses() -> Bool {
+  let fx = fixture_with(edges: [bind(name: ^f, target: leaf(name: ^F))])
+  let out = merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [MergeDependency {
+      dependent: ^f,
+      required: ^somewhere,
+      kind: UnsupportedKind { name: ^placement_depends_on },
+      usage_site: ^board,
+    }],
+    proposals: [],
+  )
+  match out {
+    CouldNotLand { cause: cause } =>
+      match cause {
+        DependencyKindUnsupportedForMerge { dependent: _, required: _, kind: kind } =>
+          (kind as String) == (^placement_depends_on as String)
+        RequiredDependencyRemoved { dependency: _, removed_role: _ } => false
+        TargetRootMissing { identity: _ } => false
+        TargetChildMissing { role: _, identity: _ } => false
+        BindingLocatorCollision { role: _, identity: _ } => false
+      }
+    Merged { store: _, commit: _, roles: _ } => false
+    ChoiceRequired { role: _ } => false
+  }
+}
+
+// TWO PROPOSALS AUTHORING ONE ROLE IS A QUESTION, not a resolution. Present-vs-absent is the same
+// question in a different costume and lands on the same arm.
+test fn one_role_authored_twice_asks() -> Bool {
+  let fx = fixture_with(edges: [bind(name: ^f, target: leaf(name: ^F))])
+  let out = merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: [
+      Proposal {
+        requirements: [RequireBinding { role: ^f, value: leaf(name: ^F2) }],
+        dependencies: [],
+      },
+      remove_f_proposal(),
+    ],
+  )
+  match out {
+    ChoiceRequired { role: role } => (role as String) == (^f as String)
+    Merged { store: _, commit: _, roles: _ } => false
+    CouldNotLand { cause: _ } => false
+  }
+}
+
+// SILENCE PRESERVES. With no proposals at all, every target role survives holding its own object.
+test fn an_empty_proposal_set_preserves_the_target() -> Bool {
+  let fx = fixture_with(edges: [bind(name: ^f, target: leaf(name: ^F))])
+  let f_id = identity_or(
+    outcome: store_node(store: empty_store(), n: leaf(name: ^F)),
+    fallback: fallback_id(),
+  )
+  let out = merge(
+    store: fx.store,
+    target: fx.target,
+    target_dependencies: [],
+    proposals: [],
+  )
+  outcome_is_merged(o: out)
+    && role_holds_target_object(roles: merged_roles(o: out), role: ^f, expected: f_id)
+}
