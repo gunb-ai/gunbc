@@ -42,7 +42,41 @@ type LambdaTypingGateSite {
   caller: DeclarationRef
   callee_spelled: String
   miss: GateMiss
+  cause: SiteCause
+  cause_receipt: CauseReceipt
 }
+
+// CAUSE IS A PER-SITE FIELD, NOT A ROW-LEVEL ONE, and the reason is that the sites and the causes
+// were established by DIFFERENT INSTRUMENTS WITH DIFFERENT GROUPINGS. The three sites were derived
+// together, by one intersection over one subject. The causes were established one site at a time, by
+// three separate cargo probes over three separate emitted closures. Collapsing them into a single
+// row-level verdict would force one instrument's grouping onto the other's, and a single
+// CauseAttributed here would be exactly the collapse this row already had to be corrected for once.
+//
+// THE DISCRIMINATOR THAT SEPARATES THE TWO CAUSES IS FREE AND SITS IN OUTPUT EVERYONE READS PAST:
+// rustc's own help text names WHICH PARAMETER it wants annotated. `|acc, ch: /* Type */|` asks for
+// THE ELEMENT -- the collection could not supply T. `|acc: /* Type */, row|` asks for THE
+// ACCUMULATOR -- the fold's initial value could not supply its own type, and the element was never
+// in question. Same error code, same closure shape, two different mechanisms, told apart by which
+// half of the closure rustc points at.
+type SiteCause
+  = StringDeclarationSiteAlias
+  | UntypedFoldInitAccumulator
+  | SiteCauseUnmeasured
+
+// The receipt is carried WITH the cause so no site's attribution can be repeated as a bare assertion
+// detached from the run that established it. Subject is the emitted closure the probe compiled --
+// NOT the corpus, and NOT comparable across rows: each probe emitted a different file set, so an
+// error count from one is not a population for another.
+type CauseReceipt
+  = MeasuredByCargoProbe {
+      probe_subject_entry: String
+      emitted_file: String
+      emitted_line: Int
+      rustc_code: String
+      rustc_help_annotates: String
+    }
+  | NotYetProbed
 
 // Why the callee misses the roster. RETAINED AS A PROPERTY OF THE SITE, NOT AS A CAUSE: the
 // distinction was authored to explain how the gate declined, and the gate does not decline anything
@@ -58,16 +92,40 @@ data lambda_typing_gate_sites: List<LambdaTypingGateSite> = [
     caller: decl_ref(module_path: "v2.compiler.parse", decl_name: "parse_lexeme_digest"),
     callee_spelled: "fold_list",
     miss: NearMissOfARosterName { roster_name: "fold" },
+    cause: StringDeclarationSiteAlias,
+    cause_receipt: MeasuredByCargoProbe {
+      probe_subject_entry: "src/v2/compiler/02_parse.dag",
+      emitted_file: "v2_compiler_parse.rs",
+      emitted_line: 532,
+      rustc_code: "E0282",
+      rustc_help_annotates: "ch (the element)",
+    },
   },
   {
     caller: decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "target_value_expr_effect_apply_callee"),
     callee_spelled: "fold_list",
     miss: NearMissOfARosterName { roster_name: "fold" },
+    cause: UntypedFoldInitAccumulator,
+    cause_receipt: MeasuredByCargoProbe {
+      probe_subject_entry: "src/v2/std/compilers/target_model.dag",
+      emitted_file: "v2_std_compilers_target_model.rs",
+      emitted_line: 2730,
+      rustc_code: "E0282",
+      rustc_help_annotates: "acc (the accumulator)",
+    },
   },
   {
     caller: decl_ref(module_path: "v2.compiler.tokenize", decl_name: "lex_match_prefix"),
     callee_spelled: "is_prefix_of",
     miss: AbsentFromRoster,
+    cause: StringDeclarationSiteAlias,
+    cause_receipt: MeasuredByCargoProbe {
+      probe_subject_entry: "src/v2/compiler/01_tokenize.dag",
+      emitted_file: "v2_compiler_tokenize.rs",
+      emitted_line: 154,
+      rustc_code: "E0282",
+      rustc_help_annotates: "a (the element)",
+    },
   },
 ]
 
@@ -101,14 +159,46 @@ data lambda_typing_gate_mechanism: MechanismDisposition = MechanismRefutedByEmit
   deletion_control_also_null: true,
 }
 
-// WHAT NOW EXPLAINS THE THREE SITES: NOTHING. Stated as a typed disposition rather than left as an
-// absence, because an unattributed red and a red attributed to a refuted mechanism are different
-// states and only one of them ranks for investigation.
-type SiteCauseDisposition
-  = CauseAttributed { mechanism: String }
-  | CauseUnlocated
+// THE ROW-LEVEL CAUSE DISPOSITION IS RETIRED, AND IT IS RETIRED RATHER THAN ANSWERED. Each site now
+// carries its own measured cause above. There is no single mechanism here to name, and minting one
+// CauseAttributed would re-commit the exact collapse this row was corrected for: three sites found by
+// one instrument do not thereby share one cause, and the earlier version of this file asserted they
+// did. The three sites hold; the one explanation did not.
+//
+// WHAT THE PARTITION ACTUALLY TURNED OUT TO BE: three real reds, TWO causes. That is
+// UpperBoundPendingResidueCheck being cashed in the direction it was hedging -- the membership
+// survived probing and the shared explanation did not.
+type CauseGrouping
+  = OneCauseForEverySite { mechanism: String }
+  | CausePerSite
+  | NoSiteMeasured
 
-data lambda_typing_gate_site_cause: SiteCauseDisposition = CauseUnlocated
+data lambda_typing_gate_cause_grouping: CauseGrouping = CausePerSite
+
+// TWO SPECIMENS OF ONE FAILURE MODE, KEPT BECAUSE THIS ROW IS WHERE BOTH HAPPENED.
+//
+// FIRST: rustc's own suggestion. At every one of these sites it says "consider giving this closure
+// parameter an explicit type" and points AT THE CLOSURE. That is a statement about where the failure
+// was DETECTED, never about where it was CAUSED -- at the tokenize site the declaration whose T
+// cannot bind is two arguments to the left. That suggestion is what made a repair keyed on the
+// callee's name look plausible, and it is why the original version of this row named the wrong
+// mechanism with confidence.
+//
+// SECOND: a pre-registered hunch that was REFUTED, recorded because the refutation only exists
+// because it was written down first. Before probing the target_model site it was observed that its
+// closure is the only one of the three doing FIELD ACCESS on its lambda parameter
+// (row.effect_kind, row.callee), and that was named in advance as the first place to look if that
+// site came out red. It came out red -- and rustc's caret is on `acc`, never on `row`. The field
+// access is incidental. Had that observation been made after seeing the red instead of before, "the
+// only closure doing field access" would have read as an explanation and shipped as one.
+data lambda_typing_gate_detection_is_not_causation_note: String = "Both specimens above share one shape: a signal that is TRUE and LOCAL and points at the wrong place. rustc's caret is at the closure because that is where inference ran out, not where the information was lost. A pre-registered hunch is the cheap defence, and it works by being falsifiable before the data arrives rather than by being correct."
+
+// A WARNING ABOUT COUNTING E0282 ON THESE CRATES, because the next reader will try. The emitted
+// closure for v2.compiler.parse carries E0282 diagnostics from the HELD contains class as well --
+// four of them, at v2_compiler_parse.rs 1117, 1406, 1471 and v2_std_find_witness.rs 77, each asking
+// for the same |a: /* Type */, b| annotation on a v1_rt::contains call. Those belong to the
+// call-target half of the bare-name class, not to this row. Any future E0282 count over that crate
+// includes them, so a count is not a population for this row and never was.
 
 // THE POPULATION IS AN UPPER BOUND, NOT A MEASUREMENT, AND THE REFUTED CAUSE DOES NOT DISTURB THAT.
 //
@@ -139,4 +229,4 @@ data lambda_typing_gate_population_confidence: PopulationConfidence = UpperBound
 //
 // The replacement keys on the only fact that can honestly retire this row: the three sites emitting
 // and compiling without an inference failure. No repair of any mechanism satisfies it on its own.
-data lambda_typing_gate_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: every site in lambda_typing_gate_sites emits and compiles with no inference-failure diagnostic at that position, established by execution against the emitted crate. NOT satisfied by any repair to v1.compiler.emit_rust emit_typed_call's bare-name gate -- that mechanism is refuted by lambda_typing_gate_mechanism and its removal is a separate cleanup with a measured zero emitted-byte delta. While lambda_typing_gate_site_cause is CauseUnlocated, no proposed repair may retire this row without the per-site green.")
+data lambda_typing_gate_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: EVERY site in lambda_typing_gate_sites emits and compiles with no inference-failure diagnostic at that position, established by execution against the emitted crate. The sites now carry TWO different causes, so no single repair can fire this trigger: the String declaration-site alias repair closes the parse and tokenize rows, and the untyped fold-init accumulator repair closes the target_model row, and this row survives until both have. NOT satisfied by any repair to v1.compiler.emit_rust emit_typed_call's bare-name gate -- that mechanism is refuted by lambda_typing_gate_mechanism and its removal is a separate cleanup with a measured zero emitted-byte delta.")
