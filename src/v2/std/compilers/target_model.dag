@@ -10478,7 +10478,7 @@ fn target_derive_supplemental_generic_bound_contract_lookup_in_realization(
 ) -> Outcome<TargetDeriveSupplementalGenericBoundContract> {
   bind_outcome(
     o: target_collection_select_choice(
-      eligibility_table: target_capability_eligibility_table_from_rows(rows: row.capability_eligibility),
+      eligibility_table: row.capability_eligibility,
       primary: row.primary,
       alternatives: row.alternatives,
       elem: elem
@@ -10626,18 +10626,6 @@ fn target_capability_eligibility_from_node(
   )
 }
 
-fn target_capability_eligibility_table_from_rows(
-  rows: List<TargetCapabilityEligibilityRow>
-) -> TargetCapabilityEligibilityTable {
-  fold_list(
-    xs: rows,
-    empty: target_capability_eligibility_empty(),
-    cons: fn(table, row) {
-      map_insert(m: table, key: row.capability_key, value: row.eligibility)
-    }
-  )
-}
-
 fn target_capability_eligibility_duplicate_diagnostic(at: Node) -> Diagnostic {
   Diagnostic {
     reason: ^target_capability_eligibility_row_duplicate,
@@ -10676,12 +10664,30 @@ fn target_capability_eligibility_admits(
   }
 }
 
+fn target_capability_eligibility_lookup(
+  rows: List<TargetCapabilityEligibilityRow>,
+  key: TargetCapabilityKey
+) -> Optional<TargetCapabilityElementEligibility> {
+  fold_list(
+    xs: rows,
+    empty: optional_absent(),
+    cons: fn(found, row) {
+      match found {
+        Present { value: v } => optional_present(value: v)
+        Absent =>
+          if row.capability_key == key { optional_present(value: row.eligibility) }
+          else { optional_absent() }
+      }
+    }
+  )
+}
+
 fn target_capability_requirement_satisfied(
-  eligibility_table: TargetCapabilityEligibilityTable,
+  eligibility_table: List<TargetCapabilityEligibilityRow>,
   requirement: TargetCapabilityRequirement,
   elem: Node
 ) -> Outcome<Bool> {
-  match map_lookup(m: eligibility_table, key: requirement.capability_key) {
+  match target_capability_eligibility_lookup(rows: eligibility_table, key: requirement.capability_key) {
     Present { value: eligibility } =>
       outcome_accepted(
         target_capability_eligibility_admits(eligibility: eligibility, elem: elem)
@@ -10692,7 +10698,7 @@ fn target_capability_requirement_satisfied(
 }
 
 fn target_collection_choice_constraints_satisfied(
-  eligibility_table: TargetCapabilityEligibilityTable,
+  eligibility_table: List<TargetCapabilityEligibilityRow>,
   choice: TargetRepresentationChoice,
   elem: Node
 ) -> Outcome<Bool> {
@@ -10720,7 +10726,7 @@ fn target_collection_choice_constraints_satisfied(
 }
 
 fn target_collection_select_choice(
-  eligibility_table: TargetCapabilityEligibilityTable,
+  eligibility_table: List<TargetCapabilityEligibilityRow>,
   primary: TargetRepresentationChoice,
   alternatives: List<TargetRepresentationChoice>,
   elem: Node

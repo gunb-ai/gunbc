@@ -158,7 +158,6 @@ import v2.std.compilers.target_model {
   serialize_type_expr_arrow_param_spelling,
   target_collection_repr_from_node,
   target_capability_eligibility_from_node,
-  target_capability_eligibility_table_from_rows,
   target_capability_requirement_from_node,
   target_collection_fallback_from_node
 }
@@ -1627,7 +1626,7 @@ fn project_set_collection_type_node(
         f: fn(row) {
           bind_outcome(
             o: target_collection_select_choice(
-              eligibility_table: target_capability_eligibility_table_from_rows(rows: row.capability_eligibility),
+              eligibility_table: row.capability_eligibility,
               primary: row.primary,
               alternatives: row.alternatives,
               elem: elem
@@ -1697,7 +1696,7 @@ fn project_free_monoid_via_vec_choice(
 ) -> Outcome<Node> {
   bind_outcome(
     o: target_collection_select_choice(
-      eligibility_table: target_capability_eligibility_table_from_rows(rows: row.capability_eligibility),
+      eligibility_table: row.capability_eligibility,
       primary: row.primary,
       alternatives: row.alternatives,
       elem: elem
