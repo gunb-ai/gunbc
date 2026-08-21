@@ -47,6 +47,24 @@ type MembershipArgumentShape
   = PositionalPair
   | NamedItemWithoutEquality
 
+// HOW THE POPULATION WAS FOUND, AND THE FLAW IN THE FIRST ATTEMPT AT FINDING IT.
+//
+// The first classification split two-argument call sites by whether the SECOND argument was a
+// string literal, treating a literal as evidence of a substring test. That instrument is unsound
+// and undercounted this class by four: `contains(ids, "occ-coord")` is list membership whose item
+// happens to be a string literal. Classification by the syntax of the argument cannot decide the
+// operation; only the FIRST argument's type can, because that is what distinguishes a collection
+// from a string. The corrected method resolves each first argument to its binding and reads the
+// declared element type, which is what the rows below record.
+//
+// THE TOTALS ARE DERIVABLE AND ARE DELIBERATELY NOT STORED. Ten occurrences is the sum of the
+// `occurrences` fields; five producers is the row count. An earlier revision carried both as
+// scalar `data` rows so a later census could "check itself against either grain" — that
+// justification was wrong. A total transcribed from the same rows it summarises is not an
+// independent oracle; checking one against the other is `measure() == measure()`, the change
+// detector DESIGN section 5 rules out, and it adds a second authority that drifts silently the
+// first time a row is edited without it. If a consumer needs a count, it folds the rows.
+//
 // Rows are keyed on the declaration that PRODUCES the collection, because that is the grain at
 // which the missing operation is supplied: one declaration serves every occurrence over its
 // result. Where the collection is a function parameter rather than a declaration, the row names
@@ -83,16 +101,3 @@ data list_membership_gap_sites: List<ListMembershipGapSite> = [
     argument_shape: PositionalPair,
   },
 ]
-
-// HOW THE POPULATION WAS FOUND, AND THE FLAW IN THE FIRST ATTEMPT AT FINDING IT.
-//
-// The first classification split two-argument call sites by whether the SECOND argument was a
-// string literal, treating a literal as evidence of a substring test. That instrument is unsound
-// and undercounted this class by four: `contains(ids, "occ-coord")` is list membership whose item
-// happens to be a string literal. Classification by the syntax of the argument cannot decide the
-// operation; only the FIRST argument's type can, because that is what distinguishes a collection
-// from a string. The corrected method resolves each first argument to its binding and reads the
-// declared element type, which is what the rows above record.
-data list_membership_gap_occurrence_count: Int = 10
-
-data list_membership_gap_producer_count: Int = 5
