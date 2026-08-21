@@ -44,7 +44,7 @@ import gunbc.fleet_revision_acceptance {
   required_ci_refusal_message,
   default_branch_refusal_message,
 }
-import gunbc.fleet_desired_observe { observe_fleet_revision_relation, observe_fleet_desired_revision }
+import gunbc.fleet_desired_observe { observe_fleet_revision_relation, observe_fleet_desired_revision, observe_local_tree_revision }
 import gunbc.fleet_main_revision {
   FleetDesiredAdvanceInput,
   FleetDesiredExpectationRefusedInput,
@@ -271,7 +271,10 @@ data fleet_desired_authorized_action_shell_dissolution_trigger: DissolutionCondi
 // "authorization produced nothing" -- a transport or writer failure -- from "authorization said
 // do nothing". If a no-op could render empty, those two states would collide at the only place
 // that can still tell them apart, and a dropped authorization would read as a converged fleet.
-fn fleet_desired_authorized_action_script(action: FleetDesiredAuthorizedAction) -> NonEmptyStr {
+fn fleet_desired_authorized_action_script(
+  action: FleetDesiredAuthorizedAction,
+  judge_source_observed: GitObjectId,
+) -> NonEmptyStr {
   match action {
     FleetDesiredRemoteAdvance { accepted: to, expected_prior: prior } => {
       let request = GitRemoteRefCasRequest {
@@ -286,7 +289,8 @@ fn fleet_desired_authorized_action_script(action: FleetDesiredAuthorizedAction) 
         " ", request.remote as String,
         " ", git_remote_ref_cas_refspec(request: request) as String, "\n",
         "echo \"[fleet-desired] admitted ", git_object_id_wire_hex(oid: to) as String,
-        " expected-prior ", git_object_id_wire_hex(oid: prior) as String, "\"\n",
+        " expected-prior ", git_object_id_wire_hex(oid: prior) as String,
+        " judge-source-observed ", git_object_id_wire_hex(oid: judge_source_observed) as String, "\"\n",
       ], "") as NonEmptyStr
     }
     FleetDesiredAlreadyConvergedAction { revision: rev } =>
@@ -294,6 +298,7 @@ fn fleet_desired_authorized_action_script(action: FleetDesiredAuthorizedAction) 
         "set -eu\n",
         "echo \"[fleet-desired] already converged at ",
         git_object_id_wire_hex(oid: rev) as String,
+        " judge-source-observed ", git_object_id_wire_hex(oid: judge_source_observed) as String,
         "; no ref mutation\"\n",
       ], "") as NonEmptyStr
     FleetDesiredSupersededAction { accepted: acc, current: cur } =>
@@ -302,6 +307,7 @@ fn fleet_desired_authorized_action_script(action: FleetDesiredAuthorizedAction) 
         "echo \"[fleet-desired] superseded: accepted ",
         git_object_id_wire_hex(oid: acc) as String,
         " is an ancestor of the current ", git_object_id_wire_hex(oid: cur) as String,
+        " judge-source-observed ", git_object_id_wire_hex(oid: judge_source_observed) as String,
         "; no ref mutation\"\n",
       ], "") as NonEmptyStr
   }
@@ -361,24 +367,39 @@ func admit_fleet_desired_from_floor_event_wet() -> ProcessExit {
             ),
           ) {
             AdmissionRefused { cause: why } => exit_failure(reason: why)
-            AdmissionActionAuthorized { action: action } => {
-              let wrote = Filesystem.Write(
-                path: fleet_desired_admission_authorized_action_path,
-                content: fleet_desired_authorized_action_script(action: action) as String,
-              )
-              if wrote.success {
-                ExitSuccess
-              } else {
-                exit_failure(
-                  reason: join([
-                    "fleet_desired_admission: the action was authorized but could not be written to ",
-                    fleet_desired_admission_authorized_action_path,
-                    " -- the absent file is the transport-failure signal and must never be read as a no-op: ",
-                    wrote.error,
-                  ], ""),
-                )
+            AdmissionActionAuthorized { action: action } =>
+              match observe_local_tree_revision(repo: fleet_desired_admission_repo_root) {
+                Absent =>
+                  exit_failure(
+                    reason: join([
+                      "fleet_desired_admission: the action was authorized, but the admission checkout's ",
+                      "source revision could not be observed, so the receipt cannot record which source ",
+                      "this run adjudicated from -- refusing to actuate rather than publish an ",
+                      "unattributable action",
+                    ], ""),
+                  )
+                Present { value: judge_source_observed } => {
+                  let wrote = Filesystem.Write(
+                    path: fleet_desired_admission_authorized_action_path,
+                    content: fleet_desired_authorized_action_script(
+                      action: action,
+                      judge_source_observed: judge_source_observed,
+                    ) as String,
+                  )
+                  if wrote.success {
+                    ExitSuccess
+                  } else {
+                    exit_failure(
+                      reason: join([
+                        "fleet_desired_admission: the action was authorized but could not be written to ",
+                        fleet_desired_admission_authorized_action_path,
+                        " -- the absent file is the transport-failure signal and must never be read as a no-op: ",
+                        wrote.error,
+                      ], ""),
+                    )
+                  }
+                }
               }
-            }
           }
       }
     WorkflowRunEventMemberAbsent { member: m } =>
