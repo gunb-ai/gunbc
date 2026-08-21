@@ -1,0 +1,282 @@
+module gunbc.fleet_revision_acceptance
+
+import std.types { String, NonEmptyStr, Bool }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq }
+import extdeps.github.workflow_runs { WorkflowRunConclusion, Success }
+import extdeps.github.workflow_run_event { WorkflowRunEvent }
+import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, artifact_path }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT MAKES A REVISION ELIGIBLE TO BECOME THE FLEET'S DESIRED STATE.
+//
+// The desired ref must never move onto a revision whose floor did not run, and the failure that
+// matters is not a red floor -- a red floor is loud and refuses. It is a GREEN floor belonging to
+// SOMETHING ELSE: a PR's merge-subject run, a fork's branch, a different workflow in the same
+// repository, a run that was cancelled rather than concluded. Each produces a perfectly truthful
+// "a workflow run succeeded", and none proves the thing the fleet needs proved.
+//
+// TWO PROPOSITIONS, TWO PRODUCERS, AND THE SPLIT IS THE POINT.
+//
+//   RequiredCiSucceeded         the Required CI contract completed successfully for revision R
+//   DefaultBranchRevisionObserved   revision R entered the default branch
+//
+// Neither implies the other and they are proved by different facts, so folding them into one
+// predicate would let either stand in for the pair. A PR's merge-subject run CAN produce the first
+// -- the floor genuinely ran and genuinely passed on that tree, and saying otherwise would be a
+// lie about a real result -- and it CANNOT produce the second. That asymmetry is what stops the
+// fleet following a revision main never had, and it is only expressible because the two are apart.
+//
+// THE SCM FACT IS NAMED FOR WHAT THE EVENT CAN ACTUALLY PROVE. A workflow_run envelope carries the
+// head branch and the originating event; it does not distinguish a PR merge from a direct
+// fast-forward push, an authorized emergency push, or any other mechanism that moved the branch.
+// So the carrier is DefaultBranchRevisionObserved and not MergedMainRevisionObserved: naming it
+// for merges because merges are the ordinary producer would assert provenance nothing observed. A
+// policy that genuinely requires merge origin needs a separate merge authority, and would find
+// this carrier honestly insufficient rather than quietly sufficient-looking.
+//
+// EVERY IDENTITY FACT REFUSES WITH ITS OWN CAUSE. These arms have genuinely different remedies --
+// wrong workflow path means the fleet is reading the wrong producer, wrong repository means
+// another repo entirely, a fork's head means an untrusted tree, a non-push event means a PR run
+// reached a wall meant for branch history. Collapsing them answers the question nobody asks and
+// discards the one an operator acts on. The precedent is deliberate: the floor receipt binds a
+// receipt to its run through three distinct mismatch arms and refuses to project a Bool over them
+// (gunbc.floor_component_receipt_document, its no-Bool-projection row).
+
+// The Required CI contract's IDENTITY -- which contract completed, not what it did internally.
+// The fleet policy asks whether the exact contract succeeded for the exact revision; it does not
+// own the contract's phase roster, and must not encode one. A `phases_run == 6` field would make
+// every phase added to the floor a breaking change to fleet admission, which is backwards: the
+// roster is the contract's own business and its evidence, not the fleet's precondition.
+type RequiredCiContractIdentity {
+  workflow_path: String
+  repository_full_name: String
+}
+
+fn required_ci_contract() -> RequiredCiContractIdentity {
+  RequiredCiContractIdentity {
+    workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
+    repository_full_name: fleet_repository_full_name,
+  }
+}
+
+data fleet_repository_full_name: String = "gunb-ai/gunbc"
+
+data fleet_default_branch: String = "main"
+
+data required_ci_completed_activity: String = "completed"
+
+data default_branch_originating_event: String = "push"
+
+// EVIDENCE IS A TYPE PARAMETER, NOT A VARIANT. GitHub is the first provider of both propositions
+// and will not be the last -- an accepted fabric receipt proves the same Required CI proposition
+// through a different channel. Putting `GitHub | Fabric` inside the positive carrier would make
+// every consumer match on a provenance it has no business branching on, and would make adding a
+// provider an edit to the admission carrier. Two provider bindings constructing the SAME type is
+// the §2 move: one concept, N realizations, dispatch at the periphery.
+type RequiredCiSucceeded<E> {
+  revision: GitObjectId
+  contract: RequiredCiContractIdentity
+  evidence: E
+}
+
+type DefaultBranchRevisionObserved<M> {
+  revision: GitObjectId
+  branch: String
+  evidence: M
+}
+
+type RequiredCiRefusal
+  = CiWorkflowNotTheRequiredFloor { observed_path: String, required_path: String }
+  | CiRepositoryNotThisRepository { observed: String, required: String }
+  | CiHeadRepositoryNotThisRepository { observed: String, required: String }
+  | CiActivityNotCompleted { observed: String }
+  | CiConclusionNotSuccess { observed: WorkflowRunConclusion }
+  | CiHeadShaUndecodable { observed: String }
+
+type RequiredCiAdmission<E>
+  = RequiredCiAdmitted { succeeded: RequiredCiSucceeded<E> }
+  | RequiredCiRefused { cause: RequiredCiRefusal }
+
+type DefaultBranchRefusal
+  = BranchIsNotTheDefaultBranch { observed: String, required: String }
+  | BranchEventIsNotAPush { observed: String }
+  | BranchRepositoryNotThisRepository { observed: String, required: String }
+  | BranchHeadRepositoryNotThisRepository { observed: String, required: String }
+  | BranchHeadShaUndecodable { observed: String }
+
+type DefaultBranchAdmission<M>
+  = DefaultBranchAdmitted { observed: DefaultBranchRevisionObserved<M> }
+  | DefaultBranchRefused { cause: DefaultBranchRefusal }
+
+// THE REVISION IS DECODED ONCE, HERE, AND CARRIED AS ONE CANONICAL IDENTITY. The event's head_sha
+// is a non-empty string that GitHub says is a SHA; nothing on the wire establishes it as a Git
+// object id. Decoding at the binding boundary means an undecodable value refuses BEFORE any
+// positive carrier exists, so no downstream consumer can be handed a revision that is not one.
+// Carrying both an authored CommitSha and a decoded GitObjectId downstream would be two writable
+// names for one fact -- the §3 fork -- and the two could then disagree.
+type RevisionDecode
+  = RevisionDecoded { revision: GitObjectId }
+  | RevisionUndecodable { observed: String }
+
+fn decode_event_revision(event: WorkflowRunEvent) -> RevisionDecode {
+  match git_object_id_from_untagged_hex(hex: event.head_sha as String) {
+    Present { value: oid } => RevisionDecoded { revision: oid }
+    none => RevisionUndecodable { observed: event.head_sha as String }
+  }
+}
+
+// ORDERING: identity before outcome. A successful run of the WRONG workflow refuses as the wrong
+// workflow, and so does a FAILED run of the wrong workflow. Checking the conclusion first would
+// report "the floor was not green" about a run that was never the floor, sending a reader to
+// investigate a failure that does not exist. The order asserts what the run IS before how it WENT.
+//
+// NOTE WHAT IS NOT CHECKED HERE: the branch and the originating event. This producer answers only
+// "did the Required CI contract succeed for this revision", which is true of a PR's merge-subject
+// run. The branch facts belong to the other proposition and are checked by its own producer.
+fn accept_required_ci_workflow_run<E>(event: WorkflowRunEvent, evidence: E) -> RequiredCiAdmission<E> {
+  if event.workflow_path != artifact_path(a: WitnessFloorYamlArtifact) {
+    RequiredCiRefused {
+      cause: CiWorkflowNotTheRequiredFloor {
+        observed_path: event.workflow_path,
+        required_path: artifact_path(a: WitnessFloorYamlArtifact),
+      },
+    }
+  } else {
+    if event.repository_full_name != fleet_repository_full_name {
+      RequiredCiRefused {
+        cause: CiRepositoryNotThisRepository {
+          observed: event.repository_full_name,
+          required: fleet_repository_full_name,
+        },
+      }
+    } else {
+      if event.head_repository_full_name != fleet_repository_full_name {
+        RequiredCiRefused {
+          cause: CiHeadRepositoryNotThisRepository {
+            observed: event.head_repository_full_name,
+            required: fleet_repository_full_name,
+          },
+        }
+      } else {
+        if event.activity != required_ci_completed_activity {
+          RequiredCiRefused { cause: CiActivityNotCompleted { observed: event.activity } }
+        } else {
+          match event.conclusion {
+            Success =>
+              match decode_event_revision(event: event) {
+                RevisionDecoded { revision: oid } =>
+                  RequiredCiAdmitted {
+                    succeeded: RequiredCiSucceeded {
+                      revision: oid,
+                      contract: required_ci_contract(),
+                      evidence: evidence,
+                    },
+                  }
+                RevisionUndecodable { observed: raw } =>
+                  RequiredCiRefused { cause: CiHeadShaUndecodable { observed: raw } }
+              }
+            other => RequiredCiRefused { cause: CiConclusionNotSuccess { observed: other } }
+          }
+        }
+      }
+    }
+  }
+}
+
+// The SCM proposition: this revision entered the default branch. Repository identity is re-checked
+// here rather than inherited from the CI producer, because the two propositions are independent by
+// construction and a producer that trusted its sibling's checks would silently couple them -- the
+// pair would then be as strong as whichever was called first, which is not a property anyone
+// declared.
+fn observe_default_branch_revision<M>(event: WorkflowRunEvent, evidence: M) -> DefaultBranchAdmission<M> {
+  if event.repository_full_name != fleet_repository_full_name {
+    DefaultBranchRefused {
+      cause: BranchRepositoryNotThisRepository {
+        observed: event.repository_full_name,
+        required: fleet_repository_full_name,
+      },
+    }
+  } else {
+    if event.head_repository_full_name != fleet_repository_full_name {
+      DefaultBranchRefused {
+        cause: BranchHeadRepositoryNotThisRepository {
+          observed: event.head_repository_full_name,
+          required: fleet_repository_full_name,
+        },
+      }
+    } else {
+      if event.originating_event != default_branch_originating_event {
+        DefaultBranchRefused { cause: BranchEventIsNotAPush { observed: event.originating_event } }
+      } else {
+        if event.head_branch != fleet_default_branch {
+          DefaultBranchRefused {
+            cause: BranchIsNotTheDefaultBranch {
+              observed: event.head_branch,
+              required: fleet_default_branch,
+            },
+          }
+        } else {
+          match decode_event_revision(event: event) {
+            RevisionDecoded { revision: oid } =>
+              DefaultBranchAdmitted {
+                observed: DefaultBranchRevisionObserved {
+                  revision: oid,
+                  branch: event.head_branch,
+                  evidence: evidence,
+                },
+              }
+            RevisionUndecodable { observed: raw } =>
+              DefaultBranchRefused { cause: BranchHeadShaUndecodable { observed: raw } }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE SOLE JOIN. Downstream, only AcceptedFleetRevision.revision exists -- there is no candidate
+// left beside it to compare against or accidentally substitute. The join takes the two POSITIVE
+// carriers, not the two admissions, so a refused producer cannot reach it at all: the caller must
+// have matched out a success on both sides before it can even ask.
+//
+// THE MISMATCH ARM IS LOAD-BEARING. Required CI proving revision A and the default branch carrying
+// revision B is not a contradiction in the data -- both facts can be perfectly true, about
+// different revisions, and arrive together whenever a push lands while a run is in flight. What is
+// false is the CONJUNCTION anyone would infer from holding both. It refuses, carrying both
+// revisions, because "which two" is the entire content of the finding.
+type AcceptedFleetRevision<E, M> {
+  revision: GitObjectId
+  required_ci_contract: RequiredCiContractIdentity
+  required_ci_evidence: E
+  default_branch_evidence: M
+}
+
+type FleetRevisionAdmission<E, M>
+  = FleetRevisionAccepted { accepted: AcceptedFleetRevision<E, M> }
+  | RequiredCiAndDefaultBranchRevisionMismatch {
+      required_ci_revision: GitObjectId,
+      default_branch_revision: GitObjectId,
+    }
+
+fn admit_fleet_revision<E, M>(
+  required_ci: RequiredCiSucceeded<E>,
+  default_branch: DefaultBranchRevisionObserved<M>,
+) -> FleetRevisionAdmission<E, M> {
+  if git_object_id_eq(left: required_ci.revision, right: default_branch.revision) {
+    FleetRevisionAccepted {
+      accepted: AcceptedFleetRevision {
+        revision: required_ci.revision,
+        required_ci_contract: required_ci.contract,
+        required_ci_evidence: required_ci.evidence,
+        default_branch_evidence: default_branch.evidence,
+      },
+    }
+  } else {
+    RequiredCiAndDefaultBranchRevisionMismatch {
+      required_ci_revision: required_ci.revision,
+      default_branch_revision: default_branch.revision,
+    }
+  }
+}
