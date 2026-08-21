@@ -1121,14 +1121,11 @@ pub fn constructor_call_admission_diags(
     } else {
         match (*func_decl_binding_for_call(scope.func_env.clone(), scope.type_env.clone(), callee_name.clone())).clone() {
     ConstructorDeclarationLookup::ExactConstructorDeclaration { identity, declaration: declaration_node, .. } => match fn_admit_callers(declaration_node.clone(), scope.type_env.clone().source_indices.clone()) {
-    Some(permitted) => if (identity.owner_module_path.clone() == scope.module_name.clone()) {
+    Some(permitted) => match caller_decl_coords(scope.clone()) {
+    Some(caller) => if { let mut __found = false; for p in permitted.clone().iter().cloned() { if decl_ref_coords_equal(p.clone(), caller.clone()) { __found = true; break; } } __found } {
             Rc::new(vec![])
         } else {
-            match caller_decl_coords(scope.clone()) {
-    Some(caller) => if { let mut __found = false; for p in permitted.clone().iter().cloned() { if decl_ref_coords_equal(p.clone(), caller.clone()) { __found = true; break; } } __found } {
-                Rc::new(vec![])
-            } else {
-                Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ConstructorCallAdmissionRefused {
+            Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ConstructorCallAdmissionRefused {
     constructor_module_path: identity.owner_module_path.clone(),
     constructor_decl_name: identity.decl_name.clone(),
     caller_module_path: caller.module_path.clone(),
@@ -1136,7 +1133,7 @@ pub fn constructor_call_admission_diags(
     permitted_callers: Rc::new({ let mut __result = Vec::new(); for p in permitted.clone().iter().cloned() { __result.push(decl_ref_coords_label(p.clone())); } __result }),
     span: span.clone(),
 }), scope.module_name.clone())])
-            },
+        },
     None => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ConstructorCallAdmissionRefused {
     constructor_module_path: identity.owner_module_path.clone(),
     constructor_decl_name: identity.decl_name.clone(),
@@ -1145,8 +1142,7 @@ pub fn constructor_call_admission_diags(
     permitted_callers: Rc::new({ let mut __result = Vec::new(); for p in permitted.clone().iter().cloned() { __result.push(decl_ref_coords_label(p.clone())); } __result }),
     span: span.clone(),
 }), scope.module_name.clone())]),
-}
-        },
+},
     None => Rc::new(vec![]),
 },
     ConstructorDeclarationLookup::NotAdmissionBearingReference => Rc::new(vec![]),

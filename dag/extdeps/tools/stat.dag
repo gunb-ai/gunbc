@@ -1,0 +1,32 @@
+module extdeps.tools.stat
+
+import std.types { String, NonEmptyStr, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/coreutils/manual/html_node/stat-invocation.html"
+  }
+}
+
+// THE AUTHORITY IS GNU COREUTILS, NOT POSIX, and that is a real constraint rather than a citation
+// detail: -c/--format is a GNU extension. POSIX does not specify stat(1) at all, and the BSD
+// utility spells the same request -f with different conversion characters. This module therefore
+// describes the GNU tool; a host that ships the BSD one needs its own authority, not a widened
+// format string here.
+data stat_binary_path: NonEmptyStr = "/usr/bin/stat"
+
+// TWO PROBES, ONE TOKEN EACH, rather than one probe printing "uid:gid". The pair form would need a
+// separator parser -- a second place where the ":" grammar lives, beside the one in
+// extdeps.posix.identity that composes it -- and would have to answer what a partial read means.
+// One token per probe reuses the single-id decoder unchanged, which is the same shape the `id -u` /
+// `id -g` pair already uses.
+fn stat_owner_user_argv(path: String) -> List<String> {
+  [stat_binary_path as String, "-c", "%u", path]
+}
+
+fn stat_owner_group_argv(path: String) -> List<String> {
+  [stat_binary_path as String, "-c", "%g", path]
+}

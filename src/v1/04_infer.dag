@@ -702,6 +702,28 @@ fn declaration_lookup_failure_label(cause: DeclarationLookupFailure) -> String {
   }
 }
 
+// ADMISSION IS EXACT FOR EVERY CALLER, INCLUDING SAME-MODULE ONES.
+//
+// This function used to skip the permitted-list comparison entirely when caller and callee shared
+// a module, so the semantics the compiler implemented were "a permitted caller OR any declaration
+// in the defining module" -- an implicit wildcard that never appeared in the authored declaration
+// and that no reader of a sealed `fn` could see. Measured before the repair: a probe added to
+// gunbc.host_effect_realize, absent from the admitted list, calling the elevated execution leaf
+// with ["/bin/rm", "-rf", "/"], typechecked and resolved with no diagnostic at all, while the same
+// call from another module refused.
+//
+// That made every same-module permitted list unverified data rather than an executable
+// declaration: a "private handler" co-located with its serializer was not private, an arbitrary
+// helper added inside the module bypassed the wall, and an incorrect caller list could sit green
+// forever. The last one is not hypothetical -- the srv3 seal's own lists were first authored by
+// hand with a caller that does not exist and two attributed to the wrong enclosing function, and
+// nothing in the compiler would have said so.
+//
+// The repair deletes the branch and nothing else: the exact caller-coordinate comparison, the
+// ConstructorCallAdmissionRefused diagnostic, and the caller-identity-unavailable arm were all
+// already here and already correct. Self-calls obey the same rule -- a recursive sealed function
+// lists itself -- because an invisible self exception would replace the module wildcard with a
+// smaller undeclared one.
 fn constructor_call_admission_diags(
   callee_name: String,
   scope: InferScope,
@@ -718,9 +740,6 @@ fn constructor_call_admission_diags(
       ExactConstructorDeclaration { identity: identity, declaration: declaration_node } =>
         match fn_admit_callers(n: declaration_node, source_indices: scope.type_env.source_indices) {
           Present { value: permitted } =>
-            if identity.owner_module_path == scope.module_name {
-              []
-            } else {
               match caller_decl_coords(scope: scope) {
                 Present { value: caller } =>
                   if permitted |> any(p => decl_ref_coords_equal(a: p, b: caller)) {
@@ -755,7 +774,6 @@ fn constructor_call_admission_diags(
                     )
                   ]
               }
-            }
           Absent => []
         }
       NotAdmissionBearingReference => []
