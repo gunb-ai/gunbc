@@ -1,0 +1,80 @@
+module test.claim.workflow_capability_closure_witness
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+// THE SUBJECT IS A REAL WORKFLOW THAT REALLY FAILED, transcribed from a git receipt rather than
+// invented: .github/workflows/deploy.yml at a4677f33f4a8d5951de84a9e32383a8835797bab, deleted in
+// 5814d0d75af6facd9c7afedf995d0f058b4a06e9. Five steps; the ONLY `uses:` in the whole file is the
+// checkout; `cargo build --release -p v1-compiler --bin gunbc` is step two; setup-rust-toolchain
+// appears zero times (a real zero -- `cargo`, `uses:` and `name:` all count nonzero on the same
+// scan of the same input, so the instrument reaches the file).
+//
+// It died on `cargo: command not found` without ever reaching its terminal step. The model
+// represented it as a perfectly valid workflow, because by the time these are Steps a job that
+// needs a toolchain and a job that has one look the same.
+data deploy_yml_shape: std.types.List<gunbc.workflow_capability_closure.CapabilityAnnotatedStep> = [
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: "Checkout", role: gunbc.workflow_capability_closure.CapabilityNeutral },
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep {
+    step_name: "Build the deploy binary",
+    role: gunbc.workflow_capability_closure.ConsumesCapability { capability: gunbc.roadmap_execution_contract.CargoCapability },
+  },
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: "Materialize the pinned provider runtime", role: gunbc.workflow_capability_closure.CapabilityNeutral },
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: "Deploy the dashboard to srv1", role: gunbc.workflow_capability_closure.CapabilityNeutral },
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: "Advance the admitted fleet revision", role: gunbc.workflow_capability_closure.CapabilityNeutral },
+]
+
+// THE RED. This shape must refuse.
+test fn a_job_consuming_cargo_with_no_provider_refuses() -> std.types.Bool {
+  gunbc.workflow_capability_closure.capability_closure_is_closed(v: gunbc.workflow_capability_closure.workflow_job_capability_closure(steps: deploy_yml_shape)) == false
+}
+
+// POSITIVE CONTROL, and without it the red above is worthless: a checker that refuses EVERY job
+// would pass it. This is witnesses.yml's live shape -- setup-rust-toolchain provides, the build
+// step consumes -- and it must be admitted.
+data witnesses_yml_shape: std.types.List<gunbc.workflow_capability_closure.CapabilityAnnotatedStep> = [
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: "Checkout", role: gunbc.workflow_capability_closure.CapabilityNeutral },
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep {
+    step_name: "Install Rust toolchain",
+    role: gunbc.workflow_capability_closure.ProvidesCapability { capability: gunbc.roadmap_execution_contract.CargoCapability },
+  },
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep {
+    step_name: "Build the witness fold",
+    role: gunbc.workflow_capability_closure.ConsumesCapability { capability: gunbc.roadmap_execution_contract.CargoCapability },
+  },
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: "All witnesses (one prepared subject, one fold)", role: gunbc.workflow_capability_closure.CapabilityNeutral },
+]
+
+test fn a_job_providing_before_consuming_is_admitted() -> std.types.Bool {
+  gunbc.workflow_capability_closure.capability_closure_is_closed(v: gunbc.workflow_capability_closure.workflow_job_capability_closure(steps: witnesses_yml_shape))
+}
+
+// THE DISCRIMINATOR THAT SEPARATES CLOSURE FROM PRESENCE. A check asking only "does this job
+// contain a toolchain step anywhere" passes this job, and this job is broken in exactly the way
+// deploy.yml was: the cargo invocation resolves nothing, because the provider has not run yet.
+// Ordering is the content of the claim, so it gets its own witness.
+data provider_after_consumer_shape: std.types.List<gunbc.workflow_capability_closure.CapabilityAnnotatedStep> = [
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: "Checkout", role: gunbc.workflow_capability_closure.CapabilityNeutral },
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep {
+    step_name: "Build the deploy binary",
+    role: gunbc.workflow_capability_closure.ConsumesCapability { capability: gunbc.roadmap_execution_contract.CargoCapability },
+  },
+  gunbc.workflow_capability_closure.CapabilityAnnotatedStep {
+    step_name: "Install Rust toolchain",
+    role: gunbc.workflow_capability_closure.ProvidesCapability { capability: gunbc.roadmap_execution_contract.CargoCapability },
+  },
+]
+
+test fn a_provider_ordered_after_its_consumer_does_not_close() -> std.types.Bool {
+  gunbc.workflow_capability_closure.capability_closure_is_closed(v: gunbc.workflow_capability_closure.workflow_job_capability_closure(steps: provider_after_consumer_shape)) == false
+}
+
+// THE LIVE CONSUMER, not a fixture. The three witnesses above run the closure over transcribed
+// shapes; this one runs it over the job gunbc.witness_floor_workflow actually emits, so the
+// check has a subject in the production tree rather than only in this file.
+//
+// If someone reorders the real steps so the build precedes the toolchain, or retags the
+// toolchain step as neutral, this goes red AND emission refuses -- the two halves of the same
+// fact, one observed here and one enforced there.
+test fn the_live_witness_floor_job_closes_its_capabilities() -> std.types.Bool {
+  gunbc.witness_floor_workflow.witness_floor_capability_closure_holds()
+}

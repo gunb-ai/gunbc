@@ -289,7 +289,7 @@ fn witness_floor_precondition() -> String {
 
 fn witness_floor_run_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.RunStep {
-    name: Present { value: "Required CI: parse, regen, regen determinism, behavioral receipt, witness floor" },
+    name: Present { value: "Required CI: parse, regen, regen determinism, witness floor" },
     id: none,
     run: witness_floor_run_script(),
     shell: none,
@@ -327,33 +327,64 @@ fn witness_floor_run_step() -> extdeps.github.actions.Step {
 // RESTORATION TRIGGER: the first run that completes this fold, floor and regen alike. Real wall
 // times replace this constant -- at which point this note dissolves with the provisional bound
 // it explains.
-// THE BEHAVIORAL RECEIPT IS NOT A STEP HERE, AND THAT IS THE POINT.
-//
-// It was two steps until #8647 collapsed this job's step ladder into one invocation. Re-adding
-// two more would have rebuilt the ladder that PR removed: order in a YAML list, preconditions
-// naming another step's outcome, one process per phase. The receipt's two phases -- the
-// controlled-fixture control and the per-PR comparison against the modules a diff changed --
-// therefore live INSIDE `--required-ci`, sequenced by the program whose phases they are.
-//
-// The consequence worth recording, because it is a behavioural difference and not a relocation:
-// the per-PR phase used to be gated by `github.event_name == 'pull_request'` in this file. A
-// single invocation cannot carry a per-phase trigger condition, so the phase now decides for
-// itself from what it can OBSERVE -- when the merge base resolves to the head there is no diff
-// to read, and it reports SKIPPED with that reason rather than passing over an empty selection.
-// That is strictly better than the trigger name: it is derived from the state that actually
-// makes the observation impossible, so it holds on any trigger anyone adds later.
+// ONE LIST, TWO PROJECTIONS. The steps GitHub sees and the capability roles the closure reads
+// are derived from the same rows, so they cannot drift apart. A second hand-maintained list of
+// roles beside the step list would be the §3 fork this closure exists to close, reintroduced as
+// its own fix.
+type WitnessFloorBoundStep {
+  step: extdeps.github.actions.Step
+  role: gunbc.workflow_capability_closure.StepCapabilityRole
+  step_name: String
+}
+
+fn witness_floor_bound_steps() -> std.types.List<WitnessFloorBoundStep> {
+  [
+    WitnessFloorBoundStep {
+      step: witness_floor_checkout_step(),
+      role: gunbc.workflow_capability_closure.CapabilityNeutral,
+      step_name: "Checkout",
+    },
+    WitnessFloorBoundStep {
+      step: witness_floor_toolchain_step(),
+      role: gunbc.workflow_capability_closure.ProvidesCapability { capability: gunbc.roadmap_execution_contract.CargoCapability },
+      step_name: "Install Rust toolchain",
+    },
+    WitnessFloorBoundStep {
+      step: witness_floor_build_step(),
+      role: gunbc.workflow_capability_closure.ConsumesCapability { capability: gunbc.roadmap_execution_contract.CargoCapability },
+      step_name: "Build the witness fold",
+    },
+    WitnessFloorBoundStep {
+      step: witness_floor_run_step(),
+      role: gunbc.workflow_capability_closure.CapabilityNeutral,
+      step_name: "All witnesses (one prepared subject, one fold)",
+    },
+  ]
+}
+
+fn witness_floor_steps() -> std.types.List<extdeps.github.actions.Step> {
+  v2.std.algebra.list_map(xs: witness_floor_bound_steps(), f: fn(b) { b.step })
+}
+
+fn witness_floor_step_annotations() -> std.types.List<gunbc.workflow_capability_closure.CapabilityAnnotatedStep> {
+  v2.std.algebra.list_map(
+    xs: witness_floor_bound_steps(),
+    f: fn(b) { gunbc.workflow_capability_closure.CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+  )
+}
+
+fn witness_floor_capability_closure_holds() -> Bool {
+  gunbc.workflow_capability_closure.capability_closure_is_closed(
+    v: gunbc.workflow_capability_closure.workflow_job_capability_closure(steps: witness_floor_step_annotations()),
+  )
+}
 
 fn witness_floor_job() -> extdeps.github.actions.Job {
   extdeps.github.actions.Job {
     id: witness_floor_workflow_job_id,
     name: none,
     runner: gunbc.ci_runner_target.gunbc_ci_selected_runner_spec(),
-    steps: [
-      witness_floor_checkout_step(),
-      witness_floor_toolchain_step(),
-      witness_floor_build_step(),
-      witness_floor_run_step()
-    ],
+    steps: witness_floor_steps(),
     needs: [],
     env: none,
     outputs: none,
@@ -406,8 +437,24 @@ data witness_floor_workflow: extdeps.github.actions.Workflow = {
   jobs: [witness_floor_job()]
 }
 
+// THE CLOSURE HAS A PRODUCTION CONSUMER, which is the difference between a check and a claim.
+// A capability check that only tests call is specification-without-execution: it can be green
+// forever while the emitter happily produces the broken workflow beside it (DESIGN §5).
+//
+// So emission refuses. A job whose cargo consumer has no provider ordered before it yields the
+// refusal marker instead of yaml -- not a warning, and not yaml-with-a-comment, because the
+// generated-artifact drift gate compares bytes and a refusal marker cannot be mistaken for a
+// workflow. This is the deploy.yml failure made unemittable rather than merely detectable: that
+// workflow ran `cargo build` as step two with no toolchain provider anywhere in the file, and
+// nothing in this repository could refuse it.
+data witness_floor_capability_closure_refusal: String = "REFUSED gunbc.witness_floor_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in witness_floor_bound_steps or the order of the steps themselves."
+
 fn expected_witness_floor_yml() -> String {
-  extdeps.languages.yaml.emit.serialize_yaml(v: extdeps.languages.yaml.gha_workflow.project_workflow_to_yaml(workflow: witness_floor_workflow))
+  if witness_floor_capability_closure_holds() {
+    extdeps.languages.yaml.emit.serialize_yaml(v: extdeps.languages.yaml.gha_workflow.project_workflow_to_yaml(workflow: witness_floor_workflow))
+  } else {
+    witness_floor_capability_closure_refusal
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════

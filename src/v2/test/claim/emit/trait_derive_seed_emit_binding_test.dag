@@ -1,6 +1,5 @@
 module v2.test.emit.trait_derive_seed_emit_binding_test
 
-
 data trait_derive_seed_emit_binding_note: String = "Layer-boundary mock: std.trait_derive_shape trait lists + supplemental target predicates → extdeps.languages.rust.emit spellings (same authorities v1.compiler.trait_derive_emit composes for seed emit; v1 module not importable from v2 claim closure)."
 
 test fn nullary_coproduct_predicate_satisfied() -> Bool {
@@ -37,7 +36,7 @@ test fn payload_coproduct_predicate_satisfied() -> Bool {
 }
 
 test fn group_completion_supplemental_impl_present() -> Bool {
-  let supplemental = extdeps.languages.rust.emit.rust_supplemental_impls_group_completion()
+  let supplemental = extdeps.languages.rust.emit.rust_supplemental_impls_group_completion(carrier_param_needs_clone: true)
   let target_ok = std.trait_derive_shape.repr_grounding_group_completion_carrier(
     module_path: "std.algebra",
     name: "GroupCompletion"
@@ -63,10 +62,23 @@ test fn group_completion_supplemental_impl_present() -> Bool {
     && wrong_name == false
 }
 
+data group_completion_carrier_bound_two_position_note: String = "Discriminating control for the carrier well-formedness bound (Row 1a fused-flag split). Rust REQUIRES an impl's generics to satisfy the type's own bounds, so a bounded item header forces the same bound on every supplemental impl header -- one FACT rendered TWICE, and the two renderings are NOT the same string. The bound belongs in the impl generic list and must be ABSENT from the type reference: `impl<M: Clone> Neg for GroupCompletion<M>` compiles, `impl<M: Clone> Neg for GroupCompletion<M: Clone>` is not Rust at all. An implementation that renders one bounded value and substitutes it at both positions passes a naive presence check and emits code rustc refuses, so the negative half below is the load-bearing half. The false arm additionally proves the parameter DISCRIMINATES rather than being ignored -- without it, hardwiring the bound on would pass every positive assertion here."
+
+test fn group_completion_carrier_bound_renders_in_impl_position_only() -> Bool {
+  let bounded = extdeps.languages.rust.emit.rust_supplemental_impls_group_completion(carrier_param_needs_clone: true)
+  let bare = extdeps.languages.rust.emit.rust_supplemental_impls_group_completion(carrier_param_needs_clone: false)
+  bounded.contains("impl<M: Clone> ")
+    && bounded.contains("for GroupCompletion<M: Clone>") == false
+    && bounded.contains("for GroupCompletion<M>")
+    && bare.contains("impl<M> ")
+    && bare.contains("impl<M: Clone> ") == false
+    && bare.contains("for GroupCompletion<M>")
+}
+
 data group_completion_arithmetic_discrimination_note: String = "Discriminating control for the pair-completion derivation (B1). These assert the Grothendieck formulas that std.trait_derive_shape pair_completion_op_rows declares, so perturbing a row — swapping the mul cross-terms into the wrong arm, making add cross instead of componentwise, or dropping the neg swap — reds here. The clone placement is asserted too: a component used in both arms clones on its first use and moves on its last, which is derived from the rows, not spelled."
 
 test fn group_completion_mul_arms_are_grothendieck() -> Bool {
-  let supplemental = extdeps.languages.rust.emit.rust_supplemental_impls_group_completion()
+  let supplemental = extdeps.languages.rust.emit.rust_supplemental_impls_group_completion(carrier_param_needs_clone: true)
   supplemental.contains("pos: self.pos.clone() * rhs.pos.clone() + self.neg.clone() * rhs.neg.clone()")
     && supplemental.contains("neg: self.pos * rhs.neg + self.neg * rhs.pos")
     && supplemental.contains("pos: self.pos.clone() * rhs.neg.clone()") == false
@@ -74,14 +86,14 @@ test fn group_completion_mul_arms_are_grothendieck() -> Bool {
 }
 
 test fn group_completion_add_is_componentwise() -> Bool {
-  let supplemental = extdeps.languages.rust.emit.rust_supplemental_impls_group_completion()
+  let supplemental = extdeps.languages.rust.emit.rust_supplemental_impls_group_completion(carrier_param_needs_clone: true)
   supplemental.contains("pos: self.pos + rhs.pos")
     && supplemental.contains("neg: self.neg + rhs.neg")
     && supplemental.contains("pos: self.pos + rhs.neg") == false
 }
 
 test fn group_completion_neg_swaps_components() -> Bool {
-  let supplemental = extdeps.languages.rust.emit.rust_supplemental_impls_group_completion()
+  let supplemental = extdeps.languages.rust.emit.rust_supplemental_impls_group_completion(carrier_param_needs_clone: true)
   supplemental.contains("pos: self.neg,")
     && supplemental.contains("neg: self.pos,")
 }

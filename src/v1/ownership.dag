@@ -3,6 +3,28 @@ module v1.compiler.ownership
 
 
 
+// Read is the ELSE OF in_tail, not a finding that the use borrows. walk_expr's ExprVar arm
+// branches on one bit: in_tail selects Consumed, and everything else -- every argument position,
+// every receiver, every scrutinee -- falls to Read. So Read conflates two states whose remedies
+// differ: "this use is provably non-consuming" and "this use was never classified". Consumed is
+// the deliberate wall (only a tail position is proven to consume); Read is its residue.
+//
+// The consequence, which is what this note exists for: DO NOT KEY AN OPTIMIZATION ON Read. An arm
+// that emits a borrow wherever Read appears fires on genuine by-value-consuming positions and
+// emits a borrow where an owned value is required. That arm was proposed and refuted on this
+// reasoning in 2026-08, before it was written.
+//
+// A borrow-safety decision wants a LOCAL proof instead. The iter_owned receiver disposition in
+// 05_emit_rust.dag is the worked example: the syntactic position of the receiver as an iter_owned
+// argument is itself the borrow-position proof, so it consults no ownership classification at all.
+//
+// PRIOR ART, so the next reader does not rebuild it blind: the split was built and verified --
+// two orthogonal axes (UsePosition = tail/non-tail, UseContext = the syntactic role), threaded
+// through walk_expr and record_use, behaviour-preserving at gen-2 first_generation_equal 129 of
+// 129. It was CLOSED UNMERGED in gunbc#8689 for want of a consumer: it wrote the context at 34
+// sites and nothing read it, which is the DESIGN.md section 6 experimental-residue tell. The
+// conflation described above is real and unfixed; the code that fixes it is quarry in that PR.
+// Rebuild it when a decision actually needs to distinguish the two states, and land them together.
 type EdgeKind = Consumed | Read | Threaded | Projected
 
 type EdgeClassification {

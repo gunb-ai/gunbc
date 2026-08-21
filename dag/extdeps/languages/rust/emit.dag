@@ -1,10 +1,8 @@
 module extdeps.languages.rust.emit
 
-
-
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https
+    scheme: extdeps.uri.Https
     locator: "doc.rust-lang.org/reference/"
   }
 }
@@ -60,12 +58,12 @@ data rust_reserved_escape_suffix: String = "_"
 
 data rust_string_types: List<String> = ["String", "Secret"]
 
-data rust_struct_derives: String = rust_trait_derive_attr_from_traits(record_derive_traits_heap())
+data rust_struct_derives: String = rust_trait_derive_attr_from_traits(std.trait_derive_shape.record_derive_traits_heap())
 
-data rust_struct_derives_copy: String = rust_trait_derive_attr_from_traits(record_derive_traits_copy())
-data rust_enum_derives: String = rust_trait_derive_attr_from_traits(payload_coproduct_derive_traits())
+data rust_struct_derives_copy: String = rust_trait_derive_attr_from_traits(std.trait_derive_shape.record_derive_traits_copy())
+data rust_enum_derives: String = rust_trait_derive_attr_from_traits(std.trait_derive_shape.payload_coproduct_derive_traits())
 
-data rust_enum_derives_copy: String = rust_trait_derive_attr_from_traits(nullary_coproduct_derive_traits())
+data rust_enum_derives_copy: String = rust_trait_derive_attr_from_traits(std.trait_derive_shape.nullary_coproduct_derive_traits())
 
 fn rust_trait_derive_spelling(derive_trait: std.trait_derive_shape.ReprGroundingDeriveTrait) -> String {
   match derive_trait {
@@ -401,11 +399,12 @@ fn rust_pair_completion_body_render(body: std.trait_derive_shape.PairCompletionB
   }
 }
 
-fn rust_pair_completion_impl_render(row: std.trait_derive_shape.PairCompletionOpRow) -> String {
+fn rust_pair_completion_impl_render(row: std.trait_derive_shape.PairCompletionOpRow, carrier_param_needs_clone: Bool) -> String {
   match rust_pair_completion_spelling_for(row.op) {
     Present { value: spelling } =>
       concat(
-        "impl<M> ", spelling.trait_path, " for ", rust_pair_completion_carrier, "<M>",
+        if carrier_param_needs_clone { "impl<M: Clone> " } else { "impl<M> " },
+        spelling.trait_path, " for ", rust_pair_completion_carrier, "<M>",
         if spelling.where_bounds == "" {
           " {\n"
         } else {
@@ -413,7 +412,7 @@ fn rust_pair_completion_impl_render(row: std.trait_derive_shape.PairCompletionOp
         },
         "    type Output = Self;\n",
         "    fn ", spelling.method,
-        if pair_completion_body_uses_rhs(row.body) {
+        if std.trait_derive_shape.pair_completion_body_uses_rhs(row.body) {
           "(self, rhs: Self) -> Self::Output "
         } else {
           "(self) -> Self::Output "
@@ -431,13 +430,13 @@ fn rust_pair_completion_impl_render(row: std.trait_derive_shape.PairCompletionOp
   }
 }
 
-fn rust_supplemental_impls_group_completion() -> String {
+fn rust_supplemental_impls_group_completion(carrier_param_needs_clone: Bool) -> String {
   concat(
     "\n// repr-grounding arm (b): GroupCompletion<M> carrier arithmetic, rendered from the\n",
     "// pair-completion rows in std.trait_derive_shape (Add/Mul/Neg are row data; Sub/Div bodies\n",
     "// remain keyed literals: only Add, Mul and Neg render from the PairCompletionSumOfProducts polynomial arms).\n",
-    pair_completion_op_rows()
-      |> map(row => rust_pair_completion_impl_render(row))
+    std.trait_derive_shape.pair_completion_op_rows()
+      |> map(row => rust_pair_completion_impl_render(row: row, carrier_param_needs_clone: carrier_param_needs_clone))
       |> join(separator: "")
   )
 }
@@ -451,6 +450,6 @@ fn rust_supplemental_impls_bool_coproduct() -> String {
   )
 }
 
-data rust_pair_completion_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "Dissolves when the emitted-target operator surface is selected by the grammar-row inverse in extdeps.languages.rust rather than by this per-op spelling table, at which point trait_path/method/where_bounds become ordinary terminal rows on the Rust target model.")
+data rust_pair_completion_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "Dissolves when the emitted-target operator surface is selected by the grammar-row inverse in extdeps.languages.rust rather than by this per-op spelling table, at which point trait_path/method/where_bounds become ordinary terminal rows on the Rust target model.")
 
-data rust_pair_completion_nonpolynomial_body_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: the Sub and Div bodies rendered below. Scope honesty (review 43189): only Add, Mul and Neg are fully row-data — their bodies are rendered from the PairCompletionSumOfProducts polynomial arms, so perturbing a row changes the emission. Sub and Div are NOT polynomials in the four operand components, so today they render as literals keyed by variant name: Sub is a DERIVED op (Add composed")
+data rust_pair_completion_nonpolynomial_body_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: the Sub and Div bodies rendered below. Scope honesty (review 43189): only Add, Mul and Neg are fully row-data — their bodies are rendered from the PairCompletionSumOfProducts polynomial arms, so perturbing a row changes the emission. Sub and Div are NOT polynomials in the four operand components, so today they render as literals keyed by variant name: Sub is a DERIVED op (Add composed")

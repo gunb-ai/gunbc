@@ -1,5 +1,4 @@
 module v2.extdeps.languages.rust
-
 type RustIntKind
   = Signed
   | Unsigned
@@ -66,7 +65,7 @@ type NamedSegment {
 }
 
 type PubInPath {
-  resolved_path: List<NamedSegment>
+  resolved_path: std.types.List<NamedSegment>
 }
 
 type RustVisibility
@@ -100,7 +99,7 @@ type RustIntegerOverflowDisposition<IRCarrier> {
 type RustGrammarRelationRow {
   production: v2.std.grammar.GrammarProduction
   emitted: v2.std.node.Node
-  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
+  tokens: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 
 type RustModelCoreLawKey
@@ -124,7 +123,7 @@ fn rust_integer_overflow_disposition(kind: RustIntKind, width: RustIntWidth) -> 
   }
 }
 
-fn rust_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn rust_concrete_tokens() -> std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
     v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^rust_binding_fn_add },
@@ -269,7 +268,7 @@ data rust_facts_never: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFac
   representation: ^rust_repr_never
 }
 
-data rust_integer_facts_catalog: List<RustIntegerPrimitiveFacts> = [
+data rust_integer_facts_catalog: std.types.List<RustIntegerPrimitiveFacts> = [
   rust_facts_i8,
   rust_facts_i16,
   rust_facts_i32,
@@ -284,12 +283,12 @@ data rust_integer_facts_catalog: List<RustIntegerPrimitiveFacts> = [
   rust_facts_usize
 ]
 
-data rust_float_facts_catalog: List<RustFloatPrimitiveFacts> = [
+data rust_float_facts_catalog: std.types.List<RustFloatPrimitiveFacts> = [
   rust_facts_f32,
   rust_facts_f64
 ]
 
-data rust_noninteger_facts_catalog: List<RustNonIntegerPrimitiveFacts> = [
+data rust_noninteger_facts_catalog: std.types.List<RustNonIntegerPrimitiveFacts> = [
   rust_facts_bool,
   rust_facts_char,
   rust_facts_str,
@@ -609,7 +608,7 @@ fn rust_declared_inhabitants_root() -> v2.std.node.Node {
 }
 }
 
-fn rust_value_semantics_carrier_atoms() -> List<v2.std.node.Symbol> {
+fn rust_value_semantics_carrier_atoms() -> std.types.List<v2.std.node.Symbol> {
 
   [
     ^rust_surface_spelling_i8, ^rust_surface_spelling_i16, ^rust_surface_spelling_i32, ^rust_surface_spelling_i64, ^rust_surface_spelling_i128,
@@ -651,7 +650,7 @@ fn rust_i32_scalar_node() -> v2.std.node.Node {
   rust_scalar_node(scalar: IntScalar { kind: Signed, width: Bits32 })
 }
 
-fn rust_i32_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
+fn rust_i32_zip_fold_closure_edges() -> std.types.List<v2.std.node.Edge> {
   [
     rust_named_edge(
       name: ^rust_inhabitant_field_add_fn,
@@ -704,7 +703,7 @@ fn rust_i32_zip_fold_closure_edges() -> List<v2.std.node.Edge> {
   ]
 }
 
-fn rust_coercion_candidate_edges() -> List<v2.std.node.Edge> {
+fn rust_coercion_candidate_edges() -> std.types.List<v2.std.node.Edge> {
   v2.std.algebra.list_append(
     left: rust_declared_inhabitants_root().children,
     right: rust_i32_zip_fold_closure_edges()
@@ -732,7 +731,7 @@ fn rust_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxT
   v2.std.compilers.target_model.concrete_syntax_token_to_node(token: token)
 }
 
-fn rust_add_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
+fn rust_add_serialize_source_prefix_edges() -> std.types.List<v2.std.node.Edge> {
   [
     rust_named_edge(
       name: ^serialize_source_field_source_text,
@@ -745,7 +744,7 @@ fn rust_add_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
   ]
 }
 
-fn rust_serialize_source_children() -> List<v2.std.node.Edge> {
+fn rust_serialize_source_children() -> std.types.List<v2.std.node.Edge> {
 
   v2.std.algebra.list_append(
     left: rust_add_serialize_source_prefix_edges(),
@@ -779,7 +778,7 @@ type RustGramBuild1State
   = RustGramBuild1StateInit
   | RustGramBuild1StateReady { expr: v2.std.grammar.GrammarExpr }
 
-fn rust_grammar_sequence_from_concrete_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> v2.std.grammar.GrammarExpr {
+fn rust_grammar_sequence_from_concrete_tokens(tokens: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> v2.std.grammar.GrammarExpr {
   match v2.std.algebra.fold_list(
     xs: tokens,
     empty: RustGramBuild1StateInit,
@@ -918,7 +917,7 @@ fn rust_add_operator_realization_row() -> v2.std.node.Node {
   )
 }
 
-fn rust_binop_operator_lex_rules() -> List<v2.std.compilers.lexing.LexRule> {
+fn rust_binop_operator_lex_rules() -> std.types.List<v2.std.compilers.lexing.LexRule> {
   [
     rust_lex_rule(token_class: ^rust_token_oror, text: " || "),
     rust_lex_rule(token_class: ^rust_token_andand, text: " && "),
@@ -951,7 +950,7 @@ fn rust_operator_realizations_catalog_node() -> v2.std.node.Node {
   ])
 }
 
-fn rust_add_signature_with_open() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn rust_add_signature_with_open() -> std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
     v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: ^rust_binding_fn_add },
@@ -970,7 +969,7 @@ fn rust_add_signature_with_open() -> List<v2.std.compilers.target_model.Concrete
   ]
 }
 
-fn rust_add_block_close() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn rust_add_block_close() -> std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rbrace }
   ]
@@ -984,9 +983,9 @@ fn rust_signature_diagnostic(reason: v2.std.node.Symbol, node: v2.std.node.Node)
   }
 }
 
-fn rust_signature_type_ref_tokens(type_node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+fn rust_signature_type_ref_tokens(type_node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match type_node.kind {
-    TypeNode { connective: v2.std.node.Atom { identity: id } } =>
+    v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } =>
       v2.std.diagnostic.outcome_accepted(
         value: [v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: id }]
       )
@@ -997,7 +996,7 @@ fn rust_signature_type_ref_tokens(type_node: v2.std.node.Node) -> v2.std.diagnos
   }
 }
 
-fn rust_signature_one_param_tokens(edge: v2.std.node.Edge) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+fn rust_signature_one_param_tokens(edge: v2.std.node.Edge) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match edge.label {
     Named { name: pname } =>
       v2.std.diagnostic.bind_outcome(
@@ -1021,9 +1020,9 @@ fn rust_signature_one_param_tokens(edge: v2.std.node.Edge) -> v2.std.diagnostic.
   }
 }
 
-fn rust_signature_params_tail_tokens(params: std.algebra.FreeMonoid<v2.std.node.Edge>) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+fn rust_signature_params_tail_tokens(params: std.types.List<v2.std.node.Edge>) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match params {
-    Empty => v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty)
+    Empty => v2.std.diagnostic.outcome_accepted(value: Empty)
     Cons { head: e, tail: rest } =>
       v2.std.diagnostic.bind_outcome(
         o: rust_signature_one_param_tokens(edge: e),
@@ -1047,9 +1046,9 @@ fn rust_signature_params_tail_tokens(params: std.algebra.FreeMonoid<v2.std.node.
   }
 }
 
-fn rust_signature_params_tokens(params: std.algebra.FreeMonoid<v2.std.node.Edge>) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+fn rust_signature_params_tokens(params: std.types.List<v2.std.node.Edge>) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match params {
-    Empty => v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty)
+    Empty => v2.std.diagnostic.outcome_accepted(value: Empty)
     Cons { head: e, tail: rest } =>
       v2.std.diagnostic.bind_outcome(
         o: rust_signature_one_param_tokens(edge: e),
@@ -1065,7 +1064,7 @@ fn rust_signature_params_tokens(params: std.algebra.FreeMonoid<v2.std.node.Edge>
   }
 }
 
-fn rust_signature_head_tokens(fn_name: v2.std.node.Symbol) -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn rust_signature_head_tokens(fn_name: v2.std.node.Symbol) -> std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_kw_fn },
     v2.std.compilers.target_model.BoundToken { token_class: ^rust_token_ident, binding: fn_name },
@@ -1073,14 +1072,14 @@ fn rust_signature_head_tokens(fn_name: v2.std.node.Symbol) -> List<v2.std.compil
   ]
 }
 
-fn rust_signature_return_arrow_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn rust_signature_return_arrow_tokens() -> std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_rparen },
     v2.std.compilers.target_model.FixedToken { token_class: ^rust_token_arrow }
   ]
 }
 
-fn rust_signature_from_name_and_arrow(fn_name: v2.std.node.Symbol, arrow: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+fn rust_signature_from_name_and_arrow(fn_name: v2.std.node.Symbol, arrow: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: arrow), index: 0) {
     Present { value: domain } =>
       match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: arrow), index: 1) {
@@ -1122,7 +1121,7 @@ fn rust_signature_from_name_and_arrow(fn_name: v2.std.node.Symbol, arrow: v2.std
   }
 }
 
-fn rust_signature_with_open_from_decl(decl: v2.std.node.Node) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+fn rust_signature_with_open_from_decl(decl: v2.std.node.Node) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match decl.kind {
     TypeNode { connective: v2.std.node.Conj } =>
       match v2.std.collection.list_at_optional(xs: decl.children, index: 0) {
@@ -1235,7 +1234,7 @@ fn rust_free_monoid_collection_apply_vec() -> v2.std.compilers.target_model.Targ
   }
 }
 
-fn rust_collection_representation_parameters() -> Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetRepresentationParameterSlot> {
+fn rust_collection_representation_parameters() -> std.types.Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetRepresentationParameterSlot> {
   v2.std.collection.map_insert(
     m: v2.std.compilers.target_model.target_representation_parameter_slots_empty(),
     key: ^target_collection_type_param_t,
@@ -1244,9 +1243,9 @@ fn rust_collection_representation_parameters() -> Map<v2.std.node.Symbol, v2.std
 }
 
 fn rust_single_parameter_supplemental_generic_bound_requirements(
-  required_trait: std.trait_derive_shape.ReprGroundingDeriveTrait,
+  required_trait: v2.std.compilers.target_model.ReprGroundingDeriveTrait,
   authority: extdeps.external_authority.ExternalAuthority
-) -> Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementSet> {
+) -> std.types.Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementSet> {
   v2.std.collection.map_insert(
     m: v2.std.compilers.target_model.target_derive_supplemental_generic_bound_contract_requirements_empty(),
     key: ^target_collection_type_param_t,
@@ -1260,51 +1259,35 @@ fn rust_single_parameter_supplemental_generic_bound_requirements(
   )
 }
 
-fn rust_vec_supplemental_generic_bound_contracts() -> Map<v2.std.compilers.target_model.TargetDeriveTraitKey, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundContractAuthority> {
-  let debug_contract = v2.std.compilers.target_model.target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
-      contracts: v2.std.compilers.target_model.target_derive_supplemental_generic_bound_contract_authorities_empty(),
-      derive_trait: std.trait_derive_shape.ReprDeriveDebug,
-      authority: extdeps.languages.rust.derive_contracts.im_15_1_0_vector_debug_impl_authority,
-      requirements: rust_single_parameter_supplemental_generic_bound_requirements(
-        required_trait: std.trait_derive_shape.ReprDeriveClone,
-        authority: extdeps.languages.rust.derive_contracts.im_15_1_0_vector_debug_impl_authority
+// The trait -> supplemental-bound FACTS live once, dag-rooted, in
+// extdeps.languages.rust.derive_contracts rust_vec_freemonoid_supplemental_generic_bound_rows
+// (readable from both the regen pool and this tree); this fn only lifts them into the
+// target_model-typed contract map. Clone's requirement-free entry stays here because the shared
+// rows deliberately carry no Clone row (derive(Clone)'s conditional impl needs no supplement).
+fn rust_vec_supplemental_generic_bound_contracts() -> std.types.Map<v2.std.compilers.target_model.TargetDeriveTraitKey, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundContractAuthority> {
+  let from_rows = v2.std.algebra.fold_list(
+    xs: extdeps.languages.rust.derive_contracts.rust_vec_freemonoid_supplemental_generic_bound_rows,
+    empty: v2.std.compilers.target_model.target_derive_supplemental_generic_bound_contract_authorities_empty(),
+    cons: fn(acc, row) {
+      v2.std.compilers.target_model.target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
+        contracts: acc,
+        derive_trait: row.derive_trait,
+        authority: row.authority,
+        requirements: rust_single_parameter_supplemental_generic_bound_requirements(
+          required_trait: row.required,
+          authority: row.authority
+        )
       )
-    )
-  let clone_contract = v2.std.compilers.target_model.target_derive_supplemental_generic_bound_contract_authority_insert(
-      contracts: debug_contract,
-      derive_trait: std.trait_derive_shape.ReprDeriveClone,
-      authority: extdeps.languages.rust.derive_contracts.im_15_1_0_vector_clone_impl_authority
-    )
-  let partial_eq_contract = v2.std.compilers.target_model.target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
-      contracts: clone_contract,
-      derive_trait: std.trait_derive_shape.ReprDerivePartialEq,
-      authority: extdeps.languages.rust.derive_contracts.im_15_1_0_vector_partial_eq_impl_authority,
-      requirements: rust_single_parameter_supplemental_generic_bound_requirements(
-        required_trait: std.trait_derive_shape.ReprDeriveClone,
-        authority: extdeps.languages.rust.derive_contracts.im_15_1_0_vector_partial_eq_impl_authority
-      )
-    )
-  let serialize_contract = v2.std.compilers.target_model.target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
-      contracts: partial_eq_contract,
-      derive_trait: std.trait_derive_shape.ReprDeriveSerialize,
-      authority: extdeps.languages.rust.derive_contracts.im_15_1_0_vector_serialize_impl_authority,
-      requirements: rust_single_parameter_supplemental_generic_bound_requirements(
-        required_trait: std.trait_derive_shape.ReprDeriveClone,
-        authority: extdeps.languages.rust.derive_contracts.im_15_1_0_vector_serialize_impl_authority
-      )
-    )
-  v2.std.compilers.target_model.target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
-    contracts: serialize_contract,
-    derive_trait: std.trait_derive_shape.ReprDeriveDeserialize,
-    authority: extdeps.languages.rust.derive_contracts.im_15_1_0_vector_deserialize_impl_authority,
-    requirements: rust_single_parameter_supplemental_generic_bound_requirements(
-      required_trait: std.trait_derive_shape.ReprDeriveClone,
-      authority: extdeps.languages.rust.derive_contracts.im_15_1_0_vector_deserialize_impl_authority
-    )
+    }
+  )
+  v2.std.compilers.target_model.target_derive_supplemental_generic_bound_contract_authority_insert(
+    contracts: from_rows,
+    derive_trait: std.trait_derive_shape.ReprDeriveClone,
+    authority: extdeps.languages.rust.derive_contracts.im_15_1_0_vector_clone_impl_authority
   )
 }
 
-fn rust_btree_set_supplemental_generic_bound_contracts() -> Map<v2.std.compilers.target_model.TargetDeriveTraitKey, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundContractAuthority> {
+fn rust_btree_set_supplemental_generic_bound_contracts() -> std.types.Map<v2.std.compilers.target_model.TargetDeriveTraitKey, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundContractAuthority> {
   let debug_contract = v2.std.compilers.target_model.target_derive_supplemental_generic_bound_contract_authority_insert(
       contracts: v2.std.compilers.target_model.target_derive_supplemental_generic_bound_contract_authorities_empty(),
       derive_trait: std.trait_derive_shape.ReprDeriveDebug,
@@ -1336,7 +1319,7 @@ fn rust_btree_set_supplemental_generic_bound_contracts() -> Map<v2.std.compilers
   )
 }
 
-fn rust_hash_set_supplemental_generic_bound_contracts() -> Map<v2.std.compilers.target_model.TargetDeriveTraitKey, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundContractAuthority> {
+fn rust_hash_set_supplemental_generic_bound_contracts() -> std.types.Map<v2.std.compilers.target_model.TargetDeriveTraitKey, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundContractAuthority> {
   let debug_contract = v2.std.compilers.target_model.target_derive_supplemental_generic_bound_contract_authority_insert(
       contracts: v2.std.compilers.target_model.target_derive_supplemental_generic_bound_contract_authorities_empty(),
       derive_trait: std.trait_derive_shape.ReprDeriveDebug,
@@ -1355,15 +1338,15 @@ fn rust_hash_set_supplemental_generic_bound_contracts() -> Map<v2.std.compilers.
 }
 
 type RustSupplementalGenericBoundContractCoverageBlocker {
-  derive_trait: std.trait_derive_shape.ReprGroundingDeriveTrait
-  requirements: Set<v2.std.compilers.target_model.RequiredTraitWitness>
+  derive_trait: v2.std.compilers.target_model.ReprGroundingDeriveTrait
+  requirements: std.types.Set<v2.std.compilers.target_model.RequiredTraitWitness>
   authority: extdeps.external_authority.ExternalAuthority
   coverage: extdeps.languages.rust.derive_contracts.RustSupplementalGenericBoundContractCoverageDisposition
 }
 
 fn rust_hash_set_eq_hash_supplemental_generic_bound_requirements(
   representation_parameter: v2.std.node.Symbol
-) -> Set<v2.std.compilers.target_model.RequiredTraitWitness> {
+) -> std.types.Set<v2.std.compilers.target_model.RequiredTraitWitness> {
   std.types.Set {
     member: fn(requirement) {
       v2.std.algebra.fold_list(
@@ -1380,7 +1363,7 @@ fn rust_hash_set_eq_hash_supplemental_generic_bound_requirements(
   }
 }
 
-data rust_hash_set_supplemental_generic_bound_contract_blockers: List<RustSupplementalGenericBoundContractCoverageBlocker> = [
+data rust_hash_set_supplemental_generic_bound_contract_blockers: std.types.List<RustSupplementalGenericBoundContractCoverageBlocker> = [
   RustSupplementalGenericBoundContractCoverageBlocker {
     derive_trait: std.trait_derive_shape.ReprDerivePartialEq,
     requirements: rust_hash_set_eq_hash_supplemental_generic_bound_requirements(
@@ -1428,7 +1411,7 @@ fn rust_set_collection_hash_choice() -> v2.std.compilers.target_model.TargetRepr
   }
 }
 
-fn rust_set_collection_alternative_choices() -> List<v2.std.compilers.target_model.TargetRepresentationChoice> {
+fn rust_set_collection_alternative_choices() -> std.types.List<v2.std.compilers.target_model.TargetRepresentationChoice> {
   std.algebra.Cons {
     head: rust_set_collection_hash_choice(),
     tail: std.algebra.Empty
@@ -1447,7 +1430,7 @@ fn rust_free_monoid_collection_primary_choice() -> v2.std.compilers.target_model
   }
 }
 
-fn rust_free_monoid_collection_alternative_choices() -> List<v2.std.compilers.target_model.TargetRepresentationChoice> {
+fn rust_free_monoid_collection_alternative_choices() -> std.types.List<v2.std.compilers.target_model.TargetRepresentationChoice> {
   std.algebra.Empty
 }
 
@@ -1658,14 +1641,14 @@ fn rust_collection_realization_catalog_node() -> v2.std.node.Node {
   )
 }
 
-fn rust_target_model_core_edges_with_operators(operator_catalog: v2.std.node.Node) -> List<v2.std.node.Edge> {
+fn rust_target_model_core_edges_with_operators(operator_catalog: v2.std.node.Node) -> std.types.List<v2.std.node.Edge> {
   rust_target_model_core_edges_full(
     operator_catalog: operator_catalog,
     rules: rust_translation_rules_node()
   )
 }
 
-fn rust_target_model_core_edges_full(operator_catalog: v2.std.node.Node, rules: v2.std.node.Node) -> List<v2.std.node.Edge> {
+fn rust_target_model_core_edges_full(operator_catalog: v2.std.node.Node, rules: v2.std.node.Node) -> std.types.List<v2.std.node.Edge> {
   [
     rust_named_edge(
       name: ^target_model_edge_selection_policy,
@@ -1724,7 +1707,7 @@ fn rust_target_model_core_edges_full(operator_catalog: v2.std.node.Node, rules: 
   ]
 }
 
-fn rust_target_model_core_edges() -> List<v2.std.node.Edge> {
+fn rust_target_model_core_edges() -> std.types.List<v2.std.node.Edge> {
   rust_target_model_core_edges_with_operators(
     operator_catalog: rust_operator_realizations_catalog_node()
   )
@@ -1738,7 +1721,7 @@ fn rust_target_model_bundle_core() -> v2.std.node.Node {
 }
 }
 
-fn rust_binding_spellings() -> Map<v2.std.node.Symbol, String> {
+fn rust_binding_spellings() -> std.types.Map<v2.std.node.Symbol, String> {
   let m0 = v2.std.collection.map_insert(v2.std.collection.empty_map(), ^rust_binding_fn_add, "add")
   let ma2 = v2.std.collection.map_insert(m0, ^rust_binding_fn_add2, "add2")
   let m1 = v2.std.collection.map_insert(ma2, ^rust_binding_param_x, "x")
@@ -1764,7 +1747,7 @@ data rust_emit_host_toolchain_pin_note: String = "Toolchain pin materialized int
 
 data rust_emit_host_toolchain_pin: String = "[toolchain]\nchannel = \"1.93.0\"\n"
 
-data rust_emit_host_lint_envelope_note: String = "The emitted crate declares its lint envelope in its own manifest (CI2-0, 2026-08-08): the Rust v2.std.compilers.target_model.TargetMatchShape wraps every match scrutinee in parens because a struct-literal scrutinee REQUIRES them (rust_variant_construct), while a bare-identifier scrutinee makes the same parens the warn-by-default unused_parens lint — and floor runners whose admitted build env denies warnings turned that lint into a deterministic cold-build refusal (cargo exit 101; four days of counted interpreter fallback, receipt docs/plans/ci2-native-cutover-reobservation.md). One shape cannot serve both scrutinee forms without conditional grouping, so until the match shape models scrutinee grouping structurally, the generated crate pins the specific lint to allow — the cargo lints table is per-lint and a specific level beats the RUSTFLAGS warnings-group deny, proven by execution both ways. Precedent: stage0's crate-wide clippy allow. Deliberately NOT allow(warnings): every other lint class stays live so a real defect in emitted code still surfaces. Dissolve-on: v2.std.compilers.target_model.TargetMatchShape scrutinee grouping becomes conditional on the scrutinee's structural form (grouping only where the target grammar requires it), at which point the emitted code is lint-clean and this table entry deletes."
+data rust_emit_host_lint_envelope_note: String = "The emitted crate declares its lint envelope in its own manifest (CI2-0, 2026-08-08): the Rust TargetMatchShape wraps every match scrutinee in parens because a struct-literal scrutinee REQUIRES them (rust_variant_construct), while a bare-identifier scrutinee makes the same parens the warn-by-default unused_parens lint — and floor runners whose admitted build env denies warnings turned that lint into a deterministic cold-build refusal (cargo exit 101; four days of counted interpreter fallback, receipt docs/plans/ci2-native-cutover-reobservation.md). One shape cannot serve both scrutinee forms without conditional grouping, so until the match shape models scrutinee grouping structurally, the generated crate pins the specific lint to allow — the cargo lints table is per-lint and a specific level beats the RUSTFLAGS warnings-group deny, proven by execution both ways. Precedent: stage0's crate-wide clippy allow. Deliberately NOT allow(warnings): every other lint class stays live so a real defect in emitted code still surfaces. Dissolve-on: TargetMatchShape scrutinee grouping becomes conditional on the scrutinee's structural form (grouping only where the target grammar requires it), at which point the emitted code is lint-clean and this table entry deletes."
 
 data rust_emit_host_cargo_manifest: String = "[package]\nname = \"gunbc_emit_host\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[lints.rust]\nunused_parens = \"allow\"\n\n[[bin]]\nname = \"emit_host\"\npath = \"src/main.rs\"\n"
 
@@ -1855,7 +1838,7 @@ data rust_target_atom_realization_char: v2.std.compilers.target_model.TargetAtom
   display_name: ^char_kernel_type_atom
 }
 
-data rust_target_atom_realization_catalog: List<v2.std.compilers.target_model.TargetAtomRealization> = [
+data rust_target_atom_realization_catalog: std.types.List<v2.std.compilers.target_model.TargetAtomRealization> = [
   rust_target_atom_realization_symbol,
   rust_target_atom_realization_bool,
   rust_target_atom_realization_char
@@ -1875,7 +1858,7 @@ data rust_target_function_signature_realization_symbol_return: v2.std.compilers.
   signature_type_form: rust_target_atom_realization_symbol.type_form
 }
 
-data rust_target_function_signature_realization_catalog: List<v2.std.compilers.target_model.TargetFunctionSignatureRealization> = [
+data rust_target_function_signature_realization_catalog: std.types.List<v2.std.compilers.target_model.TargetFunctionSignatureRealization> = [
   rust_target_function_signature_realization_symbol_param,
   rust_target_function_signature_realization_symbol_return
 ]
@@ -1931,7 +1914,7 @@ fn rust_ident_lex_rule() -> v2.std.compilers.lexing.LexRule {
   }
 }
 
-fn rust_staging_match_additional_lex_rules() -> List<v2.std.compilers.lexing.LexRule> {
+fn rust_staging_match_additional_lex_rules() -> std.types.List<v2.std.compilers.lexing.LexRule> {
   [
     rust_lex_rule(token_class: ^rust_token_unwired_match, text: "match "),
     rust_lex_rule(token_class: ^rust_token_unwired_fat_arrow, text: " => "),
@@ -1960,7 +1943,7 @@ fn rust_staging_lex() -> v2.std.compilers.lexing.LexRules {
 // between the leading pipe and the parameters, and Rust writes nothing there.
 // Every spelling below was fixed by compiling the composed text with rustc
 // before it was written here, not by reading it back off the emitter.
-fn rust_value_expression_family_lex_rules() -> List<v2.std.compilers.lexing.LexRule> {
+fn rust_value_expression_family_lex_rules() -> std.types.List<v2.std.compilers.lexing.LexRule> {
   [
     rust_lex_rule(token_class: ^rust_token_closure_pipe, text: "|"),
     rust_lex_rule(token_class: ^rust_token_closure_nop, text: ""),
@@ -2027,7 +2010,7 @@ fn rust_grammar_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   rust_inhabitant_atom(id: id)
 }
 
-fn rust_formal_rhs_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.grammar.FormalGrammarSymbol> {
+fn rust_formal_rhs_from_tokens(tokens: std.types.List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> std.types.List<v2.std.grammar.FormalGrammarSymbol> {
   v2.std.algebra.fold_list(
     xs: tokens,
     empty: std.algebra.Empty,
@@ -2055,7 +2038,7 @@ fn rust_decl_derive_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v
   rust_lex_rule(token_class: token_class, text: rust_decl_derive_lex_spelling(text: text))
 }
 
-fn rust_decl_shared_derive_productions() -> List<v2.std.grammar.FormalProduction> {
+fn rust_decl_shared_derive_productions() -> std.types.List<v2.std.grammar.FormalProduction> {
   [
     v2.std.grammar.grammar_formal_production(
       lhs: ^rust_decl_derive_attr,
@@ -2138,7 +2121,7 @@ fn rust_decl_enum_derive_binding_for_coproduct(coproduct: v2.std.node.Node) -> v
   rust_trait_derive_surface_binding_for_coproduct(coproduct: coproduct)
 }
 
-fn rust_decl_derive_binding_spellings() -> Map<v2.std.node.Symbol, String> {
+fn rust_decl_derive_binding_spellings() -> std.types.Map<v2.std.node.Symbol, String> {
   let m0 = v2.std.collection.map_insert(
     v2.std.collection.empty_map(),
     ^rust_decl_derive_struct_binding,
@@ -2161,7 +2144,7 @@ fn rust_decl_derive_binding_spellings() -> Map<v2.std.node.Symbol, String> {
   )
 }
 
-fn rust_decl_shared_field_productions() -> List<v2.std.grammar.FormalProduction> {
+fn rust_decl_shared_field_productions() -> std.types.List<v2.std.grammar.FormalProduction> {
   [
     v2.std.grammar.grammar_formal_production(
       lhs: ^rust_decl_qualified_name,
@@ -2206,7 +2189,7 @@ fn rust_decl_shared_field_productions() -> List<v2.std.grammar.FormalProduction>
   ]
 }
 
-fn rust_decl_shared_generic_productions() -> List<v2.std.grammar.FormalProduction> {
+fn rust_decl_shared_generic_productions() -> std.types.List<v2.std.grammar.FormalProduction> {
   [
     v2.std.grammar.grammar_formal_production(
       lhs: ^rust_decl_type_param_list,
@@ -2235,7 +2218,7 @@ fn rust_decl_shared_generic_productions() -> List<v2.std.grammar.FormalProductio
   ]
 }
 
-fn rust_decl_shared_variant_productions() -> List<v2.std.grammar.FormalProduction> {
+fn rust_decl_shared_variant_productions() -> std.types.List<v2.std.grammar.FormalProduction> {
   [
     v2.std.grammar.grammar_formal_production(
       lhs: ^rust_decl_variant,
@@ -2275,7 +2258,7 @@ fn rust_decl_shared_variant_productions() -> List<v2.std.grammar.FormalProductio
   ]
 }
 
-fn rust_enum_general_decl_top_productions() -> List<v2.std.grammar.FormalProduction> {
+fn rust_enum_general_decl_top_productions() -> std.types.List<v2.std.grammar.FormalProduction> {
   [
     v2.std.grammar.grammar_formal_production(
       lhs: ^rust_decl_enum,
@@ -2299,7 +2282,7 @@ fn rust_enum_general_decl_top_productions() -> List<v2.std.grammar.FormalProduct
   ]
 }
 
-fn rust_enum_general_decl_formal_productions() -> List<v2.std.grammar.FormalProduction> {
+fn rust_enum_general_decl_formal_productions() -> std.types.List<v2.std.grammar.FormalProduction> {
   v2.std.algebra.list_append(
     left: rust_decl_shared_derive_productions(),
     right: v2.std.algebra.list_append(
@@ -2355,7 +2338,7 @@ fn rust_decl_general_lex() -> v2.std.compilers.lexing.LexRules {
   v2.std.compilers.lexing.ModeledLexRules { root: rust_decl_general_lex_rules() }
 }
 
-fn rust_semantic_decl_lex_rows() -> List<v2.std.node.Node> {
+fn rust_semantic_decl_lex_rows() -> std.types.List<v2.std.node.Node> {
   [
     v2.std.compilers.semantic_decl_emission.semantic_decl_lex_whitespace_trivia_row(),
     v2.std.compilers.semantic_decl_emission.semantic_decl_lex_literal_row(
@@ -2386,7 +2369,7 @@ fn rust_semantic_decl_lex_rows() -> List<v2.std.node.Node> {
   ]
 }
 
-fn rust_semantic_decl_binding_spelling_rows() -> List<v2.std.node.Node> {
+fn rust_semantic_decl_binding_spelling_rows() -> std.types.List<v2.std.node.Node> {
   [
     v2.std.compilers.semantic_decl_emission.semantic_decl_binding_spelling_row(
       binding: ^rust_decl_derive_struct_binding,
@@ -2480,7 +2463,7 @@ fn rust_enum_general_decl_structural_target_model() -> v2.std.compilers.target_m
   }
 }
 
-fn rust_struct_general_decl_top_productions() -> List<v2.std.grammar.FormalProduction> {
+fn rust_struct_general_decl_top_productions() -> std.types.List<v2.std.grammar.FormalProduction> {
   [
     v2.std.grammar.grammar_formal_production(
       lhs: ^rust_decl_struct,
@@ -2504,7 +2487,7 @@ fn rust_struct_general_decl_top_productions() -> List<v2.std.grammar.FormalProdu
   ]
 }
 
-fn rust_struct_general_decl_formal_productions() -> List<v2.std.grammar.FormalProduction> {
+fn rust_struct_general_decl_formal_productions() -> std.types.List<v2.std.grammar.FormalProduction> {
   v2.std.algebra.list_append(
     left: rust_decl_shared_derive_productions(),
     right: v2.std.algebra.list_append(
@@ -2635,7 +2618,7 @@ fn rust_fn_add_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
   v2.std.compilers.lexing.lex_rule_set_token_class_member(rules: rust_fn_add_lex_rules(), token_class: sym)
 }
 
-fn rust_language_model_canonical_symbols() -> Set<v2.std.node.Symbol> {
+fn rust_language_model_canonical_symbols() -> std.types.Set<v2.std.node.Symbol> {
   std.types.Set {
     member: fn(sym) {
       rust_catalog_surface_symbol(sym: sym) ||
@@ -2713,7 +2696,7 @@ fn rust_bool_algebra_inhabitance() -> v2.std.model_core.AlgebraInhabitanceDecl {
   }
 }
 
-fn rust_integer_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
+fn rust_integer_algebra_inhabitance_decls() -> std.types.List<v2.std.model_core.AlgebraInhabitanceDecl> {
   v2.std.algebra.fold_list(
     xs: rust_integer_facts_catalog,
     empty: std.algebra.Empty,
@@ -2723,7 +2706,7 @@ fn rust_integer_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInh
   )
 }
 
-fn rust_float_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
+fn rust_float_algebra_inhabitance_decls() -> std.types.List<v2.std.model_core.AlgebraInhabitanceDecl> {
   v2.std.algebra.fold_list(
     xs: rust_float_facts_catalog,
     empty: std.algebra.Empty,
@@ -2733,13 +2716,13 @@ fn rust_float_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhab
   )
 }
 
-fn rust_bool_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
+fn rust_bool_algebra_inhabitance_decls() -> std.types.List<v2.std.model_core.AlgebraInhabitanceDecl> {
   [
     rust_bool_algebra_inhabitance()
   ]
 }
 
-fn rust_model_core_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
+fn rust_model_core_inhabitance_decls() -> std.types.List<v2.std.model_core.AlgebraInhabitanceDecl> {
   v2.std.algebra.list_append(
     left: v2.std.algebra.list_append(
       left: rust_integer_algebra_inhabitance_decls(),
@@ -2771,7 +2754,7 @@ fn rust_model_core_law_obligation(witness: v2.std.node.Node, law: v2.std.node.No
   }
 }
 
-fn rust_integer_law_obligations(facts: RustIntegerPrimitiveFacts) -> List<v2.std.model_core.AlgebraLawObligation> {
+fn rust_integer_law_obligations(facts: RustIntegerPrimitiveFacts) -> std.types.List<v2.std.model_core.AlgebraLawObligation> {
   let witness = rust_integer_algebra_witness_node(facts: facts)
   let inhabitant = rust_integer_facts_node(facts: facts)
   let algebra = v2.std.algebra.ordered_ring_type_node(inhabitant: inhabitant)
@@ -2827,7 +2810,7 @@ fn rust_integer_law_obligations(facts: RustIntegerPrimitiveFacts) -> List<v2.std
   ]
 }
 
-fn rust_float_law_obligations(facts: RustFloatPrimitiveFacts) -> List<v2.std.model_core.AlgebraLawObligation> {
+fn rust_float_law_obligations(facts: RustFloatPrimitiveFacts) -> std.types.List<v2.std.model_core.AlgebraLawObligation> {
   let witness = rust_float_algebra_witness_node(facts: facts)
   let inhabitant = rust_float_facts_node(facts: facts)
   let algebra = v2.std.algebra.approximate_field_type_node(inhabitant: inhabitant)
@@ -2851,7 +2834,7 @@ fn rust_float_law_obligations(facts: RustFloatPrimitiveFacts) -> List<v2.std.mod
   ]
 }
 
-fn rust_bool_algebra_laws() -> List<v2.std.model_core.AlgebraLawObligation> {
+fn rust_bool_algebra_laws() -> std.types.List<v2.std.model_core.AlgebraLawObligation> {
   let witness = rust_bool_algebra_witness_node()
   let inhabitant = rust_noninteger_facts_node(facts: rust_facts_bool)
   let algebra = v2.std.algebra.boolean_algebra_type_node(inhabitant: inhabitant)
@@ -2875,7 +2858,7 @@ fn rust_bool_algebra_laws() -> List<v2.std.model_core.AlgebraLawObligation> {
   ]
 }
 
-fn rust_integer_algebra_laws() -> List<v2.std.model_core.AlgebraLawObligation> {
+fn rust_integer_algebra_laws() -> std.types.List<v2.std.model_core.AlgebraLawObligation> {
   v2.std.algebra.fold_list(
     xs: rust_integer_facts_catalog,
     empty: std.algebra.Empty,
@@ -2885,7 +2868,7 @@ fn rust_integer_algebra_laws() -> List<v2.std.model_core.AlgebraLawObligation> {
   )
 }
 
-fn rust_float_algebra_laws() -> List<v2.std.model_core.AlgebraLawObligation> {
+fn rust_float_algebra_laws() -> std.types.List<v2.std.model_core.AlgebraLawObligation> {
   v2.std.algebra.fold_list(
     xs: rust_float_facts_catalog,
     empty: std.algebra.Empty,
@@ -2895,7 +2878,7 @@ fn rust_float_algebra_laws() -> List<v2.std.model_core.AlgebraLawObligation> {
   )
 }
 
-fn rust_model_core_law_obligations() -> List<v2.std.model_core.AlgebraLawObligation> {
+fn rust_model_core_law_obligations() -> std.types.List<v2.std.model_core.AlgebraLawObligation> {
   v2.std.algebra.list_append(
     left: v2.std.algebra.list_append(
       left: rust_integer_algebra_laws(),
@@ -3022,7 +3005,7 @@ fn rust_per_language_fact_bundle_entry(
 
 fn rust_integer_per_language_fact_bundle_entries(
   facts: RustIntegerPrimitiveFacts
-) -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
+) -> std.types.List<v2.std.grounding.PerLanguageFactBundleEntry> {
   let subject_carrier = rust_integer_facts_node(facts: facts)
   [
     rust_per_language_fact_bundle_entry(
@@ -3060,7 +3043,7 @@ fn rust_integer_per_language_fact_bundle_entries(
 
 fn rust_float_per_language_fact_bundle_entries(
   facts: RustFloatPrimitiveFacts
-) -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
+) -> std.types.List<v2.std.grounding.PerLanguageFactBundleEntry> {
   let subject_carrier = rust_float_facts_node(facts: facts)
   [
     rust_per_language_fact_bundle_entry(
@@ -3083,7 +3066,7 @@ fn rust_float_per_language_fact_bundle_entries(
 
 fn rust_noninteger_per_language_fact_bundle_entries(
   facts: RustNonIntegerPrimitiveFacts
-) -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
+) -> std.types.List<v2.std.grounding.PerLanguageFactBundleEntry> {
   let subject_carrier = rust_noninteger_facts_node(facts: facts)
   [
     rust_per_language_fact_bundle_entry(
@@ -3099,7 +3082,7 @@ fn rust_noninteger_per_language_fact_bundle_entries(
   ]
 }
 
-fn rust_per_language_fact_bundle_entries_from_integer_catalog() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
+fn rust_per_language_fact_bundle_entries_from_integer_catalog() -> std.types.List<v2.std.grounding.PerLanguageFactBundleEntry> {
   v2.std.algebra.fold_list(
     xs: rust_integer_facts_catalog,
     empty: std.algebra.Empty,
@@ -3112,7 +3095,7 @@ fn rust_per_language_fact_bundle_entries_from_integer_catalog() -> List<v2.std.g
   )
 }
 
-fn rust_per_language_fact_bundle_entries_from_float_catalog() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
+fn rust_per_language_fact_bundle_entries_from_float_catalog() -> std.types.List<v2.std.grounding.PerLanguageFactBundleEntry> {
   v2.std.algebra.fold_list(
     xs: rust_float_facts_catalog,
     empty: std.algebra.Empty,
@@ -3125,7 +3108,7 @@ fn rust_per_language_fact_bundle_entries_from_float_catalog() -> List<v2.std.gro
   )
 }
 
-fn rust_per_language_fact_bundle_entries_from_noninteger_catalog() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
+fn rust_per_language_fact_bundle_entries_from_noninteger_catalog() -> std.types.List<v2.std.grounding.PerLanguageFactBundleEntry> {
   v2.std.algebra.fold_list(
     xs: rust_noninteger_facts_catalog,
     empty: std.algebra.Empty,
@@ -3138,7 +3121,7 @@ fn rust_per_language_fact_bundle_entries_from_noninteger_catalog() -> List<v2.st
   )
 }
 
-fn rust_per_language_fact_bundle_entries() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
+fn rust_per_language_fact_bundle_entries() -> std.types.List<v2.std.grounding.PerLanguageFactBundleEntry> {
   v2.std.algebra.list_append(
     left: v2.std.algebra.list_append(
       left: rust_per_language_fact_bundle_entries_from_integer_catalog(),
@@ -3159,7 +3142,7 @@ fn rust_insert_per_language_fact_bundle_entry_outcome(
         key: entry.key,
         fact_value: entry.fact_value
       )
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
@@ -3174,10 +3157,10 @@ fn rust_per_language_fact_bundle_registry() -> v2.std.diagnostic.Outcome<v2.std.
 }
 
 fn rust_snoc_primitive_bundle(
-  acc: v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>>,
+  acc: v2.std.diagnostic.Outcome<std.types.List<v2.std.model_core.PrimitiveFactBundle>>,
   registry: v2.std.grounding.PerLanguageFactBundleRegistry,
   subject_carrier: v2.std.node.Node
-) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
+) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.model_core.PrimitiveFactBundle>> {
   match acc {
     Accepted { value: bundles, diagnostics: _ } => match v2.std.grounding.primitive_fact_bundle_for_subject(
       registry: registry,
@@ -3189,15 +3172,15 @@ fn rust_snoc_primitive_bundle(
           value: v2.std.algebra.list_snoc_item(xs: bundles, item: bundle),
           diagnostics: d
         }
-      Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+      Rejected { diagnostics: d } => Rejected { diagnostics: d }
     }
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
 fn rust_primitive_bundles_from_integer_catalog_registry(
   registry: v2.std.grounding.PerLanguageFactBundleRegistry
-) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
+) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.model_core.PrimitiveFactBundle>> {
   v2.std.algebra.fold_list(
     xs: rust_integer_facts_catalog,
     empty: v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty),
@@ -3213,7 +3196,7 @@ fn rust_primitive_bundles_from_integer_catalog_registry(
 
 fn rust_primitive_bundles_from_float_catalog_registry(
   registry: v2.std.grounding.PerLanguageFactBundleRegistry
-) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
+) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.model_core.PrimitiveFactBundle>> {
   v2.std.algebra.fold_list(
     xs: rust_float_facts_catalog,
     empty: v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty),
@@ -3229,7 +3212,7 @@ fn rust_primitive_bundles_from_float_catalog_registry(
 
 fn rust_primitive_bundles_from_noninteger_catalog_registry(
   registry: v2.std.grounding.PerLanguageFactBundleRegistry
-) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
+) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.model_core.PrimitiveFactBundle>> {
   v2.std.algebra.fold_list(
     xs: rust_noninteger_facts_catalog,
     empty: v2.std.diagnostic.outcome_accepted(value: std.algebra.Empty),
@@ -3244,22 +3227,22 @@ fn rust_primitive_bundles_from_noninteger_catalog_registry(
 }
 
 fn rust_append_primitive_bundle_outcomes(
-  left: v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>>,
-  right: v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>>
-) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
+  left: v2.std.diagnostic.Outcome<std.types.List<v2.std.model_core.PrimitiveFactBundle>>,
+  right: v2.std.diagnostic.Outcome<std.types.List<v2.std.model_core.PrimitiveFactBundle>>
+) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.model_core.PrimitiveFactBundle>> {
   match left {
     Accepted { value: l, diagnostics: _ } => match right {
       Accepted { value: r, diagnostics: d } =>
         v2.std.diagnostic.Accepted { value: v2.std.algebra.list_append(left: l, right: r), diagnostics: d }
-      Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+      Rejected { diagnostics: d } => Rejected { diagnostics: d }
     }
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
 fn rust_primitive_fact_bundles_from_registry(
   registry: v2.std.grounding.PerLanguageFactBundleRegistry
-) -> v2.std.diagnostic.Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
+) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.model_core.PrimitiveFactBundle>> {
   rust_append_primitive_bundle_outcomes(
     left: rust_append_primitive_bundle_outcomes(
       left: rust_primitive_bundles_from_integer_catalog_registry(registry: registry),
@@ -3284,9 +3267,9 @@ fn rust_model_core() -> v2.std.diagnostic.Outcome<v2.std.model_core.ModelCore> {
             },
             diagnostics: d
           }
-        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
       }
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
@@ -3303,7 +3286,7 @@ fn rust_fn_add_language_model() -> v2.std.diagnostic.Outcome<v2.std.language_mod
         },
         diagnostics: d
       }
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
@@ -3320,7 +3303,7 @@ fn rust_int_literal_lex_rule() -> v2.std.compilers.lexing.LexRule {
   }
 }
 
-fn rust_extended_lex_rules() -> List<v2.std.compilers.lexing.LexRule> {
+fn rust_extended_lex_rules() -> std.types.List<v2.std.compilers.lexing.LexRule> {
   [
     rust_whitespace_trivia_rule(),
     rust_int_literal_lex_rule(),
@@ -3347,7 +3330,7 @@ fn rust_lex() -> v2.std.compilers.lexing.LexRules {
   v2.std.compilers.lexing.ModeledLexRules { root: rust_lex_rules() }
 }
 
-fn rust_formal_productions() -> List<v2.std.grammar.FormalProduction> {
+fn rust_formal_productions() -> std.types.List<v2.std.grammar.FormalProduction> {
   [
     v2.std.grammar.grammar_formal_production(lhs: ^rust_production_type, rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^rust_token_ty_i32)]),
     v2.std.grammar.grammar_formal_production(
@@ -3578,7 +3561,7 @@ fn rust_formal_production_matches_lhs(production: v2.std.grammar.FormalProductio
   production.lhs.identity == lhs
 }
 
-fn rust_formal_production_list_has_lhs(productions: List<v2.std.grammar.FormalProduction>, lhs: v2.std.node.Symbol) -> Bool {
+fn rust_formal_production_list_has_lhs(productions: std.types.List<v2.std.grammar.FormalProduction>, lhs: v2.std.node.Symbol) -> Bool {
   v2.std.algebra.fold_list(
     xs: productions,
     empty: false,
@@ -3601,7 +3584,7 @@ fn rust_grammar_choice(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.G
 }
 
 fn rust_grammar_optional(element: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
-  v2.std.grammar.Optional { element: element }
+  v2.std.optional.Optional { element: element }
 }
 
 fn rust_grammar_repeat(element: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
@@ -3922,7 +3905,7 @@ fn rust_grammar() -> v2.std.grammar.ParseGrammar {
   v2.std.grammar.ModeledGrammar { root: rust_grammar_root() }
 }
 
-fn rust_canonical_symbols() -> Set<v2.std.node.Symbol> {
+fn rust_canonical_symbols() -> std.types.Set<v2.std.node.Symbol> {
   std.types.Set {
     member: fn(sym) {
       rust_catalog_surface_symbol(sym: sym) ||
@@ -3948,7 +3931,7 @@ fn rust_language_model() -> v2.std.diagnostic.Outcome<v2.std.language_model.Lang
         },
         diagnostics: d
       }
-    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
@@ -4005,7 +3988,7 @@ fn rust_reference_layer_tokens() -> v2.std.compilers.target_model.TargetReferenc
   }
 }
 
-fn rust_sg_rc_use_site_ownership_catalog() -> List<v2.std.compilers.target_model.TargetUseSiteOwnershipRealization> {
+fn rust_sg_rc_use_site_ownership_catalog() -> std.types.List<v2.std.compilers.target_model.TargetUseSiteOwnershipRealization> {
   [
     v2.std.compilers.target_model.TargetUseSiteOwnershipRealization {
       source_carrier: v2.std.compilers.target_model.target_carrier_diagnostics_node(),
@@ -4164,7 +4147,7 @@ fn rust_sg_rc_use_site_ownership_catalog() -> List<v2.std.compilers.target_model
   ]
 }
 
-fn rust_sg2_binding_spellings() -> Map<v2.std.node.Symbol, String> {
+fn rust_sg2_binding_spellings() -> std.types.Map<v2.std.node.Symbol, String> {
 
   let m0 = v2.std.collection.map_insert(v2.std.collection.empty_map(), ^rust_binding_sg2_foobar, "FooBar")
   let m1 = v2.std.collection.map_insert(m0, ^rust_binding_sg2_x, "X")
@@ -4206,7 +4189,7 @@ fn rust_sg2_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
   }
 }
 
-fn rust_sg2_type_expr_bundle_core_base() -> List<v2.std.node.Edge> {
+fn rust_sg2_type_expr_bundle_core_base() -> std.types.List<v2.std.node.Edge> {
   [
     rust_named_edge(
       name: ^target_model_edge_type_expression_projection,
@@ -4239,7 +4222,7 @@ fn rust_sg2_type_expr_bundle_core_base() -> List<v2.std.node.Edge> {
   ]
 }
 
-fn rust_sg2_type_expr_bundle_core(trailing: List<v2.std.node.Edge>) -> v2.std.node.Node {
+fn rust_sg2_type_expr_bundle_core(trailing: std.types.List<v2.std.node.Edge>) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: v2.std.algebra.list_append(left: rust_sg2_type_expr_bundle_core_base(), right: trailing),
@@ -4247,7 +4230,7 @@ fn rust_sg2_type_expr_bundle_core(trailing: List<v2.std.node.Edge>) -> v2.std.no
   }
 }
 
-fn rust_sg2_type_expr_target_model_trailing_edges() -> List<v2.std.node.Edge> {
+fn rust_sg2_type_expr_target_model_trailing_edges() -> std.types.List<v2.std.node.Edge> {
   [
     rust_named_edge(
       name: ^target_model_edge_reference_layer_tokens,

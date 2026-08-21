@@ -1,0 +1,111 @@
+module test.claim.git_remote_ref_cas_witness
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+// A REMOTE REF ADVANCE IS A COMPARE-AND-SWAP, AND THE LEASE IS WHERE THAT IS WON OR LOST.
+//
+// The unconditional sibling of this operation is one argument away: drop the lease and `git push`
+// refuses only non-fast-forwards, so two racing advances both succeed and the later silently
+// discards the earlier's decision. Nothing downstream recovers the distinction -- by the time the
+// process runs, the argv IS the operation.
+//
+// The advance row and the creation row assert DIFFERENT values in the SAME position, so together
+// they already forbid any constant lease -- the shape a CAS that can never fire would have. A
+// third row asserting merely that they differ was written for the update-ref form of this
+// change, measured against exactly that mutation, found to add no reach, and deleted.
+
+data alpha_hex: String = "1111111111111111111111111111111111111111"
+data beta_hex: String = "2222222222222222222222222222222222222222"
+data desired_ref: String = "refs/fleet/desired"
+
+fn alpha() -> extdeps.git.object_store.GitObjectId? { extdeps.git.object_store.git_sha1_object_id(hex: alpha_hex) }
+fn beta() -> extdeps.git.object_store.GitObjectId? { extdeps.git.object_store.git_sha1_object_id(hex: beta_hex) }
+
+fn request_with(expected: extdeps.git.publication_transport.GitRemoteRefExpectation) -> extdeps.git.publication_transport.GitRemoteRefCasRequest? {
+  match alpha() {
+    Present { value: new_oid } =>
+      Present {
+        value: extdeps.git.publication_transport.GitRemoteRefCasRequest {
+          remote: "origin",
+          ref_name: desired_ref,
+          new_oid: new_oid,
+          expected: expected,
+        },
+      }
+    none => none
+  }
+}
+
+// The absent arm is a real answer, not a default: an undecodable fixture must FAIL these rows
+// rather than compare against a filler.
+fn lease_of(expected: extdeps.git.publication_transport.GitRemoteRefExpectation) -> String? {
+  match request_with(expected: expected) {
+    Present { value: r } => Present { value: extdeps.git.publication_transport.git_remote_ref_lease_word(request: r) as String }
+    none => none
+  }
+}
+
+fn lease_is(expected: extdeps.git.publication_transport.GitRemoteRefExpectation, want: String) -> std.types.Bool {
+  match lease_of(expected: expected) {
+    Present { value: got } => got == want
+    none => false
+  }
+}
+
+fn advance_expectation() -> extdeps.git.publication_transport.GitRemoteRefExpectation? {
+  match beta() {
+    Present { value: prior } => Present { value: extdeps.git.publication_transport.RemoteRefMustEqual { oid: prior } }
+    none => none
+  }
+}
+
+// The positive control for every row below. git_sha1_object_id returns an option, so a typo in a
+// hex literal yields none, every helper returns none, and each absence-tolerant assertion would
+// be satisfied for the one reason that proves nothing.
+test fn the_fixture_object_ids_decode() -> std.types.Bool {
+  match alpha() {
+    Present { value: _ } =>
+      match beta() {
+        Present { value: _ } => true
+        none => false
+      }
+    none => false
+  }
+}
+
+// An advance leases the exact prior it expects to displace. This is the clause that makes the
+// loser of a race refuse rather than overwrite.
+test fn an_advance_leases_the_exact_expected_prior() -> std.types.Bool {
+  match advance_expectation() {
+    Present { value: e } =>
+      lease_is(expected: e, want: concat("--force-with-lease=", concat(desired_ref, concat(":", beta_hex))))
+    none => false
+  }
+}
+
+// Creation leases the EMPTY expected value -- git's "must not already exist" -- so ref creation
+// stays a compare-and-swap instead of falling back to an unconditional push.
+test fn a_creation_leases_an_empty_expected_value() -> std.types.Bool {
+  lease_is(expected: extdeps.git.publication_transport.RemoteRefMustBeAbsent, want: concat("--force-with-lease=", concat(desired_ref, ":")))
+}
+
+// The refspec moves the new oid onto the ref, and does not vary with the expectation: the lease
+// carries the precondition, the refspec carries the intent. A shape that folded the expectation
+// into the refspec would push a different object depending on what the remote happened to hold.
+test fn the_refspec_names_the_new_oid_and_is_independent_of_the_expectation() -> std.types.Bool {
+  let want = concat(alpha_hex, concat(":", desired_ref))
+  match request_with(expected: extdeps.git.publication_transport.RemoteRefMustBeAbsent) {
+    Present { value: created } =>
+      match advance_expectation() {
+        Present { value: e } =>
+          match request_with(expected: e) {
+            Present { value: advanced } =>
+              (extdeps.git.publication_transport.git_remote_ref_cas_refspec(request: created) as String) == want
+                && (extdeps.git.publication_transport.git_remote_ref_cas_refspec(request: advanced) as String) == want
+            none => false
+          }
+        none => false
+      }
+    none => false
+  }
+}
