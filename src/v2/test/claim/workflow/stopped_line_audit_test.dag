@@ -1,0 +1,165 @@
+module v2.test.workflow.stopped_line_audit
+
+import v2.std.algebra { fold_list, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.workflow.product_receipt { DiagnosticCauseTally }
+import v2.workflow.stopped_line_audit {
+  AuditRow,
+  CauseFrequency,
+  StoppedLineLedger,
+  SubjectEmitted,
+  SubjectReceiptUnreadable,
+  SubjectRefused,
+  SubjectUnobserved,
+  cause_frequency_total_diagnostics,
+  ledger_cause_frequency,
+  ledger_emitted_count,
+  ledger_refused_count,
+  ledger_standings_partition_the_rows,
+  ledger_subject_count,
+  ledger_unobserved_count,
+  stopped_line_ledger_render
+}
+
+// Constructed fixtures throughout. What is under test is whether the LEDGER
+// can rank a population and refuse to overstate it -- a property of the
+// ledger, not of whatever the emitter refused today.
+
+fn refused(subject: String, reason: String, count: Int) -> AuditRow {
+  AuditRow {
+    subject: subject,
+    standing: SubjectRefused {
+      causes: [DiagnosticCauseTally { reason: reason, count: count }]
+    }
+  }
+}
+
+fn emitted(subject: String) -> AuditRow {
+  AuditRow { subject: subject, standing: SubjectEmitted }
+}
+
+fn unobserved(subject: String) -> AuditRow {
+  AuditRow {
+    subject: subject,
+    standing: SubjectUnobserved { gap: SubjectReceiptUnreadable }
+  }
+}
+
+// THE CLAIM THE MODE RESTS ON, and the reason it exists at all. A cause
+// concentrated in one subject and a cause spread across many are different
+// repairs, and the receipt this replaces could express neither because it
+// only ever saw one subject. Same diagnostic total, different weight.
+test fn one_cause_in_one_subject_and_the_same_total_spread_across_many_are_distinguishable() -> Bool {
+  let concentrated = StoppedLineLedger {
+    rows: [refused(subject: "a.dag", reason: "wrapper_retained", count: 30)]
+  }
+  let spread = StoppedLineLedger {
+    rows: [
+      refused(subject: "a.dag", reason: "wrapper_retained", count: 10),
+      refused(subject: "b.dag", reason: "wrapper_retained", count: 10),
+      refused(subject: "c.dag", reason: "wrapper_retained", count: 10)
+    ]
+  }
+  let cf = ledger_cause_frequency(ledger: concentrated)
+  let sf = ledger_cause_frequency(ledger: spread)
+  (cause_frequency_total_diagnostics(freqs: cf)
+    == cause_frequency_total_diagnostics(freqs: sf))
+    && (length(xs: cf) == 1)
+    && (length(xs: sf) == 1)
+    && ledger_blocked_subjects_differ(left: cf, right: sf)
+}
+
+fn ledger_blocked_subjects_differ(
+  left: List<CauseFrequency>,
+  right: List<CauseFrequency>
+) -> Bool {
+  first_blocked(freqs: left) != first_blocked(freqs: right)
+}
+
+fn first_blocked(freqs: List<CauseFrequency>) -> Int {
+  fold_list(xs: freqs, empty: 0, cons: fn(n, row) { n + row.blocked_subjects })
+}
+
+// AN UNOBSERVED SUBJECT MUST NOT COUNT AS A CLEAN ONE. This is the
+// empty-observation narrow: a replay that could not read its receipt learned
+// nothing, and folding it into "emitted" would let the ledger report a
+// population smaller than the one it failed to observe.
+test fn an_unobserved_subject_is_counted_apart_from_an_emitted_one() -> Bool {
+  let ledger = StoppedLineLedger {
+    rows: [emitted(subject: "a.dag"), unobserved(subject: "b.dag")]
+  }
+  (ledger_emitted_count(ledger: ledger) == 1)
+    && (ledger_unobserved_count(ledger: ledger) == 1)
+    && (ledger_refused_count(ledger: ledger) == 0)
+    && (ledger_subject_count(ledger: ledger) == 2)
+}
+
+// The three standings must exhaust the rows, so a row can never be lost from
+// every total at once.
+test fn every_row_lands_in_exactly_one_standing() -> Bool {
+  let ledger = StoppedLineLedger {
+    rows: [
+      emitted(subject: "a.dag"),
+      refused(subject: "b.dag", reason: "x", count: 2),
+      unobserved(subject: "c.dag"),
+      refused(subject: "d.dag", reason: "y", count: 1)
+    ]
+  }
+  ledger_standings_partition_the_rows(ledger: ledger)
+    && (ledger_subject_count(ledger: ledger) == 4)
+}
+
+// Two causes inside ONE subject stay two rows. The receipt already had this
+// property per subject; the ledger must not lose it while aggregating across
+// subjects.
+test fn two_causes_in_one_subject_stay_two_rows() -> Bool {
+  let ledger = StoppedLineLedger {
+    rows: [
+      AuditRow {
+        subject: "a.dag",
+        standing: SubjectRefused {
+          causes: [
+            DiagnosticCauseTally { reason: "p", count: 7 },
+            DiagnosticCauseTally { reason: "q", count: 3 }
+          ]
+        }
+      }
+    ]
+  }
+  let freqs = ledger_cause_frequency(ledger: ledger)
+  (length(xs: freqs) == 2)
+    && (cause_frequency_total_diagnostics(freqs: freqs) == 10)
+}
+
+// THE DISCRIMINATING RED FOR THE MODE'S CENTRAL CONSTRAINT: a ledger in
+// which NOTHING refused still renders as an audit and never as a pass. If a
+// future edit adds a green summary, this claim is what goes red -- the
+// rendered header is the only place the mode's standing is stated to a
+// reader, so it is asserted rather than trusted.
+test fn a_ledger_with_no_refusals_still_renders_as_an_audit_and_never_as_a_pass() -> Bool {
+  let clean = StoppedLineLedger {
+    rows: [emitted(subject: "a.dag"), emitted(subject: "b.dag")]
+  }
+  let text = stopped_line_ledger_render(ledger: clean)
+  (ledger_refused_count(ledger: clean) == 0)
+    && string_contains(s: text, pattern: "NEVER greens a build")
+    && string_contains(s: text, pattern: "not a passing build")
+    && !string_contains(s: text, pattern: "GREEN")
+}
+
+// The report must carry BOTH components of a cause's weight. A renderer that
+// dropped the subject count would collapse the distinction the first claim
+// establishes, and it would do so silently.
+test fn the_rendered_cause_line_carries_diagnostics_and_blocked_subjects() -> Bool {
+  let ledger = StoppedLineLedger {
+    rows: [
+      refused(subject: "a.dag", reason: "wrapper_retained", count: 4),
+      refused(subject: "b.dag", reason: "wrapper_retained", count: 6)
+    ]
+  }
+  let text = stopped_line_ledger_render(ledger: ledger)
+  string_contains(s: text, pattern: "10 diagnostic(s) across 2 subject(s)")
+    && string_contains(s: text, pattern: "wrapper_retained")
+}

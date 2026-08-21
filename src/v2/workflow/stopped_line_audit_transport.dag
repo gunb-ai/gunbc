@@ -1,0 +1,393 @@
+module v2.workflow.stopped_line_audit_transport
+
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.gunbc
+import extdeps.shell
+import std.content_hash { content_hash_atom }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.types { NonEmptyStr }
+import v2.std.algebra { Empty, fold_list, length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+import v2.workflow.product_receipt { DiagnosticCauseTally }
+import v2.workflow.stopped_line_audit {
+  AuditRow,
+  StoppedLineLedger,
+  SubjectEmitted,
+  SubjectReceiptCarriedNoEmissionBoundary,
+  SubjectReceiptUnreadable,
+  SubjectRefused,
+  SubjectReplayDidNotRun,
+  SubjectUnobserved,
+  stopped_line_ledger_render
+}
+import tools.host_prelude {
+  WitnessBinReady,
+  WitnessBinRefused,
+  witness_bin,
+  witness_bin_ensure_built_typed,
+  witness_bin_release_path
+}
+
+// THE REPLAY DRIVER. It runs the UNMODIFIED product receipt once per subject
+// and records what each run refused on. Every emitter arm, every admission
+// rung and every refusal is exactly the one production takes -- the only
+// thing this module varies is WHICH module is the subject, which is the same
+// knob an operator already turns by hand.
+//
+// So the audit obtains its per-module population without any emitter
+// learning to continue past a deficit. That distinction is the whole design:
+// the line still stops, N times, and the ledger is the record of where.
+
+data audit_dir_rel: String = "/target/stopped-line-audit"
+data audit_subjects_file: String = "/audit-subjects.txt"
+data audit_ledger_file: String = "/ledger.txt"
+data audit_txn_rel: String = "/target/product-receipt"
+data audit_manifest_dir_rel: String = "/target/product-receipt/manifest"
+data audit_manifest_file: String = "/host_source_root_ingest_manifest.dag"
+data audit_causes_file: String = "/b4-causes.tsv"
+data audit_receipt_file: String = "/receipt.txt"
+data audit_stage_entry: String = "src/v2/workflow/product_receipt_stage.dag"
+data audit_ingest_source_root: String = "src/v2"
+data audit_default_entry: String = "src/v2/compiler/00_compile.dag"
+data audit_boundary_four_header: String = "B4 closure candidate emitted"
+data audit_boundary_four_completed: String = "B4 closure candidate emitted\n  standing: Completed"
+
+// THE SUBJECT LIST IS READ ONCE, BEFORE ANY REPLAY RUNS. Each replay clears
+// the product-receipt transaction directory, so a list read lazily from
+// inside the loop would be read from a directory the previous iteration had
+// just emptied. Reading it up front is not an optimisation; it is what makes
+// the loop's subject set independent of the loop's own effects.
+data audit_subject_list_read_once_note: String = "The audit keeps its own directory, separate from the product-receipt transaction directory that each replay clears. Two directories are load-bearing here rather than tidy: one artifact must survive across N replays, and every other artifact is deliberately per-replay."
+
+fn audit_ingest_args(manifest_dir: String, entry: String) -> List<String> {
+  [
+    "--source-root", audit_ingest_source_root,
+    "--entry", entry,
+    "--emit-dag-manifest", concat(manifest_dir, audit_manifest_file)
+  ]
+}
+
+fn audit_stage_args(
+  manifest_dir: String,
+  txn: String,
+  manifest_identity: String,
+  entry: String,
+  function: String
+) -> List<String> {
+  [
+    "run",
+    "--source-root", "dag",
+    "--source-root", "src/v2",
+    "--source-root", manifest_dir,
+    "--entry", audit_stage_entry,
+    "--function", function,
+    "--arg", concat("txn=", txn),
+    "--arg", concat("manifest_identity=", manifest_identity),
+    "--arg", concat("entry=", entry)
+  ]
+}
+
+fn audit_subjects_args(
+  manifest_dir: String,
+  txn: String,
+  manifest_identity: String
+) -> List<String> {
+  [
+    "run",
+    "--source-root", "dag",
+    "--source-root", "src/v2",
+    "--source-root", manifest_dir,
+    "--entry", audit_stage_entry,
+    "--function", "write_stopped_line_audit_subjects",
+    "--arg", concat("txn=", txn),
+    "--arg", concat("manifest_identity=", manifest_identity)
+  ]
+}
+
+// A cause row is "count TAB reason". A row this parser cannot read is
+// REPORTED as an unreadable row rather than skipped -- a parser that drops
+// what it does not understand makes its own deficits invisible, which is the
+// failure this whole lane exists to correct.
+fn audit_parse_cause_row(row: String) -> DiagnosticCauseTally {
+  let parts = split(s: row, delimiter: "\t")
+  if length(xs: parts) == 2 {
+    match parse_int(s: audit_list_at(xs: parts, index: 0)) {
+      Present { value: count } =>
+        DiagnosticCauseTally {
+          reason: audit_list_at(xs: parts, index: 1),
+          count: count
+        }
+      Absent => audit_unreadable_cause_row(row: row)
+    }
+  } else {
+    audit_unreadable_cause_row(row: row)
+  }
+}
+
+// A ROW THE PARSER CANNOT READ IS REPORTED, NOT SKIPPED. Dropping it would
+// make the parser's own deficits invisible and silently shrink the
+// population -- the empty-observation narrow, arriving through the one part
+// of this lane whose whole job is to stop a population being understated.
+// A BLANK row is different and is skipped: it is the trailing newline of a
+// well-formed file, not a row anyone failed to read.
+fn audit_unreadable_cause_row(row: String) -> DiagnosticCauseTally {
+  DiagnosticCauseTally {
+    reason: concat("<audit could not read this cause row> ", row),
+    count: 1
+  }
+}
+
+fn audit_list_at(xs: List<String>, index: Int) -> String {
+  fold_list(
+    xs: xs,
+    empty: AuditIndexScan { seen: 0, found: "" },
+    cons: fn(acc, item) {
+      if acc.seen == index {
+        AuditIndexScan { seen: acc.seen + 1, found: item }
+      } else {
+        AuditIndexScan { seen: acc.seen + 1, found: acc.found }
+      }
+    }
+  ).found
+}
+
+type AuditIndexScan {
+  seen: Int
+  found: String
+}
+
+fn audit_parse_causes(text: String) -> List<DiagnosticCauseTally> {
+  fold_list(
+    xs: split(s: text, delimiter: "\n"),
+    empty: Empty,
+    cons: fn(acc, row) {
+      if row == "" {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: audit_parse_cause_row(row: row))
+      }
+    }
+  )
+}
+
+// ONE SUBJECT'S REPLAY. Returns the row, never a verdict.
+fn audit_replay_subject(root: String, subject: String) -> AuditRow {
+  let txn = concat(root, audit_txn_rel)
+  let manifest_dir = concat(root, audit_manifest_dir_rel)
+
+  let cleared = shell.Remove.RecursiveForce(path: txn)
+  let made = shell.Mkdir.Parents(path: manifest_dir)
+
+  let derived = gunbc.WitnessBin.Run(
+    workdir: root,
+    bin_path: witness_bin_release_path(root: root, bin_name: "discover_source_root_ingest"),
+    args: audit_ingest_args(manifest_dir: manifest_dir, entry: subject)
+  )
+
+  let manifest_read = Filesystem.Read(path: concat(manifest_dir, audit_manifest_file))
+
+  if !(cleared.success && made.success && derived.success && manifest_read.success) {
+    AuditRow {
+      subject: subject,
+      standing: SubjectUnobserved { gap: SubjectReplayDidNotRun }
+    }
+  } else {
+    let identity = content_hash_atom(value: manifest_read.content as NonEmptyStr)
+    let staged = gunbc.WitnessBin.Run(
+      workdir: root,
+      bin_path: witness_bin_release_path(root: root, bin_name: "gunbc"),
+      args: audit_stage_args(
+        manifest_dir: manifest_dir,
+        txn: txn,
+        manifest_identity: identity.digest,
+        entry: subject,
+        function: "run_product_receipt_stage"
+      )
+    )
+    audit_row_from_artifacts(txn: txn, subject: subject, staged_ran: staged.success)
+  }
+}
+
+// THE ROW IS READ FROM THE REPLAY'S OWN ARTIFACTS, and the three arms are
+// the three things that can actually be true. A receipt that cannot be read
+// is UNOBSERVED, never emitted: the replay learned nothing about that
+// subject, and calling that "clean" would understate the population by
+// exactly the subjects whose observation failed.
+fn audit_row_from_artifacts(txn: String, subject: String, staged_ran: Bool) -> AuditRow {
+  let receipt_read = Filesystem.Read(path: concat(txn, audit_receipt_file))
+  let causes_read = Filesystem.Read(path: concat(txn, audit_causes_file))
+
+  if !receipt_read.success {
+    AuditRow {
+      subject: subject,
+      standing: SubjectUnobserved {
+        gap: if staged_ran { SubjectReceiptUnreadable } else { SubjectReplayDidNotRun }
+      }
+    }
+  } else {
+    if !string_contains(s: receipt_read.content, pattern: audit_boundary_four_header) {
+      AuditRow {
+        subject: subject,
+        standing: SubjectUnobserved { gap: SubjectReceiptCarriedNoEmissionBoundary }
+      }
+    } else {
+      audit_row_from_boundary_four(
+        subject: subject,
+        receipt: receipt_read.content,
+        causes_present: causes_read.success,
+        causes_text: causes_read.content
+      )
+    }
+  }
+}
+
+// THE STANDING COMES FROM THE RECEIPT, NOT FROM WHETHER A FILE EXISTS.
+//
+// An earlier shape read "causes file absent" as "the subject emitted". That
+// is fail-open on the one arm that matters: a subject that REFUSED but whose
+// cause file failed to write would have been ledgered as clean, and the
+// ledger would have under-reported exactly the refusals it exists to count.
+// So the receipt's own B4 standing decides, and a refusal with no readable
+// causes is UNOBSERVED -- the audit knows that subject refused and cannot
+// say on what, which is a third state and not either of the other two.
+fn audit_row_from_boundary_four(
+  subject: String,
+  receipt: String,
+  causes_present: Bool,
+  causes_text: String
+) -> AuditRow {
+  if string_contains(s: receipt, pattern: audit_boundary_four_completed) {
+    AuditRow { subject: subject, standing: SubjectEmitted }
+  } else {
+    if causes_present {
+      AuditRow {
+        subject: subject,
+        standing: SubjectRefused { causes: audit_parse_causes(text: causes_text) }
+      }
+    } else {
+      AuditRow {
+        subject: subject,
+        standing: SubjectUnobserved { gap: SubjectReceiptCarriedNoEmissionBoundary }
+      }
+    }
+  }
+}
+
+fn audit_subject_paths(text: String) -> List<String> {
+  fold_list(
+    xs: split(s: text, delimiter: "\n"),
+    empty: Empty,
+    cons: fn(acc, row) {
+      if row == "" { acc } else { list_snoc_item(xs: acc, item: row) }
+    }
+  )
+}
+
+fn audit_run_every_subject(root: String, subjects: List<String>) -> StoppedLineLedger {
+  StoppedLineLedger {
+    rows: fold_list(
+      xs: subjects,
+      empty: Empty,
+      cons: fn(acc, subject) {
+        list_snoc_item(
+          xs: acc,
+          item: audit_replay_subject(root: root, subject: subject)
+        )
+      }
+    )
+  }
+}
+
+func audit_collect_subjects(root: String, entry: String) -> String {
+  let txn = concat(root, audit_txn_rel)
+  let manifest_dir = concat(root, audit_manifest_dir_rel)
+  let audit_dir = concat(root, audit_dir_rel)
+
+  let cleared = shell.Remove.RecursiveForce(path: txn)
+  let made = shell.Mkdir.Parents(path: manifest_dir)
+  let made_audit = shell.Mkdir.Parents(path: audit_dir)
+
+  let derived = gunbc.WitnessBin.Run(
+    workdir: root,
+    bin_path: witness_bin_release_path(root: root, bin_name: "discover_source_root_ingest"),
+    args: audit_ingest_args(manifest_dir: manifest_dir, entry: entry)
+  )
+
+  let manifest_read = Filesystem.Read(path: concat(manifest_dir, audit_manifest_file))
+
+  if !(cleared.success && made.success && made_audit.success && derived.success
+    && manifest_read.success) {
+    ""
+  } else {
+    let identity = content_hash_atom(value: manifest_read.content as NonEmptyStr)
+    let listed = gunbc.WitnessBin.Run(
+      workdir: root,
+      bin_path: witness_bin_release_path(root: root, bin_name: "gunbc"),
+      args: audit_subjects_args(
+        manifest_dir: manifest_dir,
+        txn: txn,
+        manifest_identity: identity.digest
+      )
+    )
+    let subjects_read = Filesystem.Read(path: concat(txn, audit_subjects_file))
+    if listed.success && subjects_read.success {
+      subjects_read.content
+    } else {
+      ""
+    }
+  }
+}
+
+func run_stopped_line_audit_for_entry(entry: String) -> ProcessExit {
+  let root = git.Inspect.Toplevel()
+  let ingest_bin = witness_bin(
+    var_name: "DISCOVER_SOURCE_ROOT_INGEST",
+    bin_name: "discover_source_root_ingest"
+  )
+  match witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {
+    WitnessBinRefused { bin_name: _, path: _, reason: _ } =>
+      exit_failure(reason: "discover_source_root_ingest is not built")
+    WitnessBinReady { path: _ } => audit_after_bin_ready(root: root.path, entry: entry)
+  }
+}
+
+func audit_after_bin_ready(root: String, entry: String) -> ProcessExit {
+  let subjects_text = audit_collect_subjects(root: root, entry: entry)
+  let subjects = audit_subject_paths(text: subjects_text)
+
+  if length(xs: subjects) == 0 {
+    exit_failure(reason: "stopped-line audit: no subjects were listed")
+  } else {
+    audit_report(root: root, subjects: subjects)
+  }
+}
+
+// THE AUDIT'S OWN EXIT CODE SEPARATES "THIS MODE RAN" FROM "THIS MODE COULD
+// NOT RUN", and nothing else. It is deliberately NOT a function of what the
+// ledger contains: a ledger full of refusals is the audit working, and
+// exiting non-zero for it would re-create the very thing this mode exists to
+// avoid -- a diagnostic read as a gate. The ledger cannot express a passing
+// build (there is no admission function over it anywhere), so a zero exit
+// here says the report was produced, never that the product is green.
+func audit_report(root: String, subjects: List<String>) -> ProcessExit {
+  let ledger = audit_run_every_subject(root: root, subjects: subjects)
+  let rendered = stopped_line_ledger_render(ledger: ledger)
+  let written = Filesystem.Write(
+    path: concat(concat(root, audit_dir_rel), audit_ledger_file),
+    content: rendered
+  )
+  if written.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "stopped-line audit: ledger write failed")
+  }
+}
+
+func run_stopped_line_audit() -> ProcessExit {
+  run_stopped_line_audit_for_entry(entry: audit_default_entry)
+}

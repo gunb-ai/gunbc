@@ -113,6 +113,16 @@ data product_receipt_stage_manifest_rel: String = "/manifest/host_source_root_in
 data product_receipt_stage_candidate_rel: String = "/candidate"
 data product_receipt_stage_receipt_rel: String = "/receipt.txt"
 data product_receipt_stage_census_rel: String = "/b4-retention-census.txt"
+data product_receipt_stage_causes_rel: String = "/b4-causes.tsv"
+
+// A MACHINE-READABLE SECOND PROJECTION OF THE SAME TALLY, not a second
+// authority over it. receipt.txt renders the causes for a human; the audit
+// replaying this stage needs the same rows without parsing prose, and a
+// consumer that scraped the rendered receipt would be reading a layout as
+// though it were a format. Both projections fold the SAME
+// emitter_diagnostic_causes list, so they cannot disagree about the
+// population -- only about how it is spelled.
+data product_receipt_stage_causes_format_note: String = "One row per cause, count TAB reason, newline-terminated. Written only on the refused arm, because an emitted subject has no causes and an empty file would be indistinguishable from a subject whose write failed."
 
 fn stage_identity_from_hex(hex: String, file_count: Int) -> ArtifactIdentity {
   match fnv1a64_structural_hex_digest(hex: hex) {
@@ -235,6 +245,16 @@ fn stage_completed(
 // available to the INTERPRETED transport and would not survive a compiled
 // realization of it unchanged. Stated because the receipt would otherwise
 // look portable across realizations when one of its fields is not.
+fn emitter_causes_tsv(causes: List<DiagnosticCauseTally>) -> String {
+  fold_list(
+    xs: causes,
+    empty: "",
+    cons: fn(text, row) {
+      concat(text, concat(to_string(row.count), concat("\t", concat(row.reason, "\n"))))
+    }
+  )
+}
+
 fn emitter_diagnostic_causes(ds: NonEmptyDiagnostics) -> List<DiagnosticCauseTally> {
   fold_list(
     xs: ds.tail,
@@ -294,14 +314,23 @@ func product_receipt_candidate_refused(
     path: concat(txn, product_receipt_stage_census_rel),
     content: retention_census_render(families: retention_census(ds: ds))
   )
+  let causes = emitter_diagnostic_causes(ds: ds)
+  let causes_write = Filesystem.Write(
+    path: concat(txn, product_receipt_stage_causes_rel),
+    content: emitter_causes_tsv(causes: causes)
+  )
   ProductReceiptCandidate {
     observation: stage_refused(
       boundary: ClosureCandidateEmitted,
-      cause: EmitterRejected { causes: emitter_diagnostic_causes(ds: ds) },
+      cause: EmitterRejected { causes: causes },
       consumed: population_digest
     ),
     emitted_source: "",
-    census: if census_write.success { CensusWritten } else { CensusWriteFailed }
+    census: if census_write.success && causes_write.success {
+      CensusWritten
+    } else {
+      CensusWriteFailed
+    }
   }
 }
 
@@ -471,6 +500,60 @@ func product_receipt_tail(
         ),
         b6: stage_not_exercised(boundary: AuthorityCargoManifest),
         b7: stage_not_exercised(boundary: CargoBuild)
+      }
+    }
+  }
+}
+
+// THE AUDIT'S SUBJECT LIST COMES FROM THE ADMITTED POPULATION, NOT FROM THE
+// MANIFEST FILE. The manifest is a generated .dag artifact, and recovering
+// paths from it on the host side would mean string-surgery over source
+// text -- a second, positional reader of a fact the typed population
+// already carries. This writes exactly the refs boundary 2 admitted, so the
+// audit's subjects and the receipt's population are the same set by
+// construction rather than by two readers agreeing.
+//
+// It writes ONLY the list. It reaches no verdict, and it deliberately does
+// not consult the emitter: choosing which subjects to replay must not
+// depend on what any of them will turn out to do.
+fn stopped_line_audit_subject_lines() -> String {
+  fold_list(
+    xs: host_source_root_closure_refs,
+    empty: "",
+    cons: fn(text, ref) { concat(text, concat(ref.path, "\n")) }
+  )
+}
+
+func write_stopped_line_audit_subjects(txn: String, manifest_identity: String) -> ProcessExit {
+  let manifest_path = concat(txn, product_receipt_stage_manifest_rel)
+  let manifest_read = Filesystem.Read(path: manifest_path)
+
+  let overlay_resolved = manifest_read.success
+    && host_source_root_ingest_content_hash != ""
+    && string_contains(s: manifest_read.content, pattern: host_source_root_ingest_content_hash)
+
+  let identity_agrees = manifest_read.success
+    && (content_hash_atom(value: manifest_read.content as NonEmptyStr).digest
+      == manifest_identity)
+
+  if !manifest_read.success {
+    exit_failure(reason: "audit subject list: manifest not readable")
+  } else {
+    if !overlay_resolved {
+      exit_failure(reason: "audit subject list: manifest overlay did not resolve")
+    } else {
+      if !identity_agrees {
+        exit_failure(reason: "audit subject list: manifest identity does not agree")
+      } else {
+        let written = Filesystem.Write(
+          path: concat(txn, "/audit-subjects.txt"),
+          content: stopped_line_audit_subject_lines()
+        )
+        if written.success {
+          ExitSuccess
+        } else {
+          exit_failure(reason: "audit subject list: write failed")
+        }
       }
     }
   }

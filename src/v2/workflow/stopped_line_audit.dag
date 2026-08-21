@@ -1,0 +1,292 @@
+module v2.workflow.stopped_line_audit
+
+import v2.std.algebra { Empty, fold_list, length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.workflow.product_receipt { DiagnosticCauseTally }
+
+// THE STOPPED-LINE AUDIT, AND WHY IT IS NOT "MAKE THE EMITTER CONTINUE".
+//
+// The product receipt refuses at boundary 4 and reports the diagnostics of
+// ONE module -- established by execution across five subjects, recorded in
+// docs/probes/b4_wrapper_retained_census_2026-08-21.md. Stopping there is
+// correct: a deficit stops the line. But a stopped line cannot be SIZED,
+// so nothing can rank one deficit against another, which is the whole
+// purpose a partition serves.
+//
+// The tempting repair is to make the emitter continue past a refused module
+// and accumulate. That is the absorbing fallback this repository forbids,
+// wearing its most persuasive disguise -- it would produce a nicer census.
+// A production path that keeps going past a deficit has converted a typed
+// refusal into a widened answer, and the fact that the widening is only
+// "into a report" is not a defence, because the same emit path is what
+// admits a candidate.
+//
+// The sanctioned shape is the SECOND MODE: an audit that REPLAYS the run to
+// ledger every deficit, typed, located and counted, for the analysis that
+// precedes restarting the line. It reports; it does not green. So the
+// replay here re-runs the UNMODIFIED production path once per subject and
+// records what each run refused on. No emitter arm is added, relaxed or
+// reordered, and no caller of the emitter learns to ignore a refusal.
+
+// THE LEDGER CANNOT EXPRESS A PASSING BUILD, BY CONSTRUCTION.
+//
+// The requirement is that no path exists by which this audit's completion
+// is mistakable for a green build. That is met by SHAPE rather than by
+// discipline: there is no admission function over a ledger anywhere in this
+// module, no Bool that summarises one, and no variant meaning "the product
+// builds". SubjectEmitted says one subject emitted -- which is a fact about
+// that subject and never about the product, since the product's verdict
+// requires all seven boundaries and this mode observes exactly one.
+//
+// Writing product_receipt_green's equivalent here would be the inflation
+// the guarantee ladder names: an audit reporting a rung it did not measure.
+type AuditSubjectStanding
+  = SubjectEmitted
+  | SubjectRefused { causes: List<DiagnosticCauseTally> }
+  | SubjectUnobserved { gap: AuditObservationGap }
+
+// AN UNOBSERVED SUBJECT IS NOT A CLEAN SUBJECT. The distinction is the
+// empty-observation narrow this repository names: a replay that could not
+// read its receipt has learned NOTHING about that subject, and rendering
+// that as "nothing refused" would let the ledger under-report exactly the
+// subjects whose observation failed. So the gap is a typed third state and
+// it is counted beside the other two, never folded into either.
+type AuditObservationGap
+  = SubjectReplayDidNotRun
+  | SubjectReceiptUnreadable
+  | SubjectReceiptCarriedNoEmissionBoundary
+
+type AuditRow {
+  subject: String
+  standing: AuditSubjectStanding
+}
+
+type StoppedLineLedger {
+  rows: List<AuditRow>
+}
+
+// A cause's weight has TWO independent components and reporting either one
+// alone misranks the population. Total diagnostics says how much noise a
+// cause makes; blocked subjects says how many modules it stops. A cause
+// emitting 30 diagnostics inside one module is a different repair from one
+// emitting 2 diagnostics in each of 15 -- the first is one module's problem,
+// the second is systemic -- and a single number cannot tell them apart.
+type CauseFrequency {
+  reason: String
+  total_diagnostics: Int
+  blocked_subjects: Int
+}
+
+fn audit_observation_gap_label(gap: AuditObservationGap) -> String {
+  match gap {
+    SubjectReplayDidNotRun => "replay did not run"
+    SubjectReceiptUnreadable => "receipt unreadable"
+    SubjectReceiptCarriedNoEmissionBoundary => "receipt carried no emission boundary"
+  }
+}
+
+fn audit_row_is_refused(row: AuditRow) -> Bool {
+  match row.standing {
+    SubjectRefused { causes: _ } => true
+    SubjectEmitted => false
+    SubjectUnobserved { gap: _ } => false
+  }
+}
+
+fn audit_row_is_emitted(row: AuditRow) -> Bool {
+  match row.standing {
+    SubjectEmitted => true
+    SubjectRefused { causes: _ } => false
+    SubjectUnobserved { gap: _ } => false
+  }
+}
+
+fn audit_row_is_unobserved(row: AuditRow) -> Bool {
+  match row.standing {
+    SubjectUnobserved { gap: _ } => true
+    SubjectEmitted => false
+    SubjectRefused { causes: _ } => false
+  }
+}
+
+fn ledger_subject_count(ledger: StoppedLineLedger) -> Int {
+  length(xs: ledger.rows)
+}
+
+fn ledger_count_where(ledger: StoppedLineLedger, p: fn(AuditRow) -> Bool) -> Int {
+  fold_list(
+    xs: ledger.rows,
+    empty: 0,
+    cons: fn(n, row) { if p(row) { n + 1 } else { n } }
+  )
+}
+
+fn ledger_refused_count(ledger: StoppedLineLedger) -> Int {
+  ledger_count_where(ledger: ledger, p: fn(row) { audit_row_is_refused(row: row) })
+}
+
+fn ledger_emitted_count(ledger: StoppedLineLedger) -> Int {
+  ledger_count_where(ledger: ledger, p: fn(row) { audit_row_is_emitted(row: row) })
+}
+
+fn ledger_unobserved_count(ledger: StoppedLineLedger) -> Int {
+  ledger_count_where(ledger: ledger, p: fn(row) { audit_row_is_unobserved(row: row) })
+}
+
+// THE THREE STANDINGS MUST EXHAUST THE ROWS. This is asserted rather than
+// assumed because a fourth standing added later without a counter would
+// silently vanish from every total, and a ledger that loses rows understates
+// the population it exists to size.
+fn ledger_standings_partition_the_rows(ledger: StoppedLineLedger) -> Bool {
+  (ledger_refused_count(ledger: ledger)
+    + ledger_emitted_count(ledger: ledger)
+    + ledger_unobserved_count(ledger: ledger))
+    == ledger_subject_count(ledger: ledger)
+}
+
+fn cause_frequency_holds(freqs: List<CauseFrequency>, reason: String) -> Bool {
+  fold_list(
+    xs: freqs,
+    empty: false,
+    cons: fn(found, row) { found || (row.reason == reason) }
+  )
+}
+
+fn cause_frequency_bump(
+  freqs: List<CauseFrequency>,
+  tally: DiagnosticCauseTally
+) -> List<CauseFrequency> {
+  if cause_frequency_holds(freqs: freqs, reason: tally.reason) {
+    fold_list(
+      xs: freqs,
+      empty: Empty,
+      cons: fn(acc, row) {
+        list_snoc_item(
+          xs: acc,
+          item: if row.reason == tally.reason {
+            CauseFrequency {
+              reason: row.reason,
+              total_diagnostics: row.total_diagnostics + tally.count,
+              blocked_subjects: row.blocked_subjects + 1
+            }
+          } else {
+            row
+          }
+        )
+      }
+    )
+  } else {
+    list_snoc_item(
+      xs: freqs,
+      item: CauseFrequency {
+        reason: tally.reason,
+        total_diagnostics: tally.count,
+        blocked_subjects: 1
+      }
+    )
+  }
+}
+
+fn cause_frequency_absorb_row(
+  freqs: List<CauseFrequency>,
+  row: AuditRow
+) -> List<CauseFrequency> {
+  match row.standing {
+    SubjectRefused { causes: causes } =>
+      fold_list(
+        xs: causes,
+        empty: freqs,
+        cons: fn(acc, tally) { cause_frequency_bump(freqs: acc, tally: tally) }
+      )
+    SubjectEmitted => freqs
+    SubjectUnobserved { gap: _ } => freqs
+  }
+}
+
+fn ledger_cause_frequency(ledger: StoppedLineLedger) -> List<CauseFrequency> {
+  fold_list(
+    xs: ledger.rows,
+    empty: Empty,
+    cons: fn(acc, row) { cause_frequency_absorb_row(freqs: acc, row: row) }
+  )
+}
+
+fn cause_frequency_total_diagnostics(freqs: List<CauseFrequency>) -> Int {
+  fold_list(xs: freqs, empty: 0, cons: fn(n, row) { n + row.total_diagnostics })
+}
+
+fn cause_frequency_line(row: CauseFrequency) -> String {
+  concat(
+    "\n  ",
+    concat(
+      to_string(row.total_diagnostics),
+      concat(
+        " diagnostic(s) across ",
+        concat(
+          to_string(row.blocked_subjects),
+          concat(" subject(s)  ", row.reason)
+        )
+      )
+    )
+  )
+}
+
+fn audit_row_line(row: AuditRow) -> String {
+  concat(
+    "\n  ",
+    concat(
+      match row.standing {
+        SubjectEmitted => "emitted  "
+        SubjectRefused { causes: _ } => "REFUSED  "
+        SubjectUnobserved { gap: gap } =>
+          concat("UNOBSERVED (", concat(audit_observation_gap_label(gap: gap), ")  "))
+      },
+      row.subject
+    )
+  )
+}
+
+// The header states the mode's standing in the mode's own output, because a
+// ledger read out of context is exactly how a diagnostic mode gets mistaken
+// for a gate. It reports what was measured and refuses to summarise it as a
+// verdict it did not measure.
+fn stopped_line_ledger_render(ledger: StoppedLineLedger) -> String {
+  concat(
+    "STOPPED-LINE AUDIT -- reports only, NEVER greens a build.\nIt replays the unmodified production emit once per subject and ledgers\nwhat each run refused on. It observes ONE boundary of seven, so nothing\nhere is a product verdict.\nCompleting this audit is not a passing build.\n\nsubjects: ",
+    concat(
+      to_string(ledger_subject_count(ledger: ledger)),
+      concat(
+        concat("\n  refused: ", to_string(ledger_refused_count(ledger: ledger))),
+        concat(
+          concat("\n  emitted: ", to_string(ledger_emitted_count(ledger: ledger))),
+          concat(
+            concat("\n  unobserved: ", to_string(ledger_unobserved_count(ledger: ledger))),
+            concat(
+              "\n\ncauses by weight (diagnostics, and how many subjects each blocks):\n",
+              concat(
+                fold_list(
+                  xs: ledger_cause_frequency(ledger: ledger),
+                  empty: "",
+                  cons: fn(text, row) { concat(text, cause_frequency_line(row: row)) }
+                ),
+                concat(
+                  "\n\nper subject:\n",
+                  concat(
+                    fold_list(
+                      xs: ledger.rows,
+                      empty: "",
+                      cons: fn(text, row) { concat(text, audit_row_line(row: row)) }
+                    ),
+                    "\n"
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
