@@ -256,7 +256,7 @@ jobs:
         id: spark_grants
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/grant_install.dag --function spark_grant_install_ci_wet
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/managed_grant_install.dag --function spark_grant_install_ci_wet
           cat "$ROOT/target/spark-grant-install-receipt.txt"
         env:
           SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
@@ -284,7 +284,7 @@ jobs:
         id: spark_durability
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/serving_durability.dag --function spark_serving_durability_ci_wet
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/serving_durability_transaction.dag --function spark_serving_durability_ci_wet
           cat "$ROOT/target/spark-serving-durability-receipt.txt"
         env:
           SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}

@@ -1,0 +1,107 @@
+module test.claim.ci_run_step_target_resolution_witness
+
+import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.ci_spec {
+  GunbcRunStepTarget,
+  gunbc_ci_spark_grant_install_target,
+  gunbc_run_step_targets,
+}
+import std.types { Bool, List }
+import v2.std.algebra { length }
+import v2.std.decl_index { DeclFact, decl_facts }
+
+// WHAT THIS WITNESS EXISTS FOR, and it exists because both of its planted controls were live
+// defects on main rather than hypotheticals (gunbc#8377, via a hand-resolved merge conflict):
+//
+//   entry "dag/gunbc/spark/grant_install.dag"      -- a file that has never existed
+//   entry "dag/gunbc/spark/serving_durability.dag" -- a file that exists and does NOT define the
+//                                                     named function, and does not import the
+//                                                     module that does
+//
+// The second is the one a path-existence check would have passed while looking green, which is why
+// the join below is over (rel_path, name) together and never over the path alone. Both shapes stay
+// enrolled as permanent controls after the production population went green (DESIGN 4b(4)): a
+// control that retires when its class is fixed recreates specification-without-execution one rung
+// up.
+//
+// RUNG: mechanically preventable. The invalid state stays writable -- an author can still type a
+// wrong string -- and safety depends on this witness executing. The next rung is named on
+// gunbc.ci_spec GunbcRunStepTarget and is not built here.
+
+data ci_run_step_target_facts: List<DeclFact> = decl_facts(pool_roots: witness_layer_roots)
+
+fn ci_run_step_target_resolves(target: GunbcRunStepTarget) -> Bool {
+  fold(ci_run_step_target_facts, init: false, f: fn(found, fact) {
+    found || (fact.rel_path == target.entry && fact.name == target.function)
+  })
+}
+
+fn ci_run_step_targets_all_resolve(targets: List<GunbcRunStepTarget>) -> Bool {
+  fold(targets, init: true, f: fn(ok, target) {
+    ok && ci_run_step_target_resolves(target: target)
+  })
+}
+
+// ── production population ───────────────────────────────────────────────────────────────────────
+
+test fn every_emitted_gunbc_run_step_target_resolves() -> Bool {
+  ci_run_step_targets_all_resolve(targets: gunbc_run_step_targets())
+}
+
+// The fold above is vacuously true over an empty roster, so the population needs its own
+// assertion. It is deliberately an IDENTITY JOIN and not a count: a literal copied from a
+// measurement of the current tree is not an oracle (DESIGN section 5), and `== 19` would go green
+// on any future tree that happens to have nineteen rows, including one where the two rows this
+// change exists to repair were dropped. So the check names the two repaired targets and requires
+// the roster to be non-empty; a count would have been a change detector.
+fn ci_run_step_targets_contain(targets: List<GunbcRunStepTarget>, wanted: GunbcRunStepTarget) -> Bool {
+  fold(targets, init: false, f: fn(found, target) {
+    found || (target.entry == wanted.entry && target.function == wanted.function)
+  })
+}
+
+test fn the_roster_still_carries_the_two_repaired_targets() -> Bool {
+  length(xs: gunbc_run_step_targets()) > 0
+    && ci_run_step_targets_contain(
+      targets: gunbc_run_step_targets(),
+      wanted: ci_run_step_target_planted_positive_control
+    )
+    && ci_run_step_targets_contain(
+      targets: gunbc_run_step_targets(),
+      wanted: gunbc_ci_spark_grant_install_target
+    )
+}
+
+// ── permanent planted controls, one per failure shape ───────────────────────────────────────────
+
+data ci_run_step_target_planted_missing_file_control: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/grant_install.dag",
+  function: "spark_grant_install_ci_wet",
+}
+
+data ci_run_step_target_planted_missing_symbol_control: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/serving_durability.dag",
+  function: "spark_serving_durability_ci_wet",
+}
+
+test fn a_target_naming_a_nonexistent_file_does_not_resolve() -> Bool {
+  !ci_run_step_target_resolves(target: ci_run_step_target_planted_missing_file_control)
+}
+
+// THE DISCRIMINATING ONE. Its entry file is real and enrolled, so a path check passes; only the
+// function half refuses. If this control ever goes green, the join has been weakened to the path.
+test fn a_target_whose_file_lacks_the_function_does_not_resolve() -> Bool {
+  !ci_run_step_target_resolves(target: ci_run_step_target_planted_missing_symbol_control)
+}
+
+// The positive control for the same instrument: the module the missing-symbol control names DOES
+// define its function at the module that actually holds it, so the refusal above is about the join
+// and not about decl_facts being empty or the fold never matching anything.
+data ci_run_step_target_planted_positive_control: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/serving_durability_transaction.dag",
+  function: "spark_serving_durability_ci_wet",
+}
+
+test fn the_positive_control_resolves() -> Bool {
+  ci_run_step_target_resolves(target: ci_run_step_target_planted_positive_control)
+}
