@@ -10615,9 +10615,19 @@ fn run() -> Result<ExitCode, ExitCode> {
         // above: it reads the authored reference population, not this run's products.
         eprintln!("required-ci: phase cited-symbol (every authored DeclarationRef resolves)");
         match required_ci_cited_symbol_census(&source_roots) {
-            Ok(rows) if rows.is_empty() => {
-                eprintln!("required-ci: cited-symbol OK every authored reference resolves")
-            }
+            Ok(rows) if rows.is_empty() => match required_ci_cited_symbol_population(&source_roots) {
+                Ok(checked) => eprintln!(
+                    "required-ci: cited-symbol OK every authored reference resolves checked={checked}"
+                ),
+                // THE DENOMINATOR IS PART OF THE VERDICT, so failing to read it fails the phase.
+                // An empty report means "nothing refused"; it does not distinguish "everything
+                // resolved" from "nothing was checked", and reporting the first while unable to
+                // establish the second is the fabricated-plausible-output arm.
+                Err(e) => {
+                    eprintln!("required-ci: cited-symbol refused: population unreadable: {e}");
+                    phase_failures.push(format!("cited-symbol refused: population unreadable: {e}"));
+                }
+            },
             Ok(rows) => {
                 for row in &rows {
                     eprintln!("required-ci: cited-symbol REFUSED {row}");
@@ -20446,7 +20456,25 @@ fn run_behavioral_receipt_census(source_roots: &[String]) -> Result<ExitCode, Ex
 ///
 /// Returns the located refusals -- one line per unresolved reference, carrying the typed arm that
 /// refused it -- so the failure names what to fix rather than reporting a count.
-fn required_ci_cited_symbol_census(source_roots: &[String]) -> Result<Vec<String>, String> {
+/// The size of the population the census just checked, so a green names its denominator.
+///
+/// An empty refusal list is returned both when every reference resolves and when there are no
+/// references at all; those are different states and only the first is coverage.
+fn required_ci_cited_symbol_population(source_roots: &[String]) -> Result<i64, String> {
+    let (ctx, _entry) = cited_symbol_lens_context(source_roots)?;
+    match run_value(&ctx, "cited_symbol_production_reference_count") {
+        Ok(Value::Int(n)) => Ok(n),
+        Ok(other) => Err(format!(
+            "cited_symbol_production_reference_count must be an Int, got {other:?}"
+        )),
+        Err(msg) => Err(msg),
+    }
+}
+
+/// The lens's evaluation context, built once and shared by both readers of it -- the refusal report
+/// and the population count. Two constructions would be two chances to answer from different trees,
+/// and the denominator is only meaningful for the census it accompanies.
+fn cited_symbol_lens_context(source_roots: &[String]) -> Result<(InterpContext, String), String> {
     const LENS_REL: &str = "lens/cited_symbol_resolution.dag";
     let entry = source_roots
         .iter()
@@ -20464,6 +20492,11 @@ fn required_ci_cited_symbol_census(source_roots: &[String]) -> Result<Vec<String
     let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry)
         .map_err(|e| format!("cited-symbol: resolve {entry} failed: {e}"))?;
     let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    Ok((ctx, entry))
+}
+
+fn required_ci_cited_symbol_census(source_roots: &[String]) -> Result<Vec<String>, String> {
+    let (ctx, _entry) = cited_symbol_lens_context(source_roots)?;
     match run_value(&ctx, "cited_symbol_unresolved_reference_report") {
         Ok(Value::List(rows)) => {
             let mut out = Vec::new();
