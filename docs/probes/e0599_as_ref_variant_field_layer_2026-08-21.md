@@ -85,11 +85,32 @@ distinct path whose layer decision has to be established on its own evidence.
 **No class increased in total.** One class moved at site grain, and it is reported as MOVED rather
 than folded into the net.
 
-**The FULL sorted histogram was diffed, not the targeted class** — including the uncoded column,
-where a repair that shadows a match arm shows up as `unreachable_pattern` and a totals reading would
-miss it. Both runs carry the identical uncoded pair (`uncoded_unsupported_mock_expression:13`,
-`uncoded_UNRESOLVED_CompilerError:1`), `unreachable pattern` is **0** in both logs, and the warning
-count is 4 in both. The whole diff of the 21-class histogram is exactly the two rows above. The `as_ref` message is absent from the after log; the remaining 23 E0599 are
+**The FULL sorted histogram was diffed, not the targeted class.** Both runs carry the identical
+uncoded pair (`uncoded_unsupported_mock_expression:13`, `uncoded_UNRESOLVED_CompilerError:1`); the
+whole diff of the 21-class histogram is exactly the two rows above.
+
+**Shadowed match arms were checked in the LOG, not in that histogram, and the distinction is
+load-bearing** (correction propagated by `smart-ram-730` 2026-08-21, found by `merry-swift-902`):
+this probe's `ERROR_HISTOGRAM` greps `^error\[E[0-9]+\]` and its uncoded suffix greps `error: `,
+while a shadowed arm renders as `warning: unreachable pattern` — so it can NEVER appear in that
+column, and an absent row there is blindness rather than zero. What was actually done here is the
+stronger check: the retained `cargo.log` was read directly, and its full sorted warning histogram is
+**identical at both refs** —
+
+```
+2 warning: unreachable `else` clause          <- identical before and after
+1 warning: `v1_compiled` (lib) generated 2 warnings
+1 warning: build failed, waiting for other jobs to finish...
+```
+
+`unreachable pattern` is **0 occurrences in both logs**, and the warning channel is demonstrably
+live rather than empty (two real reachability-family lints are present in both), which is what makes
+that zero readable at all.
+
+**The honest bound on that zero, carried rather than dropped:** the emitted crate FAILS to build at
+both refs, so rustc stops before typechecking most items and never runs reachability on them. This
+zero means "none among what rustc reached, and unchanged between refs" — not "the crate has none".
+At a refusing baseline no stronger zero is available to anyone. The `as_ref` message is absent from the after log; the remaining 23 E0599 are
 seven other messages (`apply` on `Rc<LexMatchThunk>` ×7, `Present` on native `Option` ×5,
 `clone` on type parameter `A` ×4, `GlobalBare*` ×4, `Empty` on `im::Vector<A>` ×2, `lookup` ×1) —
 each a different root, none touched here.
