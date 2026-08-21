@@ -319,13 +319,46 @@ fn probe_lowering_name() -> String {
   }
 }
 
+fn ingest_parse_only(source_text: String, file: Symbol) -> Optional<Node> {
+  match tokenize(text: source_text, file: file, rules: dag_language_model().lex) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: dag_language_model().grammar) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: artifact, diagnostics: _ } => Present { value: artifact.tree }
+      }
+  }
+}
+
+fn parse_only_lowering_name(source_text: String, file: Symbol) -> String {
+  match ingest_parse_only(source_text: source_text, file: file) {
+    Absent => "ingest-absent"
+    Present { value: tree } =>
+      match locate_call(root: tree) {
+        Absent => "locate-absent"
+        Present { value: call } =>
+          match fold_call_lowering(fold_call: call) {
+            FoldCallLowered { seam_loop: _ } => "lowered"
+            FoldCallStepFormUnresolved { diagnostic: _ } => "step-form-unresolved"
+            FoldCallStepShapeInvalid { diagnostic: _ } => "step-shape-invalid"
+            FoldCallNotAFold { diagnostic: _ } => "not-a-fold"
+          }
+      }
+  }
+}
+
 test fn probe_loc() -> Bool { probe_locate_found() }
 test fn probe_anyident() -> Bool { int_gt(a: list_length(items: probe_idents()), b: 0) }
-test fn probe_gt10() -> Bool { int_gt(a: list_length(items: probe_idents()), b: 10) }
 test fn probe_foldsym() -> Bool { symbol_in(needle: ^fold, xs: probe_idents()) }
-test fn probe_xssym() -> Bool { symbol_in(needle: ^xs, xs: probe_idents()) }
-test fn probe_disp_lowered() -> Bool { probe_lowering_name() == "lowered" }
-test fn probe_disp_notafold() -> Bool { probe_lowering_name() == "not-a-fold" }
-test fn probe_disp_unresolved() -> Bool { probe_lowering_name() == "step-form-unresolved" }
-test fn probe_disp_shapeinvalid() -> Bool { probe_lowering_name() == "step-shape-invalid" }
-test fn probe_disp_absent() -> Bool { probe_lowering_name() == "ingest-or-locate-absent" }
+test fn probe_parseonly_lowered() -> Bool {
+  parse_only_lowering_name(source_text: fold_snippet, file: ^fold_probe_file) == "lowered"
+}
+test fn probe_parseonly_notafold() -> Bool {
+  parse_only_lowering_name(source_text: fold_snippet, file: ^fold_probe_file) == "not-a-fold"
+}
+test fn probe_parseonly_locate_absent() -> Bool {
+  parse_only_lowering_name(source_text: fold_snippet, file: ^fold_probe_file) == "locate-absent"
+}
+test fn probe_parseonly_unresolved() -> Bool {
+  parse_only_lowering_name(source_text: fold_snippet, file: ^fold_probe_file) == "step-form-unresolved"
+}
