@@ -192,14 +192,14 @@ data rust_hash_set_supplemental_generic_bound_contract_coverage_disposition: Rus
   },
   lane: DeclarationRef {
     module_path: "v2.std.compilers.target_model",
-    decl_name: "RequiredTraitWitness",
+    decl_name: "TargetCapabilityRequirement",
     field: WholeDeclaration
   },
   dissolution: Scaffold {
     dissolves_to: SingleAuthority,
     bind: DeclarationRef {
       module_path: "v2.std.compilers.target_model",
-      decl_name: "RequiredTraitWitness",
+      decl_name: "TargetCapabilityRequirement",
       field: WholeDeclaration
     }
   }
