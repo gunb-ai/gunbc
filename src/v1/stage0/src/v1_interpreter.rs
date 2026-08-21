@@ -7415,7 +7415,7 @@ macro_rules! v1_algebra_method_arms {
                 Ok(list_value((result)))
             },
 
-            arm "method_call.contains" { "contains" | "has" } => match &$receiver {
+            arm "method_call.contains" { "contains" } => match &$receiver {
                 Value::Map(m) => {
                     let key = $args.first().ok_or_else(|| InterpError::TypeError {
                         msg: "contains requires a key argument".to_string(),
@@ -7545,18 +7545,6 @@ macro_rules! v1_algebra_method_arms {
                 counters.map_merge_calls += 1;
                 drop(counters);
                 Ok(map_value((*overlay).clone().union((*base).clone())))
-            },
-
-            arm "method_call.keys" { "keys" } => {
-                let m = expect_map(&$receiver, "keys")?;
-                let keys: Vec<Value> = m.keys().map(|k| k.key.clone()).collect();
-                Ok(list_value((keys)))
-            },
-
-            arm "method_call.values" { "values" } => {
-                let m = expect_map(&$receiver, "values")?;
-                let vals: Vec<Value> = m.values().cloned().collect();
-                Ok(list_value((vals)))
             },
 
             arm "method_call.replace" { "replace" } => {

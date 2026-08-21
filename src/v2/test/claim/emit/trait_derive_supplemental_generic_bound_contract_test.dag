@@ -426,11 +426,11 @@ fn sgb_contract_has_single_requirement(
   required_trait: ReprGroundingDeriveTrait,
   authority: ExternalAuthority
 ) -> Bool {
-  count(contract.requirements.keys()) == 1
+  count(map_keys(contract.requirements)) == 1
     && match contract.requirements.lookup(representation_parameter) {
       Absent => false
       Present { value: requirements } =>
-        count(requirements.keys()) == 1
+        count(map_keys(requirements)) == 1
           && sgb_requirement_authority_matches(
             contract: contract,
             representation_parameter: representation_parameter,
@@ -449,15 +449,15 @@ fn sgb_contract_has_two_requirements(
   second_trait: ReprGroundingDeriveTrait,
   second_authority: ExternalAuthority
 ) -> Bool {
-  count(contract.requirements.keys()) == 2
+  count(map_keys(contract.requirements)) == 2
     && match contract.requirements.lookup(first_parameter) {
       Absent => false
       Present { value: first_requirements } =>
-        count(first_requirements.keys()) == 1
+        count(map_keys(first_requirements)) == 1
           && match contract.requirements.lookup(second_parameter) {
             Absent => false
             Present { value: second_requirements } =>
-              count(second_requirements.keys()) == 1
+              count(map_keys(second_requirements)) == 1
                 && sgb_requirement_authority_matches(
                   contract: contract,
                   representation_parameter: first_parameter,
@@ -481,7 +481,7 @@ fn sgb_contract_is_explicit_empty(
 ) -> Bool {
   contract.derive_trait == derive_trait
     && contract.authority == authority
-    && count(contract.requirements.keys()) == 0
+    && count(map_keys(contract.requirements)) == 0
 }
 
 fn sgb_hash_set_coverage_blocker_matches(
