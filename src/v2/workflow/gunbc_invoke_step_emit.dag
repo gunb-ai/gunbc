@@ -37,21 +37,28 @@ import v2.std.diagnostic { Accepted, Rejected, None, Some }
 // WHAT THIS ROOT DISSOLVED AND WHAT IT DID NOT, counted rather than implied, because a
 // root that retires most of a marked population reads as having retired all of it.
 // MEASURED on the emitted tree (grep dissolve-on over .github/workflows/*.yml), not on
-// a brief count: NINE marked foreign-executor blocks are live, all in fleet-converge.yml
-// -- the other emitted workflows, fleet-desired.yml and witnesses.yml, carry none. They
-// do NOT share one trigger, which is the finding: only FOUR name this root (the converge
-// plan and apply steps and the two spark serving steps, each a gunbc run invocation).
-// The remaining five name three DIFFERENT roots and are untouched here, each still
-// carrying its own dissolution row in gunbc.ci_spec:
+// a brief count, AT THE TIME THIS PARAGRAPH WAS WRITTEN: NINE marked foreign-executor
+// blocks were live, all in fleet-converge.yml -- the other emitted workflows,
+// fleet-desired.yml and witnesses.yml, carried none. THE COUNTS BELOW ARE THAT SNAPSHOT,
+// NOT RE-MEASURED: gunbc.ci_spec gunbc_ci_spark_grant_install_credential_prelude (PR
+// #8777) and gunbc_ci_fleet_key_agent_prelude (below) both moved onto this root's
+// gunbc_invoke_step_emit_pipeline since this paragraph was authored, so NINE/FOUR/FIVE no
+// longer hold; re-grep dissolve-on over the emitted tree before citing a population here
+// rather than trusting this sentence's arithmetic.
 //   (1) ci_release_build_script, ci_release_bins_pack_script and
 //       ci_release_bins_unpack_verify_script -- cargo and tar transports. Their leaves
 //       are not bin invocations at all, so binding them needs typed cargo/archive
 //       operations on host_effect_apply, which is their own stated trigger.
-//   (2) gunbc_ci_fleet_key_agent_script -- its trigger is the typed secret-materialization
-//       effect (SecretRef to in-run agent). It is deliberately NOT bound here: the secret
-//       reaches the agent over a pipe, and this root renders argv words, so routing it
-//       through the binding would move a secret onto a command line. That is a refusal,
-//       not a gap to close by widening.
+//   (2) gunbc_ci_fleet_key_agent_script -- DISSOLVED (2026-08-21): its Scaffold and
+//       DissolutionCondition rows named host_effect_apply, which cannot express a
+//       runner-local ephemeral target and so could never fire (see gunbc.ci_spec, at the
+//       former site of gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger, for the
+//       full record). It is now typed-orchestration-emitted through THIS module's
+//       gunbc_invoke_step_emit_pipeline directly -- not through the gunbc-run-argv path
+//       above, since it invokes no `gunbc run` -- via gunbc_ci_fleet_key_agent_prelude.
+//       The refusal reasoning below (a secret must not cross onto a command line) still
+//       holds and is unaffected: the secret still reaches the agent over a pipe inside a
+//       Run leaf's command string, never as a rendered argv word.
 //   (3) ci_native_cache_root_script -- ALREADY orchestration-emitted
 //       (v2.workflow.ci_workflow_run_emit); its trigger is a typed toolchain probe on
 //       host_effect_apply, so the marker survives the binding it already has.
