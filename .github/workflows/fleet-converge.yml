@@ -205,7 +205,6 @@ jobs:
       - name: Fleet converge plan (membership_reconcile → artifact)
         id: plan
         run: |
-          # 🟡 dissolve-on: gunbc_ci_fleet_converge_plan_invoke — foreign-executor shell invoking fleet_converge_plan_wet; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet_converge_plan_cli.dag --function fleet_converge_plan_wet
         if: github.event.inputs.mode == 'plan'
@@ -234,13 +233,9 @@ jobs:
       - name: Fleet converge apply (CAS + generated apply.sh)
         id: apply
         run: |
-          # 🟡 dissolve-on: gunbc_ci_fleet_converge_apply_invoke — foreign-executor shell verifying plan hash then invoking fleet_converge_apply_wet; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
           set -euo pipefail
           ACTUAL="$(cat /tmp/fleet-converge-plan/plan_content.hex)"
-          if [ -z "${EXPECTED_HASH:-}" ] || [ "$EXPECTED_HASH" != "$ACTUAL" ]; then
-            echo "::error::PlanArtifactHashMismatch expected=$EXPECTED_HASH actual=$ACTUAL" >&2
-            exit 1
-          fi
+          if [ -z "${EXPECTED_HASH:-}" ] || [ "$EXPECTED_HASH" != "$ACTUAL" ]; then echo "::error::PlanArtifactHashMismatch expected=$EXPECTED_HASH actual=$ACTUAL" >&2; exit 1; fi
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet_converge_plan_cli.dag --function fleet_converge_apply_wet
         env:
@@ -250,7 +245,6 @@ jobs:
       - name: Spark serving linger converge (executor→target FleetSsh typed argv)
         id: spark_linger
         run: |
-          # 🟡 dissolve-on: gunbc_ci_spark_serving_converge_slice_invoke — foreign-executor shell invoking spark_serving_converge_slice_ci_wet (the runner-side entry: in-run ssh-agent, no gcloud, no Secret Manager fetch) with SPARK_CONVERGE_TARGET/SPARK_CONVERGE_EXECUTE env; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/serving_converge_slice_wet.dag --function spark_serving_converge_slice_ci_wet
           cat "$ROOT/target/spark-serving-converge-slice-wet-receipt.txt"
@@ -262,9 +256,8 @@ jobs:
       - name: Spark managed grant reconcile (installs only the grants measured missing at the named target)
         id: spark_grants
         run: |
-          # 🟡 dissolve-on: gunbc_ci_spark_grant_install_invoke — foreign-executor shell invoking spark_grant_install_ci_wet (reads the grant standing at a NAMED target and installs only the grants measured missing, staging and validating each sudoers drop-in before it is placed) with SPARK_CONVERGE_TARGET env; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/managed_grant_install.dag --function spark_grant_install_ci_wet
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/grant_install.dag --function spark_grant_install_ci_wet
           cat "$ROOT/target/spark-grant-install-receipt.txt"
         env:
           SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
@@ -273,7 +266,6 @@ jobs:
       - name: "Spark serving observation (read-only: unit state, runtime version, model tags, driver)"
         id: spark_observe
         run: |
-          # 🟡 dissolve-on: gunbc_ci_spark_serving_observe_invoke — foreign-executor shell invoking spark_serving_observe_ci_wet (runner-side, read-only: unit state, ollama version, model tags, driver); DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/serving_observe.dag --function spark_serving_observe_ci_wet
           cat "$ROOT/target/spark-serving-observe-ci-receipt.txt"
@@ -282,7 +274,6 @@ jobs:
       - name: "Spark serving reboot (durability probe: the receipt is the converge that follows)"
         id: spark_reboot
         run: |
-          # 🟡 dissolve-on: gunbc_ci_spark_serving_reboot_invoke — foreign-executor shell invoking spark_serving_reboot_ci_wet (the durability probe: issues one reboot at a NAMED target and reports what the far side said; establishes nothing about durability itself, the receipt being the post-reboot converge) with SPARK_CONVERGE_TARGET env; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/serving_reboot_probe.dag --function spark_serving_reboot_ci_wet
           cat "$ROOT/target/spark-serving-reboot-receipt.txt"
@@ -293,9 +284,8 @@ jobs:
       - name: Spark serving durability transaction (boot identity before and after, in one run)
         id: spark_durability
         run: |
-          # 🟡 dissolve-on: gunbc_ci_spark_serving_durability_invoke — foreign-executor shell invoking spark_serving_durability_ci_wet (the whole transaction in ONE run: read the boot identity, reboot the NAMED target, poll until the identity changes, then replan and probe the generation) with SPARK_CONVERGE_TARGET env; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/serving_durability_transaction.dag --function spark_serving_durability_ci_wet
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/serving_durability.dag --function spark_serving_durability_ci_wet
           cat "$ROOT/target/spark-serving-durability-receipt.txt"
         env:
           SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
