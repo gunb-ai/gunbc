@@ -274,7 +274,7 @@ data ci_v1_compiler_tests_compile_gate_note: String = "cargo test -p v1-compiler
 fn ci_retry_body_run(command: String) -> Run {
   Run {
     command: command,
-    env: [],
+    env: Empty,
     redirect: Absent,
     capture: Absent
   }
@@ -282,7 +282,7 @@ fn ci_retry_body_run(command: String) -> Run {
 
 fn ci_retry_exhausted_pipeline() -> Pipeline {
   Pipeline {
-    steps: [Do { run: Run { command: "exit 1", env: [], redirect: Absent, capture: Absent } }],
+    steps: [Do { run: Run { command: "exit 1", env: Empty, redirect: Absent, capture: Absent } }],
     on_failure: FailFast
   }
 }

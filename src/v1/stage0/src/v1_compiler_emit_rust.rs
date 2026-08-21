@@ -397,7 +397,7 @@ pub fn render_rust_type_without_applied_binding(
                                 );
                                 let tn = authored_name_at(source_indices.clone(), n.clone());
                                 let base = emit_container(
-                                    to_snake(tn.clone()),
+                                    tn.clone(),
                                     inner_str.clone(),
                                     RenderTarget::Rust,
                                 );
@@ -927,14 +927,6 @@ pub fn rust_applied_type_base(name: String, decl_file: String) -> String {
     rust_named_type_base(name.clone(), decl_file.clone())
 }
 
-pub fn rust_normalize_witness_type_text(rendered: String) -> String {
-    v1_rt::replace(
-        rendered.clone(),
-        "witness<".to_string(),
-        "Witness<".to_string(),
-    )
-}
-
 pub fn rust_witness_parent_leaf(parent: String) -> bool {
     (qualified_last_segment(parent.clone()) == "Witness".to_string())
 }
@@ -1244,22 +1236,6 @@ pub fn rust_witness_variant_ctor_path(
         }
         None => ctor_name,
     }
-}
-
-pub fn rust_normalize_partial_function_field_type_text(rendered: String) -> String {
-    v1_rt::replace(
-        v1_rt::replace(
-            v1_rt::replace(
-                rendered.clone(),
-                "HashMap<K, V>".to_string(),
-                "PartialFunction<K, V>".to_string(),
-            ),
-            "Vec<K>".to_string(),
-            "FreeMonoid<K>".to_string(),
-        ),
-        "Vec<V>".to_string(),
-        "FreeMonoid<V>".to_string(),
-    )
 }
 
 pub fn is_parametric_opaque_type_by_name(env: Rc<TypeEnv>, type_name: String) -> bool {
@@ -2151,7 +2127,7 @@ if peel.clone() {
                                                             match arg_list.clone().first().cloned()
                                                             {
                                                                 Some(inner) => emit_container(
-                                                                    to_snake(name.clone()),
+                                                                    name.clone(),
                                                                     inner.clone(),
                                                                     RenderTarget::Rust,
                                                                 ),
@@ -13660,13 +13636,6 @@ pub fn emit_struct_field_from_child(
                 }
             }
         };
-        let generic_ty = if (struct_name.clone() == "PartialFunction".to_string()) {
-            rust_normalize_partial_function_field_type_text(rust_normalize_witness_type_text(
-                ty.clone(),
-            ))
-        } else {
-            ty.clone()
-        };
         let final_ty = if needs_box_wrapping(
             rt_child.clone(),
             recursive_types.clone(),
@@ -13674,7 +13643,7 @@ pub fn emit_struct_field_from_child(
             env.source_indices.clone(),
         ) {
             v1_rt::concat(
-                v1_rt::concat("Box<".to_string(), generic_ty.clone()),
+                v1_rt::concat("Box<".to_string(), ty.clone()),
                 ">".to_string(),
             )
         } else {
@@ -13682,11 +13651,11 @@ pub fn emit_struct_field_from_child(
                 rt_child.clone(),
                 env.source_indices.clone(),
                 shared_types.clone(),
-            ) && !rust_type_is_rc_wrapped(generic_ty.clone()))
+            ) && !rust_type_is_rc_wrapped(ty.clone()))
             {
-                wrap_shared_type(RenderTarget::Rust, generic_ty.clone())
+                wrap_shared_type(RenderTarget::Rust, ty.clone())
             } else {
-                generic_ty.clone()
+                ty.clone()
             }
         };
         let needs_serde = struct_needs_serde(struct_name.clone(), emit_info.clone());

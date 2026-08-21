@@ -41,7 +41,7 @@ fn witness_plan_ctx() -> HostEffectPlanContext {
 }
 
 fn witness_empty_plan() -> HostEffectPlan {
-  EffectPlan { steps: [], on_failure: FailFast }
+  EffectPlan { steps: Empty, on_failure: FailFast }
 }
 
 fn witness_if_control_flow_plan() -> HostEffectPlan {
@@ -49,7 +49,7 @@ fn witness_if_control_flow_plan() -> HostEffectPlan {
     steps: [
       If {
         cond: ExitZero {
-          run: Run { command: "true", env: [], redirect: Absent, capture: Absent }
+          run: Run { command: "true", env: Empty, redirect: Absent, capture: Absent }
         },
         then_: EffectPlan { steps: [], on_failure: FailFast },
         else_: Absent,

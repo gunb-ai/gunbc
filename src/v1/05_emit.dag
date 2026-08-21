@@ -32,7 +32,7 @@ import std.induction { InductiveField, SubValueUnknown }
 
 import v1.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node, is_unit_like, is_declared_container_alias_spelling }
 
-import std.types { is_container_type, container_template_algebra }
+import std.types { is_container_type }
 
 import v1.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix, type_reference_decl_file }
 
@@ -533,7 +533,8 @@ fn emit_bin_op_symbol(op: BinOp, target: RenderTarget, algebra_field: AlgebraFie
   }
 }
 
-fn emit_container(kind: String, inner: String, target: RenderTarget) -> String {
+fn emit_container(name: String, inner: String, target: RenderTarget) -> String {
+  let kind = to_snake(name: name)
   if kind == "optional" {
     apply_type_template1(template: target_optional_template(target: target), arg0: inner)
   } else {
@@ -541,7 +542,7 @@ fn emit_container(kind: String, inner: String, target: RenderTarget) -> String {
       Present { value: template } => apply_type_template1(template: template, arg0: inner)
       Absent =>
         let spec = language_spec(target: target)
-        concat(kind, spec.type_arg_open, inner, spec.type_arg_close)
+        concat(name, spec.type_arg_open, inner, spec.type_arg_close)
     }
   }
 }
@@ -633,7 +634,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
   let is_optional = n.return_cardinality == CardOptional
   if is_optional {
     let inner_str = render_node_type(n: with_required_cardinality(n: n), target: target, shared_types: shared_types, source_indices: source_indices)
-    let opt_str = emit_container(kind: "optional", inner: inner_str, target: target)
+    let opt_str = emit_container(name: "optional", inner: inner_str, target: target)
     return opt_str
   }
 
@@ -675,12 +676,12 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
     }
     if n.ident_span != none {
       let snake = to_snake(name: tn)
-      let has_template = match container_template_algebra(name: snake) { Present { value: _ } => true  Absent => false }
+      let has_template = is_declared_container_alias_spelling(name: tn)
       if has_template {
         let base = if snake == "map" {
           emit_map_type(key_type: "_", val_type: "_", target: target)
         } else {
-          emit_container(kind: snake, inner: "_", target: target)
+          emit_container(name: tn, inner: "_", target: target)
         }
         let conj_container_str = if shared { wrap_shared_type(target: target, inner: base) } else { base }
         return conj_container_str
@@ -699,18 +700,18 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
   if n.children |> count == 0 {
     let bare_is_map = is_container_type(name: tn) && to_snake(name: tn) == "map"
     let bare_is_collection = is_declared_container_alias_spelling(name: tn) && !bare_is_map
-    let has_container_template = match container_template_algebra(name: to_snake(name: tn)) { Present { value: _ } => true  Absent => false }
+    let has_container_template = is_declared_container_alias_spelling(name: tn)
     let param_count = n.params |> count
     let base = if bare_is_map {
       emit_map_type(key_type: "_", val_type: "_", target: target)
     } else if bare_is_collection {
-      emit_container(kind: to_snake(name: tn), inner: "_", target: target)
+      emit_container(name: tn, inner: "_", target: target)
     } else if has_container_template && param_count == 1 {
       let inner = match n.params |> first {
         Present { value: p } => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: shared_types, source_indices: source_indices)
         Absent => "_"
       }
-      emit_container(kind: to_snake(name: tn), inner: inner, target: target)
+      emit_container(name: tn, inner: inner, target: target)
     } else if param_count > 0 {
       let param_strs = n.params |> map(p => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: shared_types, source_indices: source_indices))
       let spec = language_spec(target: target)
@@ -745,7 +746,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
     }
     let is_container = node_is_collection(n: n, source_indices: source_indices)
     let base = if is_container {
-      emit_container(kind: to_snake(name: tn), inner: child_str, target: target)
+      emit_container(name: tn, inner: child_str, target: target)
     } else {
       let type_base = coerce_primitive_type(target: target, dag_name: tn, decl_file: type_reference_decl_file(n: n))
       let spec = language_spec(target: target)
