@@ -945,6 +945,23 @@ fn bmc_fan_tach_health_for_sensor(
   }
 }
 
+// THE ELIMINATION THE HEAD-OF-LIST WALK OWES, for the two required-sensor folds below. Both took
+// `required.first()` -- a `NonEmptyStr?` -- and reached the name with `as String` inside the receipt
+// text they build, which does not eliminate the absence: a caller reaching those arms with an empty
+// roster would have written `required tach health is absent: Present { value: fan0 }` into the
+// converge receipt, the same wrapper leak `gunbc.clock_read` `probed_at_word` was minted for. The
+// compiler now refuses that cast. The Absent word is loud rather than plausible for the reason
+// `probed_at_word` states: a receipt reader scanning a sensor column must not read the failure as a
+// sensor name. It is unreachable in both callers, which refuse an empty roster one line above, and
+// eliminating here additionally stops an OPTIONAL being handed to the `sensor:` parameters below,
+// which are declared `NonEmptyStr`.
+fn bmc_fan_required_head(required: List<NonEmptyStr>) -> NonEmptyStr {
+  match required.first() {
+    Present { value: sensor } => sensor
+    Absent => "required-sensor-roster-empty" as NonEmptyStr
+  }
+}
+
 fn bmc_fan_first_unhealthy_tach(
   health: List<extdeps.bmc.openbmc_fan_control.OpenBmcTachHealth>,
   required: List<std.types.NonEmptyStr>,
@@ -952,7 +969,7 @@ fn bmc_fan_first_unhealthy_tach(
   if required.length() == 0 {
     none
   } else {
-    let tach = required.first()
+    let tach = bmc_fan_required_head(required: required)
     match bmc_fan_tach_health_for_sensor(health: health, sensor: tach) {
       Absent =>
         Present {
@@ -999,7 +1016,7 @@ fn bmc_fan_first_unhealthy_component(
   if required.length() == 0 {
     none
   } else {
-    let sensor = required.first()
+    let sensor = bmc_fan_required_head(required: required)
     match bmc_fan_temperature_for_sensor(
       temperatures: temperatures,
       sensor: sensor,

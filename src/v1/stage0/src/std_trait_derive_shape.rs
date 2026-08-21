@@ -3,9 +3,9 @@
 
 use self::PairCompletionBody::*;
 use self::PairCompletionComponent::*;
+use self::PairCompletionOp::*;
 use self::PairCompletionOperand::*;
 use self::ReprGroundingDeriveElemShape::*;
-use self::ReprGroundingDeriveTrait::*;
 pub use crate::std_algebra::FreeMonoid;
 use crate::std_decl_ref::DeclField::*;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
@@ -26,7 +26,7 @@ use std::rc::Rc;
 pub fn trait_derive_shape_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Target-agnostic authority for ReprGroundingDeriveTrait × ReprGroundingDeriveElemShape capability table and derive-trait list builders. Rust spellings: extdeps.languages.rust.emit. Consumed by v2.compiler.trait_derive_completeness and v1.compiler.trait_derive_emit. #7174 (operator 2026-07-25): v1 emit wires (a) clone bounds on generic params for fn signatures and derive-only generic struct items and (c) serde/Debug/Ord #[derive] on named structs/enums. Root-4 arm (b): predicate-gated supplemental impl { … } blocks for coproduct-native arithmetic carriers — see trait_derive_shape_grounding_lane_handoff; ReprDeriveAdd/Sub/… rows on KernelInt are capability-table authority for repr_grounding_derive_completeness_predicate, not spellings.".to_string()
+            "Target-AGNOSTIC half of the capability model: the ReprGroundingDeriveElemShape source-shape vocabulary and the GENERIC table lookup and completeness predicate, PARAMETERIZED ON THE CAPABILITY CARRIER. THE ROWS ARE NOT HERE and NEITHER IS THE CARRIER. B1 (operator ruling 2026-08-19) replaced the ReprGroundingDeriveTrait coproduct -- sixteen Rust and serde trait names sitting in a std interface -- and moved every Rust-specific row into extdeps.languages.rust.capabilities, so a new target is ROWS in its own extdeps module and never an edit to this fold (DESIGN section 4 N-times-M). WHY THE CARRIER IS A TYPE PARAMETER AND NOT A TYPE, which is the part that was learned the expensive way: an intermediate revision of this migration declared TargetCapabilityKey HERE as Symbol where brand(...), which forced import v2.std.node into this module. required_regen_host compiles stage0 from regen_input_sources, whose roots are HARDCODED to src/v1 and dag (cli_run.rs regen_source_roots) -- src/v2 is not a regen root and never will be, because stage0 IS the v1 seed and a seed that reached into src/v2 would depend on the successor it bootstraps toward. This module is inside that closure: src/v1.compiler.trait_derive_emit and src/v1.compiler.emit_rust both import it. So the import made a closure member depend on a module the closure cannot contain, and required-regen refused BEFORE comparing any bytes. THE INVARIANT, stated so the next person does not rediscover it: A MODULE REACHABLE BY IMPORT FROM src/v1 CANNOT IMPORT v2 ANYTHING. It is closure membership, not seed-projection -- 591 dag/ modules import v2.* quite legally because src/v1 does not reach them. A seed-visible carrier would have satisfied the gate by putting the target-model concept back inside the seed closure, which is the coupling that made the predecessor work by accident; a TYPE PARAMETER removes the dependency instead of relocating it, so this module cannot violate the boundary by construction. There is also no retype target: zero type Symbol declarations exist under src/v1 or dag. Consumed by v2.compiler.trait_derive_completeness at K = TargetCapabilityKey and by v1.compiler.trait_derive_emit at K = RustCapability. NOTHING CAUGHT THIS EXCEPT THE GATE: zero blocking errors on every entry under three source roots, and 9687 of 9687 witnesses green with failed=0 on a self-provenanced floor run. Entry scope is not gate scope, a green floor is not a green regen, and a green regen is not a green corpus -- the three src/v2 consumers of these signatures are outside the regen closure and must be compiled separately.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -41,27 +41,17 @@ pub fn trait_derive_shape_grounding_lane_handoff() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum ReprGroundingDeriveTrait {
-    ReprDeriveDebug,
-    ReprDeriveClone,
-    ReprDeriveCopy,
-    ReprDerivePartialEq,
-    ReprDeriveEq,
-    ReprDerivePartialOrd,
-    ReprDeriveOrd,
-    ReprDeriveHash,
-    ReprDeriveSerialize,
-    ReprDeriveDeserialize,
-    ReprDeriveAdd,
-    ReprDeriveSub,
-    ReprDeriveMul,
-    ReprDeriveDiv,
-    ReprDeriveRem,
-    ReprDeriveNeg,
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TargetCapabilityShapeRow<K: Clone> {
+    pub shape: ReprGroundingDeriveElemShape,
+    pub capabilities: Rc<Vec<K>>,
+    pub _phantom: std::marker::PhantomData<K>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TargetCapabilityShapeTable<K: Clone> {
+    pub rows: Rc<Vec<Rc<TargetCapabilityShapeRow<K>>>>,
+    pub _phantom: std::marker::PhantomData<K>,
 }
 
 #[derive(
@@ -79,401 +69,24 @@ pub enum ReprGroundingDeriveElemShape {
     ReprDeriveElemUnknown,
 }
 
-pub fn repr_grounding_derive_shape_has_trait(
+pub fn repr_grounding_derive_shape_has_trait<K: Clone + PartialEq>(
+    table: Rc<TargetCapabilityShapeTable<K>>,
     shape: ReprGroundingDeriveElemShape,
-    derive_trait: ReprGroundingDeriveTrait,
-) -> bool {
-    match shape.clone() {
-        ReprGroundingDeriveElemShape::ReprDeriveElemKernelString => match derive_trait.clone() {
-            ReprGroundingDeriveTrait::ReprDeriveDebug => true,
-            ReprGroundingDeriveTrait::ReprDeriveClone => true,
-            ReprGroundingDeriveTrait::ReprDerivePartialEq => true,
-            ReprGroundingDeriveTrait::ReprDeriveEq => true,
-            ReprGroundingDeriveTrait::ReprDerivePartialOrd => true,
-            ReprGroundingDeriveTrait::ReprDeriveOrd => true,
-            ReprGroundingDeriveTrait::ReprDeriveHash => true,
-            ReprGroundingDeriveTrait::ReprDeriveSerialize => true,
-            ReprGroundingDeriveTrait::ReprDeriveDeserialize => true,
-            _ => false,
-        },
-        ReprGroundingDeriveElemShape::ReprDeriveElemKernelInt => match derive_trait.clone() {
-            ReprGroundingDeriveTrait::ReprDeriveDebug => true,
-            ReprGroundingDeriveTrait::ReprDeriveClone => true,
-            ReprGroundingDeriveTrait::ReprDeriveCopy => true,
-            ReprGroundingDeriveTrait::ReprDerivePartialEq => true,
-            ReprGroundingDeriveTrait::ReprDeriveEq => true,
-            ReprGroundingDeriveTrait::ReprDerivePartialOrd => true,
-            ReprGroundingDeriveTrait::ReprDeriveOrd => true,
-            ReprGroundingDeriveTrait::ReprDeriveHash => true,
-            ReprGroundingDeriveTrait::ReprDeriveSerialize => true,
-            ReprGroundingDeriveTrait::ReprDeriveDeserialize => true,
-            ReprGroundingDeriveTrait::ReprDeriveAdd => true,
-            ReprGroundingDeriveTrait::ReprDeriveSub => true,
-            ReprGroundingDeriveTrait::ReprDeriveMul => true,
-            ReprGroundingDeriveTrait::ReprDeriveDiv => true,
-            ReprGroundingDeriveTrait::ReprDeriveRem => true,
-            ReprGroundingDeriveTrait::ReprDeriveNeg => true,
-        },
-        ReprGroundingDeriveElemShape::ReprDeriveElemKernelBool => match derive_trait.clone() {
-            ReprGroundingDeriveTrait::ReprDeriveDebug => true,
-            ReprGroundingDeriveTrait::ReprDeriveClone => true,
-            ReprGroundingDeriveTrait::ReprDeriveCopy => true,
-            ReprGroundingDeriveTrait::ReprDerivePartialEq => true,
-            ReprGroundingDeriveTrait::ReprDeriveEq => true,
-            ReprGroundingDeriveTrait::ReprDerivePartialOrd => true,
-            ReprGroundingDeriveTrait::ReprDeriveOrd => true,
-            ReprGroundingDeriveTrait::ReprDeriveHash => true,
-            ReprGroundingDeriveTrait::ReprDeriveSerialize => true,
-            ReprGroundingDeriveTrait::ReprDeriveDeserialize => true,
-            _ => false,
-        },
-        ReprGroundingDeriveElemShape::ReprDeriveElemKernelUnit => match derive_trait.clone() {
-            ReprGroundingDeriveTrait::ReprDeriveDebug => true,
-            ReprGroundingDeriveTrait::ReprDeriveClone => true,
-            ReprGroundingDeriveTrait::ReprDeriveCopy => true,
-            ReprGroundingDeriveTrait::ReprDerivePartialEq => true,
-            ReprGroundingDeriveTrait::ReprDeriveEq => true,
-            ReprGroundingDeriveTrait::ReprDerivePartialOrd => true,
-            ReprGroundingDeriveTrait::ReprDeriveOrd => true,
-            ReprGroundingDeriveTrait::ReprDeriveHash => true,
-            ReprGroundingDeriveTrait::ReprDeriveSerialize => true,
-            ReprGroundingDeriveTrait::ReprDeriveDeserialize => true,
-            _ => false,
-        },
-        ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy => match derive_trait.clone() {
-            ReprGroundingDeriveTrait::ReprDeriveDebug => true,
-            ReprGroundingDeriveTrait::ReprDeriveClone => true,
-            ReprGroundingDeriveTrait::ReprDeriveCopy => true,
-            ReprGroundingDeriveTrait::ReprDerivePartialEq => true,
-            ReprGroundingDeriveTrait::ReprDeriveEq => true,
-            ReprGroundingDeriveTrait::ReprDerivePartialOrd => true,
-            ReprGroundingDeriveTrait::ReprDeriveOrd => true,
-            ReprGroundingDeriveTrait::ReprDeriveHash => true,
-            ReprGroundingDeriveTrait::ReprDeriveSerialize => true,
-            ReprGroundingDeriveTrait::ReprDeriveDeserialize => true,
-            _ => false,
-        },
-        ReprGroundingDeriveElemShape::ReprDeriveElemSymbolWrappedOrdCarrier => {
-            match derive_trait.clone() {
-                ReprGroundingDeriveTrait::ReprDeriveDebug => true,
-                ReprGroundingDeriveTrait::ReprDeriveClone => true,
-                ReprGroundingDeriveTrait::ReprDerivePartialEq => true,
-                ReprGroundingDeriveTrait::ReprDeriveEq => true,
-                ReprGroundingDeriveTrait::ReprDerivePartialOrd => true,
-                ReprGroundingDeriveTrait::ReprDeriveOrd => true,
-                ReprGroundingDeriveTrait::ReprDeriveHash => true,
-                ReprGroundingDeriveTrait::ReprDeriveSerialize => true,
-                ReprGroundingDeriveTrait::ReprDeriveDeserialize => true,
-                _ => false,
-            }
-        }
-        ReprGroundingDeriveElemShape::ReprDeriveElemPayloadCoproduct => {
-            match derive_trait.clone() {
-                ReprGroundingDeriveTrait::ReprDeriveDebug => true,
-                ReprGroundingDeriveTrait::ReprDeriveClone => true,
-                ReprGroundingDeriveTrait::ReprDerivePartialEq => true,
-                ReprGroundingDeriveTrait::ReprDeriveEq => true,
-                ReprGroundingDeriveTrait::ReprDeriveHash => true,
-                ReprGroundingDeriveTrait::ReprDeriveSerialize => true,
-                ReprGroundingDeriveTrait::ReprDeriveDeserialize => true,
-                _ => false,
-            }
-        }
-        ReprGroundingDeriveElemShape::ReprDeriveElemUnknown => false,
-    }
-}
-
-pub fn repr_grounding_derive_completeness_predicate(
-    required: Rc<Vec<ReprGroundingDeriveTrait>>,
-    shape: ReprGroundingDeriveElemShape,
-) -> bool {
-    {
-        let mut __all = true;
-        for dt in required.clone().iter().cloned() {
-            if !(repr_grounding_derive_shape_has_trait(shape.clone(), dt.clone())) {
-                __all = false;
-                break;
-            }
-        }
-        __all
-    }
-}
-
-pub fn record_derive_traits_heap() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
-        let mut __cons_v = (*Rc::new({
-            let mut __cons_v = (*Rc::new({
-                let mut __cons_v = (*Rc::new({
-                    let mut __cons_v = (*Rc::new({
-                        let mut __cons_v = (*Rc::new(vec![])).clone();
-                        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDeserialize);
-                        __cons_v
-                    }))
-                    .clone();
-                    __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveSerialize);
-                    __cons_v
-                }))
-                .clone();
-                __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDerivePartialEq);
-                __cons_v
-            }))
-            .clone();
-            __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveClone);
-            __cons_v
-        }))
-        .clone();
-        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDebug);
-        __cons_v
-    })
-}
-
-pub fn record_derive_traits_copy() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
-        let mut __cons_v = (*Rc::new({
-            let mut __cons_v = (*Rc::new({
-                let mut __cons_v = (*Rc::new({
-                    let mut __cons_v = (*Rc::new({
-                        let mut __cons_v = (*Rc::new({
-                            let mut __cons_v = (*Rc::new(vec![])).clone();
-                            __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDeserialize);
-                            __cons_v
-                        }))
-                        .clone();
-                        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveSerialize);
-                        __cons_v
-                    }))
-                    .clone();
-                    __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDerivePartialEq);
-                    __cons_v
-                }))
-                .clone();
-                __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveCopy);
-                __cons_v
-            }))
-            .clone();
-            __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveClone);
-            __cons_v
-        }))
-        .clone();
-        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDebug);
-        __cons_v
-    })
-}
-
-pub fn nullary_coproduct_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
-        let mut __cons_v = (*Rc::new({
-            let mut __cons_v = (*Rc::new({
-                let mut __cons_v = (*Rc::new({
-                    let mut __cons_v = (*Rc::new({
-                        let mut __cons_v = (*Rc::new({
-                            let mut __cons_v = (*Rc::new({
-                                let mut __cons_v = (*Rc::new({
-                                    let mut __cons_v = (*Rc::new({
-                                        let mut __cons_v = (*Rc::new(vec![])).clone();
-                                        __cons_v.insert(
-                                            0,
-                                            ReprGroundingDeriveTrait::ReprDeriveDeserialize,
-                                        );
-                                        __cons_v
-                                    }))
-                                    .clone();
-                                    __cons_v
-                                        .insert(0, ReprGroundingDeriveTrait::ReprDeriveSerialize);
-                                    __cons_v
-                                }))
-                                .clone();
-                                __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveOrd);
-                                __cons_v
-                            }))
-                            .clone();
-                            __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDerivePartialOrd);
-                            __cons_v
-                        }))
-                        .clone();
-                        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveEq);
-                        __cons_v
-                    }))
-                    .clone();
-                    __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDerivePartialEq);
-                    __cons_v
-                }))
-                .clone();
-                __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveCopy);
-                __cons_v
-            }))
-            .clone();
-            __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveClone);
-            __cons_v
-        }))
-        .clone();
-        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDebug);
-        __cons_v
-    })
-}
-
-pub fn symbol_wrapped_ord_carrier_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
-        let mut __cons_v = (*Rc::new({
-            let mut __cons_v = (*Rc::new({
-                let mut __cons_v = (*Rc::new({
-                    let mut __cons_v = (*Rc::new({
-                        let mut __cons_v = (*Rc::new({
-                            let mut __cons_v = (*Rc::new({
-                                let mut __cons_v = (*Rc::new({
-                                    let mut __cons_v = (*Rc::new(vec![])).clone();
-                                    __cons_v
-                                        .insert(0, ReprGroundingDeriveTrait::ReprDeriveDeserialize);
-                                    __cons_v
-                                }))
-                                .clone();
-                                __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveSerialize);
-                                __cons_v
-                            }))
-                            .clone();
-                            __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveOrd);
-                            __cons_v
-                        }))
-                        .clone();
-                        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDerivePartialOrd);
-                        __cons_v
-                    }))
-                    .clone();
-                    __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveEq);
-                    __cons_v
-                }))
-                .clone();
-                __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDerivePartialEq);
-                __cons_v
-            }))
-            .clone();
-            __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveClone);
-            __cons_v
-        }))
-        .clone();
-        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDebug);
-        __cons_v
-    })
-}
-
-pub fn fn_field_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
-        let mut __cons_v = (*Rc::new(vec![])).clone();
-        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveClone);
-        __cons_v
-    })
-}
-
-pub fn payload_coproduct_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
-        let mut __cons_v = (*Rc::new({
-            let mut __cons_v = (*Rc::new({
-                let mut __cons_v = (*Rc::new({
-                    let mut __cons_v = (*Rc::new({
-                        let mut __cons_v = (*Rc::new(vec![])).clone();
-                        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDeserialize);
-                        __cons_v
-                    }))
-                    .clone();
-                    __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveSerialize);
-                    __cons_v
-                }))
-                .clone();
-                __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDerivePartialEq);
-                __cons_v
-            }))
-            .clone();
-            __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveClone);
-            __cons_v
-        }))
-        .clone();
-        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDebug);
-        __cons_v
-    })
-}
-
-pub fn phantom_opaque_carrier_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
-        let mut __cons_v = (*Rc::new({
-            let mut __cons_v = (*Rc::new({
-                let mut __cons_v = (*Rc::new({
-                    let mut __cons_v = (*Rc::new({
-                        let mut __cons_v = (*Rc::new({
-                            let mut __cons_v = (*Rc::new({
-                                let mut __cons_v = (*Rc::new(vec![])).clone();
-                                __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDeserialize);
-                                __cons_v
-                            }))
-                            .clone();
-                            __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveSerialize);
-                            __cons_v
-                        }))
-                        .clone();
-                        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveEq);
-                        __cons_v
-                    }))
-                    .clone();
-                    __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDerivePartialEq);
-                    __cons_v
-                }))
-                .clone();
-                __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveCopy);
-                __cons_v
-            }))
-            .clone();
-            __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveClone);
-            __cons_v
-        }))
-        .clone();
-        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDebug);
-        __cons_v
-    })
-}
-
-pub fn map_key_required_derive_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
-        let mut __cons_v = (*Rc::new({
-            let mut __cons_v = (*Rc::new(vec![])).clone();
-            __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveHash);
-            __cons_v
-        }))
-        .clone();
-        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveEq);
-        __cons_v
-    })
-}
-
-pub fn repr_grounding_derive_trait_rank(derive_trait: ReprGroundingDeriveTrait) -> i64 {
-    match derive_trait.clone() {
-        ReprGroundingDeriveTrait::ReprDeriveDebug => 0,
-        ReprGroundingDeriveTrait::ReprDeriveClone => 1,
-        ReprGroundingDeriveTrait::ReprDeriveCopy => 2,
-        ReprGroundingDeriveTrait::ReprDerivePartialEq => 3,
-        ReprGroundingDeriveTrait::ReprDeriveEq => 4,
-        ReprGroundingDeriveTrait::ReprDerivePartialOrd => 5,
-        ReprGroundingDeriveTrait::ReprDeriveOrd => 6,
-        ReprGroundingDeriveTrait::ReprDeriveHash => 7,
-        ReprGroundingDeriveTrait::ReprDeriveSerialize => 8,
-        ReprGroundingDeriveTrait::ReprDeriveDeserialize => 9,
-        ReprGroundingDeriveTrait::ReprDeriveAdd => 10,
-        ReprGroundingDeriveTrait::ReprDeriveSub => 11,
-        ReprGroundingDeriveTrait::ReprDeriveMul => 12,
-        ReprGroundingDeriveTrait::ReprDeriveDiv => 13,
-        ReprGroundingDeriveTrait::ReprDeriveRem => 14,
-        ReprGroundingDeriveTrait::ReprDeriveNeg => 15,
-    }
-}
-
-pub fn derive_traits_contain(
-    traits: Rc<Vec<ReprGroundingDeriveTrait>>,
-    derive_trait: ReprGroundingDeriveTrait,
+    capability_key: K,
 ) -> bool {
     {
         let mut __found = false;
-        for t in traits.clone().iter().cloned() {
-            if (repr_grounding_derive_trait_rank(t.clone())
-                == repr_grounding_derive_trait_rank(derive_trait.clone()))
-            {
+        for row in table.rows.clone().iter().cloned() {
+            if ((row.shape.clone() == shape.clone()) && {
+                let mut __found = false;
+                for k in row.capabilities.clone().iter().cloned() {
+                    if (k.clone() == capability_key.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }) {
                 __found = true;
                 break;
             }
@@ -482,70 +95,27 @@ pub fn derive_traits_contain(
     }
 }
 
-pub fn derive_traits_union(
-    base: Rc<Vec<ReprGroundingDeriveTrait>>,
-    extra: Rc<Vec<ReprGroundingDeriveTrait>>,
-) -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    extra.clone().iter().cloned().fold(
-        base.clone(),
-        |acc: Rc<Vec<ReprGroundingDeriveTrait>>, t: ReprGroundingDeriveTrait| {
-            if derive_traits_contain(acc.clone(), t.clone()) {
-                acc.clone()
-            } else {
-                v1_rt::concat(acc.clone(), Rc::new(vec![t.clone()]))
+pub fn repr_grounding_derive_completeness_predicate<K: Clone + PartialEq>(
+    table: Rc<TargetCapabilityShapeTable<K>>,
+    required: Rc<Vec<K>>,
+    shape: ReprGroundingDeriveElemShape,
+) -> bool {
+    {
+        let mut __all = true;
+        for k in required.clone().iter().cloned() {
+            if !(repr_grounding_derive_shape_has_trait(table.clone(), shape.clone(), k.clone())) {
+                __all = false;
+                break;
             }
-        },
-    )
-}
-
-pub fn kernel_int_arithmetic_traits() -> Rc<Vec<ReprGroundingDeriveTrait>> {
-    Rc::new({
-        let mut __cons_v = (*Rc::new({
-            let mut __cons_v = (*Rc::new({
-                let mut __cons_v = (*Rc::new({
-                    let mut __cons_v = (*Rc::new({
-                        let mut __cons_v = (*Rc::new({
-                            let mut __cons_v = (*Rc::new({
-                                let mut __cons_v = (*Rc::new({
-                                    let mut __cons_v = (*Rc::new(vec![])).clone();
-                                    __cons_v
-                                        .insert(0, ReprGroundingDeriveTrait::ReprDerivePartialOrd);
-                                    __cons_v
-                                }))
-                                .clone();
-                                __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDerivePartialEq);
-                                __cons_v
-                            }))
-                            .clone();
-                            __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveNeg);
-                            __cons_v
-                        }))
-                        .clone();
-                        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveRem);
-                        __cons_v
-                    }))
-                    .clone();
-                    __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveDiv);
-                    __cons_v
-                }))
-                .clone();
-                __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveMul);
-                __cons_v
-            }))
-            .clone();
-            __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveSub);
-            __cons_v
-        }))
-        .clone();
-        __cons_v.insert(0, ReprGroundingDeriveTrait::ReprDeriveAdd);
-        __cons_v
-    })
+        }
+        __all
+    }
 }
 
 pub fn pair_completion_shape_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Target-agnostic authority for the Grothendieck pair-completion operator BODIES on GroupCompletion<M> (std.algebra). Each output component is a polynomial over the four operand components self.pos, self.neg, rhs.pos, rhs.neg: an arm is a sum of terms, a term is a product of factors, a factor names one operand component. Selection (which traits apply) stays in the capability table above; SPELLING (trait paths, where-clauses, field syntax) lives per target in extdeps.languages.rust.emit. Reuses ReprGroundingDeriveTrait as the op key rather than minting a parallel operator enum.".to_string()
+            "Target-agnostic authority for the Grothendieck pair-completion operator BODIES on GroupCompletion<M> (std.algebra). Each output component is a polynomial over the four operand components self.pos, self.neg, rhs.pos, rhs.neg: an arm is a sum of terms, a term is a product of factors, a factor names one operand component. Selection (which traits apply) stays in the capability table above; SPELLING (trait paths, where-clauses, field syntax) lives per target in extdeps.languages.rust.emit. PairCompletionOp IS A DELIBERATE MINT AND THE PREDECESSOR NOTE DECLINED TO MAKE IT, so the reversal is recorded rather than left as drift: that note said it reused ReprGroundingDeriveTrait as the op key RATHER THAN MINTING A PARALLEL OPERATOR ENUM, which was right while one key set was visible to both this module and its consumers. It no longer is -- the capability carrier is now a type parameter here and a branded Symbol in v2, and neither can be named from inside the src/v1 regen closure that contains this module. The alternative was to parameterize these rows too, which is impossible: a generic K cannot be CONSTRUCTED, and pair_completion_op_rows constructs its keys. So the choice was mint or move the Grothendieck arithmetic into a target module, and moving it would be the section 3 violation. What is minted is also genuinely smaller and different: five algebraic operators, not sixteen target capabilities, and the mapping between them is the target's business -- extdeps.languages.rust.emit joins on this operator identity.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -612,9 +182,21 @@ impl PairCompletionBody {
     }
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum PairCompletionOp {
+    PairCompletionOpNeg,
+    PairCompletionOpAdd,
+    PairCompletionOpSub,
+    PairCompletionOpMul,
+    PairCompletionOpDiv,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PairCompletionOpRow {
-    pub op: ReprGroundingDeriveTrait,
+    pub op: PairCompletionOp,
     pub body: Rc<PairCompletionBody>,
 }
 
@@ -631,7 +213,7 @@ pub fn pair_completion_factor(
 pub fn pair_completion_op_rows() -> Rc<Vec<Rc<PairCompletionOpRow>>> {
     Rc::new(vec![
         Rc::new(PairCompletionOpRow {
-            op: ReprGroundingDeriveTrait::ReprDeriveNeg,
+            op: PairCompletionOp::PairCompletionOpNeg,
             body: Rc::new(PairCompletionBody::PairCompletionSumOfProducts {
                 pos: Rc::new(PairCompletionArm {
                     terms: Rc::new(vec![Rc::new(PairCompletionTerm {
@@ -652,7 +234,7 @@ pub fn pair_completion_op_rows() -> Rc<Vec<Rc<PairCompletionOpRow>>> {
             }),
         }),
         Rc::new(PairCompletionOpRow {
-            op: ReprGroundingDeriveTrait::ReprDeriveAdd,
+            op: PairCompletionOp::PairCompletionOpAdd,
             body: Rc::new(PairCompletionBody::PairCompletionSumOfProducts {
                 pos: Rc::new(PairCompletionArm {
                     terms: Rc::new(vec![
@@ -689,11 +271,11 @@ pub fn pair_completion_op_rows() -> Rc<Vec<Rc<PairCompletionOpRow>>> {
             }),
         }),
         Rc::new(PairCompletionOpRow {
-            op: ReprGroundingDeriveTrait::ReprDeriveSub,
+            op: PairCompletionOp::PairCompletionOpSub,
             body: Rc::new(PairCompletionBody::PairCompletionNegatedAddend),
         }),
         Rc::new(PairCompletionOpRow {
-            op: ReprGroundingDeriveTrait::ReprDeriveMul,
+            op: PairCompletionOp::PairCompletionOpMul,
             body: Rc::new(PairCompletionBody::PairCompletionSumOfProducts {
                 pos: Rc::new(PairCompletionArm {
                     terms: Rc::new(vec![
@@ -754,7 +336,7 @@ pub fn pair_completion_op_rows() -> Rc<Vec<Rc<PairCompletionOpRow>>> {
             }),
         }),
         Rc::new(PairCompletionOpRow {
-            op: ReprGroundingDeriveTrait::ReprDeriveDiv,
+            op: PairCompletionOp::PairCompletionOpDiv,
             body: Rc::new(PairCompletionBody::PairCompletionCanonicalQuotient),
         }),
     ])
@@ -871,44 +453,12 @@ pub fn repr_grounding_group_completion_carrier_dissolve_on() -> Rc<DissolutionCo
 pub fn trait_derive_shape_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            unbound_dissolution("ReprGroundingDeriveTrait members that name Rust-specific authorities (ReprDeriveSerialize, ReprDeriveAdd, …) migrate beside each target's spelling table when a second consumer exists; until then capability roles stay in std/ with spellings in extdeps.languages.rust.emit.".to_string())
+            unbound_dissolution("DISCHARGED BY B1, and recorded rather than deleted because the superseded wording named a type that no longer exists and would misread as pending. It read: ReprGroundingDeriveTrait members that name Rust-specific authorities migrate beside each target's spelling table when a second consumer exists. That migration is done -- the alphabet is re-homed as RustCapability in extdeps.languages.rust.capabilities, and it did NOT wait for a second consumer, because the parameterized shape table (TargetCapabilityShapeTable<K>) removed std's dependency on any carrier instead of relocating it. WHAT REMAINS OWED HERE is a different, smaller fact and is stated so it is not mistaken for the discharged one: this module still names the SOURCE-SHAPE vocabulary (ReprGroundingDeriveElemShape) as a closed coproduct authored by hand, which dissolves when element shape is derived from the declared type's own structure rather than classified by a seed-side match -- the same terminal as pair_completion_shape_dissolve_on.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ReprDeriveDebug;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ReprDeriveClone;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ReprDeriveCopy;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ReprDerivePartialEq;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ReprDeriveEq;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ReprDerivePartialOrd;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ReprDeriveOrd;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ReprDeriveHash;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ReprDeriveSerialize;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ReprDeriveDeserialize;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ReprDeriveAdd;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ReprDeriveSub;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ReprDeriveMul;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ReprDeriveDiv;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ReprDeriveRem;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ReprDeriveNeg;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReprDeriveElemKernelString;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -933,3 +483,13 @@ pub struct PairCompletionRhs;
 pub struct PairCompletionPos;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PairCompletionNeg;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PairCompletionOpNeg;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PairCompletionOpAdd;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PairCompletionOpSub;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PairCompletionOpMul;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PairCompletionOpDiv;

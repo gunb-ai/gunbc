@@ -41,10 +41,6 @@ test fn argv_with_bin_on_empty_args_is_just_bin_path() -> Bool {
   srv3_argv_with_bin(bin_path: "/usr/bin/apt-get", args: []) == ["/usr/bin/apt-get"]
 }
 
-test fn actuator_toolchain_chown_args_shapes_nonroot_chown() -> Bool {
-  srv3_actuator_toolchain_chown_args(owner: "1000:1000", path: "/opt/gunbc") ==
-    ["-n", "/usr/bin/chown", "1000:1000", "/opt/gunbc"]
-}
 
 test fn posix_command_v_check_argv_shapes_a_command_v_invocation() -> Bool {
   posix_command_v_check_argv(command: "curl" as std.types.NonEmptyStr) ==

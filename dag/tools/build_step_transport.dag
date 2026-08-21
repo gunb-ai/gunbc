@@ -28,8 +28,8 @@ fn claim_executor_path(root: String) -> String {
 fn make_probe_executable(path: String) -> Bool {
   let chmod = gunbc.WitnessBin.Run(
     workdir: "/",
-    bin_path: "/bin/chmod",
-    args: ["+x", path],
+    bin_path: chmod_binary_path as String,
+    args: chmod_add_executable_args(path: path),
     expect: ExpectSuccess,
   )
   chmod.success

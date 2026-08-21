@@ -1,5 +1,6 @@
 module gunbc.witness_floor_workflow
 
+
 // THE ONLY CI EMISSION THIS REPOSITORY HAS.
 //
 // Authored fresh on 2026-08-15 as re-add #1 after the CI wipe, deliberately NOT by reviving
@@ -368,22 +369,22 @@ fn witness_floor_bound_steps() -> std.types.List<WitnessFloorBoundStep> {
   [
     WitnessFloorBoundStep {
       step: witness_floor_checkout_step(),
-      role: gunbc.workflow_capability_closure.CapabilityNeutral,
+      role: capability_neutral,
       step_name: "Checkout",
     },
     WitnessFloorBoundStep {
       step: witness_floor_toolchain_step(),
-      role: gunbc.workflow_capability_closure.ProvidesCapability { capability: gunbc.roadmap_execution_contract.CargoCapability },
+      role: provides_only(capabilities: [CargoCapability]),
       step_name: "Install Rust toolchain",
     },
     WitnessFloorBoundStep {
       step: witness_floor_build_step(),
-      role: gunbc.workflow_capability_closure.ConsumesCapability { capability: gunbc.roadmap_execution_contract.CargoCapability },
+      role: consumes_only(capabilities: [CargoCapability]),
       step_name: "Build the witness fold",
     },
     WitnessFloorBoundStep {
       step: witness_floor_run_step(),
-      role: gunbc.workflow_capability_closure.CapabilityNeutral,
+      role: capability_neutral,
       step_name: "All witnesses (one prepared subject, one fold)",
     },
   ]

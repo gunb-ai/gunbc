@@ -1,0 +1,96 @@
+module extdeps.posix.identity
+
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/basedefs/sys_types.h.html"
+  }
+}
+
+// POSIX OWNS THESE TYPES; `id(1)` MERELY PRINTS THEM. extdeps.tools.id is the coreutils tool that
+// reports a uid and a gid, and this module is the standard those values belong to -- a separate
+// upstream with its own governance, per the external-upstream decomposition rule. A uid observed
+// through `id -u` and a uid read from a passwd row are the same concept, and only one of them is
+// about coreutils.
+//
+// uid_t and gid_t are integer types in POSIX. They are modeled as Int here rather than as the
+// decimal text a probe happens to print, which is the whole point of the module: the corpus was
+// carrying `uid + ":" + gid` as a String composed from two raw stdout captures, so an `id` that
+// printed a warning banner, an empty line, or nothing at all still produced a syntactically
+// plausible owner argument for a privileged chown. There was no state in which that could be
+// noticed -- the concatenation always succeeds.
+
+// NOT A SECOND SPELLING OF extdeps.access.posix_effective_principal. That module models the
+// effective principal's NAME as whoami(1) reports it -- an opaque NonEmptyStr, deliberately not a
+// number. These are the numeric ids, which is what chown's owner argument takes and what a name
+// cannot be substituted for. Same subject, two facts POSIX itself keeps apart (getpwnam maps one
+// to the other, and nothing here pretends that mapping is free).
+type PosixUserId { value: Int }
+
+type PosixGroupId { value: Int }
+
+// The owner argument chown(1) takes is a PAIR, and this is the only place its ":" separator is
+// spelled. Composing it at each call site is the same fact written twice.
+type PosixOwnerSpec {
+  user: PosixUserId
+  group: PosixGroupId
+}
+
+// DECODING IS PARTIAL AND SAYS SO. Text that is not a decimal integer yields v2.std.optional.Absent, so a caller
+// must answer for it; the previous shape made "1000", "" and "id: cannot find name for user ID"
+// equally acceptable owners.
+// EMPTY AND NEGATIVE ARE REFUSED HERE RATHER THAN DELEGATED. Measured, not assumed: a witness
+// asserting that empty text does not decode came back FALSE, because integer_lexeme_to_int_optional
+// answers v2.std.optional.Present { value: 0 } for "". Zero is uid 0 -- root -- so an `id` that printed nothing
+// would have decoded to the most privileged principal on the host and been chowned to. The
+// predecessor's String concatenation had the same hole from the other direction (an empty capture
+// produced the owner ":1000"); decoding does not remove a fabrication unless the decoder's own
+// empty case is answered.
+//
+// POSIX ids are non-negative, so a negative lexeme is refused for the same reason: it decodes
+// cleanly and means nothing.
+fn posix_id_value_from_text(text: String) -> v2.std.optional.Optional<Int> {
+  let lexeme = trim(s: text)
+  match lexeme == "" {
+    true => v2.std.optional.Absent
+    false =>
+      match integer_lexeme_to_int_optional(lexeme: lexeme) {
+        Absent => v2.std.optional.Absent
+        Present { value: n } =>
+          match n < 0 {
+            true => v2.std.optional.Absent
+            false => v2.std.optional.Present { value: n }
+          }
+      }
+  }
+}
+
+fn posix_user_id_from_text(text: String) -> v2.std.optional.Optional<PosixUserId> {
+  match posix_id_value_from_text(text: text) {
+    Absent => v2.std.optional.Absent
+    Present { value: n } => v2.std.optional.Present { value: PosixUserId { value: n } }
+  }
+}
+
+fn posix_group_id_from_text(text: String) -> v2.std.optional.Optional<PosixGroupId> {
+  match posix_id_value_from_text(text: text) {
+    Absent => v2.std.optional.Absent
+    Present { value: n } => v2.std.optional.Present { value: PosixGroupId { value: n } }
+  }
+}
+
+fn posix_user_id_text(user: PosixUserId) -> String {
+  integer_nat_to_decimal_string(value: user.value)
+}
+
+fn posix_group_id_text(group: PosixGroupId) -> String {
+  integer_nat_to_decimal_string(value: group.value)
+}
+
+fn posix_owner_spec_text(spec: PosixOwnerSpec) -> String {
+  concat(
+    posix_user_id_text(user: spec.user),
+    concat(":", posix_group_id_text(group: spec.group)),
+  )
+}

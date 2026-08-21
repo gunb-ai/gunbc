@@ -139,26 +139,26 @@ fn tdc_coproduct_binding_rejected(coproduct: v2.std.node.Node) -> v2.std.logic.B
 }
 
 test fn tdc_string_kernel_satisfies_clone_ord_serde_not_add() -> v2.std.logic.Bool {
-  repr_grounding_derive_trait_satisfied(derive_trait: std.trait_derive_shape.ReprDeriveClone, elem: symbol_kernel_type_node())
-    && repr_grounding_derive_trait_satisfied(derive_trait: std.trait_derive_shape.ReprDeriveOrd, elem: symbol_kernel_type_node())
-    && repr_grounding_derive_trait_satisfied(derive_trait: std.trait_derive_shape.ReprDeriveSerialize, elem: symbol_kernel_type_node())
-    && repr_grounding_derive_trait_satisfied(derive_trait: std.trait_derive_shape.ReprDeriveAdd, elem: symbol_kernel_type_node()) == false
+  repr_grounding_derive_trait_satisfied(derive_trait: RustClone, elem: symbol_kernel_type_node())
+    && repr_grounding_derive_trait_satisfied(derive_trait: RustOrd, elem: symbol_kernel_type_node())
+    && repr_grounding_derive_trait_satisfied(derive_trait: RustSerialize, elem: symbol_kernel_type_node())
+    && repr_grounding_derive_trait_satisfied(derive_trait: RustAdd, elem: symbol_kernel_type_node()) == false
 }
 
 test fn tdc_int_kernel_satisfies_arith_and_ord() -> v2.std.logic.Bool {
-  repr_grounding_derive_trait_satisfied(derive_trait: std.trait_derive_shape.ReprDeriveAdd, elem: trait_derive_int_kernel_type_node())
-    && repr_grounding_derive_trait_satisfied(derive_trait: std.trait_derive_shape.ReprDeriveOrd, elem: trait_derive_int_kernel_type_node())
+  repr_grounding_derive_trait_satisfied(derive_trait: RustAdd, elem: trait_derive_int_kernel_type_node())
+    && repr_grounding_derive_trait_satisfied(derive_trait: RustOrd, elem: trait_derive_int_kernel_type_node())
     && repr_grounding_derive_completeness_predicate_for_elem(
-      required: std.algebra.Cons {
-        head: std.trait_derive_shape.ReprDeriveAdd,
-        tail: std.algebra.Cons { head: std.trait_derive_shape.ReprDeriveClone, tail: std.algebra.Cons { head: std.trait_derive_shape.ReprDeriveSerialize, tail: std.algebra.Empty } }
+      required: Cons {
+        head: RustAdd,
+        tail: Cons { head: RustClone, tail: Cons { head: RustSerialize, tail: Empty } }
       },
       elem: trait_derive_int_kernel_type_node()
     )
 }
 
 test fn tdc_unknown_atom_refuses_ord_completeness() -> v2.std.logic.Bool {
-  repr_grounding_derive_trait_satisfied(derive_trait: std.trait_derive_shape.ReprDeriveOrd, elem: tdc_unknown_atom_node()) == false
+  repr_grounding_derive_trait_satisfied(derive_trait: RustOrd, elem: tdc_unknown_atom_node()) == false
     && tdc_elem_shape_is_unknown(elem: tdc_unknown_atom_node())
     && tdc_collection_requirement_gate_is_incomplete(
       requirement: v2.std.compilers.target_model.TargetCapabilityRequirement {
@@ -188,9 +188,10 @@ test fn tdc_unknown_capability_refuses_rather_than_defaulting() -> v2.std.logic.
 
 test fn tdc_payload_coproduct_shape_and_predicate() -> v2.std.logic.Bool {
   tdc_elem_shape_is_payload_coproduct(elem: tdc_payload_enum_node())
-    && std.trait_derive_shape.repr_grounding_derive_completeness_predicate(
-      std.trait_derive_shape.payload_coproduct_derive_traits(),
-      std.trait_derive_shape.ReprDeriveElemPayloadCoproduct
+    && repr_grounding_derive_completeness_predicate(
+      rust_capability_shape_table(),
+      payload_coproduct_derive_traits(),
+      ReprDeriveElemPayloadCoproduct
     )
     && tdc_binding_is(
       binding: tdc_coproduct_binding_accepted(coproduct: tdc_payload_enum_node()),

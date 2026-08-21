@@ -1,0 +1,148 @@
+module test.claim.srv3_path_ownership_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THESE WITNESS. The predecessor returned Holds or Fails straight from an elevated chown's
+// process result, so "the chown exited zero" and "the directory is owned by us" were one claim.
+// The interesting logic is now pure -- observe, decide, mutate, read back, and let the SECOND
+// observation decide -- so all of it is decidable here without a host.
+
+fn owner(uid: Int, gid: Int) -> PosixOwnerSpec {
+  PosixOwnerSpec { user: PosixUserId { value: uid }, group: PosixGroupId { value: gid } }
+}
+
+test fn owners_are_equal_only_when_both_ids_match() -> Bool {
+  posix_owner_spec_equal(left: owner(uid: 1000, gid: 1000), right: owner(uid: 1000, gid: 1000)) &&
+    posix_owner_spec_equal(left: owner(uid: 1000, gid: 1000), right: owner(uid: 1000, gid: 20)) == false &&
+    posix_owner_spec_equal(left: owner(uid: 0, gid: 1000), right: owner(uid: 1000, gid: 1000)) == false
+}
+
+// SKIPPING AN UNNECESSARY CHOWN IS A SAFETY PROPERTY. On a converge that has already run, the
+// mutation this arm declines is the ONLY privileged invocation the stage would have made.
+test fn a_path_already_owned_requires_no_mutation() -> Bool {
+  match path_ownership_decision(
+    desired: owner(uid: 1000, gid: 1000),
+    observed: PathOwnerObserved { owner: owner(uid: 1000, gid: 1000) },
+  ) {
+    OwnershipMutationRequired { current: _, desired: _ } => false
+    OwnershipDecisionRefused { reason: _ } => false
+    OwnershipAlreadySatisfied { owner: o } => posix_owner_spec_equal(left: o, right: owner(uid: 1000, gid: 1000))
+  }
+}
+
+test fn a_differently_owned_path_requires_a_mutation() -> Bool {
+  match path_ownership_decision(
+    desired: owner(uid: 1000, gid: 1000),
+    observed: PathOwnerObserved { owner: owner(uid: 0, gid: 0) },
+  ) {
+    OwnershipAlreadySatisfied { owner: _ } => false
+    OwnershipDecisionRefused { reason: _ } => false
+    OwnershipMutationRequired { current: c, desired: d } =>
+      posix_owner_spec_equal(left: c, right: owner(uid: 0, gid: 0)) &&
+        posix_owner_spec_equal(left: d, right: owner(uid: 1000, gid: 1000))
+  }
+}
+
+// AN UNOBSERVED OWNER IS NOT AN UNOWNED PATH. `stat` refusing and `stat` reporting a different
+// owner demand opposite actuations; reading the first as the second would chown a host that was
+// never asked -- the empty-observation narrow pointed at a privileged mutation.
+test fn an_unobservable_current_owner_authorizes_no_chown() -> Bool {
+  match path_ownership_decision(
+    desired: owner(uid: 1000, gid: 1000),
+    observed: PathOwnerUnobserved { reason: "ssh refused" },
+  ) {
+    OwnershipAlreadySatisfied { owner: _ } => false
+    OwnershipMutationRequired { current: _, desired: _ } => false
+    OwnershipDecisionRefused { reason: why } => string_contains(s: why, pattern: "ssh refused")
+  }
+}
+
+// THE CENTRAL RED. The chown reported no error and the path is owned by someone else -- which the
+// predecessor reported as convergence, because the process result was the whole answer.
+test fn a_readback_showing_a_different_owner_refuses() -> Bool {
+  match path_ownership_verdict(
+    desired: owner(uid: 1000, gid: 1000),
+    attempt: ChownReportedSuccess,
+    readback: PathOwnerObserved { owner: owner(uid: 0, gid: 0) },
+  ) {
+    PathAlreadyOwned { owner: _ } => false
+    PathOwnershipConvergedAfterAttempt { owner: _, attempt: _ } => false
+    PathOwnershipEnsureRefused { reason: why } =>
+      string_contains(s: why, pattern: "0:0") && string_contains(s: why, pattern: "1000:1000")
+  }
+}
+
+// A chown whose readback cannot be taken has not converged either. "I could not look" is not
+// "it worked".
+test fn an_unreadable_readback_refuses() -> Bool {
+  match path_ownership_verdict(
+    desired: owner(uid: 1000, gid: 1000),
+    attempt: ChownReportedSuccess,
+    readback: PathOwnerUnobserved { reason: "stat: No such file or directory" },
+  ) {
+    PathAlreadyOwned { owner: _ } => false
+    PathOwnershipConvergedAfterAttempt { owner: _, attempt: _ } => false
+    PathOwnershipEnsureRefused { reason: why } => string_contains(s: why, pattern: "No such file")
+  }
+}
+
+// THE POSITIVE CONTROL, without which every refusal above is satisfied by a function that refuses
+// unconditionally.
+test fn a_readback_showing_the_desired_owner_converges() -> Bool {
+  match path_ownership_verdict(
+    desired: owner(uid: 1000, gid: 1000),
+    attempt: ChownReportedSuccess,
+    readback: PathOwnerObserved { owner: owner(uid: 1000, gid: 1000) },
+  ) {
+    PathAlreadyOwned { owner: _ } => false
+    PathOwnershipEnsureRefused { reason: _ } => false
+    PathOwnershipConvergedAfterAttempt { owner: o, attempt: _ } =>
+      posix_owner_spec_equal(left: o, right: owner(uid: 1000, gid: 1000))
+  }
+}
+
+// THE THIRD ROW OF THE MATRIX, and the one that shows why the outcome is not named "Changed".
+// A chown that REPORTED FAILURE followed by a readback showing the desired owner establishes that
+// the desired state now exists. It does NOT establish that our mutation produced it -- a
+// concurrent actor may have, or the utility may have acted partially before returning nonzero.
+// So the state verdict converges, and the receipt keeps the reported failure rather than laundering
+// it into a success (side-chat review of #8760).
+test fn a_failed_chown_with_a_desired_readback_converges_but_keeps_the_failure() -> Bool {
+  match path_ownership_verdict(
+    desired: owner(uid: 1000, gid: 1000),
+    attempt: ChownReportedFailure,
+    readback: PathOwnerObserved { owner: owner(uid: 1000, gid: 1000) },
+  ) {
+    PathAlreadyOwned { owner: _ } => false
+    PathOwnershipEnsureRefused { reason: _ } => false
+    PathOwnershipConvergedAfterAttempt { owner: o, attempt: a } =>
+      posix_owner_spec_equal(left: o, right: owner(uid: 1000, gid: 1000)) &&
+        match a {
+          ChownReportedFailure => true
+          ChownReportedSuccess => false
+          ChownNotDispatched { cause: _ } => false
+        }
+  }
+}
+
+// THE REFUSAL NAMES WHAT THE ACTUATOR REPORTED, because that is the cause an operator looks for
+// next. An earlier revision's mismatch message asserted "the chown reported no error" while the
+// caller routed BOTH reported success and reported failure into it -- a diagnostic that was simply
+// false half the time it fired.
+test fn a_mismatch_refusal_names_what_the_chown_reported() -> Bool {
+  match path_ownership_verdict(
+    desired: owner(uid: 1000, gid: 1000),
+    attempt: ChownReportedFailure,
+    readback: PathOwnerObserved { owner: owner(uid: 0, gid: 0) },
+  ) {
+    PathAlreadyOwned { owner: _ } => false
+    PathOwnershipConvergedAfterAttempt { owner: _, attempt: _ } => false
+    PathOwnershipEnsureRefused { reason: why } => string_contains(s: why, pattern: "reported failure")
+  }
+}
+
+test fn stat_argv_asks_for_one_numeric_field_each() -> Bool {
+  stat_owner_user_argv(path: "/opt/gunbc/bin") == ["/usr/bin/stat", "-c", "%u", "/opt/gunbc/bin"] &&
+    stat_owner_group_argv(path: "/opt/gunbc/bin") == ["/usr/bin/stat", "-c", "%g", "/opt/gunbc/bin"]
+}

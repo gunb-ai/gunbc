@@ -322,10 +322,17 @@ type FleetOpenSshTrustPolicy sole_constructor {
   anchor: KnownHostsAnchor
 }
 
+// fleet_ssh_execution_context_of IS ON THIS LIST BECAUSE THE COMPILER NOW ASKS. Until the
+// same-module admission hole was closed, a caller in this module was admitted whatever the list
+// said, so this seal's list described two callers while three existed. The third is the sibling
+// route immediately below -- it holds the anchor already and would have to re-derive it through
+// fleet_openssh_trust_policy_of, producing a nested Optional, to reach the policy any other way.
+// Adding it records a caller that was always there rather than granting a new one.
 fn fleet_openssh_trust_policy_seal(anchor: KnownHostsAnchor) -> FleetOpenSshTrustPolicy
   admit_callers: [
-    std.decl_ref.decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_openssh_trust_policy_of"),
-    std.decl_ref.decl_ref(module_path: "test.claim.typed_remote_file_write_fleet_ssh_fixture", decl_name: "fleet_openssh_trust_policy_hermetic_witness_fixture"),
+    decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_openssh_trust_policy_of"),
+    decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_ssh_execution_context_of"),
+    decl_ref(module_path: "test.claim.typed_remote_file_write_fleet_ssh_fixture", decl_name: "fleet_openssh_trust_policy_hermetic_witness_fixture"),
   ]
   = FleetOpenSshTrustPolicy { anchor: anchor }
 

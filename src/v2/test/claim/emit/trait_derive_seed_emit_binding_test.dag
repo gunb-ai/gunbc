@@ -1,11 +1,14 @@
 module v2.test.emit.trait_derive_seed_emit_binding_test
 
+
+
 data trait_derive_seed_emit_binding_note: String = "Layer-boundary mock: std.trait_derive_shape trait lists + supplemental target predicates → extdeps.languages.rust.emit spellings (same authorities v1.compiler.trait_derive_emit composes for seed emit; v1 module not importable from v2 claim closure)."
 
 test fn nullary_coproduct_predicate_satisfied() -> v2.std.logic.Bool {
-  std.trait_derive_shape.repr_grounding_derive_completeness_predicate(
-    std.trait_derive_shape.nullary_coproduct_derive_traits(),
-    std.trait_derive_shape.ReprDeriveElemNullaryEnumCopy
+  repr_grounding_derive_completeness_predicate(
+    rust_capability_shape_table(),
+    nullary_coproduct_derive_traits(),
+    ReprDeriveElemNullaryEnumCopy
   )
 }
 
@@ -16,9 +19,10 @@ test fn record_heap_attr_contains_serde() -> v2.std.logic.Bool {
 }
 
 test fn ord_carrier_shape_rejects_nullary_copy_traits() -> v2.std.logic.Bool {
-  std.trait_derive_shape.repr_grounding_derive_completeness_predicate(
-    std.trait_derive_shape.nullary_coproduct_derive_traits(),
-    std.trait_derive_shape.ReprDeriveElemSymbolWrappedOrdCarrier
+  repr_grounding_derive_completeness_predicate(
+    rust_capability_shape_table(),
+    nullary_coproduct_derive_traits(),
+    ReprDeriveElemSymbolWrappedOrdCarrier
   ) == false
 }
 
@@ -29,9 +33,10 @@ test fn ord_carrier_attr_differs_from_nullary() -> v2.std.logic.Bool {
 }
 
 test fn payload_coproduct_predicate_satisfied() -> v2.std.logic.Bool {
-  std.trait_derive_shape.repr_grounding_derive_completeness_predicate(
-    std.trait_derive_shape.payload_coproduct_derive_traits(),
-    std.trait_derive_shape.ReprDeriveElemPayloadCoproduct
+  repr_grounding_derive_completeness_predicate(
+    rust_capability_shape_table(),
+    payload_coproduct_derive_traits(),
+    ReprDeriveElemPayloadCoproduct
   )
 }
 
@@ -41,9 +46,10 @@ test fn group_completion_supplemental_impl_present() -> v2.std.logic.Bool {
     module_path: "std.algebra",
     name: "GroupCompletion"
   )
-  let predicate_ok = std.trait_derive_shape.repr_grounding_derive_completeness_predicate(
-    std.trait_derive_shape.kernel_int_arithmetic_traits(),
-    std.trait_derive_shape.ReprDeriveElemKernelInt
+  let predicate_ok = repr_grounding_derive_completeness_predicate(
+    rust_capability_shape_table(),
+    kernel_int_arithmetic_traits(),
+    ReprDeriveElemKernelInt
   )
   let wrong_module = std.trait_derive_shape.repr_grounding_group_completion_carrier(
     module_path: "std.magma",
@@ -104,9 +110,10 @@ test fn bool_supplemental_impl_present() -> v2.std.logic.Bool {
     module_path: "std.types",
     name: "Bool"
   )
-  let predicate_ok = std.trait_derive_shape.repr_grounding_derive_completeness_predicate(
-    std.trait_derive_shape.nullary_coproduct_derive_traits(),
-    std.trait_derive_shape.ReprDeriveElemNullaryEnumCopy
+  let predicate_ok = repr_grounding_derive_completeness_predicate(
+    rust_capability_shape_table(),
+    nullary_coproduct_derive_traits(),
+    ReprDeriveElemNullaryEnumCopy
   )
   let wrong_module = std.trait_derive_shape.repr_grounding_supplemental_bool_host_bridge_target(
     module_path: "std.logic",

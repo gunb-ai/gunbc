@@ -1,0 +1,20 @@
+module extdeps.tools.mkdir
+
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/mkdir.html"
+  }
+}
+
+// The absolute path exists for the same reason it does in extdeps.tools.id: a sudoers NOPASSWD
+// rule names a command by path, so a privileged mkdir and an unprivileged one are not
+// interchangeable spellings.
+data mkdir_binary_path: NonEmptyStr = "/usr/bin/mkdir"
+
+// -p is the idempotent form: an existing directory is not an error. That is what makes this an
+// ensure rather than a create, and it is the only reason a converge may run it repeatedly.
+fn mkdir_parents_argv(path: String) -> List<String> {
+  [mkdir_binary_path as String, "-p", path]
+}

@@ -1,0 +1,52 @@
+module extdeps.sudo.elevation
+
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.sudo.ws/docs/man/sudo.man/"
+  }
+}
+
+data sudo_binary_path: NonEmptyStr = "/usr/bin/sudo"
+
+// ELEVATION IS A FACT ABOUT AN INVOCATION, AND IT WAS BEING SPELLED FOUR TIMES AS TWO LITERALS.
+// Every privileged leaf in gunbc.host_effect_realize carried `bin_path: "/usr/bin/sudo"` beside an
+// args list whose first element was a bare "-n", so sudo's own calling convention -- which binary,
+// which flag, in which position -- was duplicated into each caller's argv, and the flag's meaning
+// (never prompt; fail instead of blocking on a tty that CI does not have) survived only as two
+// characters at the head of a list.
+//
+// THERE IS NO MODE PARAMETER, AND THAT IS THE MODEL RATHER THAN AN OMISSION. An earlier draft of
+// this module carried a SudoElevation type with one variant, so every caller passed the same value
+// and no arm ever discriminated -- a type with a single inhabitant that nothing matches on is
+// vocabulary, not information (DESIGN section 2). What it was reaching for is real: interactive
+// sudo must be unreachable here. That is achieved by this module minting only the non-interactive
+// form, which is strictly stronger than a parameter a caller could someday be given another value
+// for. If a second mode is ever genuinely needed, it arrives as a variant WITH a call site that
+// distinguishes it, not as a placeholder waiting for one.
+// A COMMAND THAT HAS BEEN ELEVATED, addressed the way the host effect surface takes it: a binary to
+// execute and the argv tail that follows it.
+type ElevatedInvocation {
+  bin_path: String
+  args: List<String>
+}
+
+// -n: never prompt. sudo fails instead of blocking on a tty, which is what makes a missing
+// NOPASSWD grant a refusal the caller can observe rather than a job that hangs until it is killed.
+data sudo_non_interactive_flag: NonEmptyStr = "-n"
+
+// `command` is the full argv of the program being elevated, binary first -- the same shape that
+// would run unelevated. Elevation is therefore a transformation OF an invocation, not a separate
+// spelling of one, so a caller cannot elevate a command it could not otherwise name.
+// ONE APPEND, NOT A SNOC PER ELEMENT. The fold this replaces walked `command` appending to a
+// growing accumulator, which is quadratic in argv length. DESIGN section 6's bare-minimum-cost rule
+// fixes a proven cost shape regardless of the realized n, precisely because "n is small here" is
+// not time-stable -- this function is the one place every privileged invocation in the repository
+// is assembled, so its n is whatever a future caller's argv turns out to be.
+fn sudo_elevate(command: List<String>) -> ElevatedInvocation {
+  ElevatedInvocation {
+    bin_path: sudo_binary_path as String,
+    args: list_append(left: [sudo_non_interactive_flag as String], right: command),
+  }
+}

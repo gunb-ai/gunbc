@@ -111,6 +111,18 @@ fn index_of(identity: String) -> Int {
 // reports -1. That still proves `index_of` reports REAL positions rather than a constant -- the bug
 // it was written for, where it returned length-2 for every identity -- while surviving any rename
 // that leaves the ordering claim to catch the ordering.
+// Indexing a list answers `NonEmptyStr?`, and reading the step back with `as String` did not
+// eliminate that: an out-of-range index handed `index_of` the literal text `Absent`, which reports
+// -1 and fails the assertion for a reason that has nothing to do with the helper under test. The
+// compiler now refuses the cast; the absent arm keeps that failure mode visible by name rather than
+// disguising it as a position mismatch.
+fn install_step_at(steps: List<NonEmptyStr>, index: Int) -> String {
+  match steps[index] {
+    Present { value: step } => step as String
+    Absent => "install-step-index-out-of-range"
+  }
+}
+
 test fn index_of_reports_real_positions_and_refuses_absent_ones() -> Bool {
   let steps = install_steps()
   let n = length(steps)
@@ -118,8 +130,8 @@ test fn index_of_reports_real_positions_and_refuses_absent_ones() -> Bool {
     Absent => false
     Present { value: head } =>
       index_of(identity: head as String) == 0
-        && index_of(identity: steps[n - 1] as String) == n - 1
-        && index_of(identity: steps[3] as String) == 3
+        && index_of(identity: install_step_at(steps: steps, index: n - 1)) == n - 1
+        && index_of(identity: install_step_at(steps: steps, index: 3)) == 3
         && index_of(identity: "no-such-step") == 0 - 1
         && n > 4
   }

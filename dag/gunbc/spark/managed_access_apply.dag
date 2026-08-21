@@ -276,15 +276,32 @@ fn install_authorized_key_script(admitted: gunbc.fleet_known_hosts_anchor.Portab
 // THE NARROW GRANT, and it is narrow by construction rather than by intention: one command, one
 // argument form, one account. `loginctl enable-linger <login>` is what a user unit needs to survive
 // logout and reboot; nothing else is granted, so this account cannot use sudo for anything else.
-fn install_narrow_grant_script(admitted: gunbc.fleet_known_hosts_anchor.PortableRemoteWord) -> String {
-  let login = admitted.value as String
-  join([
-    "set -e\n",
-    "printf '%s\\n' '", login, " ALL=(root) NOPASSWD: /usr/bin/loginctl enable-linger ", login, "' > /etc/sudoers.d/gunbc-", login, "\n",
-    "chmod 440 /etc/sudoers.d/gunbc-", login, "\n",
-    "visudo -c -f /etc/sudoers.d/gunbc-", login, "\n",
-  ], "")
-}
+// THE NARROW-GRANT LEG WAS DELETED HERE, and the reason is recorded because a reader who wants to
+// re-add it should meet the argument first.
+//
+// It wrote the enable-linger sudoers drop-in with an ordering that cannot work:
+//
+//     printf '%s\n' '<grant line>' > /etc/sudoers.d/gunbc-<login>   <- the file is LIVE at this line
+//     chmod 440 /etc/sudoers.d/gunbc-<login>
+//     visudo -c -f /etc/sudoers.d/gunbc-<login>                      <- the verdict arrives too late
+//
+// A validator that runs after the state it validates is not a validator, it is a log line. And the
+// blast radius is what makes that serious rather than untidy: a malformed drop-in does not fail its
+// own file, sudo refuses to parse the ENTIRE sudoers set, so the host loses every privileged
+// operation -- including the one that would repair it. That is unrecoverable without out-of-band
+// access.
+//
+// It was also a SECOND AUTHORITY for a grant the corpus already models typed. EnableLingerForOwnAccount
+// is a member of gunbc.spark.managed_access_bootstrap spark_managed_grant_population, whose sudoers
+// command and argv are derived by spark_managed_grant_sudoers_command and spark_managed_grant_argv;
+// gunbc.spark.managed_grant_install installs from that population by staging, validating, and only
+// then installing -- and gunbc#8377 gave those phases distinct TYPES, so holding them the wrong way
+// round is a type error. This leg was the untyped version of a mistake that is already
+// unrepresentable on the modeled path.
+//
+// Operator-lane approval was given for this deletion specifically, on those grounds, and it needed no
+// decision about the module's other legs: a fork in the privileged path is wrong whether or not
+// anything consumes it.
 
 // WAS a local join re-spelling `ssh-ed25519 <material> <comment>` -- a nickname for the line
 // construction extdeps.ssh already owns, which additionally hardcoded the algorithm token that same
@@ -341,11 +358,6 @@ fn spark_managed_access_apply_with_resolved_credentials(
             admin_credential: admin_credential,
             script: install_authorized_key_script(admitted: managed_word, key_line: fleet_authorized_key_line()),
           )
-          let grant = privileged_leg(
-            context: context, host: host, admin_principal: admin_principal,
-            admin_credential: admin_credential,
-            script: install_narrow_grant_script(admitted: managed_word),
-          )
           let inference = privileged_leg(
             context: context, host: host, admin_principal: admin_principal,
             admin_credential: admin_credential,
@@ -358,7 +370,6 @@ fn spark_managed_access_apply_with_resolved_credentials(
             first: SparkApplyStep { effect_label: "create-managed-account", outcome: create },
             more: [
               SparkApplyStep { effect_label: "install-fleet-authorized-key", outcome: key },
-              SparkApplyStep { effect_label: "install-narrow-privilege-grant", outcome: grant },
               SparkApplyStep { effect_label: "create-no-login-service-identity", outcome: inference },
               SparkApplyStep { effect_label: "prove-key-only-authentication", outcome: proof },
             ],

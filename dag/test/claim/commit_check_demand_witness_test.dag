@@ -210,6 +210,22 @@ fn qualified_rows_match_complete_discoveries(
     })
 }
 
+// `first()` answers an Optional and field access through it stays optional, so reading the name back
+// with `as String` compared the WRAPPER against the expected name: on an empty list the assertion
+// failed by comparing the literal text `v2.std.optional.Absent`, and on a differently-shaped one it could have
+// compared `v2.std.optional.Present { value: ... }`. The compiler now refuses that cast. The absent arms return a
+// name no declaration can carry, so a shape mismatch still fails -- loudly, and for its own reason.
+fn nth_declaration_name(rows: List<EnrollmentWitnessDemand>, row: Int, declaration: Int) -> String {
+  match rows.skip(n: row).first() {
+    Absent => "(no such demand row)"
+    Present { value: demand } =>
+      match demand.declarations.skip(n: declaration).first() {
+        Absent => "(no such declaration)"
+        Present { value: decl } => decl.decl_name as String
+      }
+  }
+}
+
 test fn commit_check_demand_live_roster_identities_are_unique_and_kind_partitioned() -> Bool {
   match first_duplicate_commit_check(roster: commit_gate_roster) {
     NoDuplicateCommitCheck => {
@@ -308,8 +324,8 @@ test fn commit_check_demand_named_multi_function_is_exact_and_permutation_invari
           left.count() == 1
             && right.count() == 1
             && left.first().declarations.count() == 2
-            && (left.first().declarations.first().decl_name as String) == "beta_holds"
-            && (left.first().declarations.skip(n: 1).first().decl_name as String) == "alpha_holds"
+            && nth_declaration_name(rows: left, row: 0, declaration: 0) == "beta_holds"
+            && nth_declaration_name(rows: left, row: 0, declaration: 1) == "alpha_holds"
             && declaration_ref_lists_eq(
               left: left.first().declarations,
               right: right.first().declarations

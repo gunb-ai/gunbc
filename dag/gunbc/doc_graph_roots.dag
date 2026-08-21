@@ -158,11 +158,11 @@ data hand_authored_doc_bind_incomings: std.types.List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "floor-semantic-artifact-design",
-    primary_work: std.decl_ref.DeclarationRef { module_path: "v2.workflow.required_floor", decl_name: "RequiredFloorClaim", field: std.decl_ref.WholeDeclaration },
+    primary_work: DeclarationRef { module_path: "v2.workflow.required_floor", decl_name: "RequiredFloorDisposition", field: WholeDeclaration },
     additional_works: [
 
     ],
-    dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "the floor emits a semantic artifact and its subject RequiredFloorClaim describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the floor emits a semantic artifact and its subject describes shipped behavior rather than a planned change; the row deletes with the document. REBOUND 2026-08-21: this row named RequiredFloorClaim, which is a Rust type in the seed (cli_run) and has never been a .dag declaration, so the reference could not resolve and never could have — an aspirational citation, not a stale one. RequiredFloorDisposition is the modeled per-identity carrier that exists today and is what the document argues should become an artifact instead of console text. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -414,8 +414,7 @@ data hand_authored_doc_bind_incomings: std.types.List<HandAuthoredDocBind> = [
     slug: "emit-host-batch-isolation",
     primary_work: std.decl_ref.DeclarationRef { module_path: "v2.workflow.executor", decl_name: "parallel_executor_plan_from_dependencies", field: std.decl_ref.WholeDeclaration },
     additional_works: [
-      std.decl_ref.DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "floor_dependencies_with", field: std.decl_ref.WholeDeclaration },
-      std.decl_ref.DeclarationRef { module_path: "std.realization_schedule", decl_name: "Runnable", field: std.decl_ref.WholeDeclaration },
+      DeclarationRef { module_path: "std.realization_schedule", decl_name: "Runnable", field: WholeDeclaration },
     ],
     dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "the work this document plans lands and its subject parallel_executor_plan_from_dependencies describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
@@ -489,7 +488,6 @@ data hand_authored_doc_bind_incomings: std.types.List<HandAuthoredDocBind> = [
     slug: "floor-cut-replacement-plan",
     primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.replacement_cut", decl_name: "admit_replacement_cut_plan", field: std.decl_ref.WholeDeclaration },
     additional_works: [
-      std.decl_ref.DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "gunbc_ci_floor_plan", field: std.decl_ref.WholeDeclaration },
     ],
     dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "the integration/floor-cut cutover merges to main and the old generated-ci / ci_floor_plan authorities named in this plan are deleted per its terminal receipt; the row deletes with the document once the cut is no longer the active migration vehicle. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
@@ -507,19 +505,15 @@ data hand_authored_doc_bind_incomings: std.types.List<HandAuthoredDocBind> = [
     slug: "floor-shared-compute-memoization",
     primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.ci_layer_roots", decl_name: "witness_layer_roots", field: std.decl_ref.WholeDeclaration },
     additional_works: [
-      std.decl_ref.DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "floor_heavy_resolve_chain_resource_edges", field: std.decl_ref.WholeDeclaration },
     ],
     dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "the work this document plans lands and its subject witness_layer_roots describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "floor-time-namespace-walk-regression-diagnosis",
-    primary_work: std.decl_ref.DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "gate_runnable_profile", field: std.decl_ref.WholeDeclaration },
-    additional_works: [
-      std.decl_ref.DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "floor_heavy_resolve_chain_resource_edges", field: std.decl_ref.WholeDeclaration },
-      std.decl_ref.DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "floor_plan_at_most_one_heavy_gate_resolve_per_batch", field: std.decl_ref.WholeDeclaration },
-    ],
-    dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "the work this document plans lands and its subject gate_runnable_profile describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+    primary_work: DeclarationRef { module_path: "v1.compiler.infer", decl_name: "rewire_type_env_import_str_binding_identity", field: WholeDeclaration },
+    additional_works: [],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the assembly cost class this document attributes stops being where the floor wall is, measured on a main floor run rather than asserted; the row deletes with the document. REBOUND 2026-08-21: this row named v2.workflow.ci_floor_plan gate_runnable_profile and floor_plan_at_most_one_heavy_gate_resolve_per_batch — the batch-scheduling knobs the diagnosis turned, deleted with their module by the floor cut. The diagnosis is not about scheduling: its own section 7 locates the measured root in reconcile assembly, one row of which is 58 percent of the resolve wall, and that row is the subject bound here. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -682,7 +676,7 @@ data hand_authored_doc_bind_incomings: std.types.List<HandAuthoredDocBind> = [
     slug: "lens-input-authority-design",
     primary_work: std.decl_ref.DeclarationRef { module_path: "extdeps.cache.materialization", decl_name: "provider_from_catalog", field: std.decl_ref.WholeDeclaration },
     additional_works: [
-      std.decl_ref.DeclarationRef { module_path: "v2.compiler.infer", decl_name: "InferredTree", field: std.decl_ref.WholeDeclaration },
+      DeclarationRef { module_path: "v2.compiler.inferred_tree", decl_name: "InferredTree", field: WholeDeclaration },
     ],
     dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "the work this document plans lands and its subject provider_from_catalog describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
@@ -830,21 +824,10 @@ data hand_authored_doc_bind_incomings: std.types.List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
-    slug: "regen-divergence-ratchet-shape",
-    primary_work: std.decl_ref.DeclarationRef { module_path: "tools.regen_verify_transport", decl_name: "run_regen_verify", field: std.decl_ref.WholeDeclaration },
-    additional_works: [
-
-    ],
-    dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "the work this document plans lands and its subject run_regen_verify describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
     slug: "resolve-regression-journey",
-    primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.ci_workflow", decl_name: "gunbc_ci_floor_step_timeout_discovery_flip_note", field: std.decl_ref.WholeDeclaration },
-    additional_works: [
-      std.decl_ref.DeclarationRef { module_path: "gunbc.ci_layer_roots", decl_name: "bin_witness_wet_per_row_wall_budget_seconds", field: std.decl_ref.WholeDeclaration },
-    ],
-    dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "the work this document plans lands and its subject gunbc_ci_floor_step_timeout_discovery_flip_note describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+    primary_work: DeclarationRef { module_path: "gunbc.ci_layer_roots", decl_name: "bin_witness_wet_per_row_wall_budget_seconds", field: WholeDeclaration },
+    additional_works: [],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the resolve-regression class this document diagnoses stops recurring and the wet per-row wall budget it now binds to describes settled behavior rather than a live pressure; the row deletes with the document. REBOUND 2026-08-21: the original subject was gunbc.ci_workflow gunbc_ci_floor_step_timeout_discovery_flip_note, which the floor cut deleted along with its module — the citation outlived its subject and the cited-symbol lens refused it. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -1051,10 +1034,9 @@ data hand_authored_doc_bind_incomings: std.types.List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "ci2-native-cutover-reobservation",
-    primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.ci_workflow", decl_name: "ci_floor_native_cache_root_note", field: std.decl_ref.WholeDeclaration },
+    primary_work: DeclarationRef { module_path: "gunbc.ci_materialization", decl_name: "ci_native_cache_root_exempt_note", field: WholeDeclaration },
     additional_works: [
-      std.decl_ref.DeclarationRef { module_path: "gunbc.ci_materialization", decl_name: "ci_native_cache_root_exempt_note", field: std.decl_ref.WholeDeclaration },
-      std.decl_ref.DeclarationRef { module_path: "gunbc.native_witness_transition_receipt", decl_name: "native_at_small_scale_transition_receipt", field: std.decl_ref.WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.native_witness_transition_receipt", decl_name: "native_at_small_scale_transition_receipt", field: WholeDeclaration },
     ],
     dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "the CI2 correctness flip lands — the native-selected population is native-required with the counted interpreter fallback deleted — and a main floor run's [native-selected-bundle] receipt shows verdict accepted with fallback = interpreted = unavailable = 0. The measured-standing content is superseded at that point by the run receipts and the transition-receipt authority; this doc records the pre-flip standing and its two located defects, and deletes with the fallback machinery it diagnosed.") },
   },
@@ -1083,9 +1065,8 @@ data hand_authored_doc_bind_incomings: std.types.List<HandAuthoredDocBind> = [
     slug: "witness-evidence-lifecycle-design",
     primary_work: std.decl_ref.DeclarationRef { module_path: "v2.workflow.floor_discovery_producer", decl_name: "floor_discovery_process_dag_file", field: std.decl_ref.WholeDeclaration },
     additional_works: [
-      std.decl_ref.DeclarationRef { module_path: "gunbc.ci_layer_roots", decl_name: "long_lane_exclusion_note", field: std.decl_ref.WholeDeclaration },
-      std.decl_ref.DeclarationRef { module_path: "gunbc.explicit_witness_admission", decl_name: "known_red_class_note", field: std.decl_ref.WholeDeclaration },
-      std.decl_ref.DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "falsifier_known_red_probe_batch_note", field: std.decl_ref.WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.ci_layer_roots", decl_name: "long_lane_exclusion_note", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.explicit_witness_admission", decl_name: "known_red_class_note", field: WholeDeclaration },
     ],
     dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "steps 3-5 land or are honestly retired (steps 1-2 are done: the modeling decision was signed by the operator 2026-08-04 and the typed direct-rust-door observation executes green). Remaining: census-before-routing in floor_discovery_process_dag_file, the attempt/evidence algebra retiring QuarantineProbeExpectRed and batch-wide expect_red inversion, and route derived from execution requirement — with test/claim/long DELETED as the terminal state per the operator step-5 ruling (it may persist as migration scaffolding meanwhile, but no new semantic dependence may be added to it, and operator visibility comes from a generated long-route projection rather than the directory name). Then the surviving policy rows migrate to DESIGN or a registered gunbc.plan.Plan row and this bind deletes with the doc.") },
   },
@@ -1197,9 +1178,9 @@ data hand_authored_doc_bind_incomings: std.types.List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "emission-admission-stage-aware-pipeline-design",
-    primary_work: std.decl_ref.DeclarationRef { module_path: "v2.compiler.self_host.emitter_producer_provenance", decl_name: "emitter_producer_provenance_note", field: std.decl_ref.WholeDeclaration },
-    additional_works: [std.decl_ref.DeclarationRef { module_path: "v2.compiler.self_host", decl_name: "canonical_emitted_bytes_digest", field: std.decl_ref.WholeDeclaration }, std.decl_ref.DeclarationRef { module_path: "tools.floor_effect_gate_witness", decl_name: "regen_verify_gate_passes", field: std.decl_ref.WholeDeclaration }, std.decl_ref.DeclarationRef { module_path: "gunbc.bootstrap", decl_name: "CompilerStage", field: std.decl_ref.WholeDeclaration }],
-    dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "Stages 1–9 in the design doc land or are honestly retired: candidate/promoted lifecycle with RecoveryAnchor retention, SuccessorCapabilityReceipt fix-forward gate, declared-change vs regression on the merge path, generation lineage binds ConsumerRead on regen and warm-merge (Promoted bindings only), bridge-generation protocol for incompatible requirement revisions, phased-single-process CI prelude-duplication witness is green on a representative PR, and the doc migrates into a registered gunbc.plan.Plan row (the registration becomes the binding)") },
+    primary_work: DeclarationRef { module_path: "v2.compiler.self_host.emitter_producer_provenance", decl_name: "emitter_producer_provenance_note", field: WholeDeclaration },
+    additional_works: [DeclarationRef { module_path: "v2.compiler.self_host", decl_name: "canonical_emitted_bytes_digest", field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.bootstrap", decl_name: "CompilerStage", field: WholeDeclaration }],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "Stages 1–9 in the design doc land or are honestly retired: candidate/promoted lifecycle with RecoveryAnchor retention, SuccessorCapabilityReceipt fix-forward gate, declared-change vs regression on the merge path, generation lineage binds ConsumerRead on regen and warm-merge (Promoted bindings only), bridge-generation protocol for incompatible requirement revisions, phased-single-process CI prelude-duplication witness is green on a representative PR, and the doc migrates into a registered gunbc.plan.Plan row (the registration becomes the binding)") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -1366,9 +1347,11 @@ data hand_authored_doc_bind_incomings: std.types.List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "witness-realization-plan",
-    primary_work: std.decl_ref.DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "gunbc_ci_floor_plan", field: std.decl_ref.WholeDeclaration },
-    additional_works: [],
-    dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "dissolves into a registered gunbc.plan.Plan row when its P1 lands") },
+    primary_work: DeclarationRef { module_path: "std.emit_on_demand", decl_name: "witness_family_build_grain_ruling", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.realize_pack", decl_name: "realize_pack_width", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "dissolves into a registered gunbc.plan.Plan row when its P1 lands. REBOUND 2026-08-21: this row named v2.workflow.ci_floor_plan gunbc_ci_floor_plan — the floor plan that would have SCHEDULED the realized witnesses, deleted with its module by the floor cut. The plan itself is live (six documents cite it as their parent authority), and its landed subjects are the two carriers named here: the family build-grain ruling that answers its FLAG B, and the packing law its P4 derives. Scheduling re-enters as a consumer when a floor plan exists again; it was never the subject of this document.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -1398,9 +1381,9 @@ data hand_authored_doc_bind_incomings: std.types.List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "progress-observation-design",
-    primary_work: std.decl_ref.DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "gunbc_ci_floor_plan", field: std.decl_ref.WholeDeclaration },
+    primary_work: DeclarationRef { module_path: "std.observation", decl_name: "ObservationEvent", field: WholeDeclaration },
     additional_works: [],
-    dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "P0 lands the observation laws + glyph authority as .dag data rows (roadmap 2d ts-obs-model) — the carriers become the authority and this doc stays as the design record") },
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "P0 lands the observation laws + glyph authority as .dag data rows (roadmap 2d ts-obs-model) — the carriers become the authority and this doc stays as the design record. REBOUND 2026-08-21: this row named v2.workflow.ci_floor_plan gunbc_ci_floor_plan, the floor plan the doc measured its displaced cost against, which the floor cut deleted with its module; the doc is a live roadmap deliverable authority, so the repair is to bind it to the subject it actually designs — std.observation's event model — rather than to a consumer that no longer exists") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -1433,7 +1416,7 @@ data hand_authored_doc_bind_incomings: std.types.List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "test-decomposition-wcf-cut",
-    primary_work: std.decl_ref.DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "gunbc_ci_fast_lane_rule_note", field: std.decl_ref.WholeDeclaration },
+    primary_work: DeclarationRef { module_path: "gunbc.witness_row_cost", decl_name: "gunbc_ci_fast_lane_rule_note", field: WholeDeclaration },
     additional_works: [],
     dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "every Class C row on the measured head lands fixture/cadence split (or reclassifies F with a named cost-shape owner); dark long/ files classify only at Gauntlet enrollment — then authority collapses into CiSpec placement rows + enrolled cadence rosters and this doc deletes") },
   },
@@ -1493,9 +1476,9 @@ data hand_authored_doc_bind_incomings: std.types.List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "ci-invocation-fixed-tax-attribution",
-    primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.ci_workflow", decl_name: "gunbc_ci_selection_control_step_note", field: std.decl_ref.WholeDeclaration },
+    primary_work: DeclarationRef { module_path: "v1.compiler.tokenize", decl_name: "process_escapes_loop", field: WholeDeclaration },
     additional_works: [],
-    dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "dissolves when the pre-evaluation whole-corpus passes are persisted across processes or derived from the containment tree (namespace-only resolution lane) — its levers then re-price against the new baseline, and the demotion's outcome-based return trigger (selection control back per-PR once a named receipt shows the whole control step consistently below a seconds-scale ceiling on the CI fleet across a full falsifier window) consumes its measurements") },
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "REBOUND 2026-08-21: this row named gunbc.ci_workflow gunbc_ci_selection_control_step_note, the demotion rationale this receipt supplied the basis for; the floor cut deleted gunbc.ci_workflow whole and the citation outlived it. The measurement itself is about the invocation fixed tax, whose located root this note names as its lever 1 — the unmigrated frontend construction in v1.compiler.tokenize process_escapes_loop — so the doc is rebound to the system whose movement would make its purpose false. Dissolves when the pre-evaluation whole-corpus passes are persisted across processes or derived from the containment tree (namespace-only resolution lane) — its levers then re-price against the new baseline, and the demotion's outcome-based return trigger (selection control back per-PR once a named receipt shows the whole control step consistently below a seconds-scale ceiling on the CI fleet across a full falsifier window) consumes its measurements") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -1600,16 +1583,6 @@ data hand_authored_doc_bind_incomings: std.types.List<HandAuthoredDocBind> = [
     primary_work: std.decl_ref.DeclarationRef { module_path: "v2.std.node", decl_name: "NodeKind", field: std.decl_ref.NamedField { field_name: "G1_planted_field_absent_control_RED" } },
     additional_works: [],
     dissolution: gunbc.plan.PlanHasNoRetirement,
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "falsifier-memory-root-cause-diagnosis",
-    primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.falsifier_workflow", decl_name: "gunbc_falsifier_job_split_note", field: std.decl_ref.WholeDeclaration },
-    additional_works: [
-      std.decl_ref.DeclarationRef { module_path: "gunbc.falsifier_workflow", decl_name: "falsifier_workflow", field: std.decl_ref.WholeDeclaration },
-      std.decl_ref.DeclarationRef { module_path: "test.claim.falsifier_workflow_witness_test", decl_name: "falsifier_backstop_is_step_sum_plus_prelude", field: std.decl_ref.WholeDeclaration },
-    ],
-    dissolution: gunbc.plan.PlanRetiresWhen { condition: std.dissolution.unbound_dissolution(description: "the falsifier-build→falsifier job split merges to main (P0 cgroup hygiene landed) AND Class B witness root-cause is landed on its carrier with the five named witnesses green on the falsifier cadence — then surviving facts migrate to DESIGN open-thread or a registered gunbc.plan.Plan row and this bind deletes with the doc.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,

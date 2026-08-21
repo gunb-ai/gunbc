@@ -48,23 +48,219 @@ data untyped_fold_init_sites: List<UntypedFoldInitSite> = [
   },
 ]
 
-// THE POPULATION IS ONE MEASURED SITE, AND ONE MEASURED SITE IS NOT A CENSUS.
+// THE POPULATION IS NOW SWEPT, AND THE SWEEP CONFIRMED THE ONE SITE RATHER THAN ADDING TO IT.
 //
-// This site was found because it happened to sit in a partition of three that was probed one member
-// at a time. No sweep for untyped empty-collection literals in fold-init position has been run, so
-// the count below is what has been OBSERVED, never what EXISTS. Any other `empty_map()`,
-// `empty_set()` or empty-list literal reaching a fold's `empty:` argument through a closure that
-// cannot otherwise constrain it is the same defect and is not listed here.
+// The prior revision of this block said the count was what had been OBSERVED and named the sweep as
+// the obvious next step. The sweep has been run. It did not change the member list, and that is a
+// measured result rather than a restatement of the old one: the same list now rests on a frame that
+// could have contained more members and did not, instead of on one probe that could not have found
+// any.
 //
-// The sweep is cheap and is the obvious next step; it is named rather than performed so that the
-// absence is a stated gap and not an implied zero.
+// WHAT MAKES A SITE A MEMBER, mechanically, so this is re-runnable rather than a judgement. rustc's
+// own help names WHICH closure parameter it wants annotated, and the enclosing call names who owns
+// that closure. The pair is the partition key. `fold_list` + FIRST parameter is this class, because
+// only a fold's first closure parameter is an accumulator. `fold_list` + SECOND parameter is the
+// collection-realization element class -- a different mechanism with a typed initializer. `contains`
+// and `is_prefix_of` take the element FIRST, so their first-parameter caret is an element caret and
+// not this class; reading position without reading the callee would have mis-assigned all eleven of
+// them. The classifier that applies this key to raw cargo JSON is the sweep's producer, named below.
+//
+// WHY THE FRAME IS WIDER THAN THE DEFECT'S OWN SPELLING. The mechanism needs an initializer whose
+// type parameters are open, so the frame is every fold in `dag/` and `src/v2` whose `empty:` argument
+// is a parameterically-typed constructor -- `empty_map()`, `empty_set()`, `optional_absent()`,
+// `freemonoid_empty()`, the `Empty` variant of `FreeMonoid`/`Stack`, or a bare list literal. That is
+// 186 fold sites in 60 files, of which 12 are the `empty_map()` spelling this row was filed under.
+// Sweeping only `empty_map()` would have measured the spelling instead of the mechanism.
+//
+// WHAT IS NOT A DEFECT, stated because the frame is deliberately over-wide: 185 of the 186 in-frame
+// sites are legitimate polymorphism. The overwhelming majority sit in the tail position of a function
+// with a declared concrete return type, so the expected type is known before the closure is checked
+// and inference never runs out of facts. The one member is inline in a generic call's argument, where
+// nothing supplies it.
+
+type EmitterProvenance
+  = EmitterOnSubjectAncestry { note: String }
+  | EmitterOffMainAndNewerThanSubject {
+      only_branch_containing_it: String
+      subject_committed_utc: String
+      emitter_committed_utc: String
+      risk: String
+    }
+
+type ControlReach {
+  positive_control: String
+  negative_control: String
+  what_the_controls_establish: String
+}
+
+type SweepInstrument {
+  subject_ref: String
+  emitter_build_ref: String
+  emitter_provenance: EmitterProvenance
+  controls: ControlReach
+  oracle: String
+  emit_command: String
+  check_command: String
+  classifier: String
+}
+
+type SweepFrame {
+  frame_rule: String
+  fold_sites_in_frame: Int
+  files_in_frame: Int
+  empty_map_sites_in_frame: Int
+  entry_crates_checked: Int
+  emitted_modules_type_checked: Int
+  frame_files_reached: Int
+  frame_files_unreached: Int
+  fold_sites_in_unreached_files: Int
+}
+
+type SweepDiscriminator {
+  rustc_code: String
+  partition_key: String
+  member_signature: String
+}
+
+type SweepExclusion {
+  excluded_class: String
+  sites: Int
+  why_not_this_class: String
+}
+
+type SweepGapCause
+  = EmitProcessKilled { note: String }
+  | EmitRefusedByCompiler { diagnostic: String }
+
+type SweepCoverageGap {
+  entry: String
+  cause: SweepGapCause
+  fold_sites_unmeasured: Int
+}
+
+type CorpusSweep {
+  instrument: SweepInstrument
+  frame: SweepFrame
+  discriminator: SweepDiscriminator
+  e0282_sites_classified: Int
+  members_found: Int
+  exclusions: List<SweepExclusion>
+  coverage_gaps: List<SweepCoverageGap>
+}
+
 type PopulationBasis
   = ObservedSitesOnly { found_via: String }
-  | SweptCorpus { sweep: String }
+  | SweptCorpus { sweep: CorpusSweep }
 
-data untyped_fold_init_population_basis: PopulationBasis = ObservedSitesOnly {
-  found_via: "one cargo probe over the v2.std.compilers.target_model emitted closure, reached while probing an unrelated partition member by member",
+data untyped_fold_init_population_basis: PopulationBasis = SweptCorpus {
+  sweep: {
+    instrument: {
+      subject_ref: "de2ad927170c2cff04069bf9e3536f719913e446",
+      emitter_build_ref: "009d4dab8e91713faba88cd0d5cf058304537122",
+      emitter_provenance: EmitterOffMainAndNewerThanSubject {
+        only_branch_containing_it: "origin/session/calm-lark-229",
+        subject_committed_utc: "2026-08-21T18:39:19Z",
+        emitter_committed_utc: "2026-08-21T18:54:27Z",
+        risk: "the emitter commit is NEWER than the measured tree and is on no main ancestry, so the risk is NOT that a stale emitter missed sites a current one would produce -- it is that an off-main emitter may carry emission behaviour main does not. The population is the population THAT emitter produces.",
+      },
+      controls: {
+        positive_control: "the instrument reproduced the already-known site exactly -- same file, same closure, same accumulator caret, one line off the position the surfacing row recorded",
+        negative_control: "16 further E0282 sites in the same output that the partition key assigns to other classes, so the key is able to answer no",
+        what_the_controls_establish: "MECHANISM-CONFIRMED, POPULATION CONDITIONAL ON THIS EMITTER. A control establishes that the instrument can detect the class; it cannot establish that the population is complete. Read the positive control as detection, never as completeness.",
+      },
+      oracle: "rustc, via cargo check over the crate the v2 emitter produced -- not a grep and not a reading of the .dag source",
+      emit_command: "gunbc compile --source-root dag --source-root src/v2 --entry ENTRY --output-dir DIR --target rust",
+      check_command: "cargo check --message-format=json --lib, run inside DIR",
+      classifier: "sweep444/classify.py -- partitions every E0282 by (enclosing call, which closure parameter the help annotates)",
+    },
+    frame: {
+      frame_rule: "every fold in dag/ and src/v2 whose empty: argument is a parameterically-typed constructor: empty_map, empty_set, optional_absent, freemonoid_empty, the Empty variant of FreeMonoid or Stack, or a bare list literal",
+      fold_sites_in_frame: 186,
+      files_in_frame: 60,
+      empty_map_sites_in_frame: 12,
+      entry_crates_checked: 34,
+      emitted_modules_type_checked: 397,
+      frame_files_reached: 56,
+      frame_files_unreached: 4,
+      fold_sites_in_unreached_files: 7,
+    },
+    discriminator: {
+      rustc_code: "E0282",
+      partition_key: "the pair (enclosing call that owns the closure, which closure parameter rustc's help annotates)",
+      member_signature: "fold_list, first parameter -- the accumulator",
+    },
+    e0282_sites_classified: 17,
+    members_found: 1,
+    exclusions: [
+      {
+        excluded_class: "contains, element caret",
+        sites: 10,
+        why_not_this_class: "contains takes the element as its FIRST closure parameter, so a first-position caret there is an element caret; its initializer is not a fold init at all. This is the HELD contains class the surfacing row already names, and the sweep found five sites beyond the five that row lists.",
+      },
+      {
+        excluded_class: "is_prefix_of, element caret",
+        sites: 1,
+        why_not_this_class: "v2.compiler.tokenize lex_match_prefix -- the String declaration-site alias, the sibling cause the surfacing row separates this one from.",
+      },
+      {
+        excluded_class: "fold_list, element caret",
+        sites: 2,
+        why_not_this_class: "same callee, other parameter: the fold's initializer is already typed at both sites and the caret is on the element. This is the collection-realization class, and it is the exclusion that would have been missed by keying on the callee alone.",
+      },
+      {
+        excluded_class: "not a closure",
+        sites: 3,
+        why_not_this_class: "E0282 raised on a derive over a generic enum in v2.lens.application -- same diagnostic code, no closure and no inference-through-a-lambda. Counting E0282 without the partition key would have counted these.",
+      },
+    ],
+    coverage_gaps: [
+      {
+        entry: "src/v2/workflow/compile_door_ledger.dag",
+        cause: EmitProcessKilled {
+          note: "the emit was SIGKILLed at the compile.emit stage on this host, twice, once under parallel load and once alone -- a host memory limit, not a corpus fact. The entry is unmeasured, not clean.",
+        },
+        fold_sites_unmeasured: 3,
+      },
+      {
+        entry: "src/v2/lens/enforcement/cost_coverage.dag",
+        cause: EmitRefusedByCompiler { diagnostic: "unresolved type 'AsymptoticClass'" },
+        fold_sites_unmeasured: 1,
+      },
+      {
+        entry: "src/v2/test/claim/synthesis_gate/optimality_gap_completeness.dag",
+        cause: EmitRefusedByCompiler { diagnostic: "unresolved type 'AdvisoryLens'" },
+        fold_sites_unmeasured: 1,
+      },
+      {
+        entry: "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
+        cause: EmitRefusedByCompiler { diagnostic: "unresolved type 'LiveTreeDisposition'; undefined variable 'SubstrateInputsOnly'" },
+        fold_sites_unmeasured: 2,
+      },
+    ],
+  },
 }
+
+// THE GAPS ARE FOUR ENTRIES AND SEVEN FOLD SITES, AND THEY ARE CARRIED RATHER THAN ROUNDED AWAY.
+//
+// None of the four holds an `empty_map()` site, so the spelling this row was filed under is measured
+// end to end; the residue is in the widened frame only. Three of the four refuse at emit with a named
+// diagnostic and one is killed by host memory, which are different facts with different fixes -- a
+// refusal is a corpus or emitter question, a kill is a machine question -- so they are separate
+// variants rather than one "not measured" bucket. Reporting 1 of 179 measured sites as though it were
+// 1 of 186 would be the narrow this row exists to avoid.
+//
+// THE EMITTER IS NOT BUILT FROM THE SUBJECT, and the row says so in a field rather than in prose that
+// a later reader can skip. The DIRECTION matters and was checked rather than assumed: the emitter's
+// commit is fifteen minutes NEWER than the measured tree and sits on no main ancestry, reachable only
+// from one session branch. So this is not a stale-instrument risk -- the worry is not that an old
+// emitter missed sites a current one would produce. It is that an off-main emitter may carry emission
+// behaviour main does not, which makes the measured population the population THAT emitter produces.
+//
+// WHAT THE CONTROLS DO AND DO NOT LICENSE. The instrument reproduced the known site exactly, and
+// sixteen further E0282 sites in the same output are assigned elsewhere by the partition key, so the
+// key can answer no. Together those establish that the instrument DETECTS this class -- a mechanism.
+// They do not establish that the population is complete, because a control never can. The honest
+// reading is mechanism-confirmed, population conditional on this emitter.
 
 // WHY THIS IS ITS OWN ROW RATHER THAN A NOTE ON THE ROW THAT SURFACED IT.
 //
@@ -80,4 +276,4 @@ data untyped_fold_init_surfaced_by: DeclarationRef = decl_ref(module_path: "gunb
 // this the expensive way: its first trigger named a mechanism, that mechanism turned out to be inert,
 // and the trigger was therefore satisfiable by a change that fixed nothing -- a false trigger
 // disposes of the evidence, which is worse than a false cause misleading a reader.
-data untyped_fold_init_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: every site in untyped_fold_init_sites emits an initial accumulator whose type is determined without a caller-supplied annotation, and compiles with no inference-failure diagnostic at that position, established by execution against the emitted crate. Not satisfied by annotating the closure parameter at the call site -- that moves the obligation to the author rather than deriving it, and the .dag source already carries the accumulator's type at the fold's declared signature. While untyped_fold_init_population_basis is ObservedSitesOnly, a green on the listed site retires the site, not the class.")
+data untyped_fold_init_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: every site in untyped_fold_init_sites emits an initial accumulator whose type is determined without a caller-supplied annotation, and compiles with no inference-failure diagnostic at that position, established by execution against the emitted crate. Not satisfied by annotating the closure parameter at the call site -- that moves the obligation to the author rather than deriving it, and the .dag source already carries the accumulator's type at the fold's declared signature. The basis is now SweptCorpus, so a green on the listed site retires the class ACROSS THE SWEPT FRAME -- 56 of the 60 in-frame files, 179 of the 186 in-frame fold sites. It does not retire the four entries in coverage_gaps, whose 7 fold sites were never measured; those close by re-running the sweep's emit and check over them, not by anything that happens at the listed site.")

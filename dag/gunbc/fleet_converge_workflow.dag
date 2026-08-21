@@ -15,6 +15,29 @@ fn gunbc_fleet_converge_build_job_backstop_timeout_minutes() -> Int {
   gunbc.fleet_workflow_steps.gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc.fleet_workflow_steps.gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc.fleet_workflow_steps.gunbc_ci_prelude_allowance_minutes
 }
 
+// The build job is the prelude plus three steps of its own. The release build CONSUMES cargo; the
+// pack and upload steps handle files the build produced and need no toolchain. Annotated here
+// rather than in fleet_workflow_steps because these are this job's steps, not the shared prelude's.
+fn fleet_converge_build_job_annotations() -> List<CapabilityAnnotatedStep> {
+  concat(
+    ci_prelude_annotations(),
+    [
+      CapabilityAnnotatedStep {
+        step_name: "Build release binaries",
+        role: consumes_only(capabilities: [CargoCapability]),
+      },
+      CapabilityAnnotatedStep { step_name: "Pack release bins", role: capability_neutral },
+      CapabilityAnnotatedStep { step_name: "Upload release bins", role: capability_neutral },
+    ],
+  )
+}
+
+fn fleet_converge_build_job_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(steps: fleet_converge_build_job_annotations()),
+  )
+}
+
 fn fleet_converge_build_job() -> extdeps.github.actions.Job {
   extdeps.github.actions.Job {
     id: "build",
@@ -329,11 +352,27 @@ type FleetConvergeYamlGenerationOutcome
   = FleetConvergeYamlGenerated { content: String }
   | FleetConvergeYamlGenerationRefused { reason: String }
 
+// TWO REFUSAL CAUSES, ONE TYPED OUTCOME. main added the timeout-ceiling refusal and this branch
+// added the capability-closure refusal; they are peers, not alternatives, so the merge keeps the
+// typed outcome and gives the closure its own arm rather than picking a side. Emission REFUSES
+// rather than reporting: this is the workflow whose build job carries the hand-written cargo
+// resolve circuit, so a closure that only tests consult would be specification-without-execution
+// on the exact file it matters for.
+//
+// The closure is checked FIRST because it is a fact about the steps themselves, while the timeout
+// is a fact about the job that contains them -- a job whose steps cannot satisfy their own
+// capabilities has nothing worth checking a budget against.
+data fleet_converge_capability_closure_refusal: String = "REFUSED gunbc.fleet_converge_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in ci_prelude_bound_steps_with_checkout / fleet_converge_build_job_annotations, or the order of the steps themselves."
+
 fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
-  match checked_job_timeout_minutes(computed: gunbc_ci_fleet_job_backstop_timeout_minutes()) {
-    JobTimeoutExceedsCeiling { minutes: _, ceiling: _ } =>
-      FleetConvergeYamlGenerationRefused { reason: "fleet-converge job backstop timeout exceeds extdeps.github.actions max_job_timeout_minutes — split the job or reduce a tier's per-step budget, do not raise past the platform ceiling (see gunbc_ci_fleet_job_backstop_timeout_note in gunbc.fleet_workflow_steps)" }
-    JobTimeoutWithinCeiling { minutes: _ } =>
-      FleetConvergeYamlGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_converge_workflow)) }
+  if fleet_converge_build_job_capability_closure_holds() {
+    match checked_job_timeout_minutes(computed: gunbc_ci_fleet_job_backstop_timeout_minutes()) {
+      JobTimeoutExceedsCeiling { minutes: _, ceiling: _ } =>
+        FleetConvergeYamlGenerationRefused { reason: "fleet-converge job backstop timeout exceeds extdeps.github.actions max_job_timeout_minutes — split the job or reduce a tier's per-step budget, do not raise past the platform ceiling (see gunbc_ci_fleet_job_backstop_timeout_note in gunbc.fleet_workflow_steps)" }
+      JobTimeoutWithinCeiling { minutes: _ } =>
+        FleetConvergeYamlGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_converge_workflow)) }
+    }
+  } else {
+    FleetConvergeYamlGenerationRefused { reason: fleet_converge_capability_closure_refusal }
   }
 }

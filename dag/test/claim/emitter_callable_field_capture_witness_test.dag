@@ -1,0 +1,55 @@
+module test.claim.emitter_callable_field_capture_witness_test
+
+data emitter_callable_field_capture_note: String = "PERMANENT REGRESSION CONTROL for the arrow-typed record-field callable position (gunbc#8799). THE DEFECT, now repaired: v1.compiler.emit_rust wrap_rust_record_field_value wrapped an arrow-typed field with the GENERIC SHARING ctor (rust_shared_wrap_ctor, Rc::new(\{0\})) instead of the Rust row that exists for a callable position (callable_value_wrap_template, Rc::new(move \{0\}), already consumed at the arrow-typed fn RETURN by rust_callable_return_wrap). An arrow realizes as Rc<dyn Fn(..) -> ..>, a dyn trait object defaults to 'static, so a non-move closure captured the enclosing locals BY REFERENCE and rustc refused every coercion. Population at d72ffe8708 on the src/v2/compiler/03_ingest.dag closure: 27 E0597 sites, and the measurement is what establishes the population is ONE mechanism rather than the description asserting it -- 27 of 27 blocks carry the same 'due to object lifetime defaults' note and every specimen is a lambda in an arrow-typed record-literal field, eight of them NodeFold \{ init, step \}. WHY THIS FILE CARRIES TWO FAILURE MODES AND NOT ONE: `move` ALONE IS A DIFFERENT REFUSAL, NOT A REPAIR. The shape that produces these sites is one record with SEVERAL arrow fields over the SAME enclosing locals (v2_compiler_compile.rs run_required_lens_gates_on_subtree captures `inferred` and `lenses` in one closure; v2_compiler_infer.rs infer_gather_fold_algebra captures `partials` in two sibling closures), so wrapping siblings in bare `move` moves one local twice -- E0382 in place of E0597. A witness that could not distinguish those two would pass for the wrong repair, so the assertions below refuse BOTH: the capture-preamble text cannot be produced by the pre-fix shape (no `move`) NOR by the naive-move shape (no preamble). Three arms pinned at rustc directly, each discriminating: the pre-fix emission refuses E0597 x3, the naive-move emission refuses E0382, the landed emission compiles clean. THE PROPERTY THAT MAKES THE CLONE SAFE RATHER THAN A DODGE, and the reason derived_capture_set_excludes_unnamed_local is a load-bearing row rather than a nicety: the capture set is DERIVED -- expr_var_occurrence_names over the lambda subtree intersected with scope.body_locals, the strict body-grain binder set -- and never widened to every local in scope. A widened set would be correct at every site, unbounded in cost, and INDISTINGUISHABLE FROM A PRECISE ONE by any assertion that only checks the build is green; asserting that `init` does not clone `scale` is what makes the precision executable. KNOWN NARROWING, stated rather than implied covered: the wrap fires on a lambda appearing SYNTACTICALLY at the field-init position. A non-lambda value, and a lambda behind a block / if / match, take the unchanged path -- that is the measured 27-site population and no more. It is the same residue rust_callable_return_wrap already declares at the arrow-typed RETURN, and closing either is a tail-position walk rather than a wider predicate here."
+
+fn w_arrow_field_lambda_owns_its_captures() -> Bool {
+  compile_dag_rust_emit_check(
+    "module ecap_own\n\nimport std.types { Int }\n\ntype Algebra {\n  init: fn(Int) -> Int\n  step: fn(Int, Int) -> Int\n}\n\nfn add2(a: Int, b: Int) -> Int {\n  a + b\n}\n\nfn algebra_for(base: Int, scale: Int) -> Algebra {\n  Algebra {\n    init: n => add2(a: n, b: base),\n    step: (acc, e) => add2(a: add2(a: acc, b: base), b: scale)\n  }\n}\n",
+    "src/ecap_own.rs",
+    ["init: { let base = base.clone(); Rc::new(move |"],
+    ["init: Rc::new(|"]
+  )
+}
+
+fn w_sibling_field_captures_every_local_it_names() -> Bool {
+  compile_dag_rust_emit_check(
+    "module ecap_sib\n\nimport std.types { Int }\n\ntype Algebra {\n  init: fn(Int) -> Int\n  step: fn(Int, Int) -> Int\n}\n\nfn add2(a: Int, b: Int) -> Int {\n  a + b\n}\n\nfn algebra_for(base: Int, scale: Int) -> Algebra {\n  Algebra {\n    init: n => add2(a: n, b: base),\n    step: (acc, e) => add2(a: add2(a: acc, b: base), b: scale)\n  }\n}\n",
+    "src/ecap_sib.rs",
+    ["step: { let base = base.clone(); let scale = scale.clone(); Rc::new(move |"],
+    ["step: Rc::new(|"]
+  )
+}
+
+fn w_derived_capture_set_excludes_unnamed_local() -> Bool {
+  compile_dag_rust_emit_check(
+    "module ecap_derived\n\nimport std.types { Int }\n\ntype Algebra {\n  init: fn(Int) -> Int\n  step: fn(Int, Int) -> Int\n}\n\nfn add2(a: Int, b: Int) -> Int {\n  a + b\n}\n\nfn algebra_for(base: Int, scale: Int) -> Algebra {\n  Algebra {\n    init: n => add2(a: n, b: base),\n    step: (acc, e) => add2(a: add2(a: acc, b: base), b: scale)\n  }\n}\n",
+    "src/ecap_derived.rs",
+    [],
+    ["init: { let base = base.clone(); let scale = scale.clone();"]
+  )
+}
+
+fn w_non_callable_field_is_untouched() -> Bool {
+  compile_dag_rust_emit_check(
+    "module ecap_plain\n\nimport std.types { Int }\n\ntype Holder {\n  amount: Int\n}\n\nfn hold(base: Int) -> Holder {\n  Holder { amount: base }\n}\n",
+    "src/ecap_plain.rs",
+    ["amount: base"],
+    ["amount: { let"]
+  )
+}
+
+test fn arrow_typed_field_lambda_owns_its_captures() -> Bool {
+  w_arrow_field_lambda_owns_its_captures()
+}
+
+test fn sibling_arrow_field_captures_every_local_it_names() -> Bool {
+  w_sibling_field_captures_every_local_it_names()
+}
+
+test fn derived_capture_set_excludes_a_local_the_lambda_does_not_name() -> Bool {
+  w_derived_capture_set_excludes_unnamed_local()
+}
+
+test fn non_callable_field_takes_the_unchanged_path() -> Bool {
+  w_non_callable_field_is_untouched()
+}

@@ -59,6 +59,247 @@ fn spark_serving_grant_outcome_from_probe(probe: extdeps.ssh.session.SshSessionE
   }
 }
 
+// THE ACCOUNT THIS PATH CONNECTS AS IS ALSO A FACT THE FLEET AUTHORITY WANTS, and it rides the same
+// leg for the same reason the grant probe does: the automation principal IS the account in question,
+// this path already connects as it, so measuring costs one more read and no new workflow mode.
+//
+// WHY IT EXISTS AT ALL. gunbc.fleet_posix_accounts is the account authority and carries no row for
+// srv5 or srv6 -- its allocations cover srv1/srv2 applied and srv3/srv4 pending. So the accounts
+// that actually exist on the two Sparks are absent from the authority in any form, and the only
+// thing that could be said about them today would be INFERRED (a converged grant standing implies a
+// grant bound to some login; the units serve, so an account exists). Inference is not observation,
+// and authoring a well-shaped row from it is precisely the error this vertical just deleted a whole
+// module over -- facts authored as inputs to a run that never happened rather than as observations
+// of the units as they stand. So the authority's rows wait on this probe rather than on a guess.
+//
+// BOTH LEGS ARE READS. `getent passwd` and `stat` enumerate and never actuate, which is what lets
+// them ride an observation, and a failure of either is an observation too rather than an error.
+//
+// WHAT IS DELIBERATELY NOT PROBED HERE: the gunbc-inference identity. This path connects as
+// gunbc-automation, so reading that account's own passwd row and its own ~/.ssh is unprivileged,
+// while reading another account's home is not. A second identity is therefore a COVERAGE OBLIGATION
+// named here, not a field inferred from this one.
+data spark_serving_account_probe_login: NonEmptyStr = spark_managed_executor_login as NonEmptyStr
+
+fn spark_serving_account_probe_words() -> List<String> {
+  ["getent", "passwd", spark_serving_account_probe_login as String]
+}
+
+// `stat -c` IS UNUSABLE THROUGH THIS TRANSPORT, and the reason is a wall doing its job rather than a
+// defect. portable_remote_word admits only [A-Za-z0-9._-/@:=,] -- every shell metacharacter is
+// refused, `%` among them -- so no stat format string can ever be a portable word. Two wet runs
+// established this: `%a %U %G` was refused (spaces), and so was `%a:%U:%G` (the percent itself), the
+// second of which is what proved the first diagnosis wrong.
+//
+// So the mode is read with `ls -ld`, which needs no format string at all. Its first field is the
+// symbolic mode -- and symbolic is arguably the better carrier here anyway, because the property
+// this observation exists to record is that the key file is not group- or world-readable, which
+// `-rw-------` states directly and `600` states by convention.
+fn spark_serving_authorized_keys_probe_words() -> List<String> {
+  [
+    "ls", "-ld",
+    join([
+      spark_managed_principal_home(login: spark_serving_account_probe_login) as String,
+      "/.ssh/authorized_keys",
+    ], ""),
+  ]
+}
+
+// A passwd row is a colon record and is decomposed as one -- login, uid, gid, shell -- rather than
+// carried as the line it arrived on. A String leaf hiding named parts is anemic modeling, and the
+// fields are exactly what fleet_posix_accounts PosixUser already asks for.
+type SparkManagedAccountObservation
+  = ManagedAccountObserved {
+      login: NonEmptyStr,
+      uid: NonEmptyStr,
+      gid: NonEmptyStr,
+      shell: NonEmptyStr,
+      authorized_keys_mode: NonEmptyStr,
+      authorized_keys_owner: NonEmptyStr,
+    }
+  | ManagedAccountKeyFileUnread {
+      login: NonEmptyStr,
+      uid: NonEmptyStr,
+      gid: NonEmptyStr,
+      shell: NonEmptyStr,
+      cause: NonEmptyStr,
+    }
+  | ManagedAccountAbsent { detail: NonEmptyStr }
+  | ManagedAccountRowMalformed { detail: NonEmptyStr }
+  | ManagedAccountProbeRefused { cause: NonEmptyStr }
+
+// THE KEY-FILE ARM IS SEPARATE FROM THE ACCOUNT ARM ON PURPOSE. An account that exists with an
+// unreadable authorized_keys is a different state from an account that does not exist, and they have
+// different remedies; collapsing them would be the state-space conflation DESIGN names. Partial is
+// honest -- the arm carries what was measured and names what was not.
+// `ls -ld` pads its columns, so a naive split on " " yields empty fields between runs of spaces and
+// every index after the first is wrong. Dropping empties makes the position stable whatever the
+// padding is -- which matters because the fields this reads are at positions 0 and 2.
+fn spark_serving_nonempty_fields(row: List<String>) -> List<String> {
+  fold(row, init: [], f: fn(acc, field) {
+    if field == "" { acc } else { concat(acc, [field]) }
+  })
+}
+
+// THIS FUNCTION USED TO RETURN "" FOR A MISSING INDEX, and the empty string was then cast into a
+// NonEmptyStr field. Two things were wrong with that and only one of them is about types. The
+// carrier's whole purpose is that an empty value is unrepresentable, so laundering one through
+// `as NonEmptyStr` inverts the rung it exists to hold -- and downstream, a truncated getent row and
+// a well-formed one both arrived as ManagedAccountObserved with no way to tell them apart. That is
+// the fabricated-plausible-output failure DESIGN section 5 forbids, sitting inside a decoder I wrote
+// specifically to be honest about partial states. I then wrote a test asserting the empty value was
+// fine, which is how it survived to review.
+//
+// A missing OR empty field is now Absent, and the caller must dispose of it. Empty is folded in with
+// missing deliberately: for the four fields this reads, an empty column is exactly as unusable as a
+// column that is not there, and giving them separate states would be a distinction with no
+// difference in remedy.
+fn spark_serving_account_field(row: List<String>, index: Int) -> String? {
+  match row.skip(n: index).first() {
+    Absent => none
+    Present { value: v } => if v == "" { none } else { Present { value: v } }
+  }
+}
+
+// THE PROVEN ROW. Decoding lands here or it does not land at all, so every consumer downstream takes
+// four fields that are non-empty BY CONSTRUCTION rather than four that were checked somewhere. The
+// nesting is confined to this one function, which is the price of making the malformed state
+// unrepresentable instead of detectable.
+type SparkPasswdRow {
+  login: NonEmptyStr
+  uid: NonEmptyStr
+  gid: NonEmptyStr
+  shell: NonEmptyStr
+}
+
+fn spark_serving_passwd_row(fields: List<String>) -> SparkPasswdRow? {
+  match spark_serving_account_field(row: fields, index: 0) {
+    Absent => none
+    Present { value: login } => match spark_serving_account_field(row: fields, index: 2) {
+      Absent => none
+      Present { value: uid } => match spark_serving_account_field(row: fields, index: 3) {
+        Absent => none
+        Present { value: gid } => match spark_serving_account_field(row: fields, index: 6) {
+          Absent => none
+          Present { value: shell } => Present {
+            value: SparkPasswdRow {
+              login: login as NonEmptyStr,
+              uid: uid as NonEmptyStr,
+              gid: gid as NonEmptyStr,
+              shell: shell as NonEmptyStr,
+            },
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE KEY-FILE FACTS get the same treatment, but their malformed case does NOT need a new variant:
+// `ls -ld` output that will not decode is a key file we could not read, which is precisely what
+// ManagedAccountKeyFileUnread already says. Minting a second variant for it would be the state-space
+// split with no remedy difference that the passwd case genuinely does have.
+type SparkKeyFileFacts {
+  mode: NonEmptyStr
+  owner: NonEmptyStr
+}
+
+fn spark_serving_key_file_facts(fields: List<String>) -> SparkKeyFileFacts? {
+  match spark_serving_account_field(row: fields, index: 0) {
+    Absent => none
+    Present { value: mode } => match spark_serving_account_field(row: fields, index: 2) {
+      Absent => none
+      Present { value: owner } => Present {
+        value: SparkKeyFileFacts { mode: mode as NonEmptyStr, owner: owner as NonEmptyStr },
+      }
+    }
+  }
+}
+
+fn spark_serving_account_observation_from_probes(
+  passwd_probe: SshSessionExecResult?,
+  key_probe: SshSessionExecResult?,
+) -> SparkManagedAccountObservation {
+  match passwd_probe {
+    Absent => ManagedAccountProbeRefused { cause: "the account probe leg did not run" }
+    Present { value: pw } =>
+      if pw.success == false {
+        ManagedAccountAbsent {
+          detail: join([
+            "getent passwd ", spark_serving_account_probe_login as String,
+            " exit=", to_string(pw.exit_code), " stderr=", trim(s: pw.stderr),
+          ], "") as NonEmptyStr,
+        }
+      } else {
+        match spark_serving_passwd_row(fields: split(trim(s: pw.stdout), ":")) {
+          Absent =>
+            ManagedAccountRowMalformed {
+              detail: join([
+                "getent passwd returned a row that does not decode: ", trim(s: pw.stdout),
+              ], "") as NonEmptyStr,
+            }
+          Present { value: row } => match key_probe {
+            Absent =>
+              ManagedAccountKeyFileUnread {
+                login: row.login, uid: row.uid, gid: row.gid, shell: row.shell,
+                cause: "the authorized_keys probe leg did not run" as NonEmptyStr,
+              }
+            Present { value: k } =>
+              if k.success == false {
+                ManagedAccountKeyFileUnread {
+                  login: row.login, uid: row.uid, gid: row.gid, shell: row.shell,
+                  cause: join([
+                    "ls -ld exit=", to_string(k.exit_code), " stderr=", trim(s: k.stderr),
+                  ], "") as NonEmptyStr,
+                }
+              } else {
+                match spark_serving_key_file_facts(
+                  fields: spark_serving_nonempty_fields(row: split(trim(s: k.stdout), " ")),
+                ) {
+                  Absent =>
+                    ManagedAccountKeyFileUnread {
+                      login: row.login, uid: row.uid, gid: row.gid, shell: row.shell,
+                      cause: join([
+                        "ls -ld output does not decode: ", trim(s: k.stdout),
+                      ], "") as NonEmptyStr,
+                    }
+                  Present { value: kf } =>
+                    ManagedAccountObserved {
+                      login: row.login, uid: row.uid, gid: row.gid, shell: row.shell,
+                      authorized_keys_mode: kf.mode,
+                      authorized_keys_owner: kf.owner,
+                    }
+                }
+              }
+          }
+        }
+      }
+  }
+}
+
+fn spark_serving_account_line(host: HostIdentity, account: SparkManagedAccountObservation) -> String {
+  match account {
+    ManagedAccountObserved { login: l, uid: u, gid: g, shell: sh, authorized_keys_mode: m, authorized_keys_owner: o } =>
+      join([
+        "account host=", host as String, " login=", l as String, " uid=", u as String,
+        " gid=", g as String, " shell=", sh as String,
+        " authorized_keys_mode=", m as String, " authorized_keys_owner=", o as String, "\n",
+      ], "")
+    ManagedAccountKeyFileUnread { login: l, uid: u, gid: g, shell: sh, cause: c } =>
+      join([
+        "account host=", host as String, " login=", l as String, " uid=", u as String,
+        " gid=", g as String, " shell=", sh as String,
+        " authorized_keys=UNREAD cause=", c as String, "\n",
+      ], "")
+    ManagedAccountAbsent { detail: d } =>
+      join(["account host=", host as String, " state=absent detail=", d as String, "\n"], "")
+    ManagedAccountRowMalformed { detail: d } =>
+      join(["account host=", host as String, " state=row-malformed detail=", d as String, "\n"], "")
+    ManagedAccountProbeRefused { cause: c } =>
+      join(["account host=", host as String, " state=probe-refused cause=", c as String, "\n"], "")
+  }
+}
+
 // THE READBACK TRAVELS WITH THE OBSERVATION, and it is not bookkeeping. The observation line says
 // only observed/absent/refused plus a release digest; every fact the derivation CONSUMED to reach
 // that verdict -- unit outcome, runtime version, model digest, and now boot provenance -- lived on
@@ -67,8 +308,9 @@ fn spark_serving_grant_outcome_from_probe(probe: extdeps.ssh.session.SshSessionE
 // question the run was dispatched to answer. A field with a witness and no wet reader is a carrier,
 // not an observation.
 type SparkServingHostObservation {
-  readback: gunbc.spark.serving_loaded_release.SparkServingReadback
-  observation: gunbc.spark.serving_release.SparkServingObservation
+  readback: SparkServingReadback
+  observation: SparkServingObservation
+  account: SparkManagedAccountObservation
 }
 
 type SparkServingObservationReport
@@ -135,6 +377,10 @@ fn spark_serving_observe_host_via_locus(
   SparkServingHostObservation {
     readback: readback,
     observation: derive_spark_serving_observation(readback: readback),
+    account: spark_serving_account_observation_from_probes(
+      passwd_probe: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_account_probe_words()),
+      key_probe: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_authorized_keys_probe_words()),
+    ),
   }
 }
 
@@ -370,10 +616,18 @@ fn spark_serving_observation_line(observation: gunbc.spark.serving_release.Spark
   }
 }
 
+// THE DECLARED RETURN TYPE WAS WRONG AND NOTHING REFUSED. This read `-> SparkServingObservation`
+// while the body returns a SparkServingHostObservation, and its only caller,
+// spark_serving_observations_from_hosts, declares List<SparkServingHostObservation> -- so the two
+// declarations contradicted each other across one call and the corpus typechecked clean. The runtime
+// value was always the host observation, so nothing was ever wrong at execution; what was wrong is
+// that the declaration lied to every reader, and a checker that later takes these seriously would
+// have surfaced it as a mystery rather than a typo. Repaired in passing because this change adds a
+// field to exactly that record.
 fn spark_serving_observe_host(
-  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
-  host: product.placement_supply.HostIdentity,
-) -> gunbc.spark.serving_release.SparkServingObservation {
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+) -> SparkServingHostObservation {
   let load_state = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_load_state_probe_words())
   let is_active = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_active_probe_words())
   let version = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_version_probe_words)
@@ -402,6 +656,10 @@ fn spark_serving_observe_host(
   SparkServingHostObservation {
     readback: readback,
     observation: derive_spark_serving_observation(readback: readback),
+    account: spark_serving_account_observation_from_probes(
+      passwd_probe: spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_account_probe_words()),
+      key_probe: spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_authorized_keys_probe_words()),
+    ),
   }
 }
 
@@ -442,6 +700,20 @@ fn spark_serving_observe_with_context(
   }
 }
 
+// ONE RENDERER FOR A HOST OBSERVATION, because there were two and that is why this change did not
+// appear in the receipt the first time it ran. The per-host lines were joined by hand in
+// spark_serving_observation_report_text AND again in spark_serving_observe_ci_with_context, so
+// adding a line to one left the other silently short -- and the CI entry is the one that actually
+// runs against the fleet. A second copy of a rendering is the section 3 fork; it was found by
+// executing the path rather than by reading it, which is the whole argument for running the thing.
+fn spark_serving_host_observation_lines(ho: SparkServingHostObservation) -> String {
+  join([
+    spark_serving_readback_line(readback: ho.readback),
+    spark_serving_observation_line(observation: ho.observation),
+    spark_serving_account_line(host: ho.readback.host, account: ho.account),
+  ], "")
+}
+
 fn spark_serving_observation_report_text(
   report: SparkServingObservationReport,
   probed_at: String,
@@ -460,10 +732,7 @@ fn spark_serving_observation_report_text(
       join(concat([
         [join(["spark serving observe probed_at=", probed_at, " attempt_raw=", attempt_raw, "\n"], "")],
         [materialization_receipt],
-        map(concat([f], m), ho => join([
-          spark_serving_readback_line(readback: ho.readback),
-          spark_serving_observation_line(observation: ho.observation),
-        ], "")),
+        map(concat([f], m), ho => spark_serving_host_observation_lines(ho: ho)),
       ], []), "")
   }
 }
@@ -630,10 +899,7 @@ func spark_serving_observe_ci_with_context(
         join(["credential_locus=", fleet_locus_label(context: context), "\n"], ""),
         context_receipt,
       ],
-      map(observations, o => join([
-        spark_serving_readback_line(readback: o.readback),
-        spark_serving_observation_line(observation: o.observation),
-      ], "")),
+      map(observations, o => spark_serving_host_observation_lines(ho: o)),
     ),
     "",
   )
@@ -925,8 +1191,12 @@ fn spark_serving_descriptor_digest(v: extdeps.languages.json.emit.JsonValue) -> 
 // the digest travels as its hex alone and each side spells it its own way.
 fn spark_serving_digest_hex_from_wire(wire: String) -> std.types.NonEmptyStr? {
   let parts = split(wire, ":")
-  if length(parts) == 2 && parts[0] == "sha256" && parts[1] != "" {
-    Present { value: parts[1] as std.types.NonEmptyStr }
+  if length(parts) == 2 && parts[0] == "sha256" {
+    match parts[1] {
+      Present { value: hex } =>
+        if hex != "" { Present { value: hex as NonEmptyStr } } else { none }
+      Absent => none
+    }
   } else {
     none
   }

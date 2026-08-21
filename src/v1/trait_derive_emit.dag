@@ -102,9 +102,9 @@ fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
 // onto this fixpoint is the named next step and is deliberately not taken here, because it would move
 // emitted bytes for a population this change has not measured.
 fn v1_with_map_key_requirement(
-  base: std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait>,
+  base: List<RustCapability>,
   map_key_required: Bool
-) -> std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait> {
+) -> List<RustCapability> {
   if map_key_required {
     std.trait_derive_shape.derive_traits_union(base: base, extra: std.trait_derive_shape.map_key_required_derive_traits())
   } else {
@@ -319,10 +319,10 @@ type V1FreeMonoidSupplementalRoute
 
 fn v1_freemonoid_row_route(row: extdeps.languages.rust.derive_contracts.RustVecSupplementalGenericBoundRow) -> V1FreeMonoidSupplementalRoute? {
   match row.derive_trait {
-    ReprDeriveDebug => Present { value: FreeMonoidHandWrittenImpl }
-    ReprDerivePartialEq => Present { value: FreeMonoidHandWrittenImpl }
-    ReprDeriveSerialize => Present { value: FreeMonoidSerdeBoundAttr }
-    ReprDeriveDeserialize => Present { value: FreeMonoidSerdeBoundAttr }
+    RustDebug => Present { value: FreeMonoidHandWrittenImpl }
+    RustPartialEq => Present { value: FreeMonoidHandWrittenImpl }
+    RustSerialize => Present { value: FreeMonoidSerdeBoundAttr }
+    RustDeserialize => Present { value: FreeMonoidSerdeBoundAttr }
     _ => Absent
   }
 }
@@ -336,13 +336,13 @@ fn v1_freemonoid_unroutable_row_refusal() -> String {
   }
 }
 
-fn v1_freemonoid_hand_written_traits() -> std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait> {
-  extdeps.languages.rust.derive_contracts.rust_vec_freemonoid_supplemental_generic_bound_rows
+fn v1_freemonoid_hand_written_traits() -> List<RustCapability> {
+  rust_vec_freemonoid_supplemental_generic_bound_rows
     |> filter(row => match v1_freemonoid_row_route(row: row) { Present { value: FreeMonoidHandWrittenImpl } => true  _ => false })
     |> map(row => row.derive_trait)
 }
 
-fn v1_freemonoid_filter_hand_written(traits: std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait>) -> std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait> {
+fn v1_freemonoid_filter_hand_written(traits: List<RustCapability>) -> List<RustCapability> {
   traits |> filter(t => !(v1_freemonoid_hand_written_traits() |> any(h => h == t)))
 }
 
@@ -448,23 +448,23 @@ fn v1_set_unroutable_row_refusal() -> String {
   }
 }
 
-fn v1_set_hand_written_traits() -> std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait> {
+fn v1_set_hand_written_traits() -> List<RustCapability> {
   rust_btree_set_supplemental_generic_bound_rows
     |> filter(row => match v1_freemonoid_row_route(row: row) { Present { value: FreeMonoidHandWrittenImpl } => true  _ => false })
     |> map(row => row.derive_trait)
 }
 
-fn v1_set_filter_hand_written(traits: std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait>) -> std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait> {
+fn v1_set_filter_hand_written(traits: List<RustCapability>) -> List<RustCapability> {
   traits |> filter(t => !(v1_set_hand_written_traits() |> any(h => h == t)))
 }
 
-fn v1_set_required_traits_for(derive_trait: std.trait_derive_shape.ReprGroundingDeriveTrait) -> std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait> {
+fn v1_set_required_traits_for(derive_trait: RustCapability) -> List<RustCapability> {
   rust_btree_set_supplemental_generic_bound_rows
     |> filter(row => row.derive_trait == derive_trait)
     |> map(row => row.required)
 }
 
-fn v1_set_supplemental_bound_spelling_for(derive_trait: std.trait_derive_shape.ReprGroundingDeriveTrait) -> String {
+fn v1_set_supplemental_bound_spelling_for(derive_trait: RustCapability) -> String {
   unique_strings(items: v1_set_required_traits_for(derive_trait: derive_trait) |> map(t => rust_trait_derive_spelling(t)))
     |> join(separator: " + ")
 }
@@ -473,8 +473,8 @@ fn v1_set_serde_bound_attr(
   generic_param_names: std.types.List<String>,
   set_params: std.types.List<String>
 ) -> String {
-  let ser_supplement = v1_set_supplemental_bound_spelling_for(std.trait_derive_shape.ReprDeriveSerialize)
-  let de_supplement = v1_set_supplemental_bound_spelling_for(std.trait_derive_shape.ReprDeriveDeserialize)
+  let ser_supplement = v1_set_supplemental_bound_spelling_for(RustSerialize)
+  let de_supplement = v1_set_supplemental_bound_spelling_for(RustDeserialize)
   let ser_entries = generic_param_names |> map(p =>
     let pascal = to_pascal(name: p)
     if set_params |> any(f => f == p) {
@@ -498,13 +498,13 @@ fn v1_set_serde_bound_attr(
 }
 
 fn v1_set_serde_bound_attr_for_traits(
-  traits: std.types.List<std.trait_derive_shape.ReprGroundingDeriveTrait>,
-  generic_param_names: std.types.List<String>,
-  set_params: std.types.List<String>
+  traits: List<RustCapability>,
+  generic_param_names: List<String>,
+  set_params: List<String>
 ) -> String {
   if (set_params |> count) == 0 { "" } else {
     let refusal = v1_set_unroutable_row_refusal()
-    if refusal != "" { refusal } else if !(traits |> any(t => t == std.trait_derive_shape.ReprDeriveSerialize) && traits |> any(t => t == std.trait_derive_shape.ReprDeriveDeserialize)) {
+    if refusal != "" { refusal } else if !(traits |> any(t => t == RustSerialize) && traits |> any(t => t == RustDeserialize)) {
       v1_trait_derive_refuse("trait_derive_emit: a Set<P> field requires P: Ord + Clone for Serialize/Deserialize but the derive trait list for this coproduct elem shape omits one of them — supplemental bound cannot attach")
     } else {
       concat("\n", v1_set_serde_bound_attr(generic_param_names: generic_param_names, set_params: set_params))
@@ -630,8 +630,8 @@ fn v1_set_impl_type_params(
   set_params: std.types.List<String>,
   field_type_exprs: std.types.List<v1.std.core.Node>,
   structural_spelling: String,
-  derive_trait: std.trait_derive_shape.ReprGroundingDeriveTrait,
-  source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
+  derive_trait: RustCapability,
+  source_indices: Map<String, NewlineIndex>
 ) -> String {
   if (generic_param_names |> count) == 0 { "" } else {
     let entries = generic_param_names |> map(p =>
@@ -653,7 +653,7 @@ fn v1_set_enum_debug_impl(
   field_type_exprs: std.types.List<v1.std.core.Node>,
   source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> String {
-  let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug", derive_trait: std.trait_derive_shape.ReprDeriveDebug, source_indices: source_indices)
+  let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug", derive_trait: RustDebug, source_indices: source_indices)
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
   let arms = children |> map(variant =>
     let vname = to_pascal(name: authored_name_at(source_indices: source_indices, node: variant))
@@ -685,7 +685,7 @@ fn v1_set_enum_partial_eq_impl(
   field_type_exprs: std.types.List<v1.std.core.Node>,
   source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> String {
-  let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq", derive_trait: std.trait_derive_shape.ReprDerivePartialEq, source_indices: source_indices)
+  let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq", derive_trait: RustPartialEq, source_indices: source_indices)
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
   let arms = children |> map(variant =>
     let vname = to_pascal(name: authored_name_at(source_indices: source_indices, node: variant))
@@ -801,7 +801,7 @@ fn v1_set_struct_debug_impl(
   field_type_exprs: std.types.List<v1.std.core.Node>,
   source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> String {
-  let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug", derive_trait: ReprDeriveDebug, source_indices: source_indices)
+  let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "std::fmt::Debug", derive_trait: RustDebug, source_indices: source_indices)
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
   let field_calls = children |> map(f =>
     let ident = emit_ident(name: authored_name_at(source_indices: source_indices, node: f), target: Rust)
@@ -824,7 +824,7 @@ fn v1_set_struct_partial_eq_impl(
   field_type_exprs: std.types.List<v1.std.core.Node>,
   source_indices: std.types.Map<String, v1.std.core.NewlineIndex>
 ) -> String {
-  let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq", derive_trait: ReprDerivePartialEq, source_indices: source_indices)
+  let tp = v1_set_impl_type_params(generic_param_names: generic_param_names, set_params: set_params, field_type_exprs: field_type_exprs, structural_spelling: "PartialEq", derive_trait: RustPartialEq, source_indices: source_indices)
   let args = v1_freemonoid_bare_type_args(generic_param_names: generic_param_names)
   let comparisons = children |> map(f =>
     let ident = emit_ident(name: authored_name_at(source_indices: source_indices, node: f), target: Rust)
@@ -856,9 +856,9 @@ fn v1_emit_struct_derives(
     }
   } else if rust_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices) {
     let shape = v1_repr_grounding_derive_elem_shape_for_ord_carrier(children: children, source_indices: source_indices)
-    let traits = v1_with_map_key_requirement(base: std.trait_derive_shape.symbol_wrapped_ord_carrier_derive_traits(), map_key_required: map_key_required)
-    if std.trait_derive_shape.repr_grounding_derive_completeness_predicate(traits, shape) {
-      extdeps.languages.rust.emit.rust_trait_derive_attr_from_traits(traits)
+    let traits = v1_with_map_key_requirement(base: symbol_wrapped_ord_carrier_derive_traits(), map_key_required: map_key_required)
+    if repr_grounding_derive_completeness_predicate(rust_capability_shape_table(), traits, shape) {
+      rust_trait_derive_attr_from_traits(traits)
     } else {
       v1_trait_derive_refuse("trait_derive_emit: symbol-wrapped ord carrier refused")
     }
@@ -929,7 +929,7 @@ fn v1_emit_enum_derives(
   let set_row_refusal = if (set_params |> count) > 0 { v1_set_unroutable_row_refusal() } else { "" }
   match shape {
     ReprDeriveElemNullaryEnumCopy =>
-      if repr_grounding_derive_completeness_predicate(nullary_traits, shape) {
+      if repr_grounding_derive_completeness_predicate(rust_capability_shape_table(), nullary_traits, shape) {
         let derived_traits = if (set_params |> count) > 0 { v1_set_filter_hand_written(traits: nullary_traits) } else { nullary_traits }
         concat(
           set_row_refusal,
@@ -940,7 +940,7 @@ fn v1_emit_enum_derives(
         v1_trait_derive_refuse("trait_derive_emit: nullary coproduct derive completeness refused")
       }
     ReprDeriveElemPayloadCoproduct =>
-      if repr_grounding_derive_completeness_predicate(payload_traits, shape) {
+      if repr_grounding_derive_completeness_predicate(rust_capability_shape_table(), payload_traits, shape) {
         let derived_traits = if (set_params |> count) > 0 { v1_set_filter_hand_written(traits: payload_traits) } else { payload_traits }
         concat(
           set_row_refusal,
@@ -2071,6 +2071,7 @@ fn v1_emit_struct_from_capability_table(
       )
       let impl_bodies = if repr_grounding_group_completion_carrier(module_path: module_path, name: name)
         && repr_grounding_derive_completeness_predicate(
+          rust_capability_shape_table(),
           kernel_int_arithmetic_traits(),
           ReprDeriveElemKernelInt
         ) {
@@ -2113,6 +2114,7 @@ fn v1_emit_enum_supplemental_impls(
     )
   } else if repr_grounding_supplemental_bool_host_bridge_target(module_path: module_path, name: name)
     && repr_grounding_derive_completeness_predicate(
+      rust_capability_shape_table(),
       nullary_coproduct_derive_traits(),
       std.trait_derive_shape.ReprDeriveElemNullaryEnumCopy
     ) {

@@ -1,0 +1,58 @@
+module test.claim.optional_cast_wall_witness_test
+
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE EXECUTED EVIDENCE FOR THE LEAKED-OPTIONAL WALL, on the source -> .dag-acceptance path.
+// `test.claim.probed_at_word_witness_test` guards what the rendering authority DOES and states,
+// honestly, that it cannot see whether the fourteen call sites route through it: reverting any one
+// of them to `now as String` left it green. These probes are that carrier's declared next-rung
+// trigger, executed. The RED arm is the REVERTED CALL SITE ITSELF -- the same `clock_now_probed_at()
+// as String` spelling that put `probed_at=Present { value: ... }` into srv5 and srv6 receipts on
+// 2026-08-20 -- so what is refused here is the production defect, not a synthetic analogue.
+//
+// The GREEN arms are what makes the RED discriminating: the sanctioned `probed_at_word(reading: now)`
+// form still compiles, and a cast off a NON-optional source of the same type still compiles. Without
+// them a refusal of every cast would score identically, and the wall would be a wrecking ball.
+//
+// PATH SCOPE, stated because DESIGN section 4b requires a rung per path: this asserts the
+// source -> .dag-acceptance path. The wall lives in the ExprCast arm of inference, so nothing
+// reaches emission or interpretation with the leak intact -- but that is a consequence of where the
+// refusal sits, not a second measurement, and it is not claimed as one here.
+
+fn violation_count(source: String, wanted: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// The reverted production site, verbatim in shape: an optional clock reading cast to text.
+data reverted_call_site_source: String = "module probe_optional_cast_reverted\nimport std.types { String }\nimport gunbc.clock_read { clock_now_probed_at }\nfn receipt_line() -> String {\n  let now = clock_now_probed_at()\n  now as String\n}\n"
+
+test fn w_reverted_probed_at_call_site_is_refused() -> Bool {
+  violation_count(source: reverted_call_site_source, wanted: "OptionalCastNotEliminated") >= 1
+}
+
+// The sanctioned form the fourteen sites were swept onto.
+data sanctioned_call_site_source: String = "module probe_optional_cast_sanctioned\nimport std.types { String }\nimport gunbc.clock_read { clock_now_probed_at, probed_at_word }\nfn receipt_line() -> String {\n  let now = clock_now_probed_at()\n  probed_at_word(reading: now) as String\n}\n"
+
+test fn w_sanctioned_probed_at_call_site_is_accepted() -> Bool {
+  violation_count(source: sanctioned_call_site_source, wanted: "OptionalCastNotEliminated") == 0
+}
+
+// A cast off a REQUIRED source of the very same type: the wall must not fire on cardinality it
+// does not see. This is the control that separates "refuses optionals" from "refuses casts".
+data required_source_control: String = "module probe_optional_cast_required\nimport std.types { String, NonEmptyStr }\nfn ok(ts: NonEmptyStr) -> String { ts as String }\n"
+
+test fn w_required_source_cast_is_accepted() -> Bool {
+  violation_count(source: required_source_control, wanted: "OptionalCastNotEliminated") == 0
+}
+
+// The class is the elimination that never happened, not the target's spelling: an optional cast to
+// a non-text target is the same leak and is refused too.
+data non_text_target_source: String = "module probe_optional_cast_non_text\nimport std.types { Int }\nfn maybe_count() -> Int? { none }\nfn leaked() -> Int { maybe_count() as Int }\n"
+
+test fn w_optional_cast_to_a_non_text_target_is_refused() -> Bool {
+  violation_count(source: non_text_target_source, wanted: "OptionalCastNotEliminated") >= 1
+}

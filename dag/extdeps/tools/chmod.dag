@@ -1,0 +1,32 @@
+module extdeps.tools.chmod
+
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/chmod.html"
+  }
+}
+
+// The absolute path exists for the same reason it does in extdeps.tools.chown and
+// extdeps.tools.mkdir: a sudoers NOPASSWD rule names a command by path. chmod sits at /bin rather
+// than /usr/bin on the hosts this actuator targets, and that is a fact about those hosts recorded
+// here rather than assumed at a call site.
+data chmod_binary_path: NonEmptyStr = "/bin/chmod"
+
+// THE SYMBOLIC MODE, NOT AN OCTAL LITERAL. `+x` adds the execute bit to whatever permissions the
+// file already carries; an octal mode REPLACES them, so the two are not interchangeable spellings
+// of "make it executable" -- one preserves the other bits and one silently decides them. POSIX
+// specifies both forms; this module offers the one whose meaning is additive, because that is what
+// an ensure means.
+fn chmod_add_executable_args(path: String) -> List<String> {
+  ["+x", path]
+}
+
+// The full argv is DERIVED from the binary path and the argument tail rather than spelled beside
+// them, so a caller that needs the two halves separately -- a transport whose shape splits
+// bin_path from args -- reaches the same authority as one that needs the whole vector, and the
+// mode flag has exactly one home.
+fn chmod_add_executable_argv(path: String) -> List<String> {
+  concat([chmod_binary_path as String], chmod_add_executable_args(path: path))
+}
