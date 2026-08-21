@@ -23869,6 +23869,7 @@ pub fn emit_native_freemonoid_match(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RcGroupedArmPlan {
     pub groupable: bool,
+    pub variant: String,
     pub pat_str: String,
     pub ref_field: String,
     pub inner_pat_str: String,
@@ -23886,9 +23887,10 @@ pub struct RcGroupedArmAcc {
     pub out: Rc<Vec<String>>,
 }
 
-pub fn ungroupable_arm_plan(pat_str: String) -> Rc<RcGroupedArmPlan> {
+pub fn ungroupable_arm_plan(variant: String, pat_str: String) -> Rc<RcGroupedArmPlan> {
     Rc::new(RcGroupedArmPlan {
         groupable: false,
+        variant: variant.clone(),
         pat_str: pat_str.clone(),
         ref_field: "".to_string(),
         inner_pat_str: "".to_string(),
@@ -23971,6 +23973,7 @@ pub fn rc_grouped_arm_plan(
                 emit_info.clone(),
             )
         };
+        let variant = variant_pattern_bare_name(arm_pat.clone());
         let single_field = if ((rc.ref_bound_fields.clone().len() as i64) == 1) {
             rc.ref_bound_fields.clone().first().cloned()
         } else {
@@ -23992,7 +23995,7 @@ pub fn rc_grouped_arm_plan(
                     || (rc_guard.clone() == "".to_string()))
                     || (field_name.clone() == "0".to_string()))
                 {
-                    ungroupable_arm_plan(pat_str.clone())
+                    ungroupable_arm_plan(variant.clone(), pat_str.clone())
                 } else {
                     match variant_pattern_field_binding_named(
                         arm_pat.clone(),
@@ -24009,14 +24012,13 @@ pub fn rc_grouped_arm_plan(
                                 si.clone(),
                             );
                             if inner_rc.needs_rc_pattern.clone() {
-                                ungroupable_arm_plan(pat_str.clone())
+                                ungroupable_arm_plan(variant.clone(), pat_str.clone())
                             } else {
                                 {
-                                    let bare = variant_pattern_bare_name(arm_pat.clone());
                                     let inner_pat_str = emit_pattern(
                                         fb_pat.clone(),
                                         v1_rt::rc_list_push(
-                                            v1_rt::rc_list_push(Rc::new(vec![]), bare.clone()),
+                                            v1_rt::rc_list_push(Rc::new(vec![]), variant.clone()),
                                             field_name.clone(),
                                         ),
                                         shared_types.clone(),
@@ -24026,6 +24028,7 @@ pub fn rc_grouped_arm_plan(
                                     );
                                     Rc::new(RcGroupedArmPlan {
                                         groupable: true,
+                                        variant: variant.clone(),
                                         pat_str: pat_str.clone(),
                                         ref_field: field_name.clone(),
                                         inner_pat_str: inner_pat_str.clone(),
@@ -24033,23 +24036,23 @@ pub fn rc_grouped_arm_plan(
                                 }
                             }
                         }
-                        None => ungroupable_arm_plan(pat_str.clone()),
+                        None => ungroupable_arm_plan(variant.clone(), pat_str.clone()),
                     }
                 }
             }
-            None => ungroupable_arm_plan(pat_str.clone()),
+            None => ungroupable_arm_plan(variant.clone(), pat_str.clone()),
         }
     }
 }
 
 pub fn rc_group_members(
     entries: Rc<Vec<Rc<RcGroupedArmEntry>>>,
-    pat_str: String,
+    variant: String,
 ) -> Rc<Vec<Rc<RcGroupedArmEntry>>> {
     Rc::new({
         let mut __result = Vec::new();
         for e in entries.clone().iter().cloned() {
-            if (e.plan.clone().pat_str.clone() == pat_str.clone()) {
+            if (e.plan.clone().variant.clone() == variant.clone()) {
                 __result.push(e);
             }
         }
@@ -24062,12 +24065,13 @@ pub fn rc_group_is_whole_coverage(
     plan: Rc<RcGroupedArmPlan>,
 ) -> bool {
     {
-        let members = rc_group_members(entries.clone(), plan.pat_str.clone());
+        let members = rc_group_members(entries.clone(), plan.variant.clone());
         {
             let mut __all = true;
             for e in members.clone().iter().cloned() {
-                if !(e.plan.clone().groupable.clone()
+                if !((e.plan.clone().groupable.clone()
                     && (e.plan.clone().ref_field.clone() == plan.ref_field.clone()))
+                    && (e.plan.clone().pat_str.clone() == plan.pat_str.clone()))
                 {
                     __all = false;
                     break;
@@ -24202,7 +24206,7 @@ pub fn emit_typed_match_arm_strs(
                             if {
                                 let mut __found = false;
                                 for s in acc.seen.clone().iter().cloned() {
-                                    if (s.clone() == e.plan.clone().pat_str.clone()) {
+                                    if (s.clone() == e.plan.clone().variant.clone()) {
                                         __found = true;
                                         break;
                                     }
@@ -24214,14 +24218,14 @@ pub fn emit_typed_match_arm_strs(
                                 Rc::new(RcGroupedArmAcc {
                                     seen: v1_rt::rc_list_push(
                                         acc.seen.clone(),
-                                        e.plan.clone().pat_str.clone(),
+                                        e.plan.clone().variant.clone(),
                                     ),
                                     out: v1_rt::rc_list_push(
                                         acc.out.clone(),
                                         emit_rc_grouped_match_arm(
                                             rc_group_members(
                                                 entries.clone(),
-                                                e.plan.clone().pat_str.clone(),
+                                                e.plan.clone().variant.clone(),
                                             ),
                                             e.plan.clone(),
                                             registry.clone(),
