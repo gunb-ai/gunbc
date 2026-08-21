@@ -45,19 +45,17 @@ data observed_dgx_spark_router_reservations: std.types.List<extdeps.router.veriz
 // coin-flip as a measurement, and every later reader would treat it as recoverable evidence rather
 // than a commitment someone made.
 //
-// A coproduct rather than a record with an Optional assignment, for two reasons.
-// MODELING: an assigned slot structurally carries BOTH the reservation and the OperatorAllocation
-// that joined them, in one variant -- there is no representable state where a reservation is
-// attached with no authority behind it.
-// SUBSTRATE (inherited report, unverified here): an earlier lane reported that two data rows of a
-// record type carrying inhabited optional reservation fields exhaust memory during claim_batch
-// resolve (SIGKILL exit 137). THIS lane did not discriminate that claim: exit 137 reproduced on
-// unmodified main in the same host-pressure window as the first two-SlotAssigned attempt, and a
-// quiet-host follow-up patched two inhabited Optional rows to resolve cleanly (gunbc compile:
-// resolved 98 sources; claim_batch ~40s). The inherited report is neither confirmed nor refuted;
-// the coproduct encoding is kept for modeling merit regardless.
-// dissolve-on: inherited Optional-record resolve blowup is confirmed or refuted at the substrate,
-// at which point the inherited-report half of this comment retires while the coproduct stays.
+// A coproduct rather than a record with an Optional assignment, on modeling merit alone: an
+// assigned slot structurally carries BOTH the reservation and the OperatorAllocation that joined
+// them, in one variant -- there is no representable state where a reservation is attached with no
+// authority behind it.
+//
+// The substrate report that used to sit here -- an inherited claim that two data rows of a record
+// type carrying inhabited optional reservation fields exhaust memory during resolve -- is REFUTED
+// by measurement, so it and its dissolution marker are gone rather than restated. What the
+// measurement does NOT do is change the encoding: the coproduct stands on the modeling paragraph
+// above, which never depended on the report, and that independence is why refuting it costs
+// nothing here.
 type OperatorAllocation {
   decided_by: std.types.NonEmptyStr
   decided_on: std.types.NonEmptyStr

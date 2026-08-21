@@ -553,7 +553,10 @@ fn converge_cli_publish(out: ConvergeCliOutput, resolved: String, revision_line:
 // disagree. This REPLACES the former bool-only converge_cli_revision_gate, which demoted the
 // converged flag while leaving the rendered line saying verdict=converged — the dual
 // representation the collector inherited. Drifted names both sides (desired AND local):
-// tree-sync is the catch-up realization, its safe form a compare-and-swap needing the prior.
+// the catch-up's safe form is a compare-and-swap and so needs the prior. (This clause named
+// tree-sync as that realization until 2026-08-21; it is not one -- see the note on
+// converge_cli_revision_reason. The CAS-needs-the-prior reason is unaffected and is why the
+// arm carries both operands.)
 // The repo path is the ONE host_layout convention row.
 // DECLARED IMPRECISION, next-rung item (review, 2026-08-10). RevisionUnobserved maps to
 // Absent, but converge_verdict (host_converge) already mints Absent for "subject not present
@@ -589,7 +592,15 @@ fn converge_cli_receipt_join_revision(r: ConvergeCliReceipt, standing: gunbc.fle
   }
 }
 
-fn converge_cli_revision_reason(standing: gunbc.fleet_desired_observe.FleetRevisionStanding) -> String? {
+// THE REMEDY THIS NAMES MUST BE ONE ANOTHER MODULE WOULD PERFORM, and until this row it named one
+// that `gunbc.live_deploy.deployed_tree_report` BLOCKS: "tree-sync is the catch-up realization".
+// A tree-only publication moves the deployed HEAD to the admitted revision and thereby flips
+// `roadmap_belt_actuate` `belt_revision_admission` from refusing to admitting WHILE THE INSTALLED
+// BINARY IS STILL THE OLD ONE, so the belt's next tick dispatches a mixed realization that was never
+// admitted as a release. Two authorities disagreed about one operation and the user-facing one was
+// pointing at the unsafe half — the typed verdict was correct the whole time, which is what made it
+// survive: nothing that reads the VERDICT is wrong, only the sentence a human acts on.
+fn converge_cli_revision_reason(standing: FleetRevisionStanding) -> String? {
   match standing {
     RevisionConverged { revision: _ } => none
     RevisionDrifted { desired: d, local: l } =>
@@ -598,8 +609,8 @@ fn converge_cli_revision_reason(standing: gunbc.fleet_desired_observe.FleetRevis
           "gunbc converge: revision drift — desired ",
           extdeps.git.object_store.git_object_id_wire_hex(oid: d) as String,
           ", local tree at ",
-          extdeps.git.object_store.git_object_id_wire_hex(oid: l) as String,
-          "; tree-sync is the catch-up realization",
+          git_object_id_wire_hex(oid: l) as String,
+          "; full host-release publication is required — tree-only synchronization is NOT convergence",
         ], ""),
       }
     RevisionUnobserved { cause: c } =>
