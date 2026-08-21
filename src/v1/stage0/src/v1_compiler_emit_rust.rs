@@ -20412,9 +20412,7 @@ pub fn rust_call_arg_fail_closed_unwrap(
     func: String,
 ) -> String {
     match callee.clone() {
-        Some(info) => match info
-            .params
-            .clone()
+        Some(info) => match function_value_params(info.params.clone())
             .iter()
             .cloned()
             .skip(idx.clone() as usize)

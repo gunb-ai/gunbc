@@ -7959,7 +7959,7 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
 fn rust_call_arg_fail_closed_unwrap(arg_str: String, arg: Node, callee: ItemInfo?, idx: Int, func: String) -> String {
   match callee {
     Present { value: info } =>
-      match info.params |> skip(idx) |> first {
+      match function_value_params(params: info.params) |> skip(idx) |> first {
         Present { value: param } =>
           let param_required = param_node_type_expr(n: param).return_cardinality != CardOptional
           let arg_optional = resolved_type(n: arg).return_cardinality == CardOptional
