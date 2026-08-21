@@ -24,7 +24,6 @@ import gunbc.fleet_main_revision {
   FleetDesiredAbsent,
   FleetDesiredUndecodable,
   fleet_desired_ref_name,
-  fleet_desired_ref_name,
   FleetDesiredRevision,
   FleetDesiredAdmitted,
   FleetDesiredUnobserved,
