@@ -47,9 +47,30 @@ type PathOwnershipDecision
   | OwnershipMutationRequired { current: PosixOwnerSpec, desired: PosixOwnerSpec }
   | OwnershipDecisionRefused { reason: String }
 
+// THE MUTATION IS EVIDENCE EVEN THOUGH IT IS NOT AUTHORITY. An earlier revision of this module
+// fused "not authoritative for state" with "not evidence at all": the verdict took only the
+// readback, so what the chown reported was discarded entirely. That is wrong in the other
+// direction -- the attempt establishes whether a mutation was dispatched at all and what the
+// actuator said, which is what an operator needs when the readback also disagrees (side-chat
+// review of #8760).
+//
+// WHAT IT DOES NOT CARRY YET, stated rather than implied: exit code, stdout and stderr. The
+// transport surface these arms are reached through projects a process result to a three-valued
+// predicate before this module sees it, so the cause an operator most wants -- chown's own stderr
+// -- is already gone by here. NEXT-RUNG TRIGGER: a transport read that returns the process result
+// rather than a predicate. Until then this carrier is honest about being coarse instead of
+// pretending the distinction it can draw is the whole one.
+type ChownAttemptObservation
+  = ChownNotDispatched { cause: String }
+  | ChownReportedSuccess
+  | ChownReportedFailure
+
 type PathOwnershipEnsureOutcome
   = PathAlreadyOwned { owner: PosixOwnerSpec }
-  | PathOwnershipChanged { owner: PosixOwnerSpec }
+  | PathOwnershipConvergedAfterAttempt {
+      owner: PosixOwnerSpec
+      attempt: ChownAttemptObservation
+    }
   | PathOwnershipEnsureRefused { reason: String }
 
 fn posix_owner_spec_equal(left: PosixOwnerSpec, right: PosixOwnerSpec) -> Bool {
@@ -76,32 +97,56 @@ fn path_ownership_decision(
   }
 }
 
-// THE VERDICT COMES FROM THE READBACK AND FROM NOTHING ELSE. There is no argument here for the
-// mutation's exit status, which is the structural form of the rule: a caller cannot report
-// convergence from a process result because this function has nowhere to put one.
+// THE STATE COMES FROM THE READBACK AND FROM NOTHING ELSE, and the structure says so: `attempt`
+// reaches the outcome only as a field of the receipt, never as a match subject deciding whether
+// convergence happened. Every arm here dispatches on `readback`. So a caller cannot report
+// convergence from a process result -- not because the value is absent, but because no branch
+// consults it.
 //
-// The refusal on a mismatch names both owners. "The chown did not take" and "the chown took, to
-// the wrong owner" are the same shape here and are distinguished by the values, not by an arm --
-// what matters to the caller is that the path is not owned as intended.
+// The refusal on a mismatch names both owners AND what the chown reported. "The chown did not
+// take" and "the chown took, to the wrong owner" are the same shape here and are distinguished by
+// the values, not by an arm -- what matters to the caller is that the path is not owned as
+// intended, and what the actuator said is the cause they will look for next.
 fn path_ownership_verdict(
   desired: PosixOwnerSpec,
+  attempt: ChownAttemptObservation,
   readback: PathOwnershipObservation,
 ) -> PathOwnershipEnsureOutcome {
   match readback {
     PathOwnerUnobserved { reason: why } =>
       PathOwnershipEnsureRefused {
-        reason: concat("path ownership: the owner could not be read back after the chown, so convergence is not established: ", why),
+        reason: concat(
+          concat("path ownership: the owner could not be read back after the chown ", chown_attempt_text(attempt: attempt)),
+          concat(", so convergence is not established: ", why),
+        ),
       }
     PathOwnerObserved { owner: after } =>
       match posix_owner_spec_equal(left: after, right: desired) {
-        true => PathOwnershipChanged { owner: after }
+        true => PathOwnershipConvergedAfterAttempt { owner: after, attempt: attempt }
         false =>
           PathOwnershipEnsureRefused {
             reason: concat(
-              concat("path ownership: the chown reported no error but the path is owned by ", posix_owner_spec_text(spec: after)),
+              concat(
+                concat("path ownership: after the chown ", chown_attempt_text(attempt: attempt)),
+                concat(" the path is owned by ", posix_owner_spec_text(spec: after)),
+              ),
               concat(", not ", posix_owner_spec_text(spec: desired)),
             ),
           }
       }
+  }
+}
+
+// THE OUTCOME IS "CONVERGED AFTER AN ATTEMPT", NOT "THIS CHOWN CHANGED IT", and the difference is
+// the third row of the matrix: a chown that REPORTED FAILURE followed by a readback showing the
+// desired owner establishes that the desired state now exists, and does NOT establish that our
+// mutation produced it. A concurrent actor may have, or the utility may have acted partially
+// before returning nonzero. The old name PathOwnershipChanged asserted the causal claim the
+// evidence does not support.
+fn chown_attempt_text(attempt: ChownAttemptObservation) -> String {
+  match attempt {
+    ChownNotDispatched { cause: why } => concat("was not dispatched (", concat(why, ")"))
+    ChownReportedSuccess => "reported success"
+    ChownReportedFailure => "reported failure"
   }
 }

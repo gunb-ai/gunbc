@@ -68,7 +68,11 @@ import extdeps.posix.path_ownership {
   OwnershipDecisionRefused,
   PathOwnershipEnsureOutcome,
   PathAlreadyOwned,
-  PathOwnershipChanged,
+  PathOwnershipConvergedAfterAttempt,
+  ChownAttemptObservation,
+  ChownNotDispatched,
+  ChownReportedSuccess,
+  ChownReportedFailure,
   PathOwnershipEnsureRefused,
   path_ownership_decision,
   path_ownership_verdict,
@@ -1532,6 +1536,55 @@ fn srv3_apt_tool_version_ok(tool_name: NonEmptyStr, transport: HostEffectTranspo
   }
 }
 
+// ONE TRANSPORT-AWARE SINGLE-TOKEN READ, given a full argv. srv3_tool_bin_path and the `id`
+// probes each had their own transport match over the same four arms; the stat probes this cut adds
+// would have made a third. The argv is the parameter because that is exactly what differs --
+// everything else about "run this readonly command and take its one line of output" is identical.
+fn srv3_transport_token(argv: List<String>, transport: HostEffectTransport) -> Srv3ObservedToken {
+  match transport {
+    LocalShell => srv3_local_token_from_argv(argv: argv)
+    SshShell { ssh_host: h } =>
+      srv3_observed_token_from_typed_argv(outcome: typed_argv_exec_over_ssh(host: h, argv: argv))
+    FleetSsh { target: t, context: c } =>
+      srv3_observed_token_from_typed_argv(
+        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
+      )
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      Srv3TokenUnobserved {
+        reason: "EmitArtifactThenThinRun transport has no arm that can read a command's output",
+      }
+  }
+}
+
+// The local witness-bin surface takes a binary and its tail separately, so the argv is split here
+// rather than at every caller. An empty argv names no binary and is refused rather than run.
+fn srv3_local_token_from_argv(argv: List<String>) -> Srv3ObservedToken {
+  match argv {
+    Empty =>
+      Srv3TokenUnobserved { reason: "srv3 token read: an empty argv names no binary to run" }
+    Cons { head: bin, tail: rest } => {
+      let r = gunbc.WitnessBin.Run(workdir: "/", bin_path: bin, args: rest)
+      srv3_token_from_run(success: r.success, stdout: r.stdout)
+    }
+  }
+}
+
+// EMPTY STDOUT IS ABSENT, NOT AN OBSERVATION OF "". A probe that exits zero having printed nothing
+// has not answered the question it was asked, and the caller must decide what that means rather
+// than receive an empty token that compares unequal to everything.
+//
+// LOCAL READS GO THROUGH THE SAME TRIM THE SSH ARMS USE. The local chown arm previously consumed
+// `.stdout` raw, so a trailing newline -- which `id` emits and every other arm trims -- was
+// concatenated straight into a privileged chown argument.
+fn srv3_token_from_run(success: Bool, stdout: String) -> Srv3ObservedToken {
+  if success {
+    let out = trim(s: stdout)
+    if out == "" { Srv3TokenAbsent } else { Srv3TokenObserved { value: out } }
+  } else {
+    Srv3TokenAbsent
+  }
+}
+
 // THE GID PROBE SITS INSIDE THE UID ARM, not beside it in a second `let`. Both are readonly, so
 // the harm is small, but the shape is the one that produced this file's two worst defects: an
 // effectful call outside the branch that decides whether it should happen runs anyway, and nothing
@@ -1665,52 +1718,73 @@ fn srv3_converge_path_owner(
     OwnershipDecisionRefused { reason: why } => Srv3PredicateUnobserved { reason: why }
     OwnershipAlreadySatisfied { owner: _ } => Srv3PredicateHolds
     OwnershipMutationRequired { current: _, desired: target } =>
-      srv3_path_owner_readback_verdict(
-        desired: target,
-        mutation: srv3_elevated_witness_bin_success(
-          transport: transport,
-          command: chown_argv(owner: target, path: path),
-        ),
-        path: path,
-        transport: transport,
-      )
+      srv3_chown_then_read_back(desired: target, path: path, transport: transport)
   }
 }
 
-// The mutation's predicate is taken as a parameter so it is EVALUATED BEFORE the readback -- the
-// argument position is load-bearing here in the opposite direction from everywhere else in this
-// file: the chown must run first. Its value is then used only to distinguish an unobservable
-// mutation (the host was never reached, so a readback would describe a host nobody touched) from
-// an observed one; a chown that ran and reported failure still goes to the readback, because
-// "reported failure" is not evidence about the filesystem either.
-fn srv3_path_owner_readback_verdict(
+// THE MUTATION IS SEQUENCED BY A `let` INSIDE THIS ARM, NOT BY ARGUMENT POSITION. An earlier
+// revision passed the chown as an argument and defended it in a comment as "deliberately
+// load-bearing eagerness". That reinstates exactly the footgun this sequence of cuts exists to
+// remove: implicit evaluation order is not a sequencing authority, and the fact that eagerness
+// happened to be what I wanted this time does not make it one -- the next reader cannot tell a
+// deliberate one from the accident that put a privileged apt install in an argument (side-chat
+// review of #8760).
+fn srv3_chown_then_read_back(
   desired: PosixOwnerSpec,
-  mutation: Srv3HostPredicate,
   path: String,
   transport: HostEffectTransport,
 ) -> Srv3HostPredicate {
-  match mutation {
-    Srv3PredicateUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
-    Srv3PredicateFails =>
-      srv3_path_owner_readback(desired: desired, path: path, transport: transport)
-    Srv3PredicateHolds =>
-      srv3_path_owner_readback(desired: desired, path: path, transport: transport)
+  let attempt = srv3_chown_attempt(
+    outcome: srv3_elevated_witness_bin_success(
+      transport: transport,
+      command: chown_argv(owner: desired, path: path),
+    ),
+  )
+  srv3_readback_after_attempt(
+    desired: desired,
+    attempt: attempt,
+    path: path,
+    transport: transport,
+  )
+}
+
+fn srv3_chown_attempt(outcome: Srv3HostPredicate) -> ChownAttemptObservation {
+  match outcome {
+    Srv3PredicateHolds => ChownReportedSuccess
+    Srv3PredicateFails => ChownReportedFailure
+    Srv3PredicateUnobserved { reason: why } => ChownNotDispatched { cause: why }
   }
 }
 
-// The two observed arms above are deliberately identical, and collapsing them into one would
-// require a wildcard the non-fold-residue floor forbids -- but the identity is the POINT rather
-// than an accident: a chown that reported failure gets read back exactly like one that reported
-// success, because a process result is not evidence about the filesystem in either direction. The
-// only arm that skips the readback is the one where no host was reached at all.
+// A CHOWN THAT WAS NEVER DISPATCHED SKIPS THE READBACK. Not as an optimization: a readback there
+// would describe a host nobody touched, and reporting its answer as the result of an ensure that
+// never ran is the fabrication in miniature. Both DISPATCHED arms read back, and identically --
+// a reported failure is no more evidence about the filesystem than a reported success.
+fn srv3_readback_after_attempt(
+  desired: PosixOwnerSpec,
+  attempt: ChownAttemptObservation,
+  path: String,
+  transport: HostEffectTransport,
+) -> Srv3HostPredicate {
+  match attempt {
+    ChownNotDispatched { cause: why } => Srv3PredicateUnobserved { reason: why }
+    ChownReportedSuccess =>
+      srv3_path_owner_readback(desired: desired, attempt: attempt, path: path, transport: transport)
+    ChownReportedFailure =>
+      srv3_path_owner_readback(desired: desired, attempt: attempt, path: path, transport: transport)
+  }
+}
+
 fn srv3_path_owner_readback(
   desired: PosixOwnerSpec,
+  attempt: ChownAttemptObservation,
   path: String,
   transport: HostEffectTransport,
 ) -> Srv3HostPredicate {
   srv3_predicate_from_ownership_outcome(
     outcome: path_ownership_verdict(
       desired: desired,
+      attempt: attempt,
       readback: srv3_observe_path_owner(path: path, transport: transport),
     ),
   )
@@ -1719,7 +1793,7 @@ fn srv3_path_owner_readback(
 fn srv3_predicate_from_ownership_outcome(outcome: PathOwnershipEnsureOutcome) -> Srv3HostPredicate {
   match outcome {
     PathAlreadyOwned { owner: _ } => Srv3PredicateHolds
-    PathOwnershipChanged { owner: _ } => Srv3PredicateHolds
+    PathOwnershipConvergedAfterAttempt { owner: _, attempt: _ } => Srv3PredicateHolds
     PathOwnershipEnsureRefused { reason: why } => Srv3PredicateUnobserved { reason: why }
   }
 }

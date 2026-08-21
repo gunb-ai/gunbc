@@ -14,7 +14,11 @@ import extdeps.posix.path_ownership {
   OwnershipDecisionRefused,
   PathOwnershipEnsureOutcome,
   PathAlreadyOwned,
-  PathOwnershipChanged,
+  PathOwnershipConvergedAfterAttempt,
+  ChownAttemptObservation,
+  ChownNotDispatched,
+  ChownReportedSuccess,
+  ChownReportedFailure,
   PathOwnershipEnsureRefused,
   posix_owner_spec_equal,
   path_ownership_decision,
@@ -84,10 +88,11 @@ test fn an_unobservable_current_owner_authorizes_no_chown() -> Bool {
 test fn a_readback_showing_a_different_owner_refuses() -> Bool {
   match path_ownership_verdict(
     desired: owner(uid: 1000, gid: 1000),
+    attempt: ChownReportedSuccess,
     readback: PathOwnerObserved { owner: owner(uid: 0, gid: 0) },
   ) {
     PathAlreadyOwned { owner: _ } => false
-    PathOwnershipChanged { owner: _ } => false
+    PathOwnershipConvergedAfterAttempt { owner: _, attempt: _ } => false
     PathOwnershipEnsureRefused { reason: why } =>
       string_contains(s: why, pattern: "0:0") && string_contains(s: why, pattern: "1000:1000")
   }
@@ -98,10 +103,11 @@ test fn a_readback_showing_a_different_owner_refuses() -> Bool {
 test fn an_unreadable_readback_refuses() -> Bool {
   match path_ownership_verdict(
     desired: owner(uid: 1000, gid: 1000),
+    attempt: ChownReportedSuccess,
     readback: PathOwnerUnobserved { reason: "stat: No such file or directory" },
   ) {
     PathAlreadyOwned { owner: _ } => false
-    PathOwnershipChanged { owner: _ } => false
+    PathOwnershipConvergedAfterAttempt { owner: _, attempt: _ } => false
     PathOwnershipEnsureRefused { reason: why } => string_contains(s: why, pattern: "No such file")
   }
 }
@@ -111,11 +117,53 @@ test fn an_unreadable_readback_refuses() -> Bool {
 test fn a_readback_showing_the_desired_owner_converges() -> Bool {
   match path_ownership_verdict(
     desired: owner(uid: 1000, gid: 1000),
+    attempt: ChownReportedSuccess,
     readback: PathOwnerObserved { owner: owner(uid: 1000, gid: 1000) },
   ) {
     PathAlreadyOwned { owner: _ } => false
     PathOwnershipEnsureRefused { reason: _ } => false
-    PathOwnershipChanged { owner: o } => posix_owner_spec_equal(left: o, right: owner(uid: 1000, gid: 1000))
+    PathOwnershipConvergedAfterAttempt { owner: o, attempt: _ } =>
+      posix_owner_spec_equal(left: o, right: owner(uid: 1000, gid: 1000))
+  }
+}
+
+// THE THIRD ROW OF THE MATRIX, and the one that shows why the outcome is not named "Changed".
+// A chown that REPORTED FAILURE followed by a readback showing the desired owner establishes that
+// the desired state now exists. It does NOT establish that our mutation produced it -- a
+// concurrent actor may have, or the utility may have acted partially before returning nonzero.
+// So the state verdict converges, and the receipt keeps the reported failure rather than laundering
+// it into a success (side-chat review of #8760).
+test fn a_failed_chown_with_a_desired_readback_converges_but_keeps_the_failure() -> Bool {
+  match path_ownership_verdict(
+    desired: owner(uid: 1000, gid: 1000),
+    attempt: ChownReportedFailure,
+    readback: PathOwnerObserved { owner: owner(uid: 1000, gid: 1000) },
+  ) {
+    PathAlreadyOwned { owner: _ } => false
+    PathOwnershipEnsureRefused { reason: _ } => false
+    PathOwnershipConvergedAfterAttempt { owner: o, attempt: a } =>
+      posix_owner_spec_equal(left: o, right: owner(uid: 1000, gid: 1000)) &&
+        match a {
+          ChownReportedFailure => true
+          ChownReportedSuccess => false
+          ChownNotDispatched { cause: _ } => false
+        }
+  }
+}
+
+// THE REFUSAL NAMES WHAT THE ACTUATOR REPORTED, because that is the cause an operator looks for
+// next. An earlier revision's mismatch message asserted "the chown reported no error" while the
+// caller routed BOTH reported success and reported failure into it -- a diagnostic that was simply
+// false half the time it fired.
+test fn a_mismatch_refusal_names_what_the_chown_reported() -> Bool {
+  match path_ownership_verdict(
+    desired: owner(uid: 1000, gid: 1000),
+    attempt: ChownReportedFailure,
+    readback: PathOwnerObserved { owner: owner(uid: 0, gid: 0) },
+  ) {
+    PathAlreadyOwned { owner: _ } => false
+    PathOwnershipConvergedAfterAttempt { owner: _, attempt: _ } => false
+    PathOwnershipEnsureRefused { reason: why } => string_contains(s: why, pattern: "reported failure")
   }
 }
 
