@@ -1581,20 +1581,27 @@ than argued.
        shape, `witness_id_equals_variant_value`. **Observed: PASS, exit 0.** Confirms the
        Variant arm is the same hole as the Record arm, not a narrower one.
 
-20b. **REST JSON-projection door: `map_response_to_value_json` honors the declared field
-   names but never validates a field's value against its declared refinement predicate — same
-   below-floor rung as 20a (silent wrongness, §4b/§5), a distinct mechanism** (measured
-   2026-08-20, bold-bear-246).
+20b. **REST JSON-projection door: ordinary object projection derives field names from the
+   declaration without accepting their values; the fallback and array arms bypass or truncate
+   the declared output shape entirely — same below-floor rung as 20a (silent wrongness,
+   §4b/§5), a distinct mechanism** (measured 2026-08-20, bold-bear-246).
 
    **Mechanism, confirmed by source read then by execution.** `map_response_to_value_json` is
    reached from a genuinely live REST round trip: `dispatch_rest` → `decide_rest_exchange` →
    (for a `Json` response format) `map_response_to_value_json` on the real HTTP response body.
-   It reads `op_node.inferred` and, when the operation's return type resolves, projects into
-   that operation's **declared** output shape field-by-field — unlike 20a, the field names
-   here are checked against the real declaration, not read verbatim off the wire. The gap is
-   narrower and specifically in field *values*: each field's JSON value is converted with the
-   untyped `json_to_value` and assembled into a `Value::Record` with zero validation against
-   that field's declared type's refinement predicate. An earlier revision said "on every branch" — a universal
+   It reads `op_node.inferred`. Unlike 20a it therefore has access to the operation's resolved
+   return declaration — but it consumes that declaration to *varying degrees per arm*, and an
+   earlier revision of this row generalized the best arm to the whole function. Ordinary object
+   projection derives all output field names from the declaration, so those names are not read
+   verbatim off the wire as in 20a; the array arm uses only the *first* declared field and omits
+   the rest; and the unresolved and childless arms bypass field projection altogether, returning
+   whole-body `json_to_value`. **No arm accepts the resulting runtime value against the declared
+   field types or refinement predicates.** So the honest class statement is broader than "field
+   values are unchecked": `map_response_to_value_json` does not semantically accept an observation
+   against the declared return type at all. On the ordinary arm each field's JSON value is
+   converted with the untyped `json_to_value` and assembled into a `Value::Record` with zero
+   validation against that field's declared refinement predicate; on the other arms the declared
+   shape is not even fully constructed. An earlier revision said "on every branch" — a universal
    this item never enumerated, and it under-counted: `map_response_to_value_json` has TWO distinct arms that skip
    straight to `json_to_value`, one when the operation's return type does not resolve to `Resolved` and a second
    when it resolves but has no children, and the earlier wording named only the first. The arms this item
