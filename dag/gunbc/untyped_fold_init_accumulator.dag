@@ -81,10 +81,26 @@ data untyped_fold_init_sites: List<UntypedFoldInitSite> = [
 // and inference never runs out of facts. The one member is inline in a generic call's argument, where
 // nothing supplies it.
 
+type EmitterProvenance
+  = EmitterOnSubjectAncestry { note: String }
+  | EmitterOffMainAndNewerThanSubject {
+      only_branch_containing_it: String
+      subject_committed_utc: String
+      emitter_committed_utc: String
+      risk: String
+    }
+
+type ControlReach {
+  positive_control: String
+  negative_control: String
+  what_the_controls_establish: String
+}
+
 type SweepInstrument {
   subject_ref: String
   emitter_build_ref: String
-  emitter_build_is_ancestor_of_subject: Bool
+  emitter_provenance: EmitterProvenance
+  controls: ControlReach
   oracle: String
   emit_command: String
   check_command: String
@@ -144,7 +160,17 @@ data untyped_fold_init_population_basis: PopulationBasis = SweptCorpus {
     instrument: {
       subject_ref: "de2ad927170c2cff04069bf9e3536f719913e446",
       emitter_build_ref: "009d4dab8e91713faba88cd0d5cf058304537122",
-      emitter_build_is_ancestor_of_subject: false,
+      emitter_provenance: EmitterOffMainAndNewerThanSubject {
+        only_branch_containing_it: "origin/session/calm-lark-229",
+        subject_committed_utc: "2026-08-21T18:39:19Z",
+        emitter_committed_utc: "2026-08-21T18:54:27Z",
+        risk: "the emitter commit is NEWER than the measured tree and is on no main ancestry, so the risk is NOT that a stale emitter missed sites a current one would produce -- it is that an off-main emitter may carry emission behaviour main does not. The population is the population THAT emitter produces.",
+      },
+      controls: {
+        positive_control: "the instrument reproduced the already-known site exactly -- same file, same closure, same accumulator caret, one line off the position the surfacing row recorded",
+        negative_control: "16 further E0282 sites in the same output that the partition key assigns to other classes, so the key is able to answer no",
+        what_the_controls_establish: "MECHANISM-CONFIRMED, POPULATION CONDITIONAL ON THIS EMITTER. A control establishes that the instrument can detect the class; it cannot establish that the population is complete. Read the positive control as detection, never as completeness.",
+      },
       oracle: "rustc, via cargo check over the crate the v2 emitter produced -- not a grep and not a reading of the .dag source",
       emit_command: "gunbc compile --source-root dag --source-root src/v2 --entry ENTRY --output-dir DIR --target rust",
       check_command: "cargo check --message-format=json --lib, run inside DIR",
@@ -227,11 +253,17 @@ data untyped_fold_init_population_basis: PopulationBasis = SweptCorpus {
 // 1 of 186 would be the narrow this row exists to avoid.
 //
 // THE EMITTER IS NOT BUILT FROM THE SUBJECT, and the row says so in a field rather than in prose that
-// a later reader can skip. The binary was built from a commit that is NOT an ancestor of the measured
-// tree. What licenses the measurement anyway is that the instrument reproduced the known site exactly
-// -- same file, same closure, same accumulator caret, one line off the position the surfacing row
-// recorded -- and that reproduction is the positive control. The negative control is in the same
-// output: sixteen other E0282 sites the partition key assigns elsewhere, so the key can say no.
+// a later reader can skip. The DIRECTION matters and was checked rather than assumed: the emitter's
+// commit is fifteen minutes NEWER than the measured tree and sits on no main ancestry, reachable only
+// from one session branch. So this is not a stale-instrument risk -- the worry is not that an old
+// emitter missed sites a current one would produce. It is that an off-main emitter may carry emission
+// behaviour main does not, which makes the measured population the population THAT emitter produces.
+//
+// WHAT THE CONTROLS DO AND DO NOT LICENSE. The instrument reproduced the known site exactly, and
+// sixteen further E0282 sites in the same output are assigned elsewhere by the partition key, so the
+// key can answer no. Together those establish that the instrument DETECTS this class -- a mechanism.
+// They do not establish that the population is complete, because a control never can. The honest
+// reading is mechanism-confirmed, population conditional on this emitter.
 
 // WHY THIS IS ITS OWN ROW RATHER THAN A NOTE ON THE ROW THAT SURFACED IT.
 //
