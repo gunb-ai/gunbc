@@ -1378,7 +1378,15 @@ fn srv3_transport_witness_bin_success(
   workdir: String,
   bin_path: String,
   args: List<String>,
-) -> Srv3HostPredicate {
+) -> Srv3HostPredicate
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_elevated_witness_bin_success"),
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_apt_tool_version_ok"),
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_run_tool_by_name"),
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "websocat_stage_download"),
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "websocat_stage_ensure_executable_mode"),
+  ]
+{
   match transport {
     LocalShell =>
       if gunbc.WitnessBin.Run(workdir: workdir, bin_path: bin_path, args: args).success {
@@ -1802,10 +1810,43 @@ fn srv3_predicate_from_ownership_outcome(outcome: PathOwnershipEnsureOutcome) ->
 // once. Four call sites each carried `bin_path: "/usr/bin/sudo"` beside an args list beginning
 // with a bare "-n"; the binary and the flag are facts about sudo, not about chown, mkdir or
 // apt-get, and extdeps.sudo.elevation is where they belong.
+// THE EXECUTION SURFACE IS SEALED TO ITS NAMED CALLERS, and the seal's REACH IS MEASURED RATHER
+// THAN ASSERTED, because the obvious reading of `admit_callers` overstates what it does.
+//
+// WHAT IS CLOSED, confirmed by execution: no OTHER MODULE can run an argv on a transport, elevated
+// or not. A foreign caller refuses at resolve with a diagnostic naming the permitted set --
+// "constructor call admission refused: 'gunbc.host_effect_realize.srv3_elevated_witness_bin_success'
+// refuses call from 'test.claim.srv3_seal_probe.a_foreign_module_may_not_run_a_privileged_argv' --
+// permitted callers: [...]". That is the property this cut is for: a caller outside this module can
+// name a semantic operation (ensure this tool, ensure this owner) and cannot name the machinery
+// that executes it.
+//
+// WHAT IS NOT CLOSED, and this is the part a reader would get wrong: the wall does NOT confine
+// SAME-MODULE callers. A probe function added to this very module, absent from the admitted list,
+// calling srv3_elevated_witness_bin_success with ["/bin/rm", "-rf", "/"], typechecked and resolved
+// with no diagnostic at all. Both halves were measured on the same build; reporting only the
+// refusal would be the rung inflation DESIGN section 4b names as worse than sitting low.
+//
+// So the rung is MECHANICALLY PREVENTABLE at the module boundary and NOTHING at all within it. The
+// admitted lists below are therefore two facts at once: an enforced wall against foreign callers,
+// and a declaration of intent for in-module ones that no mechanism currently checks. NEXT-RUNG
+// TRIGGER: admission checked per caller rather than per module. Until that lands, an in-module
+// caller added to either of these functions is caught by review or by nothing.
+//
+// The lists were derived by walking the module rather than by reading the call sites: my first
+// hand-read attributed two calls to the wrong enclosing function and invented a fifth caller that
+// does not exist. Nothing would have caught that -- an in-module list the compiler does not check
+// is a list nothing verifies, which is the second reason the next-rung trigger matters.
 fn srv3_elevated_witness_bin_success(
   transport: HostEffectTransport,
   command: List<String>,
-) -> Srv3HostPredicate {
+) -> Srv3HostPredicate
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_privileged_apt_install"),
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_chown_then_read_back"),
+    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "websocat_stage_ensure_directory"),
+  ]
+{
   let elevated = sudo_elevate(command: command)
   srv3_transport_witness_bin_success(
     transport: transport,
