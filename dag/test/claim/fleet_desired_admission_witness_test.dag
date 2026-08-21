@@ -272,7 +272,7 @@ test fn the_receipt_names_the_judge_that_decided_the_advance() -> Bool {
     to: fixture_oid(hex: fixture_candidate_hex),
     judge: fixture_oid(hex: fixture_judge_hex),
   )
-  string_contains(s: script, pattern: concat(" judge ", fixture_judge_hex))
+  string_contains(s: script, pattern: concat(" judge-source-observed ", fixture_judge_hex))
     && string_contains(s: script, pattern: concat("admitted ", fixture_candidate_hex))
     && string_contains(s: script, pattern: concat("expected-prior ", fixture_prior_hex))
 }
@@ -292,9 +292,9 @@ test fn the_judge_operand_is_not_the_target_or_the_prior() -> Bool {
     to: fixture_oid(hex: fixture_candidate_hex),
     judge: fixture_oid(hex: fixture_judge_hex),
   )
-  string_contains(s: script, pattern: " judge ")
-    && !string_contains(s: script, pattern: concat(" judge ", fixture_candidate_hex))
-    && !string_contains(s: script, pattern: concat(" judge ", fixture_prior_hex))
+  string_contains(s: script, pattern: " judge-source-observed ")
+    && !string_contains(s: script, pattern: concat(" judge-source-observed ", fixture_candidate_hex))
+    && !string_contains(s: script, pattern: concat(" judge-source-observed ", fixture_prior_hex))
 }
 
 // THE RECEIPT HALF, WHICH THE TWO CLAIMS ABOVE DO NOT COVER. They assert what the push DEMANDS;

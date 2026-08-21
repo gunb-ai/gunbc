@@ -304,7 +304,13 @@ fn fleet_desired_authorized_push_cas_request(expected: GitRemoteRefExpectation, 
 // governs repository CONTENT and never which workflow file orchestrates the run. It is also not the
 // candidate, and not the subject the required floor judged.
 //
-// AND THE JUDGE FIELD IS CALLER-COUPLED, WHICH IS A WEAKER CLAIM THAN ITS NAME SUGGESTS. What is
+// THE FIELD IS NAMED judge-source-observed, NOT judge, AND THE NAME IS THE HONEST RUNG. Calling it
+// "judge" would assert the identity of the deciding binary; what is established is an OBSERVATION
+// of a source revision, under the conditions below. A field whose name outruns its evidence is the
+// rung inflation §4b calls worse than sitting low, and it would sit in operator-facing text where
+// nobody can see the qualification. It gets the stronger name when the pinning cut binds the build.
+//
+// AND THE FIELD IS CALLER-COUPLED, WHICH IS A WEAKER CLAIM THAN ITS NAME SUGGESTS. What is
 // read is the CHECKOUT's HEAD. What the receipt asserts is the provenance of the BINARY THAT
 // DECIDED. Those are the same fact only because the workflow builds that binary from that checkout
 // inside the same job (`cargo build --release -p v1-compiler --bin gunbc`, toolchain cache off) --
@@ -352,7 +358,7 @@ fn fleet_desired_authorized_push_script(expected: GitRemoteRefExpectation, to: G
     "git push ", git_remote_ref_lease_word(request: request) as String,
     " ", request.remote as String,
     " ", git_remote_ref_cas_refspec(request: request) as String, "\n",
-    "echo \"[fleet-desired] admitted ", to_hex, " expected-prior ", expected_phrase, " judge ", judge_hex, "\"\n",
+    "echo \"[fleet-desired] admitted ", to_hex, " expected-prior ", expected_phrase, " judge-source-observed ", judge_hex, "\"\n",
   ], "")
 }
 
