@@ -2,6 +2,25 @@ module test.claim.long.cited_symbol_resolution_witness_test
 
 import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.roster_registry { ByDerivation, RosterRegistration, roster_decl, roster_registry }
+import gunbc.lambda_argument_typing_gate {
+  AbsentFromRoster,
+  LambdaTypingGateSite,
+  lambda_typing_gate_citable_sites,
+  lambda_typing_gate_declaration_refs,
+  lambda_typing_gate_declaration_refs_from,
+  lambda_typing_gate_outside_index_count,
+  lambda_typing_gate_sites,
+}
+import gunbc.list_membership_operation_gap {
+  ListMembershipGapSite,
+  PositionalPair,
+  list_membership_gap_citable_sites,
+  list_membership_gap_declaration_refs,
+  list_membership_gap_declaration_refs_from,
+  list_membership_gap_outside_index_count,
+  list_membership_gap_outside_index_refs,
+  list_membership_gap_sites,
+}
 import gunbc.doc_graph_roots {
   hand_authored_cited_symbol_control_declaration_refs,
   hand_authored_doc_declaration_refs,
@@ -9,7 +28,7 @@ import gunbc.doc_graph_roots {
   hand_authored_works_refs_all_resolve,
   hand_authored_works_resolution_pool_roots,
 }
-import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref }
+import std.decl_ref { CitableThroughDeclIndex, DeclarationRef, WholeDeclaration, NamedField, decl_ref }
 import v2.lens.cited_symbol_resolution {
   cited_symbol_enrolled_refusal_count,
   cited_symbol_planted_ambiguous_control_facts,
@@ -286,4 +305,87 @@ test fn roster_registry_dangling_predicate_red_control_refuses() -> Bool {
       facts: cited_symbol_long_witness_layer_facts,
       modules: cited_symbol_long_witness_layer_modules
     ) == 1
+}
+
+data instance_gap_outside_index_witness_note: String = "THE OUTSIDE-INDEX DISPOSITION IS GUARDED FROM BOTH SIDES, because a classification that removes rows from a checked population is one edit away from being an exemption list. instance_gap_outside_index_refs_really_do_refuse is the load-bearing half: it asserts the refs marked outside the index ACTUALLY REFUSE, in the exact count claimed. Mark a resolvable ref as outside-index to dodge a red and that witness fails, because the ref resolves and the refusal count comes up short. So the disposition can only ever be applied to references that genuinely cannot be answered, and the population it removes stays measured rather than disappearing. The partition witness beside it holds citable + outside == total, so a row cannot fall out of both halves. MUTATION-TESTED, not asserted: swapping a resolvable row to outside-index AND a genuinely-outside row to citable — a swap chosen because it leaves the COUNT at two, so the counting witness cannot see it — leaves the counting witness PASS and turns both honesty witnesses RED. The guard therefore discriminates the exact abuse it exists to prevent, and the counting witness is measured to be insufficient alone rather than assumed to be. Measured cause of the two outside-index rows: v2.std.decl_index decl_facts skips test .dag files deliberately — gunbc.ci_layer_roots records that exclusion in the row explaining why a SECOND walk must not skip them — so a declaration authored in a witness module is absent from the index while its module is present in module_declaration_facts_live. The citation is true and unanswerable at once."
+
+data instance_gap_carrier_ref_witness_note: String = "The instance-gap carriers joined this lens's production population because their entire content is DeclarationRefs and nothing resolved any of them: rename a cited declaration and the row goes quietly false while every required check stays green (cited_symbol_instance_gap_carrier_widening_note, v2.lens.cited_symbol_resolution). These witnesses are that widening's evidence and they are a PAIR by DESIGN 4b(1). The greens measure the live carriers; the red plants the exact defect the widening exists to catch — a site whose caller names a declaration that does not exist — so a green cannot pass by measuring an empty population or a resolver that resolves everything. The red is CONSTRUCTED rather than drawn from either carrier, so it stays discriminating after every live row resolves, and it does not retire when production goes green (4b(4)). Both carriers are enrolled together deliberately: two carriers of one shape with only one enrolled is the same one-class-enforced-adjacent-class-exempt asymmetry that motivated the generated-document widening."
+
+test fn instance_gap_carrier_declaration_refs_all_resolve() -> Bool {
+  let pool = hand_authored_works_resolution_pool_roots()
+  cited_declaration_ref_refusal_count(
+    refs: concat(lambda_typing_gate_declaration_refs(), list_membership_gap_declaration_refs()),
+    facts: decl_facts(pool_roots: pool),
+    modules: module_declaration_facts_live(pool_roots: pool)
+  ) == 0
+}
+
+test fn instance_gap_carrier_ref_population_is_not_empty() -> Bool {
+  length(xs: lambda_typing_gate_declaration_refs()) == length(xs: lambda_typing_gate_citable_sites())
+    && length(xs: list_membership_gap_declaration_refs()) == length(xs: list_membership_gap_citable_sites())
+    && length(xs: lambda_typing_gate_sites) >= 3
+    && length(xs: list_membership_gap_sites) >= 5
+    && length(xs: list_membership_gap_declaration_refs()) >= 3
+}
+
+test fn instance_gap_outside_index_population_is_counted() -> Bool {
+  lambda_typing_gate_outside_index_count() == 0
+    && list_membership_gap_outside_index_count() == 2
+    && length(xs: list_membership_gap_citable_sites()) + list_membership_gap_outside_index_count()
+         == length(xs: list_membership_gap_sites)
+}
+
+test fn instance_gap_outside_index_refs_really_do_refuse() -> Bool {
+  let pool = hand_authored_works_resolution_pool_roots()
+  cited_declaration_ref_refusal_count(
+    refs: list_membership_gap_outside_index_refs(),
+    facts: decl_facts(pool_roots: pool),
+    modules: module_declaration_facts_live(pool_roots: pool)
+  ) == list_membership_gap_outside_index_count()
+}
+
+// THE PLANTED REDS ARE MARKED CitableThroughDeclIndex DELIBERATELY. Both name modules the index
+// covers (v2.compiler.parse, gunbc.publication_policy) and a declaration that does not exist inside
+// them, so they must refuse for the reason under test — the declaration is absent — and not because
+// they sit outside the index. Marking a planted red outside-index would make it refuse for the
+// wrong reason and the control would stop discriminating the thing it was planted for.
+test fn instance_gap_carrier_dangling_caller_red_control_refuses() -> Bool {
+  let planted = [
+    LambdaTypingGateSite {
+      caller: decl_ref(
+        module_path: "v2.compiler.parse",
+        decl_name: "G1_planted_instance_gap_caller_control_RED"
+      ),
+      callee_spelled: "fold_list",
+      miss: AbsentFromRoster,
+      index_coverage: CitableThroughDeclIndex,
+    },
+  ]
+  let pool = hand_authored_works_resolution_pool_roots()
+  cited_declaration_ref_refusal_count(
+    refs: lambda_typing_gate_declaration_refs_from(sites: planted),
+    facts: decl_facts(pool_roots: pool),
+    modules: module_declaration_facts_live(pool_roots: pool)
+  ) == 1
+}
+
+test fn instance_gap_membership_dangling_producer_red_control_refuses() -> Bool {
+  let planted = [
+    ListMembershipGapSite {
+      collection_producer: decl_ref(
+        module_path: "gunbc.publication_policy",
+        decl_name: "G1_planted_instance_gap_producer_control_RED"
+      ),
+      element_type: "String",
+      occurrences: 1,
+      argument_shape: PositionalPair,
+      index_coverage: CitableThroughDeclIndex,
+    },
+  ]
+  let pool = hand_authored_works_resolution_pool_roots()
+  cited_declaration_ref_refusal_count(
+    refs: list_membership_gap_declaration_refs_from(sites: planted),
+    facts: decl_facts(pool_roots: pool),
+    modules: module_declaration_facts_live(pool_roots: pool)
+  ) == 1
 }
