@@ -57,6 +57,8 @@ RECEIPT: RED
 
 **Boundary 4 is a subject-specific refusal carrying a partition, not a label.** This is the first real number at that boundary in this repository.
 
+**AND THE PARTITION IS MOSTLY CARRIAGE, NOT CAUSE (added 2026-08-21).** 32 of the 40 come from `body_lower_wrapper_retained_shell` and 7 from `grammar_validate_and_analyze`, both of which return `Accepted`; they enter this list through `rejected_with_pending`. Exactly ONE diagnostic per subject rejects -- `body_lowering_reason_unsupported_form` here, `fold_lowering_shape_invalid` on the 29-module control below. §3.1's ranking of the wrapper-retained families is therefore a ranking of non-blocking observations, and this sentence's "first real number at that boundary" is true of the count and false of the door. -> [b4 causal versus carried](b4_causal_versus_carried_2026-08-21.md).
+
 ---
 
 ## 3. The 29-module control — subject `src/v2/compiler/07_target_carriers.dag`
@@ -90,8 +92,10 @@ This is why the partition is the measurement and the total is a summary of it. T
 
   That upgrades the two-point observation from a pattern to an explanation, and the explanation predicts the invariance rather than merely matching it: the population is the set of constructs on which the two parse paths disagree, which is a property of the GRAMMAR and was never indexed by the subject, so it cannot grow with the frontier. A third subject is therefore not needed to settle it — a `7` there would corroborate without explaining, and a coincidence at two sizes would look the same. If a later run reports a non-7, that is a genuine surprise worth stopping on rather than a data point.
 
+  **Corroborated three times over since, and by the strongest available control (2026-08-21).** `7` also holds on a 4-module closure, on a 3-module closure, and on a **single-file closure with no imports at all** — the case where the subject contributes as little as a subject can. A constant that survives the closure shrinking to one file is not indexed by the subject, which is what the mechanism predicted and what no amount of agreement between two large subjects could have shown. Recorded here as corroboration only: the explanation above was already load-bearing and is unchanged. Note that these same runs FALSIFIED a neighbouring claim in this document — the invariance survived the scrutiny that the wrapper-retained denominator did not.
+
   **The number is the new fact, not the mechanism.** The reconciliation was already a known-good migration with no cost attached to it. It is now worth exactly **7 diagnostics at boundary 4 on every subject, independent of closure size** — which is what lets it be ranked against work whose cost does grow.
-- **`body_lowering_reason_wrapper_retained_emitted` is 10 → 32** and dominates both totals (56% and 80%). It is the population any B4 work should be denominated against.
+- **`body_lowering_reason_wrapper_retained_emitted` is 10 → 32** and dominates both totals (56% and 80%). ~~It is the population any B4 work should be denominated against.~~ **CORRECTED 2026-08-21, same day, by execution: it is not a population and must not be used as a denominator.** Both figures are ONE MODULE'S diagnostics, not their closures'. The emission stops at a refusing module and reports that module, so `10` and `32` describe two different single modules rather than one population at two scales — which is, exactly, the confusion the bullet below congratulates the partition for avoiding. Five subjects settle it, including a **1-module closure that reports the same as a 4-module closure containing it** and a 3/4/29-module trio that report byte-identically because they share one refusing dependency. The evidence and what it destroys: → [b4 wrapper-retained census](b4_wrapper_retained_census_2026-08-21.md), §0.
 - **The two singletons are different causes on the two subjects**, which is exactly the case a bare total cannot express: 40 and 18 would have looked like one population at two scales.
 
 ---

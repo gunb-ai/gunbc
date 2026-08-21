@@ -376,8 +376,8 @@ pub fn clamp(val: i64, min_val: i64, max_val: i64) -> i64 {
     val.clamp(min_val, max_val)
 }
 
-pub fn lookup<V: Clone>(table: &HashMap<String, V>, key: String) -> Option<V> {
-    table.get(&key).cloned()
+pub fn lookup<K: std::cmp::Eq + std::hash::Hash, V: Clone>(m: &HashMap<K, V>, key: K) -> Option<V> {
+    m.get(&key).cloned()
 }
 
 pub fn index_by<V: Clone, F: Fn(&V) -> String>(list: Vec<V>, key_fn: F) -> HashMap<String, V> {

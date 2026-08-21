@@ -1,0 +1,47 @@
+# Per-site callee note for every E0308 block whose text names v1_rt.rs, carried as a FIELD beside
+# the derived root rather than consumed into it. Requested by smart-ram-730 after royal-dove-436
+# could not adjudicate the target_model.rs sites from sites_classified.tsv: their route classifier
+# keys on the pair SPELLING, and "HashMap from rust_algebra_inhabitants" and "HashMap from
+# v1_rt::lookup's signature" are the same spelling. The note is what separates them, and the
+# partition had folded it into the root column.
+#
+# Instrument: docs/probes/curated_cargo_probe_one.sh, CSSL_STD_SEED_LINK=1, shim_lib_rel="",
+# entry src/v2/compiler/03_ingest.dag. BOTH columns come from ONE dispatch, so they are comparable
+# to each other and to nothing else.
+# base = d72ffe8708b07a6bd59f8d9425fe1c052b625a17   head = 5455de6cd9b452d4d7a4d2732fdde26947a34ad5
+#
+# NOT COMPARABLE WITH sites_classified.tsv: that file is at 2a2bd0ad59, a different tree, and it
+# counts (file,line,col,expected,found) SITES while this counts rustc BLOCKS. Line numbers differ
+# between the two refs (this file's 6181 is that file's 6183). Do not difference the columns.
+#
+# callee_note is a POSITION, not a symbol, and that is the §3 carve-out rather than a lapse: it
+# points into the GENERATED v1_rt.rs inside the assembled crate, which no namespace tree reaches,
+# and its line numbering is not the seed's. One symbol is established by execution rather than
+# read: v1_rt.rs:330:8 is `lookup` — this branch changed only `lookup`, and exactly the 330:8
+# blocks with a HashMap receiver retired. The other three are left as positions rather than named
+# from their pair shapes, because a plausible guess in a citation field is the failure this file
+# exists to prevent.
+#
+# survives_key_generic_fix is the adjudicating column. NO = the key type was the whole defect
+# (cross-realization signature drift, closed by gunbc#8792). YES = the site merely calls a map
+# builtin; its defect is the receiver carrier, and it belongs to the T3 / algebra-inhabitants lane.
+#
+primary_site	callee_note	survives_key_generic_fix	expected_found
+src/std_state_durability.rs:163:70	v1_rt.rs:379:8	YES	`Rc<StateDurabilityBoundary>` <- `Rc<Vector<Rc<StateDurabilityBoundary>>>`
+src/std_state_durability.rs:878:59	v1_rt.rs:379:8	YES	`Rc<StateDurabilityEvidence<Target, ...>>` <- `Rc<Vector<Rc<...>>>`
+src/v2_std_collection.rs:96:28	v1_rt.rs:330:8	NO	`&HashMap<String, _>` <- `&Rc<HashMap<K, V>>`
+src/v2_std_collection.rs:102:5	v1_rt.rs:330:8	NO	`&HashMap<String, V>` <- `&Rc<HashMap<K, V>>`
+src/v2_std_provenance.rs:79:27	v1_rt.rs:330:8	NO	`String` <- `OccurrenceId` | `&HashMap<String, _>` <- `&Rc<HashMap<OccurrenceId, Rc<...>>>`
+src/v2_std_provenance.rs:84:115	v1_rt.rs:330:8	NO	`String` <- `OccurrenceId` | `&HashMap<String, _>` <- `&Rc<HashMap<OccurrenceId, Rc<...>>>`
+src/v2_std_provenance.rs:86:19	v1_rt.rs:330:8	NO	`String` <- `OccurrenceId` | `&HashMap<String, _>` <- `&Rc<HashMap<OccurrenceId, Rc<...>>>`
+src/v2_std_compilers_target_model.rs:6181:103	v1_rt.rs:477:8	YES	`Rc<HashMap<String, Rc<...>>>` <- `Rc<Rc<PartialFunction<String, Rc<...>>>>`
+src/v2_std_compilers_target_model.rs:6181:82	v1_rt.rs:477:8	YES	`Rc<Rc<PartialFunction<String, Rc<...>>>>` <- `Rc<HashMap<String, Rc<...>>>`
+src/v2_std_compilers_target_model.rs:6196:21	v1_rt.rs:330:8	YES	`&HashMap<String, _>` <- `&Rc<Rc<PartialFunction<String, ...>>>`
+src/v2_std_compilers_target_model.rs:6240:61	v1_rt.rs:354:8	YES	`&HashMap<_, _>` <- `&Rc<Rc<PartialFunction<String, ...>>>`
+src/v2_std_compilers_target_model.rs:6240:143	v1_rt.rs:330:8	NO	`&HashMap<String, _>` <- `&Rc<Rc<PartialFunction<String, ...>>>`
+src/v2_std_compilers_target_model.rs:6265:47	v1_rt.rs:330:8	YES	`&HashMap<String, _>` <- `&Rc<Rc<PartialFunction<String, ...>>>`
+src/v2_std_compilers_target_model.rs:6480:51	v1_rt.rs:477:8	YES	`Rc<HashMap<String, Rc<...>>>` <- `Rc<Rc<PartialFunction<String, Rc<...>>>>`
+src/v2_compiler_parse.rs:414:27	v1_rt.rs:330:8	NO	`&HashMap<String, _>` <- `&Rc<HashMap<Rc<ParsePositionKey>, ...>>` | `String` <- `Rc<ParsePositionKey>`
+src/v2_compiler_infer.rs:520:27	v1_rt.rs:330:8	NO	`&HashMap<String, _>` <- `&Rc<HashMap<Rc<Node>, Rc<...>>>` | `String` <- `Rc<Node>`
+src/v2_compiler_eval.rs:662:27	v1_rt.rs:330:8	NO	`&HashMap<String, _>` <- `&Rc<HashMap<Rc<Node>, Rc<...>>>` | `String` <- `Rc<Node>`
+src/v2_compiler_eval.rs:850:121	v1_rt.rs:330:8	NO	`&HashMap<String, _>` <- `&Rc<HashMap<Rc<...>, ...>>` | `String` <- `Rc<EnvironmentBindingKey>`

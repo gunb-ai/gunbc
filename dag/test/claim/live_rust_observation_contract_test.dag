@@ -18,6 +18,7 @@ import gunbc.live_rust_observation {
 }
 import extdeps.github.actions_environment { ActionsShaMissing, ActionsShaEmpty }
 import gunbc.stage0_rust_host_observation {
+  EmitPopulationConfirmed,
   RustSourceHostObservation,
   RustManifestObserved,
   RustManifestReadRefused,
@@ -51,7 +52,10 @@ fn observation_at(
     manifest_content_identity: Fnv1a64Structural { digest: "c0a750000000000d" },
     tracked_rust_repo_paths: tracked,
     prior_tracked_rust_repo_paths: prior,
-    cargo_bin_repo_paths: cargo
+    cargo_bin_repo_paths: cargo,
+    emit_population_evidence: EmitPopulationConfirmed {
+      emitted_stage0_repo_paths: []
+    }
   }
 }
 
