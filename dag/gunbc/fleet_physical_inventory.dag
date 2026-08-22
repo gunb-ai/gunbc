@@ -296,38 +296,60 @@ fn fleet_nominal_rackmount_arithmetic_holds() -> Bool {
 // INSTALLED DIMM AND PROCESSOR BILLS OF MATERIALS: what is expected, what has
 // actually been observed, and the refusal between them.
 //
-// The expectation below is the operator's stated belief that all four hosts
-// carry an eight-stick population of the SK Hynix part already cited in
-// extdeps.memory.sk_hynix. It is authored as an expectation and nothing else:
-// no PhysicalAsset row binds an installed DIMM here, because binding an asset
-// would assert that somebody read a part number off a slot, and for the
-// per-slot grain nobody has.
+// The expectations below are the operator's stated belief about each host's
+// population, and they are NO LONGER UNIFORM: srv1, srv3 and srv4 expect the
+// eight-stick Samsung population cited in extdeps.memory.samsung, while srv2
+// alone still expects the SK Hynix part, because its 64 GiB install failed
+// memory training and was reverted. They are authored as expectations and
+// nothing else: no PhysicalAsset row binds an installed DIMM here, because
+// binding an asset would assert that somebody read a part number off a slot,
+// and for the per-slot grain nobody has.
 //
-// THE EXPECTATION IS ALREADY REFUTED ON ONE HOST, and that is the mechanism
-// working rather than an authoring error. srv1 and srv2 confirm it against
-// their 2026-07-16 BMC Redfish populations; srv3's population from the same
-// read is seven HMA82GR7AFR8N-VK plus one HMA82GR7AFR4N-VK, so the uniform
-// expectation reaches DimmPopulationRefused with the exact part difference
-// named. The rows stay as authored rather than being quietly edited to match
-// srv3, because an expectation rewritten to fit the observation records
-// nothing and would have made this divergence invisible.
+// THIS BLOCK PREVIOUSLY DESCRIBED A UNIFORM HYNIX EXPECTATION REFUTED ON srv3
+// BY A 7+1 MIXED POPULATION. That was true of the 2026-07-16 reads and is now
+// history: the 2026-08-22 upgrade replaced srv3's mixed population outright.
+// The description is corrected rather than kept beside the new rows, because
+// prose that contradicts the rows under it is what the next reader believes.
+//
+// The rows are still never edited to match an observation. An expectation
+// rewritten to fit what was seen records nothing and makes a divergence
+// invisible; when the fleet moved, the expectations moved because the OPERATOR
+// changed what is expected, not because the observation disagreed.
 // ---------------------------------------------------------------------------
 
 // TWO SRV1 ROWS HAD TO BE EDITED TO MOVE ONE FACT, AND THAT IS A REPORTED DEFECT RATHER THAN A
 // REPAIRED ONE (2026-08-22). This list and the inline expectations inside fleet_dimm_verdicts
-// below are byte-identical copies of the same four expectations, and this list has NO consumer
-// anywhere in the corpus -- a grep for its name returns only this declaration. So the live
-// reconcile reads the copies, the copies drift independently, and the 2026-08-22 srv1 upgrade
-// was landed against the verdict copies while this one kept naming the Hynix part. Review caught
-// it; the closure compile could not, because a stale-but-well-typed catalog reference is a data
-// disagreement rather than a type error.
+// below are byte-identical copies of the same four expectations, and no PRODUCTION consumer reads
+// this list -- the live reconcile reads the inline copies. So the copies drift independently, and
+// the 2026-08-22 srv1 upgrade was landed against the verdict copies while this one kept naming the
+// Hynix part. Review caught it; the closure compile could not, because a stale-but-well-typed
+// catalog reference is a data disagreement rather than a type error.
+//
+// A DRIFT WITNESS CANNOT BE WRITTEN AGAINST THE VERDICTS, and that is the strongest argument for
+// fixing this by construction. The obvious cheap guard -- assert each row here equals the inline
+// copy -- has nothing to compare against: dimm_reconcile_verdict CONSUMES its expectation, and
+// DimmReconcileVerdict retains only host, counts and discrepancies, so the inline expectation is
+// not recoverable from fleet_dimm_verdicts by any reader. Validation is not merely weaker than
+// construction here; it is unavailable.
 //
 // NOT DISSOLVED HERE, DELIBERATELY. The construction fix is to derive the verdicts FROM this list
 // so srv1 has one row and the drift has no representation (DESIGN 5). That is the right change
 // and it is not this one: the module uses no map or pipeline idiom anywhere, so deriving would
 // mean introducing one on judgement, and an unconsumed declaration in this corpus may still be
-// read by a lens over the Node tree, which a name grep cannot rule out. Both questions want an
-// answer before the fork is removed, and neither is answerable from inside this diff.
+// read by a lens over the Node tree, which a name grep cannot rule out.
+//
+// AND A THIRD OBSTACLE, WHICH IS THE ONE THAT ACTUALLY DECIDES THE SHAPE: deriving the verdicts
+// means joining each expectation to its observation BY HOST, so the join needs an arm for a host
+// with no matching observation -- and the two candidate arms already in DimmReconcileVerdict are
+// both wrong for it. DimmObservationAbsent says an observation was sought and the host has none;
+// a lookup that found no row says the join could not be performed. Those have different owners and
+// opposite repairs, and collapsing them is exactly the not-applicable-versus-malformed conflation
+// DESIGN names -- an arm downstream of a lookup that returned Absent is not-applicable and needs
+// its own reason. So the join wants a new typed arm, which is a modeling decision about the
+// product-layer reconcile type and not a mechanical rewrite of this module.
+//
+// Three questions want an answer before the fork is removed, and none is answerable from inside
+// this diff.
 data fleet_dimm_expectations: List<HostDimmExpectation> = [
   HostDimmExpectation { host: operator_host_srv1, catalog: m393a8g40d40_crb0q_catalog, stick_count: 8 },
   HostDimmExpectation { host: operator_host_srv2, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
