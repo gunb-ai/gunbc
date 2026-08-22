@@ -1984,6 +1984,119 @@ fn type_name_transparently_aliases_to(
   }
 }
 
+// THE DECLARED-FIELD INHABITANCE WALL (DESIGN 4b floor: "values inhabit declared types").
+//
+// The state this refuses: a record-literal field declared as a COPRODUCT is initialised with a
+// value whose type is one of that coproduct's own VARIANT PAYLOAD types. The payload is not a
+// member of the parent, so the assignment is unsound -- but until this wall the seam judged only
+// kernel scalars (kernel_value_declared_type_mismatch bails unless the ACTUAL is a kernel type)
+// and record literals (structured_application_site_type_mismatch bails unless the actual EXPR is
+// an ExprRecordLit). An actual that is a CALL -- the overwhelmingly common spelling -- was judged
+// by nothing, so the program compiled and died at the first total match over the field.
+//
+// The receipt is #8865's minimal pair, and the class is not synthetic: it is the mechanism that
+// permitted the 2026-08-22 outage. v2.extdeps.languages.dag built `Node { occurrence_id: <raw
+// OccurrenceId> }` where the field is declared `NodeOccurrenceId` and `OccurrenceId` is the
+// payload of its `MintedOccurrence` arm; the value entered the bad state at that record literal,
+// stayed latent two months, and surfaced 2,000 lines and one pipeline stage away as
+// `non-exhaustive pattern match on: OccurrenceId { value: 79 }` in sixteen floor claims.
+//
+// THE SCOPE IS THE RECORD-LITERAL FIELD SEAM, AND ONLY IT. This wall does not judge `let`
+// bindings, method arguments, or the direct-call argument seam (whose TYPE judgment is separately
+// switched off for `v2.*` by module_skips_direct_call_arg_check). Per gunbc#8868, the seam
+// enumeration for this class is UNFINISHED -- assume a further seam until someone enumerates
+// them -- so this closes one seam and says so rather than closing the class.
+//
+// WHY THE PREDICATE IS KEYED ON PAYLOAD MEMBERSHIP RATHER THAN ON MISMATCH IN GENERAL. Once the
+// two names are established incompatible and the formal is a non-generic coproduct, ANY actual is
+// arguably wrong; refusing all of them would make this a general field-type wall, whose
+// false-positive classes are exactly the four representation gaps the conformance wall measured
+// (brand aliases, optionality's two forms, anonymous literals, expansion depth). Requiring the
+// actual to be a DECLARED PAYLOAD TYPE OF ONE OF THE FORMAL'S OWN VARIANTS positively identifies
+// the confusion instead of inferring it from an absence, so a refusal here always names a
+// spelling the author can point at: the wrapping arm is in the same declaration.
+//
+// COST. Every guard ahead of the declaration walk is a string compare or a cardinality read, and
+// the walk itself is bounded by the formal declaration's own variant/field count -- never by the
+// corpus. Nothing is re-derived from normalized structure: the judgment reads the same resolved
+// formal node the seam already holds, and defers name identity to application_type_names_compatible,
+// the one relation the neighbouring lanes maintain.
+fn coproduct_variant_payload_admits_type_name(
+  decl: Node,
+  actual_name: String,
+  type_env: TypeEnv,
+  module_name: String,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  decl.children |> any(variant =>
+    variant.children |> any(payload =>
+      let payload_type = match payload.inferred {
+        Present { value: Resolved { node: rt } } => rt
+        _ => field_node_type_expr(n: payload)
+      }
+      let payload_name = authored_name_at(source_indices: source_indices, node: payload_type)
+      payload_name != "" && application_type_names_compatible(
+        formal_name: payload_name,
+        lit_name: actual_name,
+        type_env: type_env,
+        module_name: module_name,
+        source_indices: source_indices)
+    )
+  )
+}
+
+fn coproduct_payload_where_parent_required(
+  formal: Node,
+  actual: Node,
+  scope: InferScope
+) -> Bool {
+  let source_indices = scope.type_env.source_indices
+  if formal.return_cardinality == CardOptional || actual.return_cardinality == CardOptional {
+    false
+  } else if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) {
+    false
+  } else {
+    let formal_name = authored_name_at(source_indices: source_indices, node: formal)
+    let actual_name = authored_name_at(source_indices: source_indices, node: actual)
+    // `Optional` is the language's own cardinality carrier, not an ordinary coproduct: a `T` in an
+    // `Optional<T>` position is the declared spelling, not a payload escape.
+    if formal_name == "" || actual_name == ""
+      || qualified_last_segment(name: formal_name) == "Optional"
+      || qualified_last_segment(name: actual_name) == "Optional" {
+      false
+    } else if application_type_names_compatible(
+        formal_name: formal_name,
+        lit_name: actual_name,
+        type_env: scope.type_env,
+        module_name: scope.module_name,
+        source_indices: source_indices) {
+      false
+    } else {
+      match lookup_type_by_name(env: scope.type_env, name: formal_name) {
+        Present { value: decl } =>
+          // A GENERIC coproduct is excluded: its payload positions can be type variables, so
+          // "the actual is a payload type" is not decidable from the declaration alone.
+          if decl.connective != Disj || (decl.params |> count) > 0 || (decl.children |> count) == 0 {
+            false
+          } else if has_child_named(
+              n: decl,
+              name: qualified_last_segment(name: actual_name),
+              source_indices: source_indices) {
+            false
+          } else {
+            coproduct_variant_payload_admits_type_name(
+              decl: decl,
+              actual_name: actual_name,
+              type_env: scope.type_env,
+              module_name: scope.module_name,
+              source_indices: source_indices)
+          }
+        Absent => false
+      }
+    }
+  }
+}
+
 // The peeling entry point, retained for the record-literal FIELD site, which has
 // no prepared call plan to carry a peeled formal. It peels inside the ExprRecordLit
 // arm exactly as before, so a non-record-literal actual still pays nothing.
@@ -5435,6 +5548,15 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<Node>, span
             )]
           } else if structured_application_site_type_mismatch(
             formal: expected_node, actual_expr: field_init_node_value(n: fi), scope: scope) {
+            [type_mismatch_error(
+              expected: node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
+              got: node_type_shape(n: actual_peeled, source_indices: scope.type_env.source_indices),
+              span: ar_typed.span,
+              module_name: scope.module_name
+            )]
+          } else if expected_node.return_cardinality != CardOptional
+            && coproduct_payload_where_parent_required(
+              formal: formal_peeled, actual: actual_peeled, scope: scope) {
             [type_mismatch_error(
               expected: node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
               got: node_type_shape(n: actual_peeled, source_indices: scope.type_env.source_indices),
