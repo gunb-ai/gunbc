@@ -712,14 +712,17 @@ fn readback_disposition(row: LedgerReadbackRow) -> ClaimDisposition? {
 // the same fact over the same row, so the seed sends both its tag and its disposition, and a row
 // whose two answers disagree makes the whole ledger UNRENDERABLE with a typed reason.
 //
-// That is the mirror comparator the schema's debt note names, running in production on every row
-// rather than as an offline audit. It does not retire the declared debt -- the two
-// `ClaimDisposition` declarations are still hand-written beside each other, and this catches a
-// divergence in the MAPPINGS, not in the type declarations -- but it moves this seam from
-// "nothing detects a divergence" to "a divergence stops the line", which is *mitigatable* to
-// *mechanically preventable* for the part it covers. An unknown tag or an unknown disposition
-// label refuses on the same arm: a seed built against a newer vocabulary cannot publish a ledger
-// this module would read differently.
+// This is the production half of `TerminalDispositionWireAgreement`, whose rung, guarantee, stated
+// non-claim and coverage bound are declared once in `v2.workflow.floor_terminal_ledger`'s schema
+// note. They are NOT restated here: two accounts of one standing drift apart, and the one a reader
+// finds first wins rather than the one that is right.
+//
+// What belongs here is only what this code does. The comparator runs in production on every row
+// rather than as an offline audit, so a divergence between the two mappings stops the line instead
+// of being discovered later. It catches divergence in the MAPPINGS; the type DECLARATIONS are the
+// separate `SeedDagTerminalSchemaDeclarationLockstep` class and this does not touch them. An
+// unknown tag or an unknown disposition label refuses on the same arm, so a seed built against a
+// newer vocabulary cannot publish a ledger this module would read differently.
 type SeedLedgerRow {
   qualified: String
   expectation_wire: String

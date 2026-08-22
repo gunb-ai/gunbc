@@ -25,14 +25,47 @@ import v2.workflow.required_floor { ClaimSafetyOutcome }
 // names as a recurring failure. The ledger therefore carries ONE ROW PER PLANNED IDENTITY and
 // every row is terminal. Absence is not a value it can express.
 //
-// THE SEED CARRIES A HAND-WRITTEN MIRROR OF THIS SCHEMA AND NOTHING CHECKS THE TWO AGREE.
-// `cli_run.rs` is HAND_MAINTAINED, so its `ClaimTerminalRow`, `ClaimDisposition` and
-// `reconcile_terminal_ledger` are authored beside these declarations rather than derived from
-// them. Regen does not compare them, because that file is not generated; the witnesses do not
-// compare them, because each side is exercised alone. The claim "one for one" below is therefore
-// an author's claim, held by diligence -- *mitigatable* -- and an arm added or re-meaned on
-// either side leaves the other silently stale. Declared here rather than left to be inferred
-// from the word "mirror", which reads as derivation and is not.
+// THE SEED CARRIES A HAND-WRITTEN MIRROR OF THIS SCHEMA. `cli_run.rs` is HAND_MAINTAINED, so its
+// `ClaimTerminalRow`, `ClaimDisposition` and `reconcile_terminal_ledger` are authored beside these
+// declarations rather than derived from them. Regen does not compare them, because that file is
+// not generated; the witnesses do not compare them, because each side is exercised alone.
+//
+// THAT MIRROR IS TWO ERROR CLASSES AT TWO DIFFERENT RUNGS, AND ONE ROW OVER BOTH IS WRONG IN BOTH
+// DIRECTIONS -- it under-rates what the comparator actually guarantees and over-rates what the
+// declarations do. An earlier revision of this note carried the single row, and the correction is
+// recorded rather than silently applied because "the mirror is mitigatable" was cited as settled.
+//
+// CLASS 1 -- `TerminalDispositionWireAgreement`.  Rung: MECHANICALLY PREVENTABLE.
+//   Scope:     every terminal row admitted by this artifact path.
+//   Guarantee: the disposition the seed derived equals the disposition obtained by decoding the
+//              tag it emitted. A disagreement refuses the whole ledger and names the identity.
+//   Not structural: an invalid row is still CONSTRUCTIBLE -- the seed can compute a wrong pair --
+//              it simply cannot become accepted evidence. Construction would require the two
+//              derivations to be one, which is the dissolution below, not a check.
+//   NON-CLAIM, and it is the load-bearing half: neither derivation is proven semantically correct
+//              in isolation. Two mappings that are JOINTLY wrong in the same direction agree, and
+//              agreement is all this class checks. It catches DIVERGENCE, never error.
+//   Coverage bound: the join runs over every row of every run, which is the OBSERVED population
+//              and not every mapping ARM. An arm no live row reaches is unexercised and the join
+//              is silent about it -- §4b(1) rung honesty, since a class's rung is the minimum over
+//              its in-scope paths and an unexercised arm is not on any of them.
+//
+// CLASS 2 -- `SeedDagTerminalSchemaDeclarationLockstep`.  Rung: MITIGATABLE.
+//   Scope:     the declaration vocabulary itself -- payload shapes, arm existence, field contracts.
+//   Held by:   author diligence. Nothing executes over it.
+//   The production join above does NOT retire this, and these all still pass unnoticed:
+//     - Rust grows a variant no live row produces
+//     - this module grows an arm no run exercises
+//     - both sides keep a tag and change its MEANING together
+//     - a payload or cardinality diverges under an unchanged tag
+//     - both mappings are jointly wrong in the same direction (Class 1's stated non-claim)
+//     - a variant disappears from one side but the population never reaches it
+//   Next-rung trigger: a calibration population carrying exactly one row per terminal disposition,
+//              mutation-tested in both directions independently. That converts "enforced for what
+//              ran" into "enforced for every declared arm". Its discriminating case is a mutation
+//              that must NOT red -- change a payload contract while keeping every tag, and Class 1
+//              stays green while this class is the only thing that could have caught it. Without
+//              that case the two rows are indistinguishable and this one is decoration.
 //
 // DISSOLUTION -- one event retires the mirror and the seam together: the self-emitted v2 claim
 // executor. Once v2 drives the floor's execution, the producer holding identity-and-outcome
