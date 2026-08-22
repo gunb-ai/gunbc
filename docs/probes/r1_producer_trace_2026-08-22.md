@@ -355,3 +355,84 @@ base-realization fork (Finding 3) sitting **inside `Nat` alone**, with `v2_lens_
 same-declaration controls; element depth disjoint (Finding 1); the decision table's first row
 unreachable (Finding 2). `Nat`'s span is now OUTER 4 + TYPE-ARGUMENT 4 clean, one declaration, no
 ratio-derived rows anywhere in it.
+
+---
+
+## The trace RAN — and the answer to the brief's question is "neither"
+
+Subject ref `4f0c90559d668b405c7a5e631282a8c17235a94c`. Instrument: every
+`set_contains(shared_types, X)` in the emitted stage0 mirror rewritten to a tracing wrapper carrying
+the original line as a site id, so each of the 24 wrap sites reports `(site, key, verdict)`.
+
+### Behaviour-preservation control — PASSES
+
+Mandatory per the brief, and it required a discriminator rather than a single comparison:
+
+| arms | result |
+|---|---|
+| tracing OFF vs tracing ON | **IDENTICAL** |
+| OFF vs OFF (same binary, same env) | **DIFFER** |
+| ON vs ON | **DIFFER** |
+
+**Tracing perturbs nothing** — the traced and untraced trees are byte-identical, so the instrument is
+admissible. The OFF-vs-OFF row is a separate finding about the emitter, recorded below; it is *not*
+an instrument defect, and an earlier single-run-per-arm attempt could not have told the two apart.
+That is why the discriminator was worth a dispatch.
+
+### Result — the wrap verdict is CONFLUENT
+
+| | |
+|---|---|
+| `Int` ever `true`, anywhere | **0** |
+| `Nat` ever `false`, anywhere | **0** |
+
+`Nat` is in `shared_types` at **every** producer that consults it — type-position (`1755`, `1781`,
+`1967`) and value-position (`12596`, `17474`, `18653`, `19919`, `25623`) alike. `Int` is in it at
+**none**.
+
+**So the brief's one-vs-three question has a third answer: neither.** The producers do not disagree
+about `Nat`; there is no position-specific verdict to reconcile. R1's divergence is therefore **not
+produced by the wrap policy forking** — one policy, one verdict, and the disagreement lives
+downstream of the wrap decision.
+
+This also corroborates *from an independent direction* that `Int` has zero R1 sites: `Int` is not a
+shared type at all, so no `Int` site can exhibit a bare↔`Rc` wrap delta.
+
+### What it does to the alias reading
+
+Confluence does not confirm the alias-collapse cause — it **removes its only competitor**. Had the
+wrap policy been forking, the opposite directions at `cache_interface` vs `realization_*` would have
+had a live explanation *inside* the policy. It is not forking, so the direction split originates
+upstream of the wrap decision, which is exactly where `measure.dag:755` places the alias-emission
+defect. **Still not established:** which producer emitted each declaration. The trace answers the
+wrap *predicate*, not the declaration *emitter*; that is a different instrument.
+
+### Consolidation — the premise, verified against `origin/main`
+
+| | |
+|---|---|
+| `decl_file` in `src/v1/04_emit_info.dag` (`TypeSummary`'s home) | **0 occurrences** |
+| `build_shared_types(type_summaries, recursive_type_set, target)` | **no `decl_file` parameter** |
+| `set_contains(shared_types, …)` sites | **24** |
+| `decl_file` occurrences in `src/v1/05_emit_rust.dag` | **45** |
+
+The finding is **not** "`decl_file` is unavailable here." It is available and heavily threaded
+through the same module (`lookup_checkpoint(target:, dag_name:, decl_file:)`, the
+`rust_scalar_checkpoint_reference_base` / `_grounding_base` split). The finding is that **one policy
+at 24 sites keys on the bare authored name while the identity-keyed authority sits in the same
+module.** That is a stronger argument for consolidating the wrap decision into one authority than the
+unavailability reading would have been.
+
+## Emitter nondeterminism — reported separately, flagged here because it bounds every byte oracle
+
+Same binary, same environment, same tree, consecutive emits of `src/v2/compiler/03_ingest.dag`
+differ on `v2_lens_enforcement_vocab.rs` and `v2_std_cross_tree_resolution.rs`.
+
+This bounds the consolidation proposal's own oracle. "Emitted bytes identical before and after" is
+only a valid equivalence check on the files where emission is deterministic; on these it will report
+a difference that has nothing to do with the change. **Any byte-identity oracle over emitted output
+needs a same-arm control run first** — the OFF-vs-OFF row above *is* that control, and it is the only
+reason this document's own control could be read at all.
+
+**Not claimed:** that these files are in the `--required-regen` population, or that regen has ever
+flaked on them. Only that the emitter is nondeterministic on them.
